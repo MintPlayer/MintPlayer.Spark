@@ -38,6 +38,36 @@ public class Repository
     public bool Archived { get; set; }
 
     /// <summary>
+    /// Whether the GitHub App can still see this repository. Disconnected repositories keep every
+    /// document they have and keep answering on their badge and report URLs; they stop appearing in
+    /// listings for anyone who does not manage the owner.
+    /// <para>
+    /// Defaults to <see cref="RepositoryConnection.Connected"/>, which is what every document
+    /// written before this field existed deserializes to — so no migration is needed and the
+    /// nightly reconciler is what corrects the ones that are actually gone.
+    /// </para>
+    /// </summary>
+    public RepositoryConnection Connection { get; set; } = RepositoryConnection.Connected;
+
+    /// <summary>Why the repository is disconnected, from <see cref="DisconnectedReasons"/>; null while connected.</summary>
+    public string? DisconnectedReason { get; set; }
+
+    /// <summary>When the repository was last disconnected (UTC); null while connected.</summary>
+    public DateTime? DisconnectedAtUtc { get; set; }
+
+    /// <summary>
+    /// Full names this repository has previously been known by, oldest first, appended on every
+    /// rename and transfer. Badge URLs live in READMEs and report links live in PR comments that
+    /// were posted years ago, so a rename must not break them — these are what a stale
+    /// <c>owner/name</c> resolves through.
+    /// <para>
+    /// A live <see cref="FullName"/> always wins over an alias, so a new repository taking over an
+    /// old name shadows this list rather than colliding with it.
+    /// </para>
+    /// </summary>
+    public List<string> PreviousFullNames { get; set; } = [];
+
+    /// <summary>
     /// Grants access to the rendered badge SVG only — never report data.
     /// Set for private repositories; independently rotatable.
     ///
