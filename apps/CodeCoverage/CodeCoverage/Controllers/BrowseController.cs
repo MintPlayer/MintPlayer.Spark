@@ -57,7 +57,8 @@ public partial class BrowseController : ControllerBase
     [HttpGet("accounts/{login}/repos")]
     public async Task<ActionResult<IEnumerable<RepoInfo>>> GetAccountRepos(string login, CancellationToken cancellationToken)
     {
-        var includePrivate = await gitHubAccess.IsOwnerAllowedAsync(login, cancellationToken);
+        var owners = await gitHubAccess.GetAllowedOwnersAsync(cancellationToken);
+        var includePrivate = owners.Contains(login, StringComparer.OrdinalIgnoreCase);
 
         var repos = await session.Query<Repository, Indexes.Repositories_Overview>()
             .Where(r => r.OwnerLogin == login)
@@ -65,7 +66,7 @@ public partial class BrowseController : ControllerBase
             .ToListAsync(cancellationToken);
 
         return Ok(repos
-            .Where(r => includePrivate || !r.IsPrivate)
+            .Where(r => RepositoryVisibility.IsListed(r, owners))
             .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
             .Select(r => ToRepoInfo(r, includePrivate)));
     }
@@ -171,13 +172,13 @@ public partial class BrowseController : ControllerBase
     [HttpGet("accounts/{login}/sparklines")]
     public async Task<ActionResult<Dictionary<string, double[]>>> GetSparklines(string login, CancellationToken cancellationToken)
     {
-        var includePrivate = await gitHubAccess.IsOwnerAllowedAsync(login, cancellationToken);
+        var owners = await gitHubAccess.GetAllowedOwnersAsync(cancellationToken);
 
         var repos = await session.Query<Repository, Indexes.Repositories_Overview>()
             .Where(r => r.OwnerLogin == login)
             .Take(1024)
             .ToListAsync(cancellationToken);
-        var visible = repos.Where(r => includePrivate || !r.IsPrivate).ToDictionary(r => r.Id!, r => r);
+        var visible = repos.Where(r => RepositoryVisibility.IsListed(r, owners)).ToDictionary(r => r.Id!, r => r);
         if (visible.Count == 0) return Ok(new Dictionary<string, double[]>());
 
         var repoIds = visible.Keys.ToArray();

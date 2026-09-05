@@ -42,4 +42,47 @@ public static class RepositoryVisibility
     public static bool IsVisible(Repository repository, string[] allowedOwners)
         => !repository.IsPrivate
             || allowedOwners.Contains(repository.OwnerLogin, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The rule for <em>enumerating</em> repositories, as opposed to resolving one by name.
+    /// <para>
+    /// There are deliberately two rules here, and the difference is the whole point rather than an
+    /// oversight to be tidied away. <see cref="Filter"/> answers "may this viewer see this
+    /// repository", and a disconnected repository is still perfectly visible: its badge is still
+    /// embedded in a README somewhere and its report links are still sitting in pull-request
+    /// comments, and breaking those would be a worse failure than the one this state exists to fix.
+    /// This one answers the narrower question "should we still be <em>advertising</em> it", which is
+    /// what a grid, an account page or a repository count is really asking — and the answer for a
+    /// repository we can no longer reach is no, except to the owner who may want to delete it.
+    /// </para>
+    /// <para>
+    /// Collapsing the two back into one is therefore not a simplification: routing the by-name
+    /// lookups through this rule silently 404s every published badge the moment a repository is
+    /// transferred away, and routing the listings through <see cref="Filter"/> restores the bug
+    /// where an app advertises repositories it lost access to months ago.
+    /// </para>
+    /// <para>
+    /// <c>In()</c> rather than <c>Contains</c> for the reason given on <see cref="Filter"/>. The
+    /// connection clause is written as <c>!= Disconnected</c> and NOT as <c>== Connected</c>, which
+    /// is load-bearing: every repository document written before this field existed has no
+    /// <c>Connection</c> property at all, and an absent field does not satisfy an equality in
+    /// RavenDB. Testing for equality here would hide every pre-existing repository from every
+    /// anonymous visitor the moment this deploys, until something happened to rewrite each document
+    /// — which is the same class of bug as this whole feature exists to fix, arriving from the
+    /// other direction. Negation matches the absent field, so old documents read as connected,
+    /// which is what they are.
+    /// </para>
+    /// </summary>
+    public static Expression<Func<Repository, bool>> ListingFilter(string[] allowedOwners)
+        => repository => (repository.Connection != RepositoryConnection.Disconnected && !repository.IsPrivate)
+            || repository.OwnerLogin.In(allowedOwners);
+
+    /// <summary>
+    /// <see cref="ListingFilter"/> for one already-loaded repository. Same negation, for the same
+    /// reason — a document that arrived without the field materialises as the enum's default, and
+    /// the two forms must not disagree about it.
+    /// </summary>
+    public static bool IsListed(Repository repository, string[] allowedOwners)
+        => (repository.Connection != RepositoryConnection.Disconnected && !repository.IsPrivate)
+            || allowedOwners.Contains(repository.OwnerLogin, StringComparer.OrdinalIgnoreCase);
 }

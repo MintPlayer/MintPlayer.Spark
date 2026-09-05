@@ -24,13 +24,19 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
 
     public override async Task<Expression<Func<Repository, bool>>?> GetRowFilterAsync(string action)
     {
-        // One visibility rule for every action: writes are denied at the type
-        // level (no Edit/New/Delete right in security.json), and since Spark#244
-        // the per-row `can` block intersects type-level rights, so no
-        // write-action special-casing is needed here.
+        // Writes are denied at the type level (no Edit/New/Delete right in
+        // security.json), and since Spark#244 the per-row `can` block intersects
+        // type-level rights, so no write-action special-casing is needed here.
         // Empty for anonymous viewers → the filter reduces to "public only".
         var owners = await visibility.GetAllowedOwnersAsync();
-        return RepositoryVisibility.Filter(owners);
+
+        // The one place the two rules diverge. "Query" is the grid — a listing, which must stop
+        // advertising a repository we have lost access to. "Read" is the detail page, which is
+        // where /r/{owner}/{name} lands, so it has to keep resolving for a disconnected repository
+        // or every shared report link and every README badge dies with the transfer.
+        return action == "Query"
+            ? RepositoryVisibility.ListingFilter(owners)
+            : RepositoryVisibility.Filter(owners);
     }
 
     /// <summary>BadgeToken grants badge access on private repos — managers only.</summary>
