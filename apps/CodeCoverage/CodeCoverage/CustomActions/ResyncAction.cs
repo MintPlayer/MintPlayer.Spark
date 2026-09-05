@@ -1,5 +1,9 @@
+using CodeCoverage.Entities;
 using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;
+using Raven.Client.Documents;
+using Raven.Client.Documents.Linq;
+using Raven.Client.Documents.Session;
 using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
@@ -29,14 +33,46 @@ public partial class ResyncAction : SparkCustomAction
 {
     [Inject] private readonly IGitHubAccessService gitHubAccess;
     [Inject] private readonly IMyAccountsService myAccounts;
+    [Inject] private readonly IGitHubStateReconciler reconciler;
+    [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly ILogger<ResyncAction> logger;
     [Inject] private readonly IManager manager;
 
     public override async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
     {
         await gitHubAccess.InvalidateAsync(cancellationToken);
 
-        // Re-read AFTER invalidating — this is the post-resync truth, and it is what the grid
-        // is about to fetch for itself.
+        // Dropping the cache re-reads which owners the caller can see, but says nothing about what
+        // each installation now holds — and a repository that was transferred away is still sitting
+        // in our documents looking perfectly current. So the button also reconciles, which is the
+        // same work the nightly job does, scoped to the accounts this caller actually manages. It
+        // is what makes the button repair what the person pressing it is looking at.
+        var owners = await gitHubAccess.GetAllowedOwnersAsync(cancellationToken);
+        if (owners.Length > 0)
+        {
+            var accounts = await session.Query<Account, Indexes.Accounts_Overview>()
+                .Where(a => a.Login.In(owners) && a.InstallationId != null)
+                .ToListAsync(cancellationToken);
+
+            foreach (var account in accounts)
+            {
+                try
+                {
+                    await reconciler.ReconcileAsync(account, cancellationToken);
+                }
+                catch (Exception ex)
+                {
+                    // The button's job is to refresh the view; a GitHub hiccup on one account must
+                    // not turn that into an error page.
+                    logger.LogWarning(ex, "Resync could not reconcile {Login}", account.Login);
+                }
+            }
+
+            await session.SaveChangesAsync(cancellationToken);
+        }
+
+        // Re-read AFTER invalidating and reconciling — this is the post-resync truth, and it is
+        // what the grid is about to fetch for itself.
         var refreshed = await myAccounts.GetAsync(cancellationToken);
 
         // Parent is the Home page this was invoked from. Null if the action is ever executed
