@@ -5,6 +5,24 @@ PRD: [coverage_account_sync_PRD.md](coverage_account_sync_PRD.md)
 One pull request, spanning `libs/webhooks/MintPlayer.Spark.Webhooks.GitHub`,
 `libs/messaging/MintPlayer.Spark.Messaging` and `apps/CodeCoverage`. Nothing here is split off.
 
+## Progress (2026-09-05)
+
+M1-M9 and M11 are implemented on `coverage-account-sync`; M10 is this file plus the READMEs; M12
+awaits deploy. Suites run once at the end, as a single sweep: **CodeCoverage 277 passed**,
+**MintPlayer.Spark 1919 passed**, **ng-spark 398 passed**.
+
+S3 and S5 are answered below. **S1, S2 and S4 remain open** — they need the App's delivery log and
+an installation-authenticated call, neither of which is reachable from here. They do not block what
+is built: the reconciler detects a transfer whether or not a webhook reports one, and the
+`transferred` branch is correct if the event arrives and inert if it never does. What they decide is
+whether the nightly cadence is enough (S2) and whether the `transferred` branch is dead code worth
+deleting (S1).
+
+Two defects were found *by* the work rather than planned for, both recorded in the commits:
+typed dispatch could fail a whole delivery after the catch-all had already been broadcast, earning a
+redelivery and a duplicate message; and `ApiToken` authorized uploads on a renameable login, which
+is wrong in both directions after a transfer.
+
 ## Milestones
 
 | M | deliverable | touches |
@@ -58,7 +76,35 @@ for. If a transfer produces no `installation_repositories` delivery, the nightly
 the *only* mechanism that can detect a transfer, and M6 stops being a safety net and becomes the
 primary path — which raises the cadence question from nightly to hourly.
 
-### S3 — Does `GET /repos/{owner}/{name}` follow the rename redirect under an App JWT, and what happens on a name takeover? (shapes M5)
+### S3 — Does `GET /repos/{owner}/{name}` follow the rename redirect? — **ANSWERED: yes, and unauthenticated too**
+
+Measured 2026-09-05.
+
+```
+$ curl -s -D - -o /dev/null https://api.github.com/repos/MintPlayer/CodeCoverage
+HTTP/2 301
+Location: https://api.github.com/repositories/1305831351
+X-RateLimit-Limit: 60          # unauthenticated, per IP
+
+$ curl -sL  … → id 1305831351, full_name MintPlayer-Archive/CodeCoverage
+```
+
+Three things fall out. The endpoint needs **no authentication** for a public repository, so the
+fallback works on a self-hosted instance with no App credentials. The redirect target *is* the
+numeric id — `/repositories/{id}` — so GitHub is handing us exactly the key our documents are
+already filed under. And the anonymous budget is 60 requests an hour per IP, which is why the
+resolver caches misses as well as hits.
+
+The half that could not be settled by reading: whether **Octokit** follows the 301. It does —
+verified by `GitHubRenameRedirectContractTests`, which runs against the real API under
+`COVERAGE_GITHUB_CONTRACT_TESTS=1` and is kept precisely because a mock would only ever confirm the
+behaviour we assumed.
+
+The name-takeover half of this spike is moot: resolution matches a live full name before any
+remembered one, so a new repository at an old name is found without the alias ever being consulted.
+Asserted in `RepositoryResolverTests.A_new_repository_at_an_old_name_shadows_the_alias`.
+
+### S3b — the takeover case against GitHub itself (not run)
 
 Two probes. First, `gh api repos/MintPlayer/CodeCoverage` already resolves to id `1305831351` for a
 user token (PRD F11) — repeat it with an App JWT, since the fallback in D6 step 3 runs
@@ -75,14 +121,19 @@ it is *present*, the reconciler cannot work as designed and the milestone needs 
 is written. Record the page size and whether `Octokit`'s client pages automatically, since the
 production installation has more repositories than one page.
 
-### S5 — Can the processor cheaply ask whether a message type has a recipient? (shapes M1)
+### S5 — Can the processor cheaply ask whether a message type has a recipient? — **ANSWERED: yes, but not through that type**
 
-`MessageTypeAllowList` (`libs/messaging/…/Services/MessageTypeAllowList.cs:27`) already builds the
-set of registered `IRecipient<T>` message types at startup. Check that it is a singleton, that it is
-resolvable from `SparkWebhookEventProcessor`'s scope, and that its keys are the assembly-qualified
-names of *closed generic* types — `GitHubWebhookMessage<PushEvent>` — and not of the open generic. If
-the shape does not match, add a small `IMessageRecipientRegistry` beside it rather than reflecting
-over DI on the hot path.
+`MessageTypeAllowList` has the right shape — a singleton, built once at startup from the registered
+`IRecipient<T>` descriptors, keyed on closed generic types — but it is `internal` to
+`MintPlayer.Spark.Messaging`, and its question is a different one: it decides what may be
+*deserialized*, a security boundary that also tracks handler types. Widening it to answer "does
+anything consume this" would conflate a safety gate with a routing hint.
+
+So the spike's own fallback was taken: a public `IMessageRecipientRegistry` in
+`MintPlayer.Spark.Messaging.Abstractions`, which the webhooks package already references. It also
+takes ownership of the descriptor scan that `MessageSubscriptionManager` had a second copy of —
+"which queues deserve a worker" and "does this type have a consumer" are the same question asked
+twice.
 
 ## M1 — The library forwards every event
 

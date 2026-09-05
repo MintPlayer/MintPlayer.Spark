@@ -251,7 +251,25 @@ public partial class LogAllWebhooks : IRecipient<GitHubWebhookMessage>
 }
 ```
 
-Both the typed and catch-all messages are broadcast for every event, so you can mix and match.
+**The catch-all really does mean every event.** It is broadcast for whatever GitHub sends, including
+events this package offers no typed envelope for and events that did not exist when it was written —
+so `message.EventType` is the thing to switch on, and a `default` arm is not dead code.
+
+This was not always true. Dispatch used to be one method override per event over a base whose
+implementations are silent no-ops, so an event nobody had written an override for was discarded with
+no log and no error. `installation_repositories` was one of them for the lifetime of the package,
+while a downstream app sat waiting for it — which is why the catch-all is now emitted ahead of the
+typed dispatch rather than from inside it.
+
+A typed envelope is broadcast **only when something is registered to consume it**. A broadcast to a
+message type with no `IRecipient<T>` is not a no-op: queue workers are started per registered
+recipient, so it stores a document that nothing will ever drain, one per delivery, forever. If you
+subscribe only to the catch-all, you pay for the catch-all only.
+
+Typed dispatch is best-effort. Octokit deserializes into an action-specific type with required
+properties, so a payload shape it does not model throws — that is logged and swallowed, because the
+catch-all has already been delivered and failing the request would only earn a redelivery and a
+duplicate.
 
 ## Message types
 

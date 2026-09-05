@@ -218,6 +218,36 @@ dotnet run --project Coverage --launch-profile "Verify model"
 Both commands return before the host is built, so they need no database and no free port —
 they are safe to run while the app is running.
 
+## Repositories that leave: connected, disconnected, deleted
+
+A repository can stop being reachable in four ways — transferred to an owner where the App is not
+installed, deselected from the installation, the App uninstalled, or deleted on GitHub. **None of
+them destroys anything.** The repository is marked `Disconnected` with the reason, and:
+
+- it disappears from account pages, repository grids and the owner's repo count, for everyone except
+  someone who manages the owner;
+- `/r/{owner}/{name}`, the report pages and `/badge/{owner}/{name}.svg` keep answering, with the
+  coverage frozen at its last known value — README badges and links already posted in pull-request
+  comments do not die with a transfer;
+- a successful OIDC upload reconnects it, because a workflow that still runs is proof the repository
+  is alive and ours. For a repository that moved to an org without the App, that is the only such
+  proof available.
+
+Renames and transfers are remembered in `PreviousFullNames`, so an old `owner/name` still resolves —
+and if we never saw the rename, resolution falls back to asking GitHub, which keeps its own redirect
+and answers with the numeric id. A *live* full name always wins over a remembered one, so a new
+repository taking over an old name simply shadows the alias.
+
+Two mechanisms keep this true. Webhooks handle the timely case; a **nightly reconciler**
+(`ReconcileGitHubStateCronJob`) asks each installation what it can actually see and repairs whatever
+the webhooks missed — a dropped delivery, an outage, a change made while the app was down. The
+**Resync** button on the accounts page runs the same reconciliation for the accounts you manage.
+
+Deleting the data is a separate, deliberate act: a disconnected repository's page offers a red
+**Delete data**, available only to someone who manages the owner, which erases the repository and
+every commit, build and coverage document beneath it. That is the only path in the application that
+deletes coverage data.
+
 ## Which HTTP surfaces you may build on
 
 **`/api/uploads/*` is the public contract.** Uploading reports, finishing a build and reading a

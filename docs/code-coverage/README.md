@@ -18,6 +18,7 @@ failure on Spark PR #123.
 | [`compile-ts-action-handoff.md`](compile-ts-action-handoff.md) | **Delivered.** The shared TypeScript→`index.js` build action in `MintPlayer/github-actions` that builds the bundle, why it lives there rather than here, and the six ways the implementation had to deviate from the spec. |
 | [`roadmap-2026-08.md`](roadmap-2026-08.md) | Proposed next phase. Parts were absorbed elsewhere, but T0.1 (backups) and T1.1–T1.4 (honest numbers) are unbuilt — this is the live backlog. |
 | [`product-overview.md`](product-overview.md) | Product and architecture overview; the first thing to read. Renamed from `PRD.md`, which meant nothing in a directory of PRDs. |
+| [`../coverage_account_sync_PRD.md`](../coverage_account_sync_PRD.md) + [plan](../coverage_account_sync_plan.md) | The repository connection lifecycle and the nightly reconciler. Read it before touching anything that decides whether a repository is advertised, or that deletes coverage data — losing access to a repository deliberately destroys nothing, and only an owner-invoked action does. |
 | [`ng-bootstrap-action-path.md`](ng-bootstrap-action-path.md) | **Historical.** Superseded twice over: the action came back to `apps/CodeCoverage/action`, and every consumer now pins `coverage-upload-v1`. Kept because it explains an intermediate state visible in git history. |
 | [`old-repo-decommission.md`](old-repo-decommission.md) | **Done.** All three preconditions were met and the repository is archived at `MintPlayer-Archive/CodeCoverage`. |
 
