@@ -36,6 +36,42 @@ public class SparkSecurityInitExtensionsTests : IDisposable
 
     private string SecurityPath => Path.Combine(root, "App_Data", "security.json");
 
+    /// <summary>
+    /// The scaffold is written with LF endings, on every platform.
+    /// <para>
+    /// It used to be a <c>string[]</c> joined on a literal newline character, which made that
+    /// explicit. It is now a raw string literal, whose line endings come from the source file — and
+    /// this source file is CRLF. Without the normalisation the scaffold would quietly emit CRLF on a
+    /// Windows checkout and LF elsewhere, so the same command on two machines would produce files
+    /// differing by invisible bytes.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void The_scaffold_is_written_with_LF_endings()
+    {
+        SparkSecurityInitExtensions.InitializeSparkSecurityIfRequested(Builder(), ["--spark-init-security"]);
+
+        var text = File.ReadAllText(SecurityPath);
+
+        text.Should().NotContain("\r", "the scaffold must not vary with the checkout's line endings");
+        text.Should().EndWith("\n", "a generated file ends with a newline");
+    }
+
+    /// <summary>
+    /// And it is valid JSON. Converting to a raw literal removed roughly forty escape sequences,
+    /// including one nested two levels deep so the generated file could show a quoted example of a
+    /// right; parsing is the cheapest proof that none was dropped or doubled on the way out.
+    /// </summary>
+    [Fact]
+    public void The_scaffold_is_valid_JSON()
+    {
+        SparkSecurityInitExtensions.InitializeSparkSecurityIfRequested(Builder(), ["--spark-init-security"]);
+
+        var act = () => JsonDocument.Parse(File.ReadAllText(SecurityPath));
+
+        act.Should().NotThrow("a scaffold that does not parse refuses startup on the first run");
+    }
+
     private WebApplicationBuilder Builder()
         => WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = root });
 
@@ -91,7 +127,7 @@ public class SparkSecurityInitExtensionsTests : IDisposable
     {
         // The destructive case. This must stay true even though the command reports success.
         Directory.CreateDirectory(Path.Combine(root, "App_Data"));
-        const string RealModel = "{\"groups\":{},\"wellKnown\":{},\"rights\":[{\"id\":\"real\"}]}";
+        const string RealModel = """{"groups":{},"wellKnown":{},"rights":[{"id":"real"}]}""";
         File.WriteAllText(SecurityPath, RealModel);
 
         var handled = Builder().InitializeSparkSecurityIfRequested(["--spark-init-security"]);

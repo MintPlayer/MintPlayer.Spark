@@ -71,57 +71,57 @@ public static class SparkSecurityInitExtensions
     /// by somebody who never read it; one that grants nothing fails visibly on the first request
     /// and is fixed by the person who understands the application.
     /// </summary>
-    private static readonly string Starter = string.Join('\n',
-    [
-        "{",
-        "  \"_comment\": [",
-        "    \"Spark's authorization model. Every application has one; a missing or malformed file\",",
-        "    \"refuses startup rather than degrading into a permissive default.\",",
-        "    \"\",",
-        "    \"A RIGHT is '{action}/{target}', for example 'QueryRead/Person'.\",",
-        "      \"actions:  Query (list rows), Read (open one), Edit, New, Delete,\",",
-        "      \"          plus any custom action name from customActions.json.\",",
-        "      \"combined: QueryRead, ReadEdit, EditNew, NewDelete, EditNewDelete, ReadEditNew,\",",
-        "      \"          ReadEditNewDelete, QueryReadEdit, QueryReadEditNew, QueryReadEditNewDelete.\",",
-        "      \"          These expand, on denials exactly as on grants.\",",
-        "      \"wildcard: '*' on either half. 'Read/*', '*/Person', '*/*'. Use sparingly: a\",",
-        "      \"          wildcard covers types and actions that do not exist yet.\",",
-        "    \"\",",
-        "    \"Query WITHOUT Read is the useful pair: the grid lists the rows and the first column\",",
-        "    \"is not a link. That is how you publish a list whose rows have no detail page.\",",
-        "    \"\",",
-        "    \"PRECEDENCE, in order: important denial, important grant, denial, grant, then refuse.\",",
-        "    \"A denial is absolute unless an important right overrides it -- it cannot be granted\",",
-        "    \"around by adding the caller to another group, so a denial on 'authenticated' locks\",",
-        "    \"out administrators too.\",",
-        "    \"\",",
-        "    \"GROUPS are keyed by id. 'wellKnown' says which group plays each role:\",",
-        "      \"anonymous     -- a caller who has NOT signed in. Not 'everyone'.\",",
-        "      \"authenticated -- every caller who has, whatever claims they carry.\",",
-        "    \"A right both an anonymous visitor and a signed-in user should have is TWO grants.\",",
-        "    \"Neither role can be claimed: they are decided from authentication state, so no\",",
-        "    \"identity provider can hand a caller 'authenticated' by naming a group.\",",
-        "    \"Every other group is matched by NAME against the caller's group claims, in any\",",
-        "    \"translation -- so display names are load-bearing.\",",
-        "    \"\",",
-        "    \"A right looks like this:\",",
-        "    \"  { \\\"id\\\": \\\"<new guid>\\\", \\\"resource\\\": \\\"QueryRead/Person\\\",\",",
-        "    \"    \\\"groupId\\\": \\\"00000000-0000-0000-0000-000000000001\\\",\",",
-        "    \"    \\\"isDenied\\\": false, \\\"isImportant\\\": false }\"",
-        "  ],",
-        "",
-        "  \"wellKnown\": {",
-        "    \"anonymous\": \"00000000-0000-0000-0000-000000000000\",",
-        "    \"authenticated\": \"00000000-0000-0000-0000-000000000001\"",
-        "  },",
-        "",
-        "  \"groups\": {",
-        "    \"00000000-0000-0000-0000-000000000000\": { \"en\": \"Anonymous visitors\" },",
-        "    \"00000000-0000-0000-0000-000000000001\": { \"en\": \"Signed-in users\" }",
-        "  },",
-        "",
-        "  \"rights\": []",
-        "}",
-        "",
-    ]);
+    private static readonly string Starter =
+        """
+        {
+          "_comment": [
+            "Spark's authorization model. Every application has one; a missing or malformed file",
+            "refuses startup rather than degrading into a permissive default.",
+            "",
+            "A RIGHT is '{action}/{target}', for example 'QueryRead/Person'.",
+              "actions:  Query (list rows), Read (open one), Edit, New, Delete,",
+              "          plus any custom action name from customActions.json.",
+              "combined: QueryRead, ReadEdit, EditNew, NewDelete, EditNewDelete, ReadEditNew,",
+              "          ReadEditNewDelete, QueryReadEdit, QueryReadEditNew, QueryReadEditNewDelete.",
+              "          These expand, on denials exactly as on grants.",
+              "wildcard: '*' on either half. 'Read/*', '*/Person', '*/*'. Use sparingly: a",
+              "          wildcard covers types and actions that do not exist yet.",
+            "",
+            "Query WITHOUT Read is the useful pair: the grid lists the rows and the first column",
+            "is not a link. That is how you publish a list whose rows have no detail page.",
+            "",
+            "PRECEDENCE, in order: important denial, important grant, denial, grant, then refuse.",
+            "A denial is absolute unless an important right overrides it -- it cannot be granted",
+            "around by adding the caller to another group, so a denial on 'authenticated' locks",
+            "out administrators too.",
+            "",
+            "GROUPS are keyed by id. 'wellKnown' says which group plays each role:",
+              "anonymous     -- a caller who has NOT signed in. Not 'everyone'.",
+              "authenticated -- every caller who has, whatever claims they carry.",
+            "A right both an anonymous visitor and a signed-in user should have is TWO grants.",
+            "Neither role can be claimed: they are decided from authentication state, so no",
+            "identity provider can hand a caller 'authenticated' by naming a group.",
+            "Every other group is matched by NAME against the caller's group claims, in any",
+            "translation -- so display names are load-bearing.",
+            "",
+            "A right looks like this:",
+            "  { \"id\": \"<new guid>\", \"resource\": \"QueryRead/Person\",",
+            "    \"groupId\": \"00000000-0000-0000-0000-000000000001\",",
+            "    \"isDenied\": false, \"isImportant\": false }"
+          ],
+
+          "wellKnown": {
+            "anonymous": "00000000-0000-0000-0000-000000000000",
+            "authenticated": "00000000-0000-0000-0000-000000000001"
+          },
+
+          "groups": {
+            "00000000-0000-0000-0000-000000000000": { "en": "Anonymous visitors" },
+            "00000000-0000-0000-0000-000000000001": { "en": "Signed-in users" }
+          },
+
+          "rights": []
+        }
+
+        """.ReplaceLineEndings("\n");
 }
