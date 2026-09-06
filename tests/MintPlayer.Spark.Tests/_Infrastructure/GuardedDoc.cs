@@ -50,10 +50,56 @@ public class GuardedCodedActions : DefaultPersistentObjectActions<GuardedCoded>
         => Task.FromResult(action != "Edit");
 }
 
+/// <summary>
+/// A row-scoped entity whose policy is expressed as a FILTER rather than as
+/// <c>IsAllowedAsync</c>.
+/// <para>
+/// The distinction is the point. <see cref="GuardedDocActions"/> covers the per-row predicate;
+/// nothing covered <c>GetRowFilterAsync</c> on the write paths, so edit and delete of a row the
+/// filter hides went untested — and those are precisely the paths a query-level filter would fail
+/// to guard if someone ever moved row scoping into <c>OnQueryAsync</c>.
+/// </para>
+/// </summary>
+public class FilteredDoc
+{
+    public string? Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Owner { get; set; } = string.Empty;
+}
+
+/// <summary>Rows belong to alice, expressed as a pushdown-capable filter.</summary>
+public class FilteredDocActions : DefaultPersistentObjectActions<FilteredDoc>
+{
+    public FilteredDocActions(IEntityMapper entityMapper) : base(entityMapper) { }
+
+    public override Task<System.Linq.Expressions.Expression<Func<FilteredDoc, bool>>?> GetRowFilterAsync(string action)
+        => Task.FromResult<System.Linq.Expressions.Expression<Func<FilteredDoc, bool>>?>(d => d.Owner == "alice");
+}
+
+public static class FilteredDocModel
+{
+    public static EntityTypeFile For(Guid id) => new()
+    {
+        PersistentObject = new EntityTypeDefinition
+        {
+            Id = id,
+            Name = "FilteredDoc",
+            ClrType = typeof(FilteredDoc).FullName!,
+            Breadcrumb = "{Name}",
+            Attributes =
+            [
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Name", DataType = "string" },
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Owner", DataType = "string" },
+            ],
+        }
+    };
+}
+
 public class GuardedContext : SparkContext
 {
     public IRavenQueryable<GuardedDoc> Docs => Session.Query<GuardedDoc>();
     public IRavenQueryable<GuardedCoded> Codeds => Session.Query<GuardedCoded>();
+    public IRavenQueryable<FilteredDoc> FilteredDocs => Session.Query<FilteredDoc>();
 }
 
 public static class GuardedDocModel

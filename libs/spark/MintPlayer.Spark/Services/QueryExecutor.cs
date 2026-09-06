@@ -54,14 +54,35 @@ internal partial class QueryExecutor : IQueryExecutor
         // Null/whitespace collapses to null here, so every path below tests one thing.
         var searchTerm = BuildSearchTerm(search);
 
+        // The presentation hook, called once for BOTH sources at the single funnel every query and
+        // every bulk-action re-materialization passes through.
+        //
+        // It runs HERE — before either branch — and the ordering is structural, not a policy
+        // preference: at this point no rows have been produced and no queryable has been built, so
+        // there is nothing in scope that could be handed to the context. A hook that runs before the
+        // data exists CANNOT filter it, however hard someone tries. Running it after row security
+        // would put mapped rows one refactor away from the context signature, and the first request
+        // for "hide the action when the result is empty" would answer itself by passing them in.
+        var queryContext = await InvokeQueryHookAsync(query, parent);
+
         QuerySourceResult source;
         if (isCustom)
         {
             source = await ExecuteCustomQueryAsync(query, name, parent, searchTerm, skip, take, search, restrictToIds, cancellationToken);
+
+            // UNION, not last-writer-wins. Both mechanisms are legitimate and a query may use both:
+            // the hook is the only channel a Database.* query has, and the custom method is the only
+            // place with rows in hand, so a data-dependent withhold can only happen there. Letting
+            // either overwrite the other would silently drop a withhold and leave an action offered.
+            source = source with
+            {
+                DisabledActions = MergeDisabledActions(queryContext.DisabledActions, source.DisabledActions),
+            };
         }
         else
         {
-            source = await ExecuteDatabaseQueryAsync(query, name, searchTerm, restrictToIds, cancellationToken);
+            source = await ExecuteDatabaseQueryAsync(query, name, searchTerm, restrictToIds, cancellationToken)
+                with { DisabledActions = queryContext.DisabledActions };
         }
 
         var (allResults, definition, searchPushedDown, authorTotalItems, _) = source;
@@ -143,6 +164,74 @@ internal partial class QueryExecutor : IQueryExecutor
     /// Non-null when the custom method returned a <see cref="SparkQueryPage{T}"/> and therefore owns
     /// filtering, search, sorting, counting and paging. The value is the pre-paging total.
     /// </param>
+    /// <summary>
+    /// Builds the per-request context and gives the entity's actions class its say.
+    /// </summary>
+    /// <remarks>
+    /// Resolved by type where there is one and by entity name otherwise: a composed query has no
+    /// CLR entity type, and that is exactly where this hook earns its keep, because row security is
+    /// documented as not running for composed queries at all.
+    /// <para>
+    /// A missing actions class is not an error — most types never override this — so resolution
+    /// failure yields a context nobody wrote to rather than throwing.
+    /// </para>
+    /// </remarks>
+    private async Task<SparkQueryContext> InvokeQueryHookAsync(SparkQuery query, PersistentObject? parent)
+    {
+        var context = new SparkQueryContext
+        {
+            Query = SparkQueryInfo.From(query),
+            Parent = parent,
+            ParentType = parent is not null ? modelLoader.GetEntityType(parent.ObjectTypeId)?.Name : null,
+        };
+
+        object? actionsInstance = null;
+        try
+        {
+            var definition = string.IsNullOrEmpty(query.EntityType)
+                ? null
+                : modelLoader.GetEntityTypeByName(query.EntityType);
+
+            var clrType = string.IsNullOrEmpty(definition?.ClrType)
+                ? null
+                : SparkTypeResolver.ResolveClrType(definition!.ClrType!);
+
+            actionsInstance = clrType is not null
+                ? actionsResolver.ResolveForType(clrType)
+                : (definition is not null ? actionsResolver.ResolveByEntityName(definition.Name) : null);
+        }
+        catch
+        {
+            // No actions class, or one that cannot be constructed. Neither is this method's problem:
+            // the query itself still runs, and a type with no override has nothing to say here.
+        }
+
+        if (actionsInstance is null)
+            return context;
+
+        var method = actionsInstance.GetType().GetMethod("OnQueryAsync", [typeof(SparkQueryContext)]);
+        if (method is not null && method.Invoke(actionsInstance, [context]) is Task task)
+            await task;
+
+        return context;
+    }
+
+    /// <summary>Union of two withheld-action lists, case-insensitive, order-preserving.</summary>
+    private static IReadOnlyList<string>? MergeDisabledActions(IReadOnlyList<string>? first, IReadOnlyList<string>? second)
+    {
+        if (first is null || first.Count == 0) return second;
+        if (second is null || second.Count == 0) return first;
+
+        var merged = new List<string>(first);
+        foreach (var name in second)
+        {
+            if (!merged.Contains(name, StringComparer.OrdinalIgnoreCase))
+                merged.Add(name);
+        }
+
+        return merged;
+    }
+
     private sealed record QuerySourceResult(
         IEnumerable<PersistentObject> Rows,
         EntityTypeDefinition? Definition,

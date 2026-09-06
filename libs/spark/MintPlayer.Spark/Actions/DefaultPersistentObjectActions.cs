@@ -343,6 +343,46 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     public virtual Task<bool> IsAllowedAsync(string action, T entity) => Task.FromResult(true);
 
     /// <summary>
+    /// Shapes how a query result is <b>presented</b>, per request. Called for every query on this
+    /// entity type, whether its source is <c>Database.*</c> or <c>Custom.*</c>.
+    /// <para>
+    /// <b>Not called for streaming queries.</b> <c>StreamingQueryExecutor</c> is a separate path
+    /// that never enters <c>ExecuteQueryAsync</c>, and <c>SnapshotMessage</c> carries no
+    /// <c>disabledActions</c> field, so there is nowhere for the answer to travel. Said here
+    /// rather than left to be discovered: silently never calling a hook is how the version of
+    /// this method that was removed leaked a demo app's entire project list.
+    /// </para>
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Do not filter rows here.</b> A hook of this name existed once and was removed for that
+    /// reason, and the reasoning is unchanged: a query-level filter guards only the <i>list</i>. A
+    /// detail read by id runs no query, so a filter never sees it — trim the list to eight cars and
+    /// a caller can still open, edit or delete car nine by id. Row security belongs in
+    /// <see cref="GetRowFilterAsync"/>, from which the framework derives every path — list, detail,
+    /// edit, delete, create (WITH CHECK), streaming and breadcrumb loads — so they cannot drift.
+    /// </para>
+    /// <para>
+    /// What it is for is the answer the action catalogue cannot give.
+    /// <c>GET /spark/actions/{objectTypeId}</c> is type-level and is never told what an execution
+    /// returned, so an action that applies to only some results can only be withheld here.
+    /// </para>
+    /// <example>
+    /// <code>
+    /// public override Task OnQueryAsync(SparkQueryContext context)
+    /// {
+    ///     if (context.Query.Name == "DisconnectedRepositories")
+    ///         return Task.CompletedTask;
+    ///
+    ///     context.DisableActions("DeleteData");
+    ///     return Task.CompletedTask;
+    /// }
+    /// </code>
+    /// </example>
+    /// </remarks>
+    public virtual Task OnQueryAsync(SparkQueryContext context) => Task.CompletedTask;
+
+    /// <summary>
     /// Row-level authorization as a composable filter. Where <see cref="IsAllowedAsync"/> judges
     /// one materialized row, this expresses the same policy as a predicate the framework can push
     /// into the RavenDB query itself — so a list over a row-scoped type reads only the caller's

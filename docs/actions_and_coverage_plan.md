@@ -357,6 +357,99 @@ exists (S5), so this is no longer blocked — it is just not written.
 
 ---
 
+## Withholding actions, and why row filtering stays out of it
+
+`OnQueryAsync(SparkQueryContext)` on the actions class, plus `PersistentObject.DisableActions(...)`
+and `CustomQueryArgs.DisableActions(...)`. The server decides and the object carries the answer;
+the client renders what is left.
+
+It cannot live in the catalogue: `GET /spark/actions/{objectTypeId}` is type-level and is never
+told which row is open or what an execution returned. It cannot live in the right either: rights
+are group-level, so a right can say "may delete coverage data at all" and nothing narrower.
+
+**Called once, at the top of `ExecuteQueryAsync`, before either source branch.** That ordering is
+structural rather than a preference — at that point no rows exist and no queryable has been built,
+so there is nothing in scope that *could* be filtered. A hook that runs before the data exists
+cannot filter it, however hard someone tries. Running it after row security would put mapped rows
+one refactor away from the signature, and the first request for "hide the action when the result is
+empty" would answer itself by passing them in.
+
+`CustomQueryArgs.DisableActions` survives alongside it, **unioned, not last-writer-wins**. The hook
+is the only channel a `Database.*` query has; the custom method is the only place with rows in hand,
+so a data-dependent withhold is expressible only there.
+
+Not called on the streaming path: `StreamingQueryExecutor` never enters `ExecuteQueryAsync` and
+`SnapshotMessage` has no field to carry the answer. Documented rather than left to be discovered —
+silently never calling this hook is how its predecessor leaked a demo app's entire project list.
+
+### Prior art, and what it changed
+
+A mature framework in the same problem space was reviewed as prior art. Described generically here
+on purpose; it is a third party's private source.
+
+**It has no `OnQuery`.** Absent from its shipped documentation, its assembly, its generated base
+class, and — on an exhaustive sweep of every consuming application available locally — from all of
+them. So the name carries no inherited meaning and there is no collision. What it has is a three-way split: a filter hook that pushes down, its single-row twin,
+and a **post-execution presentational hook**. Ours is the analogue of the third, not the first.
+
+**Its action-withholding method is also called `DisableActions`**, attached to a query and to an
+opened object, called from its query-construction and object-load hooks. Independent convergence on
+both the name and the placement.
+
+Three of its properties argued for keeping decisions already made here:
+
+- **Its create path has no WITH CHECK.** Nothing stops a caller creating a row outside their own
+  scope; applications must catch it themselves. Spark's create-time check is ahead of it — keep it.
+- **Its delete silently skips** rows it cannot load, so an out-of-scope delete succeeds as a no-op
+  and the user sees a delete that did nothing. Refusing loudly is better.
+- **Its filter hook returns a source rather than a predicate**, so an author can return it
+  untouched — and one observed application does exactly that, failing *open* when the current user
+  cannot be resolved, while a sibling application documents choosing the opposite. An
+  `Expression<Func<T,bool>>` the framework composes with `&&` cannot fail open by returning its
+  input. The rigidity is the point; do not soften it.
+
+And one hazard to keep avoiding by construction: its set-filter and row-filter are **separate
+hooks**, linked automatically only when the projection type equals the stored type. Grids commonly
+project through an index type, and then the grid is filtered while detail, edit and delete are
+ungated — with no compile-time or startup signal. In that ecosystem, ~150 application files override
+the filter and only ~30 also override the per-row gate — and the ones that do are precisely those
+projecting through a view type, hand-wiring the two overrides as a matched pair because nothing in
+the framework would have complained had they written only the first. The hazard is maintained by
+hand in production, not merely latent in the code.
+
+**Spark's single `GetRowFilterAsync` covers the query AND the persistent-object detail page from
+one expression**, along with edit, delete, create (WITH CHECK), streaming and breadcrumb loads. That
+is the property the prior art's split hooks lose the moment a grid projects through a different
+type, and it is not incidental — it is why row scoping is expressed as a predicate the framework
+composes rather than as a source the author returns. It is now demonstrated on both halves rather
+than asserted: the list by `RowFilterPushdownTests`, the detail read by id and the delete by
+`RowFilterWritePathTests`.
+
+**If projections are ever introduced into row security, the framework must prove the filter is
+expressible against both shapes or refuse to start.**
+
+**Follow-up it surfaced:** that framework ships a *dedicated* hook purely to constrain reference
+values in filter dropdowns, distinct-value lists and column search — it found the main row filter
+insufficient there. This repository has already been bitten by that class of defect (the
+`?sortColumns=` disclosure oracle). Facets, distinct values and search suggestions deserve treating
+as first-class row-security surfaces covered by the same expression. **Not done here.**
+
+### The tests that matter
+
+Row security had a hole exactly where this design could go wrong: **edit and delete of a row the
+filter hides had no test at all**, and every existing row-security test covers the *list*. Someone
+who scoped rows in `OnQueryAsync` and deleted their `GetRowFilterAsync` override would break
+detail-by-id, edit and delete **with a fully green suite**, because the list is the one thing that
+misuse gets right.
+
+`RowFilterWritePathTests` closes it. Worth recording how: the first draft called `OnSaveAsync` and
+`OnDeleteAsync` on the actions class and **both passed when they should have failed** — the write
+gates are not in the actions base at all. `DatabaseAccess` checks row security and *then* delegates,
+so testing the actions class directly tests the half that never had the guard. The tests were
+rewritten against `IDatabaseAccess`, and that asymmetry is now stated in their remarks.
+
+---
+
 ## Part 2 — Make the number honest
 
 ### M7 — Wire `coverlet.runsettings` into all five .NET test targets
