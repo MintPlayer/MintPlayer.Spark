@@ -22,6 +22,7 @@
 		<PackageReference Include="MintPlayer.Assertions" Version="1.0.0" />
 		<PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11" />
 		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
+		<PackageReference Include="NSubstitute" Version="6.2.0" />
 		<!-- Embedded RavenDB for tests that must exercise the real client
 		     session (request budget, attachments, streaming). -->
 		<PackageReference Include="RavenDB.TestDriver" Version="7.2.1" />
