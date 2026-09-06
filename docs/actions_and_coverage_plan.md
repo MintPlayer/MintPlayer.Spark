@@ -44,6 +44,14 @@ not a split.
 
 ---
 
+## Related work
+
+The read-pipeline redesign that grew out of the `OnQueryAsync` work lives in
+[query_pipeline_plan.md](query_pipeline_plan.md). Same PR; its M0 (tests before refactoring) also
+closes the breadcrumb gap recorded below under the facets pass.
+
+---
+
 ## Spikes
 
 Each spike is cheap and decisive, and each one can change the milestones below. None of them

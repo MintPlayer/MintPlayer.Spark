@@ -44,6 +44,15 @@ production could distinguish them, because the local RavenDB is not subscription
 
 ---
 
+## Related work
+
+The `OnQueryAsync` / `DisableActions` work in this document uncovered a broader set of defects in how
+queries, item loads, sub-queries and row security cooperate. Those are designed separately in
+[query_pipeline_PRD.md](query_pipeline_PRD.md) / [query_pipeline_plan.md](query_pipeline_plan.md),
+and land in the same pull request.
+
+---
+
 ## Part 1 — Custom actions that report nothing
 
 ### Evidence gathered
