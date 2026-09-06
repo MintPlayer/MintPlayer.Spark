@@ -81,7 +81,7 @@ internal partial class QueryExecutor : IQueryExecutor
         }
         else
         {
-            source = await ExecuteDatabaseQueryAsync(query, name, searchTerm, restrictToIds, cancellationToken)
+            source = await ExecuteDatabaseQueryAsync(query, name, parent, searchTerm, restrictToIds, cancellationToken)
                 with { DisabledActions = queryContext.DisabledActions };
         }
 
@@ -93,6 +93,28 @@ internal partial class QueryExecutor : IQueryExecutor
         // of those failures is invisible in the grid.
         if (authorTotalItems is int authorTotal)
         {
+            // F1. The author's total counts the rows THEY produced; row security removed rows after
+            // that, inside ExecuteCustomQueryAsync. So on a row-scoped type the rows were filtered
+            // and the count was not, and TotalItems became a cardinality oracle for rows the caller
+            // may not see — three lines from the comment asserting row security is not transferable.
+            //
+            // It cannot be repaired by counting: the framework holds one page, so it cannot know how
+            // many of the author's other rows would survive. The combination is refused instead,
+            // which is the only way the count is never wrong. Nothing in the repository pairs
+            // SparkQueryPage with a row-ruled type today, so this costs no working query.
+            if (definition?.ClrType is { Length: > 0 } authorClrType
+                && SparkTypeResolver.ResolveClrType(authorClrType) is { } authorEntityType
+                && rowSecurity.HasRowRule(authorEntityType))
+            {
+                throw new InvalidOperationException(
+                    $"Query '{query.Name}' returns SparkQueryPage<T>, which transfers paging and the row " +
+                    $"count to the author, but '{definition.Name}' declares a row rule. The framework " +
+                    $"filters the returned page afterwards and cannot recount the rest, so TotalItems " +
+                    $"would report rows this caller may not see. Either return an IQueryable and let the " +
+                    $"framework page it, or remove the row rule from '{definition.Name}Actions' and scope " +
+                    $"the rows inside the query method itself.");
+            }
+
             var authorRows = allResults as IList<PersistentObject> ?? allResults.ToList();
             var authorColumns = definition is not null ? QueryResultProjector.BuildColumns(definition) : [];
             return new QueryResult
@@ -471,7 +493,7 @@ internal partial class QueryExecutor : IQueryExecutor
     #region Database Queries
 
     private async Task<QuerySourceResult> ExecuteDatabaseQueryAsync(
-        SparkQuery query, string propertyName, string? searchTerm,
+        SparkQuery query, string propertyName, PersistentObject? parent, string? searchTerm,
         IReadOnlyCollection<string>? restrictToIds, CancellationToken cancellationToken)
     {
         // Authorization comes FIRST, from the query's declared entity type (F1). Everything below
@@ -483,6 +505,32 @@ internal partial class QueryExecutor : IQueryExecutor
         // permission decisions memoize per request, so asking twice costs nothing.
         if (!string.IsNullOrEmpty(query.EntityType))
             await permissionService.EnsureAuthorizedAsync("Query", query.EntityType);
+
+        // AFTER authorization, deliberately — this refusal names the query's source and entity type,
+        // and handing that to a caller who has no Query right is the same disclosure the sortColumns
+        // parser above was reordered to close.
+        //
+        // The parent used to stop here: this method did not take one, while the custom branch three
+        // lines away did. The client sent parentId/parentType, the endpoint resolved AND authorized
+        // the parent, and then this branch dropped it and served the WHOLE child collection under
+        // that parent's detail page. No error, no warning, nothing at startup — the tab simply showed
+        // every row in the collection. It went unnoticed only because every sub-query in the
+        // repository happens to use a Custom.* source.
+        //
+        // A Database.* source is a queryable property on the SparkContext. It cannot express
+        // "belonging to this parent" — that scoping lives in an actions method, which is why a
+        // sub-query must route through one. So the parent is not something this branch can honour;
+        // its presence proves the query was configured somewhere it cannot serve. Refuse, and name
+        // the fix.
+        if (parent is not null)
+        {
+            throw new InvalidOperationException(
+                $"Query '{query.Name}' is used as a sub-query (it was executed with a parent), but its " +
+                $"source '{query.Source}' reads a SparkContext property directly and cannot be scoped to " +
+                $"that parent. Serving it would list every row of '{query.EntityType}' under the parent's " +
+                $"page. Change the source to 'Custom.<Method>' on '{query.EntityType}Actions' and scope the " +
+                $"rows with the parent, e.g. '.Where(x => x.ParentId == args.Parent!.Id)'.");
+        }
 
         var sparkContext = sparkContextResolver.ResolveContext(session)
             ?? throw new InvalidOperationException(

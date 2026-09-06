@@ -45,7 +45,21 @@ public class ExecuteCustomActionTests
         {
             ["Archive"] = new() { DisplayName = new TranslatedString { Translations = new() { ["en"] = "Archive" } } },
         });
+
+        // These two used to be left unstubbed, and that was doing more than it looked like. An
+        // unresolved clrType did not merely make row security permissive — it made the endpoint skip
+        // the per-row gate ENTIRELY, because the guard was `clrType is not null`. So every test in
+        // this class ran through the fail-open branch, and none of them exercised AreAllowedAsync.
+        // Now that a declared-but-unresolvable clrType is refused (F2), they resolve, and the gate
+        // runs for real against the permissive rule below.
+        _typeResolver.Resolve(CarType.ClrType!).Returns(typeof(CarEntity));
+        _typeResolver.Resolve(CompanyType.ClrType!).Returns(typeof(CompanyEntity));
     }
+
+    /// <summary>Stand-ins for the Fleet types the model definitions name; only their identity matters.</summary>
+    private sealed class CarEntity { public string? Id { get; set; } }
+
+    private sealed class CompanyEntity { public string? Id { get; set; } }
 
     private static readonly EntityTypeDefinition CarType = new()
     {

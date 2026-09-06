@@ -266,7 +266,28 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
                 .Where(rowId => !string.IsNullOrEmpty(rowId))
                 .ToArray();
 
-            var clrType = typeResolver.Resolve(entityType.ClrType);
+            // F2. The two reasons clrType can be absent are not the same reason, and used to be
+            // conflated into one `is not null` guard that skipped the row gate for both.
+            //
+            //  - The type DECLARES no clrType: it is composed, its rows are computed rather than
+            //    stored, and there is no document for AreAllowedAsync to judge. Proceeding is
+            //    correct — the actions class owns row scoping for such a type.
+            //  - The type declares one and it does NOT resolve: the class was renamed, or its
+            //    assembly is not referenced. That is a broken binding, and skipping the gate means
+            //    a custom action runs against rows nobody authorized. Every other path in the
+            //    framework throws loudly on exactly this condition; this one used to swallow it.
+            Type? clrType = null;
+            if (!string.IsNullOrEmpty(entityType.ClrType))
+            {
+                clrType = typeResolver.Resolve(entityType.ClrType)
+                    ?? throw new InvalidOperationException(
+                        $"Custom action '{actionName}' targets '{entityType.Name}', whose declared clrType " +
+                        $"'{entityType.ClrType}' is not declared by any loaded assembly. The per-row " +
+                        $"authorization check cannot run without it, and running the action anyway would " +
+                        $"execute against rows that were never authorized. Re-run '--spark-synchronize-model' " +
+                        $"if the class was renamed, or reference the assembly declaring it.");
+            }
+
             if (rowIds.Length > 0 && clrType is not null &&
                 !await rowSecurity.AreAllowedAsync(session, clrType, actionName, rowIds))
             {
