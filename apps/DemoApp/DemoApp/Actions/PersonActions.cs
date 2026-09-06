@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Authorization;
 using DemoApp.Indexes;
 using DemoApp.Library.Entities;
 using DemoApp.Library.Messages;
@@ -11,8 +12,12 @@ using Raven.Client.Documents.Session;
 
 namespace DemoApp.Actions;
 
-public partial class PersonActions : DefaultPersistentObjectActions<Person>
+public partial class PersonActions : DefaultPersistentObjectActions<Person>, ISparkOwnsRowSecurity
 {
+    /// <inheritdoc />
+    public string RowSecurityRationale =>
+        "Demo data, published in full on purpose: security.json grants this type to the anonymous role so the sample app works with no sign-in. There is nothing per-caller in a demo Person, so no filter would have anything to narrow. A real application listing people would need one.";
+
     [Inject] private readonly IMessageBus messageBus;
     [Inject] private readonly IAsyncDocumentSession session;
 

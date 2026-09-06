@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Authorization;
 using DemoApp.Indexes;
 using DemoApp.Library.Entities;
 using DemoApp.Library.Messages;
@@ -10,8 +11,12 @@ using Raven.Client.Documents.Linq;
 
 namespace DemoApp.Actions;
 
-public partial class CompanyActions : DefaultPersistentObjectActions<Company>
+public partial class CompanyActions : DefaultPersistentObjectActions<Company>, ISparkOwnsRowSecurity
 {
+    /// <inheritdoc />
+    public string RowSecurityRationale =>
+        "Demo data, published in full on purpose — see PersonActions. Companies here are sample records with no owner and no per-caller meaning.";
+
     [Inject] private readonly IMessageBus messageBus;
     [Inject] private readonly IDocumentStore documentStore;
 
