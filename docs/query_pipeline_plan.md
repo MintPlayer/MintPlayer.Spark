@@ -20,7 +20,7 @@ held behind a framework redesign. Related work: [`actions_and_coverage_plan.md`]
 
 ## Spikes
 
-### S1 — Is a Raven-only LINQ row filter evaluable in memory? *(latent, with a named trigger)*
+### S1 — Is a Raven-only LINQ row filter evaluable in memory? — **RESOLVED: yes, it is safe**
 
 `RowSecurity.cs:594` compiles the same `LambdaExpression` it hands to RavenDB. Exactly one filter in
 the repository uses Raven-only LINQ — `apps/CodeCoverage/.../CommitActions.cs:28`, `.In()` — and
@@ -34,10 +34,16 @@ outcomes: works, throws, or **silently returns `false`** — the last is the bad
 rather than leaks, on a path chosen by the shape of the result rather than by the policy, and would
 read as an indexing bug rather than a security one.
 
-**Feeds:** if unsafe, M6 gains startup validation that compiles every declared filter once and
-refuses a type whose filter is translation-only.
+**Result — measured, not reasoned.** `tests/MintPlayer.Spark.Tests/Services/RowFilterCompiledEvaluationTests.cs`,
+four cases, all passing: `.In()` compiles, keeps a matching row, rejects a non-matching one, and — the
+case that mattered most — **an empty allow-list denies every row** rather than admitting them.
 
-### S2 — What does an entity-less type's row-policy declaration say?
+**Consequence: M6 does NOT need startup filter validation.** That item is removed rather than
+deferred. The tests stay as a permanent regression detector, because the risk was never that today's
+filter is wrong — it is that the compiled path is unreachable for `Commit` today and becomes
+reachable the moment someone adds an index binding, at which point nothing else would notice.
+
+### S2 — What does an entity-less type's row-policy declaration say? — **RESOLVED: both are writable**
 
 Decision 2 settled the model: the actions class is trusted and the framework records it. What remains
 is the wording, and the CodeCoverage audit sharpened the requirement.
@@ -45,7 +51,20 @@ is the wording, and the CodeCoverage audit sharpened the requirement.
 That audit came back **clean** — `MyAccountRow` is properly scoped. But the scoping lives **two layers
 below the actions class**, in a service, as a single line of defence with no framework backstop. So
 the declaration must **name where the scoping lives** — a pointer a reviewer can follow — not merely
-assert that it exists. Write both declarations (`Home`, `MyAccountRow`) for real against that bar.
+assert that it exists.
+
+**Result: both are writable without lying, and the text already exists.** `MyAccountRowActions` and
+`HomeActions` both carry XML docs that say exactly what the declaration needs to say, so M4's
+rationale strings are a lift rather than an invention — good evidence the bar is the right one:
+
+- **`MyAccountRow`** — rows are *generated* from `IMyAccountsService.GetAsync`, which starts from the
+  caller's GitHub-verified installation owners (`GitHubAccessService.GetVisibilityAsync`). Anonymous
+  callers get an empty set. That names the file a reviewer must open.
+- **`Home`** — load-only; it declares no query of its own. It therefore needs the declaration on the
+  **`LoadVirtualObjectViaActionsAsync` path**, not the query path, which is why M4 covers both.
+
+One thing this settles for M4's design: the declaration must be reachable for a type with *no
+queries at all*, so it cannot hang off the query pipeline.
 
 ---
 
@@ -130,8 +149,9 @@ export-versus-list behaviour is decided.
 Plus both defects in the hook as it stands — ours, from the preceding work:
 
 - **Put it on the interface.** It is neither on `IPersistentObjectActions<T>` nor marked
-  `[NoInterfaceMember]`, unlike four other off-interface members. (Note: that attribute is **inert** —
-  `GenerateAutoInterface` appears nowhere in the solution — so it documents nothing either.)
+  `[NoInterfaceMember]`, unlike four other off-interface members — and the compiler already says so:
+  `warning INTF001: Public member 'OnQueryAsync' is not defined in the interface 'IPersistentObjectActions'`
+  is emitted on every clean build today.
 - **Fire it for queries with no `entityType`** (`:191-193` short-circuits).
 
 ---
@@ -200,7 +220,7 @@ this design.
   a Spark invariant. Spark is currently on the right side: `ComposeRowFilterAsync` no-ops on a
   projection but `FilterAsync`'s base-document reload is the real gate, so the no-op is *backed*
   rather than final. Audit every arm for that property and test it.
-- **Startup filter validation** if S1 says compiled evaluation is unsafe.
+- ~~Startup filter validation~~ — **not needed**; S1 measured compiled evaluation as safe.
 - **Symmetric write gates.** Update uses a side session (`DatabaseAccess.cs:278`), delete the shared
   request session (`:341`), while the comments claim they are the same shape. `EnsureRowSaveAllowedAsync`
   bypasses the memoized service, invoking hooks a second time per save outside the documented

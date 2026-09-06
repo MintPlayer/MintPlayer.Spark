@@ -231,8 +231,12 @@ production.
 - **Composed actions classes are never DI-registered.** `ActionsRegistrationGenerator` matches only
   classes based on `DefaultPersistentObjectActions<T>`, so `ActionsResolver` falls back to
   `ActivatorUtilities.CreateInstance` on **every** resolution — a fresh instance per call.
-- **`[NoInterfaceMember]` is inert.** `GenerateAutoInterface` appears nowhere in the solution; all ten
-  marks have no compile-time or runtime effect. Verified.
+- **`[NoInterfaceMember]` is live, and I got this wrong first time.** It was reported — and I
+  "verified" — as inert because `GenerateAutoInterface` appears nowhere in the solution. That tested
+  the wrong thing. A clean build emits `INTF001: Public member 'X' is not defined in the interface 'Y'`
+  for the unmarked members and **not** for the marked ones, so the attribute is doing exactly what its
+  name says. The same warning list confirms an M3 defect from the compiler's own mouth:
+  `'OnQueryAsync' is not defined in the interface 'IPersistentObjectActions'` ships as a warning today.
 - **`ModelLoader.cs:87-96` swallows an unparseable model file** — `Console.WriteLine`, skip, and the
   app starts with that entity type silently missing.
 - **`clrType`-less model files are entirely ungated in CI**: editing a label in `MyAccountRow.json`
@@ -240,11 +244,12 @@ production.
 - **Two docs cite analyzers that do not exist**: `README.md:355` names a SPARK003 with no
   `DiagnosticDescriptor`, and `MintPlayer.Spark.Controllers.csproj:15` claims to ship SPARK010 while
   packing no analyzer.
-- **S1 is latent with a named trigger.** Exactly one row filter uses Raven-only LINQ
-  (`CommitActions.cs:28`, `.In()`), and `Commit` has no index binding — so the compiled in-memory path
-  is unreachable for it today. The day anyone adds `[GenerateIndex]` or an `indexName` to `Commit`,
-  `.In()` gets `Compile()`d for the first time. If that silently returns `false`, commits vanish and
-  it looks like an indexing bug.
+- **S1 was latent, and is now measured safe.** Exactly one row filter uses Raven-only LINQ
+  (`CommitActions.cs:28`, `.In()`), and `Commit` has no index binding, so the compiled in-memory path
+  is unreachable for it today. `.In()` was measured against `Expression.Compile()`: it keeps matching
+  rows, rejects non-matching ones, and denies on an empty allow-list. **The hazard is closed and the
+  planned startup validation is not needed** — but the regression tests stay, because the trigger
+  (adding an index binding to `Commit`) is remote from the symptom.
 
 ### The audit that came back clean
 
