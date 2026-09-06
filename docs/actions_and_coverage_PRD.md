@@ -202,7 +202,36 @@ several seconds of a live-looking button followed by an identical grid.
 
 ## Part 2 — Honest coverage, then more of it
 
-### What the number is today
+### The re-baseline — measured 2026-09-06, after the instrumentation fixes
+
+Run `node tools/coverage-summary.mjs` to reproduce. It joins each filename to **its own**
+report's `<source>` root and de-duplicates per (file, line) with hits taken as the max, which
+is what the naive aggregations kept getting wrong.
+
+```
+reports  18        (every path resolves; verify-coverage-paths.mjs reports 0 errors)
+files    661
+lines    22282/27423
+coverage 81.25%
+```
+
+Suites behind it, all green: **2,587 .NET tests** (1924 + 314 + 229 + 82 + 38) and
+**599 JS tests** (ng-spark 402, ng-spark-auth 98, SPA + demos + action).
+
+**Read the scope before quoting the number.** 81.25% is the truth about *what is measured*,
+and it is higher than the ≈76.5% this document previously estimated for two traceable reasons:
+`libs/testing` turned out to be measured after all (the "zero reports" claim came from stale
+artifacts — the E2E suite covers 15 of its files), and the demo **.NET** apps are still in
+neither numerator nor denominator, because no test project references them. Folding those in at
+their true ~0% would put the all-in figure near **78%**. That decision is M12 and is still open;
+until it is made, quote 81.25% *with* the scope, never alone.
+
+The largest single gap is `apps/CodeCoverage/Program.cs` at **291 uncovered lines, 0%** — a
+composition root, and the strongest candidate for an argued exclusion rather than tests.
+`DeleteDataAction` and `ResyncAction` also sit at 0%, which is a fair verdict on the code this
+same PR just changed.
+
+### What the number was before the fixes
 
 Recomputed this session from the five local .NET cobertura reports plus the two JS reports,
 each report's filenames joined to **its own** `<source>` root:

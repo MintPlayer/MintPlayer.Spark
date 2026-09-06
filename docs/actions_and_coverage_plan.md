@@ -22,17 +22,17 @@ On branch `fix/coverage-queue-licence-cap`.
 | M6 | Tests for the delete path | **Partly** — see below |
 | S2 | Does an SPA report reach the badge | **Resolved** — it does now; verified by M13's checker |
 | S3 | Does `--settings` stabilise the `<source>` root | **Resolved — NO.** M13 is mandatory, not defensive |
-| S4 | Why `libs/testing` is in zero reports | Not started |
+| S4 | Why `libs/testing` is in zero reports | **Resolved — false premise.** It IS measured; the E2E suite covers 15 of its files |
 | S5 | Can a `WebApplicationFactory` boot the app | Not started |
 | S6 | Nx cache and coverage outputs | **Done** — `test.outputs` now covers the real dir |
 | M7 | Wire `coverlet.runsettings` | **Done** — moved to root, all five targets |
 | M8 | SPA vitest coverage | **Done** — *without* replacing the executor |
 | M9 | Action into the nx graph | **Done** — 41.28% now measured |
 | M10 | Demo ClientApps | **Done** — three configured, WebhooksDemo excluded |
-| M11 | `libs/testing` visible | Not started (blocked on S4) |
+| M11 | `libs/testing` visible | **Not needed** — S4 dissolved it |
 | M12 | Demo .NET apps | Not started |
 | M13 | Port `verify-coverage-paths.mjs` | **Done** — wired into both workflows |
-| M14 | Re-baseline | In progress |
+| M14 | Re-baseline | **Done** — 81.25% (22282/27423), see PRD |
 | M15–M22 | Raise real coverage, then gate | Not started |
 
 Verified green: framework 1924 tests, `CodeCoverage` 314, `ng-spark` 402, `ng-spark-auth` 98.
