@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Tests._Infrastructure;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Services;
 using System.Text.Json;
@@ -60,7 +61,7 @@ public class QueryResultProjectorAsDetailTests
     };
 
     private static QueryResultItemValue Project(QueryColumn column, PersistentObjectAttributeAsDetail coverage)
-        => QueryResultProjector.ToItems([Row(coverage)], [column], "Commits")[0].Values[0];
+        => QueryResultProjector.ToItems(TestSecuredRows.Of(Row(coverage)), [column], "Commits")[0].Values[0];
 
     [Fact]
     public void Single_child_projects_the_nested_object_as_the_cell_value()
@@ -198,7 +199,7 @@ public class QueryResultProjectorAsDetailTests
             ],
         };
 
-        var values = QueryResultProjector.ToItems([row], columns, "Commits")[0].Values;
+        var values = QueryResultProjector.ToItems(TestSecuredRows.Of(row), columns, "Commits")[0].Values;
 
         values.Where(v => columns.First(c => c.Name == v.Key).Renderer is not null)
             .Should().OnlyContain(v => v.Value != null);

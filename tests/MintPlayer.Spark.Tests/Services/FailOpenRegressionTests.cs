@@ -114,12 +114,13 @@ public class FailOpenRegressionTests
                 Arg.Any<Type>(), Arg.Any<Type>(), Arg.Any<string>(), Arg.Any<CancellationToken>())
             .Returns(ci => Task.FromResult(ci.Arg<IReadOnlyList<object>>()));
 
+        var entityMapper = Substitute.For<IEntityMapper>();
         var executor = new QueryExecutor(
-            Substitute.For<IAsyncDocumentSession>(), Substitute.For<IEntityMapper>(), modelLoader,
+            Substitute.For<IAsyncDocumentSession>(), entityMapper, modelLoader,
             Substitute.For<ISparkContextResolver>(), Substitute.For<IIndexCatalog>(),
             Substitute.For<IPermissionService>(), actionsResolver,
             Substitute.For<IReferenceResolver>(), Substitute.For<IBreadcrumbResolver>(), rowSecurity,
-            TestRowSecurityGate.For(rowSecurity));
+            TestRowSecurityGate.For(rowSecurity, entityMapper));
 
         var query = new SparkQuery
         {
@@ -150,13 +151,14 @@ public class FailOpenRegressionTests
             ClrType = typeof(PagedDoc).AssemblyQualifiedName,
         });
 
+        var entityMapper = Substitute.For<IEntityMapper>();
         var executor = new QueryExecutor(
-            Substitute.For<IAsyncDocumentSession>(), Substitute.For<IEntityMapper>(), modelLoader,
+            Substitute.For<IAsyncDocumentSession>(), entityMapper, modelLoader,
             Substitute.For<ISparkContextResolver>(), Substitute.For<IIndexCatalog>(),
             permissions, Substitute.For<IActionsResolver>(),
             Substitute.For<IReferenceResolver>(), Substitute.For<IBreadcrumbResolver>(),
             new PermissiveRowSecurity(),
-            TestRowSecurityGate.For(new PermissiveRowSecurity()));
+            TestRowSecurityGate.For(new PermissiveRowSecurity(), entityMapper));
 
         return (executor, permissions);
     }

@@ -116,12 +116,11 @@ internal partial class QueryExecutor : IQueryExecutor
                     $"the rows inside the query method itself.");
             }
 
-            var authorRows = allResults as IList<PersistentObject> ?? allResults.ToList();
             var authorColumns = definition is not null ? QueryResultProjector.BuildColumns(definition) : [];
             return new QueryResult
             {
                 Columns = authorColumns,
-                Items = QueryResultProjector.ToItems(authorRows, authorColumns, query.Name),
+                Items = QueryResultProjector.ToItems(allResults, authorColumns, query.Name),
                 TotalItems = authorTotal,
                 Skip = skip,
                 Take = take,
@@ -133,30 +132,32 @@ internal partial class QueryExecutor : IQueryExecutor
         // IQueryable, or a type with no searchable field. Also the only path that still matches
         // Breadcrumb — resolved reference display text, which exists only after mapping and is
         // therefore not an index term. See the query guide.
+        // Everything below NARROWS the secured set. Narrowing is the one transformation that cannot
+        // break the gate's invariant — it only ever removes rows that already passed — which is why
+        // SecuredRows.Narrow is an instance method: you must already hold a secured set to get
+        // another one.
         if (searchTerm != null && !searchPushedDown)
         {
             var term = search!.ToLowerInvariant();
-            allResults = allResults.Where(po =>
+            allResults = allResults.Narrow(rows => rows.Where(po =>
                 (po.Name != null && po.Name.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
                 (po.Breadcrumb != null && po.Breadcrumb.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
                 po.Attributes.Any(attr =>
                 {
                     var value = attr.Breadcrumb ?? attr.Value?.ToString();
                     return value != null && value.Contains(term, StringComparison.OrdinalIgnoreCase);
-                })
-            ).ToList();
+                })));
         }
 
         // Counted after filtering and before paging, either way — which is what keeps
         // TotalItems search-aware now that the filter may have run in the database.
-        var materialized = allResults as IList<PersistentObject> ?? allResults.ToList();
-        var totalItems = materialized.Count;
+        var totalItems = allResults.Count;
 
         // A restricted run returns exactly the rows asked for. Paging it would serve "the first
         // `take` of the selection", which is how a bulk action silently acts on a subset.
         var paged = restrictToIds is { Count: > 0 }
-            ? materialized
-            : materialized.Skip(skip).Take(take);
+            ? allResults
+            : allResults.Narrow(rows => rows.Skip(skip).Take(take));
 
         // Columns ship once per result, not once per row. A definition-less result cannot describe
         // its own columns, and the client renders from them, so an empty column set is the honest
@@ -287,7 +288,7 @@ internal partial class QueryExecutor : IQueryExecutor
     }
 
     private sealed record QuerySourceResult(
-        IEnumerable<PersistentObject> Rows,
+        RowSecurityGate.SecuredRows Rows,
         EntityTypeDefinition? Definition,
         bool SearchPushedDown,
         int? AuthorTotalItems = null,
@@ -605,6 +606,30 @@ internal partial class QueryExecutor : IQueryExecutor
                 $"App_Data/Model. Run '--spark-synchronize-model' and commit the result — without a " +
                 $"definition there are no columns to render and no attributes to map into.");
 
+        // One answer to "which type is this query about", rather than two that happen to agree.
+        //
+        // Two Query checks run on this path: the declared query.EntityType above, and the type
+        // resolved here from the context property's element type. When they disagreed the effective
+        // grant became their intersection — safe, but not something anyone had decided, and
+        // SubQueryPruner had to gate on the declared name to match getQuery while recording that the
+        // executor gated on the resolved one. Both halves of that divergence were correct and the
+        // pair was still confusing.
+        //
+        // Rather than pick a winner and weaken a check, make disagreement impossible: a query whose
+        // declared entityType is not the type its source actually yields is a model error, and only
+        // the author can say which they meant.
+        if (!string.IsNullOrEmpty(query.EntityType)
+            && !string.Equals(query.EntityType, entityTypeDefinition.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Query '{query.Name}' declares entityType '{query.EntityType}', but its source " +
+                $"'{query.Source}' yields rows of '{entityTypeDefinition.Name}'. Those name different types, " +
+                $"so the query is authorized against one while its columns come from the other, and the " +
+                $"caller silently needs the Query right on both. Set \"entityType\" to " +
+                $"'{entityTypeDefinition.Name}', or point the source at a context property yielding " +
+                $"'{query.EntityType}'.");
+        }
+
         await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
 
         Type resultType = entityType;
@@ -732,7 +757,7 @@ internal partial class QueryExecutor : IQueryExecutor
         //
         // It now travels as DedupeById on the context above rather than as a call here, so the
         // decision is made where the difference between the two paths is visible.
-        return new QuerySourceResult(secured.Rows, entityTypeDefinition, searchPushedDown);
+        return new QuerySourceResult(secured, entityTypeDefinition, searchPushedDown);
     }
 
     #endregion
@@ -978,21 +1003,6 @@ internal partial class QueryExecutor : IQueryExecutor
         // standing between a caller and every row it computes. Every composed query announces this
         // at startup for exactly that reason (see QueryLoader).
         var rawRows = entities as IReadOnlyList<object> ?? entities.ToList();
-        var entityList = entityType is not null
-            ? await rowSecurity.FilterAsync(session, rawRows, entityType, methodInfo.ResultElementType, "Query", cancellationToken)
-            : rawRows;
-
-        // Resolve breadcrumbs (recursive, batched) for the custom query's results.
-        var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entityList, entityTypeDefinition, cancellationToken);
-
-        var mapped = entityList
-            .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs), Row: e))
-            .ToList();
-        // Skipped for a composed query for the reason spelled out at FilterAsync above: redaction
-        // compares a mapped attribute against the value on the stored document, and a composed row
-        // has none.
-        if (entityType is not null)
-            await rowSecurity.RedactAsync(session, mapped, entityType, methodInfo.ResultElementType, "Query", cancellationToken);
 
         // Nothing here squares the per-row envelope closed, and nothing needs to: M4 made a row a
         // projection, and QueryResultItem carries no `can` block at all — for exactly this reason.
@@ -1019,9 +1029,6 @@ internal partial class QueryExecutor : IQueryExecutor
         // was S1 in #327. A duplicate id on a composed path is an authoring bug and throws in the
         // projector (QueryResultItem.Id is non-nullable and unique); it is never something to
         // quietly collapse.
-        IEnumerable<PersistentObject> rows = mapped.Select(m => m.Po);
-        if (isRavenQueryable)
-            rows = rows.DistinctBy(po => po.Id);
 
         // Sorting has to happen somewhere. ApplySorting above runs only when the result is IQueryable,
         // so a method returning a plain IEnumerable silently ignored both the query's declared sort
@@ -1031,11 +1038,24 @@ internal partial class QueryExecutor : IQueryExecutor
         //
         // Not when the author returned their own page: that sort authority went with it, and
         // reordering a page in memory would present a page-local ordering as a global one.
-        if (!isQueryable && authorPage is null && query.SortColumns.Length > 0)
-            rows = SortMappedRows(rows, query.SortColumns, entityTypeDefinition);
+        var needsInMemorySort = !isQueryable && authorPage is null && query.SortColumns.Length > 0;
+
+        var secured = await gate.ApplyAsync(rawRows, new RowSecurityContext
+        {
+            Session = session,
+            Definition = entityTypeDefinition,
+            EntityType = entityType,
+            ResultType = entityType is null ? null : methodInfo.ResultElementType,
+            Action = "Query",
+            DedupeById = isRavenQueryable,
+            OrderRows = needsInMemorySort
+                ? rows => SortMappedRows(rows, query.SortColumns, entityTypeDefinition)
+                : null,
+            CancellationToken = cancellationToken,
+        });
 
         return new QuerySourceResult(
-            rows.ToList(), entityTypeDefinition, searchPushedDown, authorPage?.TotalItems, args.DisabledActions);
+            secured, entityTypeDefinition, searchPushedDown, authorPage?.TotalItems, args.DisabledActions);
     }
 
     /// <summary>

@@ -73,13 +73,19 @@ internal static class QueryResultProjector
     /// in a client selection dictionary keyed by id. Neither is recoverable at runtime — a row the
     /// framework cannot name is a row nothing can be done with — so both are authoring errors.
     /// </exception>
+    /// <param name="rows">
+    /// Rows that have been through <c>RowSecurityGate</c>. The parameter type is the enforcement:
+    /// only the gate can produce a <c>SecuredRows</c>, and every framework path that puts rows on
+    /// the wire comes through here — so a new row-returning path cannot skip row security without
+    /// changing this signature, which is a visible edit rather than a missing line.
+    /// </param>
     public static IReadOnlyList<QueryResultItem> ToItems(
-        IEnumerable<PersistentObject> rows, IReadOnlyList<QueryColumn> columns, string queryName)
+        RowSecurityGate.SecuredRows rows, IReadOnlyList<QueryColumn> columns, string queryName)
     {
         var items = new List<QueryResultItem>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var row in rows)
+        foreach (var row in rows.Rows)
         {
             if (string.IsNullOrEmpty(row.Id))
             {

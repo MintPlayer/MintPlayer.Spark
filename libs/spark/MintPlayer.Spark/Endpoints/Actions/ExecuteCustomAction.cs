@@ -394,9 +394,15 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             "Columns computed inside an index will be null, unlike the grid the rows came from.",
             actionName, entityType.Name, DescribeFallback(request));
 
+        // Row-gated by the batched load itself: it applies the collection guard, the per-row Read
+        // rule and redaction before it returns. That is a different enforcement point from the
+        // per-set gate the query paths use, so the rows arrive already enforced but without a token
+        // — see SecuredRows.FromRowGatedLoad, which exists for this one caller and should be deleted
+        // when LoadManyAsync moves onto the gate.
         var loaded = await databaseAccess.GetPersistentObjectsByIdAsync(entityType.Id, submittedIds);
         var columns = QueryResultProjector.BuildColumns(entityType);
-        return QueryResultProjector.ToItems(loaded, columns, $"Action '{entityType.Name}'");
+        return QueryResultProjector.ToItems(
+            RowSecurityGate.SecuredRows.FromRowGatedLoad([.. loaded]), columns, $"Action '{entityType.Name}'");
     }
 
     /// <summary>

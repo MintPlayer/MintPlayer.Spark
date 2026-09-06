@@ -134,6 +134,49 @@ internal sealed partial class RowSecurityGate : IRowSecurityGate
 
         internal static SecuredRows Create(IReadOnlyList<PersistentObject> rows, RowSecurityMode mode)
             => new(rows, mode);
+
+        /// <summary>
+        /// Rows already judged by the <b>per-row</b> gate on the detail load path, rather than by
+        /// this gate's per-set pass.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The one crack in an otherwise sealed type, and it is deliberate, narrow and temporary.
+        /// <c>DefaultPersistentObjectActions.LoadManyAsync</c> enforces row security per row — the
+        /// collection guard, then <c>IsAllowedAsync(Read, entity)</c>, then redaction — and returns
+        /// <see cref="PersistentObject"/>s that are already mapped. So its rows genuinely are
+        /// enforced; they simply arrive from a different enforcement point, one that predates this
+        /// gate and does not mint a token.
+        /// </para>
+        /// <para>
+        /// <b>It is not a general escape hatch.</b> There is exactly one caller: the custom-action
+        /// selection fallback, which materialises a selection by loading documents by id when the
+        /// originating query cannot be re-run. It disappears when <c>LoadManyAsync</c> itself moves
+        /// onto this gate, at which point that path will hold a real token and this method should be
+        /// deleted rather than kept for convenience.
+        /// </para>
+        /// </remarks>
+        /// <param name="rows">Rows produced by the row-gated batched load.</param>
+        internal static SecuredRows FromRowGatedLoad(IReadOnlyList<PersistentObject> rows)
+            => new(rows, RowSecurityMode.Enforced);
+
+        /// <summary>
+        /// A subset of these rows, still secured. For the work that legitimately happens after the
+        /// gate: the in-memory search fallback, the count, and paging.
+        /// </summary>
+        /// <remarks>
+        /// Narrowing is the only transformation that cannot break the invariant. The gate is the sole
+        /// way to <em>create</em> a token; this is the sole way to change one, and it can only ever
+        /// remove rows from a set that already passed. A caller cannot smuggle an unjudged row in
+        /// through here, because it has nothing to put in — it starts from rows that are already
+        /// through.
+        /// <para>
+        /// It is an instance method for that reason: you must already hold a secured set to produce
+        /// another one.
+        /// </para>
+        /// </remarks>
+        public SecuredRows Narrow(Func<IEnumerable<PersistentObject>, IEnumerable<PersistentObject>> narrow)
+            => new([.. narrow(Rows)], Mode);
     }
 
     public async Task<SecuredRows> ApplyAsync(IReadOnlyList<object> rows, RowSecurityContext context)

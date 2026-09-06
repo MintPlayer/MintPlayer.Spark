@@ -79,10 +79,12 @@ internal static class SubQueryPruner
         // this reason; keeping it here would render a card that then 404s, which is the bug being
         // fixed, preserved for the one case nobody tests.
         //
-        // Note the divergence, recorded rather than reproduced: for Database.* queries the
-        // executor authorizes the type resolved from the SparkContext property's generic argument,
-        // not query.EntityType. Gate on query.EntityType anyway — it is what getQuery gates on,
-        // and getQuery is the first call the sub-query component makes.
+        // Gates on query.EntityType, which getQuery also gates on — and getQuery is the first call
+        // the sub-query component makes. There used to be a divergence recorded here: for Database.*
+        // queries the executor authorized the type resolved from the SparkContext property instead,
+        // so the effective grant was the intersection of two names nobody had reconciled. The
+        // executor now refuses a query whose declared entityType is not the type its source yields,
+        // so the two names cannot disagree and there is nothing left to diverge from.
         if (query.EntityType is null)
             return false;
 

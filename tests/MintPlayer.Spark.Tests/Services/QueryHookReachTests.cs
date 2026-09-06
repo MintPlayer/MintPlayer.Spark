@@ -71,13 +71,14 @@ public class QueryHookReachTests
         actionsResolver.ResolveByEntityName("HookedDoc").Returns(actions);
         contextResolver.ResolveContext(Arg.Any<IAsyncDocumentSession>()).Returns(new HookedContext());
 
+        var entityMapper = Substitute.For<IEntityMapper>();
         var executor = new QueryExecutor(
-            Substitute.For<IAsyncDocumentSession>(), Substitute.For<IEntityMapper>(), modelLoader,
+            Substitute.For<IAsyncDocumentSession>(), entityMapper, modelLoader,
             contextResolver, Substitute.For<IIndexCatalog>(),
             Substitute.For<IPermissionService>(), actionsResolver,
             Substitute.For<IReferenceResolver>(), Substitute.For<IBreadcrumbResolver>(),
             new PermissiveRowSecurity(),
-            TestRowSecurityGate.For(new PermissiveRowSecurity()));
+            TestRowSecurityGate.For(new PermissiveRowSecurity(), entityMapper));
 
         return (executor, actions);
     }

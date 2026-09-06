@@ -16,12 +16,19 @@ namespace MintPlayer.Spark.Tests._Infrastructure;
 /// </remarks>
 internal static class TestRowSecurityGate
 {
+    /// <param name="entityMapper">
+    /// <b>Required, and it must be the executor's own.</b> Mapping happens inside the gate now, so a
+    /// gate handed a different mapper produces different rows than the test configured — and when
+    /// that mapper is an unconfigured substitute it produces <see langword="null"/> rows, which
+    /// surface as a NullReferenceException deep in sorting rather than as a wiring mistake. There is
+    /// deliberately no default.
+    /// </param>
     public static IRowSecurityGate For(
         IRowSecurity rowSecurity,
-        IEntityMapper? entityMapper = null,
+        IEntityMapper entityMapper,
         IBreadcrumbResolver? breadcrumbResolver = null)
         => new RowSecurityGate(
             rowSecurity,
-            entityMapper ?? Substitute.For<IEntityMapper>(),
+            entityMapper,
             breadcrumbResolver ?? Substitute.For<IBreadcrumbResolver>());
 }

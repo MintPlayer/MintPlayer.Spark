@@ -98,7 +98,8 @@ public class StreamingRowSecurityTests
 
         return new StreamingQueryExecutor(
             documentStore, entityMapper, modelLoader,
-            permissionService, actionsResolver, breadcrumbResolver, rowSecurity);
+            permissionService, actionsResolver, breadcrumbResolver, rowSecurity,
+            TestRowSecurityGate.For(rowSecurity, entityMapper, breadcrumbResolver));
     }
 
     private static SparkQuery Query() => new()
