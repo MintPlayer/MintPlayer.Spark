@@ -32,22 +32,47 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
     private const long OldOwnerId = 11;
     private const long NewOwnerId = 22;
 
-    private sealed class NullMessageBus : IMessageBus
+    private sealed class RecordingMessageBus : IMessageBus
     {
-        public Task BroadcastAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public Task BroadcastAsync<TMessage>(TMessage message, string queueName, CancellationToken cancellationToken = default) => Task.CompletedTask;
-        public Task DelayBroadcastAsync<TMessage>(TMessage message, TimeSpan delay, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public List<object> Messages { get; } = [];
+        public Task BroadcastAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default)
+        {
+            Messages.Add(message!);
+            return Task.CompletedTask;
+        }
+        public Task BroadcastAsync<TMessage>(TMessage message, string queueName, CancellationToken cancellationToken = default)
+            => BroadcastAsync(message, cancellationToken);
+        public Task DelayBroadcastAsync<TMessage>(TMessage message, TimeSpan delay, CancellationToken cancellationToken = default)
+            => BroadcastAsync(message, cancellationToken);
     }
 
-    private static GitHubEventsRecipient CreateRecipient(IAsyncDocumentSession session)
+    private static GitHubEventsRecipient CreateRecipient(IAsyncDocumentSession session, RecordingMessageBus? bus = null)
     {
         var services = new ServiceCollection();
         services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.None));
         services.AddSingleton(session);
-        services.AddSingleton<IMessageBus>(new NullMessageBus());
+        services.AddSingleton<IMessageBus>(bus ?? new RecordingMessageBus());
         services.AddScoped<GitHubEventsRecipient>();
         return services.BuildServiceProvider().GetRequiredService<GitHubEventsRecipient>();
     }
+
+    private static string InstallationJson(string action, string repositories = "") => $$"""
+        {
+          "action": "{{action}}",
+          "installation": {
+            "id": 1, "node_id": "I_1", "app_id": 5, "app_slug": "coverage", "target_id": {{OldOwnerId}},
+            "target_type": "Organization", "account": {{OwnerJson(OldOwnerId, "acme")}},
+            "repository_selection": "all",
+            "access_tokens_url": "https://api.github.com/app/installations/1/access_tokens",
+            "repositories_url": "https://api.github.com/installation/repositories",
+            "html_url": "https://github.com/settings/installations/1",
+            "events": [], "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
+            "permissions": {}, "single_file_name": null, "suspended_by": null, "suspended_at": null
+          },
+          {{(repositories == "" ? "" : $"\"repositories\": [{repositories}],")}}
+          "sender": {{OwnerJson(OldOwnerId, "acme")}}
+        }
+        """;
 
     private static GitHubWebhookMessage Message(string eventType, string json) => new()
     {
@@ -414,6 +439,49 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(RepoId));
         Assert.Equal(RepositoryConnection.Disconnected, repository!.Connection);
         Assert.Equal(DisconnectedReasons.RemovedFromInstallation, repository.DisconnectedReason);
+    }
+
+    [Fact]
+    public async Task Suspending_the_App_disconnects_the_accounts_repositories_as_temporary()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedAsync(session);
+        WaitForIndexing(store);
+
+        await CreateRecipient(session).HandleAsync(Message("installation", InstallationJson("suspend")));
+
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(RepoId));
+        Assert.Equal(RepositoryConnection.Disconnected, repository!.Connection);
+        Assert.Equal(DisconnectedReasons.AppSuspended, repository.DisconnectedReason);
+        Assert.Null((await session.LoadAsync<Account>(Account.DocumentId(OldOwnerId)))!.InstallationId);
+    }
+
+    /// <summary>
+    /// The gap this test exists for: GitHub populates the installation event's <c>repositories</c>
+    /// array on <c>created</c> and <c>deleted</c>, but not on <c>unsuspend</c>. So the upsert that
+    /// looks like it reconnects everything reconnects nothing, and an account's repositories would
+    /// stay hidden for up to a day after the App is re-enabled. The reconcile broadcast is what
+    /// actually restores them.
+    /// </summary>
+    [Fact]
+    public async Task Unsuspending_asks_for_a_reconcile_because_the_payload_lists_no_repositories()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedAsync(session);
+        WaitForIndexing(store);
+
+        var bus = new RecordingMessageBus();
+        var recipient = CreateRecipient(session, bus);
+        await recipient.HandleAsync(Message("installation", InstallationJson("suspend")));
+        await recipient.HandleAsync(Message("installation", InstallationJson("unsuspend")));
+
+        var account = await session.LoadAsync<Account>(Account.DocumentId(OldOwnerId));
+        Assert.NotNull(account!.InstallationId);
+
+        var reconcile = bus.Messages.OfType<CodeCoverage.Ingestion.ReconcileAccountMessage>().ToList();
+        Assert.Contains(reconcile, m => m.AccountGitHubId == OldOwnerId);
     }
 
     /// <summary>

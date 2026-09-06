@@ -86,15 +86,28 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             case "unsuspend":
             case "new_permissions_accepted":
                 account.InstallationId = evt.Installation.Id;
+
+                // `repositories` is only populated on `created` (and `deleted`). An `unsuspend`
+                // carries no list, so this upsert reconnects nothing — and the repositories that
+                // `suspend` disconnected would stay hidden until the nightly sweep, which is a day
+                // of an account's repositories silently missing after the App is re-enabled.
+                // The reconcile below is what actually restores them.
                 await UpsertRepositories(
                     (evt.Repositories ?? []).Select(r => (r.Id, r.Name, r.FullName, r.Private)), account, ct);
+                await messageBus.BroadcastAsync(new Ingestion.ReconcileAccountMessage
+                {
+                    AccountGitHubId = ghAccount.Id,
+                }, ct);
                 break;
             case "deleted":
             case "suspend":
                 account.InstallationId = null;
                 // The App can no longer see anything this account owns, so nothing it owns should
                 // still be advertised. The documents stay; only the advertising stops.
-                await DisconnectRepositoriesOfAsync(account, DisconnectedReasons.AppUninstalled, ct);
+                await DisconnectRepositoriesOfAsync(
+                    account,
+                    evt.Action == "suspend" ? DisconnectedReasons.AppSuspended : DisconnectedReasons.AppUninstalled,
+                    ct);
                 break;
         }
 

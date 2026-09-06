@@ -452,6 +452,51 @@ A "selected" installation that loses its **last** repository is deleted outright
 `installation.deleted`, not `installation_repositories.removed` — which D4's uninstall branch
 already handles.
 
+### D13 — The complete event matrix, and what is deliberately not covered
+
+Written out because "did we handle every case" is otherwise unanswerable, and because two gaps were
+found by writing it out rather than by testing.
+
+| event / action | effect on our state |
+| --- | --- |
+| `repository.created` | upsert, connected |
+| `repository.deleted` | disconnect, `DeletedOnGitHub` — never deletes |
+| `repository.transferred` | re-parent + record old name, **stays connected** (only the gaining side hears it) |
+| `repository.renamed` | rename + record old name |
+| `repository.archived` / `unarchived` | `Archived`; connection untouched |
+| `repository.privatized` / `publicized` | `IsPrivate`, which the visibility rules already key on |
+| `repository.edited` | generic upsert (default branch, description) |
+| `installation.created` | connect, upsert the payload's repositories |
+| `installation.unsuspend`, `new_permissions_accepted` | restore `InstallationId` **and reconcile** — the payload lists no repositories |
+| `installation.suspend` | disconnect the account's repositories, `AppSuspended` |
+| `installation.deleted` | disconnect the account's repositories, `AppUninstalled` |
+| `installation_repositories.added` | upsert + connect, **and reconcile** |
+| `installation_repositories.removed` | disconnect *if the reporting account still owns it*, **and reconcile** |
+| `organization.renamed` / `installation_target.renamed` | rewrite the account login and every full name under it |
+| `push`, `pull_request` | commit and pull-request data (pre-existing) |
+| OIDC upload | provision, or reconnect and refresh the name |
+| nightly cron, Resync button | reconcile everything reachable |
+
+**Subscribed but ignored on purpose.** `member`, `membership`, `team`, `team_add` change who may see
+a private repository, and nothing in the database depends on that: `RepositoryVisibility` resolves
+the viewer's owners from the GitHub API per request (5-minute cache), so a membership change is
+picked up on the next read without a webhook. Storing it would create a second, staler answer to a
+question we already answer correctly.
+
+**Known gaps, accepted.**
+
+1. *A repository whose owner has no installation is never reconciled.* These are the
+   OIDC-provisioned ones (F10): the reconciler walks installations, and there is none to walk. If
+   such a repository is deleted or made private on GitHub we never learn, and it stays advertised
+   with its last coverage. Mitigated by uploads refreshing it, and by the owner's Delete. Closing it
+   properly means polling `GET /repos/{owner}/{name}` per repository, which is a rate-limit problem
+   for the benefit of a rare case.
+2. *`github_app_authorization.revoked` is not handled* — the user revoking the OAuth grant affects
+   their own visibility, which `GitHubAccessService` already discovers via its token-state check and
+   the reauth prompt. No stored state is wrong.
+3. *An organization deleted outright* is not handled as such; in practice it arrives as
+   `installation.deleted`, which disconnects that account's repositories.
+
 ## Acceptance criteria
 
 1. `MintPlayer/CodeCoverage` no longer appears in the `MintPlayer` account's repository grid for an

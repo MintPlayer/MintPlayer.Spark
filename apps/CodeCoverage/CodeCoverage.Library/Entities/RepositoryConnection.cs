@@ -34,8 +34,15 @@ public static class DisconnectedReasons
     /// <summary>Deselected from the installation's chosen repositories.</summary>
     public const string RemovedFromInstallation = "RemovedFromInstallation";
 
-    /// <summary>The App was uninstalled or suspended on the owning account.</summary>
+    /// <summary>The App was uninstalled from the owning account.</summary>
     public const string AppUninstalled = "AppUninstalled";
+
+    /// <summary>
+    /// The App was suspended on the owning account. Distinct from uninstalled because it is
+    /// explicitly temporary — the owner is expected to lift it, and an unsuspend restores every
+    /// repository — so the page can say so rather than inviting someone to delete the data.
+    /// </summary>
+    public const string AppSuspended = "AppSuspended";
 
     /// <summary>Deleted on GitHub. The numeric id can never come back.</summary>
     public const string DeletedOnGitHub = "DeletedOnGitHub";
