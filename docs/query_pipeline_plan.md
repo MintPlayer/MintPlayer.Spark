@@ -291,8 +291,33 @@ and production runs as `Production` with no override set. Three gaps:
   `code-coverage-deploy.yml` goes checkout → build → push → deploy. Either add it to the deploy path
   or record an explicit decision that pre-merge plus branch protection is sufficient — the mitigating
   fact being that `COPY . .` makes model and binaries same-commit by construction.
-- **`customActions.json` and `programUnits.json` have no integrity gate at all.** The hash glob is
-  `App_Data/Model/*.json`; `security.json` has a separate mechanism. These two have nothing.
+- **`customActions.json` and `programUnits.json` have no integrity gate at all**, and adding them is
+  straightforward: they are *inputs* to synchronize exactly as the model files are, and
+  `modelHashes.json` is its output. Verified: **nothing in the framework writes either file** — no
+  writer exists, `ModelSynchronizer` never mentions them, every reference is a read-only loader. They
+  are hand-authored, and hand-authored-but-hashed already has precedent (`Home.json`,
+  `MyAccountRow.json`). No circularity: `modelHashes.json` sits in `App_Data/`, not `App_Data/Model/`,
+  so the glob excludes it naturally.
+
+  **Hash them structurally, not byte-wise.** `customActions.json` mixes security-relevant fields with
+  presentational ones, and a byte hash would fail the gate on a translation edit — the exact problem
+  `ModelFileShape` already solves for model files by excluding labels, descriptions and renderers.
+
+  | Include (structural) | Exclude (presentational) |
+  | --- | --- |
+  | the action **name** — the object key | `displayName` (per-language) |
+  | `showedOn` | `icon` |
+  | `selectionRule` | `description` |
+  | | `variant`, `confirmationMessageKey` |
+
+  Those three are what `ExecuteCustomAction` actually enforces: the action must be present in the file
+  at all (`:81`), and `selectionRule` bounds the selection (`:129`). A hand-added entry could offer an
+  action the model never declared. For `programUnits.json` the structural set is the unit `type` plus
+  `queryId`/`persistentObjectId`; labels and ordering are presentational.
+
+  **Leave `security.json` out of this hash.** It already has its own gate — `securityPosture.txt` plus
+  `--spark-verify-security`, and unlike the model hash that one has *no* Development exemption. Two
+  overlapping gates that can disagree is worse than one that holds.
 - **Success is silent** (`ModelHashVerifier.cs:58-59`), so "gate passed" and "gate never ran" are
   indistinguishable from outside — in a deployment that has already had a subsystem silently dead in
   production. One startup line naming the number of hashes verified fixes it.

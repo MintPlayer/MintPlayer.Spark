@@ -210,6 +210,14 @@ Two real gaps:
   App_Data beside new binaries" is structurally hard to produce.
 - **`customActions.json` and `programUnits.json` have no integrity gate at all.** The hash glob is
   `App_Data/Model/*.json`; `security.json` is covered by a different mechanism (`securityPosture.txt`).
+  Closing this is cheap and carries no design tension: both files are hand-authored *inputs* to
+  synchronize — nothing in the framework writes either — and `modelHashes.json` is its output, so
+  extending the hash to cover them is additive. It must be a **structural** hash on the
+  `ModelFileShape` model, or a translation edit would fail the gate. See plan M11.
+
+  Note this is orthogonal to decision 12. That decision is about `AdditionalFiles` — a *compilation*
+  input, where including a sync output couples rebuilds to the sync step. Nothing about it argues
+  against hashing more files.
 
 Also: **success is silent** (`ModelHashVerifier.cs:58-59`), so "passed" and "never ran" are
 indistinguishable from outside — in a deployment that has already had a subsystem silently dead in
