@@ -288,6 +288,15 @@ fields up before moving on — an unregistered projection silently nulls compute
 
 No data migration: `Connected` is the default and matches every existing document's behaviour.
 
+Two things this milestone got wrong on the first pass, both caught by existing guards rather than by
+review. `Connection` was given `showedOn: "Query, PersistentObject"`, which put a fifth column on the
+repository grid and failed `ModelColumnGuardTests` — a test that exists to make exactly that an
+explicit product decision rather than a side effect of adding a field. It is detail-only now and the
+curated grid is unchanged; if an owner should be able to spot disconnected repositories from the
+grid, that is a deliberate change to make, with the guard updated to say so. And the hand edits to
+`isVisible`/`showedOn` had to be verified as a fixed point: `--spark-synchronize-model` preserves
+them, but only re-running it proves so, and the first run rewrote the file's formatting.
+
 ## M3 — `ListingFilter`, and every place that enumerates
 
 `Services/RepositoryVisibility.cs` gains, beside the existing `Filter`/`IsVisible` pair:
@@ -442,6 +451,23 @@ suite's cost is dominated by the per-test database lifecycle.
 Neither the Angular nor the .NET major changes, so the major digit does not move — `CLAUDE.md` is
 explicit that a wrongly published major is burned forever, and CI publishes on push to `master`.
 Check the version diff in the PR review.
+
+## Production state as measured, 2026-09-05
+
+Recorded because M12 is a *verification* milestone and needs a before to compare against.
+
+- `https://coverage.mintplayer.com/badge/MintPlayer/CodeCoverage.svg` renders **coverage: 41.5%**,
+  under the name the repository no longer has. After deploy it must keep rendering — that is the
+  point of D2 — while the repository leaves the account listing.
+- `GET /api/browse/accounts/MintPlayer/repos` answers **401** to an anonymous caller, so the
+  advertised list is only observable signed in or through `/spark`.
+- The App delivery log retains roughly **3 days / 204 deliveries**, so the original 2026-09-01
+  transfer is long gone from it. Any future post-mortem of this kind has that window to work in.
+
+The transfer experiments left production unharmed: the deployed build predates M1, so it discards
+`installation_repositories` exactly as it always did, and `repository.transferred` re-parented the
+document to the owner it already believed in. `MintPlayer-Archive/CodeCoverage` was returned to its
+recorded pre-state field by field, and the probe repository was deleted.
 
 ## M12 — Deploy and verify
 

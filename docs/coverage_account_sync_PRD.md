@@ -407,6 +407,51 @@ non-`renamed` action, since `organization` also fires for membership changes.
 display only. Existing tokens without the id fall back to the login comparison, so nothing breaks on
 deploy.
 
+### D11 — An installation change is a trigger, not a description
+
+`installation_repositories` announces that an installation's repository set changed. It cannot be
+trusted to say *how*. Measured 2026-09-05:
+
+| change | `repository_selection` | `repositories_added` | `repositories_removed` |
+| --- | --- | --- | --- |
+| narrow `all` → 3 selected | `selected` | all 3 | **empty** |
+| widen 3 selected → `all` | `all` | all 153 | **empty** |
+
+Two things follow. The payload **states the resulting set rather than the difference** — the three
+named on the narrowing were all reachable a moment earlier, so nothing became newly accessible. And
+`repositories_removed` is empty on a narrowing, so the access lost to every other repository on that
+account is reported **nowhere**. An app that believed the payload would keep advertising
+repositories it can no longer see: this PRD's own bug, arriving by a second route.
+
+So the handler applies the payload for the timely case and broadcasts `ReconcileAccountMessage`,
+whose recipient asks GitHub for the authoritative set (D5's reconciler, scoped to one account). The
+nightly sweep would find it eventually; this closes the window to seconds.
+
+*The fast path was measured and deliberately not taken.* With the previous `repository_selection`
+persisted, `all → selected` plus `repositories_added` gives the new set directly, with no API call —
+that now works. It stays unimplemented because it is a second mechanism computing what the
+reconciler computes, correct only for scope *transitions* (a genuine incremental add must not be read
+as "the set is now exactly this", and the payload cannot distinguish the two), and its correctness
+would rest on a stored field we would then have to keep accurate.
+
+### D12 — Only the current owner may disconnect a repository
+
+When the App is installed on both sides of a transfer, one move produces three events from two
+installations — `installation_repositories.removed` from the old owner, `repository.transferred` and
+`installation_repositories.added` from the new one — roughly two seconds apart, on queues with no
+ordering guarantee. A removal applied last would disconnect a repository the App can plainly still
+see, and leave it that way until the nightly reconciler.
+
+`OnInstallationRepositories` therefore ignores a removal whose reporting account no longer owns the
+repository: if it has already been re-parented, the old owner is describing a repository that is not
+theirs any more. Ownership settles it without an ordering assumption, so both arrival orders end
+correct. The same reasoning already protects `installation.deleted`, whose sweep is scoped by
+`Repository.Account` for free.
+
+A "selected" installation that loses its **last** repository is deleted outright by GitHub —
+`installation.deleted`, not `installation_repositories.removed` — which D4's uninstall branch
+already handles.
+
 ## Acceptance criteria
 
 1. `MintPlayer/CodeCoverage` no longer appears in the `MintPlayer` account's repository grid for an
@@ -425,7 +470,12 @@ deploy.
    leaves no document whose id begins with `Commits/{id}/` or `Repositories/{id}`.
 9. No `SparkMessage` document is written for a message type that has no registered recipient.
 10. A GitHub organization rename is reflected in `Account.Login` and in every `Repository.FullName`
-    under it, and the old names resolve.
+    under it, and the old names resolve — via `organization.renamed`, which is an event the apps are
+    actually subscribed to.
+11. A repository transferred between two accounts that both have the App installed ends `Connected`,
+    whichever order the three resulting events are processed in.
+12. Narrowing an installation from "all repositories" to a selected few disconnects the repositories
+    that silently left it, even though no webhook reports their removal.
 
 ## Breaking changes
 
@@ -458,7 +508,10 @@ deploy.
 
 ## Spikes
 
-All five answered; the measurements are in the plan.
+All seven answered — five planned, two that the work itself raised. The measurements are in the
+plan. Every one of them was settled by running the thing against the real API, because GitHub's
+documentation describes *what each event means* but not *which installation receives it* on a
+transfer, and that omission is precisely where this feature's bugs lived.
 
 - **S1** — Does GitHub deliver `repository.transferred` to an installation that is *losing* access?
   **No.** Only to the one gaining it. This inverted D4.
@@ -470,3 +523,8 @@ All five answered; the measurements are in the plan.
   the installation is "All repositories" for the org and emitted `.removed` for it.
 - **S5** — Can `MessageTypeAllowList` answer "is there a recipient for this type"? **Not as-is** —
   right shape, wrong question and `internal`; a public `IMessageRecipientRegistry` was added instead.
+- **S2b** *(unplanned)* — Are the apps even subscribed to the events these handlers need?
+  `repository` and `organization` yes; **`installation_target` no**, which would have shipped D9 as
+  code that never runs.
+- **S6** *(unplanned)* — Does an org-wide install behave differently from a "selected" one? **Yes**,
+  and it exposed the hole D11 and D12 exist to close.
