@@ -555,6 +555,13 @@ public partial class UploadsController : ControllerBase
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(gitHubRepoId), cancellationToken);
         if (repository is not null)
         {
+            // Gated on `provision`, which is true only on the upload itself. The status endpoint is
+            // a GET and resolves through here too; reconnecting from a poll would make a read
+            // mutate, and worse, silently — a GET saves nothing, so the change would appear to
+            // work and then vanish. "An upload reconnects" means an upload.
+            if (!provision)
+                return repository;
+
             // A workflow that still runs and still uploads is proof the repository is alive and
             // ours, and it is the only such proof for one that moved to an owner where the App is
             // not installed. So an upload reconnects, symmetrically with the reconciler's

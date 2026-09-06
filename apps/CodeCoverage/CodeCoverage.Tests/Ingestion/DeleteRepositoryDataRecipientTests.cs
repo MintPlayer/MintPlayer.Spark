@@ -1,0 +1,186 @@
+using CodeCoverage.Entities;
+using CodeCoverage.Ingestion;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Raven.Client.Documents;
+using Raven.Client.Documents.Session;
+using Xunit;
+
+namespace CodeCoverage.Tests.Ingestion;
+
+/// <summary>
+/// The only path in the application that destroys coverage data.
+/// <para>
+/// Everything else in this feature was built so that losing access to a repository destroys
+/// nothing — a transfer, an uninstall, even a deletion on GitHub only disconnects. That makes this
+/// the one place where a mistake is unrecoverable, and it had no test: the sweep sits on an id
+/// convention (everything under a repository descends from <c>Commits/{repoGitHubId}/{sha}</c>)
+/// rather than on a query, so it is exactly the kind of code that keeps working until someone adds
+/// a document type whose id does not follow the rule.
+/// </para>
+/// </summary>
+public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
+{
+    private const long RepoId = 4242;
+    private const long OtherRepoId = 9999;
+    private const string Sha = "0123456789abcdef0123456789abcdef01234567";
+
+    private static DeleteRepositoryDataRecipient CreateRecipient(IAsyncDocumentSession session)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging(l => l.SetMinimumLevel(LogLevel.None));
+        services.AddSingleton(session);
+        services.AddScoped<DeleteRepositoryDataRecipient>();
+        return services.BuildServiceProvider().GetRequiredService<DeleteRepositoryDataRecipient>();
+    }
+
+    /// <summary>
+    /// Seeds one repository with the full spread of document types beneath it, plus a second
+    /// repository whose documents must survive — a prefix sweep that is one character too greedy
+    /// would take neighbours with it, and only a neighbour can catch that.
+    /// </summary>
+    private static async Task SeedAsync(IAsyncDocumentSession session, RepositoryConnection connection)
+    {
+        foreach (var (id, name) in new[] { (RepoId, "doomed"), (OtherRepoId, "innocent") })
+        {
+            await session.StoreAsync(new Repository
+            {
+                GitHubId = id,
+                Name = name,
+                FullName = $"acme/{name}",
+                OwnerLogin = "acme",
+                Connection = id == RepoId ? connection : RepositoryConnection.Connected,
+            }, Repository.DocumentId(id));
+
+            var commitId = Commit.DocumentId(id, Sha);
+            await session.StoreAsync(new Commit
+            {
+                Sha = Sha,
+                Repository = Repository.DocumentId(id),
+                FirstSeenAtUtc = DateTimeOffset.UtcNow,
+            }, commitId);
+
+            var buildId = Build.DocumentId(id, Sha, 7, 1);
+            await session.StoreAsync(new Build { Commit = commitId, CiRunId = 7, CiRunAttempt = 1 }, buildId);
+            await session.StoreAsync(new FileCoverage(), FileCoverage.DocumentId(buildId, "src/a.cs"));
+            await session.StoreAsync(new BuildTreeSummary(), BuildTreeSummary.DocumentId(buildId));
+            await session.StoreAsync(new CommitAssembly(), CommitAssembly.DocumentId(commitId));
+            await session.StoreAsync(new PullRequestFeedback
+            {
+                Repository = Repository.DocumentId(id),
+                PullRequestNumber = 3,
+            }, PullRequestFeedback.DocumentId(id, 3));
+
+            await session.StoreAsync(new ApiToken
+            {
+                Scope = "Repository",
+                RepositoryGitHubId = id,
+                AccountLogin = "acme",
+                CreatedAtUtc = DateTime.UtcNow,
+            }, ApiToken.DocumentId($"hash{id}"));
+        }
+
+        await session.SaveChangesAsync();
+    }
+
+    private static async Task<int> CountUnderAsync(IDocumentStore store, string prefix)
+    {
+        using var session = store.OpenAsyncSession();
+        var n = 0;
+        await using var stream = await session.Advanced.StreamAsync<object>(startsWith: prefix);
+        while (await stream.MoveNextAsync()) n++;
+        return n;
+    }
+
+    [Fact]
+    public async Task Deleting_a_disconnected_repository_leaves_nothing_of_it_behind()
+    {
+        using var store = GetDocumentStore();
+        using (var seed = store.OpenAsyncSession())
+            await SeedAsync(seed, RepositoryConnection.Disconnected);
+        WaitForIndexing(store);
+
+        using (var session = store.OpenAsyncSession())
+        {
+            await CreateRecipient(session).HandleAsync(new DeleteRepositoryDataMessage
+            {
+                RepositoryGitHubId = RepoId,
+                RequestedByUserId = "users/1",
+            });
+        }
+
+        Assert.Equal(0, await CountUnderAsync(store, $"Commits/{RepoId}/"));
+        Assert.Equal(0, await CountUnderAsync(store, $"PullRequestFeedbacks/{RepoId}/"));
+
+        using var verify = store.OpenAsyncSession();
+        Assert.Null(await verify.LoadAsync<Repository>(Repository.DocumentId(RepoId)));
+        Assert.Null(await verify.LoadAsync<ApiToken>(ApiToken.DocumentId($"hash{RepoId}")));
+    }
+
+    [Fact]
+    public async Task Another_repositorys_documents_are_untouched()
+    {
+        using var store = GetDocumentStore();
+        using (var seed = store.OpenAsyncSession())
+            await SeedAsync(seed, RepositoryConnection.Disconnected);
+        WaitForIndexing(store);
+
+        var before = await CountUnderAsync(store, $"Commits/{OtherRepoId}/");
+
+        using (var session = store.OpenAsyncSession())
+        {
+            await CreateRecipient(session).HandleAsync(new DeleteRepositoryDataMessage
+            {
+                RepositoryGitHubId = RepoId,
+                RequestedByUserId = "users/1",
+            });
+        }
+
+        Assert.Equal(before, await CountUnderAsync(store, $"Commits/{OtherRepoId}/"));
+
+        using var verify = store.OpenAsyncSession();
+        Assert.NotNull(await verify.LoadAsync<Repository>(Repository.DocumentId(OtherRepoId)));
+        Assert.NotNull(await verify.LoadAsync<ApiToken>(ApiToken.DocumentId($"hash{OtherRepoId}")));
+    }
+
+    /// <summary>
+    /// The re-check that makes the queue safe. A delete is authorized against a disconnected
+    /// repository, but it is applied later — and in between an upload or an `added` may have
+    /// reconnected it. Deleting a live repository's history is not recoverable, so the recipient
+    /// refuses rather than trusting the message.
+    /// </summary>
+    [Fact]
+    public async Task A_repository_that_reconnected_before_the_message_was_applied_is_not_deleted()
+    {
+        using var store = GetDocumentStore();
+        using (var seed = store.OpenAsyncSession())
+            await SeedAsync(seed, RepositoryConnection.Connected);
+        WaitForIndexing(store);
+
+        using (var session = store.OpenAsyncSession())
+        {
+            await CreateRecipient(session).HandleAsync(new DeleteRepositoryDataMessage
+            {
+                RepositoryGitHubId = RepoId,
+                RequestedByUserId = "users/1",
+            });
+        }
+
+        using var verify = store.OpenAsyncSession();
+        Assert.NotNull(await verify.LoadAsync<Repository>(Repository.DocumentId(RepoId)));
+        Assert.True(await CountUnderAsync(store, $"Commits/{RepoId}/") > 0);
+    }
+
+    [Fact]
+    public async Task Deleting_a_repository_that_is_already_gone_is_a_no_op()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+
+        await CreateRecipient(session).HandleAsync(new DeleteRepositoryDataMessage
+        {
+            RepositoryGitHubId = 123456,
+            RequestedByUserId = "users/1",
+        });
+    }
+}

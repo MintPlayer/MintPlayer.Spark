@@ -441,6 +441,127 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         Assert.Equal(DisconnectedReasons.RemovedFromInstallation, repository.DisconnectedReason);
     }
 
+    /// <summary>
+    /// A repository the App has just been granted. It arrives with no document of its own, so this
+    /// also covers the create half of every upsert path.
+    /// </summary>
+    [Fact]
+    public async Task A_repository_created_on_GitHub_is_stored_and_connected()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+
+        await CreateRecipient(session).HandleAsync(
+            Message("repository", RepositoryEventJson("created", OldOwnerId, "acme", "widgets")));
+
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(RepoId));
+        Assert.NotNull(repository);
+        Assert.Equal("acme/widgets", repository.FullName);
+        Assert.Equal("master", repository.DefaultBranch);
+        Assert.Equal(RepositoryConnection.Connected, repository.Connection);
+        Assert.Equal("acme", (await session.LoadAsync<Account>(Account.DocumentId(OldOwnerId)))!.Login);
+    }
+
+    /// <summary>
+    /// Visibility keys on <c>IsPrivate</c>, so a repository going private has to move it or a
+    /// previously-public repository's coverage stays world-readable.
+    /// </summary>
+    [Theory]
+    [InlineData("privatized", true)]
+    [InlineData("publicized", false)]
+    public async Task Changing_visibility_on_GitHub_moves_IsPrivate(string action, bool expectedPrivate)
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedAsync(session);
+
+        var json = RepositoryEventJson(action, OldOwnerId, "acme", "widgets")
+            .Replace("\"private\": false", $"\"private\": {(expectedPrivate ? "true" : "false")}");
+        await CreateRecipient(session).HandleAsync(Message("repository", json));
+
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(RepoId));
+        Assert.Equal(expectedPrivate, repository!.IsPrivate);
+        Assert.Equal(RepositoryConnection.Connected, repository.Connection);
+    }
+
+    [Fact]
+    public async Task Unarchiving_clears_the_archived_flag()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedAsync(session);
+
+        var recipient = CreateRecipient(session);
+        await recipient.HandleAsync(Message("repository",
+            RepositoryEventJson("archived", OldOwnerId, "acme", "widgets", archived: true)));
+        await recipient.HandleAsync(Message("repository",
+            RepositoryEventJson("unarchived", OldOwnerId, "acme", "widgets", archived: false)));
+
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(RepoId));
+        Assert.False(repository!.Archived);
+        Assert.Equal(RepositoryConnection.Connected, repository.Connection);
+    }
+
+    [Fact]
+    public async Task Installing_the_App_records_the_installation_and_its_repositories()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+
+        await CreateRecipient(session).HandleAsync(Message("installation",
+            InstallationJson("created", repositories: LiteRepositoryJson("acme", "widgets"))));
+
+        var account = await session.LoadAsync<Account>(Account.DocumentId(OldOwnerId));
+        Assert.Equal(1, account!.InstallationId);
+        Assert.Equal("Organization", account.Type);
+
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(RepoId));
+        Assert.NotNull(repository);
+        Assert.Equal(RepositoryConnection.Connected, repository.Connection);
+    }
+
+    [Fact]
+    public async Task Uninstalling_the_App_disconnects_the_accounts_repositories_permanently()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedAsync(session);
+        WaitForIndexing(store);
+
+        await CreateRecipient(session).HandleAsync(Message("installation", InstallationJson("deleted")));
+
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(RepoId));
+        Assert.Equal(RepositoryConnection.Disconnected, repository!.Connection);
+        Assert.Equal(DisconnectedReasons.AppUninstalled, repository.DisconnectedReason);
+        Assert.NotNull(await session.LoadAsync<Commit>(Commit.DocumentId(RepoId, "abc")));
+    }
+
+    /// <summary>
+    /// D11: the payload announces that the set changed, so the authoritative answer is asked for.
+    /// Without this the narrowing case — `added` with an empty `repositories_removed` — silently
+    /// leaves every other repository of the account advertised.
+    /// </summary>
+    [Theory]
+    [InlineData("added")]
+    [InlineData("removed")]
+    public async Task Any_installation_repositories_event_asks_for_a_reconcile(string action)
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedAsync(session);
+
+        var bus = new RecordingMessageBus();
+        var lite = LiteRepositoryJson("acme", "widgets");
+        await CreateRecipient(session, bus).HandleAsync(Message("installation_repositories",
+            InstallationRepositoriesJson(action,
+                added: action == "added" ? lite : "",
+                removed: action == "removed" ? lite : "")));
+
+        Assert.Contains(
+            bus.Messages.OfType<CodeCoverage.Ingestion.ReconcileAccountMessage>(),
+            m => m.AccountGitHubId == OldOwnerId);
+    }
+
     [Fact]
     public async Task Suspending_the_App_disconnects_the_accounts_repositories_as_temporary()
     {
