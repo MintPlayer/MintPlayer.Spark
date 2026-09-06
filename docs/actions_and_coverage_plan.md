@@ -33,8 +33,9 @@ On branch `fix/coverage-queue-licence-cap`.
 | M12 | Demo .NET apps | **Resolved** — excluded from the denominator entirely |
 | M13 | Port `verify-coverage-paths.mjs` | **Done** — wired into both workflows |
 | M14 | Re-baseline | **Done** — 81.51% (22276/27328) after the demo decision |
-| M16 | `[SparkAuthorize]` end to end | **Started** — host built, first 3 tests green |
-| M15, M17–M22 | Raise real coverage, then gate | Not started |
+| M16 | `[SparkAuthorize]` end to end | **Done** — shared host, anonymous + AllowAnonymous both pinned |
+| M17 | Controllers | **In progress** — credential surfaces done |
+| M15, M18–M22 | Raise real coverage, then gate | Not started |
 
 Verified green: framework 1924 tests, `CodeCoverage` 314, `ng-spark` 402, `ng-spark-auth` 98.
 

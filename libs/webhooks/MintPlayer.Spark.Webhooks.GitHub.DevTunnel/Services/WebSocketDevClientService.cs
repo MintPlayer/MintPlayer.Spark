@@ -37,6 +37,36 @@ internal partial class WebSocketDevClientService : BackgroundService
         }
     }
 
+    /// <summary>
+    /// R2-L7: refuse to send a GitHub PAT over plain <c>ws://</c> to a non-loopback host.
+    /// <para>
+    /// The handshake's first frame carries the token, so an operator who points
+    /// <c>ProductionWebSocketUrl</c> at a misconfigured <c>ws://example.test</c> leaks a live
+    /// credential in cleartext to whatever is on the wire — and gets no error, because the tunnel
+    /// would otherwise connect perfectly happily.
+    /// </para>
+    /// <para>
+    /// Extracted from <see cref="ConnectAndReceive"/> so that it can be tested. It was previously
+    /// inline in a <see cref="BackgroundService"/> loop that swallows exceptions and retries every
+    /// five seconds, which means the guard could have been deleted or inverted and the only
+    /// symptom would have been a log line nobody reads.
+    /// </para>
+    /// </summary>
+    /// <remarks>
+    /// Loopback over plain ws is deliberately allowed: that is the normal local development case,
+    /// the traffic never leaves the machine, and requiring a certificate for localhost would push
+    /// people towards disabling the check altogether.
+    /// </remarks>
+    internal static void EnsureTokenWillNotTravelInCleartext(Uri baseUri)
+    {
+        if (string.Equals(baseUri.Scheme, "ws", StringComparison.OrdinalIgnoreCase) && !baseUri.IsLoopback)
+        {
+            throw new InvalidOperationException(
+                $"DevTunnel ProductionWebSocketUrl '{baseUri}' uses plain ws:// to a non-loopback host. " +
+                "The handshake carries the GitHub PAT — refuse to send it in cleartext. Use wss:// or ws://localhost.");
+        }
+    }
+
     private async Task ConnectAndReceive(CancellationToken stoppingToken)
     {
         var ws = new ClientWebSocket();
@@ -46,17 +76,7 @@ internal partial class WebSocketDevClientService : BackgroundService
 
         var baseUri = new Uri(_options.Value.ProductionWebSocketUrl);
 
-        // R2-L7: refuse to send a GitHub PAT over plain ws:// to a non-loopback
-        // host. Operators who set ProductionWebSocketUrl to a misconfigured
-        // ws://example.test would otherwise leak the token in cleartext on the
-        // first frame.
-        if (string.Equals(baseUri.Scheme, "ws", StringComparison.OrdinalIgnoreCase)
-            && !baseUri.IsLoopback)
-        {
-            throw new InvalidOperationException(
-                $"DevTunnel ProductionWebSocketUrl '{baseUri}' uses plain ws:// to a non-loopback host. " +
-                "The handshake carries the GitHub PAT — refuse to send it in cleartext. Use wss:// or ws://localhost.");
-        }
+        EnsureTokenWillNotTravelInCleartext(baseUri);
 
         _logger.LogInformation("Connecting to production WebSocket: {Url}", baseUri);
 

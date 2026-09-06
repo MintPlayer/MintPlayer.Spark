@@ -19,9 +19,15 @@ channel had three dead branches that no test exercised in any app.
 Aim 1 is **implemented** on `fix/coverage-queue-licence-cap` and awaiting deploy: defects 1, 2, 3
 and 3b are fixed; defect 4 (busy state) is open.
 
-Aim 2's instrumentation is **done** and the number is re-baselined at **81.51%**
-(22,276/27,328 lines). Raising it has started: the app can now be booted in-process, and the
-first `[SparkAuthorize]` tests this application has ever had are green. The per-milestone status
+Aim 2's instrumentation is **done**, the number was re-baselined at **81.51%**, and raising it is
+under way — **83.23%** (22,859/27,465 lines) as of the credential-surface work. The app can be
+booted in-process, and the first `[SparkAuthorize]` tests this application has ever had are green.
+
+Closed since the re-baseline, all previously at **0%**: `ApiTokenAuthenticationHandler` (the sole
+authentication path for every CI upload), `TokensController` (issues and revokes those
+credentials), `RepoSettingsController`, every exit path of `DeleteDataAction`, and the dev
+tunnel's cleartext guard. `Program.cs` — the single largest uncovered file at 291 lines — has
+dropped off the list entirely, covered by booting it rather than by being excluded. The per-milestone status
 table is in the [plan](actions_and_coverage_plan.md).
 
 **Scope, decided by the owner 2026-09-06:** the four demo apps are not tested and are therefore
