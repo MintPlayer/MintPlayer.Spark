@@ -6,6 +6,27 @@ Ordering principle: **spikes first** (they can invalidate milestones), then the 
 (small, user-visible, and they unblock the owner today), then instrumentation, then a
 re-baseline, then coverage work, then the gate.
 
+## Status — 2026-09-06
+
+On branch `fix/coverage-queue-licence-cap`.
+
+| | Milestone | State |
+| --- | --- | --- |
+| S1 | Which `DeleteData` guard fires | **Resolved** — none does; it was the subscription cap |
+| M0 | Queue consolidation + fold the two #366 queues | **Done** |
+| M1 | `DeleteDataAction` reports every outcome | **Done** |
+| M2 | `refreshAttribute` handler — **and `navigate`** | **Done** |
+| M3 | Non-stale read after the resync write | **Done** |
+| M4 | Busy state on custom actions | Not started |
+| M5 | Latent defects on the same path | **Partly** — see below |
+| M6 | Tests for the delete path | **Partly** — see below |
+| S2–S6, M7–M22 | Coverage work | Not started |
+
+Verified green at that point: framework 1924 tests, `CodeCoverage` 314, `ng-spark` 402.
+
+Everything above still belongs to **one pull request**; the table records progress within it,
+not a split.
+
 ---
 
 ## Spikes
@@ -202,25 +223,50 @@ signal and `[disabled]` on the button, so a multi-second GitHub round trip is le
 
 ### M5 — The latent defects on the same path
 
-- `Program.cs`: call `spark.AddCustomActions()` next to `spark.AddRecipients()`.
+**Done:**
+
+- ✅ `ResyncAction`: `SaveChangesAsync` moved inside the error boundary.
+- ✅ `DeleteRepositoryDataRecipient`: deletes in bounded chunks and re-queues a continuation.
+  This supersedes the original "flush in batches (~512)" item — batching alone bounds the
+  transaction but does nothing about head-of-line blocking on the now-shared queue. It does both:
+  `BatchSize` per transaction, `MaxDeletesPerMessage` per message.
+
+**Still open:**
+
+- `Program.cs`: call `spark.AddCustomActions()` next to `spark.AddRecipients()`. It survives today
+  only because `CustomActionResolver` falls back to `ActivatorUtilities.CreateInstance`.
 - `CustomActionResolver.Resolve`: stop converting a DI failure into a 404. Let the exception
   surface, or return a distinguishable result.
 - `EntityMapper` / virtual PO load: stamp `obj.Id ??= id` so `args.Parent` is non-null for
   every virtual PO action. **Check the blast radius** on `spark-query-card [parentId]` —
   Home passes `null` today and would begin passing `"main"`.
-- `ResyncAction`: move `SaveChangesAsync` inside the per-account error boundary.
-- `DeleteRepositoryDataRecipient`: flush in batches (~512 deletes) so a large repository cannot
-  blow the transaction and a partial failure is resumable.
+  ⚠️ Lower priority than it first appeared: production evidence shows `args.Parent` is **not**
+  null on Home (Resync emitted both `refreshAttribute` operations, which only happen inside that
+  `if`). This is a latent inconsistency, not a live bug.
 
 ### M6 — Tests for the delete path
 
-There are currently **none**. Add:
+Correction to the original claim that there were none: #366 shipped
+`DeleteRepositoryDataRecipientTests` (186 lines), covering the happy path, the neighbouring
+repository, the reconnect refusal and the already-gone case. What was missing is the action and
+the wiring.
+
+**Done:**
+
+- ✅ A repository that fits in one message is **not** re-queued — the infinite-loop guard on the
+  new continuation. A continuation queued after everything is deleted would find the repository
+  gone, re-queue, and spin forever on the publishing queue.
+- ✅ `provide.spec.ts` asserts the exact registered set of client operations, which is what makes
+  M2 permanent and would have caught all three dead operations.
+- ✅ `CoverageQueuesTests` covers the two folded queues automatically (it reflects over every
+  message type).
+
+**Still open:**
 
 - an integration test that executes `POST /spark/actions/repository/DeleteData` against a
   disconnected repository and asserts a `SparkMessages` document lands on
-  `coverage-delete-repository-data`;
-- a test that runs the recipient directly and asserts the repository plus its
-  `Commits/{id}/…` descendants are gone;
+  **`CoverageQueues.Publishing`** (not `coverage-delete-repository-data` — that queue no longer
+  exists after M0);
 - a regression test pinning the legacy-document case: a `Repository` JSON with **no**
   `Connection` property must be refused *with a notification*, and deletable once marked;
 - a test asserting each refusal path emits a notify operation — this is what makes M1

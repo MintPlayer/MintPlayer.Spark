@@ -11,8 +11,20 @@ Two aims in one unit of work:
    fixes must land before any target is set.
 
 They ship together because aim 1 is a large part of what aim 2 would have caught: the
-`apps/CodeCoverage` custom actions have no tests at all, and the framework's client-operation
-channel has a dead branch that no test exercises in any app.
+`apps/CodeCoverage` custom actions had no tests at all, and the framework's client-operation
+channel had three dead branches that no test exercised in any app.
+
+## Status — 2026-09-06
+
+Aim 1 is **implemented** on `fix/coverage-queue-licence-cap` and awaiting deploy: defects 1, 2, 3
+and 3b are fixed; defect 4 (busy state) is open. Aim 2 is **not started** — its milestones and
+spikes are in the [plan](actions_and_coverage_plan.md), which carries the per-milestone status
+table.
+
+The investigation narrative below is kept as written rather than rewritten in hindsight, because
+the sequence is the useful part: two hypotheses were confirmed against production and one — the
+`CanManageOwnerAsync` degradation, which survived a full local reproduction — was **wrong**. Only
+production could distinguish them, because the local RavenDB is not subscription-capped.
 
 ---
 
@@ -35,7 +47,7 @@ local run of `apps/CodeCoverage` on commit `bf6b39c7`.
 | **The whole delete path works locally** | local run, signed in as the owner, against a repository patched to `Connection = 1`: log `Queued deletion of MintPlayer/CodeCoverage`, message `Status: Completed`, `Commits` 27→19, `Repositories` 160→159, repository document gone |
 | **The same click on production deletes nothing** | re-checked 15 minutes after the click: repository, commits and page all still present |
 
-### Defect 1 — `refreshAttribute` is a client operation with no client handler
+### Defect 1 — `refreshAttribute` is a client operation with no client handler *(fixed)*
 
 **Confirmed, not inferred.** `refreshAttribute` is declared as a wire type at
 `libs/node_packages/ng-spark/client-operations/src/operations.ts:30` and has **zero handlers
@@ -53,7 +65,17 @@ This also **refutes** the competing theory that `args.Parent` is null on the vir
 object: the two `refreshAttribute` operations are emitted only from inside
 `if (args.Parent is { } home)`, and they were emitted.
 
-### Defect 2 — the post-write read races a stale index
+**And it was worse than one operation.** Registering the handler revealed that **`navigate` was
+dead in exactly the same way** — a declared wire type with no handler anywhere, so every
+`IClientAccessor.Navigate` call in every Spark application was computed, serialised, sent and
+discarded. That makes **three** operations lost to one gap; `refreshQuery` was the first.
+
+The pattern is the defect, not any one operation: *a wire type in `operations.ts` is not a
+feature*. Both are now registered, and `provide.spec.ts` asserts the registered **set** exactly,
+so the next omission is a failing test rather than a production mystery. `disableAction` remains
+deliberately unimplemented, registered only to warn.
+
+### Defect 2 — the post-write read races a stale index *(fixed)*
 
 `ResyncAction` saves, then immediately re-queries through `MyAccountsService`, which hits
 `Indexes.Repositories_Overview` / `Accounts_Overview` with **no `WaitForNonStaleResults`**.
@@ -62,7 +84,7 @@ indexes are eventually consistent, so on precisely the click that changes someth
 reads return pre-reconcile data. The change shows up on a later reload — i.e. "the button did
 nothing".
 
-### Defect 3 — `DeleteDataAction` has five silent `return` paths
+### Defect 3 — `DeleteDataAction` has five silent `return` paths *(fixed)*
 
 `apps/CodeCoverage/CodeCoverage/CustomActions/DeleteDataAction.cs` returns without emitting
 anything at lines 38, 42, 46, 52 and 58: no parent, no id, repository not found, caller does
@@ -78,7 +100,7 @@ is the actual cause. What Defect 3 costs is *diagnosis*: because success and eve
 identical from the client, a dead message lane was indistinguishable from a permission refusal
 for as long as the button has existed.
 
-### Defect 3b — production RavenDB is over its subscription cap, so the lane is dead *(the actual cause)*
+### Defect 3b — production RavenDB is over its subscription cap, so the lane is dead *(the actual cause — fixed, awaiting deploy)*
 
 Confirmed by grepping the production container log and querying the licence:
 
@@ -111,22 +133,32 @@ possible cause was "already exists", logged a benign *"will try to use existing"
 started a worker against a subscription that does not exist. The app stays up and reports
 healthy with silently dead queues.
 
-**This is already being fixed** on `fix/coverage-queue-licence-cap`, which consolidates to two
-queue constants and makes a `LicenseLimitException` on create fatal with an actionable message.
-That branch reached the same diagnosis independently.
+**Fixed** on `fix/coverage-queue-licence-cap`, which consolidates to two queue constants and makes
+a `LicenseLimitException` on create fatal with an actionable message. That branch reached the same
+diagnosis independently, before this investigation.
 
-**But it is not sufficient against current master.** It consolidates to `Ingestion`
-(`coverage-parse-session`) + `Publishing` (`coverage-publish-feedback`) + `spark-github-all` =
-exactly 3, at the cap — and it predates #366, which added `coverage-delete-repository-data` and
-`coverage-reconcile-account`. Rebasing it unchanged gives **five** subscriptions and leaves the
-delete lane a candidate to stay dead. Both new queues must be folded onto `Publishing` as part
-of the rebase.
+**It was not sufficient against current master, and that gap is now closed.** The branch predates
+#366: it consolidated the five queues that existed then, and #366 added
+`coverage-delete-repository-data` and `coverage-reconcile-account`. Rebasing it unchanged would
+have declared **five** subscriptions against the cap of three and left the delete lane a candidate
+to stay dead — the exact bug it was written to fix, surviving its own fix. Both are now folded onto
+`Publishing`: `ReconcileAccountMessage` because it calls GitHub, `DeleteRepositoryDataMessage`
+because it is retention, alongside `DeletePullRequestBuildsMessage`.
 
-The cost of that consolidation is head-of-line blocking, and it is now materially worse: an
-unbounded repository sweep would share a queue with PR comments. Defect 3's batching fix and the
-`Publishing` mapping therefore have to land together.
+Verified against production: every subscription in the database is a `SparkMessaging-*` one, and
+the three that exist are exactly `coverage-parse-session`, `coverage-publish-feedback` and
+`spark-github-all`. Nothing else competes for the budget, and reusing those two names costs **no
+new subscription**. `CoverageQueuesTests` pins the count and the names at build time.
 
-### Defect 4 — no busy state on a multi-second action
+The cost of consolidation is head-of-line blocking, and it is materially worse now that an
+unbounded repository sweep shares a queue with PR comments. `DeleteRepositoryDataRecipient`
+therefore deletes in bounded chunks and re-queues a continuation, so blocking is one batch rather
+than one repository.
+
+⚠️ **`coverage-delete-pr-builds` has never run in production.** Merged-PR build retention has been
+unenforced since it was added, so expect a backlog on the first successful run after deploy.
+
+### Defect 4 — no busy state on a multi-second action *(open)*
 
 `spark-po-detail`'s `onCustomAction` sets no pending state and does not disable the button,
 while *Resync* now performs N paged GitHub App round trips inside the request. The user gets
@@ -144,11 +176,11 @@ several seconds of a live-looking button followed by an identical grid.
   `apps/CodeCoverage/Program.cs`. It survives only because the resolver falls back to
   `ActivatorUtilities.CreateInstance`. This is the recorded "generated `AddX()` nobody wires"
   trap, one dependency away from biting.
-- `DeleteRepositoryDataRecipient` accumulates every deferred delete into a **single**
+- ✅ *(fixed)* `DeleteRepositoryDataRecipient` accumulated every deferred delete into a **single**
   `SaveChangesAsync`. For a long-lived repository that is tens of thousands of commands in one
   transaction; if it throws, the message retries and eventually dead-letters invisibly.
-- `ResyncAction`'s `SaveChangesAsync` sits **outside** the per-account try/catch, so one
-  account's write conflict discards the reconcile of all the others and 500s the button — the
+- ✅ *(fixed)* `ResyncAction`'s `SaveChangesAsync` sat **outside** the per-account try/catch, so one
+  account's write conflict discarded the reconcile of all the others and 500'd the button — the
   opposite of the stated "a GitHub hiccup must not turn this into an error page" intent.
 
 ### Goals
@@ -157,7 +189,7 @@ several seconds of a live-looking button followed by an identical grid.
 - `refreshAttribute` either works or does not exist.
 - A refusal states *which* condition failed, in the user's language.
 - Asynchronous actions say that they are asynchronous.
-- The delete path has tests; today it has none.
+- The delete path has tests for the action and its wiring, not only the recipient.
 
 ### Non-goals
 
