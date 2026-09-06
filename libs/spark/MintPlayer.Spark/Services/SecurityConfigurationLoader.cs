@@ -73,11 +73,11 @@ internal partial class SecurityConfigurationLoader : ISecurityConfigurationLoade
         if (!File.Exists(filePath))
         {
             throw new SparkSecurityConfigurationException(
-                $"Spark requires a security configuration file and none exists at '{filePath}'.\n"
-                + "Authorization is not optional: without this file Spark cannot tell who may reach "
-                + "what, and starting anyway would mean either denying everything or granting "
-                + "everything, both silently.\n"
-                + "Generate a starting point with:  dotnet run -- --spark-init-security");
+                $"""
+                Spark requires a security configuration file and none exists at '{filePath}'.
+                Authorization is not optional: without this file Spark cannot tell who may reach what, and starting anyway would mean either denying everything or granting everything, both silently.
+                Generate a starting point with:  dotnet run -- --spark-init-security
+                """);
         }
 
         SecurityConfiguration loaded;
