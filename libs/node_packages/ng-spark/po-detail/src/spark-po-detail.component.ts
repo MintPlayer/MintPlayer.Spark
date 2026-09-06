@@ -313,11 +313,28 @@ export class SparkPoDetailComponent {
     }
   }
 
+  /**
+   * The action currently running, or null. Drives the disabled state on every custom-action
+   * button.
+   *
+   * A custom action is not necessarily quick: Coverage's Resync makes paged GitHub App calls for
+   * every account the caller manages, inside the request. Without this the button stayed live and
+   * looked inert for several seconds, and a second click queued a second full run -- which is how
+   * a slow action and a broken one became indistinguishable.
+   */
+  runningAction = signal<string | null>(null);
+
   async onCustomAction(action: CustomActionDefinition): Promise<void> {
+    // Guard re-entry as well as disabling the button: the template is not the only caller, and a
+    // host component driving this method directly would otherwise bypass the check.
+    if (this.runningAction()) return;
+
     if (action.confirmationMessageKey) {
       const message = this.lang.t(action.confirmationMessageKey) || 'Are you sure?';
       if (!confirm(message)) return;
     }
+
+    this.runningAction.set(action.name);
     try {
       await this.sparkService.executeCustomAction(this.type, action.name, this.item() || undefined);
       this.customActionExecuted.emit({ action, item: this.item()! });
@@ -335,6 +352,10 @@ export class SparkPoDetailComponent {
     } catch (e) {
       const err = e as HttpErrorResponse;
       this.errorMessage.set(err.error?.error || err.message || 'Action failed');
+    } finally {
+      // finally, not after the try: an action that fails must not leave every button on the page
+      // permanently disabled.
+      this.runningAction.set(null);
     }
   }
 

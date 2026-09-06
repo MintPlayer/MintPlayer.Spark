@@ -88,14 +88,32 @@ public class CustomActionResolverTests
         first.Should().NotBeSameAs(second);
     }
 
+    /// <summary>
+    /// Construction failure THROWS; it does not return null.
+    /// <para>
+    /// This test previously pinned the opposite, and the opposite was a trap. Null means "no such
+    /// action" to the only caller that constructs one (<c>ExecuteCustomAction</c>), so a dependency
+    /// the container could not satisfy was reported to the client as a 404 saying the action does
+    /// not exist. That sends whoever is debugging to the action name and to customActions.json,
+    /// neither of which is wrong, while the actual cause -- a missing registration -- was written
+    /// only to the log, which nobody reading a 404 has any reason to open.
+    /// </para>
+    /// <para>
+    /// Throwing is safe here precisely because construction has exactly one caller. The listing
+    /// endpoint uses <see cref="ICustomActionResolver.GetRegisteredActionNames"/> and never
+    /// constructs anything, so one unconstructable action cannot take the whole action bar down
+    /// with it -- only the single request that was already going to fail.
+    /// </para>
+    /// </summary>
     [Fact]
-    public void Resolve_returns_null_and_logs_when_construction_throws()
+    public void Resolve_throws_with_an_actionable_message_when_construction_throws()
     {
         var resolver = CreateResolver(EmptyProvider());
 
-        var resolved = resolver.Resolve("CustomActionResolverFixtureBoom");
+        var act = () => resolver.Resolve("CustomActionResolverFixtureBoom");
 
-        resolved.Should().BeNull();
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*could not be constructed*");
     }
 
     [Fact]

@@ -286,6 +286,34 @@ describe('SparkPoDetailComponent', () => {
     expect(service.executeCustomAction).not.toHaveBeenCalled();
   });
 
+  it('onCustomAction disables the buttons while it runs and re-enables them on failure', async () => {
+    // A custom action is not necessarily quick -- Coverage's Resync makes paged GitHub calls
+    // inside the request. Without a busy state the button stays live and looks inert, and a
+    // second click queues a second full run. The reset-in-finally matters as much as the guard:
+    // an action that throws must not leave every button on the page permanently dead.
+    const { harness, service } = await setup();
+    const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.fixture.whenStable();
+
+    expect(c.runningAction()).toBeNull();
+
+    let release: (() => void) | undefined;
+    (service.executeCustomAction as any).mockImplementationOnce(
+      () => new Promise<void>((_, reject) => { release = () => reject(new Error('boom')); }));
+
+    const running = c.onCustomAction(customAction);
+    expect(c.runningAction()).toBe(customAction.name);
+
+    // A second click while the first is in flight must not start another run.
+    await c.onCustomAction(customAction);
+    expect(service.executeCustomAction).toHaveBeenCalledTimes(1);
+
+    release!();
+    await running;
+
+    expect(c.runningAction()).toBeNull();
+  });
+
   it('onCustomAction with refreshOnCompleted re-fetches the item', async () => {
     const { harness, service } = await setup();
     const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);

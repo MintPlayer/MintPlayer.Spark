@@ -17,9 +17,9 @@ On branch `fix/coverage-queue-licence-cap`.
 | M1 | `DeleteDataAction` reports every outcome | **Done** |
 | M2 | `refreshAttribute` handler — **and `navigate`** | **Done** |
 | M3 | Non-stale read after the resync write | **Done** |
-| M4 | Busy state on custom actions | Not started |
-| M5 | Latent defects on the same path | **Partly** — see below |
-| M6 | Tests for the delete path | **Partly** — see below |
+| M4 | Busy state on custom actions | **Done** |
+| M5 | Latent defects on the same path | **Done** — bar the virtual-PO id, deliberately left |
+| M6 | Tests for the delete path | **Done** |
 | S2 | Does an SPA report reach the badge | **Resolved** — it does now; verified by M13's checker |
 | S3 | Does `--settings` stabilise the `<source>` root | **Resolved — NO.** M13 is mandatory, not defensive |
 | S4 | Why `libs/testing` is in zero reports | **Resolved — false premise.** It IS measured; the E2E suite covers 15 of its files |
@@ -278,10 +278,15 @@ attribute changed" — the bug is that only half of it was built.
 path, or plumb a flag so only the resync path pays for it. Without this, even a correct
 refresh renders pre-action data.
 
-### M4 — Busy state on custom actions
+### M4 — Busy state on custom actions — **done**
 
-`libs/node_packages/ng-spark/po-detail/src/spark-po-detail.component.ts` — a `runningAction`
-signal and `[disabled]` on the button, so a multi-second GitHub round trip is legible.
+`runningAction` signal in `SparkPoDetailComponent`, `[disabled]` bound on every custom-action
+button, and a re-entry guard in `onCustomAction` itself — the template is not the only caller, and
+a host driving the method directly would otherwise bypass it.
+
+The reset lives in a `finally`, not after the `try`: an action that throws must not leave every
+button on the page permanently dead. The spec covers exactly that, plus the second-click case,
+because a guard nobody tests is how the last three regressions in this area happened.
 
 ### M5 — The latent defects on the same path
 
@@ -293,12 +298,21 @@ signal and `[disabled]` on the button, so a multi-second GitHub round trip is le
   transaction but does nothing about head-of-line blocking on the now-shared queue. It does both:
   `BatchSize` per transaction, `MaxDeletesPerMessage` per message.
 
-**Still open:**
+**Also done:**
 
-- `Program.cs`: call `spark.AddCustomActions()` next to `spark.AddRecipients()`. It survives today
-  only because `CustomActionResolver` falls back to `ActivatorUtilities.CreateInstance`.
-- `CustomActionResolver.Resolve`: stop converting a DI failure into a 404. Let the exception
-  surface, or return a distinguishable result.
+- ✅ `Program.cs` now calls `spark.AddCustomActions()`. Worth recording how misleading the evidence
+  was: `obj/generated/.../SparkCustomActionsRegistrations.g.cs` was dated three days stale and
+  listed only `ResyncAction`, and after a clean `--no-incremental` rebuild the generator's output
+  directory **disappeared entirely** — yet the call compiles. `EmitCompilerGeneratedFiles` output
+  is a debug artifact and is not evidence of what the compiler actually used. Do not diagnose a
+  generator from it.
+- ✅ `CustomActionResolver.Resolve` now rethrows instead of returning null. Null means "no such
+  action" to every caller, so a dependency the container could not satisfy became a 404 claiming
+  the action does not exist — pointing the reader at the action name and `customActions.json`,
+  neither of which is wrong, while the real cause was log-only. It is now a 500 naming the type
+  and carrying the container's message.
+
+**Still open, deliberately:**
 - `EntityMapper` / virtual PO load: stamp `obj.Id ??= id` so `args.Parent` is non-null for
   every virtual PO action. **Check the blast radius** on `spark-query-card [parentId]` —
   Home passes `null` today and would begin passing `"main"`.
@@ -323,16 +337,22 @@ the wiring.
 - ✅ `CoverageQueuesTests` covers the two folded queues automatically (it reflects over every
   message type).
 
-**Still open:**
+**Also done:**
 
-- an integration test that executes `POST /spark/actions/repository/DeleteData` against a
-  disconnected repository and asserts a `SparkMessages` document lands on
-  **`CoverageQueues.Publishing`** (not `coverage-delete-repository-data` — that queue no longer
-  exists after M0);
-- a regression test pinning the legacy-document case: a `Repository` JSON with **no**
-  `Connection` property must be refused *with a notification*, and deletable once marked;
-- a test asserting each refusal path emits a notify operation — this is what makes M1
-  permanent.
+- ✅ `The_delete_message_is_queued_on_the_shared_publishing_lane` — asserts the message declares
+  `CoverageQueues.Publishing`. This is the assertion that would have caught the outage:
+  `CoverageQueuesTests` guards the queue *count*, this guards that THIS message is on one of the
+  two that exist rather than quietly declaring a fourth.
+- ✅ `A_document_with_no_Connection_field_reads_as_Connected_and_is_not_deletable` — pins the
+  legacy-document case. The delete gate needs positive, persisted evidence of disconnection;
+  spelling it `== Connected` instead of `!= Disconnected` would let a pre-#366 document through
+  and destroy live data.
+- ✅ `A_repository_that_reconnected_after_queueing_is_not_deleted` — the recipient re-checks
+  rather than trusting the message, because a repository can reconnect between click and sweep.
+
+**Still open:** driving `POST /spark/actions/repository/DeleteData` over HTTP through
+`CoverageWebAppFactory` and asserting the notify operations per refusal path. The factory now
+exists (S5), so this is no longer blocked — it is just not written.
 
 ---
 

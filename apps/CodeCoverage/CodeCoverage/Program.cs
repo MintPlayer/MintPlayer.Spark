@@ -150,6 +150,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
         rateLimiter.PathPrefixes = ["/spark", "/connect", "/api/browse"]);
 
     spark.AddMessaging();
+    spark.AddCustomActions();
     spark.AddRecipients();
     spark.AddCronJobs();
     // Pending ISparkMigration classes run inside UseSpark(), after indexes are
