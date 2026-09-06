@@ -1,7 +1,9 @@
 # PRD — One read pipeline: queries, items, sub-queries and row security
 
 **Status:** design agreed, not implemented. Written 2026-09-06.
-**Lands in:** the same pull request as [`actions_and_coverage_PRD.md`](actions_and_coverage_PRD.md) (PR #367). One PR, per repository policy.
+**Lands in:** its own pull request, *after* PR #367 merges and deploys. The one-PR rule is held
+for related fixes; an outage fix already awaiting deploy is not held behind a framework redesign.
+Owner decision, 2026-09-06.
 **Backward compatibility:** explicitly waived by the owner. Breaking changes to the actions surface are in scope.
 
 ---
@@ -123,30 +125,81 @@ Things to avoid, each of which Spark is currently at risk of: a row filter whose
 
 ---
 
+## Decisions
+
+Nine questions were put to the owner before any implementation. The answers below are settled; they
+are recorded here so the plan does not re-litigate them.
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Does this land in PR #367? | **No.** #367 ships and deploys on its own — it carries the dead-queue fix. This gets its own PR. |
+| 2 | Row security for entity-less types? | **The actions class is trusted, and the framework says so.** Every PersistentObject can have an actions class, entity-backed or not; that class is the universal seam. |
+| 3 | How does a sub-query get parent-scoped? | **Pass the parent to the `Database.*` branch and require an actions method.** No relation language in the model. |
+| 4 | Should `DisableActions` become a real gate? | **Where it is cheap.** Enforced on execute where the disabled set is re-derivable without a reload; cosmetic where it needs the object. |
+| 5 | How does the query hook signal intent? | **No reason enum.** `OnQueryAsync` receives the query and a `PersistentObject? parent`; `parent != null` means a detail tab, `null` means a query page. |
+| 6 | What happens to `GET /spark/po/{type}`? | **Deleted**, and its one caller (WebhooksDemo) moves to `/execute`. |
+| 7 | How strict are the new startup refusals? | **Refuse both, loud and early** — an un-parent-scopable sub-query and an undeclared row policy on a well-known-group type. |
+| 8 | How far does "no backward compatibility" go? | **Reshape the actions surface properly.** It is the universal seam per decision 2, so the member list should look like it. |
+| 9 | How is F1 (the count leak) fixed? | **Make the count honest** — count after filtering rather than trusting the author's total. |
+
+Two consequences worth stating up front, because they are the ones that will bite:
+
+- **Decision 4 buys a non-uniform guarantee.** An author calling `DisableActions` gets enforcement on
+  one surface and an affordance on another. The API must make which one visible at the call site;
+  a uniform-looking call with a surface-dependent guarantee is worse than either tier alone.
+- **Decision 5 cannot distinguish a standalone query page from a custom-action selection re-run** —
+  both arrive with `parent == null`. That is fine for withholding actions, which is what the hook is
+  for, but it means the hook can never be the place where export-versus-list behaviour is decided.
+
+---
+
 ## Goals
 
-1. **One read pipeline.** Every path that returns rows — list, sub-query, detail, streaming, custom-action selection, `GET /spark/po/{type}` — passes through one sealed enforcement stage. Enforcement must not be a virtual method a caller can forget.
-2. **Parent scoping is declared, not hand-written.** A sub-query is *parent-relation ∧ child row filter*, composed by the framework. No author writes the null-parent guard, because a missing parent means no relation means no rows.
-3. **A sub-query that cannot be parent-scoped is refused at startup**, not silently widened to the whole collection.
-4. **"No policy" is distinguishable from "allow all"** wherever the type-level grant does not itself constrain the caller.
-5. **Entity-less types get a row-security story** that is explicit at the type, rather than a silent bypass.
-6. **Intent is visible to the hook.** One `OnQueryAsync` serving list, detail-tab, count, export and selection carries a reason.
-7. **One `DisableActions` mechanism**, unmistakably named as an affordance, reaching every path including detail.
-8. **F1–F3 closed, with tests**, and `PermissiveRowSecurity` removed from the two suites that hide them.
+1. **One read pipeline.** Every path that returns rows — list, sub-query, detail, streaming,
+   custom-action selection — passes through one sealed enforcement stage. Enforcement must not be a
+   virtual method a caller can forget. `GET /spark/po/{type}` is deleted rather than folded in.
+2. **The parent reaches every branch.** `ExecuteDatabaseQueryAsync` receives the parent it is
+   already handed, and a query used as a sub-query routes through the actions class so the author
+   scopes it. No relation language.
+3. **A sub-query that cannot be parent-scoped is refused** — by an analyzer at build time, and by
+   startup validation as the backstop.
+4. **The actions class is the universal seam.** Every PersistentObject can have one, entity-backed
+   or not, and for an entity-less type it owns row security outright — recorded at startup, not
+   silently assumed.
+5. **A type granted to a well-known group must declare a row policy**, even if that declaration is
+   allow-all. Refused otherwise.
+6. **The hook knows where it is.** `OnQueryAsync` receives the query and a nullable parent; that is
+   the whole intent signal.
+7. **One `DisableActions` mechanism**, reaching every path including detail, with its two
+   enforcement tiers visible at the call site.
+8. **Misconfiguration is a build error, not a runtime surprise.** An analyzer over the model and
+   `security.json` catches what today loads cleanly and does nothing.
+9. **F1–F3 closed, with tests**, and `PermissiveRowSecurity` removed from the two suites that hide them.
 
 ## Non-goals
 
 - **Splitting the row filter per shape.** The prior art proves where that ends. One declared predicate, composed by the framework.
 - **A projection/aggregate type split.** Not being introduced. If it ever is, the binding must be declared and total, and an untranslatable filter must deny.
-- **Removing the documented F4 fail-open wholesale.** "No rule ⇒ unrestricted" stays for types whose type-level grant is a real constraint; it is tightened only where the grant is a well-known group (see plan M4).
-- **Making `DisableActions` an authorization boundary.** It stays cosmetic. The action's own gate is the boundary, and it already re-checks on execute.
+- **Removing the F4 fail-open wholesale.** "No rule ⇒ unrestricted" stays for types whose type-level
+  grant is itself a real constraint. It is tightened only where the grant is a well-known group.
+- **Making `DisableActions` an authorization boundary everywhere.** It becomes one only where the
+  decision is re-derivable cheaply; elsewhere it stays an affordance and the action's own gate is
+  the boundary.
+- **A relation language in the model.** Considered and rejected — the existing `args.Parent!.Id`
+  idiom already works, and inventing model vocabulary to avoid one `.Where` is a poor trade.
 - Facets, distinct values and search suggestions — they do not exist yet. When added they inherit the pipeline by construction, which is the point of goal 1.
 
 ## Risks
 
 - **The sealed pipeline stage is a large refactor** touching four call paths, one of which (streaming) has no row-security tests at all. The tests come first — see plan M0.
 - **Startup refusal for un-parent-scopable sub-queries is a breaking change** for any app with such a configuration. Nothing in this repository has one, but a downstream consumer might; the failure is loud and the message names the fix.
-- **Requiring an explicit row policy on well-known-group types** will fail production apps at startup until they declare one. Deliberate — that is the population where a forgotten filter is a public disclosure. `apps/CodeCoverage` will need a declaration.
+- **Requiring an explicit row policy on well-known-group types** will fail production apps at
+  startup until they declare one. Deliberate — that is the population where a forgotten filter is a
+  public disclosure. `apps/CodeCoverage` will need a declaration, and confirming the declaration it
+  needs is the one it actually wants is work, not a rubber stamp.
+- **Reshaping the actions surface (decision 8) touches every consuming actions class** in the
+  repository and every downstream one. Preview is when that is cheapest, but it is the largest
+  single source of diff in this plan.
 - **F5 cannot be resolved without measurement.** Whether Raven-only LINQ is evaluable in memory needs a spike, not a decision.
 
 ## Out of scope
