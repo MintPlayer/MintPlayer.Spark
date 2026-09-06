@@ -18,11 +18,15 @@
       "nl": "Gegevens verwijderen"
     },
     "icon": "Trash",
-    "description": "Erases a disconnected repository and every commit, build and coverage document under it. Offered on Repository only, because DeleteData/Repository is the sole grant. The right is granted to every signed-in user because rights here are group-level and there is no group per GitHub owner -- so the right decides who is OFFERED this, and DeleteDataAction decides who may run it: the caller must manage the owner AND the repository must be disconnected. confirmation because it is irreversible. selectionRule '=0' because it acts on the repository whose page it is on, through args.Parent, not on selected rows. refreshOnCompleted is false because the deletion is asynchronous and runs in chunks: a refresh re-fetches an object that is still there and looks exactly like the action having done nothing, which is precisely how this button read while its queue was dead. DeleteDataAction instead notifies and navigates to the owner's page.",
+    "description": "Erases a disconnected repository and every commit, build and coverage document under it. Offered on Repository only, because DeleteData/Repository is the sole grant. The right is granted to every signed-in user because rights here are group-level and there is no group per GitHub owner -- so the right decides who is OFFERED this, and DeleteDataAction decides who may run it: the caller must manage the owner AND the repository must be disconnected. confirmation because it is irreversible. selectionRule '=0' because it acts on the repository whose page it is on, through args.Parent, not on selected rows. refreshOnCompleted is false because the deletion is asynchronous and runs in chunks: a refresh re-fetches an object that is still there and looks exactly like the action having done nothing, which is precisely how this button read while its queue was dead. DeleteDataAction instead notifies and navigates to the owner's page. visibleWhen hides it on a connected repository: the handler already refuses one, but an irreversible red button on every healthy repository page that only admits it will refuse AFTER the confirmation prompt is its own bug. Presentation only -- the handler is still the gate.",
     "showedOn": "detail",
     "selectionRule": "=0",
     "confirmationMessageKey": "repository.deleteDataConfirmation",
     "variant": "danger",
-    "refreshOnCompleted": false
+    "refreshOnCompleted": false,
+    "visibleWhen": {
+      "attribute": "Connection",
+      "equals": "Disconnected"
+    }
   }
 }

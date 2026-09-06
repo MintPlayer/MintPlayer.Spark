@@ -286,6 +286,57 @@ describe('SparkPoDetailComponent', () => {
     expect(service.executeCustomAction).not.toHaveBeenCalled();
   });
 
+  describe('visibleCustomActions', () => {
+    // The action catalogue is fetched per TYPE, so a per-row condition can only be applied on the
+    // client. Coverage shipped an irreversible red "Delete data" button on every repository page,
+    // healthy ones included, that only admitted it would refuse AFTER the confirmation prompt.
+    function actionWith(visibleWhen: unknown) {
+      return { ...customAction, name: 'Conditional', visibleWhen } as any;
+    }
+
+    async function withAttribute(name: string, value: unknown, visibleWhen: unknown) {
+      const { harness } = await setup();
+      const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      await harness.fixture.whenStable();
+
+      c.item.set({ ...c.item()!, attributes: [{ name, value } as any] } as any);
+      c.customActions.set([actionWith(visibleWhen)]);
+      return c;
+    }
+
+    it('offers the action when the attribute matches', async () => {
+      const c = await withAttribute('Connection', 'Disconnected', { attribute: 'Connection', equals: 'Disconnected' });
+      expect(c.visibleCustomActions()).toHaveLength(1);
+    });
+
+    it('hides the action when the attribute does not match', async () => {
+      const c = await withAttribute('Connection', 'Connected', { attribute: 'Connection', equals: 'Disconnected' });
+      expect(c.visibleCustomActions()).toHaveLength(0);
+    });
+
+    it('compares case-insensitively, so an enum name still matches', async () => {
+      const c = await withAttribute('Connection', 'DISCONNECTED', { attribute: 'Connection', equals: 'disconnected' });
+      expect(c.visibleCustomActions()).toHaveLength(1);
+    });
+
+    it('supports notEquals', async () => {
+      const c = await withAttribute('Connection', 'Connected', { attribute: 'Connection', notEquals: 'Connected' });
+      expect(c.visibleCustomActions()).toHaveLength(0);
+    });
+
+    // A rule naming an attribute that does not exist is a configuration mistake. Hiding the action
+    // would make that mistake invisible; showing it is safe because the handler still refuses.
+    it('offers the action when the named attribute is absent', async () => {
+      const c = await withAttribute('Something', 'else', { attribute: 'Connection', equals: 'Disconnected' });
+      expect(c.visibleCustomActions()).toHaveLength(1);
+    });
+
+    it('offers actions with no rule at all', async () => {
+      const c = await withAttribute('Connection', 'Connected', undefined);
+      expect(c.visibleCustomActions()).toHaveLength(1);
+    });
+  });
+
   it('onCustomAction disables the buttons while it runs and re-enables them on failure', async () => {
     // A custom action is not necessarily quick -- Coverage's Resync makes paged GitHub calls
     // inside the request. Without a busy state the button stays live and looks inert, and a

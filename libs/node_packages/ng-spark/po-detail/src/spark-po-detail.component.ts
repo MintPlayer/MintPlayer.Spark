@@ -96,6 +96,38 @@ export class SparkPoDetailComponent {
   canDelete = signal(false);
   customActions = signal<CustomActionDefinition[]>([]);
 
+  /**
+   * The actions actually offered for the object on screen.
+   *
+   * The catalogue at `/spark/actions/{objectTypeId}` is per TYPE -- the server is never told which
+   * row is open -- so a per-row condition can only be applied here. It is presentation: the action
+   * handler still refuses on its own terms, and a client that ignored this would gain nothing.
+   *
+   * What it buys is that a destructive action stops being offered where it cannot possibly apply.
+   * Coverage shipped an irreversible red "Delete data" button on every repository page, healthy
+   * ones included, which only admitted it would refuse after the confirmation prompt.
+   */
+  visibleCustomActions = computed(() => {
+    const item = this.item();
+    return this.customActions().filter(action => this.isActionVisibleFor(action, item));
+  });
+
+  private isActionVisibleFor(action: CustomActionDefinition, item: PersistentObject | null): boolean {
+    const rule = action.visibleWhen;
+    if (!rule) return true;
+
+    // No object yet, or no such attribute: offer it rather than hide it. A rule naming an
+    // attribute that does not exist is a mistake in configuration, and silently hiding the action
+    // would make that mistake invisible -- the handler still refuses, so showing it is safe.
+    const attribute = item?.attributes?.find(a => a.name === rule.attribute);
+    if (!attribute) return true;
+
+    const actual = attribute.value == null ? '' : String(attribute.value);
+    if (rule.equals != null && actual.toLowerCase() !== rule.equals.toLowerCase()) return false;
+    if (rule.notEquals != null && actual.toLowerCase() === rule.notEquals.toLowerCase()) return false;
+    return true;
+  }
+
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
 

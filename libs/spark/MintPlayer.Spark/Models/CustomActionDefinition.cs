@@ -32,6 +32,13 @@ public class CustomActionDefinition
     public string? ConfirmationMessageKey { get; set; }
 
     /// <summary>
+    /// Optional condition deciding whether the action is OFFERED on a given object. Null means
+    /// always offered. See <see cref="CustomActionVisibility"/> — it is presentation, and the
+    /// action handler must still refuse.
+    /// </summary>
+    public CustomActionVisibility? VisibleWhen { get; set; }
+
+    /// <summary>
     /// How prominently, and how warily, to present the action: <c>"primary"</c>, <c>"secondary"</c>,
     /// <c>"danger"</c>, <c>"warning"</c>. Null renders the neutral default.
     /// <para>
