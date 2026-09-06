@@ -149,4 +149,34 @@ public interface IPersistentObjectActions<T> where T : class
     /// </para>
     /// </summary>
     Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(string action, T entity);
+
+    /// <summary>
+    /// Called when a query of this type is about to run, before its source is built and before any
+    /// row exists. Use it to withhold custom actions from the result's action bar —
+    /// <see cref="Queries.SparkQueryContext.DisableActions(string[])"/>.
+    /// <para>
+    /// <b>Do not filter rows here.</b> There is nothing in scope to filter: the hook runs before the
+    /// queryable is built, deliberately, so that "scope the rows here" cannot be expressed at all.
+    /// Row scoping belongs in <see cref="GetRowFilterAsync"/>, which the framework applies to the
+    /// list, the detail page, edit, delete and streaming from one declaration — a filter written
+    /// here would guard the list only, and every other path would silently open.
+    /// </para>
+    /// <para>
+    /// <see cref="Queries.SparkQueryContext.Parent"/> is non-<see langword="null"/> when the query is
+    /// running as a sub-query on a parent's detail page, and <see langword="null"/> when it is a
+    /// query page. That is the whole intent signal; a standalone page and a custom-action selection
+    /// re-run are deliberately indistinguishable here.
+    /// </para>
+    /// <para>
+    /// Not called for streaming queries: they never enter the paged executor, and a streamed batch
+    /// has no field to carry the answer.
+    /// </para>
+    /// </summary>
+    /// <remarks>
+    /// A default implementation, so the member can be on the interface without breaking every
+    /// hand-written implementer — most types never withhold an action, and the framework invokes
+    /// this reflectively on the concrete type, so a class that does not declare it is simply never
+    /// called rather than dispatching here.
+    /// </remarks>
+    Task OnQueryAsync(Queries.SparkQueryContext context) => Task.CompletedTask;
 }

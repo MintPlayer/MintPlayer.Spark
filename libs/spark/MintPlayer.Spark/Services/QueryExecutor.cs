@@ -211,7 +211,7 @@ internal partial class QueryExecutor : IQueryExecutor
         try
         {
             var definition = string.IsNullOrEmpty(query.EntityType)
-                ? null
+                ? ResolveDefinitionFromContextProperty(query)
                 : modelLoader.GetEntityTypeByName(query.EntityType);
 
             var clrType = string.IsNullOrEmpty(definition?.ClrType)
@@ -236,6 +236,37 @@ internal partial class QueryExecutor : IQueryExecutor
             await task;
 
         return context;
+    }
+
+    /// <summary>
+    /// The entity type of a <c>Database.*</c> query that declares no <c>entityType</c>, read from the
+    /// context property's declared type.
+    /// </summary>
+    /// <remarks>
+    /// Such queries are supported — <see cref="ExecuteDatabaseQueryAsync"/> derives the definition
+    /// from the property's element type — but the hook runs before that resolution, so it used to see
+    /// no definition, find no actions class, and never fire. Silent hook omission is precisely the
+    /// failure its own documentation warns about, and the type is knowable here.
+    /// <para>
+    /// Reads the property's <b>declared</b> type rather than invoking its getter: this runs before
+    /// authorization, and a getter can execute application code.
+    /// </para>
+    /// </remarks>
+    private EntityTypeDefinition? ResolveDefinitionFromContextProperty(SparkQuery query)
+    {
+        if (!query.Source.StartsWith("Database.", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var sparkContext = sparkContextResolver.ResolveContext(session);
+        if (sparkContext is null)
+            return null;
+
+        var property = sparkContext.GetType().GetCachedProperty(query.Source[9..]);
+        if (property is null || !property.CanRead)
+            return null;
+
+        var elementType = property.PropertyType.GetGenericArguments().FirstOrDefault();
+        return elementType is null ? null : modelLoader.GetEntityTypeByClrType(elementType.FullName!);
     }
 
     /// <summary>Union of two withheld-action lists, case-insensitive, order-preserving.</summary>
@@ -748,6 +779,32 @@ internal partial class QueryExecutor : IQueryExecutor
                     $"clrType, but no '{entityTypeDefinition.Name}Actions' class exists to serve it. A composed " +
                     $"type has no document behind it, so its actions class is the only thing that can produce " +
                     $"rows; without one the query has no source at all.");
+
+        // M4. A composed type gets no row filtering and no redaction — see the block above
+        // FilterAsync for why that is correct rather than an omission. What was NOT correct is that
+        // skipping deliberately and forgetting entirely produced identical silence: both were
+        // "entityType is null, so no enforcement", and nothing could tell them apart.
+        //
+        // So the type must say so. This is a declaration, not a mechanism — implementing it enforces
+        // nothing — but it makes the author's intent reviewable, and the required rationale makes it
+        // a sentence someone had to write rather than an interface anyone can paste on. The bar is
+        // deliberately "name where the scoping lives": in practice it is often two layers below the
+        // actions class, in a service that starts from the caller's own identity, and that service is
+        // then the single line of defence with no framework backstop behind it.
+        if (entityType is null)
+        {
+            if (actionsInstance is not ISparkOwnsRowSecurity { RowSecurityRationale.Length: > 0 })
+            {
+                throw new InvalidOperationException(
+                    $"'{entityTypeDefinition.Name}' declares no clrType, so its rows are computed rather than " +
+                    $"stored and the framework cannot filter or redact them — only the type-level Query right " +
+                    $"applies. That is allowed, but it must be stated: make " +
+                    $"'{entityTypeDefinition.Name}Actions' implement ISparkOwnsRowSecurity and use " +
+                    $"RowSecurityRationale to say how it returns only rows this caller may see, naming the " +
+                    $"file or service that does the scoping. Without the declaration, a type that forgot to " +
+                    $"scope its rows is indistinguishable from one that deliberately owns the job.");
+            }
+        }
 
         // Find the custom query method
         var methodInfo = ResolveCustomQueryMethod(actionsInstance.GetType(), methodName);

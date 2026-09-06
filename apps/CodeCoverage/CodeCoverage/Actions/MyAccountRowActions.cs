@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Authorization;
 using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Queries;
@@ -20,8 +21,20 @@ namespace CodeCoverage.Actions;
 /// <c>security.json</c> grants <c>Query/MyAccountRow</c> to the authenticated role only.
 /// </para>
 /// </summary>
-public partial class MyAccountRowActions
+public partial class MyAccountRowActions : ISparkOwnsRowSecurity
 {
+    /// <inheritdoc />
+    public string RowSecurityRationale =>
+        "Rows are GENERATED from the caller's own visibility rather than filtered afterwards: " +
+        "IMyAccountsService.GetAsync (Services/MyAccountsService.cs) starts from the owner list " +
+        "returned by GitHubAccessService.GetVisibilityAsync (Services/GitHubAccessService.cs), which " +
+        "is derived from that user's own GitHub OAuth token, cached per user id, and narrowed to the " +
+        "caller's own login or to nothing on every failure path. Nothing outside that list can appear " +
+        "in the result, so there is no post-filter to apply. An anonymous caller yields an empty set, " +
+        "which is also why security.json grants Query/MyAccountRow to the authenticated role only. " +
+        "MyAccountsService is therefore the single line of defence for this type — the framework has " +
+        "no backstop behind it, because these rows are not documents.";
+
     [Inject] private readonly IMyAccountsService myAccounts;
 
     /// <summary>

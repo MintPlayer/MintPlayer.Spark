@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Authorization;
 using DemoApp.Library.Entities;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
@@ -16,8 +17,16 @@ namespace DemoApp.Actions;
 /// read-only under the type-level <c>Read/StartPage</c> right (see security.json). The requested
 /// id is deliberately ignored: whatever the menu declared, the caller gets today's numbers.
 /// </summary>
-public partial class StartPageActions
+public partial class StartPageActions : ISparkOwnsRowSecurity
 {
+    /// <inheritdoc />
+    public string RowSecurityRationale =>
+        "Trivially safe rather than scoped: GetCollections below returns three rows, each a live " +
+        "count of a whole collection, with no per-caller data in them at all. There is nothing to " +
+        "narrow, so no scoping code exists anywhere — which is itself the thing worth stating. If a " +
+        "row here ever carried owner-specific data, the filtering would have to be written inside " +
+        "GetCollections itself, because a computed row has no document for the framework to judge.";
+
     [Inject] private readonly IManager manager;
     [Inject] private readonly IAsyncDocumentSession session;
 

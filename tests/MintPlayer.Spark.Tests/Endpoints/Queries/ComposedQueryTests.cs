@@ -299,8 +299,14 @@ public class ComposedQueryTests : SparkTestDriver
 /// Found by NAME — no base class, no CLR entity, nothing registered. The composed-query path
 /// resolves <c>{TypeName}Actions</c> exactly as the virtual-type page path does.
 /// </summary>
-public sealed class DashboardActions
+public sealed class DashboardActions : ISparkOwnsRowSecurity
 {
+    /// <inheritdoc />
+    public string RowSecurityRationale =>
+        "Test fixture: the rows are literals with no per-caller data, so there is nothing to scope. " +
+        "Declared explicitly because the framework can no longer tell a composed type that owns its " +
+        "scoping from one that forgot.";
+
     public IEnumerable<DashboardRow> GetRows() =>
     [
         new DashboardRow("row/1", "Revenue", 10),
