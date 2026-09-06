@@ -148,60 +148,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
         return resolved;
     }
 
-    public async Task<IEnumerable<PersistentObject>> GetPersistentObjectsAsync(Guid objectTypeId)
-    {
-        var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
-        if (entityTypeDefinition == null) return [];
-
-        await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
-
-        var clrType = entityTypeDefinition.ClrType;
-        var entityType = typeResolver.Resolve(clrType);
-        if (entityType == null) return [];
-
-        // Declared binding (issue #279): the entity file's queryType/indexName — written by the
-        // synchronizer and hash-covered — replaces the ambient registry lookup. An empty binding
-        // queries the raw collection; a binding whose projection type no longer resolves is a loud
-        // error, because the silent alternative is a grid of null computed fields.
-        Type queryType = entityType;
-        string? indexName = null;
-
-        if (!string.IsNullOrEmpty(entityTypeDefinition.IndexName) && !string.IsNullOrEmpty(entityTypeDefinition.QueryType))
-        {
-            queryType = typeResolver.Resolve(entityTypeDefinition.QueryType)
-                ?? throw new InvalidOperationException(
-                    $"Entity '{entityTypeDefinition.Name}' declares projection '{entityTypeDefinition.QueryType}' " +
-                    $"(index '{entityTypeDefinition.IndexName}'), but the type does not resolve. Re-run " +
-                    $"--spark-synchronize-model, or register the assembly declaring it via AddIndexesFrom(...).");
-            indexName = entityTypeDefinition.IndexName;
-        }
-
-        // Include paths — [Reference] property names + GetDefaultIncludes() (#239), deduped.
-        var includePaths = referenceResolver.ResolveIncludePaths(queryType, entityType);
-
-        // Query entities - use index if projection is registered, otherwise query collection
-        var entities = (await QueryEntitiesWithIncludesAsync(session, entityType, queryType, indexName, includePaths)).ToList();
-
-        // Row-level "Query" gate (H-2): after entity-type authz passed, filter the list down
-        // to rows the Actions class says the caller may see. For projection queries, the row
-        // filter takes the base entity (CarActions typed on Car, not VCar) so we load the
-        // matching base docs through the session cache. This filters after materialization, so a
-        // row-scoped type reads its whole collection per query; pushing the predicate into RavenDB
-        // is a known follow-up.
-        entities = (await rowSecurity.FilterAsync(session, entities, entityType, queryType, "Query")).ToList();
-
-        // Resolve breadcrumbs for the page. The .Include() from QueryEntitiesWithIncludesAsync
-        // primed level-1 references into the session cache, so the resolver's first batched
-        // load is a cache hit; deeper levels cost one batched request each.
-        var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entities, entityTypeDefinition);
-
-        var mapped = entities
-            .Select(e => (Po: entityMapper.ToPersistentObject(e, objectTypeId, breadcrumbs), Row: e))
-            .ToList();
-        await rowSecurity.RedactAsync(session, mapped, entityType, queryType, "Query");
-        return mapped.Select(m => m.Po);
-    }
-
     /// <summary>
     /// Applies the Actions class's row-level read gate to a materialized list. When the
     /// query ran against a projection type, we load the corresponding base entities from

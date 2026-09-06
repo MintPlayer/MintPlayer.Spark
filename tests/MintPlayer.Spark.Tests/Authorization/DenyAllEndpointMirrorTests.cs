@@ -96,7 +96,9 @@ public class DenyAllEndpointMirrorTests(DenyAllHost host)
 
     public static TheoryData<string, string> AccessEndpoints => new()
     {
-        { "GET", $"/spark/po/{DocTypeId}" },
+        // No "GET /spark/po/{type}" row: that endpoint is gone. It was a second list pipeline with
+        // no paging, no search, no sort and no take cap, next to a /execute that clamps take for
+        // exactly that reason — and it had one caller in the whole workspace.
         { "GET", $"/spark/po/{DocTypeId}/docs%2F1" },
         { "POST", $"/spark/po/{DocTypeId}" },
         { "PUT", $"/spark/po/{DocTypeId}/docs%2F1" },

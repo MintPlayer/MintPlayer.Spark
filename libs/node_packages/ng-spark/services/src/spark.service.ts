@@ -87,10 +87,6 @@ export class SparkService {
   }
 
   // Persistent Objects
-  async list(type: string): Promise<PersistentObject[]> {
-    return firstValueFrom(this.http.get<PersistentObject[]>(`${this.baseUrl}/po/${encodeURIComponent(type)}`));
-  }
-
   async get(type: string, id: string): Promise<PersistentObject> {
     return firstValueFrom(this.http.get<PersistentObject>(`${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`));
   }

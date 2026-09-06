@@ -16,7 +16,19 @@ internal sealed partial class GetPersistentObject : IGetEndpoint, IMemberOf<Pers
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
         var objectTypeId = httpContext.Request.RouteValues["objectTypeId"]!.ToString()!;
-        var id = httpContext.Request.RouteValues["id"]!.ToString()!;
+
+        // The id is a catch-all segment, so it also matches the bare "/{objectTypeId}" path — with
+        // nothing in it. That used to be someone else's route: a list endpoint sat on the bare path
+        // and won the match. It was deleted (a second, uncapped list pipeline), and this route
+        // inherited the shape, where the ! on a null RouteValue was a NullReferenceException and a
+        // 500 rather than a refusal.
+        //
+        // Answer exactly as for an id that names nothing, which is what an empty id is.
+        var id = httpContext.Request.RouteValues["id"]?.ToString();
+        if (string.IsNullOrEmpty(id))
+        {
+            return SparkDenial.RefuseJson(httpContext);
+        }
 
         var entityType = modelLoader.ResolveEntityType(objectTypeId);
         if (entityType is null)

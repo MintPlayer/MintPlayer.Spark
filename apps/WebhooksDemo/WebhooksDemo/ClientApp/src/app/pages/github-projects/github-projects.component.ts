@@ -58,28 +58,38 @@ export default class GitHubProjectsComponent implements OnInit {
     this.error.set(null);
 
     try {
-      const [ghProjects, sparkEntities, entityType] = await Promise.all([
+      // Reads the declared query rather than the old "list every row of this type" endpoint, which
+      // has been removed: it was a second list pipeline with no paging, no search, no sort and — the
+      // reason it is gone — no cap at all, while /execute clamps take for exactly that reason.
+      const projectsQuery = await this.sparkService.getQueryByName('GetGitHubProjects');
+      const [ghProjects, sparkRows, entityType] = await Promise.all([
         this.ghService.listProjects(),
-        this.sparkService.list('GitHubProject'),
+        projectsQuery
+          // Explicit take: the server default is 50, and this list is matched against every GitHub
+          // project, so a silent truncation would render enabled projects as disabled.
+          ? this.sparkService.executeQuery(projectsQuery.id, { take: 500 })
+          : Promise.resolve({ items: [] as QueryResultItem[] }),
         this.sparkService.getEntityTypeByClrType('WebhooksDemo.Entities.GitHubProject'),
       ]);
       this.entityType = entityType;
       this.entityTypeId = entityType?.id ?? 'GitHubProject';
 
-      const enabledMap = new Map<string, PersistentObject>();
-      for (const entity of sparkEntities) {
-        const nodeIdAttr = entity.attributes.find(a => a.name === 'NodeId');
-        if (nodeIdAttr?.value) {
-          enabledMap.set(nodeIdAttr.value, entity);
+      // Rows carry their values as a keyed list rather than as attributes, and the row id IS the
+      // document id — which is all this page needed from the entity it used to load.
+      const enabledMap = new Map<string, string>();
+      for (const row of sparkRows.items) {
+        const nodeId = row.values.find(v => v.key === 'NodeId')?.value;
+        if (nodeId) {
+          enabledMap.set(String(nodeId), row.id);
         }
       }
 
       this.projects.set(ghProjects.map(p => {
-        const sparkEntity = enabledMap.get(p.id);
+        const sparkDocumentId = enabledMap.get(p.id);
         return {
           ...p,
-          enabled: !!sparkEntity,
-          sparkDocumentId: sparkEntity?.id,
+          enabled: !!sparkDocumentId,
+          sparkDocumentId,
           loading: false,
         };
       }));
