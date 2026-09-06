@@ -8,6 +8,7 @@ using Octokit;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 using Xunit;
+using Account = CodeCoverage.Entities.Account;
 using Repository = CodeCoverage.Entities.Repository;
 
 namespace CodeCoverage.Tests.Services;
@@ -155,5 +156,59 @@ public class RepositoryResolverTests : CoverageRavenTest
 
         Assert.Null(resolution.Repository);
         Assert.False(resolution.Redirect);
+    }
+
+    /// <summary>
+    /// An owner we have never heard of must not reach GitHub at all.
+    /// <para>
+    /// The badge endpoint is <c>[AllowAnonymous]</c> and resolves through here, so an unguarded
+    /// step three would hand an anonymous caller two things: the App's GitHub rate limit, burnable
+    /// by probing distinct names until the reconciler and the PR bot start failing; and an
+    /// existence oracle by response time, since a name we know answers from RavenDB while one we do
+    /// not costs a network round-trip. For a private repository "we know it" means it exists and
+    /// the App is installed on it — exactly what the never-404 rule refuses to disclose.
+    /// </para>
+    /// <para>
+    /// The stand-in installation service throws if it is touched, so reaching GitHub fails the test
+    /// rather than merely being slow.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task An_unheard_of_owner_never_reaches_GitHub()
+    {
+        using var store = await SeedAsync(Repo(1, "acme/widgets"));
+        using var session = store.OpenAsyncSession();
+
+        var (resolver, github) = CreateResolver(session);
+        var resolution = await resolver.ResolveAsync("some-stranger", "anything");
+
+        Assert.Null(resolution.Repository);
+        Assert.False(github.WasCalled);
+    }
+
+    /// <summary>
+    /// The case the gate must not break: the owner is known and only the repository name is stale,
+    /// which is what a transfer or a rename leaves behind in a published badge URL. Here GitHub is
+    /// unavailable, so the assertion is that the attempt is made at all.
+    /// </summary>
+    [Fact]
+    public async Task A_known_owner_with_an_unknown_repository_name_does_reach_GitHub()
+    {
+        var store = GetDocumentStore();
+        using (var seed = store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new Account { GitHubId = 5, Login = "acme" }, Account.DocumentId(5));
+            await seed.StoreAsync(Repo(1, "acme/widgets"), Repository.DocumentId(1));
+            await seed.SaveChangesAsync();
+        }
+        WaitForIndexing(store);
+        using var _ = store;
+        using var session = store.OpenAsyncSession();
+
+        var (resolver, github) = CreateResolver(session);
+        var resolution = await resolver.ResolveAsync("acme", "some-old-name");
+
+        Assert.Null(resolution.Repository);
+        Assert.True(github.WasCalled, "a stale name under a known owner is exactly what step three is for");
     }
 }

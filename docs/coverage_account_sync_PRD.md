@@ -452,6 +452,34 @@ A "selected" installation that loses its **last** repository is deleted outright
 `installation.deleted`, not `installation_repositories.removed` — which D4's uninstall branch
 already handles.
 
+### D14 — Resolution must not become an existence oracle
+
+The badge endpoint is `[AllowAnonymous]` and deliberately **never 404s**: an unknown repository and a
+private one the caller may not see both render an "unknown" badge, and the cache header is derived
+from the request rather than from the repository, so nothing about the response distinguishes them.
+D6 routes that endpoint through `IRepositoryResolver`, which put two new holes in that guarantee.
+
+**Rate-limit amplification.** Step 3 calls GitHub for any name steps 1 and 2 miss. An anonymous
+caller probing distinct names turns each miss into an App API call, and exhausting that quota
+degrades the reconciler, the PR bot and the diff service. Negative caching bounds repeats, not
+distinct names.
+
+**A timing oracle.** A name we hold answers from RavenDB in milliseconds; one we do not costs a
+network round-trip. For a private repository, "we hold it" means it exists *and* the App is
+installed on it — the exact fact the never-404 rule refuses to disclose.
+
+Step 3 is therefore gated on the **owner already being an account we know**. That keeps the case it
+exists for — the owner is known and only the repository name is stale, which is what a rename or a
+transfer leaves in a published badge URL — and costs an indexed lookup instead of a network call for
+everything else. The residual signal is whether an *account* is known, which is materially weaker:
+it is already public for any account with a public repository, and it says nothing about any
+particular repository.
+
+The rest of the surface was checked and needs no change: `BrowseController.GetRepo`,
+`RepoSettingsController` and `TokensController` all answer a uniform `NotFound` for "unknown" and
+"not allowed" alike, and the `/spark` grids and detail pages are filtered by
+`RepositoryVisibility`, which admits a private repository only to a viewer GitHub says may see it.
+
 ### D13 — The complete event matrix, and what is deliberately not covered
 
 Written out because "did we handle every case" is otherwise unanswerable, and because two gaps were

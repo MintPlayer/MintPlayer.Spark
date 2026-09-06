@@ -1,5 +1,6 @@
 using CodeCoverage.Entities;
 using Microsoft.Extensions.Caching.Memory;
+using Raven.Client.Documents.Session;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Webhooks.GitHub.Services;
@@ -56,8 +57,22 @@ public partial class RepositoryResolver : IRepositoryResolver
             logger.LogInformation("Ambiguous alias {FullName}: {Count} repositories claim it", fullName, aliased.Count);
         }
 
-        // 3. Ask GitHub, which follows its own rename and transfer redirects and answers with the
-        //    numeric id — the one thing about a repository that never changes.
+        // 3. Ask GitHub — but only for an owner we already know.
+        //
+        // This step exists to map a *stale name of a repository we know* onto its current id, and a
+        // stale name's owner is, by construction, an owner we knew. Calling GitHub for arbitrary
+        // input would be two gifts to an anonymous caller: the badge endpoint is [AllowAnonymous],
+        // so probing distinct names would burn the App's GitHub rate limit and degrade the
+        // reconciler and the PR bot; and it would turn response time into an existence oracle,
+        // because a name we know answers from RavenDB in milliseconds while one we do not costs a
+        // round-trip. For a private repository, "we know it" means it exists and the App is
+        // installed on it — precisely what the badge endpoint's never-404 rule refuses to reveal.
+        //
+        // Gating on the account keeps the useful case (the owner is known; only the repository name
+        // is stale) and costs an indexed lookup instead of a network call for everything else.
+        if (!await IsKnownAccountAsync(owner, cancellationToken))
+            return RepositoryResolution.None;
+
         var gitHubId = await LookupGitHubIdAsync(owner, name, cancellationToken);
         if (gitHubId is null)
             return RepositoryResolution.None;
@@ -66,6 +81,23 @@ public partial class RepositoryResolver : IRepositoryResolver
         return resolved is null
             ? RepositoryResolution.None
             : new RepositoryResolution(resolved, Redirect: true);
+    }
+
+    /// <summary>
+    /// Whether we already hold an account with this login. Cached alongside the name lookups,
+    /// because the miss path is the one a crawler exercises.
+    /// </summary>
+    private async Task<bool> IsKnownAccountAsync(string owner, CancellationToken cancellationToken)
+    {
+        var cacheKey = $"known-account/{owner}".ToLowerInvariant();
+        if (cache.TryGetValue<bool>(cacheKey, out var known))
+            return known;
+
+        known = await session.Query<Account, Indexes.Accounts_Overview>()
+            .AnyAsync(a => a.Login == owner, cancellationToken);
+
+        cache.Set(cacheKey, known, LookupCacheDuration);
+        return known;
     }
 
     /// <summary>
