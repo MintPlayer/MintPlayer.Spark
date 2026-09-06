@@ -34,6 +34,8 @@ public class BadgeControllerTests : CoverageRavenTest
         var services = new ServiceCollection();
         services.AddSingleton(session);
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
+        services.AddScoped<CodeCoverage.Services.IRepositoryResolver>(sp =>
+            new TestRepositoryResolver(sp.GetService<Raven.Client.Documents.Session.IAsyncDocumentSession>()));
         services.AddScoped<BadgeController>();
         var controller = services.BuildServiceProvider().GetRequiredService<BadgeController>();
         controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };

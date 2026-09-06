@@ -17,8 +17,20 @@ public class ApiToken
     /// <summary>"Account" (all repos of a user/org) or "Repository" (one repo).</summary>
     public string Scope { get; set; } = "Account";
 
-    /// <summary>Owner login this token uploads for, when Scope is "Account".</summary>
+    /// <summary>
+    /// Owner login this token uploads for, when Scope is "Account". Display only — a login is
+    /// renameable and a repository can be transferred out from under it, so authorizing on this
+    /// string means a token keeps working for an account that no longer owns the repository, and
+    /// stops working for the one that does. <see cref="AccountGitHubId"/> is the authorization key.
+    /// </summary>
     public string? AccountLogin { get; set; }
+
+    /// <summary>
+    /// GitHub's numeric id for the owner this token uploads for, when Scope is "Account". Null on
+    /// tokens issued before this field existed, which fall back to comparing
+    /// <see cref="AccountLogin"/> so that no working token is invalidated by a deploy.
+    /// </summary>
+    public long? AccountGitHubId { get; set; }
 
     /// <summary>GitHub repository id this token uploads for, when Scope is "Repository".</summary>
     public long? RepositoryGitHubId { get; set; }

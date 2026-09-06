@@ -35,6 +35,7 @@ namespace CodeCoverage.Controllers;
 public partial class UploadsController : ControllerBase
 {
     [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly IRepositoryResolver repositories;
     [Inject] private readonly IMessageBus messageBus;
     [Inject] private readonly IBaseResolver baseResolver;
     [Inject] private readonly ILogger<UploadsController> logger;
@@ -507,9 +508,13 @@ public partial class UploadsController : ControllerBase
             return await ResolveOidcRepository(provision, cancellationToken);
         }
 
-        var repository = await session.Query<Repository, Indexes.Repositories_Overview>()
-            .Where(r => r.FullName == fullName)
-            .FirstOrDefaultAsync(cancellationToken);
+        // Resolved, so a CI workflow whose repository was renamed keeps uploading against the name
+        // still written in its config. The scope check below is unaffected: it compares the
+        // token's claims against the resolved repository, not against the name that was asked for.
+        var nameParts = fullName.Split('/');
+        if (nameParts.Length != 2)
+            return null;
+        var repository = (await repositories.ResolveAsync(nameParts[0], nameParts[1], cancellationToken)).Repository;
         if (repository is null)
             return null;
 
@@ -517,8 +522,17 @@ public partial class UploadsController : ControllerBase
         var account = User.FindFirst(ApiTokenAuthenticationHandler.AccountClaim)?.Value;
         var repoId = User.FindFirst(ApiTokenAuthenticationHandler.RepositoryClaim)?.Value;
 
+        // Account scope compares numeric owner ids when the token carries one. A login comparison
+        // is wrong in both directions once a repository is transferred: the old owner's token keeps
+        // working for a repository they no longer own, and the new owner's does not work for one
+        // they do. Tokens issued before the id existed fall back to the login, so a deploy
+        // invalidates nothing.
+        var accountId = User.FindFirst(ApiTokenAuthenticationHandler.AccountIdClaim)?.Value;
         var authorized = scope switch
         {
+            "Account" when accountId is not null =>
+                long.TryParse(accountId, out var ownerId)
+                && repository.Account == Entities.Account.DocumentId(ownerId),
             "Account" => string.Equals(account, repository.OwnerLogin, StringComparison.OrdinalIgnoreCase),
             "Repository" => repoId == repository.GitHubId.ToString(),
             _ => false,
@@ -540,7 +554,41 @@ public partial class UploadsController : ControllerBase
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(gitHubRepoId), cancellationToken);
         if (repository is not null)
+        {
+            // Gated on `provision`, which is true only on the upload itself. The status endpoint is
+            // a GET and resolves through here too; reconnecting from a poll would make a read
+            // mutate, and worse, silently — a GET saves nothing, so the change would appear to
+            // work and then vanish. "An upload reconnects" means an upload.
+            if (!provision)
+                return repository;
+
+            // A workflow that still runs and still uploads is proof the repository is alive and
+            // ours, and it is the only such proof for one that moved to an owner where the App is
+            // not installed. So an upload reconnects, symmetrically with the reconciler's
+            // disconnect-on-absence. The OIDC claims are GitHub-signed and current, so they are
+            // also the freshest name we will get.
+            if (repository.Connection == RepositoryConnection.Disconnected)
+            {
+                logger.LogInformation("Reconnecting {FullName} on an OIDC upload (was {Reason})",
+                    repository.FullName, repository.DisconnectedReason);
+                repository.Connection = RepositoryConnection.Connected;
+                repository.DisconnectedReason = null;
+                repository.DisconnectedAtUtc = null;
+            }
+
+            var claimedFullName = User.FindFirst(GitHubOidc.RepositoryClaim)?.Value;
+            if (!string.IsNullOrEmpty(claimedFullName) && claimedFullName != repository.FullName)
+            {
+                if (!repository.PreviousFullNames.Contains(repository.FullName, StringComparer.OrdinalIgnoreCase))
+                    repository.PreviousFullNames.Add(repository.FullName);
+                repository.FullName = claimedFullName;
+                repository.Name = claimedFullName.Split('/')[1];
+                repository.OwnerLogin = User.FindFirst(GitHubOidc.RepositoryOwnerClaim)?.Value
+                    ?? claimedFullName.Split('/')[0];
+            }
+
             return repository;
+        }
 
         if (!provision)
             return null;

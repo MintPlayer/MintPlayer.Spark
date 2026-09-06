@@ -67,6 +67,24 @@
         "rules": []
       },
       {
+        "id": "02e8d12f-edc2-47e3-b018-1d551dd75e5e",
+        "name": "Connection",
+        "label": {
+          "en": "Connection"
+        },
+        "description": {
+          "en": "Whether the GitHub App can still see this repository. Disconnected repositories keep every document they have and keep answering on their badge and report URLs; they stop appearing in listings for anyone who does not manage the owner.\nDefaults to Connected, which is what every document written before this field existed deserializes to — so no migration is needed and the nightly reconciler is what corrects the ones that are actually gone."
+        },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "88534f91-2542-4520-8773-00390de2cf10",
         "name": "DefaultBranch",
         "label": {
@@ -80,6 +98,42 @@
         "isVisible": true,
         "isReadOnly": false,
         "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f478a083-eb0b-4468-af19-cddbdb07fcc1",
+        "name": "DisconnectedAtUtc",
+        "label": {
+          "en": "Disconnected At Utc"
+        },
+        "description": {
+          "en": "When the repository was last disconnected (UTC); null while connected."
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e2b5b521-5214-4ce0-8dcf-e5b5866d10ef",
+        "name": "DisconnectedReason",
+        "label": {
+          "en": "Disconnected Reason"
+        },
+        "description": {
+          "en": "Why the repository is disconnected, from DisconnectedReasons; null while connected."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 10,
         "isArray": false,
         "showedOn": "PersistentObject",
         "rules": []
@@ -250,6 +304,24 @@
         "isReadOnly": false,
         "order": 7,
         "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "bf435943-2cdf-42cd-954e-29c63fd2c583",
+        "name": "PreviousFullNames",
+        "label": {
+          "en": "Previous Full Names"
+        },
+        "description": {
+          "en": "Full names this repository has previously been known by, oldest first, appended on every rename and transfer. Badge URLs live in READMEs and report links live in PR comments that were posted years ago, so a rename must not break them — these are what a stale owner/name resolves through.\nA live FullName always wins over an alias, so a new repository taking over an old name shadows this list rather than colliding with it."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": false,
+        "isReadOnly": false,
+        "order": 12,
+        "isArray": true,
         "showedOn": "PersistentObject",
         "rules": []
       }

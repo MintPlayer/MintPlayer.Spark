@@ -28,6 +28,7 @@ namespace CodeCoverage.Controllers;
 public partial class TokensController : ControllerBase
 {
     [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly IRepositoryResolver repositories;
     [Inject] private readonly IGitHubAccessService gitHubAccess;
     [Inject] private readonly UserManager<SparkUser> userManager;
 
@@ -52,9 +53,10 @@ public partial class TokensController : ControllerBase
         {
             if (string.IsNullOrWhiteSpace(request.RepositoryFullName))
                 return BadRequest(new { error = "repositoryFullName is required for a repository-scoped token." });
-            repository = await session.Query<Repository, Indexes.Repositories_Overview>()
-                .Where(r => r.FullName == request.RepositoryFullName)
-                .FirstOrDefaultAsync(cancellationToken);
+            var parts = request.RepositoryFullName.Split('/');
+            if (parts.Length != 2)
+                return BadRequest(new { error = "repositoryFullName must be in owner/name form." });
+            repository = (await repositories.ResolveAsync(parts[0], parts[1], cancellationToken)).Repository;
             if (repository is null || !string.Equals(repository.OwnerLogin, request.AccountLogin, StringComparison.OrdinalIgnoreCase))
                 return NotFound(new { error = $"Repository '{request.RepositoryFullName}' is unknown here or not owned by {request.AccountLogin}." });
         }
@@ -63,11 +65,18 @@ public partial class TokensController : ControllerBase
             return BadRequest(new { error = "scope must be Account or Repository." });
         }
 
+        // The numeric owner id is what the upload path authorizes on, because the login it used to
+        // compare is renameable and a repository can be transferred out from under it.
+        var account = await session.Query<Account, Indexes.Accounts_Overview>()
+            .Where(a => a.Login == request.AccountLogin)
+            .FirstOrDefaultAsync(cancellationToken);
+
         var tokenValue = ApiTokenService.GenerateTokenValue();
         var token = new ApiToken
         {
             Scope = repository is null ? "Account" : "Repository",
             AccountLogin = request.AccountLogin,
+            AccountGitHubId = account?.GitHubId,
             RepositoryGitHubId = repository?.GitHubId,
             Description = request.Description,
             CreatedByUserId = user.Id!,

@@ -33,6 +33,7 @@ namespace CodeCoverage.Controllers;
 public partial class BrowseController : ControllerBase
 {
     [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly IRepositoryResolver repositories;
     [Inject] private readonly IGitHubAccessService gitHubAccess;
     [Inject] private readonly IGitHubContentService gitHubContent;
     [Inject] private readonly IConfiguration configuration;
@@ -57,7 +58,8 @@ public partial class BrowseController : ControllerBase
     [HttpGet("accounts/{login}/repos")]
     public async Task<ActionResult<IEnumerable<RepoInfo>>> GetAccountRepos(string login, CancellationToken cancellationToken)
     {
-        var includePrivate = await gitHubAccess.IsOwnerAllowedAsync(login, cancellationToken);
+        var owners = await gitHubAccess.GetAllowedOwnersAsync(cancellationToken);
+        var includePrivate = owners.Contains(login, StringComparer.OrdinalIgnoreCase);
 
         var repos = await session.Query<Repository, Indexes.Repositories_Overview>()
             .Where(r => r.OwnerLogin == login)
@@ -65,7 +67,7 @@ public partial class BrowseController : ControllerBase
             .ToListAsync(cancellationToken);
 
         return Ok(repos
-            .Where(r => includePrivate || !r.IsPrivate)
+            .Where(r => RepositoryVisibility.IsListed(r, owners))
             .OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)
             .Select(r => ToRepoInfo(r, includePrivate)));
     }
@@ -171,13 +173,13 @@ public partial class BrowseController : ControllerBase
     [HttpGet("accounts/{login}/sparklines")]
     public async Task<ActionResult<Dictionary<string, double[]>>> GetSparklines(string login, CancellationToken cancellationToken)
     {
-        var includePrivate = await gitHubAccess.IsOwnerAllowedAsync(login, cancellationToken);
+        var owners = await gitHubAccess.GetAllowedOwnersAsync(cancellationToken);
 
         var repos = await session.Query<Repository, Indexes.Repositories_Overview>()
             .Where(r => r.OwnerLogin == login)
             .Take(1024)
             .ToListAsync(cancellationToken);
-        var visible = repos.Where(r => includePrivate || !r.IsPrivate).ToDictionary(r => r.Id!, r => r);
+        var visible = repos.Where(r => RepositoryVisibility.IsListed(r, owners)).ToDictionary(r => r.Id!, r => r);
         if (visible.Count == 0) return Ok(new Dictionary<string, double[]>());
 
         var repoIds = visible.Keys.ToArray();
@@ -509,9 +511,7 @@ public partial class BrowseController : ControllerBase
 
     private async Task<Repository?> ResolveVisibleRepository(string owner, string name, CancellationToken cancellationToken)
     {
-        var repository = await session.Query<Repository, Indexes.Repositories_Overview>()
-            .Where(r => r.FullName == $"{owner}/{name}")
-            .FirstOrDefaultAsync(cancellationToken);
+        var repository = (await repositories.ResolveAsync(owner, name, cancellationToken)).Repository;
         if (repository is null) return null;
 
         // Same rule as the /spark surface, from the same place — the two must

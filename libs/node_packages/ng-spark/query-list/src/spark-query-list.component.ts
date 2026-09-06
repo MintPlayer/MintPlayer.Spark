@@ -96,6 +96,21 @@ export class SparkQueryListComponent {
   protected readonly gridError = computed(() => this.grid()?.errorMessage() ?? null);
 
   /** Whether an action's selection rule is satisfied. Delegated: the grid holds the selection. */
+  /** @see SparkPoDetailComponent.customActionClass — same allow-list, same default. */
+  protected customActionClass(action: CustomActionDefinition): string {
+    const variant = action.variant?.toLowerCase();
+    switch (variant) {
+      case 'danger':
+      case 'warning':
+      case 'primary':
+      case 'secondary':
+      case 'success':
+        return `btn btn-${variant}`;
+      default:
+        return 'btn btn-outline-primary';
+    }
+  }
+
   protected isActionEnabled(action: CustomActionDefinition): boolean {
     return this.grid()?.isActionEnabled(action) ?? false;
   }

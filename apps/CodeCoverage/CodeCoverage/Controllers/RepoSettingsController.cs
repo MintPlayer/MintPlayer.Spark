@@ -19,6 +19,7 @@ namespace CodeCoverage.Controllers;
 public partial class RepoSettingsController : ControllerBase
 {
     [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly IRepositoryResolver repositories;
     [Inject] private readonly IGitHubAccessService gitHubAccess;
 
     /// <summary>
@@ -71,9 +72,7 @@ public partial class RepoSettingsController : ControllerBase
 
     private async Task<Repository?> ResolveOwnedRepository(string owner, string name, CancellationToken cancellationToken)
     {
-        var repository = await session.Query<Repository, Indexes.Repositories_Overview>()
-            .Where(r => r.FullName == $"{owner}/{name}")
-            .FirstOrDefaultAsync(cancellationToken);
+        var repository = (await repositories.ResolveAsync(owner, name, cancellationToken)).Repository;
         if (repository is null) return null;
 
         // NotFound for the unauthorized too, upstream of this: an existence

@@ -57,6 +57,23 @@ A request with no valid credential gets `401`. A request whose credential does n
 repository gets **`404`, never `403`** — unknown and unauthorized are deliberately indistinguishable
 so the API never confirms that a private repository exists.
 
+**An account-scoped token follows the account, not its name.** It is bound to the owner's numeric
+GitHub id, so renaming the account does not break it — and, more to the point, transferring a
+repository *away* from that account revokes the token's access to it, rather than leaving the old
+owner's token working on someone else's repository. Tokens issued before this was introduced carry
+only the login and keep working on it, so nothing needed reissuing.
+
+**The repository name in your request may be out of date and still work.** A rename or a transfer is
+resolved to the repository's stable numeric id, so a workflow whose configuration still says the old
+`owner/name` keeps uploading. The server updates its own record from the OIDC claims while it is
+there.
+
+**A successful upload re-registers a repository the server had stopped tracking.** If the GitHub App
+is uninstalled, suspended, or loses access through a transfer, the repository stops being advertised
+— but its reports stay, its badge keeps serving, and the next upload brings it back. For a
+repository that moved to an organization where the App is not installed, uploading is the only thing
+that can.
+
 ---
 
 ## `POST /api/uploads`

@@ -53,6 +53,8 @@ public class UploadsControllerCapabilitiesTests
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
         services.AddSingleton<IGitHubDiffService>(new Services.ScriptedDiffService());
         services.AddScoped<IBaseResolver, BaseResolver>();
+        services.AddScoped<CodeCoverage.Services.IRepositoryResolver>(sp =>
+            new TestRepositoryResolver(sp.GetService<Raven.Client.Documents.Session.IAsyncDocumentSession>()));
         services.AddScoped<UploadsController>();
 
         var controller = services.BuildServiceProvider().GetRequiredService<UploadsController>();

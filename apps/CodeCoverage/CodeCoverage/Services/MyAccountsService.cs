@@ -40,8 +40,12 @@ public partial class MyAccountsService : IMyAccountsService
             .Where(a => a.Login.In(owners))
             .ToListAsync(cancellationToken);
 
+        // Every owner here is one the caller manages, so ListingFilter would admit all of them;
+        // the disconnected ones are excluded explicitly instead, because this drives the headline
+        // "Repos" and aggregate-coverage numbers, and counting repositories we can no longer reach
+        // makes those numbers quietly wrong.
         var repos = await session.Query<Repository, Indexes.Repositories_Overview>()
-            .Where(r => r.OwnerLogin.In(owners))
+            .Where(r => r.OwnerLogin.In(owners) && r.Connection != RepositoryConnection.Disconnected)
             .Take(MaxRepositories)
             .ToListAsync(cancellationToken);
         var reposByOwner = repos.ToLookup(r => r.OwnerLogin, StringComparer.OrdinalIgnoreCase);

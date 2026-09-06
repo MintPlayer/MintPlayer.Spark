@@ -32,6 +32,18 @@ public class CustomActionDefinition
     public string? ConfirmationMessageKey { get; set; }
 
     /// <summary>
+    /// How prominently, and how warily, to present the action: <c>"primary"</c>, <c>"secondary"</c>,
+    /// <c>"danger"</c>, <c>"warning"</c>. Null renders the neutral default.
+    /// <para>
+    /// This is presentation, never authorization. An action is offered because a right grants it and
+    /// permitted because its own code allows it; marking one <c>"danger"</c> only asks the client to
+    /// make it look like what it is. Pair it with <see cref="ConfirmationMessageKey"/> for anything
+    /// irreversible — the colour warns, the prompt is what actually prevents the accident.
+    /// </para>
+    /// </summary>
+    public string? Variant { get; set; }
+
+    /// <summary>
     /// Display order (lower = first).
     /// </summary>
     public int Offset { get; set; }

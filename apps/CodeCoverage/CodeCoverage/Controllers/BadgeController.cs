@@ -1,5 +1,6 @@
 using CodeCoverage.Badges;
 using CodeCoverage.Entities;
+using CodeCoverage.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -22,6 +23,7 @@ namespace CodeCoverage.Controllers;
 public partial class BadgeController : ControllerBase
 {
     [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly IRepositoryResolver repositories;
     [Inject] private readonly IConfiguration configuration;
 
     /// <summary>
@@ -41,9 +43,10 @@ public partial class BadgeController : ControllerBase
         [FromQuery] string? token, [FromQuery] string? branch, [FromQuery] int? pr, [FromQuery] string? sig,
         CancellationToken cancellationToken)
     {
-        var repository = await session.Query<Repository, Indexes.Repositories_Overview>()
-            .Where(r => r.FullName == $"{owner}/{name}")
-            .FirstOrDefaultAsync(cancellationToken);
+        // Resolved rather than queried, so a badge embedded in a README keeps rendering after the
+        // repository is renamed or transferred. No redirect is issued even when the name is a stale
+        // one: this response is an image, and a 301 through GitHub's camo proxy buys nothing.
+        var repository = (await repositories.ResolveAsync(owner, name, cancellationToken)).Repository;
 
         double? percent = null;
         var partial = false;

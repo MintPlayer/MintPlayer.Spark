@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Webhooks.GitHub.Configuration;
+using MintPlayer.Spark.Webhooks.GitHub.Messages;
 using MintPlayer.Spark.Webhooks.GitHub.Services;
 using NSubstitute;
 
@@ -41,19 +42,54 @@ public class SparkWebhookEventProcessorTests
         public Task NewSocketClient(SocketClient client) => Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Says which message types have a consumer. The processor asks before broadcasting, so a
+    /// registry that says "yes" reproduces the old unconditional behaviour and one that says "no"
+    /// exercises the suppression.
+    /// </summary>
+    private sealed class FakeRecipientRegistry(bool hasRecipient) : IMessageRecipientRegistry
+    {
+        public HashSet<Type> Consumed { get; } = [];
+        public bool HasRecipient(Type? messageType)
+        {
+            if (messageType is not null) Consumed.Add(messageType);
+            return hasRecipient;
+        }
+        public bool HasRecipient<TMessage>() => HasRecipient(typeof(TMessage));
+    }
+
     private SparkWebhookEventProcessor CreateProcessor(
         GitHubWebhooksOptions? options = null,
-        IServiceProvider? serviceProvider = null)
+        IServiceProvider? serviceProvider = null,
+        IMessageRecipientRegistry? recipients = null)
     {
         options ??= new GitHubWebhooksOptions();
         serviceProvider ??= new ServiceCollection().BuildServiceProvider();
         return new SparkWebhookEventProcessor(
             _messageBus,
+            recipients ?? new FakeRecipientRegistry(true),
             _signatureService,
             serviceProvider,
             _hostEnv,
             _logger,
             Options.Create(options));
+    }
+
+    /// <summary>
+    /// A processor whose signature check passes, for the tests that are about what happens
+    /// <em>after</em> the guard clauses. The substitute returns false by default, which is the right
+    /// default for the guard tests and would silently make every one of these vacuous.
+    /// </summary>
+    private SparkWebhookEventProcessor ProcessorWithValidSignature(
+        GitHubWebhooksOptions? options = null,
+        IServiceProvider? serviceProvider = null,
+        IMessageRecipientRegistry? recipients = null)
+    {
+        options ??= new GitHubWebhooksOptions { WebhookSecret = "secret" };
+        _signatureService
+            .VerifySignature(Arg.Any<string?>(), Arg.Any<string>(), Arg.Any<string>())
+            .Returns(true);
+        return CreateProcessor(options, serviceProvider, recipients);
     }
 
     private static Dictionary<string, StringValues> Headers(params (string Name, string Value)[] entries)
@@ -215,5 +251,99 @@ public class SparkWebhookEventProcessorTests
             "{}");
 
         devSocket.Sent.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// The regression this whole area needed and never had. Dispatch used to be one override per
+    /// event, over a base whose implementations are silent no-ops — so an event nobody had written
+    /// an override for was discarded with no log, no error and no test that would notice.
+    /// <c>installation_repositories</c> was one of them, for the entire life of the library, while
+    /// an app sat waiting for it.
+    /// </summary>
+    [Theory]
+    [InlineData("push")]
+    [InlineData("installation")]
+    [InlineData("installation_repositories")]
+    [InlineData("installation_target")]
+    [InlineData("organization")]
+    [InlineData("repository")]
+    [InlineData("member")]
+    [InlineData("github_app_authorization")]
+    [InlineData("an_event_that_does_not_exist_yet")]
+    public async Task Every_event_produces_exactly_one_catch_all_message(string eventType)
+    {
+        var processor = ProcessorWithValidSignature();
+
+        await processor.ProcessWebhookAsync(
+            Headers(("X-GitHub-Event", eventType)),
+            """{"action":"created"}""");
+
+        await _messageBus.Received(1).BroadcastAsync(
+            Arg.Is<GitHubWebhookMessage>(m => m.EventType == eventType),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task The_catch_all_carries_the_installation_and_repository_read_from_the_payload()
+    {
+        var processor = ProcessorWithValidSignature();
+
+        // Read from the raw JSON, not off a deserialized event: most GitHub events have no Octokit
+        // type here, and every consumer routes on these two fields.
+        await processor.ProcessWebhookAsync(
+            Headers(("X-GitHub-Event", "member")),
+            """{"installation":{"id":4711},"repository":{"full_name":"acme/widgets"}}""");
+
+        await _messageBus.Received(1).BroadcastAsync(
+            Arg.Is<GitHubWebhookMessage>(m => m.InstallationId == 4711 && m.RepositoryFullName == "acme/widgets"),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task A_payload_that_cannot_be_parsed_is_still_delivered()
+    {
+        var processor = ProcessorWithValidSignature();
+
+        // The signature already proved GitHub sent it, so an unparseable body is a shape we do not
+        // know rather than an attack — route it with empty fields instead of losing it.
+        await processor.ProcessWebhookAsync(Headers(("X-GitHub-Event", "push")), "not json at all");
+
+        await _messageBus.Received(1).BroadcastAsync(
+            Arg.Is<GitHubWebhookMessage>(m => m.InstallationId == 0 && m.RepositoryFullName == ""),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Nothing_is_broadcast_when_no_recipient_consumes_it()
+    {
+        // A broadcast to a queue with no worker is not a no-op — it stores a document that nothing
+        // will ever drain, one per delivery, forever.
+        var registry = new FakeRecipientRegistry(hasRecipient: false);
+        var processor = ProcessorWithValidSignature(recipients: registry);
+
+        await processor.ProcessWebhookAsync(Headers(("X-GitHub-Event", "push")), """{"zen":"x"}""");
+
+        await _messageBus.DidNotReceive().BroadcastAsync(
+            Arg.Any<GitHubWebhookMessage>(), Arg.Any<CancellationToken>());
+        registry.Consumed.Should().Contain(typeof(GitHubWebhookMessage));
+    }
+
+    [Fact]
+    public async Task A_dev_forwarded_delivery_is_not_also_broadcast_locally()
+    {
+        var options = new GitHubWebhooksOptions { DevelopmentAppId = 12345, WebhookSecret = "secret" };
+        var devSocket = new FakeDevWebSocketService();
+        var serviceProvider = new ServiceCollection()
+            .AddSingleton<IDevWebSocketService>(devSocket)
+            .BuildServiceProvider();
+        var processor = ProcessorWithValidSignature(options, serviceProvider);
+
+        await processor.ProcessWebhookAsync(
+            Headers(("X-GitHub-Hook-Installation-Target-ID", "12345"), ("X-GitHub-Event", "push")),
+            """{"zen":"x"}""");
+
+        devSocket.Sent.Should().HaveCount(1);
+        await _messageBus.DidNotReceive().BroadcastAsync(
+            Arg.Any<GitHubWebhookMessage>(), Arg.Any<CancellationToken>());
     }
 }

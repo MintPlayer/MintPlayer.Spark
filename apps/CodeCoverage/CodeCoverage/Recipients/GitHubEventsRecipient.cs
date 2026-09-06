@@ -4,6 +4,8 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Webhooks.GitHub.Messages;
 using Octokit.Webhooks.Events;
+using Raven.Client.Documents;
+using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
 
 namespace CodeCoverage.Recipients;
@@ -25,6 +27,12 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     [Inject] private readonly IMessageBus messageBus;
     [Inject] private readonly ILogger<GitHubEventsRecipient> logger;
 
+    /// <summary>Bound on a per-account repository sweep; the session's request budget is 30.</summary>
+    private const int MaxRepositoriesPerAccount = 1024;
+
+    /// <summary>How many former names one repository remembers, oldest dropped first.</summary>
+    private const int MaxPreviousFullNames = 16;
+
     public async Task HandleAsync(GitHubWebhookMessage message, CancellationToken cancellationToken = default)
     {
         switch (message.EventType)
@@ -37,6 +45,16 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                 break;
             case "repository":
                 await OnRepository(Deserialize<RepositoryEvent>(message), cancellationToken);
+                break;
+            // Two events report the same fact, and which one arrives depends on the App's event
+            // subscriptions. `installation_target` is the documented one, but it is NOT among the
+            // events either Coverage app subscribes to (measured 2026-09-05: member, membership,
+            // organization, pull_request, push, repository, team, team_add) — and an App only
+            // receives what it subscribes to, so relying on it alone would have been a handler that
+            // never ran. `organization` IS subscribed and carries action `renamed`.
+            case "installation_target":
+            case "organization":
+                await OnAccountRenamed(message, cancellationToken);
                 break;
             case "push":
                 await OnPush(Deserialize<PushEvent>(message), cancellationToken);
@@ -68,12 +86,28 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             case "unsuspend":
             case "new_permissions_accepted":
                 account.InstallationId = evt.Installation.Id;
+
+                // `repositories` is only populated on `created` (and `deleted`). An `unsuspend`
+                // carries no list, so this upsert reconnects nothing — and the repositories that
+                // `suspend` disconnected would stay hidden until the nightly sweep, which is a day
+                // of an account's repositories silently missing after the App is re-enabled.
+                // The reconcile below is what actually restores them.
                 await UpsertRepositories(
                     (evt.Repositories ?? []).Select(r => (r.Id, r.Name, r.FullName, r.Private)), account, ct);
+                await messageBus.BroadcastAsync(new Ingestion.ReconcileAccountMessage
+                {
+                    AccountGitHubId = ghAccount.Id,
+                }, ct);
                 break;
             case "deleted":
             case "suspend":
                 account.InstallationId = null;
+                // The App can no longer see anything this account owns, so nothing it owns should
+                // still be advertised. The documents stay; only the advertising stops.
+                await DisconnectRepositoriesOfAsync(
+                    account,
+                    evt.Action == "suspend" ? DisconnectedReasons.AppSuspended : DisconnectedReasons.AppUninstalled,
+                    ct);
                 break;
         }
 
@@ -97,13 +131,49 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             .ToArray();
         if (removedIds.Length > 0)
         {
+            // Removed from the installation's selection, not removed from existence: this fires
+            // when someone deselects a repository, and it is also how a transfer out of the
+            // organization reaches us. Deleting here — which is what this did before, in code that
+            // had never once run — would destroy every commit, build and report for a repository
+            // whose owner may re-add it a minute later.
             var loaded = await session.LoadAsync<Repository>(removedIds, ct);
             foreach (var existing in loaded.Values)
             {
-                if (existing is not null)
-                    session.Delete(existing);
+                if (existing is null) continue;
+
+                // Only the account that still owns the repository may disconnect it.
+                //
+                // When the App is installed on BOTH the source and the destination of a transfer,
+                // three events describe one move: `removed` from the old installation, and
+                // `transferred` + `added` from the new one. They are sent at the same instant and
+                // arrive in no guaranteed order, so an unguarded `removed` that lands after the
+                // others would disconnect a repository the App can plainly still see, and leave it
+                // that way until the nightly reconciler.
+                //
+                // Ownership settles that without needing an order: if the repository has already
+                // been re-parented, this removal is the old owner reporting a repository that is no
+                // longer theirs, and it is stale. If it has not, the removal is current and the
+                // repository really has left. Correct whichever way round the two arrive.
+                if (existing.Account is not null && existing.Account != account.Id)
+                {
+                    logger.LogInformation(
+                        "Ignoring a stale removal of {FullName} from {Login}: it now belongs to {Owner}",
+                        existing.FullName, account.Login, existing.Account);
+                    continue;
+                }
+
+                Disconnect(existing, DisconnectedReasons.RemovedFromInstallation);
             }
         }
+
+        // The payload announces that the set changed; it cannot be trusted to say how. Narrowing an
+        // installation from "all repositories" to a selected few arrives as action `added` with an
+        // EMPTY repositories_removed — every repository that silently left is reported nowhere.
+        // So apply the payload for the timely case, and ask GitHub for the truth.
+        await messageBus.BroadcastAsync(new Ingestion.ReconcileAccountMessage
+        {
+            AccountGitHubId = ghAccount.Id,
+        }, ct);
     }
 
     private async Task OnRepository(RepositoryEvent evt, CancellationToken ct)
@@ -113,23 +183,109 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
 
         if (evt.Action == "deleted")
         {
+            // Deleted on GitHub, so the numeric id can never come back — but the coverage history
+            // is still ours and someone may still be reading a report through a link. It stops
+            // being advertised; the owner decides whether the data goes, through the explicit
+            // delete action.
             var existing = await session.LoadAsync<Repository>(Repository.DocumentId(ghRepo.Id), ct);
             if (existing is not null)
-                session.Delete(existing);
+                Disconnect(existing, DisconnectedReasons.DeletedOnGitHub);
             return;
         }
 
+        // Unconditional, unlike before: an account we already knew never learned that its login
+        // had changed, so an organization rename left a stale login on the account and on every
+        // repository under it until something happened to recreate the document.
         var account = await GetOrCreateAccount(ghRepo.Owner.Id, ct);
-        if (string.IsNullOrEmpty(account.Login))
-        {
-            account.Login = ghRepo.Owner.Login;
-            account.AvatarUrl = ghRepo.Owner.AvatarUrl;
-            account.Type = ghRepo.Owner.Type.StringValue == "Organization" ? "Organization" : "User";
-        }
+        account.Login = ghRepo.Owner.Login;
+        account.AvatarUrl = ghRepo.Owner.AvatarUrl;
+        account.Type = ghRepo.Owner.Type.StringValue == "Organization" ? "Organization" : "User";
+
+        // Before the upsert overwrites it: the name we knew this repository by is the one that is
+        // baked into published badge URLs, and a rename or transfer is the moment to remember it.
+        var previous = await session.LoadAsync<Repository>(Repository.DocumentId(ghRepo.Id), ct);
+        if (evt.Action is "renamed" or "transferred")
+            RememberFullName(previous, ghRepo.FullName);
 
         var repository = await UpsertRepository(ghRepo.Id, ghRepo.Name, ghRepo.FullName, ghRepo.Private, account, ct);
         repository.DefaultBranch = ghRepo.DefaultBranch;
         repository.Archived = ghRepo.Archived;
+
+        // Deliberately does NOT disconnect on `transferred`, which is the opposite of what the
+        // event's name suggests. Measured against the real API on 2026-09-05 by transferring
+        // MintPlayer/CodeCoverage out and back:
+        //
+        //   into an org where the App is installed   → repository.transferred
+        //                                            + installation_repositories.added
+        //   out of that org                          → installation_repositories.removed ONLY
+        //
+        // GitHub tells the installation that GAINS a repository; the one losing it hears only
+        // that its repository set shrank. So `transferred` arriving means we just acquired this
+        // repository, and disconnecting here would mark a repository we can see as unreachable,
+        // then rely on the `added` that follows to undo it — a correctness bug resting on the
+        // delivery order of two independently queued messages. Losing a repository is
+        // OnInstallationRepositories' job, and it is the only path that can observe it.
+    }
+
+    /// <summary>
+    /// An account renamed itself. It keeps its numeric id, so the document is the same one — but its
+    /// login, and the owner half of every full name beneath it, are now wrong.
+    /// <para>
+    /// Handles both <c>installation_target</c> and <c>organization</c>, because which one an App
+    /// receives depends on its event subscriptions and the Coverage apps subscribe only to the
+    /// latter.
+    /// </para>
+    /// <para>
+    /// Read out of the raw payload rather than through a typed event: Octokit.Webhooks models
+    /// <c>InstallationTargetEvent</c> with only the fields common to every webhook, and the ones
+    /// this event exists to carry — the account and <c>changes.login.from</c> — are not among them.
+    /// </para>
+    /// </summary>
+    private async Task OnAccountRenamed(GitHubWebhookMessage message, CancellationToken ct)
+    {
+        using var payload = JsonDocument.Parse(message.EventJson);
+        var root = payload.RootElement;
+
+        // Only the rename matters. `organization` also fires for member_added, member_removed and
+        // friends, none of which change an account's identity.
+        if (root.TryGetProperty("action", out var action)
+            && action.ValueKind == JsonValueKind.String
+            && action.GetString() != "renamed")
+        {
+            return;
+        }
+
+        // `installation_target` puts the account under "account"; `organization` puts it under
+        // "organization". Same shape, different key.
+        if (!root.TryGetProperty("account", out var ghAccount) || ghAccount.ValueKind != JsonValueKind.Object)
+        {
+            if (!root.TryGetProperty("organization", out ghAccount) || ghAccount.ValueKind != JsonValueKind.Object)
+                return;
+        }
+
+        if (!ghAccount.TryGetProperty("id", out var idElement) || !idElement.TryGetInt64(out var accountId))
+            return;
+
+        var login = ghAccount.TryGetProperty("login", out var loginElement) ? loginElement.GetString() : null;
+        if (string.IsNullOrEmpty(login)) return;
+
+        var account = await GetOrCreateAccount(accountId, ct);
+        var previousLogin = account.Login;
+        account.Login = login;
+        if (ghAccount.TryGetProperty("avatar_url", out var avatarElement))
+            account.AvatarUrl = avatarElement.GetString();
+
+        if (string.IsNullOrEmpty(previousLogin) || previousLogin == account.Login)
+            return;
+
+        foreach (var repository in await LoadRepositoriesOfAsync(account, ct))
+        {
+            RememberFullName(repository, $"{account.Login}/{repository.Name}");
+            repository.OwnerLogin = account.Login;
+            repository.FullName = $"{account.Login}/{repository.Name}";
+        }
+
+        logger.LogInformation("Account {Previous} renamed to {Current}", previousLogin, account.Login);
     }
 
     private async Task OnPush(PushEvent evt, CancellationToken ct)
@@ -269,6 +425,72 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         repository.FullName = fullName;
         repository.OwnerLogin = fullName.Split('/')[0];
         repository.IsPrivate = isPrivate;
+
+        // Every caller of this reached us through an installation the App still holds, which is
+        // itself the proof that the repository is reachable. The one exception — a transfer, where
+        // the payload proves the opposite — disconnects again after upserting, deliberately.
+        Connect(repository);
+    }
+
+    /// <summary>Marks a repository reachable again, clearing any record of why it was not.</summary>
+    private static void Connect(Repository repository)
+    {
+        repository.Connection = RepositoryConnection.Connected;
+        repository.DisconnectedReason = null;
+        repository.DisconnectedAtUtc = null;
+    }
+
+    /// <summary>
+    /// Marks a repository unreachable. Never deletes: the coverage history stays, the badge keeps
+    /// serving its last known value, and the report URLs keep resolving — the repository simply
+    /// stops being advertised to anyone but its owner.
+    /// </summary>
+    private static void Disconnect(Repository repository, string reason)
+    {
+        repository.Connection = RepositoryConnection.Disconnected;
+        repository.DisconnectedReason = reason;
+        repository.DisconnectedAtUtc = DateTime.UtcNow;
+    }
+
+    private async Task DisconnectRepositoriesOfAsync(Account account, string reason, CancellationToken ct)
+    {
+        foreach (var repository in await LoadRepositoriesOfAsync(account, ct))
+            Disconnect(repository, reason);
+    }
+
+    /// <summary>
+    /// The repositories owned by an account, by the <see cref="Repository.Account"/> reference
+    /// rather than by <c>OwnerLogin</c>: a rename changes the login, and the callers here are
+    /// precisely the ones that run while it is changing.
+    /// </summary>
+    private async Task<IReadOnlyList<Repository>> LoadRepositoriesOfAsync(Account account, CancellationToken ct)
+    {
+        if (account.Id is null) return [];
+
+        // One query, not a load per repository — this runs inside a session whose request budget
+        // is 30, and a real organization has more repositories than that.
+        return await session.Query<Repository, Indexes.Repositories_Overview>()
+            .Where(r => r.Account == account.Id)
+            .Take(MaxRepositoriesPerAccount)
+            .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// Records the name a repository used to be known by, if it is really changing and we have not
+    /// already recorded it. Capped, because a repository renamed often would otherwise grow an
+    /// unbounded array inside an index.
+    /// </summary>
+    private static void RememberFullName(Repository? repository, string newFullName)
+    {
+        if (repository is null) return;
+
+        var previous = repository.FullName;
+        if (string.IsNullOrEmpty(previous) || previous == newFullName) return;
+        if (repository.PreviousFullNames.Contains(previous, StringComparer.OrdinalIgnoreCase)) return;
+
+        repository.PreviousFullNames.Add(previous);
+        if (repository.PreviousFullNames.Count > MaxPreviousFullNames)
+            repository.PreviousFullNames.RemoveAt(0);
     }
 
     private async Task<Commit> GetOrCreateCommit(long repoGitHubId, string sha, CancellationToken ct)

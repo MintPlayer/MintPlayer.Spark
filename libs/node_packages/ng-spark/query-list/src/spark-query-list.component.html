@@ -10,7 +10,7 @@
         @for (action of customActions(); track action.name) {
           <!-- Disabled, not hidden: hiding makes the affordance undiscoverable and reflows the
                priority nav on every selection change. The server enforces the same rule. -->
-          <button *bsPriorityNavItem="10 + action.offset" class="btn btn-outline-primary"
+          <button *bsPriorityNavItem="10 + action.offset" [class]="customActionClass(action)"
                   [disabled]="!isActionEnabled(action)" (click)="onCustomAction(action)">
             {{ action.displayName | resolveTranslation }}
           </button>
