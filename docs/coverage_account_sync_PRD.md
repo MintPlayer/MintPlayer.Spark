@@ -549,6 +549,11 @@ question we already answer correctly.
     whichever order the three resulting events are processed in.
 12. Narrowing an installation from "all repositories" to a selected few disconnects the repositories
     that silently left it, even though no webhook reports their removal.
+13. Suspending the App hides an account's repositories and unsuspending brings them all back,
+    without waiting for the nightly sweep.
+14. An anonymous request for a repository under an owner the service has never heard of makes no
+    GitHub API call, and `/badge/{owner}/{name}.svg` still answers "unknown" rather than 404 for an
+    unknown repository and for a private one alike.
 
 ## Breaking changes
 

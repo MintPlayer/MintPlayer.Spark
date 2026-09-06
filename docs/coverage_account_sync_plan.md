@@ -7,9 +7,23 @@ One pull request, spanning `libs/webhooks/MintPlayer.Spark.Webhooks.GitHub`,
 
 ## Progress (2026-09-05)
 
-M1-M9 and M11 are implemented on `coverage-account-sync`; M10 is this file plus the READMEs; M12
-awaits deploy. Suites run once at the end, as a single sweep: **CodeCoverage 277 passed**,
-**MintPlayer.Spark 1919 passed**, **ng-spark 398 passed**.
+M1-M11 are implemented on `coverage-account-sync`; M10 is this file plus the READMEs; M12 awaits
+deploy. **CodeCoverage 307 passed**, **MintPlayer.Spark 1924 passed**, **ng-spark 398 passed**.
+
+Four things were added after the milestones were first called done, each because a question was
+asked rather than because a test failed:
+
+- **D11/D12** — the transfer experiments showed the installation payload cannot describe its own
+  change, and that a transfer between two installed accounts races. Reconcile trigger, ownership
+  guard.
+- **The unsuspend gap** — found by writing out D13's event matrix: the installation payload lists no
+  repositories on `unsuspend`, so re-enabling the App reconnected nothing.
+- **M9 as planned but not delivered** — an audit of the tests against D13 found the *delete cascade*
+  untested, which is the only path in the application that destroys data. Also the upload
+  authorization and the OIDC reconnect, both of which the plan had listed. Writing them found the
+  reconnect firing on a GET.
+- **D14** — routing the anonymous badge endpoint through the resolver had made it an existence
+  oracle for private repositories, and a way to burn the App's GitHub quota.
 
 **All spikes are answered**, S1/S2/S4 by running the transfer for real against the production
 organization on 2026-09-05 and reading both apps' delivery logs. Two of them changed the code:
@@ -354,6 +368,11 @@ Task<RepositoryResolution> ResolveAsync(string owner, string name, CancellationT
   `IMemoryCache` **including negative results**, with a short TTL. The badge endpoint is anonymous
   and rate-limited; an unknown name must cost one API call per TTL, not one per request.
 - Step 3 is skipped when no App JWT is available, so the badge path degrades to steps 1-2.
+- Step 3 is also skipped unless the **owner is an account we already know** (PRD D14, added after the
+  fact). Without that gate the anonymous badge endpoint hands a caller the App's GitHub rate limit
+  and a timing-based existence oracle for private repositories. The gate keeps the case the step
+  exists for — known owner, stale repository name — and its own lookup is cached alongside the name
+  lookups, misses included.
 - `Redirect: true` makes `BrowseController` and the SPA vanity guards issue a 301 to the current
   full name. `BadgeController` does **not** redirect — a 301 on an image inside a README is a wasted
   round-trip for camo; it serves the badge directly at the old URL.
@@ -436,6 +455,34 @@ existing WireMock apparatus (`_Infrastructure/WireMockGitHubClientFactory.cs`).
 
 Per-class databases where the case does not write (see the shared-database migration note); the
 suite's cost is dominated by the per-test database lifecycle.
+
+### As delivered (2026-09-05)
+
+The first pass covered the library, the recipient's lifecycle actions, the resolver, the visibility
+split and the reconciler — but **not the delete, and not the upload paths**, both of which are
+listed above. An audit against D13's matrix caught that. 307 CodeCoverage tests now, including:
+
+- **`DeleteRepositoryDataRecipientTests`** — the gap that mattered, since this is the only path in
+  the application that destroys coverage data and its sweep rests on an id convention rather than a
+  query. Covers a **neighbouring repository that must survive** (what catches a prefix one character
+  too greedy) and the re-check that refuses a repository which reconnected between authorization and
+  application.
+- **`UploadsControllerAuthorizationTests`** — an account token accepted on the owner's numeric id,
+  refused when it names the previous owner of a transferred repository, and still accepted on the
+  login alone when it predates the id. Asserted through the upload rather than `Status`, because
+  `Status` answers `NotFound` both for "not allowed" and for "no build yet"; using it made two tests
+  fail for a reason that was the oracle's fault, not the code's.
+- The remaining matrix rows: `repository.created` / `privatized` / `publicized` / `unarchived`,
+  `installation.created` / `deleted` / `suspend` / `unsuspend`, and that every
+  `installation_repositories` event asks for a reconcile.
+- **`An_unheard_of_owner_never_reaches_GitHub`** (D14), whose stand-in installation service *throws*
+  if touched, so a regression fails rather than merely being slow.
+
+Writing the upload tests found a defect: the OIDC reconnect ran before the `provision` check, so
+polling `Status` — a GET that saves nothing — mutated the repository and appeared to work.
+
+**Still untested, deliberately:** `ReconcileGitHubStateCronJob` (a loop and a try/catch over a
+reconciler with six tests of its own), `ResyncAction`, and the ng-spark `variant` rendering.
 
 ## M10 — Docs
 
