@@ -61,7 +61,6 @@ internal sealed partial class ListCustomActions : IGetEndpoint, IMemberOf<Action
                 selectionRule = definition.SelectionRule,
                 refreshOnCompleted = definition.RefreshOnCompleted,
                 confirmationMessageKey = definition.ConfirmationMessageKey,
-                visibleWhen = definition.VisibleWhen,
                 variant = definition.Variant,
                 offset = definition.Offset,
             });

@@ -64,7 +64,7 @@ internal partial class QueryExecutor : IQueryExecutor
             source = await ExecuteDatabaseQueryAsync(query, name, searchTerm, restrictToIds, cancellationToken);
         }
 
-        var (allResults, definition, searchPushedDown, authorTotalItems) = source;
+        var (allResults, definition, searchPushedDown, authorTotalItems, _) = source;
 
         // The author's page is returned as it stands. Search, sort, count and paging were all
         // transferred with it (the binary authority rule on SparkQueryPage), so applying any of
@@ -81,6 +81,7 @@ internal partial class QueryExecutor : IQueryExecutor
                 TotalItems = authorTotal,
                 Skip = skip,
                 Take = take,
+                DisabledActions = source.DisabledActions,
             };
         }
 
@@ -128,6 +129,7 @@ internal partial class QueryExecutor : IQueryExecutor
             TotalItems = totalItems,
             Skip = skip,
             Take = take,
+            DisabledActions = source.DisabledActions,
         };
     }
 
@@ -145,7 +147,13 @@ internal partial class QueryExecutor : IQueryExecutor
         IEnumerable<PersistentObject> Rows,
         EntityTypeDefinition? Definition,
         bool SearchPushedDown,
-        int? AuthorTotalItems = null)
+        int? AuthorTotalItems = null,
+        /// <summary>
+        /// Actions the custom query withheld via <c>CustomQueryArgs.DisableActions</c>. Carried
+        /// here because the source is produced in one method and the QueryResult is assembled in
+        /// another — the alternative was a field, which would leak across concurrent executions.
+        /// </summary>
+        IReadOnlyList<string>? DisabledActions = null)
 ;
 
     /// <summary>
@@ -827,7 +835,7 @@ internal partial class QueryExecutor : IQueryExecutor
             rows = SortMappedRows(rows, query.SortColumns, entityTypeDefinition);
 
         return new QuerySourceResult(
-            rows.ToList(), entityTypeDefinition, searchPushedDown, authorPage?.TotalItems);
+            rows.ToList(), entityTypeDefinition, searchPushedDown, authorPage?.TotalItems, args.DisabledActions);
     }
 
     /// <summary>

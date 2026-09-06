@@ -31,6 +31,17 @@ public sealed class QueryResult
 
     /// <summary>Presentation hints for the result as a whole. See <see cref="QueryResultItem"/>.</summary>
     public IReadOnlyDictionary<string, string>? TypeHints { get; init; }
+
+    /// <summary>
+    /// Custom actions withheld for this result, by name. Null or empty means every action the
+    /// caller has the right to is offered.
+    /// <para>
+    /// Set from <c>CustomQueryArgs.DisableActions(...)</c>. The action catalogue is per type and is
+    /// never told what a given execution returned, so this is where a per-result answer travels.
+    /// An affordance, not a permission — the handler must still refuse.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<string>? DisabledActions { get; init; }
 }
 
 /// <summary>

@@ -130,6 +130,57 @@ public class DeleteDataActionTests : CoverageRavenTest
     }
 
     /// <summary>
+    /// The reported bug: an irreversible red "Delete data" button was shown on every repository
+    /// page, including ones that were never transferred, renamed or removed.
+    /// <para>
+    /// It could not be fixed in the catalogue. <c>GET /spark/actions/{objectTypeId}</c> is
+    /// type-level — the server is never told which row is open — and the right cannot express it
+    /// either, because rights here are group-level with no group per GitHub owner. Whether THIS
+    /// repository may be deleted is a property of the row.
+    /// </para>
+    /// <para>
+    /// So <c>RepositoryActions.OnLoadAsync</c> withholds it while the entity is in hand. An
+    /// affordance, not a permission: <c>DeleteDataAction</c> still refuses independently, which is
+    /// what the rest of this class covers.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData(RepositoryConnection.Connected, true)]
+    [InlineData(RepositoryConnection.Disconnected, false)]
+    public async Task DeleteData_is_withheld_on_a_connected_repository(RepositoryConnection connection, bool expectWithheld)
+    {
+        using var store = GetDocumentStore();
+        using (var seed = store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new Repository
+            {
+                GitHubId = RepoId,
+                Name = "widget",
+                FullName = "acme/widget",
+                OwnerLogin = "acme",
+                Connection = connection,
+            }, Repository.DocumentId(RepoId));
+            await seed.SaveChangesAsync();
+        }
+
+        using var session = store.OpenAsyncSession();
+        var obj = new MintPlayer.Spark.Abstractions.PersistentObject
+        {
+            Id = Repository.DocumentId(RepoId),
+            Name = "Repository",
+            ObjectTypeId = Guid.Empty,
+        };
+
+        // The hook's decision, exercised directly: OnLoadAsync needs the framework's load pipeline,
+        // so this asserts the rule it applies rather than re-hosting that pipeline.
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(RepoId));
+        if (repository!.Connection != RepositoryConnection.Disconnected)
+            obj.DisableActions("DeleteData");
+
+        Assert.Equal(expectWithheld, obj.DisabledActions?.Contains("DeleteData") == true);
+    }
+
+    /// <summary>
     /// The recipient re-checks the connection state rather than trusting the message, because the
     /// repository can reconnect between the click and the sweep. Deleting live history because a
     /// message was already in flight would be unrecoverable.

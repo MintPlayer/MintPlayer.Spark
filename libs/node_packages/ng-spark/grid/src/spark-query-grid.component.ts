@@ -192,6 +192,27 @@ export class SparkQueryGridComponent {
   canCreate = signal(false);
   resultCount = signal<number | null>(null);
   customActions = signal<CustomActionDefinition[]>([]);
+
+  /** Names the server withheld for this RESULT; see QueryResult.disabledActions. */
+  private readonly disabledActions = signal<string[]>([]);
+
+  /**
+   * The actions actually offered for this result.
+   *
+   * The catalogue at `/spark/actions/{objectTypeId}` is per TYPE and is never told what an
+   * execution returned, so an action that applies to only some results cannot be filtered there.
+   * A custom query withholds what does not apply via `CustomQueryArgs.DisableActions(...)`, and
+   * the answer arrives on the result.
+   *
+   * An affordance, not a permission -- the action handler still refuses on its own terms.
+   */
+  visibleCustomActions = computed(() => {
+    const withheld = this.disabledActions();
+    if (!withheld.length) return this.customActions();
+
+    const lowered = new Set(withheld.map(name => name.toLowerCase()));
+    return this.customActions().filter(action => !lowered.has(action.name.toLowerCase()));
+  });
   fetchFn = signal<BsDatatableFetch<QueryResultItem> | null>(null);
 
   /**
@@ -456,6 +477,8 @@ export class SparkQueryGridComponent {
       // ?? [] because a malformed or older response must render an empty grid, not throw inside a
       // computed — where the stack points at the column filter and not at the response that lacked them.
       this.fetchedColumns.set(r.columns ?? []);
+      // Per-result, so it is re-read on every page rather than latched from the first.
+      this.disabledActions.set(r.disabledActions ?? []);
       return {
         data: r.items,
         totalRecords: r.totalItems,

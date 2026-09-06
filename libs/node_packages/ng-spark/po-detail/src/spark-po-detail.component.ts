@@ -100,33 +100,22 @@ export class SparkPoDetailComponent {
    * The actions actually offered for the object on screen.
    *
    * The catalogue at `/spark/actions/{objectTypeId}` is per TYPE -- the server is never told which
-   * row is open -- so a per-row condition can only be applied here. It is presentation: the action
-   * handler still refuses on its own terms, and a client that ignored this would gain nothing.
+   * row is open -- so an action that applies to only some rows cannot be filtered there. The
+   * entity's actions hook decides while it has the entity in hand and withholds what does not
+   * apply, and the object arrives carrying that answer.
    *
-   * What it buys is that a destructive action stops being offered where it cannot possibly apply.
-   * Coverage shipped an irreversible red "Delete data" button on every repository page, healthy
-   * ones included, which only admitted it would refuse after the confirmation prompt.
+   * An affordance, not a permission: the endpoint stays reachable and the action handler still
+   * refuses on its own terms. What this prevents is offering a destructive action where it cannot
+   * possibly apply -- Coverage showed an irreversible red "Delete data" button on every repository
+   * page, healthy ones included, and only admitted it would refuse after the confirmation prompt.
    */
   visibleCustomActions = computed(() => {
-    const item = this.item();
-    return this.customActions().filter(action => this.isActionVisibleFor(action, item));
+    const withheld = this.item()?.disabledActions;
+    if (!withheld?.length) return this.customActions();
+
+    const lowered = new Set(withheld.map(name => name.toLowerCase()));
+    return this.customActions().filter(action => !lowered.has(action.name.toLowerCase()));
   });
-
-  private isActionVisibleFor(action: CustomActionDefinition, item: PersistentObject | null): boolean {
-    const rule = action.visibleWhen;
-    if (!rule) return true;
-
-    // No object yet, or no such attribute: offer it rather than hide it. A rule naming an
-    // attribute that does not exist is a mistake in configuration, and silently hiding the action
-    // would make that mistake invisible -- the handler still refuses, so showing it is safe.
-    const attribute = item?.attributes?.find(a => a.name === rule.attribute);
-    if (!attribute) return true;
-
-    const actual = attribute.value == null ? '' : String(attribute.value);
-    if (rule.equals != null && actual.toLowerCase() !== rule.equals.toLowerCase()) return false;
-    if (rule.notEquals != null && actual.toLowerCase() === rule.notEquals.toLowerCase()) return false;
-    return true;
-  }
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));

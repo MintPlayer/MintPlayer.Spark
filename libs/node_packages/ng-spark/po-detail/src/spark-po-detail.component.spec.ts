@@ -287,53 +287,39 @@ describe('SparkPoDetailComponent', () => {
   });
 
   describe('visibleCustomActions', () => {
-    // The action catalogue is fetched per TYPE, so a per-row condition can only be applied on the
-    // client. Coverage shipped an irreversible red "Delete data" button on every repository page,
-    // healthy ones included, that only admitted it would refuse AFTER the confirmation prompt.
-    function actionWith(visibleWhen: unknown) {
-      return { ...customAction, name: 'Conditional', visibleWhen } as any;
-    }
-
-    async function withAttribute(name: string, value: unknown, visibleWhen: unknown) {
+    // The action catalogue is fetched per TYPE, so an action that applies to only some rows can
+    // only be withheld per row -- the entity's actions hook does it server-side and the object
+    // arrives carrying the answer. Coverage shipped an irreversible red "Delete data" button on
+    // every repository page, healthy ones included, that only admitted it would refuse AFTER the
+    // confirmation prompt.
+    async function withDisabled(disabledActions: string[] | undefined) {
       const { harness } = await setup();
       const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
       await harness.fixture.whenStable();
 
-      c.item.set({ ...c.item()!, attributes: [{ name, value } as any] } as any);
-      c.customActions.set([actionWith(visibleWhen)]);
+      c.item.set({ ...c.item()!, disabledActions } as any);
+      c.customActions.set([customAction, { ...customAction, name: 'Other' }]);
       return c;
     }
 
-    it('offers the action when the attribute matches', async () => {
-      const c = await withAttribute('Connection', 'Disconnected', { attribute: 'Connection', equals: 'Disconnected' });
-      expect(c.visibleCustomActions()).toHaveLength(1);
+    it('offers every action when the object withholds none', async () => {
+      const c = await withDisabled(undefined);
+      expect(c.visibleCustomActions().map(a => a.name)).toEqual(['Archive', 'Other']);
     });
 
-    it('hides the action when the attribute does not match', async () => {
-      const c = await withAttribute('Connection', 'Connected', { attribute: 'Connection', equals: 'Disconnected' });
-      expect(c.visibleCustomActions()).toHaveLength(0);
+    it('withholds the named action', async () => {
+      const c = await withDisabled(['Archive']);
+      expect(c.visibleCustomActions().map(a => a.name)).toEqual(['Other']);
     });
 
-    it('compares case-insensitively, so an enum name still matches', async () => {
-      const c = await withAttribute('Connection', 'DISCONNECTED', { attribute: 'Connection', equals: 'disconnected' });
-      expect(c.visibleCustomActions()).toHaveLength(1);
+    it('matches case-insensitively, so a name spelled differently still withholds', async () => {
+      const c = await withDisabled(['archive']);
+      expect(c.visibleCustomActions().map(a => a.name)).toEqual(['Other']);
     });
 
-    it('supports notEquals', async () => {
-      const c = await withAttribute('Connection', 'Connected', { attribute: 'Connection', notEquals: 'Connected' });
-      expect(c.visibleCustomActions()).toHaveLength(0);
-    });
-
-    // A rule naming an attribute that does not exist is a configuration mistake. Hiding the action
-    // would make that mistake invisible; showing it is safe because the handler still refuses.
-    it('offers the action when the named attribute is absent', async () => {
-      const c = await withAttribute('Something', 'else', { attribute: 'Connection', equals: 'Disconnected' });
-      expect(c.visibleCustomActions()).toHaveLength(1);
-    });
-
-    it('offers actions with no rule at all', async () => {
-      const c = await withAttribute('Connection', 'Connected', undefined);
-      expect(c.visibleCustomActions()).toHaveLength(1);
+    it('treats an empty list as withholding nothing', async () => {
+      const c = await withDisabled([]);
+      expect(c.visibleCustomActions()).toHaveLength(2);
     });
   });
 

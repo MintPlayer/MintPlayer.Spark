@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using CodeCoverage.Entities;
 using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Queries;
 using Raven.Client.Documents;
@@ -21,6 +22,36 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
 {
     [Inject] private readonly ISparkVisibility visibility;
     [Inject] private readonly IAsyncDocumentSession session;
+
+    /// <summary>
+    /// Withholds <c>DeleteData</c> on a repository that is still connected.
+    /// <para>
+    /// The right is granted to every signed-in user in security.json, and it has to be: rights
+    /// here are group-level and there is no group per GitHub owner, so the right can express
+    /// "may delete coverage data at all" and nothing narrower. Whether THIS repository may be
+    /// deleted is a property of the row — it must be disconnected — and the actions catalogue at
+    /// <c>GET /spark/actions/{objectTypeId}</c> is per type, so it cannot answer that.
+    /// </para>
+    /// <para>
+    /// This is the place that can: the entity is in hand, so the answer travels back on the object
+    /// itself and the browser simply never renders the button. <c>DeleteDataAction</c> still
+    /// refuses independently — withholding an affordance is not a permission check, and the
+    /// endpoint stays reachable — but a user is no longer offered an irreversible red button on a
+    /// healthy repository that only admits it will refuse after the confirmation prompt.
+    /// </para>
+    /// </summary>
+    public override async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
+    {
+        var obj = await base.OnLoadAsync(id, parent);
+        if (obj is null)
+            return obj;
+
+        var repository = await session.LoadAsync<Repository>(id);
+        if (repository is null || repository.Connection != RepositoryConnection.Disconnected)
+            obj.DisableActions("DeleteData");
+
+        return obj;
+    }
 
     public override async Task<Expression<Func<Repository, bool>>?> GetRowFilterAsync(string action)
     {
