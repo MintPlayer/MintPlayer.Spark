@@ -125,6 +125,134 @@ Things to avoid, each of which Spark is currently at risk of: a row filter whose
 
 ---
 
+## What the second round found
+
+A second investigation ran after the decisions above were taken, covering the four areas the design
+was still assuming rather than knowing. Its results changed three milestones and killed half of one.
+
+### The prior art's sub-query filtering is broken in a way that names our binding requirement
+
+Measured over 36 consuming applications and 1,320 detail-query bindings. Sub-query filtering there
+converges on a single call site on the child's own handler — the right architecture — but that choke
+point is a **runtime type switch with a silent pass-through arm**:
+
+| Runtime element type of the resolved source | What runs |
+|---|---|
+| the read-projection type | the row filter — correct |
+| the entity type | a bridge hook whose default returns the source **unfiltered** when the two types differ |
+| neither | **returns the source untouched, silently** |
+
+The sibling *sort* hook throws a developer error on an unrecognised source. The *filter* hook returns
+it. **The one arm in that pipeline which fails open is the security-relevant one.**
+
+Consequences it measured, each structural rather than a discipline problem:
+
+- **Property-path detail tabs land on the no-op arm by construction.** A navigation collection yields
+  entity instances, never projection instances, so for a type whose reads are projected the child's
+  filter never runs — while the same type's top-level list is filtered normally. Filtered or not
+  depending on which screen you opened it from.
+- **Embedded child rows bypass the query pipeline entirely**, addressed by ordinal into the parent's
+  raw collection. The row-id computation is *deliberately* fed the pre-filter source so ordinals stay
+  stable when the list filters — the framework designs for "the list is filtered, the addressing
+  space is not".
+- **The by-object-id load fails open twice on one condition**: it skips set-based filtering when the
+  type is projected, then falls back to a hook that is a no-op in exactly that case.
+- **Parent scoping is hand-written** in method-sourced detail queries and **absent in 22.4%** of the
+  321 located. The filter hook cannot see the parent; the source method cannot see the filter;
+  neither can see what the other did.
+
+**This is the requirement, stated as the review put it:** routing sub-queries through the actions
+class is *necessary but not sufficient* — that framework already does it. **Every arm of that routing
+must narrow or refuse. No arm may return the source untouched.** Spark is currently on the right side
+of this: `ComposeRowFilterAsync` no-ops on a projection, but `FilterAsync`'s base-document reload is
+the real gate, so the no-op is *backed* rather than final. The sealed stage must preserve that.
+
+### Decision 5 is validated by a negative result
+
+References to the detail-query value of that framework's reason enum, across 36 applications:
+**zero**. It is structurally unusable — the reason reaches source construction, never the filter hook
+— and exports relabel it anyway. Threading intent into a filter hook buys nothing observable, and any
+real use of it would be a weakening branch. Spark's `parent != null` signal is the better answer.
+
+### The analyzer idea is right for one file and structurally wrong for the other
+
+- **`security.json`: yes.** Hand-authored, never machine-written, so no staleness window. It is also
+  where the gaps are — nothing checks that the action half is a known action, that the target names a
+  registered entity or custom action, or that a right's `groupId` exists. Next free id: **SPARK011**.
+- **Model JSON: no.** Synchronisation runs *after* compilation, in a separate process
+  (`dotnet run --no-build`), and is not an MSBuild step. An analyzer over model JSON is permanently
+  one build behind: rename a property, build, and it compares old JSON against new symbols. **This
+  exact design was already evaluated and rejected in this repository** — `docs/issue_272_273_275_276_PRD.md:314-319`,
+  for the same reasons. Use `--spark-verify-model`, which runs after synchronise and is never stale.
+
+Wiring facts that decided decision 11: model JSON is hand-wired as `AdditionalFiles` in all five
+apps; **`security.json` is wired in none**; neither appears in any `.targets`, so external consumers
+get nothing **and the failure is silent** — the analyzer simply sees no files. `MintPlayer.Spark.Authorization`
+already packs both a `.props` and a `.targets`, so core doing the same is precedent, not novelty.
+`Condition="Exists(...)"` is mandatory on every named file: an `AdditionalFiles` item naming a
+missing file **fails the build** (`docs/guide-queries-and-sorting.md:491`).
+
+### The model-hash gate: gated at runtime, not in the pipeline
+
+Checked against production, read-only. `modelHashes.json` ships in the image;
+`ASPNETCORE_ENVIRONMENT=Production` (hardcoded in compose, not interpolated);
+`SPARK_MODEL_HASH_OVERRIDE` unset and absent from every committed config. The runtime gate **fails
+closed** on a missing *or corrupt* file, with the reasoning recorded in place, and both branches are
+tested. There is no boolean off-switch — the override must carry the exact current hash, so it
+self-expires at the next model change.
+
+Two real gaps:
+
+- **The deploy workflow runs no verification.** `--spark-verify-model` appears only in
+  `pull-request.yml:136`; `code-coverage-deploy.yml` goes checkout → build → push → SSH deploy.
+  Anything reaching `master` without that PR check — direct push, admin merge, `workflow_dispatch` —
+  ships unverified. Mitigating: the image is built from the same commit by `COPY . .`, so "stale
+  App_Data beside new binaries" is structurally hard to produce.
+- **`customActions.json` and `programUnits.json` have no integrity gate at all.** The hash glob is
+  `App_Data/Model/*.json`; `security.json` is covered by a different mechanism (`securityPosture.txt`).
+
+Also: **success is silent** (`ModelHashVerifier.cs:58-59`), so "passed" and "never ran" are
+indistinguishable from outside — in a deployment that has already had a subsystem silently dead in
+production.
+
+### Findings that were not being looked for
+
+- **`DatabaseAccess.LoadVirtualObjectViaActionsAsync` (`:505`) returns rows with zero row-security
+  calls and no announcement** — the detail-path twin of the composed-query skip, without even the
+  startup warning that one has.
+- **Composed actions classes are never DI-registered.** `ActionsRegistrationGenerator` matches only
+  classes based on `DefaultPersistentObjectActions<T>`, so `ActionsResolver` falls back to
+  `ActivatorUtilities.CreateInstance` on **every** resolution — a fresh instance per call.
+- **`[NoInterfaceMember]` is inert.** `GenerateAutoInterface` appears nowhere in the solution; all ten
+  marks have no compile-time or runtime effect. Verified.
+- **`ModelLoader.cs:87-96` swallows an unparseable model file** — `Console.WriteLine`, skip, and the
+  app starts with that entity type silently missing.
+- **`clrType`-less model files are entirely ungated in CI**: editing a label in `MyAccountRow.json`
+  and re-running the gate still exits 0.
+- **Two docs cite analyzers that do not exist**: `README.md:355` names a SPARK003 with no
+  `DiagnosticDescriptor`, and `MintPlayer.Spark.Controllers.csproj:15` claims to ship SPARK010 while
+  packing no analyzer.
+- **S1 is latent with a named trigger.** Exactly one row filter uses Raven-only LINQ
+  (`CommitActions.cs:28`, `.In()`), and `Commit` has no index binding — so the compiled in-memory path
+  is unreachable for it today. The day anyone adds `[GenerateIndex]` or an `indexName` to `Commit`,
+  `.In()` gets `Compile()`d for the first time. If that silently returns `false`, commits vanish and
+  it looks like an indexing bug.
+
+### The audit that came back clean
+
+`apps/CodeCoverage`'s composed types were audited for a live disclosure. **There is none.**
+`MyAccountRow` is scoped — the caller's GitHub-verified owner list is the *generator* of rows rather
+than a post-filter, cached per user, with every failure path narrowing to `[username]` or `[]`.
+`Query/MyAccountRow` is granted to `authenticated` only. `Home` exposes static text plus per-caller
+counts, hidden when signed out.
+
+Recorded without inflating it: that scoping is **a single line of defence two layers below the
+actions class**, with no framework backstop, because row security is deliberately off for the type.
+This is why M4's declaration must name *where* the scoping lives rather than merely asserting that it
+exists.
+
+---
+
 ## Decisions
 
 Nine questions were put to the owner before any implementation. The answers below are settled; they
@@ -141,6 +269,9 @@ are recorded here so the plan does not re-litigate them.
 | 7 | How strict are the new startup refusals? | **Refuse both, loud and early** — an un-parent-scopable sub-query and an undeclared row policy on a well-known-group type. |
 | 8 | How far does "no backward compatibility" go? | **Reshape the actions surface properly.** It is the universal seam per decision 2, so the member list should look like it. |
 | 9 | How is F1 (the count leak) fixed? | **Make the count honest** — count after filtering rather than trusting the author's total. |
+| 10 | Where does JSON validation live? | **Split by lifecycle.** A Roslyn analyzer for `security.json`; `--spark-verify-model` for the model files. |
+| 11 | How do the JSON files reach the analyzer? | **A `buildTransitive` props/targets pair in core**, not per-csproj — items in the `.targets` so a consumer's override wins. |
+| 12 | Is `modelHashes.json` an `AdditionalFiles`? | **No.** It is a sync *output*; making it a compilation input couples rebuilds to the sync step for a file no analyzer reads. |
 
 Two consequences worth stating up front, because they are the ones that will bite:
 
