@@ -12,9 +12,14 @@ namespace CodeCoverage.Tests.Feedback;
 /// is never created, the worker dies as "non-recoverable", and the application
 /// carries on looking perfectly healthy.
 /// <para>
-/// This app had five queues against a limit of three (one of which the framework
-/// takes for webhooks), so three were dead. Merged-PR build deletion had never
-/// run in production, unnoticed, for exactly this reason.
+/// This app reached seven queues against a limit of three (one of which the
+/// framework takes for webhooks), so five were dead. Verified against production
+/// 2026-09-06: the only subscriptions that existed were
+/// <c>SparkMessaging-coverage-parse-session</c>,
+/// <c>SparkMessaging-coverage-publish-feedback</c> and
+/// <c>SparkMessaging-spark-github-all</c>. Merged-PR build deletion had never run
+/// in production, the sticky PR comment never appeared, and "Delete data" queued a
+/// message that nothing would ever consume — all for exactly this reason.
 /// </para>
 /// <para>
 /// It is a compile-time-visible property of the code, so it should be asserted
@@ -24,10 +29,13 @@ namespace CodeCoverage.Tests.Feedback;
 public class CoverageQueuesTests
 {
     /// <summary>
-    /// The AGPL/open-source licence this deployment runs on allows three
-    /// subscriptions per database, verified against the live server (a create
-    /// beyond it answers 402 with LicenseLimitException). One is the framework's
-    /// own webhook queue, so the application may declare two.
+    /// The licence this deployment runs on allows three subscriptions per
+    /// database. Verified against the live server 2026-09-06 — it is a registered
+    /// <b>Community</b> licence (<c>"Status":"Commercial"</c>,
+    /// <c>"Type":"Community"</c>, <c>"MaxNumberOfSubscriptionsPerDatabase":3</c>),
+    /// not AGPL as previously assumed; a create beyond the cap answers 402 with
+    /// LicenseLimitException. One subscription is the framework's own webhook
+    /// queue, so the application may declare two.
     /// </summary>
     private const int QueuesAvailableToThisApplication = 2;
 
