@@ -76,7 +76,8 @@ public class QueryHookReachTests
             contextResolver, Substitute.For<IIndexCatalog>(),
             Substitute.For<IPermissionService>(), actionsResolver,
             Substitute.For<IReferenceResolver>(), Substitute.For<IBreadcrumbResolver>(),
-            new PermissiveRowSecurity());
+            new PermissiveRowSecurity(),
+            TestRowSecurityGate.For(new PermissiveRowSecurity()));
 
         return (executor, actions);
     }

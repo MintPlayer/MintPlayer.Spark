@@ -31,7 +31,8 @@ public class QueryExecutorRowShapeTests
     private QueryExecutor CreateExecutor() => new(
         _session, _entityMapper, _modelLoader, _contextResolver,
         _indexCatalog, _permissionService, _actionsResolver, _referenceResolver, _breadcrumbResolver,
-        new PermissiveRowSecurity());
+        new PermissiveRowSecurity(),
+        TestRowSecurityGate.For(new PermissiveRowSecurity()));
 
     private const string TypeName = "RowShapeEntity";
 

@@ -46,6 +46,7 @@ internal partial class QueryExecutor : IQueryExecutor
     [Inject] private readonly IReferenceResolver referenceResolver;
     [Inject] private readonly Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
     [Inject] private readonly IRowSecurity rowSecurity;
+    [Inject] private readonly IRowSecurityGate gate;
 
     public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, IReadOnlyCollection<string>? restrictToIds = null, CancellationToken cancellationToken = default)
     {
@@ -690,17 +691,20 @@ internal partial class QueryExecutor : IQueryExecutor
         // this type at all"; it says nothing about which rows. Without this, an entity whose
         // Actions class scopes rows to their owner was filtered correctly when opened and listed
         // in full here — and the list screen is the one that shows every row at once.
-        var entities = (await rowSecurity.FilterAsync(
-            session, materialized, entityType, resultType, "Query", cancellationToken)).ToList();
-
-        // Referenced docs were primed into the session cache by .Include() above; the resolver's
-        // first batched load is a cache hit, deeper breadcrumb levels cost one request each.
-        var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entities, entityTypeDefinition, cancellationToken);
-
-        var mapped = entities
-            .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs), Row: e))
-            .ToList();
-        await rowSecurity.RedactAsync(session, mapped, entityType, resultType, "Query", cancellationToken);
+        // Filter, breadcrumb, map, redact and the fan-out dedupe below all happen inside the gate,
+        // in that fixed order, so this path can no longer disagree with the other three about it.
+        // Referenced docs were primed into the session cache by .Include() above, so the resolver's
+        // first batched load is a cache hit; deeper breadcrumb levels cost one request each.
+        var secured = await gate.ApplyAsync(materialized, new RowSecurityContext
+        {
+            Session = session,
+            Definition = entityTypeDefinition,
+            EntityType = entityType,
+            ResultType = resultType,
+            Action = "Query",
+            DedupeById = true,
+            CancellationToken = cancellationToken,
+        });
 
         // ⚠️ DO NOT REMOVE THIS DistinctBy. It is not defensive, and it is not about the analyzer.
         //
@@ -725,8 +729,10 @@ internal partial class QueryExecutor : IQueryExecutor
         // WHY IT IS NOT ON THE CUSTOM PATH: see the sibling comment at the end of
         // ExecuteCustomQueryAsync. In memory there is no fan-out, and DistinctBy is destructive
         // there — it treats every null Id as equal and collapses the grid to a single row.
-        return new QuerySourceResult(
-            mapped.Select(m => m.Po).DistinctBy(po => po.Id), entityTypeDefinition, searchPushedDown);
+        //
+        // It now travels as DedupeById on the context above rather than as a call here, so the
+        // decision is made where the difference between the two paths is visible.
+        return new QuerySourceResult(secured.Rows, entityTypeDefinition, searchPushedDown);
     }
 
     #endregion

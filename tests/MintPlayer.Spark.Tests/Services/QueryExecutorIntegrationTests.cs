@@ -74,10 +74,15 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
         // Open a session that lives for the lifetime of this executor — mirrors what the
         // request-scoped DI registration provides in production.
         var session = Store.OpenAsyncSession();
+        var executorRowSecurity = new PermissiveRowSecurity();
         return new QueryExecutor(
             session, entityMapper, _modelLoader, _contextResolver,
             _indexCatalog, _permissionService, _actionsResolver, _referenceResolver, breadcrumbResolver,
-            new PermissiveRowSecurity());
+            // Not the substitute above: that one exists for the breadcrumb resolver and answers only
+            // IsAllowedAsync, so its ComposeRowFilterAsync returns null and nulls the queryable. The
+            // executor and its gate share one permissive rule, which is what keeps them agreeing.
+            executorRowSecurity,
+            TestRowSecurityGate.For(executorRowSecurity, entityMapper, breadcrumbResolver));
     }
 
     private static EntityTypeDefinition PersonTypeDefinition() => new()
