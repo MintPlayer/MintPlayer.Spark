@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Queries;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Services;
@@ -24,6 +25,24 @@ public class GuardedDocActions : DefaultPersistentObjectActions<GuardedDoc>
     public GuardedDocActions(IEntityMapper entityMapper) : base(entityMapper) { }
     public override Task<bool> IsAllowedAsync(string action, GuardedDoc entity)
         => Task.FromResult(entity.IsVisible);
+
+    /// <summary>
+    /// A parent-scoped sub-query source, for tests whose subject is the parent gate.
+    /// <para>
+    /// It exists because a <c>Database.*</c> source may no longer be used as a sub-query: that
+    /// branch reads a SparkContext property and cannot express "belonging to this parent", so
+    /// serving it would list the whole collection under one parent's page. Scoping a sub-query is
+    /// what an actions method is for, and this is the smallest honest one.
+    /// </para>
+    /// </summary>
+    public IEnumerable<GuardedDoc> ChildrenOf(CustomQueryArgs args)
+    {
+        // The parent must actually arrive — routing a sub-query through an actions method is only
+        // worth anything if the method can see what it is scoping to. Tests using this source are
+        // about the parent GATE rather than the rows, so the scoped set is deliberately empty.
+        ArgumentNullException.ThrowIfNull(args.Parent);
+        return [];
+    }
 }
 
 /// <summary>
