@@ -154,11 +154,23 @@ public static class SparkExtensions
 
     /// <summary>
     /// Registers the SparkContext implementation for this application.
+    /// <para>
+    /// Also declares the context's own assembly for index and projection discovery. Discovery
+    /// otherwise starts from <see cref="Assembly.GetEntryAssembly"/>, which is the application only
+    /// when the application is the process entry point: under an in-process test host
+    /// (<c>WebApplicationFactory</c>) the entry assembly is the test runner, so the application's
+    /// indexes were neither deployed nor catalogued — and the empty catalog silently dropped the
+    /// <c>querytype</c>/<c>index</c> lines from every projection-backed entity's model shape, so the
+    /// startup hash check rejected a model that <c>--spark-verify-model</c> had just accepted.
+    /// The context's assembly is the right anchor because it is the assembly the model shape is
+    /// derived from, and the one the index generator emits into.
+    /// </para>
     /// </summary>
     public static ISparkBuilder UseContext<TContext>(this ISparkBuilder builder)
         where TContext : SparkContext
     {
         builder.Services.AddScoped<SparkContext, TContext>();
+        builder.Registry.AddIndexAssembly(typeof(TContext).Assembly);
         return builder;
     }
 

@@ -23,7 +23,7 @@ On branch `fix/coverage-queue-licence-cap`.
 | S2 | Does an SPA report reach the badge | **Resolved** — it does now; verified by M13's checker |
 | S3 | Does `--settings` stabilise the `<source>` root | **Resolved — NO.** M13 is mandatory, not defensive |
 | S4 | Why `libs/testing` is in zero reports | **Resolved — false premise.** It IS measured; the E2E suite covers 15 of its files |
-| S5 | Can a `WebApplicationFactory` boot the app | Not started |
+| S5 | Can a `WebApplicationFactory` boot the app | **Resolved — yes**, after fixing a framework defect it exposed |
 | S6 | Nx cache and coverage outputs | **Done** — `test.outputs` now covers the real dir |
 | M7 | Wire `coverlet.runsettings` | **Done** — moved to root, all five targets |
 | M8 | SPA vitest coverage | **Done** — *without* replacing the executor |
@@ -33,7 +33,8 @@ On branch `fix/coverage-queue-licence-cap`.
 | M12 | Demo .NET apps | **Resolved** — excluded from the denominator entirely |
 | M13 | Port `verify-coverage-paths.mjs` | **Done** — wired into both workflows |
 | M14 | Re-baseline | **Done** — 81.51% (22276/27328) after the demo decision |
-| M15–M22 | Raise real coverage, then gate | Not started |
+| M16 | `[SparkAuthorize]` end to end | **Started** — host built, first 3 tests green |
+| M15, M17–M22 | Raise real coverage, then gate | Not started |
 
 Verified green: framework 1924 tests, `CodeCoverage` 314, `ng-spark` 402, `ng-spark-auth` 98.
 
@@ -115,12 +116,60 @@ defensive**. **Blocks M6/M7 sequencing.**
 Confirm *why* before choosing a fix. The xunit-test-assembly-detection hypothesis is
 **unverified**. 1,784 lines of a published package are at stake. **Blocks M5.**
 
-### S5 — Can a `WebApplicationFactory` boot `apps/CodeCoverage`?
+### S5 — ~~Can a `WebApplicationFactory` boot `apps/CodeCoverage`?~~ **RESOLVED — yes**
 
-The app boots RavenDB + `SparkMiddleware` + `security.json`, and Spark's startup gate checks
-`modelHashes.json`. Whether a test host can start it at all is unknown.
-`CodeCoverage.Tests/CoverageRavenTest.cs` is the starting point. **Blocks M9**, the largest
-single coverage milestone.
+`CoverageWebAppFactory` boots the real composition root in-process against an embedded RavenDB.
+Getting there surfaced four obstacles; three were configuration, and the fourth was a genuine
+framework defect that this spike is the reason anyone found.
+
+1. **Configuration must go through `UseSetting`**, not `ConfigureAppConfiguration`. `Program`
+   reads `builder.Configuration` while it is still registering services, so a source added
+   later is invisible and the app threw *"GitHub sign-in is not configured"* before any test ran.
+2. **The content root must be the app's project directory**, since Spark reads `App_Data` from
+   it. Resolved by walking up to the repository root rather than counting `..` segments.
+3. **The environment must not be `Development`**, or `UseAngularCliServer` spawns an Angular dev
+   server per test run.
+4. **`Assembly.GetEntryAssembly()` seeded index discovery** — see below.
+
+### The framework defect S5 exposed
+
+`SparkModuleRegistry.ResolveIndexAssemblies()` seeded discovery from
+`Assembly.GetEntryAssembly()`. Under `dotnet run` that is the application; under an in-process
+test host it is **the test runner**, so the index catalog came up **empty**. An empty catalog
+makes `ModelShapeDiscovery` yield no projection, and `SparkModelShape.Describe` then silently
+drops two lines — `querytype` and `index` — from every projection-backed entity's shape. Those
+hashes move, and the startup gate rejects a model that `--spark-verify-model` had just accepted
+on the same build.
+
+Measured, not inferred: the canonical shape texts differ by exactly those two lines, and the
+catalog is `<empty>` under the entry assembly and fully populated under the app assembly.
+
+Only `Account`, `Build` and `Repository` drifted because the predicate is *"context root with a
+projection-bearing index"*. `Commit` has an index (`Commits_ByRepository`) but no `[FromIndex]`
+projection, so it is immune.
+
+**Fix:** anchor discovery on the context's assembly in `SparkExtensions.UseContext<TContext>`
+(`libs/spark/MintPlayer.Spark/SparkMiddleware.cs`) — `AddIndexAssembly` appends rather than
+replaces, runs before all three consumers read the list, and re-registering a type is idempotent.
+
+**Two theories that measured false, recorded so nobody re-runs them:**
+
+- *The `{Entity}Actions` correlation.* The three drifting entities each have an Actions class, but
+  so does `Commit`, which does not drift. There is no path from a discovered Actions type to the
+  hash at all.
+- *Attribute descriptions.* Descriptions are **not part of any hash**, by design —
+  `SparkModelShape.Describe` never emits them and `ModelSynchronizer.cs:374-378` says so outright.
+  A stale English description therefore cannot break startup; it is reported only by
+  `--spark-verify-model`.
+
+**Blast radius**, since this is published framework code: all five apps in this repo declare their
+context in the entry assembly, so it is a no-op for `dotnet run`. A third-party app whose context
+assembly is not the entry assembly *and* which holds projection-bearing indexes will now catalogue
+them, moving its hash and needing one `--spark-synchronize-model`. That is a correctness fix, but
+it is a behaviour change and belongs in the release notes.
+
+`SparkReplicationExtensions.cs:87` has the identical `GetEntryAssembly()!` trap in another
+subsystem — **not fixed here**, and worth doing before it costs someone the same day.
 
 ### S6 — Nx cache and coverage outputs
 
@@ -355,12 +404,24 @@ Ordered by uncovered lines × risk. Production before framework, framework befor
 (`GitHubUserTokenService`) to copy. Several workers in M17/M18 are untestable without it, so
 this is not a cleanup — it is a prerequisite.
 
-### M16 — `[SparkAuthorize]` end to end
+### M16 — `[SparkAuthorize]` end to end — **started**
 
-Driven by S5. A `WebApplicationFactory`/`TestServer` fixture driving the six attributed
-endpoints over HTTP with real principals. The attribute is currently enforced by **nothing**
-in this app's own tests, and this is production. Closes `ApiTokenAuthenticationHandler`
-(0 %) as a by-product.
+Driven by S5, which is now resolved. `CoverageWebAppFactory` exists and the first three tests
+are green:
+
+- the application starts at all (which also executes `Program.cs`, 291 lines that no test had
+  ever run, and catches startup-only failures no controller test can);
+- an anonymous badge request is **not** challenged, because `[AllowAnonymous]` beats the
+  type-level `[SparkAuthorize]` and a public badge is the entire point;
+- an anonymous caller **cannot** reach an authorized endpoint.
+
+Both halves matter and only one is usually remembered. A change that made the whole app require
+a signed-in user would break every README badge in the wild while every existing test stayed
+green, because none of them runs a filter.
+
+**Still to do:** drive all six attributed endpoints with real principals — an owner, a
+non-owner and an anonymous caller each — and cover `ApiTokenAuthenticationHandler` (0%) through
+the token scheme rather than by constructing it.
 
 ### M17 — Controllers
 

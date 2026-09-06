@@ -17,9 +17,17 @@ channel had three dead branches that no test exercised in any app.
 ## Status — 2026-09-06
 
 Aim 1 is **implemented** on `fix/coverage-queue-licence-cap` and awaiting deploy: defects 1, 2, 3
-and 3b are fixed; defect 4 (busy state) is open. Aim 2 is **not started** — its milestones and
-spikes are in the [plan](actions_and_coverage_plan.md), which carries the per-milestone status
-table.
+and 3b are fixed; defect 4 (busy state) is open.
+
+Aim 2's instrumentation is **done** and the number is re-baselined at **81.51%**
+(22,276/27,328 lines). Raising it has started: the app can now be booted in-process, and the
+first `[SparkAuthorize]` tests this application has ever had are green. The per-milestone status
+table is in the [plan](actions_and_coverage_plan.md).
+
+**Scope, decided by the owner 2026-09-06:** the four demo apps are not tested and are therefore
+out of the denominator entirely; `apps/CodeCoverage` must be tested because it runs a live
+website; and the dev tooling must be tested too, which withdraws the largest proposed exclusion
+(~255 lines) and leaves the exclusion set essentially empty.
 
 The investigation narrative below is kept as written rather than rewritten in hindsight, because
 the sequence is the useful part: two hypotheses were confirmed against production and one — the
@@ -183,6 +191,41 @@ several seconds of a live-looking button followed by an identical grid.
   account's write conflict discarded the reconcile of all the others and 500'd the button — the
   opposite of the stated "a GitHub hiccup must not turn this into an error page" intent.
 
+### Defect 5 — the model-hash gate answers differently depending on how the app is hosted *(fixed)*
+
+Found by trying to boot the app in a test host, and it had nothing to do with the tests.
+
+`SparkModuleRegistry.ResolveIndexAssemblies()` seeded index discovery from
+`Assembly.GetEntryAssembly()`. Under `dotnet run` that is the application; under
+`WebApplicationFactory<Program>` it is **the test runner**, so the index catalog came up
+**empty**. `ModelShapeDiscovery` then yields no projection, and `SparkModelShape.Describe`
+silently drops two lines — `querytype` and `index` — from every projection-backed entity's shape.
+The hashes move, and the gate rejects a model that `--spark-verify-model` accepts on the same
+build, in the same environment, against the same `App_Data`.
+
+Exactly `Account`, `Build` and `Repository` drifted, because the predicate is *"context root with
+a projection-bearing index"*. `Commit` has an index but no `[FromIndex]` projection and is immune.
+
+Fixed by anchoring discovery on the context's assembly in
+`SparkExtensions.UseContext<TContext>`.
+
+This belongs in this document rather than only in the plan, because it is the same failure shape
+as everything else here: **not an error, an absence.** An empty catalog is indistinguishable from
+an application that genuinely has no indexes, so the gate reported a model problem while the
+actual defect was in discovery — and it pointed the reader at `--spark-synchronize-model`, which
+would have "fixed" it by writing the *wrong* model.
+
+**The hash failure is the loud symptom; the silent one is worse.** An empty catalog also means
+`IndexCreation.CreateIndexes` deploys **no indexes at all**, `GetByIndexName` resolves nothing,
+and index-computed projection fields come back **null with no error** — the exact failure
+`PopulateIndexCatalog`'s own remarks warn about ("wrong output, no error"). Any Spark application
+hosted so that its context assembly is not the process entry point has been silently running
+without its indexes. The startup gate is what made this visible at all, by accident.
+
+Two theories measured false along the way, recorded so they are not re-run: the `{Entity}Actions`
+correlation (`Commit` has one and does not drift), and attribute descriptions — which are **not
+part of any hash by design**, so a stale description can never break startup.
+
 ### Goals
 
 - A custom action's outcome is always visible: success, refusal-with-reason, or queued-work.
@@ -209,27 +252,29 @@ report's `<source>` root and de-duplicates per (file, line) with hits taken as t
 is what the naive aggregations kept getting wrong.
 
 ```
-reports  18        (every path resolves; verify-coverage-paths.mjs reports 0 errors)
-files    661
-lines    22282/27423
-coverage 81.25%
+reports  15        (every path resolves; verify-coverage-paths.mjs reports 0 errors)
+files    640
+lines    22276/27328
+coverage 81.51%
 ```
 
 Suites behind it, all green: **2,587 .NET tests** (1924 + 314 + 229 + 82 + 38) and
 **599 JS tests** (ng-spark 402, ng-spark-auth 98, SPA + demos + action).
 
-**Read the scope before quoting the number.** 81.25% is the truth about *what is measured*,
-and it is higher than the ≈76.5% this document previously estimated for two traceable reasons:
-`libs/testing` turned out to be measured after all (the "zero reports" claim came from stale
-artifacts — the E2E suite covers 15 of its files), and the demo **.NET** apps are still in
-neither numerator nor denominator, because no test project references them. Folding those in at
-their true ~0% would put the all-in figure near **78%**. That decision is M12 and is still open;
-until it is made, quote 81.25% *with* the scope, never alone.
+**The scope is now decided, so the number can be quoted plainly.** The four demo apps are not
+tested and are out of the denominator entirely — both their .NET projects and their ClientApps.
+An earlier reading of 81.25% over 27,423 lines included three demo ClientApps that had briefly
+been wired up for measurement; removing them is what moves this to 81.51%.
 
-The largest single gap is `apps/CodeCoverage/Program.cs` at **291 uncovered lines, 0%** — a
-composition root, and the strongest candidate for an argued exclusion rather than tests.
-`DeleteDataAction` and `ResyncAction` also sit at 0%, which is a fair verdict on the code this
-same PR just changed.
+It is higher than the ~76.5% this document previously estimated, for one traceable reason:
+`libs/testing` turned out to be measured after all. The "in zero reports" finding came from stale
+artifacts; the E2E suite covers 15 of its files.
+
+The largest single gap is `apps/CodeCoverage/Program.cs` at **291 uncovered lines, 0%**. It is
+*not* excluded — it runs a live website, and unit tests are simply the wrong instrument for a
+composition root. It is covered by booting the app in `CoverageWebAppFactory` instead, which
+asserts something real (the app starts) rather than farming coverage. `DeleteDataAction` and
+`ResyncAction` also sit at 0%, which is a fair verdict on code this same branch rewrote.
 
 ### What the number was before the fixes
 

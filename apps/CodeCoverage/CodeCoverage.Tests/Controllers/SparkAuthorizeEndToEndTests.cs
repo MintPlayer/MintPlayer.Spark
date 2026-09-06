@@ -17,33 +17,16 @@ namespace CodeCoverage.Tests.Controllers;
 /// </summary>
 public class SparkAuthorizeEndToEndTests : CoverageRavenTest
 {
-    /// <summary>
-    /// BLOCKED, and deliberately skipped rather than deleted: the infrastructure works and the
-    /// remaining obstacle is a framework defect worth fixing, not a dead end.
-    /// <para>
-    /// Booting the app in-process throws <c>SparkModelOutOfSyncException</c> for exactly three
-    /// entities -- Account, Build and Repository -- while <c>dotnet run --spark-verify-model</c>
-    /// on the same build reports the model perfectly in sync, under the same environment name and
-    /// against the same App_Data. So the model hash is NOT stable across hosting models, and the
-    /// startup gate is therefore hostile to in-process integration testing of any Spark app.
-    /// </para>
-    /// <para>
-    /// Ruled out by measurement: content root (fixed, and pointed at the app project),
-    /// configuration timing (fixed with UseSetting), the environment name (verify is in sync as
-    /// IntegrationTest), attribute descriptions (both builds load the identical
-    /// CodeCoverage.Library.dll, and it carries them), test-parallelism (a single test in
-    /// isolation fails the same way), and HasRefreshOverride (it feeds a diagnostic warning, not
-    /// the hash).
-    /// </para>
-    /// <para>
-    /// Do not work around this with SPARK_MODEL_HASH_OVERRIDE: the override deliberately takes a
-    /// specific hash so it cannot become permanent, and baking one into a test would break on the
-    /// next model change. The fix belongs in ModelSynchronizer.
-    /// </para>
-    /// </summary>
-    private const string BlockedReason =
-        "Blocked: the Spark model hash is not stable across hosting models, so the startup gate "
-        + "rejects an in-process test host that dotnet run accepts. See the class remarks.";
+    // These were skipped for one session with a note saying the model hash was unstable across
+    // hosting models. It was: booting in-process threw SparkModelOutOfSyncException for exactly
+    // Account, Build and Repository while --spark-verify-model on the same build reported the model
+    // in sync. The cause was Assembly.GetEntryAssembly() seeding index discovery -- under a test
+    // host that is the test runner, not the application, so the index catalog came up empty and the
+    // querytype/index lines vanished from every projection-backed entity shape. Fixed in
+    // SparkExtensions.UseContext, which now anchors discovery on the context assembly.
+    //
+    // Kept as a comment because the failure was invisible in exactly the way this whole test class
+    // exists to catch: the app reported a model problem, and the actual defect was in discovery.
 
     /// <summary>
     /// Booting the real composition root is itself the assertion here. `Program.cs` is 291 lines
@@ -51,7 +34,7 @@ public class SparkAuthorizeEndToEndTests : CoverageRavenTest
     /// DI registration, a middleware ordering analyzer violation, a security.json that no longer
     /// matches the model. None of those can be caught by testing a controller in isolation.
     /// </summary>
-    [Fact(Skip = BlockedReason)]
+    [Fact]
     public async Task The_application_starts()
     {
         using var store = GetDocumentStore();
@@ -67,7 +50,7 @@ public class SparkAuthorizeEndToEndTests : CoverageRavenTest
     /// Anonymous access is the entire point of a coverage badge, so this pins it: anything other
     /// than a challenge means the public surface still answers.
     /// </summary>
-    [Fact(Skip = BlockedReason)]
+    [Fact]
     public async Task An_anonymous_badge_request_is_not_challenged()
     {
         using var store = GetDocumentStore();
@@ -91,7 +74,7 @@ public class SparkAuthorizeEndToEndTests : CoverageRavenTest
     /// GitHub as the only provider, a challenge is a redirect to GitHub rather than a bare 401,
     /// so both shapes are accepted — what is asserted is that the request does not simply succeed.
     /// </summary>
-    [Fact(Skip = BlockedReason)]
+    [Fact]
     public async Task An_anonymous_caller_cannot_reach_an_authorized_endpoint()
     {
         using var store = GetDocumentStore();
