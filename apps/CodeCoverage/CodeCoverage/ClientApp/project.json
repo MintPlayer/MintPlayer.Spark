@@ -70,12 +70,12 @@
         "coverage": true,
         "coverageReporters": ["cobertura", "text-summary"],
         "coverageExclude": [
-          "src/**/*.spec.ts",
-          "src/main.ts",
-          "src/spark-auth.setup.ts",
-          "src/app/app.config.ts"
+          "apps/CodeCoverage/CodeCoverage/ClientApp/src/**/*.spec.ts",
+          "apps/CodeCoverage/CodeCoverage/ClientApp/src/main.ts",
+          "apps/CodeCoverage/CodeCoverage/ClientApp/src/spark-auth.setup.ts",
+          "apps/CodeCoverage/CodeCoverage/ClientApp/src/app/app.config.ts"
         ],
-        "coverageInclude": ["src/**/*.ts"]
+        "coverageInclude": ["apps/CodeCoverage/CodeCoverage/ClientApp/src/**/*.ts"]
       }
     }
   }

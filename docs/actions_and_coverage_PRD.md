@@ -228,10 +228,45 @@ whose ~1,700 lines of new tests appear in no report yet.
 
 | # | Defect | Status |
 | --- | --- | --- |
-| 1 | `coverage.all` unset → v8 measures only what a spec imports | **Fixed** for ng-spark (89/89 files), ng-spark-auth (20/21) and the action. **Still open for all five Angular apps.** The SPA reports **6 of 36 files**. |
-| 2 | `coverlet.runsettings` is an orphan | **Verified orphan** — nothing references it; all five .NET test targets pass no `--settings`. But the consequence shrank: generated code is now 7 files / 68 lines (all `Inject.g.cs`), worth ≈0.3 points, not 2.5. |
-| 3 | The SPA report is never uploaded | **Verified, both halves.** The executor writes to `<workspaceRoot>/coverage/@spark-apps/code-coverage/`; CI globs `apps/*/*/ClientApp/coverage/`. Nothing matches. `nx.json` `test.outputs` points at the wrong dir too, so a cache hit emits no file. |
-| 4 | Report path roots differ per suite | **Verified and characterised.** Two different `<source>` roots are uploaded per run; the four `tests/*` reports drop the leading `libs/`. The server's suffix match rescues it — silently and load-bearingly. |
+| 1 | `coverage.all` unset → v8 measures only what a spec imports | **Diagnosis was wrong; symptom was real.** Vitest 4 **removed** `coverage.all`; the `all: true` lines were dead config that also failed `tsc --noEmit`, and they are deleted. The actual lever is an explicit `coverage.include` — "by default only files covered by tests are included". Fixed for every JS project. |
+| 2 | `coverlet.runsettings` is an orphan | **Fixed.** Moved to the repo root (where its own comment always claimed it lived) and passed by all five .NET test targets. Its `IncludeTestAssembly=false` now demonstrably applies. |
+| 3 | The SPA report is never uploaded | **Fixed**, and more cheaply than planned — see below. |
+| 4 | Report path roots differ per suite | **Confirmed permanent.** See the S3 result below. |
+
+**Three corrections to the audit, each of which changed the work:**
+
+1. **The SPA did not need its executor replaced.** The audit concluded `@nx/angular:unit-test`
+   "has no `all` option, so this cannot be fixed by adding an option". True but irrelevant: the
+   executor *does* expose `coverageInclude`, which is forwarded to vitest's `coverage.include`,
+   and that is the real lever in Vitest 4. The SPA already set it — as `src/**/*.ts`, which
+   **silently matches nothing**, because these globs resolve against vitest's root (the
+   workspace root), not the project. Correcting it to the full path took the report from
+   **6 files to 36**, and the honest headline from 66.66% to **4.84% (29/599 lines)**. The
+   same latent bug was in `coverageExclude`, so the exclusions were not applying either.
+
+2. **`--settings` does NOT stabilise the `<source>` root (spike S3).** Measured with the file
+   correctly wired: `tests/*` still emit `<source>.../libs/</source>` while
+   `apps/CodeCoverage/CodeCoverage.Tests` emits the repo root. The root is the compilation's
+   common path prefix and nothing in the runsettings changes it. So the server's longest-suffix
+   match is load-bearing **permanently**, and M13's checker is mandatory rather than defensive.
+
+3. **`ExcludeByFile` does not work** for the source generator's `Inject.g.cs`. Forward-slash,
+   backslash and separator-free patterns were all measured against a valid settings file and
+   none excluded it. 7 files / 68 lines still arrive, all 100% covered. They never reach the
+   badge (`obj/` is gitignored, so they never match `git ls-files`), but they *would* keep the
+   new tripwire permanently red, so `verify-coverage-paths.mjs` carries a narrow, documented
+   allowance for `obj/` only.
+
+**A fourth defect nobody had found — a file silently dropped from the denominator:**
+
+`ng-spark-auth/src/lib/provide-spark-auth.ts` was **excluded from coverage entirely**, and this
+is why the package reported 20 of 21 source files. Its vitest config had no alias for
+`@mintplayer/ng-spark`, which the file imports. Vitest could not resolve it, so it fell back to
+parsing the TypeScript as raw JavaScript, failed on `config?: Partial<SparkAuthConfig>`, logged
+`Excluding it from coverage` and carried on. The file did not report 0% — it **disappeared**.
+Fixed with a `resolve.alias` mirroring `tsconfig.base.json`, plus the spec it never had.
+
+This is the same failure shape as everything else in this document: not an error, an absence.
 
 **New findings not previously on record:**
 

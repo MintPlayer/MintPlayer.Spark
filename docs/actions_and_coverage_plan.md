@@ -20,9 +20,22 @@ On branch `fix/coverage-queue-licence-cap`.
 | M4 | Busy state on custom actions | Not started |
 | M5 | Latent defects on the same path | **Partly** — see below |
 | M6 | Tests for the delete path | **Partly** — see below |
-| S2–S6, M7–M22 | Coverage work | Not started |
+| S2 | Does an SPA report reach the badge | **Resolved** — it does now; verified by M13's checker |
+| S3 | Does `--settings` stabilise the `<source>` root | **Resolved — NO.** M13 is mandatory, not defensive |
+| S4 | Why `libs/testing` is in zero reports | Not started |
+| S5 | Can a `WebApplicationFactory` boot the app | Not started |
+| S6 | Nx cache and coverage outputs | **Done** — `test.outputs` now covers the real dir |
+| M7 | Wire `coverlet.runsettings` | **Done** — moved to root, all five targets |
+| M8 | SPA vitest coverage | **Done** — *without* replacing the executor |
+| M9 | Action into the nx graph | **Done** — 41.28% now measured |
+| M10 | Demo ClientApps | **Done** — three configured, WebhooksDemo excluded |
+| M11 | `libs/testing` visible | Not started (blocked on S4) |
+| M12 | Demo .NET apps | Not started |
+| M13 | Port `verify-coverage-paths.mjs` | **Done** — wired into both workflows |
+| M14 | Re-baseline | In progress |
+| M15–M22 | Raise real coverage, then gate | Not started |
 
-Verified green at that point: framework 1924 tests, `CodeCoverage` 314, `ng-spark` 402.
+Verified green: framework 1924 tests, `CodeCoverage` 314, `ng-spark` 402, `ng-spark-auth` 98.
 
 Everything above still belongs to **one pull request**; the table records progress within it,
 not a split.
