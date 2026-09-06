@@ -20,7 +20,9 @@ Aim 1 is **implemented** on `fix/coverage-queue-licence-cap` and awaiting deploy
 and 3b are fixed; defect 4 (busy state) is open.
 
 Aim 2's instrumentation is **done**, the number was re-baselined at **81.51%**, and raising it is
-under way — **83.23%** (22,859/27,465 lines) as of the credential-surface work. The app can be
+under way — **83.42%** (22,933/27,491 lines) when last measured, after the check-run guard work.
+Tests added since (the SPA gate panel, the row-security write paths, the query-context invariants)
+are **not** in that figure; re-run `node tools/coverage-summary.mjs` before quoting it. The app can be
 booted in-process, and the first `[SparkAuthorize]` tests this application has ever had are green.
 
 Closed since the re-baseline, all previously at **0%**: `ApiTokenAuthenticationHandler` (the sole

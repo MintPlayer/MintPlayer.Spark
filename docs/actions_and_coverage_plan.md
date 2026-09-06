@@ -34,7 +34,7 @@ On branch `fix/coverage-queue-licence-cap`.
 | M13 | Port `verify-coverage-paths.mjs` | **Done** — wired into both workflows |
 | M14 | Re-baseline | **Done** — 81.51% (22276/27328) after the demo decision |
 | M16 | `[SparkAuthorize]` end to end | **Done** — shared host, anonymous + AllowAnonymous both pinned |
-| M17 | Controllers | **In progress** — credential surfaces done |
+| M17 | Controllers | **In progress** — credential surfaces, action outputs, feedback guards done |
 | M15, M18–M22 | Raise real coverage, then gate | Not started |
 
 Verified green: framework 1924 tests, `CodeCoverage` 314, `ng-spark` 402, `ng-spark-auth` 98.
@@ -447,6 +447,52 @@ misuse gets right.
 gates are not in the actions base at all. `DatabaseAccess` checks row security and *then* delegates,
 so testing the actions class directly tests the half that never had the guard. The tests were
 rewritten against `IDatabaseAccess`, and that asymmetry is now stated in their remarks.
+
+---
+
+## The facets / search-suggestion row-security pass
+
+Prompted by the prior-art review: that framework ships a *dedicated* hook purely to constrain
+reference values in filter dropdowns, distinct-value lists and column search — its authors found
+the main row filter insufficient there. This repository has been bitten by the same class before
+(the `?sortColumns=` disclosure oracle), so the surfaces were audited.
+
+**Result: no live leak. The riskiest surfaces do not exist yet, and the ones that do are gated.**
+
+| Surface | Status |
+| --- | --- |
+| Distinct values / facets / search suggestions / autocomplete | **Do not exist.** No such endpoint anywhere in `Endpoints/`. The risk is prospective. |
+| Lookup references (`Endpoints/LookupReferences/`) | **Nothing to filter.** A curated key/value table — enum-like reference data, not user rows. |
+| Free-text search (`?search=`) | **Safe.** Composed into the same filtered query; `RowSecurity` composes the filter *before* the search clause, which is why the ordering comment in `QueryExecutor` warns that reversing them turns `AND` into `OR`. |
+| Reference *pickers* | **Safe.** A modal query grid, so it goes through `QueryExecutor` and is filtered like any other query. |
+| Reference labels / breadcrumbs | **Gated**, at `BreadcrumbResolver.cs:154` — a denied row becomes a redacted placeholder rather than a label. |
+
+The breadcrumb gate is worth spelling out because it is the one that could have been subtly wrong.
+It calls `rowSecurity.IsAllowedAsync(securityType, "Read", doc)`, and `ResolveEffectiveRuleAsync`
+composes **both** halves of a rule — the `IsAllowedAsync` hook *and* the compiled
+`GetRowFilterAsync` expression. So a type scoped **only** by a filter is still gated here. Had it
+consulted just the hook, every filter-only type would have leaked reference labels, which is
+precisely the shape of the prior art's projection-type hole.
+
+### The gap that is real
+
+**Nothing proves this end to end against a real rule.** `BreadcrumbResolverTests` builds its
+resolver with `Substitute.For<IRowSecurity>()` stubbed to return true for any arguments, so it
+exercises the *plumbing* — that a denied id becomes a placeholder — but never that a genuine
+`GetRowFilterAsync` reaches the decision.
+
+That matters more here than it would elsewhere: reference labels have already had one real
+row-rule bypass in this repository (an untyped load meant `IsAllowedAsync(typeof(JObject), …)`
+found no rule, so labels rendered *and* skipped row security; fixed in preview.71). The code is
+right today and the test would not notice if it stopped being.
+
+**Recommended, not done:** a breadcrumb test against a filter-only actions class and a real
+`IRowSecurity`, asserting a referenced row the filter hides renders as the redacted placeholder.
+The `FilteredDoc` fixture added for `RowFilterWritePathTests` is the natural starting point.
+
+**Also not done:** if distinct-values, facets or search suggestions are ever added, they must be
+covered by the same expression rather than by a hook an author has to remember — that is the
+mistake the prior art documents by having had to add a second hook for it.
 
 ---
 
