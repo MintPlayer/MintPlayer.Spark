@@ -185,12 +185,30 @@ keeps advertising repositories it can no longer see — the same failure as the 
 second route. This is why `installation_repositories` now also broadcasts `ReconcileAccountMessage`:
 the payload is applied for the timely case, and GitHub is asked for the authoritative set.
 
-*An inference was considered and rejected.* If we stored the last-known `repository_selection`, then
-`all → selected` plus `repositories_added: [X]` would imply "everything except X is gone", with no
-API call. The reasoning is sound, but it rests on `repositories_added` being the complete new set
-rather than a delta — and the one measurement available has a single-repository selection, where the
-two are indistinguishable. Guessing wrong disconnects repositories that are still live, which is the
-dangerous direction. Asking GitHub costs one paged call on a rare event and cannot be wrong.
+**On a scope change the payload carries the complete set, not a delta.** Measured afterwards with a
+fresh installation, deliberately with more than one repository so the two are distinguishable:
+
+| change | `repository_selection` | `repositories_added` | `repositories_removed` |
+| --- | --- | --- | --- |
+| install on the account | `all` | *(`installation.created`, no lists)* | — |
+| narrow `all` → 3 selected | `selected` | **all 3** | empty |
+| widen 3 selected → `all` | `all` | **all 153** | empty |
+
+The three named on the narrowing had all been reachable a moment earlier under `all`, so nothing
+*became* accessible — GitHub is stating the new set, not the difference. Same on the way back up.
+
+*An inference is therefore available, and was still not taken.* If the last-known
+`repository_selection` were persisted on the account, `all → selected` plus `repositories_added`
+would give the complete new set directly, and everything else on that account could be disconnected
+with no API call. That is now measured rather than assumed, so it would work.
+
+It is not implemented because it would be a **second** mechanism computing the same answer as the
+reconciler, correct only for scope *transitions*: a genuine incremental add to an existing selection
+must not be read as "the set is now exactly this", and the payload does not distinguish the two
+cases — only our stored previous selection would, which makes the rule's correctness depend on a
+field we would now have to keep accurate. The reconcile is one path, is authoritative for every
+cause of drift rather than this one, and costs a paged API call on an event that fires a few times a
+year. If that call ever becomes a problem, the fast path is documented here and ready.
 
 **A "selected" installation that loses its last repository is deleted outright.** Transferring the
 probe away when it was the only selected repository produced, from the personal installation:
