@@ -359,6 +359,64 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
     }
 
     /// <summary>
+    /// When the App is installed on both the source and the destination of a transfer, one move
+    /// produces three events from two installations. Measured 2026-09-05 by transferring a probe
+    /// repository from the MintPlayer org to a personal account, both installed org-wide:
+    ///
+    /// <code>
+    /// 10:58:49  installation_repositories.removed   installation 153617061 (MintPlayer)
+    /// 10:58:51  repository.transferred              installation 153539439 (personal)
+    /// 10:58:51  installation_repositories.added     installation 153539439 (personal)
+    /// </code>
+    ///
+    /// Two seconds apart, on two queues, with no ordering guarantee. If the removal is applied
+    /// after the others it would disconnect a repository the App can plainly still see — so
+    /// ownership, not arrival order, decides: a removal from an account that no longer owns the
+    /// repository is stale.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_removal_from_the_previous_owner_cannot_disconnect_a_repository_that_moved_to_us(bool removalLast)
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedAsync(session);
+
+        var recipient = CreateRecipient(session);
+        var removedByOldOwner = Message("installation_repositories",
+            InstallationRepositoriesJson("removed", added: "", removed: LiteRepositoryJson("acme", "widgets")));
+        var gained = Message("repository", RepositoryEventJson("transferred", NewOwnerId, "acme-archive", "widgets"));
+
+        foreach (var message in removalLast ? new[] { gained, removedByOldOwner } : new[] { removedByOldOwner, gained })
+            await recipient.HandleAsync(message);
+
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(RepoId));
+        Assert.Equal(Account.DocumentId(NewOwnerId), repository!.Account);
+        Assert.Equal(RepositoryConnection.Connected, repository.Connection);
+    }
+
+    /// <summary>
+    /// The guard must not swallow the case it was not written for: when nobody else has claimed the
+    /// repository, a removal from its current owner is exactly the transfer-away signal, and the
+    /// only one we get.
+    /// </summary>
+    [Fact]
+    public async Task A_removal_from_the_current_owner_still_disconnects()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedAsync(session);
+
+        await CreateRecipient(session).HandleAsync(Message("installation_repositories",
+            InstallationRepositoriesJson("removed", added: "", removed: LiteRepositoryJson("acme", "widgets"))));
+
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(RepoId));
+        Assert.Equal(RepositoryConnection.Disconnected, repository!.Connection);
+        Assert.Equal(DisconnectedReasons.RemovedFromInstallation, repository.DisconnectedReason);
+    }
+
+    /// <summary>
     /// Org renames arrive as `organization.renamed`, not `installation_target`. Measured
     /// 2026-09-05: neither Coverage app subscribes to `installation_target`, and an App receives
     /// only what it subscribes to — so a handler listening for it alone would never have run.

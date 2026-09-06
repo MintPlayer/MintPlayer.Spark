@@ -152,6 +152,57 @@ unauthenticated-of-a-user. Second, and the one that actually matters: create a *
 the new repository's id or still redirects to the old one. D6 step 1 makes our own resolution safe
 either way, but if GitHub keeps redirecting we must not let step 3 overwrite a correct step-1 hit.
 
+### S6 — org-wide vs "selected repositories" installs — **ANSWERED, and it found a hole webhooks cannot cover**
+
+Measured 2026-09-05 with a throwaway `spike-transfer-probe` repository, both Coverage apps installed
+org-wide on `MintPlayer` and on a personal account.
+
+**Transfer between two accounts that both have the App (org-wide).** One move, three events, two
+installations:
+
+```
+10:58:49  installation_repositories.removed   installation 153617061 (MintPlayer)
+10:58:51  repository.transferred              installation 153539439 (personal)
+10:58:51  installation_repositories.added     installation 153539439 (personal)
+```
+
+Two seconds apart, no ordering guarantee, and the removal names the repository the other events have
+just re-parented. An unguarded removal applied last would disconnect a repository the App can plainly
+still see. `OnInstallationRepositories` therefore ignores a removal from an account that no longer
+owns the repository — ownership decides, not arrival order, so both orders end correct.
+
+**Narrowing an installation from "all" to "selected".** This is the hole:
+
+```
+action: "added"     repository_selection: "selected"
+repositories_added:   [PieterjanDeClippel/spike-transfer-probe]
+repositories_removed: []          ← empty
+```
+
+The App lost access to every other repository on that account, and the only event says *added*, with
+nothing in `repositories_removed`. **No webhook reports the loss.** An app that believes the payload
+keeps advertising repositories it can no longer see — the same failure as the original bug, by a
+second route. This is why `installation_repositories` now also broadcasts `ReconcileAccountMessage`:
+the payload is applied for the timely case, and GitHub is asked for the authoritative set.
+
+*An inference was considered and rejected.* If we stored the last-known `repository_selection`, then
+`all → selected` plus `repositories_added: [X]` would imply "everything except X is gone", with no
+API call. The reasoning is sound, but it rests on `repositories_added` being the complete new set
+rather than a delta — and the one measurement available has a single-repository selection, where the
+two are indistinguishable. Guessing wrong disconnects repositories that are still live, which is the
+dangerous direction. Asking GitHub costs one paged call on a rare event and cannot be wrong.
+
+**A "selected" installation that loses its last repository is deleted outright.** Transferring the
+probe away when it was the only selected repository produced, from the personal installation:
+
+```
+11:04:56  installation.deleted   installation 153539439, repository_selection "selected"
+```
+
+— not `installation_repositories.removed`. `OnInstallation`'s `deleted` branch already handles it
+(null the `InstallationId`, disconnect that account's repositories), and because it scopes by current
+ownership it is order-independent against the transfer events that follow.
+
 ### S4 — Is a transferred-away repository absent from the installation's set? — **ANSWERED: yes**
 
 Answered by the same experiment rather than by an installation-authenticated call. The

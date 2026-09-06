@@ -126,10 +126,41 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             var loaded = await session.LoadAsync<Repository>(removedIds, ct);
             foreach (var existing in loaded.Values)
             {
-                if (existing is not null)
-                    Disconnect(existing, DisconnectedReasons.RemovedFromInstallation);
+                if (existing is null) continue;
+
+                // Only the account that still owns the repository may disconnect it.
+                //
+                // When the App is installed on BOTH the source and the destination of a transfer,
+                // three events describe one move: `removed` from the old installation, and
+                // `transferred` + `added` from the new one. They are sent at the same instant and
+                // arrive in no guaranteed order, so an unguarded `removed` that lands after the
+                // others would disconnect a repository the App can plainly still see, and leave it
+                // that way until the nightly reconciler.
+                //
+                // Ownership settles that without needing an order: if the repository has already
+                // been re-parented, this removal is the old owner reporting a repository that is no
+                // longer theirs, and it is stale. If it has not, the removal is current and the
+                // repository really has left. Correct whichever way round the two arrive.
+                if (existing.Account is not null && existing.Account != account.Id)
+                {
+                    logger.LogInformation(
+                        "Ignoring a stale removal of {FullName} from {Login}: it now belongs to {Owner}",
+                        existing.FullName, account.Login, existing.Account);
+                    continue;
+                }
+
+                Disconnect(existing, DisconnectedReasons.RemovedFromInstallation);
             }
         }
+
+        // The payload announces that the set changed; it cannot be trusted to say how. Narrowing an
+        // installation from "all repositories" to a selected few arrives as action `added` with an
+        // EMPTY repositories_removed — every repository that silently left is reported nowhere.
+        // So apply the payload for the timely case, and ask GitHub for the truth.
+        await messageBus.BroadcastAsync(new Ingestion.ReconcileAccountMessage
+        {
+            AccountGitHubId = ghAccount.Id,
+        }, ct);
     }
 
     private async Task OnRepository(RepositoryEvent evt, CancellationToken ct)
