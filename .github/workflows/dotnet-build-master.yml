@@ -141,7 +141,6 @@ jobs:
           apps/*/*/ClientApp/coverage/cobertura-coverage.xml
           coverage/@spark-apps/*/cobertura-coverage.xml
           apps/*/action/coverage/cobertura-coverage.xml
-          coverage/@spark-demo/*/cobertura-coverage.xml
         disable-search: true
         finish: true
         fail-ci-if-error: false

@@ -71,25 +71,7 @@
       "defaultConfiguration": "development"
     },
     "test": {
-      "executor": "@nx/angular:unit-test",
-      "options": {
-        "tsConfig": "apps/HR/HR/ClientApp/tsconfig.spec.json",
-        "runner": "vitest",
-        "coverage": true,
-        "coverageReporters": [
-          "cobertura",
-          "text-summary"
-        ],
-        "coverageInclude": [
-          "apps/HR/HR/ClientApp/src/**/*.ts"
-        ],
-        "coverageExclude": [
-          "apps/HR/HR/ClientApp/src/**/*.spec.ts",
-          "apps/HR/HR/ClientApp/src/main.ts",
-          "apps/HR/HR/ClientApp/src/app/app.config.ts",
-          "apps/HR/HR/ClientApp/src/spark-auth.setup.ts"
-        ]
-      }
+      "executor": "@nx/angular:unit-test"
     }
   }
 }

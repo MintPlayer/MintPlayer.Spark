@@ -28,11 +28,11 @@ On branch `fix/coverage-queue-licence-cap`.
 | M7 | Wire `coverlet.runsettings` | **Done** — moved to root, all five targets |
 | M8 | SPA vitest coverage | **Done** — *without* replacing the executor |
 | M9 | Action into the nx graph | **Done** — 41.28% now measured |
-| M10 | Demo ClientApps | **Done** — three configured, WebhooksDemo excluded |
+| M10 | Demo ClientApps | **Reverted** — owner decision: demos are not tested, so not measured |
 | M11 | `libs/testing` visible | **Not needed** — S4 dissolved it |
-| M12 | Demo .NET apps | Not started |
+| M12 | Demo .NET apps | **Resolved** — excluded from the denominator entirely |
 | M13 | Port `verify-coverage-paths.mjs` | **Done** — wired into both workflows |
-| M14 | Re-baseline | **Done** — 81.25% (22282/27423), see PRD |
+| M14 | Re-baseline | **Done** — 81.51% (22276/27328) after the demo decision |
 | M15–M22 | Raise real coverage, then gate | Not started |
 
 Verified green: framework 1924 tests, `CodeCoverage` 314, `ng-spark` 402, `ng-spark-auth` 98.
@@ -387,12 +387,25 @@ surface that produced the dropped-`installation_repositories` regression #366 ha
 `SparkReplicationExtensions` (52), `Token.cs` (57), `OidcTokenGenerator` (48).
 ≈300 lines, high risk, low coverage.
 
-### M21 — Written exclusions
+### M21 — Written exclusions — **scope decided, and it is nearly empty**
 
-There are currently **zero** `[ExcludeFromCodeCoverage]` attributes in the repository. A 95 %
-gate is unreachable and dishonest without a small, argued set: `Program.cs` (281 lines, 0 %,
-composition root — a smoke-boot test is the alternative), the DevTunnel/Smee dev-only services
-(≈180), `SparkDevelopmentExtensions` CLI verbs (75). Each exclusion carries a one-line reason.
+Owner decision, 2026-09-06:
+
+- **The four demo apps are not tested at all**, so they are out of the **denominator**
+  entirely — not measured at ~0%. `DemoApp`, `Fleet`, `HR` and `WebhooksDemo`, both their
+  .NET projects and their ClientApps. This settles M12 and reverses M10.
+- **`apps/CodeCoverage` must be tested**, because that code runs a live website. It is
+  production, and it is where the coverage effort goes.
+- **The dev tooling must be tested too** — the DevTunnel/Smee services and the
+  `SparkDevelopmentExtensions` CLI verbs are *not* excluded. They were the largest proposed
+  exclusion (≈255 lines) and that proposal is withdrawn.
+
+What remains of this milestone is therefore almost nothing. `Program.cs` (291 lines, 0%) is
+**`apps/CodeCoverage` code and so must be covered, not excluded** — but unit tests are the
+wrong tool for a composition root. It is covered by the boot smoke test in S5/M16 instead,
+which exercises it end to end for free while testing something that actually matters.
+
+Add an `[ExcludeFromCodeCoverage]` only with a written reason, and expect to add none.
 
 ### M22 — Turn on the gate
 
