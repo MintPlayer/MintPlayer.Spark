@@ -46,8 +46,15 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             case "repository":
                 await OnRepository(Deserialize<RepositoryEvent>(message), cancellationToken);
                 break;
+            // Two events report the same fact, and which one arrives depends on the App's event
+            // subscriptions. `installation_target` is the documented one, but it is NOT among the
+            // events either Coverage app subscribes to (measured 2026-09-05: member, membership,
+            // organization, pull_request, push, repository, team, team_add) — and an App only
+            // receives what it subscribes to, so relying on it alone would have been a handler that
+            // never ran. `organization` IS subscribed and carries action `renamed`.
             case "installation_target":
-                await OnInstallationTarget(message, cancellationToken);
+            case "organization":
+                await OnAccountRenamed(message, cancellationToken);
                 break;
             case "push":
                 await OnPush(Deserialize<PushEvent>(message), cancellationToken);
@@ -160,37 +167,60 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         repository.DefaultBranch = ghRepo.DefaultBranch;
         repository.Archived = ghRepo.Archived;
 
-        if (evt.Action == "transferred")
-        {
-            // The upsert above has already re-parented the repository onto its new owner, which is
-            // right — but a transfer is only observable to an installation that is losing access,
-            // so being told about it means it left. If the App is installed on the new owner too,
-            // the installation_repositories `added` that follows reconnects it; that ordering is
-            // why this disconnects after the upsert rather than skipping it.
-            Disconnect(repository, DisconnectedReasons.TransferredAway);
-        }
+        // Deliberately does NOT disconnect on `transferred`, which is the opposite of what the
+        // event's name suggests. Measured against the real API on 2026-09-05 by transferring
+        // MintPlayer/CodeCoverage out and back:
+        //
+        //   into an org where the App is installed   → repository.transferred
+        //                                            + installation_repositories.added
+        //   out of that org                          → installation_repositories.removed ONLY
+        //
+        // GitHub tells the installation that GAINS a repository; the one losing it hears only
+        // that its repository set shrank. So `transferred` arriving means we just acquired this
+        // repository, and disconnecting here would mark a repository we can see as unreachable,
+        // then rely on the `added` that follows to undo it — a correctness bug resting on the
+        // delivery order of two independently queued messages. Losing a repository is
+        // OnInstallationRepositories' job, and it is the only path that can observe it.
     }
 
     /// <summary>
-    /// An organization renamed itself. The account keeps its numeric id, so the document is the
-    /// same one — but its login, and the owner half of every full name beneath it, are now wrong.
+    /// An account renamed itself. It keeps its numeric id, so the document is the same one — but its
+    /// login, and the owner half of every full name beneath it, are now wrong.
+    /// <para>
+    /// Handles both <c>installation_target</c> and <c>organization</c>, because which one an App
+    /// receives depends on its event subscriptions and the Coverage apps subscribe only to the
+    /// latter.
+    /// </para>
     /// <para>
     /// Read out of the raw payload rather than through a typed event: Octokit.Webhooks models
-    /// <c>InstallationTargetEvent</c> with only the fields common to every webhook, and the two
-    /// this event exists to carry — <c>account</c> and <c>changes.login.from</c> — are not among
-    /// them.
+    /// <c>InstallationTargetEvent</c> with only the fields common to every webhook, and the ones
+    /// this event exists to carry — the account and <c>changes.login.from</c> — are not among them.
     /// </para>
     /// </summary>
-    private async Task OnInstallationTarget(GitHubWebhookMessage message, CancellationToken ct)
+    private async Task OnAccountRenamed(GitHubWebhookMessage message, CancellationToken ct)
     {
         using var payload = JsonDocument.Parse(message.EventJson);
-        if (!payload.RootElement.TryGetProperty("account", out var ghAccount)
-            || ghAccount.ValueKind != JsonValueKind.Object
-            || !ghAccount.TryGetProperty("id", out var idElement)
-            || !idElement.TryGetInt64(out var accountId))
+        var root = payload.RootElement;
+
+        // Only the rename matters. `organization` also fires for member_added, member_removed and
+        // friends, none of which change an account's identity.
+        if (root.TryGetProperty("action", out var action)
+            && action.ValueKind == JsonValueKind.String
+            && action.GetString() != "renamed")
         {
             return;
         }
+
+        // `installation_target` puts the account under "account"; `organization` puts it under
+        // "organization". Same shape, different key.
+        if (!root.TryGetProperty("account", out var ghAccount) || ghAccount.ValueKind != JsonValueKind.Object)
+        {
+            if (!root.TryGetProperty("organization", out ghAccount) || ghAccount.ValueKind != JsonValueKind.Object)
+                return;
+        }
+
+        if (!ghAccount.TryGetProperty("id", out var idElement) || !idElement.TryGetInt64(out var accountId))
+            return;
 
         var login = ghAccount.TryGetProperty("login", out var loginElement) ? loginElement.GetString() : null;
         if (string.IsNullOrEmpty(login)) return;

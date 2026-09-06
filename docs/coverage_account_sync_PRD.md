@@ -279,11 +279,27 @@ first time, along with the new cases in D4 and D9.
 | action | effect |
 | --- | --- |
 | `deleted` | `Connection = Disconnected`, reason `DeletedOnGitHub`. No document is removed. |
-| `transferred` | If the new owner id differs from the current `Account`'s: re-parent (`Account`, `FullName`, `OwnerLogin`), record the old full name in the alias list (D6), and set `Connection = Disconnected`, reason `TransferredAway` — because a transfer out of the installation's scope is the only kind we can observe. If the App is also installed on the new owner, the `installation_repositories.added` delivery that follows reconnects it. |
+| `transferred` | Re-parent (`Account`, `FullName`, `OwnerLogin`) and record the old full name in the alias list (D6). **Stays connected** — see the measurement below. |
 | `renamed` | Rewrite `Name`/`FullName`, push the old full name onto the alias list. Connection unchanged. |
 | `archived` / `unarchived` | Set `Archived`. Connection unchanged — an archived repo is still ours. |
 | `privatized` / `publicized` | Set `IsPrivate`. |
 | `created` / `edited` | Generic upsert, as today. |
+
+**Measured 2026-09-05, and it inverted this decision.** The transfer was run for real — the archived
+`MintPlayer/CodeCoverage` moved back into `MintPlayer` and out again — and the two directions are not
+symmetric:
+
+| direction | what the installation received |
+| --- | --- |
+| **gaining** (into an org where the App is installed) | `repository.transferred`, then `installation_repositories.added` one second later |
+| **losing** (out of that org) | `installation_repositories.removed` — **and no repository event at all** |
+
+So `repository.transferred` is a signal that we just *acquired* a repository, never that we lost one.
+The original design had it disconnect, which would have marked a repository we can plainly see as
+unreachable and then leaned on the `added` that follows to undo it — correctness resting on the
+delivery order of two independently queued messages, on two queues, with no ordering guarantee.
+Losing a repository is `installation_repositories.removed`'s job, and that event is the *only* thing
+that can observe it. Which is the whole bug: it was the delivery the library discarded.
 
 `installation_repositories.removed` sets `Connection = Disconnected`, reason
 `RemovedFromInstallation`, instead of `session.Delete` (`GitHubEventsRecipient.cs:95-106`).
@@ -373,10 +389,15 @@ viewer who manages the owner and only while `Connection == Disconnected`.
 ### D9 — Account identity is refreshed unconditionally, and org renames are handled
 
 The `if (string.IsNullOrEmpty(account.Login))` guard at `GitHubEventsRecipient.cs:123` is removed;
-every path that touches an account refreshes `Login`, `Type` and `AvatarUrl`. The library change in
-D3 makes `installation_target` (the organization-rename event) and `organization` reachable, and
-`OnInstallationTarget` rewrites `Account.Login` plus the `OwnerLogin`/`FullName` of every repository
-under it, pushing the old names onto the alias lists.
+every path that touches an account refreshes `Login`, `Type` and `AvatarUrl`.
+
+The rename itself arrives as **`organization.renamed`, not `installation_target`**. Measured
+2026-09-05: both Coverage apps subscribe to exactly eight events — `member`, `membership`,
+`organization`, `pull_request`, `push`, `repository`, `team`, `team_add` — and `installation_target`
+is not among them. An App receives only what it subscribes to, so a handler listening for
+`installation_target` alone would never have run. `OnAccountRenamed` handles both event names (the
+account object is under `account` in one and `organization` in the other) and ignores every
+non-`renamed` action, since `organization` also fires for membership changes.
 
 ### D10 — `ApiToken.AccountLogin` stops being the authorization key
 
@@ -437,15 +458,15 @@ deploy.
 
 ## Spikes
 
-Time-boxed; results recorded in the plan.
+All five answered; the measurements are in the plan.
 
-- **S1** — Does GitHub deliver `repository.transferred` to an installation that is *losing* access,
-  or only to one gaining it? D4's transfer branch is only reachable if the former.
-- **S2** — Does `installation_repositories.removed` actually fire on a transfer out of the
-  organization, as opposed to only on a manual repository-selection change?
-- **S3** — Does `GET /repos/{owner}/{name}` with an App JWT follow the rename redirect, and what does
-  it return for a name whose redirect has been taken over by a new repository?
-- **S4** — What does `GET /installation/repositories` return for an installation whose repository was
-  transferred away — and does it page?
-- **S5** — Can `MessageTypeAllowList` answer "is there a recipient for this closed generic type" at
-  broadcast time, cheaply, from the processor's scope?
+- **S1** — Does GitHub deliver `repository.transferred` to an installation that is *losing* access?
+  **No.** Only to the one gaining it. This inverted D4.
+- **S2** — Does `installation_repositories.removed` fire on a transfer out of the organization?
+  **Yes**, and it is the only event the losing installation receives.
+- **S3** — Does `GET /repos/{owner}/{name}` follow the rename redirect? **Yes**, unauthenticated
+  included, answering `301` with `Location: /repositories/{id}`; Octokit follows it.
+- **S4** — Is a transferred-away repository absent from the installation's repository set? **Yes** —
+  the installation is "All repositories" for the org and emitted `.removed` for it.
+- **S5** — Can `MessageTypeAllowList` answer "is there a recipient for this type"? **Not as-is** —
+  right shape, wrong question and `internal`; a public `IMessageRecipientRegistry` was added instead.

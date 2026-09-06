@@ -200,8 +200,23 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         Assert.NotNull(await session.LoadAsync<Commit>(Commit.DocumentId(RepoId, "abc")));
     }
 
+    /// <summary>
+    /// `repository.transferred` means we <em>gained</em> a repository, not that we lost one.
+    /// <para>
+    /// Measured against the real API on 2026-09-05 by transferring MintPlayer/CodeCoverage out of
+    /// the organization and back: the installation that gains the repository receives
+    /// `repository.transferred` followed by `installation_repositories.added`, while the one losing
+    /// it receives `installation_repositories.removed` and <b>no repository event at all</b>.
+    /// </para>
+    /// <para>
+    /// So this must re-parent and stay connected. Disconnecting here — which is what the event's
+    /// name invites — would mark a repository we can plainly see as unreachable and then depend on
+    /// the `added` that follows to undo it, resting correctness on the delivery order of two
+    /// independently queued messages.
+    /// </para>
+    /// </summary>
     [Fact]
-    public async Task A_transfer_reparents_the_repository_records_its_old_name_and_disconnects()
+    public async Task A_transfer_reparents_the_repository_and_leaves_it_connected()
     {
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
@@ -216,8 +231,58 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         Assert.Equal("acme-archive", repository.OwnerLogin);
         Assert.Equal(Account.DocumentId(NewOwnerId), repository.Account);
         Assert.Contains("acme/widgets", repository.PreviousFullNames);
+        Assert.Equal(RepositoryConnection.Connected, repository.Connection);
+        Assert.Null(repository.DisconnectedReason);
+    }
+
+    /// <summary>
+    /// The other half of the same measurement, and the exact shape of the production bug: a repo
+    /// transferred out of the organization is reported only as a shrinking repository set. This is
+    /// the delivery the webhooks library used to discard, which is why MintPlayer/CodeCoverage went
+    /// on being advertised for days after it left.
+    /// </summary>
+    [Fact]
+    public async Task Losing_a_repository_is_reported_only_as_a_removal_and_that_is_what_disconnects()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedAsync(session);
+
+        await CreateRecipient(session).HandleAsync(Message(
+            "installation_repositories",
+            InstallationRepositoriesJson("removed", added: "", removed: LiteRepositoryJson("acme", "widgets"))));
+
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(RepoId));
+        Assert.NotNull(repository);
         Assert.Equal(RepositoryConnection.Disconnected, repository.Connection);
-        Assert.Equal(DisconnectedReasons.TransferredAway, repository.DisconnectedReason);
+        Assert.Equal(DisconnectedReasons.RemovedFromInstallation, repository.DisconnectedReason);
+    }
+
+    /// <summary>
+    /// The real gaining sequence, in the order GitHub delivered it (10:25:20 then 10:25:21), and
+    /// again in the reverse order — because two messages on two queues have no guaranteed
+    /// processing order, and the end state must not depend on it.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Gaining_a_repository_ends_connected_whichever_order_the_two_events_are_processed(bool reversed)
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedAsync(session);
+
+        var recipient = CreateRecipient(session);
+        var transferred = Message("repository", RepositoryEventJson("transferred", NewOwnerId, "acme-archive", "widgets"));
+        var added = Message("installation_repositories",
+            InstallationRepositoriesJson("added", added: LiteRepositoryJson("acme-archive", "widgets"), removed: ""));
+
+        foreach (var message in reversed ? new[] { added, transferred } : new[] { transferred, added })
+            await recipient.HandleAsync(message);
+
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(RepoId));
+        Assert.NotNull(repository);
+        Assert.Equal(RepositoryConnection.Connected, repository.Connection);
     }
 
     [Fact]
@@ -291,6 +356,59 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         Assert.Equal(RepositoryConnection.Connected, repository.Connection);
         Assert.Null(repository.DisconnectedReason);
         Assert.Null(repository.DisconnectedAtUtc);
+    }
+
+    /// <summary>
+    /// Org renames arrive as `organization.renamed`, not `installation_target`. Measured
+    /// 2026-09-05: neither Coverage app subscribes to `installation_target`, and an App receives
+    /// only what it subscribes to — so a handler listening for it alone would never have run.
+    /// </summary>
+    [Fact]
+    public async Task An_organization_rename_rewrites_the_account_and_every_full_name_under_it()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedAsync(session);
+        WaitForIndexing(store);
+
+        var json = $$"""
+            {
+              "action": "renamed",
+              "organization": {{OwnerJson(OldOwnerId, "acme-renamed")}},
+              "changes": { "login": { "from": "acme" } },
+              "sender": {{OwnerJson(OldOwnerId, "acme-renamed")}}
+            }
+            """;
+        await CreateRecipient(session).HandleAsync(Message("organization", json));
+
+        var account = await session.LoadAsync<Account>(Account.DocumentId(OldOwnerId));
+        Assert.Equal("acme-renamed", account!.Login);
+
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(RepoId));
+        Assert.Equal("acme-renamed/widgets", repository!.FullName);
+        Assert.Equal("acme-renamed", repository.OwnerLogin);
+        Assert.Contains("acme/widgets", repository.PreviousFullNames);
+    }
+
+    [Fact]
+    public async Task An_organization_event_that_is_not_a_rename_changes_nothing()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedAsync(session);
+
+        var json = $$"""
+            {
+              "action": "member_added",
+              "organization": {{OwnerJson(OldOwnerId, "acme")}},
+              "sender": {{OwnerJson(OldOwnerId, "acme")}}
+            }
+            """;
+        await CreateRecipient(session).HandleAsync(Message("organization", json));
+
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(RepoId));
+        Assert.Equal("acme/widgets", repository!.FullName);
+        Assert.Empty(repository.PreviousFullNames);
     }
 
     [Fact]

@@ -11,17 +11,19 @@ M1-M9 and M11 are implemented on `coverage-account-sync`; M10 is this file plus 
 awaits deploy. Suites run once at the end, as a single sweep: **CodeCoverage 277 passed**,
 **MintPlayer.Spark 1919 passed**, **ng-spark 398 passed**.
 
-S3 and S5 are answered below. **S1, S2 and S4 remain open** — they need the App's delivery log and
-an installation-authenticated call, neither of which is reachable from here. They do not block what
-is built: the reconciler detects a transfer whether or not a webhook reports one, and the
-`transferred` branch is correct if the event arrives and inert if it never does. What they decide is
-whether the nightly cadence is enough (S2) and whether the `transferred` branch is dead code worth
-deleting (S1).
+**All spikes are answered**, S1/S2/S4 by running the transfer for real against the production
+organization on 2026-09-05 and reading both apps' delivery logs. Two of them changed the code:
 
-Two defects were found *by* the work rather than planned for, both recorded in the commits:
-typed dispatch could fail a whole delivery after the catch-all had already been broadcast, earning a
-redelivery and a duplicate message; and `ApiToken` authorized uploads on a renameable login, which
-is wrong in both directions after a transfer.
+- **S1 inverted D4.** `repository.transferred` reaches only the installation that *gains* a
+  repository, so disconnecting there was wrong. Removed.
+- **S2b killed a handler.** `installation_target` is not among the apps' subscribed events, so the
+  org-rename path now listens for `organization.renamed` as well — otherwise it would have shipped
+  as code that never runs.
+
+Four defects were found *by* the work rather than planned for: typed dispatch could fail a whole
+delivery after the catch-all had already been broadcast, earning a redelivery and a duplicate
+message; `ApiToken` authorized uploads on a renameable login, wrong in both directions after a
+transfer; plus the two above.
 
 ## Milestones
 
@@ -60,21 +62,58 @@ apparatus for S1, S2 and S4. Capture the raw delivery list from the App's advanc
 not only what the app logged — the whole point is to distinguish "GitHub did not send it" from "we
 dropped it".
 
-### S1 — Does GitHub deliver `repository.transferred` to the installation losing access? (shapes M4)
+### S1 + S2 — what each side of a transfer actually receives — **ANSWERED, and S1 inverted a design decision**
 
-Create `MintPlayer/spike-transfer`, confirm the App sees it, transfer it to `MintPlayer-Archive`,
-and read the App's delivery log. Record: which events fired, in what order, and with what payload
-`action`. If the losing installation gets nothing, D4's `transferred` branch is dead code and
-disconnection rests entirely on S2 and the reconciler — say so in the plan and delete the branch
-rather than shipping a second `OnInstallationRepositories`.
+Run for real on 2026-09-05, on the actual repository, with the owner's approval: the archived
+`MintPlayer-Archive/CodeCoverage` was transferred back into `MintPlayer` and then out again. Both
+Coverage apps' delivery logs were read directly.
 
-### S2 — Does `installation_repositories.removed` fire on a transfer out of the org? (shapes M4, M6)
+| time (local) | direction | delivery |
+| --- | --- | --- |
+| 10:25:20 | into `MintPlayer` | `repository.transferred` |
+| 10:25:21 | into `MintPlayer` | `installation_repositories.added` |
+| 10:26:14 | out to `MintPlayer-Archive` | `installation_repositories.removed` |
 
-Same experiment as S1, looking for the other event. Also do the control: manually deselect a
-repository from the installation's repository selection, which is the case the event is documented
-for. If a transfer produces no `installation_repositories` delivery, the nightly reconciler (M6) is
-the *only* mechanism that can detect a transfer, and M6 stops being a safety net and becomes the
-primary path — which raises the cadence question from nightly to hourly.
+**There is no repository event on the way out.** GitHub tells the installation that *gains* a
+repository; the one losing it hears only that its repository set shrank.
+
+Two consequences, both acted on:
+
+1. **S1 = no**, and the plan's own contingency applied — but in the opposite direction from the one
+   anticipated. `repository.transferred` is not dead code; it is *live code that meant the wrong
+   thing*. Disconnecting there would have marked a repository we had just acquired and could plainly
+   see as unreachable, then relied on the `added` one second later to undo it — correctness resting
+   on the processing order of two independently queued messages. The disconnect was removed, and
+   `Gaining_a_repository_ends_connected_whichever_order_the_two_events_are_processed` pins the
+   ordering independence in both directions.
+2. **S2 = yes**, and it is the *only* signal. Which closes the investigation loop exactly: the
+   transfer on 2026-09-01 12:47 UTC sent `installation_repositories.removed`, the library discarded
+   it before any app could see it, and the repository went on being advertised. The retained
+   delivery log only reaches back ~3 days (204 deliveries), so the original event is long gone —
+   this re-ran it.
+
+The repository was restored to `MintPlayer-Archive/CodeCoverage`, archived, public, id `1305831351`,
+byte-identical to the recorded pre-state.
+
+### S2b — the App's event subscriptions — **ANSWERED, and it killed a handler**
+
+Read off the two apps' permission pages while the transfer evidence was being collected. Both
+subscribe to exactly eight events:
+
+```
+member, membership, organization, pull_request, push, repository, team, team_add
+```
+
+`repository` is there, so M4's per-action handling runs. **`installation_target` is not** — and an
+App receives only what it subscribes to, so `OnInstallationTarget` as written would never have
+fired. `organization` *is* subscribed and carries action `renamed`, so the handler now accepts both
+event names and ignores non-rename actions. Without this check the org-rename path would have
+shipped as code that compiles, tests green, and never runs in production — the same failure mode as
+the bug being fixed.
+
+`installation` and `installation_repositories` are absent from that list because they are not
+subscribable: GitHub always delivers App-lifecycle events. That is why `.removed` arrived despite
+not being checked anywhere.
 
 ### S3 — Does `GET /repos/{owner}/{name}` follow the rename redirect? — **ANSWERED: yes, and unauthenticated too**
 
@@ -113,13 +152,18 @@ unauthenticated-of-a-user. Second, and the one that actually matters: create a *
 the new repository's id or still redirects to the old one. D6 step 1 makes our own resolution safe
 either way, but if GitHub keeps redirecting we must not let step 3 overwrite a correct step-1 hit.
 
-### S4 — What does `GET /installation/repositories` return after a transfer, and does it page? (shapes M6)
+### S4 — Is a transferred-away repository absent from the installation's set? — **ANSWERED: yes**
 
-Call it for the `MintPlayer` installation now, in its already-drifted state. Confirm
-`MintPlayer/CodeCoverage` is absent — that absence is the whole detection mechanism of D5 step 3. If
-it is *present*, the reconciler cannot work as designed and the milestone needs rethinking before it
-is written. Record the page size and whether `Octokit`'s client pages automatically, since the
-production installation has more repositories than one page.
+Answered by the same experiment rather than by an installation-authenticated call. The
+`coverageproduction` installation on `MintPlayer` (id `153617061`) is scoped to **All repositories**,
+so its set is exactly "the org's repositories" — and the transfer out produced
+`installation_repositories.removed` for this repository, which is GitHub stating that it left that
+set. The reconciler's absence-detection is therefore sound: what it lists is what the installation
+can see, and a transferred-away repository is not in it.
+
+The paging question stands on its own and is handled defensively regardless — `InstallationRepositories`
+pages explicitly to `TotalCount`, because a truncated page would read as "the rest were removed" and
+disconnect an entire organization in one sweep.
 
 ### S5 — Can the processor cheaply ask whether a message type has a recipient? — **ANSWERED: yes, but not through that type**
 
