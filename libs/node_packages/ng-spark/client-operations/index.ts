@@ -5,3 +5,4 @@ export * from './src/notification.service';
 export * from './src/toast-container.component';
 export * from './src/provide';
 export * from './src/query-refresh.service';
+export * from './src/attribute-refresh.service';

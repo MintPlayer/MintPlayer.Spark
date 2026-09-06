@@ -17,7 +17,18 @@ public interface IMyAccountsService
     /// Every account the caller may administer, ordered by login. Empty when the
     /// caller is anonymous or GitHub reports no owners.
     /// </summary>
-    Task<MyAccountsResult> GetAsync(CancellationToken cancellationToken);
+    /// <param name="waitForNonStaleResults">
+    /// Wait for the indexes this reads to catch up before querying them. Off by default, because
+    /// every ordinary read of this page would pay for it and none of them needs it.
+    /// <para>
+    /// Set it when calling immediately after a write whose effect must be visible in the result —
+    /// the resync button is the case that matters. RavenDB indexes are eventually consistent, so
+    /// reading straight back after <c>SaveChangesAsync</c> returns the pre-write state, and the
+    /// button then reports numbers that contradict the work it just did. That reads as the button
+    /// having done nothing at all.
+    /// </para>
+    /// </param>
+    Task<MyAccountsResult> GetAsync(CancellationToken cancellationToken, bool waitForNonStaleResults = false);
 }
 
 /// <param name="GitHubAppUrl">The environment's GitHub App public page, so an "install the App"

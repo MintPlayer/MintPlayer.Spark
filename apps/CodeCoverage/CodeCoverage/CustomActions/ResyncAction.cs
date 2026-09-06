@@ -6,6 +6,7 @@ using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
 using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Actions;
 
 namespace CodeCoverage.CustomActions;
@@ -68,12 +69,28 @@ public partial class ResyncAction : SparkCustomAction
                 }
             }
 
-            await session.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await session.SaveChangesAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                // Inside the boundary for the same reason the loop above is: a write conflict on
+                // one account would otherwise discard every other account's reconcile AND 500 the
+                // button, which is the opposite of what the per-account catch is there to promise.
+                logger.LogWarning(ex, "Resync reconciled accounts but could not save the result");
+                manager.Client.Notify(
+                    "Some accounts could not be updated. Try again in a moment.", NotificationKind.Warning);
+            }
         }
 
         // Re-read AFTER invalidating and reconciling — this is the post-resync truth, and it is
         // what the grid is about to fetch for itself.
-        var refreshed = await myAccounts.GetAsync(cancellationToken);
+        //
+        // Non-stale: the reconcile above just wrote to the very indexes this reads, and RavenDB
+        // indexes are eventually consistent. Without the wait this returns the pre-resync numbers
+        // on exactly the click that changed something — the button's whole visible output, wrong.
+        var refreshed = await myAccounts.GetAsync(cancellationToken, waitForNonStaleResults: true);
 
         // Parent is the Home page this was invoked from. Null if the action is ever executed
         // without one, in which case there are no counts on screen to correct.

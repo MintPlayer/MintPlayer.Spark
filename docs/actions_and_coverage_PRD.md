@@ -1,0 +1,296 @@
+# PRD — Silent custom actions, and honest coverage
+
+Two aims in one unit of work:
+
+1. **Custom actions must tell the user what happened.** Two production buttons on
+   coverage.mintplayer.com — *Resync* on the home page and *Delete data* on a disconnected
+   repository — appear to do nothing. Neither is "broken" in the sense of throwing; both
+   return HTTP 200 and then discard, or never produce, the only evidence the user had.
+2. **The repository's coverage number must be real before it is raised.** The instrument is
+   still wrong in several measurable ways. Every fix moves the number *down* first, so the
+   fixes must land before any target is set.
+
+They ship together because aim 1 is a large part of what aim 2 would have caught: the
+`apps/CodeCoverage` custom actions have no tests at all, and the framework's client-operation
+channel has a dead branch that no test exercises in any app.
+
+---
+
+## Part 1 — Custom actions that report nothing
+
+### Evidence gathered
+
+Captured live against coverage.mintplayer.com while signed in as the owner, and against a
+local run of `apps/CodeCoverage` on commit `bf6b39c7`.
+
+| Observation | Source |
+| --- | --- |
+| `POST /spark/actions/home/Resync` → **200**, no console errors | live network capture |
+| Its body: `{"result":null,"operations":[{"type":"refreshAttribute",…AccountCount:2},{"type":"refreshAttribute",…RepoCount:177},{"type":"refreshQuery","queryId":"my-accounts"}]}` | live network capture |
+| Resync **does** perform real work | `Repositories/1305831351` carries `DisconnectedAtUtc = 2026-09-06T10:28:33Z`, `DisconnectedReason = RemovedFromInstallation`, written by that reconcile |
+| `POST /spark/actions/repository/DeleteData` → **200**, body `{"result":null,"operations":[]}` | live network capture |
+| Nothing was deleted | full page reload one minute later: all 10 commits present, repository document intact |
+| The confirmation dialog works and is translated | live: *"This permanently deletes every commit, build and coverage report for this repository. It cannot be undone."* |
+| The delete lane **is** correctly wired | local run: `Subscription worker 'SparkMessaging-coverage-delete-repository-data' started` (and `…-coverage-reconcile-account`) |
+| **The whole delete path works locally** | local run, signed in as the owner, against a repository patched to `Connection = 1`: log `Queued deletion of MintPlayer/CodeCoverage`, message `Status: Completed`, `Commits` 27→19, `Repositories` 160→159, repository document gone |
+| **The same click on production deletes nothing** | re-checked 15 minutes after the click: repository, commits and page all still present |
+
+### Defect 1 — `refreshAttribute` is a client operation with no client handler
+
+**Confirmed, not inferred.** `refreshAttribute` is declared as a wire type at
+`libs/node_packages/ng-spark/client-operations/src/operations.ts:30` and has **zero handlers
+anywhere in the repository**. `provideSparkClientOperations()` registers only `notify`,
+`refreshQuery` and `disableAction`, and the dispatcher silently drops unknown operation types
+by design.
+
+So the server computes the two counts, serialises them, sends them — and the client throws
+them away without a warning. This is framework-wide: `IClientAccessor.RefreshAttribute` is
+inert in **every** Spark application, not just this one. The `provide.ts` header comment
+documents this exact failure mode for `refreshQuery` and then reproduces it for
+`refreshAttribute`.
+
+This also **refutes** the competing theory that `args.Parent` is null on the virtual Home
+object: the two `refreshAttribute` operations are emitted only from inside
+`if (args.Parent is { } home)`, and they were emitted.
+
+### Defect 2 — the post-write read races a stale index
+
+`ResyncAction` saves, then immediately re-queries through `MyAccountsService`, which hits
+`Indexes.Repositories_Overview` / `Accounts_Overview` with **no `WaitForNonStaleResults`**.
+The `refreshQuery` refetch lands a round trip later, also with no staleness wait. RavenDB
+indexes are eventually consistent, so on precisely the click that changes something, both
+reads return pre-reconcile data. The change shows up on a later reload — i.e. "the button did
+nothing".
+
+### Defect 3 — `DeleteDataAction` has five silent `return` paths
+
+`apps/CodeCoverage/CodeCoverage/CustomActions/DeleteDataAction.cs` returns without emitting
+anything at lines 38, 42, 46, 52 and 58: no parent, no id, repository not found, caller does
+not manage the owner, repository still connected. Two of those log a warning server-side; none
+reaches the user.
+
+And on **success** it broadcasts a message and returns — also `{"result":null,"operations":[]}`.
+**Success and all five failure modes are byte-identical from the client.** That is the whole
+of the reported bug: the user cannot tell refusal from success from a queued sweep.
+
+**None of the five guards is what fails in production.** They all pass — see Defect 3b, which
+is the actual cause. What Defect 3 costs is *diagnosis*: because success and every refusal look
+identical from the client, a dead message lane was indistinguishable from a permission refusal
+for as long as the button has existed.
+
+### Defect 3b — production RavenDB is over its subscription cap, so the lane is dead *(the actual cause)*
+
+Confirmed by grepping the production container log and querying the licence:
+
+```
+LicenseLimitException: The maximum number of subscriptions per database cannot exceed
+                       the limit of: 3
+Subscription 'SparkMessaging-coverage-delete-repository-data' does not exist (non-recoverable)
+Subscription worker 'SparkMessaging-coverage-delete-repository-data' stopped
+```
+
+```
+"LicensedTo":"2sky"  "Status":"Commercial"  "Type":"Community"
+"MaxNumberOfSubscriptionsPerDatabase": 3
+```
+
+`apps/CodeCoverage` declares **seven** distinct queue names; with the framework's
+`spark-github-all` that is eight subscriptions against a cap of **three**. Three win the race
+and five die permanently. The production log shows `Queued deletion of MintPlayer/CodeCoverage`
+— **the action worked, both guards passed, the message was written** — and then nothing, because
+`coverage-delete-repository-data` is one of the five with no subscription to consume it.
+
+Also dead in production, from the same cap: `coverage-reconcile-account`,
+`coverage-publish-pr-comment`, `coverage-open-pr-comment` and `coverage-delete-pr-builds`. So
+webhook-driven account reconciliation and the sticky PR comment are both inert, and
+merged-PR build retention **has never run in production**.
+
+The framework made this invisible: `SparkSubscriptionWorker.EnsureSubscriptionExistsAsync`
+swallowed the create failure in a bare `catch (Exception)` whose comment asserted the only
+possible cause was "already exists", logged a benign *"will try to use existing"*, and then
+started a worker against a subscription that does not exist. The app stays up and reports
+healthy with silently dead queues.
+
+**This is already being fixed** on `fix/coverage-queue-licence-cap`, which consolidates to two
+queue constants and makes a `LicenseLimitException` on create fatal with an actionable message.
+That branch reached the same diagnosis independently.
+
+**But it is not sufficient against current master.** It consolidates to `Ingestion`
+(`coverage-parse-session`) + `Publishing` (`coverage-publish-feedback`) + `spark-github-all` =
+exactly 3, at the cap — and it predates #366, which added `coverage-delete-repository-data` and
+`coverage-reconcile-account`. Rebasing it unchanged gives **five** subscriptions and leaves the
+delete lane a candidate to stay dead. Both new queues must be folded onto `Publishing` as part
+of the rebase.
+
+The cost of that consolidation is head-of-line blocking, and it is now materially worse: an
+unbounded repository sweep would share a queue with PR comments. Defect 3's batching fix and the
+`Publishing` mapping therefore have to land together.
+
+### Defect 4 — no busy state on a multi-second action
+
+`spark-po-detail`'s `onCustomAction` sets no pending state and does not disable the button,
+while *Resync* now performs N paged GitHub App round trips inside the request. The user gets
+several seconds of a live-looking button followed by an identical grid.
+
+### Related latent defects found on the same path
+
+- `CustomActionResolver.Resolve` swallows every construction exception and returns `null`,
+  turning a DI misconfiguration into a 404 "Custom action not found". The real cause is
+  log-only.
+- Every virtual persistent object goes over the wire with `Id == null`
+  (`EntityMapper.ScaffoldFrom` hard-codes it), so `[parentId]="currentItem.id!"` passes `null`
+  through a non-null assertion.
+- `spark.AddCustomActions()` is generated but **never called** in
+  `apps/CodeCoverage/Program.cs`. It survives only because the resolver falls back to
+  `ActivatorUtilities.CreateInstance`. This is the recorded "generated `AddX()` nobody wires"
+  trap, one dependency away from biting.
+- `DeleteRepositoryDataRecipient` accumulates every deferred delete into a **single**
+  `SaveChangesAsync`. For a long-lived repository that is tens of thousands of commands in one
+  transaction; if it throws, the message retries and eventually dead-letters invisibly.
+- `ResyncAction`'s `SaveChangesAsync` sits **outside** the per-account try/catch, so one
+  account's write conflict discards the reconcile of all the others and 500s the button — the
+  opposite of the stated "a GitHub hiccup must not turn this into an error page" intent.
+
+### Goals
+
+- A custom action's outcome is always visible: success, refusal-with-reason, or queued-work.
+- `refreshAttribute` either works or does not exist.
+- A refusal states *which* condition failed, in the user's language.
+- Asynchronous actions say that they are asynchronous.
+- The delete path has tests; today it has none.
+
+### Non-goals
+
+- Redesigning the custom-action framework. The `notify` operation already exists and is
+  already wired; this is about using it.
+- Making deletion synchronous. Queuing is the right call and the doc comment defends it well.
+- Replacing native `confirm()` with a styled modal. Worth doing, not in scope here — it works.
+
+---
+
+## Part 2 — Honest coverage, then more of it
+
+### What the number is today
+
+Recomputed this session from the five local .NET cobertura reports plus the two JS reports,
+each report's filenames joined to **its own** `<source>` root:
+
+| | valid lines | covered | % |
+| --- | ---: | ---: | ---: |
+| .NET union | 20,511 | 17,108 | 83.4 % |
+| ng-spark | 1,752 | 1,476 | 84.2 % |
+| ng-spark-auth | 336 | 317 | 94.3 % |
+| **What the badge currently sees** | **22,599** | **18,901** | **83.6 %** |
+| **Honest, all-in, excluding WebhooksDemo** | **≈24,916** | **≈19,063** | **≈76.5 %** |
+
+**The ≈68 % on record is superseded.** Three traceable reasons: `all: true` landed on master
+via #356 and closed the ng-spark / ng-spark-auth denominators honestly; #356 also added the
+`libs/node_packages/*` globs so those ~2,000 measured lines now reach the server; and the
+earlier figure double-counted the `libs/`-rooted vs repo-rooted path split. That split is a
+live trap — reproducing it naively during this audit cost **12 percentage points**.
+
+Even ≈76.5 % is a **floor**: every local `apps/CodeCoverage` artifact predates #361 and #366,
+whose ~1,700 lines of new tests appear in no report yet.
+
+### Instrumentation defects, re-verified against master
+
+| # | Defect | Status |
+| --- | --- | --- |
+| 1 | `coverage.all` unset → v8 measures only what a spec imports | **Fixed** for ng-spark (89/89 files), ng-spark-auth (20/21) and the action. **Still open for all five Angular apps.** The SPA reports **6 of 36 files**. |
+| 2 | `coverlet.runsettings` is an orphan | **Verified orphan** — nothing references it; all five .NET test targets pass no `--settings`. But the consequence shrank: generated code is now 7 files / 68 lines (all `Inject.g.cs`), worth ≈0.3 points, not 2.5. |
+| 3 | The SPA report is never uploaded | **Verified, both halves.** The executor writes to `<workspaceRoot>/coverage/@spark-apps/code-coverage/`; CI globs `apps/*/*/ClientApp/coverage/`. Nothing matches. `nx.json` `test.outputs` points at the wrong dir too, so a cache hit emits no file. |
+| 4 | Report path roots differ per suite | **Verified and characterised.** Two different `<source>` roots are uploaded per run; the four `tests/*` reports drop the leading `libs/`. The server's suffix match rescues it — silently and load-bearingly. |
+
+**New findings not previously on record:**
+
+- **`libs/testing/MintPlayer.Spark.Testing` — 1,784 lines — appears in ZERO reports.** It is a
+  **published NuGet package**. Coverlet appears to skip it as a test assembly (it references
+  xunit). *Hypothesis, not verified — see S4.*
+- **The `apps/CodeCoverage/action` produces 41.3 % line coverage that is thrown away.** It has
+  no `project.json`, no nx target, and no CI glob.
+- **The four demo apps (77 files / 3,493 lines) are referenced by no test project**, so they
+  contribute to neither numerator nor denominator.
+- **`[SparkAuthorize]` is still executed by no test anywhere.** Zero source hits across all
+  test projects; no `WebApplicationFactory`/`TestServer` in `CodeCoverage.Tests`. #366's
+  `UploadsControllerAuthorizationTests` builds principals by hand and calls controller methods
+  directly — valuable, but the filter is never in the pipeline. This is production.
+- **`TimeProvider`**: one production adoption exists (`GitHubUserTokenService`). Remaining raw
+  clock reads: **53 `DateTime.UtcNow` in `libs/`**, **41 in `apps/CodeCoverage`**.
+- **Zero `[ExcludeFromCodeCoverage]` attributes exist in the repository.**
+- `docs/coverage_95_{PRD,plan}.md` exist only on the unmerged local branch `feat/coverage-95`,
+  which is now badly stale — its diff against master *deletes* 22,874 lines of since-landed
+  work. **Do not rebase it.** Two of its four fixes reached master by other routes; the two
+  that did not are re-specified here, and its `tools/verify-coverage-paths.mjs` is worth
+  porting.
+
+### Where the uncovered lines are
+
+| Bucket | valid | covered | % | uncovered |
+| --- | ---: | ---: | ---: | ---: |
+| **`apps/CodeCoverage`** (production) | 2,891 | 1,456 | **50.4 %** | **1,435** |
+| `libs/spark/MintPlayer.Spark` | 7,471 | 6,709 | 89.8 % | 762 |
+| `libs/identity_provider` | 2,025 | 1,769 | 87.4 % | 256 |
+| `libs/replication` | 965 | 718 | 74.4 % | 247 |
+| `libs/source_generators` | 3,147 | 2,973 | 94.5 % | 174 |
+| `libs/webhooks/…GitHub` | 399 | 249 | 62.4 % | 150 |
+| `libs/webhooks/…DevTunnel` | 119 | 25 | **21.0 %** | 94 |
+| `libs/subscription_worker/…Abstractions` | 187 | 98 | 52.4 % | 89 |
+| `libs/authorization` | 898 | 894 | **99.6 %** | 4 |
+
+Highest risk × size, concretely: `UploadsController` (122 uncovered, the ingest endpoint),
+`BrowseController` (135), `TokensController` (60, 0 %), `ApiTokenAuthenticationHandler`
+(34, **0 %** — the authentication handler itself), `BadgeController` + `BadgeRenderer` (72,
+0 %, anonymous surface), `RepoSettingsController` (36, 0 %). Then framework:
+`EntityMapper` (87), `PersistentObject/Refresh.cs` (80, 34 %), `SparkSubscriptionWorker`
+(89, 41 %), `ModuleCertificateAuthentication` (58, 33 %, mTLS).
+
+`Program.cs` at 281 uncovered lines / 0 % is the single largest uncovered file and the
+strongest candidate for an argued exclusion rather than tests.
+
+### Goals
+
+- One published number that is defensible, with every uploaded report path resolving against
+  `git ls-files` — and an **unmatched non-generated path failing CI**, not warning.
+- Every project either in the denominator or excluded by a written, argued rule.
+- A gate, set only after the re-baseline is stable across two master runs.
+
+### Non-goals
+
+- Setting the gate in this unit of work. The gate lands last, after M8's re-baseline.
+- Testing the demo apps. `apps/WebhooksDemo` is slated for absorption into
+  `apps/CodeCoverage`, so it is excluded from the denominator rather than tested.
+- Rebasing `feat/coverage-95`.
+
+### Target
+
+≈24,916 valid lines excluding WebhooksDemo. A 95 % gate needs ≈23,670 covered against
+≈19,063 today: **≈4,600 more covered lines**, budgeted at **300–450 new test cases** — not the
+7,645 lines / 3× framing previously on record.
+
+---
+
+## Risks
+
+- **Every instrumentation fix moves the number down first.** The SPA alone drops from 67 % over
+  6 files to ≈7 % over 36. A gate set against today's figure would fail on the very commit that
+  makes the measurement honest. Hence: instrument first, re-baseline, gate last.
+- **Nx cache interaction.** `nx.json` declares `{projectRoot}/coverage` as the only `test`
+  output; M2–M4 change where coverage lands for five projects. A cache hit that restores no
+  report is defect 3 in a new costume — and cache replay is on record as destructive.
+- **The path-suffix match is load-bearing and silent.** Until M7 lands, any report whose root
+  shifts is dropped with no error.
+- **`CanManageOwnerAsync` degradation is self-reinforcing**: the repositories eligible for
+  deletion are exactly the ones you may have lost management of. If S1 confirms it, the fix is
+  not only a message — it is a decision about what "manage" should mean for a disconnected
+  repository.
+
+## Out of scope
+
+Genuinely not being done, not parked:
+
+- Replacing native `confirm()` with a styled ng-bootstrap modal.
+- The `DateTime` → `DateTimeOffset` model migration. Named in the roadmap and paired with the
+  `TimeProvider` seam, but the "28 vs 7" count was **not verified** this session; it needs its
+  own measurement before it is planned.
+- Absorbing `apps/WebhooksDemo` into `apps/CodeCoverage`.
+- Making the coverage gate blocking on other repositories.

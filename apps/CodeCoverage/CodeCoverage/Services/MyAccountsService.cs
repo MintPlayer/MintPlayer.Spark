@@ -23,7 +23,10 @@ public partial class MyAccountsService : IMyAccountsService
     /// </summary>
     private const int MaxRepositories = 4096;
 
-    public async Task<MyAccountsResult> GetAsync(CancellationToken cancellationToken)
+    /// <summary>How long a non-stale read may wait before giving up and answering anyway.</summary>
+    private static readonly TimeSpan NonStaleTimeout = TimeSpan.FromSeconds(5);
+
+    public async Task<MyAccountsResult> GetAsync(CancellationToken cancellationToken, bool waitForNonStaleResults = false)
     {
         var appSlug = configuration[$"GitHub:{environment.EnvironmentName}:AppSlug"];
         if (string.IsNullOrEmpty(appSlug))
@@ -37,6 +40,7 @@ public partial class MyAccountsService : IMyAccountsService
             return new MyAccountsResult(appUrl, [], reauthRequired);
 
         var known = await session.Query<Account, Indexes.Accounts_Overview>()
+            .Customize(q => { if (waitForNonStaleResults) q.WaitForNonStaleResults(NonStaleTimeout); })
             .Where(a => a.Login.In(owners))
             .ToListAsync(cancellationToken);
 
@@ -45,6 +49,7 @@ public partial class MyAccountsService : IMyAccountsService
         // "Repos" and aggregate-coverage numbers, and counting repositories we can no longer reach
         // makes those numbers quietly wrong.
         var repos = await session.Query<Repository, Indexes.Repositories_Overview>()
+            .Customize(q => { if (waitForNonStaleResults) q.WaitForNonStaleResults(NonStaleTimeout); })
             .Where(r => r.OwnerLogin.In(owners) && r.Connection != RepositoryConnection.Disconnected)
             .Take(MaxRepositories)
             .ToListAsync(cancellationToken);

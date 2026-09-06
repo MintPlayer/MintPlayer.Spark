@@ -4,6 +4,7 @@ using CodeCoverage.Services;
 using Microsoft.AspNetCore.Identity;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Authorization.Identity;
@@ -28,33 +29,56 @@ public partial class DeleteDataAction : SparkCustomAction
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly ISparkVisibility visibility;
     [Inject] private readonly IMessageBus messageBus;
+    [Inject] private readonly IManager manager;
     [Inject] private readonly UserManager<SparkUser> userManager;
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
     [Inject] private readonly ILogger<DeleteDataAction> logger;
 
     public override async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
     {
+        // Every exit below says something. This method used to have five silent `return`s, and
+        // because a queued deletion also renders as "nothing visibly happened", a refusal and a
+        // success were indistinguishable from the browser — which is how a dead message queue
+        // went unnoticed and looked, for months, like a permission problem.
         if (args.Parent is not { } parent)
+        {
+            logger.LogWarning("DeleteData was invoked without a parent repository");
+            manager.Client.Notify("Could not tell which repository to delete.", NotificationKind.Error);
             return;
+        }
 
         var repositoryId = parent.Id;
         if (string.IsNullOrEmpty(repositoryId))
+        {
+            logger.LogWarning("DeleteData was invoked with a parent that has no id");
+            manager.Client.Notify("Could not tell which repository to delete.", NotificationKind.Error);
             return;
+        }
 
         var repository = await session.LoadAsync<Repository>(repositoryId, cancellationToken);
         if (repository is null)
+        {
+            logger.LogInformation("DeleteData on {Id}: already gone", repositoryId);
+            manager.Client.Notify("This repository has already been deleted.", NotificationKind.Info);
             return;
+        }
 
         if (!await visibility.CanManageOwnerAsync(repository.OwnerLogin))
         {
             logger.LogWarning("Refused DeleteData on {FullName}: caller does not manage {Owner}",
                 repository.FullName, repository.OwnerLogin);
+            manager.Client.Notify(
+                $"You do not manage {repository.OwnerLogin}, so you cannot delete its data.",
+                NotificationKind.Error);
             return;
         }
 
         if (repository.Connection != RepositoryConnection.Disconnected)
         {
             logger.LogWarning("Refused DeleteData on {FullName}: it is still connected", repository.FullName);
+            manager.Client.Notify(
+                "This repository is still connected. Only a disconnected repository can be deleted — press Resync if you expected it to be gone.",
+                NotificationKind.Warning);
             return;
         }
 
@@ -70,5 +94,17 @@ public partial class DeleteDataAction : SparkCustomAction
         }, cancellationToken);
 
         logger.LogInformation("Queued deletion of {FullName}", repository.FullName);
+
+        // Say so, and leave. The sweep is asynchronous and runs in chunks, so this page would
+        // otherwise sit there showing an object that is on its way out — and `refreshOnCompleted`
+        // would re-fetch it and find it unchanged, which is what "the button did nothing" looked
+        // like. The account page is where the repository came from and where its absence will show.
+        manager.Client.Notify(
+            $"Deleting {repository.FullName}. This runs in the background and may take a minute.",
+            NotificationKind.Success);
+
+        // By route rather than by ObjectTypeId + id: the owner's page is a first-class route in
+        // this app, and naming it avoids hard-coding the Account type's generated GUID here.
+        manager.Client.Navigate($"/a/{repository.OwnerLogin}");
     }
 }
