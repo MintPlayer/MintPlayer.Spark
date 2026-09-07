@@ -545,9 +545,21 @@ problem, never a reason to re-run until green.
       `SparkSubscriptionOptions` deleted, `RetryNumerator`'s inert `@refresh` resolved, the three
       retry implementations collapsed to one, `SparkSubscriptionWorker<T>`'s virtuals reshaped,
       `CoverageQueues` guards deleted rather than re-motivated
-- [ ] **In-flight production documents accounted for** (PRD §9b) — API freedom is not document-shape
-      freedom. State in the PR whether the queues were drained first or a migration rewrites existing
-      `SparkMessages`, and how it was verified
+- [x] **In-flight production documents accounted for** (PRD §9b) — **cleared, not migrated**, on
+      2026-09-07 with the owner's authorisation. Measured first: **3346** documents (3358 by delete
+      time — the live app keeps writing), of which **1935 Pending**, 1411 Completed, and **zero**
+      Processing, Failed or DeadLettered. Every Pending one sampled had `AttemptCount: 0`, spanning
+      **2026-08-13 → 2026-09-07** with only **3** from the last 24 h, and their queue names
+      (`coverage-open-pr-comment`, `coverage-delete-pr-builds`, and per-closed-generic
+      ``GitHubWebhookMessage`1-…``) are precisely the ones with **no subscription** — production
+      holds exactly three: `coverage-parse-session`, `coverage-publish-feedback`, `spark-github-all`.
+      So nothing was lost that was ever going to run.
+      <br>Clearing was the **safer** option, not the lossy one: the new feeder matches on `Status`,
+      not queue name, so deploying it against that collection would have delivered all 1935 at once
+      and replayed ~25 days of GitHub webhooks — stale PR comments on merged PRs plus
+      `coverage-delete-pr-builds` work. Verified after: `SparkMessages: 0`, 3358 tombstones, every
+      other collection untouched. Backup at `~<user>/sparkmessages-20260907T143302Z.ravendbdump`
+      (3,018,874 bytes) — delete it once satisfied, webhook payloads carry repository detail.
 - [ ] **Version diff reviewed** — all 22 packages to `preview.74`, major digit unchanged. CI publishes
       on push to `master`; a wrong major is burned forever
 - [ ] PRD §7's out-of-scope k8s items are recorded somewhere durable, and the PR does **not** claim
