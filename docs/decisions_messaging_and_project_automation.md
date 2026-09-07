@@ -150,7 +150,8 @@ the kind of claim that gets re-adopted after a compaction, so it is recorded wit
 | OD2 | Boards unit: top-level list, Account sub-query, or both? | Both |
 | OD3 | Promote `TargetColumnOptionId` to a lookup over the board's cached `Columns`? | Yes |
 | OD4 | `editMode: "inline"` for the rules sub-table? | Yes |
-| OD5 | Adopt `@refresh` after spike S4? | Decide on evidence; if yes, the config **must** be asserted at startup |
+| OD5 | Adopt `@refresh` after spike S4? | **S4 is green** (delivered in 4.65 s), so the mechanism is proven. Still recommend *not* adopting it for this rework — the sweeper works — but B11 becomes a real either/or: enable refresh and make `RetryNumerator` real, or delete its inert `@refresh` writes. If enabled, the config **must** be asserted at startup |
+| OD6 | Remove `SparkMigrationRunner`'s `.GetAwaiter().GetResult()`? | **Not in this rework.** All three sync-over-async sites in `libs/` are startup/config-time, none per-request, and `.GetAwaiter().GetResult()` is the correct form (preserves the exception; `.Result` would wrap it in `AggregateException`). ASP.NET Core has no `SynchronizationContext`, so there is no deadlock risk. The clean fix is `IHostedLifecycleService.StartingAsync` (.NET 10), whose phase runs before *any* `StartAsync` — but migrations sit at `SparkMiddleware.cs:309` **deliberately after** `CreateSparkIndexes` at `:296` because they may query indexes, so moving them means moving index creation too (and swapping `IndexCreation.CreateIndexes` for its async overload). That is a startup-model change, not a one-liner |
 
 ## 7. Documentation debt
 

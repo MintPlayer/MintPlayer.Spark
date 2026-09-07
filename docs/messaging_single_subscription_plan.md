@@ -323,11 +323,22 @@ licence headroom wanting server-side per-queue isolation). Both must work and bo
   generator discovers migrations from a *referenced package* and not only from the compilation being
   built.
 
-- **Prefer the every-boot cleanup over a migration.** S1 showed delete is idempotent and ~2 ms, so
-  running it on every messaging startup costs nothing and **self-heals**: if a stale definition ever
-  reappears, the next boot removes it. A migration's once-ever marker is precisely what would
-  *prevent* that self-healing. This reverses the preference stated above; the migration's
-  cluster-wide lock buys nothing for an operation that is idempotent and self-emptying.
+- **Home: the top of `MessageSubscriptionManager`'s async startup, immediately before
+  `EnsureSubscriptionExistsAsync`.** Not a migration, and not the registry middleware slot. Three
+  reasons, in order of weight:
+  1. **No sync-over-async.** The registry slot is `Action<IApplicationBuilder>`, so anything async
+     placed there has to block — which is exactly why `SparkMigrationRunner.RunAtStartup` calls
+     `.GetAwaiter().GetResult()`. The hosted service is already async, so the cleanup needs no
+     blocking call at all.
+  2. **Ordering becomes straight-line code.** Prune, then create, in one async method — no appeal to
+     the migration-vs-hosted-service argument, and nothing to re-verify if startup is ever
+     restructured.
+  3. **It self-heals.** Delete is idempotent and ~2 ms (S1), so running it every boot is free and
+     removes a stale definition whenever one reappears. A migration's once-ever marker is precisely
+     what would *prevent* that.
+
+  This reverses the preference stated above; the migration's cluster-wide lock buys nothing for an
+  operation that is idempotent, self-emptying and cheap.
 - ⚠ **The cleanup prefix and the unified subscription name are a matched pair.** `SparkMessaging`
   survives a `SparkMessaging-` prefix delete only because it has no trailing hyphen (S12). Put a
   comment saying so next to the prefix constant. This is the one case here that is *not* self-healing:
