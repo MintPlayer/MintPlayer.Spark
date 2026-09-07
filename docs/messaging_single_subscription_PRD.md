@@ -182,6 +182,88 @@ container with a `down`/`up` deploy, so there is no distribution in practice to 
 relying on a racy, unbalanced, undocumented distribution would be a poor foundation. Replicas buy
 HTTP and read capacity; message processing stays single-executor by design.
 
+## 3c. The `@refresh` alternative to the `WakeUp` sweeper — evidenced, not adopted here
+
+There is a **server-side** way to express "redeliver after a delay" that needs no client polling at
+all, and it is proven prior art: a comparable RavenDB framework runs it across **56 databases** in a
+live deployment. Spark rejected it once, on a false premise (B10). It deserves recording properly.
+
+### The mechanism
+
+1. **Park** a document by writing a future UTC timestamp into `@metadata.@refresh`.
+2. The subscription query filters `not exists(<alias>.@metadata.@refresh)`, so a parked document
+   **fails the predicate** and is not delivered.
+3. RavenDB's **Document Refresh** background sweep notices the timestamp has passed, **removes the
+   `@refresh` key and rewrites the document**.
+4. That rewrite is a real write, so it bumps the change vector — which is exactly what makes a
+   subscription re-evaluate — and the document now **passes** the predicate and is delivered.
+
+The writer that triggers redelivery is the **server**. Time is never evaluated by the query, so the
+`now()` prohibition (invariant 7) is sidestepped rather than worked around. The RavenDB 7.1 refresh
+documentation names subscriptions explicitly among what the change-vector bump activates.
+
+Confirmed against the live local server: 56 of 88 databases have `Refresh` enabled with
+`RefreshFrequencyInSec: null` (the **60 s server default**), and their subscription definitions carry
+the filter verbatim, e.g. `from Mails as m where m.Status == 'Ready' and not exists(m.@metadata.@refresh)`.
+`declare function` predicates and `include` clauses coexist with it, so subscription-query complexity
+is not a constraint.
+
+### Prior-art details worth copying
+
+- **Apply the gate selectively.** Only subscriptions that can *park* a document carry the
+  `not exists(@refresh)` clause. A first-delivery stage (`Status == 'Initial'`) deliberately does
+  not — and the clause was actively *removed* from one such worker.
+- **Exclude `@expires` too** where documents can be scheduled for deletion:
+  `not exists(m.@metadata.@expires) and not exists(m.@metadata.@refresh)`. Spark sets `@expires` on
+  terminal messages, so this matters if it adopts the pattern.
+- **Age-based backoff avoids needing a durable counter.** One implementation derives the delay purely
+  from document age (`<5 min → 1 min`, `<1 h → 5 min`, `<6 h → 30 min`, else `2 h`), so nothing has
+  to survive a clone-and-re-store. The counter-based sibling stores attempts in a RavenDB *counter*.
+- **A status machine sets `@refresh` to the next boundary only**, and the same static `SetStatus` is
+  called from the document's lifecycle hook so an edit corrects the state immediately: the worker
+  handles the passage of time, the hook handles edits, one implementation.
+- **`@refresh` doubles as a debounce**, stamped at creation (`now + 1 min`) to collapse duplicate
+  subscription wake-ups.
+
+### The scars — all of these were hit in production by the prior art
+
+1. **The 60 s sweep is a hard floor on any delay.** Their own code carries
+   *"When changing Timespan consider Document Refresh Frequency on Database (default 60s)!"* and a
+   standing TODO to lower it. Their default retry span is exactly 60 s, sitting on the floor. Spark's
+   schedule starts at **5 s**, so adoption means setting `RefreshFrequencyInSec ≤ 5` — a
+   **database-wide sweep frequency**, not a per-queue knob.
+2. **⚠️ Correctness cliff: if Refresh is not enabled on the database, every parked document is
+   stranded permanently and silently.** The prior art escalates this to a named precondition that
+   each cutover must verify. **Spark is living in this cliff right now** — see B11.
+3. **Forgetting the park causes a hot-loop**, hit in production: a re-enqueued document with no
+   `@refresh` is redelivered every batch forever.
+4. **The give-up park leaks.** Parking an exhausted document for 24 h means it returns every 24 h
+   with a fresh budget and re-escalates forever; a separate `Parked` marker was needed. Lengthening
+   the park to ~30 days was considered and rejected as "a magic number that only delays the storm".
+5. **A parked document cannot un-park itself** — it is excluded from the subscription, so whatever
+   clears the park must live outside the worker.
+6. **Clearing a retry counter re-delivers the document.** The counter write bumps the change vector,
+   so resetting it while the document still matches the query causes deliver → reset → deliver.
+7. **Nested value objects have no collection to subscribe to**, so the prior art deliberately keeps a
+   cron sibling for those rather than stamping `@refresh` on the parent — which would re-fire every
+   one of the parent's other workers on a document whose business state never changed.
+8. **Config plumbing is easy to get wrong**: their settings helper skips pushing a
+   frequency-only change, and its hook fires only on database creation, so an existing database is
+   never reconfigured. One app depends on refresh without configuring it at all.
+
+### Position for this PRD
+
+**Not adopted in this rework.** The chosen transport keeps `WakeUp`, and the sweeper works today. But
+the rejection reasoning in `docs/issue_233_plan.md:44-46` is wrong and must be corrected, because it
+is the thing that would stop the next person from reconsidering.
+
+If Spark ever does adopt it, the cliff in scar 2 must become a **startup assertion** — read the
+database's refresh configuration and fail to start if it is disabled, exactly as
+`LicenseLimitException` on subscription create is now fatal (invariant 12). A silent scheduling
+failure is precisely the class of bug this codebase has already shipped twice.
+
+**Immediate actions regardless** (B10, B11), plus the one-test spike in the plan (S4).
+
 ## 4. Architecture
 
 Three layers. The critical property is that **the lease is a liveness mechanism, never the safety
@@ -305,6 +387,8 @@ Not scope creep — each one is either made worse by this rework or is the thing
 | B7 | Migration lease is 30 min and never renewed — a coin flip on a large backfill | `SparkMigrationRunner.cs:16` |
 | B8 | `MessageRetrySweeper` lacks the `WakeUp != true` guard its twin has, so it re-patches the same set every 30 s per replica | vs `SyncActionRetrySweeper.cs:88` |
 | B9 | `CoverageQueues.cs` says AGPL where the licence is registered Community, and "five queues" where it was seven | `CoverageQueues.cs:8-9,18` |
+| B10 | **Inverted licence limit.** `DeleteFrequencyInSec = 36 * 60 * 60, // 36 hours (community license minimum)` — the Community limit is a **ceiling on the interval** ("cannot be set higher than 36 hours"); the product default is **60 s**. Spark picked the slowest legal sweep believing it was mandatory, and the value is live in the database (`Coverage` and `Spark` both report `DeleteFrequencyInSec: 129600`, while every prior-art database leaves it `null`). Low impact — `RetentionDays` is 7, so this only delays deleting an already-expired document by up to 36 h — but the same misreading in `docs/issue_233_plan.md:44-46` is what wrongly ruled out `@refresh` (§3c) | `SparkMessagingExtensions.cs:54`, `docs/issue_233_plan.md:44-46` |
+| B11 | **`RetryNumerator`'s `@refresh` writes are inert, and its doc comment is self-contradictory.** `ConfigureRefreshOperation`/`RefreshConfiguration` appear **nowhere** in the repo (verified by grep), and the live server confirms it: every `Spark*`/`Coverage*` database reports `Refresh: null`. So the writes at `:57` and `:74` do nothing. Meanwhile `:16` says it "schedules redelivery via the @refresh metadata mechanism" while `:11` tells callers "`@refresh` metadata alone doesn't gate change-vector-driven re-delivery" — and the RavenDB docs contradict `:11`. Replication's retry actually works via `SyncActionRetrySweeper`'s `WakeUp` patch; the `@refresh` beside it is decorative. **Decide it deliberately: either enable refresh and make it real, or delete the writes.** Inert code that reads as a working mechanism is how the last two silent-scheduling bugs happened | `RetryNumerator.cs:11,16,57,74` |
 
 ---
 

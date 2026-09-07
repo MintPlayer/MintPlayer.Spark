@@ -68,6 +68,33 @@ records retry tests that asserted a negative and stayed green when delivery was 
 
 **Decides** batch size, lease TTL/renewal ratio, and whether the pump needs its own session per tick.
 
+### S4 — Does a server-side `@refresh` actually redeliver? (PRD §3c)
+
+One test, and the harness already exists: `tests/MintPlayer.Spark.Tests/_Infrastructure/SubscriptionQueryCapabilityTests.cs`
+has the `Widget` + delivery fixture that pinned the `now()` findings.
+
+**Method:** send `ConfigureRefreshOperation(new RefreshConfiguration { Disabled = false,
+RefreshFrequencyInSec = 5 })`; store a `Widget { Status = "Failed" }` with
+`@refresh = UtcNow + 3s`; subscribe to `from Widgets where Status = 'Failed' and not exists(@metadata.@refresh)`;
+assert **delivery** within ~30 s. Assert the positive — that it arrives — never merely that it does
+not arrive early; the repo has already shipped retry tests that asserted a negative and stayed green
+while delivery was entirely dead.
+
+Refresh is not licence-gated (Community lists "Document Expiration & Refresh"), so the test driver
+needs no licence opt-in.
+
+**Why it is worth one test even though we are not adopting it here:** the repo's contrary conclusion
+was reached with refresh *disabled* and a `now()` query, so it never actually tested this hypothesis.
+Green settles B11 — either enable refresh and make `RetryNumerator` real, or delete its writes. Red
+means the docs describe behaviour the pinned 7.1.10 server does not deliver, which is worth knowing
+before anyone reconsiders §3c.
+
+**⚠️ Note for S1:** the local server is **not** Community-capped — the local `Coverage` database
+currently holds **8** `SparkMessaging-*` definitions, including the five that were silently dead in
+production. So the subscription-cap spike cannot be reproduced against localhost as-is; it needs a
+Community-licensed or artificially capped server, or it will pass locally and fail on deploy. That
+same observation is direct confirmation of F6: nothing ever removes a definition.
+
 ---
 
 ## Milestones
@@ -82,6 +109,13 @@ records retry tests that asserted a negative and stayed green when delivery was 
   declared five" → seven declared, five dead.
 - **B3**: `return` → `continue` in the batch loop's three dead-letter branches
   (`MessageSubscriptionWorker.cs:103,112,122`). Must precede any batch-size change.
+- **B10**: fix the inverted licence comment at `SparkMessagingExtensions.cs:54` and the reasoning it
+  produced in `docs/issue_233_plan.md:44-46`. The 36 h Community limit is a **ceiling on the
+  interval**, not a floor; the default is 60 s. Drop the explicit `DeleteFrequencyInSec` and take the
+  default unless there is a reason not to.
+- **B11**: resolve `RetryNumerator`'s inert `@refresh` writes after S4 — correct the false disclaimer
+  at `:11`, and either enable refresh (with the startup assertion PRD §3c requires) or delete the
+  writes at `:57`/`:74`. Do not leave inert code that reads as a working mechanism.
 
 **Verify:** solution builds.
 
