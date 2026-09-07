@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "modelHash": "08c080592efb270270c268dd9e700c2335a1e36df0bfb04be16603d8113f748e",
+  "modelHash": "f5e63274b8c9af57cc5c8587913c0db0c87feaa13ef2f06131ff3813b068f204",
   "contextRoots": "4e26fdaddf14f566fc802a5957f1680622690ae57c3cbb5a5ac50a9c1de40ca0",
   "modelFiles": "770a6f42e17149cf2488f64c2587cff8f51e84947a3cf8eaa6305f853795239d",
   "files": {
@@ -28,5 +28,8 @@
     "OidcScope": "251e789682867eb0bd40a5e09ec86606b0bf0aeca81d0c857944257bb4c32710",
     "Person": "d8b556a2417e926a9850ff2b96cb07c31c546f212210ad89c5e5f037bb78829f",
     "Profession": "427524416f266c8d9fc38ed05aec12cfafe47df40e529e5f309e847002cf659e"
+  },
+  "configFiles": {
+    "programUnits.json": "640589ee92de7cf0d7e6a86983bb970294b0a9a235a0bb8563583dd9e4f68c42"
   }
 }

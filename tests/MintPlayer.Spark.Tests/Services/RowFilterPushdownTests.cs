@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Tests._Infrastructure;
 using System.Linq.Expressions;
 using System.Reflection;
 using MintPlayer.Spark.Abstractions;
@@ -362,7 +363,8 @@ public class RowFilterPushdownTests : SparkTestDriver
             session, entityMapper, modelLoader, contextResolver, indexCatalog,
             permissionService, actionsResolver, referenceResolver,
             new BreadcrumbResolver(modelLoader, new BreadcrumbClosure(modelLoader), rowSecurity, new SparkOptions()),
-            rowSecurity);
+            rowSecurity,
+            TestRowSecurityGate.For(rowSecurity, entityMapper));
 
         var query = new SparkQuery
         {

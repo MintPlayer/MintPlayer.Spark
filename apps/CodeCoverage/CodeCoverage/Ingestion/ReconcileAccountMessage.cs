@@ -19,8 +19,13 @@ namespace CodeCoverage.Ingestion;
 /// So the payload is applied for the timely case and this message is broadcast for the truthful
 /// one. The nightly sweep would find it eventually; this closes the window to seconds.
 /// </para>
+/// <para>
+/// On <see cref="Feedback.CoverageQueues.Publishing"/> because it calls GitHub, which is what
+/// that queue carries — and because the licence caps subscriptions per database, so a third
+/// queue name would silently kill one of the two that exist.
+/// </para>
 /// </summary>
-[MessageQueue("coverage-reconcile-account")]
+[MessageQueue(Feedback.CoverageQueues.Publishing)]
 public record ReconcileAccountMessage
 {
     public required long AccountGitHubId { get; init; }

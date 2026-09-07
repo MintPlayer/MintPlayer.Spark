@@ -20,6 +20,24 @@ public sealed class EntityTypeDefinition
     /// If not set, auto-generated from Name by lowercasing.
     /// </summary>
     public string? Alias { get; set; }
+
+    /// <summary>
+    /// Whether the current caller may open a single object of this type — the <c>Read</c> right,
+    /// answered per request rather than stored in the model.
+    /// </summary>
+    /// <remarks>
+    /// The catalogue is gated on <c>Query</c>, deliberately: it is a list of things you may LIST.
+    /// The client also uses it to decide whether a reference renders as a link, and that is a
+    /// different question — a type granted Query but not Read produced a clickable reference that
+    /// refused on arrival, while the grid's own first column correctly gated on Read. Carrying the
+    /// answer here makes both agree without the client asking per type.
+    /// <para>
+    /// Not persisted: <c>null</c> in a model file, filled in on the way out. It is per-caller, so
+    /// storing it would be meaningless and misleading.
+    /// </para>
+    /// </remarks>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public bool? CanRead { get; set; }
     /// <summary>
     /// The CLR type name of the projection type used for RavenDB index queries.
     /// Set when a projection class has [FromIndex] attribute linking to an index for this entity.

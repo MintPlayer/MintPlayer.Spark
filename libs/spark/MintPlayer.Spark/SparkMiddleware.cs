@@ -154,11 +154,23 @@ public static class SparkExtensions
 
     /// <summary>
     /// Registers the SparkContext implementation for this application.
+    /// <para>
+    /// Also declares the context's own assembly for index and projection discovery. Discovery
+    /// otherwise starts from <see cref="Assembly.GetEntryAssembly"/>, which is the application only
+    /// when the application is the process entry point: under an in-process test host
+    /// (<c>WebApplicationFactory</c>) the entry assembly is the test runner, so the application's
+    /// indexes were neither deployed nor catalogued — and the empty catalog silently dropped the
+    /// <c>querytype</c>/<c>index</c> lines from every projection-backed entity's model shape, so the
+    /// startup hash check rejected a model that <c>--spark-verify-model</c> had just accepted.
+    /// The context's assembly is the right anchor because it is the assembly the model shape is
+    /// derived from, and the one the index generator emits into.
+    /// </para>
     /// </summary>
     public static ISparkBuilder UseContext<TContext>(this ISparkBuilder builder)
         where TContext : SparkContext
     {
         builder.Services.AddScoped<SparkContext, TContext>();
+        builder.Registry.AddIndexAssembly(typeof(TContext).Assembly);
         return builder;
     }
 
@@ -498,14 +510,61 @@ public static class SparkExtensions
         if (Environment.GetCommandLineArgs().Contains(Extensions.SparkSecurityInitExtensions.InitFlag))
             return;
 
-        app.ApplicationServices.GetRequiredService<Abstractions.Authorization.ISecurityConfigurationLoader>()
+        var configuration = app.ApplicationServices
+            .GetRequiredService<Abstractions.Authorization.ISecurityConfigurationLoader>()
             .GetConfiguration();
+
+        VerifyRowPolicyDeclarations(app, configuration);
 
         // Same trip, different file: force the query alias index to build now. It is lazy, so a
         // duplicate alias would otherwise surface as a 500 on whichever request first needed a
         // query — in an unrelated place, long after the mistake. Here it is a startup failure that
         // names both queries.
         app.ApplicationServices.GetRequiredService<IQueryLoader>().GetQueries();
+    }
+
+    /// <summary>
+    /// Refuses a type reachable by a well-known group whose row policy nobody stated.
+    /// </summary>
+    /// <remarks>
+    /// Runs in its own scope: the services that can answer "does this type have a row rule" are
+    /// request-scoped, because in a request they memoize per caller. Nothing here depends on a
+    /// caller — the question is about the actions class, not the principal — so a throwaway scope is
+    /// the honest way to ask it at startup rather than at the first request that would have leaked.
+    /// </remarks>
+    private static void VerifyRowPolicyDeclarations(
+        IApplicationBuilder app, Abstractions.Authorization.SecurityConfiguration configuration)
+    {
+        using var scope = app.ApplicationServices.CreateScope();
+
+        var modelLoader = scope.ServiceProvider.GetService<IModelLoader>();
+        var rowSecurity = scope.ServiceProvider.GetService<IRowSecurity>();
+        var actionsResolver = scope.ServiceProvider.GetService<IActionsResolver>();
+        if (modelLoader is null || rowSecurity is null || actionsResolver is null)
+            return;
+
+        var problems = RowPolicyDeclarationValidator.Validate(
+            configuration,
+            [.. modelLoader.GetEntityTypes()],
+            type => ResolveClrType(type) is { } clr && rowSecurity.HasRowRule(clr),
+            type => ResolveClrType(type) is { } clr
+                ? TryResolve(() => actionsResolver.ResolveForType(clr))
+                : TryResolve(() => actionsResolver.ResolveByEntityName(type.Name)));
+
+        if (problems.Count > 0)
+            throw new Services.SparkSecurityConfigurationException(
+                string.Join(Environment.NewLine + Environment.NewLine, problems));
+
+        static Type? ResolveClrType(EntityTypeDefinition type)
+            => string.IsNullOrEmpty(type.ClrType) ? null : SparkTypeResolver.ResolveClrType(type.ClrType);
+
+        // A type whose actions class cannot be constructed is a different failure with its own
+        // message elsewhere; it must not be reported here as an undeclared row policy.
+        static object? TryResolve(Func<object?> resolve)
+        {
+            try { return resolve(); }
+            catch { return null; }
+        }
     }
 
     /// <summary>

@@ -31,7 +31,8 @@ public class StreamingQueryExecutorUnitTests
 
     private StreamingQueryExecutor CreateExecutor() => new(
         _documentStore, _entityMapper, _modelLoader,
-        _permissionService, _actionsResolver, _breadcrumbResolver, new PermissiveRowSecurity());
+        _permissionService, _actionsResolver, _breadcrumbResolver, new PermissiveRowSecurity(),
+        TestRowSecurityGate.For(new PermissiveRowSecurity(), _entityMapper, _breadcrumbResolver));
 
     private static SparkQuery Q(string source, string? entityType = "TestEntity") => new()
     {

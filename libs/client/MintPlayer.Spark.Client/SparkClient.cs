@@ -212,25 +212,10 @@ public class SparkClient : IDisposable
         await SparkClientException.ThrowIfNotSuccessAsync(response, cancellationToken);
     }
 
-    /// <summary>
-    /// Returns every PersistentObject of the given type that the caller can see. Row-level
-    /// authorization applies — denied rows are filtered out server-side, so a successful
-    /// response is already the caller's visible set.
-    /// </summary>
-    public Task<IReadOnlyList<PersistentObject>> ListPersistentObjectsAsync(Guid objectTypeId, CancellationToken cancellationToken = default)
-        => ListPersistentObjectsCoreAsync(objectTypeId.ToString(), cancellationToken);
-
-    /// <summary>Alias-based overload for <see cref="ListPersistentObjectsAsync(Guid,CancellationToken)"/>.</summary>
-    public Task<IReadOnlyList<PersistentObject>> ListPersistentObjectsAsync(string aliasOrName, CancellationToken cancellationToken = default)
-        => ListPersistentObjectsCoreAsync(Uri.EscapeDataString(aliasOrName), cancellationToken);
-
-    private async Task<IReadOnlyList<PersistentObject>> ListPersistentObjectsCoreAsync(string typeSegment, CancellationToken cancellationToken)
-    {
-        using var response = await SendAsync(HttpMethod.Get, $"/spark/po/{typeSegment}", cancellationToken: cancellationToken);
-        await SparkClientException.ThrowIfNotSuccessAsync(response, cancellationToken);
-        var list = await response.Content.ReadFromJsonAsync<PersistentObject[]>(JsonOptions, cancellationToken);
-        return list ?? Array.Empty<PersistentObject>();
-    }
+    // ListPersistentObjectsAsync is gone, with the GET /spark/po/{type} endpoint it called. That was
+    // a second list pipeline with no paging, no search, no sort and no take cap, beside a
+    // /queries/{id}/execute that clamps take for exactly that reason. Use ExecuteQueryAsync against
+    // the type's declared query instead — it is the same rows through the path that enforces.
 
     // --------------------------------------------------------------------------------
     // Query endpoints

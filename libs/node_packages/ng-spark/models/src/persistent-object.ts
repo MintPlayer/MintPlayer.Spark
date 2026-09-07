@@ -22,4 +22,17 @@ export interface PersistentObject {
   attributes: PersistentObjectAttribute[];
   /** Per-row edit/delete affordances; undefined = fall back to type-level permissions. */
   can?: PersistentObjectPermissions;
+  /**
+   * Custom actions withheld for THIS object, by name. Absent or empty means every action the
+   * caller has the right to is offered.
+   *
+   * The action catalogue at `/spark/actions/{objectTypeId}` is per TYPE -- it is never told which
+   * row is open -- so an action that applies to only some rows cannot be filtered there. The
+   * entity actions hook decides while it has the entity in hand, and the answer arrives here.
+   *
+   * An affordance, not a permission: the action endpoint is still reachable and its handler still
+   * refuses on its own terms. What this prevents is offering a destructive action where it cannot
+   * apply.
+   */
+  disabledActions?: string[];
 }

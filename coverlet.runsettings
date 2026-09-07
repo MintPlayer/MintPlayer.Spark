@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Settings for coverlet's VSTest data collector, passed by the settings flag (two
+  hyphens, then "settings") in every .NET test target's nx command. Without it the
+  collector runs on bare defaults.
+
+  Kept at the repo root, matching every other MintPlayer repository, so the same
+  settings argument is copy-pasteable between them.
+
+  History worth keeping: this file sat at apps/CodeCoverage/ for months while its own
+  header claimed it was at the root, and NOTHING referenced it: no workflow, no
+  project.json, no csproj. It was pure decoration, and the settings below describe what
+  the collector does only now that the targets actually pass it.
+
+  Note for editors: an XML comment may not contain a double hyphen, so the command
+  line flags are spelled out in prose here rather than quoted.
+-->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <!-- The server parses lcov, Cobertura and JaCoCo. Cobertura is what the
+               collector does best and what every other MintPlayer repo uploads. -->
+          <Format>cobertura</Format>
+
+          <!-- Coverage of the test assembly itself is noise: it inflates the total
+               with code that is by definition fully exercised. -->
+          <IncludeTestAssembly>false</IncludeTestAssembly>
+
+          <!-- Spark generates the model/registration code from the entity classes.
+               It is not hand-written, is not reviewed, and would swamp the real
+               numbers. obj/** catches the rest of the build's generated output. -->
+          <!-- KNOWN NOT TO WORK for the source-generated files, and kept anyway because it
+               is correct as documented and costs nothing. Measured 2026-09-06 against a
+               valid settings file: the Inject.g.cs emitted under each project obj
+               directory is STILL in the report. Separator variants and a separator-free
+               pattern were both tried and changed nothing.
+
+               The damage is small and in the safe direction: 7 files, 68 lines, all 100%
+               covered, and they never reach the badge because obj is gitignored and so
+               never matches the tracked file list. What it DOES break is the tripwire, so
+               tools/verify-coverage-paths.mjs carries a matching, documented allowance.
+               Do not assume this line is doing its job. -->
+          <ExcludeByFile>**/*.g.cs,**/obj/**</ExcludeByFile>
+
+          <!-- Both off deliberately. SourceLink rewrites paths to raw.githubusercontent
+               URLs and DeterministicReport rewrites them to /_/-prefixed placeholders;
+               either one breaks the server's path resolution, which matches report paths
+               against `git ls-files` output by longest suffix. Repo-relative paths are
+               exactly what it wants.
+
+               These do NOT make the <source> root uniform, which was the hope. Measured
+               2026-09-06 with this file wired in: tests/* still emit
+               <source>.../libs/</source> with filenames like
+               client/MintPlayer.Spark.Client/SparkClient.cs, while
+               apps/CodeCoverage/CodeCoverage.Tests emits the repo root. The root is the
+               compilation's common path prefix and nothing here changes it. The server's
+               longest-suffix match against `git ls-files` is therefore load-bearing, and
+               a report whose root shifts is dropped SILENTLY. That is what
+               tools/verify-coverage-paths.mjs exists to catch. -->
+          <UseSourceLink>false</UseSourceLink>
+          <DeterministicReport>false</DeterministicReport>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

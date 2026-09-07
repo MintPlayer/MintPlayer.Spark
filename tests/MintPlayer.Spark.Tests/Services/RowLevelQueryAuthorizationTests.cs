@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Tests._Infrastructure;
 using System.Reflection;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
@@ -113,11 +114,13 @@ public class RowLevelQueryAuthorizationTests : SparkTestDriver
         permissive.IsAllowedAsync(default!, default!, default!).ReturnsForAnyArgs(true);
 
         var session = Store.OpenAsyncSession();
+        var rowSecurity = new RowSecurity(_actionsResolver);
         return new QueryExecutor(
             session, entityMapper, _modelLoader, _contextResolver, _indexCatalog,
             _permissionService, _actionsResolver, _referenceResolver,
             new BreadcrumbResolver(_modelLoader, new BreadcrumbClosure(_modelLoader), permissive, new SparkOptions()),
-            new RowSecurity(_actionsResolver));
+            rowSecurity,
+            TestRowSecurityGate.For(rowSecurity, entityMapper));
     }
 
     private Task SeedNotesAsync()

@@ -208,7 +208,7 @@ async function waitAndReport(url: string, credential: Credential, ctx: ReturnTyp
   }
 }
 
-function setResultOutputs(status: UploadStatus): void {
+export function setResultOutputs(status: UploadStatus): void {
   core.setOutput('state', status.state);
   core.setOutput('build-status', status.status);
   core.setOutput('finalize-reason', status.finalizeReason ?? '');
@@ -265,7 +265,7 @@ function setResultOutputs(status: UploadStatus): void {
   core.setOutput('assembly-oldest-origin-sha', assembly?.oldestOriginSha ?? '');
 }
 
-function numberInput(name: string, fallback: number): number {
+export function numberInput(name: string, fallback: number): number {
   const raw = core.getInput(name).trim();
   if (!raw) return fallback;
   const value = Number(raw);

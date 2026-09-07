@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, output, signal, TemplateRef, Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal, TemplateRef, Type, untracked } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule, NgTemplateOutlet, NgComponentOutlet } from '@angular/common';
 import { ActivatedRoute, Router, RouterModule } from '@angular/router';
@@ -13,7 +13,7 @@ import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective } from '@mintplayer/ng-bootstrap/tab-control';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
-import { SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
+import { SparkAttributeRefreshService, SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import {
   TranslateKeyPipe,
   ResolveTranslationPipe,
@@ -54,6 +54,7 @@ export class SparkPoDetailComponent {
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
   private readonly queryRefresh = inject(SparkQueryRefreshService);
+  private readonly attributeRefresh = inject(SparkAttributeRefreshService);
   protected readonly lang = inject(SparkLanguageService);
   private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
 
@@ -95,8 +96,64 @@ export class SparkPoDetailComponent {
   canDelete = signal(false);
   customActions = signal<CustomActionDefinition[]>([]);
 
+  /**
+   * The actions actually offered for the object on screen.
+   *
+   * The catalogue at `/spark/actions/{objectTypeId}` is per TYPE -- the server is never told which
+   * row is open -- so an action that applies to only some rows cannot be filtered there. The
+   * entity's actions hook decides while it has the entity in hand and withholds what does not
+   * apply, and the object arrives carrying that answer.
+   *
+   * An affordance, not a permission: the endpoint stays reachable and the action handler still
+   * refuses on its own terms. What this prevents is offering a destructive action where it cannot
+   * possibly apply -- Coverage showed an irreversible red "Delete data" button on every repository
+   * page, healthy ones included, and only admitted it would refuse after the confirmation prompt.
+   */
+  visibleCustomActions = computed(() => {
+    const withheld = this.item()?.disabledActions;
+    if (!withheld?.length) return this.customActions();
+
+    const lowered = new Set(withheld.map(name => name.toLowerCase()));
+    return this.customActions().filter(action => !lowered.has(action.name.toLowerCase()));
+  });
+
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
+
+    // Server-issued `refreshAttribute` patches for the object this page is showing.
+    //
+    // Tracks the token and the entity type, never `item()`: writing the signal this effect reads
+    // would re-run it forever, so the read-modify-write of the object happens untracked.
+    effect(() => {
+      const objectTypeId = this.entityType()?.id;
+      if (!this.attributeRefresh.tokenFor(objectTypeId, this.id)) return;
+
+      const patches = this.attributeRefresh.patchesFor(objectTypeId, this.id);
+      untracked(() => this.applyAttributePatches(patches));
+    });
+  }
+
+  /**
+   * Applies patched attribute values in place, without a re-fetch.
+   *
+   * The operation carries the value the server computed after its own write, so this is both
+   * cheaper and more correct than re-reading: a re-read goes through a RavenDB index that may
+   * still be stale from the very write that produced the patch, and would show the old value.
+   */
+  private applyAttributePatches(patches: Record<string, unknown>): void {
+    const current = this.item();
+    if (!current) return;
+
+    let changed = false;
+    const attributes = current.attributes.map(attribute => {
+      if (!Object.prototype.hasOwnProperty.call(patches, attribute.name)) return attribute;
+      if (attribute.value === patches[attribute.name]) return attribute;
+
+      changed = true;
+      return { ...attribute, value: patches[attribute.name] };
+    });
+
+    if (changed) this.item.set({ ...current, attributes });
   }
 
   private async onParamsChange(params: any): Promise<void> {
@@ -277,11 +334,28 @@ export class SparkPoDetailComponent {
     }
   }
 
+  /**
+   * The action currently running, or null. Drives the disabled state on every custom-action
+   * button.
+   *
+   * A custom action is not necessarily quick: Coverage's Resync makes paged GitHub App calls for
+   * every account the caller manages, inside the request. Without this the button stayed live and
+   * looked inert for several seconds, and a second click queued a second full run -- which is how
+   * a slow action and a broken one became indistinguishable.
+   */
+  runningAction = signal<string | null>(null);
+
   async onCustomAction(action: CustomActionDefinition): Promise<void> {
+    // Guard re-entry as well as disabling the button: the template is not the only caller, and a
+    // host component driving this method directly would otherwise bypass the check.
+    if (this.runningAction()) return;
+
     if (action.confirmationMessageKey) {
       const message = this.lang.t(action.confirmationMessageKey) || 'Are you sure?';
       if (!confirm(message)) return;
     }
+
+    this.runningAction.set(action.name);
     try {
       await this.sparkService.executeCustomAction(this.type, action.name, this.item() || undefined);
       this.customActionExecuted.emit({ action, item: this.item()! });
@@ -299,6 +373,10 @@ export class SparkPoDetailComponent {
     } catch (e) {
       const err = e as HttpErrorResponse;
       this.errorMessage.set(err.error?.error || err.message || 'Action failed');
+    } finally {
+      // finally, not after the try: an action that fails must not leave every button on the page
+      // permanently disabled.
+      this.runningAction.set(null);
     }
   }
 

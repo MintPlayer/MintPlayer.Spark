@@ -6,7 +6,7 @@ namespace CodeCoverage.Ingestion;
 /// Queued when an upload lands; processed by <see cref="ParseSessionRecipient"/>.
 /// Explicit queue name — never rely on the FullName fallback.
 /// </summary>
-[MessageQueue("coverage-parse-session")]
+[MessageQueue(Feedback.CoverageQueues.Ingestion)]
 public record ParseSessionMessage
 {
     public required string BuildId { get; init; }
@@ -19,7 +19,7 @@ public record ParseSessionMessage
 /// before the finish call has completed — finalization always sees fresh state
 /// and never races a concurrent parse's save.
 /// </summary>
-[MessageQueue("coverage-parse-session")]
+[MessageQueue(Feedback.CoverageQueues.Ingestion)]
 public record FinalizeBuildMessage
 {
     public required string BuildId { get; init; }
@@ -31,7 +31,7 @@ public record FinalizeBuildMessage
 /// (so no lock is needed) and every parse enqueued before the finalize has
 /// already landed.
 /// </summary>
-[MessageQueue("coverage-parse-session")]
+[MessageQueue(Feedback.CoverageQueues.Ingestion)]
 public record AssembleCommitMessage
 {
     public required string CommitId { get; init; }

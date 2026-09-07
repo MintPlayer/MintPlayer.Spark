@@ -70,7 +70,7 @@ public class RowLevelAuthzTests
     /// <summary>
     /// The list path filters rows the caller may not see.
     /// <para>
-    /// The assertion is absence, and <c>ListPersistentObjectsAsync</c> reads through an
+    /// The assertion is absence, and the query path reads through an
     /// eventually-consistent RavenDB index — so on its own, <c>NotContain</c> passes whenever the
     /// freshly-created car has simply not been indexed yet, <b>whether or not row-level filtering
     /// works at all</b>. The admin's list is therefore asserted first as a positive control: it
@@ -87,13 +87,13 @@ public class RowLevelAuthzTests
         {
             using (var adminClient = await SparkClientFactory.ForFleetAsAdminAsync(_fixture.Host))
             {
-                var adminCars = await adminClient.ListPersistentObjectsAsync(CarFixture.TypeId);
+                var adminCars = (await adminClient.ExecuteQueryAsync(GetCarsQueryId)).Items;
                 adminCars.Should().Contain(po => po.Id == adminCarId,
                     "the car must be indexed and visible to its creator before its absence for "
                     + $"another user means anything\n--- Fleet log tail ---\n{_fixture.Host.RecentLog()}");
             }
 
-            var cars = await userBClient.ListPersistentObjectsAsync(CarFixture.TypeId);
+            var cars = (await userBClient.ExecuteQueryAsync(GetCarsQueryId)).Items;
 
             cars.Should().NotContain(po => po.Id == adminCarId,
                 "admin's car must be absent from user B's list response");
@@ -153,7 +153,7 @@ public class RowLevelAuthzTests
             "the row filter is written on Car, so the reload must produce a Car regardless of what "
             + $"the stored metadata claims\n--- Fleet log tail ---\n{_fixture.Host.RecentLog()}");
 
-        var cars = await client.ListPersistentObjectsAsync(CarFixture.TypeId);
+        var cars = (await client.ExecuteQueryAsync(GetCarsQueryId)).Items;
         cars.Should().Contain(po => po.Id == created.Id,
             $"the PO-list path projects too\n--- Fleet log tail ---\n{_fixture.Host.RecentLog()}");
     }

@@ -1,0 +1,15 @@
+{
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "name": "@mintplayer/coverage-upload-action",
+  "projectType": "application",
+  "sourceRoot": "apps/CodeCoverage/action/src",
+  "targets": {
+    "test": {
+      "options": {
+        "cwd": "apps/CodeCoverage/action",
+        "command": "npm run test:coverage"
+      },
+      "outputs": ["{projectRoot}/coverage"]
+    }
+  }
+}

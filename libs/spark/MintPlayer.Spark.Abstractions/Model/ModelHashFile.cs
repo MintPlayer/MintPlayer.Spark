@@ -67,6 +67,23 @@ public sealed class ModelHashFile
     /// </summary>
     public SortedDictionary<string, string> Entities { get; set; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Structural hashes of the App_Data config files outside the Model directory —
+    /// <c>customActions.json</c> and <c>programUnits.json</c>.
+    /// </summary>
+    /// <remarks>
+    /// These had no integrity gate of any kind: the model hash globs <c>App_Data/Model/*.json</c>,
+    /// and <c>security.json</c> is covered by its own posture baseline, so these two were covered by
+    /// nothing at all — while both carry decisions the runtime enforces. An action absent from
+    /// <c>customActions.json</c> cannot run, and its <c>selectionRule</c> bounds how many rows an
+    /// action may be handed.
+    /// <para>
+    /// Absent from an older hash file, which is why it is optional rather than required: a file
+    /// written before this existed must not read as drift on the first run after upgrading.
+    /// </para>
+    /// </remarks>
+    public SortedDictionary<string, string>? ConfigFiles { get; set; }
+
     /// <summary>Absolute path of the hash file for a given content root.</summary>
     public static string PathFor(string contentRootPath)
         => Path.Combine(contentRootPath, "App_Data", FileName);
@@ -82,6 +99,10 @@ public sealed class ModelHashFile
     /// </summary>
     public static SortedDictionary<string, string> ComputeFileHashes(string contentRootPath)
         => ModelFileShape.ComputeFileHashes(ModelDirectoryFor(contentRootPath));
+
+    /// <summary>Structural hashes of the App_Data config files outside the Model directory.</summary>
+    public static SortedDictionary<string, string> ComputeConfigHashes(string contentRootPath)
+        => ConfigFileShape.ComputeFileHashes(Path.Combine(contentRootPath, "App_Data"));
 
     /// <summary>Roll-up over the per-file structural hashes.</summary>
     public static string CombineFileHashes(IReadOnlyDictionary<string, string> fileHashes)

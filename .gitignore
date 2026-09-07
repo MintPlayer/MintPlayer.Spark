@@ -415,3 +415,9 @@ apps/*/*/appsettings.json.e2e-backup
 # RavenDB licence, dropped next to a docker-compose.yml and mounted into the Raven
 # container. Server-managed like .env and github-app.pem: never committed.
 apps/*/raven-license.json
+
+# Generated OIDC signing keys. The E2E suite writes one per app on first run
+# (apps/Fleet/Fleet/oidc-signing-key.E2E.json and friends). They are key material,
+# they are per-machine, and nothing outside a local run should ever see them --
+# a plain `git add -A` after running the tests was enough to stage one.
+**/oidc-signing-key*.json

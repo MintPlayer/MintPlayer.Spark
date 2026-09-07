@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "modelHash": "25cf59818e2e5b48d6a7021e338eb5b4425a9d1bd581fb3c237ded31c2f3a9e2",
+  "modelHash": "e661ad1fa007e2d78dfe29b0d3b34dcec42b7076e2ca6cbb714e6dc542837a75",
   "contextRoots": "6f0d13d14e885eebf8f4a811725f64c1003818a44b4182fd9473fb926ff26372",
   "modelFiles": "a576fc27df0bfc5a37dcfaa65a597309b77ca261d972b20eda96035c2b239233",
   "files": {
@@ -26,5 +26,9 @@
     "GateSettings": "ec8508300e9fb50f49fcf30c5307f618322e5a7e39820bc7a1fc7ed194b1e8ea",
     "PatchCoverage": "160cecb4211c4165f1bb16f6576e43706f87987e9f87f1552e89efcf36d68836",
     "Repository": "0cb30eda19eb235cccaee0d835e657367af3e787877b21ea917debf70dadea3e"
+  },
+  "configFiles": {
+    "customActions.json": "b7c2170058bae9068f764ee65f51b3ff5432b38023d7a194cb3f73db23fb05c7",
+    "programUnits.json": "acb95a488bb78b9f936b82b10581c3cb69353f0140a3241e51d04926bed9549b"
   }
 }

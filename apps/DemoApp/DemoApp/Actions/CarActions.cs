@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Authorization;
 using DemoApp.Indexes;
 using DemoApp.Library.Entities;
 using MintPlayer.SourceGenerators.Attributes;
@@ -8,8 +9,12 @@ using Raven.Client.Documents.Session;
 
 namespace DemoApp.Actions;
 
-public partial class CarActions : DefaultPersistentObjectActions<Car>
+public partial class CarActions : DefaultPersistentObjectActions<Car>, ISparkOwnsRowSecurity
 {
+    /// <inheritdoc />
+    public string RowSecurityRationale =>
+        "Demo data, published in full on purpose — see PersonActions. Note the Fleet demo scopes its own Car type by driver, which is the shape a real application wants.";
+
     [Inject] private readonly IAsyncDocumentSession session;
 
     /// <summary>

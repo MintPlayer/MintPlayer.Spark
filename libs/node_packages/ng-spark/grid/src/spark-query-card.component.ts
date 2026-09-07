@@ -110,6 +110,6 @@ export class SparkQueryCardComponent {
     return (q?.description ? this.lang.resolve(q.description) : '') || q?.name || '';
   });
 
-  protected readonly customActions = computed(() => this.grid()?.customActions() ?? []);
+  protected readonly customActions = computed(() => this.grid()?.visibleCustomActions() ?? []);
   protected readonly selection = computed(() => this.grid()?.selection() ?? []);
 }

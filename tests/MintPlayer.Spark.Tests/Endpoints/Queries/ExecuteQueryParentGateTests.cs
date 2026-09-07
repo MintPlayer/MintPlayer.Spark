@@ -34,7 +34,11 @@ public class ExecuteQueryParentGateTests : SparkTestDriver
             {
                 Id = ChildrenQueryId,
                 Name = "AllDocs",
-                Source = "Database.Docs",
+                // Custom.*, not Database.*: a SparkContext property cannot be scoped to a parent,
+                // so using one as a sub-query is now refused rather than silently serving the whole
+                // collection. The subject here is the parent gate either way.
+                Source = "Custom.ChildrenOf",
+                EntityType = "GuardedDoc",
             },
         ];
 

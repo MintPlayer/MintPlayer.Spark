@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Authorization;
 using DemoApp.Library.Entities;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Queries;
@@ -5,9 +6,13 @@ using System.Runtime.CompilerServices;
 
 namespace DemoApp.Actions;
 
-public partial class StockActions : DefaultPersistentObjectActions<Stock>
+public partial class StockActions : DefaultPersistentObjectActions<Stock>, ISparkOwnsRowSecurity
 {
-    public override async IAsyncEnumerable<IReadOnlyList<Stock>> StreamItems(
+    /// <inheritdoc />
+    public string RowSecurityRationale =>
+        "Demo data, published in full on purpose — see PersonActions. Stock rows are static sample quantities.";
+
+    public async IAsyncEnumerable<IReadOnlyList<Stock>> StreamItems(
         StreamingQueryArgs args,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {

@@ -118,6 +118,15 @@ jobs:
     # Master runs every test project unconditionally, so this is a whole-
     # workspace upload (no `partial`) — it becomes the baseline the Coverage
     # server compares partial PR uploads against.
+    # A report path the server cannot resolve is dropped SILENTLY -- it is simply
+    # absent from the percentage, which reads as a coverage drop rather than as a
+    # bug. This runs the server's own resolution rules over every report before
+    # upload and fails the build instead, so the failure mode that hid five dead
+    # queues cannot also hide a shrinking denominator.
+    - name: Verify coverage report paths
+      if: always()
+      run: node tools/verify-coverage-paths.mjs
+
     - name: Upload coverage
       if: always() && hashFiles('tests/*/coverage/**/coverage.cobertura.xml', 'apps/*/*/coverage/**/coverage.cobertura.xml', 'libs/node_packages/*/coverage/cobertura-coverage.xml', 'apps/*/*/ClientApp/coverage/cobertura-coverage.xml') != ''
       # The working copy — the action's source lives in this repository now.
@@ -130,6 +139,8 @@ jobs:
           apps/*/*/coverage/**/coverage.cobertura.xml
           libs/node_packages/*/coverage/cobertura-coverage.xml
           apps/*/*/ClientApp/coverage/cobertura-coverage.xml
+          coverage/@spark-apps/*/cobertura-coverage.xml
+          apps/*/action/coverage/cobertura-coverage.xml
         disable-search: true
         finish: true
         fail-ci-if-error: false

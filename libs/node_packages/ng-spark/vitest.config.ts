@@ -27,7 +27,11 @@ export default defineConfig({
       reportsDirectory: './coverage',
       // Every shipped source counts, not only what some spec happened to
       // import: a file no test touches is 0% covered, not invisible.
-      all: true,
+      //
+      // `include` is what does that. Vitest 4 REMOVED `coverage.all` -- setting an
+      // explicit `include` is the replacement ("by default only files covered by
+      // tests are included"). An `all: true` here was dead config that also failed
+      // `tsc --noEmit`, and it was easy to mistake for the thing making this work.
       include: ['**/src/**/*.ts'],
       exclude: ['**/*.spec.ts', '**/test-setup.ts', '**/public-api.ts', '**/*.d.ts', '**/index.ts', '**/dist/**', '**/node_modules/**'],
     },

@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Client;
 using MintPlayer.Spark.Testing;
@@ -191,8 +192,14 @@ public class StringPresentationColumnTests : SparkTestDriver
 }
 
 /// <summary>Found by name — the composed-query seam. Rows are computed; nothing is stored.</summary>
-public sealed class GalleryActions
+public sealed class GalleryActions : ISparkOwnsRowSecurity
 {
+    /// <inheritdoc />
+    public string RowSecurityRationale =>
+        "Test fixture: the rows are literals with no per-caller data, so there is nothing to scope. " +
+        "Declared explicitly because the framework can no longer tell a composed type that owns its " +
+        "scoping from one that forgot.";
+
     public IEnumerable<GalleryRow> GetRows() =>
     [
         new GalleryRow("gallery/1", "One", "https://cdn.example.com/1.png", "https://example.com/one"),

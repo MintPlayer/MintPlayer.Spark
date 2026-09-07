@@ -11,8 +11,15 @@ namespace CodeCoverage.Ingestion;
 /// is tens of thousands. Authorization has already happened at the point this is broadcast — the
 /// message means "this has been authorized", so nothing may broadcast it without checking.
 /// </para>
+/// <para>
+/// On <see cref="Feedback.CoverageQueues.Publishing"/> because it is retention, alongside
+/// <see cref="DeletePullRequestBuildsMessage"/> — and because it may not have a queue of its own:
+/// the licence caps subscriptions per database, and a third name would silently kill one of the
+/// two that exist. Its own dedicated queue is what was dead in production, which is why the
+/// button appeared to do nothing.
+/// </para>
 /// </summary>
-[MessageQueue("coverage-delete-repository-data")]
+[MessageQueue(Feedback.CoverageQueues.Publishing)]
 public record DeleteRepositoryDataMessage
 {
     public required long RepositoryGitHubId { get; init; }

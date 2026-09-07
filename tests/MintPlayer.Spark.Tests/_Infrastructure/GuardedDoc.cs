@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Queries;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Services;
@@ -24,6 +25,24 @@ public class GuardedDocActions : DefaultPersistentObjectActions<GuardedDoc>
     public GuardedDocActions(IEntityMapper entityMapper) : base(entityMapper) { }
     public override Task<bool> IsAllowedAsync(string action, GuardedDoc entity)
         => Task.FromResult(entity.IsVisible);
+
+    /// <summary>
+    /// A parent-scoped sub-query source, for tests whose subject is the parent gate.
+    /// <para>
+    /// It exists because a <c>Database.*</c> source may no longer be used as a sub-query: that
+    /// branch reads a SparkContext property and cannot express "belonging to this parent", so
+    /// serving it would list the whole collection under one parent's page. Scoping a sub-query is
+    /// what an actions method is for, and this is the smallest honest one.
+    /// </para>
+    /// </summary>
+    public IEnumerable<GuardedDoc> ChildrenOf(CustomQueryArgs args)
+    {
+        // The parent must actually arrive — routing a sub-query through an actions method is only
+        // worth anything if the method can see what it is scoping to. Tests using this source are
+        // about the parent GATE rather than the rows, so the scoped set is deliberately empty.
+        ArgumentNullException.ThrowIfNull(args.Parent);
+        return [];
+    }
 }
 
 /// <summary>
@@ -50,10 +69,56 @@ public class GuardedCodedActions : DefaultPersistentObjectActions<GuardedCoded>
         => Task.FromResult(action != "Edit");
 }
 
+/// <summary>
+/// A row-scoped entity whose policy is expressed as a FILTER rather than as
+/// <c>IsAllowedAsync</c>.
+/// <para>
+/// The distinction is the point. <see cref="GuardedDocActions"/> covers the per-row predicate;
+/// nothing covered <c>GetRowFilterAsync</c> on the write paths, so edit and delete of a row the
+/// filter hides went untested — and those are precisely the paths a query-level filter would fail
+/// to guard if someone ever moved row scoping into <c>OnQueryAsync</c>.
+/// </para>
+/// </summary>
+public class FilteredDoc
+{
+    public string? Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Owner { get; set; } = string.Empty;
+}
+
+/// <summary>Rows belong to alice, expressed as a pushdown-capable filter.</summary>
+public class FilteredDocActions : DefaultPersistentObjectActions<FilteredDoc>
+{
+    public FilteredDocActions(IEntityMapper entityMapper) : base(entityMapper) { }
+
+    public override Task<System.Linq.Expressions.Expression<Func<FilteredDoc, bool>>?> GetRowFilterAsync(string action)
+        => Task.FromResult<System.Linq.Expressions.Expression<Func<FilteredDoc, bool>>?>(d => d.Owner == "alice");
+}
+
+public static class FilteredDocModel
+{
+    public static EntityTypeFile For(Guid id) => new()
+    {
+        PersistentObject = new EntityTypeDefinition
+        {
+            Id = id,
+            Name = "FilteredDoc",
+            ClrType = typeof(FilteredDoc).FullName!,
+            Breadcrumb = "{Name}",
+            Attributes =
+            [
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Name", DataType = "string" },
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Owner", DataType = "string" },
+            ],
+        }
+    };
+}
+
 public class GuardedContext : SparkContext
 {
     public IRavenQueryable<GuardedDoc> Docs => Session.Query<GuardedDoc>();
     public IRavenQueryable<GuardedCoded> Codeds => Session.Query<GuardedCoded>();
+    public IRavenQueryable<FilteredDoc> FilteredDocs => Session.Query<FilteredDoc>();
 }
 
 public static class GuardedDocModel

@@ -148,60 +148,6 @@ internal partial class DatabaseAccess : IDatabaseAccess
         return resolved;
     }
 
-    public async Task<IEnumerable<PersistentObject>> GetPersistentObjectsAsync(Guid objectTypeId)
-    {
-        var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
-        if (entityTypeDefinition == null) return [];
-
-        await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
-
-        var clrType = entityTypeDefinition.ClrType;
-        var entityType = typeResolver.Resolve(clrType);
-        if (entityType == null) return [];
-
-        // Declared binding (issue #279): the entity file's queryType/indexName — written by the
-        // synchronizer and hash-covered — replaces the ambient registry lookup. An empty binding
-        // queries the raw collection; a binding whose projection type no longer resolves is a loud
-        // error, because the silent alternative is a grid of null computed fields.
-        Type queryType = entityType;
-        string? indexName = null;
-
-        if (!string.IsNullOrEmpty(entityTypeDefinition.IndexName) && !string.IsNullOrEmpty(entityTypeDefinition.QueryType))
-        {
-            queryType = typeResolver.Resolve(entityTypeDefinition.QueryType)
-                ?? throw new InvalidOperationException(
-                    $"Entity '{entityTypeDefinition.Name}' declares projection '{entityTypeDefinition.QueryType}' " +
-                    $"(index '{entityTypeDefinition.IndexName}'), but the type does not resolve. Re-run " +
-                    $"--spark-synchronize-model, or register the assembly declaring it via AddIndexesFrom(...).");
-            indexName = entityTypeDefinition.IndexName;
-        }
-
-        // Include paths — [Reference] property names + GetDefaultIncludes() (#239), deduped.
-        var includePaths = referenceResolver.ResolveIncludePaths(queryType, entityType);
-
-        // Query entities - use index if projection is registered, otherwise query collection
-        var entities = (await QueryEntitiesWithIncludesAsync(session, entityType, queryType, indexName, includePaths)).ToList();
-
-        // Row-level "Query" gate (H-2): after entity-type authz passed, filter the list down
-        // to rows the Actions class says the caller may see. For projection queries, the row
-        // filter takes the base entity (CarActions typed on Car, not VCar) so we load the
-        // matching base docs through the session cache. This filters after materialization, so a
-        // row-scoped type reads its whole collection per query; pushing the predicate into RavenDB
-        // is a known follow-up.
-        entities = (await rowSecurity.FilterAsync(session, entities, entityType, queryType, "Query")).ToList();
-
-        // Resolve breadcrumbs for the page. The .Include() from QueryEntitiesWithIncludesAsync
-        // primed level-1 references into the session cache, so the resolver's first batched
-        // load is a cache hit; deeper levels cost one batched request each.
-        var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entities, entityTypeDefinition);
-
-        var mapped = entities
-            .Select(e => (Po: entityMapper.ToPersistentObject(e, objectTypeId, breadcrumbs), Row: e))
-            .ToList();
-        await rowSecurity.RedactAsync(session, mapped, entityType, queryType, "Query");
-        return mapped.Select(m => m.Po);
-    }
-
     /// <summary>
     /// Applies the Actions class's row-level read gate to a materialized list. When the
     /// query ran against a projection type, we load the corresponding base entities from
@@ -335,17 +281,29 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityType = typeResolver.Resolve(clrType);
         if (entityType == null) return;
 
-        // Row-level Delete gate (R2-H2): same shape as the Edit gate in
-        // SavePersistentObjectAsync — load the entity in a side session and ask
-        // the Actions class. Apps can permit Read-everyone but Delete-owner-only.
-        var existing = await LoadEntityAsync(session, entityType, id);
-        if (existing is null) return; // Nothing to delete; preserves 404-on-missing semantics.
-        // Id-to-type binding (security sweep C1/H1): don't let a Delete on one type erase a
-        // document of another by naming its id. A foreign-collection document is "not found" here.
-        if (!collectionGuard.BelongsToAuthorizedCollection(session, existing, entityType))
-            return;
-        if (!await rowSecurity.IsAllowedAsync(entityType, "Delete", existing))
-            throw new SparkRowLevelAccessDeniedException($"Delete/{entityTypeDefinition.Name}");
+        // Row-level Delete gate (R2-H2): the same shape as the Edit gate in
+        // SavePersistentObjectAsync — load the entity in a side session and ask the Actions class.
+        // Apps can permit Read-everyone but Delete-owner-only.
+        //
+        // It said "side session" and used the request session, which made the two gates different
+        // while claiming they were the same. The request session may already be tracking this
+        // document — the delete endpoint reads it through the gated read path first — so judging its
+        // copy judges whatever that copy has become, while a gate should judge what is STORED. The
+        // difference is invisible today because nothing mutates between the read and the delete, and
+        // it is exactly the kind of "invisible today" that stops being true after an unrelated edit.
+        using (var checkSession = documentStore.OpenAsyncSession())
+        {
+            var existing = await LoadEntityAsync(checkSession, entityType, id);
+            if (existing is null) return; // Nothing to delete; preserves 404-on-missing semantics.
+
+            // Id-to-type binding (security sweep C1/H1): don't let a Delete on one type erase a
+            // document of another by naming its id. A foreign-collection document is "not found".
+            if (!collectionGuard.BelongsToAuthorizedCollection(checkSession, existing, entityType))
+                return;
+
+            if (!await rowSecurity.IsAllowedAsync(entityType, "Delete", existing))
+                throw new SparkRowLevelAccessDeniedException($"Delete/{entityTypeDefinition.Name}");
+        }
 
         // Delete locally first (includes before hook)
         await DeleteEntityViaActionsAsync(session, entityType, id);

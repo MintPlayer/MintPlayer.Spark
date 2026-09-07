@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Raven.Client.Documents.Linq;
 using MintPlayer.Spark.Abstractions;
@@ -288,8 +289,14 @@ public class QueryIdRestrictionTests : SparkTestDriver
 }
 
 /// <summary>Found by name — a composed type's actions class. Rows are computed; nothing is stored.</summary>
-public sealed class GadgetActions
+public sealed class GadgetActions : ISparkOwnsRowSecurity
 {
+    /// <inheritdoc />
+    public string RowSecurityRationale =>
+        "Test fixture: the rows are literals with no per-caller data, so there is nothing to scope. " +
+        "Declared explicitly because the framework can no longer tell a composed type that owns its " +
+        "scoping from one that forgot.";
+
     private static readonly GadgetRow[] All =
     [
         new("gadgets/1", "Alpha", 100),
@@ -315,8 +322,14 @@ public sealed class GadgetActions
 /// Returns an IQueryable and declares NO hook, so the framework's default id filter is what narrows
 /// it. That is the path the demo exercised and the suite did not.
 /// </summary>
-public sealed class WidgetlessActions
+public sealed class WidgetlessActions : ISparkOwnsRowSecurity
 {
+    /// <inheritdoc />
+    public string RowSecurityRationale =>
+        "Test fixture: the rows are literals with no per-caller data, so there is nothing to scope. " +
+        "Declared explicitly because the framework can no longer tell a composed type that owns its " +
+        "scoping from one that forgot.";
+
     public IQueryable<GadgetRow> GetQueryableGadgets() => new[]
     {
         new GadgetRow("gadgets/1", "Alpha", 100),
@@ -326,8 +339,14 @@ public sealed class WidgetlessActions
 }
 
 /// <summary>The same shape without the hook — the loud-failure case.</summary>
-public sealed class UnnarrowableActions
+public sealed class UnnarrowableActions : ISparkOwnsRowSecurity
 {
+    /// <inheritdoc />
+    public string RowSecurityRationale =>
+        "Test fixture: the rows are literals with no per-caller data, so there is nothing to scope. " +
+        "Declared explicitly because the framework can no longer tell a composed type that owns its " +
+        "scoping from one that forgot.";
+
     public IEnumerable<NumericRow> GetUnnarrowable() =>
     [
         new(1, "Alpha", 100),
@@ -338,8 +357,14 @@ public sealed class UnnarrowableActions
 /// A plain List with an ordinary string id — the shape of nearly every composed query, and the one
 /// that must work with no hook at all.
 /// </summary>
-public sealed class PlainListActions
+public sealed class PlainListActions : ISparkOwnsRowSecurity
 {
+    /// <inheritdoc />
+    public string RowSecurityRationale =>
+        "Test fixture: the rows are literals with no per-caller data, so there is nothing to scope. " +
+        "Declared explicitly because the framework can no longer tell a composed type that owns its " +
+        "scoping from one that forgot.";
+
     public IEnumerable<GadgetRow> GetPlainList() =>
     [
         new("gadgets/1", "Alpha", 100),
@@ -370,8 +395,14 @@ public sealed class PersonActions(
 /// Declares its rows as an interface while returning concrete ones — the shape whose grid rendered
 /// and whose narrowing threw, before both sides read the id off the same place.
 /// </summary>
-public sealed class WeaklyDeclaredActions
+public sealed class WeaklyDeclaredActions : ISparkOwnsRowSecurity
 {
+    /// <inheritdoc />
+    public string RowSecurityRationale =>
+        "Test fixture: the rows are literals with no per-caller data, so there is nothing to scope. " +
+        "Declared explicitly because the framework can no longer tell a composed type that owns its " +
+        "scoping from one that forgot.";
+
     public IEnumerable<IHasGadgetId> GetWeaklyDeclared() =>
     [
         new GadgetRow("gadgets/1", "Alpha", 100),

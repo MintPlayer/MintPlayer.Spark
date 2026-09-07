@@ -22,8 +22,8 @@
           </button>
         }
         @if (showCustomActions()) {
-          @for (action of customActions(); track action.name) {
-            <button *bsPriorityNavItem="10 + action.offset" [class]="customActionClass(action)" (click)="onCustomAction(action)">
+          @for (action of visibleCustomActions(); track action.name) {
+            <button *bsPriorityNavItem="10 + action.offset" [class]="customActionClass(action)" [disabled]="runningAction() !== null" (click)="onCustomAction(action)">
               {{ action.displayName | resolveTranslation }}
             </button>
           }

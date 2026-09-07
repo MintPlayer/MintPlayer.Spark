@@ -150,6 +150,7 @@ builder.Services.AddSpark(builder.Configuration, spark =>
         rateLimiter.PathPrefixes = ["/spark", "/connect", "/api/browse"]);
 
     spark.AddMessaging();
+    spark.AddCustomActions();
     spark.AddRecipients();
     spark.AddCronJobs();
     // Pending ISparkMigration classes run inside UseSpark(), after indexes are
@@ -362,7 +363,13 @@ app.UseWhen(
 
 app.Run();
 
-partial class Program
+/// <summary>
+/// Public only so the test host can name it: <c>WebApplicationFactory&lt;Program&gt;</c> needs the
+/// entry-point type to be accessible, and top-level statements generate it as internal. This app
+/// runs a live website, so booting the real composition root in tests is the only way its
+/// [SparkAuthorize] filters are ever actually executed rather than assumed.
+/// </summary>
+public partial class Program
 {
     [GeneratedRegex(@"Local\:\s+(?<openbrowser>https?\:\/\/(.+))")]
     private static partial Regex openBrowserRegex();

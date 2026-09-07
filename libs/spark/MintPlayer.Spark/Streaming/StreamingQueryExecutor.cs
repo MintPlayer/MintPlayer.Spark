@@ -20,6 +20,7 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
     [Inject] private readonly IActionsResolver actionsResolver;
     [Inject] private readonly Services.Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
     [Inject] private readonly Services.IRowSecurity rowSecurity;
+    [Inject] private readonly Services.IRowSecurityGate gate;
 
     /// <summary>How often (in batches) a live stream re-checks its type-level authorization.</summary>
     private const int ReauthorizeEveryNBatches = 10;
@@ -142,29 +143,32 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
             // keeps delivering rows, so skipping the check here would not merely disclose the
             // rows present when it opened — it would keep disclosing every new one for as long
             // as the client stays connected.
-            var batchList = await rowSecurity.FilterAsync(
-                batchSession,
-                batch as IReadOnlyList<object> ?? batch.ToList(),
-                entityType,
-                methodInfo.ElementType,
-                "Query");
+            // Through the same gate as every other row-returning path, rather than a fourth copy of
+            // filter → breadcrumb → map → redact. The two things that ARE streaming-specific stay
+            // here: the fresh per-batch session above, and the re-authorization tick below.
+            var secured = await gate.ApplyAsync(
+                batch as IReadOnlyList<object> ?? [.. batch],
+                new RowSecurityContext
+                {
+                    Session = batchSession,
+                    Definition = entityTypeDef,
+                    EntityType = entityType,
+                    ResultType = methodInfo.ElementType,
+                    Action = "Query",
+                    // No fan-out to collapse: a stream has no index page, and DistinctBy over rows
+                    // whose ids may be null would silently drop every one but the first.
+                    DedupeById = false,
+                    CancellationToken = cancellationToken,
+                });
 
-            if (batchList.Count == 0) continue;
-
-            // Resolve breadcrumbs (recursive, batched) for this batch.
-            var breadcrumbs = await breadcrumbResolver.ResolveAsync(batchSession, batchList, entityTypeDef, cancellationToken);
-
-            var mapped = batchList
-                .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDef.Id, breadcrumbs), Row: e))
-                .ToList();
-            await rowSecurity.RedactAsync(batchSession, mapped, entityType, methodInfo.ElementType, "Query");
+            if (secured.Count == 0) continue;
 
             // Same projection as a paged query, so a streamed row and a fetched row are the same
             // shape on the wire — including the refusal of a row with no id, which on a stream would
             // otherwise be dropped silently by the diff engine (it keys state on the id).
             yield return new StreamingQueryBatch(
                 columns,
-                Services.QueryResultProjector.ToItems(mapped.Select(m => m.Po), columns, query.Name));
+                Services.QueryResultProjector.ToItems(secured, columns, query.Name));
         }
     }
 

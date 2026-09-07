@@ -31,7 +31,8 @@ public class QueryExecutorRowShapeTests
     private QueryExecutor CreateExecutor() => new(
         _session, _entityMapper, _modelLoader, _contextResolver,
         _indexCatalog, _permissionService, _actionsResolver, _referenceResolver, _breadcrumbResolver,
-        new PermissiveRowSecurity());
+        new PermissiveRowSecurity(),
+        TestRowSecurityGate.For(new PermissiveRowSecurity(), _entityMapper));
 
     private const string TypeName = "RowShapeEntity";
 
@@ -215,8 +216,14 @@ public class RowShapeEntity
     public string? Label { get; set; }
 }
 
-public class RowShapeActions
+public class RowShapeActions : ISparkOwnsRowSecurity
 {
+    /// <inheritdoc />
+    public string RowSecurityRationale =>
+        "Test fixture: the rows are literals with no per-caller data, so there is nothing to scope. " +
+        "Declared explicitly because the framework can no longer tell a composed type that owns its " +
+        "scoping from one that forgot.";
+
     public IEnumerable<PersistentObject> PersistentObjectRows() => [];
 
     public IEnumerable<object> ObjectRows() => [];

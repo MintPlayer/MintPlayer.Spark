@@ -8,7 +8,9 @@
   "targets": {
     "build": {
       "executor": "@nx/angular:application",
-      "outputs": ["{workspaceRoot}/apps/DemoApp/DemoApp/ClientApp/dist/ClientApp"],
+      "outputs": [
+        "{workspaceRoot}/apps/DemoApp/DemoApp/ClientApp/dist/ClientApp"
+      ],
       "options": {
         "outputPath": "apps/DemoApp/DemoApp/ClientApp/dist/ClientApp",
         "browser": "apps/DemoApp/DemoApp/ClientApp/src/main.ts",
@@ -32,8 +34,16 @@
       "configurations": {
         "production": {
           "budgets": [
-            { "type": "initial", "maximumWarning": "1MB", "maximumError": "1.5MB" },
-            { "type": "anyComponentStyle", "maximumWarning": "4kB", "maximumError": "8kB" }
+            {
+              "type": "initial",
+              "maximumWarning": "1MB",
+              "maximumError": "1.5MB"
+            },
+            {
+              "type": "anyComponentStyle",
+              "maximumWarning": "4kB",
+              "maximumError": "8kB"
+            }
           ],
           "outputHashing": "all"
         },

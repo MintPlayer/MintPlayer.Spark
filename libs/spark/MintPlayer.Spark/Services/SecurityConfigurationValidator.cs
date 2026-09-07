@@ -82,15 +82,13 @@ internal static class SecurityConfigurationValidator
             return;
 
         throw new SparkSecurityConfigurationException(
-            $"security.json declares a group named '{RemovedEveryoneName}' ({offending.Key}), which no "
-            + "longer has any special meaning. Every right granted to it was granted to the public "
-            + "internet.\n"
-            + "Migrate by adding a \"wellKnown\" block naming the group ids that play each role:\n"
-            + "  \"wellKnown\": { \"anonymous\": \"<group-id>\", \"authenticated\": \"<group-id>\" }\n"
-            + "Then decide, per right, whether public access was intended. If it was, leave it on the "
-            + "anonymous group. If it was not, MOVE it to the authenticated group — do not delete it, "
-            + "because type-level rights gate row rules, so a deleted grant denies signed-in users too. "
-            + "A right that both must keep becomes two grants.");
+            // $$ so the JSON below keeps its literal braces; {{…}} is the interpolation hole.
+            $$"""
+            security.json declares a group named '{{RemovedEveryoneName}}' ({{offending.Key}}), which no longer has any special meaning. Every right granted to it was granted to the public internet.
+            Migrate by adding a "wellKnown" block naming the group ids that play each role:
+              "wellKnown": { "anonymous": "<group-id>", "authenticated": "<group-id>" }
+            Then decide, per right, whether public access was intended. If it was, leave it on the anonymous group. If it was not, MOVE it to the authenticated group — do not delete it, because type-level rights gate row rules, so a deleted grant denies signed-in users too. A right that both must keep becomes two grants.
+            """);
     }
 
     /// <summary>

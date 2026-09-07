@@ -114,8 +114,14 @@ public class VirtualObjectEndpointTests : SparkTestDriver
 /// <summary>Found by name; plain class — no base class, no CLR entity anywhere. The framework
 /// routes the virtual type's page load to the standard OnLoadAsync(id, parent) signature; the
 /// class scaffolds its own object via IManager, the dialog-PO idiom.</summary>
-public sealed class VirtualStartPageActions
+public sealed class VirtualStartPageActions : ISparkOwnsRowSecurity
 {
+    /// <inheritdoc />
+    public string RowSecurityRationale =>
+        "Test fixture: the rows are literals with no per-caller data, so there is nothing to scope. " +
+        "Declared explicitly because the framework can no longer tell a composed type that owns its " +
+        "scoping from one that forgot.";
+
     private readonly IManager manager;
 
     public VirtualStartPageActions(IManager manager) => this.manager = manager;

@@ -12,10 +12,10 @@ export default defineConfig({
     exclude: ['src/bundle.test.ts'],
     coverage: {
       provider: 'v8',
-      reporter: ['lcovonly', 'text-summary'],
-      // `all: true` so a file with no test at all still counts as uncovered
-      // rather than vanishing from the denominator.
-      all: true,
+      reporter: ['cobertura', 'lcovonly', 'text-summary'],
+      // An explicit `include` is what makes a file with no test at all count as
+      // uncovered rather than vanish from the denominator. Vitest 4 removed
+      // `coverage.all`; this is its replacement, not a companion to it.
       include: ['src/**/*.ts'],
       exclude: ['src/**/*.test.ts', 'dist/**'],
     },

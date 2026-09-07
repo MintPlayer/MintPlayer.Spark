@@ -51,6 +51,22 @@ internal partial class ActionsResolver : IActionsResolver
                 ?? ActivatorUtilities.CreateInstance(serviceProvider, actionsType);
             if (actions is IPersistentObjectActions<T> typedActions)
                 return Attach(typedActions);
+
+            // F3. A class named for this entity exists but does not implement the contract for it.
+            // Falling through to the permissive default here is the worst available outcome: the
+            // author's IsAllowedAsync and GetRowFilterAsync are never consulted, IsOverridden reports
+            // false for both, HasRowRule reports false, and the type is served UNRESTRICTED with no
+            // diagnostic anywhere. The most likely cause is the one that makes it dangerous — the
+            // generic argument drifted after a rename, so the file still reads as though it guards
+            // the type.
+            throw new InvalidOperationException(
+                $"'{actionsType.FullName}' is named for entity '{typeName}' but does not implement " +
+                $"'IPersistentObjectActions<{typeName}>'. It therefore cannot serve as that entity's " +
+                $"actions class, and using the framework default instead would silently drop any row " +
+                $"filter, per-row rule or redaction the class declares. Either make it derive from " +
+                $"'DefaultPersistentObjectActions<{typeName}>' (or implement " +
+                $"'IPersistentObjectActions<{typeName}>'), or rename it so it no longer claims to be " +
+                $"'{typeName}'s actions class.");
         }
 
         // 2. Try app's registered IPersistentObjectActions<T>
@@ -105,13 +121,19 @@ internal partial class ActionsResolver : IActionsResolver
             $"actionsType|{typeName}",
             () =>
             {
+                // F3. Collect every match rather than taking the first. Returning the first made
+                // resolution depend on assembly enumeration order — which is not deterministic and
+                // is not something an author controls — and the answer was then cached for the
+                // process lifetime. Two classes with the same simple name in different namespaces
+                // therefore resolved to whichever the CLR happened to load first, so a duplicate
+                // could displace the real actions class and silently unrestrict its entity.
+                var matches = new List<Type>();
                 foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
                 {
                     try
                     {
-                        var type = assembly.GetTypes()
-                            .FirstOrDefault(t => t.Name == typeName && !t.IsAbstract && !t.IsInterface);
-                        if (type != null) return type;
+                        matches.AddRange(assembly.GetTypes()
+                            .Where(t => t.Name == typeName && !t.IsAbstract && !t.IsInterface));
                     }
                     catch (ReflectionTypeLoadException)
                     {
@@ -119,7 +141,20 @@ internal partial class ActionsResolver : IActionsResolver
                         continue;
                     }
                 }
-                return null;
+
+                if (matches.Count > 1)
+                {
+                    throw new InvalidOperationException(
+                        $"'{typeName}' is declared by more than one loaded assembly, so the actions " +
+                        $"class for this entity is ambiguous: " +
+                        string.Join(", ", matches.Select(t => $"'{t.FullName}' ({t.Assembly.GetName().Name})")) +
+                        ". Resolution used to pick whichever assembly loaded first and cache it for the " +
+                        "process lifetime, which could silently substitute one type's actions class for " +
+                        "another's. Rename all but one, or register the intended one explicitly as " +
+                        $"'IPersistentObjectActions<>' so it is chosen by contract rather than by name.");
+                }
+
+                return matches.Count == 1 ? matches[0] : null;
             });
     }
 }

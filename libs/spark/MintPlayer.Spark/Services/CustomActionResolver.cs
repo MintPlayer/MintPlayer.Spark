@@ -38,8 +38,21 @@ internal partial class CustomActionResolver : ICustomActionResolver
             }
             catch (Exception ex)
             {
+                // Rethrow rather than return null. Null means "no such action" to every caller,
+                // which turns a dependency the container could not satisfy into a 404 saying the
+                // action does not exist -- pointing whoever is debugging at the action's name and
+                // at customActions.json, neither of which is wrong. The real cause was log-only,
+                // and an operator reading a 404 has no reason to go looking in the log at all.
+                //
+                // Surfacing it makes the failure a 500 that names the type and carries the
+                // container's own message, which is what a misconfigured registration deserves.
                 logger.LogError(ex, "Failed to resolve custom action '{ActionName}' (type: {Type})", actionName, type.FullName);
-                return null;
+
+                throw new InvalidOperationException(
+                    $"Custom action '{actionName}' is declared as {type.FullName} but could not be "
+                    + "constructed. Its dependencies are most likely not registered -- check that "
+                    + "the application calls AddCustomActions() and that every [Inject] dependency "
+                    + "of the action has a registration.", ex);
             }
         }
 

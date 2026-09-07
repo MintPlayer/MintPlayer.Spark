@@ -50,7 +50,8 @@
         "^production"
       ],
       "outputs": [
-        "{projectRoot}/coverage"
+        "{projectRoot}/coverage",
+        "{workspaceRoot}/coverage/{projectName}"
       ]
     },
     "serve": {

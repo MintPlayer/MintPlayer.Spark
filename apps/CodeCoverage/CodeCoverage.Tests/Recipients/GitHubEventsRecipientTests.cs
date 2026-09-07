@@ -54,11 +54,21 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
     }
 
     private static GitHubEventsRecipient CreateRecipient(IAsyncDocumentSession session)
+        => CreateRecipient(session, out _);
+
+    /// <summary>
+    /// Overload that hands back the bus, so a test can assert what the webhook
+    /// enqueued rather than only what it persisted. The absence of this was a
+    /// real gap: the publish-on-open broadcast shipped with no test proving the
+    /// webhook emits it at all.
+    /// </summary>
+    private static GitHubEventsRecipient CreateRecipient(IAsyncDocumentSession session, out RecordingMessageBus bus)
     {
+        bus = new RecordingMessageBus();
         var services = new ServiceCollection();
         services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.None));
         services.AddSingleton(session);
-        services.AddSingleton<MintPlayer.Spark.Messaging.Abstractions.IMessageBus>(new RecordingMessageBus());
+        services.AddSingleton<MintPlayer.Spark.Messaging.Abstractions.IMessageBus>(bus);
         services.AddScoped<GitHubEventsRecipient>();
         return services.BuildServiceProvider().GetRequiredService<GitHubEventsRecipient>();
     }
@@ -192,6 +202,47 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
 
     private static async Task<Commit?> LoadCommit(IAsyncDocumentSession session, string sha)
         => await session.LoadAsync<Commit>(Commit.DocumentId(RepoId, sha));
+
+    /// <summary>
+    /// The publish-on-open trigger. Went to production untested on this side —
+    /// the recipient that consumes the message was covered, but nothing proved
+    /// the webhook emits it, and in production no comment appeared on either
+    /// `opened` or `reopened`.
+    /// </summary>
+    [Theory]
+    [InlineData("opened")]
+    [InlineData("reopened")]
+    public async Task Opening_or_reopening_a_pull_request_enqueues_the_pending_comment(string action)
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+
+        await CreateRecipient(session, out var bus)
+            .HandleAsync(Message("pull_request", PullRequestJson(HeadSha, BaseSha, action)));
+
+        var opens = bus.Messages.OfType<CodeCoverage.Feedback.OpenPullRequestCommentMessage>().ToList();
+        opens.Should().ContainSingle();
+        opens[0].PullRequestNumber.Should().Be(42);
+        opens[0].HeadSha.Should().Be(HeadSha);
+        opens[0].AuthorIsBot.Should().BeFalse();
+    }
+
+    /// <summary>
+    /// `synchronize` is served by the finalize path, which edits the same
+    /// comment with real numbers — a pending comment there would replace a good
+    /// number with "waiting".
+    /// </summary>
+    [Fact]
+    public async Task Synchronize_does_not_enqueue_a_pending_comment()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+
+        await CreateRecipient(session, out var bus)
+            .HandleAsync(Message("pull_request", PullRequestJson(HeadSha, BaseSha, "synchronize")));
+
+        bus.Messages.OfType<CodeCoverage.Feedback.OpenPullRequestCommentMessage>().Should().BeEmpty();
+    }
 
     [Fact]
     public async Task A_pull_request_event_records_the_base_sha()

@@ -15,7 +15,8 @@
     "apps/Fleet/Fleet/ClientApp",
     "apps/HR/HR/ClientApp",
     "apps/WebhooksDemo/WebhooksDemo/ClientApp",
-    "apps/CodeCoverage/CodeCoverage/ClientApp"
+    "apps/CodeCoverage/CodeCoverage/ClientApp",
+    "apps/CodeCoverage/action"
   ],
   "dependencies": {
     "@angular/animations": "22.1.3",

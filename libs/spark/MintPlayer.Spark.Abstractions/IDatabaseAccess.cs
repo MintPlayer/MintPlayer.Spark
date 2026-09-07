@@ -49,8 +49,6 @@ public interface IDatabaseAccess
     /// </para>
     /// </remarks>
     Task<IReadOnlyList<PersistentObject>> GetPersistentObjectsByIdAsync(Guid objectTypeId, IReadOnlyList<string> ids);
-
-    Task<IEnumerable<PersistentObject>> GetPersistentObjectsAsync(Guid objectTypeId);
     /// <summary>
     /// Authorizes a save without performing it, so a caller can be refused before the request is
     /// validated. <see cref="SavePersistentObjectAsync"/> calls this itself — asking early does not

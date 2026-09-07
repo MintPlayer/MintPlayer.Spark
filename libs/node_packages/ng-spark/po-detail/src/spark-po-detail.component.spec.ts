@@ -286,6 +286,71 @@ describe('SparkPoDetailComponent', () => {
     expect(service.executeCustomAction).not.toHaveBeenCalled();
   });
 
+  describe('visibleCustomActions', () => {
+    // The action catalogue is fetched per TYPE, so an action that applies to only some rows can
+    // only be withheld per row -- the entity's actions hook does it server-side and the object
+    // arrives carrying the answer. Coverage shipped an irreversible red "Delete data" button on
+    // every repository page, healthy ones included, that only admitted it would refuse AFTER the
+    // confirmation prompt.
+    async function withDisabled(disabledActions: string[] | undefined) {
+      const { harness } = await setup();
+      const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      await harness.fixture.whenStable();
+
+      c.item.set({ ...c.item()!, disabledActions } as any);
+      c.customActions.set([customAction, { ...customAction, name: 'Other' }]);
+      return c;
+    }
+
+    it('offers every action when the object withholds none', async () => {
+      const c = await withDisabled(undefined);
+      expect(c.visibleCustomActions().map(a => a.name)).toEqual(['Archive', 'Other']);
+    });
+
+    it('withholds the named action', async () => {
+      const c = await withDisabled(['Archive']);
+      expect(c.visibleCustomActions().map(a => a.name)).toEqual(['Other']);
+    });
+
+    it('matches case-insensitively, so a name spelled differently still withholds', async () => {
+      const c = await withDisabled(['archive']);
+      expect(c.visibleCustomActions().map(a => a.name)).toEqual(['Other']);
+    });
+
+    it('treats an empty list as withholding nothing', async () => {
+      const c = await withDisabled([]);
+      expect(c.visibleCustomActions()).toHaveLength(2);
+    });
+  });
+
+  it('onCustomAction disables the buttons while it runs and re-enables them on failure', async () => {
+    // A custom action is not necessarily quick -- Coverage's Resync makes paged GitHub calls
+    // inside the request. Without a busy state the button stays live and looks inert, and a
+    // second click queues a second full run. The reset-in-finally matters as much as the guard:
+    // an action that throws must not leave every button on the page permanently dead.
+    const { harness, service } = await setup();
+    const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.fixture.whenStable();
+
+    expect(c.runningAction()).toBeNull();
+
+    let release: (() => void) | undefined;
+    (service.executeCustomAction as any).mockImplementationOnce(
+      () => new Promise<void>((_, reject) => { release = () => reject(new Error('boom')); }));
+
+    const running = c.onCustomAction(customAction);
+    expect(c.runningAction()).toBe(customAction.name);
+
+    // A second click while the first is in flight must not start another run.
+    await c.onCustomAction(customAction);
+    expect(service.executeCustomAction).toHaveBeenCalledTimes(1);
+
+    release!();
+    await running;
+
+    expect(c.runningAction()).toBeNull();
+  });
+
   it('onCustomAction with refreshOnCompleted re-fetches the item', async () => {
     const { harness, service } = await setup();
     const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);

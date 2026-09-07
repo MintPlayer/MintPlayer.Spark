@@ -46,6 +46,7 @@ internal partial class QueryExecutor : IQueryExecutor
     [Inject] private readonly IReferenceResolver referenceResolver;
     [Inject] private readonly Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
     [Inject] private readonly IRowSecurity rowSecurity;
+    [Inject] private readonly IRowSecurityGate gate;
 
     public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, IReadOnlyCollection<string>? restrictToIds = null, CancellationToken cancellationToken = default)
     {
@@ -54,17 +55,38 @@ internal partial class QueryExecutor : IQueryExecutor
         // Null/whitespace collapses to null here, so every path below tests one thing.
         var searchTerm = BuildSearchTerm(search);
 
+        // The presentation hook, called once for BOTH sources at the single funnel every query and
+        // every bulk-action re-materialization passes through.
+        //
+        // It runs HERE — before either branch — and the ordering is structural, not a policy
+        // preference: at this point no rows have been produced and no queryable has been built, so
+        // there is nothing in scope that could be handed to the context. A hook that runs before the
+        // data exists CANNOT filter it, however hard someone tries. Running it after row security
+        // would put mapped rows one refactor away from the context signature, and the first request
+        // for "hide the action when the result is empty" would answer itself by passing them in.
+        var queryContext = await InvokeQueryHookAsync(query, parent);
+
         QuerySourceResult source;
         if (isCustom)
         {
             source = await ExecuteCustomQueryAsync(query, name, parent, searchTerm, skip, take, search, restrictToIds, cancellationToken);
+
+            // UNION, not last-writer-wins. Both mechanisms are legitimate and a query may use both:
+            // the hook is the only channel a Database.* query has, and the custom method is the only
+            // place with rows in hand, so a data-dependent withhold can only happen there. Letting
+            // either overwrite the other would silently drop a withhold and leave an action offered.
+            source = source with
+            {
+                DisabledActions = MergeDisabledActions(queryContext.DisabledActions, source.DisabledActions),
+            };
         }
         else
         {
-            source = await ExecuteDatabaseQueryAsync(query, name, searchTerm, restrictToIds, cancellationToken);
+            source = await ExecuteDatabaseQueryAsync(query, name, parent, searchTerm, restrictToIds, cancellationToken)
+                with { DisabledActions = queryContext.DisabledActions };
         }
 
-        var (allResults, definition, searchPushedDown, authorTotalItems) = source;
+        var (allResults, definition, searchPushedDown, authorTotalItems, _) = source;
 
         // The author's page is returned as it stands. Search, sort, count and paging were all
         // transferred with it (the binary authority rule on SparkQueryPage), so applying any of
@@ -72,15 +94,37 @@ internal partial class QueryExecutor : IQueryExecutor
         // of those failures is invisible in the grid.
         if (authorTotalItems is int authorTotal)
         {
-            var authorRows = allResults as IList<PersistentObject> ?? allResults.ToList();
+            // F1. The author's total counts the rows THEY produced; row security removed rows after
+            // that, inside ExecuteCustomQueryAsync. So on a row-scoped type the rows were filtered
+            // and the count was not, and TotalItems became a cardinality oracle for rows the caller
+            // may not see — three lines from the comment asserting row security is not transferable.
+            //
+            // It cannot be repaired by counting: the framework holds one page, so it cannot know how
+            // many of the author's other rows would survive. The combination is refused instead,
+            // which is the only way the count is never wrong. Nothing in the repository pairs
+            // SparkQueryPage with a row-ruled type today, so this costs no working query.
+            if (definition?.ClrType is { Length: > 0 } authorClrType
+                && SparkTypeResolver.ResolveClrType(authorClrType) is { } authorEntityType
+                && rowSecurity.HasRowRule(authorEntityType))
+            {
+                throw new InvalidOperationException(
+                    $"Query '{query.Name}' returns SparkQueryPage<T>, which transfers paging and the row " +
+                    $"count to the author, but '{definition.Name}' declares a row rule. The framework " +
+                    $"filters the returned page afterwards and cannot recount the rest, so TotalItems " +
+                    $"would report rows this caller may not see. Either return an IQueryable and let the " +
+                    $"framework page it, or remove the row rule from '{definition.Name}Actions' and scope " +
+                    $"the rows inside the query method itself.");
+            }
+
             var authorColumns = definition is not null ? QueryResultProjector.BuildColumns(definition) : [];
             return new QueryResult
             {
                 Columns = authorColumns,
-                Items = QueryResultProjector.ToItems(authorRows, authorColumns, query.Name),
+                Items = QueryResultProjector.ToItems(allResults, authorColumns, query.Name),
                 TotalItems = authorTotal,
                 Skip = skip,
                 Take = take,
+                DisabledActions = source.DisabledActions,
             };
         }
 
@@ -88,30 +132,32 @@ internal partial class QueryExecutor : IQueryExecutor
         // IQueryable, or a type with no searchable field. Also the only path that still matches
         // Breadcrumb — resolved reference display text, which exists only after mapping and is
         // therefore not an index term. See the query guide.
+        // Everything below NARROWS the secured set. Narrowing is the one transformation that cannot
+        // break the gate's invariant — it only ever removes rows that already passed — which is why
+        // SecuredRows.Narrow is an instance method: you must already hold a secured set to get
+        // another one.
         if (searchTerm != null && !searchPushedDown)
         {
             var term = search!.ToLowerInvariant();
-            allResults = allResults.Where(po =>
+            allResults = allResults.Narrow(rows => rows.Where(po =>
                 (po.Name != null && po.Name.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
                 (po.Breadcrumb != null && po.Breadcrumb.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
                 po.Attributes.Any(attr =>
                 {
                     var value = attr.Breadcrumb ?? attr.Value?.ToString();
                     return value != null && value.Contains(term, StringComparison.OrdinalIgnoreCase);
-                })
-            ).ToList();
+                })));
         }
 
         // Counted after filtering and before paging, either way — which is what keeps
         // TotalItems search-aware now that the filter may have run in the database.
-        var materialized = allResults as IList<PersistentObject> ?? allResults.ToList();
-        var totalItems = materialized.Count;
+        var totalItems = allResults.Count;
 
         // A restricted run returns exactly the rows asked for. Paging it would serve "the first
         // `take` of the selection", which is how a bulk action silently acts on a subset.
         var paged = restrictToIds is { Count: > 0 }
-            ? materialized
-            : materialized.Skip(skip).Take(take);
+            ? allResults
+            : allResults.Narrow(rows => rows.Skip(skip).Take(take));
 
         // Columns ship once per result, not once per row. A definition-less result cannot describe
         // its own columns, and the client renders from them, so an empty column set is the honest
@@ -128,6 +174,7 @@ internal partial class QueryExecutor : IQueryExecutor
             TotalItems = totalItems,
             Skip = skip,
             Take = take,
+            DisabledActions = source.DisabledActions,
         };
     }
 
@@ -141,11 +188,116 @@ internal partial class QueryExecutor : IQueryExecutor
     /// Non-null when the custom method returned a <see cref="SparkQueryPage{T}"/> and therefore owns
     /// filtering, search, sorting, counting and paging. The value is the pre-paging total.
     /// </param>
+    /// <summary>
+    /// Builds the per-request context and gives the entity's actions class its say.
+    /// </summary>
+    /// <remarks>
+    /// Resolved by type where there is one and by entity name otherwise: a composed query has no
+    /// CLR entity type, and that is exactly where this hook earns its keep, because row security is
+    /// documented as not running for composed queries at all.
+    /// <para>
+    /// A missing actions class is not an error — most types never override this — so resolution
+    /// failure yields a context nobody wrote to rather than throwing.
+    /// </para>
+    /// </remarks>
+    private async Task<SparkQueryContext> InvokeQueryHookAsync(SparkQuery query, PersistentObject? parent)
+    {
+        var context = new SparkQueryContext
+        {
+            Query = SparkQueryInfo.From(query),
+            Parent = parent,
+            ParentType = parent is not null ? modelLoader.GetEntityType(parent.ObjectTypeId)?.Name : null,
+        };
+
+        object? actionsInstance = null;
+        try
+        {
+            var definition = string.IsNullOrEmpty(query.EntityType)
+                ? ResolveDefinitionFromContextProperty(query)
+                : modelLoader.GetEntityTypeByName(query.EntityType);
+
+            var clrType = string.IsNullOrEmpty(definition?.ClrType)
+                ? null
+                : SparkTypeResolver.ResolveClrType(definition!.ClrType!);
+
+            actionsInstance = clrType is not null
+                ? actionsResolver.ResolveForType(clrType)
+                : (definition is not null ? actionsResolver.ResolveByEntityName(definition.Name) : null);
+        }
+        catch
+        {
+            // No actions class, or one that cannot be constructed. Neither is this method's problem:
+            // the query itself still runs, and a type with no override has nothing to say here.
+        }
+
+        if (actionsInstance is null)
+            return context;
+
+        var method = actionsInstance.GetType().GetMethod("OnQueryAsync", [typeof(SparkQueryContext)]);
+        if (method is not null && method.Invoke(actionsInstance, [context]) is Task task)
+            await task;
+
+        return context;
+    }
+
+    /// <summary>
+    /// The entity type of a <c>Database.*</c> query that declares no <c>entityType</c>, read from the
+    /// context property's declared type.
+    /// </summary>
+    /// <remarks>
+    /// Such queries are supported — <see cref="ExecuteDatabaseQueryAsync"/> derives the definition
+    /// from the property's element type — but the hook runs before that resolution, so it used to see
+    /// no definition, find no actions class, and never fire. Silent hook omission is precisely the
+    /// failure its own documentation warns about, and the type is knowable here.
+    /// <para>
+    /// Reads the property's <b>declared</b> type rather than invoking its getter: this runs before
+    /// authorization, and a getter can execute application code.
+    /// </para>
+    /// </remarks>
+    private EntityTypeDefinition? ResolveDefinitionFromContextProperty(SparkQuery query)
+    {
+        if (!query.Source.StartsWith("Database.", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var sparkContext = sparkContextResolver.ResolveContext(session);
+        if (sparkContext is null)
+            return null;
+
+        var property = sparkContext.GetType().GetCachedProperty(query.Source[9..]);
+        if (property is null || !property.CanRead)
+            return null;
+
+        var elementType = property.PropertyType.GetGenericArguments().FirstOrDefault();
+        return elementType is null ? null : modelLoader.GetEntityTypeByClrType(elementType.FullName!);
+    }
+
+    /// <summary>Union of two withheld-action lists, case-insensitive, order-preserving.</summary>
+    private static IReadOnlyList<string>? MergeDisabledActions(IReadOnlyList<string>? first, IReadOnlyList<string>? second)
+    {
+        if (first is null || first.Count == 0) return second;
+        if (second is null || second.Count == 0) return first;
+
+        var merged = new List<string>(first);
+        foreach (var name in second)
+        {
+            if (!merged.Contains(name, StringComparer.OrdinalIgnoreCase))
+                merged.Add(name);
+        }
+
+        return merged;
+    }
+
     private sealed record QuerySourceResult(
-        IEnumerable<PersistentObject> Rows,
+        RowSecurityGate.SecuredRows Rows,
         EntityTypeDefinition? Definition,
         bool SearchPushedDown,
-        int? AuthorTotalItems = null)
+        int? AuthorTotalItems = null,
+        /// <summary>
+        /// Actions the custom query withheld via <c>CustomQueryArgs.DisableActions</c>. Carried
+        /// here because the source is produced in one method and the QueryResult is assembled in
+        /// another — the alternative was a field, which would leak across concurrent executions.
+        /// </summary>
+        IReadOnlyList<string>? DisabledActions = null)
 ;
 
     /// <summary>
@@ -374,7 +526,7 @@ internal partial class QueryExecutor : IQueryExecutor
     #region Database Queries
 
     private async Task<QuerySourceResult> ExecuteDatabaseQueryAsync(
-        SparkQuery query, string propertyName, string? searchTerm,
+        SparkQuery query, string propertyName, PersistentObject? parent, string? searchTerm,
         IReadOnlyCollection<string>? restrictToIds, CancellationToken cancellationToken)
     {
         // Authorization comes FIRST, from the query's declared entity type (F1). Everything below
@@ -386,6 +538,32 @@ internal partial class QueryExecutor : IQueryExecutor
         // permission decisions memoize per request, so asking twice costs nothing.
         if (!string.IsNullOrEmpty(query.EntityType))
             await permissionService.EnsureAuthorizedAsync("Query", query.EntityType);
+
+        // AFTER authorization, deliberately — this refusal names the query's source and entity type,
+        // and handing that to a caller who has no Query right is the same disclosure the sortColumns
+        // parser above was reordered to close.
+        //
+        // The parent used to stop here: this method did not take one, while the custom branch three
+        // lines away did. The client sent parentId/parentType, the endpoint resolved AND authorized
+        // the parent, and then this branch dropped it and served the WHOLE child collection under
+        // that parent's detail page. No error, no warning, nothing at startup — the tab simply showed
+        // every row in the collection. It went unnoticed only because every sub-query in the
+        // repository happens to use a Custom.* source.
+        //
+        // A Database.* source is a queryable property on the SparkContext. It cannot express
+        // "belonging to this parent" — that scoping lives in an actions method, which is why a
+        // sub-query must route through one. So the parent is not something this branch can honour;
+        // its presence proves the query was configured somewhere it cannot serve. Refuse, and name
+        // the fix.
+        if (parent is not null)
+        {
+            throw new InvalidOperationException(
+                $"Query '{query.Name}' is used as a sub-query (it was executed with a parent), but its " +
+                $"source '{query.Source}' reads a SparkContext property directly and cannot be scoped to " +
+                $"that parent. Serving it would list every row of '{query.EntityType}' under the parent's " +
+                $"page. Change the source to 'Custom.<Method>' on '{query.EntityType}Actions' and scope the " +
+                $"rows with the parent, e.g. '.Where(x => x.ParentId == args.Parent!.Id)'.");
+        }
 
         var sparkContext = sparkContextResolver.ResolveContext(session)
             ?? throw new InvalidOperationException(
@@ -427,6 +605,30 @@ internal partial class QueryExecutor : IQueryExecutor
                 $"Query '{query.Name}' returns rows of '{entityType.Name}', which has no model file in " +
                 $"App_Data/Model. Run '--spark-synchronize-model' and commit the result — without a " +
                 $"definition there are no columns to render and no attributes to map into.");
+
+        // One answer to "which type is this query about", rather than two that happen to agree.
+        //
+        // Two Query checks run on this path: the declared query.EntityType above, and the type
+        // resolved here from the context property's element type. When they disagreed the effective
+        // grant became their intersection — safe, but not something anyone had decided, and
+        // SubQueryPruner had to gate on the declared name to match getQuery while recording that the
+        // executor gated on the resolved one. Both halves of that divergence were correct and the
+        // pair was still confusing.
+        //
+        // Rather than pick a winner and weaken a check, make disagreement impossible: a query whose
+        // declared entityType is not the type its source actually yields is a model error, and only
+        // the author can say which they meant.
+        if (!string.IsNullOrEmpty(query.EntityType)
+            && !string.Equals(query.EntityType, entityTypeDefinition.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Query '{query.Name}' declares entityType '{query.EntityType}', but its source " +
+                $"'{query.Source}' yields rows of '{entityTypeDefinition.Name}'. Those name different types, " +
+                $"so the query is authorized against one while its columns come from the other, and the " +
+                $"caller silently needs the Query right on both. Set \"entityType\" to " +
+                $"'{entityTypeDefinition.Name}', or point the source at a context property yielding " +
+                $"'{query.EntityType}'.");
+        }
 
         await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
 
@@ -514,17 +716,20 @@ internal partial class QueryExecutor : IQueryExecutor
         // this type at all"; it says nothing about which rows. Without this, an entity whose
         // Actions class scopes rows to their owner was filtered correctly when opened and listed
         // in full here — and the list screen is the one that shows every row at once.
-        var entities = (await rowSecurity.FilterAsync(
-            session, materialized, entityType, resultType, "Query", cancellationToken)).ToList();
-
-        // Referenced docs were primed into the session cache by .Include() above; the resolver's
-        // first batched load is a cache hit, deeper breadcrumb levels cost one request each.
-        var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entities, entityTypeDefinition, cancellationToken);
-
-        var mapped = entities
-            .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs), Row: e))
-            .ToList();
-        await rowSecurity.RedactAsync(session, mapped, entityType, resultType, "Query", cancellationToken);
+        // Filter, breadcrumb, map, redact and the fan-out dedupe below all happen inside the gate,
+        // in that fixed order, so this path can no longer disagree with the other three about it.
+        // Referenced docs were primed into the session cache by .Include() above, so the resolver's
+        // first batched load is a cache hit; deeper breadcrumb levels cost one request each.
+        var secured = await gate.ApplyAsync(materialized, new RowSecurityContext
+        {
+            Session = session,
+            Definition = entityTypeDefinition,
+            EntityType = entityType,
+            ResultType = resultType,
+            Action = "Query",
+            DedupeById = true,
+            CancellationToken = cancellationToken,
+        });
 
         // ⚠️ DO NOT REMOVE THIS DistinctBy. It is not defensive, and it is not about the analyzer.
         //
@@ -549,8 +754,10 @@ internal partial class QueryExecutor : IQueryExecutor
         // WHY IT IS NOT ON THE CUSTOM PATH: see the sibling comment at the end of
         // ExecuteCustomQueryAsync. In memory there is no fan-out, and DistinctBy is destructive
         // there — it treats every null Id as equal and collapses the grid to a single row.
-        return new QuerySourceResult(
-            mapped.Select(m => m.Po).DistinctBy(po => po.Id), entityTypeDefinition, searchPushedDown);
+        //
+        // It now travels as DedupeById on the context above rather than as a call here, so the
+        // decision is made where the difference between the two paths is visible.
+        return new QuerySourceResult(secured, entityTypeDefinition, searchPushedDown);
     }
 
     #endregion
@@ -603,6 +810,32 @@ internal partial class QueryExecutor : IQueryExecutor
                     $"clrType, but no '{entityTypeDefinition.Name}Actions' class exists to serve it. A composed " +
                     $"type has no document behind it, so its actions class is the only thing that can produce " +
                     $"rows; without one the query has no source at all.");
+
+        // M4. A composed type gets no row filtering and no redaction — see the block above
+        // FilterAsync for why that is correct rather than an omission. What was NOT correct is that
+        // skipping deliberately and forgetting entirely produced identical silence: both were
+        // "entityType is null, so no enforcement", and nothing could tell them apart.
+        //
+        // So the type must say so. This is a declaration, not a mechanism — implementing it enforces
+        // nothing — but it makes the author's intent reviewable, and the required rationale makes it
+        // a sentence someone had to write rather than an interface anyone can paste on. The bar is
+        // deliberately "name where the scoping lives": in practice it is often two layers below the
+        // actions class, in a service that starts from the caller's own identity, and that service is
+        // then the single line of defence with no framework backstop behind it.
+        if (entityType is null)
+        {
+            if (actionsInstance is not ISparkOwnsRowSecurity { RowSecurityRationale.Length: > 0 })
+            {
+                throw new InvalidOperationException(
+                    $"'{entityTypeDefinition.Name}' declares no clrType, so its rows are computed rather than " +
+                    $"stored and the framework cannot filter or redact them — only the type-level Query right " +
+                    $"applies. That is allowed, but it must be stated: make " +
+                    $"'{entityTypeDefinition.Name}Actions' implement ISparkOwnsRowSecurity and use " +
+                    $"RowSecurityRationale to say how it returns only rows this caller may see, naming the " +
+                    $"file or service that does the scoping. Without the declaration, a type that forgot to " +
+                    $"scope its rows is indistinguishable from one that deliberately owns the job.");
+            }
+        }
 
         // Find the custom query method
         var methodInfo = ResolveCustomQueryMethod(actionsInstance.GetType(), methodName);
@@ -770,21 +1003,6 @@ internal partial class QueryExecutor : IQueryExecutor
         // standing between a caller and every row it computes. Every composed query announces this
         // at startup for exactly that reason (see QueryLoader).
         var rawRows = entities as IReadOnlyList<object> ?? entities.ToList();
-        var entityList = entityType is not null
-            ? await rowSecurity.FilterAsync(session, rawRows, entityType, methodInfo.ResultElementType, "Query", cancellationToken)
-            : rawRows;
-
-        // Resolve breadcrumbs (recursive, batched) for the custom query's results.
-        var breadcrumbs = await breadcrumbResolver.ResolveAsync(session, entityList, entityTypeDefinition, cancellationToken);
-
-        var mapped = entityList
-            .Select(e => (Po: entityMapper.ToPersistentObject(e, entityTypeDefinition.Id, breadcrumbs), Row: e))
-            .ToList();
-        // Skipped for a composed query for the reason spelled out at FilterAsync above: redaction
-        // compares a mapped attribute against the value on the stored document, and a composed row
-        // has none.
-        if (entityType is not null)
-            await rowSecurity.RedactAsync(session, mapped, entityType, methodInfo.ResultElementType, "Query", cancellationToken);
 
         // Nothing here squares the per-row envelope closed, and nothing needs to: M4 made a row a
         // projection, and QueryResultItem carries no `can` block at all — for exactly this reason.
@@ -811,9 +1029,6 @@ internal partial class QueryExecutor : IQueryExecutor
         // was S1 in #327. A duplicate id on a composed path is an authoring bug and throws in the
         // projector (QueryResultItem.Id is non-nullable and unique); it is never something to
         // quietly collapse.
-        IEnumerable<PersistentObject> rows = mapped.Select(m => m.Po);
-        if (isRavenQueryable)
-            rows = rows.DistinctBy(po => po.Id);
 
         // Sorting has to happen somewhere. ApplySorting above runs only when the result is IQueryable,
         // so a method returning a plain IEnumerable silently ignored both the query's declared sort
@@ -823,11 +1038,24 @@ internal partial class QueryExecutor : IQueryExecutor
         //
         // Not when the author returned their own page: that sort authority went with it, and
         // reordering a page in memory would present a page-local ordering as a global one.
-        if (!isQueryable && authorPage is null && query.SortColumns.Length > 0)
-            rows = SortMappedRows(rows, query.SortColumns, entityTypeDefinition);
+        var needsInMemorySort = !isQueryable && authorPage is null && query.SortColumns.Length > 0;
+
+        var secured = await gate.ApplyAsync(rawRows, new RowSecurityContext
+        {
+            Session = session,
+            Definition = entityTypeDefinition,
+            EntityType = entityType,
+            ResultType = entityType is null ? null : methodInfo.ResultElementType,
+            Action = "Query",
+            DedupeById = isRavenQueryable,
+            OrderRows = needsInMemorySort
+                ? rows => SortMappedRows(rows, query.SortColumns, entityTypeDefinition)
+                : null,
+            CancellationToken = cancellationToken,
+        });
 
         return new QuerySourceResult(
-            rows.ToList(), entityTypeDefinition, searchPushedDown, authorPage?.TotalItems);
+            secured, entityTypeDefinition, searchPushedDown, authorPage?.TotalItems, args.DisabledActions);
     }
 
     /// <summary>

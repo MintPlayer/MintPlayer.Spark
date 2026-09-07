@@ -193,6 +193,15 @@ jobs:
     # on every run and CI has been throwing it away -- roughly 2,000 measured lines,
     # and the badge has been .NET-only. apps/*/*/coverage/** is new too: it is where
     # CodeCoverage.Tests lands.
+    # A report path the server cannot resolve is dropped SILENTLY -- it is simply
+    # absent from the percentage, which reads as a coverage drop rather than as a
+    # bug. This runs the server's own resolution rules over every report before
+    # upload and fails the build instead, so the failure mode that hid five dead
+    # queues cannot also hide a shrinking denominator.
+    - name: Verify coverage report paths
+      if: always()
+      run: node tools/verify-coverage-paths.mjs
+
     - name: Upload coverage
       if: always()
       # The working copy, not a published ref: the action's source lives in this
@@ -208,6 +217,8 @@ jobs:
           apps/*/*/coverage/**/coverage.cobertura.xml
           libs/node_packages/*/coverage/cobertura-coverage.xml
           apps/*/*/ClientApp/coverage/cobertura-coverage.xml
+          coverage/@spark-apps/*/cobertura-coverage.xml
+          apps/*/action/coverage/cobertura-coverage.xml
         disable-search: true
         partial: true
         base-sha: ${{ env.NX_BASE }}

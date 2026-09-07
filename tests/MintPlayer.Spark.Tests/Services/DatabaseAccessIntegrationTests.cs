@@ -233,7 +233,6 @@ public class DatabaseAccessIntegrationTests : SparkTestDriver
         }
     }
 
-    // --- GetPersistentObjectsAsync via index + projection ----------------------
 
     /// <summary>Map index that drives DatabaseAccess.QueryEntitiesWithIncludesAsync's
     /// reflective ApplyIndex / ApplyProjection / ApplyToListAsync paths through the
@@ -254,28 +253,4 @@ public class DatabaseAccessIntegrationTests : SparkTestDriver
         public bool IsVisible { get; set; }
     }
 
-    [Fact]
-    public async Task GetPersistentObjectsAsync_through_the_declared_model_binding_succeeds()
-    {
-        await SeedAsync(new GuardedDoc { Id = "docs/i1", Name = "Alpha", IsVisible = true });
-        await SeedAsync(new GuardedDoc { Id = "docs/i2", Name = "Bravo", IsVisible = true });
-        await SeedAsync(new GuardedDoc { Id = "docs/i3", Name = "Charlie", IsVisible = true });
-
-        await new GuardedDocs_ByName().ExecuteAsync(Store);
-        await Store.WaitForIndexingAsync();
-
-        // The PO-list path reads the entity file's queryType/indexName (#279) — declare the
-        // binding on the model instead of arming a registry.
-        var model = GuardedDocModel.For(DocTypeId);
-        model.PersistentObject.QueryType = typeof(VGuardedDoc).FullName;
-        model.PersistentObject.IndexName = "GuardedDocs_ByName";
-
-        await using var factory = new SparkEndpointFactory<GuardedContext>(Store, [model]);
-        var dbAccess = factory.GetService<IDatabaseAccess>();
-
-        var results = (await dbAccess.GetPersistentObjectsAsync(DocTypeId)).ToList();
-
-        results.Should().HaveCount(3);
-        results.Select(po => po.Id).Should().BeEquivalentTo(["docs/i1", "docs/i2", "docs/i3"]);
-    }
 }

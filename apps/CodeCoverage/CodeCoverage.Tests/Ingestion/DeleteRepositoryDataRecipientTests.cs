@@ -2,6 +2,7 @@ using CodeCoverage.Entities;
 using CodeCoverage.Ingestion;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using MintPlayer.Spark.Messaging.Abstractions;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 using Xunit;
@@ -26,12 +27,42 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
     private const string Sha = "0123456789abcdef0123456789abcdef01234567";
 
     private static DeleteRepositoryDataRecipient CreateRecipient(IAsyncDocumentSession session)
+        => CreateRecipient(session, out _);
+
+    /// <summary>
+    /// <paramref name="bus"/> receives the continuation the recipient re-queues when a repository
+    /// is too large to finish in one message. Tests that seed less than
+    /// <c>MaxDeletesPerMessage</c> documents should find it empty — a continuation for a
+    /// repository that is already fully deleted would loop forever.
+    /// </summary>
+    private static DeleteRepositoryDataRecipient CreateRecipient(IAsyncDocumentSession session, out RecordingMessageBus bus)
     {
+        bus = new RecordingMessageBus();
+
         var services = new ServiceCollection();
         services.AddLogging(l => l.SetMinimumLevel(LogLevel.None));
         services.AddSingleton(session);
+        services.AddSingleton<IMessageBus>(bus);
         services.AddScoped<DeleteRepositoryDataRecipient>();
         return services.BuildServiceProvider().GetRequiredService<DeleteRepositoryDataRecipient>();
+    }
+
+    /// <summary>Records broadcasts instead of queueing them, so a test can see the continuation.</summary>
+    private sealed class RecordingMessageBus : IMessageBus
+    {
+        public List<object?> Broadcast { get; } = [];
+
+        public Task BroadcastAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default)
+        {
+            Broadcast.Add(message);
+            return Task.CompletedTask;
+        }
+
+        public Task BroadcastAsync<TMessage>(TMessage message, string queueName, CancellationToken cancellationToken = default)
+            => BroadcastAsync(message, cancellationToken);
+
+        public Task DelayBroadcastAsync<TMessage>(TMessage message, TimeSpan delay, CancellationToken cancellationToken = default)
+            => BroadcastAsync(message, cancellationToken);
     }
 
     /// <summary>
@@ -115,6 +146,37 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
         using var verify = store.OpenAsyncSession();
         Assert.Null(await verify.LoadAsync<Repository>(Repository.DocumentId(RepoId)));
         Assert.Null(await verify.LoadAsync<ApiToken>(ApiToken.DocumentId($"hash{RepoId}")));
+    }
+
+    /// <summary>
+    /// A repository small enough to finish in one message must NOT re-queue itself.
+    /// <para>
+    /// The sweep hands the queue back by broadcasting the same message again when it hits its
+    /// per-message budget, which is what stops a huge repository from blocking the PR comments it
+    /// shares a queue with. Getting the budget check wrong in the other direction is worse than
+    /// slow: a continuation queued after everything is already deleted would find the repository
+    /// gone, re-queue, and spin forever on the publishing queue.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_repository_that_fits_in_one_message_is_not_requeued()
+    {
+        using var store = GetDocumentStore();
+        using (var seed = store.OpenAsyncSession())
+            await SeedAsync(seed, RepositoryConnection.Disconnected);
+        WaitForIndexing(store);
+
+        using (var session = store.OpenAsyncSession())
+        {
+            var recipient = CreateRecipient(session, out var bus);
+            await recipient.HandleAsync(new DeleteRepositoryDataMessage
+            {
+                RepositoryGitHubId = RepoId,
+                RequestedByUserId = "users/1",
+            });
+
+            Assert.Empty(bus.Broadcast);
+        }
     }
 
     [Fact]

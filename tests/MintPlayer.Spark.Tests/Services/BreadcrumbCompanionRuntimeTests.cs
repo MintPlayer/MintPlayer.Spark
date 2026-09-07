@@ -31,7 +31,7 @@ public class BreadcrumbCompanionRuntimeTests : SparkTestDriver
         public string Crumb => $"{Street}, {City}";
     }
 
-    public class Person
+    public class BreadcrumbPerson
     {
         public string? Id { get; set; }
         public string Name { get; set; } = string.Empty;
@@ -59,7 +59,7 @@ public class BreadcrumbCompanionRuntimeTests : SparkTestDriver
     }
 
     /// <summary>Mirrors the generated emission for a breadcrumb-carrying complex property.</summary>
-    public class People_Overview : AbstractIndexCreationTask<Person>
+    public class People_Overview : AbstractIndexCreationTask<BreadcrumbPerson>
     {
         public People_Overview()
         {
@@ -89,7 +89,7 @@ public class BreadcrumbCompanionRuntimeTests : SparkTestDriver
 
     public class TestContext : SparkContext
     {
-        public IRavenQueryable<Person> People => Session.Query<Person>();
+        public IRavenQueryable<BreadcrumbPerson> People => Session.Query<BreadcrumbPerson>();
     }
 
     private static EntityTypeFile PersonModel() => new()
@@ -97,8 +97,8 @@ public class BreadcrumbCompanionRuntimeTests : SparkTestDriver
         PersistentObject = new EntityTypeDefinition
         {
             Id = PersonTypeId,
-            Name = "Person",
-            ClrType = typeof(Person).FullName!,
+            Name = "BreadcrumbPerson",
+            ClrType = typeof(BreadcrumbPerson).FullName!,
             Breadcrumb = "{Name}",
             Attributes = [
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Name", DataType = "string" },
@@ -113,9 +113,9 @@ public class BreadcrumbCompanionRuntimeTests : SparkTestDriver
     private async Task SeedPeopleAsync()
     {
         using var session = Store.OpenAsyncSession();
-        await session.StoreAsync(new Person { Name = "Alice", Address = new Address { City = "Ghent", Street = "Main" } }, "people/1");
-        await session.StoreAsync(new Person { Name = "Bob", Address = null }, "people/2");
-        await session.StoreAsync(new Person { Name = "Carol", Address = new Address { City = "Antwerp", Street = "Side" } }, "people/3");
+        await session.StoreAsync(new BreadcrumbPerson { Name = "Alice", Address = new Address { City = "Ghent", Street = "Main" } }, "people/1");
+        await session.StoreAsync(new BreadcrumbPerson { Name = "Bob", Address = null }, "people/2");
+        await session.StoreAsync(new BreadcrumbPerson { Name = "Carol", Address = new Address { City = "Antwerp", Street = "Side" } }, "people/3");
         await session.SaveChangesAsync();
 
         await new People_Overview().ExecuteAsync(Store);
@@ -133,7 +133,7 @@ public class BreadcrumbCompanionRuntimeTests : SparkTestDriver
     {
         using (var session = Store.OpenAsyncSession())
         {
-            await session.StoreAsync(new Person { Name = "Alice", Address = new Address { City = "Ghent", Street = "Main" } }, "people/1");
+            await session.StoreAsync(new BreadcrumbPerson { Name = "Alice", Address = new Address { City = "Ghent", Street = "Main" } }, "people/1");
             await session.SaveChangesAsync();
         }
 

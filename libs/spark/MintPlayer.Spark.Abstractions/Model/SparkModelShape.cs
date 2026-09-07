@@ -146,16 +146,29 @@ public static class SparkModelShape
     /// start.
     /// </para>
     /// </summary>
+    /// <param name="configFilesHash">
+    /// Roll-up over the App_Data config files outside the Model directory. Optional, and absent means
+    /// "not part of this hash" rather than "empty" — a hash written before those files were covered
+    /// must keep verifying, or every existing application reports drift on upgrade.
+    /// </param>
     public static string ComputeModelHash(
         IReadOnlyDictionary<string, string> perEntityHashes,
         string contextRootsHash,
-        string modelFilesHash)
+        string modelFilesHash,
+        string? configFilesHash = null)
     {
         var builder = new StringBuilder();
         foreach (var entry in perEntityHashes.OrderBy(e => e.Key, StringComparer.Ordinal))
             builder.Append(entry.Key).Append(':').Append(entry.Value).Append('\n');
         builder.Append("roots:").Append(contextRootsHash).Append('\n');
         builder.Append("files:").Append(modelFilesHash).Append('\n');
+
+        // Appended only when supplied, so a hash computed without it is byte-identical to what an
+        // older build produced. That is what lets an existing application upgrade without every
+        // model reading as drifted on the first run after the config files became covered.
+        if (configFilesHash is not null)
+            builder.Append("config:").Append(configFilesHash).Append('\n');
+
         return Sha256Hex(builder.ToString());
     }
 

@@ -5,7 +5,7 @@
     "test": {
       "options": {
         "cwd": "tests/MintPlayer.Spark.SourceGenerators.Tests",
-        "command": "dotnet test --no-build --no-restore --collect:\"XPlat Code Coverage\" --results-directory coverage",
+        "command": "dotnet test --no-build --no-restore --settings ../../coverlet.runsettings --collect:\"XPlat Code Coverage\" --results-directory coverage",
         "args": []
       }
     }

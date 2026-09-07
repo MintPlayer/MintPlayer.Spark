@@ -8,7 +8,8 @@ namespace MintPlayer.Spark.Tests.Services;
 /// <summary>
 /// Exercises the H-2/H-3 row-level authorization path through <see cref="IDatabaseAccess"/>:
 /// <see cref="IDatabaseAccess.GetPersistentObjectAsync"/> returns null for denied rows (surfaces
-/// as 404 at the endpoint, per M-3); <see cref="IDatabaseAccess.GetPersistentObjectsAsync"/>
+/// as 404 at the endpoint, per M-3). The list half of this moved to the query path when the
+/// second, uncapped PO-list pipeline was deleted; see <c>RowLevelQueryAuthorizationTests</c>.
 /// filters denied rows out of the list result. The row-level filter calls into
 /// <c>DefaultPersistentObjectActions{T}.IsAllowedAsync</c>, discovered by convention through
 /// <see cref="ActionsResolver"/> — see <see cref="GuardedDocActions"/> in _Infrastructure.
@@ -58,40 +59,6 @@ public class DatabaseAccessRowLevelAuthzTests : SparkTestDriver
 
         result.Should().NotBeNull();
         result!.Id.Should().Be("docs/visible");
-    }
-
-    [Fact]
-    public async Task GetAll_filters_denied_rows_out_of_the_list()
-    {
-        await SeedAsync(
-            new GuardedDoc { Id = "docs/a", Name = "A", IsVisible = true },
-            new GuardedDoc { Id = "docs/b", Name = "B", IsVisible = false },
-            new GuardedDoc { Id = "docs/c", Name = "C", IsVisible = true });
-
-        var results = (await _dbAccess.GetPersistentObjectsAsync(DocTypeId)).ToList();
-
-        results.Should().HaveCount(2);
-        results.Select(p => p.Id).Should().BeEquivalentTo(new[] { "docs/a", "docs/c" });
-    }
-
-    [Fact]
-    public async Task GetAll_returns_empty_when_every_row_is_denied()
-    {
-        await SeedAsync(
-            new GuardedDoc { Id = "docs/x", Name = "X", IsVisible = false },
-            new GuardedDoc { Id = "docs/y", Name = "Y", IsVisible = false });
-
-        var results = await _dbAccess.GetPersistentObjectsAsync(DocTypeId);
-
-        results.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task GetAll_returns_empty_when_collection_has_no_rows()
-    {
-        var results = await _dbAccess.GetPersistentObjectsAsync(DocTypeId);
-
-        results.Should().BeEmpty();
     }
 
     [Fact]
