@@ -1,3 +1,6 @@
+using CodeCoverage.LookupReferences;
+using MintPlayer.Spark.Abstractions;
+
 namespace CodeCoverage.Entities;
 
 /// <summary>
@@ -18,10 +21,17 @@ public class EventColumnMapping
     public string Id { get; set; } = string.Empty;
 
     /// <summary>
-    /// Which GitHub event this rule reacts to, one of <c>WebhookEventType</c>'s keys. A lookup
-    /// rather than free text: the set is closed, and a typo in a free-text field would produce a
-    /// rule that silently never fires.
+    /// Which GitHub event this rule reacts to, one of <see cref="WebhookEventType"/>'s keys. A
+    /// lookup rather than free text: the set is closed, and a typo in a free-text field would
+    /// produce a rule that silently never fires.
+    /// <para>
+    /// The <see cref="LookupReferenceAttribute"/> is what puts the dropdown on the form, and it has
+    /// to live here rather than in the generated model JSON — model synchronization strips a
+    /// hand-added <c>lookupReferenceType</c> (observed), because it derives that field from the
+    /// attribute. <c>editMode</c> and <c>isReadOnly</c> survive hand-editing; this does not.
+    /// </para>
     /// </summary>
+    [LookupReference(typeof(WebhookEventType))]
     public string EventType { get; set; } = string.Empty;
 
     /// <summary>

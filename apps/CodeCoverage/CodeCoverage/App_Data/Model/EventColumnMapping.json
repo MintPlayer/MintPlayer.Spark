@@ -32,7 +32,7 @@
           "en": "Event Type"
         },
         "description": {
-          "en": "Which GitHub event this rule reacts to, one of WebhookEventType's keys. A lookup rather than free text: the set is closed, and a typo in a free-text field would produce a rule that silently never fires."
+          "en": "Which GitHub event this rule reacts to, one of WebhookEventType's keys. A lookup rather than free text: the set is closed, and a typo in a free-text field would produce a rule that silently never fires.\nThe LookupReferenceAttribute is what puts the dropdown on the form, and it has to live here rather than in the generated model JSON — model synchronization strips a hand-added lookupReferenceType (observed), because it derives that field from the attribute. editMode and isReadOnly survive hand-editing; this does not."
         },
         "dataType": "string",
         "isRequired": false,
@@ -40,6 +40,7 @@
         "isReadOnly": false,
         "order": 1,
         "isArray": false,
+        "lookupReferenceType": "WebhookEventType",
         "showedOn": "Query, PersistentObject",
         "rules": []
       },
@@ -55,7 +56,7 @@
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
-        "isReadOnly": false,
+        "isReadOnly": true,
         "order": 5,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
@@ -73,7 +74,7 @@
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
-        "isReadOnly": false,
+        "isReadOnly": true,
         "order": 6,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
@@ -91,7 +92,7 @@
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
-        "isReadOnly": false,
+        "isReadOnly": true,
         "order": 4,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
