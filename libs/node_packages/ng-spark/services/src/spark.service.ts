@@ -34,6 +34,9 @@ export class SparkService {
     return firstValueFrom(this.http.get<EntityPermissions>(`${this.baseUrl}/permissions/${encodeURIComponent(entityTypeId)}`));
   }
 
+  /** Resolved at most once; see getQueryByName. */
+  #queryCatalogue?: Promise<SparkQuery[]>;
+
   // Queries
   async getQueries(): Promise<SparkQuery[]> {
     return firstValueFrom(this.http.get<SparkQuery[]>(`${this.baseUrl}/queries`));
@@ -43,8 +46,17 @@ export class SparkService {
     return firstValueFrom(this.http.get<SparkQuery>(`${this.baseUrl}/queries/${encodeURIComponent(id)}`));
   }
 
+  /**
+   * Resolves a query by name, fetching the catalogue at most once per service instance.
+   *
+   * Without the cache this costs a full `GET /spark/queries` per call, and a form with several
+   * reference attributes resolves them in parallel — so opening one page fetched the whole query
+   * catalogue N times over. The catalogue is per-caller and effectively static for a page's
+   * lifetime; the service is scoped to the app, so a permission change lands on the next load.
+   */
   async getQueryByName(name: string): Promise<SparkQuery | undefined> {
-    const queries = await this.getQueries();
+    this.#queryCatalogue ??= this.getQueries();
+    const queries = await this.#queryCatalogue;
     return queries.find(q => q.name === name);
   }
 
@@ -73,12 +85,25 @@ export class SparkService {
     ));
   }
 
+  /**
+   * Runs a query identified by name.
+   *
+   * It used to forward only the parent, dropping skip/take/search — so every reference picker and
+   * AsDetail reference column silently saw the server's default of 50 candidates, with no indication
+   * that the list was cut. A picker that omits the option you are looking for, and says nothing, is
+   * worse than one that fails.
+   */
   async executeQueryByName(queryName: string, options?: {
     parentId?: string;
     parentType?: string;
+    skip?: number;
+    take?: number;
+    search?: string;
+    sortColumns?: SortColumn[];
   }): Promise<QueryResult> {
     const query = await this.getQueryByName(queryName);
-    return query ? this.executeQuery(query.id, { parentId: options?.parentId, parentType: options?.parentType }) : { columns: [], items: [], totalItems: 0, skip: 0, take: 50 };
+    if (!query) return { columns: [], items: [], totalItems: 0, skip: 0, take: options?.take ?? 50 };
+    return this.executeQuery(query.id, options);
   }
 
   // Program Units

@@ -30,8 +30,16 @@ internal sealed partial class ListEntityTypes : IGetEndpoint, IMemberOf<EntityTy
 
             // This is the load-bearing one for sub-query pruning: spark-po-detail reads the array
             // from here and never calls getEntityType(id).
-            visible.Add(await SubQueryPruner.PruneAsync(
-                entityType, queryLoader, permissionService, logger, httpContext.RequestAborted));
+            var pruned = await SubQueryPruner.PruneAsync(
+                entityType, queryLoader, permissionService, logger, httpContext.RequestAborted);
+
+            // PruneAsync already copied the definition — ModelLoader is a singleton and its
+            // instances are shared — so this per-caller answer can be written without leaking into
+            // the next request's view of the model.
+            pruned.CanRead = await permissionService.IsAllowedAsync(
+                "Read", entityType.Name, httpContext.RequestAborted);
+
+            visible.Add(pruned);
         }
         return Results.Json(visible);
     }

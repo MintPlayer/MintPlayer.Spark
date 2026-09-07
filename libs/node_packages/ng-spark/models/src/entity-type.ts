@@ -96,6 +96,15 @@ export interface EntityType {
    * query. Types are data from the wire, not a promise about it.
    */
   clrType?: string;
+
+  /**
+   * Whether this caller may OPEN one of these, as opposed to list them.
+   *
+   * The catalogue is gated on Query, so its presence here means "you may list this type" and says
+   * nothing about opening one. A reference must not render as a link when this is false: it used
+   * to, and the click refused on arrival.
+   */
+  canRead?: boolean;
   alias?: string;
   /**
    * Breadcrumb template: literal text plus `{AttributeName}` placeholders. A scalar placeholder
