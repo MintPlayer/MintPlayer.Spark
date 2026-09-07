@@ -134,9 +134,27 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
         using var renewalCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var renewal = RenewUntilDoneAsync(messageId, renewalCts.Token);
 
+        // Bounds the lane. A handler that throws is parked by MessageProcessor and the pump moves
+        // on, so failures never hold the head of the queue — but a handler that HANGS would hold it
+        // for ever: one message is in flight at a time, and the claim is renewed while it runs, so
+        // the sweeper's reclaim never fires either. This is the only thing that ends that.
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(Options.HandlerTimeout);
+
         try
         {
-            await processor.ProcessAsync(messageId, MessageClaims.NodeId, cancellationToken);
+            await processor.ProcessAsync(messageId, MessageClaims.NodeId, timeoutCts.Token);
+        }
+        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            // Timed out rather than shut down. MessageProcessor's own catch will have parked the
+            // message if it got that far; if the cancellation unwound past it, the claim lapses and
+            // the sweeper reclaims it. Either way the message is not lost and the lane is freed.
+            logger.LogError(
+                "Message {MessageId} exceeded SparkMessagingOptions.HandlerTimeout ({Timeout}) and was "
+                + "cancelled to free its queue. If this recurs, either the handler needs a longer "
+                + "timeout or it is not honouring its CancellationToken.",
+                messageId, Options.HandlerTimeout);
         }
         finally
         {

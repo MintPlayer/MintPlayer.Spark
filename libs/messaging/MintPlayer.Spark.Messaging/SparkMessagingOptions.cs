@@ -99,6 +99,31 @@ public class SparkMessagingOptions
     /// Whether each queue gets its own RavenDB data subscription, or all queues share one.
     /// </summary>
     public ESubscriptionMode SubscriptionMode { get; set; } = ESubscriptionMode.SingleSubscription;
+
+    /// <summary>
+    /// How long a single message may occupy its queue's pump before it is cancelled and parked.
+    /// <para>
+    /// This bounds the one failure mode that a retry budget cannot: a handler that <b>hangs</b>. A
+    /// handler that throws is parked and the pump moves straight on to the next message, so
+    /// failures interleave rather than blocking the head of the lane, and
+    /// <see cref="MaxAttempts"/> eventually dead-letters them. But a handler that never returns —
+    /// an HTTP call with no timeout, a deadlock, an unbounded loop — holds its lane for ever, and
+    /// nothing else rescues it: one message is in flight at a time by design, and the claim is
+    /// renewed while it runs, so even the sweeper's reclaim never fires.
+    /// </para>
+    /// <para>
+    /// Generous by default, because the cost of cutting a legitimately slow handler short is worse
+    /// than a stuck lane: report parsing and commit assembly are minutes-long by nature. Raise it
+    /// for a workload with a genuinely longer tail rather than lowering it to catch hangs sooner —
+    /// a hang blocks one queue, while a too-short timeout corrupts every slow message on it.
+    /// </para>
+    /// <para>
+    /// Cancellation is cooperative: it cancels the token the handler was given. A handler that
+    /// ignores its <see cref="CancellationToken"/> cannot be interrupted, which is worth knowing
+    /// before assuming this makes lanes unblockable.
+    /// </para>
+    /// </summary>
+    public TimeSpan HandlerTimeout { get; set; } = TimeSpan.FromMinutes(10);
 }
 
 /// <summary>

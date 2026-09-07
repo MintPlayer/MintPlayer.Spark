@@ -444,6 +444,101 @@ public class MessagingInvariantsTests : SparkTestDriver
         message2.AttemptCount.Should().Be(1, "Message2 was delivered once and never retried");
     }
 
+    // --- Invariant 6: a failing message does not hold the head of its lane ----
+
+    [MessageQueue("invariants-headofline")]
+    public sealed class HeadOfLineMessage { public int Sequence { get; set; } }
+
+    /// <summary>
+    /// Fails every call for sequence 1, succeeds for everything else. Sequence 1 is published
+    /// first, so if a failure held the head of the lane nothing after it would ever run.
+    /// </summary>
+    public sealed class HeadOfLineRecipient : IRecipient<HeadOfLineMessage>
+    {
+        public ConcurrentQueue<int> Completed { get; } = new();
+        private int poisonCalls;
+        public int PoisonCalls => poisonCalls;
+
+        public Task HandleAsync(HeadOfLineMessage message, CancellationToken cancellationToken = default)
+        {
+            if (message.Sequence == 1)
+            {
+                Interlocked.Increment(ref poisonCalls);
+                throw new InvalidOperationException("poison message");
+            }
+
+            Completed.Enqueue(message.Sequence);
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>
+    /// A message that keeps failing must not block its queue for ever.
+    /// <para>
+    /// The retry budget alone does not establish this. What does is that
+    /// <c>MessageProcessor</c> <b>parks</b> a failed message rather than rethrowing, so the pump
+    /// returns and immediately takes the next message off the lane — the failure interleaves with
+    /// its queue-mates instead of holding the head, and <c>MaxAttempts</c> then stops retrying it
+    /// altogether.
+    /// </para>
+    /// <para>
+    /// The poison message is deliberately published <b>first</b>, and on the same queue, so a
+    /// head-of-line block would show up as the later messages never completing rather than as a
+    /// timing wobble.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_message_that_keeps_failing_does_not_block_the_rest_of_its_queue()
+    {
+        var recipient = new HeadOfLineRecipient();
+        var services = NewServices(o =>
+        {
+            o.MaxAttempts = 2;                                  // dead-letter quickly
+            o.BackoffDelays = [TimeSpan.FromSeconds(1)];
+            o.FallbackPollInterval = TimeSpan.FromSeconds(1);
+        });
+        services.AddSingleton<IRecipient<HeadOfLineMessage>>(recipient);
+        await using var provider = services.BuildServiceProvider();
+
+        var bus = new MessageBus(Store, Options.Create(new SparkMessagingOptions { MaxAttempts = 2 }));
+        await bus.BroadcastAsync(new HeadOfLineMessage { Sequence = 1 });   // poison, first
+        for (var i = 2; i <= 4; i++)
+            await bus.BroadcastAsync(new HeadOfLineMessage { Sequence = i });
+
+        await using var host = await StartManagerAsync(provider);
+
+        // The positive assertion: everything behind the poison message completes.
+        await AsyncWait.UntilAsync(
+            () => recipient.Completed.Count == 3,
+            "the three healthy messages behind a permanently failing one to complete",
+            PollTimeout);
+
+        recipient.Completed.OrderBy(x => x).Should().Equal([2, 3, 4]);
+
+        // And the poison message stops being retried rather than cycling for ever.
+        var poisoned = await AsyncWait.ForAsync(
+            async () =>
+            {
+                using var session = Store.OpenAsyncSession();
+                var all = await session.Query<SparkMessage>().ToListAsync();
+                return all.FirstOrDefault(m => m.PayloadJson.Contains("\"Sequence\":1"));
+            },
+            m => m?.Status == EMessageStatus.DeadLettered,
+            "the poison message to be dead-lettered",
+            m => $"Status={m?.Status}, attempts={m?.AttemptCount}",
+            PollTimeout,
+            TimeSpan.FromMilliseconds(200));
+
+        poisoned.Handlers.Should().ContainSingle();
+        poisoned.Handlers[0].Status.Should().Be(EHandlerStatus.DeadLettered);
+        poisoned.Handlers[0].LastError.Should().Contain("poison message",
+            "the failure has to leave a durable trail, not only a log line");
+
+        // Bounded, not infinite: MaxAttempts = 2 means two handler invocations, not a loop.
+        recipient.PoisonCalls.Should().BeLessThanOrEqualTo(3,
+            "retries are bounded by MaxAttempts rather than repeating indefinitely");
+    }
+
     // --- Harness --------------------------------------------------------------
 
     private IServiceCollection NewServices(Action<SparkMessagingOptions>? configure = null)

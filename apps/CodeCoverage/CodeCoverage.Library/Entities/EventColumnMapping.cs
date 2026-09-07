@@ -40,4 +40,38 @@ public class EventColumnMapping
     /// diagnose behaviour and turn it back on, rather than deleting and retyping it.
     /// </summary>
     public bool Enabled { get; set; } = true;
+
+    /// <summary>
+    /// When this rule last moved a card (UTC), or null if it never has. The first thing to look at
+    /// when someone reports that automation "stopped working": a rule that has never fired is
+    /// configured wrong, one that fired until a date stopped working then.
+    /// </summary>
+    public DateTime? LastFiredAtUtc { get; set; }
+
+    /// <summary>
+    /// Why this rule last failed, or null if its last attempt succeeded.
+    /// <para>
+    /// This exists because the message queue is the wrong place to look for it, and that is worth
+    /// spelling out. Spark's messaging does dead-letter a handler after <c>MaxAttempts</c> and does
+    /// persist <c>LastError</c> on the message — but only when the recipient <em>throws</em>, and
+    /// throwing is the wrong response to a single broken rule: one delivery can match several
+    /// boards, so failing the whole message re-runs the moves that already succeeded and moves
+    /// those cards twice. Completing the message is correct, which means the queue records nothing.
+    /// </para>
+    /// <para>
+    /// And even when a message does dead-letter, a <c>SparkMessage</c> is invisible to this
+    /// configuration screen and is deleted after the retention window. The rule is what the user
+    /// looks at, so the failure belongs on the rule.
+    /// </para>
+    /// <para>
+    /// The most likely value by far is "the target column no longer exists": a rule stores an
+    /// option <em>id</em>, and nothing tells this app when a column is deleted — the Projects V2
+    /// webhook events are organization-scoped and unsubscribed either way — so without this the
+    /// rule stays syntactically valid and silently never matches.
+    /// </para>
+    /// </summary>
+    public string? LastError { get; set; }
+
+    /// <summary>When <see cref="LastError"/> was recorded (UTC); null when the rule is healthy.</summary>
+    public DateTime? LastErrorAtUtc { get; set; }
 }
