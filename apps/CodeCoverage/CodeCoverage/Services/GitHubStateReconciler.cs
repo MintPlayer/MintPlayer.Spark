@@ -205,9 +205,26 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
             project.InstallationId = installationId;
             project.Number = board.Number;
             project.Name = board.Title;
-            // AutomationEnabled, DeleteBranchOnPrClose, EventMappings and Columns are deliberately
-            // NOT touched. Discovery owns identity and reachability; the user owns configuration.
+            // AutomationEnabled, DeleteBranchOnPrClose and EventMappings are deliberately NOT
+            // touched. Discovery owns identity and reachability; the user owns configuration.
             ConnectProject(project);
+
+            // Columns ARE refreshed here, and that is load-bearing rather than convenience.
+            //
+            // Nothing tells us when a column is renamed, reordered or deleted. The projects_v2 and
+            // projects_v2_item webhook events are organization-scoped, so an app installed on a
+            // USER account never receives them at all — and even on an organization we do not
+            // subscribe to them. So the only ways the cached columns can be corrected are this
+            // nightly pass and the manual SyncColumns action. Leaving it to the button alone means
+            // a renamed or deleted column leaves every rule pointing at it silently inert, with a
+            // configuration screen that still looks right.
+            //
+            // Only refreshed for boards with automation switched on. A board nobody automates is
+            // discovered but inert, and spending a GitHub call per board per night to cache columns
+            // for rules that do not exist would make the nightly sweep scale with the number of
+            // boards an organization happens to own rather than with the number it uses.
+            if (project.AutomationEnabled)
+                await RefreshColumnsAsync(project, installationId, cancellationToken);
         }
 
         foreach (var project in known)
@@ -253,6 +270,70 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
         repository.Connection = RepositoryConnection.Disconnected;
         repository.DisconnectedReason = reason;
         repository.DisconnectedAtUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Re-reads one board's Status field and replaces its cached columns.
+    /// <para>
+    /// Failure here is contained to the board: a column refresh that throws leaves the previously
+    /// cached columns in place, which are stale but usable, rather than emptying them. Emptying
+    /// them would turn a transient GitHub failure into "every rule on this board points at a
+    /// column that does not exist".
+    /// </para>
+    /// <para>
+    /// Rules pointing at options that have genuinely disappeared are <b>not</b> deleted here. The
+    /// user owns their rules, and a rule whose column was deleted is information they need to see —
+    /// silently dropping it would hide the reason their automation stopped working. The recipient
+    /// logs and skips such a rule at dispatch time instead.
+    /// </para>
+    /// </summary>
+    private async Task RefreshColumnsAsync(GitHubProject project, long installationId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var statusField = await installationProjects.GetStatusFieldAsync(installationId, project.NodeId, cancellationToken);
+
+            if (!statusField.Exists)
+            {
+                // A board with no Status field is a legitimate state, not a failure — but it means
+                // automation has nothing to target, so say so rather than leaving stale columns
+                // that suggest otherwise.
+                logger.LogWarning(
+                    "Board #{Number} ({Name}) has no Status field; automation has no column to move cards to",
+                    project.Number, project.Name);
+                project.StatusFieldId = null;
+                project.Columns = [];
+                project.ColumnsSyncedAtUtc = DateTime.UtcNow;
+                return;
+            }
+
+            project.StatusFieldId = statusField.FieldId;
+            // Qualified: Octokit has its own ProjectColumn (classic projects), and the using
+            // directives here bring both into scope.
+            project.Columns = statusField.Columns
+                .Select(c => new CodeCoverage.Entities.ProjectColumn { Id = c.OptionId, Name = c.Name })
+                .ToList();
+            project.ColumnsSyncedAtUtc = DateTime.UtcNow;
+
+            var orphaned = project.EventMappings
+                .Where(m => m.Enabled && !string.IsNullOrEmpty(m.TargetColumnOptionId))
+                .Where(m => project.Columns.All(c => c.Id != m.TargetColumnOptionId))
+                .ToList();
+
+            if (orphaned.Count > 0)
+            {
+                logger.LogWarning(
+                    "Board #{Number} ({Name}) has {Count} enabled rule(s) targeting a column that no longer exists: {Events}",
+                    project.Number, project.Name, orphaned.Count,
+                    string.Join(", ", orphaned.Select(m => m.EventType)));
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex,
+                "Could not refresh columns for board #{Number} ({Name}); keeping the cached ones",
+                project.Number, project.Name);
+        }
     }
 
     private async Task<IReadOnlyList<GitHubProject>> LoadProjectsOfAsync(Account account, CancellationToken ct)

@@ -32,7 +32,31 @@ public interface IInstallationProjects
     /// </summary>
     Task<IReadOnlyList<InstallationProject>> ListAsync(
         long installationId, string ownerLogin, bool ownerIsOrganization, int max, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The board's single-select "Status" field and its options — what a person calls its columns.
+    /// Returns an empty field id when the board has no Status field, which is a legitimate state
+    /// rather than an error: a board can exist without one, and automation simply cannot target it.
+    /// <para>
+    /// Throws on the same terms as <see cref="ListAsync"/>.
+    /// </para>
+    /// </summary>
+    Task<ProjectStatusField> GetStatusFieldAsync(
+        long installationId, string projectNodeId, CancellationToken cancellationToken = default);
 }
+
+/// <summary>The board's Status field, and the options that act as its columns.</summary>
+public sealed record ProjectStatusField(string FieldId, IReadOnlyList<InstallationProjectColumn> Columns)
+{
+    /// <summary>A board with no Status field — nothing for automation to target.</summary>
+    public static readonly ProjectStatusField None = new(string.Empty, []);
+
+    /// <summary>Whether the board actually has a Status field to move cards within.</summary>
+    public bool Exists => !string.IsNullOrEmpty(FieldId);
+}
+
+/// <summary>One Status option as GitHub reports it.</summary>
+public sealed record InstallationProjectColumn(string OptionId, string Name);
 
 /// <inheritdoc cref="IInstallationProjects"/>
 [Register(typeof(IInstallationProjects), ServiceLifetime.Scoped)]
@@ -74,6 +98,51 @@ public partial class InstallationProjects : IInstallationProjects
             return boards.Take(max).ToList();
 
         return boards;
+    }
+
+    public async Task<ProjectStatusField> GetStatusFieldAsync(
+        long installationId, string projectNodeId, CancellationToken cancellationToken = default)
+    {
+        var connection = await installations.CreateGraphQLConnectionAsync(installationId, EClientType.Installation);
+
+        // Migrated from the code this feature replaces, with two changes: the node id travels as a
+        // GraphQL variable rather than being interpolated, and the `catch (Exception) { throw; }`
+        // that wrapped it is gone.
+        //
+        // .AllPages() is kept here, unlike the board listing. A board's field set is small but its
+        // Status field can legitimately carry many options, and unlike the board list a truncated
+        // option set is not read as absence — it would instead make a rule that points at a real
+        // column look like it points at a deleted one.
+        var fields = await connection.Run(
+            new Query()
+                .Node(new Octokit.GraphQL.ID(projectNodeId))
+                .Cast<Octokit.GraphQL.Model.ProjectV2>()
+                .Fields()
+                .AllPages()
+                .Select(f => f.Switch<StatusFieldInfo?>(when => when
+                    .ProjectV2SingleSelectField(ssf => new StatusFieldInfo
+                    {
+                        Id = ssf.Id.Value,
+                        Name = ssf.Name,
+                        Options = ssf.Options(null)
+                            .Select(o => new InstallationProjectColumn(o.Id, o.Name))
+                            .ToList(),
+                    }))));
+
+        var statusField = fields
+            .Where(f => f is not null)
+            .FirstOrDefault(f => string.Equals(f!.Name, "Status", StringComparison.OrdinalIgnoreCase));
+
+        return statusField is null
+            ? ProjectStatusField.None
+            : new ProjectStatusField(statusField.Id, statusField.Options);
+    }
+
+    private sealed class StatusFieldInfo
+    {
+        public string Id { get; init; } = string.Empty;
+        public string Name { get; init; } = string.Empty;
+        public List<InstallationProjectColumn> Options { get; init; } = [];
     }
 
     private static async Task<List<InstallationProject>> RunAsync(

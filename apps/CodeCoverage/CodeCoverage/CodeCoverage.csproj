@@ -22,6 +22,15 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.20.0" GeneratePathProperty="true" />
+		<!--
+		  Explicit rather than transitive. It arrives through MintPlayer.Spark.Webhooks.GitHub
+		  anyway, but this app now writes Projects V2 GraphQL of its own, and a BETA package that
+		  the code depends on directly should not be pinned by accident: a version bump in the
+		  webhooks library would otherwise silently move this app's GraphQL surface. Its
+		  Octokit.GraphQL.Core types (ID, the Switch/Cast builders) are also only referenceable with
+		  a direct reference.
+		-->
+		<PackageReference Include="Octokit.GraphQL" Version="0.4.0-beta" />
 		<PackageReference Include="YamlDotNet" Version="16.3.0" />
 	</ItemGroup>
 

@@ -210,6 +210,37 @@ therefore means the app receives webhook deliveries caused by **its own writes**
 mapping fires on the app's own sticky comment. See FR6 — this is a correctness requirement, not
 polish.
 
+### C11 — Nothing tells us when a board changes, and on a user account nothing ever will.
+
+The Projects V2 webhook events — `projects_v2`, `projects_v2_item`, `projects_v2_status_update` —
+are **organization-scoped**. An installation on a **user** account does not receive them, and this
+app does not subscribe to them on organizations either. Confirmed by the shape of the development
+app's own installations: one user account, one organization.
+
+So there is **no event path** by which we learn that a column was renamed, reordered or deleted, or
+that a board was closed. The consequences are asymmetric and worth stating separately:
+
+- **Automation triggers are unaffected.** Every event a rule fires on — `issues`, `pull_request`,
+  `pull_request_review`, `issue_comment`, `check_run` — is a *repository* event, and those arrive
+  normally for user-account installations. The feature works on a user account.
+- **The cached column set can drift silently.** A rule stores an option **id**; when the option is
+  deleted the rule stays syntactically valid and simply never matches, so automation stops with no
+  error and a configuration screen that still looks correct.
+
+This is the strongest argument for D1 over an event-driven mirror, and it makes two things
+requirements rather than niceties:
+
+1. **The nightly reconciliation must refresh columns**, not only board identity — the manual
+   `SyncColumns` button cannot be the only correction path, because nobody presses a button for a
+   problem they cannot see. Implemented for boards with `AutomationEnabled` only, so the sweep
+   scales with boards *used* rather than boards *owned*.
+2. **A rule pointing at a vanished column must be reported, never silently dropped.** Deleting it
+   would destroy the user's configuration and hide the reason their automation stopped; the
+   reconciler logs it at Warning and the recipient skips it loudly at dispatch time.
+
+A column refresh that fails must leave the previously cached columns in place. Emptying them turns
+a transient GitHub failure into "every rule on this board targets a column that does not exist".
+
 ---
 
 ## 4. Design decision
