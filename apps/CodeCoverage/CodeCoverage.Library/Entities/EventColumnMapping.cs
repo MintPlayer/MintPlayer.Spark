@@ -86,6 +86,42 @@ public class EventColumnMapping
     public bool Enabled { get; set; } = true;
 
     /// <summary>
+    /// On a pull-request event, also move the cards of the issues the PR closes (its
+    /// <c>ClosingIssuesReferences</c>). Ignored for issue events, which already act on the issue
+    /// itself.
+    /// <para>
+    /// Defaults to <see langword="true"/>, because the issue is the work item a board tracks and
+    /// the pull request is only how the work gets done — "PR ready for review" almost always means
+    /// "the thing that PR closes is ready for review". A rule that moved nothing but the PR's own
+    /// card would do nothing at all on the common setup, where PRs are not on the board.
+    /// </para>
+    /// <para>
+    /// This was briefly hard-coded to fire only on <c>PullRequestMerged</c>, which made every other
+    /// pull-request rule silently inert for anyone whose board tracks issues. The behaviour the
+    /// merged path had is now what every PR event does, under this flag.
+    /// </para>
+    /// </summary>
+    public bool MoveLinkedIssues { get; set; } = true;
+
+    /// <summary>
+    /// When <see cref="MoveLinkedIssues"/> moves a linked issue that is not on the board yet, add
+    /// it rather than skipping it.
+    /// <para>
+    /// Defaults to <see langword="false"/>, and the asymmetry with a direct issue event — which
+    /// does add — is deliberate: an <c>IssuesOpened</c> rule is <em>about</em> that issue, whereas
+    /// a linked issue is being touched only because a PR happened to reference it. Adding on that
+    /// basis lets one pull request recruit arbitrary issues onto the board, including issues from
+    /// repositories nobody configured.
+    /// </para>
+    /// <para>
+    /// Per rule rather than per board, because the right answer differs by event: a "merged → Done"
+    /// rule wants only issues already tracked, while a team that opens PRs before filing the issue
+    /// on the board may genuinely want "ready for review" to recruit it.
+    /// </para>
+    /// </summary>
+    public bool AddLinkedIfMissing { get; set; }
+
+    /// <summary>
     /// When this rule last moved a card (UTC), or null if it never has. The first thing to look at
     /// when someone reports that automation "stopped working": a rule that has never fired is
     /// configured wrong, one that fired until a date stopped working then.

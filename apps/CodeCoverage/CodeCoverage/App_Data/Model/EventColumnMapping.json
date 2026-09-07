@@ -8,6 +8,28 @@
     "groups": [],
     "attributes": [
       {
+        "id": "9ab36326-937f-4764-8824-305772944a57",
+        "name": "AddLinkedIfMissing",
+        "label": {
+          "en": "Add Linked If Missing",
+          "fr": "Ajouter l'élément lié s'il est absent",
+          "nl": "Gekoppeld item toevoegen indien afwezig"
+        },
+        "description": {
+          "en": "When MoveLinkedIssues moves a linked issue that is not on the board yet, add it rather than skipping it.\nDefaults to false, and the asymmetry with a direct issue event — which does add — is deliberate: an IssuesOpened rule is about that issue, whereas a linked issue is being touched only because a PR happened to reference it. Adding on that basis lets one pull request recruit arbitrary issues onto the board, including issues from repositories nobody configured.\nPer rule rather than per board, because the right answer differs by event: a \"merged → Done\" rule wants only issues already tracked, while a team that opens PRs before filing the issue on the board may genuinely want \"ready for review\" to recruit it.",
+          "fr": "Lorsque MoveLinkedIssues déplace un ticket lié qui ne figure pas encore sur le tableau, l'ajouter au lieu de l'ignorer.\nFaux par défaut, et l'asymétrie avec un événement de ticket direct — qui, lui, ajoute — est délibérée : une règle IssuesOpened porte sur ce ticket-là, alors qu'un ticket lié n'est touché que parce qu'une PR s'est trouvée le référencer. Ajouter sur cette base permettrait à une seule pull request d'enrôler des tickets arbitraires sur le tableau, y compris des tickets provenant de dépôts que personne n'a configurés.\nPar règle plutôt que par tableau, car la bonne réponse varie selon l'événement : une règle « merged → Done » ne veut que les tickets déjà suivis, tandis qu'une équipe qui ouvre ses PR avant de créer le ticket sur le tableau peut réellement souhaiter que « ready for review » l'enrôle.",
+          "nl": "Wanneer MoveLinkedIssues een gekoppeld issue verplaatst dat nog niet op het bord staat, het toevoegen in plaats van het over te slaan.\nStandaard false, en de asymmetrie met een rechtstreekse issue-gebeurtenis — die wél toevoegt — is bewust: een IssuesOpened-regel gáát over dat issue, terwijl een gekoppeld issue enkel aangeraakt wordt omdat een PR er toevallig naar verwees. Op die grond toevoegen laat één pull request willekeurige issues op het bord ronselen, inclusief issues uit repository's die niemand geconfigureerd heeft.\nPer regel in plaats van per bord, omdat het juiste antwoord per gebeurtenis verschilt: een \"merged → Done\"-regel wil enkel issues die al opgevolgd worden, terwijl een team dat PR's opent vóór het issue op het bord staat wel degelijk kan willen dat \"ready for review\" het binnenhaalt."
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
         "id": "c34a5d57-7a16-4d47-99f6-b182cc9a9d3c",
         "name": "Enabled",
         "label": {
@@ -113,6 +135,28 @@
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e1dd93fd-5c88-41d5-921c-ad225a06eb6b",
+        "name": "MoveLinkedIssues",
+        "label": {
+          "en": "Move Linked Issues",
+          "fr": "Déplacer les tickets liés",
+          "nl": "Gekoppelde issues verplaatsen"
+        },
+        "description": {
+          "en": "On a pull-request event, also move the cards of the issues the PR closes (its ClosingIssuesReferences). Ignored for issue events, which already act on the issue itself.\nDefaults to true, because the issue is the work item a board tracks and the pull request is only how the work gets done — \"PR ready for review\" almost always means \"the thing that PR closes is ready for review\". A rule that moved nothing but the PR's own card would do nothing at all on the common setup, where PRs are not on the board.\nThis was briefly hard-coded to fire only on PullRequestMerged, which made every other pull-request rule silently inert for anyone whose board tracks issues. The behaviour the merged path had is now what every PR event does, under this flag.",
+          "fr": "Lors d'un événement de pull request, déplacer également les cartes des tickets que la PR clôture (ses ClosingIssuesReferences). Ignoré pour les événements de ticket, qui agissent déjà sur le ticket lui-même.\nVrai par défaut, car le ticket est l'élément de travail que suit un tableau et la pull request n'est que la manière dont le travail se fait — « PR prête pour relecture » signifie presque toujours « ce que cette PR clôture est prêt pour relecture ». Une règle qui ne déplacerait que la carte de la PR elle-même ne ferait strictement rien dans la configuration courante, où les PR ne figurent pas sur le tableau.\nCe comportement a brièvement été codé en dur pour ne se déclencher que sur PullRequestMerged, ce qui rendait silencieusement inerte toute autre règle de pull request pour quiconque suit des tickets sur son tableau. Ce que faisait le chemin « merged » est désormais ce que fait chaque événement de PR, sous ce drapeau.",
+          "nl": "Bij een pull-request-gebeurtenis ook de kaarten verplaatsen van de issues die de PR sluit (zijn ClosingIssuesReferences). Genegeerd voor issue-gebeurtenissen, die al op het issue zelf inwerken.\nStandaard true, omdat het issue het werkitem is dat een bord opvolgt en de pull request enkel de manier is waarop het werk gebeurt — \"PR klaar voor review\" betekent bijna altijd \"datgene wat die PR sluit is klaar voor review\". Een regel die niets anders dan de eigen kaart van de PR verplaatst, doet helemaal niets in de gangbare opzet, waar PR's niet op het bord staan.\nDit stond korte tijd hard gecodeerd om enkel op PullRequestMerged af te vuren, waardoor elke andere pull-request-regel stilzwijgend inert was voor wie issues op zijn bord opvolgt. Wat het merged-pad deed, is nu wat elke PR-gebeurtenis doet, onder deze vlag."
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
         "order": 4,
         "isArray": false,
         "showedOn": "Query, PersistentObject",

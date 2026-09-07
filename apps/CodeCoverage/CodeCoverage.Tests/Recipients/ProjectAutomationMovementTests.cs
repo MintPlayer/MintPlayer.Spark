@@ -33,7 +33,8 @@ public class ProjectAutomationMovementTests : CoverageRavenTest
     private const string DoneOption = "98236657";
 
     private async Task<IDocumentStore> SeededStoreAsync(
-        IDocumentStore store, EWebhookEventType eventType)
+        IDocumentStore store, EWebhookEventType eventType,
+        bool moveLinkedIssues = true, bool addLinkedIfMissing = false)
     {
         new GitHubProjects_Overview().Execute(store);
 
@@ -56,6 +57,8 @@ public class ProjectAutomationMovementTests : CoverageRavenTest
                     EventType = eventType.ToString(),
                     TargetColumnOptionId = DoneOption,
                     Enabled = true,
+                    MoveLinkedIssues = moveLinkedIssues,
+                    AddLinkedIfMissing = addLinkedIfMissing,
                 },
             ],
         }, GitHubProject.DocumentId("PVT_test"));
@@ -140,5 +143,91 @@ public class ProjectAutomationMovementTests : CoverageRavenTest
         await cards.Received(1).MoveIssueAsync(
             Arg.Any<GitHubProject>(), Owner, Arg.Any<string>(), 42, DoneOption,
             addIfMissing: false, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// The reported bug: marking a PR ready for review moved nothing, because linked-issue movement
+    /// was hard-coded to <c>PullRequestMerged</c> alone.
+    /// </summary>
+    /// <remarks>
+    /// This is the case that matters most in practice and the one that was broken: PRs are never
+    /// added to a board, so on a board that tracks issues the PR's own card does not exist and the
+    /// linked issue is the entire outcome of the rule. Without this the rule completed
+    /// "successfully" having done nothing, and even <c>LastError</c> stayed null.
+    /// </remarks>
+    [Fact]
+    public async Task A_ready_for_review_pull_request_moves_its_linked_issues()
+    {
+        var store = await SeededStoreAsync(GetDocumentStore(), EWebhookEventType.PullRequestReadyForReview);
+        var cards = Substitute.For<IGitHubProjectCards>();
+        cards.MovePullRequestAsync(default!, default!, default!, default, default, default, default)
+            .ReturnsForAnyArgs(ECardOutcome.NotOnBoard);
+        cards.GetClosingIssuesAsync(default, default!, default!, default, default)
+            .ReturnsForAnyArgs<IReadOnlyList<(string Repo, int Number)>>([("MintPlayer.Spark", 376)]);
+
+        using var session = store.OpenAsyncSession();
+        var recipient = new ProjectAutomationRecipient(
+            session, cards, NullLogger<ProjectAutomationRecipient>.Instance);
+
+        await recipient.HandleAsync(
+            Message("pull_request", """{"action":"ready_for_review","pull_request":{"number":377}}"""));
+
+        await cards.Received(1).MoveIssueAsync(
+            Arg.Any<GitHubProject>(), Owner, Arg.Any<string>(), 376, DoneOption,
+            addIfMissing: false, Arg.Any<CancellationToken>());
+    }
+
+    /// <summary>
+    /// <c>MoveLinkedIssues = false</c> must not even ask GitHub for the closing issues — the lookup
+    /// is a GraphQL round trip, so skipping the move without skipping the query would pay for it on
+    /// every delivery and rate-limit the installation for nothing.
+    /// </summary>
+    [Fact]
+    public async Task A_rule_with_linked_issue_movement_off_never_looks_them_up()
+    {
+        var store = await SeededStoreAsync(
+            GetDocumentStore(), EWebhookEventType.PullRequestReadyForReview, moveLinkedIssues: false);
+        var cards = Substitute.For<IGitHubProjectCards>();
+        cards.MovePullRequestAsync(default!, default!, default!, default, default, default, default)
+            .ReturnsForAnyArgs(ECardOutcome.Moved);
+
+        using var session = store.OpenAsyncSession();
+        var recipient = new ProjectAutomationRecipient(
+            session, cards, NullLogger<ProjectAutomationRecipient>.Instance);
+
+        await recipient.HandleAsync(
+            Message("pull_request", """{"action":"ready_for_review","pull_request":{"number":377}}"""));
+
+        await cards.DidNotReceiveWithAnyArgs().GetClosingIssuesAsync(
+            default, default!, default!, default, default);
+        await cards.DidNotReceiveWithAnyArgs().MoveIssueAsync(
+            default!, default!, default!, default, default!, default, default);
+    }
+
+    /// <summary>
+    /// <c>AddLinkedIfMissing</c> reaches the card service, so a team that files the issue after
+    /// opening the PR can have the rule recruit it.
+    /// </summary>
+    [Fact]
+    public async Task A_rule_that_opts_in_adds_a_linked_issue_that_is_not_on_the_board()
+    {
+        var store = await SeededStoreAsync(
+            GetDocumentStore(), EWebhookEventType.PullRequestReadyForReview, addLinkedIfMissing: true);
+        var cards = Substitute.For<IGitHubProjectCards>();
+        cards.MovePullRequestAsync(default!, default!, default!, default, default, default, default)
+            .ReturnsForAnyArgs(ECardOutcome.NotOnBoard);
+        cards.GetClosingIssuesAsync(default, default!, default!, default, default)
+            .ReturnsForAnyArgs<IReadOnlyList<(string Repo, int Number)>>([("MintPlayer.Spark", 376)]);
+
+        using var session = store.OpenAsyncSession();
+        var recipient = new ProjectAutomationRecipient(
+            session, cards, NullLogger<ProjectAutomationRecipient>.Instance);
+
+        await recipient.HandleAsync(
+            Message("pull_request", """{"action":"ready_for_review","pull_request":{"number":377}}"""));
+
+        await cards.Received(1).MoveIssueAsync(
+            Arg.Any<GitHubProject>(), Owner, Arg.Any<string>(), 376, DoneOption,
+            addIfMissing: true, Arg.Any<CancellationToken>());
     }
 }
