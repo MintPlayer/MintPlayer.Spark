@@ -1,6 +1,6 @@
 {
   "name": "@mintplayer/coverage-upload-action",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "description": "GitHub Action that uploads coverage reports to a MintPlayer CodeCoverage server",
   "repository": {

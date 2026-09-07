@@ -196,6 +196,29 @@ async function waitAndReport(url: string, credential: Credential, ctx: ReturnTyp
     ? `${status.coverage.linesCovered}/${status.coverage.linesCoverable} lines (${rate(status.coverage.linesCovered, status.coverage.linesCoverable)}%)`
     : 'no coverage data';
   core.info(`Build ${status.state}: ${summary}`);
+
+  // This run's own reports are NOT the commit's number, and printing only them is
+  // how a partial upload came to look like a collapse in the log as well as in the
+  // PR comment. The assembly -- every build of this commit, plus carry-forward --
+  // is what the badge, the website and the project check all read, so print it
+  // alongside, and say so out loud when the server could not complete it.
+  const assembled = status.assembly;
+  if (assembled?.coverage) {
+    const { linesCovered: covered, linesCoverable: coverable } = assembled.coverage;
+    core.info(
+      `Commit ${ctx.commitSha.slice(0, 7)} assembled: ${covered}/${coverable} lines ` +
+        `(${rate(covered, coverable)}%) — ${assembled.measuredFiles} measured, ` +
+        `${assembled.carriedFiles} carried, ${assembled.unmeasuredFiles} unmeasured.`,
+    );
+    if (assembled.completeness && assembled.completeness !== 'Complete') {
+      core.warning(
+        `The assembled coverage for this commit is ${assembled.completeness} ` +
+          `(${assembled.incompleteReasons?.join(', ') || 'no reason given'}), so the reported ` +
+          `percentage under-counts. It is not a coverage drop.`,
+      );
+    }
+  }
+
   if (status.commitUrl) core.info(status.commitUrl);
 
   if (status.state === 'CompleteWithErrors') {

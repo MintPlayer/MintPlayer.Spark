@@ -159,29 +159,40 @@ jobs:
           echo "::endgroup::"
         done
 
-    - name: Run affected tests (.NET + Angular via Nx)
+    - name: Run tests (.NET + Angular via Nx)
       id: test
       # Step-level so the known hang (E2E suite wedging with no output) fails
       # here and the `if: always()` coverage upload below still runs with
       # whatever the completed suites produced.
       timeout-minutes: 20
+      # run-many, NOT affected. `test` declares its coverage directories as cached
+      # outputs (nx.json), so an unaffected project's report is RESTORED from the
+      # cache rather than regenerated -- same wall-clock as `affected`, but the
+      # report exists. `affected` drops unaffected projects from the task graph
+      # entirely, so there is no task whose output could be restored and their
+      # reports are simply absent: PR #377 touched only apps/CodeCoverage, uploaded
+      # 1 report of 8, and read as 35.1% against an 81.8% base. Master already runs
+      # run-many, so its cache is warm for exactly the projects a PR will not touch,
+      # and both workflows now measure the same thing.
       # --output-style=stream: nx buffers each task's output until the task
       # finishes, so a hung task prints NOTHING — the wedged E2E runs were
       # undiagnosable. Streaming trades tidy grouping for a visible last line.
-      run: npx nx affected --target=test --output-style=stream
+      run: npx nx run-many --target=test --output-style=stream
       env:
         # NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}  # Nx Cloud disabled — using self-hosted cache (see workflow-level env)
         RAVENDB_LICENSE: ${{ secrets.RAVENDB_LICENSE }}
 
-    # Upload whatever coverage the affected test projects produced to the
-    # self-hosted Coverage server. `partial: true` + the nx base SHA declare
-    # that this run measured only the affected subset, so the server compares
-    # like-for-like against the base instead of reading the totals as a
-    # whole-workspace collapse, and carries every file nx skipped forward from
-    # the base when its git blob is unchanged (docs/coverage_carryforward_PRD.md).
+    # Upload the coverage to the self-hosted Coverage server. Since the step above
+    # runs run-many, every test project contributes a report (freshly run or
+    # restored from the Nx cache) and this is a whole-workspace upload in practice.
+    # `partial: true` + the nx base SHA stay as defence in depth for the run where
+    # that is not true -- a suite that crashes before writing its report -- so the
+    # server carries those files forward from the base when the git blob is
+    # unchanged (docs/coverage_carryforward_PRD.md) instead of reading the hole as
+    # a collapse.
     # `disable-search` because a glob that matches nothing must be a no-op, not
     # an auto-detected upload of stray unparsable reports. No hashFiles gate:
-    # a run where nx affected tested nothing is exactly the run that must still
+    # a run that produced no report at all is exactly the run that must still
     # upload (its file list is what lets the server carry the whole commit
     # forward), and the action treats zero reports + partial as legitimate.
     # `carry-forward` is the test step's outcome: a crashed suite produces no
