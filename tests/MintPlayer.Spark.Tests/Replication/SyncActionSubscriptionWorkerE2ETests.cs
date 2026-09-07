@@ -281,8 +281,20 @@ public class SyncActionSubscriptionWorkerE2ETests : SparkTestDriver
 
             using var session = Store.OpenAsyncSession();
             var doc = await session.LoadAsync<SparkSyncAction>(id);
+
+            // What actually gates redelivery: the queryable field, plus the WakeUp boolean that
+            // SyncActionRetrySweeper flips once the time passes. This used to assert that
+            // RetryNumerator wrote @metadata.@refresh — a write that was inert, because nothing in
+            // this repository ever sent ConfigureRefreshOperation, so the server never swept those
+            // documents. The test was pinning a mechanism that did nothing, next to a doc comment
+            // that said it could not work.
+            doc.NextAttemptAtUtc.Should().HaveValue("the schedule must be persisted on a queryable field");
+            doc.NextAttemptAtUtc!.Value.Should().BeAfter(DateTime.UtcNow.AddSeconds(-5));
+            doc.WakeUp.Should().BeFalse("the sweeper sets this only once NextAttemptAtUtc has passed");
+
             var metadata = session.Advanced.GetMetadataFor(doc);
-            metadata.ContainsKey("@refresh").Should().BeTrue("RetryNumerator still writes @refresh for Raven's Refresh feature");
+            metadata.ContainsKey("@refresh").Should().BeFalse(
+                "the inert @refresh writes were removed; redelivery runs through the sweeper's boolean gate");
         }
         finally
         {

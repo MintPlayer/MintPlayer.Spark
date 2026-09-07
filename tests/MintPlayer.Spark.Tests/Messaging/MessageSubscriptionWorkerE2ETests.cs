@@ -147,16 +147,25 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
             timeout ?? PollTimeout,
             TimeSpan.FromMilliseconds(100));
 
-    private MessageSubscriptionWorker NewWorker(
-        string queueName,
-        IServiceProvider serviceProvider,
-        SparkMessagingOptions? options = null)
+    /// <summary>
+    /// Builds a worker whose options come from <paramref name="serviceProvider"/> — the single
+    /// source, deliberately.
+    /// <para>
+    /// This used to accept its own <c>SparkMessagingOptions</c>, which became a trap once the
+    /// per-message contract moved into <see cref="MessageProcessor"/>: the processor resolves
+    /// options from DI, so a test that configured a backoff schedule here got the *default*
+    /// schedule applied to its retries while believing otherwise. In production both come from the
+    /// same container and cannot disagree; in a test they could, silently. Tests that need custom
+    /// options pass them to <c>ProviderFor</c> instead.
+    /// </para>
+    /// </summary>
+    private MessageSubscriptionWorker NewWorker(string queueName, IServiceProvider serviceProvider)
     {
         return new MessageSubscriptionWorker(
             queueName,
             Store,
             serviceProvider,
-            Options.Create(options ?? new SparkMessagingOptions { MaxAttempts = 5 }),
+            serviceProvider.GetRequiredService<IOptions<SparkMessagingOptions>>(),
             NullLoggerFactory.Instance);
     }
 
@@ -219,12 +228,13 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
         return services.BuildServiceProvider();
     }
 
-    private IServiceProvider ProviderForMulti<TMessage>(params IRecipient<TMessage>[] recipients)
+    private IServiceProvider ProviderForMulti<TMessage>(
+        SparkMessagingOptions? options, params IRecipient<TMessage>[] recipients)
     {
         var services = new ServiceCollection();
         foreach (var r in recipients)
             services.AddSingleton(r);
-        AddWorkerInfrastructure(services);
+        AddWorkerInfrastructure(services, options);
         return services.BuildServiceProvider();
     }
 
@@ -282,6 +292,17 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
             return new ServiceCollectionAccessor(inner);
         });
         services.AddSingleton<IMessageTypeAllowList, MessageTypeAllowList>();
+        // Everything the worker needs beyond its recipients. This test builds its provider inline
+        // rather than through the shared helper — because it deliberately makes the allow-list and
+        // the resolvable recipients disagree — so the rest has to be added explicitly. Without
+        // MessageProcessor the batch handler throws on resolution and the message simply stays
+        // Pending, which is a confusing way for this to fail.
+        services.AddSingleton<IDocumentStore>(Store);
+        services.AddSingleton(Options.Create(new SparkMessagingOptions { MaxAttempts = 5 }));
+        services.AddLogging();
+        services.AddScoped<MessageCheckpoint>();
+        services.AddScoped<IMessageCheckpoint>(sp2 => sp2.GetRequiredService<MessageCheckpoint>());
+        services.AddSingleton<MessageProcessor>();
         var sp = services.BuildServiceProvider();
 
         var id = await SeedAsync(new SuccessMessage("orders/empty"));
@@ -355,16 +376,18 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
     public async Task Retryable_handler_failure_within_MaxAttempts_leaves_handler_Failed_and_message_Failed_with_NextAttempt()
     {
         var recipient = new AlwaysFailsRecipient();
-        var sp = ProviderFor<FailMessage, AlwaysFailsRecipient>(recipient);
-
-        // MaxAttempts high so the first pickup stays in Failed (not DeadLettered)
-        var id = await SeedAsync(new FailMessage("orders/soft-fail"), maxAttempts: 5);
         var options = new SparkMessagingOptions
         {
             MaxAttempts = 5,
             BackoffDelays = [TimeSpan.FromMinutes(1)], // deterministic, but we don't wait for it
         };
-        var worker = NewWorker(typeof(FailMessage).FullName!, sp, options);
+        // The options go to the provider, because MessageProcessor — which computes the backoff —
+        // resolves them from DI.
+        var sp = ProviderFor<FailMessage, AlwaysFailsRecipient>(recipient, options);
+
+        // MaxAttempts high so the first pickup stays in Failed (not DeadLettered)
+        var id = await SeedAsync(new FailMessage("orders/soft-fail"), maxAttempts: 5);
+        var worker = NewWorker(typeof(FailMessage).FullName!, sp);
 
         await worker.StartAsync(CancellationToken.None);
         try
@@ -427,17 +450,17 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
         // NextAttemptAtUtc, but redelivery needs an active wake-up — the
         // subscription only re-evaluates a document when it is written.
         var recipient = new EventuallySucceedsRecipient();
-        var sp = ProviderFor<FailMessage, EventuallySucceedsRecipient>(recipient);
-
-        var id = await SeedAsync(new FailMessage("orders/transient"), maxAttempts: 5);
-
         var options = new SparkMessagingOptions
         {
             MaxAttempts = 5,
             BackoffDelays = [TimeSpan.FromSeconds(1)], // keep the test fast
             FallbackPollInterval = TimeSpan.FromSeconds(1),
         };
-        var worker = NewWorker(typeof(FailMessage).FullName!, sp, options);
+        var sp = ProviderFor<FailMessage, EventuallySucceedsRecipient>(recipient, options);
+
+        var id = await SeedAsync(new FailMessage("orders/transient"), maxAttempts: 5);
+
+        var worker = NewWorker(typeof(FailMessage).FullName!, sp);
         var sweeper = NewSweeper(options);
 
         await worker.StartAsync(CancellationToken.None);
@@ -498,17 +521,17 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
         // failed transiently.
         var completing = new MultiCountingSuccessRecipient();
         var eventually = new MultiEventuallySucceedsRecipient();
-        var sp = ProviderForMulti<RedeliveryMultiMessage>(completing, eventually);
-
-        var id = await SeedAsync(new RedeliveryMultiMessage("orders/multi-transient"));
-
         var options = new SparkMessagingOptions
         {
             MaxAttempts = 5,
             BackoffDelays = [TimeSpan.FromSeconds(1)],
             FallbackPollInterval = TimeSpan.FromSeconds(1),
         };
-        var worker = NewWorker(typeof(RedeliveryMultiMessage).FullName!, sp, options);
+        var sp = ProviderForMulti<RedeliveryMultiMessage>(options, completing, eventually);
+
+        var id = await SeedAsync(new RedeliveryMultiMessage("orders/multi-transient"));
+
+        var worker = NewWorker(typeof(RedeliveryMultiMessage).FullName!, sp);
         var sweeper = NewSweeper(options);
 
         await worker.StartAsync(CancellationToken.None);
@@ -576,7 +599,7 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
     {
         var a = new MultiA();
         var b = new MultiB();
-        var sp = ProviderForMulti<MultiHandlerMessage>(a, b);
+        var sp = ProviderForMulti<MultiHandlerMessage>(null, a, b);
 
         var id = await SeedAsync(new MultiHandlerMessage("orders/mixed"));
         var worker = NewWorker(typeof(MultiHandlerMessage).FullName!, sp);

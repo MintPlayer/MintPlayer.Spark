@@ -42,7 +42,11 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
     [Inject] private readonly IOptions<SparkMessagingOptions> optionsAccessor;
     [Inject] private readonly ILogger<MessageQueueRouter> logger;
 
-    private readonly ConcurrentDictionary<string, Lane> lanes = new(StringComparer.Ordinal);
+    // Lazy, not Lane, and the difference matters: ConcurrentDictionary.GetOrAdd may invoke its
+    // factory more than once under contention and discard the losers. The factory here *starts a
+    // pump task*, so a discarded lane would leak a task reading a channel nothing ever writes to.
+    // Lazy<T> with ExecutionAndPublication guarantees the pump is created exactly once per queue.
+    private readonly ConcurrentDictionary<string, Lazy<Lane>> lanes = new(StringComparer.Ordinal);
     private CancellationTokenSource? lifetime;
 
     private SparkMessagingOptions Options => optionsAccessor.Value;
@@ -60,7 +64,12 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
     /// </summary>
     public async ValueTask RouteAsync(string queueName, string messageId, CancellationToken cancellationToken)
     {
-        var lane = lanes.GetOrAdd(queueName, CreateLane);
+        var lane = lanes.GetOrAdd(
+            queueName,
+            static (name, self) => new Lazy<Lane>(
+                () => self.CreateLane(name), LazyThreadSafetyMode.ExecutionAndPublication),
+            this).Value;
+
         await lane.Channel.Writer.WriteAsync(messageId, cancellationToken);
     }
 
@@ -78,6 +87,9 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
         lane.PumpTask = PumpAsync(queueName, channel, lifetime?.Token ?? CancellationToken.None);
         return lane;
     }
+
+    /// <summary>Number of lanes whose pump has actually been started. For tests and diagnostics.</summary>
+    internal int StartedLaneCount => lanes.Values.Count(l => l.IsValueCreated);
 
     /// <summary>
     /// Drains one lane, strictly serially. One message in flight at a time is what makes a queue
@@ -170,15 +182,20 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
     /// </summary>
     public async Task DrainAsync(TimeSpan timeout)
     {
-        foreach (var lane in lanes.Values)
+        // Only lanes already created — never .Value on an unrealized Lazy, which would start a pump
+        // during shutdown.
+        var live = lanes.Values.Where(l => l.IsValueCreated).Select(l => l.Value).ToArray();
+
+        foreach (var lane in live)
             lane.Channel.Writer.TryComplete();
 
-        var pumps = lanes.Values.Select(l => l.PumpTask).Where(t => t is not null).Cast<Task>().ToArray();
+        var pumps = live.Select(l => l.PumpTask).OfType<Task>().ToArray();
         if (pumps.Length == 0)
             return;
 
-        var finished = await Task.WhenAny(Task.WhenAll(pumps), Task.Delay(timeout));
-        if (finished is not null && !pumps.All(p => p.IsCompleted))
+        await Task.WhenAny(Task.WhenAll(pumps), Task.Delay(timeout));
+
+        if (!pumps.All(p => p.IsCompleted))
         {
             logger.LogWarning(
                 "Message pumps did not drain within {Timeout}; remaining messages stay claimed and "

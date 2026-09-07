@@ -13,9 +13,10 @@ using Raven.Client.Documents;
 namespace MintPlayer.Spark.Tests.Messaging;
 
 /// <summary>
-/// The four properties the messaging subsystem is supposed to have and which <b>no test covered</b>
-/// before the single-subscription rework: per-queue FIFO, isolation between queues, recovery of a
-/// message abandoned mid-handler, and single-consumer exclusivity.
+/// Properties the messaging subsystem is supposed to have and which <b>no test covered</b> before
+/// the single-subscription rework: per-queue FIFO, isolation between queues, recovery of a message
+/// abandoned mid-handler, single-consumer exclusivity, and that a retry is scoped to the failing
+/// handler of the failing message rather than to its queue-mates.
 /// <para>
 /// Each asserts the positive — that the thing happens — never merely that it does not happen early.
 /// This repository has already shipped retry tests that asserted a negative and stayed green while
@@ -247,9 +248,149 @@ public class MessagingInvariantsTests : SparkTestDriver
         everySequence.Should().Equal([1, 2, 3]);
     }
 
+    // --- Invariant 5: a retry is scoped to one handler of one message ---------
+
+    // Both on the SAME queue on purpose. Sharing a queue is what `CoverageQueues` relies on —
+    // "several message types on one queue keep their own separate recipients" — and it is the
+    // riskier path, because one lane interleaves the two types through a single pump.
+    [MessageQueue("invariants-shared")]
+    public sealed class Message1 { public string? Id { get; set; } }
+
+    [MessageQueue("invariants-shared")]
+    public sealed class Message2 { public string? Id { get; set; } }
+
+    /// <summary>Fails its first invocation, succeeds thereafter.</summary>
+    public sealed class Recipient1A : IRecipient<Message1>
+    {
+        public int Calls { get; private set; }
+
+        public Task HandleAsync(Message1 message, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            if (Calls == 1)
+                throw new InvalidOperationException("transient boom in 1A");
+            return Task.CompletedTask;
+        }
+    }
+
+    public sealed class Recipient1B : IRecipient<Message1>
+    {
+        public int Calls { get; private set; }
+
+        public Task HandleAsync(Message1 message, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.CompletedTask;
+        }
+    }
+
+    public sealed class Recipient2A : IRecipient<Message2>
+    {
+        public int Calls { get; private set; }
+
+        public Task HandleAsync(Message2 message, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.CompletedTask;
+        }
+    }
+
+    public sealed class Recipient2B : IRecipient<Message2>
+    {
+        public int Calls { get; private set; }
+
+        public Task HandleAsync(Message2 message, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>
+    /// A retry must be scoped to <b>the failing handler of the failing message</b>, and to nothing
+    /// else. Two message types share one queue, each with two recipients, and exactly one recipient
+    /// fails once:
+    /// <list type="bullet">
+    /// <item><c>Recipient1A</c> fails on its first call, then succeeds — <b>2 calls</b></item>
+    /// <item><c>Recipient1B</c> completed on delivery 1, so the redelivery must skip it — <b>1 call</b></item>
+    /// <item><c>Recipient2A</c> and <c>Recipient2B</c> belong to a different message entirely and must
+    /// never be re-triggered by Message1's retry — <b>1 call each</b></item>
+    /// </list>
+    /// <para>
+    /// The existing <c>Redelivery_skips_already_completed_handlers</c> covers the sibling-handler half
+    /// for a single message type. This adds the dimension nothing covered: that a redelivery is
+    /// scoped per <i>document</i> too, so an unrelated message sharing the same queue and the same
+    /// in-process lane is untouched. It runs through the real feeder and pump rather than a
+    /// directly-constructed worker, so it also demonstrates that the single-subscription
+    /// architecture preserves per-handler semantics end to end.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_retry_re_invokes_only_the_failing_handler_of_the_failing_message()
+    {
+        var r1A = new Recipient1A();
+        var r1B = new Recipient1B();
+        var r2A = new Recipient2A();
+        var r2B = new Recipient2B();
+
+        var services = NewServices(o =>
+        {
+            o.BackoffDelays = [TimeSpan.FromSeconds(1)];
+            o.FallbackPollInterval = TimeSpan.FromSeconds(1);
+        });
+        services.AddSingleton<IRecipient<Message1>>(r1A);
+        services.AddSingleton<IRecipient<Message1>>(r1B);
+        services.AddSingleton<IRecipient<Message2>>(r2A);
+        services.AddSingleton<IRecipient<Message2>>(r2B);
+        await using var provider = services.BuildServiceProvider();
+
+        var bus = new MessageBus(Store, Options.Create(new SparkMessagingOptions { MaxAttempts = 5 }));
+        await bus.BroadcastAsync(new Message1 { Id = "m1" });
+        await bus.BroadcastAsync(new Message2 { Id = "m2" });
+
+        await using var host = await StartManagerAsync(provider);
+
+        // Wait for BOTH messages to reach Completed. Asserting the positive: the retry has to
+        // actually happen, not merely be scheduled.
+        await AsyncWait.UntilAsync(
+            () =>
+            {
+                using var session = Store.OpenSession();
+                var all = session.Query<SparkMessage>().ToList();
+                return all.Count == 2 && all.All(m => m.Status == EMessageStatus.Completed);
+            },
+            "both messages to complete, Message1 only after its handler's retry succeeds",
+            PollTimeout);
+
+        // Settle, so a stray extra invocation would be caught rather than raced past.
+        await Task.Delay(2000);
+
+        r1A.Calls.Should().Be(2, "it failed once and must be retried exactly once");
+        r1B.Calls.Should().Be(1, "it completed on the first delivery, so the redelivery must skip it");
+        r2A.Calls.Should().Be(1, "another message's retry must not re-trigger this one's handlers");
+        r2B.Calls.Should().Be(1, "another message's retry must not re-trigger this one's handlers");
+
+        using var verify = Store.OpenAsyncSession();
+        var messages = await verify.Query<SparkMessage>().ToListAsync();
+
+        var message1 = messages.Single(m => m.MessageType.Contains(nameof(Message1), StringComparison.Ordinal));
+        var message2 = messages.Single(m => m.MessageType.Contains(nameof(Message2), StringComparison.Ordinal));
+
+        message1.Handlers.Should().HaveCount(2);
+        message1.Handlers.Should().OnlyContain(h => h.Status == EHandlerStatus.Completed);
+        message1.Handlers.Sum(h => h.AttemptCount).Should().Be(1,
+            "exactly one handler failure was recorded, on 1A only");
+        message1.AttemptCount.Should().Be(2, "the message itself was picked up twice");
+
+        message2.Handlers.Should().HaveCount(2);
+        message2.Handlers.Should().OnlyContain(h => h.Status == EHandlerStatus.Completed);
+        message2.Handlers.Sum(h => h.AttemptCount).Should().Be(0, "nothing failed on Message2");
+        message2.AttemptCount.Should().Be(1, "Message2 was delivered once and never retried");
+    }
+
     // --- Harness --------------------------------------------------------------
 
-    private IServiceCollection NewServices()
+    private IServiceCollection NewServices(Action<SparkMessagingOptions>? configure = null)
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -259,6 +400,7 @@ public class MessagingInvariantsTests : SparkTestDriver
             o.FallbackPollInterval = TimeSpan.FromSeconds(1);
             o.ClaimTtl = TimeSpan.FromMinutes(2);
             o.ClaimRenewInterval = TimeSpan.FromSeconds(20);
+            configure?.Invoke(o);
         });
         return services;
     }
