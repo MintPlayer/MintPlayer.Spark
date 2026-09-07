@@ -2,9 +2,19 @@
 
 **Status:** implemented 2026-09-07, except the part of M12 recorded as open in the plan.
 Written 2026-09-06.
-**Lands in:** its own pull request, *after* PR #367 merges and deploys. The one-PR rule is held
+**Was to land in:** its own pull request, *after* PR #367 merges and deploys. The one-PR rule is held
 for related fixes; an outage fix already awaiting deploy is not held behind a framework redesign.
 Owner decision, 2026-09-06.
+
+**Actually landed in:** PR #367 itself — 23 commits on `fix/coverage-queue-licence-cap`. **This
+contradicts the decision above, and the consequence is the one the decision existed to prevent:** the
+subscription-cap fix for five dead production queues is now behind a framework redesign, and cannot
+deploy without it. Nothing here was branched off master as agreed.
+
+Remedying it means splitting the branch — the queue work is the commits up to and including
+`5b559be4`, and everything after is this redesign — so #367 can merge and deploy on its own while the
+redesign continues on a branch off master. Recorded rather than quietly reconciled, because the
+decision was explicit and the cost is a production fix sitting undeployed.
 **Backward compatibility:** explicitly waived by the owner. Breaking changes to the actions surface are in scope.
 
 ---
@@ -72,6 +82,17 @@ This is deliberate and documented in place: redaction compares a mapped attribut
 Row *security* is applied on three of the four — the enforcement is in better shape than the plumbing. What diverges is everything else, and the third row is reachable and unbounded while `/execute` clamps `take` for exactly that reason.
 
 ### Fail-open points
+
+*Findings as first written; the disposition column was added after the work.*
+
+| ID | Disposition |
+| --- | --- |
+| **F1** | **Refused, not counted.** "Count after filtering" is not implementable from one page — see the deviation in the plan. |
+| **F2** | **Fixed.** A composed type proceeds; a declared-but-unresolvable `clrType` now throws, matching every other path. |
+| **F3** | **Fixed**, and it found a real collision on its first run: seven `Person` classes and one `PersonActions` in the test assembly. |
+| **F4** | **Tightened where it matters**, not removed. A type reachable by a well-known group must declare a row policy; elsewhere the type-level grant is still the constraint. |
+| **F5** | **Closed by measurement.** `.In()` compiles and evaluates correctly in memory, including denying on an empty allow-list. The planned startup validation was deleted rather than deferred. |
+
 
 | ID | Finding | Location |
 |---|---|---|
@@ -299,6 +320,10 @@ Two consequences worth stating up front, because they are the ones that will bit
 ---
 
 ## Goals
+
+*All met except goal 4's compile-time half — see the M12 entry in the plan, where the interface that
+was supposed to deliver it was built, tested, and reverted for failing to.*
+
 
 1. **One read pipeline.** Every path that returns rows — list, sub-query, detail, streaming,
    custom-action selection — passes through one sealed enforcement stage. Enforcement must not be a

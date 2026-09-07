@@ -21,6 +21,13 @@
 | M12 | Reshape the actions surface | **PARTIAL — read the entry** |
 | M13 | Client inconsistencies | **Done**, and one finding withdrawn |
 
+### How to read the rest of this file
+
+The table above is the current state. **Everything below it is the plan as written before the work
+started**, kept because the reasoning is why each milestone exists and that reasoning is still what a
+reader needs — but it is in the imperative ("refuse…", "delete…") and describes intent, not outcome.
+Where the outcome differs, the table and the two sections that follow are authoritative.
+
 ### Deviations, and one withdrawn finding
 
 **F1 is a refusal, not an honest count.** The decision was "count after filtering". That is not
@@ -67,8 +74,9 @@ requests, so N+1 across N+1 requests is the correct number, not a defect.
 Implementation plan for [`query_pipeline_PRD.md`](query_pipeline_PRD.md), whose **Decisions** table is
 authoritative — this plan implements those answers and does not re-open them.
 
-**Lands in its own PR, after #367 merges and deploys.** #367 carries the dead-queue fix; it is not
-held behind a framework redesign. Related work: [`actions_and_coverage_plan.md`](actions_and_coverage_plan.md).
+**Was to land in its own PR, after #367 merges and deploys** — #367 carries the dead-queue fix and was
+not to be held behind a framework redesign. **It did not: all 23 commits are on #367's branch.** See
+the header of [`query_pipeline_PRD.md`](query_pipeline_PRD.md) for what that costs and how to undo it. Related work: [`actions_and_coverage_plan.md`](actions_and_coverage_plan.md).
 
 **Two rules that shape everything below.**
 
@@ -410,6 +418,19 @@ and production runs as `Production` with no override set. Three gaps:
 
 ## M12 — Reshape the actions surface
 
+> **Outcome: partial.** The dead `StreamItems`/`StreamItem` declarations are gone. The non-generic
+> `ISparkActions` was built, applied to all three composed classes, and **reverted** — its premise was
+> tested by deliberately breaking a composed class's `OnLoadAsync` signature, and it still compiled.
+> The members need default implementations (a query-only composed class has no `OnLoadAsync`), and a
+> default means a wrongly-shaped method is simply not an override. Meanwhile `DatabaseAccess`'s
+> duck-typed resolution already throws on a wrong shape naming the expected signature — so the
+> interface would have replaced a good diagnostic with silence while claiming to add checking.
+>
+> Doing it properly means splitting load and query into separate interfaces so neither needs a
+> default, or dispatching through the interface with the duck-typed throw as the fallback. The
+> renames are undone and still worth doing, as their own change. The plan below is unchanged.
+
+
 Decision 8. The shape falls out of signatures that are **already `T`-free** — `OnLoadAsync`,
 `OnQueryAsync`, `GetDefaultIncludes` and `RestrictToIds` mention no `T`, which is exactly why the
 composed duck-typed path can demand identical signatures today.
@@ -451,7 +472,29 @@ everything before it is behaviour, this is shape.
 
 ---
 
-## Verification
+## Verification — what was actually run
+
+| | Result |
+| --- | --- |
+| Framework suite | 1971 / 1971 |
+| SourceGenerators suite | 243 / 243 |
+| `ng-spark` | pass |
+| Solution build | clean |
+| `--spark-verify-model`, all five apps | in sync |
+| SPARK011-014 against all five apps | no findings |
+
+**And one thing this list did not cover, which CI caught.** The WebhooksDemo Angular app failed to
+compile: the M5 migration off the deleted PO-list endpoint used `QueryResultItem` without importing
+it, which collapsed the union across the two `Promise.all` branches and made a row callback
+implicitly `any` — two errors from one omission.
+
+The demo apps are out of scope for *testing*, and that was wrongly carried over to *compiling*. Every
+other client change in this work was inside `ng-spark`, which the suite covers; this was the single
+edit that fell in the gap. **The rule the next person needs: an app you edited has to be built, even
+when its tests are out of scope.** A second reported failure in the same run —
+`@mintplayer/coverage-upload-action` — was collateral, killed by `--nx-bail`, and builds clean alone.
+
+### The original checklist
 
 - Full framework suite, `CodeCoverage.Tests`, `ng-spark` — batched at the end, per repository policy.
 - Both demo apps with sub-queries render a parent detail page with populated cards.
@@ -461,7 +504,12 @@ everything before it is behaviour, this is shape.
 - **Every startup refusal and analyzer diagnostic is asserted by a test, message text included.** A
   refusal whose message does not name the fix is a worse defect than the one it replaces.
 
-## Sequencing
+## Sequencing — as planned
+
+Kept as written. The actual order followed it, except that M13 landed before M12 so the largest
+reshape came last.
+
+### The original graph
 
 ```
 S1  S2                                  (parallel, cheap)

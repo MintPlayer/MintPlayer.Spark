@@ -47,8 +47,12 @@ not a split.
 ## Related work
 
 The read-pipeline redesign that grew out of the `OnQueryAsync` work lives in
-[query_pipeline_plan.md](query_pipeline_plan.md). Same PR; its M0 (tests before refactoring) also
-closes the breadcrumb gap recorded below under the facets pass.
+[query_pipeline_plan.md](query_pipeline_plan.md). Its M0 (tests before refactoring) also closes the
+breadcrumb gap recorded below under the facets pass.
+
+⚠️ Both are currently on **this** branch, which was not the plan: the redesign was to land separately
+so this outage fix could deploy first. See the header of
+[query_pipeline_PRD.md](query_pipeline_PRD.md).
 
 ---
 
