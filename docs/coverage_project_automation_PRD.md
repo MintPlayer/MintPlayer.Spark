@@ -569,8 +569,8 @@ Still required:
 |---|---|---|
 | **OD1** | Board freshness: nightly + manual resync only, or reconcile-on-view? | Nightly + resync (D1 objection 2). Revisit only if it actually bites. |
 | **OD2** | Does the boards ProgramUnit list boards directly, or hang off the existing Account page as a sub-query beside `account-repositories`? | Both: a top-level unit for the flat list, and the sub-query on Account, which is where users already are. |
-| **OD3** | Promote `TargetColumnOptionId` to a lookup over the board's cached `Columns`? | Yes — otherwise the rule editor is a free-text box for an opaque option id. |
-| **OD4** | `editMode: "inline"` for the rules sub-table? | Yes, matching the old feel; it is a one-word model change. |
+| **OD3** | Promote `TargetColumnOptionId` to a lookup over the board's cached `Columns`? | **CLOSED — no, not expressible.** Spark has two lookup shapes and neither is scoped to the parent document. `TransientLookupReference<TKey>` is a *static* C#-declared set (right for the 18 events, impossible for user-created columns). `DynamicLookupReference<TValue>` is persisted and runtime-editable but is **one global set per lookup name** — a single `LookupReferences/{Name}` document with one `Values` list — so it would offer every board's columns on every other board. Correctness is enforced in the recipient instead: it checks the id against the board's cached columns before calling GitHub and reports a vanished column on the rule. A per-row dropdown would need an attribute renderer. |
+| **OD4** | `editMode: "inline"` for the rules sub-table? | **CLOSED — yes**, applied. Also retires spike S2: `HR/Person.json` already ships `editMode: "inline"` on an `AsDetail` array, so the mechanism is proven in-tree and needed no spike. How it *looks* on this particular form is M13 browser work, not a mechanism question. |
 
 ---
 

@@ -42,6 +42,24 @@ public class EventColumnMapping
     /// storing the name would leave every rule on a board broken the moment someone renamed a
     /// column, and broken silently, because the move would simply match nothing.
     /// </para>
+    /// <para>
+    /// <b>Why this is a plain string and not a lookup, when <see cref="EventType"/> is a lookup.</b>
+    /// Spark has two lookup shapes and neither fits a per-board value:
+    /// <list type="bullet">
+    /// <item><see cref="TransientLookupReference{TKey}"/> is a <em>static</em> set declared in C# and
+    /// fixed at compile time — right for the eighteen webhook events, impossible for columns that a
+    /// user creates on GitHub.</item>
+    /// <item><see cref="DynamicLookupReference{TValue}"/> is persisted and editable at runtime, but
+    /// it is <em>one global set per lookup name</em>: a single <c>LookupReferences/{Name}</c>
+    /// document with one <c>Values</c> list. Columns are per <em>board</em> — one board has
+    /// Backlog/In&#160;Progress/Done, another has Triage/Doing/Shipped — so a dynamic lookup would
+    /// offer every board's columns on every other board.</item>
+    /// </list>
+    /// What is needed is an option source scoped to the <em>parent document</em>, which the model
+    /// format does not express. So the value stays a string and correctness is enforced where it
+    /// can be: the recipient checks the id against the board's cached columns before calling
+    /// GitHub, and reports a vanished column on the rule itself. Closing OD3 as "no".
+    /// </para>
     /// </summary>
     public string TargetColumnOptionId { get; set; } = string.Empty;
 
