@@ -23,7 +23,9 @@
           "nl": "Merk"
         },
         "description": {
-          "en": "Manufacturer brand of the vehicle, chosen from the list of known car brands."
+          "en": "Manufacturer brand of the vehicle, chosen from the list of known car brands.",
+          "fr": "Marque du constructeur du véhicule, choisie dans la liste des marques automobiles connues.",
+          "nl": "Merk van de fabrikant van het voertuig, gekozen uit de lijst met bekende automerken."
         },
         "dataType": "string",
         "isRequired": false,
@@ -44,7 +46,9 @@
           "nl": "Kleur"
         },
         "description": {
-          "en": "Exterior paint colour of the vehicle."
+          "en": "Exterior paint colour of the vehicle.",
+          "fr": "Couleur de la peinture extérieure du véhicule.",
+          "nl": "Kleur van de buitenlak van het voertuig."
         },
         "dataType": "color",
         "isRequired": false,
@@ -65,7 +69,9 @@
           "nl": "Aangemaakt door"
         },
         "description": {
-          "en": "User id of the account that created the record. Set on create by CarActions; used by the row-level auth hook to restrict non-admin callers to their own cars. Demo field: wouldn't necessarily live on the entity in a production app (could be a metadata field), but keeping it on the entity is the simplest illustration."
+          "en": "User id of the account that created the record. Set on create by CarActions; used by the row-level auth hook to restrict non-admin callers to their own cars. Demo field: wouldn't necessarily live on the entity in a production app (could be a metadata field), but keeping it on the entity is the simplest illustration.",
+          "fr": "Id utilisateur du compte qui a créé l'enregistrement. Défini à la création par CarActions ; utilisé par le hook d'autorisation au niveau des lignes pour limiter les appelants non administrateurs à leurs propres voitures. Champ de démonstration : il ne résiderait pas nécessairement sur l'entité dans une application de production (ce pourrait être un champ de métadonnées), mais le conserver sur l'entité est l'illustration la plus simple.",
+          "nl": "Gebruikers-id van het account dat het record heeft aangemaakt. Bij aanmaken gezet door CarActions; gebruikt door de row-level auth-hook om niet-beheerders tot hun eigen wagens te beperken. Demoveld: in een productieapp zou het niet noodzakelijk op de entiteit leven (het kon een metadataveld zijn), maar het op de entiteit houden is de eenvoudigste illustratie."
         },
         "dataType": "string",
         "isRequired": false,
@@ -86,7 +92,9 @@
           "nl": "Omschrijving"
         },
         "description": {
-          "en": "Free-text description maintained in multiple languages. Exercises the inverse-path TranslatedString per-language merge behavior — a partial update that carries only { en: \"…\" } must preserve the existing fr / nl entries rather than overwriting the whole value."
+          "en": "Free-text description maintained in multiple languages. Exercises the inverse-path TranslatedString per-language merge behavior — a partial update that carries only { en: \"…\" } must preserve the existing fr / nl entries rather than overwriting the whole value.",
+          "fr": "Description en texte libre gérée en plusieurs langues. Met à l'épreuve le comportement de fusion par langue de TranslatedString sur le chemin inverse — une mise à jour partielle ne portant que { en: « … » } doit préserver les entrées fr / nl existantes plutôt que d'écraser la valeur entière.",
+          "nl": "Vrije-tekstomschrijving die in meerdere talen wordt bijgehouden. Test het per-taal-samenvoeggedrag van TranslatedString op het inverse pad — een gedeeltelijke update die alleen { en: \"…\" } meedraagt moet de bestaande fr/nl-vermeldingen behouden in plaats van de hele waarde te overschrijven."
         },
         "dataType": "TranslatedString",
         "isRequired": false,
@@ -102,7 +110,9 @@
         "id": "5572b5f2-ee85-4c34-b3fc-f3b5f4a3a444",
         "name": "Description_en",
         "label": {
-          "en": "Description_en"
+          "en": "Description_en",
+          "fr": "Description_en",
+          "nl": "Description_en"
         },
         "dataType": "string",
         "isRequired": false,
@@ -118,7 +128,9 @@
         "id": "7a80393d-12c0-40d5-b1f0-c5ffa5e0fc97",
         "name": "Description_fr",
         "label": {
-          "en": "Description_fr"
+          "en": "Description_fr",
+          "fr": "Description_fr",
+          "nl": "Description_fr"
         },
         "dataType": "string",
         "isRequired": false,
@@ -134,7 +146,9 @@
         "id": "634d96ca-f1c6-4fd8-b1d0-1edb260f2dac",
         "name": "Description_nl",
         "label": {
-          "en": "Description_nl"
+          "en": "Description_nl",
+          "fr": "Description_nl",
+          "nl": "Description_nl"
         },
         "dataType": "string",
         "isRequired": false,
@@ -155,7 +169,9 @@
           "nl": "Interieurkleur"
         },
         "description": {
-          "en": "Colour of the vehicle's interior upholstery and trim."
+          "en": "Colour of the vehicle's interior upholstery and trim.",
+          "fr": "Couleur de la sellerie et des garnitures intérieures du véhicule.",
+          "nl": "Kleur van de bekleding en afwerking binnenin het voertuig."
         },
         "dataType": "color",
         "isRequired": false,
@@ -176,7 +192,9 @@
           "nl": "Nummerplaat"
         },
         "description": {
-          "en": "SearchAttribute makes this full-text searchable AND gives it a LicensePlateSort companion. Both, from one attribute: an analyzed field is tokenized, so ordering on it is meaningless, and the companion is the repair."
+          "en": "SearchAttribute makes this full-text searchable AND gives it a LicensePlateSort companion. Both, from one attribute: an analyzed field is tokenized, so ordering on it is meaningless, and the companion is the repair.",
+          "fr": "SearchAttribute rend ce champ recherchable en texte intégral ET lui adjoint un compagnon LicensePlateSort. Les deux, à partir d'un seul attribut : un champ analysé est tokenisé, si bien qu'y appliquer un tri n'a aucun sens, et le compagnon est le remède.",
+          "nl": "SearchAttribute maakt dit veld full-text doorzoekbaar ÉN geeft het een LicensePlateSort-begeleider. Beide, uit één attribuut: een geanalyseerd veld wordt getokeniseerd, waardoor erop sorteren betekenisloos is, en de begeleider is de reparatie."
         },
         "dataType": "string",
         "isRequired": true,
@@ -219,7 +237,9 @@
           "nl": "Beheerder"
         },
         "description": {
-          "en": "Id of the Person (replicated from HR) acting as fleet manager for this vehicle. Demo field — exercises the inverse-path reference round-trip end-to-end: client sets the id, round-trip re-fetch resolves the breadcrumb via the Person replication collection."
+          "en": "Id of the Person (replicated from HR) acting as fleet manager for this vehicle. Demo field — exercises the inverse-path reference round-trip end-to-end: client sets the id, round-trip re-fetch resolves the breadcrumb via the Person replication collection.",
+          "fr": "Id de la Person (répliquée depuis HR) faisant office de gestionnaire de flotte pour ce véhicule. Champ de démonstration — met à l'épreuve l'aller-retour des références sur le chemin inverse de bout en bout : le client définit l'id, et la relecture de l'aller-retour résout le fil d'Ariane via la collection de réplication Person.",
+          "nl": "Id van de Person (gerepliceerd vanuit HR) die als wagenparkbeheerder voor dit voertuig optreedt. Demoveld — test de referentie-round-trip op het inverse pad van begin tot eind: de client zet de id, en het ophalen bij de round-trip lost de breadcrumb op via de Person-replicatiecollectie."
         },
         "dataType": "Reference",
         "isRequired": false,
@@ -242,7 +262,9 @@
           "nl": "Model"
         },
         "description": {
-          "en": "Searchable, and the reason the companion exists: model names contain spaces."
+          "en": "Searchable, and the reason the companion exists: model names contain spaces.",
+          "fr": "Recherchable, et la raison d'être du champ compagnon : les noms de modèle contiennent des espaces.",
+          "nl": "Doorzoekbaar, en de reden dat het begeleidende veld bestaat: modelnamen bevatten spaties."
         },
         "dataType": "string",
         "isRequired": true,
@@ -271,10 +293,14 @@
         "id": "e4e94390-49dd-46aa-ac4a-386e29ca51b8",
         "name": "PoliceReportNumber",
         "label": {
-          "en": "Police Report Number"
+          "en": "Police Report Number",
+          "fr": "Numéro du procès-verbal de police",
+          "nl": "Nummer van het politieverslag"
         },
         "description": {
-          "en": "Police report reference, demanded once the vehicle is reported stolen.\nHidden and optional in the model; CarActions.OnRefreshAsync reveals it and makes it required when Status becomes Stolen. That is the whole point of the sample — the model declares the resting shape, the hook declares how the shape responds.\nIgnoreForIndexAttribute because no grid filters or sorts on it, matching Manager and CreatedBy."
+          "en": "Police report reference, demanded once the vehicle is reported stolen.\nHidden and optional in the model; CarActions.OnRefreshAsync reveals it and makes it required when Status becomes Stolen. That is the whole point of the sample — the model declares the resting shape, the hook declares how the shape responds.\nIgnoreForIndexAttribute because no grid filters or sorts on it, matching Manager and CreatedBy.",
+          "fr": "Référence du procès-verbal de police, exigée dès que le véhicule est déclaré volé.\nMasqué et facultatif dans le modèle ; CarActions.OnRefreshAsync le révèle et le rend obligatoire lorsque Status passe à Stolen. C'est tout l'intérêt de l'exemple — le modèle déclare la forme au repos, le hook déclare comment cette forme réagit.\nIgnoreForIndexAttribute parce qu'aucune grille ne filtre ni ne trie dessus, à l'instar de Manager et CreatedBy.",
+          "nl": "Referentie van het politieverslag, vereist zodra het voertuig als gestolen is opgegeven.\nVerborgen en optioneel in het model; CarActions.OnRefreshAsync maakt het zichtbaar en verplicht wanneer Status Stolen wordt. Dat is de hele bedoeling van het voorbeeld — het model verklaart de vorm in rust, de hook verklaart hoe die vorm reageert.\nIgnoreForIndexAttribute omdat geen enkel grid erop filtert of sorteert, net als bij Manager en CreatedBy."
         },
         "dataType": "string",
         "isRequired": false,
@@ -295,7 +321,9 @@
           "nl": "Promotievideo"
         },
         "description": {
-          "en": "Link to a promotional video of the vehicle; hidden while the vehicle is reported stolen."
+          "en": "Link to a promotional video of the vehicle; hidden while the vehicle is reported stolen.",
+          "fr": "Lien vers une vidéo promotionnelle du véhicule ; masqué tant que le véhicule est déclaré volé.",
+          "nl": "Link naar een promotievideo van het voertuig; verborgen zolang het voertuig als gestolen is opgegeven."
         },
         "dataType": "string",
         "isRequired": false,
@@ -321,7 +349,9 @@
           "nl": "Status"
         },
         "description": {
-          "en": "Current fleet status of the vehicle: InUse, OnParking, InMaintenance or Stolen."
+          "en": "Current fleet status of the vehicle: InUse, OnParking, InMaintenance or Stolen.",
+          "fr": "Statut actuel du véhicule dans la flotte : InUse, OnParking, InMaintenance ou Stolen.",
+          "nl": "Huidige wagenparkstatus van het voertuig: InUse, OnParking, InMaintenance of Stolen."
         },
         "dataType": "string",
         "isRequired": false,
@@ -343,7 +373,9 @@
           "nl": "Jaar"
         },
         "description": {
-          "en": "Model year of the vehicle, as stated on its registration."
+          "en": "Model year of the vehicle, as stated on its registration.",
+          "fr": "Millésime du véhicule, tel qu'indiqué sur son certificat d'immatriculation.",
+          "nl": "Modeljaar van het voertuig, zoals vermeld op het inschrijvingsbewijs."
         },
         "dataType": "number",
         "isRequired": true,

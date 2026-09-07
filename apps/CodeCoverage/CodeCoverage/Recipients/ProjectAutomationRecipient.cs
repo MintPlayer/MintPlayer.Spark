@@ -149,20 +149,20 @@ public partial class ProjectAutomationRecipient : IRecipient<ProjectAutomationMe
             EWebhookEventType.IssueCommentCreated
                 => await MoveIssueAsync(board, root, "issue", owner, repo, rule, cancellationToken),
 
-            // Pull-request events act on the PR's own card.
+            // Pull-request events act on the PR's own card, and — when the rule says so — on the
+            // cards of the issues the PR closes. That second half used to belong to `Merged` alone,
+            // which made every other pull-request rule inert on a board that tracks issues rather
+            // than PRs: "ready for review" moved a PR card that was never there.
             EWebhookEventType.PullRequestOpened
                 or EWebhookEventType.PullRequestClosed
+                or EWebhookEventType.PullRequestMerged
                 or EWebhookEventType.PullRequestReadyForReview
                 or EWebhookEventType.PullRequestConvertedToDraft
                 or EWebhookEventType.PullRequestReviewRequested
                 => await MovePullRequestAsync(board, root, owner, repo, rule, cancellationToken),
 
-            // Merged additionally moves the cards of the issues the PR closes, which is the whole
-            // point of a "merged" rule: the work item people track is the issue, not the PR.
-            EWebhookEventType.PullRequestMerged
-                => await MoveMergedAsync(board, root, owner, repo, rule, cancellationToken),
-
-            // Review events act on the reviewed PR's card.
+            // Review events act on the reviewed PR's card, and on its linked issues on the same
+            // terms — the payload carries the same `pull_request` member.
             EWebhookEventType.PullRequestReviewApproved
                 or EWebhookEventType.PullRequestReviewChangesRequested
                 or EWebhookEventType.PullRequestReviewDismissed
@@ -214,31 +214,35 @@ public partial class ProjectAutomationRecipient : IRecipient<ProjectAutomationMe
         // otherwise. `check_run` already behaved this way; this is the site that did not, which made
         // "move the PR to In Review" quietly mean "and add every PR to the board".
         //
-        // Note this is *narrower* than the app being migrated from, which offered a per-rule
-        // `AutoAddToProject` covering both kinds. Making it type-aware rather than configurable
-        // answers the question the flag was really asking, and removes a setting whose wrong value
-        // silently filled the board.
-        return await cards.MovePullRequestAsync(board, owner, repo, number, rule.TargetColumnOptionId, addIfMissing: false, cancellationToken);
+        // The PR card is therefore usually absent, which is exactly why `MoveLinkedIssues` below
+        // defaults to true: on a board that tracks issues, the linked issue is the whole outcome of
+        // the rule, and this call is the half that does nothing.
+        var outcome = await cards.MovePullRequestAsync(board, owner, repo, number, rule.TargetColumnOptionId, addIfMissing: false, cancellationToken);
+
+        return await MoveLinkedIssuesAsync(board, owner, repo, number, rule, outcome, cancellationToken);
     }
 
-    private async Task<ECardOutcome> MoveMergedAsync(
-        GitHubProject board, JsonElement root, string owner, string repo,
-        EventColumnMapping rule, CancellationToken cancellationToken)
+    /// <summary>
+    /// Moves the cards of the issues the pull request closes, when the rule asks for it.
+    /// </summary>
+    /// <remarks>
+    /// The outcome reported for the rule stays the pull request's own, because that is the item the
+    /// event was about; a linked-issue move is a consequence, not the result. A linked issue that
+    /// is missing and not being recruited is skipped silently rather than failing the rule — the
+    /// PR referencing an issue nobody put on this board is normal, not an error.
+    /// </remarks>
+    private async Task<ECardOutcome> MoveLinkedIssuesAsync(
+        GitHubProject board, string owner, string repo, int number,
+        EventColumnMapping rule, ECardOutcome outcome, CancellationToken cancellationToken)
     {
-        var outcome = await MovePullRequestAsync(board, root, owner, repo, rule, cancellationToken);
+        if (!rule.MoveLinkedIssues) return outcome;
 
-        var number = ReadNumber(root, "pull_request");
-        if (number is null) return outcome;
-
-        var closing = await cards.GetClosingIssuesAsync(board.InstallationId, owner, repo, number.Value, cancellationToken);
+        var closing = await cards.GetClosingIssuesAsync(board.InstallationId, owner, repo, number, cancellationToken);
         foreach (var (issueRepo, issueNumber) in closing)
         {
-            // addIfMissing: false here, even though a direct issue event DOES add. The difference
-            // is who asked: an `IssuesOpened` rule is about that issue, whereas this issue is being
-            // touched only because a PR happened to reference it. Adding on that basis would let
-            // one merge pull arbitrary issues onto the board, including issues from repositories
-            // nobody configured. Moving one already tracked is the intent; recruiting it is not.
-            await cards.MoveIssueAsync(board, owner, issueRepo, issueNumber, rule.TargetColumnOptionId, addIfMissing: false, cancellationToken);
+            await cards.MoveIssueAsync(
+                board, owner, issueRepo, issueNumber, rule.TargetColumnOptionId,
+                addIfMissing: rule.AddLinkedIfMissing, cancellationToken);
         }
 
         return outcome;
@@ -269,6 +273,10 @@ public partial class ProjectAutomationRecipient : IRecipient<ProjectAutomationMe
 
             outcome = await cards.MovePullRequestAsync(
                 board, owner, repo, number, rule.TargetColumnOptionId, addIfMissing: false, cancellationToken);
+
+            // Same terms as a direct PR event: the check run is about the PR, and on a board that
+            // tracks issues the linked issue is what the rule is actually for.
+            outcome = await MoveLinkedIssuesAsync(board, owner, repo, number, rule, outcome, cancellationToken);
         }
 
         return outcome;

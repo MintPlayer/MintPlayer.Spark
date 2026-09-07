@@ -18,7 +18,9 @@
           "nl": "Avatar"
         },
         "description": {
-          "en": "URL of the account's GitHub avatar image, shown next to the login."
+          "en": "URL of the account's GitHub avatar image, shown next to the login.",
+          "fr": "URL de l'image d'avatar GitHub du compte, affichée à côté du login.",
+          "nl": "URL van de GitHub-avatarafbeelding van het account, getoond naast de login."
         },
         "dataType": "image",
         "isRequired": false,
@@ -33,10 +35,14 @@
         "id": "f9c18430-234a-4ca4-b21d-9fca03049bf7",
         "name": "GitHubId",
         "label": {
-          "en": "Git Hub Id"
+          "en": "Git Hub Id",
+          "fr": "Id GitHub",
+          "nl": "GitHub-id"
         },
         "description": {
-          "en": "GitHub's numeric id for this user or organization; stable even when the login is renamed."
+          "en": "GitHub's numeric id for this user or organization; stable even when the login is renamed.",
+          "fr": "Id numérique GitHub de cet utilisateur ou de cette organisation ; stable même lorsque le login est renommé.",
+          "nl": "GitHub's numerieke id voor deze gebruiker of organisatie; stabiel zelfs wanneer de login hernoemd wordt."
         },
         "dataType": "number",
         "isRequired": true,
@@ -51,10 +57,14 @@
         "id": "01dfdc3b-b185-4044-a15e-9fb7c2ce119b",
         "name": "InstallationId",
         "label": {
-          "en": "Installation Id"
+          "en": "Installation Id",
+          "fr": "Id d'installation",
+          "nl": "Installatie-id"
         },
         "description": {
-          "en": "GitHub App installation on this account, when the app is installed."
+          "en": "GitHub App installation on this account, when the app is installed.",
+          "fr": "Installation de l'application GitHub sur ce compte, lorsque l'application est installée.",
+          "nl": "Installatie van de GitHub App op dit account, wanneer de app geïnstalleerd is."
         },
         "dataType": "number",
         "isRequired": false,
@@ -74,7 +84,9 @@
           "nl": "Login"
         },
         "description": {
-          "en": "The GitHub login (user name or organization slug) of this account."
+          "en": "The GitHub login (user name or organization slug) of this account.",
+          "fr": "Le login GitHub (nom d'utilisateur ou slug d'organisation) de ce compte.",
+          "nl": "De GitHub-login (gebruikersnaam of organisatieslug) van dit account."
         },
         "dataType": "string",
         "isRequired": false,
@@ -94,7 +106,9 @@
           "nl": "Type"
         },
         "description": {
-          "en": "\"User\" or \"Organization\"."
+          "en": "\"User\" or \"Organization\".",
+          "fr": "« User » ou « Organization ».",
+          "nl": "\"User\" of \"Organization\"."
         },
         "dataType": "string",
         "isRequired": false,

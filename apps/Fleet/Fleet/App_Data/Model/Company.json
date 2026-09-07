@@ -21,7 +21,9 @@
           "nl": "Aantal werknemers"
         },
         "description": {
-          "en": "Number of employees the company has, as maintained in HR."
+          "en": "Number of employees the company has, as maintained in HR.",
+          "fr": "Nombre d'employés de l'entreprise, tel que géré dans HR.",
+          "nl": "Aantal werknemers van het bedrijf, zoals bijgehouden in HR."
         },
         "dataType": "number",
         "isRequired": true,
@@ -47,7 +49,9 @@
           "nl": "Naam"
         },
         "description": {
-          "en": "Legal or trading name of the company, replicated read-only from HR."
+          "en": "Legal or trading name of the company, replicated read-only from HR.",
+          "fr": "Raison sociale ou nom commercial de l'entreprise, répliqué en lecture seule depuis HR.",
+          "nl": "Juridische of handelsnaam van het bedrijf, alleen-lezen gerepliceerd vanuit HR."
         },
         "dataType": "string",
         "isRequired": true,
@@ -81,7 +85,9 @@
           "nl": "Website"
         },
         "description": {
-          "en": "Public website address of the company, replicated read-only from HR."
+          "en": "Public website address of the company, replicated read-only from HR.",
+          "fr": "Adresse du site web public de l'entreprise, répliquée en lecture seule depuis HR.",
+          "nl": "Adres van de publieke website van het bedrijf, alleen-lezen gerepliceerd vanuit HR."
         },
         "dataType": "string",
         "isRequired": false,

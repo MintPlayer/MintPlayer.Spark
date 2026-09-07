@@ -11,10 +11,14 @@
         "id": "d66f145a-f4a2-40d6-9fca-4a319c3c46bd",
         "name": "Type",
         "label": {
-          "en": "Type"
+          "en": "Type",
+          "fr": "Type",
+          "nl": "Type"
         },
         "description": {
-          "en": "Claim type added to issued tokens, e.g. tenant."
+          "en": "Claim type added to issued tokens, e.g. tenant.",
+          "fr": "Type de revendication ajouté aux jetons émis, p. ex. tenant.",
+          "nl": "Claimtype dat aan uitgegeven tokens wordt toegevoegd, bv. tenant."
         },
         "dataType": "string",
         "isRequired": false,
@@ -29,10 +33,14 @@
         "id": "b0f8e954-b69f-41d8-858d-d0e7e4170a29",
         "name": "Value",
         "label": {
-          "en": "Value"
+          "en": "Value",
+          "fr": "Valeur",
+          "nl": "Waarde"
         },
         "description": {
-          "en": "Value issued for the claim type."
+          "en": "Value issued for the claim type.",
+          "fr": "Valeur émise pour ce type de revendication.",
+          "nl": "Waarde die voor het claimtype uitgegeven wordt."
         },
         "dataType": "string",
         "isRequired": false,

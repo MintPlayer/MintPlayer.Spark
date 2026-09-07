@@ -21,7 +21,9 @@
           "nl": "Kleur"
         },
         "description": {
-          "en": "Exterior colour of the car, as maintained in the Fleet app."
+          "en": "Exterior colour of the car, as maintained in the Fleet app.",
+          "fr": "Couleur extérieure de la voiture, telle que gérée dans l'application Fleet.",
+          "nl": "Buitenkleur van de wagen, zoals bijgehouden in de Fleet-app."
         },
         "dataType": "color",
         "isRequired": false,
@@ -46,7 +48,9 @@
           "nl": "Nummerplaat"
         },
         "description": {
-          "en": "Registration plate of the car as maintained in the Fleet app."
+          "en": "Registration plate of the car as maintained in the Fleet app.",
+          "fr": "Plaque d'immatriculation de la voiture, telle que gérée dans l'application Fleet.",
+          "nl": "Nummerplaat van de wagen, zoals bijgehouden in de Fleet-app."
         },
         "dataType": "string",
         "isRequired": true,
@@ -89,7 +93,9 @@
           "nl": "Model"
         },
         "description": {
-          "en": "Make and model of the car as maintained in the Fleet app."
+          "en": "Make and model of the car as maintained in the Fleet app.",
+          "fr": "Marque et modèle de la voiture, tels que gérés dans l'application Fleet.",
+          "nl": "Merk en model van de wagen, zoals bijgehouden in de Fleet-app."
         },
         "dataType": "string",
         "isRequired": true,
@@ -123,7 +129,9 @@
           "nl": "Jaar"
         },
         "description": {
-          "en": "Year the car was built, as maintained in the Fleet app."
+          "en": "Year the car was built, as maintained in the Fleet app.",
+          "fr": "Année de construction de la voiture, telle que gérée dans l'application Fleet.",
+          "nl": "Bouwjaar van de wagen, zoals bijgehouden in de Fleet-app."
         },
         "dataType": "number",
         "isRequired": true,

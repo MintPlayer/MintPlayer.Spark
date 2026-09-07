@@ -23,7 +23,9 @@
           "nl": "Aantal werknemers"
         },
         "description": {
-          "en": "Approximate number of people employed by the company; leave empty if unknown."
+          "en": "Approximate number of people employed by the company; leave empty if unknown.",
+          "fr": "Nombre approximatif de personnes employées par l'entreprise ; laissez vide si inconnu.",
+          "nl": "Bij benadering het aantal mensen dat het bedrijf tewerkstelt; laat leeg indien onbekend."
         },
         "dataType": "number",
         "isRequired": false,
@@ -49,7 +51,9 @@
           "nl": "Bedrijfsnaam"
         },
         "description": {
-          "en": "Official name of the company as it should appear in lists and on people's records."
+          "en": "Official name of the company as it should appear in lists and on people's records.",
+          "fr": "Nom officiel de l'entreprise tel qu'il doit apparaître dans les listes et sur les fiches des personnes.",
+          "nl": "Officiële naam van het bedrijf zoals die in lijsten en op persoonsfiches moet verschijnen."
         },
         "dataType": "string",
         "isRequired": true,
@@ -83,7 +87,9 @@
           "nl": "Website"
         },
         "description": {
-          "en": "Public website address of the company, including https://."
+          "en": "Public website address of the company, including https://.",
+          "fr": "Adresse du site web public de l'entreprise, y compris https://.",
+          "nl": "Adres van de publieke website van het bedrijf, inclusief https://."
         },
         "dataType": "string",
         "isRequired": false,

@@ -11,10 +11,14 @@
         "id": "15c0b02c-61a5-486a-8d54-b8c4ddc9a66a",
         "name": "Audiences",
         "label": {
-          "en": "Audiences"
+          "en": "Audiences",
+          "fr": "Audiences",
+          "nl": "Audiences"
         },
         "description": {
-          "en": "Audience values stamped into access tokens carrying this scope, naming the APIs that accept them."
+          "en": "Audience values stamped into access tokens carrying this scope, naming the APIs that accept them.",
+          "fr": "Valeurs d'audience apposées sur les jetons d'accès portant cette portée, désignant les API qui les acceptent.",
+          "nl": "Audience-waarden die in toegangstokens met deze scope worden gezet en de API's benoemen die ze aanvaarden."
         },
         "dataType": "string",
         "isRequired": false,
@@ -29,10 +33,14 @@
         "id": "14398804-9777-4993-a506-1b515c7eb6db",
         "name": "ClaimTypes",
         "label": {
-          "en": "Claim Types"
+          "en": "Claim Types",
+          "fr": "Types de revendication",
+          "nl": "Claimtypes"
         },
         "description": {
-          "en": "User claim types included in the ID token when this scope is granted, e.g. email."
+          "en": "User claim types included in the ID token when this scope is granted, e.g. email.",
+          "fr": "Types de revendications utilisateur inclus dans le jeton d'identité lorsque cette portée est accordée, p. ex. email.",
+          "nl": "Gebruikersclaimtypes die in het ID-token worden opgenomen wanneer deze scope verleend wordt, bv. email."
         },
         "dataType": "string",
         "isRequired": false,
@@ -47,10 +55,14 @@
         "id": "23876b12-271b-4bdc-9137-e06580f71a39",
         "name": "Description",
         "label": {
-          "en": "Description"
+          "en": "Description",
+          "fr": "Description",
+          "nl": "Omschrijving"
         },
         "description": {
-          "en": "Explanation of what the scope grants access to, shown to users on the consent screen."
+          "en": "Explanation of what the scope grants access to, shown to users on the consent screen.",
+          "fr": "Explication de ce à quoi la portée donne accès, affichée aux utilisateurs sur l'écran de consentement.",
+          "nl": "Uitleg over waartoe de scope toegang geeft, getoond aan gebruikers op het toestemmingsscherm."
         },
         "dataType": "string",
         "isRequired": false,
@@ -65,10 +77,14 @@
         "id": "1264075b-08d9-41b2-ac2d-629a35d371c6",
         "name": "DisplayName",
         "label": {
-          "en": "Display Name"
+          "en": "Display Name",
+          "fr": "Nom d'affichage",
+          "nl": "Weergavenaam"
         },
         "description": {
-          "en": "Human-readable name of the scope, shown to users on the consent screen."
+          "en": "Human-readable name of the scope, shown to users on the consent screen.",
+          "fr": "Nom lisible de la portée, affiché aux utilisateurs sur l'écran de consentement.",
+          "nl": "Leesbare naam van de scope, getoond aan gebruikers op het toestemmingsscherm."
         },
         "dataType": "string",
         "isRequired": false,
@@ -83,10 +99,14 @@
         "id": "4acd3959-e06f-47b1-afcc-9db4e76f994b",
         "name": "Emphasize",
         "label": {
-          "en": "Emphasize"
+          "en": "Emphasize",
+          "fr": "Mettre en évidence",
+          "nl": "Benadrukken"
         },
         "description": {
-          "en": "Whether the consent screen highlights this scope as sensitive."
+          "en": "Whether the consent screen highlights this scope as sensitive.",
+          "fr": "Indique si l'écran de consentement met en évidence cette portée comme étant sensible.",
+          "nl": "Of het toestemmingsscherm deze scope als gevoelig benadrukt."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -101,10 +121,14 @@
         "id": "aa00c22e-f3f8-4b73-a4c1-a14c28f5fec5",
         "name": "Enabled",
         "label": {
-          "en": "Enabled"
+          "en": "Enabled",
+          "fr": "Activé",
+          "nl": "Ingeschakeld"
         },
         "description": {
-          "en": "Whether the scope can currently be requested; disable to withdraw it without deleting it."
+          "en": "Whether the scope can currently be requested; disable to withdraw it without deleting it.",
+          "fr": "Indique si la portée peut actuellement être demandée ; désactivez pour la retirer sans la supprimer.",
+          "nl": "Of de scope op dit moment aangevraagd kan worden; schakel uit om ze in te trekken zonder ze te verwijderen."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -119,10 +143,14 @@
         "id": "90a28e51-647e-453a-899b-b4b799e8c6de",
         "name": "Name",
         "label": {
-          "en": "Name"
+          "en": "Name",
+          "fr": "Nom",
+          "nl": "Naam"
         },
         "description": {
-          "en": "Scope name a client requests, e.g. openid or api.read; must be unique."
+          "en": "Scope name a client requests, e.g. openid or api.read; must be unique.",
+          "fr": "Nom de portée qu'un client demande, p. ex. openid ou api.read ; doit être unique.",
+          "nl": "Scopenaam die een client aanvraagt, bv. openid of api.read; moet uniek zijn."
         },
         "dataType": "string",
         "isRequired": false,
@@ -137,10 +165,14 @@
         "id": "989a037b-d4ee-4218-9128-641924aa9ac9",
         "name": "Required",
         "label": {
-          "en": "Required"
+          "en": "Required",
+          "fr": "Obligatoire",
+          "nl": "Verplicht"
         },
         "description": {
-          "en": "Whether the user must grant this scope and cannot untick it on the consent screen."
+          "en": "Whether the user must grant this scope and cannot untick it on the consent screen.",
+          "fr": "Indique si l'utilisateur doit accorder cette portée et ne peut pas la décocher sur l'écran de consentement.",
+          "nl": "Of de gebruiker deze scope moet verlenen en ze op het toestemmingsscherm niet kan uitvinken."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -155,10 +187,14 @@
         "id": "4c03d813-b0fa-4332-836b-19bfdd414fa1",
         "name": "ShowInDiscoveryDocument",
         "label": {
-          "en": "Show In Discovery Document"
+          "en": "Show In Discovery Document",
+          "fr": "Afficher dans le document de découverte",
+          "nl": "Tonen in het discovery-document"
         },
         "description": {
-          "en": "Whether the scope is listed publicly in the OpenID discovery document."
+          "en": "Whether the scope is listed publicly in the OpenID discovery document.",
+          "fr": "Indique si la portée est répertoriée publiquement dans le document de découverte OpenID.",
+          "nl": "Of de scope publiek vermeld staat in het OpenID-discovery-document."
         },
         "dataType": "boolean",
         "isRequired": true,

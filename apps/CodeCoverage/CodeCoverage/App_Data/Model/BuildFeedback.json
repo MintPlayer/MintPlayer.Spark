@@ -11,10 +11,14 @@
         "id": "d7a25227-bd0d-4297-a5c8-d9a1c4dc366f",
         "name": "Attempts",
         "label": {
-          "en": "Attempts"
+          "en": "Attempts",
+          "fr": "Tentatives",
+          "nl": "Pogingen"
         },
         "description": {
-          "en": "How many times publishing the check-runs to GitHub has been attempted for this build."
+          "en": "How many times publishing the check-runs to GitHub has been attempted for this build.",
+          "fr": "Nombre de tentatives de publication des check-runs vers GitHub pour ce build.",
+          "nl": "Hoe vaak er voor deze build geprobeerd is de check-runs naar GitHub te publiceren."
         },
         "dataType": "number",
         "isRequired": true,
@@ -29,10 +33,14 @@
         "id": "170757e0-878a-4d0e-86e1-53d1f4ab6767",
         "name": "Error",
         "label": {
-          "en": "Error"
+          "en": "Error",
+          "fr": "Erreur",
+          "nl": "Fout"
         },
         "description": {
-          "en": "Message of the last failed publish attempt; null when the last attempt succeeded."
+          "en": "Message of the last failed publish attempt; null when the last attempt succeeded.",
+          "fr": "Message de la dernière tentative de publication échouée ; null lorsque la dernière tentative a réussi.",
+          "nl": "Bericht van de laatste mislukte publicatiepoging; null wanneer de laatste poging geslaagd is."
         },
         "dataType": "string",
         "isRequired": false,
@@ -47,10 +55,14 @@
         "id": "005dcba3-c253-4306-a920-96f25d25b84a",
         "name": "NextAttemptAtUtc",
         "label": {
-          "en": "Next Attempt At Utc"
+          "en": "Next Attempt At Utc",
+          "fr": "Prochaine tentative le (UTC)",
+          "nl": "Volgende poging op (UTC)"
         },
         "description": {
-          "en": "When the sweep should next try to publish (UTC); null when no retry is scheduled."
+          "en": "When the sweep should next try to publish (UTC); null when no retry is scheduled.",
+          "fr": "Moment où le balayage doit réessayer de publier (UTC) ; null lorsqu'aucune nouvelle tentative n'est planifiée.",
+          "nl": "Wanneer de opruimronde de volgende keer moet proberen te publiceren (UTC); null wanneer er geen nieuwe poging gepland is."
         },
         "dataType": "datetime",
         "isRequired": false,
@@ -65,10 +77,14 @@
         "id": "80516de9-1358-4d0a-aa03-14cc896bb864",
         "name": "PatchCheckRunId",
         "label": {
-          "en": "Patch Check Run Id"
+          "en": "Patch Check Run Id",
+          "fr": "Id du check-run du patch",
+          "nl": "Id van de patch-check-run"
         },
         "description": {
-          "en": "GitHub id of the patch-coverage check-run already posted, so a re-finalize updates it instead of creating a duplicate."
+          "en": "GitHub id of the patch-coverage check-run already posted, so a re-finalize updates it instead of creating a duplicate.",
+          "fr": "Id GitHub du check-run de couverture du patch déjà publié, afin qu'une refinalisation le mette à jour au lieu d'en créer un doublon.",
+          "nl": "GitHub-id van de reeds geplaatste check-run voor patchdekking, zodat een herfinalisering ze bijwerkt in plaats van een duplicaat aan te maken."
         },
         "dataType": "number",
         "isRequired": false,
@@ -83,10 +99,14 @@
         "id": "295e0719-f882-4edd-a4d1-715f2ef3dc1c",
         "name": "ProjectCheckRunId",
         "label": {
-          "en": "Project Check Run Id"
+          "en": "Project Check Run Id",
+          "fr": "Id du check-run du projet",
+          "nl": "Id van de project-check-run"
         },
         "description": {
-          "en": "GitHub id of the project-coverage check-run already posted, so a re-finalize updates it instead of creating a duplicate."
+          "en": "GitHub id of the project-coverage check-run already posted, so a re-finalize updates it instead of creating a duplicate.",
+          "fr": "Id GitHub du check-run de couverture du projet déjà publié, afin qu'une refinalisation le mette à jour au lieu d'en créer un doublon.",
+          "nl": "GitHub-id van de reeds geplaatste check-run voor projectdekking, zodat een herfinalisering ze bijwerkt in plaats van een duplicaat aan te maken."
         },
         "dataType": "number",
         "isRequired": false,
@@ -101,10 +121,14 @@
         "id": "b1a3627c-66c8-4686-a206-f0a205089307",
         "name": "State",
         "label": {
-          "en": "State"
+          "en": "State",
+          "fr": "État",
+          "nl": "Staat"
         },
         "description": {
-          "en": "Pending | Posted | Retry | Unavailable | Failed."
+          "en": "Pending | Posted | Retry | Unavailable | Failed.",
+          "fr": "Pending | Posted | Retry | Unavailable | Failed.",
+          "nl": "Pending | Posted | Retry | Unavailable | Failed."
         },
         "dataType": "string",
         "isRequired": false,

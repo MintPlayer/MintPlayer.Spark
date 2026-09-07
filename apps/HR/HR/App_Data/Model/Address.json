@@ -21,7 +21,9 @@
           "nl": "Stad"
         },
         "description": {
-          "en": "Town or city the address is in."
+          "en": "Town or city the address is in.",
+          "fr": "Commune ou ville où se trouve l'adresse.",
+          "nl": "Gemeente of stad waar het adres ligt."
         },
         "dataType": "string",
         "isRequired": true,
@@ -55,7 +57,9 @@
           "nl": "Beschrijving"
         },
         "description": {
-          "en": "Optional label and notes for this address, such as Head office or delivery instructions."
+          "en": "Optional label and notes for this address, such as Head office or delivery instructions.",
+          "fr": "Libellé et notes facultatifs pour cette adresse, comme Siège social ou des instructions de livraison.",
+          "nl": "Optioneel label en notities voor dit adres, zoals Hoofdkantoor of leveringsinstructies."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -76,7 +80,9 @@
           "nl": "Postcode"
         },
         "description": {
-          "en": "Postal code as the carrier prints it, e.g. 9000 for Ghent."
+          "en": "Postal code as the carrier prints it, e.g. 9000 for Ghent.",
+          "fr": "Code postal tel que le transporteur l'imprime, p. ex. 9000 pour Gand.",
+          "nl": "Postcode zoals de vervoerder ze afdrukt, bv. 9000 voor Gent."
         },
         "dataType": "string",
         "isRequired": true,
@@ -110,7 +116,9 @@
           "nl": "Straat"
         },
         "description": {
-          "en": "Street name and house number, e.g. Korenmarkt 12."
+          "en": "Street name and house number, e.g. Korenmarkt 12.",
+          "fr": "Nom de rue et numéro de maison, p. ex. Korenmarkt 12.",
+          "nl": "Straatnaam en huisnummer, bv. Korenmarkt 12."
         },
         "dataType": "string",
         "isRequired": true,

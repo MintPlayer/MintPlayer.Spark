@@ -30,7 +30,9 @@
       "nl": "Lezers"
     },
     "b0000002-0000-0000-0000-000000000001": {
-      "en": "Module:Fleet"
+      "en": "Module:Fleet",
+      "fr": "Module:Fleet",
+      "nl": "Module:Fleet"
     }
   },
   "rights": [

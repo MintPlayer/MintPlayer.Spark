@@ -21,7 +21,9 @@
           "nl": "Notities"
         },
         "description": {
-          "en": "Free-text remarks about the address, such as access or delivery instructions."
+          "en": "Free-text remarks about the address, such as access or delivery instructions.",
+          "fr": "Remarques en texte libre sur l'adresse, comme des instructions d'accès ou de livraison.",
+          "nl": "Vrije-tekstopmerkingen over het adres, zoals toegangs- of leveringsinstructies."
         },
         "dataType": "string",
         "isRequired": false,
@@ -41,7 +43,9 @@
           "nl": "Titel"
         },
         "description": {
-          "en": "Short label for the address, e.g. Home or Head office."
+          "en": "Short label for the address, e.g. Home or Head office.",
+          "fr": "Libellé court pour l'adresse, p. ex. Domicile ou Siège social.",
+          "nl": "Kort label voor het adres, bv. Thuis of Hoofdkantoor."
         },
         "dataType": "string",
         "isRequired": false,

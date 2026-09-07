@@ -30,10 +30,14 @@
       "nl": "Lezers"
     },
     "b0000001-0000-0000-0000-000000000001": {
-      "en": "Module:HR"
+      "en": "Module:HR",
+      "fr": "Module:HR",
+      "nl": "Module:HR"
     },
     "b0000002-0000-0000-0000-000000000001": {
-      "en": "Machine:FleetApi"
+      "en": "Machine:FleetApi",
+      "fr": "Machine:FleetApi",
+      "nl": "Machine:FleetApi"
     }
   },
   "rights": [
