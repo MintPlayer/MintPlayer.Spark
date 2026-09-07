@@ -454,6 +454,85 @@ public class SparkExtensionsTests
         VerifyExitCode(scratch).Should().Be(0);
     }
 
+    /// <summary>The id and alias of the one entity type a synchronized context produces.</summary>
+    private static (Guid Id, string Alias) TheOnlyEntityType(string contentRoot)
+    {
+        foreach (var file in Directory.GetFiles(Path.Combine(contentRoot, "App_Data", "Model"), "*.json"))
+        {
+            var parsed = System.Text.Json.JsonSerializer.Deserialize<MintPlayer.Spark.Abstractions.EntityTypeFile>(
+                File.ReadAllText(file),
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            if (parsed?.PersistentObject is { } type)
+                return (type.Id, type.Alias ?? type.Name.ToLowerInvariant());
+        }
+
+        throw new InvalidOperationException("The synchronized model produced no entity type to point a unit at.");
+    }
+
+    private static void PlantPersistentObjectUnit(string contentRoot, string unitAlias, Guid typeId)
+    {
+        File.WriteAllText(
+            Path.Combine(contentRoot, "App_Data", "programUnits.json"),
+            $$"""
+            {
+              "programUnitGroups": [
+                {
+                  "id": "44444444-4444-4444-4444-444444444444",
+                  "name": { "en": "Group" },
+                  "order": 1,
+                  "programUnits": [
+                    {
+                      "id": "55555555-5555-5555-5555-555555555555",
+                      "name": { "en": "The page" },
+                      "type": "persistentObject",
+                      "persistentObjectId": "{{typeId}}",
+                      "alias": "{{unitAlias}}",
+                      "objectId": "main",
+                      "order": 1
+                    }
+                  ]
+                }
+              ]
+            }
+            """);
+    }
+
+    /// <summary>
+    /// The issue only described query units, but a persistentObject unit routes by alias too —
+    /// <c>/po/{alias}/{objectId}</c>, against an entity alias that is <b>also</b> derived when
+    /// undeclared (<c>Name.ToLowerInvariant()</c>). Same trap, same indistinguishable 404.
+    /// </summary>
+    [Fact]
+    public void A_persistent_object_unit_whose_alias_matches_its_type_verifies()
+    {
+        using var scratch = new ScratchContentRoot();
+        var type = TheOnlyEntityType(Synchronized(scratch));
+        PlantPersistentObjectUnit(scratch.Path, type.Alias, type.Id);
+        Synchronized(scratch);
+
+        VerifyExitCode(scratch).Should().Be(0,
+            "the unit routes to the alias its own entity type resolves to");
+    }
+
+    [Fact]
+    public void A_persistent_object_unit_whose_alias_resolves_to_nothing_exits_3()
+    {
+        using var scratch = new ScratchContentRoot();
+        var type = TheOnlyEntityType(Synchronized(scratch));
+        PlantPersistentObjectUnit(scratch.Path, type.Alias + "-typo", type.Id);
+        Synchronized(scratch);
+
+        var (exitCode, reported) = Verify(scratch);
+
+        exitCode.Should().Be(3);
+        reported.Should().Contain("persistent object",
+            "the message must name what kind of target failed to resolve, not just that one did");
+        reported.Should().Contain("/spark/po/",
+            "naming the route is what tells the reader the alias -- not the id -- is the identifier " +
+            "that reaches the server");
+    }
+
     /// <summary>
     /// A `url` unit has no server-side target, so its alias resolves to nothing by definition.
     /// </summary>

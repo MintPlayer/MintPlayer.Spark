@@ -1,6 +1,6 @@
 # Issue #374 — verify that a program unit's alias resolves
 
-**Status:** PRD, not implemented
+**Status:** Implemented — see [issue_374_plan.md](issue_374_plan.md) for what landed
 **Issue:** [#374](https://github.com/MintPlayer/MintPlayer.Spark/issues/374)
 
 ## The problem
@@ -109,7 +109,8 @@ shipped an alias collision.
 ## Risks
 
 - **R1 — an existing app fails its next CI run.** That is the check working; the alternative is a
-  page that 404s in production. Mitigated by the message naming the fix. Verified against all five
-  apps in the workspace before landing.
+  page that 404s in production. Mitigated by the message naming the fix. Verified against all four
+  apps in the workspace before landing — `apps/WebhooksDemo` was deleted in #369, and this PRD was
+  first drafted with the old count.
 - **R2 — reading `programUnits.json` twice** (here and in `ProgramUnitsLoader`) could drift. Low: the
   shape is a DTO in Abstractions and both deserialize the same type.

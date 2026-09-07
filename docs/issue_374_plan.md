@@ -9,7 +9,7 @@
 |---|---|
 | **M0** establish the facts | **Done** — recorded in the PRD. Both unit kinds are affected; `persistentObject` was found while writing it, not from the issue |
 | **M1** the check | **Done** — `VerifyProgramUnitTargetsResolve`, covering query AND persistentObject units |
-| **M2** tests | **Done** — 6 facts. One asserts the MESSAGE, not just exit 3, because several checks and the hash all exit 3 |
+| **M2** tests | **Done** — 8 facts. Two assert the MESSAGE, not just exit 3, because several checks and the hash all exit 3, so "it failed" proves nothing about why. ⚠️ First landed with only 6, leaving **FR2 (persistentObject) implemented but untested** despite this plan's own table listing two cases for it; caught by auditing the FRs against the code rather than trusting this table |
 | **M3** verify against the apps | **Done** — CodeCoverage, DemoApp, Fleet, HR all exit 0; and the check was proven by removing GitHubProject.json's alias, which reproduced #374 and exited 3 |
 | **M4** docs | **Done** — `guide-aliases.md` gains the invariant beside the collision rule; also corrected a stale claim there that queries live in `App_Data/Queries/` |
 
@@ -68,14 +68,24 @@ that ships none, and one that reports malformed JSON would double-report the loa
 
 ## M3 — verify against the workspace
 
-Run `--spark-verify-model` for all five apps. The expectation from the PRD's table is that every one
+Run `--spark-verify-model` for all four apps — `apps/WebhooksDemo` was deleted in #369, and this
+plan was drafted with the old count. The expectation from the PRD's table is that every one
 passes today; if one does not, that is a real bug this check just found, and it gets fixed here
 rather than worked around.
 
 ## M4 — docs
 
-- The `docs/guide-program-units.md` section on aliases, if one exists, gains the invariant.
-- `libs/spark/MintPlayer.Spark/README.md` where the verify flags are listed.
+- `docs/guide-aliases.md` — the invariant, beside the existing one-query-per-URL rule. That guide
+  already explains derivation, which is the half nobody guesses, so it is the right home. Also
+  corrected a stale claim there that queries live in `App_Data/Queries/`; they are inline in
+  `Model/*.json`, and the line sat directly above the new section.
+- `docs/guide-program-units.md` — a pointer from the routing table, since that is where a reader
+  first meets `{alias ?? queryId}` and would otherwise conclude the id is what matters.
+- ~~`libs/spark/MintPlayer.Spark/README.md` where the verify flags are listed~~ — **there is no such
+  list.** Nothing in the repository enumerates what `--spark-verify-model` checks; each check is
+  documented in the guide for its own subject instead. A central list would be a fair improvement
+  and is deliberately not smuggled in here — it would go stale the moment a check was added without
+  touching it, which is precisely how this plan came to promise a section that does not exist.
 
 ## Deliberately not doing
 
