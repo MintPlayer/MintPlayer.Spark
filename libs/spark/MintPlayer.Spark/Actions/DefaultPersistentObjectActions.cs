@@ -541,23 +541,14 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// </summary>
     public virtual Task OnRefreshAsync(SparkRefreshArgs<T> args) => Task.CompletedTask;
 
-    /// <summary>
-    /// Override to stream a collection of entities via WebSocket.
-    /// Each yielded batch is diffed against the previous one; only changed attribute values are sent as patches.
-    /// </summary>
-    [NoInterfaceMember]
-    public virtual IAsyncEnumerable<IReadOnlyList<T>> StreamItems(
-        StreamingQueryArgs args, CancellationToken cancellationToken)
-        => throw new NotSupportedException(
-            $"Streaming method 'StreamItems' is not implemented on {GetType().Name}. Override it to enable streaming.");
-
-    /// <summary>
-    /// Override to stream a single entity via WebSocket.
-    /// Each yielded value is diffed against the previous one; only changed attribute values are sent as patches.
-    /// </summary>
-    [NoInterfaceMember]
-    public virtual IAsyncEnumerable<T> StreamItem(
-        StreamingQueryArgs args, CancellationToken cancellationToken)
-        => throw new NotSupportedException(
-            $"Streaming method 'StreamItem' is not implemented on {GetType().Name}. Override it to enable streaming.");
+    // StreamItems/StreamItem used to be declared here as virtuals that threw. They were never
+    // called by those names: StreamingQueryExecutor resolves the streaming method by the name in the
+    // query's model file, so the base declarations implied a fixed hook that does not exist and
+    // promised a NotSupportedException the executor never reaches — a missing streaming method is
+    // reported by the executor's own "not found" throw, which names the query and the class.
+    //
+    // The shape a streaming method must have is unchanged:
+    //     IAsyncEnumerable<IReadOnlyList<T>> <Name>(StreamingQueryArgs args, CancellationToken ct)
+    // or IAsyncEnumerable<T> for a single-item stream. Declare it with whatever name the query's
+    // source says; it does not override anything.
 }

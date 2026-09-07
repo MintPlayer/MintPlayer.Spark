@@ -12,7 +12,7 @@ public partial class StockActions : DefaultPersistentObjectActions<Stock>, ISpar
     public string RowSecurityRationale =>
         "Demo data, published in full on purpose — see PersonActions. Stock rows are static sample quantities.";
 
-    public override async IAsyncEnumerable<IReadOnlyList<Stock>> StreamItems(
+    public async IAsyncEnumerable<IReadOnlyList<Stock>> StreamItems(
         StreamingQueryArgs args,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {

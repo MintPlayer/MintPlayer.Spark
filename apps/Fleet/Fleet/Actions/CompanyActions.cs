@@ -16,7 +16,7 @@ public partial class CompanyActions : DefaultPersistentObjectActions<Company>, I
     // read-only copy from HR; this streams a small in-memory snapshot with periodic
     // employee-count drift so the live channel demonstrates incremental patches even
     // before HR replication has populated the collection.
-    public override async IAsyncEnumerable<IReadOnlyList<Company>> StreamItems(
+    public async IAsyncEnumerable<IReadOnlyList<Company>> StreamItems(
         StreamingQueryArgs args,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
