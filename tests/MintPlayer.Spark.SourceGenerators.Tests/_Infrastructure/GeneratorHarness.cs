@@ -76,16 +76,27 @@ internal static class GeneratorHarness
     /// <paramref name="sources"/>. Returns the diagnostics the analyzer emitted (filtered to
     /// rules declared by the analyzer — ignores generic compile errors from test fixtures).
     /// </summary>
+    /// <param name="additionalTexts">
+    /// Files the analyzer reads through <c>AnalyzerOptions.AdditionalFiles</c>. Needed by any
+    /// analyzer whose subject is configuration rather than code — <c>security.json</c> and the model
+    /// files reach the compiler this way, so an analyzer over them cannot be tested without them.
+    /// </param>
     public static async Task<IReadOnlyList<Diagnostic>> RunAnalyzerAsync(
         string analyzerTypeName,
         IEnumerable<string> sources,
-        IEnumerable<Type>? referenceTypes = null)
+        IEnumerable<Type>? referenceTypes = null,
+        IEnumerable<(string Path, string Text)>? additionalTexts = null)
     {
         var analyzer = InstantiateAnalyzer(analyzerTypeName);
         var compilation = BuildCompilation(sources, referenceTypes ?? Array.Empty<Type>());
 
+        var options = new AnalyzerOptions(
+            System.Collections.Immutable.ImmutableArray.CreateRange(
+                (additionalTexts ?? Array.Empty<(string, string)>())
+                    .Select(t => (AdditionalText)new InMemoryAdditionalText(t.Path, t.Text))));
+
         var withAnalyzer = compilation.WithAnalyzers(
-            System.Collections.Immutable.ImmutableArray.Create(analyzer));
+            System.Collections.Immutable.ImmutableArray.Create(analyzer), options);
         var diagnostics = await withAnalyzer.GetAnalyzerDiagnosticsAsync(default);
 
         var analyzerIds = analyzer.SupportedDiagnostics.Select(d => d.Id).ToHashSet();
