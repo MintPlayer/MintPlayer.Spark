@@ -38,7 +38,7 @@ GitHub Apps can be created under a **personal account** or an **organization acc
    |---|---|
    | **GitHub App name** | Any unique name (e.g., `MyWebhooksBot`). Must be globally unique across GitHub. |
    | **Homepage URL** | `https://github.com` (any valid URL) |
-   | **Callback URL** | Your user-authorization redirect URI(s). Add one per environment — GitHub requires exact matches including port. For the WebhooksDemo: `https://localhost:60493/signin-github` (local dev) and your production URL if applicable. You can add multiple URLs. |
+   | **Callback URL** | Your user-authorization redirect URI(s). Add one per environment — GitHub requires exact matches including port. For a local app: `https://localhost:<port>/signin-github` and your production URL if applicable. You can add multiple URLs. |
    | **Request user authorization (OAuth) during installation** | Check this box if users will sign in with GitHub. Without it, the app only handles webhooks and cannot issue user access tokens. |
    | **Expire user authorization tokens** | Leave unchecked for now — non-expiring user tokens avoid the need for refresh-token handling in your app. |
    | **Webhook URL** | Your production endpoint (e.g., `https://your-app.example.com/api/github/webhooks`) or a [smee.io](https://smee.io/) channel URL for local development |
@@ -554,125 +554,111 @@ This requires a **Client secret** generated on the GitHub App's settings page (u
 
 > **Note:** GitHub App user access tokens do **not** take OAuth scopes in the authorize URL — the token's permissions are derived from the app's installation permissions (set under "Permissions" on the app settings page). Calls to `options.Scope.Add(...)` are silently ignored.
 
-## WebhooksDemo: Project board automation
+## Project board automation
 
-The [`apps/WebhooksDemo`](../apps/WebhooksDemo) application demonstrates how to combine GitHub OAuth login with webhook-driven project board automation. Users log in with GitHub, select which GitHub Projects to automate, configure event-to-column mappings, and from that point on issues and pull requests are automatically moved on the project board.
+The [`apps/CodeCoverage`](../apps/CodeCoverage) application drives GitHub Projects V2 boards from
+webhook deliveries: an issue or pull-request event moves the corresponding card to a configured
+column. It replaces an earlier demo of the same idea, and the differences are deliberate rather
+than incidental — that app was single-tenant, so several of its defaults are unsafe once a server
+holds more than one person's installations.
 
 ### How it works
 
-1. **Login with GitHub** — The app uses Spark's `AddAuthentication<SparkUser>` with `AddGitHub(...)` to let users sign in via GitHub OAuth. This grants the app access to the user's GitHub Projects V2.
+1. **Boards are discovered, not enabled by hand.** The nightly reconciler lists every Projects V2
+   board each installation can see and writes a `GitHubProject` document per board. There is no
+   "enable this project" screen, and `New/GitHubProject` is deliberately not granted.
 
-2. **Enable a project** — The `/github-projects` page lists all GitHub Projects accessible to the installed GitHub App. Clicking "Enable" creates a `GitHubProject` entity in RavenDB and automatically syncs the board's status columns from the GitHub GraphQL API.
+2. **Automation is opt-in per board.** `AutomationEnabled` defaults to **false**, precisely because
+   discovery is automatic: a default of true would mean installing the app on an organization
+   silently started moving cards on every board it could see.
 
-3. **Configure event mappings** — On the project's detail page, users configure which webhook events move items to which columns. Each mapping has:
-   - **Webhook Event** — the trigger (e.g., "Issue opened", "PR ready for review", "PR merged")
-   - **Target Column** — which board column to move the item to (selected from the synced columns via a dropdown picker)
-   - **Auto Add To Project** — whether to add the issue/PR to the board if it's not already there
-   - **Move Linked Issues** — for PR events, also move the issues that the PR closes
+3. **Rules map an event to a column.** Each `EventColumnMapping` names one of eighteen events
+   (`WebhookEventType`) and one target column. Rules are edited inline on the board's page, and the
+   column is picked from the board's own cached columns.
 
-4. **Automatic moves** — When a webhook arrives, typed message handlers (`HandleIssuesEvent`, `HandlePullRequestEvent`) match the event against the configured mappings and call the GitHub GraphQL API to move (or add) items on the project board.
+4. **A delivery is routed, then acted on.** `ProjectAutomationRouter` drops anything unautomatable
+   or self-authored and re-publishes the rest onto its own queue; `ProjectAutomationRecipient`
+   resolves which rules match and calls the GraphQL API. Splitting them keeps board work on its own
+   FIFO lane, so a slow board cannot delay coverage feedback.
 
-### Example configuration
+### Two design points worth copying
 
-A typical `GitHubProject` document in RavenDB looks like this:
+**A rule stores the single-select option id, never the column name.** Names are renameable and not
+unique, so storing the name would break every rule on a board the moment someone renamed a column —
+and break it *silently*, because the move would simply match nothing. Storing the id means a rename
+is a non-event; only the cached label goes stale until the next sync.
 
-```json
-{
-  "Name": "My project",
-  "InstallationId": 12345678,
-  "NodeId": "PVT_kwXXXXXXXXXXXX",
-  "OwnerLogin": "MyOrganization",
-  "Number": 1,
-  "StatusFieldId": "PVTSSF_XXXXXXXXXXXXXXXX",
-  "Columns": [
-    { "OptionId": "f75ad846", "Name": "Todo" },
-    { "OptionId": "47fc9ee4", "Name": "In Progress" },
-    { "OptionId": "284b7563", "Name": "To Review" },
-    { "OptionId": "98236657", "Name": "Done" }
-  ],
-  "EventMappings": [
-    {
-      "WebhookEvent": "IssuesOpened",
-      "TargetColumnOptionId": "f75ad846",
-      "AutoAddToProject": true,
-      "MoveLinkedIssues": false
-    },
-    {
-      "WebhookEvent": "PullRequestReadyForReview",
-      "TargetColumnOptionId": "284b7563",
-      "AutoAddToProject": false,
-      "MoveLinkedIssues": true
-    },
-    {
-      "WebhookEvent": "PullRequestConvertedToDraft",
-      "TargetColumnOptionId": "f75ad846",
-      "AutoAddToProject": false,
-      "MoveLinkedIssues": true
-    },
-    {
-      "WebhookEvent": "PullRequestReviewChangesRequested",
-      "TargetColumnOptionId": "f75ad846",
-      "AutoAddToProject": false,
-      "MoveLinkedIssues": true
-    },
-    {
-      "WebhookEvent": "PullRequestMerged",
-      "TargetColumnOptionId": "98236657",
-      "AutoAddToProject": false,
-      "MoveLinkedIssues": true
-    },
-    {
-      "WebhookEvent": "PullRequestClosed",
-      "TargetColumnOptionId": "98236657",
-      "AutoAddToProject": false,
-      "MoveLinkedIssues": true
-    }
-  ]
-}
-```
+**The loop guard tests the App id, not "was this made by an App".** CodeCoverage creates check runs
+and posts pull-request comments, so it receives webhooks for its own writes; unguarded, publishing
+feedback moves a card and moving a card publishes feedback. But **every** check run on GitHub is
+created by an App or by Actions, so dropping all App-authored deliveries would make
+`CheckRunCompleted` permanently inert. The test compares `check_run.app.id` against this instance's
+own configured App id.
 
-This configuration:
-- Automatically adds new issues to the "Todo" column
-- Moves PRs to "To Review" when marked ready for review, and back to "Todo" when converted to draft or when changes are requested
-- Moves PRs (and their linked issues) to "Done" when merged or closed
-- Does **not** auto-add PRs to the board — only PRs already on the board are moved
+### Nothing tells you when a column changes
 
-### Syncing columns
-
-Board columns are cached on the `GitHubProject` entity when it's first enabled. If you add or rename columns on the GitHub project board, use the **Sync Columns** button on the project's detail page to refresh them. This is implemented as a Spark custom action (`SyncColumnsAction`) that calls the GitHub GraphQL API.
+Projects V2 webhook events are organization-scoped — a user-account installation receives none of
+them — and, more decisively, **renaming a Status option produces no event for either owner type**
+(measured, both owner shapes). So cached columns can only be corrected by the nightly reconciliation
+or by the `SyncColumns` action, and a rule whose target column was deleted stays syntactically valid
+and silently never fires until one of the two runs. That is why the rule records `LastFiredAtUtc`
+and `LastError` on itself: a rule that has never fired is configured wrong, one that fired until a
+date stopped working then.
 
 ### Key files
 
 | File | Purpose |
 |---|---|
-| `Recipients/HandleIssuesEvent.cs` | Handles issue webhooks — maps event to column and moves/adds the issue |
-| `Recipients/HandlePullRequestEvent.cs` | Handles PR webhooks — maps event to column, moves/adds the PR, optionally moves linked issues |
-| `Services/GitHubProjectService.cs` | GraphQL calls: move items, add items to board, fetch columns |
-| `Actions/SyncColumnsAction.cs` | Custom action to refresh columns from GitHub |
-| `Actions/ProjectColumnActions.cs` | Custom query returning a project's columns for the reference picker |
-| `Controllers/GitHubProjectsController.cs` | REST API for listing GitHub projects and syncing columns |
-| `Pages/github-projects/` | Angular page for enabling/disabling project automation |
+| `Recipients/ProjectAutomationRouter.cs` | Filters a delivery and re-publishes it onto the automation queue; holds the self-authored loop guard |
+| `Recipients/ProjectAutomationRecipient.cs` | Resolves which rules match a delivery and moves the cards; records per-rule outcomes |
+| `Services/GitHubProjectCards.cs` | GraphQL calls: move an issue or PR, and resolve a PR's closing issues |
+| `Services/IInstallationProjects.cs` | Lists an installation's boards and reads a board's Status field and its options |
+| `Services/GitHubStateReconciler.cs` | Nightly discovery of boards, and column refresh for automated ones |
+| `CustomActions/SyncColumnsAction.cs` | Re-reads a board's columns from GitHub on demand |
+| `Actions/GitHubProjectActions.cs` | Row security, the account sub-query, and rule-id stamping |
+| `Actions/ProjectColumnActions.cs` | Parent-scoped custom query supplying the target-column options |
+| `LookupReferences/WebhookEventType.cs` | The closed set of eighteen automatable events, with the wire values to match them |
+
+### Example document
+
+```json
+{
+  "OwnerLogin": "MintPlayer",
+  "InstallationId": 153539364,
+  "NodeId": "PVT_kwDOAug2bM4AthJv",
+  "Number": 1,
+  "Name": "Delivery board",
+  "StatusFieldId": "PVTSSF_lADOAug2bM4AthJvzgkQ7-s",
+  "Columns": [
+    { "Id": "f75ad846", "Name": "Todo" },
+    { "Id": "98236657", "Name": "Done" }
+  ],
+  "EventMappings": [
+    {
+      "Id": "PullRequestMerged",
+      "EventType": "PullRequestMerged",
+      "TargetColumnOptionId": "98236657",
+      "Enabled": true
+    }
+  ],
+  "AutomationEnabled": true,
+  "DeleteBranchOnPrClose": false,
+  "Connection": "Connected",
+  "@metadata": { "@collection": "GitHubProjects" }
+}
+```
+
+`DeleteBranchOnPrClose` is opt-in per board and defaults to false — another deliberate departure,
+where the earlier demo deleted head branches unconditionally and organization-wide. On a
+multi-tenant server that setting mutates other people's repositories, and it is the one
+irreversible action in the feature.
 
 ## Docker deployment
 
-The repository includes a production-ready `docker-compose.yml` at `../apps/WebhooksDemo/docker-compose.yml` with `${...}` placeholders for secrets. Create a `.env` file on your server (see `../apps/WebhooksDemo/.env.example`):
-
-```env
-GITHUB_WEBHOOK_SECRET=whsec_your_webhook_secret
-GITHUB_APP_CLIENT_ID=Iv1.your_client_id
-GITHUB_PRODUCTION_APP_ID=123456
-TRAEFIK_HOST=spark-webhooks.example.com
-```
-
-Place your GitHub App private key alongside it:
-
-```bash
-cp ~/my-app.private-key.pem /var/www/webhooks-demo/github-app.pem
-chmod 600 /var/www/webhooks-demo/github-app.pem
-```
-
-The compose file mounts the PEM file read-only into the container. See the [Docker Deployment Guide](../../../docs/guide-docker-deployment.md) for full details.
-
+The repository includes a production-ready `docker-compose.yml` at
+`../apps/CodeCoverage/docker-compose.yml` with `${...}` placeholders for secrets. Keep the GitHub
+App private key out of the image and mount it at runtime, and give the app a `stop_grace_period`
+long enough for in-flight message handlers to finish rather than being killed mid-write.
 ## Architecture
 
 ```

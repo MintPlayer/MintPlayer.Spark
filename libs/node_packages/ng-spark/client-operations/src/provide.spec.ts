@@ -55,9 +55,57 @@ describe('provideSparkClientOperations', () => {
     } as ClientOperation]);
 
     expect(attributes.tokenFor('type-1', 'main')).toBe(1);
-    expect(attributes.patchesFor('type-1', 'main')).toEqual({ AccountCount: 2 });
+    expect(attributes.patchesFor('type-1', 'main')).toEqual({
+      AccountCount: { value: 2, object: undefined, objects: undefined },
+    });
     // A different object must not see it.
     expect(attributes.patchesFor('type-2', 'main')).toEqual({});
+  });
+
+  /**
+   * An AsDetail attribute keeps its rows in `object` / `objects` and leaves `value` null, so a
+   * patch that forwarded only `value` could not refresh a detail grid at all -- and failed
+   * silently, because a null patched over a null repaints nothing. Coverage's SyncColumns replaced
+   * a board's cached columns and the grid stayed empty until the page was reloaded by hand.
+   */
+  it('refreshAttribute forwards AsDetail rows, not just the value', () => {
+    configure();
+    const dispatcher = TestBed.inject(SparkClientOperationDispatcher);
+    const attributes = TestBed.inject(SparkAttributeRefreshService);
+
+    dispatcher.dispatch([{
+      type: 'refreshAttribute',
+      objectTypeId: 'type-1',
+      id: 'GitHubProjects/PVT_1',
+      attributeName: 'Columns',
+      value: null,
+      objects: [{ id: 'opt-1' }, { id: 'opt-2' }],
+    } as ClientOperation]);
+
+    const patch = attributes.patchesFor('type-1', 'GitHubProjects/PVT_1')['Columns'];
+    expect(patch.objects).toHaveLength(2);
+    expect(patch.value).toBeNull();
+  });
+
+  /**
+   * Emptiness has to survive as emptiness: `objects: []` is how an action says it cleared the
+   * grid, and dropping it as though nothing was sent would leave the removed rows on screen.
+   */
+  it('refreshAttribute forwards an emptied AsDetail collection', () => {
+    configure();
+    const dispatcher = TestBed.inject(SparkClientOperationDispatcher);
+    const attributes = TestBed.inject(SparkAttributeRefreshService);
+
+    dispatcher.dispatch([{
+      type: 'refreshAttribute',
+      objectTypeId: 'type-1',
+      id: 'GitHubProjects/PVT_1',
+      attributeName: 'Columns',
+      value: null,
+      objects: [],
+    } as ClientOperation]);
+
+    expect(attributes.patchesFor('type-1', 'GitHubProjects/PVT_1')['Columns'].objects).toEqual([]);
   });
 
   it('navigate by objectTypeId + id goes to the detail route', () => {

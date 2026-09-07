@@ -48,22 +48,6 @@ If additional members are granted write access to this repo, reconsider one or m
 
 Option 3 is the cheapest mitigation if you ever need it — it costs ~1 build of cache rebuild on every release but guarantees the published artifact wasn't sourced from a cached entry written by a less-trusted run.
 
-## Deployment workflow (webhooks-demo) is intentionally cache-isolated
-
-`webhooks-demo-deploy.yml` builds and publishes the Docker image that gets deployed to the VPS. Its Dockerfile invokes Nx with `--skip-nx-cache`, and the workflow does **not** pass `NX_SELF_HOSTED_REMOTE_CACHE_SERVER` / `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` into the Docker build via `build-args` / `secrets`. This is option 3 from the list above, applied pre-emptively to the deploy path.
-
-The reasoning: anything that ships to production must be reproducible from the source files inside the build context, with no possibility of a cached entry being replayed into the image. Docker's own layer cache (`cache-from: type=gha`) is still used for image-layer reuse — that's a different mechanism, keyed on the layer's COPY inputs, and isn't influenced by the Nx remote cache.
-
-Cache speedups still apply on the non-deploy paths:
-
-| Workflow | Reads remote cache? | Writes remote cache? |
-| --- | --- | --- |
-| `pull-request.yml` | yes | no (RO token) |
-| `dotnet-build-master.yml` | yes | yes (RW token on master) |
-| `webhooks-demo-deploy.yml` (Docker build) | **no** (`--skip-nx-cache`) | no |
-
-So `dotnet-build-master.yml` is the one and only writer, and the deployment path is the one and only reader that's been deliberately removed from the read set.
-
 ## Local use
 
 To benefit from the remote cache locally (read-only is fine):

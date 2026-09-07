@@ -44,8 +44,8 @@ and which are therefore in scope:
 Issue #260 was filed with a title and **no body**. The specification is the owner's brief: add
 `TriggersRefresh` to `PersistentObjectAttribute`, invoke a new `OnRefresh` on the corresponding actions
 class when such a value changes, hand it the current state of the object, and let the developer reshape it.
-The brief named Vidyano as the reference implementation and pointed at the DeCronosGroep repositories for
-worked examples.
+The brief named a comparable RavenDB framework as the reference implementation and pointed at its
+repositories for worked examples.
 
 That reference was taken literally: the mechanism below is derived from decompiled
 `Vidyano.Service.dll` v6.0.20260820.6492, the shipped `@vidyano/vidyano` client bundle, and **121 real

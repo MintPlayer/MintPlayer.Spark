@@ -437,7 +437,6 @@ what `Query` without `Read` does to a grid.
 | **Fleet** | `AddSparkFull` + `AddAuthentication<SparkUser>` | anonymous gets `QueryRead/Company` |
 | **HR** | `AddSpark` + `AddAuthentication<SparkUser>`, and hosts the **OIDC identity provider** | same |
 | **DemoApp** | `AddSpark`, no sign-in at all | everything granted to `anonymous`, mirrored on `authenticated`; `Stock` and `Address` are `Query` without `Read` |
-| **WebhooksDemo** | `AddSpark` + GitHub OAuth, local credentials disabled | `anonymous` declared and granted **nothing** |
 
 Each demo's `App_Data/securityPosture.txt` states its anonymous surface in one committed file.
 
@@ -470,7 +469,7 @@ Each demo's `App_Data/securityPosture.txt` states its anonymous surface in one c
 
 ### Gaps, stated rather than implied
 
-- **Only Fleet has an E2E host.** DemoApp, HR and WebhooksDemo are not exercised end to end at all,
+- **Only Fleet has an E2E host.** DemoApp and HR are not exercised end to end at all,
   so "login works" is verified for one demo of four.
 - **No E2E test authenticates with a bearer token or a certificate.** M10 built both schemes and
   their guards are tested, but no demo registers either, so nothing exercises a real credential

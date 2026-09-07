@@ -40,7 +40,7 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
             return Task.CompletedTask;
         }
 
-        public Task BroadcastAsync<TMessage>(TMessage message, string queueName, CancellationToken cancellationToken = default)
+        public Task BroadcastOnceAsync<TMessage>(TMessage message, string deduplicationKey, CancellationToken cancellationToken = default)
         {
             Messages.Add(message!);
             return Task.CompletedTask;

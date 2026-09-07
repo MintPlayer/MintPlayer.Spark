@@ -139,7 +139,21 @@ public class FailOpenRegressionTests
 
     // ---------- M2: a Database.* source cannot serve as a sub-query ----------------------------
 
-    private static (QueryExecutor Executor, IPermissionService Permissions) DatabaseSubQuerySetup()
+    /// <summary>
+    /// The parent's type id, shared by the setup and the parents the tests build, because the
+    /// refusal below is keyed on what <b>this parent's type declares</b>.
+    /// </summary>
+    private static readonly Guid ParentTypeId = Guid.NewGuid();
+
+    /// <param name="parentDeclaresQuery">
+    /// Whether the parent type lists this query among its own — i.e. whether the query is
+    /// configured as that parent's sub-query. This is the distinction the refusal turns on, and
+    /// passing <c>false</c> models the other way a parent reaches the executor: an edit form
+    /// fetching a Reference attribute's option list, which sends the edited object as the parent
+    /// for every reference it renders.
+    /// </param>
+    private static (QueryExecutor Executor, IPermissionService Permissions) DatabaseSubQuerySetup(
+        bool parentDeclaresQuery = true)
     {
         var modelLoader = Substitute.For<IModelLoader>();
         var permissions = Substitute.For<IPermissionService>();
@@ -149,6 +163,15 @@ public class FailOpenRegressionTests
             Id = Guid.NewGuid(),
             Name = "Car",
             ClrType = typeof(PagedDoc).AssemblyQualifiedName,
+        });
+
+        modelLoader.GetEntityType(ParentTypeId).Returns(new EntityTypeDefinition
+        {
+            Id = ParentTypeId,
+            Name = "Company",
+            ClrType = typeof(PagedDoc).AssemblyQualifiedName,
+            // "AllCars" derives the alias "allcars"; declared queries are held by alias.
+            Queries = parentDeclaresQuery ? ["allcars"] : [],
         });
 
         var entityMapper = Substitute.For<IEntityMapper>();
@@ -182,7 +205,7 @@ public class FailOpenRegressionTests
     public async Task A_Database_source_executed_with_a_parent_is_refused()
     {
         var (executor, _) = DatabaseSubQuerySetup();
-        var parent = new PersistentObject { Id = "Companies/1", Name = "Company", ObjectTypeId = Guid.NewGuid() };
+        var parent = new PersistentObject { Id = "Companies/1", Name = "Company", ObjectTypeId = ParentTypeId };
 
         var act = () => executor.ExecuteQueryAsync(DatabaseQuery(), parent, skip: 0, take: 25);
 
@@ -208,12 +231,42 @@ public class FailOpenRegressionTests
             .EnsureAuthorizedAsync("Query", "Car")
             .Returns(Task.FromException(new SparkAccessDeniedException("Query/Car")));
 
-        var parent = new PersistentObject { Id = "Companies/1", Name = "Company", ObjectTypeId = Guid.NewGuid() };
+        var parent = new PersistentObject { Id = "Companies/1", Name = "Company", ObjectTypeId = ParentTypeId };
 
         var act = () => executor.ExecuteQueryAsync(DatabaseQuery(), parent, skip: 0, take: 25);
 
         await act.Should().ThrowAsync<SparkAccessDeniedException>(
             "authorization runs first, so a caller who may not query this type learns nothing about " +
             "how the query is configured");
+    }
+
+    /// <summary>
+    /// The refusal above must not fire on the <b>other</b> reason a parent arrives: an option source.
+    /// <para>
+    /// The condition was once "a parent was passed", and that was too broad by one whole use of the
+    /// parent. An edit form sends the object being edited as the parent when it fetches every
+    /// Reference attribute's option list, so a picker pointed at a plain <c>Database.*</c> query —
+    /// the ordinary way to offer "any Account" — failed the whole form with a 500 and no options.
+    /// The refusal's premise does not hold there either: "serving it would list every row" is the
+    /// defect for a child grid and the entire point of a picker.
+    /// </para>
+    /// <para>
+    /// Asserted as "did not reach the refusal" rather than "returned rows", deliberately. Going
+    /// further needs a real SparkContext, and this substitute has none — so execution still fails,
+    /// just further along and for an unrelated reason. What matters is which failure: the message
+    /// must not be the sub-query configuration error.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_Database_source_the_parent_does_not_declare_is_not_refused_as_a_sub_query()
+    {
+        var (executor, _) = DatabaseSubQuerySetup(parentDeclaresQuery: false);
+        var parent = new PersistentObject { Id = "Companies/1", Name = "Company", ObjectTypeId = ParentTypeId };
+
+        var act = () => executor.ExecuteQueryAsync(DatabaseQuery(), parent, skip: 0, take: 25);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>())
+            .Where(e => !e.Message.Contains("sub-query"),
+                "the parent is context for an option source here, not a declared sub-query");
     }
 }

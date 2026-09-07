@@ -57,6 +57,12 @@ internal sealed partial class ClientAccessor : IClientAccessor
             Id = po.Id,
             AttributeName = attributeName,
             Value = attr.Value,
+            // An AsDetail attribute keeps its rows on the subclass and leaves Value null, so
+            // copying only Value made this overload silently incapable of refreshing a detail
+            // grid: it sent null for precisely the attributes an action is most likely to have
+            // rewritten, and the client skips a null patched over a null.
+            Object = attr is PersistentObjectAttributeAsDetail single ? single.Object : null,
+            Objects = attr is PersistentObjectAttributeAsDetail many ? many.Objects : null,
         });
     }
 

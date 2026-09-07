@@ -6,9 +6,20 @@ Spark supports two kinds of references between entities: **Reference** attribute
 
 | Reference Type | C# Attribute | Stored Value | UI Control | Use Case |
 |---|---|---|---|---|
-| Reference | `[Reference]` | RavenDB document ID (e.g. `"Companies/abc-123"`) | Modal picker with search | Link to another entity (Car -> Company) |
+| Reference | `[Reference]` | The target row's `Id` — a document id (e.g. `"Companies/abc-123"`) for a document type | Modal picker with search, or an inline dropdown on an AsDetail row | Link to another entity (Car -> Company) |
 | Transient LookupReference | `[LookupReference]` | Enum key | Dropdown or modal | Fixed set of values defined in code |
-| Dynamic LookupReference | `[LookupReference]` | String key | Modal picker | User-managed values stored in RavenDB |
+| Dynamic LookupReference | `[LookupReference]` | String key | Modal picker | User-managed values stored in RavenDB, **one global set per lookup name** |
+
+Two properties of that table are worth reading before you pick one, because both are easy to
+discover the hard way:
+
+- **Only `[Reference]` can vary its options per object.** Both lookup shapes produce one option set
+  for the whole application — a transient one at compile time, a dynamic one per lookup *name*. If
+  the valid choices depend on which object is being edited, see
+  [Scoping a reference's options to the parent object](#scoping-a-references-options-to-the-parent-object).
+- **A reference target need not be a document type.** An embedded value object works, and stores
+  whatever its `Id` property holds. See
+  [The target does not have to be a document type](#the-target-does-not-have-to-be-a-document-type).
 
 ## Reference Attributes
 
@@ -84,6 +95,131 @@ public string? Owner { get; set; }
 ```
 
 This works because the synchronizer maps each SparkContext property to a query name using the pattern `Get{PropertyName}`.
+
+### Scoping a reference's options to the parent object
+
+The `query` parameter is not limited to a plain listing of the target type. **Point it at a
+`Custom.*` query and the option list can be scoped to the specific object the reference lives on.**
+This is the only mechanism in Spark that can do that — see
+[Choosing between the three option sources](#choosing-between-the-three-option-sources) for why
+neither lookup shape can.
+
+The query method receives `CustomQueryArgs.Parent`, which Spark resolves and authorizes in the
+query endpoint before the method runs:
+
+```csharp
+public partial class ProjectColumnActions : DefaultPersistentObjectActions<ProjectColumn>
+{
+    [Inject] private readonly IAsyncDocumentSession session;
+
+    public async Task<IEnumerable<ProjectColumn>> Project_Columns(CustomQueryArgs args)
+    {
+        // Return empty rather than EnsureParent — see the create-form caveat below.
+        if (args.Parent is null || !string.Equals(args.ParentType, nameof(GitHubProject), StringComparison.OrdinalIgnoreCase))
+            return [];
+
+        var board = await session.LoadAsync<GitHubProject>(args.Parent.Id);
+        return board?.Columns ?? [];
+    }
+}
+```
+
+```csharp
+[Reference(typeof(ProjectColumn), "Project_Columns")]
+public string TargetColumnOptionId { get; set; } = string.Empty;
+```
+
+Plus the query entry in the target type's model JSON, and a right (see the traps below):
+
+```jsonc
+{ "id": "<guid>", "name": "Project_Columns", "entityType": "ProjectColumn",
+  "source": "Custom.Project_Columns",
+  "sortColumns": [ { "property": "Name", "direction": "asc" } ] }
+```
+
+#### It works from an AsDetail row, and the parent is the ROOT
+
+A reference on an embedded `AsDetail` + `isArray` row gets the **root document** as its parent — not
+the row. So a rule inside a sub-table can be scoped by the object that owns the sub-table, which is
+usually what you want.
+
+#### The target does not have to be a document type
+
+A reference target needs only:
+
+1. a model file with a `clrType`,
+2. at least one attribute with `showedOn: Query` (a zero-column query is refused at startup),
+3. a `{TypeName}Actions` class to host the method, and
+4. a readable, non-empty, unique `Id` per row.
+
+An **embedded value object** satisfies all four, so you do not have to promote a child collection
+to documents just to make it pickable. Note what supplies the stored value: the mapper reads the
+CLR `Id` property directly rather than asking RavenDB for a document id, so whatever `Id` holds is
+what the picker writes.
+
+A `Custom.*` method may return `IQueryable<T>`, `IRavenQueryable<T>`, `IEnumerable<T>`, or a `Task<>`
+of any of those. Returning a plain in-memory sequence is fully supported: every Raven-specific step
+(projection, `.Include()`, row-filter push-down, search push-down, provider sorting) is guarded on
+the returned object actually being a Raven queryable, and sorting, search and paging fall back to
+in-memory equivalents.
+
+> **Entity-backed is not the same as composed.** Because the target's model declares a `clrType`,
+> such a query is *not* a `clrType`-less composed query, and none of the composed-query costs apply
+> — no `ISparkOwnsRowSecurity` to implement, no row-filtering or redaction responsibility moved onto
+> your actions class.
+
+#### Traps
+
+- **Grant the right, or the dropdown is silently empty.** `/spark/queries` only lists a query whose
+  `entityType` the caller holds `Query` on, and the client treats an unknown query name as an empty
+  result — no error, no log. Add `QueryRead/{TargetType}` (or `Query/{TargetType}`) to
+  `security.json`. This is the single easiest way to ship a picker that looks fine and does nothing.
+- **Prefer a null-guard over `args.EnsureParent(...)`.** The **create form sends no `parentId`**, so
+  `EnsureParent` throws there and surfaces as a 500 from the picker. Returning empty is the honest
+  degradation. Check the parent *type* as well as its presence — answering with a different
+  parent's children is worse than answering with none.
+- **Option lists are capped at 50 and truncate silently.** The client passes no `take`, so the
+  server default applies. Fine for a handful of child rows; wrong for a large collection. The
+  picker's search box filters the already-fetched array in memory — it does not re-query.
+- **A stored value that cannot be loaded degrades, it does not break.** The breadcrumb resolver
+  attempts one batched load and skips misses silently; the client then falls back to matching the
+  value against the loaded option list, and finally to showing the raw value. For an embedded target
+  there is no document to load, so the option list is what makes the label readable.
+- **`GetRowFilterAsync` cannot do parent scoping.** Its signature is `(string action)` and nothing
+  else; the parent is never forwarded into row security. It is the right tool for "which rows may
+  *this caller* see" and structurally the wrong tool for "which rows belong to *this parent*".
+  Parent scoping belongs in the query method.
+
+### Choosing between the three option sources
+
+The opening table lists three attribute shapes; this is the decision that actually matters between
+them, because only one can vary its options per object:
+
+| Need | Use | Why |
+|---|---|---|
+| A fixed set, known at compile time | `[LookupReference]` + `TransientLookupReference<TKey>` | Values are C#; no storage, no query |
+| A user-managed set, shared app-wide | `[LookupReference]` + `DynamicLookupReference<TValue>` | Persisted and runtime-editable, but **one global set per lookup name** — a single `LookupReferences/{Name}` document |
+| Options that depend on **which object** you are editing | `[Reference(typeof(X), "CustomQuery")]` | The only shape whose option source receives the parent |
+
+The middle row is the trap: a dynamic lookup is editable at runtime, which makes it *look* like the
+answer for "columns of this board" — but its values are global to the lookup name, so it would offer
+every board's columns on every board.
+
+### Hand-editing the model: what survives synchronization
+
+Not every model field can be hand-added. `--spark-synchronize-model` regenerates attributes from the
+C# types, so anything it derives is overwritten:
+
+| Field | Hand-edit survives? | Where it comes from |
+|---|---|---|
+| `editMode` (e.g. `"inline"`) | **Yes** | Hand-authored presentation |
+| `isReadOnly`, `isVisible` | **Yes** | Hand-authored presentation |
+| `lookupReferenceType` | **No — stripped** | Derived from `[LookupReference(typeof(...))]` |
+| `query`, `referenceType` | **No — stripped** | Derived from `[Reference(typeof(...), "...")]` |
+| An inline `queries` entry on an embedded type | **Yes** | Explicitly preserved by the synchronizer |
+
+So a lookup or reference must be declared in C#. Adding `lookupReferenceType` to the JSON by hand
+appears to work until the next synchronization silently reverts the attribute to a free-text box.
 
 ### Including Reference Data in Index Projections
 

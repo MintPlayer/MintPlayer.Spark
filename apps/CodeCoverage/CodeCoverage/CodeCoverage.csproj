@@ -22,6 +22,15 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.20.0" GeneratePathProperty="true" />
+		<!--
+		  Explicit rather than transitive. It arrives through MintPlayer.Spark.Webhooks.GitHub
+		  anyway, but this app now writes Projects V2 GraphQL of its own, and a BETA package that
+		  the code depends on directly should not be pinned by accident: a version bump in the
+		  webhooks library would otherwise silently move this app's GraphQL surface. Its
+		  Octokit.GraphQL.Core types (ID, the Switch/Cast builders) are also only referenceable with
+		  a direct reference.
+		-->
+		<PackageReference Include="Octokit.GraphQL" Version="0.4.0-beta" />
 		<PackageReference Include="YamlDotNet" Version="16.3.0" />
 	</ItemGroup>
 
@@ -49,5 +58,17 @@
 	  PackageReference gets this for free.
 	-->
 	<Import Project="..\..\..\libs\spark\MintPlayer.Spark\Targets\spark.targets" />
+
+  <ItemGroup>
+    <!--
+      Two functions are internal rather than private purely so they can be asserted directly:
+      ProjectAutomationRouter.IsSelfAuthored and ProjectAutomationRecipient.ResolveEventKeys.
+      Both are pure, and both fail SILENTLY when wrong. A too-broad loop guard makes an event
+      type permanently inert, and a resolver keyed on (event, action) alone maps a merge onto
+      the "closed" rule. Neither is reachable through a recipient public surface without a
+      webhook round trip, and such a test would pass with either defect present.
+    -->
+    <InternalsVisibleTo Include="CodeCoverage.Tests" />
+  </ItemGroup>
 
 </Project>

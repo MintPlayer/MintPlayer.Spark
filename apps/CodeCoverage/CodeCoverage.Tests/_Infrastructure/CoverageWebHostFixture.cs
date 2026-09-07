@@ -35,10 +35,59 @@ public sealed class CoverageWebHostFixture : CoverageRavenTest, IAsyncLifetime
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Tears the fixture down in three independent steps, none of which may throw.
+    /// </summary>
+    /// <remarks>
+    /// A fixture teardown fault is reported by xUnit as a <b>Test Class Cleanup Failure</b>, and
+    /// that is much worse than it sounds: <c>dotnet test</c> prints
+    /// <c>Passed! - Failed: 0, Passed: 378</c> and then <b>exits 1</b>. So the test list is green,
+    /// the summary line says everything passed, and the build is red — and under Nx the task simply
+    /// reports as failed with the cause nowhere in the output, because only the first line of the
+    /// exception survives its log. It cost a CI run to find that the tests were never the problem.
+    /// <para>
+    /// Both faults seen came from disposal, not from the tests: an <c>AggregateException</c> locally
+    /// and a <c>NullReferenceException</c> in CI, intermittently and on unchanged code. Disposing a
+    /// host, a store and an embedded RavenDB is exactly where the documented teardown race lives, so
+    /// these steps are ordered, guarded, and independent — one failing must not skip the two after
+    /// it, since leaving the embedded server undisposed would poison the rest of the assembly.
+    /// </para>
+    /// <para>
+    /// Faults are printed rather than swallowed. Ignoring them silently would trade a confusing red
+    /// build for an invisible resource leak, and the point here is only that <b>teardown noise must
+    /// not be reported as a test failure</b> — not that it stops mattering.
+    /// </para>
+    /// </remarks>
     public new async Task DisposeAsync()
     {
-        await Factory.DisposeAsync();
-        Store.Dispose();
-        base.Dispose();
+        if (Factory is not null)
+        {
+            try
+            {
+                await Factory.DisposeAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[CoverageWebHostFixture] host disposal faulted: {ex}");
+            }
+        }
+
+        try
+        {
+            Store?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[CoverageWebHostFixture] store disposal faulted: {ex}");
+        }
+
+        try
+        {
+            base.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[CoverageWebHostFixture] RavenDB test-driver disposal faulted: {ex}");
+        }
     }
 }

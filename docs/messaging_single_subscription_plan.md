@@ -1,0 +1,566 @@
+# Plan — One RavenDB subscription for all Spark messaging
+
+Companion to [messaging_single_subscription_PRD.md](messaging_single_subscription_PRD.md). Labels
+F1…F7 (findings), B1…B9 (defects), R1…R8 (risks), W1…W4 (webhook durability) and the numbered
+invariants refer to that document.
+
+**Transport decision: Option A** — leader-elected single subscription. Option B (document-queue,
+zero subscriptions) was considered and rejected; see PRD §3b. Do not re-litigate it here.
+
+**One pull request.** The transport rework, the message-stranding fix, the shutdown drain, the
+migration-lock fixes and the leader-gating of the other singletons land together. Ships as
+`10.0.0-preview.74` across all 22 packages — the major digit does not move (NuGet major tracks the
+targeted .NET major).
+
+**Test discipline.** Verify milestones by reading code and building. Run the suites **once**, in the
+M11 sweep. Commit per milestone; batch the test *runs*.
+
+---
+
+## Spikes first
+
+Three unknowns can each invalidate a milestone. Nothing from a spike is committed.
+
+### S1 — Legacy subscription deletion, under the cap, in the right order
+
+**The deploy blocker (F6, R1).** Questions: does `store.Subscriptions.GetSubscriptionsAsync` +
+`DeleteAsync(name)` remove a definition such that a subsequent create succeeds on a 3-cap licence?
+Is delete-then-create within one boot safe? Is it idempotent across restarts? And critically —
+**does the migration stage actually complete before `MessageSubscriptionManager` starts**, or do they
+race?
+
+**Method:** embedded Raven via `SparkTestDriver`, licence-capped if possible. Create three
+definitions, then run the intended cleanup + single create. Separately, instrument the real startup
+order in `apps/CodeCoverage`: log from a throwaway migration and from `MessageSubscriptionManager.ExecuteAsync`
+and compare. The PRD asserts migrations run in the `AfterSpark` stage before hosted services —
+**verify, do not assume.**
+
+**Kill criterion:** if the ordering cannot be guaranteed, the cleanup moves into the messaging
+startup path itself (the same middleware slot that deploys the messaging index) rather than a
+migration. That slot has no lock and no marker, which is acceptable only because the operation is
+idempotent and self-emptying.
+
+#### S1 — RESULTS (run 2026-09-07, RavenDB 7.2 at localhost:8080, database `Spike273`)
+
+Ten scenarios, run against a live server. **Kill criterion not triggered** — delete-then-create in
+one boot is safe. But the spike produced two new requirements for M6 and one measurement that
+invalidates part of the test strategy.
+
+**The cap cannot be reproduced locally.** The local licence is **Developer**, not Community, and it
+reports `MaxNumberOfSubscriptionsPerDatabase: null` *and* `MaxNumberOfSubscriptionsPerCluster: null`.
+Twelve subscriptions were created on one database without complaint. So the cap must be *simulated*
+(the spike enforces a budget of 3 itself) or tested against a genuinely Community-licensed server,
+and `EnsureSubscriptionExistsAsync`'s `LicenseLimitException` branch stays **unverified by any test**.
+
+1. **Delete is idempotent.** `DeleteAsync` on a name that does not exist does not throw. The cleanup
+   can run unconditionally — no existence check, no marker document.
+2. **Delete frees the slot synchronously.** It returns in ~2 ms, and a list issued immediately
+   afterwards never sees the name. Delete-then-create within one boot is safe. Measured on a single
+   node; production is single-node, but this does not generalise to a 3-node cluster.
+3. **Create is not an upsert.** Creating an existing name with a different query throws
+   `RavenException` wrapping `RachisApplyException`: *"the name '…' is already in use in a
+   subscription with different Id"*. This is the **normal path on every Spark restart**, absorbed by
+   the existing `UpdateAsync { CreateNew = true }` fallback — so `EnsureSubscriptionExistsAsync` is
+   correct, but its broad `catch (Exception)` is load-bearing, not defensive. Do not narrow it
+   without replacing it with an explicit exists-check.
+4. **`UpdateAsync` changes the query in place** — same `SubscriptionId`, same change vector. **No
+   slot is spent to change a query.** The unified subscription's query can evolve across deploys
+   without ever touching the budget.
+5. **A filter change within one collection does not replay.** Narrowing `from Widgets` to
+   `from Widgets where …` re-delivered **0 of 3** acknowledged documents. The unified query is always
+   `from SparkMessages where …`, so this is the case that matters: **query evolution is
+   non-replaying.**
+6. **A collection newly entering scope *is* backfilled.** Widening to `from @all_docs` delivered all
+   3 pre-existing `Gadgets` the old query never matched, *despite their being behind the
+   acknowledged change vector.* The change vector does not gate documents in a newly-matched
+   collection — the opposite of the obvious assumption.
+7. **A connected worker survives a query change.** It takes one internal `SubscriptionClosedException`
+   → `OnSubscriptionConnectionRetry` → reconnect, then serves the **new** query with no restart.
+   Notably the exception did *not* propagate out of `Run`, so `SparkSubscriptionWorker`'s
+   `catch (SubscriptionClosedException)` → non-recoverable → `break` never fired.
+8. **⚠ Deleting a subscription under a live worker kills that worker permanently.** The worker sees it
+   in ~16 ms as `SubscriptionDoesNotExistException`, which `SparkSubscriptionWorker.cs:234` treats as
+   non-recoverable and **breaks the loop**. It does not recover once the new subscription exists.
+   *New requirement for M6:* the rolling deploy must terminate old pods before the cleanup runs —
+   it cannot rely on them healing.
+9. **A two-replica prune-and-create race is survivable — corrected below.** With a *raw* `CreateAsync`
+   the loser throws `RavenException`/`RachisApplyException` on the name collision. But that is not
+   Spark's path, and re-running the race through the real one (S11) shows it is absorbed. See the
+   correction under "S11" — this item as first written overstated the hazard.
+10. **Field evidence for F6.** The local `WebhooksDemo` database carries **7** `SparkMessaging-*`
+    definitions, 6 of them orphaned by generic-type-name churn (a `` GitHubWebhookMessage`1-… ``
+    form plus assembly-qualified `Version=2.0.0.0` and `Version=3.0.0.0` variants). Nothing has ever
+    deleted one. This is exactly the accumulation that exhausts a 3-slot budget.
+
+**Startup ordering — ANSWERED by code proof, no instrumentation needed.** The PRD's assertion holds,
+by construction rather than by luck:
+
+- `SparkMigrationsExtensions.cs:45` registers migrations as `builder.Registry.AddMiddleware(app =>
+  SparkMigrationRunner.RunAtStartup(app.ApplicationServices))`.
+- `SparkMigrationRunner.RunAtStartup` is **synchronous and blocking** —
+  `RunAsync(...).GetAwaiter().GetResult()`.
+- `UseSpark` executes registry actions inline (`SparkMiddleware.cs:309`), and in
+  `apps/CodeCoverage/CodeCoverage/Program.cs` `app.UseSpark()` is line **324** while `app.Run()` is
+  line **364**.
+- Hosted services — `MessageSubscriptionManager` among them — only start inside `app.Run()` →
+  `StartAsync()`.
+
+So migrations complete before any hosted service starts. There is no race, and M6 may live in a
+migration. (`Program.cs:156` already documents this; the spike confirms it rather than discovering it.)
+
+#### S11 / S12 — RESULTS (same session), and a correction to result 9 above
+
+**S11 — the two-replica race is absorbed by Spark's real path.** Result 9 above was measured with a
+raw `CreateAsync`. `EnsureSubscriptionExistsAsync` instead does create → `catch (Exception)` →
+`UpdateAsync { CreateNew = true }`. Re-run through that shape, both replicas survive:
+
+```
+[A] deleted SparkMessaging-Legacy      [B] deleted SparkMessaging-Legacy
+[A] create SUCCEEDED                   [B] create threw RavenException -> falling back to UpdateAsync
+                                       [B] update SUCCEEDED (this replica survives)
+RESULT: 1 subscription(s): SparkMessaging
+```
+
+So **no guard is needed for the existing create path.** The hazard is real only for a *new* create
+site that omits the fallback — which is why M6 must not grow one.
+
+**S12 — the `SparkMessaging-` prefix does spare the unified `SparkMessaging`.** Verified directly:
+with `SparkMessaging`, `SparkMessaging-Legacy1` and `SparkMessaging-Legacy2` present, the ordinal
+prefix match selected exactly the two legacy names and the unified subscription survived.
+
+⚠ **That safety rests entirely on the unified name having no trailing hyphen.** Rename it to
+`SparkMessaging-Unified` (or anything with the hyphen) and a cleanup that runs on every boot deletes
+its own live subscription — which, per result 8, then kills the connected worker permanently. The
+name in M3 and the prefix in M6 are a matched pair: change one and you must change the other.
+
+### S2 — `WaitForFree` standby and handover
+
+Does unconditional `WaitForFree` actually give clean active/standby? Two workers, one subscription:
+the second must **block inside `Run()`** rather than throw, and must take over promptly when the
+first's connection closes. Measure handover latency on a graceful close and on an abrupt one.
+
+**Decides** whether the leader lease is needed for safety at all or only for liveness and for gating
+the other singletons — which is the PRD's central claim (§4).
+
+**Kill criterion:** if `WaitForFree` does not block cleanly, the lease becomes the sole exclusivity
+mechanism and the design needs a fencing token the side effect can validate — a materially harder
+problem. Find this out now, not in M4.
+
+#### S2 — RESULTS (run 2026-09-07, same server)
+
+**Kill criterion not triggered. `WaitForFree` behaves exactly as the PRD assumed, and the fencing
+token is not needed.**
+
+- The standby **blocks inside `Run()`**: worker B sat 4 s with no batch, no exception, no reconnect
+  churn, while A held the subscription.
+- **Graceful handover: 962 ms** after `DisposeAsync()` on A.
+- **Abrupt handover: 575 ms.** Worker A ran in a **separate process** killed with
+  `Kill(entireProcessTree: true)` — no dispose, no FIN, connection loss left entirely to the server
+  to notice. B took over in 575 ms with **0 reconnect retries**, and picked up a document stored
+  after the kill. The pre-kill document had already gone to the child; B did not re-receive it.
+
+So exclusivity is server-enforced and sub-second on both paths. **This confirms the PRD's central
+claim (§4): the leader lease is needed for liveness and for gating the other singletons, not for
+safety.**
+
+### S3 — Claim-then-ack preserves FIFO, isolation and crash recovery
+
+Prototype the feeder + per-queue pumps against embedded Raven and assert the three invariants that
+**no test covers today** (PRD invariants 1-4):
+
+- two messages on one queue complete in order, with a slow handler between them;
+- a handler blocking 10 s on queue A does not delay a message on queue B;
+- a message claimed and then abandoned (kill the process / expire the lease) is reclaimed to
+  `Pending` and completes — the same message, exactly once more.
+
+Assert the retry **arrives**, never merely that it does not arrive early: the repo's own history
+records retry tests that asserted a negative and stayed green when delivery was entirely dead.
+
+**Decides** batch size, lease TTL/renewal ratio, and whether the pump needs its own session per tick.
+
+### S4 — Does a server-side `@refresh` actually redeliver? (PRD §3c)
+
+One test, and the harness already exists: `tests/MintPlayer.Spark.Tests/_Infrastructure/SubscriptionQueryCapabilityTests.cs`
+has the `Widget` + delivery fixture that pinned the `now()` findings.
+
+**Method:** send `ConfigureRefreshOperation(new RefreshConfiguration { Disabled = false,
+RefreshFrequencyInSec = 5 })`; store a `Widget { Status = "Failed" }` with
+`@refresh = UtcNow + 3s`; subscribe to `from Widgets where Status = 'Failed' and not exists(@metadata.@refresh)`;
+assert **delivery** within ~30 s. Assert the positive — that it arrives — never merely that it does
+not arrive early; the repo has already shipped retry tests that asserted a negative and stayed green
+while delivery was entirely dead.
+
+Refresh is not licence-gated (Community lists "Document Expiration & Refresh"), so the test driver
+needs no licence opt-in.
+
+**Why it is worth one test even though we are not adopting it here:** the repo's contrary conclusion
+was reached with refresh *disabled* and a `now()` query, so it never actually tested this hypothesis.
+Green settles B11 — either enable refresh and make `RetryNumerator` real, or delete its writes. Red
+means the docs describe behaviour the pinned 7.1.10 server does not deliver, which is worth knowing
+before anyone reconsiders §3c.
+
+#### S4 — RESULTS (run 2026-09-07, same server): **GREEN. `@refresh` does wake a subscription.**
+
+Sent `ConfigureRefreshOperation(new RefreshConfiguration { Disabled = false, RefreshFrequencyInSec = 5 })`,
+stored a `Widget { Status = "Failed" }` with `@refresh` 3 s out, and subscribed to
+`from Widgets as w where w.Status = 'Failed' and not exists(w.@metadata.@refresh)`.
+
+- At **+2 s** — `@refresh` still present — **not delivered**, as required. The query genuinely gates
+  on the metadata rather than matching immediately.
+- **Delivered 4,650 ms after attaching**, once the refresh sweep removed `@refresh`.
+
+The positive was asserted, not the negative. This settles **B11**: the mechanism works on the pinned
+server, so `RetryNumerator`'s `@refresh` writes are *capable* of driving redelivery — they are inert
+today only because **`ConfigureRefreshOperation` is sent nowhere in the repo**. The decision is
+therefore a real either/or (enable refresh and make `RetryNumerator` real, or delete its writes),
+not a dead end, and the repo's "`@refresh` is doubly useless here" reasoning in
+`docs/issue_233_plan.md:39-49` is now disproven empirically as well as by the docs.
+
+We are still **not adopting** §3c for this rework — the sweeper works and the change is bigger than
+the win — but the finding stands on its own.
+
+**⚠️ Note for S1:** the local server is **not** Community-capped — the local `Coverage` database
+currently holds **8** `SparkMessaging-*` definitions, including the five that were silently dead in
+production. So the subscription-cap spike cannot be reproduced against localhost as-is; it needs a
+Community-licensed or artificially capped server, or it will pass locally and fail on deploy. That
+same observation is direct confirmation of F6: nothing ever removes a definition.
+
+---
+
+## Implementation status (2026-09-07)
+
+Landed on `feat/coverage-project-automation` — the messaging rework and the coverage project
+automation share one PR, per the standing one-PR constraint, with messaging first as §5 of the
+decision register sequences it.
+
+| Milestone | Status |
+|---|---|
+| M0 free wins | **Done.** Unconditional `WaitForFree`; `return`→`continue`; the inverted 36 h expiration comment; `CoverageQueues` doc rewritten; `RetryNumerator`'s inert `@refresh` writes deleted and its false disclaimer corrected |
+| M1 durable claim | **Done.** `OwnerId` + `ClaimExpiresAtUtc`, claim saved under optimistic concurrency before the batch is acked, reclaim in the sweeper, `WakeUp != true` guard added |
+| M2 graceful shutdown | **Done.** Park uses `CancellationToken.None`; stop-feed → drain → release-lease ordering; grace-period guidance in the messaging README |
+| M3 feeder + pumps | **Done.** `MessageFeeder` on `SparkMessaging` with no `QueueName` predicate; `MessageQueueRouter` with one bounded lane and one pump per queue; `MessageProcessor` extracted so both modes share the per-message contract verbatim |
+| M4 leader lease | **Done.** `MessagingLeaseManager` on `spark/messaging/leader`, renewal CASes on index **and** `NodeId`, release CASes on identity |
+| M5 modes | **Done.** `SparkMessagingOptions.SubscriptionMode`, both modes tested |
+| M6 legacy cleanup | **Done**, in the hosted service's async startup rather than a migration — see the milestone for why, and for the load-bearing hyphen |
+| M7 webhook durability | **Done.** W1/W3 documented as load-bearing; W4 implemented as `BroadcastOnceAsync` keyed on `X-GitHub-Delivery` |
+| M8 leader-gate singletons | **Partial — see below** |
+| M9 migration lock | **Partial — see below** |
+| M10 tests | **Done.** Lifecycle tests rewritten; `MessagingInvariantsTests` covers the four untested invariants; `CoverageQueuesTests` count/name facts deleted; `DeleteDataActionTests` re-motivated on ordering |
+| M11 test sweep | **Done, and re-run 2026-09-07 after the framework fixes:** `MintPlayer.Spark.Tests` **1984 passed / 0 failed**; `ng-spark` **409 passed / 0 failed** (client vitest no longer outstanding). ⚠️ The `CodeCoverage.Tests` **365 / 0** recorded here was **stale** — it predates the `IInstallationProjects` dependency added to `GitHubStateReconciler`, which was never registered in that test's harness; the suite was really **359 / 6** until that was fixed. A full `nx run-many` still outstanding — note `nx run-many --target=build --all` produced two *flaky* task failures that pass individually, which looks like a parallel-build race rather than a code fault |
+| M12 docs | **Done.** Messaging README, subscription-worker README worked example, `PRD-SubscriptionWorker` superseding banner, coverage PRD §C1 lifted |
+| M13 manual verification | **Partial.** A real webhook *was* driven end to end through the smee tunnel during the coverage work — see `coverage_project_automation_PRD.md` §3b, which records a delivery travelling feeder → own queue → recipient → GraphQL, and a `NonRetryableException` dead-lettering at `AttemptCount = 1`. Still not done: the **two-process** run (one feeds, one stands by, no `SubscriptionInUseException`) and timing a leader kill |
+
+### Added after the milestone list was written
+
+**`SparkMessagingOptions.HandlerTimeout` (default 10 min)** — bounds the one failure mode no retry
+budget can. A handler that *throws* is parked and the pump moves straight on, so failures interleave
+rather than blocking the head of a lane, and `MaxAttempts` eventually dead-letters them. But a
+handler that **hangs** holds its lane for ever: one message in flight by design, and the claim is
+renewed while it runs, so the sweeper's reclaim never fires and no retry budget is ever consumed.
+The timeout cancels the message's token and frees the lane.
+
+Two properties of it are documented rather than assumed: the default is deliberately **generous**,
+because cutting a legitimately slow handler short is worse than one stuck queue (a hang blocks one
+lane; a tight timeout corrupts every slow message on it); and cancellation is **cooperative**, so a
+handler ignoring its `CancellationToken` still cannot be interrupted.
+
+**Head-of-line non-blocking is now a test, not an assumption** —
+`MessagingInvariantsTests.A_message_that_keeps_failing_does_not_block_the_rest_of_its_queue`
+publishes the poison message *first* on a shared queue and asserts the three behind it complete,
+that the poison one reaches `DeadLettered` with its error persisted, and that its handler ran a
+bounded number of times.
+
+**The reclaim query has a second arm for the upgrade path** — a message stranded at `Processing` by a
+build from *before* claims existed has no `ClaimExpiresAtUtc`, so a lapsed-claim test alone could
+never see it and the fix would have shipped while every already-stranded message stayed stranded.
+`== null` matches a missing JSON field where the boolean gates need `!= true`.
+
+### Deliberately not done, and why
+
+Both reductions follow the owner's calibration steer, recorded as a standing constraint in the
+decision register §8: the framework has no external consumers and the only deployment is a single
+container on one VPS, so a fault a `docker restart` heals is not a design constraint.
+
+- **M8, except the sweeper.** `MessageRetrySweeper` is leader-gated, because that is the pathology
+  the lease exists to prevent and it cost three lines. **Not** done: leader-gating
+  `IndexCreation.CreateIndexes` and `SmeeWebhookTunnelService`. Both hazards are strictly
+  multi-replica — index definitions flapping between old and new pods during a rolling deploy, and
+  smee broadcasting to N connected clients so N replicas process each webhook N times. With one
+  container there is no second pod to flap against or duplicate with. The smee gate being
+  config-only rather than `IsDevelopment()`-gated is left as-is for the same reason: it is latent,
+  not live.
+- **M9, except B6.** The migration lock's release now CASes on the index its own claim produced, so
+  it can no longer delete a lock another node legitimately took over — a cheap fix to a real
+  footgun. **Not** done: B5 (the lock loser serving an un-migrated database) and B7 (renewing the
+  lease). Both require two or more instances to matter at all.
+
+If this ever runs multi-replica, these are the items to revisit first, and the PR must not claim
+that N replicas are safe.
+
+### Two §9b simplifications declined, with reasons
+
+These are judgement calls against the PR checklist rather than oversights, so they are stated
+plainly rather than quietly skipped.
+
+- **"Collapse the three retry implementations to one" — not done.** They are not three of a kind.
+  `RetryNumerator` is per-document counter-based attempt tracking; the other two are sweepers, and
+  what they share is about fifteen lines of "query due ids, patch two fields, save". What differs is
+  everything that carries meaning: the entity and index, and above all *which statuses are
+  eligible* — messaging sweeps `Pending` **and** `Failed`, replication sweeps `Pending` only,
+  because for replication `Failed` is terminal and its own code comment warns that reviving it
+  "would silently change the retry contract". A shared base would turn that distinction into a
+  delegate parameter, hiding the one thing a reader must not miss, and messaging's reclaim path has
+  no replication counterpart at all. Duplication of a fifteen-line query shape is the cheaper
+  problem.
+- **"Reshape `SparkSubscriptionWorker<T>`'s virtuals" — partially done.** The substantive defect
+  behind that item was the strategy hidden inside `if (Database != null)`, which meant no worker in
+  the repository ever used `WaitForFree`; that is fixed, and the reasoning now sits in a comment.
+  The `Database` virtual itself is left in place: nothing overrides it today, but it is a legitimate
+  extension point for a worker against a non-default database, and deleting a working extension
+  point to raise a coverage number is not a simplification.
+
+## Milestones
+
+### M0 — Branch and the free wins
+
+- Branch `feat/messaging-single-subscription` off `master`.
+- **Unconditional `WaitForFree`** (F1) — delete the `if (Database != null)` guard at
+  `SparkSubscriptionWorker.cs:168-171`. Valid on its own merits; also fixes replication's
+  `SyncActionSubscriptionWorker` for free, since it is the other `SparkSubscriptionWorker<T>` subclass.
+- **B9**: `CoverageQueues.cs:8-9,18` — "AGPL/open-source licence" → registered Community; "previously
+  declared five" → seven declared, five dead.
+- **B3**: `return` → `continue` in the batch loop's three dead-letter branches
+  (`MessageSubscriptionWorker.cs:103,112,122`). Must precede any batch-size change.
+- **B10**: fix the inverted licence comment at `SparkMessagingExtensions.cs:54` and the reasoning it
+  produced in `docs/issue_233_plan.md:44-46`. The 36 h Community limit is a **ceiling on the
+  interval**, not a floor; the default is 60 s. Drop the explicit `DeleteFrequencyInSec` and take the
+  default unless there is a reason not to.
+- **B11**: resolve `RetryNumerator`'s inert `@refresh` writes after S4 — correct the false disclaimer
+  at `:11`, and either enable refresh (with the startup assertion PRD §3c requires) or delete the
+  writes at `:57`/`:74`. Do not leave inert code that reads as a working mechanism.
+
+**Verify:** solution builds.
+
+### M1 — Durable claim on the message (B1, W2)
+
+The webhook-drop fix, and a prerequisite for the feeder.
+
+- `SparkMessage` gains `OwnerId` (string?) and `ClaimExpiresAtUtc` (DateTime?).
+- The claim writes `Status = Processing` + owner + expiry and **saves before anything else happens** —
+  under optimistic concurrency, which nothing in `apps/CodeCoverage` currently enables. A second
+  feeder's claim of an already-claimed document must fail on change vector.
+- Reclaim path: expired claims go back to `Pending` with `AttemptCount++`. Put it where it will
+  actually run — extend `MessageRetrySweeper`'s query to include `Processing` with an expired claim.
+  Keep field-level patches, never load-modify-save (invariant 9).
+- **B8**: add the `WakeUp != true` guard the sweeper's replication twin already has
+  (`SyncActionRetrySweeper.cs:88`), so it stops re-patching the same set every 30 s per replica.
+
+**Verify:** builds; grep that `Processing` now has a reader.
+
+### M2 — Graceful shutdown (B2, B4)
+
+- `MessageSubscriptionWorker.cs:300` — park with `CancellationToken.None`, not the token that just
+  fired. Today the park always throws on SIGTERM, which is half of why messages strand.
+- `MessageSubscriptionManager.StopAsync` — stop feeding, drain the pumps, *then* release the lease,
+  *then* close the subscription. Order matters (PRD §4): releasing the lease first lets the incoming
+  pod feed while this pod's pumps still run the same queues, which is the one thing that breaks FIFO.
+- Document the required `terminationGracePeriodSeconds` — it must exceed the longest handler, and the
+  lease TTL must exceed it in turn. The k8s default of 30 s is **not** enough for report parsing.
+
+**Verify:** builds; re-read the shutdown ordering against PRD §4.
+
+### M3 — The feeder and the per-queue pumps (F4, invariants 1-3)
+
+- One subscription, `SubscriptionName = "SparkMessaging"`, RQL with **no `QueueName` predicate** —
+  which also retires the RQL-injection surface `QueueNames.IsValid` exists to guard. Keep the
+  status/`WakeUp` arms exactly as they are; **no `now()`, ever** (invariant 7).
+- The batch callback becomes a feeder: claim (M1) → ack → hand to an in-process channel keyed by
+  `QueueName`. It performs no handler work and makes no outbound calls.
+- One pump per queue name, drained concurrently; strictly one in-flight message per pump (FIFO).
+- Preserve per-message semantics wholesale: one DI scope and one Raven session per message, handlers
+  serial in persisted order, `Handlers[]` materialized once from DI on first pickup, per-handler
+  retry accounting, `NonRetryableException` first-attempt dead-letter, and the roll-up rules
+  (invariants 5, 6, 10).
+- Keep `MaxDocsPerBatch = 1` initially. Raise it only after S3 says the feeder is the bottleneck, and
+  only with B3 already fixed.
+
+**Verify:** builds; the ~290 lines of dispatch/allow-list/checkpoint/rollup logic should be untouched.
+
+### M4 — Leader lease (liveness only)
+
+- `spark/messaging/leader`, value `MessagingLease(NodeId, AcquiredAtUtc, ExpiresAtUtc, Fence)`.
+  `NodeId` = pod/machine name + per-process GUID so a restarted pod is a different holder.
+- TTL 30 s, renew every 10 s. Renewal CASes on `current.Index` **and** `NodeId == mine`; another
+  `NodeId` means eviction → tear down feeder and pumps immediately, stop renewing.
+- Release CAS-deletes guarded on holder identity — never the migration runner's unconditional delete.
+- Standbys poll every 5 s, run no feeder/pumps/sweeper, but keep a `WaitForFree` worker **parked** so
+  the queue still drains if the lease machinery wedges.
+- Model it on `SparkMigrationRunner`'s lease shape, not the cron scheduler's occurrence marker — cron
+  stores a monotonic stamp, which is a run-once dedup, not a renewable lease.
+
+**Verify:** builds; confirm the lease is nowhere load-bearing for correctness (PRD §4).
+
+### M5 — Modes (`SparkSubscriptionWorkerOptions`)
+
+`SingleSubscription` (default) and `SubscriptionPerQueue` (today's behaviour, for deployments with
+licence headroom wanting server-side per-queue isolation). Both must work and both must be tested.
+
+### M6 — Legacy subscription cleanup (F6, R1, uses S1)
+
+- Enumerate via `GetSubscriptionsAsync(0, 1024)`, delete every name starting `SparkMessaging-`
+  (ordinal), log each deletion at Information. **Prefix, not a hardcoded list.**
+- Home decided by S1: a migration in the `AfterSpark` stage (preferred — cluster-wide lock plus
+  applied-once marker, and it replays on restored backups) or the messaging startup slot.
+- If it ships as a migration inside `MintPlayer.Spark.Messaging`, first confirm the migration source
+  generator discovers migrations from a *referenced package* and not only from the compilation being
+  built.
+
+- **Home: the top of `MessageSubscriptionManager`'s async startup, immediately before
+  `EnsureSubscriptionExistsAsync`.** Not a migration, and not the registry middleware slot. Three
+  reasons, in order of weight:
+  1. **No sync-over-async.** The registry slot is `Action<IApplicationBuilder>`, so anything async
+     placed there has to block — which is exactly why `SparkMigrationRunner.RunAtStartup` calls
+     `.GetAwaiter().GetResult()`. The hosted service is already async, so the cleanup needs no
+     blocking call at all.
+  2. **Ordering becomes straight-line code.** Prune, then create, in one async method — no appeal to
+     the migration-vs-hosted-service argument, and nothing to re-verify if startup is ever
+     restructured.
+  3. **It self-heals.** Delete is idempotent and ~2 ms (S1), so running it every boot is free and
+     removes a stale definition whenever one reappears. A migration's once-ever marker is precisely
+     what would *prevent* that.
+
+  This reverses the preference stated above; the migration's cluster-wide lock buys nothing for an
+  operation that is idempotent, self-emptying and cheap.
+- ⚠ **The cleanup prefix and the unified subscription name are a matched pair.** `SparkMessaging`
+  survives a `SparkMessaging-` prefix delete only because it has no trailing hyphen (S12). Put a
+  comment saying so next to the prefix constant. This is the one case here that is *not* self-healing:
+  a cleanup that deletes its own live subscription every boot stays broken across restarts.
+- No guard is needed at the create site — `EnsureSubscriptionExistsAsync` already absorbs the
+  collision (S11). Do not add a second create path that omits the fallback.
+- Deleting unconditionally is fine (S1 result 1), so no marker document is needed.
+
+**Not worth engineering around.** S1 result 8 (deleting a subscription under a live worker kills that
+worker permanently) and the "terminate old pods first" requirement it implied are **descoped**. The
+only real deployment is a single container via `docker-compose` on one VPS — there is no rolling
+deploy and no second replica — the framework has no external consumers, and the failure mode is one
+`docker restart` away from healed. Recorded because the *symptom* (process up, queue silently dead)
+is worth recognising quickly, not because the deploy needs ceremony.
+
+**Verify:** S1's assertions pass. The licence-cap assertion **cannot** be verified locally (the
+Developer licence enforces no cap at all); it needs a Community-licensed server or a simulated budget.
+
+### M7 — Webhook durability (W1-W4)
+
+- **W1**: leave the broadcast-before-200 ordering alone. Re-read it and add a comment saying why.
+- **W3**: any pod accepts webhooks whether or not it holds the lease — the producer is not
+  leader-gated. GitHub does **not** auto-retry a failed delivery, so a 5xx is a lost webhook needing
+  manual redelivery.
+- **W4**: derive the webhook `SparkMessage` id from `X-GitHub-Delivery` (carried at
+  `SparkWebhookEventProcessor.cs:183`, currently unused) so a redelivery is an idempotent upsert
+  rather than a second message.
+
+### M8 — Leader-gate the other singletons (PRD §7, in-scope items)
+
+- `MessageRetrySweeper` and `SyncActionRetrySweeper` → leader-only.
+- `IndexCreation.CreateIndexes` (`SparkMiddleware.cs:649`) → leader-only or version-gated; otherwise a
+  rolling deploy has old and new pods pushing different definitions of the same index name, flapping
+  it into repeated full re-indexing.
+- `SmeeWebhookTunnelService` → leader-only **and** tighten its gate to `IsDevelopment()`. smee.io
+  broadcasts to every connected client, so N replicas process every webhook N times today, silently,
+  and the gate is config-only despite the class comment saying dev-only.
+
+### M9 — Migration-lock correctness (B5, B6, B7)
+
+- **B5**: the lock loser must not skip and serve an un-migrated database
+  (`SparkMigrationRunner.cs:37-41`) — block on the applied-once markers, or refuse readiness.
+- **B6**: `ReleaseLockAsync` (`:107-114`) must CAS on holder identity; today it can delete another
+  pod's lease.
+- **B7**: renew the migration lease, or give it a TTL a real backfill cannot outlive. 30 minutes
+  unrenewed is a coin flip.
+
+### M10 — Tests
+
+Port and extend, don't reinvent. `MessageSubscriptionWorkerE2ETests` (579 lines, 11 facts) drives
+real subscriptions plus the real sweeper against `SparkTestDriver` and is the behavioural guard.
+
+- Re-plumb all 9 `tests/MintPlayer.Spark.Tests/Messaging/*` files for the new construction.
+- Rewrite `MessageSubscriptionManagerLifecycleTests` — its premise ("a worker per discovered queue")
+  is exactly what this change deletes.
+- **Delete** `CoverageQueuesTests`' count and exact-name facts as obsolete, and re-motivate
+  `DeleteDataActionTests:81-89`. Do not work around them.
+- **New, covering the four untested invariants** (R8): FIFO within a queue; cross-queue isolation;
+  crash-mid-handler reclaim; single-consumer exclusivity across two workers.
+- New: a webhook delivery survives a leader kill mid-handler; a repeated `X-GitHub-Delivery` produces
+  no second message; `SubscriptionPerQueue` mode still works.
+
+### M11 — The single test sweep
+
+`dotnet test` for `tests/MintPlayer.Spark.Tests` and `CodeCoverage.Tests`, the client vitest run, and
+`nx run-many --target=build`. Read the numbers, not just pass/fail — zero failures on an idle machine
+proves nothing about this subsystem, and a jsdom `_namespaceURI` rejection is a fixture-lifetime
+problem, never a reason to re-run until green.
+
+### M12 — Docs
+
+- `docs/prd/PRD-SubscriptionWorker.md` §8.2 (`:459-479`) and `:180` — add a superseding section; this
+  PRD is now the design of record.
+- `libs/messaging/.../README.md` — roughly a third of its 372 lines assert one-subscription-per-queue
+  (`:5,32,44,46,165-171,177-184,242-244,272,300,335,342`).
+- `libs/subscription_worker/.../README.md:325` uses `$"SparkMessaging-{_queueName}"` as its worked
+  example of `SubscriptionName`.
+- `apps/CodeCoverage/.../CoverageQueues.cs:3-36` — the 33-line doc comment's whole argument is now
+  obsolete. Replace it; don't delete the history, record that the cap no longer scales with queue count.
+- `docs/coverage_project_automation_PRD.md` §C1 and FR5 — annotate that this rework removes the
+  constraint, per PRD §12.
+
+### M13 — Manual verification
+
+- Two processes against one database: confirm one feeds and one stands by with **no
+  `SubscriptionInUseException` logged**; kill the leader and time the handover (target ≤40 s
+  ungraceful, ~5 s graceful).
+- Confirm exactly one subscription definition exists on the server afterwards, and that no
+  `SparkMessaging-*` legacy definitions remain.
+- `dotnet run` CodeCoverage (never `ng serve` alongside; wait for the dev server's `➜ Local:` line),
+  send a real webhook through the tunnel, kill the process mid-handler, and confirm the message is
+  reclaimed and completes.
+
+---
+
+## PR checklist
+
+- [ ] Exactly one subscription definition per app in `SingleSubscription` mode, verified on a server
+- [ ] No `SubscriptionInUseException` in a two-process run
+- [ ] `Processing` has a reader and a reclaim path; no message can rest there indefinitely (B1)
+- [ ] Park uses `CancellationToken.None` (B2); `return` → `continue` fixed (B3); drain on SIGTERM (B4)
+- [ ] Migration lock: loser blocks (B5), release CASes on identity (B6), lease renewed (B7)
+- [ ] Sweepers, index creation and the smee tunnel are leader-gated (M8)
+- [ ] No `now()` in any subscription query (invariant 7); `WakeUp` still consumed on pickup and park
+- [ ] Legacy definitions deleted by **prefix**, idempotently (M6)
+- [ ] Webhook broadcast still precedes the 200; any pod accepts webhooks (W1, W3)
+- [ ] `LicenseLimitException` on create is still fatal (invariant 12)
+- [ ] The four previously-untested invariants now have tests (R8)
+- [ ] `SubscriptionPerQueue` mode covered
+- [ ] **No back-compat hedging** — PRD §9b's eight simplifications taken, not deferred: typed webhook
+      envelope gets `[MessageQueue]`, the `queueName` broadcast override deleted, empty
+      `SparkSubscriptionOptions` deleted, `RetryNumerator`'s inert `@refresh` resolved, the three
+      retry implementations collapsed to one, `SparkSubscriptionWorker<T>`'s virtuals reshaped,
+      `CoverageQueues` guards deleted rather than re-motivated
+- [x] **In-flight production documents accounted for** (PRD §9b) — **cleared, not migrated**, on
+      2026-09-07 with the owner's authorisation. Measured first: **3346** documents (3358 by delete
+      time — the live app keeps writing), of which **1935 Pending**, 1411 Completed, and **zero**
+      Processing, Failed or DeadLettered. Every Pending one sampled had `AttemptCount: 0`, spanning
+      **2026-08-13 → 2026-09-07** with only **3** from the last 24 h, and their queue names
+      (`coverage-open-pr-comment`, `coverage-delete-pr-builds`, and per-closed-generic
+      ``GitHubWebhookMessage`1-…``) are precisely the ones with **no subscription** — production
+      holds exactly three: `coverage-parse-session`, `coverage-publish-feedback`, `spark-github-all`.
+      So nothing was lost that was ever going to run.
+      <br>Clearing was the **safer** option, not the lossy one: the new feeder matches on `Status`,
+      not queue name, so deploying it against that collection would have delivered all 1935 at once
+      and replayed ~25 days of GitHub webhooks — stale PR comments on merged PRs plus
+      `coverage-delete-pr-builds` work. Verified after: `SparkMessages: 0`, 3358 tombstones, every
+      other collection untouched. Backup at `~<user>/sparkmessages-20260907T143302Z.ravendbdump`
+      (3,018,874 bytes) — delete it once satisfied, webhook payloads carry repository detail.
+- [ ] **Version diff reviewed** — all 22 packages to `preview.74`, major digit unchanged. CI publishes
+      on push to `master`; a wrong major is burned forever
+- [ ] PRD §7's out-of-scope k8s items are recorded somewhere durable, and the PR does **not** claim
+      that N replicas are safe

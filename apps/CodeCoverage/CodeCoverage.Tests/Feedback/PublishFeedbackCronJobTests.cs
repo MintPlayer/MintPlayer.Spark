@@ -27,7 +27,7 @@ public class PublishFeedbackCronJobTests : CoverageRavenTest
         public Task BroadcastAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default)
             => Record(message);
 
-        public Task BroadcastAsync<TMessage>(TMessage message, string queueName, CancellationToken cancellationToken = default)
+        public Task BroadcastOnceAsync<TMessage>(TMessage message, string deduplicationKey, CancellationToken cancellationToken = default)
             => Record(message);
 
         public Task DelayBroadcastAsync<TMessage>(TMessage message, TimeSpan delay, CancellationToken cancellationToken = default)

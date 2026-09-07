@@ -30,31 +30,19 @@ public class SparkSubscriptionExtensionsTests
         public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
+    /// <summary>
+    /// The two facts that used to live here — that calling it without a callback registers no
+    /// options, and that a callback is applied — were deleted along with
+    /// <c>SparkSubscriptionOptions</c> itself. That type was empty, so the configuration callback
+    /// could not change any behaviour; the tests were asserting that an inert mechanism worked.
+    /// </summary>
     [Fact]
-    public void AddSparkSubscriptions_without_configuration_registers_nothing_it_does_not_need()
+    public void AddSparkSubscriptions_chains_and_registers_nothing()
     {
         var services = new ServiceCollection();
 
         services.AddSparkSubscriptions().Should().BeSameAs(services, "the extension must chain");
-
-        // No Configure call means no options registration — the caller gets defaults from
-        // IOptions<T>'s own fallback rather than an empty configuration action.
-        services.Should().NotContain(d => d.ServiceType == typeof(IConfigureOptions<SparkSubscriptionOptions>));
-    }
-
-    [Fact]
-    public void AddSparkSubscriptions_applies_the_configuration_callback()
-    {
-        var services = new ServiceCollection();
-        services.AddOptions();
-
-        var configured = false;
-        services.AddSparkSubscriptions(_ => configured = true);
-
-        var options = services.BuildServiceProvider().GetRequiredService<IOptions<SparkSubscriptionOptions>>().Value;
-
-        options.Should().NotBeNull();
-        configured.Should().BeTrue("the callback has to run when the options are resolved");
+        services.Should().BeEmpty("there is no subscription infrastructure to register");
     }
 
     [Fact]

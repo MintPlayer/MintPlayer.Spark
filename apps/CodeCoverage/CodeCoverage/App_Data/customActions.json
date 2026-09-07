@@ -24,5 +24,17 @@
     "confirmationMessageKey": "repository.deleteDataConfirmation",
     "variant": "danger",
     "refreshOnCompleted": false
+  },
+  "SyncColumns": {
+    "displayName": {
+      "en": "Sync columns",
+      "fr": "Synchroniser les colonnes",
+      "nl": "Kolommen synchroniseren"
+    },
+    "icon": "ArrowRepeat",
+    "description": "Re-reads this board's Status field from GitHub and replaces its cached columns. It exists because NOTHING tells this app when a column changes: the Projects V2 webhook events are organization-scoped (a user-account installation receives none) and, measured, renaming a Status option emits no event for either owner type -- so the cache is corrected only by the nightly reconciliation or by this button, and until then a rule whose target column was deleted stays valid and silently never fires. Offered on GitHubProject only, because SyncColumns/GitHubProject is the sole grant -- actions attach by RIGHT, not by declaration, and this file is evaluated against every type. showedOn 'detail' puts it on the board's own action bar, next to the columns it refreshes. selectionRule '=0' because it acts on the board whose page it is on via args.Parent, not on selected rows. refreshOnCompleted is false because the action emits its own client operations -- it refreshes Columns, EventMappings and ColumnsSyncedAtUtc, and reports orphaned rules by name, none of which a blanket refresh does.",
+    "showedOn": "detail",
+    "selectionRule": "=0",
+    "refreshOnCompleted": false
   }
 }

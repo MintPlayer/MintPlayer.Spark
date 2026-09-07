@@ -2,7 +2,32 @@
 
 **Version:** 1.1
 **Date:** March 2, 2026
-**Status:** Draft
+**Status:** Draft — **§8 superseded, see below**
+
+---
+
+> ## ⚠️ Section 8 (Refactoring: Messaging) is superseded
+>
+> **The design of record for messaging delivery is now
+> [`docs/messaging_single_subscription_PRD.md`](../messaging_single_subscription_PRD.md).** This
+> document is kept as the history of the subscription-worker abstraction, which is unchanged and
+> still accurate; but every statement here about *how messaging maps queues onto subscriptions* is
+> obsolete, specifically:
+>
+> - **"One subscription per queue"** (§8.2 at `:180`, and the RQL at `:474`) — messaging now runs a
+>   single subscription named `SparkMessaging` whose query has no `QueueName` predicate, with
+>   per-queue FIFO provided by in-process lanes. One subscription per queue meant RavenDB's
+>   per-database subscription cap (3 on Community) decided how many queues an application could
+>   have, and exceeding it failed silently. `SubscriptionPerQueue` remains as an opt-in mode.
+> - **`NextAttemptAtUtc <= now()`** in the sample query at `:474` — this **cannot work on any current
+>   RavenDB**. A subscription where-clause cannot evaluate time, and the comparison silently never
+>   matches, so a parked message is never redelivered. The shipped predicate gates on a `WakeUp`
+>   boolean that `MessageRetrySweeper` sets.
+> - **"`MessageProcessor` replaced by per-queue subscription workers internally"** (`:55`, `:119`,
+>   `:615`) — inverted by the rework. `MessageProcessor` is once again the single owner of the
+>   per-message contract, shared by both subscription modes precisely so they cannot drift.
+>
+> Read §8 as a record of what was designed in March 2026, not as a description of the code.
 
 ---
 

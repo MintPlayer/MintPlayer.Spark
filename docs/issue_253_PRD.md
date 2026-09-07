@@ -50,7 +50,7 @@ byte-identical in the model JSON.
 
 ## F3 — Vidyano precedent: a positive marker, compiler-enforced; and no prune at all
 
-Surveyed ~14 DeCronosGroep repos:
+Surveyed ~14 prior-art repositories:
 
 - Truly property-less attributes on a typed entity: **2 sites**, both in Insurance
   (`InsurancePolicyActions.cs:107-109`, `InsurancePolicySupplierActions.cs:26`), both **transient and

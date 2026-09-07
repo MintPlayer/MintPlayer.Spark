@@ -7,18 +7,21 @@ using MintPlayer.Spark.Testing;
 namespace MintPlayer.Spark.Tests.Messaging;
 
 /// <summary>
-/// Pins <see cref="MessageSubscriptionManager"/>'s start-up lifecycle. The class
-/// is registered as an <see cref="IHostedService"/>; its <c>ExecuteAsync</c>
-/// resolves the queue list via <c>IServiceCollectionAccessor</c>, fans out one
-/// <see cref="MessageSubscriptionWorker"/> per queue, and waits for cancellation.
-///
-/// We exercise the early-out branch (no IRecipient registered → no queues → log
-/// warning + return) which is the minimum viable lifecycle that doesn't require a
-/// real Raven subscription. Construction goes through the SG-generated [Inject]
-/// ctor — proving the field assignments and base wiring work end-to-end.
+/// Pins <see cref="MessageSubscriptionManager"/>'s start-up lifecycle in both subscription modes.
+/// <para>
+/// This class previously asserted that the manager "starts a worker per discovered queue" and that
+/// a subscription named after the queue appears on the server. That premise is exactly what the
+/// single-subscription rework deletes, so the fact was rewritten rather than adapted: in the
+/// default mode the assertion is now the opposite one — <b>one</b> subscription exists, it is named
+/// <c>SparkMessaging</c>, and no per-queue definition is created however many queues are
+/// discovered.
+/// </para>
 /// </summary>
 public class MessageSubscriptionManagerLifecycleTests : SparkTestDriver
 {
+    protected override IEnumerable<System.Reflection.Assembly> IndexAssemblies
+        => [typeof(MintPlayer.Spark.Messaging.Indexes.SparkMessages_ByQueue).Assembly];
+
     [Fact]
     public async Task Logs_a_warning_and_returns_when_no_IRecipient_is_registered()
     {
@@ -37,49 +40,151 @@ public class MessageSubscriptionManagerLifecycleTests : SparkTestDriver
         using var cts = new CancellationTokenSource();
         await hosted.StartAsync(cts.Token);
 
-        // Empty-queue path completes ExecuteAsync synchronously after the warning log.
-        // StopAsync on a no-op manager just lets the wait-for-cancellation Task.Delay
-        // exit cleanly — there are no workers to drain.
-        cts.Cancel();
+        await cts.CancelAsync();
         await hosted.StopAsync(CancellationToken.None);
     }
 
     [Fact]
-    public async Task Starts_a_worker_per_discovered_queue_then_stops_them_on_StopAsync()
+    public async Task SingleSubscription_mode_creates_exactly_one_subscription_named_SparkMessaging()
     {
-        // Register a typed IRecipient so DiscoverQueueNames finds at least one queue.
-        // The worker will start a Raven subscription against the embedded test server
-        // (this test relies on SparkTestDriver's RavenTestDriver). We cancel quickly so
-        // we don't actually process any documents — just exercise the start/stop flow.
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddSingleton(Store);
-        services.AddSparkMessaging();
-        services.AddScoped<MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestPing>, TestPingRecipient>();
-        await using var provider = services.BuildServiceProvider();
+        var provider = BuildProvider(ESubscriptionMode.SingleSubscription,
+            registerSecondQueue: true);
+        await using var _ = provider;
 
         var hosted = provider.GetServices<IHostedService>()
             .OfType<MessageSubscriptionManager>()
             .Single();
 
         await hosted.StartAsync(CancellationToken.None);
+        try
+        {
+            // Wait on the observable signal — the subscription existing on the server — rather
+            // than sleeping and hoping. A fixed delay here used to make this pass whether or not
+            // anything was ever created.
+            await AsyncWait.UntilAsync(
+                () => Store.Subscriptions.GetSubscriptions(0, 128)
+                    .Any(s => s.SubscriptionName == MessageFeeder.SubscriptionNameConstant),
+                $"the manager to create the shared '{MessageFeeder.SubscriptionNameConstant}' subscription",
+                TimeSpan.FromSeconds(10));
 
-        // Wait for the observable signal that the worker actually attached — its Raven
-        // subscription existing on the server — rather than sleeping and hoping. A fixed delay
-        // here made the test pass whether or not anything was ever created.
-        await AsyncWait.UntilAsync(
-            () => Store.Subscriptions.GetSubscriptions(0, 128)
-                .Any(s => s.SubscriptionName?.Contains(QueueName, StringComparison.Ordinal) == true),
-            $"the manager to create a Raven subscription for the '{QueueName}' queue",
-            TimeSpan.FromSeconds(10));
+            var all = Store.Subscriptions.GetSubscriptions(0, 128);
 
-        await hosted.StopAsync(CancellationToken.None);
+            // The point of the rework: two queues, still one subscription.
+            all.Should().ContainSingle(s => s.SubscriptionName == MessageFeeder.SubscriptionNameConstant);
+            all.Where(s => s.SubscriptionName?.StartsWith("SparkMessaging-", StringComparison.Ordinal) == true)
+                .Should().BeEmpty("no per-queue definition may be created in SingleSubscription mode");
+        }
+        finally
+        {
+            await hosted.StopAsync(CancellationToken.None);
+        }
     }
 
-    private const string QueueName = "MessageSubscriptionManagerLifecycleTests-Ping";
+    [Fact]
+    public async Task SubscriptionPerQueue_mode_still_creates_one_subscription_per_queue()
+    {
+        var provider = BuildProvider(ESubscriptionMode.SubscriptionPerQueue,
+            registerSecondQueue: true);
+        await using var _ = provider;
 
-    [MintPlayer.Spark.Messaging.Abstractions.MessageQueueAttribute("MessageSubscriptionManagerLifecycleTests-Ping")]
+        var hosted = provider.GetServices<IHostedService>()
+            .OfType<MessageSubscriptionManager>()
+            .Single();
+
+        await hosted.StartAsync(CancellationToken.None);
+        try
+        {
+            await AsyncWait.UntilAsync(
+                () => Store.Subscriptions.GetSubscriptions(0, 128)
+                    .Count(s => s.SubscriptionName?.StartsWith("SparkMessaging-", StringComparison.Ordinal) == true) >= 2,
+                "the manager to create a per-queue subscription for both queues",
+                TimeSpan.FromSeconds(20));
+
+            var perQueue = Store.Subscriptions.GetSubscriptions(0, 128)
+                .Where(s => s.SubscriptionName?.StartsWith("SparkMessaging-", StringComparison.Ordinal) == true)
+                .Select(s => s.SubscriptionName!)
+                .ToList();
+
+            perQueue.Should().Contain($"SparkMessaging-{FirstQueue}");
+            perQueue.Should().Contain($"SparkMessaging-{SecondQueue}");
+        }
+        finally
+        {
+            await hosted.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task Legacy_per_queue_definitions_are_pruned_on_startup_and_the_shared_one_survives()
+    {
+        // Two stale definitions of the shape the old design created, plus a name that must NOT be
+        // touched. The prefix guard is one character wide — "SparkMessaging" versus
+        // "SparkMessaging-" — so this asserts the boundary directly.
+        await Store.Subscriptions.CreateAsync(new Raven.Client.Documents.Subscriptions.SubscriptionCreationOptions
+        {
+            Name = "SparkMessaging-StaleQueueOne",
+            Query = "from SparkMessages"
+        });
+        await Store.Subscriptions.CreateAsync(new Raven.Client.Documents.Subscriptions.SubscriptionCreationOptions
+        {
+            Name = "SparkMessaging-StaleQueueTwo",
+            Query = "from SparkMessages"
+        });
+
+        var provider = BuildProvider(ESubscriptionMode.SingleSubscription, registerSecondQueue: false);
+        await using var _ = provider;
+
+        var hosted = provider.GetServices<IHostedService>()
+            .OfType<MessageSubscriptionManager>()
+            .Single();
+
+        await hosted.StartAsync(CancellationToken.None);
+        try
+        {
+            await AsyncWait.UntilAsync(
+                () => Store.Subscriptions.GetSubscriptions(0, 128)
+                    .Any(s => s.SubscriptionName == MessageFeeder.SubscriptionNameConstant),
+                "the shared subscription to be created after the prune",
+                TimeSpan.FromSeconds(10));
+
+            var names = Store.Subscriptions.GetSubscriptions(0, 128)
+                .Select(s => s.SubscriptionName!)
+                .ToList();
+
+            names.Should().NotContain("SparkMessaging-StaleQueueOne");
+            names.Should().NotContain("SparkMessaging-StaleQueueTwo");
+            names.Should().Contain(MessageFeeder.SubscriptionNameConstant,
+                "the shared subscription has no trailing hyphen, so the legacy prefix must not match it");
+        }
+        finally
+        {
+            await hosted.StopAsync(CancellationToken.None);
+        }
+    }
+
+    private ServiceProvider BuildProvider(ESubscriptionMode mode, bool registerSecondQueue)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(Store);
+        services.AddSparkMessaging(o => o.SubscriptionMode = mode);
+        services.AddScoped<MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestPing>, TestPingRecipient>();
+        if (registerSecondQueue)
+            services.AddScoped<MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestPong>, TestPongRecipient>();
+        return services.BuildServiceProvider();
+    }
+
+    private const string FirstQueue = "MessageSubscriptionManagerLifecycleTests-Ping";
+    private const string SecondQueue = "MessageSubscriptionManagerLifecycleTests-Pong";
+
+    [MintPlayer.Spark.Messaging.Abstractions.MessageQueueAttribute(FirstQueue)]
     public sealed class TestPing
+    {
+        public string? Hello { get; set; }
+    }
+
+    [MintPlayer.Spark.Messaging.Abstractions.MessageQueueAttribute(SecondQueue)]
+    public sealed class TestPong
     {
         public string? Hello { get; set; }
     }
@@ -87,5 +192,10 @@ public class MessageSubscriptionManagerLifecycleTests : SparkTestDriver
     private sealed class TestPingRecipient : MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestPing>
     {
         public Task HandleAsync(TestPing message, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class TestPongRecipient : MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestPong>
+    {
+        public Task HandleAsync(TestPong message, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 }

@@ -52,17 +52,43 @@ public class MessageBusTests : SparkTestDriver
         message.QueueName.Should().Be("custom-orders-queue");
     }
 
+    /// <summary>
+    /// Replaces the deleted <c>BroadcastAsync(message, queueName)</c> fact. That overload let a
+    /// caller put a message on a queue name the consumer side could not know about: the manager
+    /// discovers queues by reflecting over <c>IRecipient&lt;T&gt;</c> registrations and derives the
+    /// name from the type, so an override that disagreed produced documents no worker ever
+    /// selected — enqueued for ever, consumed by nobody, with the app reporting itself healthy. The
+    /// queue name is a property of the message type, and now only <c>[MessageQueue]</c> sets it.
+    /// </summary>
     [Fact]
-    public async Task BroadcastAsync_with_explicit_queue_name_overrides_both_attribute_and_type_name()
+    public async Task BroadcastOnceAsync_enqueues_once_per_deduplication_key()
     {
         var bus = NewBus();
 
-        await bus.BroadcastAsync(new OrderShipped("orders/1"), queueName: "priority-queue");
+        await bus.BroadcastOnceAsync(new OrderShipped("orders/1"), "delivery-abc");
+        await bus.BroadcastOnceAsync(new OrderShipped("orders/1"), "delivery-abc");
+        await Store.WaitForIndexingAsync();
+
+        using var session = Store.OpenAsyncSession();
+        var messages = await session.Query<SparkMessage>().ToListAsync();
+
+        messages.Should().ContainSingle("the second call carries a key already enqueued");
+        messages[0].Id.Should().Be("SparkMessages/delivery-abc");
+    }
+
+    [Fact]
+    public async Task BroadcastOnceAsync_sanitizes_a_key_that_is_not_a_legal_document_id()
+    {
+        var bus = NewBus();
+
+        // The key comes from a request header in the motivating case, so it cannot be trusted to
+        // be a legal RavenDB id.
+        await bus.BroadcastOnceAsync(new OrderShipped("orders/1"), "a/b c|d");
         await Store.WaitForIndexingAsync();
 
         using var session = Store.OpenAsyncSession();
         var message = await session.Query<SparkMessage>().SingleAsync();
-        message.QueueName.Should().Be("priority-queue");
+        message.Id.Should().Be("SparkMessages/a_b_c_d");
     }
 
     [Fact]

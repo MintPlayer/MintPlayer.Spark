@@ -25,7 +25,7 @@ services:
     restart: unless-stopped
 
   spark-app:
-    image: ghcr.io/mintplayer/mintplayer.spark/webhooks-demo:master
+    image: ghcr.io/mintplayer/codecoverage:master
     depends_on:
       - spark-raven
     environment:
@@ -92,11 +92,11 @@ In Development mode, Spark always creates the database if it doesn't exist. For 
 
 ## Production Deployment with Traefik
 
-The repository includes a production-ready `docker-compose.yml` at `Demo/WebhooksDemo/docker-compose.yml` that uses `${...}` placeholders for secrets. These are resolved from a `.env` file you create on the server.
+The repository includes a production-ready `docker-compose.yml` at `apps/CodeCoverage/docker-compose.yml` that uses `${...}` placeholders for secrets. These are resolved from a `.env` file you create on the server.
 
 ### 1. Create the `.env` file
 
-On your server, create `/var/www/webhooks-demo/.env` (see `Demo/WebhooksDemo/.env.example` for a template):
+On your server, create `/var/www/code-coverage/.env` (see `apps/CodeCoverage/.env.example` for a template):
 
 ```env
 GITHUB_WEBHOOK_SECRET=whsec_your_webhook_secret
@@ -111,15 +111,15 @@ Copy your GitHub App's `.pem` file to the same directory:
 
 ```bash
 # Copy or create the file
-cp ~/my-app.private-key.pem /var/www/webhooks-demo/github-app.pem
-chmod 600 /var/www/webhooks-demo/github-app.pem
+cp ~/my-app.private-key.pem /var/www/code-coverage/github-app.pem
+chmod 600 /var/www/code-coverage/github-app.pem
 ```
 
 The `docker-compose.yml` mounts this file read-only into the container at `/run/secrets/github-app.pem`.
 
 ### 3. Docker Compose file
 
-The included `Demo/WebhooksDemo/docker-compose.yml` sets up:
+The included `apps/CodeCoverage/docker-compose.yml` sets up:
 
 ```yaml
 services:
@@ -137,7 +137,7 @@ services:
     restart: unless-stopped
 
   spark-app:
-    image: ghcr.io/mintplayer/mintplayer.spark/webhooks-demo:master
+    image: ghcr.io/mintplayer/codecoverage:master
     depends_on:
       - spark-raven
     environment:
@@ -181,7 +181,7 @@ The private key is provided via a file mount rather than an environment variable
 
 ### CI/CD
 
-The GitHub Actions workflow (`webhooks-demo-deploy.yml`) automatically:
+The GitHub Actions workflow (`code-coverage-deploy.yml`) automatically:
 
 1. Builds and pushes the Docker image to GHCR
 2. SSHes into the VPS and downloads the latest `docker-compose.yml` from the repository

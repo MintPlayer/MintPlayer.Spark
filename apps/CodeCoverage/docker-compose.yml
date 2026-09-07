@@ -76,6 +76,14 @@ services:
     # Pull-only: no build block, so `docker compose up -d` on the VPS can
     # never fall back to building from source — deploys are pull + restart.
     image: ghcr.io/mintplayer/codecoverage:master
+    # Long enough for an in-flight message handler to finish on SIGTERM. Docker's default is
+    # 10 seconds, which is not enough for coverage report parsing, and a handler killed
+    # mid-flight leaves its message claimed until SparkMessagingOptions.ClaimTtl (5 min)
+    # lapses and the sweeper reclaims it — so the work is not lost, but it is delayed and
+    # partially re-run. Keep this comfortably BELOW ClaimTtl: a grace period longer than the
+    # claim would let the sweeper hand the message to a new container while the old one is
+    # still working on it.
+    stop_grace_period: 120s
     depends_on:
       coverage-raven:
         condition: service_healthy

@@ -107,7 +107,8 @@
       }
     ],
     "queries": [
-      "account-repositories"
+      "account-repositories",
+      "account-projects"
     ]
   },
   "queries": [

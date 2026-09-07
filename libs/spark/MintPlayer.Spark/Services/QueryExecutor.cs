@@ -555,7 +555,25 @@ internal partial class QueryExecutor : IQueryExecutor
         // sub-query must route through one. So the parent is not something this branch can honour;
         // its presence proves the query was configured somewhere it cannot serve. Refuse, and name
         // the fix.
-        if (parent is not null)
+        //
+        // But only for an actual sub-query, which is what the parent's type DECLARES, not merely
+        // what a request carries. This condition used to be `parent is not null`, and that was too
+        // broad by one whole use of the parent: the edit form sends the object being edited as the
+        // parent when it fetches every Reference attribute's OPTION LIST, so a picker pointed at a
+        // plain Database.* query — the ordinary way to offer "any Account" — failed the form with a
+        // 500 and no options. The refusal's own premise does not hold there either: "serving it
+        // would list every row" is the defect for a child grid and the entire point of a picker.
+        //
+        // Declared sub-queries are the parent type's Queries, by alias. That is exactly the
+        // configuration the original guard was written to catch, so it still fires where it was
+        // aimed; an undeclared pairing means the parent is context rather than a filter, and is
+        // served unscoped below. This concedes nothing to a caller: dropping parentId from the
+        // request already returns these rows, and the Query right was enforced above either way.
+        var declaresAsSubQuery = parent is not null
+            && (modelLoader.GetEntityType(parent.ObjectTypeId)?.Queries ?? [])
+                .Contains(query.Alias ?? SparkQueryAliases.Derive(query.Name), StringComparer.OrdinalIgnoreCase);
+
+        if (declaresAsSubQuery)
         {
             throw new InvalidOperationException(
                 $"Query '{query.Name}' is used as a sub-query (it was executed with a parent), but its " +

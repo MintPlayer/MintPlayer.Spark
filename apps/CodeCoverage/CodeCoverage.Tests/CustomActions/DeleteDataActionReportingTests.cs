@@ -52,7 +52,7 @@ public class DeleteDataActionReportingTests : CoverageRavenTest
             return Task.CompletedTask;
         }
 
-        public Task BroadcastAsync<TMessage>(TMessage message, string queueName, CancellationToken cancellationToken = default)
+        public Task BroadcastOnceAsync<TMessage>(TMessage message, string deduplicationKey, CancellationToken cancellationToken = default)
             => BroadcastAsync(message, cancellationToken);
 
         public Task DelayBroadcastAsync<TMessage>(TMessage message, TimeSpan delay, CancellationToken cancellationToken = default)
