@@ -162,26 +162,81 @@ await messageBus.DelayBroadcastAsync(
 
 The message is stored immediately but the subscription worker will not pick it up until the delay has elapsed.
 
-#### Queue Name Override
+#### Broadcast At Most Once
 
-For per-collection queue isolation (e.g., in the replication package), you can pass an explicit queue name that overrides the `[MessageQueue]` attribute:
+When the same logical event can arrive more than once, pass a stable key and it will be enqueued
+only once:
 
 ```csharp
-await messageBus.BroadcastAsync(message, "spark-sync-Cars");
+await messageBus.BroadcastOnceAsync(envelope, deliveryId);
 ```
+
+The key becomes part of the message's document id, so uniqueness is enforced by the database rather
+than by a query, and it holds regardless of which host receives the duplicate. Spark's GitHub
+webhook processor uses this with `X-GitHub-Delivery`: GitHub re-sends a delivery automatically after
+a `5xx` and manually from the repository's webhook UI, and the id is stable across those attempts, so
+without a key one retried delivery runs every recipient twice.
+
+Note that this deduplicates *enqueueing*, not handling. A duplicate arriving after the original has
+been processed and expired by retention is a new message again — the correct trade-off for a
+retention window measured in days.
+
+> **Removed: the queue-name override.** `BroadcastAsync(message, queueName)` is gone. The consumer
+> side derives queue names by reflecting over `IRecipient<T>` registrations and cannot see what a
+> producer passed, so an override that disagreed produced documents no worker ever selected —
+> enqueued for ever, consumed by nobody, with the application reporting itself healthy. The queue a
+> message belongs to is a property of its type; declare it with `[MessageQueue]`.
 
 ## How It Works
 
 ### Message Processing
 
-Internally, the messaging library uses **RavenDB data subscriptions** (via `MintPlayer.Spark.SubscriptionWorker`) with one subscription per queue:
+Internally the messaging library uses **one RavenDB data subscription for every queue** (via
+`MintPlayer.Spark.SubscriptionWorker`), with per-queue ordering provided by in-process lanes:
 
-1. At startup, the `MessageSubscriptionManager` discovers all queue names from registered `IRecipient<T>` types
-2. For each queue, it creates a dedicated `MessageSubscriptionWorker` using a RavenDB data subscription with `MaxDocsPerBatch = 1`
-3. Each queue's worker runs as an independent RavenDB subscription
-4. Within a queue, messages are processed **one at a time in FIFO order**
-5. Different queues are processed **concurrently and independently**
-6. Each message is dispatched within a fresh **DI scope**, so recipients get fresh scoped services
+1. At startup, `MessageSubscriptionManager` prunes any legacy `SparkMessaging-*` definitions, then
+   discovers all queue names from registered `IRecipient<T>` types
+2. It competes for a cluster-wide **messaging lease**; only the holder feeds
+3. The holder runs a single `MessageFeeder` on the subscription `SparkMessaging`, whose query has
+   **no `QueueName` predicate**, with `MaxDocsPerBatch = 1`
+4. The feeder **claims** each message — `Status = Processing`, `OwnerId`, `ClaimExpiresAtUtc`, saved
+   under optimistic concurrency *before* the batch is acknowledged — and routes it to a lane keyed
+   by queue name
+5. Each lane is drained by one **pump** with at most one message in flight, so within a queue
+   messages are processed **one at a time in FIFO order**
+6. Lanes are independent tasks, so different queues are processed **concurrently and independently**
+7. Each message is dispatched within a fresh **DI scope**, so recipients get fresh scoped services
+
+> **Why one subscription.** RavenDB caps data subscriptions per database — three on a Community
+> licence — and the previous design spent one per distinct queue name. That made "how many queues may
+> this application have?" a licensing question, and exceeding the cap failed *silently*: the create
+> was refused, the worker started against a subscription that did not exist, died as
+> "non-recoverable", and the process stayed up looking healthy with a dead queue. Seven definitions
+> accumulated in one production database and five were doing nothing. Queue names are a modelling
+> decision, and this makes them free again.
+
+Set `SubscriptionMode = SubscriptionPerQueue` to get the old model back — one subscription per queue,
+one slot per queue — which is worth it only where the licence has headroom and server-side isolation
+is genuinely wanted. Both modes share `MessageProcessor`, so the per-message contract is identical.
+
+### Crash recovery
+
+A claim is the durable record that some process is working on a message. If a host dies between
+pickup and completion, the message stays at `Processing` with a lapsing `ClaimExpiresAtUtc`, and
+`MessageRetrySweeper` returns it to `Pending` with `AttemptCount` incremented so it is delivered
+again.
+
+That reader is new, and its absence was a real bug: `Processing` used to be written on pickup and
+consulted by **nothing** — not the subscription query, not the sweeper — so a message interrupted
+mid-handler was stranded permanently with no retry, no dead-letter and no log line. For webhook
+traffic that meant a delivery accepted with a `200` and then silently dropped.
+
+Because a claim lapses by wall clock, `ClaimTtl` must exceed your slowest handler *and* the
+container's `terminationGracePeriodSeconds`. Claims are renewed every `ClaimRenewInterval` while a
+handler runs, so a legitimately slow handler is not reclaimed underneath itself; the TTL bounds how
+long an *abandoned* message waits, not how long a handler may take. Kubernetes' default 30-second
+grace period is **not** enough for long handlers such as coverage report parsing — a pod stopped
+mid-handler would be killed before it could drain.
 
 ### Per-Handler Retry Isolation
 

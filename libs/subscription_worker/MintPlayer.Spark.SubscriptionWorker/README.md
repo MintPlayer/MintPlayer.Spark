@@ -317,22 +317,27 @@ This requires RavenDB document revisions to be enabled on the collection.
 
 ## Real-World Example: Spark Messaging
 
-The [`MintPlayer.Spark.Messaging`](../../messaging/MintPlayer.Spark.Messaging/README.md) package uses `SparkSubscriptionWorker<T>` internally for its message processing pipeline. `MessageSubscriptionWorker` subscribes to `SparkMessage` documents filtered by queue name and status:
+The [`MintPlayer.Spark.Messaging`](../../messaging/MintPlayer.Spark.Messaging/README.md) package uses
+`SparkSubscriptionWorker<T>` internally. `MessageFeeder` subscribes to `SparkMessage` documents for
+**every** queue at once, claims each one, and routes it to an in-process per-queue lane:
 
 ```csharp
-internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkMessage>
+internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
 {
-    protected override string SubscriptionName => $"SparkMessaging-{_queueName}";
+    // No trailing hyphen: the startup cleanup deletes "SparkMessaging-*", and this name
+    // escapes that prefix by exactly one character.
+    protected override string SubscriptionName => "SparkMessaging";
     protected override int MaxDocsPerBatch => 1;
 
     protected override SubscriptionCreationOptions ConfigureSubscription()
     {
+        // No QueueName predicate — one subscription serves all queues, which also means no
+        // queue name is interpolated into RQL.
         return new SubscriptionCreationOptions
         {
-            Query = $@"from SparkMessages
-                       where QueueName = '{_queueName}'
-                       and Status = 'Pending'
-                       and (NextAttemptAtUtc = null or NextAttemptAtUtc <= now())"
+            Query = @"from SparkMessages
+                      where (Status = 'Pending' and (NextAttemptAtUtc = null or WakeUp = true))
+                         or (Status = 'Failed' and WakeUp = true)"
         };
     }
 
@@ -341,22 +346,29 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
     {
         foreach (var item in batch.Items)
         {
-            var message = item.Result;
-            var session = batch.OpenAsyncSession();
-            // Mark as Processing, deserialize payload, resolve handlers,
-            // handle retries, dead-lettering, and expiration...
+            // Claim under optimistic concurrency and save BEFORE acknowledging the batch,
+            // then hand the id to the queue's lane. No handler runs on this path.
         }
     }
 }
 ```
 
-This demonstrates a pattern where the subscription query does server-side filtering (only pending messages past their retry delay), and the worker handles retries, dead-lettering, and state transitions within `ProcessBatchAsync`.
+Two things in that query are worth copying, because both were learned the hard way:
+
+- **`WakeUp = true`, never `NextAttemptAtUtc <= now()`.** A subscription where-clause cannot evaluate
+  time — a `now()` comparison silently never matches, so a message parked for a retry would never be
+  redelivered. "The backoff has elapsed" must be materialized as plain field state by a component
+  that *can* evaluate time; `MessageRetrySweeper` sets the boolean, and the patch that sets it is
+  also what bumps the change vector to trigger re-evaluation.
+- **The claim is saved before the batch is acknowledged.** Subscriptions re-deliver an
+  unacknowledged batch on reconnect but never a acknowledged one, so a status written *after* the
+  acknowledgement — with nothing that reads it — leaves a crashed host's message stranded for ever.
 
 ## Extension Methods
 
 | Method | Description |
 |--------|-------------|
-| `AddSparkSubscriptions(Action<SparkSubscriptionOptions>?)` | Register subscription infrastructure |
+| `AddSparkSubscriptions()` | Register subscription infrastructure. Takes no configuration callback — the former `SparkSubscriptionOptions` was an empty class whose only effect was to register an options object nothing read |
 | `AddSubscriptionWorker<TWorker>()` | Register a single worker as a hosted service |
 
 ### Source-Generated

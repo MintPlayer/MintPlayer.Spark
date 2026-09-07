@@ -227,6 +227,73 @@ same observation is direct confirmation of F6: nothing ever removes a definition
 
 ---
 
+## Implementation status (2026-09-07)
+
+Landed on `feat/coverage-project-automation` — the messaging rework and the coverage project
+automation share one PR, per the standing one-PR constraint, with messaging first as §5 of the
+decision register sequences it.
+
+| Milestone | Status |
+|---|---|
+| M0 free wins | **Done.** Unconditional `WaitForFree`; `return`→`continue`; the inverted 36 h expiration comment; `CoverageQueues` doc rewritten; `RetryNumerator`'s inert `@refresh` writes deleted and its false disclaimer corrected |
+| M1 durable claim | **Done.** `OwnerId` + `ClaimExpiresAtUtc`, claim saved under optimistic concurrency before the batch is acked, reclaim in the sweeper, `WakeUp != true` guard added |
+| M2 graceful shutdown | **Done.** Park uses `CancellationToken.None`; stop-feed → drain → release-lease ordering; grace-period guidance in the messaging README |
+| M3 feeder + pumps | **Done.** `MessageFeeder` on `SparkMessaging` with no `QueueName` predicate; `MessageQueueRouter` with one bounded lane and one pump per queue; `MessageProcessor` extracted so both modes share the per-message contract verbatim |
+| M4 leader lease | **Done.** `MessagingLeaseManager` on `spark/messaging/leader`, renewal CASes on index **and** `NodeId`, release CASes on identity |
+| M5 modes | **Done.** `SparkMessagingOptions.SubscriptionMode`, both modes tested |
+| M6 legacy cleanup | **Done**, in the hosted service's async startup rather than a migration — see the milestone for why, and for the load-bearing hyphen |
+| M7 webhook durability | **Done.** W1/W3 documented as load-bearing; W4 implemented as `BroadcastOnceAsync` keyed on `X-GitHub-Delivery` |
+| M8 leader-gate singletons | **Partial — see below** |
+| M9 migration lock | **Partial — see below** |
+| M10 tests | **Done.** Lifecycle tests rewritten; `MessagingInvariantsTests` covers the four untested invariants; `CoverageQueuesTests` count/name facts deleted; `DeleteDataActionTests` re-motivated on ordering |
+| M11 test sweep | Run at the end, once |
+| M12 docs | **Done.** Messaging README, subscription-worker README worked example, `PRD-SubscriptionWorker` superseding banner, coverage PRD §C1 lifted |
+| M13 manual verification | **Not done** — requires a real webhook through the tunnel and a two-process run |
+
+### Deliberately not done, and why
+
+Both reductions follow the owner's calibration steer, recorded as a standing constraint in the
+decision register §8: the framework has no external consumers and the only deployment is a single
+container on one VPS, so a fault a `docker restart` heals is not a design constraint.
+
+- **M8, except the sweeper.** `MessageRetrySweeper` is leader-gated, because that is the pathology
+  the lease exists to prevent and it cost three lines. **Not** done: leader-gating
+  `IndexCreation.CreateIndexes` and `SmeeWebhookTunnelService`. Both hazards are strictly
+  multi-replica — index definitions flapping between old and new pods during a rolling deploy, and
+  smee broadcasting to N connected clients so N replicas process each webhook N times. With one
+  container there is no second pod to flap against or duplicate with. The smee gate being
+  config-only rather than `IsDevelopment()`-gated is left as-is for the same reason: it is latent,
+  not live.
+- **M9, except B6.** The migration lock's release now CASes on the index its own claim produced, so
+  it can no longer delete a lock another node legitimately took over — a cheap fix to a real
+  footgun. **Not** done: B5 (the lock loser serving an un-migrated database) and B7 (renewing the
+  lease). Both require two or more instances to matter at all.
+
+If this ever runs multi-replica, these are the items to revisit first, and the PR must not claim
+that N replicas are safe.
+
+### Two §9b simplifications declined, with reasons
+
+These are judgement calls against the PR checklist rather than oversights, so they are stated
+plainly rather than quietly skipped.
+
+- **"Collapse the three retry implementations to one" — not done.** They are not three of a kind.
+  `RetryNumerator` is per-document counter-based attempt tracking; the other two are sweepers, and
+  what they share is about fifteen lines of "query due ids, patch two fields, save". What differs is
+  everything that carries meaning: the entity and index, and above all *which statuses are
+  eligible* — messaging sweeps `Pending` **and** `Failed`, replication sweeps `Pending` only,
+  because for replication `Failed` is terminal and its own code comment warns that reviving it
+  "would silently change the retry contract". A shared base would turn that distinction into a
+  delegate parameter, hiding the one thing a reader must not miss, and messaging's reclaim path has
+  no replication counterpart at all. Duplication of a fifteen-line query shape is the cheaper
+  problem.
+- **"Reshape `SparkSubscriptionWorker<T>`'s virtuals" — partially done.** The substantive defect
+  behind that item was the strategy hidden inside `if (Database != null)`, which meant no worker in
+  the repository ever used `WaitForFree`; that is fixed, and the reasoning now sits in a comment.
+  The `Database` virtual itself is left in place: nothing overrides it today, but it is a legitimate
+  extension point for a worker against a non-default database, and deleting a working extension
+  point to raise a coverage number is not a simplification.
+
 ## Milestones
 
 ### M0 — Branch and the free wins

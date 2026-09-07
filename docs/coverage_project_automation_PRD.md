@@ -86,7 +86,25 @@ through the generic Spark model — and `apps/WebhooksDemo` is deleted from the 
 
 These are verified facts that the design is not free to ignore.
 
-### C1 — One RavenDB subscription per distinct queue name. Still.
+### C1 — ~~One RavenDB subscription per distinct queue name. Still.~~ **LIFTED**
+
+> **Status: no longer binding.** The messaging rework has landed, so messaging runs a single
+> subscription (`SparkMessaging`) for every queue with per-queue FIFO from in-process lanes. **A new
+> queue name now costs no subscription**, and this constraint no longer shapes the design.
+>
+> What changes for this initiative:
+> - **FR5** may take its own queue name instead of sharing `spark-github-all`, which gives project
+>   automation genuine FIFO isolation: a slow board reconciliation cannot delay coverage feedback,
+>   and its retry/dead-letter state is its own.
+> - **R1** ("a new queue name slips in and kills a queue") is no longer a risk of that kind. The
+>   remaining consideration is ordering, not capacity: one queue is one FIFO lane, so the question
+>   is only whether two workloads should be serialised with each other.
+> - The four build-time guards that pinned the queue count are deleted; `MessageSubscriptionManagerLifecycleTests`
+>   asserts the property that matters now — however many queues are declared, one subscription
+>   exists.
+>
+> The rest of this section is retained as the record of *why* the constraint existed and what it
+> cost, because five silently dead queues in production is the reason the rework happened.
 
 Re-verified 2026-09-07 on master `6adddec4`. `MessageSubscriptionManager` starts one worker per
 discovered queue name (`libs/messaging/.../MessageSubscriptionManager.cs:35-50`) and each worker's
