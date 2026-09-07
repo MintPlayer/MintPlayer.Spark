@@ -39,10 +39,10 @@ public class DeleteDataActionTests : CoverageRavenTest
             return Task.CompletedTask;
         }
 
-        public Task BroadcastAsync<TMessage>(TMessage message, string queueName, CancellationToken cancellationToken = default)
+        public Task BroadcastOnceAsync<TMessage>(TMessage message, string deduplicationKey, CancellationToken cancellationToken = default)
         {
             Broadcast.Add(message);
-            QueueNames.Add(queueName);
+            QueueNames.Add(QueueNameFor(typeof(TMessage)));
             return Task.CompletedTask;
         }
 
@@ -71,11 +71,18 @@ public class DeleteDataActionTests : CoverageRavenTest
     /// <summary>
     /// The message must land on the shared publishing queue, not on a queue of its own.
     /// <para>
-    /// This is the assertion that would have caught the outage. RavenDB caps data subscriptions per
-    /// database and this deployment's licence allows three; a message type that quietly declares a
-    /// fourth queue name is enqueued forever and consumed by nobody, while the application reports
-    /// itself perfectly healthy. <c>CoverageQueuesTests</c> guards the count; this guards that THIS
-    /// message is on one of the two that exist.
+    /// <b>Re-motivated.</b> This began as the assertion that would have caught the outage: RavenDB
+    /// capped data subscriptions per database at three on this licence, so a message type quietly
+    /// declaring a fourth queue name was enqueued for ever and consumed by nobody while the app
+    /// reported itself healthy. That hazard is gone — messaging now runs one shared subscription,
+    /// so a new queue name costs nothing and cannot kill a queue.
+    /// </para>
+    /// <para>
+    /// It is kept because the grouping still matters for a different and now sole reason:
+    /// <i>ordering</i>. One queue is one FIFO lane, and deletion must not overtake the check-run
+    /// publishes and PR comments already queued for the same repository — a delete that ran ahead
+    /// of an in-flight publish would have the publish recreate data the user asked to remove.
+    /// Sharing the publishing lane is what serialises them.
     /// </para>
     /// </summary>
     [Fact]

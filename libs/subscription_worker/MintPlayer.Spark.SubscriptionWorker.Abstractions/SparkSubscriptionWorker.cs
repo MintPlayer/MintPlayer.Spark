@@ -165,10 +165,18 @@ public abstract partial class SparkSubscriptionWorker<T> : BackgroundService whe
                 MaxDocsPerBatch = MaxDocsPerBatch,
             };
 
-            if (Database != null)
-            {
-                workerOptions.Strategy = SubscriptionOpeningStrategy.WaitForFree;
-            }
+            // WaitForFree unconditionally. This used to be applied only when Database was
+            // non-null, which nothing overrides — so every worker in the repository ran the
+            // client default, OpenIfFree, and a second instance threw SubscriptionInUseException
+            // instead of standing by. The Database condition was never a reason for a different
+            // strategy; it was the only place the line happened to be written.
+            //
+            // Measured (spike S2): with WaitForFree the standby blocks inside Run() with no
+            // exception and no retry churn, and takes over in 962 ms after a graceful close and
+            // 575 ms after the holder is killed outright. Exclusivity is therefore enforced by
+            // the server, which is why the messaging leader lease is a liveness concern only and
+            // needs no fencing token.
+            workerOptions.Strategy = SubscriptionOpeningStrategy.WaitForFree;
 
             using var subscriptionWorker = DocumentStore.Subscriptions.GetSubscriptionWorker<T>(workerOptions, Database);
 

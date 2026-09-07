@@ -123,13 +123,10 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
 
     // --- Helpers --------------------------------------------------------------
 
-    private async Task<string> SeedAsync<T>(T payload, string? queueNameOverride = null, int maxAttempts = 5)
+    private async Task<string> SeedAsync<T>(T payload, int maxAttempts = 5)
     {
         var bus = new MessageBus(Store, Options.Create(new SparkMessagingOptions { MaxAttempts = maxAttempts }));
-        if (queueNameOverride == null)
-            await bus.BroadcastAsync(payload);
-        else
-            await bus.BroadcastAsync(payload, queueNameOverride);
+        await bus.BroadcastAsync(payload);
 
         await Store.WaitForIndexingAsync();
         using var session = Store.OpenAsyncSession();
@@ -164,6 +161,15 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
     }
 
     /// <summary>
+    /// A lease manager that reports the lease as held, because these tests drive the workers
+    /// directly rather than through <see cref="MessageSubscriptionManager"/>, which is what
+    /// normally sets it. Without this the sweeper would skip every pass and the redelivery tests
+    /// would fail for the wrong reason.
+    /// </summary>
+    private MessagingLeaseManager HeldLease()
+        => new(Store, NullLogger<MessagingLeaseManager>.Instance) { IsHeld = true };
+
+    /// <summary>
     /// The wake-up mechanism for parked messages. Redelivery tests must run one alongside
     /// the worker: the embedded test server has no document refresh enabled, so without the
     /// sweeper a Failed/delayed message is never re-evaluated (the exact issue #233 bug).
@@ -173,37 +179,52 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
         return new MessageRetrySweeper(
             Store,
             Options.Create(options ?? new SparkMessagingOptions { FallbackPollInterval = TimeSpan.FromSeconds(1) }),
-            NullLogger<MessageRetrySweeper>.Instance);
+            NullLogger<MessageRetrySweeper>.Instance,
+            HeldLease());
     }
 
-    private static IServiceProvider ProviderFor<TMessage, TRecipient>(TRecipient instance)
+    /// <summary>
+    /// Registers what a worker needs beyond its recipients. The per-message contract now lives in
+    /// <see cref="MessageProcessor"/>, shared by both subscription modes, so the worker resolves it
+    /// from the provider rather than owning the dispatch logic itself.
+    /// </summary>
+    private void AddWorkerInfrastructure(IServiceCollection services, SparkMessagingOptions? options = null)
+    {
+        services.AddSingleton<IServiceCollectionAccessor>(new ServiceCollectionAccessor(services));
+        // R2-H6: the worker requires IMessageTypeAllowList to gate Type.GetType. The allow-list
+        // reads its set from registered IRecipient<T> services via IServiceCollectionAccessor, so
+        // both are wired with the same ServiceCollection.
+        services.AddSingleton<IMessageTypeAllowList, MessageTypeAllowList>();
+        services.AddSingleton<IDocumentStore>(Store);
+        services.AddSingleton(Options.Create(options ?? new SparkMessagingOptions { MaxAttempts = 5 }));
+        services.AddLogging();
+        services.AddScoped<MessageCheckpoint>();
+        services.AddScoped<IMessageCheckpoint>(sp => sp.GetRequiredService<MessageCheckpoint>());
+        services.AddSingleton<MessageProcessor>();
+    }
+
+    private IServiceProvider ProviderFor<TMessage, TRecipient>(TRecipient instance, SparkMessagingOptions? options = null)
         where TRecipient : class, IRecipient<TMessage>
     {
         var services = new ServiceCollection();
         services.AddSingleton<IRecipient<TMessage>>(instance);
-        // R2-H6: the worker now requires IMessageTypeAllowList to gate Type.GetType.
-        // The allow-list reads its set from registered IRecipient<T> services via
-        // IServiceCollectionAccessor, so wire both with the same ServiceCollection.
-        services.AddSingleton<IServiceCollectionAccessor>(new ServiceCollectionAccessor(services));
-        services.AddSingleton<IMessageTypeAllowList, MessageTypeAllowList>();
+        AddWorkerInfrastructure(services, options);
         return services.BuildServiceProvider();
     }
 
-    private static IServiceProvider EmptyProvider()
+    private IServiceProvider EmptyProvider()
     {
         var services = new ServiceCollection();
-        services.AddSingleton<IServiceCollectionAccessor>(new ServiceCollectionAccessor(services));
-        services.AddSingleton<IMessageTypeAllowList, MessageTypeAllowList>();
+        AddWorkerInfrastructure(services);
         return services.BuildServiceProvider();
     }
 
-    private static IServiceProvider ProviderForMulti<TMessage>(params IRecipient<TMessage>[] recipients)
+    private IServiceProvider ProviderForMulti<TMessage>(params IRecipient<TMessage>[] recipients)
     {
         var services = new ServiceCollection();
         foreach (var r in recipients)
             services.AddSingleton(r);
-        services.AddSingleton<IServiceCollectionAccessor>(new ServiceCollectionAccessor(services));
-        services.AddSingleton<IMessageTypeAllowList, MessageTypeAllowList>();
+        AddWorkerInfrastructure(services);
         return services.BuildServiceProvider();
     }
 

@@ -32,7 +32,7 @@ public class UploadsControllerAuthorizationTests : CoverageRavenTest
     private sealed class NullMessageBus : IMessageBus
     {
         public Task BroadcastAsync<TMessage>(TMessage m, CancellationToken c = default) => Task.CompletedTask;
-        public Task BroadcastAsync<TMessage>(TMessage m, string q, CancellationToken c = default) => Task.CompletedTask;
+        public Task BroadcastOnceAsync<TMessage>(TMessage m, string key, CancellationToken c = default) => Task.CompletedTask;
         public Task DelayBroadcastAsync<TMessage>(TMessage m, TimeSpan d, CancellationToken c = default) => Task.CompletedTask;
     }
 

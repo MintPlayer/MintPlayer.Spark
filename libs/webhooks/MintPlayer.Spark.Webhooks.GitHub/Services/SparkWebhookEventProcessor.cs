@@ -90,6 +90,19 @@ internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
         // exactly how `installation_repositories` came to be dropped for the lifetime of the
         // library while an app sat waiting for it. There is no list to keep in step here: whatever
         // GitHub sends, a recipient of the catch-all sees.
+        //
+        // W1 — the broadcast deliberately precedes the 200, and that ordering is load-bearing.
+        // Enqueueing first means the message is durable before GitHub is told the delivery
+        // succeeded. Acknowledging first and enqueueing afterwards would open a window in which
+        // GitHub considers the delivery done while we hold nothing: GitHub does NOT re-deliver on
+        // its own once it has a 2xx, so that webhook would simply be gone, recoverable only by a
+        // human pressing "Redeliver". The cost of this order is the opposite and far cheaper
+        // failure: if the enqueue succeeds but the response never reaches GitHub, the delivery is
+        // retried and we get a duplicate — which BroadcastOnceAsync's delivery-id key absorbs.
+        //
+        // W3 — any host may accept a webhook, whether or not it holds the messaging lease. The
+        // producer is deliberately not leader-gated: a standby returning 5xx so that "only the
+        // leader accepts webhooks" would convert a routine leader handover into lost deliveries.
         await BroadcastCatchAllAsync(caseInsensitiveHeaders, body, cancellationToken);
 
         // Typed dispatch is best-effort, and must not be able to fail the delivery.
@@ -126,14 +139,34 @@ internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
 
         var (installationId, repositoryFullName) = ReadRoutingFields(body);
 
-        await _messageBus.BroadcastAsync(new GitHubWebhookMessage
+        var envelope = new GitHubWebhookMessage
         {
             Headers = BuildHeaders(headers),
             InstallationId = installationId,
             RepositoryFullName = repositoryFullName,
             EventType = Header(headers, "X-GitHub-Event") ?? string.Empty,
             EventJson = body,
-        }, cancellationToken);
+        };
+
+        // Keyed on X-GitHub-Delivery so a redelivery of the same event does not enqueue a second
+        // message. GitHub re-sends a delivery both automatically (after a 5xx) and manually from
+        // the repository's webhook UI, and the id is stable across those attempts — so without the
+        // key, one retried delivery runs every recipient twice.
+        //
+        // Missing header: fall back to an ordinary broadcast rather than inventing a key. A
+        // synthesized one would be unique per call and deduplicate nothing, while looking like it
+        // did.
+        var deliveryId = Header(headers, "X-GitHub-Delivery");
+        if (string.IsNullOrWhiteSpace(deliveryId))
+        {
+            _logger.LogWarning(
+                "GitHub delivery for event '{EventType}' carried no X-GitHub-Delivery header; "
+                + "enqueueing without redelivery de-duplication", envelope.EventType);
+            await _messageBus.BroadcastAsync(envelope, cancellationToken);
+            return;
+        }
+
+        await _messageBus.BroadcastOnceAsync(envelope, deliveryId, cancellationToken);
     }
 
     /// <summary>

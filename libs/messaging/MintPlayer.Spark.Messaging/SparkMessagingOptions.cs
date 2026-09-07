@@ -76,4 +76,49 @@ public class SparkMessagingOptions
         BackoffDelays.Length > 0 ? BackoffDelays : DefaultBackoffDelays;
 
     public int RetentionDays { get; set; } = 7;
+
+    /// <summary>
+    /// How long a pump's claim on a message stays valid before <c>MessageRetrySweeper</c> treats the
+    /// message as abandoned and returns it to <see cref="Models.EMessageStatus.Pending"/>.
+    /// <para>
+    /// Renewed at <see cref="ClaimRenewInterval"/> while a handler is running, so this bounds how
+    /// long an <i>abandoned</i> message waits — not how long a handler may take. It must still
+    /// exceed the container's <c>terminationGracePeriodSeconds</c>, or a pod stopped mid-handler has
+    /// its message reclaimed while it is still draining.
+    /// </para>
+    /// </summary>
+    public TimeSpan ClaimTtl { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// How often a held claim is renewed while its handler runs. Must be comfortably shorter than
+    /// <see cref="ClaimTtl"/>; a third of it is a reasonable ratio.
+    /// </summary>
+    public TimeSpan ClaimRenewInterval { get; set; } = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Whether each queue gets its own RavenDB data subscription, or all queues share one.
+    /// </summary>
+    public ESubscriptionMode SubscriptionMode { get; set; } = ESubscriptionMode.SingleSubscription;
+}
+
+/// <summary>
+/// How the messaging host maps queues onto RavenDB data subscriptions.
+/// </summary>
+public enum ESubscriptionMode
+{
+    /// <summary>
+    /// One subscription (<c>SparkMessaging</c>) for every queue, with per-queue FIFO provided by
+    /// in-process pumps. The default, because RavenDB caps subscriptions per database — 3 on a
+    /// Community licence — so one-per-queue turned "how many queues may this app have?" into a
+    /// licensing question, and exceeding it killed queues silently.
+    /// </summary>
+    SingleSubscription = 0,
+
+    /// <summary>
+    /// One subscription per queue name (<c>SparkMessaging-{queue}</c>), the behaviour before the
+    /// single-subscription rework. Costs one subscription per queue, and is worth it only where the
+    /// licence has headroom and server-side per-queue isolation is genuinely wanted — a queue whose
+    /// documents are never even delivered to this process cannot be delayed by a busy feeder.
+    /// </summary>
+    SubscriptionPerQueue = 1,
 }

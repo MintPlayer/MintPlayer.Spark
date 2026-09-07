@@ -6,43 +6,33 @@ using Xunit;
 namespace CodeCoverage.Tests.Feedback;
 
 /// <summary>
-/// A guard for the constraint that cost the most to discover: RavenDB caps data
-/// subscriptions per database, Spark creates one subscription per distinct queue
-/// name, and exceeding the cap kills a queue <b>silently</b> — the subscription
-/// is never created, the worker dies as "non-recoverable", and the application
-/// carries on looking perfectly healthy.
+/// What is left of the queue guards now that a queue name no longer costs a RavenDB data
+/// subscription.
 /// <para>
-/// This app reached seven queues against a limit of three (one of which the
-/// framework takes for webhooks), so five were dead. Verified against production
-/// 2026-09-06: the only subscriptions that existed were
-/// <c>SparkMessaging-coverage-parse-session</c>,
-/// <c>SparkMessaging-coverage-publish-feedback</c> and
-/// <c>SparkMessaging-spark-github-all</c>. Merged-PR build deletion had never run
-/// in production, the sticky PR comment never appeared, and "Delete data" queued a
-/// message that nothing would ever consume — all for exactly this reason.
+/// This class used to assert two things that are now <b>wrong to assert</b>, and they were deleted
+/// rather than adapted: that the application declares no more than two queues, and that the two are
+/// exactly the pair already present on the server. Both encoded the old design, where Spark created
+/// one subscription per distinct queue name and RavenDB capped subscriptions per database at three
+/// on this licence — so a third queue name silently killed a queue and renaming one required
+/// creating a subscription the cap forbade. Messaging now runs a single shared subscription with
+/// in-process per-queue lanes, so both facts would fail a legitimate change while protecting
+/// nothing.
 /// </para>
 /// <para>
-/// It is a compile-time-visible property of the code, so it should be asserted
-/// at build time rather than discovered from a container log.
+/// The history is worth stating once, because the cost was real: this app reached seven queues
+/// against a limit of three, so five were dead. Verified against production 2026-09-06 — the only
+/// subscriptions that existed were <c>SparkMessaging-coverage-parse-session</c>,
+/// <c>SparkMessaging-coverage-publish-feedback</c> and <c>SparkMessaging-spark-github-all</c>.
+/// Merged-PR build deletion had never run, the sticky PR comment never appeared, and "Delete data"
+/// queued a message nothing would ever consume. The equivalent guard today is not a count but
+/// <c>MessageSubscriptionManagerLifecycleTests</c>, which asserts that however many queues are
+/// declared, exactly one subscription is created.
 /// </para>
 /// </summary>
 public class CoverageQueuesTests
 {
-    /// <summary>
-    /// The licence this deployment runs on allows three subscriptions per
-    /// database. Verified against the live server 2026-09-06 — it is a registered
-    /// <b>Community</b> licence (<c>"Status":"Commercial"</c>,
-    /// <c>"Type":"Community"</c>, <c>"MaxNumberOfSubscriptionsPerDatabase":3</c>),
-    /// not AGPL as previously assumed; a create beyond the cap answers 402 with
-    /// LicenseLimitException. One subscription is the framework's own webhook
-    /// queue, so the application may declare two.
-    /// </summary>
-    private const int QueuesAvailableToThisApplication = 2;
-
     private static IReadOnlyList<string> DeclaredQueueNames()
-    {
-        // Every message type in the app assembly that names a queue.
-        var messages = typeof(PublishFeedbackMessage).Assembly
+        => typeof(PublishFeedbackMessage).Assembly
             .GetTypes()
             .Select(t => t.GetCustomAttribute<MessageQueueAttribute>())
             .Where(a => a is not null)
@@ -52,35 +42,29 @@ public class CoverageQueuesTests
             .OrderBy(n => n, StringComparer.Ordinal)
             .ToList();
 
-        return messages;
-    }
-
-    [Fact]
-    public void The_application_declares_no_more_queues_than_its_licence_allows()
-    {
-        var queues = DeclaredQueueNames();
-
-        queues.Count.Should().BeLessThanOrEqualTo(QueuesAvailableToThisApplication,
-            $"each distinct queue costs one RavenDB data subscription and the cap is 3 (one taken by the " +
-            $"framework's webhook queue); declared: {string.Join(", ", queues)}");
-    }
-
     /// <summary>
-    /// Names, not just the count: reusing the two that already exist on the
-    /// server is what avoids asking for a new subscription at all. Renaming
-    /// either one would require creating a subscription, which is the very thing
-    /// the cap forbids.
-    /// </summary>
-    [Fact]
-    public void The_declared_queues_are_exactly_the_two_that_already_exist_on_the_server()
-        => DeclaredQueueNames().Should().BeEquivalentTo([CoverageQueues.Ingestion, CoverageQueues.Publishing]);
-
-    /// <summary>
-    /// Ingestion is strict FIFO and latency-sensitive; everything on the
-    /// publishing queue makes GitHub API calls. Keeping them apart is the reason
-    /// the app spends its second queue rather than putting everything on one.
+    /// Ingestion is strict FIFO and latency-sensitive; everything on the publishing queue makes
+    /// GitHub API calls. Keeping them apart is now the <i>only</i> reason the app spends a second
+    /// queue — one queue is one FIFO lane, so sharing would let a slow report parse delay a check-run
+    /// publish. That trade-off, not the licence, is what decides whether to split a queue.
     /// </summary>
     [Fact]
     public void Ingestion_and_publishing_are_kept_apart()
         => CoverageQueues.Ingestion.Should().NotBe(CoverageQueues.Publishing);
+
+    /// <summary>
+    /// Every declared queue name must still be a valid one. This survives the rework for a
+    /// different reason than the deleted facts: in <c>SubscriptionPerQueue</c> mode the name is
+    /// interpolated into RQL, so an invalid name is a real failure rather than a style question.
+    /// </summary>
+    [Fact]
+    public void Every_declared_queue_name_is_a_valid_identifier()
+    {
+        foreach (var name in DeclaredQueueNames())
+        {
+            name.Should().NotBeNullOrWhiteSpace();
+            name.Should().MatchRegex("^[A-Za-z0-9._+`-]+$",
+                "queue names are interpolated into RQL in SubscriptionPerQueue mode");
+        }
+    }
 }

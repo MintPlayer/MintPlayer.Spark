@@ -13,7 +13,11 @@ public class SparkMessages_ByQueue : AbstractIndexCreationTask<SparkMessage>
                 msg.QueueName,
                 msg.Status,
                 msg.NextAttemptAtUtc,
-                msg.CreatedAtUtc
+                msg.CreatedAtUtc,
+                // Indexed so MessageRetrySweeper can find abandoned claims — messages left at
+                // Processing by a host that died mid-handler — without scanning the collection.
+                msg.ClaimExpiresAtUtc,
+                msg.WakeUp
             };
     }
 }

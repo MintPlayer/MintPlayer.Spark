@@ -29,6 +29,7 @@ internal sealed partial class MessageRetrySweeper : BackgroundService
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly IOptions<SparkMessagingOptions> options;
     [Inject] private readonly ILogger<MessageRetrySweeper> logger;
+    [Inject] private readonly MessagingLeaseManager leaseManager;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -40,9 +41,22 @@ internal sealed partial class MessageRetrySweeper : BackgroundService
                 // already due, and the SparkMessages_ByQueue index may still be deploying.
                 await Task.Delay(options.Value.FallbackPollInterval, stoppingToken);
 
+                // Leader-only. Every write below is idempotent, so this is a courtesy rather than
+                // a safety gate — but without it every standby host patches the same due messages
+                // on the same interval, multiplying writes and change-vector churn by the replica
+                // count for no benefit.
+                if (!leaseManager.IsHeld)
+                    continue;
+
                 var touched = await SweepOnceAsync(stoppingToken);
                 if (touched > 0)
                     logger.LogInformation("Woke up {Count} due message(s) for redelivery", touched);
+
+                var reclaimed = await ReclaimAbandonedAsync(stoppingToken);
+                if (reclaimed > 0)
+                    logger.LogWarning(
+                        "Reclaimed {Count} message(s) abandoned at Processing by a host that stopped mid-handler",
+                        reclaimed);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -63,10 +77,17 @@ internal sealed partial class MessageRetrySweeper : BackgroundService
 
         // Pending-with-null-NextAttempt is excluded on purpose: those are new messages the
         // subscription already receives on the write that created them.
+        // WakeUp != true, not WakeUp == false: an absent JSON field does not match `== false` in
+        // RQL, so messages written before the field existed would never be selected. The guard
+        // stops the sweep re-patching the same already-woken set every interval — a message stays
+        // due until a worker picks it up and clears the gate, so without it each sweep rewrites
+        // every parked message, bumping change vectors and re-triggering delivery for no reason.
+        // MessageRetrySweeper's replication twin has had this guard; this one did not.
         var dueIds = await session.Query<SparkMessage, SparkMessages_ByQueue>()
             .Where(m => (m.Status == EMessageStatus.Pending || m.Status == EMessageStatus.Failed)
                         && m.NextAttemptAtUtc != null
-                        && m.NextAttemptAtUtc <= now)
+                        && m.NextAttemptAtUtc <= now
+                        && m.WakeUp != true)
             .Select(m => m.Id)
             .Take(MaxMessagesPerSweep)
             .ToListAsync(cancellationToken);
@@ -87,5 +108,61 @@ internal sealed partial class MessageRetrySweeper : BackgroundService
 
         await session.SaveChangesAsync(cancellationToken);
         return dueIds.Count;
+    }
+
+    /// <summary>
+    /// Returns messages abandoned at <see cref="EMessageStatus.Processing"/> to
+    /// <see cref="EMessageStatus.Pending"/> so they are delivered again. Internal for tests.
+    /// <para>
+    /// This is the reader that <c>Processing</c> never had. The status was written on pickup and
+    /// consulted by nothing — not the subscription query, not this sweeper — so a host that died
+    /// between pickup and completion stranded the message permanently: it matched no query, no
+    /// retry applied, nothing was logged, and the queue simply lost the work. For webhook traffic
+    /// that meant an accepted delivery was dropped, and GitHub does not re-deliver on its own.
+    /// </para>
+    /// <para>
+    /// A claim lapses by wall clock, so the TTL must exceed the slowest handler
+    /// (<see cref="SparkMessagingOptions.ClaimTtl"/>, renewed while a handler runs). Reclaiming a
+    /// message that is still being processed causes duplicate work, which is worse than reclaiming
+    /// it late.
+    /// </para>
+    /// </summary>
+    internal async Task<int> ReclaimAbandonedAsync(CancellationToken cancellationToken)
+    {
+        using var session = documentStore.OpenAsyncSession();
+        var now = DateTime.UtcNow;
+
+        var abandonedIds = await session.Query<SparkMessage, SparkMessages_ByQueue>()
+            .Where(m => m.Status == EMessageStatus.Processing
+                        && m.ClaimExpiresAtUtc != null
+                        && m.ClaimExpiresAtUtc <= now)
+            .Select(m => m.Id)
+            .Take(MaxMessagesPerSweep)
+            .ToListAsync(cancellationToken);
+
+        if (abandonedIds.Count == 0)
+            return 0;
+
+        // Field-level patches for the same reason as the wake-up sweep: a load-modify-save would
+        // overwrite the whole document under last-write-wins and could resurrect a message the
+        // owning process completed after this query ran. Patching only the claim fields is safe
+        // even against a live owner — it loses the claim, and the pump's next renewal fails and
+        // abandons the message rather than double-completing it.
+        //
+        // AttemptCount is incremented so an abandoned message cannot cycle for ever: a message
+        // that reliably kills its host is retried, backed off and eventually dead-lettered like
+        // any other failure, rather than crash-looping the process that picks it up.
+        foreach (var id in abandonedIds)
+        {
+            session.Advanced.Patch<SparkMessage, EMessageStatus>(id!, m => m.Status, EMessageStatus.Pending);
+            session.Advanced.Patch<SparkMessage, string?>(id!, m => m.OwnerId, null);
+            session.Advanced.Patch<SparkMessage, DateTime?>(id!, m => m.ClaimExpiresAtUtc, null);
+            session.Advanced.Patch<SparkMessage, bool>(id!, m => m.WakeUp, true);
+            session.Advanced.Patch<SparkMessage, DateTime?>(id!, m => m.LastWakeUpUtc, now);
+            session.Advanced.Increment<SparkMessage, int>(id!, m => m.AttemptCount, 1);
+        }
+
+        await session.SaveChangesAsync(cancellationToken);
+        return abandonedIds.Count;
     }
 }

@@ -30,6 +30,15 @@ internal static class SparkMessagingExtensions
         // broadcast onto a queue with no worker, whose documents are never drained.
         services.AddSingleton<MessageRecipientRegistry>();
         services.AddSingleton<IMessageRecipientRegistry>(sp => sp.GetRequiredService<MessageRecipientRegistry>());
+
+        // The per-message contract, shared by both subscription modes so they cannot drift.
+        services.AddSingleton<MessageProcessor>();
+        // In-process per-queue FIFO lanes: what replaces one subscription per queue.
+        services.AddSingleton<MessageQueueRouter>();
+        // Liveness only — RavenDB's WaitForFree, not this, is what makes feeding exclusive.
+        services.AddSingleton<MessagingLeaseManager>();
+        services.AddSingleton<LegacySubscriptionCleanup>();
+
         services.AddHostedService<MessageSubscriptionManager>();
         // Issue #233: periodic wake-up for messages parked at Failed (retry backoff) or
         // Pending with a future NextAttemptAtUtc (delayed broadcast) — without it those
@@ -47,11 +56,18 @@ internal static class SparkMessagingExtensions
         var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
         new SparkMessages_ByQueue().Execute(documentStore);
 
-        // Enable RavenDB document expiration so @expires metadata is honored
+        // Enable RavenDB document expiration so @expires metadata is honored.
+        //
+        // DeleteFrequencyInSec is deliberately not set, which takes the server default of 60 s.
+        // It used to be pinned to 36 hours with the comment "community license minimum", which
+        // inverted the limit it was citing: on a restricted licence 36 h is the *smallest
+        // frequency value permitted* — i.e. a ceiling on how often the sweep may run — not a
+        // floor the configuration must clear. Pinning it meant expired messages lingered up to
+        // 36 h past their retention, and the same misreading was the load-bearing reason
+        // @refresh was written off as unusable for redelivery elsewhere in the repo.
         documentStore.Maintenance.Send(new ConfigureExpirationOperation(new ExpirationConfiguration
         {
             Disabled = false,
-            DeleteFrequencyInSec = 36 * 60 * 60, // 36 hours (community license minimum)
         }));
 
         return app;
