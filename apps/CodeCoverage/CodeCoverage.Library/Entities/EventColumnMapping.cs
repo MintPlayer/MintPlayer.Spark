@@ -55,12 +55,28 @@ public class EventColumnMapping
     /// Backlog/In&#160;Progress/Done, another has Triage/Doing/Shipped — so a dynamic lookup would
     /// offer every board's columns on every other board.</item>
     /// </list>
-    /// What is needed is an option source scoped to the <em>parent document</em>, which the model
-    /// format does not express. So the value stays a string and correctness is enforced where it
-    /// can be: the recipient checks the id against the board's cached columns before calling
-    /// GitHub, and reports a vanished column on the rule itself. Closing OD3 as "no".
+    /// What is needed is an option source scoped to the <em>parent document</em>, and <b>Spark does
+    /// express that — via <c>[Reference]</c>, not via a lookup.</b> The named query is a
+    /// <c>Custom.*</c> method reading <c>CustomQueryArgs.Parent</c>, which Spark resolves and
+    /// authorizes; it works from an embedded <c>AsDetail</c> row because the client sends the
+    /// <em>root</em> document as the parent for <c>isArray</c> child columns. See
+    /// <c>ProjectColumnActions.Project_Columns</c>.
+    /// </para>
+    /// <para>
+    /// It costs no new collection: the query returns the board's own embedded
+    /// <see cref="GitHubProject.Columns"/> as a plain in-memory sequence, which the query executor
+    /// accepts alongside <c>IQueryable</c> and <c>IRavenQueryable</c>. Promoting columns to
+    /// documents would buy only a server-resolved breadcrumb and direct queryability, at the price
+    /// of a collection whose create/update/delete lifecycle the reconciler would have to manage.
+    /// </para>
+    /// <para>
+    /// The value is still validated where it matters — the recipient checks the id against the
+    /// board's cached columns before calling GitHub, and reports a vanished column on the rule
+    /// itself. A dropdown makes the wrong value unlikely; it does not make it impossible, because
+    /// a column can be deleted on GitHub after a rule was saved.
     /// </para>
     /// </summary>
+    [Reference(typeof(ProjectColumn), "Project_Columns")]
     public string TargetColumnOptionId { get; set; } = string.Empty;
 
     /// <summary>

@@ -28,5 +28,20 @@
     ],
     "queries": []
   },
-  "queries": []
+  "queries": [
+    {
+      "id": "4d445688-cae1-4535-a269-97cca7568f78",
+      "name": "Project_Columns",
+      "source": "Custom.Project_Columns",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "ProjectColumn",
+      "isStreamingQuery": false
+    }
+  ]
 }

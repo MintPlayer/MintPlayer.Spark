@@ -105,13 +105,15 @@
           "en": "Target Column Option Id"
         },
         "description": {
-          "en": "The single-select option id to move the card to, from the board's cached Columns.\nAn option id, deliberately, not a column name. Names are renameable and not unique; storing the name would leave every rule on a board broken the moment someone renamed a column, and broken silently, because the move would simply match nothing."
+          "en": "The single-select option id to move the card to, from the board's cached Columns.\nAn option id, deliberately, not a column name. Names are renameable and not unique; storing the name would leave every rule on a board broken the moment someone renamed a column, and broken silently, because the move would simply match nothing.\nWhy this is a plain string and not a lookup, when EventType is a lookup. Spark has two lookup shapes and neither fits a per-board value: TransientLookupReference is a static set declared in C# and fixed at compile time — right for the eighteen webhook events, impossible for columns that a user creates on GitHub. DynamicLookupReference is persisted and editable at runtime, but it is one global set per lookup name: a single LookupReferences/{Name} document with one Values list. Columns are per board — one board has Backlog/In Progress/Done, another has Triage/Doing/Shipped — so a dynamic lookup would offer every board's columns on every other board. What is needed is an option source scoped to the parent document, and Spark does express that — via [Reference], not via a lookup. The named query is a Custom.* method reading CustomQueryArgs.Parent, which Spark resolves and authorizes; it works from an embedded AsDetail row because the client sends the root document as the parent for isArray child columns. See ProjectColumnActions.Project_Columns.\nIt costs no new collection: the query returns the board's own embedded Columns as a plain in-memory sequence, which the query executor accepts alongside IQueryable and IRavenQueryable. Promoting columns to documents would buy only a server-resolved breadcrumb and direct queryability, at the price of a collection whose create/update/delete lifecycle the reconciler would have to manage.\nThe value is still validated where it matters — the recipient checks the id against the board's cached columns before calling GitHub, and reports a vanished column on the rule itself. A dropdown makes the wrong value unlikely; it does not make it impossible, because a column can be deleted on GitHub after a rule was saved."
         },
-        "dataType": "string",
+        "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
         "order": 2,
+        "query": "Project_Columns",
+        "referenceType": "CodeCoverage.Entities.ProjectColumn",
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
