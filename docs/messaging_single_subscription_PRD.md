@@ -273,6 +273,32 @@ is not a constraint.
    so a rule asserting "a worker that parks documents must carry the `not exists(@refresh)` clause"
    is cheap insurance against scar 3 — the hot-loop they hit in production.
 
+### Three scars found only in their production call sites
+
+9. **Never park *on* a boundary — park an hour off it.** Not one call site stamps `@refresh` at
+   midnight or at a period boundary; they offset deliberately, with comments naming the reason
+   ("delay processing by 1 hour after midnight to avoid concurrency issues with <the other
+   subscription>", "trigger at the 5th of next month at 23:00"). Everything due at the same instant
+   wakes in the same sweep and contends. This is ad-hoc per call site in their code, not a framework
+   policy — Spark should make it one, since a retry schedule of `5s, 30s, 2m, 10m, 1h` will align
+   many messages onto the same sweep tick by construction.
+10. **The un-park write happens outside your session, so a woken worker can hold a stale change
+    vector** and `SaveChanges` throws. Their worker calls `session.Advanced.Refresh(entity)` on entry
+    to reload. Any Spark adoption must reload the document at the top of the handler rather than
+    trusting the copy the batch delivered.
+11. **Re-stamping must only ever tighten the date, never loosen it** — and must skip the write when
+    the value is unchanged. Their helper compares before writing, and one call site guards with
+    `if (currentRefreshDate > newDate)`. An unconditional stamp dirties the document, which is itself
+    a write, which re-delivers it — the same loop as scar 6.
+
+Also worth knowing: `@refresh` carries only a *when*. One module adds a companion metadata key
+holding the *why* (a delimited payload written beside the `@refresh`, parsed on wake, then cleared),
+and excludes that key in the subscription too — so `not exists(@metadata.X)` works as a
+general-purpose parking mechanism, with `@refresh` being the one variant the **server** un-parks.
+
+And the terminal-state rule, which is the counterpart to scar 4: a document reaching a terminal state
+must either **remove** `@refresh` or hand off to `@expires`. Never park it on a long timer.
+
 ### One more scar, and it argues *for* the single-subscription design
 
 **The wake-up is a write, so every *other* subscription on that collection re-fires too.** Their code
