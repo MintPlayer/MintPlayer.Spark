@@ -47,6 +47,18 @@ public partial class ProjectAutomationRouter : IRecipient<GitHubWebhookMessage>
 
     public async Task HandleAsync(GitHubWebhookMessage message, CancellationToken cancellationToken = default)
     {
+        // Debug, not Information: this fires for every delivery, including the majority that
+        // concern repositories no board automates. It is the line that answered "which events do we
+        // actually receive" during the live verification recorded in the PRD's §3b, and it is worth
+        // keeping for the next time that question comes up — an ungranted permission and "GitHub
+        // does not send this event" are indistinguishable from inside the application.
+        logger.LogDebug(
+            "GitHub delivery: event={EventType} repo={Repo} installation={InstallationId} delivery={Delivery}",
+            message.EventType,
+            string.IsNullOrEmpty(message.RepositoryFullName) ? "<none>" : message.RepositoryFullName,
+            message.InstallationId,
+            message.Headers.Delivery);
+
         if (!AutomatableEvents.Contains(message.EventType))
             return;
 

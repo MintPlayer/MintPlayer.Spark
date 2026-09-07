@@ -210,12 +210,18 @@ therefore means the app receives webhook deliveries caused by **its own writes**
 mapping fires on the app's own sticky comment. See FR6 — this is a correctness requirement, not
 polish.
 
-### C11 — Nothing tells us when a board changes, and on a user account nothing ever will.
+### C11 — Nothing tells us when a *column* changes. Not even on an organization.
 
-The Projects V2 webhook events — `projects_v2`, `projects_v2_item`, `projects_v2_status_update` —
-are **organization-scoped**. An installation on a **user** account does not receive them, and this
-app does not subscribe to them on organizations either. Confirmed by the shape of the development
-app's own installations: one user account, one organization.
+**Measured live, 2026-09-07 — see §3b for the full run.** The original wording of this constraint
+was partly wrong and is corrected here: the app *does* subscribe to `projects_v2` and an
+organization installation *does* receive it. What no installation receives is an event for a
+**column** change.
+
+- `projects_v2` with action `created` **is delivered** to an organization installation.
+- It is **not delivered** to a user-account installation.
+- **Renaming a Status option — a "column" — produces no event at all, for either owner type.**
+  Not `projects_v2`, not `projects_v2_status_update`. GitHub's `projects_v2` actions cover the board
+  (created, edited, closed, …), not its field options.
 
 So there is **no event path** by which we learn that a column was renamed, reordered or deleted, or
 that a board was closed. The consequences are asymmetric and worth stating separately:
@@ -240,6 +246,118 @@ requirements rather than niceties:
 
 A column refresh that fails must leave the previously cached columns in place. Emptying them turns
 a transient GitHub failure into "every rule on this board targets a column that does not exist".
+
+---
+
+## 3b. Measured webhook behaviour (live run, 2026-09-07)
+
+Everything below was **observed**, not inferred, against the `CoverageDevelopment` app (id
+`4567511`) with the app running locally behind its smee tunnel. Two throwaway private repositories
+and two boards were used: `MintPlayer/spark-webhook-probe` (organization installation
+`153539364`) and `PieterjanDeClippel/spark-webhook-probe-user` (user installation `159465567`).
+
+### F1 — Organization versus user makes **no difference** to repository events
+
+All seven `issues` actions (`opened`, `closed`, `reopened`, `labeled`, `unlabeled`, `assigned`,
+`unassigned`) plus `issue_comment.created` were delivered **identically** to both installations.
+
+**But the first run delivered zero of them to the user installation** — while `repository`, `push`
+and `check_suite` had arrived for that same repository minutes earlier. The cause was a **pending
+permission request** on that installation, visible at `/settings/installations` as *"Permission
+updates requested."*; accepting it made all eight arrive on a byte-identical re-run, and the
+acceptance itself arrived as `installation.new_permissions_accepted`.
+
+> **Diagnostic lesson, and the reason this is written down.** An ungranted permission and "GitHub
+> does not send this event" are **indistinguishable from the application side**: no error, no
+> delivery, nothing in the log. A missing-event report must therefore start at
+> `/settings/installations`, not in the code. This very session first mis-diagnosed it as an
+> org-versus-user asymmetry.
+
+### F2 — Projects V2: the board is announced, the columns are not
+
+| Action | Organization install | User install |
+|---|---|---|
+| Board created | `projects_v2` / `created` **received** | **nothing** |
+| Status option renamed (a "column") | **nothing** | **nothing** |
+
+So the reconciliation path is not merely the *safest* correction mechanism for column drift, it is
+the **only** one — for organizations too. See C11.
+
+### F3 — `pull_request.closed` carries the merge distinction only in its payload
+
+Proven directly, and this is the finding the resolver depends on:
+
+```
+event=pull_request action=closed merged=False   <- closed without merging
+event=pull_request action=closed merged=True    <- squash merged
+```
+
+Same event, same action. A resolver keyed on `(event, action)` maps a **merge** onto the
+`PullRequestClosed` rule and never fires `PullRequestMerged` at all — a rule that looks configured
+and silently does nothing. `pull_request_review.submitted` collides the same way, separated only by
+`review.state`.
+
+Received: `opened`, `ready_for_review`, `converted_to_draft`, `closed`, `reopened`.
+
+### F4 — Two of the eighteen event keys could not be verified, and cannot be from one account
+
+`pull_request_review.submitted` **is** delivered — confirmed with a *comment* review. But GitHub
+refuses `approve` and `request changes` on your own pull request (`Review Can not approve your own
+pull request`), so `PullRequestReviewApproved` and `PullRequestReviewChangesRequested` are
+**unverified**: they need a second GitHub account as reviewer. `PullRequestReviewRequested` is
+likewise unverified for the same reason.
+
+Also worth noting: there is no lookup key for a review with state `commented`, so such a review
+matches no rule. That is intended, not an omission.
+
+### F5 — `check_run` needs a workflow, and only reaches same-repository pull requests
+
+`check_run.created` and `check_run.completed` arrived in volume once a trivial workflow existed in
+the repository — a repository with no Actions produces none, so a `CheckRunCompleted` rule looks
+broken on a repository that simply has no CI. The payload's `check_run.pull_requests` array is the
+only route from a check to a card, and GitHub populates it **only for pull requests in the same
+repository**, so the rule legitimately does nothing for a fork's contribution.
+
+### F6 — End-to-end automation works, verified on the board itself
+
+With a `GitHubProject` document seeded (automation on, three rules) the full path — router → its own
+queue → recipient → GraphQL → board — was exercised:
+
+| Rule | Result |
+|---|---|
+| `IssuesOpened` → *In Progress* | Card **added** and placed in *In Progress*, confirmed via `gh project item-list`. A deliberately non-default column, so it cannot be confused with GitHub's own placement. |
+| `PullRequestMerged` → *Done* | Card in *Done* — which also proves F3's disambiguation end to end, since the trigger was `closed` + `merged=true`. |
+| `IssuesClosed` → a **deleted** option id | Failed with *"Target column … no longer exists on this board"*, recorded as `LastError` **on the rule**, and the message reached `DeadLettered` at **`AttemptCount = 1`**. |
+
+That last row is the `NonRetryableException` contract working as intended: one attempt, not five
+retries with an hour of backoff, for a failure that no retry could fix.
+
+**M3's discovery was also confirmed incidentally**: the reconciler had independently created a
+document for a pre-existing board (`PVT_kwDOAug2bM4AthJv`) with `AutomationEnabled = false`, which
+is the intended default — a discovered board is inert until someone enables it.
+
+### F7 — Incidental observations worth keeping
+
+- `installation_repositories.added` fires when a repository is created under either account, so
+  both installations are in **selected-repositories** mode and new repositories are auto-added.
+- Squash-merging a pull request whose body says `Closes #1` delivers `issues.closed` for the linked
+  issue, so linked-issue movement has an observable trigger independent of
+  `closingIssuesReferences`.
+- **Unexplained:** JWT-signed calls to `GET /app` and `GET /app/installations` began returning
+  `401 "A JSON web token could not be decoded"` partway through the session, with the *same* minting
+  code that had succeeded earlier against `/app/installations`. Worked around by reading the
+  installation state from the browser. Not diagnosed; flagged because it will look like a
+  credential problem if it recurs.
+
+### Still unverified after this run
+
+- `PullRequestReviewApproved`, `PullRequestReviewChangesRequested`, `PullRequestReviewRequested`
+  (need a second account).
+- The `DeleteBranchOnPrClose` path (D3).
+- Whether `CreateGraphQLConnectionAsync`'s token-refreshing handler behaves across a token
+  expiry — the run was far shorter than an installation token's lifetime.
+- The generic-UI editing surface (M7/S2): the board document was seeded directly into RavenDB
+  rather than created through the form.
 
 ---
 

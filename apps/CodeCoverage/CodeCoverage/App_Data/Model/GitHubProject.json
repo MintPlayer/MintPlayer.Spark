@@ -1,0 +1,306 @@
+{
+  "persistentObject": {
+    "id": "44ddbb76-0656-49a8-ac54-80db0134067a",
+    "name": "GitHubProject",
+    "clrType": "CodeCoverage.Entities.GitHubProject",
+    "queryType": "CodeCoverage.Indexes.VGitHubProject",
+    "indexName": "GitHubProjects_Overview",
+    "breadcrumb": "{Name}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "2cb64f5e-3d28-4240-a644-eb8a10ba1158",
+        "name": "Account",
+        "label": {
+          "en": "Account"
+        },
+        "description": {
+          "en": "The GitHub user or organization that owns this board."
+        },
+        "dataType": "Reference",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "query": "GetAccounts",
+        "referenceType": "CodeCoverage.Entities.Account",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "271627f8-1563-41de-b49c-ab7ec37517d0",
+        "name": "AutomationEnabled",
+        "label": {
+          "en": "Automation Enabled"
+        },
+        "description": {
+          "en": "Master switch for this board. False — the default — means discovered but inert: no webhook delivery does anything for it.\nDefaults to false deliberately, because discovery is automatic. Boards appear without anyone asking for them, and a default of true would mean installing the app on an organization silently started moving cards on every board it could see."
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "613403de-ae15-48e0-9d9b-d357076ae47a",
+        "name": "Columns",
+        "label": {
+          "en": "Columns"
+        },
+        "description": {
+          "en": "The board's columns as last read from GitHub. Cached so a webhook delivery can resolve a target column without an API call; refreshed by the SyncColumns action and by nightly reconciliation."
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 8,
+        "asDetailType": "CodeCoverage.Entities.ProjectColumn",
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3ff143b6-f1be-4adf-b22b-246f24a16948",
+        "name": "ColumnsSyncedAtUtc",
+        "label": {
+          "en": "Columns Synced At Utc"
+        },
+        "description": {
+          "en": "When the board's columns were last read from GitHub (UTC)."
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 15,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "62b8b521-9993-4f5e-8c29-28b793eb6d4f",
+        "name": "Connection",
+        "label": {
+          "en": "Connection"
+        },
+        "description": {
+          "en": "Whether the GitHub App can still see this board. Mirrors Connection, including its default: every document written before this field existed deserializes to Connected, so no migration is needed and the nightly reconciler corrects the ones that are actually gone."
+        },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "15f34f9c-d079-472c-ae04-4aaa334d7f6c",
+        "name": "DeleteBranchOnPrClose",
+        "label": {
+          "en": "Delete Branch On Pr Close"
+        },
+        "description": {
+          "en": "Whether to delete a pull request's head branch when it closes.\nOpt-in per board, default false, and that is a deliberate change from the behaviour this was migrated from — where it was unconditional and organization-wide. On a multi-tenant server that setting mutates other people's repositories, so it cannot be a global default; deleting a branch is also the one irreversible thing in this feature."
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e48906e9-891d-4a29-95c0-2384f01ea00e",
+        "name": "DisconnectedAtUtc",
+        "label": {
+          "en": "Disconnected At Utc"
+        },
+        "description": {
+          "en": "When the board was last disconnected (UTC); null while connected."
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 14,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9cba7901-84a9-4c8e-875f-949a1e2b6e01",
+        "name": "DisconnectedReason",
+        "label": {
+          "en": "Disconnected Reason"
+        },
+        "description": {
+          "en": "Why the board is disconnected, from DisconnectedReasons; null while connected."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "dd4e2321-6f3c-4b6f-bfef-26305e886e9b",
+        "name": "EventMappings",
+        "label": {
+          "en": "Event Mappings"
+        },
+        "description": {
+          "en": "The user's automation rules for this board. Preserved when AutomationEnabled is turned off, so disabling automation is reversible rather than destructive."
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 9,
+        "asDetailType": "CodeCoverage.Entities.EventColumnMapping",
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "209f9834-a8c0-4901-b75f-57c1e6c39e65",
+        "name": "InstallationId",
+        "label": {
+          "en": "Installation Id"
+        },
+        "description": {
+          "en": "The GitHub App installation that can act on this board. Needed to mint the installation token every Projects V2 mutation runs under — a user token would tie automation to whoever happened to configure it."
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f0f795c6-7f55-4bc6-876b-d5c25e57b95b",
+        "name": "Name",
+        "label": {
+          "en": "Name"
+        },
+        "description": {
+          "en": "The board's title on GitHub."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c5c57138-5efb-4e97-809a-ccb2c8f0785c",
+        "name": "NodeId",
+        "label": {
+          "en": "Node Id"
+        },
+        "description": {
+          "en": "GitHub's GraphQL node id for the board; globally unique and stable across renames and owner changes."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3a4d612a-3e42-4002-b17c-5a692396b18b",
+        "name": "Number",
+        "label": {
+          "en": "Number"
+        },
+        "description": {
+          "en": "The board's number within its owner, as it appears in the URL. Shown to users because it is what they recognise."
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7b8a7a3f-da51-45f9-b537-d80154db4f10",
+        "name": "OwnerLogin",
+        "label": {
+          "en": "Owner Login"
+        },
+        "description": {
+          "en": "GitHub login of the owning user or organization. The field row security filters on, so a caller only sees boards for owners they manage."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "780c1468-8739-4870-81fb-70d11e738583",
+        "name": "StatusFieldId",
+        "label": {
+          "en": "Status Field Id"
+        },
+        "description": {
+          "en": "Node id of the board's single-select \"Status\" field, the field whose options are its columns. Required by every card-move mutation, alongside the target option id."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "237b1f50-88b8-48e5-a946-98a2f5251772",
+      "name": "GetGitHubProjects",
+      "source": "Database.GitHubProjects",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "indexName": "GitHubProjects_Overview",
+      "entityType": "GitHubProject",
+      "isStreamingQuery": false
+    }
+  ]
+}
