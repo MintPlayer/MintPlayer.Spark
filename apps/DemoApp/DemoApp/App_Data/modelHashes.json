@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "modelHash": "7daef2d976669e52c1108ce2d484be8ffd0af2b4582cccb2f152ab3e33df250a",
+  "modelHash": "a71643310f3b6e6a43ec01c8c069e67fe4b05a3d17cf7a00aba409812a9be91f",
   "contextRoots": "69a7d18ccbd2883346e610e284c3bf485547edd95d1a02fb5583a30b938faa6b",
   "modelFiles": "b98b7e47674fa3c1fcdd4ce5b6bbe915a823880c55ddda2df1616dcfd314693c",
   "files": {
@@ -17,5 +17,9 @@
     "Company": "ee8a8ed4717071cdfa6044f3f870e3aa8aed4f3bfae66109a56757106224998e",
     "Person": "0942933788fb43291ac12001b7a00a5eb51184d704c7c406b7d2f42edfa03592",
     "Stock": "369d139553e205b0712e3046c60efd672e5a0067c67e8cb73f5b064268ae0a08"
+  },
+  "configFiles": {
+    "customActions.json": "74627ae564a51eb57d74ed11a79b049d1677b6aefcd3a69c63eb318dbcf7b67e",
+    "programUnits.json": "c7a2a7100751801aed4f0f3f8ca63a7d07715a14f11665bd40fef24d8572a34f"
   }
 }

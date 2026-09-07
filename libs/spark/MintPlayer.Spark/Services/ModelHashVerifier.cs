@@ -56,7 +56,17 @@ public static class ModelHashVerifier
         var actual = ModelSynchronizer.BuildModelHashes(contextType, indexCatalog, contentRootPath);
 
         if (expected is not null && string.Equals(expected.ModelHash, actual.ModelHash, StringComparison.Ordinal))
+        {
+            // Say so. This used to return in silence, which made "the gate ran and passed" and "the
+            // gate never ran" the same observation from outside the process — and this deployment has
+            // already had one subsystem be silently dead in production for want of exactly that
+            // distinction. An operator reading a startup log can now tell which happened, and the
+            // counts turn a vague reassurance into a checkable one.
+            log($"Spark model verified: {actual.Entities.Count} entities, {actual.Files.Count} model files" +
+                (actual.ConfigFiles is { Count: > 0 } config ? $", {config.Count} config files" : string.Empty) +
+                $" ({Short(actual.ModelHash)}).");
             return;
+        }
 
         var message = BuildMessage(expected, actual, contentRootPath);
 
@@ -133,8 +143,17 @@ public static class ModelHashVerifier
     {
         var reported = 0;
 
+        // ConfigFiles is null in a hash file written before it existed. Comparing an absent set
+        // against a populated one would report every config file as newly added on the first run
+        // after upgrading, which is drift the author did not cause and cannot fix except by
+        // re-synchronizing — so an absent set means "not covered yet" rather than "empty".
+        var compareConfig = expected.ConfigFiles is not null && actual.ConfigFiles is not null;
+
         foreach (var line in Compare(expected.Entities, actual.Entities, "entity")
-                     .Concat(Compare(expected.Files, actual.Files, "file")))
+                     .Concat(Compare(expected.Files, actual.Files, "file"))
+                     .Concat(compareConfig
+                         ? Compare(expected.ConfigFiles!, actual.ConfigFiles!, "config")
+                         : []))
         {
             if (reported++ == 12)
             {

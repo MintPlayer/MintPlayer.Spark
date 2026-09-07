@@ -43,14 +43,29 @@ public class ModelHashVerifierTests : IDisposable
         Path.Combine(ModelHashFile.ModelDirectoryFor(_contentRoot), "Injected.json"),
         "{ \"persistentObject\": { \"name\": \"Injected\", \"clrType\": \"X.Injected\" }, \"queries\": [] }");
 
+    /// <summary>
+    /// A model in sync says so, rather than starting silently.
+    /// <para>
+    /// This test previously asserted the opposite, and the change is deliberate. Silence made "the
+    /// gate ran and passed" and "the gate never ran" the same observation from outside the process —
+    /// and a production deployment of this framework has already had a subsystem be silently dead for
+    /// want of exactly that distinction. A startup line costs nothing and turns an absence of
+    /// evidence into evidence.
+    /// </para>
+    /// <para>
+    /// It reports counts rather than just "ok" so the line is checkable: a reader can tell a model
+    /// that verified twelve entities from one that verified none because the catalog came back empty.
+    /// </para>
+    /// </summary>
     [Fact]
-    public void A_model_in_sync_starts_silently()
+    public void A_model_in_sync_reports_what_it_verified()
     {
         Synchronize();
 
         Verify();
 
-        _log.Should().BeEmpty();
+        _log.Should().ContainSingle()
+            .Which.Should().Contain("verified").And.Contain("entities");
     }
 
     [Fact]

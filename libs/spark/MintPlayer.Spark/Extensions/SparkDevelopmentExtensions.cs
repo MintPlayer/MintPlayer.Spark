@@ -187,6 +187,8 @@ public static class SparkDevelopmentExtensions
         VerifyQueryAliasesAreUnique(contentRoot);
         VerifyRefreshTriggersAreImplemented(contentRoot);
         VerifyComposedQueriesAreUsable(contentRoot);
+        VerifyCustomQueryMethodsExist(contextType, contentRoot);
+        VerifySubQueriesCanBeParentScoped(contentRoot);
         var descriptionDrift = VerifyAttributeDescriptionsAreCurrent(contextType, contentRoot);
 
         if (expected is not null && string.Equals(expected.ModelHash, actual.ModelHash, StringComparison.Ordinal))
@@ -195,6 +197,18 @@ public static class SparkDevelopmentExtensions
             {
                 Console.Error.WriteLine($"Run '{SynchronizeFlag}' and commit the regenerated App_Data/Model.");
                 Environment.ExitCode = ExitDrift;
+                return;
+            }
+
+            // Only if nothing else already failed. The checks above run before this comparison and
+            // set the exit code themselves, and "in sync" printed underneath a reported problem reads
+            // as an all-clear -- the hash covers the MODEL, not the code the model points at, so the
+            // two can disagree and the reader has to be told which one spoke.
+            if (Environment.ExitCode == ExitDrift)
+            {
+                Console.Error.WriteLine(
+                    $"The model hash itself is unchanged ({actual.ModelHash}); the problems above are in " +
+                    $"what it points at, so re-running '{SynchronizeFlag}' will not fix them.");
                 return;
             }
 
@@ -427,6 +441,169 @@ public static class SparkDevelopmentExtensions
     /// loader, so this gate cannot pass a model the application then refuses to start on.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Every <c>Custom.Method</c> source names a method that actually exists on the type's actions
+    /// class.
+    /// </summary>
+    /// <remarks>
+    /// The executor resolves that method by reflection at execution time, so a rename or a typo is
+    /// not a startup failure or a build failure — it is a 500 on the first page view that touches the
+    /// query, in whatever environment gets there first. CI can see it, because by the time this runs
+    /// the assemblies are loaded and the model is on disk.
+    /// </remarks>
+    private static void VerifyCustomQueryMethodsExist(Type contextType, string contentRootPath)
+    {
+        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        if (!Directory.Exists(modelPath))
+            return;
+
+        var jsonOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var problems = new List<string>();
+
+        foreach (var file in Directory.GetFiles(modelPath, "*.json"))
+        {
+            EntityTypeFile? entityTypeFile;
+            try
+            {
+                entityTypeFile = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
+                    File.ReadAllText(file), jsonOptions);
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                continue; // Malformed JSON is reported by the loader, in its own words.
+            }
+
+            if (entityTypeFile?.PersistentObject is not { } type)
+                continue;
+
+            foreach (var query in entityTypeFile.Queries)
+            {
+                if (query.Source is not { } source
+                    || !source.StartsWith("Custom.", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var methodName = source[7..];
+                var actionsTypeName = (query.EntityType ?? type.Name) + "Actions";
+                var actionsType = FindTypeByName(actionsTypeName);
+
+                if (actionsType is null)
+                {
+                    problems.Add(
+                        $"Query '{query.Name}' has source '{source}', but no class named " +
+                        $"'{actionsTypeName}' exists. A Custom.* query is served by a method on the " +
+                        $"type's actions class.");
+                    continue;
+                }
+
+                if (!actionsType.GetMethods().Any(m => string.Equals(m.Name, methodName, StringComparison.Ordinal)))
+                {
+                    problems.Add(
+                        $"Query '{query.Name}' has source '{source}', but '{actionsType.Name}' has no " +
+                        $"method named '{methodName}'. It resolves by reflection at execution time, so " +
+                        $"without this check the first request for that query answers 500.");
+                }
+            }
+        }
+
+        ReportVerificationProblems(problems);
+    }
+
+    /// <summary>
+    /// A query listed in a type's <c>persistentObject.queries</c> is a sub-query, and a
+    /// <c>Database.*</c> source cannot be scoped to a parent.
+    /// </summary>
+    /// <remarks>
+    /// That branch reads a queryable property off the SparkContext and has no way to express
+    /// "belonging to this parent", so serving one would list the WHOLE child collection under one
+    /// parent's detail page — silently, which is how it went unnoticed. The executor now refuses it
+    /// at request time; this refuses it in CI, before anyone opens the page.
+    /// </remarks>
+    private static void VerifySubQueriesCanBeParentScoped(string contentRootPath)
+    {
+        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        if (!Directory.Exists(modelPath))
+            return;
+
+        var jsonOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+        var sourcesByAlias = new Dictionary<string, (string Source, string QueryName)>(StringComparer.OrdinalIgnoreCase);
+        var subQueryAliases = new List<(string Alias, string ParentType)>();
+
+        foreach (var file in Directory.GetFiles(modelPath, "*.json"))
+        {
+            EntityTypeFile? entityTypeFile;
+            try
+            {
+                entityTypeFile = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
+                    File.ReadAllText(file), jsonOptions);
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                continue;
+            }
+
+            if (entityTypeFile?.PersistentObject is not { } type)
+                continue;
+
+            foreach (var query in entityTypeFile.Queries)
+            {
+                if (query.Alias is { Length: > 0 } alias && query.Source is { } source)
+                    sourcesByAlias[alias] = (source, query.Name);
+            }
+
+            foreach (var alias in type.Queries ?? [])
+                subQueryAliases.Add((alias, type.Name));
+        }
+
+        var problems = new List<string>();
+        foreach (var (alias, parentType) in subQueryAliases)
+        {
+            if (!sourcesByAlias.TryGetValue(alias, out var entry))
+                continue; // An unresolvable alias is the pruner's warning, not this one.
+
+            if (entry.Source.StartsWith("Database.", StringComparison.OrdinalIgnoreCase))
+            {
+                problems.Add(
+                    $"'{parentType}' lists '{alias}' as a sub-query, but query '{entry.QueryName}' has " +
+                    $"source '{entry.Source}'. A Database.* source reads a SparkContext property and " +
+                    $"cannot be scoped to a parent, so the tab would list every row of that collection " +
+                    $"under one parent. Give it a 'Custom.<Method>' source and scope the rows with " +
+                    $"args.Parent.");
+            }
+        }
+
+        ReportVerificationProblems(problems);
+    }
+
+    /// <summary>The simple-name type lookup these two checks share.</summary>
+    private static Type? FindTypeByName(string simpleName)
+    {
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            try
+            {
+                var match = assembly.GetTypes()
+                    .FirstOrDefault(t => t.Name == simpleName && !t.IsAbstract && !t.IsInterface);
+                if (match is not null) return match;
+            }
+            catch (System.Reflection.ReflectionTypeLoadException)
+            {
+                continue;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>Prints every problem and marks the run as drifted, or returns silently.</summary>
+    private static void ReportVerificationProblems(IReadOnlyList<string> problems)
+    {
+        if (problems.Count == 0) return;
+
+        foreach (var problem in problems)
+            Console.Error.WriteLine(problem);
+
+        Environment.ExitCode = ExitDrift;
+    }
+
     private static void VerifyComposedQueriesAreUsable(string contentRootPath)
     {
         var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");

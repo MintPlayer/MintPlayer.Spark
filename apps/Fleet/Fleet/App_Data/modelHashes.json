@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "modelHash": "4217f31696983fc41c91796ea430c92c20ea4363c30dd0c3757c8d456cb319a3",
+  "modelHash": "cd461cde6575bd9044e2004a97d7c96e9c86f5f839cae4548fcdb26b5f377e10",
   "contextRoots": "413ca4da55c2ba97081d85e13fd185f321b34ef2c0e2a098116947221739e1ff",
   "modelFiles": "2efc6d861c3100905d7a41a717cea96217abb64b71c085616bda81aea1f86e2e",
   "files": {
@@ -13,5 +13,9 @@
     "Car": "67cfcffab228437bd67aafaf8990f8fa00bc13304bf04711a963c88feefe01f9",
     "Company": "68f249d29fdef62f762a405d7abb8bd582d1e6663a21f817dfc4dff523c3acf4",
     "Person": "51995840cd8a350e60c009a6b3ef90477b366b3ebcbbc27e2c848837cad2a174"
+  },
+  "configFiles": {
+    "customActions.json": "809ab58f3f14f8952966fbc521f7e12293c9879ee2d615e2b28ce845ef18033d",
+    "programUnits.json": "85c3992502b955ab610944247e395461ef5b85087c93873f765ba6e3c43e5b89"
   }
 }
