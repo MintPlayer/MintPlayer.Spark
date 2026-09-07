@@ -149,7 +149,7 @@ public partial class ProjectAutomationRouter : IRecipient<GitHubWebhookMessage>
     /// while a guard that quietly stopped comparing is not.
     /// </para>
     /// </summary>
-    private bool IsSelfAuthored(GitHubWebhookMessage message)
+    internal bool IsSelfAuthored(GitHubWebhookMessage message)
     {
         // ProductionAppId, NOT DevelopmentAppId, and the naming is a trap worth naming. Despite the
         // name, ProductionAppId means "the App whose webhooks THIS instance processes" — locally
@@ -195,8 +195,39 @@ public partial class ProjectAutomationRouter : IRecipient<GitHubWebhookMessage>
             && id.TryGetInt64(out var actual)
             && actual == appId;
 
+    /// <summary>
+    /// Whether the resource this delivery is about was created by App <paramref name="appId"/>.
+    /// </summary>
+    /// <remarks>
+    /// GitHub hangs <c>performed_via_github_app</c> off the <b>resource</b>, not off the payload
+    /// root: an <c>issue_comment</c> delivery carries it on <c>comment</c> (and on <c>issue</c>),
+    /// never at the top level. This used to read the root only, which made the guard <b>inert for
+    /// every event except <c>check_run</c></b> — it could not recognise a comment this app had just
+    /// posted. Found by a test asserting the documented behaviour against a real payload shape,
+    /// which is the only way it would ever have surfaced: the failure mode is a card that moves
+    /// when it should not, and nothing logs that.
+    /// <para>
+    /// Each candidate is tried in turn, and the root is still checked last so a payload shape not
+    /// enumerated here keeps working if GitHub does put the marker at the top level.
+    /// </para>
+    /// </remarks>
     private static bool IsPerformedByUs(JsonElement root, long appId)
-        => root.TryGetProperty("performed_via_github_app", out var app)
+    {
+        foreach (var owner in new[] { "comment", "review", "pull_request", "issue" })
+        {
+            if (root.TryGetProperty(owner, out var resource)
+                && resource.ValueKind == JsonValueKind.Object
+                && MarksApp(resource, appId))
+            {
+                return true;
+            }
+        }
+
+        return MarksApp(root, appId);
+    }
+
+    private static bool MarksApp(JsonElement element, long appId)
+        => element.TryGetProperty("performed_via_github_app", out var app)
             && app.ValueKind == JsonValueKind.Object
             && app.TryGetProperty("id", out var id)
             && id.TryGetInt64(out var actual)

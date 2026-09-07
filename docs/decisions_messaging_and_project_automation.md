@@ -63,6 +63,7 @@ the kind of claim that gets re-adopted after a compaction, so it is recorded wit
 | **C9** | *(implicit)* that `RefreshAttribute(po, name)` re-fetches | It is a **patch**: it reads `po[name].Value` and puts that on the wire. Passing `args.Parent` therefore sends the client's *pre-action* values straight back — `SyncColumns` patched stale nulls over stale nulls. The fix is to re-map the object through the authorized read path after saving | `ClientAccessor.cs:47-61`; `attribute-refresh.service.ts` states it outright: "carries the new value, so this is a patch and not a re-fetch" |
 | **C10** | *(implicit)* that a `Database.*` query executed with a parent proves a mis-declared sub-query | Too broad by one whole use of the parent: the edit form sends the edited object as the parent when fetching **every Reference attribute's option list**, so an ordinary "any Account" picker failed the form with a 500 and no options. What makes a query a sub-query is the **declaration** — the parent type's `Queries` aliases — not the request. The guard now checks that, so it still fires exactly where it was aimed | `QueryExecutor.cs:557`, `spark-po-edit.component.html:21-22`, `spark-po-form.component.ts:214-226` |
 | **C11** | *(implicit)* that `apps/CodeCoverage` renders server notifications | Its root component never imported `SparkToastContainerComponent`, so **every** `notify` was discarded — including `DeleteDataAction`'s and `ResyncAction`'s **error** messages. Undetected because the server side *is* tested (`DeleteDataActionReportingTests`) while nothing asserted a toast reached a DOM | `app.ts:7` against `apps/Fleet/.../app.ts:8`; verified fixed by capturing `.spark-toast--success` in the container after a click |
+| **C12** | *(implicit)* that the self-authored loop guard worked for all events | It was **inert for every event except `check_run`**. `IsPerformedByUs` read `performed_via_github_app` from the payload **root**, but GitHub hangs that marker off the **resource** — `comment`, `issue`, `pull_request` — never at the top level, so the guard could not recognise a comment this app had itself posted. Fixed to try the resource objects first and the root last | Found by `ProjectAutomationTests.A_comment_this_app_posted_is_self_authored`, then **verified against real deliveries** in the App's Advanced tab (2026-09-07): an `issue_comment.edited` payload has `rootHasMarker: false` while `comment.performed_via_github_app` names `coverageproduction` (App id 4574022), and `issue` carries it too. Nothing else would have surfaced it — the failure mode is a card that moves when it should not, and nothing logs that |
 
 ## 4. Measured facts worth not re-deriving
 
@@ -93,6 +94,27 @@ Worth knowing in both directions. It is a cheap reproduction when the flake need
 means **a parallel sweep cannot be used to judge a change** — the failure list is dominated by
 whichever tests happened to tear down while the other suite peaked. Run the suites sequentially and
 with no host running before believing a red result.
+
+### Real webhook payload shapes, read off the App's Advanced tab 2026-09-07
+
+Both were previously asserted from recollection, and one of them was wrong in the code. Read from
+actual deliveries to `CoverageDevelopment`, so they are now measured rather than remembered.
+
+- **`performed_via_github_app` is never at the payload root.** On an `issue_comment` delivery the
+  root has no such key; the marker sits on `comment` **and** on `issue`. This is what made the loop
+  guard inert for every non-`check_run` event (C12).
+- **`check_run.app.id` is the creating App, and it is always an App.** A `check_run.completed`
+  delivery for the `pull-request` workflow reports `app.id: 15368`, `slug: github-actions`. That is
+  the concrete proof of the trap the guard is written around: a test for "was this created by an
+  App" would have dropped this delivery, and every other `check_run`, leaving `CheckRunCompleted`
+  permanently inert. Comparing against **our own** id keeps it.
+- **Two Coverage Apps deliver to the same repositories.** `CoverageDevelopment` receives deliveries
+  describing comments authored by `CoverageProduction` (id 4574022). Correctly *not* self-authored
+  for the dev instance, which is what makes `ProductionAppId` meaning "the App whose webhooks THIS
+  instance processes" the right comparison rather than a per-environment lookup.
+- **No `projects_v2*` deliveries appear at all**, although the App subscribes to `projects_v2`,
+  `projects_v2_item` and `projects_v2_status_update`. Corroborates §3b: board and column changes
+  cannot be learned from webhooks, so reconciliation is the only correction path.
 
 ### Grants an inline `AsDetail` editor needs, measured 2026-09-07 in the browser
 

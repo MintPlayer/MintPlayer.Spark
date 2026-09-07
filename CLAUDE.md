@@ -17,7 +17,7 @@ Two consequences worth knowing before editing it:
 
 ## Running the apps: never start the Angular dev server yourself
 
-Every app (`apps/CodeCoverage`, `apps/DemoApp`, `apps/Fleet`, `apps/HR`, `apps/WebhooksDemo`) hosts its SPA through
+Every app (`apps/CodeCoverage`, `apps/DemoApp`, `apps/Fleet`, `apps/HR`) hosts its SPA through
 **`UseAngularCliServer`** — the ASP.NET Core host spawns `npm start` itself and proxies it. So:
 
 - **`dotnet run` is the whole command.** Do not run `ng serve` / `npm start` alongside it; a second

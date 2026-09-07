@@ -88,7 +88,7 @@ jobs:
     # Run build before tests so Angular-app build failures (e.g., broken
     # imports, type errors, budget overruns) block the PR. The .NET test
     # target already dependsOn build, but the demo Angular apps
-    # (@spark-demo/{demo-app,fleet-demo,hr-demo,webhooks-demo}) don't have
+    # (@spark-demo/{demo-app,fleet-demo,hr-demo}) don't have
     # a test target — without this step their build is never exercised in
     # CI, and the next deploy run is the first thing to notice.
     - name: Build affected projects (Nx)
@@ -112,7 +112,7 @@ jobs:
     # code-coverage-deploy.yml maintains its ProjectReference closure as a hand-written path list. A
     # check that silently does nothing when that bookkeeping slips is worse than a slow one.
     - name: Restore the Spark app binaries the verifications need
-      run: npx nx run-many --target=build --projects=DemoApp,HR,Fleet,WebhooksDemo,CodeCoverage
+      run: npx nx run-many --target=build --projects=DemoApp,HR,Fleet,CodeCoverage
 
     # Catches a change that touched the entity classes without regenerating the model. Without this
     # the mismatch is only noticed at deployment, where it stops the application from starting.
@@ -123,7 +123,7 @@ jobs:
     # compiled against. Exit 3 means drift; the run fails before the slow test suite.
     - name: Verify Spark models are in sync
       run: |
-        for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/WebhooksDemo/WebhooksDemo apps/CodeCoverage/CodeCoverage; do
+        for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/CodeCoverage/CodeCoverage; do
           name="$(basename "$project")"
           # Globbed rather than hardcoding net10.0, so a target-framework bump cannot turn this
           # guard into a false alarm. Better than dotnet's start-process error, which names a path
@@ -145,7 +145,7 @@ jobs:
     # the anonymous surface moved; run --spark-synchronize-security and commit the baseline.
     - name: Verify the anonymous surface has not widened
       run: |
-        for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/WebhooksDemo/WebhooksDemo apps/CodeCoverage/CodeCoverage; do
+        for project in apps/DemoApp/DemoApp apps/HR/HR apps/Fleet/Fleet apps/CodeCoverage/CodeCoverage; do
           name="$(basename "$project")"
           # Globbed rather than hardcoding net10.0, so a target-framework bump cannot turn this
           # guard into a false alarm. Better than dotnet's start-process error, which names a path

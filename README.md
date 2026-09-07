@@ -136,8 +136,7 @@ MintPlayer.Spark/
 │   ├── CodeCoverage/                             # The coverage server behind coverage.mintplayer.com (a product, not a demo)
 │   ├── DemoApp/                                  # Sample ASP.NET Core + Angular application
 │   ├── Fleet/                                    # Fleet management demo (auth, messaging, replication)
-│   ├── HR/                                       # HR demo (auth, messaging, replication)
-│   └── WebhooksDemo/                             # GitHub webhooks demo application
+│   └── HR/                                       # HR demo (auth, messaging, replication)
 └── docs/                                         # Documentation (guides, prd/, code-coverage/, codecov/)
 ```
 

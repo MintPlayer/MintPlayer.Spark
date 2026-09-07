@@ -289,6 +289,22 @@
   },
   "queries": [
     {
+      "id": "5c1a7f38-2d64-4b0e-9a7c-6f3e81d5b402",
+      "name": "Account_Projects",
+      "source": "Custom.Account_Projects",
+      "alias": "account-projects",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "indexName": "GitHubProjects_Overview",
+      "entityType": "GitHubProject",
+      "isStreamingQuery": false
+    },
+    {
       "id": "237b1f50-88b8-48e5-a946-98a2f5251772",
       "name": "GetGitHubProjects",
       "source": "Database.GitHubProjects",

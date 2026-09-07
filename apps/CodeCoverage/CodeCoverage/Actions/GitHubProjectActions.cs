@@ -4,6 +4,9 @@ using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
+using MintPlayer.Spark.Queries;
+using Raven.Client.Documents.Linq;
+using Raven.Client.Documents.Session;
 
 namespace CodeCoverage.Actions;
 
@@ -23,6 +26,7 @@ namespace CodeCoverage.Actions;
 public partial class GitHubProjectActions : DefaultPersistentObjectActions<GitHubProject>
 {
     [Inject] private readonly ISparkVisibility visibility;
+    [Inject] private readonly IAsyncDocumentSession session;
 
     public override async Task<Expression<Func<GitHubProject, bool>>?> GetRowFilterAsync(string action)
     {
@@ -42,6 +46,33 @@ public partial class GitHubProjectActions : DefaultPersistentObjectActions<GitHu
         // editing a board belonging to an owner they do not manage. Returning a read-only filter
         // and assuming writes are denied at the type level would be wrong for this type.
         return GitHubProjectVisibility.Filter(owners);
+    }
+
+    /// <summary>
+    /// Custom query: the boards of one account, parent-scoped. Source
+    /// <c>Custom.Account_Projects</c>, declared on <c>Account</c> so it renders as a sub-query on
+    /// the account's page (OD2 — a top-level list <em>and</em> this).
+    /// </summary>
+    /// <remarks>
+    /// A <c>Custom.*</c> source because a <c>Database.*</c> one is refused for a declared
+    /// sub-query: a queryable property on the SparkContext cannot express "belonging to this
+    /// parent", so it would serve every board under one account's page. Scoping lives here.
+    /// <para>
+    /// Filtered on <see cref="GitHubProject.Account"/> rather than <c>OwnerLogin</c>. Both would
+    /// work today, but the account document id is stable across a GitHub rename while the login is
+    /// not — an account that changes its login would otherwise silently show an empty board list.
+    /// </para>
+    /// <para>
+    /// <see cref="GetRowFilterAsync"/> still applies on top of this, so the parent scoping and the
+    /// caller's own visibility compose rather than either replacing the other: narrowing to one
+    /// account cannot widen what the caller may see.
+    /// </para>
+    /// </remarks>
+    public IRavenQueryable<GitHubProject> Account_Projects(CustomQueryArgs args)
+    {
+        args.EnsureParent("Account");
+        return session.Query<GitHubProject, Indexes.GitHubProjects_Overview>()
+            .Where(p => p.Account == args.Parent!.Id);
     }
 
     /// <summary>

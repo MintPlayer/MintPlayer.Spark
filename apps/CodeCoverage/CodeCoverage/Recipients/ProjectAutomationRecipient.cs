@@ -268,7 +268,7 @@ public partial class ProjectAutomationRecipient : IRecipient<ProjectAutomationMe
     /// fire.
     /// </para>
     /// </summary>
-    private static List<EWebhookEventType> ResolveEventKeys(ProjectAutomationMessage message)
+    internal static List<EWebhookEventType> ResolveEventKeys(ProjectAutomationMessage message)
     {
         var keys = new List<EWebhookEventType>();
 

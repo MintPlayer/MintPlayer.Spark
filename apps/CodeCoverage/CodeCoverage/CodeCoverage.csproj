@@ -59,4 +59,16 @@
 	-->
 	<Import Project="..\..\..\libs\spark\MintPlayer.Spark\Targets\spark.targets" />
 
+  <ItemGroup>
+    <!--
+      Two functions are internal rather than private purely so they can be asserted directly:
+      ProjectAutomationRouter.IsSelfAuthored and ProjectAutomationRecipient.ResolveEventKeys.
+      Both are pure, and both fail SILENTLY when wrong. A too-broad loop guard makes an event
+      type permanently inert, and a resolver keyed on (event, action) alone maps a merge onto
+      the "closed" rule. Neither is reachable through a recipient public surface without a
+      webhook round trip, and such a test would pass with either defect present.
+    -->
+    <InternalsVisibleTo Include="CodeCoverage.Tests" />
+  </ItemGroup>
+
 </Project>

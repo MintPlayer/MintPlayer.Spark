@@ -384,7 +384,7 @@ grant, which is why one appears on every role above.
 ## Complete Example
 
 See the demo apps for working authorization setups:
-- `../apps/WebhooksDemo/WebhooksDemo/Program.cs` -- `spark.AddAuthentication<SparkUser>(…)` with an external provider, then `UseSpark()` / `MapSpark()`
+- `../apps/CodeCoverage/CodeCoverage/Program.cs` -- `spark.AddAuthentication<SparkUser>(…)` with an external provider, then `UseSpark()` / `MapSpark()`
 - `../apps/Fleet/Fleet/Program.cs` -- the same thing through `AddSparkFull` / `UseSparkFull`, which bundle the common packages
 - `../apps/Fleet/Fleet/App_Data/security.json` -- role-based permissions including custom action permissions
 - `../apps/HR/HR/App_Data/security.json` -- role-based permissions for HR entities

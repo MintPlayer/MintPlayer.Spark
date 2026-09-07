@@ -23,12 +23,6 @@ updates:
         patterns:
           - "*"
 
-  - package-ecosystem: docker
-    directory: /apps/WebhooksDemo/WebhooksDemo
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-
   - package-ecosystem: nuget
     directory: "/"
     schedule:

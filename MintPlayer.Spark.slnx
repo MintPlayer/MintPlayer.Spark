@@ -22,10 +22,6 @@
     <Project Path="apps/HR/HR.Library/HR.Library.csproj" />
     <Project Path="apps/HR/HR/HR.csproj" />
   </Folder>
-  <Folder Name="/apps/WebhooksDemo/">
-    <Project Path="apps/WebhooksDemo/WebhooksDemo.Library/WebhooksDemo.Library.csproj" />
-    <Project Path="apps/WebhooksDemo/WebhooksDemo/WebhooksDemo.csproj" />
-  </Folder>
   <Folder Name="/libs/" />
   <Folder Name="/libs/all_features/">
     <Project Path="libs/all_features/MintPlayer.Spark.AllFeatures.SourceGenerators/MintPlayer.Spark.AllFeatures.SourceGenerators.csproj" />
