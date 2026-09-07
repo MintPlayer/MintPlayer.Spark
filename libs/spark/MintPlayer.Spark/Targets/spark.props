@@ -1,0 +1,32 @@
+﻿<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+	<!--
+	  Defaults only. The AdditionalFiles items themselves live in spark.targets, and the split is
+	  load-bearing rather than tidiness:
+
+	    NuGet imports buildTransitive/*.props BEFORE the consuming project's body and
+	    buildTransitive/*.targets AFTER it.
+
+	  So a property a consumer sets in their own csproj — SparkAppDataDir, or the opt-out below — is
+	  invisible to anything written here and visible to anything written there. Put the items here
+	  and a consumer could not move App_Data or turn the behaviour off; put the defaults here and the
+	  items there, and both work.
+	-->
+
+	<PropertyGroup>
+		<!--
+		  Where this application keeps its Spark configuration. Override in the consuming project to
+		  relocate it; the targets read this, so the AdditionalFiles follow.
+		-->
+		<SparkAppDataDir Condition="'$(SparkAppDataDir)' == ''">App_Data</SparkAppDataDir>
+
+		<!--
+		  Whether Spark's own configuration files are handed to the compiler as AdditionalFiles.
+		  They have to be, for the generators and analyzers that read them — the model files feed
+		  PersistentObjectNames, translations feed the translation generator, and security.json feeds
+		  the security analyzer. Set to false only if a project deliberately supplies its own items.
+		-->
+		<SparkIncludeAppDataAdditionalFiles Condition="'$(SparkIncludeAppDataAdditionalFiles)' == ''">true</SparkIncludeAppDataAdditionalFiles>
+	</PropertyGroup>
+
+</Project>

@@ -141,4 +141,42 @@
 		         Text="[MintPlayer.Spark] Wrote AGENTS.md pointer in $(MSBuildProjectName) -> $(_SparkAgentsGuideRelative)." />
 	</Target>
 
+	<!--
+	  Spark's configuration files, handed to the compiler so generators and analyzers can read them.
+	  Imported AFTER the consuming project's body on purpose - see the note in spark.props - so a
+	  consumer's SparkAppDataDir override is already in effect here.
+
+	  Every named file carries Condition="Exists(...)". That is not defensive: an AdditionalFiles
+	  item naming a file that does not exist FAILS THE BUILD. Wildcards are safe without it, because
+	  a glob matching nothing simply yields no items.
+
+	  modelHashes.json is deliberately absent. It is an OUTPUT of the model synchronize command, and
+	  making a sync output a compilation input couples every rebuild to the sync step for a file no
+	  analyzer reads. It is covered by the model hash itself, not by the compiler.
+	-->
+	<ItemGroup Condition="'$(SparkIncludeAppDataAdditionalFiles)' == 'true'">
+		<!-- The model. Read by PersistentObjectNamesGenerator for its id constants. -->
+		<AdditionalFiles Include="$(SparkAppDataDir)\Model\*.json" />
+
+		<!-- Translations and the language set, read by the translation generators. -->
+		<AdditionalFiles Include="$(SparkAppDataDir)\translations.json"
+		                 Condition="Exists('$(SparkAppDataDir)\translations.json')" />
+		<AdditionalFiles Include="$(SparkAppDataDir)\culture.json"
+		                 Condition="Exists('$(SparkAppDataDir)\culture.json')" />
+
+		<!--
+		  security.json and its two companions. Hand-authored and never machine-written, so unlike
+		  the model files they are never one build behind - which is what makes analyzing them at
+		  compile time coherent at all. customActions.json is needed alongside security.json because
+		  a right may name a custom action, and programUnits.json because a unit names a query or a
+		  persistent object.
+		-->
+		<AdditionalFiles Include="$(SparkAppDataDir)\security.json"
+		                 Condition="Exists('$(SparkAppDataDir)\security.json')" />
+		<AdditionalFiles Include="$(SparkAppDataDir)\customActions.json"
+		                 Condition="Exists('$(SparkAppDataDir)\customActions.json')" />
+		<AdditionalFiles Include="$(SparkAppDataDir)\programUnits.json"
+		                 Condition="Exists('$(SparkAppDataDir)\programUnits.json')" />
+	</ItemGroup>
+
 </Project>
