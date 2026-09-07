@@ -42,6 +42,7 @@ Neither is implemented. Branch: `feat/coverage-project-automation`.
 | **`SubscriptionOpeningStrategy.Concurrent`** | Professional+ only, **and** explicitly abandons ordering | messaging PRD F5 |
 | **`TakeOver` for the feeder** | Two pods that both believe they lead ping-pong evicting each other, each eviction dropping an unacked batch | messaging PRD §4 |
 | **Porting the bespoke discovery page** | See A2 | coverage PRD §2.2 |
+| **Activating the free *Developer* licence in production to lift the subscription cap** | Nothing technical prevents it — production licences Raven by POSTing `raven-license.json` to `/admin/license/activate` (`f4373ce5`), so it is a one-file change on the VPS, and it does remove every cap. But the Developer tier is free *because* it is restricted to development and testing; `coverage.mintplayer.com` is public and CI-facing, the licence is issued to a named company rather than anonymously, and it expires in early 2027. Decisive engineering point: it buys **only** the queue budget and leaves the actual webhook-drop bug (`Processing` written and read by nothing) untouched, so it cancels none of this rework. Pursue an OSS-project licence from RavenDB instead; failing that, Community + this rework. | §4, this register |
 
 ## 3. Corrections to previously-held beliefs
 
@@ -94,8 +95,32 @@ the kind of claim that gets re-adopted after a compaction, so it is recorded wit
   as `SubscriptionDoesNotExistException`, which `SparkSubscriptionWorker.cs:234` treats as
   non-recoverable and breaks the loop — no recovery even after the new subscription exists. Rolling
   deploys must terminate old pods before pruning.
-- **⚠ Two replicas racing to prune-and-create is not benign**: both deletes succeed, then the loser's
-  *create* throws on the name collision, at startup and outside `Run`, where nothing catches it.
+- **A two-replica prune-and-create race is absorbed by Spark's real path.** With a raw `CreateAsync`
+  the loser throws on the name collision, but `EnsureSubscriptionExistsAsync`'s create → catch →
+  `UpdateAsync { CreateNew = true }` survives it: measured, both replicas end up fine and one
+  subscription remains. No guard needed — just don't add a second create site without the fallback.
+  *(An earlier version of this bullet said replica B faults on boot. That was measured with the raw
+  call and overstated the hazard.)*
+- **`WaitForFree` gives clean, server-enforced active/standby with sub-second failover.** The standby
+  blocks inside `Run()` — no exception, no retry churn. Handover measured at **962 ms** on a graceful
+  `DisposeAsync` and **575 ms** on an abrupt kill of a *separate process* (no dispose, no FIN, 0
+  reconnect retries). Confirms the PRD §4 claim: **the leader lease is for liveness, not safety.**
+- **`@refresh` genuinely wakes a subscription** — proven, not inferred. With refresh at 5 s and a
+  query gated on `not exists(w.@metadata.@refresh)`: not delivered at +2 s while `@refresh` was set,
+  delivered **4,650 ms** after attaching once the sweep removed it. So `RetryNumerator`'s writes are
+  inert *only* because `ConfigureRefreshOperation` is sent nowhere.
+- **Startup ordering is guaranteed by construction, not by luck.** Migrations register as a
+  `Registry.AddMiddleware` action; `SparkMigrationRunner.RunAtStartup` **blocks**
+  (`.GetAwaiter().GetResult()`); `UseSpark` runs registry actions inline (`SparkMiddleware.cs:309`)
+  at `Program.cs:324`, while `app.Run()` is at `:364` and hosted services start only inside it. So
+  the legacy cleanup *may* be a migration — but see the next bullet for why it should not be.
+- **The cleanup belongs on every boot, not in a migration.** Delete is idempotent and ~2 ms, so an
+  every-boot prune self-heals if a stale definition ever returns; a migration's once-ever marker is
+  exactly what would prevent that. This reverses the plan's original stated preference.
+- ⚠ **The cleanup prefix and the unified subscription name are a matched pair.** `SparkMessaging`
+  survives a `SparkMessaging-` prefix delete only because it lacks a trailing hyphen. Rename it with
+  one and an every-boot cleanup deletes its own live subscription — the one failure mode here that a
+  restart does **not** heal.
 - **A connected worker survives a query *update*** — one internal `SubscriptionClosedException`, one
   reconnect, then it serves the new query with no restart. The exception does **not** propagate out of
   `Run`, so the worker's non-recoverable `SubscriptionClosedException` branch never fires.
@@ -187,3 +212,11 @@ PRD/plan/release-note mentions, which are prose about past work: `docs/actions_a
   Out of scope and still broken: `GitHubUserTokenService`'s process-local dictionary guarding
   single-use rotating refresh tokens, Data Protection keyrings on container filesystems in every app
   but CodeCoverage, and the total absence of `AddHealthChecks`/`IHealthCheck`.
+- **Calibrate to the real deployment: one container, no external consumers.** Owner's steer, and it
+  outranks theoretical robustness. The framework has no known third-party users and nothing else in
+  production; the only deployment is a single container via `docker-compose` on one VPS. So a fault
+  that is recoverable by `docker restart` is **not** a design constraint — record the symptom so it
+  is recognisable, and move on. Do **not** add deploy ceremony, ordering requirements, guards or
+  fencing for multi-replica or rolling-deploy scenarios that do not exist. The exceptions that still
+  deserve engineering are faults a restart does *not* heal: data loss (the stranded `Processing`
+  message), and self-inflicted state like a cleanup that deletes its own subscription on every boot.

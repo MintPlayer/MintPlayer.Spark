@@ -83,18 +83,55 @@ and `EnsureSubscriptionExistsAsync`'s `LicenseLimitException` branch stays **unv
    non-recoverable and **breaks the loop**. It does not recover once the new subscription exists.
    *New requirement for M6:* the rolling deploy must terminate old pods before the cleanup runs —
    it cannot rely on them healing.
-9. **⚠ Two replicas racing to prune-and-create is not benign.** Both deletes succeed (idempotent),
-   then the loser's *create* throws `RavenException`/`RachisApplyException` on the name collision.
-   This happens at startup, **outside `Run`**, where nothing catches it — so replica B faults on
-   boot. *New requirement for M6:* treat "already exists" at create as success.
+9. **A two-replica prune-and-create race is survivable — corrected below.** With a *raw* `CreateAsync`
+   the loser throws `RavenException`/`RachisApplyException` on the name collision. But that is not
+   Spark's path, and re-running the race through the real one (S11) shows it is absorbed. See the
+   correction under "S11" — this item as first written overstated the hazard.
 10. **Field evidence for F6.** The local `WebhooksDemo` database carries **7** `SparkMessaging-*`
     definitions, 6 of them orphaned by generic-type-name churn (a `` GitHubWebhookMessage`1-… ``
     form plus assembly-qualified `Version=2.0.0.0` and `Version=3.0.0.0` variants). Nothing has ever
     deleted one. This is exactly the accumulation that exhausts a 3-slot budget.
 
-**Still unanswered:** the startup-ordering half — whether migrations really complete before
-`MessageSubscriptionManager` starts. That needs the `apps/CodeCoverage` instrumentation, not a
-standalone spike.
+**Startup ordering — ANSWERED by code proof, no instrumentation needed.** The PRD's assertion holds,
+by construction rather than by luck:
+
+- `SparkMigrationsExtensions.cs:45` registers migrations as `builder.Registry.AddMiddleware(app =>
+  SparkMigrationRunner.RunAtStartup(app.ApplicationServices))`.
+- `SparkMigrationRunner.RunAtStartup` is **synchronous and blocking** —
+  `RunAsync(...).GetAwaiter().GetResult()`.
+- `UseSpark` executes registry actions inline (`SparkMiddleware.cs:309`), and in
+  `apps/CodeCoverage/CodeCoverage/Program.cs` `app.UseSpark()` is line **324** while `app.Run()` is
+  line **364**.
+- Hosted services — `MessageSubscriptionManager` among them — only start inside `app.Run()` →
+  `StartAsync()`.
+
+So migrations complete before any hosted service starts. There is no race, and M6 may live in a
+migration. (`Program.cs:156` already documents this; the spike confirms it rather than discovering it.)
+
+#### S11 / S12 — RESULTS (same session), and a correction to result 9 above
+
+**S11 — the two-replica race is absorbed by Spark's real path.** Result 9 above was measured with a
+raw `CreateAsync`. `EnsureSubscriptionExistsAsync` instead does create → `catch (Exception)` →
+`UpdateAsync { CreateNew = true }`. Re-run through that shape, both replicas survive:
+
+```
+[A] deleted SparkMessaging-Legacy      [B] deleted SparkMessaging-Legacy
+[A] create SUCCEEDED                   [B] create threw RavenException -> falling back to UpdateAsync
+                                       [B] update SUCCEEDED (this replica survives)
+RESULT: 1 subscription(s): SparkMessaging
+```
+
+So **no guard is needed for the existing create path.** The hazard is real only for a *new* create
+site that omits the fallback — which is why M6 must not grow one.
+
+**S12 — the `SparkMessaging-` prefix does spare the unified `SparkMessaging`.** Verified directly:
+with `SparkMessaging`, `SparkMessaging-Legacy1` and `SparkMessaging-Legacy2` present, the ordinal
+prefix match selected exactly the two legacy names and the unified subscription survived.
+
+⚠ **That safety rests entirely on the unified name having no trailing hyphen.** Rename it to
+`SparkMessaging-Unified` (or anything with the hyphen) and a cleanup that runs on every boot deletes
+its own live subscription — which, per result 8, then kills the connected worker permanently. The
+name in M3 and the prefix in M6 are a matched pair: change one and you must change the other.
 
 ### S2 — `WaitForFree` standby and handover
 
@@ -108,6 +145,23 @@ the other singletons — which is the PRD's central claim (§4).
 **Kill criterion:** if `WaitForFree` does not block cleanly, the lease becomes the sole exclusivity
 mechanism and the design needs a fencing token the side effect can validate — a materially harder
 problem. Find this out now, not in M4.
+
+#### S2 — RESULTS (run 2026-09-07, same server)
+
+**Kill criterion not triggered. `WaitForFree` behaves exactly as the PRD assumed, and the fencing
+token is not needed.**
+
+- The standby **blocks inside `Run()`**: worker B sat 4 s with no batch, no exception, no reconnect
+  churn, while A held the subscription.
+- **Graceful handover: 962 ms** after `DisposeAsync()` on A.
+- **Abrupt handover: 575 ms.** Worker A ran in a **separate process** killed with
+  `Kill(entireProcessTree: true)` — no dispose, no FIN, connection loss left entirely to the server
+  to notice. B took over in 575 ms with **0 reconnect retries**, and picked up a document stored
+  after the kill. The pre-kill document had already gone to the child; B did not re-receive it.
+
+So exclusivity is server-enforced and sub-second on both paths. **This confirms the PRD's central
+claim (§4): the leader lease is needed for liveness and for gating the other singletons, not for
+safety.**
 
 ### S3 — Claim-then-ack preserves FIFO, isolation and crash recovery
 
@@ -144,6 +198,26 @@ was reached with refresh *disabled* and a `now()` query, so it never actually te
 Green settles B11 — either enable refresh and make `RetryNumerator` real, or delete its writes. Red
 means the docs describe behaviour the pinned 7.1.10 server does not deliver, which is worth knowing
 before anyone reconsiders §3c.
+
+#### S4 — RESULTS (run 2026-09-07, same server): **GREEN. `@refresh` does wake a subscription.**
+
+Sent `ConfigureRefreshOperation(new RefreshConfiguration { Disabled = false, RefreshFrequencyInSec = 5 })`,
+stored a `Widget { Status = "Failed" }` with `@refresh` 3 s out, and subscribed to
+`from Widgets as w where w.Status = 'Failed' and not exists(w.@metadata.@refresh)`.
+
+- At **+2 s** — `@refresh` still present — **not delivered**, as required. The query genuinely gates
+  on the metadata rather than matching immediately.
+- **Delivered 4,650 ms after attaching**, once the refresh sweep removed `@refresh`.
+
+The positive was asserted, not the negative. This settles **B11**: the mechanism works on the pinned
+server, so `RetryNumerator`'s `@refresh` writes are *capable* of driving redelivery — they are inert
+today only because **`ConfigureRefreshOperation` is sent nowhere in the repo**. The decision is
+therefore a real either/or (enable refresh and make `RetryNumerator` real, or delete its writes),
+not a dead end, and the repo's "`@refresh` is doubly useless here" reasoning in
+`docs/issue_233_plan.md:39-49` is now disproven empirically as well as by the docs.
+
+We are still **not adopting** §3c for this rework — the sweeper works and the change is bigger than
+the win — but the finding stands on its own.
 
 **⚠️ Note for S1:** the local server is **not** Community-capped — the local `Coverage` database
 currently holds **8** `SparkMessaging-*` definitions, including the five that were silently dead in
@@ -249,21 +323,28 @@ licence headroom wanting server-side per-queue isolation). Both must work and bo
   generator discovers migrations from a *referenced package* and not only from the compilation being
   built.
 
-- **Create must tolerate "already exists" as success** (S1 result 9). Two replicas booting together
-  both prune successfully, then the loser's create throws `RavenException`/`RachisApplyException` on
-  the name collision, at startup and outside `Run`, where nothing catches it. Unguarded, the second
-  replica faults on boot.
-- **The cleanup must not run while an old pod still holds a `SparkMessaging-*` subscription**
-  (S1 result 8). Deleting it makes that pod's worker throw `SubscriptionDoesNotExistException`, which
-  the worker treats as non-recoverable and **never recovers from**, even after the new subscription
-  exists. Old pods must be terminated, not left to heal. Document this as a deploy step; it is not
-  something the code can enforce.
-- Deleting unconditionally is fine — `DeleteAsync` on a missing name does not throw (S1 result 1) —
-  so no marker document is needed for correctness, only for auditability.
+- **Prefer the every-boot cleanup over a migration.** S1 showed delete is idempotent and ~2 ms, so
+  running it on every messaging startup costs nothing and **self-heals**: if a stale definition ever
+  reappears, the next boot removes it. A migration's once-ever marker is precisely what would
+  *prevent* that self-healing. This reverses the preference stated above; the migration's
+  cluster-wide lock buys nothing for an operation that is idempotent and self-emptying.
+- ⚠ **The cleanup prefix and the unified subscription name are a matched pair.** `SparkMessaging`
+  survives a `SparkMessaging-` prefix delete only because it has no trailing hyphen (S12). Put a
+  comment saying so next to the prefix constant. This is the one case here that is *not* self-healing:
+  a cleanup that deletes its own live subscription every boot stays broken across restarts.
+- No guard is needed at the create site — `EnsureSubscriptionExistsAsync` already absorbs the
+  collision (S11). Do not add a second create path that omits the fallback.
+- Deleting unconditionally is fine (S1 result 1), so no marker document is needed.
 
-**Verify:** S1's assertions pass. Note that the licence-cap assertion **cannot** be verified locally
-(S1: the Developer licence enforces no cap at all); it needs a Community-licensed server or an
-explicit simulated budget.
+**Not worth engineering around.** S1 result 8 (deleting a subscription under a live worker kills that
+worker permanently) and the "terminate old pods first" requirement it implied are **descoped**. The
+only real deployment is a single container via `docker-compose` on one VPS — there is no rolling
+deploy and no second replica — the framework has no external consumers, and the failure mode is one
+`docker restart` away from healed. Recorded because the *symptom* (process up, queue silently dead)
+is worth recognising quickly, not because the deploy needs ceremony.
+
+**Verify:** S1's assertions pass. The licence-cap assertion **cannot** be verified locally (the
+Developer licence enforces no cap at all); it needs a Community-licensed server or a simulated budget.
 
 ### M7 — Webhook durability (W1-W4)
 
