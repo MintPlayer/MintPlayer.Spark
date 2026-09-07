@@ -78,7 +78,9 @@
           "nl": "Adres"
         },
         "description": {
-          "en": "Home address of the person."
+          "en": "Home address of the person.",
+          "fr": "Adresse du domicile de la personne.",
+          "nl": "Thuisadres van de persoon."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -100,7 +102,9 @@
           "nl": "Bedrijf"
         },
         "description": {
-          "en": "The company the person currently works for."
+          "en": "The company the person currently works for.",
+          "fr": "L'entreprise pour laquelle la personne travaille actuellement.",
+          "nl": "Het bedrijf waarvoor de persoon momenteel werkt."
         },
         "dataType": "Reference",
         "isRequired": false,
@@ -123,7 +127,9 @@
           "nl": "Geboortedatum"
         },
         "description": {
-          "en": "Date on which the person was born."
+          "en": "Date on which the person was born.",
+          "fr": "Date de naissance de la personne.",
+          "nl": "Geboortedatum van de persoon."
         },
         "dataType": "date",
         "isRequired": false,
@@ -144,7 +150,9 @@
           "nl": "E-mail"
         },
         "description": {
-          "en": "E-mail address used to contact the person."
+          "en": "E-mail address used to contact the person.",
+          "fr": "Adresse e-mail utilisée pour contacter la personne.",
+          "nl": "E-mailadres waarop de persoon gecontacteerd wordt."
         },
         "dataType": "string",
         "isRequired": false,
@@ -173,7 +181,9 @@
           "nl": "Voornaam"
         },
         "description": {
-          "en": "Given name of the person."
+          "en": "Given name of the person.",
+          "fr": "Prénom de la personne.",
+          "nl": "Voornaam van de persoon."
         },
         "dataType": "string",
         "isRequired": true,
@@ -220,10 +230,14 @@
         "id": "8db11a80-f6d9-4216-a8ed-534c5deb9652",
         "name": "Jobs",
         "label": {
-          "en": "Jobs"
+          "en": "Jobs",
+          "fr": "Jobs",
+          "nl": "Jobs"
         },
         "description": {
-          "en": "Career history of the person, ordered by dragging rows into place."
+          "en": "Career history of the person, ordered by dragging rows into place.",
+          "fr": "Parcours professionnel de la personne, ordonné en faisant glisser les lignes à leur place.",
+          "nl": "Loopbaangeschiedenis van de persoon, geordend door rijen op hun plaats te slepen."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -247,7 +261,9 @@
           "nl": "Achternaam"
         },
         "description": {
-          "en": "Family name of the person."
+          "en": "Family name of the person.",
+          "fr": "Nom de famille de la personne.",
+          "nl": "Familienaam van de persoon."
         },
         "dataType": "string",
         "isRequired": true,
@@ -282,7 +298,9 @@
           "nl": "Beroepen"
         },
         "description": {
-          "en": "All professions the person holds; several can be selected."
+          "en": "All professions the person holds; several can be selected.",
+          "fr": "Toutes les professions exercées par la personne ; plusieurs peuvent être sélectionnées.",
+          "nl": "Alle beroepen die de persoon uitoefent; er kunnen er meerdere geselecteerd worden."
         },
         "dataType": "Reference",
         "isRequired": false,

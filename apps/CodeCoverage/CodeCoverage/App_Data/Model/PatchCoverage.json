@@ -11,10 +11,14 @@
         "id": "b1cf6133-af13-4e33-960d-8b7478e5ad98",
         "name": "DiffBaseRef",
         "label": {
-          "en": "Diff Base Ref"
+          "en": "Diff Base Ref",
+          "fr": "Réf. de base du diff",
+          "nl": "Diff-basisref"
         },
         "description": {
-          "en": "What the diff compared against (declared base sha, or the PR base tip hint)."
+          "en": "What the diff compared against (declared base sha, or the PR base tip hint).",
+          "fr": "Ce à quoi le diff s'est comparé (sha de base déclaré, ou indication de la tête de base de la PR).",
+          "nl": "Waarmee de diff vergeleken heeft (de aangegeven basis-sha, of de hint van de basistip van de PR)."
         },
         "dataType": "string",
         "isRequired": false,
@@ -29,10 +33,14 @@
         "id": "b1a56467-ad28-4aa0-b354-50d261ff210f",
         "name": "DiffTruncated",
         "label": {
-          "en": "Diff Truncated"
+          "en": "Diff Truncated",
+          "fr": "Diff tronqué",
+          "nl": "Diff afgekapt"
         },
         "description": {
-          "en": "True when GitHub's 300-file comparison cap cut the diff short; the number under-reports."
+          "en": "True when GitHub's 300-file comparison cap cut the diff short; the number under-reports.",
+          "fr": "Vrai lorsque la limite de comparaison de 300 fichiers de GitHub a écourté le diff ; le chiffre est sous-estimé.",
+          "nl": "True wanneer GitHubs vergelijkingslimiet van 300 bestanden de diff heeft afgekapt; het cijfer is te laag."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -47,10 +55,14 @@
         "id": "78fef2ed-65a2-4ec0-9c77-d8c9b333ec82",
         "name": "FilesInDiff",
         "label": {
-          "en": "Files In Diff"
+          "en": "Files In Diff",
+          "fr": "Fichiers dans le diff",
+          "nl": "Bestanden in de diff"
         },
         "description": {
-          "en": "Number of files the diff touched, before dropping the ones the build did not measure."
+          "en": "Number of files the diff touched, before dropping the ones the build did not measure.",
+          "fr": "Nombre de fichiers touchés par le diff, avant d'écarter ceux que le build n'a pas mesurés.",
+          "nl": "Aantal bestanden dat de diff raakte, vóór het weglaten van de bestanden die de build niet gemeten heeft."
         },
         "dataType": "number",
         "isRequired": true,
@@ -65,10 +77,14 @@
         "id": "e21caeb9-99bb-4be6-8559-6f3e8b8301bf",
         "name": "FilesMatched",
         "label": {
-          "en": "Files Matched"
+          "en": "Files Matched",
+          "fr": "Fichiers correspondants",
+          "nl": "Overeenkomende bestanden"
         },
         "description": {
-          "en": "Diff files the build actually measured — the denominator's file scope."
+          "en": "Diff files the build actually measured — the denominator's file scope.",
+          "fr": "Fichiers du diff que le build a réellement mesurés — la portée de fichiers du dénominateur.",
+          "nl": "Diff-bestanden die de build daadwerkelijk heeft gemeten — de bestandsscope van de noemer."
         },
         "dataType": "number",
         "isRequired": true,
@@ -83,10 +99,14 @@
         "id": "7c6a0a0c-cccc-4192-ac70-770f0efa41f8",
         "name": "LinesCoverable",
         "label": {
-          "en": "Lines Coverable"
+          "en": "Lines Coverable",
+          "fr": "Lignes couvrables",
+          "nl": "Dekbare regels"
         },
         "description": {
-          "en": "Number of lines added by the change that tests could have executed, the patch coverage denominator."
+          "en": "Number of lines added by the change that tests could have executed, the patch coverage denominator.",
+          "fr": "Nombre de lignes ajoutées par la modification que les tests auraient pu exécuter, le dénominateur de la couverture du patch.",
+          "nl": "Aantal door de wijziging toegevoegde regels die tests hadden kunnen uitvoeren, de noemer van de patchdekking."
         },
         "dataType": "number",
         "isRequired": true,
@@ -101,10 +121,14 @@
         "id": "2e839a9f-9657-4c99-8bb9-6686ab87749f",
         "name": "LinesCovered",
         "label": {
-          "en": "Lines Covered"
+          "en": "Lines Covered",
+          "fr": "Lignes couvertes",
+          "nl": "Gedekte regels"
         },
         "description": {
-          "en": "Number of lines added by the change that were executed at least once."
+          "en": "Number of lines added by the change that were executed at least once.",
+          "fr": "Nombre de lignes ajoutées par la modification qui ont été exécutées au moins une fois.",
+          "nl": "Aantal door de wijziging toegevoegde regels die minstens één keer uitgevoerd zijn."
         },
         "dataType": "number",
         "isRequired": true,
@@ -119,10 +143,14 @@
         "id": "19a06410-5bfc-48ea-9f49-07f1c764c143",
         "name": "MergeBaseSha",
         "label": {
-          "en": "Merge Base Sha"
+          "en": "Merge Base Sha",
+          "fr": "Sha de la base de fusion",
+          "nl": "Merge-base-sha"
         },
         "description": {
-          "en": "The merge-base GitHub computed for that comparison."
+          "en": "The merge-base GitHub computed for that comparison.",
+          "fr": "La base de fusion que GitHub a calculée pour cette comparaison.",
+          "nl": "De merge-base die GitHub voor die vergelijking berekend heeft."
         },
         "dataType": "string",
         "isRequired": false,

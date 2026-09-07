@@ -13,10 +13,14 @@
         "id": "a33211c6-5059-477e-bcae-ab482fcc3584",
         "name": "Account",
         "label": {
-          "en": "Account"
+          "en": "Account",
+          "fr": "Compte",
+          "nl": "Account"
         },
         "description": {
-          "en": "The GitHub user or organization that owns this repository."
+          "en": "The GitHub user or organization that owns this repository.",
+          "fr": "L'utilisateur ou l'organisation GitHub propriétaire de ce dépôt.",
+          "nl": "De GitHub-gebruiker of -organisatie die eigenaar is van deze repository."
         },
         "dataType": "Reference",
         "isRequired": false,
@@ -33,10 +37,14 @@
         "id": "ae617697-7cdc-4618-98b8-5676a1cfdf0e",
         "name": "Archived",
         "label": {
-          "en": "Archived"
+          "en": "Archived",
+          "fr": "Archivé",
+          "nl": "Gearchiveerd"
         },
         "description": {
-          "en": "True when the repository has been archived on GitHub and no longer receives uploads."
+          "en": "True when the repository has been archived on GitHub and no longer receives uploads.",
+          "fr": "Vrai lorsque le dépôt a été archivé sur GitHub et ne reçoit plus d'envois.",
+          "nl": "True wanneer de repository op GitHub gearchiveerd is en geen uploads meer ontvangt."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -51,10 +59,14 @@
         "id": "b676851e-f8de-4297-8408-6fe1f4287b42",
         "name": "BadgeToken",
         "label": {
-          "en": "Badge Token"
+          "en": "Badge Token",
+          "fr": "Jeton de badge",
+          "nl": "Badgetoken"
         },
         "description": {
-          "en": "Grants access to the rendered badge SVG only — never report data. Set for private repositories; independently rotatable. [IgnoreForIndex] because index membership is opt-out: without it this lands in VRepository, and synchronize then marks every projected field queryable — putting a live badge token in the /spark repository grid, which security.json grants to Everyone. Nothing filters or sorts on it, so the index has no use for it either."
+          "en": "Grants access to the rendered badge SVG only — never report data. Set for private repositories; independently rotatable. [IgnoreForIndex] because index membership is opt-out: without it this lands in VRepository, and synchronize then marks every projected field queryable — putting a live badge token in the /spark repository grid, which security.json grants to Everyone. Nothing filters or sorts on it, so the index has no use for it either.",
+          "fr": "Donne accès uniquement au SVG du badge rendu — jamais aux données de rapport. Défini pour les dépôts privés ; renouvelable indépendamment. [IgnoreForIndex] parce que l'appartenance à l'index est en opt-out : sans cela, ce champ atterrit dans VRepository, et la synchronisation marque alors tout champ projeté comme interrogeable — plaçant un jeton de badge actif dans la grille des dépôts /spark, que security.json accorde à Everyone. Rien ne filtre ni ne trie dessus, donc l'index n'en a pas non plus l'usage.",
+          "nl": "Geeft enkel toegang tot de gerenderde badge-SVG — nooit tot rapportgegevens. Ingesteld voor privérepository's; onafhankelijk roteerbaar. [IgnoreForIndex] omdat indexlidmaatschap opt-out is: zonder dat belandt dit in VRepository, en synchronize markeert dan elk geprojecteerd veld als bevraagbaar — waardoor een levend badgetoken in het /spark-repositorygrid komt, dat security.json aan Everyone toekent. Er wordt niet op gefilterd of gesorteerd, dus de index heeft er evenmin iets aan."
         },
         "dataType": "string",
         "isRequired": false,
@@ -70,10 +82,14 @@
         "id": "02e8d12f-edc2-47e3-b018-1d551dd75e5e",
         "name": "Connection",
         "label": {
-          "en": "Connection"
+          "en": "Connection",
+          "fr": "Connexion",
+          "nl": "Verbinding"
         },
         "description": {
-          "en": "Whether the GitHub App can still see this repository. Disconnected repositories keep every document they have and keep answering on their badge and report URLs; they stop appearing in listings for anyone who does not manage the owner.\nDefaults to Connected, which is what every document written before this field existed deserializes to — so no migration is needed and the nightly reconciler is what corrects the ones that are actually gone."
+          "en": "Whether the GitHub App can still see this repository. Disconnected repositories keep every document they have and keep answering on their badge and report URLs; they stop appearing in listings for anyone who does not manage the owner.\nDefaults to Connected, which is what every document written before this field existed deserializes to — so no migration is needed and the nightly reconciler is what corrects the ones that are actually gone.",
+          "fr": "Indique si l'application GitHub peut encore voir ce dépôt. Les dépôts déconnectés conservent tous leurs documents et continuent de répondre sur leurs URL de badge et de rapport ; ils cessent d'apparaître dans les listes pour quiconque ne gère pas le propriétaire.\nLa valeur par défaut est Connected, ce en quoi se désérialise tout document écrit avant l'existence de ce champ — aucune migration n'est donc nécessaire, et c'est le réconciliateur nocturne qui corrige ceux qui ont réellement disparu.",
+          "nl": "Of de GitHub App deze repository nog kan zien. Losgekoppelde repository's behouden al hun documenten en blijven antwoorden op hun badge- en rapport-URL's; ze verschijnen niet langer in lijsten voor wie de eigenaar niet beheert.\nDe standaardwaarde is Connected, waarnaar elk document dat geschreven is voordat dit veld bestond deserialiseert — dus is er geen migratie nodig en corrigeert de nachtelijke reconciler de repository's die echt weg zijn."
         },
         "dataType": "string",
         "isRequired": true,
@@ -88,10 +104,14 @@
         "id": "88534f91-2542-4520-8773-00390de2cf10",
         "name": "DefaultBranch",
         "label": {
-          "en": "Default Branch"
+          "en": "Default Branch",
+          "fr": "Branche par défaut",
+          "nl": "Standaardbranch"
         },
         "description": {
-          "en": "The repository's default branch on GitHub (e.g. master); its newest finalized build supplies the headline coverage."
+          "en": "The repository's default branch on GitHub (e.g. master); its newest finalized build supplies the headline coverage.",
+          "fr": "La branche par défaut du dépôt sur GitHub (p. ex. master) ; son build finalisé le plus récent fournit la couverture principale.",
+          "nl": "De standaardbranch van de repository op GitHub (bv. master); de nieuwste gefinaliseerde build daarvan levert de hoofddekking."
         },
         "dataType": "string",
         "isRequired": false,
@@ -106,10 +126,14 @@
         "id": "f478a083-eb0b-4468-af19-cddbdb07fcc1",
         "name": "DisconnectedAtUtc",
         "label": {
-          "en": "Disconnected At Utc"
+          "en": "Disconnected At Utc",
+          "fr": "Déconnecté le (UTC)",
+          "nl": "Losgekoppeld op (UTC)"
         },
         "description": {
-          "en": "When the repository was last disconnected (UTC); null while connected."
+          "en": "When the repository was last disconnected (UTC); null while connected.",
+          "fr": "Moment de la dernière déconnexion du dépôt (UTC) ; null tant qu'il est connecté.",
+          "nl": "Wanneer de repository het laatst losgekoppeld is (UTC); null zolang ze verbonden is."
         },
         "dataType": "datetime",
         "isRequired": false,
@@ -124,10 +148,14 @@
         "id": "e2b5b521-5214-4ce0-8dcf-e5b5866d10ef",
         "name": "DisconnectedReason",
         "label": {
-          "en": "Disconnected Reason"
+          "en": "Disconnected Reason",
+          "fr": "Motif de déconnexion",
+          "nl": "Reden van loskoppeling"
         },
         "description": {
-          "en": "Why the repository is disconnected, from DisconnectedReasons; null while connected."
+          "en": "Why the repository is disconnected, from DisconnectedReasons; null while connected.",
+          "fr": "Pourquoi le dépôt est déconnecté, d'après DisconnectedReasons ; null tant qu'il est connecté.",
+          "nl": "Waarom de repository losgekoppeld is, uit DisconnectedReasons; null zolang ze verbonden is."
         },
         "dataType": "string",
         "isRequired": false,
@@ -142,10 +170,14 @@
         "id": "a6ac6d37-7d03-4094-8d19-8c86a4fefa7f",
         "name": "FullName",
         "label": {
-          "en": "Trend"
+          "en": "Trend",
+          "fr": "Tendance",
+          "nl": "Trend"
         },
         "description": {
-          "en": "owner/name"
+          "en": "owner/name",
+          "fr": "propriétaire/nom",
+          "nl": "eigenaar/naam"
         },
         "dataType": "string",
         "isRequired": false,
@@ -161,10 +193,14 @@
         "id": "e2447502-d8a1-48d5-ad44-c28cd7308a7e",
         "name": "Gate",
         "label": {
-          "en": "Gate"
+          "en": "Gate",
+          "fr": "Seuil",
+          "nl": "Poort"
         },
         "description": {
-          "en": "Gate policy; null means every default (informational, auto-ratchet). [IgnoreForIndex]: policy is owner-facing configuration — it has no business in the anonymous /spark grid, and nothing filters on it."
+          "en": "Gate policy; null means every default (informational, auto-ratchet). [IgnoreForIndex]: policy is owner-facing configuration — it has no business in the anonymous /spark grid, and nothing filters on it.",
+          "fr": "Politique de seuil ; null signifie toutes les valeurs par défaut (informatif, auto-cliquet). [IgnoreForIndex] : la politique est une configuration destinée au propriétaire — elle n'a rien à faire dans la grille /spark anonyme, et rien ne filtre dessus.",
+          "nl": "Poortbeleid; null betekent alle standaardwaarden (informatief, auto-ratchet). [IgnoreForIndex]: beleid is configuratie voor de eigenaar — het hoort niet thuis in het anonieme /spark-grid, en er wordt niet op gefilterd."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -181,10 +217,14 @@
         "id": "2eeb1e3b-9a67-40f3-8ed7-052961f44df0",
         "name": "GitHubId",
         "label": {
-          "en": "Git Hub Id"
+          "en": "Git Hub Id",
+          "fr": "Id GitHub",
+          "nl": "GitHub-id"
         },
         "description": {
-          "en": "GitHub's numeric id for this repository; stable across renames and transfers."
+          "en": "GitHub's numeric id for this repository; stable across renames and transfers.",
+          "fr": "Id numérique GitHub de ce dépôt ; stable malgré les renommages et les transferts.",
+          "nl": "GitHub's numerieke id voor deze repository; stabiel bij hernoemingen en overdrachten."
         },
         "dataType": "number",
         "isRequired": true,
@@ -199,10 +239,14 @@
         "id": "dfb8fc92-bdce-42c0-9439-5469de78c911",
         "name": "IsPrivate",
         "label": {
-          "en": "Is Private"
+          "en": "Is Private",
+          "fr": "Est privé",
+          "nl": "Is privé"
         },
         "description": {
-          "en": "True when the repository is private on GitHub; private repositories need a badge token for their badge."
+          "en": "True when the repository is private on GitHub; private repositories need a badge token for their badge.",
+          "fr": "Vrai lorsque le dépôt est privé sur GitHub ; les dépôts privés ont besoin d'un jeton de badge pour leur badge.",
+          "nl": "True wanneer de repository privé is op GitHub; privérepository's hebben een badgetoken nodig voor hun badge."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -217,10 +261,14 @@
         "id": "a5dab619-07dd-4a7a-ba95-d7966cee3f30",
         "name": "LatestCoverage",
         "label": {
-          "en": "Coverage"
+          "en": "Coverage",
+          "fr": "Couverture",
+          "nl": "Dekking"
         },
         "description": {
-          "en": "Denormalized from the newest finalized default-branch build, so repo lists and badges are point-loads."
+          "en": "Denormalized from the newest finalized default-branch build, so repo lists and badges are point-loads.",
+          "fr": "Dénormalisé depuis le build finalisé le plus récent de la branche par défaut, afin que les listes de dépôts et les badges soient de simples chargements ponctuels.",
+          "nl": "Gedenormaliseerd vanuit de nieuwste gefinaliseerde build van de standaardbranch, zodat repolijsten en badges point-loads zijn."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -237,10 +285,14 @@
         "id": "89a49e24-b5c9-45f9-9cff-86713ab647cd",
         "name": "LatestCoverageAtUtc",
         "label": {
-          "en": "Latest Coverage At Utc"
+          "en": "Latest Coverage At Utc",
+          "fr": "Dernière couverture le (UTC)",
+          "nl": "Laatste dekking op (UTC)"
         },
         "description": {
-          "en": "When the headline coverage was last refreshed from a finalized default-branch build (UTC)."
+          "en": "When the headline coverage was last refreshed from a finalized default-branch build (UTC).",
+          "fr": "Moment de la dernière actualisation de la couverture principale à partir d'un build finalisé de la branche par défaut (UTC).",
+          "nl": "Wanneer de hoofddekking het laatst ververst is vanuit een gefinaliseerde build op de standaardbranch (UTC)."
         },
         "dataType": "datetime",
         "isRequired": false,
@@ -255,10 +307,14 @@
         "id": "86daca14-2fef-4f3a-a098-8efcbb2806aa",
         "name": "LatestCoverageSha",
         "label": {
-          "en": "Latest commit"
+          "en": "Latest commit",
+          "fr": "Dernier commit",
+          "nl": "Laatste commit"
         },
         "description": {
-          "en": "Sha of the default-branch commit the headline coverage was taken from."
+          "en": "Sha of the default-branch commit the headline coverage was taken from.",
+          "fr": "Sha du commit de la branche par défaut dont provient la couverture principale.",
+          "nl": "Sha van de commit op de standaardbranch waaruit de hoofddekking genomen is."
         },
         "dataType": "string",
         "isRequired": false,
@@ -274,10 +330,14 @@
         "id": "6cca49ee-2ede-4502-8811-4de802d904b6",
         "name": "Name",
         "label": {
-          "en": "Repository"
+          "en": "Repository",
+          "fr": "Dépôt",
+          "nl": "Repository"
         },
         "description": {
-          "en": "The repository name without the owner, e.g. MintPlayer.Spark."
+          "en": "The repository name without the owner, e.g. MintPlayer.Spark.",
+          "fr": "Le nom du dépôt sans le propriétaire, p. ex. MintPlayer.Spark.",
+          "nl": "De naam van de repository zonder de eigenaar, bv. MintPlayer.Spark."
         },
         "dataType": "string",
         "isRequired": false,
@@ -293,10 +353,14 @@
         "id": "28457041-7915-454c-9186-f6bc79f788ce",
         "name": "OwnerLogin",
         "label": {
-          "en": "Owner Login"
+          "en": "Owner Login",
+          "fr": "Login du propriétaire",
+          "nl": "Login van de eigenaar"
         },
         "description": {
-          "en": "GitHub login of the owning user or organization, the part before the slash in the full name."
+          "en": "GitHub login of the owning user or organization, the part before the slash in the full name.",
+          "fr": "Login GitHub de l'utilisateur ou de l'organisation propriétaire, la partie avant la barre oblique dans le nom complet.",
+          "nl": "GitHub-login van de bezittende gebruiker of organisatie, het deel vóór de schuine streep in de volledige naam."
         },
         "dataType": "string",
         "isRequired": false,
@@ -311,10 +375,14 @@
         "id": "bf435943-2cdf-42cd-954e-29c63fd2c583",
         "name": "PreviousFullNames",
         "label": {
-          "en": "Previous Full Names"
+          "en": "Previous Full Names",
+          "fr": "Anciens noms complets",
+          "nl": "Vorige volledige namen"
         },
         "description": {
-          "en": "Full names this repository has previously been known by, oldest first, appended on every rename and transfer. Badge URLs live in READMEs and report links live in PR comments that were posted years ago, so a rename must not break them — these are what a stale owner/name resolves through.\nA live FullName always wins over an alias, so a new repository taking over an old name shadows this list rather than colliding with it."
+          "en": "Full names this repository has previously been known by, oldest first, appended on every rename and transfer. Badge URLs live in READMEs and report links live in PR comments that were posted years ago, so a rename must not break them — these are what a stale owner/name resolves through.\nA live FullName always wins over an alias, so a new repository taking over an old name shadows this list rather than colliding with it.",
+          "fr": "Noms complets sous lesquels ce dépôt a été connu auparavant, du plus ancien au plus récent, ajoutés à chaque renommage et transfert. Les URL de badge vivent dans des README et les liens de rapport dans des commentaires de PR publiés il y a des années : un renommage ne doit donc pas les casser — c'est par cette liste qu'un couple owner/name périmé est résolu.\nUn FullName vivant l'emporte toujours sur un alias, de sorte qu'un nouveau dépôt reprenant un ancien nom masque cette liste au lieu d'entrer en conflit avec elle.",
+          "nl": "Volledige namen waaronder deze repository eerder bekend stond, oudste eerst, toegevoegd bij elke hernoeming en overdracht. Badge-URL's staan in README's en rapportlinks in PR-reacties die jaren geleden geplaatst zijn, dus een hernoeming mag ze niet breken — via deze lijst wordt een verouderde owner/name opgelost.\nEen levende FullName wint altijd van een alias, dus een nieuwe repository die een oude naam overneemt overschaduwt deze lijst in plaats van ermee te botsen."
         },
         "dataType": "string",
         "isRequired": false,
@@ -335,7 +403,9 @@
       "id": "7a4c9b30-5d2e-4f81-9c67-3e8b1a6d0f21",
       "name": "Account_Repositories",
       "description": {
-        "en": "Repositories"
+        "en": "Repositories",
+        "fr": "Dépôts",
+        "nl": "Repositories"
       },
       "source": "Custom.Account_Repositories",
       "alias": "account-repositories",

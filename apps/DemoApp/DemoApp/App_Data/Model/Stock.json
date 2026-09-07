@@ -21,7 +21,9 @@
           "nl": "Wijziging"
         },
         "description": {
-          "en": "Difference between the current price and the base price, in currency units; negative when the price dropped."
+          "en": "Difference between the current price and the base price, in currency units; negative when the price dropped.",
+          "fr": "Différence entre le cours actuel et le cours de base, en unités monétaires ; négative lorsque le cours a baissé.",
+          "nl": "Verschil tussen de huidige koers en de basiskoers, in munteenheden; negatief wanneer de koers gedaald is."
         },
         "dataType": "decimal",
         "isRequired": false,
@@ -41,7 +43,9 @@
           "nl": "Wijziging %"
         },
         "description": {
-          "en": "Price change relative to the base price, expressed as a percentage."
+          "en": "Price change relative to the base price, expressed as a percentage.",
+          "fr": "Variation du cours par rapport au cours de base, exprimée en pourcentage.",
+          "nl": "Koerswijziging ten opzichte van de basiskoers, uitgedrukt in procent."
         },
         "dataType": "decimal",
         "isRequired": false,
@@ -61,7 +65,9 @@
           "nl": "Bedrijf"
         },
         "description": {
-          "en": "Name of the company whose shares this stock represents."
+          "en": "Name of the company whose shares this stock represents.",
+          "fr": "Nom de l'entreprise dont cette action représente les titres.",
+          "nl": "Naam van het bedrijf waarvan dit aandeel de effecten vertegenwoordigt."
         },
         "dataType": "string",
         "isRequired": true,
@@ -81,7 +87,9 @@
           "nl": "Prijs"
         },
         "description": {
-          "en": "Latest known price of one share."
+          "en": "Latest known price of one share.",
+          "fr": "Dernier cours connu d'une action.",
+          "nl": "Laatst bekende koers van één aandeel."
         },
         "dataType": "decimal",
         "isRequired": false,
@@ -101,7 +109,9 @@
           "nl": "Symbool"
         },
         "description": {
-          "en": "Ticker symbol under which the stock trades, for example MSFT."
+          "en": "Ticker symbol under which the stock trades, for example MSFT.",
+          "fr": "Symbole boursier sous lequel l'action se négocie, par exemple MSFT.",
+          "nl": "Tickersymbool waaronder het aandeel verhandeld wordt, bijvoorbeeld MSFT."
         },
         "dataType": "string",
         "isRequired": true,

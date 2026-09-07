@@ -21,7 +21,9 @@
           "nl": "Stad"
         },
         "description": {
-          "en": "City or town the address is located in."
+          "en": "City or town the address is located in.",
+          "fr": "Ville ou commune où se situe l'adresse.",
+          "nl": "Stad of gemeente waar het adres ligt."
         },
         "dataType": "string",
         "isRequired": true,
@@ -55,7 +57,9 @@
           "nl": "Staat"
         },
         "description": {
-          "en": "State, province or region the city belongs to."
+          "en": "State, province or region the city belongs to.",
+          "fr": "État, province ou région dont dépend la ville.",
+          "nl": "Staat, provincie of regio waartoe de stad behoort."
         },
         "dataType": "string",
         "isRequired": true,
@@ -89,7 +93,9 @@
           "nl": "Straat"
         },
         "description": {
-          "en": "Street name and house number, for example Main Street 12."
+          "en": "Street name and house number, for example Main Street 12.",
+          "fr": "Nom de rue et numéro de maison, par exemple Main Street 12.",
+          "nl": "Straatnaam en huisnummer, bijvoorbeeld Main Street 12."
         },
         "dataType": "string",
         "isRequired": true,

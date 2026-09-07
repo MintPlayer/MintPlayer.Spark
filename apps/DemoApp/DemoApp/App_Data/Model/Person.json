@@ -24,7 +24,9 @@
           "nl": "Adres"
         },
         "description": {
-          "en": "Home or postal address of the person, with street, city and state."
+          "en": "Home or postal address of the person, with street, city and state.",
+          "fr": "Adresse du domicile ou adresse postale de la personne, avec rue, ville et région.",
+          "nl": "Thuis- of postadres van de persoon, met straat, stad en provincie."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -71,7 +73,9 @@
           "nl": "Geboortedatum"
         },
         "description": {
-          "en": "Date on which the person was born; leave empty if unknown."
+          "en": "Date on which the person was born; leave empty if unknown.",
+          "fr": "Date de naissance de la personne ; laissez vide si inconnue.",
+          "nl": "Geboortedatum van de persoon; laat leeg indien onbekend."
         },
         "dataType": "date",
         "isRequired": false,
@@ -92,7 +96,9 @@
           "nl": "E-mailadres"
         },
         "description": {
-          "en": "Email address used to contact the person."
+          "en": "Email address used to contact the person.",
+          "fr": "Adresse e-mail utilisée pour contacter la personne.",
+          "nl": "E-mailadres waarop de persoon gecontacteerd wordt."
         },
         "dataType": "string",
         "isRequired": true,
@@ -175,7 +181,9 @@
           "nl": "Actief"
         },
         "description": {
-          "en": "Whether this person can sign in and appears in the default people lists."
+          "en": "Whether this person can sign in and appears in the default people lists.",
+          "fr": "Indique si cette personne peut se connecter et apparaît dans les listes de personnes par défaut.",
+          "nl": "Of deze persoon zich kan aanmelden en in de standaardpersonenlijsten verschijnt."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -195,7 +203,9 @@
           "nl": "Achternaam"
         },
         "description": {
-          "en": "Family name or surname of the person."
+          "en": "Family name or surname of the person.",
+          "fr": "Nom de famille ou patronyme de la personne.",
+          "nl": "Familienaam of achternaam van de persoon."
         },
         "dataType": "string",
         "isRequired": true,

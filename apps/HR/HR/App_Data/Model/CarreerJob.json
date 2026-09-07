@@ -16,7 +16,9 @@
           "nl": "Contracteinde"
         },
         "description": {
-          "en": "Date on which the contract ended; leave empty while the job is ongoing."
+          "en": "Date on which the contract ended; leave empty while the job is ongoing.",
+          "fr": "Date de fin du contrat ; laissez vide tant que l'emploi est en cours.",
+          "nl": "Datum waarop het contract eindigde; laat leeg zolang de job loopt."
         },
         "dataType": "date",
         "isRequired": false,
@@ -36,7 +38,9 @@
           "nl": "Contractstart"
         },
         "description": {
-          "en": "Date on which the contract for this job started."
+          "en": "Date on which the contract for this job started.",
+          "fr": "Date de début du contrat pour cet emploi.",
+          "nl": "Datum waarop het contract voor deze job begon."
         },
         "dataType": "date",
         "isRequired": true,
@@ -56,7 +60,9 @@
           "nl": "Beroep"
         },
         "description": {
-          "en": "The profession held during this career step."
+          "en": "The profession held during this career step.",
+          "fr": "La profession exercée durant cette étape de carrière.",
+          "nl": "Het beroep dat tijdens deze loopbaanstap uitgeoefend werd."
         },
         "dataType": "Reference",
         "isRequired": false,

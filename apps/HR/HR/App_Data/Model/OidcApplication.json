@@ -11,10 +11,14 @@
         "id": "d9e21f9a-2d96-44b6-840c-ee9149bf4723",
         "name": "AccessTokenLifetimeMinutes",
         "label": {
-          "en": "Access Token Lifetime Minutes"
+          "en": "Access Token Lifetime Minutes",
+          "fr": "Durée de vie du jeton d'accès (minutes)",
+          "nl": "Levensduur toegangstoken (minuten)"
         },
         "description": {
-          "en": "Validity of an issued access token in minutes."
+          "en": "Validity of an issued access token in minutes.",
+          "fr": "Validité d'un jeton d'accès émis, en minutes.",
+          "nl": "Geldigheid van een uitgegeven toegangstoken, in minuten."
         },
         "dataType": "number",
         "isRequired": true,
@@ -29,10 +33,14 @@
         "id": "165fe668-ef08-4ec3-98a5-d7aa64486a5c",
         "name": "AllowedCorsOrigins",
         "label": {
-          "en": "Allowed Cors Origins"
+          "en": "Allowed Cors Origins",
+          "fr": "Origines CORS autorisées",
+          "nl": "Toegestane CORS-origins"
         },
         "description": {
-          "en": "Browser origins allowed to call the OIDC endpoints cross-site, e.g. https://app.example.com."
+          "en": "Browser origins allowed to call the OIDC endpoints cross-site, e.g. https://app.example.com.",
+          "fr": "Origines de navigateur autorisées à appeler les points de terminaison OIDC en cross-site, p. ex. https://app.example.com.",
+          "nl": "Browserorigins die de OIDC-endpoints cross-site mogen aanroepen, bv. https://app.example.com."
         },
         "dataType": "string",
         "isRequired": false,
@@ -47,10 +55,14 @@
         "id": "0f9bb71e-6557-476e-94eb-fce5c7d41fe8",
         "name": "AllowedGrantTypes",
         "label": {
-          "en": "Allowed Grant Types"
+          "en": "Allowed Grant Types",
+          "fr": "Types d'autorisation permis",
+          "nl": "Toegestane grant-types"
         },
         "description": {
-          "en": "The grants this client may use. **Must not carry a non-empty initializer.**\nRavenDB's serializer populates the collection the property initializer already created rather than replacing it, so a default of [\"authorization_code\"] was silently re-added to every application on load. A client stored as client_credentials-only came back as [\"authorization_code\", \"client_credentials\"] — which defeats the grant gating outright: the interactive flow accepted a machine client no matter what was configured, and the check that was supposed to stop it could never fail.\nEmpty now means empty, so a client that declares no grants can use none — fail closed."
+          "en": "The grants this client may use. **Must not carry a non-empty initializer.**\nRavenDB's serializer populates the collection the property initializer already created rather than replacing it, so a default of [\"authorization_code\"] was silently re-added to every application on load. A client stored as client_credentials-only came back as [\"authorization_code\", \"client_credentials\"] — which defeats the grant gating outright: the interactive flow accepted a machine client no matter what was configured, and the check that was supposed to stop it could never fail.\nEmpty now means empty, so a client that declares no grants can use none — fail closed.",
+          "fr": "Les autorisations que ce client peut utiliser. **Ne doit pas comporter d'initialiseur non vide.**\nLe sérialiseur de RavenDB remplit la collection déjà créée par l'initialiseur de propriété au lieu de la remplacer : une valeur par défaut de [\"authorization_code\"] était donc silencieusement réajoutée à chaque application au chargement. Un client enregistré en client_credentials seul revenait en [\"authorization_code\", \"client_credentials\"] — ce qui met purement et simplement en échec le filtrage des autorisations : le flux interactif acceptait un client machine quelle que soit la configuration, et le contrôle censé l'en empêcher ne pouvait jamais échouer.\nVide signifie désormais vide : un client qui ne déclare aucune autorisation n'en a aucune — échec fermé.",
+          "nl": "De grants die deze client mag gebruiken. **Mag geen niet-lege initializer dragen.**\nDe serializer van RavenDB vult de collectie die de property-initializer al aangemaakt heeft in plaats van ze te vervangen, dus werd een standaard van [\"authorization_code\"] stilletjes bij het laden weer aan elke applicatie toegevoegd. Een client die als enkel client_credentials opgeslagen was, kwam terug als [\"authorization_code\", \"client_credentials\"] — wat de grantafscherming volledig onderuithaalt: de interactieve flow aanvaardde een machineclient ongeacht de configuratie, en de controle die dat had moeten tegenhouden kon nooit falen.\nLeeg betekent nu leeg, dus een client die geen grants aangeeft kan er geen gebruiken — fail closed."
         },
         "dataType": "string",
         "isRequired": false,
@@ -65,10 +77,14 @@
         "id": "6c4f20d4-ff28-4f60-8ece-22a784e85262",
         "name": "AllowedScopes",
         "label": {
-          "en": "Allowed Scopes"
+          "en": "Allowed Scopes",
+          "fr": "Portées autorisées",
+          "nl": "Toegestane scopes"
         },
         "description": {
-          "en": "Names of the scopes this application may request; a request for any other scope is refused."
+          "en": "Names of the scopes this application may request; a request for any other scope is refused.",
+          "fr": "Noms des portées que cette application peut demander ; une demande portant sur toute autre portée est refusée.",
+          "nl": "Namen van de scopes die deze applicatie mag aanvragen; een aanvraag voor eender welke andere scope wordt geweigerd."
         },
         "dataType": "string",
         "isRequired": false,
@@ -83,10 +99,14 @@
         "id": "8cabb897-f250-48a6-a7b5-07bdae8552fc",
         "name": "AllowRememberConsent",
         "label": {
-          "en": "Allow Remember Consent"
+          "en": "Allow Remember Consent",
+          "fr": "Autoriser la mémorisation du consentement",
+          "nl": "Toestemming onthouden toestaan"
         },
         "description": {
-          "en": "Whether the user may tick a box so the consent screen is skipped on later sign-ins."
+          "en": "Whether the user may tick a box so the consent screen is skipped on later sign-ins.",
+          "fr": "Indique si l'utilisateur peut cocher une case afin que l'écran de consentement soit ignoré lors des connexions ultérieures.",
+          "nl": "Of de gebruiker een vakje mag aanvinken zodat het toestemmingsscherm bij latere aanmeldingen wordt overgeslagen."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -101,10 +121,14 @@
         "id": "220bcfb3-143d-40d0-b7c1-c71640605e40",
         "name": "Claims",
         "label": {
-          "en": "Claims"
+          "en": "Claims",
+          "fr": "Revendications",
+          "nl": "Claims"
         },
         "description": {
-          "en": "Fixed claims added to every token issued to this application."
+          "en": "Fixed claims added to every token issued to this application.",
+          "fr": "Revendications fixes ajoutées à chaque jeton émis pour cette application.",
+          "nl": "Vaste claims die aan elk token voor deze applicatie worden toegevoegd."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -120,10 +144,14 @@
         "id": "c35df2ae-4c28-466d-a136-e15ae2ba902e",
         "name": "ClientId",
         "label": {
-          "en": "Client Id"
+          "en": "Client Id",
+          "fr": "Id du client",
+          "nl": "Client-id"
         },
         "description": {
-          "en": "Public client identifier the application sends in every OIDC request; must be unique."
+          "en": "Public client identifier the application sends in every OIDC request; must be unique.",
+          "fr": "Identifiant client public que l'application envoie dans chaque requête OIDC ; doit être unique.",
+          "nl": "Publieke client-id die de applicatie in elke OIDC-aanvraag meestuurt; moet uniek zijn."
         },
         "dataType": "string",
         "isRequired": false,
@@ -138,10 +166,14 @@
         "id": "8b1e7823-9e63-4449-a09a-372c9a254715",
         "name": "ClientType",
         "label": {
-          "en": "Client Type"
+          "en": "Client Type",
+          "fr": "Type de client",
+          "nl": "Clienttype"
         },
         "description": {
-          "en": "Either confidential for a server that can keep a secret, or public for a browser or mobile app that cannot."
+          "en": "Either confidential for a server that can keep a secret, or public for a browser or mobile app that cannot.",
+          "fr": "Soit confidential pour un serveur capable de garder un secret, soit public pour une application navigateur ou mobile qui ne le peut pas.",
+          "nl": "Ofwel confidential voor een server die een geheim kan bewaren, ofwel public voor een browser- of mobiele app die dat niet kan."
         },
         "dataType": "string",
         "isRequired": false,
@@ -156,10 +188,14 @@
         "id": "b14c9e54-df95-45ff-901e-40fde2feec1c",
         "name": "ConsentLifetimeSeconds",
         "label": {
-          "en": "Consent Lifetime Seconds"
+          "en": "Consent Lifetime Seconds",
+          "fr": "Durée de vie du consentement (secondes)",
+          "nl": "Levensduur toestemming (seconden)"
         },
         "description": {
-          "en": "How long, in seconds, a remembered consent stays valid; leave empty to keep it until withdrawn."
+          "en": "How long, in seconds, a remembered consent stays valid; leave empty to keep it until withdrawn.",
+          "fr": "Durée, en secondes, pendant laquelle un consentement mémorisé reste valide ; laissez vide pour le conserver jusqu'à son retrait.",
+          "nl": "Hoelang, in seconden, een onthouden toestemming geldig blijft; laat leeg om ze te behouden tot ze wordt ingetrokken."
         },
         "dataType": "number",
         "isRequired": false,
@@ -174,10 +210,14 @@
         "id": "f1a2360b-19af-41c3-b813-6e2a0aee0d57",
         "name": "ConsentType",
         "label": {
-          "en": "Consent Type"
+          "en": "Consent Type",
+          "fr": "Type de consentement",
+          "nl": "Type toestemming"
         },
         "description": {
-          "en": "Either explicit to ask the user for consent on the consent screen, or implicit to grant it automatically."
+          "en": "Either explicit to ask the user for consent on the consent screen, or implicit to grant it automatically.",
+          "fr": "Soit explicit pour demander le consentement de l'utilisateur sur l'écran de consentement, soit implicit pour l'accorder automatiquement.",
+          "nl": "Ofwel explicit om de gebruiker op het toestemmingsscherm om toestemming te vragen, ofwel implicit om ze automatisch te verlenen."
         },
         "dataType": "string",
         "isRequired": false,
@@ -192,10 +232,14 @@
         "id": "019602fd-ab8e-47ec-9ccf-d49dcf8bb8d4",
         "name": "DisplayName",
         "label": {
-          "en": "Display Name"
+          "en": "Display Name",
+          "fr": "Nom d'affichage",
+          "nl": "Weergavenaam"
         },
         "description": {
-          "en": "Human-readable name of the application, shown to users on the consent screen."
+          "en": "Human-readable name of the application, shown to users on the consent screen.",
+          "fr": "Nom lisible de l'application, affiché aux utilisateurs sur l'écran de consentement.",
+          "nl": "Leesbare naam van de applicatie, getoond aan gebruikers op het toestemmingsscherm."
         },
         "dataType": "string",
         "isRequired": false,
@@ -210,10 +254,14 @@
         "id": "f830f6a9-5efa-4d46-aead-01b1dbe2a350",
         "name": "Enabled",
         "label": {
-          "en": "Enabled"
+          "en": "Enabled",
+          "fr": "Activé",
+          "nl": "Ingeschakeld"
         },
         "description": {
-          "en": "Whether the application may currently sign users in; disable to block it without deleting it."
+          "en": "Whether the application may currently sign users in; disable to block it without deleting it.",
+          "fr": "Indique si l'application peut actuellement connecter des utilisateurs ; désactivez pour la bloquer sans la supprimer.",
+          "nl": "Of de applicatie op dit moment gebruikers mag aanmelden; schakel uit om ze te blokkeren zonder ze te verwijderen."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -228,10 +276,14 @@
         "id": "4c19b176-29f2-41f3-b13b-496dc453e3ca",
         "name": "MayIntrospectAnyAudience",
         "label": {
-          "en": "May Introspect Any Audience"
+          "en": "May Introspect Any Audience",
+          "fr": "Peut introspecter toute audience",
+          "nl": "Mag elke audience introspecteren"
         },
         "description": {
-          "en": "Lets this client introspect tokens it neither issued nor is the audience of.\nOff by default: introspection discloses a token's subject and scopes, so the caller must have a reason to see them — it issued the token, or the token was minted for it. Turn this on only for a gateway that introspects on behalf of the resources behind it, and understand that it can then read every token in the system."
+          "en": "Lets this client introspect tokens it neither issued nor is the audience of.\nOff by default: introspection discloses a token's subject and scopes, so the caller must have a reason to see them — it issued the token, or the token was minted for it. Turn this on only for a gateway that introspects on behalf of the resources behind it, and understand that it can then read every token in the system.",
+          "fr": "Permet à ce client d'introspecter des jetons qu'il n'a ni émis ni dont il est l'audience.\nDésactivé par défaut : l'introspection divulgue le sujet et les portées d'un jeton, l'appelant doit donc avoir une raison de les voir — il a émis le jeton, ou le jeton a été frappé pour lui. N'activez ceci que pour une passerelle qui introspecte au nom des ressources situées derrière elle, en sachant qu'elle peut alors lire tous les jetons du système.",
+          "nl": "Laat deze client tokens introspecteren die hij noch heeft uitgegeven, noch waarvan hij de audience is.\nStandaard uit: introspectie onthult het subject en de scopes van een token, dus de aanroeper moet een reden hebben om ze te zien — hij heeft het token uitgegeven, of het token is voor hem gemunt. Zet dit alleen aan voor een gateway die introspecteert namens de resources erachter, en besef dat die dan elk token in het systeem kan lezen."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -246,10 +298,14 @@
         "id": "92cd9161-7fd2-48c1-ae33-ea83b9f1df6b",
         "name": "PostLogoutRedirectUris",
         "label": {
-          "en": "Post Logout Redirect Uris"
+          "en": "Post Logout Redirect Uris",
+          "fr": "URI de redirection après déconnexion",
+          "nl": "Redirect-URI's na afmelden"
         },
         "description": {
-          "en": "Exact URIs the identity provider may redirect back to after the user signs out."
+          "en": "Exact URIs the identity provider may redirect back to after the user signs out.",
+          "fr": "URI exactes vers lesquelles le fournisseur d'identité peut rediriger après la déconnexion de l'utilisateur.",
+          "nl": "Exacte URI's waarnaar de identity provider mag terugsturen nadat de gebruiker zich heeft afgemeld."
         },
         "dataType": "string",
         "isRequired": false,
@@ -264,10 +320,14 @@
         "id": "51d8d38d-348d-4f9d-b4a4-8839206f77ec",
         "name": "RedirectUris",
         "label": {
-          "en": "Redirect Uris"
+          "en": "Redirect Uris",
+          "fr": "URI de redirection",
+          "nl": "Redirect-URI's"
         },
         "description": {
-          "en": "Exact URIs the identity provider may redirect back to after sign-in; any other URI is rejected."
+          "en": "Exact URIs the identity provider may redirect back to after sign-in; any other URI is rejected.",
+          "fr": "URI exactes vers lesquelles le fournisseur d'identité peut rediriger après la connexion ; toute autre URI est rejetée.",
+          "nl": "Exacte URI's waarnaar de identity provider na het aanmelden mag terugsturen; elke andere URI wordt geweigerd."
         },
         "dataType": "string",
         "isRequired": false,
@@ -282,10 +342,14 @@
         "id": "ee40ed09-7dae-44b3-96a8-27d9eb10b3dc",
         "name": "RefreshTokenLifetimeDays",
         "label": {
-          "en": "Refresh Token Lifetime Days"
+          "en": "Refresh Token Lifetime Days",
+          "fr": "Durée de vie du jeton d'actualisation (jours)",
+          "nl": "Levensduur vernieuwingstoken (dagen)"
         },
         "description": {
-          "en": "Validity of an issued refresh token in days."
+          "en": "Validity of an issued refresh token in days.",
+          "fr": "Validité d'un jeton d'actualisation émis, en jours.",
+          "nl": "Geldigheid van een uitgegeven vernieuwingstoken, in dagen."
         },
         "dataType": "number",
         "isRequired": true,
@@ -300,10 +364,14 @@
         "id": "4e834356-9086-4ce4-b758-6f5d351b58be",
         "name": "RequirePkce",
         "label": {
-          "en": "Require Pkce"
+          "en": "Require Pkce",
+          "fr": "Exiger PKCE",
+          "nl": "PKCE vereisen"
         },
         "description": {
-          "en": "Whether the authorization code flow must use PKCE; keep enabled unless a legacy client cannot support it."
+          "en": "Whether the authorization code flow must use PKCE; keep enabled unless a legacy client cannot support it.",
+          "fr": "Indique si le flux de code d'autorisation doit utiliser PKCE ; laissez activé sauf si un client hérité ne peut pas le prendre en charge.",
+          "nl": "Of de authorization-code-flow PKCE moet gebruiken; laat ingeschakeld tenzij een verouderde client het niet aankan."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -318,10 +386,14 @@
         "id": "d7863784-1e65-40dd-ad52-44f051d957ee",
         "name": "Secrets",
         "label": {
-          "en": "Secrets"
+          "en": "Secrets",
+          "fr": "Secrets",
+          "nl": "Geheimen"
         },
         "description": {
-          "en": "Secrets a confidential client authenticates with; several can coexist so a secret can be rotated."
+          "en": "Secrets a confidential client authenticates with; several can coexist so a secret can be rotated.",
+          "fr": "Secrets avec lesquels un client confidentiel s'authentifie ; plusieurs peuvent coexister afin qu'un secret puisse être renouvelé.",
+          "nl": "Geheimen waarmee een vertrouwelijke client zich authenticeert; er kunnen er meerdere naast elkaar bestaan zodat een geheim geroteerd kan worden."
         },
         "dataType": "AsDetail",
         "isRequired": false,

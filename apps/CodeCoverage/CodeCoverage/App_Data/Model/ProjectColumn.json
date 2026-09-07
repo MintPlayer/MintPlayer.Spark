@@ -11,10 +11,14 @@
         "id": "2e30f803-2f2f-4809-afd5-5d2390f085a5",
         "name": "Name",
         "label": {
-          "en": "Name"
+          "en": "Name",
+          "fr": "Nom",
+          "nl": "Naam"
         },
         "description": {
-          "en": "The option's display name, e.g. In Progress. Shown to the user when picking a target column."
+          "en": "The option's display name, e.g. In Progress. Shown to the user when picking a target column.",
+          "fr": "Le nom d'affichage de l'option, p. ex. In Progress. Affiché à l'utilisateur lors du choix d'une colonne cible.",
+          "nl": "De weergavenaam van de optie, bv. In Progress. Getoond aan de gebruiker bij het kiezen van een doelkolom."
         },
         "dataType": "string",
         "isRequired": false,

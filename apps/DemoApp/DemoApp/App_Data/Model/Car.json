@@ -23,7 +23,9 @@
           "nl": "Merk"
         },
         "description": {
-          "en": "Manufacturer of the car, picked from the list of known brands."
+          "en": "Manufacturer of the car, picked from the list of known brands.",
+          "fr": "Constructeur de la voiture, choisi dans la liste des marques connues.",
+          "nl": "Fabrikant van de wagen, gekozen uit de lijst met bekende merken."
         },
         "dataType": "string",
         "isRequired": false,
@@ -45,7 +47,9 @@
           "nl": "Kleur"
         },
         "description": {
-          "en": "Exterior paint colour of the car."
+          "en": "Exterior paint colour of the car.",
+          "fr": "Couleur de la peinture extérieure de la voiture.",
+          "nl": "Kleur van de buitenlak van de wagen."
         },
         "dataType": "string",
         "isRequired": false,
@@ -71,7 +75,9 @@
           "nl": "Nummerplaat"
         },
         "description": {
-          "en": "Registration number shown on the car's licence plate."
+          "en": "Registration number shown on the car's licence plate.",
+          "fr": "Numéro d'immatriculation figurant sur la plaque de la voiture.",
+          "nl": "Inschrijvingsnummer dat op de nummerplaat van de wagen staat."
         },
         "dataType": "string",
         "isRequired": true,
@@ -114,7 +120,9 @@
           "nl": "Model"
         },
         "description": {
-          "en": "Model name of the car, for example Golf or Model 3."
+          "en": "Model name of the car, for example Golf or Model 3.",
+          "fr": "Nom du modèle de la voiture, par exemple Golf ou Model 3.",
+          "nl": "Modelnaam van de wagen, bijvoorbeeld Golf of Model 3."
         },
         "dataType": "string",
         "isRequired": true,
@@ -148,7 +156,9 @@
           "nl": "Eigenaar"
         },
         "description": {
-          "en": "Company that owns this car, picked from the companies list."
+          "en": "Company that owns this car, picked from the companies list.",
+          "fr": "Entreprise propriétaire de cette voiture, choisie dans la liste des entreprises.",
+          "nl": "Bedrijf dat eigenaar is van deze wagen, gekozen uit de lijst met bedrijven."
         },
         "dataType": "Reference",
         "isRequired": false,
@@ -189,7 +199,9 @@
           "nl": "Status"
         },
         "description": {
-          "en": "Current state of the car: in use, on the parking lot, in maintenance or stolen."
+          "en": "Current state of the car: in use, on the parking lot, in maintenance or stolen.",
+          "fr": "État actuel de la voiture : en service, au parking, en entretien ou volée.",
+          "nl": "Huidige staat van de wagen: in gebruik, op de parking, in onderhoud of gestolen."
         },
         "dataType": "string",
         "isRequired": false,
@@ -210,7 +222,9 @@
           "nl": "Jaar"
         },
         "description": {
-          "en": "Model year in which the car was built."
+          "en": "Model year in which the car was built.",
+          "fr": "Millésime de construction de la voiture.",
+          "nl": "Modeljaar waarin de wagen gebouwd is."
         },
         "dataType": "number",
         "isRequired": true,
