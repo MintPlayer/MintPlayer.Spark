@@ -9,6 +9,18 @@
     [indeterminate]="isUnsetBoolean()"
     disabled
     onclick="return false;">
+} @else if (column().dataType === 'date' || column().dataType === 'datetime') {
+  <!--
+    Formatted in ONE place for both grids. Before this, a date column printed whatever its pipe
+    produced, which was the raw ISO string — `2026-09-07T13:25:57.3119825Z` in a table cell. Both
+    cell pipes now hand over a real Date, and `date:` accepts a string too, so an unparseable value
+    that fell back to text still renders as that text rather than blank.
+  -->
+  @if (dateValue(); as when) {
+    {{ when | date:(column().dataType === 'date' ? 'mediumDate' : 'short') }}
+  } @else {
+    {{ display() }}
+  }
 } @else if (column().dataType === 'color') {
   @if (display(); as colorVal) {
     <!-- Shares `.spark-color-swatch` with the detail page, which is where the sizing already

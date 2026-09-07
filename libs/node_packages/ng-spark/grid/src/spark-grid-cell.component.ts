@@ -88,4 +88,18 @@ export class SparkGridCellComponent {
 
   /** Null and undefined are distinct from `false` here — see the template. */
   protected readonly isUnsetBoolean = computed(() => this.display() == null);
+
+  /**
+   * {@link display} when it really is a `Date`, and `null` otherwise.
+   *
+   * Angular's `DatePipe` does not degrade on a non-date: it **throws**
+   * `NG02100: InvalidPipeArgument`, which would take down the whole cell. Both cell pipes
+   * deliberately fall back to the raw text for an unparseable date rather than hiding the stored
+   * value, so that text reaches this component and must not be piped. A template cannot express
+   * `instanceof`, hence the computed.
+   */
+  protected readonly dateValue = computed(() => {
+    const value = this.display();
+    return value instanceof Date && !Number.isNaN(value.getTime()) ? value : null;
+  });
 }

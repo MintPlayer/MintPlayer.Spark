@@ -581,12 +581,25 @@ holds more than one person's installations.
    resolves which rules match and calls the GraphQL API. Splitting them keeps board work on its own
    FIFO lane, so a slow board cannot delay coverage feedback.
 
-### Two design points worth copying
+### Three design points worth copying
 
 **A rule stores the single-select option id, never the column name.** Names are renameable and not
 unique, so storing the name would break every rule on a board the moment someone renamed a column —
 and break it *silently*, because the move would simply match nothing. Storing the id means a rename
 is a non-event; only the cached label goes stale until the next sync.
+
+**Issues are added to the board; pull requests are not.** A board is a list of work and an issue
+is a unit of work, so an `IssuesOpened` rule that could only move issues *already* present would do
+nothing on the one event where it matters most. A pull request is how the work gets done, not the
+work — adding those would turn "move the PR to In Review" into "and put every pull request on the
+board", burying the issues under a day of branch pushes.
+
+The app this was migrated from expressed this as a single per-rule `AutoAddToProject` covering both
+kinds. Making it **type-aware rather than configurable** answers the question that flag was really
+asking, and removes a setting whose wrong value silently filled the board. The one exception is a
+merged PR's *closing* issues: those are moved but never added, because the issue is being touched
+for referencing a PR rather than on its own account — otherwise one merge could recruit arbitrary
+issues, including from repositories nobody configured.
 
 **The loop guard tests the App id, not "was this made by an App".** CodeCoverage creates check runs
 and posts pull-request comments, so it receives webhooks for its own writes; unguarded, publishing

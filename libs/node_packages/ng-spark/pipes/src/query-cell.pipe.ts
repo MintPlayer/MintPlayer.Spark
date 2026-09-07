@@ -52,6 +52,17 @@ export class QueryCellValuePipe implements PipeTransform {
     // checkbox instead of an unchecked one.
     if (column.dataType === 'boolean') return cell.value ?? null;
 
+    // Dates are parsed here for the same reason booleans are passed through above: the cell needs
+    // the value, not a rendering of it. Both grids feed `spark-grid-cell`, so both have to agree on
+    // the type or the same `datetime` column formats one way in a query grid and another in an
+    // AsDetail table. Unparseable input keeps its own text rather than becoming "Invalid Date".
+    if (column.dataType === 'date' || column.dataType === 'datetime') {
+      if (cell.value == null || cell.value === '') return null;
+      if (cell.value instanceof Date) return Number.isNaN(cell.value.getTime()) ? null : cell.value;
+      const parsed = new Date(cell.value as string);
+      return Number.isNaN(parsed.getTime()) ? String(cell.value) : parsed;
+    }
+
     return cell.value ?? '';
   }
 }

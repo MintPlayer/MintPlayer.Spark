@@ -47,6 +47,45 @@ const html = (f: ComponentFixture<unknown>) => f.nativeElement as HTMLElement;
 describe('SparkGridCellComponent', () => {
   beforeEach(() => TestBed.resetTestingModule());
 
+  /**
+   * Dates are formatted HERE so both grids agree. Before this branch existed the cell interpolated
+   * whatever its pipe produced, and for a date column that was the raw ISO string.
+   */
+  describe('date', () => {
+    it('formats a datetime rather than printing its ISO string', () => {
+      const f = setup({ column: col({ dataType: 'datetime' }), display: new Date('2026-09-07T13:25:57.000Z') });
+      const text = html(f).textContent!.trim();
+
+      // `short` renders a two-digit year, e.g. "9/7/26, 3:25 PM" -- so assert the shape rather
+      // than the full year, and that no ISO fragment survived.
+      expect(text).not.toContain('T13:25:57');
+      expect(text).toMatch(/\d{1,2}\/\d{1,2}\/\d{2}/);
+    });
+
+    it('formats a date column without a time component', () => {
+      const f = setup({ column: col({ dataType: 'date' }), display: new Date('2026-09-07T12:00:00.000Z') });
+      const text = html(f).textContent!.trim();
+
+      // `mediumDate` keeps the full year and drops the time entirely.
+      expect(text).toMatch(/2026/);
+      expect(text).not.toMatch(/\d{1,2}:\d{2}/);
+    });
+
+    /**
+     * The pipes fall back to the raw text for an unparseable date, so the cell must print that text
+     * rather than the blank that Angular date: returns for a non-date.
+     */
+    it('prints the fallback text when the value is not a date', () => {
+      const f = setup({ column: col({ dataType: 'datetime' }), display: 'not a date' });
+      expect(html(f).textContent!.trim()).toBe('not a date');
+    });
+
+    it('renders nothing for an absent date', () => {
+      const f = setup({ column: col({ dataType: 'datetime' }), display: null });
+      expect(html(f).textContent!.trim()).toBe('');
+    });
+  });
+
   describe('boolean', () => {
     it('renders a checkbox, not the word "true"', () => {
       const f = setup({ column: col({ dataType: 'boolean' }), display: true });
