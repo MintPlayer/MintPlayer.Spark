@@ -43,7 +43,7 @@ Query aliases are also **auto-generated** by stripping a `Get` prefix and lowerc
 - `GetPeople` becomes `people`
 - `GetCompanies` becomes `companies`
 
-Queries are stored as individual JSON files in `App_Data/Queries/` (e.g., `GetCars.json`). You can optionally add an `alias` property to override the auto-generated value:
+Queries live in the `queries` array of their entity type's model file (e.g. `App_Data/Model/Car.json`). You can optionally add an `alias` property to override the auto-generated value:
 
 ```json
 {
@@ -53,6 +53,38 @@ Queries are stored as individual JSON files in `App_Data/Queries/` (e.g., `GetCa
   "contextProperty": "People"
 }
 ```
+
+#### A program unit's alias must resolve to its own target
+
+**A program unit names its target twice, and the alias is the half that matters at runtime.**
+
+```json
+{ "type": "query", "queryId": "237b1f50-…", "alias": "github-projects" }
+```
+
+The `queryId` is what the unit *declares*; the alias is what the client *uses*. It routes to
+`/query/{alias}` and then fetches `/spark/queries/{alias}`, so if that alias resolves to a different
+query — or to none — the page 404s no matter how correct the id is. The same applies to a
+`persistentObject` unit and `/po/{alias}/{objectId}`.
+
+⚠️ **The 404 carries no information.** `/spark/queries/{alias}` answers 404 for an *unauthorized*
+query deliberately, to close an existence oracle: a denied caller must not learn which query ids are
+real. That is correct and stays — and it means a misspelled alias and a missing `Query` right are
+byte-identical from the client. The empty page tells you nothing about which one you have.
+
+**The trap is derivation.** A query's alias is derived when undeclared, so `GetGitHubProjects`
+becomes `githubprojects` — which never matches a hyphenated `github-projects`. Nothing in the model
+file shows an alias at all, so there is no visible clue that one exists, let alone that it differs
+from the unit's. Both forms are legal and both are used in this repository:
+
+| Unit alias | Where the target's alias comes from |
+|---|---|
+| `people`, `cars`, `companies` | Derived — the unit happens to use the derived form |
+| `stolen-cars`, `recent-cars`, `github-projects` | Declared explicitly on the query |
+
+`--spark-verify-model` refuses a mismatch and names both sides, the derivation, and both fixes. A
+unit with **no** alias is fine — the client then routes by id — and a `url` unit is not checked,
+having no server-side target.
 
 #### One query per URL
 
