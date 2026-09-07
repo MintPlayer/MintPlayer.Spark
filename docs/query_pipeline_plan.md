@@ -1,5 +1,69 @@
 # Plan — One read pipeline
 
+## Status — 2026-09-07: implemented, except where noted
+
+| | Milestone | Status |
+| --- | --- | --- |
+| S1 | Raven-only LINQ compiled in memory | **Resolved — safe.** Planned mitigation deleted, tests kept |
+| S2 | Composed row-policy wording | **Resolved.** Both declarations lifted from existing docs |
+| M0 | Tests before refactoring | **Done.** Recording + deny doubles; streaming covered from zero |
+| M1 | F1, F2, F3 | **Done.** F1 as a refusal — see the deviation below |
+| M2 | Parent reaches every branch | **Done.** `Database.*` sub-query refused, after authorization |
+| M3 | `OnQueryAsync` reshaped | **Done.** On the interface; fires for entityType-less queries |
+| M4 | Row policy declared | **Done.** Composed + well-known-group halves |
+| M5 | One sealed pipeline | **Done.** `SecuredRows`; four paths; divergence closed |
+| M6 | Row-security invariants | **Done.** Invariant asserted; delete gate made symmetric |
+| M7 | One `DisableActions` | **Done.** Detail path no longer drops accessor withholds |
+| M8 | Wire the JSON once | **Done.** `buildTransitive` props/targets; 3 files newly covered |
+| M9 | SPARK011-014 | **Done.** Clean against all five apps |
+| M10 | Extend `--spark-verify-model` | **Done.** Two checks; verified by breaking them |
+| M11 | Model-hash gaps | **Done.** Config files hashed; success now logged |
+| M12 | Reshape the actions surface | **PARTIAL — read the entry** |
+| M13 | Client inconsistencies | **Done**, and one finding withdrawn |
+
+### Deviations, and one withdrawn finding
+
+**F1 is a refusal, not an honest count.** The decision was "count after filtering". That is not
+implementable: the framework holds one page and cannot know how many of the author's other rows would
+survive, so counting what it holds would report a page length as a total. The combination is refused
+instead — the fallback the question named. It costs nothing today: no application uses
+`SparkQueryPage`, and the only tests that do are on composed types, which have no row rule.
+
+**M12 is partial, and the missing part is a design question rather than work.** The non-generic
+`ISparkActions` was built, applied, and reverted after its premise was tested: breaking a composed
+class's `OnLoadAsync` signature **still compiled**, because the interface members need default
+implementations and a default means a wrongly-shaped method is simply not an override. The existing
+duck-typed path already throws on a wrong shape naming the expected signature, so the interface would
+have replaced a good diagnostic with silence. Doing it properly means splitting load and query into
+separate interfaces so neither needs a default, or dispatching through the interface with the
+duck-typed throw as fallback. The renames (`IsAllowedAsync` → `IsRowAllowedAsync` and friends) remain
+worth doing and are 32 sites of pure churn; they belong in their own change.
+
+**"N+1 parent loads" was withdrawn.** Each sub-query card is a separate HTTP request, and each must
+independently verify the caller may see the parent. An authorization decision cannot be cached across
+requests, so N+1 across N+1 requests is the correct number, not a defect.
+
+### What the work found that the investigation did not
+
+- A **catch-all route** meant `GET /spark/po/{type}` fell into the detail endpoint with an empty id
+  and answered **500** instead of a refusal. Latent behind the endpoint being deleted; 69 tests failed
+  on it.
+- `ExecuteCustomActionTests` left `ISparkTypeResolver` unstubbed, so an unresolved `clrType` made the
+  endpoint **skip the per-row gate entirely** — all 35 tests ran through the fail-open branch and none
+  exercised `AreAllowedAsync`.
+- **Seven `Person` classes and one `PersonActions`** in the test assembly, so a breadcrumb test's
+  entity was silently getting the permissive default.
+- The well-known-group gate was **guarded against `Guid.Empty`** — which is the conventional anonymous
+  group id, so it would have skipped every anonymous grant and passed in silence on a fully public
+  surface.
+- The **seal found a fifth path** on its first compile: the custom-action selection fallback, enforced
+  by a different gate that mints no token.
+- Sealing `ToItems` and running the analyzer against real applications each cost a round of false
+  positives that only real data could produce.
+
+---
+
+
 Implementation plan for [`query_pipeline_PRD.md`](query_pipeline_PRD.md), whose **Decisions** table is
 authoritative — this plan implements those answers and does not re-open them.
 

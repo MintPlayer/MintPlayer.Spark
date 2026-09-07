@@ -1,6 +1,7 @@
 # PRD — One read pipeline: queries, items, sub-queries and row security
 
-**Status:** design agreed, not implemented. Written 2026-09-06.
+**Status:** implemented 2026-09-07, except the part of M12 recorded as open in the plan.
+Written 2026-09-06.
 **Lands in:** its own pull request, *after* PR #367 merges and deploys. The one-PR rule is held
 for related fixes; an outage fix already awaiting deploy is not held behind a framework redesign.
 Owner decision, 2026-09-06.
