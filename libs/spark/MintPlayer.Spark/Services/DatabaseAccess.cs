@@ -281,17 +281,29 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityType = typeResolver.Resolve(clrType);
         if (entityType == null) return;
 
-        // Row-level Delete gate (R2-H2): same shape as the Edit gate in
-        // SavePersistentObjectAsync — load the entity in a side session and ask
-        // the Actions class. Apps can permit Read-everyone but Delete-owner-only.
-        var existing = await LoadEntityAsync(session, entityType, id);
-        if (existing is null) return; // Nothing to delete; preserves 404-on-missing semantics.
-        // Id-to-type binding (security sweep C1/H1): don't let a Delete on one type erase a
-        // document of another by naming its id. A foreign-collection document is "not found" here.
-        if (!collectionGuard.BelongsToAuthorizedCollection(session, existing, entityType))
-            return;
-        if (!await rowSecurity.IsAllowedAsync(entityType, "Delete", existing))
-            throw new SparkRowLevelAccessDeniedException($"Delete/{entityTypeDefinition.Name}");
+        // Row-level Delete gate (R2-H2): the same shape as the Edit gate in
+        // SavePersistentObjectAsync — load the entity in a side session and ask the Actions class.
+        // Apps can permit Read-everyone but Delete-owner-only.
+        //
+        // It said "side session" and used the request session, which made the two gates different
+        // while claiming they were the same. The request session may already be tracking this
+        // document — the delete endpoint reads it through the gated read path first — so judging its
+        // copy judges whatever that copy has become, while a gate should judge what is STORED. The
+        // difference is invisible today because nothing mutates between the read and the delete, and
+        // it is exactly the kind of "invisible today" that stops being true after an unrelated edit.
+        using (var checkSession = documentStore.OpenAsyncSession())
+        {
+            var existing = await LoadEntityAsync(checkSession, entityType, id);
+            if (existing is null) return; // Nothing to delete; preserves 404-on-missing semantics.
+
+            // Id-to-type binding (security sweep C1/H1): don't let a Delete on one type erase a
+            // document of another by naming its id. A foreign-collection document is "not found".
+            if (!collectionGuard.BelongsToAuthorizedCollection(checkSession, existing, entityType))
+                return;
+
+            if (!await rowSecurity.IsAllowedAsync(entityType, "Delete", existing))
+                throw new SparkRowLevelAccessDeniedException($"Delete/{entityTypeDefinition.Name}");
+        }
 
         // Delete locally first (includes before hook)
         await DeleteEntityViaActionsAsync(session, entityType, id);
