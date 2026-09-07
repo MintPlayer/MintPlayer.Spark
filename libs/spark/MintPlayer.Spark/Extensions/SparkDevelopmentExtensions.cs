@@ -189,6 +189,7 @@ public static class SparkDevelopmentExtensions
         VerifyComposedQueriesAreUsable(contentRoot);
         VerifyCustomQueryMethodsExist(contextType, contentRoot);
         VerifySubQueriesCanBeParentScoped(contentRoot);
+        VerifyProgramUnitTargetsResolve(contentRoot);
         var descriptionDrift = VerifyAttributeDescriptionsAreCurrent(contextType, contentRoot);
 
         if (expected is not null && string.Equals(expected.ModelHash, actual.ModelHash, StringComparison.Ordinal))
@@ -572,6 +573,196 @@ public static class SparkDevelopmentExtensions
         }
 
         ReportVerificationProblems(problems);
+    }
+
+    /// <summary>
+    /// Refuses a program unit whose <c>alias</c> does not resolve to the target its id names.
+    /// </summary>
+    /// <remarks>
+    /// A unit identifies its target twice — <c>queryId</c>/<c>persistentObjectId</c> and
+    /// <c>alias</c> — and only the id was ever checked. The client routes to
+    /// <c>/query/{alias}</c> or <c>/po/{alias}/{objectId}</c> and then fetches by that same alias,
+    /// so the alias is the identifier that actually matters at runtime while the id is the one that
+    /// gets validated.
+    /// <para>
+    /// The failure is expensive out of proportion to its size, because the endpoints answer
+    /// <b>404</b> for an unauthorized query deliberately, to close an existence oracle. That is
+    /// correct and stays — but it means a misspelled alias and a missing right are byte-identical
+    /// from the client. Issue #374 cost real time to exactly this: an empty page whose three
+    /// candidate causes (wrong alias, missing right, row security) all present the same way.
+    /// </para>
+    /// <para>
+    /// Easy to hit because a query's alias is <em>derived</em> when undeclared —
+    /// <c>GetGitHubProjects</c> becomes <c>githubprojects</c>, which never matches a hyphenated
+    /// <c>github-projects</c>. Every unit in this workspace agrees today, but by two different
+    /// routes: some use the derived form, others declare one. So the invariant looks maintained
+    /// when it is only uniformly satisfied.
+    /// </para>
+    /// <para>
+    /// Covers <c>persistentObject</c> units too, which the issue did not mention. They have the
+    /// identical shape: <c>ModelLoader</c> assigns
+    /// <c>entityType.Alias ??= entityType.Name.ToLowerInvariant()</c> and the unit routes by that
+    /// alias. Checking only queries would leave the same trap armed next door, for one file read.
+    /// </para>
+    /// </remarks>
+    private static void VerifyProgramUnitTargetsResolve(string contentRootPath)
+    {
+        var unitsPath = Path.Combine(contentRootPath, "App_Data", "programUnits.json");
+        if (!File.Exists(unitsPath))
+            return; // An app may legitimately ship no menu.
+
+        var jsonOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+
+        ProgramUnitsConfiguration? units;
+        try
+        {
+            units = System.Text.Json.JsonSerializer.Deserialize<ProgramUnitsConfiguration>(
+                File.ReadAllText(unitsPath), jsonOptions);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            // ProgramUnitsLoader reports this, with its own message. Reporting it twice,
+            // differently, helps nobody — the same rule the alias-collision check follows.
+            return;
+        }
+
+        if (units?.ProgramUnitGroups is not { Length: > 0 } groups)
+            return;
+
+        // Both alias maps are built with the SAME derivations the runtime uses, so the set of
+        // models CI accepts stays provably the set the application resolves.
+        var queriesByAlias = new Dictionary<string, SparkQuery>(StringComparer.OrdinalIgnoreCase);
+        var queriesById = new Dictionary<Guid, SparkQuery>();
+        var typesByAlias = new Dictionary<string, EntityTypeDefinition>(StringComparer.OrdinalIgnoreCase);
+        var typesById = new Dictionary<Guid, EntityTypeDefinition>();
+
+        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        if (Directory.Exists(modelPath))
+        {
+            foreach (var file in Directory.GetFiles(modelPath, "*.json"))
+            {
+                EntityTypeFile? entityTypeFile;
+                try
+                {
+                    entityTypeFile = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
+                        File.ReadAllText(file), jsonOptions);
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    continue;
+                }
+
+                if (entityTypeFile is null)
+                    continue;
+
+                foreach (var query in entityTypeFile.Queries)
+                {
+                    queriesByAlias[query.Alias ?? SparkQueryAliases.Derive(query.Name)] = query;
+                    queriesById[query.Id] = query;
+                }
+
+                if (entityTypeFile.PersistentObject is { } type)
+                {
+                    typesByAlias[type.Alias ?? type.Name.ToLowerInvariant()] = type;
+                    typesById[type.Id] = type;
+                }
+            }
+        }
+
+        var problems = new List<string>();
+
+        foreach (var unit in groups.SelectMany(g => g.ProgramUnits ?? []))
+        {
+            // No alias is a supported shape, not a smell: the client then routes by id.
+            if (unit.Alias is not { Length: > 0 } alias)
+                continue;
+
+            var name = unit.Name?.Translations?.Values.FirstOrDefault() ?? unit.Id.ToString();
+
+            if (string.Equals(unit.Type, "query", StringComparison.OrdinalIgnoreCase))
+            {
+                queriesByAlias.TryGetValue(alias, out var resolved);
+                queriesById.TryGetValue(unit.QueryId ?? Guid.Empty, out var target);
+
+                if (resolved is null)
+                {
+                    problems.Add(DescribeUnresolved(
+                        name, alias, "query", "/spark/queries/{alias}",
+                        target is null ? null : target.Name,
+                        target is null ? null : target.Alias ?? SparkQueryAliases.Derive(target.Name),
+                        target?.Alias is null));
+                }
+                else if (target is not null && resolved.Id != target.Id)
+                {
+                    problems.Add(
+                        $"Program unit '{name}' routes to alias '{alias}', which resolves to query " +
+                        $"'{resolved.Name}' — but its queryId points at '{target.Name}'. The client " +
+                        $"fetches by alias, so this unit would open the wrong query. Point both at " +
+                        $"the same one.");
+                }
+            }
+            else if (string.Equals(unit.Type, "persistentObject", StringComparison.OrdinalIgnoreCase))
+            {
+                typesByAlias.TryGetValue(alias, out var resolved);
+                typesById.TryGetValue(unit.PersistentObjectId ?? Guid.Empty, out var target);
+
+                if (resolved is null)
+                {
+                    problems.Add(DescribeUnresolved(
+                        name, alias, "persistent object", "/spark/po/{alias}/{objectId}",
+                        target?.Name,
+                        target is null ? null : target.Alias ?? target.Name.ToLowerInvariant(),
+                        target?.Alias is null));
+                }
+                else if (target is not null && resolved.Id != target.Id)
+                {
+                    problems.Add(
+                        $"Program unit '{name}' routes to alias '{alias}', which resolves to " +
+                        $"'{resolved.Name}' — but its persistentObjectId points at '{target.Name}'. " +
+                        $"The client routes by alias, so this unit would open the wrong page. Point " +
+                        $"both at the same one.");
+                }
+            }
+
+            // Every other type (currently "url") has no server-side target to resolve.
+        }
+
+        ReportVerificationProblems(problems);
+    }
+
+    /// <summary>
+    /// The message for an alias that resolves to nothing, naming <b>both</b> sides and the fix.
+    /// </summary>
+    /// <remarks>
+    /// It says the alias was derived when it was, because that is the part nobody guesses: the model
+    /// file shows no alias at all, so the reader has no reason to suspect one exists — let alone
+    /// that it differs from the unit's.
+    /// </remarks>
+    private static string DescribeUnresolved(
+        string unitName, string alias, string targetKind, string route,
+        string? targetName, string? targetAlias, bool targetAliasWasDerived)
+    {
+        var message =
+            $"Program unit '{unitName}' routes to alias '{alias}', but that alias resolves to no " +
+            $"{targetKind}. ";
+
+        if (targetName is not null && targetAlias is not null)
+        {
+            var derived = targetAliasWasDerived
+                ? " (derived from the name, because it declares none)"
+                : string.Empty;
+            message +=
+                $"Its id points at '{targetName}', whose alias is '{targetAlias}'{derived}. ";
+        }
+
+        var otherSide = targetAlias is null
+            ? "give the unit an alias that resolves"
+            : $"change the unit's alias to '{targetAlias}'";
+
+        return message +
+            $"The client fetches {route}, so this unit would 404 at runtime — and that 404 is " +
+            $"indistinguishable from a missing right, because the endpoint answers the same for " +
+            $"both. Fix either side: declare \"alias\": \"{alias}\" on the target, or {otherSide}.";
     }
 
     /// <summary>The simple-name type lookup these two checks share.</summary>

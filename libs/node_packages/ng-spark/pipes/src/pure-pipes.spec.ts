@@ -80,6 +80,92 @@ describe('AsDetailCellValuePipe', () => {
     expect(pipe.transform({ City: null }, { name: 'addr' } as any, { name: 'City', dataType: 'string' } as any, {})).toBe('');
   });
 
+  /**
+   * The pipe returns the COLUMN'S type, not a string. `spark-grid-cell` branches on the column type
+   * and inspects the value — `[checked]="display() === true"`, `[indeterminate]="display() == null"`
+   * — so a stringified cell made a detail page render unticked boxes for rows whose edit form
+   * showed them ticked.
+   */
+  const boolCol = { name: 'Enabled', dataType: 'boolean' } as any;
+  const parent = { name: 'rules' } as any;
+
+  it('returns a true boolean as true, not "true"', () => {
+    expect(pipe.transform({ Enabled: true }, parent, boolCol, {})).toBe(true);
+  });
+
+  /**
+   * `false` used to be right by accident: `'false'` is not `=== true`, so it rendered unchecked for
+   * entirely the wrong reason — and would have kept passing a test that only checked `false`.
+   */
+  it('returns an explicit false as false', () => {
+    expect(pipe.transform({ Enabled: false }, parent, boolCol, {})).toBe(false);
+  });
+
+  /**
+   * The nullable case, and the one that was actively misleading rather than merely wrong: a `bool?`
+   * with no value became `''`, which is not `== null`, so the checkbox rendered unchecked AND
+   * determinate — asserting the value was false.
+   */
+  it('returns an unset nullable boolean as null, so it can render indeterminate', () => {
+    expect(pipe.transform({ Enabled: null }, parent, boolCol, {})).toBe(null);
+    expect(pipe.transform({}, parent, boolCol, {})).toBe(null);
+  });
+
+  it('does not mistake a truthy non-boolean for true', () => {
+    expect(pipe.transform({ Enabled: 'yes' }, parent, boolCol, {})).toBe(null);
+  });
+
+  const numberCol = { name: 'Count', dataType: 'number' } as any;
+
+  it('returns a number cell as a number', () => {
+    expect(pipe.transform({ Count: 42 }, parent, numberCol, {})).toBe(42);
+  });
+
+  /**
+   * Zero is the number equivalent of the nullable-boolean trap: the old `if (value == null)` guard
+   * passed it through to `String(0)` = `'0'`, which renders the same — but a consumer testing
+   * truthiness would treat `'0'` and `0` alike and both as present, while `''` and `0` are the
+   * distinction that actually matters.
+   */
+  it('keeps zero distinct from no value', () => {
+    expect(pipe.transform({ Count: 0 }, parent, numberCol, {})).toBe(0);
+    expect(pipe.transform({ Count: null }, parent, numberCol, {})).toBe(null);
+  });
+
+  it('returns a non-numeric value in a number column as text rather than NaN', () => {
+    expect(pipe.transform({ Count: 'n/a' }, parent, numberCol, {})).toBe('n/a');
+  });
+
+  /**
+   * `date` / `datetime` return a real Date, so `spark-grid-cell` can format them in one place for
+   * both grids. Previously the raw ISO string was printed verbatim into the table cell.
+   */
+  it('parses a datetime cell into a Date', () => {
+    const col = { name: 'When', dataType: 'datetime' } as any;
+    const result = pipe.transform({ When: '2026-09-07T13:25:57.000Z' }, parent, col, {});
+    expect(result).toBeInstanceOf(Date);
+    expect((result as Date).toISOString()).toBe('2026-09-07T13:25:57.000Z');
+  });
+
+  it('parses a date cell into a Date', () => {
+    const col = { name: 'On', dataType: 'date' } as any;
+    expect(pipe.transform({ On: '2026-09-07' }, parent, col, {})).toBeInstanceOf(Date);
+  });
+
+  it('returns null for an absent date rather than an empty string', () => {
+    const col = { name: 'On', dataType: 'date' } as any;
+    expect(pipe.transform({ On: null }, parent, col, {})).toBe(null);
+  });
+
+  /**
+   * An unparseable date keeps its own text. `Invalid Date` would hide the value that is stored,
+   * which is the opposite of what a cell is for.
+   */
+  it('falls back to text for an unparseable date', () => {
+    const col = { name: 'On', dataType: 'date' } as any;
+    expect(pipe.transform({ On: 'not a date' }, parent, col, {})).toBe('not a date');
+  });
+
   it('returns the raw value for non-reference cells', () => {
     expect(pipe.transform({ City: 'Brussels' }, { name: 'addr' } as any, { name: 'City', dataType: 'string' } as any, {})).toBe('Brussels');
   });

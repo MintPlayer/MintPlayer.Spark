@@ -48,6 +48,12 @@ Semantics:
 | `persistentObject` | `persistentObjectId` | `Read` right on the type | `/po/{alias ?? typeId}` (list), or `/po/…/{objectId}` when `objectId` is set |
 | `url` | `url` | always | the external address, new tab |
 
+⚠️ **The `alias` in that last column is the identifier the client actually uses**, not the id. A unit
+whose alias does not resolve to the same target as its id will 404 at runtime with a perfectly
+correct id sitting in the file — and that 404 is indistinguishable from a missing right, because the
+endpoint answers the same for both. `--spark-verify-model` refuses the mismatch; see
+[Aliases → A program unit's alias must resolve to its own target](guide-aliases.md#a-program-units-alias-must-resolve-to-its-own-target).
+
 The loader (`ProgramUnitsLoader`) canonicalizes `type` casing and validates these combinations
 at load time — an unknown type or a missing required field **throws**
 (`SparkProgramUnitsConfigurationException`) rather than silently dropping the unit, because a

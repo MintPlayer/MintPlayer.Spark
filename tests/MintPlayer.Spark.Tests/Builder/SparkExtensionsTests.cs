@@ -297,6 +297,305 @@ public class SparkExtensionsTests
     /// synchronization writes into the temp directory rather than the test host's own folder.
     /// Also restores <see cref="Environment.ExitCode"/>, which these tests deliberately set.
     /// </summary>
+    // ---------------------------------------------------------------- issue #374
+    //
+    // A program unit names its target twice -- an id and an alias -- and only the id used to be
+    // checked, while the client routes by the ALIAS. A mismatch 404s at runtime, and that 404 is
+    // deliberately byte-identical to the one an unauthorized caller gets, so the symptom carries no
+    // information at all. These pin the check that turns it into a build failure.
+
+    /// <summary>
+    /// Writes a `programUnits.json` with a single query unit at <paramref name="unitAlias"/>, and
+    /// returns the id of the query it points at.
+    /// </summary>
+    /// <remarks>
+    /// <c>TranslatedString</c> serializes FLAT -- <c>{ "en": "..." }</c>, not
+    /// <c>{ "translations": { "en": "..." } }</c>. Getting that wrong makes the whole file
+    /// unparseable, and the check under test deliberately swallows a JsonException (FR5, because
+    /// ProgramUnitsLoader owns that error) -- so a malformed fixture presents as the check simply
+    /// not firing. That cost a debugging round: read a real App_Data/programUnits.json before
+    /// inventing one.
+    /// </remarks>
+    private static void PlantQueryUnit(string contentRoot, string? unitAlias, Guid queryId)
+    {
+        var aliasLine = unitAlias is null ? string.Empty : $"\"alias\": \"{unitAlias}\",";
+        File.WriteAllText(
+            Path.Combine(contentRoot, "App_Data", "programUnits.json"),
+            $$"""
+            {
+              "programUnitGroups": [
+                {
+                  "id": "11111111-1111-1111-1111-111111111111",
+                  "name": { "en": "Group" },
+                  "order": 1,
+                  "programUnits": [
+                    {
+                      "id": "22222222-2222-2222-2222-222222222222",
+                      "name": { "en": "The unit" },
+                      "type": "query",
+                      "queryId": "{{queryId}}",
+                      {{aliasLine}}
+                      "order": 1
+                    }
+                  ]
+                }
+              ]
+            }
+            """);
+    }
+
+    /// <summary>The id and alias of the one query a synchronized `OneEntityTestSparkContext` produces.</summary>
+    private static (Guid Id, string Alias) TheOnlyQuery(string contentRoot)
+    {
+        foreach (var file in Directory.GetFiles(Path.Combine(contentRoot, "App_Data", "Model"), "*.json"))
+        {
+            var parsed = System.Text.Json.JsonSerializer.Deserialize<MintPlayer.Spark.Abstractions.EntityTypeFile>(
+                File.ReadAllText(file),
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            if (parsed?.Queries is { Length: > 0 } queries)
+            {
+                var query = queries[0];
+                return (query.Id, query.Alias ?? MintPlayer.Spark.Abstractions.SparkQueryAliases.Derive(query.Name));
+            }
+        }
+
+        throw new InvalidOperationException("The synchronized model produced no query to point a unit at.");
+    }
+
+    /// <remarks>
+    /// Call this AFTER planting any App_Data config. The model hash covers
+    /// <c>programUnits.json</c>, so a file written afterwards drifts the hash and the verify run
+    /// exits 3 for a reason that has nothing to do with aliases -- which is exactly how these tests
+    /// first failed.
+    /// </remarks>
+    private static string Synchronized(ScratchContentRoot scratch)
+    {
+        var builder = scratch.CreateBuilder();
+        builder.Services.AddScoped<SparkContext, OneEntityTestSparkContext>();
+        builder.SynchronizeSparkModelsIfRequested(["--spark-synchronize-model"]);
+        return scratch.Path;
+    }
+
+    /// <remarks>
+    /// Returns the reported text as well as the code, because the code alone is a weak assertion:
+    /// several checks and the hash comparison all exit 3, so "it failed" does not establish that it
+    /// failed for the reason under test.
+    /// </remarks>
+    private static (int ExitCode, string Reported) Verify(ScratchContentRoot scratch)
+    {
+        Environment.ExitCode = 0;
+        var captured = new StringWriter();
+        var previous = Console.Error;
+        Console.SetError(captured);
+        try
+        {
+            var verifyBuilder = scratch.CreateBuilder();
+            verifyBuilder.Services.AddScoped<SparkContext, OneEntityTestSparkContext>();
+            verifyBuilder.SynchronizeSparkModelsIfRequested(["--spark-verify-model"]);
+        }
+        finally
+        {
+            Console.SetError(previous);
+        }
+
+        return (Environment.ExitCode, captured.ToString());
+    }
+
+    private static int VerifyExitCode(ScratchContentRoot scratch) => Verify(scratch).ExitCode;
+
+    [Fact]
+    public void A_program_unit_whose_alias_matches_its_target_verifies()
+    {
+        using var scratch = new ScratchContentRoot();
+        var query = TheOnlyQuery(Synchronized(scratch));
+        PlantQueryUnit(scratch.Path, query.Alias, query.Id);
+        Synchronized(scratch);
+
+        VerifyExitCode(scratch).Should().Be(0,
+            "the unit routes to the alias its own query resolves to");
+    }
+
+    /// <summary>
+    /// The reported bug, reduced: the alias is the hyphenated form someone would naturally choose
+    /// for a URL, while the query derives its own from the name.
+    /// </summary>
+    [Fact]
+    public void A_program_unit_whose_alias_resolves_to_nothing_exits_3()
+    {
+        using var scratch = new ScratchContentRoot();
+        var query = TheOnlyQuery(Synchronized(scratch));
+        PlantQueryUnit(scratch.Path, query.Alias + "-typo", query.Id);
+        Synchronized(scratch);
+
+        var (exitCode, reported) = Verify(scratch);
+
+        exitCode.Should().Be(3,
+            "the client fetches /spark/queries/{alias}, so this unit would 404 at runtime");
+        reported.Should().Contain("routes to alias",
+            "the failure must be THIS check rather than an unrelated one that also exits 3");
+        reported.Should().Contain(query.Alias,
+            "the message has to name the alias the target actually resolves to, or the reader " +
+            "cannot tell which of the two identifiers to change");
+    }
+
+    /// <summary>
+    /// No alias is a supported shape, not an omission — the client then routes by id. A check that
+    /// warned here would fire on every unit that does the simple thing.
+    /// </summary>
+    [Fact]
+    public void A_program_unit_with_no_alias_verifies()
+    {
+        using var scratch = new ScratchContentRoot();
+        var query = TheOnlyQuery(Synchronized(scratch));
+        PlantQueryUnit(scratch.Path, null, query.Id);
+        Synchronized(scratch);
+
+        VerifyExitCode(scratch).Should().Be(0);
+    }
+
+    /// <summary>The id and alias of the one entity type a synchronized context produces.</summary>
+    private static (Guid Id, string Alias) TheOnlyEntityType(string contentRoot)
+    {
+        foreach (var file in Directory.GetFiles(Path.Combine(contentRoot, "App_Data", "Model"), "*.json"))
+        {
+            var parsed = System.Text.Json.JsonSerializer.Deserialize<MintPlayer.Spark.Abstractions.EntityTypeFile>(
+                File.ReadAllText(file),
+                new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+            if (parsed?.PersistentObject is { } type)
+                return (type.Id, type.Alias ?? type.Name.ToLowerInvariant());
+        }
+
+        throw new InvalidOperationException("The synchronized model produced no entity type to point a unit at.");
+    }
+
+    private static void PlantPersistentObjectUnit(string contentRoot, string unitAlias, Guid typeId)
+    {
+        File.WriteAllText(
+            Path.Combine(contentRoot, "App_Data", "programUnits.json"),
+            $$"""
+            {
+              "programUnitGroups": [
+                {
+                  "id": "44444444-4444-4444-4444-444444444444",
+                  "name": { "en": "Group" },
+                  "order": 1,
+                  "programUnits": [
+                    {
+                      "id": "55555555-5555-5555-5555-555555555555",
+                      "name": { "en": "The page" },
+                      "type": "persistentObject",
+                      "persistentObjectId": "{{typeId}}",
+                      "alias": "{{unitAlias}}",
+                      "objectId": "main",
+                      "order": 1
+                    }
+                  ]
+                }
+              ]
+            }
+            """);
+    }
+
+    /// <summary>
+    /// The issue only described query units, but a persistentObject unit routes by alias too —
+    /// <c>/po/{alias}/{objectId}</c>, against an entity alias that is <b>also</b> derived when
+    /// undeclared (<c>Name.ToLowerInvariant()</c>). Same trap, same indistinguishable 404.
+    /// </summary>
+    [Fact]
+    public void A_persistent_object_unit_whose_alias_matches_its_type_verifies()
+    {
+        using var scratch = new ScratchContentRoot();
+        var type = TheOnlyEntityType(Synchronized(scratch));
+        PlantPersistentObjectUnit(scratch.Path, type.Alias, type.Id);
+        Synchronized(scratch);
+
+        VerifyExitCode(scratch).Should().Be(0,
+            "the unit routes to the alias its own entity type resolves to");
+    }
+
+    [Fact]
+    public void A_persistent_object_unit_whose_alias_resolves_to_nothing_exits_3()
+    {
+        using var scratch = new ScratchContentRoot();
+        var type = TheOnlyEntityType(Synchronized(scratch));
+        PlantPersistentObjectUnit(scratch.Path, type.Alias + "-typo", type.Id);
+        Synchronized(scratch);
+
+        var (exitCode, reported) = Verify(scratch);
+
+        exitCode.Should().Be(3);
+        reported.Should().Contain("persistent object",
+            "the message must name what kind of target failed to resolve, not just that one did");
+        reported.Should().Contain("/spark/po/",
+            "naming the route is what tells the reader the alias -- not the id -- is the identifier " +
+            "that reaches the server");
+    }
+
+    /// <summary>
+    /// A `url` unit has no server-side target, so its alias resolves to nothing by definition.
+    /// </summary>
+    [Fact]
+    public void A_url_program_unit_is_not_alias_checked()
+    {
+        using var scratch = new ScratchContentRoot();
+        Synchronized(scratch);
+        File.WriteAllText(
+            Path.Combine(scratch.Path, "App_Data", "programUnits.json"),
+            """
+            {
+              "programUnitGroups": [
+                {
+                  "id": "11111111-1111-1111-1111-111111111111",
+                  "name": { "en": "Group" },
+                  "order": 1,
+                  "programUnits": [
+                    {
+                      "id": "33333333-3333-3333-3333-333333333333",
+                      "name": { "en": "Docs" },
+                      "type": "url",
+                      "url": "https://example.invalid",
+                      "alias": "resolves-to-nothing",
+                      "order": 1
+                    }
+                  ]
+                }
+              ]
+            }
+            """);
+        Synchronized(scratch);
+
+        VerifyExitCode(scratch).Should().Be(0);
+    }
+
+    /// <summary>
+    /// An app may ship no menu at all, so an absent file cannot be a failure.
+    /// </summary>
+    [Fact]
+    public void A_missing_programUnits_file_verifies()
+    {
+        using var scratch = new ScratchContentRoot();
+        Synchronized(scratch);
+
+        VerifyExitCode(scratch).Should().Be(0);
+    }
+
+    /// <summary>
+    /// Malformed JSON belongs to `ProgramUnitsLoader`, which reports it with its own message.
+    /// Reporting it twice, differently, tells the reader less rather than more.
+    /// </summary>
+    [Fact]
+    public void A_malformed_programUnits_file_is_not_this_checks_error()
+    {
+        using var scratch = new ScratchContentRoot();
+        Synchronized(scratch);
+        File.WriteAllText(Path.Combine(scratch.Path, "App_Data", "programUnits.json"), "{ not json");
+        Synchronized(scratch);
+
+        VerifyExitCode(scratch).Should().Be(0);
+    }
+
     private sealed class ScratchContentRoot : IDisposable
     {
         private readonly int _previousExitCode = Environment.ExitCode;

@@ -191,6 +191,10 @@ public partial class ProjectAutomationRecipient : IRecipient<ProjectAutomationMe
         var number = ReadNumber(root, member)
             ?? throw new NonRetryableException($"No {member}.number in the payload.");
 
+        // Issues ARE added to the board when missing. A board is a list of work, an issue is a unit
+        // of work, and a rule that could only move issues already present would do nothing on the
+        // one event where it matters most — `IssuesOpened`, where the issue by definition did not
+        // exist a moment ago.
         return await cards.MoveIssueAsync(board, owner, repo, number, rule.TargetColumnOptionId, addIfMissing: true, cancellationToken);
     }
 
@@ -201,7 +205,20 @@ public partial class ProjectAutomationRecipient : IRecipient<ProjectAutomationMe
         var number = ReadNumber(root, "pull_request")
             ?? throw new NonRetryableException("No pull_request.number in the payload.");
 
-        return await cards.MovePullRequestAsync(board, owner, repo, number, rule.TargetColumnOptionId, addIfMissing: true, cancellationToken);
+        // Pull requests are NOT added to the board, and this asymmetry with issues is the point:
+        // issues are the work a board tracks, while pull requests are how the work gets done. Every
+        // branch pushed would otherwise become a card, and a busy repository would bury the issues
+        // under its own pull requests within a day.
+        //
+        // So a PR rule moves a card that someone deliberately put on the board, and does nothing
+        // otherwise. `check_run` already behaved this way; this is the site that did not, which made
+        // "move the PR to In Review" quietly mean "and add every PR to the board".
+        //
+        // Note this is *narrower* than the app being migrated from, which offered a per-rule
+        // `AutoAddToProject` covering both kinds. Making it type-aware rather than configurable
+        // answers the question the flag was really asking, and removes a setting whose wrong value
+        // silently filled the board.
+        return await cards.MovePullRequestAsync(board, owner, repo, number, rule.TargetColumnOptionId, addIfMissing: false, cancellationToken);
     }
 
     private async Task<ECardOutcome> MoveMergedAsync(
@@ -216,9 +233,11 @@ public partial class ProjectAutomationRecipient : IRecipient<ProjectAutomationMe
         var closing = await cards.GetClosingIssuesAsync(board.InstallationId, owner, repo, number.Value, cancellationToken);
         foreach (var (issueRepo, issueNumber) in closing)
         {
-            // addIfMissing: false for linked issues. Moving a card that is already tracked is what
-            // the user asked for; ADDING an issue to the board because a PR happened to reference
-            // it is not, and would quietly fill the board with issues nobody put there.
+            // addIfMissing: false here, even though a direct issue event DOES add. The difference
+            // is who asked: an `IssuesOpened` rule is about that issue, whereas this issue is being
+            // touched only because a PR happened to reference it. Adding on that basis would let
+            // one merge pull arbitrary issues onto the board, including issues from repositories
+            // nobody configured. Moving one already tracked is the intent; recruiting it is not.
             await cards.MoveIssueAsync(board, owner, issueRepo, issueNumber, rule.TargetColumnOptionId, addIfMissing: false, cancellationToken);
         }
 
