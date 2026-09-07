@@ -67,8 +67,44 @@ the kind of claim that gets re-adopted after a compaction, so it is recorded wit
 - 56 of 88 databases on the local server run `@refresh` with `RefreshFrequencyInSec: null` (60 s default).
 - The local `Coverage` database still holds **all 8** `SparkMessaging-*` definitions, including the five
   that were dead in production → nothing removes a definition.
-- **The local server is not Community-capped** (it permits 8), so the subscription-cap spike cannot be
-  reproduced against localhost — it would pass locally and fail on deploy.
+- **The local server is not Community-capped**, so the subscription-cap spike cannot be reproduced
+  against localhost — it would pass locally and fail on deploy. Now quantified: the licence is
+  **Developer** and reports `MaxNumberOfSubscriptionsPerDatabase: null` *and*
+  `MaxNumberOfSubscriptionsPerCluster: null`; 12 subscriptions were created on one database without
+  complaint. Any cap behaviour must be simulated with a self-imposed budget, and
+  `EnsureSubscriptionExistsAsync`'s `LicenseLimitException` branch is **unverifiable locally**.
+
+### Subscription lifecycle, measured 2026-09-07 (RavenDB 7.2, `Spike273`) — full detail in the plan's "S1 — RESULTS"
+
+- **Delete is idempotent** (missing name does not throw) and **frees the slot synchronously** (~2 ms;
+  a list issued immediately after never sees the name). Delete-then-create in one boot is safe. Single
+  node only.
+- **Create is not an upsert.** Same name + different query throws `RavenException` wrapping
+  `RachisApplyException` *"already in use in a subscription with different Id"*. This fires on **every
+  Spark restart** and is absorbed by the existing `UpdateAsync { CreateNew = true }` fallback — that
+  broad `catch (Exception)` in `EnsureSubscriptionExistsAsync` is **load-bearing, not defensive.**
+- **`UpdateAsync` changes a query in place**: same `SubscriptionId`, same change vector, **no slot
+  spent.** The unified query can evolve across deploys without touching the budget.
+- **Changing the filter within one collection does not replay** (0 of 3 acked docs re-delivered).
+  Since the unified query is always `from SparkMessages where …`, query evolution is non-replaying.
+- **But a collection newly entering scope IS backfilled** — widening to `from @all_docs` delivered 3
+  pre-existing docs that sat *behind* the acknowledged change vector. The change vector does not gate
+  a newly-matched collection.
+- **⚠ Deleting a subscription under a live worker kills that worker for good.** It surfaces in ~16 ms
+  as `SubscriptionDoesNotExistException`, which `SparkSubscriptionWorker.cs:234` treats as
+  non-recoverable and breaks the loop — no recovery even after the new subscription exists. Rolling
+  deploys must terminate old pods before pruning.
+- **⚠ Two replicas racing to prune-and-create is not benign**: both deletes succeed, then the loser's
+  *create* throws on the name collision, at startup and outside `Run`, where nothing catches it.
+- **A connected worker survives a query *update*** — one internal `SubscriptionClosedException`, one
+  reconnect, then it serves the new query with no restart. The exception does **not** propagate out of
+  `Run`, so the worker's non-recoverable `SubscriptionClosedException` branch never fires.
+- **Field evidence for the accumulation problem:** the local `WebhooksDemo` database holds **7**
+  `SparkMessaging-*` definitions, 6 orphaned by generic-type-name churn (a `` `1-… `` form plus
+  assembly-qualified `Version=2.0.0.0` and `Version=3.0.0.0` variants).
+- **RQL trap that invalidated the first run of this spike:** `from Docs` means *the collection named
+  "Docs"*, not all documents. A subscription on it delivers nothing, the change vector never advances,
+  and a follow-up drain looks like a replay when it is really a first delivery. Use `from @all_docs`.
 - Four build-time guards pin the queue rule: 3 in `CoverageQueuesTests.cs` + `DeleteDataActionTests.cs:81-89`.
 - Query rows carry **no `can` block** (`QueryResult.cs:105-124`); a composed (`clrType`-less) type gets
   **no row filtering and no redaction**; a query returning `SparkQueryPage<T>` is **not re-executable**,

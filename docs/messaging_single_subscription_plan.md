@@ -40,6 +40,62 @@ startup path itself (the same middleware slot that deploys the messaging index) 
 migration. That slot has no lock and no marker, which is acceptable only because the operation is
 idempotent and self-emptying.
 
+#### S1 — RESULTS (run 2026-09-07, RavenDB 7.2 at localhost:8080, database `Spike273`)
+
+Ten scenarios, run against a live server. **Kill criterion not triggered** — delete-then-create in
+one boot is safe. But the spike produced two new requirements for M6 and one measurement that
+invalidates part of the test strategy.
+
+**The cap cannot be reproduced locally.** The local licence is **Developer**, not Community, and it
+reports `MaxNumberOfSubscriptionsPerDatabase: null` *and* `MaxNumberOfSubscriptionsPerCluster: null`.
+Twelve subscriptions were created on one database without complaint. So the cap must be *simulated*
+(the spike enforces a budget of 3 itself) or tested against a genuinely Community-licensed server,
+and `EnsureSubscriptionExistsAsync`'s `LicenseLimitException` branch stays **unverified by any test**.
+
+1. **Delete is idempotent.** `DeleteAsync` on a name that does not exist does not throw. The cleanup
+   can run unconditionally — no existence check, no marker document.
+2. **Delete frees the slot synchronously.** It returns in ~2 ms, and a list issued immediately
+   afterwards never sees the name. Delete-then-create within one boot is safe. Measured on a single
+   node; production is single-node, but this does not generalise to a 3-node cluster.
+3. **Create is not an upsert.** Creating an existing name with a different query throws
+   `RavenException` wrapping `RachisApplyException`: *"the name '…' is already in use in a
+   subscription with different Id"*. This is the **normal path on every Spark restart**, absorbed by
+   the existing `UpdateAsync { CreateNew = true }` fallback — so `EnsureSubscriptionExistsAsync` is
+   correct, but its broad `catch (Exception)` is load-bearing, not defensive. Do not narrow it
+   without replacing it with an explicit exists-check.
+4. **`UpdateAsync` changes the query in place** — same `SubscriptionId`, same change vector. **No
+   slot is spent to change a query.** The unified subscription's query can evolve across deploys
+   without ever touching the budget.
+5. **A filter change within one collection does not replay.** Narrowing `from Widgets` to
+   `from Widgets where …` re-delivered **0 of 3** acknowledged documents. The unified query is always
+   `from SparkMessages where …`, so this is the case that matters: **query evolution is
+   non-replaying.**
+6. **A collection newly entering scope *is* backfilled.** Widening to `from @all_docs` delivered all
+   3 pre-existing `Gadgets` the old query never matched, *despite their being behind the
+   acknowledged change vector.* The change vector does not gate documents in a newly-matched
+   collection — the opposite of the obvious assumption.
+7. **A connected worker survives a query change.** It takes one internal `SubscriptionClosedException`
+   → `OnSubscriptionConnectionRetry` → reconnect, then serves the **new** query with no restart.
+   Notably the exception did *not* propagate out of `Run`, so `SparkSubscriptionWorker`'s
+   `catch (SubscriptionClosedException)` → non-recoverable → `break` never fired.
+8. **⚠ Deleting a subscription under a live worker kills that worker permanently.** The worker sees it
+   in ~16 ms as `SubscriptionDoesNotExistException`, which `SparkSubscriptionWorker.cs:234` treats as
+   non-recoverable and **breaks the loop**. It does not recover once the new subscription exists.
+   *New requirement for M6:* the rolling deploy must terminate old pods before the cleanup runs —
+   it cannot rely on them healing.
+9. **⚠ Two replicas racing to prune-and-create is not benign.** Both deletes succeed (idempotent),
+   then the loser's *create* throws `RavenException`/`RachisApplyException` on the name collision.
+   This happens at startup, **outside `Run`**, where nothing catches it — so replica B faults on
+   boot. *New requirement for M6:* treat "already exists" at create as success.
+10. **Field evidence for F6.** The local `WebhooksDemo` database carries **7** `SparkMessaging-*`
+    definitions, 6 of them orphaned by generic-type-name churn (a `` GitHubWebhookMessage`1-… ``
+    form plus assembly-qualified `Version=2.0.0.0` and `Version=3.0.0.0` variants). Nothing has ever
+    deleted one. This is exactly the accumulation that exhausts a 3-slot budget.
+
+**Still unanswered:** the startup-ordering half — whether migrations really complete before
+`MessageSubscriptionManager` starts. That needs the `apps/CodeCoverage` instrumentation, not a
+standalone spike.
+
 ### S2 — `WaitForFree` standby and handover
 
 Does unconditional `WaitForFree` actually give clean active/standby? Two workers, one subscription:
@@ -193,7 +249,21 @@ licence headroom wanting server-side per-queue isolation). Both must work and bo
   generator discovers migrations from a *referenced package* and not only from the compilation being
   built.
 
-**Verify:** S1's assertions pass.
+- **Create must tolerate "already exists" as success** (S1 result 9). Two replicas booting together
+  both prune successfully, then the loser's create throws `RavenException`/`RachisApplyException` on
+  the name collision, at startup and outside `Run`, where nothing catches it. Unguarded, the second
+  replica faults on boot.
+- **The cleanup must not run while an old pod still holds a `SparkMessaging-*` subscription**
+  (S1 result 8). Deleting it makes that pod's worker throw `SubscriptionDoesNotExistException`, which
+  the worker treats as non-recoverable and **never recovers from**, even after the new subscription
+  exists. Old pods must be terminated, not left to heal. Document this as a deploy step; it is not
+  something the code can enforce.
+- Deleting unconditionally is fine — `DeleteAsync` on a missing name does not throw (S1 result 1) —
+  so no marker document is needed for correctness, only for auditability.
+
+**Verify:** S1's assertions pass. Note that the licence-cap assertion **cannot** be verified locally
+(S1: the Developer licence enforces no cap at all); it needs a Community-licensed server or an
+explicit simulated budget.
 
 ### M7 — Webhook durability (W1-W4)
 
