@@ -36,14 +36,20 @@ public class AnonymousPersistentObjectAccessTests
         using var client = Anonymous();
 
         var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => client.ListPersistentObjectsAsync(CarFixture.TypeId));
+            () => client.ExecuteQueryAsync(GetCarsQueryId));
 
-        // Exactly 401, not "one of 401/403": Spark returns 403 only when the caller IS
-        // authenticated and still lacks the right. Accepting either would stop distinguishing
-        // "refused because anonymous" from "refused despite a session", which is the whole subject.
-        ex.StatusCode.Should().Be(HttpStatusCode.Unauthorized,
-            "Car is granted to Administrators and Fleet managers, never to anonymous callers — and an "
-            + "unauthenticated caller holds only the anonymous group's rights");
+        // 404, and deliberately not 401. This used to read through GET /spark/po/{type}, which
+        // refuses with 401 for an anonymous caller so a client knows authenticating would help. That
+        // endpoint is gone, and the query path answers a DIFFERENT and equally deliberate way: a
+        // denied query is byte-identical to a query that does not exist, so no caller can use
+        // refusals to enumerate which queries an application has.
+        //
+        // The 401-versus-403 distinction that mattered here — "refused because anonymous" against
+        // "refused despite a session" — is still pinned, by Anonymous_cannot_create_a_Car below,
+        // which goes through a PO endpoint that still exists and still draws it.
+        ex.StatusCode.Should().Be(HttpStatusCode.NotFound,
+            "Car is granted to Administrators and Fleet managers, never to anonymous callers — and on "
+            + "the query path a refusal must be indistinguishable from an unknown query");
     }
 
     /// <summary>
@@ -56,7 +62,7 @@ public class AnonymousPersistentObjectAccessTests
     {
         using var client = Anonymous();
 
-        var companies = await client.ListPersistentObjectsAsync(CompanyTypeName);
+        var companies = await client.ExecuteQueryAsync(GetCompaniesQueryId);
 
         companies.Should().NotBeNull(
             "security.json grants QueryRead/Company to the anonymous group, which applies to callers who "
@@ -112,6 +118,14 @@ public class AnonymousPersistentObjectAccessTests
     }
 
     private const string CompanyTypeName = "Company";
+
+    // The listing endpoint these tests used (GET /spark/po/{type}) is gone — a second, uncapped list
+    // pipeline — so they exercise the surviving one. Not a like-for-like swap to note: the old call
+    // asserted "anonymous is refused" through a path that no longer exists, and after its deletion
+    // the same call answered 401 anyway, from the catch-all detail route with an empty id. It would
+    // have kept passing while testing nothing.
+    private static readonly Guid GetCarsQueryId = Guid.Parse("a20e8400-e29b-41d4-a716-446655440001");
+    private static readonly Guid GetCompaniesQueryId = Guid.Parse("a20e8400-e29b-41d4-a716-446655440003");
 
     private static async Task<Guid> ResolveCompanyTypeIdAsync(SparkClient client)
     {
