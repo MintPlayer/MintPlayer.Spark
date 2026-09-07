@@ -132,10 +132,21 @@ internal sealed partial class MessageRetrySweeper : BackgroundService
         using var session = documentStore.OpenAsyncSession();
         var now = DateTime.UtcNow;
 
+        // Two arms, and the second is the upgrade path.
+        //
+        // A claim that has lapsed is the ordinary case. But messages stranded at Processing by a
+        // build from *before* claims existed have no ClaimExpiresAtUtc at all, so an
+        // `ClaimExpiresAtUtc <= now` test can never match them and they would stay stranded for
+        // ever — the very bug this method exists to fix, surviving the fix. Any Processing document
+        // with no claim expiry was necessarily written by a build that could not set one, because
+        // every claim taken now sets it, so it is abandoned by definition.
+        //
+        // `== null` is correct here where `!= true` is needed for booleans: a missing field does not
+        // match `== false`, but it does match `== null`.
         var abandonedIds = await session.Query<SparkMessage, SparkMessages_ByQueue>()
             .Where(m => m.Status == EMessageStatus.Processing
-                        && m.ClaimExpiresAtUtc != null
-                        && m.ClaimExpiresAtUtc <= now)
+                        && ((m.ClaimExpiresAtUtc != null && m.ClaimExpiresAtUtc <= now)
+                            || m.ClaimExpiresAtUtc == null))
             .Select(m => m.Id)
             .Take(MaxMessagesPerSweep)
             .ToListAsync(cancellationToken);

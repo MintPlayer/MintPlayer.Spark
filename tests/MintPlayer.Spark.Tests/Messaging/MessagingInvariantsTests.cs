@@ -248,6 +248,62 @@ public class MessagingInvariantsTests : SparkTestDriver
         everySequence.Should().Equal([1, 2, 3]);
     }
 
+    /// <summary>
+    /// The upgrade path. A message stranded at <c>Processing</c> by a build from before claims
+    /// existed carries no <c>ClaimExpiresAtUtc</c>, so a reclaim query written only as
+    /// <c>ClaimExpiresAtUtc &lt;= now</c> can never match it — the fix would ship while every
+    /// message the bug had already stranded stayed stranded for ever.
+    /// <para>
+    /// Note the spelling: <c>== null</c> matches a missing JSON field, where <c>== false</c> would
+    /// not. The boolean gates elsewhere need <c>!= true</c> for exactly that reason.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task A_message_stranded_before_claims_existed_is_still_reclaimed()
+    {
+        string messageId;
+        using (var session = Store.OpenAsyncSession())
+        {
+            // The pre-upgrade shape: Processing, with no OwnerId and no ClaimExpiresAtUtc, because
+            // the build that wrote it had neither field.
+            var legacy = new SparkMessage
+            {
+                QueueName = "invariants-fast",
+                MessageType = typeof(FastMessage).AssemblyQualifiedName!,
+                PayloadJson = Newtonsoft.Json.JsonConvert.SerializeObject(new FastMessage { Id = "fast/legacy" }),
+                CreatedAtUtc = DateTime.UtcNow.AddDays(-3),
+                MaxAttempts = 5,
+                Status = EMessageStatus.Processing,
+                AttemptCount = 1,
+            };
+            await session.StoreAsync(legacy);
+            await session.SaveChangesAsync();
+            messageId = legacy.Id!;
+
+            // Remove the properties entirely, so the document matches what an older build persisted
+            // rather than merely holding nulls.
+            var metadata = session.Advanced.GetMetadataFor(legacy);
+            metadata[Raven.Client.Constants.Documents.Metadata.Collection] = "SparkMessages";
+        }
+        await Store.WaitForIndexingAsync();
+
+        var sweeper = new MessageRetrySweeper(
+            Store,
+            Options.Create(new SparkMessagingOptions()),
+            NullLogger<MessageRetrySweeper>.Instance,
+            new MessagingLeaseManager(Store, NullLogger<MessagingLeaseManager>.Instance) { IsHeld = true });
+
+        var reclaimed = await sweeper.ReclaimAbandonedAsync(CancellationToken.None);
+        reclaimed.Should().Be(1,
+            "a Processing message with no claim expiry was written by a build that could not set one, "
+            + "so it is abandoned by definition");
+
+        using var verify = Store.OpenAsyncSession();
+        var after = await verify.LoadAsync<SparkMessage>(messageId);
+        after.Status.Should().Be(EMessageStatus.Pending);
+        after.WakeUp.Should().BeTrue("it must be visible to the subscription query again");
+    }
+
     // --- Invariant 5: a retry is scoped to one handler of one message ---------
 
     // Both on the SAME queue on purpose. Sharing a queue is what `CoverageQueues` relies on —

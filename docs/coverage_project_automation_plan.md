@@ -12,6 +12,36 @@ batched.
 
 ---
 
+## Status (2026-09-07)
+
+**The messaging prerequisite has LANDED** on this branch — one shared subscription, in-process
+per-queue lanes, durable claims. Two consequences for this plan, which is otherwise as written:
+
+- **C1 is lifted.** A queue name no longer costs a RavenDB data subscription, so **M4 may take its
+  own queue name** instead of sharing `spark-github-all`, and should: project automation then gets
+  its own FIFO lane, its own retry and dead-letter state, and a slow board reconciliation cannot
+  delay coverage feedback. The `IRecipient<GitHubWebhookMessage>`-sibling shape still stands (a
+  sibling, not an extension of `GitHubEventsRecipient`'s switch) — what changes is only that its
+  `[MessageQueue]` may be new.
+- **M4's verify step is obsolete as written.** `grep -rn "MessageQueue" apps/CodeCoverage` showing
+  "only the two existing constants" was the guard for a constraint that no longer exists. The
+  property worth checking now is ordering, not count: does this workload need to be serialised with
+  check-run publishing, or isolated from it? Isolated, hence its own queue.
+- **R1 is downgraded.** "A new queue name slips in and kills a queue" is no longer a failure mode.
+  `CoverageQueuesTests`' count and exact-name facts are already deleted; the equivalent guard is now
+  `MessageSubscriptionManagerLifecycleTests`, which asserts one subscription however many queues
+  exist.
+
+Everything else here is **not started**: both spikes, and M0-M13. `apps/WebhooksDemo` is still
+present, and no `GitHubProject` entity exists.
+
+⚠️ **S1 cannot be completed without credentials.** It queries Projects V2 for a real installation on
+the MintPlayer org, so it needs the CoverageDevelopment app's private key. The code for M3/M5 can be
+written and type-checked without it, but the node-cost and `.AllPages()` questions S1 exists to
+answer stay open until someone runs it. The same applies to M13 in full.
+
+---
+
 ## Spikes first
 
 Two unknowns are load-bearing enough that guessing wrong would rework several milestones. Both are
