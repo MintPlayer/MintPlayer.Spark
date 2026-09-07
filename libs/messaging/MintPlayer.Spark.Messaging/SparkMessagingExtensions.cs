@@ -58,16 +58,37 @@ internal static class SparkMessagingExtensions
 
         // Enable RavenDB document expiration so @expires metadata is honored.
         //
-        // DeleteFrequencyInSec is deliberately not set, which takes the server default of 60 s.
-        // It used to be pinned to 36 hours with the comment "community license minimum", which
-        // inverted the limit it was citing: on a restricted licence 36 h is the *smallest
-        // frequency value permitted* — i.e. a ceiling on how often the sweep may run — not a
-        // floor the configuration must clear. Pinning it meant expired messages lingered up to
-        // 36 h past their retention, and the same misreading was the load-bearing reason
-        // @refresh was written off as unusable for redelivery elsewhere in the repo.
+        // DeleteFrequencyInSec is pinned to the Community licence's minimum, and this is a licence
+        // CONSTRAINT rather than a tuning choice. Measured against production on 2026-09-07:
+        // /license/status reports Type "Community" with MinPeriodForExpirationInHours: 36, and the
+        // live database record carries DeleteFrequencyInSec: 129600 — exactly that minimum.
+        //
+        // Configuring anything smaller does not degrade, it FAILS THE SERVER: the cluster command
+        // is rejected by ClusterStateMachine.AssertExpirationConfiguration and the RavenDB process
+        // dies. It presents as "the server exited before becoming healthy", which looks nothing
+        // like a licence problem — reproduced locally with no RAVENDB_LICENSE, and it is why
+        // UploadActionDogfoodTests cannot pass without one.
+        //
+        // This comment previously said the opposite. It claimed 36 h was "a ceiling on how often
+        // the sweep may run" and therefore removed the pin to take the 60 s server default, which
+        // would have taken production's database down on the next deploy. CI did not catch it
+        // because CI holds a *Developer* licence, which imposes no such minimum; only production is
+        // Community. A limit that exists on one licence tier and not another cannot be verified on
+        // the tier CI runs.
+        //
+        // The cost is real and accepted: on Community an expired message can linger up to 36 h past
+        // its retention. The alternative is not a faster sweep, it is no server.
+        //
+        // The same 36 h floor applies to MinPeriodForRefreshInHours, which is the operative reason
+        // @refresh is unusable for message redelivery here. The spike that measured @refresh waking
+        // a subscription in 4.65 s ran against a Developer licence; the mechanism is real, but on
+        // Community it cannot be scheduled more often than every 36 h, so it cannot carry retries.
+        const int communityMinimumExpirationFrequencySeconds = 36 * 60 * 60;
+
         documentStore.Maintenance.Send(new ConfigureExpirationOperation(new ExpirationConfiguration
         {
             Disabled = false,
+            DeleteFrequencyInSec = communityMinimumExpirationFrequencySeconds,
         }));
 
         return app;
