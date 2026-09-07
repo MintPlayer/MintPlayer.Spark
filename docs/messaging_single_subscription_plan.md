@@ -286,6 +286,14 @@ problem, never a reason to re-run until green.
 - [ ] `LicenseLimitException` on create is still fatal (invariant 12)
 - [ ] The four previously-untested invariants now have tests (R8)
 - [ ] `SubscriptionPerQueue` mode covered
+- [ ] **No back-compat hedging** — PRD §9b's eight simplifications taken, not deferred: typed webhook
+      envelope gets `[MessageQueue]`, the `queueName` broadcast override deleted, empty
+      `SparkSubscriptionOptions` deleted, `RetryNumerator`'s inert `@refresh` resolved, the three
+      retry implementations collapsed to one, `SparkSubscriptionWorker<T>`'s virtuals reshaped,
+      `CoverageQueues` guards deleted rather than re-motivated
+- [ ] **In-flight production documents accounted for** (PRD §9b) — API freedom is not document-shape
+      freedom. State in the PR whether the queues were drained first or a migration rewrites existing
+      `SparkMessages`, and how it was verified
 - [ ] **Version diff reviewed** — all 22 packages to `preview.74`, major digit unchanged. CI publishes
       on push to `master`; a wrong major is burned forever
 - [ ] PRD §7's out-of-scope k8s items are recorded somewhere durable, and the PR does **not** claim

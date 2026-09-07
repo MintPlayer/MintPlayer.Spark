@@ -251,6 +251,37 @@ is not a constraint.
    frequency-only change, and its hook fires only on database creation, so an existing database is
    never reconfigured. One app depends on refresh without configuring it at all.
 
+### Four more ideas from the same prior art, independent of whether §3c is adopted
+
+1. **Whole-subscription backoff for a global outage.** Throwing a `SubscriptionShouldWaitException`
+   (with a delay) from the batch handler backs off *the entire subscription* rather than parking each
+   message individually. Spark has no equivalent: when GitHub is down, every message on the
+   publishing lane fails and parks separately, each burning an attempt from its own budget. A single
+   "the upstream is down, wait two minutes" signal is the right granularity for that, and it would
+   stop an outage from exhausting `MaxAttempts` across a whole queue.
+2. **Compute the park time from the next state boundary, not a fixed delay.** A small helper —
+   gather every timestamp at which a derived field could change, take the earliest still in the
+   future, `null` meaning "nothing left to happen" — turns a status machine into two writes over a
+   document's whole lifetime. Not needed for retry backoff, but it is the right shape for any
+   Spark feature that derives state from dates.
+3. **`@expires` and `@refresh` are mutually exclusive and must be managed as a pair.** Their code
+   removes one when setting the other, and the subscription excludes both. Spark sets `@expires` on
+   terminal messages, so adopting `@refresh` means every park/terminal transition has to clear the
+   other key or a message can be simultaneously scheduled for redelivery and for deletion.
+4. **An analyzer can guard the filter.** Their ETL layer ships a Roslyn analyzer that cross-checks a
+   worker's subscription filter against the cases it actually handles. Spark already has SPARK004/009/010,
+   so a rule asserting "a worker that parks documents must carry the `not exists(@refresh)` clause"
+   is cheap insurance against scar 3 — the hot-loop they hit in production.
+
+### One more scar, and it argues *for* the single-subscription design
+
+**The wake-up is a write, so every *other* subscription on that collection re-fires too.** Their code
+calls this out explicitly as the reason a nested value object gets a cron sweeper instead: stamping
+`@refresh` on the parent would re-fire all of the parent's other workers on a document whose business
+state never changed. Under this PRD's design there is exactly **one** subscription over
+`SparkMessages`, so the concern is structurally absent — a point in favour of collapsing to one
+subscription that has nothing to do with the licence cap.
+
 ### Position for this PRD
 
 **Not adopted in this rework.** The chosen transport keeps `WakeUp`, and the sweeper works today. But
@@ -467,8 +498,8 @@ ones this change puts most at risk.
 `libs/messaging` is 1,237 lines across 23 files; the queue-scoped logic is `MessageSubscriptionManager.cs`
 (112 lines, fan-out at 33-50) and two spots in `MessageSubscriptionWorker.cs` (`SubscriptionName` at
 :20, RQL at :64-67). The remaining ~290 lines of the worker — dispatch, allow-listing, checkpointing,
-retry rollup — are untouched. Both types are `internal`, so the published API can survive unchanged
-even though breaking changes are permitted.
+retry rollup — are untouched. Both types are `internal`, so the published API *could* survive
+unchanged — but per §9b it should not.
 
 Expect roughly **8-12 source files**, **~14 test files** (all 9 messaging tests re-plumbed for the new
 worker construction; `MessageSubscriptionManagerLifecycleTests` and `CoverageQueuesTests` rewritten
@@ -482,6 +513,59 @@ Consumers to keep working: CodeCoverage (9 message types on 2 queues + the frame
 `SparkSubscriptionWorker<T>` subclass and gets `WaitForFree` from the same fix.
 
 ---
+
+## 9b. No backward compatibility required — take the simplifications
+
+Owner instruction, restated: **breaking changes allowed, no back-compat needed.** The default is
+therefore to *simplify*, not to preserve. Anything kept must be kept for a reason other than
+compatibility.
+
+Take these while we are here:
+
+1. **Give `GitHubWebhookMessage<TEvent>` a `[MessageQueue("spark-github-all")]`.** Today the generic
+   envelope carries no attribute, so `QueueNames.Derive` mints a queue name **per closed generic** —
+   the derived-queue trap that put WebhooksDemo at 3 subscriptions without anyone declaring one
+   (invariant 13). Fixing it at the source is better than every consumer knowing to avoid typed
+   envelopes, and it makes `docs/coverage_project_automation_PRD.md` FR5's "sibling recipient, never
+   `IRecipient<GitHubWebhookMessage<T>>`" rule unnecessary rather than merely documented.
+2. **Delete `IMessageBus.BroadcastAsync(message, queueName)`.** The explicit-override form is used by
+   **no production code** — only tests and a README example. It exists to support "per-collection queue
+   isolation", which the single-subscription design makes free anyway.
+3. **Delete `SparkSubscriptionOptions`** — it is literally `public class SparkSubscriptionOptions;`,
+   an empty type whose two former properties were removed because nothing read them.
+4. **Delete `RetryNumerator`'s `@refresh` writes** (B11, `:57`/`:74`) and its false disclaimer at
+   `:11`, unless S4 comes back green *and* refresh is deliberately enabled with the §3c startup
+   assertion. Do not keep inert code that reads as a working mechanism.
+5. **Collapse the two retry implementations.** `MessageRetrySweeper` and `SyncActionRetrySweeper` are
+   near-duplicates — the latter's own comment says "two copies of this pattern is one more than
+   ideal" — and `RetryNumerator` is a third, counter-based one used by exactly one worker. One
+   implementation, shared.
+6. **Redesign `SparkSubscriptionWorker<T>`'s protected surface** freely. Its `MaxDocsPerBatch`,
+   `Database`, `KeepRunning`, `RetryDelay`, `MaxDownTime` virtuals were shaped around one worker per
+   queue; the feeder needs a different shape. `Database` in particular exists only to gate the dead
+   `WaitForFree` line (F1) and should go.
+7. **Delete the `CoverageQueues` guard tests** rather than re-motivating them, and reduce
+   `CoverageQueues` to whatever the app still genuinely needs — the two-name constraint is gone, so
+   the seven queues that *should* exist can exist, with real FIFO isolation per concern.
+8. **Rename freely.** `SparkMessaging-{queueName}` as a subscription name, `WakeUp` as a field,
+   `FallbackPollInterval` as an option whose meaning has already drifted once — none of these need to
+   keep their names.
+
+### The one thing back-compat freedom does *not* cover
+
+**Production data.** `SparkMessages` documents exist in the live `Coverage` database right now, some
+of them non-terminal. API freedom is not document-shape freedom:
+
+- Removing or renaming a field on `SparkMessage` orphans in-flight messages — they deserialize with
+  defaults, and a message whose `Status`/`QueueName` no longer means what it did is a silently
+  dropped message, which is exactly the failure class this PRD exists to end.
+- The safe order is: **drain first, then change shape.** Either deploy the shape change only after
+  the queues are empty, or write a migration that rewrites existing `SparkMessages` into the new
+  shape before the messaging host starts — the same migration slot that removes the legacy
+  subscription definitions (M6), and the same ordering question S1 has to settle anyway.
+- Terminal messages can simply be left to expire; only non-terminal ones need care.
+
+State explicitly in the PR which of the two routes was taken, and how it was verified.
 
 ## 10. Risks
 
