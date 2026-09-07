@@ -35,7 +35,26 @@ public class RepositoryActions : DefaultPersistentObjectActions<Repository>
 }
 ```
 
-Worked example in the repo: `WebhooksDemo`'s `GitHubProjectActions.GetRowFilterAsync` awaits the caller's GitHub-org allow-list (live, per-request-cached) and returns `p => owners.Contains(p.OwnerLogin)` — pushed down as `owner in (…)`.
+Worked example in the repo: `apps/CodeCoverage`'s `GitHubProjectActions.GetRowFilterAsync` awaits
+the caller's GitHub-org allow-list (live, per-request-cached) and returns the shared predicate from
+`GitHubProjectVisibility.Filter`, pushed down as `owner in (…)`.
+
+Two spellings in that predicate are load-bearing rather than stylistic, and both are easy to get
+wrong in a way that only shows up in production:
+
+```csharp
+project => project.Connection != RepositoryConnection.Disconnected
+        && project.OwnerLogin.In(allowedOwners);
+```
+
+- **`In()`, not `Contains`.** RavenDB's LINQ provider fails two ways on .NET 10: a `string[]`
+  receiver binds to the untranslatable `MemoryExtensions.Contains`, and `List<string>.Contains`
+  throws `TypedParameterExpression`. `In()` also has a real in-memory implementation, which the
+  compiled single-row checks rely on when they evaluate this same expression against one loaded
+  document.
+- **`!= Disconnected`, not `== Connected`.** An absent JSON field satisfies no equality, so
+  equality hides every document written before the field existed. Negation matches the absent
+  field, which is what makes the rule correct for old documents without a migration.
 
 > **Cost contract (why awaiting I/O here is safe).** The framework invokes the hook **at most once per (entity type, action) per request** and caches the result — bounded by the model, never by row count, page size, or streaming batch count. On a stream the cache refreshes on the periodic re-authorization tick (~every 10 batches), so a filter is at most that stale. Because the result is cached per request, the filter must be a **pure function of request-scoped state**. `IsAllowedAsync`, by contrast, is genuinely per-row and is **not** memoized — express I/O-backed rules as a `GetRowFilterAsync` expression, not in `IsAllowedAsync`.
 

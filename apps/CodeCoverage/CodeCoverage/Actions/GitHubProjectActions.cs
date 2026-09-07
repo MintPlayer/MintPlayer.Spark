@@ -26,9 +26,14 @@ public partial class GitHubProjectActions : DefaultPersistentObjectActions<GitHu
 
     public override async Task<Expression<Func<GitHubProject, bool>>?> GetRowFilterAsync(string action)
     {
-        // Memoized per request by ISparkVisibility, which matters here: the row hooks run up to
-        // three times per read, plus once per row for redaction, so an un-memoized owner lookup
-        // would be a query per row.
+        // Awaiting I/O here is safe by contract: the framework invokes this hook at most once per
+        // (entity type, action) per request and caches the result — bounded by the model, never by
+        // row count or page size. On a stream the cache refreshes on the periodic re-authorization
+        // tick, so the filter is at most that stale. See docs/guide-row-security.md.
+        //
+        // The corollary is the constraint: because the result is cached per request, the filter has
+        // to be a pure function of request-scoped state. Per-row rules belong in IsAllowedAsync,
+        // which is genuinely per-row and deliberately not memoized.
         var owners = await visibility.GetAllowedOwnersAsync();
 
         // Applies to writes as well as reads, deliberately. Boards are mutable through this surface
