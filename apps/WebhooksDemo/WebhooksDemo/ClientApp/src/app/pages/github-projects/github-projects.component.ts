@@ -6,7 +6,7 @@ import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@min
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
-import { PersistentObject, EntityType } from '@mintplayer/ng-spark/models';
+import { PersistentObject, EntityType, QueryResultItem } from '@mintplayer/ng-spark/models';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { GitHubProjectsService } from '../../services/github-projects.service';
 import { GitHubProjectInfo } from '../../models/github-project';
@@ -68,7 +68,8 @@ export default class GitHubProjectsComponent implements OnInit {
           // Explicit take: the server default is 50, and this list is matched against every GitHub
           // project, so a silent truncation would render enabled projects as disabled.
           ? this.sparkService.executeQuery(projectsQuery.id, { take: 500 })
-          : Promise.resolve({ items: [] as QueryResultItem[] }),
+              .then(result => result.items)
+          : Promise.resolve<QueryResultItem[]>([]),
         this.sparkService.getEntityTypeByClrType('WebhooksDemo.Entities.GitHubProject'),
       ]);
       this.entityType = entityType;
@@ -77,7 +78,7 @@ export default class GitHubProjectsComponent implements OnInit {
       // Rows carry their values as a keyed list rather than as attributes, and the row id IS the
       // document id — which is all this page needed from the entity it used to load.
       const enabledMap = new Map<string, string>();
-      for (const row of sparkRows.items) {
+      for (const row of sparkRows) {
         const nodeId = row.values.find(v => v.key === 'NodeId')?.value;
         if (nodeId) {
           enabledMap.set(String(nodeId), row.id);
