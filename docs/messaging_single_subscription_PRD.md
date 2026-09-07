@@ -4,6 +4,10 @@
 **Date:** 2026-09-07
 **Supersedes:** the "one subscription per queue" design of record in
 `docs/prd/PRD-SubscriptionWorker.md` §8.2 (`:459-479`)
+**Decisions, rejected alternatives and corrections to earlier beliefs:**
+[decisions_messaging_and_project_automation.md](decisions_messaging_and_project_automation.md) —
+read that first if you are picking this up cold; it also inventories the documentation this
+supersedes.
 
 ---
 

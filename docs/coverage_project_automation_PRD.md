@@ -4,6 +4,10 @@
 **Date:** 2026-09-07
 **Owner decision recorded:** reimplement, do not copy — "We should be able to re-implement the
 github-projects ProgramUnit to the new system. No code-copy, but migration."
+**Decisions, rejected alternatives and corrections to earlier beliefs:**
+[decisions_messaging_and_project_automation.md](decisions_messaging_and_project_automation.md) —
+read that first if you are picking this up cold. Note especially its §5: the messaging rework lands
+first and **removes** §C1's "no new queue name" constraint below.
 
 ---
 
