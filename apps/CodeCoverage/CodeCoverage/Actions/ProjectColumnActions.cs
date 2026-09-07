@@ -1,5 +1,6 @@
 using CodeCoverage.Entities;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Queries;
 using Raven.Client.Documents.Session;
@@ -26,16 +27,41 @@ namespace CodeCoverage.Actions;
 /// <para>
 /// The query is <b>entity-backed but not document-backed</b>, and that distinction is what keeps it
 /// cheap. <c>ProjectColumn.json</c> declares a <c>clrType</c>, so this is not a "composed"
-/// (<c>clrType</c>-less) query: none of the composed-query costs apply — no
-/// <c>ISparkOwnsRowSecurity</c> to implement, no row-filtering or redaction responsibilities
-/// transferred to this class. Raven-specific steps in the executor are all guarded on the returned
-/// object actually being a Raven queryable, so returning a plain sequence simply skips them, and
+/// (<c>clrType</c>-less) query: the composed-query limits do not apply, and per-row <c>can</c>,
+/// row filtering and redaction are available in principle. Raven-specific steps in the executor are
+/// all guarded on the returned object actually being a Raven queryable, so returning a plain sequence simply skips them, and
 /// sorting, search and paging fall back to their in-memory equivalents.
 /// </para>
 /// </summary>
-public partial class ProjectColumnActions : DefaultPersistentObjectActions<ProjectColumn>
+public partial class ProjectColumnActions : DefaultPersistentObjectActions<ProjectColumn>, ISparkOwnsRowSecurity
 {
     [Inject] private readonly IAsyncDocumentSession session;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Written because the startup gate refused to boot without it, and the refusal was right: the
+    /// original grant of <c>QueryRead/ProjectColumn</c> to <c>authenticated</c> plus no row rule on
+    /// this class is indistinguishable, to any reviewer or test, from having forgotten to scope a
+    /// collection at all.
+    /// <para>
+    /// A row filter would be the wrong instrument here rather than a missing one. <c>ProjectColumn</c>
+    /// has no Raven collection — the rows are a list embedded in one board document — so there is no
+    /// queryable for an <c>Expression&lt;Func&lt;ProjectColumn,bool&gt;&gt;</c> to narrow, and
+    /// <c>GetRowFilterAsync</c> could not express the scope in any case: its signature takes an
+    /// action name and carries no parent.
+    /// </para>
+    /// </remarks>
+    public string RowSecurityRationale =>
+        "Rows are never served from a collection: the only query, Project_Columns below, returns the " +
+        "Columns embedded in a single parent board, and returns empty unless CustomQueryArgs.Parent is " +
+        "present and is a GitHubProject. Scoping therefore lives in the parent's authorization, not " +
+        "here — Endpoints/Queries/Execute.cs resolves parentId through " +
+        "DatabaseAccess.GetPersistentObjectAsync, which enforces the Read right and runs " +
+        "GitHubProjectActions.OnLoadAsync, so GitHubProjectVisibility's row filter applies; a board the " +
+        "caller may not see resolves to null and the endpoint answers 404 before this method runs. The " +
+        "raw session.LoadAsync below bypasses row security and is safe only for that reason: it reloads " +
+        "the id the endpoint already authorized. Every failure path narrows — no parent, wrong parent " +
+        "type, or a board that no longer loads all yield an empty option list.";
 
     /// <summary>
     /// The columns of the board this rule belongs to.

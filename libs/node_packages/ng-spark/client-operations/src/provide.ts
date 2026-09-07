@@ -70,7 +70,14 @@ export function provideSparkClientOperations(): EnvironmentProviders {
                     type: 'refreshAttribute',
                     handler: (operation: ClientOperation) => {
                         const patch = operation as RefreshAttributeOperation;
-                        attributes.request(patch.objectTypeId, patch.id, patch.attributeName, patch.value);
+                        // Forwarded field by field, not as one value: an AsDetail attribute's rows
+                        // travel in object/objects and its value is null, so collapsing them here
+                        // is what made a detail-grid refresh impossible to express.
+                        attributes.request(patch.objectTypeId, patch.id, patch.attributeName, {
+                            value: patch.value,
+                            object: patch.object,
+                            objects: patch.objects,
+                        });
                     },
                 };
             },

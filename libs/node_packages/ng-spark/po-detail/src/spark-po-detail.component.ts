@@ -13,7 +13,7 @@ import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective } from '@mintplayer/ng-bootstrap/tab-control';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
-import { SparkAttributeRefreshService, SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
+import { SparkAttributePatch, SparkAttributeRefreshService, SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import {
   TranslateKeyPipe,
   ResolveTranslationPipe,
@@ -140,17 +140,48 @@ export class SparkPoDetailComponent {
    * cheaper and more correct than re-reading: a re-read goes through a RavenDB index that may
    * still be stale from the very write that produced the patch, and would show the old value.
    */
-  private applyAttributePatches(patches: Record<string, unknown>): void {
+  private applyAttributePatches(patches: Record<string, SparkAttributePatch>): void {
     const current = this.item();
     if (!current) return;
 
     let changed = false;
     const attributes = current.attributes.map(attribute => {
       if (!Object.prototype.hasOwnProperty.call(patches, attribute.name)) return attribute;
-      if (attribute.value === patches[attribute.name]) return attribute;
 
+      const patch = patches[attribute.name];
+      const next = { ...attribute };
+      let patched = false;
+
+      // Each field is applied on its own, because they are not interchangeable: an AsDetail
+      // attribute carries its rows in object/objects and leaves value null, so applying only
+      // value could never refresh a detail grid.
+      //
+      // Compared by identity in every case. A scalar skips when unchanged, and a null skips
+      // against a null -- which matters because the server writes object/objects as null on a
+      // scalar patch, and treating that as a change would repaint on every patch. A rewritten
+      // collection is a new array and so never matches, which is the behaviour wanted: comparing
+      // rows deeply would cost more than the repaint it saves.
+      if (patch.value !== undefined && next.value !== patch.value) {
+        next.value = patch.value;
+        patched = true;
+      }
+      // Only for the attributes that actually use them. The server writes object/objects as
+      // null on every scalar patch, so applying them unconditionally would mark a scalar
+      // attribute changed on each patch and repaint for nothing.
+      if (attribute.dataType === 'AsDetail') {
+        if (patch.object !== undefined && next.object !== patch.object) {
+          next.object = patch.object as PersistentObject | null;
+          patched = true;
+        }
+        if (patch.objects !== undefined && next.objects !== patch.objects) {
+          next.objects = patch.objects as PersistentObject[] | null;
+          patched = true;
+        }
+      }
+
+      if (!patched) return attribute;
       changed = true;
-      return { ...attribute, value: patches[attribute.name] };
+      return next;
     });
 
     if (changed) this.item.set({ ...current, attributes });

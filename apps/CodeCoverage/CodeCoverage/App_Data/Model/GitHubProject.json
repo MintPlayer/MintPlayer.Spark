@@ -292,6 +292,7 @@
       "id": "237b1f50-88b8-48e5-a946-98a2f5251772",
       "name": "GetGitHubProjects",
       "source": "Database.GitHubProjects",
+      "alias": "github-projects",
       "sortColumns": [
         {
           "property": "Name",

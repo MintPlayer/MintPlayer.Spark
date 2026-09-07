@@ -32,6 +32,16 @@ export interface RefreshAttributeOperation {
     id: string;
     attributeName: string;
     value?: unknown;
+
+    /**
+     * Nested rows of an `AsDetail` attribute. A loaded AsDetail attribute carries its rows in
+     * `object` / `objects` and leaves `value` null, so a patch limited to `value` could never
+     * refresh a detail grid -- it always sent null, and a null over a null repaints nothing.
+     *
+     * An empty `objects` array means the grid is now empty, and is distinct from omitting it.
+     */
+    object?: unknown;
+    objects?: unknown[];
 }
 
 export interface RefreshQueryOperation {

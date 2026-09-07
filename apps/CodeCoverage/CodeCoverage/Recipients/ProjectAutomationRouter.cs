@@ -98,17 +98,32 @@ public partial class ProjectAutomationRouter : IRecipient<GitHubWebhookMessage>
         // sharing one with account synchronization. Keyed on the delivery id so a GitHub redelivery
         // does not enqueue a second automation message — the catch-all's own de-duplication does
         // not cover a message this handler creates.
-        await messageBus.BroadcastOnceAsync(
-            new ProjectAutomationMessage
-            {
-                EventType = message.EventType,
-                InstallationId = message.InstallationId,
-                RepositoryFullName = message.RepositoryFullName,
-                EventJson = message.EventJson,
-                DeliveryId = message.Headers.Delivery,
-            },
-            $"automation-{message.Headers.Delivery}",
-            cancellationToken);
+        var delivery = message.Headers.Delivery;
+        var automationMessage = new ProjectAutomationMessage
+        {
+            EventType = message.EventType,
+            InstallationId = message.InstallationId,
+            RepositoryFullName = message.RepositoryFullName,
+            EventJson = message.EventJson,
+            DeliveryId = delivery ?? string.Empty,
+        };
+
+        // No delivery id: broadcast without a key, exactly as the catch-all does for the same
+        // reason. Interpolating a null here would not merely lose de-duplication, it would key
+        // EVERY such delivery as "automation-" — one shared id, so the first would enqueue and
+        // every later one would be silently discarded as a duplicate. Dropping webhooks is the
+        // failure mode this whole path exists to avoid, so the degradation has to be the one that
+        // over-delivers rather than the one that under-delivers.
+        if (string.IsNullOrWhiteSpace(delivery))
+        {
+            logger.LogWarning(
+                "Automatable {EventType} carried no X-GitHub-Delivery header; enqueueing board "
+                + "automation without redelivery de-duplication", message.EventType);
+            await messageBus.BroadcastAsync(automationMessage, cancellationToken);
+            return;
+        }
+
+        await messageBus.BroadcastOnceAsync(automationMessage, $"automation-{delivery}", cancellationToken);
     }
 
     /// <summary>

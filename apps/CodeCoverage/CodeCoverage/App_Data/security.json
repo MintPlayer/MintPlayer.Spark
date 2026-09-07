@@ -143,6 +143,18 @@
       "isDenied": false
     },
     {
+      "id": "c0e5a9e1-0000-4000-8000-000000000066",
+      "resource": "QueryReadEditNewDelete/EventColumnMapping",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "c0e5a9e1-0000-4000-8000-000000000068",
+      "resource": "Read/LookupReferences",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
       "id": "c0e5a9e1-0000-4000-8000-000000000065",
       "resource": "QueryRead/ProjectColumn",
       "groupId": "00000000-0000-0000-0000-000000000001",

@@ -41,12 +41,41 @@ public class GitHubStateReconcilerTests : CoverageRavenTest
                 : Task.FromResult<IReadOnlyList<InstallationRepository>>(Repositories);
     }
 
+    /// <summary>
+    /// A stand-in board source that reports no boards.
+    /// </summary>
+    /// <remarks>
+    /// Present so these tests keep testing <em>repository</em> reconciliation. Board reconciliation
+    /// was added to the same service later, and its dependency has to be resolvable or every test
+    /// here fails on construction rather than on its own assertion — which is exactly what
+    /// happened: six tests reported "Exception type was not an exact match" while the real error
+    /// was an unresolved <c>IInstallationProjects</c>, two layers down in the inner exception.
+    /// <para>
+    /// Empty rather than a substitute that throws, deliberately. The reconciler catches board
+    /// failures so that a board problem cannot undo repository reconciliation, so a throwing fake
+    /// would be silently swallowed here and prove nothing; answering "no boards" keeps these tests
+    /// about the thing they assert. The board paths have their own tests.
+    /// </para>
+    /// </remarks>
+    private sealed class NoInstallationProjects : IInstallationProjects
+    {
+        public Task<IReadOnlyList<InstallationProject>> ListAsync(
+            long installationId, string ownerLogin, bool ownerIsOrganization, int max,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<IReadOnlyList<InstallationProject>>([]);
+
+        public Task<ProjectStatusField> GetStatusFieldAsync(
+            long installationId, string projectNodeId, CancellationToken cancellationToken = default)
+            => Task.FromResult(new ProjectStatusField(string.Empty, []));
+    }
+
     private static GitHubStateReconciler CreateReconciler(IAsyncDocumentSession session, IInstallationRepositories github)
     {
         var services = new ServiceCollection();
         services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.None));
         services.AddSingleton(session);
         services.AddSingleton(github);
+        services.AddSingleton<IInstallationProjects>(new NoInstallationProjects());
         services.AddScoped<GitHubStateReconciler>();
         return services.BuildServiceProvider().GetRequiredService<GitHubStateReconciler>();
     }

@@ -37,6 +37,7 @@ public partial class SyncColumnsAction : SparkCustomAction
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly ILogger<SyncColumnsAction> logger;
     [Inject] private readonly IManager manager;
+    [Inject] private readonly IDatabaseAccess databaseAccess;
 
     public override async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
     {
@@ -94,7 +95,7 @@ public partial class SyncColumnsAction : SparkCustomAction
             board.ColumnsSyncedAtUtc = DateTime.UtcNow;
             await session.SaveChangesAsync(cancellationToken);
 
-            manager.Client.RefreshAttribute(page, nameof(GitHubProject.Columns));
+            await RefreshBoardAsync(page, cancellationToken);
             manager.Client.Notify(
                 $"Board #{board.Number} has no Status field, so there are no columns to move cards between. "
                 + "Add one on GitHub, then synchronize again.",
@@ -118,9 +119,7 @@ public partial class SyncColumnsAction : SparkCustomAction
 
         await session.SaveChangesAsync(cancellationToken);
 
-        manager.Client.RefreshAttribute(page, nameof(GitHubProject.Columns));
-        manager.Client.RefreshAttribute(page, nameof(GitHubProject.EventMappings));
-        manager.Client.RefreshAttribute(page, nameof(GitHubProject.ColumnsSyncedAtUtc));
+        await RefreshBoardAsync(page, cancellationToken);
 
         if (orphaned.Count > 0)
         {
@@ -135,5 +134,50 @@ public partial class SyncColumnsAction : SparkCustomAction
         manager.Client.Notify(
             $"Synchronized {board.Columns.Count} column(s) for board #{board.Number}.",
             NotificationKind.Success);
+    }
+
+    /// <summary>
+    /// Patches the attributes this action rewrote onto the open page, from a freshly mapped board.
+    /// </summary>
+    /// <remarks>
+    /// The re-map is the whole point, and the reason this is not three inline
+    /// <c>RefreshAttribute(page, …)</c> calls — which is what it was, and which did nothing
+    /// observable.
+    /// <para>
+    /// <c>RefreshAttribute(po, name)</c> is a <b>patch, not a re-fetch</b>: it reads
+    /// <c>po[name].Value</c> and puts that value on the wire, and the client assigns it verbatim.
+    /// <c>args.Parent</c> is the page the browser posted, so its attribute values are the state
+    /// from <em>before</em> this action ran — passing it sends the stale values straight back. For
+    /// a board whose columns had never been synced that meant three patches of <c>null</c>, and
+    /// since the client skips a patch equal to the current value, the grid did not even repaint.
+    /// The button looked dead while succeeding.
+    /// </para>
+    /// <para>
+    /// A re-map rather than hand-built values because the client assigns the wire value into the
+    /// attribute as-is: an <c>AsDetail</c> array has to arrive in exactly the shape a normal load
+    /// produces, and the entity mapper is the only thing that knows that shape.
+    /// </para>
+    /// <para>
+    /// Safe against the staleness that patches exist to avoid: this reloads a document by id
+    /// through the same authorized read path the page itself used, not through an index, so it
+    /// cannot observe a pre-save projection. It re-authorizes as a side effect, which is why a
+    /// null result is simply skipped — the notification still tells the user what happened.
+    /// </para>
+    /// <para>
+    /// <c>EventMappings</c> is refreshed although this action never edits a rule: the orphan check
+    /// above reports rules whose target column has vanished, and a user acting on that message
+    /// re-picks a target from the option list, which is derived from the columns just replaced.
+    /// </para>
+    /// </remarks>
+    private async Task RefreshBoardAsync(PersistentObject page, CancellationToken cancellationToken)
+    {
+        var fresh = await databaseAccess.GetPersistentObjectAsync(page.ObjectTypeId, page.Id!);
+        if (fresh is null)
+            return;
+
+        manager.Client.RefreshAttribute(fresh, nameof(GitHubProject.Columns));
+        manager.Client.RefreshAttribute(fresh, nameof(GitHubProject.EventMappings));
+        manager.Client.RefreshAttribute(fresh, nameof(GitHubProject.ColumnsSyncedAtUtc));
+        manager.Client.RefreshAttribute(fresh, nameof(GitHubProject.StatusFieldId));
     }
 }

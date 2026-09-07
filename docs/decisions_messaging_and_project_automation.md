@@ -59,6 +59,10 @@ the kind of claim that gets re-adopted after a compaction, so it is recorded wit
 | **C5** | *(implicit)* that `RetryNumerator`'s `@refresh` writes do something | `ConfigureRefreshOperation`/`RefreshConfiguration` appear **nowhere** in the repo; every `Spark*`/`Coverage*` database reports `Refresh: null`. The writes are inert | `RetryNumerator.cs:57,74` |
 | **C6** | The cap is "3" | 3 **per database** *and* **15 per cluster**. A full-featured Spark app spends all three before declaring its own queue (`SyncAction` + `spark-etl-deployment` + `spark-github-all`); CodeCoverage only fits because replication is off there | ravendb.net/buy |
 | **C7** | *(implicit)* that `EMessageStatus.Processing` is recoverable | Written at `MessageSubscriptionWorker.cs:83`, **read by nothing**. Not by the subscription query, not by the sweeper. Any crash mid-handler strands the message forever | grep over `libs/messaging` |
+| **C8** | *(implicit)* that `IClientAccessor.RefreshAttribute` can refresh any attribute | It **cannot refresh an `AsDetail` attribute at all**. Those rows live on the `PersistentObjectAttributeAsDetail` subclass in `Object`/`Objects`; `value` is null. The operation carried only `Value`, so a detail-grid patch always sent null — and the client skips a patch equal to the current value, so it repainted nothing and the action looked dead while succeeding | Wire capture of `SyncColumns`: `"attributeName":"Columns","value":null` alongside 4 columns actually written. Fixed by adding `Object`/`Objects` to `RefreshAttributeOperation` |
+| **C9** | *(implicit)* that `RefreshAttribute(po, name)` re-fetches | It is a **patch**: it reads `po[name].Value` and puts that on the wire. Passing `args.Parent` therefore sends the client's *pre-action* values straight back — `SyncColumns` patched stale nulls over stale nulls. The fix is to re-map the object through the authorized read path after saving | `ClientAccessor.cs:47-61`; `attribute-refresh.service.ts` states it outright: "carries the new value, so this is a patch and not a re-fetch" |
+| **C10** | *(implicit)* that a `Database.*` query executed with a parent proves a mis-declared sub-query | Too broad by one whole use of the parent: the edit form sends the edited object as the parent when fetching **every Reference attribute's option list**, so an ordinary "any Account" picker failed the form with a 500 and no options. What makes a query a sub-query is the **declaration** — the parent type's `Queries` aliases — not the request. The guard now checks that, so it still fires exactly where it was aimed | `QueryExecutor.cs:557`, `spark-po-edit.component.html:21-22`, `spark-po-form.component.ts:214-226` |
+| **C11** | *(implicit)* that `apps/CodeCoverage` renders server notifications | Its root component never imported `SparkToastContainerComponent`, so **every** `notify` was discarded — including `DeleteDataAction`'s and `ResyncAction`'s **error** messages. Undetected because the server side *is* tested (`DeleteDataActionReportingTests`) while nothing asserted a toast reached a DOM | `app.ts:7` against `apps/Fleet/.../app.ts:8`; verified fixed by capturing `.spark-toast--success` in the container after a click |
 
 ## 4. Measured facts worth not re-deriving
 
@@ -75,6 +79,45 @@ the kind of claim that gets re-adopted after a compaction, so it is recorded wit
   `MaxNumberOfSubscriptionsPerCluster: null`; 12 subscriptions were created on one database without
   complaint. Any cap behaviour must be simulated with a self-imposed budget, and
   `EnsureSubscriptionExistsAsync`'s `LicenseLimitException` branch is **unverifiable locally**.
+
+### Running two suites at once reproduces the teardown flake on demand, 2026-09-07
+
+`dotnet test` on `MintPlayer.Spark.Tests` concurrently with the `ng-spark` vitest run (and a
+`dotnet run` host still up) produced **three** failures, all with one signature — `AdminDatabasesHandler.Delete`
+waiting 15 s on a raft index — in `GetQueryEndpointTests`, `ComposedQueryTests` and
+`OidcLoginSecurityTests`, none of which touch the code under change. This is the documented
+CPU-starvation flake, and running the suites in parallel is a reliable way to cause it: the embedded
+RavenDB server is a separate process competing for the same cores.
+
+Worth knowing in both directions. It is a cheap reproduction when the flake needs studying, and it
+means **a parallel sweep cannot be used to judge a change** — the failure list is dominated by
+whichever tests happened to tear down while the other suite peaked. Run the suites sequentially and
+with no host running before believing a red result.
+
+### Grants an inline `AsDetail` editor needs, measured 2026-09-07 in the browser
+
+Both of these presented as *nothing rendered* rather than as a denial, and both were found only by
+opening the form. Neither `--spark-verify-security` nor the startup gate has anything to say about
+them, because in each case the configuration is internally consistent — it is just incomplete.
+
+- **A type used only as an `asDetailType` still needs a type-level grant.** `GET /spark/types`
+  omits any type the caller has no `Query` right on (`Endpoints/EntityTypes/Get.cs:27`), and an
+  inline row is rendered from the nested type's attributes. Without the grant the Add button
+  produced a row with **no fields at all** — no console error, no server log line, because an
+  absent type is indistinguishable from a type whose attributes are all hidden. `EventColumnMapping`
+  owns no query, is never queried and appears in no menu, and still needs one.
+- **`New` is required for the Add button to do anything, and its absence is worse than its
+  presence.** `canCreateDetailRow`/`canDeleteDetailRow` default to **true when permissions are
+  missing** (`can-create-detail-row.pipe.ts:8`), so before the type was in `/spark/types` the button
+  appeared and worked; adding the `Query` right made permissions resolvable, `canCreate` became
+  false, and the same button went silently inert. Granting a right made the form *less* functional
+  until `New` was granted too. `Edit`/`Delete` gate the row fields and the row's delete button the
+  same way, so the rule grid takes `QueryReadEditNewDelete`.
+- **`Read/LookupReferences` is a separate grant that no entity right implies**, and omitting it
+  fails as a **404** — `GET /spark/lookupref/{name}` refuses through `SparkDenial.RefuseJson`, whose
+  whole point is to be byte-identical to a genuine not-found (`LookupReferences/Get.cs:26-37`). So a
+  missing grant and a misspelled lookup name look exactly alike from the client, and the dropdown is
+  simply empty. CodeCoverage granted it nowhere; every demo does.
 
 ### Reference option sources, established 2026-09-07 — full detail in `docs/guide-reference-attributes.md`
 
