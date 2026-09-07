@@ -246,9 +246,34 @@ decision register sequences it.
 | M8 leader-gate singletons | **Partial — see below** |
 | M9 migration lock | **Partial — see below** |
 | M10 tests | **Done.** Lifecycle tests rewritten; `MessagingInvariantsTests` covers the four untested invariants; `CoverageQueuesTests` count/name facts deleted; `DeleteDataActionTests` re-motivated on ordering |
-| M11 test sweep | Run at the end, once |
+| M11 test sweep | **Done.** `MintPlayer.Spark.Tests` **1981 passed / 0 failed** (2m56s); `CodeCoverage.Tests` **365 passed / 0 failed**. Client vitest and a full `nx run-many` still outstanding — note `nx run-many --target=build --all` produced two *flaky* task failures that pass individually, which looks like a parallel-build race rather than a code fault |
 | M12 docs | **Done.** Messaging README, subscription-worker README worked example, `PRD-SubscriptionWorker` superseding banner, coverage PRD §C1 lifted |
-| M13 manual verification | **Not done** — requires a real webhook through the tunnel and a two-process run |
+| M13 manual verification | **Partial.** A real webhook *was* driven end to end through the smee tunnel during the coverage work — see `coverage_project_automation_PRD.md` §3b, which records a delivery travelling feeder → own queue → recipient → GraphQL, and a `NonRetryableException` dead-lettering at `AttemptCount = 1`. Still not done: the **two-process** run (one feeds, one stands by, no `SubscriptionInUseException`) and timing a leader kill |
+
+### Added after the milestone list was written
+
+**`SparkMessagingOptions.HandlerTimeout` (default 10 min)** — bounds the one failure mode no retry
+budget can. A handler that *throws* is parked and the pump moves straight on, so failures interleave
+rather than blocking the head of a lane, and `MaxAttempts` eventually dead-letters them. But a
+handler that **hangs** holds its lane for ever: one message in flight by design, and the claim is
+renewed while it runs, so the sweeper's reclaim never fires and no retry budget is ever consumed.
+The timeout cancels the message's token and frees the lane.
+
+Two properties of it are documented rather than assumed: the default is deliberately **generous**,
+because cutting a legitimately slow handler short is worse than one stuck queue (a hang blocks one
+lane; a tight timeout corrupts every slow message on it); and cancellation is **cooperative**, so a
+handler ignoring its `CancellationToken` still cannot be interrupted.
+
+**Head-of-line non-blocking is now a test, not an assumption** —
+`MessagingInvariantsTests.A_message_that_keeps_failing_does_not_block_the_rest_of_its_queue`
+publishes the poison message *first* on a shared queue and asserts the three behind it complete,
+that the poison one reaches `DeadLettered` with its error persisted, and that its handler ran a
+bounded number of times.
+
+**The reclaim query has a second arm for the upgrade path** — a message stranded at `Processing` by a
+build from *before* claims existed has no `ClaimExpiresAtUtc`, so a lapsed-claim test alone could
+never see it and the fix would have shipped while every already-stranded message stayed stranded.
+`== null` matches a missing JSON field where the boolean gates need `!= true`.
 
 ### Deliberately not done, and why
 

@@ -42,6 +42,7 @@ Neither is implemented. Branch: `feat/coverage-project-automation`.
 | **`SubscriptionOpeningStrategy.Concurrent`** | Professional+ only, **and** explicitly abandons ordering | messaging PRD F5 |
 | **`TakeOver` for the feeder** | Two pods that both believe they lead ping-pong evicting each other, each eviction dropping an unacked batch | messaging PRD §4 |
 | **Porting the bespoke discovery page** | See A2 | coverage PRD §2.2 |
+| **A framework `OnFilterReference` / reference-filter hook in Spark** | Not needed, and would be invented rather than ported. `[Reference(typeof(X), "query")]` + a `Custom.*` query reading `CustomQueryArgs.Parent` already gives per-parent option scoping — including from an embedded `AsDetail` row, where the client sends the **root** document as the parent. Investigated the prior-art framework for a hook to copy: its `GetReferenceSecurityFilter` is **not** it (args carry only `Name`, `Column` and a `Filter`, no parent, and its own summary scopes it to *grid filter dropdowns* — "distinct values, text search, and data filter operations"), and `OnAdd/OnRemove/OnSelectReference` all fire **after** the pick. Its consumers achieve per-parent scoping the same way Spark can: the declared lookup query plus a `Custom.<Method>(CustomQueryArgs)`. So there is no proven design to port, one consumer is not enough to design an abstraction from, and `ISparkRowRule<T>` / the optional-service pattern in `Abstractions/Authorization` is ready if a second consumer ever appears. | this register; `docs/guide-reference-attributes.md` |
 | **Activating the free *Developer* licence in production to lift the subscription cap** | Nothing technical prevents it — production licences Raven by POSTing `raven-license.json` to `/admin/license/activate` (`f4373ce5`), so it is a one-file change on the VPS, and it does remove every cap. But the Developer tier is free *because* it is restricted to development and testing; `coverage.mintplayer.com` is public and CI-facing, the licence is issued to a named company rather than anonymously, and it expires in early 2027. Decisive engineering point: it buys **only** the queue budget and leaves the actual webhook-drop bug (`Processing` written and read by nothing) untouched, so it cancels none of this rework. Pursue an OSS-project licence from RavenDB instead; failing that, Community + this rework. | §4, this register |
 
 ## 3. Corrections to previously-held beliefs
@@ -74,6 +75,39 @@ the kind of claim that gets re-adopted after a compaction, so it is recorded wit
   `MaxNumberOfSubscriptionsPerCluster: null`; 12 subscriptions were created on one database without
   complaint. Any cap behaviour must be simulated with a self-imposed budget, and
   `EnsureSubscriptionExistsAsync`'s `LicenseLimitException` branch is **unverifiable locally**.
+
+### Reference option sources, established 2026-09-07 — full detail in `docs/guide-reference-attributes.md`
+
+- **Only `[Reference]` can vary its options per object.** `TransientLookupReference<TKey>` is a
+  static compile-time set; `DynamicLookupReference<TValue>` is persisted and runtime-editable but is
+  **one global set per lookup name** (a single `LookupReferences/{Name}` document), so it would
+  offer every parent's children under every other parent. This is the distinction I got wrong twice
+  — by comparing only the two lookup shapes and generalising to "the model format cannot express
+  it".
+- **A reference target need not be a document type.** It needs a `clrType`, one `showedOn: Query`
+  attribute, an Actions class, and a unique readable `Id` — all of which an **embedded value
+  object** already has. So a child collection need not be promoted to documents to be pickable.
+- **`Custom.*` may return a plain in-memory `IEnumerable<T>`.** Every Raven-specific step in the
+  executor is guarded on the returned object actually being a Raven queryable; sorting, search and
+  paging fall back in memory.
+- **Entity-backed ≠ composed.** A `clrType` on the target means the query is *not* a composed
+  (`clrType`-less) query, so none of the composed-query costs apply — no `ISparkOwnsRowSecurity`, no
+  transferred row-security duty. This is what makes the pattern cheap.
+- ⚠️ **An unlisted query yields a silently EMPTY dropdown.** `/spark/queries` only lists a query
+  whose `entityType` the caller holds `Query` on, and the client treats an unknown query name as an
+  empty result — no error, no log. The missing right is invisible.
+- ⚠️ **Hand-added `lookupReferenceType` / `query` / `referenceType` are STRIPPED** by
+  `--spark-synchronize-model`, which derives them from the C# attributes. `editMode` and
+  `isReadOnly` survive; an inline `queries` entry on an embedded type is preserved.
+- **`GetRowFilterAsync` cannot do parent scoping.** Signature is `(string action)`; the parent is
+  never forwarded into row security. It answers "which rows may this *caller* see", never "which
+  rows belong to this *parent*".
+- **Spark gaps vs the prior art, for whoever picks this up later:** its query args carry only
+  `Parent`/`ParentType`/`Query`/`Skip`/`Take`/`Search` — no *requesting attribute* and no *reason*,
+  so one query cannot tell which reference asked; `args.Parent` is **re-loaded from the database**
+  rather than being the client's unsaved in-memory object, which makes sibling-row de-duplication
+  (a real prior-art pattern) impossible today; and there is no `RefreshOptions()`, no
+  `SelectInPlace` mode, and no `Query.LookupSource` equivalent.
 
 ### Subscription lifecycle, measured 2026-09-07 (RavenDB 7.2, `Spike273`) — full detail in the plan's "S1 — RESULTS"
 

@@ -32,13 +32,45 @@ per-queue lanes, durable claims. Two consequences for this plan, which is otherw
   `MessageSubscriptionManagerLifecycleTests`, which asserts one subscription however many queues
   exist.
 
-Everything else here is **not started**: both spikes, and M0-M13. `apps/WebhooksDemo` is still
-present, and no `GitHubProject` entity exists.
+### Milestone status
 
-⚠️ **S1 cannot be completed without credentials.** It queries Projects V2 for a real installation on
-the MintPlayer org, so it needs the CoverageDevelopment app's private key. The code for M3/M5 can be
-written and type-checked without it, but the node-cost and `.AllPages()` questions S1 exists to
-answer stay open until someone runs it. The same applies to M13 in full.
+| | Status |
+|---|---|
+| **S1** typed Projects-V2 listing | **Done, green** — see "S1 — RESULTS" below. Typed builder works for both owner shapes; cost 1 point for `first: 100` |
+| **S2** inline rules editor | **Retired, not run** — `HR/Person.json` already ships `editMode: "inline"` on an `AsDetail` array, so the mechanism was proven in-tree and needed no spike |
+| **M0** branch + pinned facts | **Done.** `Octokit.GraphQL` pinned explicitly on `CodeCoverage.csproj` (R6); `CoverageQueues` doc rewritten |
+| **M1** entities | **Done.** `GitHubProject`, `ProjectColumn`, `EventColumnMapping`, `WebhookEventType` (18 keys — the PRD's "19" was a miscount) |
+| **M2** registration + row security | **Done.** `CoverageSparkContext.GitHubProjects`, `GitHubProjectActions`, `GitHubProjectVisibility` (no public tier, one rule, filter applies to writes) |
+| **M3** discovery by reconciliation | **Done.** `IInstallationProjects` seam; folded into `GitHubStateReconciler` so the fail-closed rule is shared code. Also refreshes **columns** for automation-enabled boards (C11) |
+| **M4** webhook routing | **Done.** `ProjectAutomationRouter` re-publishes onto its **own** queue (`ProjectAutomationQueue`), C1 being lifted; self-authored guard on `ProductionAppId` |
+| **M5** card movement | **Done.** `GitHubProjectCards`, null-stripping workaround kept and explained |
+| **M6** all 18 mappings | **Done**, including the three previously-inert handlers and the merged/review payload disambiguation |
+| **M7** model + rights + menu + action | **Done.** Both gates pass (`--spark-verify-model`, `--spark-verify-security`); `SyncColumnsAction`; GitHub program-unit group |
+| **OD3** target-column picker | **Done** — `[Reference]` + parent-scoped `Custom.*` query. See the PRD's OD3 row and `docs/guide-reference-attributes.md` |
+| **M8** account sub-query | **Not started** |
+| **M9** delete `apps/WebhooksDemo` | **Not started** — inventory below |
+| **M10** docs | **Partial.** `guide-row-security.md` repointed; `guide-reference-attributes.md` extended. The rest outstanding |
+| **M11** tests | **Not started** for this feature |
+| **M12** single sweep | **Not started** |
+| **M13** manual verification | **Partial** — live webhook verification done and recorded in PRD §3b; the *form* has not been opened since the reference dropdown was added |
+
+### M9 inventory (measured, 2026-09-07)
+
+The plan's original estimate of "11 references" was low by roughly six times.
+
+- **69** tracked files under `apps/WebhooksDemo`.
+- **73** files reference it from outside: **11** code/config, **62** docs.
+- Load-bearing: `MintPlayer.Spark.slnx:25-27`, `package.json:17` (+ `package-lock.json`),
+  `.github/dependabot.yml:27`, `.github/workflows/pull-request.yml:115,126,148`,
+  `.github/workflows/webhooks-demo-deploy.yml` (delete), `CLAUDE.md`, `README.md`,
+  `libs/webhooks/.../README.md`, `libs/authorization/.../README.md`.
+- ⚠️ **`libs/node_packages/ng-spark-auth/sign-in/src/spark-sign-in.projection.spec.ts` references it** —
+  so deleting the app breaks a **client package test** in the vitest run, not the .NET suites.
+- The 62 doc hits need triage, not a sweep: the four *guides* using it as a worked example must be
+  repointed, but historical PRDs and build logs describing past work should keep their references —
+  rewriting those makes them lie about what happened.
+
+⚠️ **M13 still needs credentials** for anything beyond what PRD §3b already covers.
 
 ---
 
