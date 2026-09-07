@@ -71,6 +71,44 @@ that repositories use transfers as-is.
 interpolated) raw GraphQL document with variables — and record that in the PRD rather than shipping
 B1 again.
 
+#### S1 — RESULTS (run 2026-09-07 against the CoverageDevelopment app, id 4567511)
+
+**GREEN. Kill criterion not triggered — the typed builder expresses it, so B1's interpolated GraphQL
+can be avoided outright rather than merely parameterized.**
+
+- **Both owner shapes work.** `new Query().Organization(Var("login")).ProjectsV2(first: 100).Nodes`
+  and the `.User(...)` equivalent both compile and run, with the login passed as a **GraphQL
+  variable**. The raw query being replaced branched `organization|user`; the typed path needs the
+  same branch, because the two are different root fields and no common interface covers them.
+- **Cost is 1 point** for `first: 100`, on both shapes.
+- The app sees **two installations**: `159465567` (user `PieterjanDeClippel`) and `153539364`
+  (organization `MintPlayer`). The user installation has **0 boards**; the org has **1**
+  (`PVT_kwDOAug2bM4AthJv`, #1). So M3 must handle both owner types and a zero-board account, which
+  is the common case rather than an edge one.
+- **Rate-limit budgets differ per installation** — 11,800 for the user, 5,050 for the org. Any
+  bounding must be per-installation, not a single global number.
+
+**Methodological correction, recorded because the first measurement was wrong.** `rateLimit.cost`
+reports the cost of *the query it appears in*. Asking for it in a separate query measures the
+rate-limit query itself and says nothing about the listing — the first run reported "cost=1" that
+way, which was accidentally the right number for the wrong reason. The figure above comes from
+selecting `projectsV2` and `rateLimit` in **one** document.
+
+**Two questions S1 was meant to answer that remain open, and cannot be closed here:**
+
+1. **Node cost for an org with many boards, and whether `.AllPages()` is safe.** There is exactly
+   one board in the whole account set, so there is nothing to page. Cost 1 for `first: 100` suggests
+   a Projects-V2 connection is flat-cost per page — i.e. `.AllPages()` ≈ 1 point per 100 boards —
+   but that is **inference from a single-board sample, not a measurement.** Treat `first: 100`
+   without paging as sufficient until an account actually exceeds it; a board count above 100 per
+   owner is not a realistic shape for this app.
+2. **Composition with the framework's token-refreshing connection.** The spike mints the JWT and
+   installation token itself, because `GitHubInstallationService` is `internal` and registered only
+   through the full `ISparkBuilder` graph. So `CreateGraphQLConnectionAsync`'s refresh handler is
+   **unexercised** by this spike. Its REST twin is proven in production, and M3 uses the same
+   connection every other GraphQL call in the app already uses, so the risk is low — but it is not
+   zero and it is not tested here.
+
 ### S2 — Generic UI renders the rules editor with zero client code
 
 **Question:** does an `AsDetail` + `isArray` + `editMode: "inline"` collection with a

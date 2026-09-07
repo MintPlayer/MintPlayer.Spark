@@ -31,10 +31,19 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
 {
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IInstallationRepositories installationRepositories;
+    [Inject] private readonly IInstallationProjects installationProjects;
     [Inject] private readonly ILogger<GitHubStateReconciler> logger;
 
     /// <summary>Bound on one account's repository set; the session's request budget is 30.</summary>
     private const int MaxRepositoriesPerAccount = 1024;
+
+    /// <summary>
+    /// Bound on one account's board set. Far lower than the repository bound because boards are
+    /// counted in single digits in practice — the whole MintPlayer organization had one when this
+    /// was measured — and because the listing is unpaged, so this is the point at which truncation
+    /// would start looking like absence.
+    /// </summary>
+    private const int MaxProjectsPerAccount = 100;
 
     public async Task ReconcileAsync(Account account, CancellationToken cancellationToken = default)
     {
@@ -48,11 +57,13 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
         catch (Exception ex) when (IsInstallationGone(ex))
         {
             // The installation no longer exists — uninstalled, or the account itself is gone.
-            logger.LogInformation("Installation {InstallationId} for {Login} is gone; disconnecting its repositories",
+            logger.LogInformation("Installation {InstallationId} for {Login} is gone; disconnecting its repositories and boards",
                 installationId, account.Login);
             account.InstallationId = null;
             foreach (var repository in await LoadRepositoriesOfAsync(account, cancellationToken))
                 Disconnect(repository, DisconnectedReasons.AppUninstalled);
+            foreach (var project in await LoadProjectsOfAsync(account, cancellationToken))
+                DisconnectProject(project, DisconnectedReasons.AppUninstalled);
             return;
         }
 
@@ -114,6 +125,101 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
                 repository.FullName, installationId);
             Disconnect(repository, DisconnectedReasons.RemovedFromInstallation);
         }
+
+        await ReconcileProjectsAsync(account, installationId, cancellationToken);
+    }
+
+    /// <summary>
+    /// Makes our <see cref="GitHubProject"/> documents agree with the boards the installation can
+    /// see, on the same terms as repositories: upsert what is reachable, disconnect what is not,
+    /// and <b>never delete</b>.
+    /// <para>
+    /// Never deleting is what makes the automation rules safe to own. The rules live on this
+    /// document, so deleting a board that stopped appearing would destroy the user's configuration
+    /// on the strength of one GitHub response — and if that response was wrong, there is nothing to
+    /// restore from.
+    /// </para>
+    /// <para>
+    /// Board failures are contained rather than propagated: a board listing that fails leaves the
+    /// boards untouched and does not abort the repository reconciliation that has already
+    /// succeeded, because coverage ingestion depends on repositories and must not be held hostage
+    /// to a Projects-V2 outage.
+    /// </para>
+    /// </summary>
+    private async Task ReconcileProjectsAsync(Account account, long installationId, CancellationToken cancellationToken)
+    {
+        var isOrganization = string.Equals(account.Type, "Organization", StringComparison.OrdinalIgnoreCase);
+
+        IReadOnlyList<InstallationProject> live;
+        try
+        {
+            live = await installationProjects.ListAsync(
+                installationId, account.Login, isOrganization, MaxProjectsPerAccount, cancellationToken);
+        }
+        catch (Exception ex) when (IsInstallationGone(ex))
+        {
+            logger.LogInformation(
+                "Installation {InstallationId} cannot see boards for {Login}; disconnecting them",
+                installationId, account.Login);
+            foreach (var project in await LoadProjectsOfAsync(account, cancellationToken))
+                DisconnectProject(project, DisconnectedReasons.AppUninstalled);
+            return;
+        }
+        catch (Exception ex)
+        {
+            // Same rule as the repository path, and the same reasoning: not knowing what the
+            // installation holds is not the same as knowing it holds nothing. Change nothing and
+            // try tomorrow. Unlike the repository path this is caught rather than left to
+            // propagate, so a Projects-V2 failure cannot undo a repository reconciliation that
+            // already worked — the boards are the newer, less critical half.
+            logger.LogWarning(ex,
+                "Could not list boards for {Login} (installation {InstallationId}); leaving board state unchanged",
+                account.Login, installationId);
+            return;
+        }
+
+        var known = await LoadProjectsOfAsync(account, cancellationToken);
+        var knownByNodeId = known.ToDictionary(p => p.NodeId, StringComparer.Ordinal);
+        var liveNodeIds = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var board in live)
+        {
+            liveNodeIds.Add(board.NodeId);
+
+            if (!knownByNodeId.TryGetValue(board.NodeId, out var project))
+            {
+                // Keyed on the node id, so this is an idempotent upsert: re-running discovery over
+                // a board we already hold updates it instead of minting a duplicate. A board moved
+                // between owners keeps its node id, which is why the number is not the key.
+                var id = GitHubProject.DocumentId(board.NodeId);
+                project = await session.LoadAsync<GitHubProject>(id, cancellationToken);
+                if (project is null)
+                {
+                    project = new GitHubProject { NodeId = board.NodeId };
+                    await session.StoreAsync(project, id, cancellationToken);
+                }
+            }
+
+            project.Account = account.Id;
+            project.OwnerLogin = account.Login;
+            project.InstallationId = installationId;
+            project.Number = board.Number;
+            project.Name = board.Title;
+            // AutomationEnabled, DeleteBranchOnPrClose, EventMappings and Columns are deliberately
+            // NOT touched. Discovery owns identity and reachability; the user owns configuration.
+            ConnectProject(project);
+        }
+
+        foreach (var project in known)
+        {
+            if (liveNodeIds.Contains(project.NodeId)) continue;
+            if (project.Connection == RepositoryConnection.Disconnected) continue;
+
+            logger.LogInformation(
+                "Board #{Number} ({Name}) is no longer visible to installation {InstallationId}; disconnecting",
+                project.Number, project.Name, installationId);
+            DisconnectProject(project, DisconnectedReasons.RemovedFromInstallation);
+        }
     }
 
     /// <summary>
@@ -147,5 +253,29 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
         repository.Connection = RepositoryConnection.Disconnected;
         repository.DisconnectedReason = reason;
         repository.DisconnectedAtUtc = DateTime.UtcNow;
+    }
+
+    private async Task<IReadOnlyList<GitHubProject>> LoadProjectsOfAsync(Account account, CancellationToken ct)
+    {
+        if (account.Id is null) return [];
+
+        return await session.Query<GitHubProject, Indexes.GitHubProjects_Overview>()
+            .Where(p => p.Account == account.Id)
+            .Take(MaxProjectsPerAccount)
+            .ToListAsync(ct);
+    }
+
+    private static void ConnectProject(GitHubProject project)
+    {
+        project.Connection = RepositoryConnection.Connected;
+        project.DisconnectedReason = null;
+        project.DisconnectedAtUtc = null;
+    }
+
+    private static void DisconnectProject(GitHubProject project, string reason)
+    {
+        project.Connection = RepositoryConnection.Disconnected;
+        project.DisconnectedReason = reason;
+        project.DisconnectedAtUtc = DateTime.UtcNow;
     }
 }
