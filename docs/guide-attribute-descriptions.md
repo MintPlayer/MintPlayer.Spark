@@ -82,6 +82,11 @@ nobody can read. `apps/CodeCoverage` reached a mean of 156 characters per attrib
 case of five paragraphs (2,097 characters) before this pass; moving the reasoning to `<remarks>`
 brought the mean to 57 with nothing over 130, and removed nothing from the code.
 
+**A long description is also an accessibility defect, not just a wide tooltip.** The `[i]` control
+carries the description as its `aria-label` (verified in the DOM, 2026-09-08), so a screen reader
+announces the whole thing when the user reaches that button. Before this pass one attribute
+announced 2,097 characters of design rationale; there is no way to skim past it.
+
 Two habits that keep summaries short:
 
 - **Say what the field is, not how it behaves in every case.** The edge cases are `<remarks>`

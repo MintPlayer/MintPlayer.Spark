@@ -470,10 +470,15 @@ model (`--spark-verify-model` exit 3, naming `config programUnits.json`) and nee
 the `Coverage` group; the Account page's boards sub-query is headed "Project boards" and leads with
 the board name. `CodeCoverage.Tests` **387 / 0, exit 0**.
 
-⚠️ **Still unverified in the browser.** M14's live check was done before M15/M16; the label and
-description pass, the removed unit, the query heading and the column order have not been opened in
-a browser. All four are model-declared and the generic UI reads them, so the risk is low — but M7
-recorded three grant-level defects that were invisible until the app actually ran.
+**Verified live (2026-09-08).** Sidebar shows the `Coverage` group alone; the Account page carries
+"Repositories" and "Project boards" side by side; the boards grid leads with `Name`; the 24 tooltips
+average 59 characters with a maximum of 111 (Dutch 131); Dutch labels render (`Naam`, `Eigenaar`,
+`Installatie-id`); 0 console errors.
+
+⚠️ **A description is also an `aria-label`.** The `[i]` control carries it, so a screen reader
+announces the whole text — before this pass one attribute announced 2,097 characters. The
+condensation fixed an accessibility defect, not just a wide tooltip. Noted in
+`guide-attribute-descriptions.md`.
 
 ---
 
