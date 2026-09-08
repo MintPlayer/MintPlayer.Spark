@@ -8,17 +8,17 @@
     "groups": [],
     "attributes": [
       {
-        "id": "9ab36326-937f-4764-8824-305772944a57",
-        "name": "AddLinkedIfMissing",
+        "id": "3f1c07a2-6b84-4d0e-9a51-7c2e5f0d84b6",
+        "name": "AutoAddToBoard",
         "label": {
-          "en": "Add Linked If Missing",
-          "fr": "Ajouter l'élément lié s'il est absent",
-          "nl": "Gekoppeld item toevoegen indien afwezig"
+          "en": "Add To Board",
+          "fr": "Ajouter au tableau",
+          "nl": "Aan bord toevoegen"
         },
         "description": {
-          "en": "When MoveLinkedIssues moves a linked issue that is not on the board yet, add it rather than skipping it.\nDefaults to false, and the asymmetry with a direct issue event — which does add — is deliberate: an IssuesOpened rule is about that issue, whereas a linked issue is being touched only because a PR happened to reference it. Adding on that basis lets one pull request recruit arbitrary issues onto the board, including issues from repositories nobody configured.\nPer rule rather than per board, because the right answer differs by event: a \"merged → Done\" rule wants only issues already tracked, while a team that opens PRs before filing the issue on the board may genuinely want \"ready for review\" to recruit it.",
-          "fr": "Lorsque MoveLinkedIssues déplace un ticket lié qui ne figure pas encore sur le tableau, l'ajouter au lieu de l'ignorer.\nFaux par défaut, et l'asymétrie avec un événement de ticket direct — qui, lui, ajoute — est délibérée : une règle IssuesOpened porte sur ce ticket-là, alors qu'un ticket lié n'est touché que parce qu'une PR s'est trouvée le référencer. Ajouter sur cette base permettrait à une seule pull request d'enrôler des tickets arbitraires sur le tableau, y compris des tickets provenant de dépôts que personne n'a configurés.\nPar règle plutôt que par tableau, car la bonne réponse varie selon l'événement : une règle « merged → Done » ne veut que les tickets déjà suivis, tandis qu'une équipe qui ouvre ses PR avant de créer le ticket sur le tableau peut réellement souhaiter que « ready for review » l'enrôle.",
-          "nl": "Wanneer MoveLinkedIssues een gekoppeld issue verplaatst dat nog niet op het bord staat, het toevoegen in plaats van het over te slaan.\nStandaard false, en de asymmetrie met een rechtstreekse issue-gebeurtenis — die wél toevoegt — is bewust: een IssuesOpened-regel gáát over dat issue, terwijl een gekoppeld issue enkel aangeraakt wordt omdat een PR er toevallig naar verwees. Op die grond toevoegen laat één pull request willekeurige issues op het bord ronselen, inclusief issues uit repository's die niemand geconfigureerd heeft.\nPer regel in plaats van per bord, omdat het juiste antwoord per gebeurtenis verschilt: een \"merged → Done\"-regel wil enkel issues die al opgevolgd worden, terwijl een team dat PR's opent vóór het issue op het bord staat wel degelijk kan willen dat \"ready for review\" het binnenhaalt."
+          "en": "Add an item to the board when this rule has to move it and it is not on the board yet.",
+          "fr": "Ajouter un élément au tableau lorsque cette règle doit le déplacer et qu'il n'y figure pas encore.",
+          "nl": "Een item aan het bord toevoegen wanneer deze regel het moet verplaatsen en het er nog niet op staat."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -38,9 +38,9 @@
           "nl": "Ingeschakeld"
         },
         "description": {
-          "en": "False disables this one rule without deleting it. Present so a user can turn a rule off to diagnose behaviour and turn it back on, rather than deleting and retyping it.",
-          "fr": "Faux désactive cette seule règle sans la supprimer. Présent pour qu'un utilisateur puisse désactiver une règle afin de diagnostiquer un comportement, puis la réactiver, au lieu de la supprimer et de la ressaisir.",
-          "nl": "False schakelt deze ene regel uit zonder ze te verwijderen. Aanwezig zodat een gebruiker een regel kan uitzetten om gedrag te onderzoeken en ze daarna weer aan kan zetten, in plaats van ze te verwijderen en opnieuw in te tikken."
+          "en": "Turns this one rule off without deleting it.",
+          "fr": "Désactive cette seule règle sans la supprimer.",
+          "nl": "Zet deze ene regel uit zonder ze te verwijderen."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -55,14 +55,14 @@
         "id": "728bea88-bcb6-441a-8173-8a2e02e756f0",
         "name": "EventType",
         "label": {
-          "en": "Event Type",
-          "fr": "Type d'événement",
-          "nl": "Type gebeurtenis"
+          "en": "Event",
+          "fr": "Événement",
+          "nl": "Gebeurtenis"
         },
         "description": {
-          "en": "Which GitHub event this rule reacts to, one of WebhookEventType's keys. A lookup rather than free text: the set is closed, and a typo in a free-text field would produce a rule that silently never fires.\nThe LookupReferenceAttribute is what puts the dropdown on the form, and it has to live here rather than in the generated model JSON — model synchronization strips a hand-added lookupReferenceType (observed), because it derives that field from the attribute. editMode and isReadOnly survive hand-editing; this does not.",
-          "fr": "L'événement GitHub auquel cette règle réagit, l'une des clés de WebhookEventType. Un lookup plutôt qu'un texte libre : l'ensemble est fermé, et une faute de frappe dans un champ libre produirait une règle qui ne se déclencherait silencieusement jamais.\nC'est LookupReferenceAttribute qui place la liste déroulante sur le formulaire, et il doit résider ici plutôt que dans le JSON de modèle généré — la synchronisation du modèle supprime un lookupReferenceType ajouté à la main (constaté), car elle dérive ce champ de l'attribut. editMode et isReadOnly survivent à une édition manuelle ; pas celui-ci.",
-          "nl": "Op welke GitHub-gebeurtenis deze regel reageert, één van de sleutels van WebhookEventType. Een lookup in plaats van vrije tekst: de verzameling is gesloten, en een typfout in een vrijetekstveld zou een regel opleveren die stilzwijgend nooit afvuurt.\nHet LookupReferenceAttribute zet de dropdown op het formulier, en het moet hier leven en niet in de gegenereerde model-JSON — modelsynchronisatie verwijdert een handmatig toegevoegd lookupReferenceType (waargenomen), omdat ze dat veld uit het attribuut afleidt. editMode en isReadOnly overleven handmatig bewerken; dit niet."
+          "en": "Which GitHub event this rule reacts to.",
+          "fr": "L'événement GitHub auquel cette règle réagit.",
+          "nl": "De GitHub-gebeurtenis waarop deze regel reageert."
         },
         "dataType": "string",
         "isRequired": false,
@@ -78,14 +78,14 @@
         "id": "92046158-4eea-4573-8ebf-4915a46f89d7",
         "name": "LastError",
         "label": {
-          "en": "Last Error",
-          "fr": "Dernière erreur",
-          "nl": "Laatste fout"
+          "en": "Error",
+          "fr": "Erreur",
+          "nl": "Fout"
         },
         "description": {
-          "en": "Why this rule last failed, or null if its last attempt succeeded.\nThis exists because the message queue is the wrong place to look for it, and that is worth spelling out. Spark's messaging does dead-letter a handler after MaxAttempts and does persist LastError on the message — but only when the recipient throws, and throwing is the wrong response to a single broken rule: one delivery can match several boards, so failing the whole message re-runs the moves that already succeeded and moves those cards twice. Completing the message is correct, which means the queue records nothing.\nAnd even when a message does dead-letter, a SparkMessage is invisible to this configuration screen and is deleted after the retention window. The rule is what the user looks at, so the failure belongs on the rule.\nThe most likely value by far is \"the target column no longer exists\": a rule stores an option id, and nothing tells this app when a column is deleted — the Projects V2 webhook events are organization-scoped and unsubscribed either way — so without this the rule stays syntactically valid and silently never matches.",
-          "fr": "Pourquoi cette règle a échoué la dernière fois, ou null si sa dernière tentative a réussi.\nCe champ existe parce que la file de messages est le mauvais endroit où chercher, et cela mérite d'être explicité. La messagerie de Spark met bien un gestionnaire en file de rebut après MaxAttempts et persiste bien LastError sur le message — mais seulement lorsque le destinataire lève une exception, et lever une exception est la mauvaise réponse à une seule règle défaillante : une livraison peut correspondre à plusieurs tableaux, si bien que faire échouer tout le message rejoue les déplacements déjà réussis et déplace ces cartes deux fois. Compléter le message est correct, ce qui signifie que la file n'enregistre rien.\nEt même lorsqu'un message part bel et bien en rebut, un SparkMessage est invisible depuis cet écran de configuration et est supprimé après la fenêtre de rétention. C'est la règle que l'utilisateur consulte : l'échec appartient donc à la règle.\nLa valeur de loin la plus probable est « la colonne cible n'existe plus » : une règle stocke un id d'option, et rien n'avertit cette application lorsqu'une colonne est supprimée — les événements de webhook Projects V2 sont à l'échelle de l'organisation et ne sont de toute façon pas souscrits — sans cela, la règle reste syntaxiquement valide et ne correspond silencieusement plus jamais à rien.",
-          "nl": "Waarom deze regel het laatst gefaald heeft, of null als haar laatste poging geslaagd is.\nDit bestaat omdat de berichtenwachtrij de verkeerde plaats is om ernaar te zoeken, en dat is het waard om uit te schrijven. De messaging van Spark zet een handler wel degelijk in de dead-letter na MaxAttempts en bewaart LastError wel degelijk op het bericht — maar enkel wanneer de ontvanger een exception gooit, en gooien is het verkeerde antwoord op één stukke regel: één aflevering kan op meerdere borden matchen, dus het hele bericht laten falen herhaalt de verplaatsingen die al geslaagd waren en verplaatst die kaarten twee keer. Het bericht voltooien is correct, wat betekent dat de wachtrij niets vastlegt.\nEn zelfs wanneer een bericht wél in de dead-letter belandt, is een SparkMessage onzichtbaar voor dit configuratiescherm en wordt het na het bewaarvenster verwijderd. De regel is wat de gebruiker bekijkt, dus hoort de fout op de regel thuis.\nDe veruit waarschijnlijkste waarde is \"de doelkolom bestaat niet meer\": een regel bewaart een optie-id, en niets vertelt deze app wanneer een kolom verwijderd wordt — de Projects V2-webhookgebeurtenissen zijn organisatiebreed en er is hoe dan ook niet op geabonneerd — dus zonder dit blijft de regel syntactisch geldig en matcht ze stilzwijgend nooit meer."
+          "en": "Why this rule last failed, or empty if its last attempt succeeded.",
+          "fr": "Pourquoi cette règle a échoué la dernière fois, ou vide si sa dernière tentative a réussi.",
+          "nl": "Waarom deze regel de laatste keer mislukt is, of leeg als de laatste poging gelukt is."
         },
         "dataType": "string",
         "isRequired": false,
@@ -100,12 +100,12 @@
         "id": "bc6ca3fd-88a5-42f2-8dfc-168cad2d04de",
         "name": "LastErrorAtUtc",
         "label": {
-          "en": "Last Error At Utc",
-          "fr": "Dernière erreur le (UTC)",
-          "nl": "Laatste fout op (UTC)"
+          "en": "Failed At",
+          "fr": "Échoué le",
+          "nl": "Mislukt op"
         },
         "description": {
-          "en": "When LastError was recorded (UTC); null when the rule is healthy.",
+          "en": "When the last failure happened; empty when the rule is healthy.",
           "fr": "Moment où LastError a été enregistrée (UTC) ; null lorsque la règle est saine.",
           "nl": "Wanneer LastError vastgelegd is (UTC); null wanneer de regel gezond is."
         },
@@ -122,14 +122,14 @@
         "id": "2b78066c-dc46-4fe8-a3f9-0177e5a51090",
         "name": "LastFiredAtUtc",
         "label": {
-          "en": "Last Fired At Utc",
-          "fr": "Dernier déclenchement le (UTC)",
-          "nl": "Laatst afgevuurd op (UTC)"
+          "en": "Last Fired",
+          "fr": "Dernier déclenchement",
+          "nl": "Laatst afgevuurd"
         },
         "description": {
-          "en": "When this rule last moved a card (UTC), or null if it never has. The first thing to look at when someone reports that automation \"stopped working\": a rule that has never fired is configured wrong, one that fired until a date stopped working then.",
-          "fr": "Moment où cette règle a déplacé une carte pour la dernière fois (UTC), ou null si elle ne l'a jamais fait. La première chose à examiner lorsque quelqu'un signale que l'automatisation « ne fonctionne plus » : une règle qui ne s'est jamais déclenchée est mal configurée, une règle qui s'est déclenchée jusqu'à une date a cessé de fonctionner à ce moment-là.",
-          "nl": "Wanneer deze regel het laatst een kaart verplaatst heeft (UTC), of null als ze dat nooit gedaan heeft. Het eerste om naar te kijken wanneer iemand meldt dat de automatisering \"niet meer werkt\": een regel die nooit afgevuurd heeft is verkeerd geconfigureerd, een regel die tot een bepaalde datum afvuurde is toen gestopt met werken."
+          "en": "When this rule last moved a card, or empty if it never has.",
+          "fr": "Quand cette règle a déplacé une carte pour la dernière fois, ou vide si jamais.",
+          "nl": "Wanneer deze regel het laatst een kaart verplaatst heeft, of leeg als dat nooit gebeurd is."
         },
         "dataType": "datetime",
         "isRequired": false,
@@ -149,9 +149,9 @@
           "nl": "Gekoppelde issues verplaatsen"
         },
         "description": {
-          "en": "On a pull-request event, also move the cards of the issues the PR closes (its ClosingIssuesReferences). Ignored for issue events, which already act on the issue itself.\nDefaults to true, because the issue is the work item a board tracks and the pull request is only how the work gets done — \"PR ready for review\" almost always means \"the thing that PR closes is ready for review\". A rule that moved nothing but the PR's own card would do nothing at all on the common setup, where PRs are not on the board.\nThis was briefly hard-coded to fire only on PullRequestMerged, which made every other pull-request rule silently inert for anyone whose board tracks issues. The behaviour the merged path had is now what every PR event does, under this flag.",
-          "fr": "Lors d'un événement de pull request, déplacer également les cartes des tickets que la PR clôture (ses ClosingIssuesReferences). Ignoré pour les événements de ticket, qui agissent déjà sur le ticket lui-même.\nVrai par défaut, car le ticket est l'élément de travail que suit un tableau et la pull request n'est que la manière dont le travail se fait — « PR prête pour relecture » signifie presque toujours « ce que cette PR clôture est prêt pour relecture ». Une règle qui ne déplacerait que la carte de la PR elle-même ne ferait strictement rien dans la configuration courante, où les PR ne figurent pas sur le tableau.\nCe comportement a brièvement été codé en dur pour ne se déclencher que sur PullRequestMerged, ce qui rendait silencieusement inerte toute autre règle de pull request pour quiconque suit des tickets sur son tableau. Ce que faisait le chemin « merged » est désormais ce que fait chaque événement de PR, sous ce drapeau.",
-          "nl": "Bij een pull-request-gebeurtenis ook de kaarten verplaatsen van de issues die de PR sluit (zijn ClosingIssuesReferences). Genegeerd voor issue-gebeurtenissen, die al op het issue zelf inwerken.\nStandaard true, omdat het issue het werkitem is dat een bord opvolgt en de pull request enkel de manier is waarop het werk gebeurt — \"PR klaar voor review\" betekent bijna altijd \"datgene wat die PR sluit is klaar voor review\". Een regel die niets anders dan de eigen kaart van de PR verplaatst, doet helemaal niets in de gangbare opzet, waar PR's niet op het bord staan.\nDit stond korte tijd hard gecodeerd om enkel op PullRequestMerged af te vuren, waardoor elke andere pull-request-regel stilzwijgend inert was voor wie issues op zijn bord opvolgt. Wat het merged-pad deed, is nu wat elke PR-gebeurtenis doet, onder deze vlag."
+          "en": "Also move the cards of the issues a pull request closes, alongside the PR's own card. Ignored for issue events.",
+          "fr": "Déplacer aussi les cartes des tickets qu'une pull request clôture, en plus de celle de la PR. Ignoré pour les événements de ticket.",
+          "nl": "Ook de kaarten verplaatsen van de issues die een pull request sluit, naast die van de PR zelf. Genegeerd voor issue-gebeurtenissen."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -166,14 +166,14 @@
         "id": "9002c9b3-e961-45b5-b875-c4d5bee7634c",
         "name": "TargetColumnOptionId",
         "label": {
-          "en": "Target Column Option Id",
-          "fr": "Id de l'option de colonne cible",
-          "nl": "Id van de doelkolomoptie"
+          "en": "Target Column",
+          "fr": "Colonne cible",
+          "nl": "Doelkolom"
         },
         "description": {
-          "en": "The single-select option id to move the card to, from the board's cached Columns.\nAn option id, deliberately, not a column name. Names are renameable and not unique; storing the name would leave every rule on a board broken the moment someone renamed a column, and broken silently, because the move would simply match nothing.\nWhy this is a plain string and not a lookup, when EventType is a lookup. Spark has two lookup shapes and neither fits a per-board value: TransientLookupReference is a static set declared in C# and fixed at compile time — right for the eighteen webhook events, impossible for columns that a user creates on GitHub. DynamicLookupReference is persisted and editable at runtime, but it is one global set per lookup name: a single LookupReferences/{Name} document with one Values list. Columns are per board — one board has Backlog/In Progress/Done, another has Triage/Doing/Shipped — so a dynamic lookup would offer every board's columns on every other board. What is needed is an option source scoped to the parent document, and Spark does express that — via [Reference], not via a lookup. The named query is a Custom.* method reading CustomQueryArgs.Parent, which Spark resolves and authorizes; it works from an embedded AsDetail row because the client sends the root document as the parent for isArray child columns. See ProjectColumnActions.Project_Columns.\nIt costs no new collection: the query returns the board's own embedded Columns as a plain in-memory sequence, which the query executor accepts alongside IQueryable and IRavenQueryable. Promoting columns to documents would buy only a server-resolved breadcrumb and direct queryability, at the price of a collection whose create/update/delete lifecycle the reconciler would have to manage.\nThe value is still validated where it matters — the recipient checks the id against the board's cached columns before calling GitHub, and reports a vanished column on the rule itself. A dropdown makes the wrong value unlikely; it does not make it impossible, because a column can be deleted on GitHub after a rule was saved.",
-          "fr": "L'id de l'option à sélection unique vers laquelle déplacer la carte, issu des Columns mises en cache du tableau.\nUn id d'option, délibérément, et non un nom de colonne. Les noms sont renommables et non uniques ; stocker le nom laisserait chaque règle d'un tableau cassée dès que quelqu'un renomme une colonne, et cassée silencieusement, car le déplacement ne correspondrait tout simplement à rien.\nPourquoi il s'agit d'une simple chaîne et non d'un lookup, alors qu'EventType en est un. Spark dispose de deux formes de lookup et aucune ne convient à une valeur propre à un tableau : TransientLookupReference est un ensemble statique déclaré en C# et figé à la compilation — parfait pour les dix-huit événements de webhook, impossible pour des colonnes qu'un utilisateur crée sur GitHub. DynamicLookupReference est persisté et modifiable à l'exécution, mais c'est un unique ensemble global par nom de lookup : un seul document LookupReferences/{Name} avec une seule liste Values. Les colonnes sont propres à chaque tableau — l'un a Backlog/In Progress/Done, l'autre Triage/Doing/Shipped — un lookup dynamique proposerait donc les colonnes de chaque tableau sur tous les autres. Ce qu'il faut, c'est une source d'options limitée au document parent, et Spark sait l'exprimer — via [Reference], pas via un lookup. La requête nommée est une méthode Custom.* qui lit CustomQueryArgs.Parent, que Spark résout et autorise ; elle fonctionne depuis une ligne AsDetail embarquée parce que le client envoie le document racine comme parent pour les colonnes enfants isArray. Voyez ProjectColumnActions.Project_Columns.\nCela ne coûte aucune nouvelle collection : la requête renvoie les Columns embarquées du tableau lui-même sous forme de simple séquence en mémoire, que l'exécuteur de requêtes accepte au même titre qu'IQueryable et IRavenQueryable. Promouvoir les colonnes en documents n'apporterait qu'un fil d'Ariane résolu côté serveur et une interrogeabilité directe, au prix d'une collection dont le cycle de vie création/mise à jour/suppression incomberait au réconciliateur.\nLa valeur reste validée là où cela compte — le destinataire vérifie l'id par rapport aux colonnes mises en cache du tableau avant d'appeler GitHub, et signale une colonne disparue sur la règle elle-même. Une liste déroulante rend une valeur erronée improbable ; elle ne la rend pas impossible, car une colonne peut être supprimée sur GitHub après l'enregistrement d'une règle.",
-          "nl": "De id van de single-select-optie waarnaar de kaart verplaatst moet worden, uit de gecachete Columns van het bord.\nBewust een optie-id, geen kolomnaam. Namen zijn hernoembaar en niet uniek; de naam opslaan zou elke regel op een bord breken zodra iemand een kolom hernoemt, en stilzwijgend breken, want de verplaatsing zou eenvoudigweg nergens op matchen.\nWaarom dit een gewone string is en geen lookup, terwijl EventType wél een lookup is. Spark heeft twee lookupvormen en geen van beide past bij een waarde per bord: TransientLookupReference is een statische set die in C# verklaard wordt en bij het compileren vastligt — juist voor de achttien webhookgebeurtenissen, onmogelijk voor kolommen die een gebruiker op GitHub aanmaakt. DynamicLookupReference wordt persistent bewaard en is tijdens de uitvoering aanpasbaar, maar het is één globale set per lookupnaam: één enkel LookupReferences/{Name}-document met één Values-lijst. Kolommen zijn per bord — het ene bord heeft Backlog/In Progress/Done, het andere Triage/Doing/Shipped — dus een dynamische lookup zou de kolommen van elk bord op elk ander bord aanbieden. Wat nodig is, is een optiebron beperkt tot het bovenliggende document, en Spark drukt dat wel degelijk uit — via [Reference], niet via een lookup. De benoemde query is een Custom.*-methode die CustomQueryArgs.Parent leest, die Spark oplost en autoriseert; ze werkt vanuit een ingebedde AsDetail-rij omdat de client het hoofddocument als ouder meestuurt voor isArray-kindkolommen. Zie ProjectColumnActions.Project_Columns.\nHet kost geen nieuwe collectie: de query geeft de eigen ingebedde Columns van het bord terug als een gewone in-memory reeks, die de query-uitvoerder naast IQueryable en IRavenQueryable aanvaardt. Kolommen tot documenten promoveren zou enkel een serverzijdig opgeloste breadcrumb en rechtstreekse bevraagbaarheid opleveren, ten koste van een collectie waarvan de reconciler de aanmaak-, wijzigings- en verwijderlevenscyclus zou moeten beheren.\nDe waarde wordt nog steeds gevalideerd waar het telt — de ontvanger toetst de id aan de gecachete kolommen van het bord vóór het aanroepen van GitHub, en meldt een verdwenen kolom op de regel zelf. Een dropdown maakt een verkeerde waarde onwaarschijnlijk; ze maakt ze niet onmogelijk, want een kolom kan op GitHub verwijderd worden nadat een regel is opgeslagen."
+          "en": "The board column this rule moves the card to.",
+          "fr": "La colonne du tableau vers laquelle cette règle déplace la carte.",
+          "nl": "De bordkolom waarnaar deze regel de kaart verplaatst."
         },
         "dataType": "Reference",
         "isRequired": false,

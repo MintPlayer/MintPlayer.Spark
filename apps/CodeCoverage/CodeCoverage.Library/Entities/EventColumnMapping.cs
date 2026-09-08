@@ -20,23 +20,23 @@ public class EventColumnMapping
     /// </summary>
     public string Id { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Which GitHub event this rule reacts to, one of <see cref="WebhookEventType"/>'s keys. A
-    /// lookup rather than free text: the set is closed, and a typo in a free-text field would
-    /// produce a rule that silently never fires.
+    /// <summary>Which GitHub event this rule reacts to.</summary>
+    /// <remarks>
+    /// One of <see cref="WebhookEventType"/>'s keys. A lookup rather than free text: the set is
+    /// closed, and a typo in a free-text field would produce a rule that silently never fires.
     /// <para>
     /// The <see cref="LookupReferenceAttribute"/> is what puts the dropdown on the form, and it has
     /// to live here rather than in the generated model JSON — model synchronization strips a
     /// hand-added <c>lookupReferenceType</c> (observed), because it derives that field from the
     /// attribute. <c>editMode</c> and <c>isReadOnly</c> survive hand-editing; this does not.
     /// </para>
-    /// </summary>
+    /// </remarks>
     [LookupReference(typeof(WebhookEventType))]
     public string EventType { get; set; } = string.Empty;
 
-    /// <summary>
-    /// The single-select option id to move the card to, from the board's cached
-    /// <see cref="GitHubProject.Columns"/>.
+    /// <summary>The board column this rule moves the card to.</summary>
+    /// <remarks>
+    /// The single-select option id, from the board's cached <see cref="GitHubProject.Columns"/>.
     /// <para>
     /// An option <em>id</em>, deliberately, not a column name. Names are renameable and not unique;
     /// storing the name would leave every rule on a board broken the moment someone renamed a
@@ -75,62 +75,78 @@ public class EventColumnMapping
     /// itself. A dropdown makes the wrong value unlikely; it does not make it impossible, because
     /// a column can be deleted on GitHub after a rule was saved.
     /// </para>
-    /// </summary>
+    /// </remarks>
     [Reference(typeof(ProjectColumn), "Project_Columns")]
     public string TargetColumnOptionId { get; set; } = string.Empty;
 
-    /// <summary>
-    /// False disables this one rule without deleting it. Present so a user can turn a rule off to
-    /// diagnose behaviour and turn it back on, rather than deleting and retyping it.
-    /// </summary>
+    /// <summary>Turns this one rule off without deleting it.</summary>
+    /// <remarks>
+    /// Present so a user can turn a rule off to diagnose behaviour and turn it back on, rather than
+    /// deleting and retyping it.
+    /// </remarks>
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// On a pull-request event, also move the cards of the issues the PR closes (its
-    /// <c>ClosingIssuesReferences</c>). Ignored for issue events, which already act on the issue
-    /// itself.
+    /// Also move the cards of the issues a pull request closes, alongside the PR's own card.
+    /// Ignored for issue events.
+    /// </summary>
+    /// <remarks>
+    /// The linked issues move <em>in addition to</em> the pull request's own card, never instead
+    /// of it.
     /// <para>
     /// Defaults to <see langword="true"/>, because the issue is the work item a board tracks and
     /// the pull request is only how the work gets done — "PR ready for review" almost always means
-    /// "the thing that PR closes is ready for review". A rule that moved nothing but the PR's own
-    /// card would do nothing at all on the common setup, where PRs are not on the board.
+    /// "the thing that PR closes is ready for review".
     /// </para>
     /// <para>
-    /// This was briefly hard-coded to fire only on <c>PullRequestMerged</c>, which made every other
-    /// pull-request rule silently inert for anyone whose board tracks issues. The behaviour the
-    /// merged path had is now what every PR event does, under this flag.
+    /// Ignored for issue events because GitHub models no issue-to-issue closing link, so there is
+    /// nothing for an issue rule to resolve. Extending it to an issue's linked pull requests, or to
+    /// its sub-issues, was considered and declined: an issue rule is about the issue.
     /// </para>
-    /// </summary>
+    /// <para>
+    /// This flag chooses <em>which items</em> the rule moves. Whether any of them is added to the
+    /// board when absent is a separate question, answered by <see cref="AutoAddToBoard"/>.
+    /// </para>
+    /// </remarks>
     public bool MoveLinkedIssues { get; set; } = true;
 
     /// <summary>
-    /// When <see cref="MoveLinkedIssues"/> moves a linked issue that is not on the board yet, add
-    /// it rather than skipping it.
+    /// Add an item to the board when this rule has to move it and it is not on the board yet.
+    /// </summary>
+    /// <remarks>
+    /// Governs the event's own subject — the issue on an issue event, the pull request on a
+    /// pull-request event — and, when <see cref="MoveLinkedIssues"/> is on, each linked issue on
+    /// the same terms.
     /// <para>
-    /// Defaults to <see langword="false"/>, and the asymmetry with a direct issue event — which
-    /// does add — is deliberate: an <c>IssuesOpened</c> rule is <em>about</em> that issue, whereas
-    /// a linked issue is being touched only because a PR happened to reference it. Adding on that
-    /// basis lets one pull request recruit arbitrary issues onto the board, including issues from
-    /// repositories nobody configured.
+    /// Defaults to <see langword="true"/>, because the alternative is a rule that looks configured
+    /// and does nothing: <c>IssuesOpened</c> fires on an issue that by definition was not on the
+    /// board a moment ago, and a board tracking pull requests has the same problem on
+    /// <c>PullRequestOpened</c>. Turning it off is how you say "only move cards a human put here".
     /// </para>
     /// <para>
     /// Per rule rather than per board, because the right answer differs by event: a "merged → Done"
-    /// rule wants only issues already tracked, while a team that opens PRs before filing the issue
-    /// on the board may genuinely want "ready for review" to recruit it.
+    /// rule may want only work already tracked, while a team that opens PRs before filing the issue
+    /// wants "ready for review" to recruit it.
     /// </para>
-    /// </summary>
-    public bool AddLinkedIfMissing { get; set; }
+    /// <para>
+    /// This is not "add linked items to the board". It shipped once under that reading, as a field
+    /// named <c>AddLinkedIfMissing</c> scoped to linked issues alone, which left the item the event
+    /// was actually about governed by hard-coded policy no rule could override — issues always
+    /// added, pull requests never. Adding every PR to a board that tracks issues does bury them,
+    /// but that is what this default is for, not an invariant to enforce behind the user's back.
+    /// </para>
+    /// </remarks>
+    public bool AutoAddToBoard { get; set; } = true;
 
-    /// <summary>
-    /// When this rule last moved a card (UTC), or null if it never has. The first thing to look at
-    /// when someone reports that automation "stopped working": a rule that has never fired is
-    /// configured wrong, one that fired until a date stopped working then.
-    /// </summary>
+    /// <summary>When this rule last moved a card, or empty if it never has.</summary>
+    /// <remarks>
+    /// The first thing to look at when someone reports that automation "stopped working": a rule
+    /// that has never fired is configured wrong, one that fired until a date stopped working then.
+    /// </remarks>
     public DateTime? LastFiredAtUtc { get; set; }
 
-    /// <summary>
-    /// Why this rule last failed, or null if its last attempt succeeded.
-    /// <para>
+    /// <summary>Why this rule last failed, or empty if its last attempt succeeded.</summary>
+    /// <remarks>
     /// This exists because the message queue is the wrong place to look for it, and that is worth
     /// spelling out. Spark's messaging does dead-letter a handler after <c>MaxAttempts</c> and does
     /// persist <c>LastError</c> on the message — but only when the recipient <em>throws</em>, and
@@ -149,9 +165,9 @@ public class EventColumnMapping
     /// webhook events are organization-scoped and unsubscribed either way — so without this the
     /// rule stays syntactically valid and silently never matches.
     /// </para>
-    /// </summary>
+    /// </remarks>
     public string? LastError { get; set; }
 
-    /// <summary>When <see cref="LastError"/> was recorded (UTC); null when the rule is healthy.</summary>
+    /// <summary>When the last failure happened; empty when the rule is healthy.</summary>
     public DateTime? LastErrorAtUtc { get; set; }
 }

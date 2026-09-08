@@ -449,7 +449,10 @@ string. Upsert reachable boards, `Disconnect` vanished ones, never delete, never
 failure as absence. Bound it the way repositories are bounded and respect the 30-request session
 budget. It then rides the nightly cron and `ResyncAction` for free.
 
-**FR4 — Configuration UI, model-declared only.** One `programUnits.json` unit of
+**FR4 — Configuration UI, model-declared only.** ⚠️ *Superseded in part: the `GitHub` group and its
+unit shipped and were then removed — see OD2. Boards are reached through `Account`'s
+`account-projects` sub-query; everything below about the form itself still holds.* One
+`programUnits.json` unit of
 `type: "persistentObject"` (or `query`) in a new `GitHub` group; rights in `security.json` starting
 at the next free block `c0e5a9e1-0000-4000-8000-000000000071`. `AutomationEnabled` and
 `DeleteBranchOnPrClose` render as checkboxes; `EventMappings` as `AsDetail` + `isArray` +
@@ -568,7 +571,7 @@ Still required:
 | # | Decision | Recommendation |
 |---|---|---|
 | **OD1** | Board freshness: nightly + manual resync only, or reconcile-on-view? | Nightly + resync (D1 objection 2). Revisit only if it actually bites. |
-| **OD2** | Does the boards ProgramUnit list boards directly, or hang off the existing Account page as a sub-query beside `account-repositories`? | Both: a top-level unit for the flat list, and the sub-query on Account, which is where users already are. |
+| **OD2** | Does the boards ProgramUnit list boards directly, or hang off the existing Account page as a sub-query beside `account-repositories`? | **CLOSED — the sub-query on Account, only** (owner, 2026-09-08). Both shipped first, then the top-level `GitHub → Project boards` unit was removed: it duplicated the sub-query one click from Home with a less useful shape, while the sub-query is where users already are and scopes the list to that account for free. The `GitHub` program-unit group is gone entirely; `GetGitHubProjects` stays declared and granted so `/query/github-projects` still answers a direct link. The `Account_Projects` sub-query gained a `description` — "Project boards" / "Tableaux de projet" / "Projectborden" — because a query's `description` is what renders as its heading (`spark-query-list.component.html:28`); `SparkQuery` has no `label` field. |
 | **OD3** | Promote `TargetColumnOptionId` to a lookup over the board's cached `Columns`? | **CLOSED — yes, and implemented**, though not as a *lookup*. ⚠️ An earlier revision of this row said "no, not expressible"; that was **wrong** and is corrected here. Neither lookup shape can scope to a parent — `TransientLookupReference<TKey>` is static, `DynamicLookupReference<TValue>` is one global set per lookup name — but `[Reference(typeof(X), "query")]` is a third mechanism whose named `Custom.*` query receives `CustomQueryArgs.Parent`, and it works from an embedded `AsDetail` row because the client sends the **root** document as the parent. It also needs **no new collection**: `ProjectColumn` stays embedded and `ProjectColumnActions.Project_Columns` returns the board's own `Columns` as a plain `IEnumerable`, which the executor accepts. Because the target declares a `clrType` it is entity-backed rather than composed, so no `ISparkOwnsRowSecurity` and no transferred row-security duty. The recipient's missing-column check stays regardless: a dropdown makes a wrong value unlikely, not impossible, since a column can be deleted on GitHub after a rule is saved. Mechanism now documented in `docs/guide-reference-attributes.md`. |
 | **OD4** | `editMode: "inline"` for the rules sub-table? | **CLOSED — yes**, applied. Also retires spike S2: `HR/Person.json` already ships `editMode: "inline"` on an `AsDetail` array, so the mechanism is proven in-tree and needed no spike. How it *looks* on this particular form is M13 browser work, not a mechanism question. |
 

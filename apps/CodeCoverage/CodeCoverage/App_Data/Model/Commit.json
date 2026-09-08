@@ -16,9 +16,9 @@
           "nl": "Volledigheid van de assemblage"
         },
         "description": {
-          "en": "Complete / Partial copied from the assembly so lists and indexes can filter without loading it. Null for commits whose coverage predates assemblies (full uploads, treated as complete).",
-          "fr": "Complete / Partial copié depuis l'assemblage afin que les listes et les index puissent filtrer sans le charger. Null pour les commits dont la couverture est antérieure aux assemblages (envois complets, considérés comme complets).",
-          "nl": "Complete / Partial gekopieerd uit de assemblage zodat lijsten en indexen kunnen filteren zonder ze te laden. Null voor commits waarvan de dekking dateert van vóór de assemblages (volledige uploads, als volledig beschouwd)."
+          "en": "Whether the commit's coverage is complete or partial.",
+          "fr": "Si la couverture du commit est complète ou partielle.",
+          "nl": "Of de dekking van het commit volledig of gedeeltelijk is."
         },
         "dataType": "string",
         "isRequired": false,
@@ -33,12 +33,12 @@
         "id": "77203692-9b28-495d-913f-c8b34f038564",
         "name": "AuthoredAt",
         "label": {
-          "en": "Authored At",
-          "fr": "Rédigé le",
-          "nl": "Geschreven op"
+          "en": "Authored",
+          "fr": "Rédigé",
+          "nl": "Geschreven"
         },
         "description": {
-          "en": "When the commit was authored, from the webhook payload; null for commits only seen through an upload.",
+          "en": "When the commit was authored; empty for commits only seen through an upload.",
           "fr": "Moment de rédaction du commit, d'après la charge utile du webhook ; null pour les commits vus uniquement via un envoi.",
           "nl": "Wanneer de commit geschreven is, uit de webhookpayload; null voor commits die enkel via een upload gezien zijn."
         },
@@ -82,9 +82,9 @@
           "nl": "Dekking"
         },
         "description": {
-          "en": "The commit's headline: the assembled coverage (every finalized build of the commit unioned, plus files carried unchanged from the base), stamped by the assembler and denormalized for lists and badges.",
-          "fr": "Le chiffre principal du commit : la couverture assemblée (l'union de tous les builds finalisés du commit, plus les fichiers repris inchangés depuis la base), apposée par l'assembleur et dénormalisée pour les listes et les badges.",
-          "nl": "Het hoofdcijfer van de commit: de samengestelde dekking (alle gefinaliseerde builds van de commit samengevoegd, plus bestanden die ongewijzigd uit de basis zijn overgenomen), gezet door de assembler en gedenormaliseerd voor lijsten en badges."
+          "en": "The commit's headline coverage.",
+          "fr": "La couverture de référence du commit.",
+          "nl": "De hoofddekking van het commit."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -106,9 +106,9 @@
           "nl": "Δ basisbranch"
         },
         "description": {
-          "en": "Percentage-point change versus the default branch's newest complete coverage at or before this commit's date — \"what would merging this do to the headline\". Equals CoverageDeltaVsParent on the default branch itself. Null when there is no such reference.",
-          "fr": "Variation en points de pourcentage par rapport à la couverture complète la plus récente de la branche par défaut à la date de ce commit ou avant — « quel effet aurait la fusion sur le chiffre principal ». Égal à CoverageDeltaVsParent sur la branche par défaut elle-même. Null lorsqu'une telle référence n'existe pas.",
-          "nl": "Verandering in procentpunten ten opzichte van de nieuwste volledige dekking van de standaardbranch op of vóór de datum van deze commit — \"wat zou mergen met het hoofdcijfer doen\". Gelijk aan CoverageDeltaVsParent op de standaardbranch zelf. Null wanneer zo'n referentie ontbreekt."
+          "en": "Percentage-point change versus the default branch — what merging would do.",
+          "fr": "Écart en points face à la branche par défaut — ce que la fusion changerait.",
+          "nl": "Verschil in procentpunten t.o.v. de standaardbranch — wat mergen zou doen."
         },
         "dataType": "decimal",
         "isRequired": false,
@@ -129,9 +129,9 @@
           "nl": "Δ ouder"
         },
         "description": {
-          "en": "Percentage-point change versus the git first parent (ParentSha), stamped by the assembler. Null when the parent has no coverage — rendered as \"—\", never as a fake zero.",
-          "fr": "Variation en points de pourcentage par rapport au premier parent git (ParentSha), apposée par l'assembleur. Null lorsque le parent n'a aucune couverture — rendu par « — », jamais par un faux zéro.",
-          "nl": "Verandering in procentpunten ten opzichte van de eerste git-ouder (ParentSha), gezet door de assembler. Null wanneer de ouder geen dekking heeft — weergegeven als \"—\", nooit als een neppe nul."
+          "en": "Percentage-point change versus the git first parent.",
+          "fr": "Écart en points face au premier parent git.",
+          "nl": "Verschil in procentpunten t.o.v. de eerste git-ouder."
         },
         "dataType": "decimal",
         "isRequired": false,
@@ -165,14 +165,14 @@
         "id": "3f8a2c61-9d54-4b0e-8f1a-6cd2e07b5a94",
         "name": "FirstSeenAtUtc",
         "label": {
-          "en": "First Seen At Utc",
-          "fr": "Vu pour la première fois le (UTC)",
-          "nl": "Eerst gezien op (UTC)"
+          "en": "First Seen",
+          "fr": "Vu pour la première fois",
+          "nl": "Eerst gezien"
         },
         "description": {
-          "en": "When this document was first created, by whichever path saw the commit first (webhook or upload). AuthoredAt only arrives via push/PR webhooks, so upload-only commits (the norm for OIDC auto-provisioned repos) would otherwise have nothing to sort by — lists order by AuthoredAt coalesced with this.",
-          "fr": "Moment de la création initiale de ce document, par le chemin qui a vu le commit en premier (webhook ou envoi). AuthoredAt n'arrive que par les webhooks push/PR ; les commits vus uniquement par envoi (la norme pour les dépôts auto-provisionnés par OIDC) n'auraient donc sinon aucun critère de tri — les listes trient par AuthoredAt fusionné avec ce champ.",
-          "nl": "Wanneer dit document voor het eerst aangemaakt is, door welk pad de commit ook het eerst zag (webhook of upload). AuthoredAt komt enkel via push-/PR-webhooks binnen, dus commits die alleen via een upload gezien zijn (de norm voor via OIDC automatisch aangemaakte repository's) zouden anders niets hebben om op te sorteren — lijsten sorteren op AuthoredAt samengevoegd met dit veld."
+          "en": "When this commit was first seen, by webhook or by upload.",
+          "fr": "Quand ce commit a été vu pour la première fois, par webhook ou par envoi.",
+          "nl": "Wanneer dit commit eerst gezien is, via webhook of via upload."
         },
         "dataType": "datetime",
         "isRequired": false,
@@ -192,9 +192,9 @@
           "nl": "Id van de laatste build"
         },
         "description": {
-          "en": "The build whose coverage is shown for this commit (file tree reads its FileCoverage docs).",
-          "fr": "Le build dont la couverture est affichée pour ce commit (l'arborescence de fichiers lit ses documents FileCoverage).",
-          "nl": "De build waarvan de dekking voor deze commit getoond wordt (de bestandsboom leest zijn FileCoverage-documenten)."
+          "en": "The build whose coverage is shown for this commit.",
+          "fr": "Le build dont la couverture est affichée pour ce commit.",
+          "nl": "Het build waarvan de dekking voor dit commit getoond wordt."
         },
         "dataType": "string",
         "isRequired": false,
@@ -232,14 +232,14 @@
         "id": "c4fbe030-4e29-420f-903b-a72b0be54505",
         "name": "ParentLookupAttemptedAtUtc",
         "label": {
-          "en": "Parent Lookup Attempted At Utc",
-          "fr": "Recherche du parent tentée le (UTC)",
-          "nl": "Opzoeken van de ouder geprobeerd op (UTC)"
+          "en": "Parent Lookup",
+          "fr": "Recherche du parent",
+          "nl": "Ouder opgezocht"
         },
         "description": {
-          "en": "When the server last asked GitHub for the parent (whether or not it answered). The backfill job walks commits where this is null, so a repository without any API path is asked once, not forever.",
-          "fr": "Moment où le serveur a demandé pour la dernière fois le parent à GitHub (que celui-ci ait répondu ou non). Le job de remplissage parcourt les commits pour lesquels ce champ est null, de sorte qu'un dépôt sans aucun accès API n'est interrogé qu'une fois, et non indéfiniment.",
-          "nl": "Wanneer de server GitHub het laatst om de ouder gevraagd heeft (of die nu geantwoord heeft of niet). De backfill-job loopt de commits af waar dit null is, zodat een repository zonder API-pad één keer bevraagd wordt en niet eeuwig."
+          "en": "When the server last asked GitHub for the parent.",
+          "fr": "Quand le serveur a demandé le parent à GitHub pour la dernière fois.",
+          "nl": "Wanneer de server de ouder het laatst bij GitHub opgevraagd heeft."
         },
         "dataType": "datetime",
         "isRequired": false,
@@ -259,9 +259,9 @@
           "nl": "Sha van de ouder"
         },
         "description": {
-          "en": "Sha of the git first parent, used as the reference for the delta-vs-parent; see the source field for how much to trust it.",
-          "fr": "Sha du premier parent git, utilisé comme référence pour le delta par rapport au parent ; voyez le champ source pour savoir dans quelle mesure s'y fier.",
-          "nl": "Sha van de eerste git-ouder, gebruikt als referentie voor de delta ten opzichte van de ouder; zie het bronveld voor hoeveel vertrouwen ze verdient."
+          "en": "Sha of the git first parent, the reference for the delta-vs-parent.",
+          "fr": "Sha du premier parent git, la référence de l'écart face au parent.",
+          "nl": "Sha van de eerste git-ouder, de referentie voor het verschil met de ouder."
         },
         "dataType": "string",
         "isRequired": false,
@@ -281,9 +281,9 @@
           "nl": "Bron van de ouder-sha"
         },
         "description": {
-          "en": "Who set ParentSha: upload (the action's claim) or api (verified against GitHub's commits API). Only api is trusted for the Δ-vs-parent; older action builds sent the PR base sha under the same name.",
-          "fr": "Qui a défini ParentSha : upload (l'affirmation de l'action) ou api (vérifié via l'API commits de GitHub). Seul api est digne de confiance pour le Δ par rapport au parent ; d'anciennes versions de l'action envoyaient le sha de base de la PR sous le même nom.",
-          "nl": "Wie ParentSha gezet heeft: upload (de bewering van de action) of api (geverifieerd via GitHubs commits-API). Enkel api wordt vertrouwd voor de Δ ten opzichte van de ouder; oudere versies van de action stuurden de basis-sha van de PR onder dezelfde naam."
+          "en": "Who set the parent sha: the upload's claim, or GitHub's API.",
+          "fr": "Qui a fixé le sha du parent : la déclaration de l'envoi, ou l'API GitHub.",
+          "nl": "Wie de ouder-sha gezet heeft: de claim van de upload, of de GitHub-API."
         },
         "dataType": "string",
         "isRequired": false,
@@ -298,14 +298,14 @@
         "id": "fd21d714-4337-4ca2-a4b5-4d09b5dacd9d",
         "name": "PullRequestBaseRef",
         "label": {
-          "en": "Pull Request Base Ref",
-          "fr": "Réf. de base de la pull request",
-          "nl": "Basisref van de pull request"
+          "en": "PR Base Ref",
+          "fr": "Réf. de base PR",
+          "nl": "PR-basisref"
         },
         "description": {
-          "en": "The branch the pull request TARGETS — main, not the head branch in Branch. Null for pushes, and for PR commits recorded before this field existed.\nWritten authoritatively by the pull_request webhook and best-effort (??=) by the upload, matching how Branch and PullRequestNumber are handled. A PR's target can be retargeted, in which case the webhook's later write wins.",
-          "fr": "La branche que la pull request CIBLE — main, et non la branche head figurant dans Branch. Null pour les pushes, et pour les commits de PR enregistrés avant l'existence de ce champ.\nÉcrit de manière autoritaire par le webhook pull_request et au mieux (??=) par l'envoi, à l'instar de Branch et PullRequestNumber. La cible d'une PR peut être modifiée, auquel cas l'écriture ultérieure du webhook l'emporte.",
-          "nl": "De branch waar de pull request op MIKT — main, niet de head-branch in Branch. Null voor pushes, en voor PR-commits die vastgelegd zijn voordat dit veld bestond.\nGezaghebbend geschreven door de pull_request-webhook en best-effort (??=) door de upload, net zoals Branch en PullRequestNumber behandeld worden. Het doel van een PR kan omgezet worden, waarna de latere schrijfactie van de webhook wint."
+          "en": "The branch the pull request targets, not its head branch.",
+          "fr": "La branche que la pull request cible, pas sa branche source.",
+          "nl": "De branch waarop de pull request mikt, niet zijn eigen branch."
         },
         "dataType": "string",
         "isRequired": false,
@@ -320,14 +320,14 @@
         "id": "4dac107e-4ff4-4022-b9fe-e1806b0d2bfe",
         "name": "PullRequestBaseSha",
         "label": {
-          "en": "Pull Request Base Sha",
-          "fr": "Sha de base de la pull request",
-          "nl": "Basis-sha van de pull request"
+          "en": "PR Base Sha",
+          "fr": "Sha de base PR",
+          "nl": "PR-basis-sha"
         },
         "description": {
-          "en": "Tip of PullRequestBaseRef as of the PR's last synchronise.\nNOT the same thing as Build.DeclaredBaseSha: that is the caller's declared affected-computation base (this repo passes nx's NX_BASE) and is not guaranteed to be the merge-base. Patch coverage deliberately still diffs against DeclaredBaseSha ?? ParentSha — repointing a shipped number belongs to the honest-numbers work, not here.",
-          "fr": "Tête de PullRequestBaseRef au moment de la dernière synchronisation de la PR.\nCE N'EST PAS la même chose que Build.DeclaredBaseSha : celui-ci est la base de calcul « affected » déclarée par l'appelant (ce dépôt transmet le NX_BASE de nx) et rien ne garantit qu'il s'agisse de la base de fusion. La couverture du patch continue délibérément de comparer à DeclaredBaseSha ?? ParentSha — réorienter un chiffre déjà livré relève du chantier « chiffres honnêtes », pas d'ici.",
-          "nl": "Tip van PullRequestBaseRef op het moment van de laatste synchronisatie van de PR.\nNIET hetzelfde als Build.DeclaredBaseSha: dat is de door de aanroeper aangegeven basis voor de affected-berekening (deze repo geeft nx' NX_BASE door) en is niet gegarandeerd de merge-base. Patchdekking vergelijkt bewust nog steeds met DeclaredBaseSha ?? ParentSha — een reeds uitgeleverd cijfer omleggen hoort bij het eerlijke-cijfers-werk, niet hier."
+          "en": "Tip of the target branch as of the PR's last synchronise.",
+          "fr": "Le sommet de la branche cible lors de la dernière synchronisation de la PR.",
+          "nl": "De top van de doelbranch bij de laatste synchronisatie van de PR."
         },
         "dataType": "string",
         "isRequired": false,
@@ -342,12 +342,12 @@
         "id": "de160dcb-97ee-4254-aab4-4d70cc2aa5db",
         "name": "PullRequestNumber",
         "label": {
-          "en": "Pull Request Number",
-          "fr": "Numéro de la pull request",
-          "nl": "Nummer van de pull request"
+          "en": "PR",
+          "fr": "PR",
+          "nl": "PR"
         },
         "description": {
-          "en": "Number of the pull request this commit was seen on; null for plain pushes.",
+          "en": "Number of the pull request this commit was seen on; empty for plain pushes.",
           "fr": "Numéro de la pull request sur laquelle ce commit a été vu ; null pour de simples pushes.",
           "nl": "Nummer van de pull request waarop deze commit gezien is; null bij gewone pushes."
         },

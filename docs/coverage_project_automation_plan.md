@@ -52,6 +52,9 @@ per-queue lanes, durable claims. Two consequences for this plan, which is otherw
 | **M10** docs | **Done for the guides that describe current state.** Rewrote the webhooks README's board-automation section against the CodeCoverage implementation (new file table, real document shape, and the two design points worth copying); repointed `guide-docker-deployment.md`, `guide-authentication-schemes.md` and `guide-nx-remote-cache.md`. Historical PRDs, plans, release notes and build logs **keep** their references deliberately — rewriting those would make them lie about what happened. Earlier: `guide-row-security.md`, `guide-reference-attributes.md` |
 | **M11** tests | **Partial.** Framework-level tests done: `FailOpenRegressionTests` updated for the narrowed sub-query guard plus a companion for the option-source case, and two `ng-spark` specs pinning that AsDetail rows reach the client and that `objects: []` survives as emptiness. Also **fixed six pre-existing failures** in `GitHubStateReconcilerTests` — `IInstallationProjects` was added to the reconciler in M3 and never registered in that harness, so every test in the class failed on construction. **Now also covers the automation feature's two silent decisions** — `ProjectAutomationTests`, 13 facts over the loop guard and event-key disambiguation, both widened to `internal` with `InternalsVisibleTo` rather than driven through a webhook round trip (a full-path test would pass with either defect present, because both look exactly like "no board matched"). **One of them found a live bug**: `IsPerformedByUs` read `performed_via_github_app` from the payload **root**, but GitHub hangs it off the resource (`comment`, `issue`, `pull_request`), so the loop guard was **inert for every event except `check_run`** — it could not recognise a comment this app had just posted. Fixed to check the resource first and the root last. Still not covered: card movement against a GraphQL fake |
 | **M12** single sweep | **Done.** `MintPlayer.Spark.Tests` **1984 passed / 0 failed**; `ng-spark` **409 passed / 0 failed**. `CodeCoverage.Tests` was **359 / 6** until the harness fix above — the plan's previously recorded "365 / 0" predates M3 and was stale when quoted. ⚠️ And "365 / 0" was itself misreported: that run **exited 1** on a fixture *Test Class Cleanup Failure*, which xUnit keeps out of the summary line entirely. Read the exit code, never the summary alone — the fixture's teardown is now guarded so a disposal race cannot fail the build. ⚠️ The first sweep ran `dotnet test` and vitest **concurrently** with the app host up and produced three unrelated failures, all the documented CPU-starvation teardown flake; suites must be run sequentially, host killed, before a red result means anything |
+| **M14** correct the two flags' semantics (C15) | **Done, green (2026-09-08).** `AutoAddToBoard` (default `true`) replaces `AddLinkedIfMissing` and is read at all four `addIfMissing` sites — the issue path (was hard-coded `true`), the PR and `check_run` paths (both `false`), and the linked-issue loop. Model JSON renamed with all three descriptions rewritten (nl/fr by hand — synchronize preserves them, so stale text would have survived); `--spark-synchronize-model` re-run and **verified a fixed point** (second run diffs clean), `modelHashes.json` re-stamped. Migration `M_202609081200_RenameAddLinkedIfMissing` patches stored rules, writing `true` only where the member is absent so a retry cannot overwrite a later user choice — and backfills `MoveLinkedIssues` too, because the development database showed that trap had **already fired**: the one configured rule predates #377, carries neither member, and has therefore been loading as `MoveLinkedIssues = false` since. `CodeCoverage.Tests` **387 passed / 0 failed, exit 0**. **Verified live** (`dotnet run` + browser, 2026-09-08): migration applied at startup, the stored rule now reads `AutoAddToBoard: true` / `MoveLinkedIssues: true`, the board's rules row opens with both boxes ticked and the column picker resolving `98236657` → "Done", and every renamed label renders in en/nl/fr with 0 console errors. Test note: `A_pull_request_event_never_adds_the_card` was **deleted** — it asserted the removed policy — and replaced by both directions of the flag, plus the issue-off case and a `check_run` case (that third hard-coded site had no coverage at all) |
+| **M15** labels + tooltips (owner request) | **Done, green (2026-09-08).** 38 labels and 35 descriptions shortened in all three languages; tooltip English cut from 20,296 chars to 7,473 by moving rationale into `<remarks>`. Presentational, so the model hash is unchanged. Both passes hit the same trap — synchronize preserves `fr`/`nl`, so 46 translations were left stale and had to be rewritten. Framework guidance added to two guides. See the M15 section below |
+| **M16** drop the top-level boards unit, head and reorder the sub-query (owner request) | **Done (2026-09-08).** Closes OD2 the other way — `Account`'s `account-projects` sub-query only. The `GitHub` program-unit group is removed entirely, the sub-query gained the `description` that renders as its heading ("Project boards", translated), and `Name` moved to the front of the column order. `GetGitHubProjects` stays declared and granted for direct links. Two mechanism traps, both documented in guides: `programUnits.json` **is** part of the model hash unlike labels/descriptions/order (needed a re-stamp; hash now `31725c97…`), and `order: 0` would have been silently reverted, so `Name` takes `1`. Both verifies exit 0 |
 | **M13** manual verification | **Done.** Live webhook verification recorded in PRD §3b; the form has now been opened end to end. A rule saved as `PullRequestMerged` → `TargetColumnOptionId` `"98236657"` — the GitHub **option id**, not the name — from a picker offering only that board's own columns, so `[Reference]` + a parent-scoped `Custom.*` query is confirmed working from an embedded `AsDetail` row, and renaming a column on GitHub cannot break a saved rule. `SyncColumns` verified populating the grid in place. Four defects surfaced only by doing this — see M7 and the framework fixes |
 
 ### M9 inventory (measured, 2026-09-07)
@@ -238,6 +241,11 @@ the modal per-row editor, which is the default path in the same template.
   `catch (Exception ex) { throw; }` noise removed (B5).
 - Port `HandleIssuesEvent` / `HandlePullRequestEvent` *logic*: event → mapping key, add-or-move the
   card, and `MoveLinkedIssues` resolving `closingIssuesReferences`.
+- **Two flags, two orthogonal questions** (C15, and the PRD's decisions 5–7): `MoveLinkedIssues`
+  says *which* items the rule moves — the event's subject, or its linked issues **as well**;
+  `AutoAddToBoard` says what happens when **any** of those items is not on the board yet. The
+  add-or-skip decision is one flag read at *every* call site, the event's own subject included; it
+  is **not** "add linked items". Never re-derive it from the item's type.
 
 **Verify:** builds.
 
@@ -347,6 +355,133 @@ reason to re-run until green.
 
 ---
 
+## M14 — Correct the two flags' semantics (C15)
+
+**Why this milestone exists:** the flags shipped in #377 were built against a misreading — see C15 in
+the decision register and decisions 5–7 in `docs/prd/PRD-ProjectBoardAutomation.md`, which are now
+the spec. `MoveLinkedIssues` is behaviourally right and only needs its documentation tightened
+("as well as", not "instead of"). The recruitment flag is wrong in **name, scope and default**.
+
+- **`EventColumnMapping.cs`** — replace `AddLinkedIfMissing` with
+  `public bool AutoAddToBoard { get; set; } = true;`. Rewrite the doc comment: it governs the
+  event's own subject *and* linked issues, and the old comment's whole "asymmetry with a direct
+  issue event is deliberate" paragraph is now obsolete, not just reworded. Tighten
+  `MoveLinkedIssues`'s comment to say the linked issues move *in addition to* the PR's card, and
+  keep the "ignored for issue events" sentence — GitHub models no issue→issue closing link, so that
+  part is correct, not a limitation to fix.
+- **`ProjectAutomationRecipient.cs`** — every `addIfMissing:` argument becomes
+  `rule.AutoAddToBoard`. Four call sites: `MoveIssueAsync` (was hard-coded `true`),
+  `MovePullRequestAsync` (was hard-coded `false`), `MoveCheckRunPullRequestsAsync` (was hard-coded
+  `false`), and the linked-issue loop in `MoveLinkedIssuesAsync` (was `rule.AddLinkedIfMissing`).
+  Delete the two long comments justifying the type-aware policy — the policy is gone, and a comment
+  arguing for it would outlive it.
+- **`App_Data/Model/EventColumnMapping.json`** — rename the attribute and rewrite all three
+  descriptions (`en`/`nl`/`fr`). **Read the nl and fr text back as a spec review before
+  committing**; the Dutch text is what surfaced this defect, and it is the cheapest place to catch
+  the next one. Re-stamp `modelHashes.json` with the model file (C8, R4).
+- **Migration.** A stored `AddLinkedIfMissing: false` must not silently become
+  `AutoAddToBoard: false` — the two mean different things and the new default is `true`. Since the
+  old field only ever governed linked-issue recruitment and shipped days ago, the intended
+  behaviour for existing rules is the new default. Drop the old field and let `AutoAddToBoard`
+  default: decide explicitly (a `MintPlayer.Spark.Migrations` patch, or accepting the absent-field
+  default) and record which, because "absent JSON field ≠ `false`" cuts both ways here — an absent
+  bool deserialises to `false`, **not** to the property initialiser's `true`, for documents written
+  before the rename. **This is the one part of M14 that can be wrong silently.**
+
+  **Decided: a migration, and it backfills BOTH booleans.** `M_202609081200_RenameAddLinkedIfMissing`
+  patches every `GitHubProjects.EventMappings` element, writing `true` only where the member is
+  absent (so a retry cannot overwrite a later user edit) and dropping `AddLinkedIfMissing`.
+  `MoveLinkedIssues` is in scope because reading the development database found the trap had
+  **already fired once**: the single configured rule predates #377 and carries neither member, so
+  it has been loading as `MoveLinkedIssues = false` and the linked-issue movement #377 shipped has
+  never run for that board. #377 added the field with a `true` default and no migration — the
+  default only ever applies to newly constructed objects.
+- **`ProjectAutomationMovementTests.cs`** — the `addLinkedIfMissing` parameter becomes
+  `autoAddToBoard` (default `true`). Add the facts the old shape could not express: a
+  `PullRequestOpened` rule with `AutoAddToBoard = true` **adds the PR** (previously impossible), and
+  the same rule with it off adds nothing at all — neither the PR nor its linked issues. Keep
+  `A_ready_for_review_pull_request_moves_its_linked_issues` and the "must not even ask GitHub"
+  assertion for `MoveLinkedIssues = false`.
+- **UI check.** The rules editor is generated from the model JSON, so the new label and description
+  arrive for free — but confirm the inline `AsDetail` row renders the renamed attribute (the type
+  needs its type-level grant, per M7), and that an existing board's saved rules still open.
+
+**Verify:** builds; `grep -rn "AddLinkedIfMissing" apps/ docs/` returns no *live* use — only the
+migration that drops the field and the comments that say why it is gone.
+
+## M15 — Labels and tooltips (owner request, 2026-09-08)
+
+Presentational only: no hash change, no test impact, and `--spark-verify-model` stays green
+throughout. Both halves have the same trap, which is the reason they are one milestone.
+
+- **Labels.** 38 shortened across nine model files, in all three languages. Generator artifacts
+  fixed (`Git Hub Id`, `Ci Run Id`, `Is Private`), the `At Utc` suffix dropped throughout —
+  following the precedent already in the model, where `CreatedAtUtc` was hand-labelled "Created" —
+  and redundant type nouns removed (`Event Name` → `Event`). Two needed a decision rather than a
+  trim: `TargetColumnOptionId` → "Target Column" (the user picks a column; the id is persistence),
+  and `Repository.LatestCoverageAtUtc` → "Last Measured", because `LatestCoverage` beside it is
+  already labelled "Coverage" and the trimmed name would have read as the value.
+- **Descriptions.** 35 summaries condensed by moving the rationale into `<remarks>`, which the
+  description generator ignores — nothing was deleted from the source. English went from 20,296
+  characters (mean 156, worst case 2,097) to 7,473 (mean 57, nothing over 130).
+- **The trap, both times:** synchronize preserves `fr`/`nl`. Shortening `en` alone leaves the other
+  languages carrying the old text, invisibly — 46 descriptions needed rewriting after the summary
+  pass. Guidance added to `guide-translated-strings.md` (labels) and
+  `guide-attribute-descriptions.md` (the `<remarks>` split, and the length warning).
+
+**Verify:** no `fr`/`nl` much longer than its `en`; snapshot the model directory, re-synchronize,
+`diff -r` clean; `--spark-verify-model` exits 0 with an unchanged hash.
+
+## M16 — Drop the top-level boards unit (owner request, 2026-09-08)
+
+Closes OD2 the other way: the sub-query on `Account` only. See the OD2 rows in the PRD and the
+decision register.
+
+- **`programUnits.json`** — the whole `GitHub` group goes, since `Project boards` was its only unit.
+  The reasoning is recorded in the file's own `_comment`, beside the existing note about why there
+  is no `url` unit for the GitHub App link: boards are reached from the account that owns them,
+  which is where a user already is and which scopes the list for free.
+- **`Account_Projects` gains a `description`** — "Project boards" / "Tableaux de projet" /
+  "Projectborden", the translations the removed unit carried. A query's `description` is what
+  renders as its heading (`spark-query-list.component.html:28`, falling back to `name`);
+  `SparkQuery` has **no `label`** field, unlike an attribute or a column. Without this the
+  sub-query on the Account page showed the raw name.
+- **`GetGitHubProjects` stays** declared, aliased and granted, so `/query/github-projects` still
+  answers a direct link. Removing it would have meant a security.json change for no gain.
+- **`Name` moved to the front of the column order** (owner request): it was 6th, behind Account,
+  Owner, Installation Id, Node Id and Number, so the grid led with everything except the board's
+  title. `Name` takes `order: 1` and the five above it shift down one.
+
+  ⚠️ **Not `order: 0`.** Synchronize preserves a hand-set order only while it is positive —
+  `existingAttr.Order = existingAttr.Order > 0 ? existingAttr.Order : order`
+  (`ModelSynchronizer.cs:768`) — so a `0` reads as "unset" and the next synchronize would put the
+  column back in sixth place. Verified by snapshot + re-sync + `diff -r`.
+
+  This moves `Name` on **every** surface, not just this sub-query: `QueryResultProjector.cs:54`
+  and `EntityMapper.cs:406` read the same per-attribute `order`, so both queries and the detail
+  page follow. The model has no per-query column order. Mechanism and the `0` trap documented in
+  `guide-attribute-grouping.md`.
+
+⚠️ **`programUnits.json` is hashed, unlike labels and descriptions.** Removing the unit drifted the
+model (`--spark-verify-model` exit 3, naming `config programUnits.json`) and needed a
+`--spark-synchronize-model` re-stamp. The hash moved to `31725c97…`.
+
+**Verify:** `--spark-verify-model` and `--spark-verify-security` both exit 0; the sidebar shows only
+the `Coverage` group; the Account page's boards sub-query is headed "Project boards" and leads with
+the board name. `CodeCoverage.Tests` **387 / 0, exit 0**.
+
+**Verified live (2026-09-08).** Sidebar shows the `Coverage` group alone; the Account page carries
+"Repositories" and "Project boards" side by side; the boards grid leads with `Name`; the 24 tooltips
+average 59 characters with a maximum of 111 (Dutch 131); Dutch labels render (`Naam`, `Eigenaar`,
+`Installatie-id`); 0 console errors.
+
+⚠️ **A description is also an `aria-label`.** The `[i]` control carries it, so a screen reader
+announces the whole text — before this pass one attribute announced 2,097 characters. The
+condensation fixed an accessibility defect, not just a wide tooltip. Noted in
+`guide-attribute-descriptions.md`.
+
+---
+
 ## PR checklist
 
 - [ ] No new `[MessageQueue]` name (C1, R1); 4 queue guards green
@@ -356,6 +491,10 @@ reason to re-run until green.
 - [ ] `In()` not `Contains`; `!= Disconnected` not `== Connected` (FR2)
 - [ ] `[GenerateIndex]` carries no type argument (FR1)
 - [ ] `modelHashes.json` committed with the model files it stamps (C8, R4)
+- [ ] No `addIfMissing` argument derived from the item's type — every call site reads
+      `rule.AutoAddToBoard` (M14, C15); `grep -rn "AddLinkedIfMissing" apps/` clean
+- [ ] The renamed option's **nl and fr** descriptions read back as a spec review, not a
+      translation pass — that is where C15 was caught
 - [ ] `Dockerfile` COPY list and `code-coverage-deploy.yml` `paths:` both updated if a reference was
       added (C9, R5)
 - [ ] `Octokit.GraphQL` declared explicitly, beta pin visible (R6)

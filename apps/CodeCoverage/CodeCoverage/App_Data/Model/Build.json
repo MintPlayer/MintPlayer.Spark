@@ -18,9 +18,9 @@
           "nl": "Overdracht"
         },
         "description": {
-          "en": "Declared by the uploader: the test step that produced this run's reports succeeded, so files it did not measure may be filled in from the base. False when any job of the run said its tests failed — a crashed suite emits no report, and the server cannot tell \"affected but crashed\" from \"unaffected\", so the assembler carries nothing for the commit instead of papering over the crash with the base's numbers.",
-          "fr": "Déclaré par l'émetteur : l'étape de test qui a produit les rapports de cette exécution a réussi, de sorte que les fichiers qu'elle n'a pas mesurés peuvent être complétés depuis la base. Faux dès qu'un job de l'exécution a signalé l'échec de ses tests — une suite qui plante n'émet aucun rapport, et le serveur ne peut distinguer « affecté mais planté » de « non affecté » ; l'assembleur ne reporte donc rien pour le commit plutôt que de masquer le plantage avec les chiffres de la base.",
-          "nl": "Aangegeven door de uploader: de teststap die de rapporten van deze run heeft voortgebracht is geslaagd, dus bestanden die ze niet heeft gemeten mogen vanuit de basis worden aangevuld. False zodra een job van de run meldde dat zijn tests faalden — een gecrashte suite levert geen rapport op, en de server kan \"beïnvloed maar gecrasht\" niet onderscheiden van \"niet beïnvloed\", dus draagt de assembler niets over voor de commit in plaats van de crash toe te dekken met de cijfers van de basis."
+          "en": "The tests behind this run passed, so unmeasured files may be filled in from the base.",
+          "fr": "Les tests derrière ce run ont réussi, donc les fichiers non mesurés peuvent être repris de la base.",
+          "nl": "De tests achter deze run zijn geslaagd, dus niet-gemeten bestanden mogen uit de basis overgenomen worden."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -35,12 +35,12 @@
         "id": "b35409ca-47af-4d73-89be-088af06fa44f",
         "name": "CiRunAttempt",
         "label": {
-          "en": "Ci Run Attempt",
-          "fr": "Tentative d'exécution CI",
-          "nl": "CI-run-poging"
+          "en": "CI Attempt",
+          "fr": "Tentative CI",
+          "nl": "CI-poging"
         },
         "description": {
-          "en": "The attempt number of that workflow run; a re-run of the same run creates a separate build.",
+          "en": "The attempt number of that workflow run.",
           "fr": "Le numéro de tentative de cette exécution de workflow ; une réexécution de la même exécution crée un build distinct.",
           "nl": "Het pogingsnummer van die workflow-run; een herhaling van dezelfde run maakt een aparte build aan."
         },
@@ -57,8 +57,8 @@
         "id": "b31dad93-2418-4bc6-977d-02f4dfa52cdd",
         "name": "CiRunId",
         "label": {
-          "en": "Ci Run Id",
-          "fr": "Id d'exécution CI",
+          "en": "CI Run Id",
+          "fr": "Id du run CI",
           "nl": "CI-run-id"
         },
         "description": {
@@ -108,9 +108,9 @@
           "nl": "Dekking"
         },
         "description": {
-          "en": "Whole-build line and branch totals, merged across all sessions at finalize; null while the build is open.",
-          "fr": "Totaux de lignes et de branches pour l'ensemble du build, fusionnés sur toutes les sessions à la finalisation ; null tant que le build est ouvert.",
-          "nl": "Regel- en vertakkingstotalen voor de hele build, bij finalisering samengevoegd over alle sessies; null zolang de build open is."
+          "en": "Whole-build line and branch totals; empty while the build is open.",
+          "fr": "Totaux de lignes et de branches de tout le build ; vide tant que le build est ouvert.",
+          "nl": "Totalen van regels en branches voor het hele build; leeg zolang het build open staat."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -155,9 +155,9 @@
           "nl": "Aangegeven basis-sha"
         },
         "description": {
-          "en": "The base sha the uploader's affected-computation actually ran against (what was passed to nx affected --base). Declared, not inferred — deliberately a dedicated field rather than ParentSha, which has two writers and a history of meaning drift and stays a hint.",
-          "fr": "Le sha de base sur lequel le calcul « affected » de l'émetteur s'est réellement appuyé (ce qui a été passé à nx affected --base). Déclaré, non déduit — délibérément un champ dédié plutôt que ParentSha, qui a deux auteurs, un historique de dérive de sens, et reste une simple indication.",
-          "nl": "De basis-sha waartegen de affected-berekening van de uploader daadwerkelijk gedraaid heeft (wat aan nx affected --base is doorgegeven). Aangegeven, niet afgeleid — bewust een apart veld in plaats van ParentSha, dat twee schrijvers heeft, een geschiedenis van betekenisverschuiving, en een hint blijft."
+          "en": "The base sha the uploader's affected-computation ran against.",
+          "fr": "Le sha de base contre lequel le calcul « affected » de l'uploader a tourné.",
+          "nl": "De basis-sha waartegen de affected-berekening van de uploader gelopen heeft."
         },
         "dataType": "string",
         "isRequired": false,
@@ -172,12 +172,12 @@
         "id": "d3af4b5b-41b8-4f54-ae60-2431a2c505d4",
         "name": "EventName",
         "label": {
-          "en": "Event Name",
-          "fr": "Nom de l'événement",
-          "nl": "Naam van de gebeurtenis"
+          "en": "Event",
+          "fr": "Événement",
+          "nl": "Gebeurtenis"
         },
         "description": {
-          "en": "The GitHub event that triggered the run, e.g. push or pull_request.",
+          "en": "The GitHub event that triggered the run.",
           "fr": "L'événement GitHub qui a déclenché l'exécution, p. ex. push ou pull_request.",
           "nl": "De GitHub-gebeurtenis die de run getriggerd heeft, bv. push of pull_request."
         },
@@ -199,7 +199,7 @@
           "nl": "Feedback"
         },
         "description": {
-          "en": "Check-run outbox; null until the first publish attempt is enqueued.",
+          "en": "Check-run outbox; empty until the first publish attempt is enqueued.",
           "fr": "File d'envoi des check-runs ; null tant que la première tentative de publication n'est pas mise en file.",
           "nl": "Outbox voor check-runs; null totdat de eerste publicatiepoging in de wachtrij staat."
         },
@@ -217,9 +217,9 @@
         "id": "bce5895b-a41f-4911-90ad-b44e555a8feb",
         "name": "FeedbackNextAttemptAtUtc",
         "label": {
-          "en": "Feedback Next Attempt At Utc",
-          "fr": "Prochaine tentative de retour le (UTC)",
-          "nl": "Volgende feedbackpoging op (UTC)"
+          "en": "Next Feedback Attempt",
+          "fr": "Prochaine tentative de retour",
+          "nl": "Volgende feedbackpoging"
         },
         "description": {
           "en": "Queryable mirror of NextAttemptAtUtc.",
@@ -261,12 +261,12 @@
         "id": "dc719560-c154-4ca6-9b8b-0529593560c0",
         "name": "FinalizedAtUtc",
         "label": {
-          "en": "Finalized At Utc",
-          "fr": "Finalisé le (UTC)",
-          "nl": "Gefinaliseerd op (UTC)"
+          "en": "Finalized",
+          "fr": "Finalisé",
+          "nl": "Gefinaliseerd"
         },
         "description": {
-          "en": "When the build was closed and its coverage computed (UTC); null while still open.",
+          "en": "When the build was closed and its coverage computed; empty while still open.",
           "fr": "Moment où le build a été clôturé et sa couverture calculée (UTC) ; null tant qu'il est ouvert.",
           "nl": "Wanneer de build afgesloten is en zijn dekking berekend werd (UTC); null zolang hij nog open is."
         },
@@ -311,9 +311,9 @@
           "nl": "Dekking per flag"
         },
         "description": {
-          "en": "Per-flag totals, keyed by sanitized flag name, computed at finalize from the per-flag merged file documents. Null for builds parsed before flags gained storage — attribution cannot be recovered from the merged build-level documents.",
-          "fr": "Totaux par flag, indexés par nom de flag assaini, calculés à la finalisation à partir des documents de fichiers fusionnés par flag. Null pour les builds analysés avant que les flags ne disposent d'un stockage — l'attribution ne peut être récupérée depuis les documents fusionnés au niveau du build.",
-          "nl": "Totalen per flag, gesleuteld op opgeschoonde flagnaam, berekend bij finalisering uit de per flag samengevoegde bestandsdocumenten. Null voor builds die geparseerd zijn voordat flags opslag kregen — de toewijzing kan niet hersteld worden uit de samengevoegde documenten op buildniveau."
+          "en": "Per-flag totals, keyed by flag name.",
+          "fr": "Totaux par flag, indexés par nom de flag.",
+          "nl": "Totalen per flag, gesleuteld op flagnaam."
         },
         "dataType": "string",
         "isRequired": false,
@@ -333,9 +333,9 @@
           "nl": "Momentopname van de poort"
         },
         "description": {
-          "en": "The effective gate this build was judged by (settings document merged with the base ref's coverage.yml). Snapshotted because a base-dependent verdict is unexplainable later without its inputs.",
-          "fr": "Le seuil effectif selon lequel ce build a été jugé (document de paramètres fusionné avec le coverage.yml de la réf. de base). Capturé en instantané parce qu'un verdict dépendant de la base est inexplicable plus tard sans ses données d'entrée.",
-          "nl": "De effectieve poort waarop deze build beoordeeld is (het instellingendocument samengevoegd met de coverage.yml van de basisref). Als momentopname bewaard omdat een basisafhankelijk oordeel later onverklaarbaar is zonder zijn invoer."
+          "en": "The effective gate this build was judged by.",
+          "fr": "Le seuil effectif selon lequel ce build a été jugé.",
+          "nl": "De effectieve poort waarop dit build beoordeeld is."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -351,12 +351,12 @@
         "id": "b061f85f-d080-49fb-9efd-feebe38c0d78",
         "name": "LastUploadAtUtc",
         "label": {
-          "en": "Last Upload At Utc",
-          "fr": "Dernier envoi le (UTC)",
-          "nl": "Laatste upload op (UTC)"
+          "en": "Last Upload",
+          "fr": "Dernier envoi",
+          "nl": "Laatste upload"
         },
         "description": {
-          "en": "When the most recent upload arrived (UTC); the debounce finalize counts from here.",
+          "en": "When the most recent upload arrived.",
           "fr": "Moment d'arrivée de l'envoi le plus récent (UTC) ; la finalisation par debounce compte à partir d'ici.",
           "nl": "Wanneer de meest recente upload aangekomen is (UTC); de debounce-finalisering telt vanaf hier."
         },
@@ -379,9 +379,9 @@
           "nl": "Gedeeltelijk"
         },
         "description": {
-          "en": "Declared by the uploader: this run measured only a subset of the workspace (e.g. nx affected on a pull request). Comparisons must scope or project rather than read the totals as whole-workspace, and a partial build never becomes a repository's headline number.",
-          "fr": "Déclaré par l'émetteur : cette exécution n'a mesuré qu'un sous-ensemble de l'espace de travail (p. ex. nx affected sur une pull request). Les comparaisons doivent restreindre la portée ou projeter plutôt que de lire les totaux comme s'ils couvraient tout l'espace de travail, et un build partiel ne devient jamais le chiffre principal d'un dépôt.",
-          "nl": "Aangegeven door de uploader: deze run heeft slechts een deel van de workspace gemeten (bv. nx affected op een pull request). Vergelijkingen moeten de scope beperken of projecteren in plaats van de totalen als workspace-breed te lezen, en een gedeeltelijke build wordt nooit het hoofdcijfer van een repository."
+          "en": "This run measured only a subset of the workspace.",
+          "fr": "Ce run n'a mesuré qu'une partie de l'espace de travail.",
+          "nl": "Deze run heeft maar een deel van de workspace gemeten."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -401,7 +401,7 @@
           "nl": "Patch"
         },
         "description": {
-          "en": "Added-lines coverage vs the diff base; null when no diff was obtainable.",
+          "en": "Added-lines coverage vs the diff base; empty when no diff was obtainable.",
           "fr": "Couverture des lignes ajoutées par rapport à la base du diff ; null lorsqu'aucun diff n'a pu être obtenu.",
           "nl": "Dekking van de toegevoegde regels ten opzichte van de diff-basis; null wanneer er geen diff verkrijgbaar was."
         },
@@ -424,9 +424,9 @@
           "nl": "Run"
         },
         "description": {
-          "en": "\"runId.attempt\" display value for the generic grids (master-parity \"Run\" column). Deterministic from CiRunId and CiRunAttempt, both of which are fixed at creation. Stored rather than computed, which it was until the Builds index became generated: a generated index maps build.Run straight through, and that runs server-side against the JSON document — where a get-only CLR property does not exist. It would have indexed as null on every build, and the grid projects through the index, so the column would have quietly gone blank. Assign it through ComposeRun so the format lives in one place.",
-          "fr": "Valeur d'affichage « runId.attempt » pour les grilles génériques (colonne « Run », à parité avec master). Déterministe à partir de CiRunId et CiRunAttempt, tous deux figés à la création. Stockée plutôt que calculée, ce qu'elle était jusqu'à ce que l'index Builds devienne généré : un index généré mappe build.Run tel quel, et cela s'exécute côté serveur sur le document JSON — où une propriété CLR en lecture seule n'existe pas. Elle aurait été indexée à null sur chaque build, et la grille projette à travers l'index, donc la colonne serait discrètement restée vide. Affectez-la via ComposeRun pour que le format ne vive qu'à un seul endroit.",
-          "nl": "Weergavewaarde \"runId.attempt\" voor de generieke grids (de \"Run\"-kolom, gelijk aan master). Deterministisch afgeleid van CiRunId en CiRunAttempt, die beide bij het aanmaken vastliggen. Opgeslagen in plaats van berekend, wat ze was totdat de Builds-index gegenereerd werd: een gegenereerde index mapt build.Run rechtstreeks door, en dat draait serverzijdig op het JSON-document — waar een get-only CLR-eigenschap niet bestaat. Ze zou op elke build als null geïndexeerd zijn, en het grid projecteert via de index, dus de kolom zou stilletjes leeg zijn gebleven. Ken ze toe via ComposeRun zodat het formaat op één plaats leeft."
+          "en": "The workflow run this build came from, as \"runId.attempt\".",
+          "fr": "Le run de workflow dont provient ce build, sous la forme « runId.tentative ».",
+          "nl": "De workflow-run waaruit dit build komt, als \"runId.poging\"."
         },
         "dataType": "string",
         "isRequired": false,
@@ -487,12 +487,12 @@
         "id": "61e10589-fdec-4983-b6bc-42292634c0eb",
         "name": "WorkflowName",
         "label": {
-          "en": "Workflow Name",
-          "fr": "Nom du workflow",
-          "nl": "Naam van de workflow"
+          "en": "Workflow",
+          "fr": "Workflow",
+          "nl": "Workflow"
         },
         "description": {
-          "en": "Name of the GitHub Actions workflow that produced this build (e.g. CI).",
+          "en": "The GitHub Actions workflow that produced this build.",
           "fr": "Nom du workflow GitHub Actions qui a produit ce build (p. ex. CI).",
           "nl": "Naam van de GitHub Actions-workflow die deze build heeft voortgebracht (bv. CI)."
         },

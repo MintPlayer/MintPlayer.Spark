@@ -55,9 +55,9 @@
         "id": "cc34fe25-d048-494d-808c-5e81d953a3bd",
         "name": "FilesCount",
         "label": {
-          "en": "Files Count",
-          "fr": "Nombre de fichiers",
-          "nl": "Aantal bestanden"
+          "en": "Files",
+          "fr": "Fichiers",
+          "nl": "Bestanden"
         },
         "description": {
           "en": "Number of source files these totals were aggregated from.",

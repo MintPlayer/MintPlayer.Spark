@@ -191,11 +191,10 @@ public partial class ProjectAutomationRecipient : IRecipient<ProjectAutomationMe
         var number = ReadNumber(root, member)
             ?? throw new NonRetryableException($"No {member}.number in the payload.");
 
-        // Issues ARE added to the board when missing. A board is a list of work, an issue is a unit
-        // of work, and a rule that could only move issues already present would do nothing on the
-        // one event where it matters most — `IssuesOpened`, where the issue by definition did not
-        // exist a moment ago.
-        return await cards.MoveIssueAsync(board, owner, repo, number, rule.TargetColumnOptionId, addIfMissing: true, cancellationToken);
+        // Board membership is the rule's decision, not this method's — see AutoAddToBoard. It
+        // defaults to true, which is what makes `IssuesOpened` work at all: that event fires on an
+        // issue which by definition was not on the board a moment ago.
+        return await cards.MoveIssueAsync(board, owner, repo, number, rule.TargetColumnOptionId, rule.AutoAddToBoard, cancellationToken);
     }
 
     private async Task<ECardOutcome> MovePullRequestAsync(
@@ -205,25 +204,20 @@ public partial class ProjectAutomationRecipient : IRecipient<ProjectAutomationMe
         var number = ReadNumber(root, "pull_request")
             ?? throw new NonRetryableException("No pull_request.number in the payload.");
 
-        // Pull requests are NOT added to the board, and this asymmetry with issues is the point:
-        // issues are the work a board tracks, while pull requests are how the work gets done. Every
-        // branch pushed would otherwise become a card, and a busy repository would bury the issues
-        // under its own pull requests within a day.
-        //
-        // So a PR rule moves a card that someone deliberately put on the board, and does nothing
-        // otherwise. `check_run` already behaved this way; this is the site that did not, which made
-        // "move the PR to In Review" quietly mean "and add every PR to the board".
-        //
-        // The PR card is therefore usually absent, which is exactly why `MoveLinkedIssues` below
-        // defaults to true: on a board that tracks issues, the linked issue is the whole outcome of
-        // the rule, and this call is the half that does nothing.
-        var outcome = await cards.MovePullRequestAsync(board, owner, repo, number, rule.TargetColumnOptionId, addIfMissing: false, cancellationToken);
+        // Whether the PR itself lands on the board is `AutoAddToBoard`, exactly as it is for an
+        // issue — one flag, one meaning, every call site. This was briefly hard-coded to false on
+        // the reasoning that a board tracking issues would drown in its own pull requests. True as
+        // far as it goes, but it made the choice for the user and could not be turned off: combined
+        // with the linked-issue pass below it left every non-merged PR rule with nothing to act on,
+        // silently, reporting success. It is a default now, not an invariant.
+        var outcome = await cards.MovePullRequestAsync(board, owner, repo, number, rule.TargetColumnOptionId, rule.AutoAddToBoard, cancellationToken);
 
         return await MoveLinkedIssuesAsync(board, owner, repo, number, rule, outcome, cancellationToken);
     }
 
     /// <summary>
-    /// Moves the cards of the issues the pull request closes, when the rule asks for it.
+    /// Moves the cards of the issues the pull request closes, when the rule asks for it — in
+    /// addition to the pull request's own card, which the caller has already moved.
     /// </summary>
     /// <remarks>
     /// The outcome reported for the rule stays the pull request's own, because that is the item the
@@ -242,7 +236,7 @@ public partial class ProjectAutomationRecipient : IRecipient<ProjectAutomationMe
         {
             await cards.MoveIssueAsync(
                 board, owner, issueRepo, issueNumber, rule.TargetColumnOptionId,
-                addIfMissing: rule.AddLinkedIfMissing, cancellationToken);
+                rule.AutoAddToBoard, cancellationToken);
         }
 
         return outcome;
@@ -272,7 +266,7 @@ public partial class ProjectAutomationRecipient : IRecipient<ProjectAutomationMe
             }
 
             outcome = await cards.MovePullRequestAsync(
-                board, owner, repo, number, rule.TargetColumnOptionId, addIfMissing: false, cancellationToken);
+                board, owner, repo, number, rule.TargetColumnOptionId, rule.AutoAddToBoard, cancellationToken);
 
             // Same terms as a direct PR event: the check run is about the PR, and on a board that
             // tracks issues the linked issue is what the rule is actually for.

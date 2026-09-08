@@ -55,9 +55,9 @@
         "id": "005dcba3-c253-4306-a920-96f25d25b84a",
         "name": "NextAttemptAtUtc",
         "label": {
-          "en": "Next Attempt At Utc",
-          "fr": "Prochaine tentative le (UTC)",
-          "nl": "Volgende poging op (UTC)"
+          "en": "Next Attempt",
+          "fr": "Prochaine tentative",
+          "nl": "Volgende poging"
         },
         "description": {
           "en": "When the sweep should next try to publish (UTC); null when no retry is scheduled.",

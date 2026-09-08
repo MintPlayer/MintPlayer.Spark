@@ -20,10 +20,8 @@ public class GateSettings
     /// <summary>Allowed drop in percentage points before the project status fails.</summary>
     public double ProjectThreshold { get; set; }
 
-    /// <summary>
-    /// Which number a partial build's project status judges: "scoped"
-    /// (like-for-like, #11) or "projection" (patched whole-workspace).
-    /// </summary>
+    /// <summary>Which number a partial build's project status judges.</summary>
+    /// <remarks>"scoped" (like-for-like, #11) or "projection" (patched whole-workspace).</remarks>
     public string ProjectBasis { get; set; } = "scoped";
 
     /// <summary>Percent target for patch coverage; null disables the patch gate.</summary>
@@ -32,9 +30,10 @@ public class GateSettings
     /// <summary>Allowed shortfall in percentage points below <see cref="PatchTarget"/>.</summary>
     public double PatchThreshold { get; set; }
 
-    /// <summary>
-    /// False (the default) posts informational check-runs that never fail —
-    /// Codecov's `informational` on-ramp. Nothing blocks until a human opts in.
-    /// </summary>
+    /// <summary>Whether a failing gate blocks the pull request.</summary>
+    /// <remarks>
+    /// False (the default) posts informational check-runs that never fail — Codecov's
+    /// `informational` on-ramp. Nothing blocks until a human opts in.
+    /// </remarks>
     public bool Blocking { get; set; }
 }
