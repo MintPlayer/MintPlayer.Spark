@@ -1,405 +1,312 @@
 # PRD: Server-side lifecycle for AsDetail rows
 
-**Status:** Draft — decisions N1–N8 open
+**Status:** Design settled (N1–N10). F1–F2 landed; F3 onward outstanding.
 **Last updated:** 2026-09-08
 **Owner:** framework (`libs/spark`, `libs/node_packages/ng-spark`)
+**Issue:** #380
 
 ## 1. Problem
 
-Clicking **New** or **Delete** on an `AsDetail` array attribute never reaches the server. The row is
-created and destroyed entirely in the browser, so no server code observes either event.
-
-The concrete consequences:
+Clicking **New** or **Delete** on an `AsDetail` array attribute never reaches the server.
 
 - **A new row cannot be given defaults.** `addInlineRow` pushes a literal `{}`
-  (`libs/node_packages/ng-spark/po-form/src/spark-po-form.component.ts:691`). There is no way to
-  default a date to now, copy a denormalised value down from the parent, or preselect an enum.
-- **A deleted row is unobservable.** `removeArrayItem` splices a local copy (`:715`). On save the
-  whole collection is rebuilt from what the client sent
-  (`libs/spark/MintPlayer.Spark/Services/EntityMapper.cs:661-676`), so a removal is expressed as
+  (`spark-po-form.component.ts:691`) — no way to default a date to now, copy a value down from the
+  parent, or preselect an option.
+- **A removed row is unobservable.** `removeArrayItem` splices a local copy (`:715`), and the save
+  rebuilds the collection wholesale (`EntityMapper.cs:661-676`), so a deletion is expressed as
   *absence*. Nothing can veto it, audit it, or turn it into a soft delete.
-- **The child type's own Actions class is never consulted on the write path.** Every hook runs
-  against the parent type (`DefaultPersistentObjectActions.cs:295-310`); the child is a bare
-  `Activator.CreateInstance` (`EntityMapper.cs:670`).
+- **The child type's rights are fiction.** `New/X`, `Edit/X` and `Delete/X` can be granted on an
+  embedded type — HR's `security.json:83` grants `QueryReadEditNewDelete/CarreerJob` today — and
+  **none of them is consulted on any write path.** A caller with `Edit/Person` can add, remove and
+  rewrite phone numbers freely.
 
 ## 2. Current state
 
-### 2.1 The complete hook surface
+### 2.1 The hook surface
 
-`IPersistentObjectActions<T>` (`libs/spark/MintPlayer.Spark/Actions/IPersistentObjectActions.cs`)
-declares eleven hooks. This inventory is part of the problem statement: note that **none of them
-runs at construction time**, and none is reachable per AsDetail row on the write path.
+`IPersistentObjectActions<T>` (`libs/spark/MintPlayer.Spark/Actions/IPersistentObjectActions.cs`):
 
-| # | Hook | Signature | Line | Purpose |
-|---|---|---|---|---|
-| 1 | `OnLoadAsync` | `Task<PersistentObject?>(string id, PersistentObject? parent)` | :30 | The only load hook. id in, page out; `null` = 404 |
-| 2 | `OnSaveAsync` | `Task<T>(IAsyncDocumentSession, PersistentObject)` | :40 | Create **and** update; entity mapping happens inside |
-| 3 | `OnDeleteAsync` | `Task(IAsyncDocumentSession, string id)` | :48 | Delete; should call `OnBeforeDeleteAsync` |
-| 4 | `OnBeforeSaveAsync` | `Task(PersistentObject, T entity)` | :57 | Validate / transform / enrich before persist |
-| 5 | `OnAfterSaveAsync` | `Task(PersistentObject, T entity)` | :66 | Notifications, auditing, cache invalidation |
-| 6 | `OnBeforeDeleteAsync` | `Task(T entity)` | :73 | Validation / cascade |
-| 7 | `OnRefreshAsync` | `Task(SparkRefreshArgs<T>)` | :93 | Reshape the form when a `triggersRefresh` attribute changes |
-| 8 | `IsAllowedAsync` | `Task<bool>(string action, T entity)` | :120 | Per-row gate; action ∈ Read/Query/Edit/Delete/New. Not memoized |
-| 9 | `GetRowFilterAsync` | `Task<Expression<Func<T,bool>>?>(string action)` | :139 | Pushdown predicate. **`null` = unrestricted, not deny.** Cached per (type, action) |
-| 10 | `GetProtectedAttributesAsync` | `Task<IReadOnlyCollection<string>?>(string action, T entity)` | :151 | Per-row redaction; a dotted name (`Jobs.Salary`) reaches inside AsDetail rows |
-| 11 | `OnQueryAsync` | `Task(SparkQueryContext)` | :181 | Withhold custom actions before rows exist. Default impl. **Not** for row filtering |
+| # | Hook | Signature | Line |
+|---|---|---|---|
+| 1 | `OnLoadAsync` | `Task<PersistentObject?>(string id, PersistentObject? parent)` | :30 |
+| 2 | `OnSaveAsync` | `Task<T>(IAsyncDocumentSession, PersistentObject)` — create **and** update | :40 |
+| 3 | `OnDeleteAsync` | `Task(IAsyncDocumentSession, string id)` | :48 |
+| 4 | `OnBeforeSaveAsync` | `Task(PersistentObject, T)` | :57 |
+| 5 | `OnAfterSaveAsync` | `Task(PersistentObject, T)` | :66 |
+| 6 | `OnBeforeDeleteAsync` | `Task(T entity)` | :73 |
+| 7 | `OnRefreshAsync` | `Task(SparkRefreshArgs<T>)` — `triggersRefresh` only | :93 |
+| 8 | **`OnNewAsync`** | `Task(SparkNewArgs<T>)` — **added by this work**, default-implemented | :117 |
+| 9 | `IsAllowedAsync` | `Task<bool>(string action, T)` — per-row, not memoized | :144 |
+| 10 | `GetRowFilterAsync` | `Task<Expression<Func<T,bool>>?>(string action)` — **null = unrestricted** | :163 |
+| 11 | `GetProtectedAttributesAsync` | `Task<IReadOnlyCollection<string>?>(string action, T)` | :175 |
+| 12 | `OnQueryAsync` | `Task(SparkQueryContext)` — default impl | :205 |
 
-Two further virtuals live on `DefaultPersistentObjectActions<T>` only, not on the interface:
-`GetDefaultIncludes()` (:210) and `MaterializeAsync(ids)` (:236); `LoadManyAsync` (:106) is
-non-virtual. Companion interfaces: `ISparkOwnsRowSecurity` (a `RowSecurityRationale` string enforced
-by a startup validator), `ISparkRowRule<T>.ApplyAsync` (filter + predicate in one call), and
-`ICustomAction`.
+Plus `GetDefaultIncludes()` (:210) and `MaterializeAsync(ids)` (:236) on the base class only.
 
-**`grep -rn "OnNewAsync|OnConstruct|OnNew(" libs/**/*.cs` returns zero hits.**
+Before this work there was **no construction hook and no server New endpoint at all**, not even for
+root objects: `GET /spark/po/{type}/{**id}` refuses an empty id (`Get.cs:29-32`) and a blank object
+is scaffolded in the browser (`spark-po-create.component.ts:59-73`).
 
-### 2.2 There is no server New flow at all — not even for root objects
+### 2.2 What the save path does today
 
-`GET /spark/po/{objectTypeId}/{**id}` explicitly refuses an empty id
-(`Endpoints/PersistentObject/Get.cs:29-32`). A blank root object is scaffolded in the browser from
-`GET /spark/types` metadata (`spark-po-create.component.ts:59-73`), and the first time the server
-sees it is `POST /spark/po/{objectTypeId}` at save. So a construction hook is greenfield for root
-objects and AsDetail rows alike.
+`Update.cs:65` → `DatabaseAccess.cs:173-182`, whose entire type-level check is:
 
-### 2.3 The one existing seam
+```csharp
+var action = string.IsNullOrEmpty(persistentObject.Id) ? "New" : "Edit";
+await permissionService.EnsureAuthorizedAsync(action, entityTypeDefinition.Name);   // Person
+```
 
-`Endpoints/PersistentObject/Refresh.cs:128-132` already resolves an AsDetail row to **the child
-type's own Actions class** and invokes `OnRefreshAsync` on it, using `NestedTrigger.TryParse`
-(wire format `Jobs[2].ProfessionId`, `:269-289`) and `BuildNestedRow`. Its doctrine comment
-(`:120-127`) is the precedent this PRD follows:
+Then `EntityMapper.WriteAsDetailAsync` (`:661-676`) `Activator.CreateInstance`s every incoming row
+and replaces the collection wholesale. **Ten rows in, zero rows out, or ten rows with every field
+rewritten are the same operation**, and no child `EntityTypeDefinition` is ever resolved to check a
+right. The only child-aware gate is `EnsureAsDetailTypeDeclared` (`:704-712`), an existence check.
 
-> the hook that owns a type's shape is that type's own; the row is handed its Parent for the context
-> it cannot have alone — while **authorization stays on the route type**, because nested AsDetail
-> types are not in `security.json`.
+### 2.3 The existing seam
 
-Server-side blank-object scaffolding also already exists — `EntityMapper.ScaffoldFrom`
-(`EntityMapper.cs:367`), reachable through `IManager.GetPersistentObject`, exposed by no endpoint.
+`Refresh.cs:128-132` already dispatches per AsDetail row to **the child type's own Actions class**,
+using `NestedTrigger.TryParse` (wire form `Jobs[2].ProfessionId`, `:269-289`). Its authorization
+doctrine (`:120-127`) borrows the owner's right — correct for refresh, which has no verb of its own,
+and deliberately *not* what this PRD does for New/Delete (see N6).
 
 ### 2.4 No prior decision is being reversed
 
-Six design documents describe AsDetail (`PRD-array-asdetail.md`, `PRD-inline-asdetail-editing.md`,
-`recursive-asdetail-prd.md`, `PRD-AsDetailReferenceParentContext.md`, `PRD-PoDetailActionBar.md`,
-`guide-asdetail-attributes.md`). **None weighs a server round-trip and rejects it** — the
-client-side model is asserted, never debated. The nearest adjacent deferrals are backend breadcrumb
-resolution inside arrays (`PRD-array-asdetail.md:199`) and server-side per-item validation (`:404`),
-both deferred on "the client already does it", not on principle. This is a gap, not a re-litigation.
+Six documents describe AsDetail and **none weighs a server round-trip and rejects it**. This is a
+gap, not a re-litigation.
 
-## 3. Prior art
+## 3. Prior art, as measured
 
-Vidyano, the framework Spark's object model follows, resolves this with one invariant:
+Findings from the framework Spark's object model follows — read from its source, its running app,
+and five of its production databases. Where an earlier draft of this PRD guessed, the measurement is
+noted.
 
-> **The unit of work is the parent, but object construction is always a server responsibility.**
+1. **Both New and Delete round-trip, including for embedded value-object collections.** An earlier
+   draft claimed delete stayed client-side for embedded rows. Wrong: a company's addresses are a
+   plain `List<Address>` on the company document, and both the Add button and each row's Delete
+   button call the address type's own actions class.
+2. **New and Delete are requests *about* a row, not persistence *of* one.** For an embedded child
+   the hook writes nothing — the row appears or disappears when the parent saves. That is what buys
+   server-side defaulting, validation and a permission check without buying a per-row save.
+3. **The endpoint genuinely enforces; the parent's save does not.** `ExecuteAction("Query.New" /
+   "Query.Delete")` calls `CheckRight` and throws. But `SaveDetailsAsync` / `ProcessValueDetails`
+   partition the client's rows by the client-supplied `IsNew` / `IsDeleted` flags and apply them
+   with **no rights call anywhere** — the single check is on the parent type. The detail-save path
+   structurally bypasses the dispatch that checks. Its tamper token does not cover collection
+   membership either.
+4. **Identity is an explicit marker with a field initializer**: `[ValueObject]` on the class,
+   `[ValueKey] public string Id { get; set; } = <new guid>;`. The key is minted when the CLR object
+   is constructed, not by a hook.
+5. **Value objects are always collections.** Across five production databases, every single nested
+   object is a translated string, a serialized envelope or a settings blob — not one is a keyed
+   value object. Single-valued embedded objects are a Spark-specific shape with no prior art.
+6. **Keys are near-universal but not universal.** ~14,400 embedded rows sampled: all keyed except
+   **12**, concentrated in two collections. Format is 32 hex chars (`ToString("N")`).
+   **Those 12 were never backfilled** — that framework tolerates keyless rows indefinitely, which it
+   can afford because it does no save-time enforcement. Spark cannot (N9).
+7. **Three value-setting primitives, and conflating them is a bug**: set-as-default (not dirty),
+   set-as-edit (dirty), set-and-cascade. Defaults on a new row must use the first.
+8. **Signatures age badly, args objects don't.** Across 29 releases spanning 22 months, no
+   plain-parameter hook ever gained a parameter; args types grew members freely, and the one
+   plain-parameter hook that needed more inputs got a parallel args overload beside it.
 
-Its construction hook takes four arguments, each load-bearing: the freshly constructed child, the
-**parent**, the **originating list** (so one child type can default differently depending on where
-Add was pressed), and a **parameter bag** (so a New split-button can say which variant was chosen).
-The framework pre-wires the obvious part itself — if the child has exactly one attribute whose type
-matches the parent's, it is set to the parent and made read-only — and the hook handles everything
-beyond that.
+## 4. Design
 
-Three findings from that prior art shape this design:
+### N1 — New round-trips
 
-1. **Both Create and Delete round-trip, in both collection shapes — including embedded ones.**
-   Verified against a real app: a company's addresses are a plain `List<Address>` embedded on the
-   company document, and both the Add button and each row's Delete button call the address type's
-   own actions class. What differs between the shapes is only what the hook *does*: for an
-   independently-persisted child it deletes; for an embedded one it cannot, because the row is part
-   of its parent's document.
-   <br>
-   The invariant underneath is that **New and Delete are requests about a row, not persistence of
-   one**. That is what buys server-side defaulting, validation and a real permission check without
-   buying a per-row save.
-2. **Three distinct value-setting primitives, and conflating them is a design bug** — *set as
-   default* (value appears, field **not** dirty), *set as edit* (dirty), *set and cascade*. Defaults
-   on a new child must use the first, or a user who adds a row and abandons it produces spurious
-   change tracking.
-3. **Two parent references, not one** — a general "I was opened from / created by this object", and
-   a narrower "I am a row inside this object's embedded collection". The narrow one is what the
-   persistence layer keys on: when it is present the child does **not** persist itself, because the
-   aggregate root owns the save. Getting this wrong yields double writes or orphans.
-4. **The parent reference is a mutable input, not a fixed fact.** The framework auto-populates the
-   child's parent-typed attribute from the caller-supplied parent *before* the hook runs — and a
-   hook may **replace that parent and delegate to the base implementation**, re-pointing the
-   automatic wiring somewhere else. This is not an exotic case: it is what a **grandchild
-   collection** requires, where the object that owns the save is two levels above the grid the user
-   pressed Add in. The same substitution is needed in the load hook. Correspondingly, child identity
-   is **decomposable back into (aggregate-root id, child id)**, so a hook can reach either level.
-   A framework that hard-wires the parent before the hook, with no way to redirect it, simply breaks
-   at two levels deep.
+`POST /spark/po/{objectTypeId}/new` returns a server-constructed, unsaved object which the client
+inserts into the grid. Handler follows the `Delete.cs` template: antiforgery metadata,
+`ResolveEntityType`, and `ClientResult.EnvelopeRefusal` for both unknown-type and denied so neither
+is a disclosure oracle. Scaffolding reuses `EntityMapper.ScaffoldFrom` (`:367`);
+`EnsureAsDetailTypeDeclared` (`:705`) must be called or the endpoint becomes a mass-assignment
+bypass.
 
-There is deliberately no client-only add mode there. The stated reason is worth quoting into our own
-decision: the moment one exists, every defaulting hook has two execution contexts to reason about.
+### N2 — Delete round-trips
 
-## 4. Proposed design
+Clicking Delete calls the row type's delete hook, which may **refuse** (throw ⇒ row stays, error
+surfaced), **react** (audit, notify, cascade outside the aggregate), or **do nothing**, which is the
+common case. The row is then marked deleted client-side and leaves the document when the parent
+saves. A soft delete stays what it always was: keep the row, set a flag.
 
-### N1 — New round-trips to the server
+### N3 — `ServerSideRowLifecycle`, on the row type's own model file
 
-Pressing Add on an AsDetail array issues a construct request and inserts the **server-returned**
-object into the grid. Nothing is persisted; the parent still owns the save.
+Opt-in per row type — the type that owns the hooks owns the decision, and one setting governs every
+grid it appears in. Default off: today's purely client-side behaviour.
 
-New endpoint, following the `Delete.cs` handler template (antiforgery metadata, `ResolveEntityType`,
-`ClientResult.EnvelopeRefusal` for both unknown-type and denied so neither is a disclosure oracle):
-
-```
-POST /spark/po/{objectTypeId}/new
-body: { parentType?, parentId?, asDetailAttribute?, query?, parameters? }
-→ ClientOperationEnvelope { Result: PersistentObject, Operations: [] }
-```
-
-It reuses `EntityMapper.ScaffoldFrom` for the blank object and `EnsureAsDetailTypeDeclared`
-(`EntityMapper.cs:705`) to fail closed on an undeclared child type, exactly as the save path does —
-otherwise the endpoint becomes a mass-assignment bypass.
-
-**Recommendation: do not make this configurable per attribute.** The owner asked whether the
-developer should choose. The cost of choice is that every defaulting hook acquires two execution
-contexts, and the failure mode is silent — a grid flipped to client-only stops running defaults with
-no error. If a fast path is wanted later it should be an explicit, separately-named opt-out on the
-attribute (`"clientSideNew": true`) documented as skipping hooks, never the default. **N1 is the one
-decision most worth pushing back on if you disagree — say so and it becomes a flag.**
-
-### N1b — The round-trip is opt-in per row type, and the actions class is ceremony
-
-`ServerSideRowLifecycle` on the **row type's own** model file — not the parent's attribute, because
-the type that owns the hooks owns the decision and one setting then governs every grid it appears
-in. Default off: New pushes a blank row and Delete splices it out, exactly as today.
-
-**For an embedded type the round-trip writes nothing.** The row lives inside its parent's document,
-so the hook is ceremony — validate, default, veto, audit — and the row appears or disappears for
-real only when the parent is saved. A hook that touches the database is writing outside the
-parent's unit of work.
-
-⚠️ **The endpoints are not the enforcement point, and this is the part that is easy to get wrong.**
-A caller who skips them and `PUT`s the parent with a row added or removed reaches the same end
-state — and today the save path resolves rights for the **parent type only**, rebuilding the
-embedded collection wholesale from whatever arrived. So `New/{Type}` and `Delete/{Type}` must be
-applied **on the parent's save**, by comparing the incoming collection against the stored one. The
-endpoints then give honest, fast feedback and a real 403 to a direct POST; the save is what makes
-the right binding.
-
-Save-time enforcement must **not** read `ServerSideRowLifecycle`. It applies to every embedded
-collection regardless. This is also what keeps the flag safely out of the model hash (which covers
-only `name`, `clrType`, `alias`, `queryType`, `indexName`): were the rights check conditional on it,
+⚠️ **Save-time enforcement (N6) must not read this flag.** It applies to every embedded collection
+regardless. That is also what keeps the flag safely outside the model hash (which covers only
+`name`, `clrType`, `alias`, `queryType`, `indexName`): were the rights check conditional on it,
 editing one unhashed line on a deployed model would switch the check off.
 
-⚠️ An exact added/removed diff needs row identity (N3). Without it, a count comparison approximates
-— more rows than stored ⇒ `New` required, fewer ⇒ `Delete` — but adding one row and removing
-another in the same save nets zero and slips through.
+### N4 — `[ValueObject]` is mandatory for AsDetail
 
-### N2 — Delete round-trips too, when the type opts in
+AsDetail stops being inferred from "is a complex type" and becomes declared. Every embedded type
+must be `[ValueObject] partial`. A complex-typed property whose type lacks the attribute is a
+synchronize/startup error, not a silently-inferred detail.
 
-An earlier draft of this PRD had Delete staying client-side, on the reasoning that an embedded row
-has nothing to delete server-side. That reasoning was wrong twice over. The prior art round-trips
-Delete for embedded value-object collections as well — a company's addresses are a plain
-`List<Address>` on the company document, and their delete button still calls the address type's own
-hook. And "nothing to delete" mistakes what the round-trip is *for*: it is not a deletion, it is a
-hook plus a permission check.
+This is a breaking change across CodeCoverage, HR, DemoApp, Fleet and the identity-provider library.
+Missing `partial` is a compile error — the loud kind.
 
-So with `ServerSideRowLifecycle` on, clicking Delete calls the row type's delete hook, which may:
+### N5 — `[ValueKey]`, generated, and only for collection-used types
 
-- **refuse** — throw, and the row stays with the error surfaced;
-- **react** — audit, notify, cascade to something outside the aggregate;
-- **do nothing at all**, which is the common case, the type existing only so that
-  `Delete/{Type}` is a right the server can enforce.
+A source generator emits `[ValueKey] public string Id { get; set; } = Guid.NewGuid().ToString("N");`
+onto `[ValueObject] partial` classes. It **skips a type that already declares an `Id`** —
+`EventColumnMapping`'s is *derived* from the event type and stamped in `OnBeforeSaveAsync`
+(`GitHubProjectActions.cs:79-83`), and a generated Guid would fight it.
 
-The row is then marked deleted client-side and leaves the document when the parent is saved, where
-the same right is applied again — see N1b, which is the enforcement that actually counts.
+**Only types used in a collection get a key.** A single nested object has no siblings to be
+distinguished from; it is addressed by its property name on the parent. The generator determines
+this from the semantic model — every parent/child pair in the workspace shares an assembly, so
+scanning the compilation for `List<T>` / `T[]` properties whose element type is `[ValueObject]` is
+sufficient. A cross-assembly miss is caught by the gate in N9.
 
-A soft delete stays what it always was: keep the row, set a flag, do not remove it. That is what
-makes an embedded `UploadToken` revoke work — the hook refuses the removal and the revoked row
-remains.
+Why generated rather than hand-written: **this has already failed here.** `EventColumnMapping.Id`
+shipped unassigned, every rule on a board keyed `""`, invisible until someone opened the database —
+and the inline editor identifies rows by that key across saves, so two blank-keyed rows were
+indistinguishable to it. The prior art gets away with a hand-written initializer because its
+`GuidId.New()` is a house convention people copy; Spark has no such convention.
 
-### N3 — Row identity is the blocking prerequisite ⚠️
+⚠️ Keys on collection-used types leave the four working embedded breadcrumbs alone (`CoverageSummary`,
+`GateSettings`, HR `Address`, `AddressDescription` are all singles). Two breadcrumbs are **already**
+dead for this reason — `DemoApp/Address` (`{Street}, {City} {State}`) and `ProjectColumn`
+(`{Name}`) — because the fallback is gated on `string.IsNullOrEmpty(po.Id)` at
+`EntityMapper.cs:204`. That one-line fix is in scope as a bug fix.
 
-N2 is impossible today. `EntityMapper.WriteAsDetailAsync` (`:661-676`) does
-`Activator.CreateInstance` for **every** incoming child and rebuilds the collection wholesale — no
-identity matching, so "which rows disappeared" is not a computable question. Spark has no
-`[ValueKey]` concept at all (**zero hits repo-wide**).
+### N6 — Rights are the row type's own, and the save is the enforcement point
 
-Introducing a key for embedded rows collides with four standing assumptions:
+The grid's affordances are governed by the type in the grid. **This diverges from the prior art,
+which leaves the parent's save unchecked** (§3.3) — deliberately, because a right that the obvious
+bypass defeats is not a right.
 
-| Assumption | Location | Collision |
+| Right | Enforced at save | UI |
 |---|---|---|
-| Embedded children have no id, so breadcrumbs render in place | `EntityMapper.cs:198-205`, `EmbeddedBreadcrumbRenderer.cs:65-71` | Give them ids and they fall into `breadcrumbs?.Get(po.Id)`, which misses → blank breadcrumbs |
-| `New` vs `Edit` is decided by `string.IsNullOrEmpty(po.Id)` | `DatabaseAccess.cs:179` | A child carrying an id flips the verb on any path that routes it through the top-level save decision. This branch was an authorization hole once (`Create.cs:70-72`) |
-| Row identity is **array position** | `Refresh.cs:269-289` (`Jobs[1].ProfessionId`), `spark-po-form.component.ts:723-735` (reorder) | A server round-trip that mutates the array while the client holds indices is a race: a stale index addresses a different row |
-| Child ids are read from a CLR `Id` property if one happens to exist, else null | `EntityMapper.cs:195` | Already inconsistent — `EventColumnMapping` has one, stamped by hand in `GitHubProjectActions.cs:79-83`; other embedded types do not. Nothing enforces uniqueness |
+| `New/PhoneNumber` | a row key absent from the stored set may appear | `[+ New]` visible |
+| `Edit/PhoneNumber` | a matched row's incoming content is accepted; **without it the stored content is restored** | row inputs enabled |
+| `Delete/PhoneNumber` | a stored key absent from the incoming set may disappear | `[bin]` visible |
 
-**Recommendation:** an explicit opt-in key attribute on the embedded type rather than reusing `Id`,
-so nothing that keys on `Id` changes meaning. Generated client-side on Add and round-tripped
-verbatim. Types without the key keep today's positional behaviour and get no delete hook — which
-keeps this change additive.
+All three are decided at one site — `EntityMapper.cs:661`, where the stored collection is still
+readable (the wholesale replacement is at `:676`) and rows are already being matched by key. No
+extra load.
 
-**The key must be decomposable** (prior-art finding 4). A row's identity should resolve back to
-*(aggregate-root id, child key)*, with a documented way to split it, because a hook on a grandchild
-needs the root id to reach the object that actually owns the save, and the child key to find its own
-row. A flat opaque key that cannot be split forces every such hook to re-derive the root from
-context it may not have. Design the key's string form for that from the start; retrofitting a
-separator into a key already written into documents is a migration.
+Content restoration follows the established pattern: `ShieldProtectedAttributesAsync`
+(`DefaultPersistentObjectActions.cs:482-505`) already restores a stored value onto an incoming
+attribute and clears `IsValueChanged` before the merge. Its `if (name.Contains('.')) continue;`
+skip (`:493`) is a limitation of expressing shielding as a *dotted attribute name*; at collection
+level the stored row is in hand, so the limitation does not apply. Restoration is silent, matching
+that precedent — with the inputs disabled a legitimate client never sends changed content, so the
+only caller who reaches it is one that tampered.
 
-### N4 — The hook: `OnNewAsync(SparkNewArgs<T> args)`
+**Deliberately narrower than the refresh doctrine** (`Refresh.cs:120-127`, "the right that governs
+editing a row is the one governing the object that owns it"). That is right *for refresh*: reshaping
+a form has no verb of its own. Adding and removing rows are real verbs a deployment may want to
+grant separately — a person's details editable by many, their phone numbers by few.
 
-Mirrors `SparkRefreshArgs<T>` (`Actions/SparkRefreshArgs.cs`), Spark's established shape for
-"an unsaved object being shaped":
+**The parent is still loaded on the New endpoint, and that load is still a gate.** The row type's
+right says the caller may create rows of this kind, not which parent they may attach one to.
+
+⚠️ The `Query` half of a grant is separately load-bearing: `GET /spark/types` omits a type the caller
+has no `Query` right on, and without it an inline row renders **with no fields at all** — no console
+error, no log line (`EventColumnMappingActions.cs:7-24`).
+
+⚠️ The client's `canCreateDetailRow` / `canDeleteDetailRow` pipes return `true` when no permission
+entry exists (`pipes/src/can-create-detail-row.pipe.ts:6-9`). Those must flip to `false`, and the
+server must never read them.
+
+### N7 — The hook: `OnNewAsync(SparkNewArgs<T> args)`
 
 | Member | Why |
 |---|---|
 | `PersistentObject` | the object to mutate |
 | `Parent` | copy or derive values from the owner |
-| `AsDetailParent` | the narrow reference of prior-art finding 3 — non-null only for an embedded row |
-| `AsDetailAttribute` | which collection Add was pressed in; one child type, different defaults per site |
-| `Parameters` | the New-variant bag |
+| `AsDetailParent` | non-null only for an embedded row — the reference that says the parent owns the save |
+| `AsDetailAttribute` | which collection Add was pressed in; one type, different defaults per site |
+| `Parameters` | the New-variant bag; never null, empty when the client sent none |
 
-**All members get-only**, and **Spark does not automatically bind the child's parent-typed
-attribute**. An earlier draft of this PRD had settable parents so a grandchild's hook could redirect
-that binding; measurement retired both halves of that idea.
+**All members get-only, and Spark does not auto-bind the child's parent-typed attribute.** An
+earlier draft had settable parents so a grandchild's hook could redirect that binding; measurement
+retired both halves. Substitution exists in the prior art *only because* it binds the parent before
+the hook runs — a workaround for an implicit convenience, not a requirement of construction. Without
+the binding, a grandchild's hook simply sets the attribute it wants from the object it wants, and
+the ordering trap ("substitute before calling base, never after") disappears with it.
 
-*Why an args object rather than four plain parameters.* Two independent lines of evidence:
+⚠️ If auto-binding is ever added, the redirect must be an explicit argument or a named method,
+**never a setter**: in the clearest prior-art example the substituting hook reads the *original*
+parent after delegating with a substitute, so both must stay reachable.
 
-- **Dispatch.** Plain-parameter hooks are resolved by bare name (`GetMethod(name)`, which cannot even
-  tolerate an overload) and invoked with positional literals in seven places —
-  `DatabaseAccess.cs:99,143,492,537,546`, `SyncActionHandler.cs:269,282`, e.g.
-  `Invoke(actions, [id, null])`. Adding a parameter means editing every literal, and a miscount is a
-  runtime `TargetParameterCountException`. `RefreshInvoker.cs:168` resolves by exact signature and
-  invokes `[args]`; adding a member to the args type touches no dispatch code. Spark has already
-  broken `OnLoadAsync`'s signature twice (`ae37fedc`, `5ebfaa45`), with 11 live overrides today.
-- **Ageing, measured in the prior art.** Across 29 releases spanning 22 months, **no
-  plain-parameter hook ever gained a parameter** — they froze — while args types grew members
-  freely. The one plain-parameter hook that needed more inputs got a parallel args overload beside
-  it rather than a fifth parameter. Arity is not the criterion either: that framework's refresh args
-  carries two get-only members and is still an args object, and every hook it added after its first
-  generation is args-shaped.
+*Why an args object rather than plain parameters.* Dispatch: plain hooks are resolved by bare name
+(`GetMethod(name)`, which cannot tolerate an overload) and invoked with positional literals in seven
+places — `DatabaseAccess.cs:99,143,492,537,546`, `SyncActionHandler.cs:269,282`. A new parameter
+means editing every literal, and a miscount is a runtime `TargetParameterCountException`;
+`OnLoadAsync` has already been broken twice (`ae37fedc`, `5ebfaa45`). `RefreshInvoker.cs:168`
+resolves by exact signature and invokes `[args]`, untouched as its args type grows. Plus §3.8.
 
-*Why get-only, and why no auto-binding.* Substitution appears in ~3% of delegating call sites in the
-prior art, always in the parent slot, in two idioms (replace with a synthesized parent; pass null to
-suppress binding, then restore the association by hand). But it exists **only because that framework
-binds the parent attribute before the hook runs** — it is a workaround for an implicit convenience,
-not a requirement of construction. Spark does not have that convenience, so a grandchild's hook
-needs no redirect at all: it sets the attribute it wants from the object it wants.
+### N8 — Value primitives
 
-⚠️ **If auto-binding is ever added, express the redirect as an explicit argument or a named method —
-never a setter.** In the clearest real example the substituting hook goes on to read the *original*
-parent **after** delegating with a substitute, so both values must stay reachable simultaneously; a
-setter destroys the original unless every author remembers to stash it first. That prior-art
-framework never exposes a settable `Parent`, `Query` or `PersistentObject` on any args type — where
-it swaps a hook's target it uses named intent methods. This also removes the ordering trap
-("substitute before calling base, never after"): a rule that only needs stating because the binding
-is implicit.
+`SetValue` marks the attribute changed; **`SetOriginalValue` sets the value and leaves it clean.**
+Every defaulting example must use the latter, or an added-then-abandoned row leaves the parent
+falsely modified. (Landed: `PersistentObject.cs`.)
 
-Spark's `OnLoadAsync(string id, PersistentObject? parent)` already takes the parent as a parameter,
-so the load path can pass a different one downward with no signature change.
+### N9 — Legacy keyless rows: migrate, then fail closed
 
-### N5 — Value-setting primitives are missing and must be added
+**Spark's existing data is 100% keyless** — verified in production: every `Builds.Sessions` row has
+no `Id`. This is not the prior art's 0.08% corner; it is the whole dataset, so tolerating it would
+mean the fragile path runs once for every document.
 
-Spark's `PersistentObjectAttribute` exposes `Value` and `IsValueChanged` as plain settable
-properties (`PersistentObject.cs:184,190`) with no helpers. Prior-art finding 2 says the
-default-vs-edit distinction is exactly what a defaulting hook needs. Add `SetValue` (dirty) and
-`SetOriginalValue` (not dirty), and use the latter in every defaulting example, or every defaulted
-row is born dirty and an abandoned Add leaves the parent falsely modified.
+- **A backfill migration per affected type** (`ISparkMigration`, pattern already in
+  `apps/CodeCoverage/CodeCoverage/Migrations/`) stamping `Guid.NewGuid().ToString("N")` into keyless
+  rows. Two for the current workspace: Coverage's `Builds.Sessions`, HR's `Person.Jobs`.
+- **The diff refuses a save it cannot judge.** If any *stored* row in the collection is keyless,
+  throw naming the document and the type. With the migration run this never fires; without it an app
+  gets one loud error instead of spurious `New`/`Delete` refusals scattered across its data.
+- **Startup gate**, in the style of `RowPolicyDeclarationValidator`: an AsDetail attribute with
+  `isArray: true` whose child type has no `[ValueKey]` is refused at startup. This is what catches a
+  cross-assembly miss in N5, and it makes "enforcement silently not applying" unrepresentable.
 
-### N6 — Authorization is the row type's own right
+⚠️ Operational sharp edge: a restored old backup, or an upgrade without migrations, fails on save
+rather than degrading. That is the right direction for something enforcing a permission, and it
+argues for the migration being scaffolded rather than hand-written per app.
 
-**The grid's affordances are governed by the type in the grid.** Adding a phone number to a person
-needs `New/PhoneNumber`; the delete button on a row needs `Delete/PhoneNumber`. Not the parent's
-right.
-
-This is not a new invention — **the client already works this way**. `spark-po-form.component.ts:293`
-loads `getPermissions(asDetailType.id)` for the *detail* type and the `canCreateDetailRow` /
-`canDeleteDetailRow` pipes gate the New and Delete buttons on it. A server that checked the parent's
-right would make the button and the endpoint disagree. `security.json` already carries
-`QueryReadEditNewDelete/EventColumnMapping` for an embedded type, so grants on AsDetail types are an
-established practice in this codebase, not a hypothetical.
-
-It is deliberately narrower than the rule the refresh path states for nested triggers
-(`Refresh.cs:120-127`, "the right that governs editing a row is the one governing the object that
-owns it"). That rule is right *for refresh*: reshaping a form has no verb of its own, so it borrows
-the owner's. Adding and removing rows are real verbs a deployment may want to grant separately — a
-person's details editable by many, their phone numbers by few.
-
-**The parent is still loaded, and the load is still a gate.** The row type's right says the caller
-may create rows of this kind; it does not say which parent they may attach one to. Loading the
-parent applies its Read right, collection guard and row filter, so a caller who cannot see a parent
-cannot add rows to it. Both checks, not either.
-
-⚠️ **Consequence: an AsDetail type with no grant is now refused.** That is the correct fail-closed
-direction, but it makes an existing client-side default wrong: `canCreateDetailRow` /
-`canDeleteDetailRow` return `true` when no permission entry exists
-(`pipes/src/can-create-detail-row.pipe.ts:6-9`), so an ungranted type would render buttons the
-server refuses. Those defaults must flip to `false` as part of this work.
-
-⚠️ The `Query` half of a grant on an AsDetail type is separately load-bearing and easy to miss:
-`GET /spark/types` omits a type the caller has no `Query` right on, and without it an inline row
-renders **with no fields at all** — no console error, no log line
-(`apps/CodeCoverage/CodeCoverage/Actions/EventColumnMappingActions.cs:7-24`). So a working detail
-grid needs `Query` for the columns *and* `New`/`Delete` for the buttons.
-
-The endpoint enforces the rights server-side and must never read the client's pipes; the pipes
-decide what to render, the server decides what happens.
-
-### N7 — Where the flag lives, and the hash consequence
-
-A schema flag belongs on `EntityAttributeDefinition`
-(`libs/spark/MintPlayer.Spark.Abstractions/EntityTypeDefinition.cs:97`) next to `TriggersRefresh`
-(:163) — the exact precedent: nullable, schema-only, deliberately not echoed on the runtime
-`PersistentObjectAttribute` so a client cannot claim an undeclared one.
-
-`ModelSynchronizer`'s update branch (`ModelSynchronizer.cs:760-822`) only resets fields it
-explicitly assigns, so a hand-set flag survives re-sync provided no assignment is added there.
-
-⚠️ **Adding a schema property does not change the model hash.** `ModelFileShape.Describe` hashes a
-whitelist (`ModelFileShape.cs:138-144`) that a new field is not in, and `SparkModelShape` hashes CLR
-`PropertyInfo`. That is convenient — no consuming app is forced to re-synchronize — and it is a
-security decision: a field outside the whitelist can be edited on a deployed model without tripping
-the gate. If the flag decides whether server-side hooks run, weigh adding it to
-`StructuralAttributeFields` (a one-time forced re-sync for apps that have it written). The
-whitelist's own doc comment (`ModelFileShape.cs:114-121`) is the precedent for "security-relevant
-fields belong in the hash".
-
-### N8 — Non-goals
+### N10 — Non-goals
 
 - **A `PreClient` equivalent.** The prior art runs one presentation hook after construct/load/refresh
-  so "how this object looks in state X" lives in one place. Spark has no equivalent and would
-  benefit from one, but it changes the load and refresh paths too and deserves its own PRD rather
-  than riding in on this one.
-- **Per-row save for embedded children.** The parent remains the unit of work. Anything wanting
-  independent persistence should be a root document with a declared sub-query instead.
-- **Retrofitting keys onto existing embedded types.** N3 is opt-in; untouched types keep today's
-  behaviour.
+  so "how this object looks in state X" lives in one place. Spark would benefit, but it changes the
+  load and refresh paths too and deserves its own PRD.
+- **Per-row save for embedded children.** The parent remains the unit of work. Anything needing
+  independent persistence should be a root document with a declared sub-query.
+- **Per-field `Edit` rights.** `Edit/X` is per-row, all-or-nothing on content.
 
 ## 5. Acceptance criteria
 
-1. Add on an AsDetail array issues exactly one `POST /spark/po/{type}/new` and inserts the returned
-   object; a child type overriding `OnNewAsync` sees its defaults in the grid without a save.
-2. A default set with `SetOriginalValue` leaves the parent **not** dirty; one set with `SetValue`
-   does.
-3. `OnNewAsync` receives a non-null `AsDetailParent` for an embedded row and null for a root object.
-3b. A keyed row's identity splits into (aggregate-root id, child key).
-4. With `ServerSideRowLifecycle` on, clicking Delete calls the row type's delete hook; throwing from
-   it leaves the row in place and surfaces the error. With it off, neither button round-trips.
-5. An unkeyed embedded type behaves exactly as it does today.
-5b. **The save path enforces the row rights on its own, with the endpoints bypassed entirely.**
-   `PUT` a `Person` carrying a phone-number row that is not in the stored document, holding
-   `Edit/Person` but not `New/PhoneNumber` ⇒ refused. Same `PUT` with a stored row omitted, holding
-   `Edit/Person` but not `Delete/PhoneNumber` ⇒ refused. Both must fail with
-   `ServerSideRowLifecycle` **off**, because enforcement does not read that flag.
-5c. A save that adds one row and removes another in the same request is caught — the case a
-   count-based approximation misses, and therefore the test that proves identity is really being
-   used.
-6. Re-running `--spark-synchronize-model` preserves the new flag and leaves the model hash unchanged
-   (template: `tests/MintPlayer.Spark.Tests/Model/TriggersRefreshPreservationTests.cs`).
-7. An undeclared AsDetail child type is refused by the new endpoint identically to the save path.
-8. Unknown type and denied both return the same refusal shape.
-9. With `New/PhoneNumber` granted and `New/Person` not, adding a phone-number row succeeds; with
-   `New/Person` granted and `New/PhoneNumber` not, it is refused and the New button is not rendered.
-10. A caller who cannot see a given person cannot add a phone number to them, even holding
-    `New/PhoneNumber`.
-11. An AsDetail type with no permission entry renders neither a New nor a Delete button.
+1. Add issues exactly one `POST /spark/po/{type}/new` and inserts the returned object; a type
+   overriding `OnNewAsync` sees its defaults in the grid without a save.
+2. A default set with `SetOriginalValue` leaves the parent **not** dirty; `SetValue` does.
+3. `OnNewAsync` receives a non-null `AsDetailParent` for an embedded row, null for a root object.
+4. With `ServerSideRowLifecycle` on, Delete calls the row type's hook; throwing leaves the row and
+   surfaces the error. With it off, neither button round-trips.
+5. **The save enforces the rights with the endpoints bypassed entirely.** `PUT` a `Person` holding
+   `Edit/Person` but not `New/PhoneNumber`, carrying an unknown row key ⇒ refused. Holding
+   `Edit/Person` but not `Delete/PhoneNumber`, omitting a stored row ⇒ refused. Holding
+   `Edit/Person` but not `Edit/PhoneNumber`, changing a matched row ⇒ **saved, with the stored
+   content intact**. All three must hold with `ServerSideRowLifecycle` **off**.
+6. A save that adds one row and removes another in the same request is caught — the case a
+   count-based approximation misses.
+7. A stored collection containing a keyless row makes the save throw, naming the document.
+8. An `isArray` AsDetail whose child type has no `[ValueKey]` refuses startup.
+9. A single-valued `[ValueObject]` gets no key, and the four working embedded breadcrumbs still
+   render. `DemoApp/Address` and `ProjectColumn` breadcrumbs render too (existing bug fixed).
+10. Re-running `--spark-synchronize-model` preserves `ServerSideRowLifecycle` and leaves the model
+    hash unchanged (template: `Model/TriggersRefreshPreservationTests.cs`).
+11. Unknown type, wrong parent type, a name that is not an AsDetail attribute of that parent, a
+    child type disagreeing with the parent's schema, and an invisible parent all return the same
+    refusal.
+12. An AsDetail type with no permission entry renders neither New nor Delete.
 
 ## 6. Risks
 
 | Risk | Mitigation |
 |---|---|
-| Stale array index addresses the wrong row after a server-side insert | N3 keys; the client inserts the returned object itself rather than re-fetching |
-| Giving embedded rows ids silently breaks breadcrumbs | N3 uses a separate key attribute, not `Id` |
-| One HTTP request per added row | Accepted, as in the prior art. Revisit only with a measured complaint |
-| A flag outside the hash whitelist is tamperable on a deployed model | N7 — decide explicitly, do not default into it |
-| Client permission pipes fail open | N6 — server gate is authoritative; endpoint must not read them |
-| No E2E test drives a detail grid today | Add one; `tests/MintPlayer.Spark.E2E.Tests` currently only has smoke and return-url coverage |
+| Legacy keyless rows make the diff undecidable | N9 — migrate, then fail closed and loud |
+| `[ValueObject]` mandatory breaks every app | Compile error for missing `partial`; startup error for a missing attribute. Loud, not silent |
+| Generated key fights a derived key | N5 — generator skips types declaring their own `Id` |
+| Keys break embedded breadcrumbs | N5 — collection-used types only; `EntityMapper.cs:204` fixed regardless |
+| Client pipes fail open | N6 — flip to `false`; server never reads them |
+| Diverging from the prior art on save enforcement | Deliberate and documented; the alternative is a right the obvious bypass defeats |
+| No E2E test drives a detail grid today | Add one; `tests/MintPlayer.Spark.E2E.Tests` has only smoke and return-url coverage |
