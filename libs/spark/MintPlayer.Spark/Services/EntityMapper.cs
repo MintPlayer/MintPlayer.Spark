@@ -195,11 +195,18 @@ internal partial class EntityMapper : IEntityMapper
         po.Id = idProperty is not null ? AccessorCache.GetGetter(idProperty)(entity)?.ToString() : null;
 
         // Name/Breadcrumb come from the pre-resolved breadcrumb result (recursive, server-side).
-        // Embedded AsDetail objects have no id and aren't keyed in the result → render their own
-        // [Breadcrumb] template in place, substituting the resolved breadcrumb for each reference
-        // token (the resolver descended into AsDetail children, so those targets are resolved).
+        // Embedded AsDetail objects aren't keyed in the result → render their own [Breadcrumb]
+        // template in place, substituting the resolved breadcrumb for each reference token (the
+        // resolver descended into AsDetail children, so those targets are resolved).
+        //
+        // Gated on the lookup missing, NOT on the object having no id. The result is keyed by
+        // DOCUMENT id, so an embedded object never hits it — but an embedded type is perfectly
+        // entitled to carry an `Id` of its own, and two shipped ones do: ProjectColumn's is the
+        // GitHub option id and DemoApp's Address has one outright. Both declare a [Breadcrumb]
+        // template and both rendered as the bare type name, because an id they legitimately own
+        // disqualified them from the only path that could render it.
         var breadcrumb = breadcrumbs?.Get(po.Id);
-        if (string.IsNullOrWhiteSpace(breadcrumb) && breadcrumbs is not null && string.IsNullOrEmpty(po.Id))
+        if (string.IsNullOrWhiteSpace(breadcrumb) && breadcrumbs is not null)
         {
             var def = modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
             breadcrumb = EmbeddedBreadcrumbRenderer.Render(

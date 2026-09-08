@@ -12,7 +12,7 @@ namespace CodeCoverage.Entities;
 /// destroy them.
 /// </para>
 /// </summary>
-public class EventColumnMapping
+public partial class EventColumnMapping
 {
     /// <summary>
     /// Stable key for this row, so the generic UI's inline collection editor can identify it across

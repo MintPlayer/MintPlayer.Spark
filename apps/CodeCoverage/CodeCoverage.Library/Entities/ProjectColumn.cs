@@ -11,7 +11,7 @@ namespace CodeCoverage.Entities;
 /// refreshed by the <c>SyncColumns</c> action and by the nightly reconciliation.
 /// </para>
 /// </summary>
-public class ProjectColumn
+public partial class ProjectColumn
 {
     /// <summary>
     /// The single-select option id, as GraphQL reports it. This is the value a card-move mutation

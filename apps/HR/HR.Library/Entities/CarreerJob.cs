@@ -2,7 +2,7 @@ using MintPlayer.Spark.Abstractions;
 
 namespace HR.Entities;
 
-public class CarreerJob
+public partial class CarreerJob
 {
     /// <summary>The profession held during this career step.</summary>
     [Reference(typeof(Profession))]
