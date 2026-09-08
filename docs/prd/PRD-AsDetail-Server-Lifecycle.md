@@ -111,6 +111,15 @@ Three findings from that prior art shape this design:
    a narrower "I am a row inside this object's embedded collection". The narrow one is what the
    persistence layer keys on: when it is present the child does **not** persist itself, because the
    aggregate root owns the save. Getting this wrong yields double writes or orphans.
+4. **The parent reference is a mutable input, not a fixed fact.** The framework auto-populates the
+   child's parent-typed attribute from the caller-supplied parent *before* the hook runs — and a
+   hook may **replace that parent and delegate to the base implementation**, re-pointing the
+   automatic wiring somewhere else. This is not an exotic case: it is what a **grandchild
+   collection** requires, where the object that owns the save is two levels above the grid the user
+   pressed Add in. The same substitution is needed in the load hook. Correspondingly, child identity
+   is **decomposable back into (aggregate-root id, child id)**, so a hook can reach either level.
+   A framework that hard-wires the parent before the hook, with no way to redirect it, simply breaks
+   at two levels deep.
 
 There is deliberately no client-only add mode there. The stated reason is worth quoting into our own
 decision: the moment one exists, every defaulting hook has two execution contexts to reason about.
@@ -174,18 +183,37 @@ so nothing that keys on `Id` changes meaning. Generated client-side on Add and r
 verbatim. Types without the key keep today's positional behaviour and get no delete hook — which
 keeps this change additive.
 
+**The key must be decomposable** (prior-art finding 4). A row's identity should resolve back to
+*(aggregate-root id, child key)*, with a documented way to split it, because a hook on a grandchild
+needs the root id to reach the object that actually owns the save, and the child key to find its own
+row. A flat opaque key that cannot be split forces every such hook to re-derive the root from
+context it may not have. Design the key's string form for that from the start; retrofitting a
+separator into a key already written into documents is a migration.
+
 ### N4 — The hook: `OnNewAsync(SparkNewArgs<T> args)`
 
 Mirrors `SparkRefreshArgs<T>` (`Actions/SparkRefreshArgs.cs`), Spark's established shape for
 "an unsaved object being shaped":
 
-| Member | Why |
-|---|---|
-| `PersistentObject` | the object to mutate |
-| `Parent` | copy or derive values from the owner |
-| `AsDetailParent` | the narrow reference of prior-art finding 3 — non-null only for an embedded row |
-| `AsDetailAttribute` | which collection Add was pressed in; one child type, different defaults per site |
-| `Parameters` | the New-variant bag |
+| Member | Mutable? | Why |
+|---|---|---|
+| `PersistentObject` | — | the object to mutate |
+| `Parent` | **yes, settable** | copy or derive values from the owner — and see below |
+| `AsDetailParent` | **yes, settable** | the narrow reference of prior-art finding 3 — non-null only for an embedded row |
+| `AsDetailAttribute` | no | which collection Add was pressed in; one child type, different defaults per site |
+| `Parameters` | no | the New-variant bag |
+
+⚠️ **`Parent` and `AsDetailParent` must be settable, not get-only** (prior-art finding 4). A
+grandchild collection needs the hook to substitute a different parent — the aggregate root two
+levels up — and then delegate to the base behaviour, so that any framework auto-wiring of the
+child's parent-typed attribute points at the substituted object. This also means **the auto-wiring
+must run after the hook, or be re-runnable by it**; wiring it before the hook with no redirect is
+precisely the design that breaks two levels deep. `SparkRefreshArgs<T>` exposes get-only properties,
+so this is a deliberate divergence from that template, not an oversight.
+
+The same substitution is needed on the load path. Spark's `OnLoadAsync(string id,
+PersistentObject? parent)` takes the parent as a parameter, so an override can already pass a
+different one downward — no signature change needed there, but the guide should show it.
 
 ### N5 — Value-setting primitives are missing and must be added
 
@@ -247,6 +275,10 @@ fields belong in the hash".
 2. A default set with `SetOriginalValue` leaves the parent **not** dirty; one set with `SetValue`
    does.
 3. `OnNewAsync` receives a non-null `AsDetailParent` for an embedded row and null for a root object.
+3b. A hook that **replaces** `args.Parent` and delegates to the base behaviour sees the child's
+   parent-typed attribute wired to the substituted object, not the caller-supplied one — verified
+   with a two-level-deep (grandchild) collection, which is the case that fails without it.
+3c. A keyed row's identity splits into (aggregate-root id, child key).
 4. For a keyed embedded type, removing a row and saving the parent invokes the child's
    `OnBeforeDeleteAsync`; throwing from it fails the parent's save with a validation error.
 5. An unkeyed embedded type behaves exactly as it does today.
