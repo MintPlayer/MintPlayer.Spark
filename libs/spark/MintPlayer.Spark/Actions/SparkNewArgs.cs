@@ -27,9 +27,12 @@ public sealed class SparkNewArgs<T> where T : class
         Parent = parent;
         AsDetailParent = asDetailParent;
         AsDetailAttribute = asDetailAttribute;
-        Parameters = parameters;
+        Parameters = parameters ?? EmptyParameters;
         CancellationToken = cancellationToken;
     }
+
+    private static readonly IReadOnlyDictionary<string, string> EmptyParameters =
+        new Dictionary<string, string>(0);
 
     /// <summary>
     /// The object being constructed. Every attribute the model declares is present with a null
@@ -80,10 +83,15 @@ public sealed class SparkNewArgs<T> where T : class
     public string? AsDetailAttribute { get; }
 
     /// <summary>
-    /// Free-form arguments from the client, or <see langword="null"/> when it sent none. Carries the
-    /// chosen variant when New is a menu rather than a single button.
+    /// Free-form arguments from the client. Carries the chosen variant when New is a menu rather
+    /// than a single button.
     /// </summary>
-    public IReadOnlyDictionary<string, string>? Parameters { get; }
+    /// <remarks>
+    /// Never <see langword="null"/> — an empty dictionary when the client sent nothing, matching
+    /// what the prior art hands its construction hook. A hook that reads a parameter should not
+    /// have to null-check first.
+    /// </remarks>
+    public IReadOnlyDictionary<string, string> Parameters { get; }
 
     /// <summary>Cancelled when the caller gives up on the request.</summary>
     public CancellationToken CancellationToken { get; }
