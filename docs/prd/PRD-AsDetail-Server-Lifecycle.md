@@ -246,6 +246,27 @@ This does three jobs an analyzer could not:
 3. **It makes the save-path diff cheap.** N6 needs "is this element type keyed, and which property
    is the key" on every save; a dictionary lookup beats reflecting per row.
 
+**Registry payload — decide at F5, not now, but do not store a property *name*.** A name means a
+`GetProperty` resolve, which is the one genuinely slow part of reflection. Nothing else here is:
+`typeof(X)` is `ldtoken` plus a handle lookup that the JIT often folds, `Dictionary<Type,…>` hashes a
+handle, and Spark already compiles property accessors into memoized expression-tree delegates
+(`Abstractions/Reflection/AccessorCache.cs`), so a per-row read is a delegate call rather than
+`PropertyInfo.GetValue`. Three candidate payloads, cheapest last:
+
+1. `(Type, string name)` — one `GetProperty` per type, then `AccessorCache`. Acceptable, but the
+   name buys nothing the generator could not emit directly.
+2. `(Type, Func<object, string?>)` — the generator emits `static o => ((BuildSession)o).Id`. No
+   `GetProperty`, no expression compilation at startup.
+3. The generated partial implements a small interface, so the diff does `row is ISparkValueObject vo`
+   and the registry shrinks to a `Type` set used only by the startup gate.
+
+⚠️ There is a real chance none is needed: the diff runs at `EntityMapper.cs:661`, where incoming rows
+are `PersistentObject`s already carrying `.Id`, and the stored entity's `Id` is already surfaced by
+`PopulateAttributeValues` through the same compiled-accessor path. If both sides hold the key
+already, the registry's only job is set membership for the gate. Settle it when F5 is written and it
+is obvious which side has what — the constraint to carry forward is simply **never resolve a property
+by name per row**.
+
 ⚠️ **Module initializers run on first use of the module, not at process start.** The gate is safe
 because loading the model resolves each `ClrType` through `SparkTypeResolver`, which forces the
 assembly to load and its initializer to run — but that ordering is an assumption, not a guarantee.
