@@ -42,6 +42,25 @@ public class Repository
     /// <remarks>An archived repository no longer receives uploads.</remarks>
     public bool Archived { get; set; }
 
+    /// <summary>Delete a pull request's head branch when the pull request is merged.</summary>
+    /// <remarks>
+    /// Opt-in per repository, default false. On a multi-tenant server this mutates <em>other
+    /// people's</em> repositories, so it cannot be a global default; deleting a branch is also the
+    /// one irreversible thing this app does to a repository.
+    /// <para>
+    /// Lives here rather than on <see cref="GitHubProject"/>, where it was first declared. A board
+    /// and a repository are siblings under an <see cref="Account"/>, and deleting a ref is a
+    /// repository operation that no board takes part in: gating it on a board made it unreachable
+    /// for an owner with no board, inert for a board carrying no pull-request rule, and duplicated
+    /// for an owner with two boards. See the decision register (C16) for the reversal of A4/D3.
+    /// </para>
+    /// <para>
+    /// Merged pull requests only — a pull request closed without merging keeps its branch, because
+    /// the work on it has not landed anywhere.
+    /// </para>
+    /// </remarks>
+    public bool DeleteBranchOnPrClose { get; set; }
+
     /// <summary>Whether the GitHub App can still see this repository.</summary>
     /// <remarks>
     /// Disconnected repositories keep every document they have and keep answering on their badge

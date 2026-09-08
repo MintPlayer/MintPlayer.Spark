@@ -123,28 +123,6 @@
         "rules": []
       },
       {
-        "id": "15f34f9c-d079-472c-ae04-4aaa334d7f6c",
-        "name": "DeleteBranchOnPrClose",
-        "label": {
-          "en": "Delete Branch On Close",
-          "fr": "Supprimer la branche à la fermeture",
-          "nl": "Branch verwijderen bij sluiten"
-        },
-        "description": {
-          "en": "Delete a pull request's head branch when it closes.",
-          "fr": "Supprimer la branche source d'une pull request à sa fermeture.",
-          "nl": "De bronbranch van een pull request verwijderen wanneer die sluit."
-        },
-        "dataType": "boolean",
-        "isRequired": true,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 11,
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": []
-      },
-      {
         "id": "e48906e9-891d-4a29-95c0-2384f01ea00e",
         "name": "DisconnectedAtUtc",
         "label": {

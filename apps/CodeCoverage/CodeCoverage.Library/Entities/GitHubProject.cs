@@ -95,15 +95,6 @@ public class GitHubProject
     /// </remarks>
     public bool AutomationEnabled { get; set; }
 
-    /// <summary>Delete a pull request's head branch when it closes.</summary>
-    /// <remarks>
-    /// Opt-in per board, default false, and that is a deliberate change from the behaviour this was
-    /// migrated from — where it was unconditional and organization-wide. On a multi-tenant server
-    /// that setting mutates <em>other people's</em> repositories, so it cannot be a global default;
-    /// deleting a branch is also the one irreversible thing in this feature.
-    /// </remarks>
-    public bool DeleteBranchOnPrClose { get; set; }
-
     /// <summary>Whether the GitHub App can still see this board.</summary>
     /// <remarks>
     /// Mirrors <see cref="Repository.Connection"/>, including its default: every document written
