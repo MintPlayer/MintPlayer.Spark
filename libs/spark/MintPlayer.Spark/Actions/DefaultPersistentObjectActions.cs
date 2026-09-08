@@ -541,6 +541,17 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// </summary>
     public virtual Task OnRefreshAsync(SparkRefreshArgs<T> args) => Task.CompletedTask;
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// The base implementation does nothing, and in particular does not bind the child's
+    /// parent-typed attribute for you. That is a deliberate omission rather than a gap: automatic
+    /// binding is what forces a grandchild's hook to substitute a different parent before
+    /// delegating, and the ordering rule that creates ("substitute before calling base, never
+    /// after") is the kind of invisible trap that only exists because the binding is implicit.
+    /// A hook that wants a parent's value sets it explicitly, from whichever object it likes.
+    /// </remarks>
+    public virtual Task OnNewAsync(SparkNewArgs<T> args) => Task.CompletedTask;
+
     // StreamItems/StreamItem used to be declared here as virtuals that threw. They were never
     // called by those names: StreamingQueryExecutor resolves the streaming method by the name in the
     // query's model file, so the base declarations implied a fixed hook that does not exist and

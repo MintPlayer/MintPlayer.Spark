@@ -92,6 +92,30 @@ public interface IPersistentObjectActions<T> where T : class
     /// </summary>
     Task OnRefreshAsync(SparkRefreshArgs<T> args);
 
+    /// <summary>
+    /// Called when a new object of this type is constructed, before the client ever sees it — for a
+    /// standalone New and for a row added to an <c>AsDetail</c> collection alike. Mutate
+    /// <c>args.PersistentObject</c> to give the object the shape it should start life with:
+    /// default a date to now, copy a value down from the parent, preselect an option, hide or
+    /// reveal attributes depending on whether there is a parent at all.
+    /// <para>
+    /// ⚠️ <b>Use <see cref="PersistentObjectAttribute.SetOriginalValue{TValue}"/> for defaults</b>,
+    /// not <see cref="PersistentObjectAttribute.SetValue{TValue}"/>. The latter marks the attribute
+    /// changed, which makes the object dirty before the user has typed anything — so adding a row
+    /// and abandoning it leaves the parent falsely modified.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>Construction is not persistence.</b> Nothing is written here and the object may never
+    /// be saved. For an <c>AsDetail</c> row the parent owns the save, which is what
+    /// <see cref="SparkNewArgs{T}.AsDetailParent"/> signals.
+    /// </para>
+    /// </summary>
+    /// <remarks>
+    /// A default implementation, for the same reason as <see cref="OnQueryAsync"/>: most types have
+    /// no defaults to set, and adding a required member would break every hand-written implementer.
+    /// </remarks>
+    Task OnNewAsync(SparkNewArgs<T> args) => Task.CompletedTask;
+
     // ---- Row-level security ------------------------------------------------------------------
     //
     // These three were deliberately absent from this interface and reached by reflection instead,
