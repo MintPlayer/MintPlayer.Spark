@@ -235,7 +235,33 @@ public class PersistentObjectAttribute
         return Convert.ChangeType(Value, typeof(T)) is T value ? value : default;
     }
 
-    public void SetValue<T>(T? value) => Value = value;
+    /// <summary>
+    /// Sets the value <b>as an edit</b>: the attribute is marked
+    /// <see cref="IsValueChanged"/>, so the save path treats it as something the user changed.
+    /// <para>
+    /// For a value a hook supplies rather than the user — a default on a newly constructed object —
+    /// use <see cref="SetOriginalValue{T}"/> instead. The distinction is not cosmetic: a default
+    /// written through this method makes an object dirty before the user has touched it, so adding
+    /// a row and abandoning it leaves the parent falsely modified.
+    /// </para>
+    /// </summary>
+    public void SetValue<T>(T? value)
+    {
+        Value = value;
+        IsValueChanged = true;
+    }
+
+    /// <summary>
+    /// Sets the value <b>as a default</b>: the attribute is left clean, exactly as if the value had
+    /// come from the database. This is the primitive a construction hook wants — the value shows up
+    /// in the form, but the object is not dirty until the user actually edits something.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately does not clear <see cref="IsValueChanged"/> if it is already set. Defaulting is
+    /// something you do to a fresh attribute; silently un-dirtying one that a previous hook marked
+    /// would make the order in which hooks run load-bearing and invisible.
+    /// </remarks>
+    public void SetOriginalValue<T>(T? value) => Value = value;
 
     /// <summary>
     /// Deep-copies this attribute under a new name (and optional new label), adds

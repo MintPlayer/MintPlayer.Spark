@@ -195,25 +195,52 @@ separator into a key already written into documents is a migration.
 Mirrors `SparkRefreshArgs<T>` (`Actions/SparkRefreshArgs.cs`), Spark's established shape for
 "an unsaved object being shaped":
 
-| Member | Mutable? | Why |
-|---|---|---|
-| `PersistentObject` | — | the object to mutate |
-| `Parent` | **yes, settable** | copy or derive values from the owner — and see below |
-| `AsDetailParent` | **yes, settable** | the narrow reference of prior-art finding 3 — non-null only for an embedded row |
-| `AsDetailAttribute` | no | which collection Add was pressed in; one child type, different defaults per site |
-| `Parameters` | no | the New-variant bag |
+| Member | Why |
+|---|---|
+| `PersistentObject` | the object to mutate |
+| `Parent` | copy or derive values from the owner |
+| `AsDetailParent` | the narrow reference of prior-art finding 3 — non-null only for an embedded row |
+| `AsDetailAttribute` | which collection Add was pressed in; one child type, different defaults per site |
+| `Parameters` | the New-variant bag |
 
-⚠️ **`Parent` and `AsDetailParent` must be settable, not get-only** (prior-art finding 4). A
-grandchild collection needs the hook to substitute a different parent — the aggregate root two
-levels up — and then delegate to the base behaviour, so that any framework auto-wiring of the
-child's parent-typed attribute points at the substituted object. This also means **the auto-wiring
-must run after the hook, or be re-runnable by it**; wiring it before the hook with no redirect is
-precisely the design that breaks two levels deep. `SparkRefreshArgs<T>` exposes get-only properties,
-so this is a deliberate divergence from that template, not an oversight.
+**All members get-only**, and **Spark does not automatically bind the child's parent-typed
+attribute**. An earlier draft of this PRD had settable parents so a grandchild's hook could redirect
+that binding; measurement retired both halves of that idea.
 
-The same substitution is needed on the load path. Spark's `OnLoadAsync(string id,
-PersistentObject? parent)` takes the parent as a parameter, so an override can already pass a
-different one downward — no signature change needed there, but the guide should show it.
+*Why an args object rather than four plain parameters.* Two independent lines of evidence:
+
+- **Dispatch.** Plain-parameter hooks are resolved by bare name (`GetMethod(name)`, which cannot even
+  tolerate an overload) and invoked with positional literals in seven places —
+  `DatabaseAccess.cs:99,143,492,537,546`, `SyncActionHandler.cs:269,282`, e.g.
+  `Invoke(actions, [id, null])`. Adding a parameter means editing every literal, and a miscount is a
+  runtime `TargetParameterCountException`. `RefreshInvoker.cs:168` resolves by exact signature and
+  invokes `[args]`; adding a member to the args type touches no dispatch code. Spark has already
+  broken `OnLoadAsync`'s signature twice (`ae37fedc`, `5ebfaa45`), with 11 live overrides today.
+- **Ageing, measured in the prior art.** Across 29 releases spanning 22 months, **no
+  plain-parameter hook ever gained a parameter** — they froze — while args types grew members
+  freely. The one plain-parameter hook that needed more inputs got a parallel args overload beside
+  it rather than a fifth parameter. Arity is not the criterion either: that framework's refresh args
+  carries two get-only members and is still an args object, and every hook it added after its first
+  generation is args-shaped.
+
+*Why get-only, and why no auto-binding.* Substitution appears in ~3% of delegating call sites in the
+prior art, always in the parent slot, in two idioms (replace with a synthesized parent; pass null to
+suppress binding, then restore the association by hand). But it exists **only because that framework
+binds the parent attribute before the hook runs** — it is a workaround for an implicit convenience,
+not a requirement of construction. Spark does not have that convenience, so a grandchild's hook
+needs no redirect at all: it sets the attribute it wants from the object it wants.
+
+⚠️ **If auto-binding is ever added, express the redirect as an explicit argument or a named method —
+never a setter.** In the clearest real example the substituting hook goes on to read the *original*
+parent **after** delegating with a substitute, so both values must stay reachable simultaneously; a
+setter destroys the original unless every author remembers to stash it first. That prior-art
+framework never exposes a settable `Parent`, `Query` or `PersistentObject` on any args type — where
+it swaps a hook's target it uses named intent methods. This also removes the ordering trap
+("substitute before calling base, never after"): a rule that only needs stating because the binding
+is implicit.
+
+Spark's `OnLoadAsync(string id, PersistentObject? parent)` already takes the parent as a parameter,
+so the load path can pass a different one downward with no signature change.
 
 ### N5 — Value-setting primitives are missing and must be added
 
