@@ -91,10 +91,24 @@ internal sealed partial class NewPersistentObject : IPostEndpoint, IMemberOf<Per
     /// open.
     /// <list type="number">
     /// <item>
-    /// <b>The right is the parent's, not the row's.</b> Nested <c>AsDetail</c> types are not in
-    /// security.json — nobody grants rights on a line item — so the right that governs adding a row
-    /// is the one governing the object that owns it. This is the same rule the refresh path states
-    /// for nested triggers.
+    /// <b>The right is the row type's own.</b> Adding a phone number to a person needs
+    /// <c>New/PhoneNumber</c>, and the delete button on a row needs <c>Delete/PhoneNumber</c> — the
+    /// grid's affordances are governed by the type in the grid. The client already works this way:
+    /// it loads permissions for the <em>detail</em> type and gates the New and Delete buttons on
+    /// them, so checking the parent's right here would have made the button and the endpoint
+    /// disagree.
+    /// <para>
+    /// This is narrower than the rule the refresh path states for nested triggers, and deliberately
+    /// so. Refresh reshapes a form and has no verb of its own, so it borrows the owner's. Adding and
+    /// removing rows are real verbs that a deployment may want to grant separately — a person's
+    /// details editable by many, their phone numbers by few.
+    /// </para>
+    /// </item>
+    /// <item>
+    /// <b>The parent is still loaded, and that load is still a gate.</b> The row type's right says
+    /// the caller may create rows of this kind; it does not say which parent they may attach one to.
+    /// The load applies the parent's Read right, collection guard and row filter, so a caller who
+    /// cannot see a parent cannot add rows to it — nor learn that it exists.
     /// </item>
     /// <item>
     /// <b>The child type comes from the parent's schema, never from the request.</b> The route names
@@ -103,9 +117,9 @@ internal sealed partial class NewPersistentObject : IPostEndpoint, IMemberOf<Per
     /// framework construct it under a parent that has no such collection.
     /// </item>
     /// <item>
-    /// <b>A saved parent is re-loaded server-side.</b> The client sends an id, not an object, and
-    /// the load is the gate: it applies the Read right, the collection guard and the row filter, so
-    /// a caller who cannot see a parent cannot add rows to it — nor learn that it exists.
+    /// <b>A saved parent is re-loaded server-side rather than accepted from the body.</b> Taking the
+    /// client's word for a parent's contents is how a caller reaches one collection through
+    /// another's permissions.
     /// </item>
     /// </list>
     /// </remarks>
@@ -136,15 +150,13 @@ internal sealed partial class NewPersistentObject : IPostEndpoint, IMemberOf<Per
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
 
-        var parentTypeName = parentType.ClrType?.Split('.').Last() ?? parentType.Name;
-        var parentIsNew = request.ParentId is not { Length: > 0 };
-
-        // An unsaved parent is being created, so the relevant right is New on it; a saved one is
-        // being edited by gaining a row. Same mapping the refresh path uses.
-        await permissionService.EnsureAuthorizedAsync(parentIsNew ? "New" : "Edit", parentTypeName);
+        // The row type's own right — New/PhoneNumber, not New/Person. Matches the button the client
+        // renders, which is gated on the detail type's permissions.
+        var rowTypeName = entityType.ClrType?.Split('.').Last() ?? entityType.Name;
+        await permissionService.EnsureAuthorizedAsync("New", rowTypeName);
 
         Po? parent = null;
-        if (!parentIsNew)
+        if (request.ParentId is { Length: > 0 })
         {
             parent = await databaseAccess.GetPersistentObjectAsync(parentType.Id, request.ParentId!);
             if (parent is null)
