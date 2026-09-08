@@ -98,11 +98,16 @@ beyond that.
 
 Three findings from that prior art shape this design:
 
-1. **Create round-trips in both collection shapes; delete round-trips in only one.** For an embedded
-   child collection, delete is a client-side flag applied during the parent's save. For an
-   independently-persisted associated list, delete round-trips immediately to a delete hook. The
-   asymmetry is deliberate: New is a *construction* request, not a *persistence* request, so it buys
-   server-side defaulting without buying a per-row save.
+1. **Both Create and Delete round-trip, in both collection shapes — including embedded ones.**
+   Verified against a real app: a company's addresses are a plain `List<Address>` embedded on the
+   company document, and both the Add button and each row's Delete button call the address type's
+   own actions class. What differs between the shapes is only what the hook *does*: for an
+   independently-persisted child it deletes; for an embedded one it cannot, because the row is part
+   of its parent's document.
+   <br>
+   The invariant underneath is that **New and Delete are requests about a row, not persistence of
+   one**. That is what buys server-side defaulting, validation and a real permission check without
+   buying a per-row save.
 2. **Three distinct value-setting primitives, and conflating them is a design bug** — *set as
    default* (value appears, field **not** dirty), *set as edit* (dirty), *set and cascade*. Defaults
    on a new child must use the first, or a user who adds a row and abandons it produces spurious
@@ -151,16 +156,56 @@ no error. If a fast path is wanted later it should be an explicit, separately-na
 attribute (`"clientSideNew": true`) documented as skipping hooks, never the default. **N1 is the one
 decision most worth pushing back on if you disagree — say so and it becomes a flag.**
 
-### N2 — Delete does not round-trip at click time; the hook runs at parent save
+### N1b — The round-trip is opt-in per row type, and the actions class is ceremony
 
-Matching the prior art, and matching what Spark's aggregate model already implies. The row is marked
-deleted client-side, the parent becomes dirty, and during the parent's save the framework
-diffs the incoming collection against the stored one and invokes, per removed row, the child type's
-`OnBeforeDeleteAsync`. Throwing from it vetoes the parent's save. A soft delete is expressed by the
-developer keeping the row and setting a flag instead.
+`ServerSideRowLifecycle` on the **row type's own** model file — not the parent's attribute, because
+the type that owns the hooks owns the decision and one setting then governs every grid it appears
+in. Default off: New pushes a blank row and Delete splices it out, exactly as today.
 
-This is what makes the owner's `UploadToken` revoke plan work on an embedded row: the hook fires,
-and a revoke can be a veto-plus-flag rather than a removal.
+**For an embedded type the round-trip writes nothing.** The row lives inside its parent's document,
+so the hook is ceremony — validate, default, veto, audit — and the row appears or disappears for
+real only when the parent is saved. A hook that touches the database is writing outside the
+parent's unit of work.
+
+⚠️ **The endpoints are not the enforcement point, and this is the part that is easy to get wrong.**
+A caller who skips them and `PUT`s the parent with a row added or removed reaches the same end
+state — and today the save path resolves rights for the **parent type only**, rebuilding the
+embedded collection wholesale from whatever arrived. So `New/{Type}` and `Delete/{Type}` must be
+applied **on the parent's save**, by comparing the incoming collection against the stored one. The
+endpoints then give honest, fast feedback and a real 403 to a direct POST; the save is what makes
+the right binding.
+
+Save-time enforcement must **not** read `ServerSideRowLifecycle`. It applies to every embedded
+collection regardless. This is also what keeps the flag safely out of the model hash (which covers
+only `name`, `clrType`, `alias`, `queryType`, `indexName`): were the rights check conditional on it,
+editing one unhashed line on a deployed model would switch the check off.
+
+⚠️ An exact added/removed diff needs row identity (N3). Without it, a count comparison approximates
+— more rows than stored ⇒ `New` required, fewer ⇒ `Delete` — but adding one row and removing
+another in the same save nets zero and slips through.
+
+### N2 — Delete round-trips too, when the type opts in
+
+An earlier draft of this PRD had Delete staying client-side, on the reasoning that an embedded row
+has nothing to delete server-side. That reasoning was wrong twice over. The prior art round-trips
+Delete for embedded value-object collections as well — a company's addresses are a plain
+`List<Address>` on the company document, and their delete button still calls the address type's own
+hook. And "nothing to delete" mistakes what the round-trip is *for*: it is not a deletion, it is a
+hook plus a permission check.
+
+So with `ServerSideRowLifecycle` on, clicking Delete calls the row type's delete hook, which may:
+
+- **refuse** — throw, and the row stays with the error surfaced;
+- **react** — audit, notify, cascade to something outside the aggregate;
+- **do nothing at all**, which is the common case, the type existing only so that
+  `Delete/{Type}` is a right the server can enforce.
+
+The row is then marked deleted client-side and leaves the document when the parent is saved, where
+the same right is applied again — see N1b, which is the enforcement that actually counts.
+
+A soft delete stays what it always was: keep the row, set a flag, do not remove it. That is what
+makes an embedded `UploadToken` revoke work — the hook refuses the removal and the revoked row
+remains.
 
 ### N3 — Row identity is the blocking prerequisite ⚠️
 
@@ -250,20 +295,44 @@ default-vs-edit distinction is exactly what a defaulting hook needs. Add `SetVal
 `SetOriginalValue` (not dirty), and use the latter in every defaulting example, or every defaulted
 row is born dirty and an abandoned Add leaves the parent falsely modified.
 
-### N6 — Authorization follows the `Refresh.cs` doctrine
+### N6 — Authorization is the row type's own right
 
-The governing right for constructing or removing a child row is the **parent route type's**
-(`Refresh.cs:78` uses `isNew ? "New" : "Read"` on the route type). Nested AsDetail types are not in
-`security.json`, and this PRD does not change that.
+**The grid's affordances are governed by the type in the grid.** Adding a phone number to a person
+needs `New/PhoneNumber`; the delete button on a row needs `Delete/PhoneNumber`. Not the parent's
+right.
 
-⚠️ `QueryReadEditNewDelete/EventColumnMapping` in the CodeCoverage app gates **metadata, not rows**:
-`GET /spark/types` omits a type the caller has no `Query` right on, and without the grant an inline
-row rendered with no fields at all — no console error, no log line
-(`apps/CodeCoverage/CodeCoverage/Actions/EventColumnMappingActions.cs:7-24`). The `New`/`Delete`
-halves gate nothing server-side today; they feed the client's `canCreateDetailRow` /
-`canDeleteDetailRow` pipes, **which default to `true` when no entry exists**
-(`pipes/src/can-create-detail-row.pipe.ts:6-9`). That client-side fail-open is tolerable only while
-the server owns the real gate — the new endpoint must not start trusting those pipes.
+This is not a new invention — **the client already works this way**. `spark-po-form.component.ts:293`
+loads `getPermissions(asDetailType.id)` for the *detail* type and the `canCreateDetailRow` /
+`canDeleteDetailRow` pipes gate the New and Delete buttons on it. A server that checked the parent's
+right would make the button and the endpoint disagree. `security.json` already carries
+`QueryReadEditNewDelete/EventColumnMapping` for an embedded type, so grants on AsDetail types are an
+established practice in this codebase, not a hypothetical.
+
+It is deliberately narrower than the rule the refresh path states for nested triggers
+(`Refresh.cs:120-127`, "the right that governs editing a row is the one governing the object that
+owns it"). That rule is right *for refresh*: reshaping a form has no verb of its own, so it borrows
+the owner's. Adding and removing rows are real verbs a deployment may want to grant separately — a
+person's details editable by many, their phone numbers by few.
+
+**The parent is still loaded, and the load is still a gate.** The row type's right says the caller
+may create rows of this kind; it does not say which parent they may attach one to. Loading the
+parent applies its Read right, collection guard and row filter, so a caller who cannot see a parent
+cannot add rows to it. Both checks, not either.
+
+⚠️ **Consequence: an AsDetail type with no grant is now refused.** That is the correct fail-closed
+direction, but it makes an existing client-side default wrong: `canCreateDetailRow` /
+`canDeleteDetailRow` return `true` when no permission entry exists
+(`pipes/src/can-create-detail-row.pipe.ts:6-9`), so an ungranted type would render buttons the
+server refuses. Those defaults must flip to `false` as part of this work.
+
+⚠️ The `Query` half of a grant on an AsDetail type is separately load-bearing and easy to miss:
+`GET /spark/types` omits a type the caller has no `Query` right on, and without it an inline row
+renders **with no fields at all** — no console error, no log line
+(`apps/CodeCoverage/CodeCoverage/Actions/EventColumnMappingActions.cs:7-24`). So a working detail
+grid needs `Query` for the columns *and* `New`/`Delete` for the buttons.
+
+The endpoint enforces the rights server-side and must never read the client's pipes; the pipes
+decide what to render, the server decides what happens.
 
 ### N7 — Where the flag lives, and the hash consequence
 
@@ -302,17 +371,27 @@ fields belong in the hash".
 2. A default set with `SetOriginalValue` leaves the parent **not** dirty; one set with `SetValue`
    does.
 3. `OnNewAsync` receives a non-null `AsDetailParent` for an embedded row and null for a root object.
-3b. A hook that **replaces** `args.Parent` and delegates to the base behaviour sees the child's
-   parent-typed attribute wired to the substituted object, not the caller-supplied one — verified
-   with a two-level-deep (grandchild) collection, which is the case that fails without it.
-3c. A keyed row's identity splits into (aggregate-root id, child key).
-4. For a keyed embedded type, removing a row and saving the parent invokes the child's
-   `OnBeforeDeleteAsync`; throwing from it fails the parent's save with a validation error.
+3b. A keyed row's identity splits into (aggregate-root id, child key).
+4. With `ServerSideRowLifecycle` on, clicking Delete calls the row type's delete hook; throwing from
+   it leaves the row in place and surfaces the error. With it off, neither button round-trips.
 5. An unkeyed embedded type behaves exactly as it does today.
+5b. **The save path enforces the row rights on its own, with the endpoints bypassed entirely.**
+   `PUT` a `Person` carrying a phone-number row that is not in the stored document, holding
+   `Edit/Person` but not `New/PhoneNumber` ⇒ refused. Same `PUT` with a stored row omitted, holding
+   `Edit/Person` but not `Delete/PhoneNumber` ⇒ refused. Both must fail with
+   `ServerSideRowLifecycle` **off**, because enforcement does not read that flag.
+5c. A save that adds one row and removes another in the same request is caught — the case a
+   count-based approximation misses, and therefore the test that proves identity is really being
+   used.
 6. Re-running `--spark-synchronize-model` preserves the new flag and leaves the model hash unchanged
    (template: `tests/MintPlayer.Spark.Tests/Model/TriggersRefreshPreservationTests.cs`).
 7. An undeclared AsDetail child type is refused by the new endpoint identically to the save path.
 8. Unknown type and denied both return the same refusal shape.
+9. With `New/PhoneNumber` granted and `New/Person` not, adding a phone-number row succeeds; with
+   `New/Person` granted and `New/PhoneNumber` not, it is refused and the New button is not rendered.
+10. A caller who cannot see a given person cannot add a phone number to them, even holding
+    `New/PhoneNumber`.
+11. An AsDetail type with no permission entry renders neither a New nor a Delete button.
 
 ## 6. Risks
 

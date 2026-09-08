@@ -67,6 +67,45 @@ public sealed class EntityTypeDefinition
     /// <c>false</c>, so satisfiable types add no JSON noise.
     /// </summary>
     public bool? BreadcrumbProjectionSatisfiable { get; set; }
+    /// <summary>
+    /// Whether adding or removing a row of this type in an <c>AsDetail</c> grid asks the server
+    /// first. <see langword="null"/> or <see langword="false"/> — the default — keeps the purely
+    /// client-side behaviour: New pushes a blank row, Delete splices it out, and the parent's save
+    /// is the first the server hears of either.
+    /// </summary>
+    /// <remarks>
+    /// Set it on the <b>row type's own</b> model file, not on the parent's attribute: the type that
+    /// owns the hooks owns the decision, and one setting then governs every grid the type appears
+    /// in.
+    /// <para>
+    /// Turning it on buys two distinct things, and the second is the one that matters. The first is
+    /// the hooks — <c>OnNewAsync</c> to default a new row, and the delete hook to refuse or react.
+    /// The second is that <c>New/{Type}</c> and <c>Delete/{Type}</c> become answerable questions:
+    /// the endpoints enforce them, so a caller poking the API directly is refused rather than
+    /// silently obeyed.
+    /// </para>
+    /// <para>
+    /// ⚠️ For an embedded type the round-trip writes nothing. The row lives inside its parent's
+    /// document, so the hook is ceremony — a place to validate, default, veto or audit — and the
+    /// row appears or disappears for real only when the parent is saved. An implementation that
+    /// touches the database from these hooks is writing outside the parent's unit of work.
+    /// </para>
+    /// <para>
+    /// ⚠️ The endpoints are not, by themselves, the enforcement point. A caller who skips them and
+    /// saves the parent with a row added or removed reaches the same end state, so the parent's
+    /// save must apply the same rights by comparing the incoming collection against the stored one.
+    /// </para>
+    /// <para>
+    /// That last point is also what keeps this flag out of the model hash, which covers only
+    /// <c>name</c>, <c>clrType</c>, <c>alias</c>, <c>queryType</c> and <c>indexName</c>. Save-time
+    /// enforcement must <b>not</b> read this flag: it applies to every embedded collection whether
+    /// or not the round-trip is on. Were the rights check conditional on it, editing this one
+    /// unhashed line on a deployed model would switch the check off, and the flag would belong in
+    /// the hash instead.
+    /// </para>
+    /// </remarks>
+    public bool? ServerSideRowLifecycle { get; set; }
+
     public AttributeTab[] Tabs { get; set; } = [];
     public AttributeGroup[] Groups { get; set; } = [];
     public EntityAttributeDefinition[] Attributes { get; set; } = [];
