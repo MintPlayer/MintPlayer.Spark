@@ -141,6 +141,27 @@ On each attribute, set the `group` field to the GUID of the group it belongs to:
 
 Attributes without a `group` value (or with a `group` that doesn't match any defined group ID) are treated as ungrouped and placed on the default tab.
 
+## Reordering attributes
+
+`order` is seeded from the property's position in the C# class when synchronize first creates the
+attribute, and after that **the JSON owns it** — edit the model file to reorder, not the class.
+Moving a property in C# changes nothing for an attribute that already exists.
+
+> ⚠️ **Never write `order: 0`.** Synchronize preserves a hand-set order only while it is positive:
+> `existingAttr.Order = existingAttr.Order > 0 ? existingAttr.Order : order`. A `0` reads as
+> "unset", so the next `--spark-synchronize-model` silently replaces it with the declaration-order
+> value and the attribute jumps back. To put an attribute first, give it `1` and shift the ones
+> above it down — the array is written sorted by *name*, so position in the file means nothing and
+> only these numbers do.
+
+**One `order` serves every surface.** `QueryResultProjector` gives it to a query result's columns
+and `EntityMapper` to a persistent object's attributes, both straight from the same attribute
+definition — so raising an attribute moves it in *every* query on that type and on the detail and
+edit pages at once. There is no per-query column order in the model; a single grid needing a
+different order is a client-side concern.
+
+`order` is presentational: changing it never moves the model hash, so it cannot refuse startup.
+
 ## C# Data Model
 
 The grouping structures are defined in `MintPlayer.Spark.Abstractions`:

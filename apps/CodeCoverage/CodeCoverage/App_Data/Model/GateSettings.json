@@ -16,9 +16,9 @@
           "nl": "Blokkerend"
         },
         "description": {
-          "en": "False (the default) posts informational check-runs that never fail — Codecov's `informational` on-ramp. Nothing blocks until a human opts in.",
-          "fr": "Faux (la valeur par défaut) publie des check-runs informatifs qui n'échouent jamais — l'approche `informational` de Codecov. Rien ne bloque tant qu'une personne ne l'a pas activé.",
-          "nl": "False (de standaard) publiceert informatieve check-runs die nooit falen — de `informational` instap van Codecov. Er blokkeert niets tot een mens er zelf voor kiest."
+          "en": "Whether a failing gate blocks the pull request.",
+          "fr": "Si un seuil non atteint bloque la pull request.",
+          "nl": "Of een niet-gehaalde poort de pull request blokkeert."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -82,9 +82,9 @@
           "nl": "Projectbasis"
         },
         "description": {
-          "en": "Which number a partial build's project status judges: \"scoped\" (like-for-like, #11) or \"projection\" (patched whole-workspace).",
-          "fr": "Le chiffre sur lequel le statut de projet d'un build partiel se prononce : « scoped » (à périmètre comparable, #11) ou « projection » (espace de travail complet corrigé).",
-          "nl": "Welk cijfer de projectstatus van een gedeeltelijke build beoordeelt: \"scoped\" (gelijk met gelijk, #11) of \"projection\" (bijgewerkte volledige workspace)."
+          "en": "Which number a partial build's project status judges.",
+          "fr": "Quel chiffre le statut projet d'un build partiel évalue.",
+          "nl": "Welk cijfer de projectstatus van een gedeeltelijk build beoordeelt."
         },
         "dataType": "string",
         "isRequired": false,

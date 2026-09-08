@@ -233,16 +233,20 @@ public class EventColumnMapping
     public string? TargetColumnOptionId { get; set; }
 
     /// <summary>
-    /// For pull request events: also move the issues that the PR closes/references.
-    /// Ignored for issue events. Defaults to true — see decision 5.
+    /// For pull request events: when the event fires, also move the issues that the PR
+    /// closes/references to the same target column — <em>in addition to</em> the PR's own
+    /// card, not instead of it. Ignored for issue events. Defaults to true — see decision 5.
     /// </summary>
     public bool MoveLinkedIssues { get; set; } = true;
 
     /// <summary>
-    /// When <see cref="MoveLinkedIssues"/> hits a linked issue that is not on the board,
-    /// add it rather than skipping it. Defaults to false — see decision 6.
+    /// Whether an item this rule has to move is <em>added</em> to the board when it is not
+    /// on it yet, rather than skipped. Governs the event's own subject — the issue on an
+    /// issue event, the pull request on a pull-request event — and, when
+    /// <see cref="MoveLinkedIssues"/> is on, the linked issues too.
+    /// Defaults to true — see decision 6.
     /// </summary>
-    public bool AddLinkedIfMissing { get; set; }
+    public bool AutoAddToBoard { get; set; } = true;
 }
 ```
 
@@ -445,20 +449,32 @@ public partial class GitHubProjectActions : DefaultPersistentObjectActions<GitHu
 
 The handler determines **what to move** based on the webhook event category:
 
-**Issue events** (`issues.*`):
+Two orthogonal questions, and each flag answers exactly one of them:
+
+| Flag | Question it answers |
+|---|---|
+| `MoveLinkedIssues` | **Which items** does this rule act on — the event's own subject only, or its linked issues as well? |
+| `AutoAddToBoard` | For each of those items, **what happens when it is not on the board** — add it, or skip it? |
+
+They compose: `AutoAddToBoard` applies to every item the rule ends up touching, whether that item is the event's own subject or a linked issue. Neither flag is about "adding *linked* items" — that reading is wrong, and was implemented once.
+
+**One rule, one board.** An `EventColumnMapping` is embedded in a single `GitHubProject` document, and its `TargetColumnOptionId` is an option on *that* board's Status field. So a rule never has to decide which board it applies to — its board is the document it lives in. What the handler iterates is only *which board documents carry a rule for this delivery*: one webhook can match rules on several boards (an owner may automate more than one), and each match is then resolved end to end against its own board, with its own column, its own flags and its own `LastError`. "The board" below always means the one that owns the rule being applied.
+
+**Issue events** (`issues.*`, `issue_comment.created`):
 1. Extract the issue number from the webhook payload
-2. For each configured `GitHubProject` that has a matching `EventMapping`:
+2. For each `GitHubProject` of that owner carrying an enabled rule for this event — the rule's own board:
    - Look up the issue's project item ID on that board (via GraphQL)
    - If found, move it to the configured `TargetColumnOptionId`
-   - `MoveLinkedIssues` is ignored (not applicable to issue events)
+   - **If it is not on the board**: add it and then move it when `AutoAddToBoard` is true (the default); skip it silently otherwise
+   - `MoveLinkedIssues` is **ignored**. GitHub models no issue→issue closing link, so an issue event has no "linked issues" to move; the field stays visible on an issue-event rule and does nothing (this is the form-reshaping case `docs/issue_260_PRD.md` §F23 is about)
 
-**Pull request events** (`pull_request.*`, `pull_request_review.*`):
-1. Extract the PR number from the webhook payload
-2. For each configured `GitHubProject` that has a matching `EventMapping`:
+**Pull request events** (`pull_request.*`, `pull_request_review.*`, `check_run.completed`):
+1. Extract the PR number from the webhook payload (for `check_run`, the PRs its head commit belongs to)
+2. For each `GitHubProject` of that owner carrying an enabled rule for this event — the rule's own board:
    - Look up the PR's project item ID on that board (via GraphQL)
-   - If found, move the PR to the configured `TargetColumnOptionId`
-   - **If `MoveLinkedIssues` is true** (the default): query the PR's closing issues references (via GraphQL `ClosingIssuesReferences`), and for each linked issue, move it to the same target column — adding it to the board first only when `AddLinkedIfMissing` is set, and otherwise skipping a linked issue that is not already tracked
-   - This applies to **every** pull-request event, not only `merged`. On a board that tracks issues the PR's own card usually does not exist (PRs are never auto-added), so the linked issue is the entire outcome of the rule
+   - Move the PR to the configured `TargetColumnOptionId`, adding it first when it is absent and `AutoAddToBoard` is true; skipping it otherwise
+   - **If `MoveLinkedIssues` is true** (the default): query the PR's closing issues references (via GraphQL `ClosingIssuesReferences`), and move each linked issue to the same target column — **as well as** the PR's own card, never instead of it. A linked issue that is not on the board is added or skipped by the same `AutoAddToBoard` value
+   - This applies to **every** pull-request event, not only `merged`
 
 This mirrors the proven pattern from ProjectDashboard's `MoveLinkedIssuesToColumnHandler`, which queries `PullRequest.ClosingIssuesReferences` and moves each linked issue.
 
@@ -496,19 +512,25 @@ public partial class MoveItemOnProjectBoard : IRecipient<GitHubWebhookMessage>
             {
                 if (!matchingEventTypes.Contains(mapping.WebhookEvent)) continue;
 
+                // One flag, one meaning, at every call site: may this rule put an item
+                // on the board that is not on it yet?
+                var addIfMissing = mapping.AutoAddToBoard;
+
                 if (isIssueEvent)
                 {
                     // Move the issue itself
                     await _projectService.MoveIssueToColumnAsync(
-                        project, owner, repo, number, mapping.TargetColumnOptionId!);
+                        project, owner, repo, number, mapping.TargetColumnOptionId!,
+                        addIfMissing);
                 }
                 else if (isPullRequestEvent)
                 {
                     // Move the PR itself
                     await _projectService.MovePullRequestToColumnAsync(
-                        project, owner, repo, number, mapping.TargetColumnOptionId!);
+                        project, owner, repo, number, mapping.TargetColumnOptionId!,
+                        addIfMissing);
 
-                    // Optionally move linked issues (issues the PR closes)
+                    // ...and, when asked, the issues it closes — in addition, not instead
                     if (mapping.MoveLinkedIssues)
                     {
                         var linkedIssues = await _projectService
@@ -518,7 +540,7 @@ public partial class MoveItemOnProjectBoard : IRecipient<GitHubWebhookMessage>
                         {
                             await _projectService.MoveIssueToColumnAsync(
                                 project, owner, linkedIssue.Repo, linkedIssue.Number,
-                                mapping.TargetColumnOptionId!);
+                                mapping.TargetColumnOptionId!, addIfMissing);
                         }
                     }
                 }
@@ -543,10 +565,14 @@ GitHub Webhook
     → GitHubWebhookMessage broadcast (catch-all queue)
       → MoveItemOnProjectBoard recipient
         → Resolve event type key(s) from raw event + action
-        → Query GitHubProject documents for matching event mappings
-          → Issue event: move the issue on each matching project board
-          → PR event: move the PR on each matching project board
+        → Query the owner's GitHubProject documents for enabled rules on those keys
+          → per matched rule, against the board document that owns it:
+          → Issue event: move the issue on that board
+            → not on the board? add it first if AutoAddToBoard, else skip
+          → PR event: move the PR on that board
+            → not on the board? add it first if AutoAddToBoard, else skip
             → If MoveLinkedIssues: query ClosingIssuesReferences, move those too
+              → each linked issue obeys the same AutoAddToBoard value
 ```
 
 #### 5c. `GitHubProjectService` — Linked Issues Query
@@ -744,11 +770,15 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 
 4. **No `TargetColumnName` on `EventColumnMapping`.** The UI resolves display names from the parent `GitHubProject.Columns` array at render time. Avoids denormalization drift when columns are renamed on GitHub.
 
-5. **`MoveLinkedIssues` flag on `EventColumnMapping`** controls whether PR events also move closing issues. Issue events always just move the issue itself. **Defaults to `true`**, and applies to every pull-request event rather than only `merged`: the issue is the work item a board tracks, the PR is how the work gets done, and PR cards are never auto-added — so a PR rule with this off usually has nothing to act on at all.
+5. **`MoveLinkedIssues` flag on `EventColumnMapping`** answers *which items this rule moves*: the event's own subject alone, or its linked issues **as well**. On a pull-request event with the flag on, the PR's card **and** the cards of the issues that PR closes both go to the target column — "as well as", never "instead of". **Defaults to `true`**, and applies to every pull-request event rather than only `merged`: the issue is the work item a board tracks and the PR is how the work gets done, so "PR ready for review" nearly always means "the thing it closes is ready for review". Ignored on issue events, where there is nothing to resolve — GitHub models no issue→issue closing link. *(Extending it to an issue's linked **pull requests**, or to sub-issues, was considered and declined: an issue rule is about the issue.)*
 
-6. **`AddLinkedIfMissing` flag on `EventColumnMapping`**, default `false`, decides whether a linked issue that is not yet on the board is recruited onto it. Per rule rather than per board, because the right answer differs by event: a "merged → Done" rule wants only issues already tracked, while a team that opens PRs before filing the issue may want "ready for review" to add it. There is deliberately **no board-level `AutoAddToProjectBoard`** — a board-wide switch cannot express that difference, and its wrong value silently fills the board.
+6. **`AutoAddToBoard` flag on `EventColumnMapping`**, default `true`, answers the other, orthogonal question: *when an item this rule has to move is not on the board, is it added or skipped?* It governs **every** item the rule touches — the event's own subject (the issue on an issue event, the **pull request** on a pull-request event) and, when decision 5 is on, each linked issue on the same terms. Per rule rather than per board, because the right answer differs by event: a "merged → Done" rule may want only work already tracked, while a team that opens PRs before filing the issue wants "ready for review" to recruit it. There is deliberately **no board-level `AutoAddToProjectBoard`** — a board-wide switch cannot express that difference, and its wrong value silently fills the board.
 
-7. **Pull requests are never added to a board**, on any event or flag. Issues are the work a board tracks; adding every PR would bury them within a day. `AddLinkedIfMissing` governs the linked *issue*, never the PR.
+   The default is `true` because the alternative is a rule that looks configured and does nothing: `IssuesOpened` fires on an issue that by definition was not on the board a moment ago, and a board that tracks pull requests has the same problem on `PullRequestOpened`. Turning it off is how you say "only move cards a human put here".
+
+   **This flag is not "add linked items to the board".** That was the first implementation's reading (a field named `AddLinkedIfMissing`, scoped to linked issues only, default `false`), and it is wrong twice over: it left the event's own subject governed by hard-coded type-aware policy that no rule could change, and it named the *consequence* of a linked-issue move rather than the board-membership policy the user is actually setting.
+
+7. **Whether pull requests land on a board is the user's call, per rule** — `AutoAddToBoard` decides it, exactly as it decides the issue case. An earlier revision made this a blanket "pull requests are never added, on any event or flag", reasoning that adding every PR would bury the issues on an issue-tracking board within a day. That risk is real but it is a *default*, not an invariant: combined with `MoveLinkedIssues` it silently made every non-`merged` PR rule inert on precisely the boards the feature was built for (the PR card did not exist, so there was nothing to move, and the rule reported success). Boards that track PRs are a legitimate setup, and a rule that wants the flood can have it; a board that does not should turn the flag off.
 
 ---
 

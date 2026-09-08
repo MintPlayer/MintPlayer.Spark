@@ -108,6 +108,24 @@ Every attribute's `label` field is a `TranslatedString`:
 }
 ```
 
+**A label is yours to edit — synchronize seeds it once and never touches it again.** On the
+synchronize that *creates* an attribute, `label.en` is generated from the property name by
+splitting it on camel case (`FirstName` → `First Name`); the update path never reassigns `Label`,
+so every later synchronize leaves whatever is in the JSON. Hand-edit it freely.
+
+Two consequences worth knowing:
+
+- **Generated labels are a starting point, not a translation.** Camel-case splitting cannot know
+  that `GitHubId` is one word (it yields "Git Hub Id") or that `IsPrivate` reads better as
+  "Private" — and it only ever writes `en`, leaving `fr`/`nl` empty until someone fills them in.
+  A `Ci`/`Pr`/`Sha` prefix has the same problem.
+- **Edit all three languages together.** Nothing correlates them, so shortening `en` and leaving
+  `nl` alone is silent: an English reviewer sees a tidy grid while a Dutch user still gets the old
+  wording. The same applies to [descriptions](guide-attribute-descriptions.md), where it bites
+  harder because the text is longer.
+
+Labels are presentational: editing one never changes the model hash, so it cannot refuse startup.
+
 ### Validation Messages
 
 Validation rule messages support translations:

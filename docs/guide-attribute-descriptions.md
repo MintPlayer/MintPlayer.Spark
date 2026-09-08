@@ -55,6 +55,40 @@ Precedence on synchronize: `[Description]` beats the summary; either beats nothi
 
 Running synchronize twice always produces byte-identical files.
 
+> ⚠️ **Shortening a summary does not shorten its translations.** `fr`/`nl` are preserved by
+> design, so trimming `en` from four paragraphs to one sentence leaves the other languages
+> carrying the old text — and nothing reports it. Measured on `apps/CodeCoverage`: after a
+> summary pass, one attribute had a 45-character `en` beside a 2,343-character `nl`. Review in a
+> non-English language, or check that no `fr`/`nl` is much longer than its `en`.
+
+### Keep the tooltip to one sentence — put the reasoning in `<remarks>`
+
+A description is a tooltip on a form field, not a design record. **Only `<summary>` is read**, so
+the natural place for the "why" is `<remarks>`, which the generator ignores entirely: the rationale
+stays in the source for the next developer and never reaches the user.
+
+```csharp
+/// <summary>Add an item to the board when this rule has to move it and it is not on it yet.</summary>
+/// <remarks>
+/// Defaults to true, because the alternative is a rule that looks configured and does nothing:
+/// IssuesOpened fires on an issue that by definition was not on the board a moment ago.
+/// <para>Per rule rather than per board, because the right answer differs by event …</para>
+/// </remarks>
+public bool AutoAddToBoard { get; set; } = true;
+```
+
+Without the split, a property whose doc comment carries real design reasoning produces a tooltip
+nobody can read. `apps/CodeCoverage` reached a mean of 156 characters per attribute and a worst
+case of five paragraphs (2,097 characters) before this pass; moving the reasoning to `<remarks>`
+brought the mean to 57 with nothing over 130, and removed nothing from the code.
+
+Two habits that keep summaries short:
+
+- **Say what the field is, not how it behaves in every case.** The edge cases are `<remarks>`
+  material — the tooltip needs the one sentence a user reads while deciding what to type.
+- **Write for the person on the form, not the caller.** "empty" rather than "null"; the target
+  column rather than the option id it is stored as.
+
 ## How the summary gets from C# into the model
 
 A source generator, `AttributeDescriptionsGenerator`, turns every documented public read/write

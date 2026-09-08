@@ -12,7 +12,14 @@
     "per-environment (coveragedevelopment vs coverageproduction, resolved from configuration at",
     "request time), and this file is static -- a hardcoded slug would point a developer's machine",
     "at the production App. That link stays in the Angular extra content on the Home page, where",
-    "it comes from /api/me/accounts and is correct in every environment."
+    "it comes from /api/me/accounts and is correct in every environment.",
+    "",
+    "There is deliberately NO 'Project boards' unit either. Boards are reached through the account",
+    "that owns them -- Account's 'account-projects' sub-query -- which is where a user already is",
+    "when they care about one, and which scopes the list to that account for free. A top-level unit",
+    "listed every board the caller could see, one click from Home, duplicating the sub-query with a",
+    "less useful shape. The GetGitHubProjects query stays declared and granted, so /query/github-",
+    "projects still answers a direct link; it simply has no menu entry."
   ],
   "programUnitGroups": [
     {
@@ -37,31 +44,6 @@
           "persistentObjectId": "149ab426-ae90-4c96-ae26-3fdde3554754",
           "alias": "home",
           "objectId": "main",
-          "order": 1
-        }
-      ]
-    },
-    {
-      "id": "a4c81e37-6b2f-4d19-9f3e-52c7d90a1b84",
-      "name": {
-        "en": "GitHub",
-        "fr": "GitHub",
-        "nl": "GitHub"
-      },
-      "icon": "bi-github",
-      "order": 2,
-      "programUnits": [
-        {
-          "id": "5d1f9a2c-38e4-4b7a-8c61-9ae2f4d70b53",
-          "name": {
-            "en": "Project boards",
-            "fr": "Tableaux de projet",
-            "nl": "Projectborden"
-          },
-          "icon": "bi-kanban",
-          "type": "query",
-          "queryId": "237b1f50-88b8-48e5-a946-98a2f5251772",
-          "alias": "github-projects",
           "order": 1
         }
       ]

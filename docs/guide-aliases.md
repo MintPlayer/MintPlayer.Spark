@@ -62,6 +62,10 @@ Queries live in the `queries` array of their entity type's model file (e.g. `App
 { "type": "query", "queryId": "237b1f50-…", "alias": "github-projects" }
 ```
 
+> The unit in this example no longer ships — `apps/CodeCoverage` reaches boards through `Account`'s
+> `account-projects` sub-query instead — but the id/alias pair is real and the trap it illustrates
+> is unchanged. `GetGitHubProjects` still declares `alias: "github-projects"`.
+
 The `queryId` is what the unit *declares*; the alias is what the client *uses*. It routes to
 `/query/{alias}` and then fetches `/spark/queries/{alias}`, so if that alias resolves to a different
 query — or to none — the page 404s no matter how correct the id is. The same applies to a

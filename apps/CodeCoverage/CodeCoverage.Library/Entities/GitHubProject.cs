@@ -43,76 +43,73 @@ public class GitHubProject
     [Reference(typeof(Account))]
     public string? Account { get; set; }
 
-    /// <summary>
-    /// GitHub login of the owning user or organization. The field row security filters on, so a
-    /// caller only sees boards for owners they manage.
-    /// </summary>
+    /// <summary>GitHub login of the owning user or organization.</summary>
+    /// <remarks>
+    /// The field row security filters on, so a caller only sees boards for owners they manage.
+    /// </remarks>
     public string OwnerLogin { get; set; } = string.Empty;
 
-    /// <summary>
-    /// The GitHub App installation that can act on this board. Needed to mint the installation token
-    /// every Projects V2 mutation runs under — a user token would tie automation to whoever happened
-    /// to configure it.
-    /// </summary>
+    /// <summary>The GitHub App installation that can act on this board.</summary>
+    /// <remarks>
+    /// Needed to mint the installation token every Projects V2 mutation runs under — a user token
+    /// would tie automation to whoever happened to configure it.
+    /// </remarks>
     public long InstallationId { get; set; }
 
-    /// <summary>GitHub's GraphQL node id for the board; globally unique and stable across renames and owner changes.</summary>
+    /// <summary>GitHub's GraphQL node id for the board.</summary>
+    /// <remarks>Globally unique and stable across renames and owner changes.</remarks>
     public string NodeId { get; set; } = string.Empty;
 
-    /// <summary>The board's number within its owner, as it appears in the URL. Shown to users because it is what they recognise.</summary>
+    /// <summary>The board's number within its owner, as it appears in the URL.</summary>
+    /// <remarks>Shown to users because it is what they recognise.</remarks>
     public int Number { get; set; }
 
     /// <summary>The board's title on GitHub.</summary>
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>
-    /// Node id of the board's single-select "Status" field, the field whose options are its columns.
-    /// Required by every card-move mutation, alongside the target option id.
-    /// </summary>
+    /// <summary>The board's single-select "Status" field, whose options are its columns.</summary>
+    /// <remarks>
+    /// Its node id, required by every card-move mutation alongside the target option id.
+    /// </remarks>
     public string? StatusFieldId { get; set; }
 
-    /// <summary>
-    /// The board's columns as last read from GitHub. Cached so a webhook delivery can resolve a
-    /// target column without an API call; refreshed by the <c>SyncColumns</c> action and by nightly
-    /// reconciliation.
-    /// </summary>
+    /// <summary>The board's columns as last read from GitHub.</summary>
+    /// <remarks>
+    /// Cached so a webhook delivery can resolve a target column without an API call; refreshed by
+    /// the <c>SyncColumns</c> action and by nightly reconciliation.
+    /// </remarks>
     public List<ProjectColumn> Columns { get; set; } = [];
 
-    /// <summary>
-    /// The user's automation rules for this board. Preserved when
-    /// <see cref="AutomationEnabled"/> is turned off, so disabling automation is reversible rather
-    /// than destructive.
-    /// </summary>
+    /// <summary>The automation rules for this board.</summary>
+    /// <remarks>
+    /// Preserved when <see cref="AutomationEnabled"/> is turned off, so disabling automation is
+    /// reversible rather than destructive.
+    /// </remarks>
     public List<EventColumnMapping> EventMappings { get; set; } = [];
 
-    /// <summary>
-    /// Master switch for this board. False — the default — means discovered but inert: no webhook
-    /// delivery does anything for it.
-    /// <para>
+    /// <summary>Master switch: off means discovered but inert, and no event does anything.</summary>
+    /// <remarks>
     /// Defaults to false deliberately, because discovery is automatic. Boards appear without anyone
     /// asking for them, and a default of true would mean installing the app on an organization
     /// silently started moving cards on every board it could see.
-    /// </para>
-    /// </summary>
+    /// </remarks>
     public bool AutomationEnabled { get; set; }
 
-    /// <summary>
-    /// Whether to delete a pull request's head branch when it closes.
-    /// <para>
+    /// <summary>Delete a pull request's head branch when it closes.</summary>
+    /// <remarks>
     /// Opt-in per board, default false, and that is a deliberate change from the behaviour this was
     /// migrated from — where it was unconditional and organization-wide. On a multi-tenant server
     /// that setting mutates <em>other people's</em> repositories, so it cannot be a global default;
     /// deleting a branch is also the one irreversible thing in this feature.
-    /// </para>
-    /// </summary>
+    /// </remarks>
     public bool DeleteBranchOnPrClose { get; set; }
 
-    /// <summary>
-    /// Whether the GitHub App can still see this board. Mirrors <see cref="Repository.Connection"/>,
-    /// including its default: every document written before this field existed deserializes to
-    /// <see cref="RepositoryConnection.Connected"/>, so no migration is needed and the nightly
-    /// reconciler corrects the ones that are actually gone.
-    /// </summary>
+    /// <summary>Whether the GitHub App can still see this board.</summary>
+    /// <remarks>
+    /// Mirrors <see cref="Repository.Connection"/>, including its default: every document written
+    /// before this field existed deserializes to <see cref="RepositoryConnection.Connected"/>, so
+    /// no migration is needed and the nightly reconciler corrects the ones that are actually gone.
+    /// </remarks>
     public RepositoryConnection Connection { get; set; } = RepositoryConnection.Connected;
 
     /// <summary>Why the board is disconnected, from <c>DisconnectedReasons</c>; null while connected.</summary>

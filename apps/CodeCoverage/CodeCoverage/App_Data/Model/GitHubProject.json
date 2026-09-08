@@ -26,7 +26,7 @@
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": true,
-        "order": 1,
+        "order": 2,
         "query": "GetAccounts",
         "referenceType": "CodeCoverage.Entities.Account",
         "isArray": false,
@@ -42,9 +42,9 @@
           "nl": "Automatisering ingeschakeld"
         },
         "description": {
-          "en": "Master switch for this board. False — the default — means discovered but inert: no webhook delivery does anything for it.\nDefaults to false deliberately, because discovery is automatic. Boards appear without anyone asking for them, and a default of true would mean installing the app on an organization silently started moving cards on every board it could see.",
-          "fr": "Interrupteur principal de ce tableau. Faux — la valeur par défaut — signifie découvert mais inerte : aucune livraison de webhook n'a d'effet pour lui.\nLa valeur par défaut est délibérément faux, car la découverte est automatique. Les tableaux apparaissent sans que personne ne les demande, et une valeur par défaut à vrai signifierait qu'installer l'application sur une organisation se met silencieusement à déplacer des cartes sur chaque tableau qu'elle peut voir.",
-          "nl": "Hoofdschakelaar voor dit bord. False — de standaard — betekent ontdekt maar inert: geen enkele webhookaflevering doet er iets mee.\nDe standaard is bewust false, omdat ontdekking automatisch gebeurt. Borden verschijnen zonder dat iemand erom vraagt, en een standaard van true zou betekenen dat het installeren van de app op een organisatie stilletjes kaarten begint te verplaatsen op elk bord dat ze kan zien."
+          "en": "Master switch: off means discovered but inert, and no event does anything.",
+          "fr": "Interrupteur principal : désactivé, le tableau est découvert mais inerte et aucun événement n'agit.",
+          "nl": "Hoofdschakelaar: uit betekent gevonden maar inert, en geen enkele gebeurtenis doet iets."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -64,9 +64,9 @@
           "nl": "Kolommen"
         },
         "description": {
-          "en": "The board's columns as last read from GitHub. Cached so a webhook delivery can resolve a target column without an API call; refreshed by the SyncColumns action and by nightly reconciliation.",
-          "fr": "Les colonnes du tableau telles que lues pour la dernière fois depuis GitHub. Mises en cache pour qu'une livraison de webhook puisse résoudre une colonne cible sans appel d'API ; actualisées par l'action SyncColumns et par la réconciliation nocturne.",
-          "nl": "De kolommen van het bord zoals ze laatst van GitHub gelezen zijn. Gecachet zodat een webhookaflevering een doelkolom kan oplossen zonder API-aanroep; ververst door de SyncColumns-actie en door de nachtelijke reconciliatie."
+          "en": "The board's columns as last read from GitHub.",
+          "fr": "Les colonnes du tableau telles que lues sur GitHub la dernière fois.",
+          "nl": "De kolommen van het bord zoals ze het laatst van GitHub gelezen zijn."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -82,9 +82,9 @@
         "id": "3ff143b6-f1be-4adf-b22b-246f24a16948",
         "name": "ColumnsSyncedAtUtc",
         "label": {
-          "en": "Columns Synced At Utc",
-          "fr": "Colonnes synchronisées le (UTC)",
-          "nl": "Kolommen gesynchroniseerd op (UTC)"
+          "en": "Columns Synced",
+          "fr": "Colonnes synchronisées",
+          "nl": "Kolommen gesynchroniseerd"
         },
         "description": {
           "en": "When the board's columns were last read from GitHub (UTC).",
@@ -109,9 +109,9 @@
           "nl": "Verbinding"
         },
         "description": {
-          "en": "Whether the GitHub App can still see this board. Mirrors Connection, including its default: every document written before this field existed deserializes to Connected, so no migration is needed and the nightly reconciler corrects the ones that are actually gone.",
-          "fr": "Indique si l'application GitHub peut encore voir ce tableau. Reflète Connection, y compris sa valeur par défaut : tout document écrit avant l'existence de ce champ se désérialise en Connected, aucune migration n'est donc nécessaire et le réconciliateur nocturne corrige ceux qui ont réellement disparu.",
-          "nl": "Of de GitHub App dit bord nog kan zien. Spiegelt Connection, inclusief de standaardwaarde: elk document dat geschreven is voordat dit veld bestond deserialiseert naar Connected, dus is er geen migratie nodig en corrigeert de nachtelijke reconciler de borden die echt weg zijn."
+          "en": "Whether the GitHub App can still see this board.",
+          "fr": "Si l'application GitHub voit encore ce tableau.",
+          "nl": "Of de GitHub App dit bord nog kan zien."
         },
         "dataType": "string",
         "isRequired": true,
@@ -126,14 +126,14 @@
         "id": "15f34f9c-d079-472c-ae04-4aaa334d7f6c",
         "name": "DeleteBranchOnPrClose",
         "label": {
-          "en": "Delete Branch On Pr Close",
-          "fr": "Supprimer la branche à la fermeture de la PR",
-          "nl": "Branch verwijderen bij sluiten van PR"
+          "en": "Delete Branch On Close",
+          "fr": "Supprimer la branche à la fermeture",
+          "nl": "Branch verwijderen bij sluiten"
         },
         "description": {
-          "en": "Whether to delete a pull request's head branch when it closes.\nOpt-in per board, default false, and that is a deliberate change from the behaviour this was migrated from — where it was unconditional and organization-wide. On a multi-tenant server that setting mutates other people's repositories, so it cannot be a global default; deleting a branch is also the one irreversible thing in this feature.",
-          "fr": "Indique s'il faut supprimer la branche head d'une pull request lorsqu'elle se ferme.\nActivation par tableau, faux par défaut, et il s'agit d'un changement délibéré par rapport au comportement d'origine — où c'était inconditionnel et à l'échelle de l'organisation. Sur un serveur multi-locataire, ce réglage modifie les dépôts d'autrui : il ne peut donc pas être une valeur par défaut globale ; supprimer une branche est par ailleurs la seule chose irréversible de cette fonctionnalité.",
-          "nl": "Of de head-branch van een pull request verwijderd moet worden wanneer die sluit.\nOpt-in per bord, standaard false, en dat is een bewuste wijziging ten opzichte van het gedrag waarvan dit gemigreerd is — waar het onvoorwaardelijk en organisatiebreed was. Op een multi-tenant server wijzigt die instelling andermans repository's, dus kan ze geen globale standaard zijn; een branch verwijderen is bovendien het enige onomkeerbare in deze functie."
+          "en": "Delete a pull request's head branch when it closes.",
+          "fr": "Supprimer la branche source d'une pull request à sa fermeture.",
+          "nl": "De bronbranch van een pull request verwijderen wanneer die sluit."
         },
         "dataType": "boolean",
         "isRequired": true,
@@ -148,9 +148,9 @@
         "id": "e48906e9-891d-4a29-95c0-2384f01ea00e",
         "name": "DisconnectedAtUtc",
         "label": {
-          "en": "Disconnected At Utc",
-          "fr": "Déconnecté le (UTC)",
-          "nl": "Losgekoppeld op (UTC)"
+          "en": "Disconnected",
+          "fr": "Déconnecté",
+          "nl": "Losgekoppeld"
         },
         "description": {
           "en": "When the board was last disconnected (UTC); null while connected.",
@@ -192,14 +192,14 @@
         "id": "dd4e2321-6f3c-4b6f-bfef-26305e886e9b",
         "name": "EventMappings",
         "label": {
-          "en": "Event Mappings",
-          "fr": "Mappages d'événements",
-          "nl": "Gebeurtenistoewijzingen"
+          "en": "Events",
+          "fr": "Événements",
+          "nl": "Gebeurtenissen"
         },
         "description": {
-          "en": "The user's automation rules for this board. Preserved when AutomationEnabled is turned off, so disabling automation is reversible rather than destructive.",
-          "fr": "Les règles d'automatisation de l'utilisateur pour ce tableau. Conservées lorsqu'AutomationEnabled est désactivé, de sorte que désactiver l'automatisation est réversible plutôt que destructeur.",
-          "nl": "De automatiseringsregels van de gebruiker voor dit bord. Behouden wanneer AutomationEnabled wordt uitgezet, zodat automatisering uitschakelen omkeerbaar is in plaats van destructief."
+          "en": "The automation rules for this board.",
+          "fr": "Les règles d'automatisation de ce tableau.",
+          "nl": "De automatiseringsregels voor dit bord."
         },
         "dataType": "AsDetail",
         "isRequired": false,
@@ -221,15 +221,15 @@
           "nl": "Installatie-id"
         },
         "description": {
-          "en": "The GitHub App installation that can act on this board. Needed to mint the installation token every Projects V2 mutation runs under — a user token would tie automation to whoever happened to configure it.",
-          "fr": "L'installation de l'application GitHub habilitée à agir sur ce tableau. Nécessaire pour frapper le jeton d'installation sous lequel s'exécute chaque mutation Projects V2 — un jeton utilisateur lierait l'automatisation à la personne qui l'a configurée.",
-          "nl": "De GitHub App-installatie die op dit bord mag handelen. Nodig om het installatietoken te munten waaronder elke Projects V2-mutatie draait — een gebruikerstoken zou de automatisering vastknopen aan wie ze toevallig geconfigureerd heeft."
+          "en": "The GitHub App installation that can act on this board.",
+          "fr": "L'installation de l'application GitHub qui peut agir sur ce tableau.",
+          "nl": "De GitHub App-installatie die op dit bord kan handelen."
         },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
         "isReadOnly": true,
-        "order": 3,
+        "order": 4,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
@@ -251,7 +251,7 @@
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": true,
-        "order": 6,
+        "order": 1,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
@@ -265,15 +265,15 @@
           "nl": "Node-id"
         },
         "description": {
-          "en": "GitHub's GraphQL node id for the board; globally unique and stable across renames and owner changes.",
-          "fr": "Id de nœud GraphQL de GitHub pour le tableau ; globalement unique et stable malgré les renommages et les changements de propriétaire.",
-          "nl": "GitHub's GraphQL-node-id voor het bord; globaal uniek en stabiel bij hernoemingen en eigenaarswissels."
+          "en": "GitHub's GraphQL node id for the board.",
+          "fr": "L'id de nœud GraphQL du tableau chez GitHub.",
+          "nl": "De GraphQL-node-id van het bord bij GitHub."
         },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": true,
-        "order": 4,
+        "order": 5,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
@@ -287,15 +287,15 @@
           "nl": "Nummer"
         },
         "description": {
-          "en": "The board's number within its owner, as it appears in the URL. Shown to users because it is what they recognise.",
-          "fr": "Le numéro du tableau au sein de son propriétaire, tel qu'il apparaît dans l'URL. Affiché aux utilisateurs parce que c'est ce qu'ils reconnaissent.",
-          "nl": "Het nummer van het bord binnen zijn eigenaar, zoals het in de URL verschijnt. Getoond aan gebruikers omdat zij dat herkennen."
+          "en": "The board's number within its owner, as it appears in the URL.",
+          "fr": "Le numéro du tableau chez son propriétaire, tel qu'il apparaît dans l'URL.",
+          "nl": "Het nummer van het bord bij zijn eigenaar, zoals het in de URL staat."
         },
         "dataType": "number",
         "isRequired": true,
         "isVisible": true,
         "isReadOnly": true,
-        "order": 5,
+        "order": 6,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
@@ -304,20 +304,20 @@
         "id": "7b8a7a3f-da51-45f9-b537-d80154db4f10",
         "name": "OwnerLogin",
         "label": {
-          "en": "Owner Login",
-          "fr": "Login du propriétaire",
-          "nl": "Login van de eigenaar"
+          "en": "Owner",
+          "fr": "Propriétaire",
+          "nl": "Eigenaar"
         },
         "description": {
-          "en": "GitHub login of the owning user or organization. The field row security filters on, so a caller only sees boards for owners they manage.",
-          "fr": "Login GitHub de l'utilisateur ou de l'organisation propriétaire. Le champ sur lequel la sécurité au niveau des lignes filtre, afin qu'un appelant ne voie que les tableaux des propriétaires qu'il gère.",
-          "nl": "GitHub-login van de bezittende gebruiker of organisatie. Het veld waarop de row security filtert, zodat een aanroeper alleen borden ziet van eigenaars die hij beheert."
+          "en": "GitHub login of the owning user or organization.",
+          "fr": "Login GitHub de l'utilisateur ou de l'organisation propriétaire.",
+          "nl": "GitHub-login van de eigenaar: gebruiker of organisatie."
         },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": true,
-        "order": 2,
+        "order": 3,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
@@ -326,14 +326,14 @@
         "id": "780c1468-8739-4870-81fb-70d11e738583",
         "name": "StatusFieldId",
         "label": {
-          "en": "Status Field Id",
-          "fr": "Id du champ Status",
-          "nl": "Id van het Status-veld"
+          "en": "Status Field",
+          "fr": "Champ Status",
+          "nl": "Status-veld"
         },
         "description": {
-          "en": "Node id of the board's single-select \"Status\" field, the field whose options are its columns. Required by every card-move mutation, alongside the target option id.",
-          "fr": "Id de nœud du champ « Status » à sélection unique du tableau, le champ dont les options constituent ses colonnes. Requis par chaque mutation de déplacement de carte, aux côtés de l'id de l'option cible.",
-          "nl": "Node-id van het single-select \"Status\"-veld van het bord, het veld waarvan de opties zijn kolommen zijn. Vereist door elke mutatie die een kaart verplaatst, samen met de id van de doeloptie."
+          "en": "The board's single-select \"Status\" field, whose options are its columns.",
+          "fr": "Le champ « Status » à sélection unique du tableau, dont les options sont ses colonnes.",
+          "nl": "Het \"Status\"-veld met enkelvoudige keuze van het bord, waarvan de opties de kolommen zijn."
         },
         "dataType": "string",
         "isRequired": false,
@@ -351,6 +351,11 @@
     {
       "id": "5c1a7f38-2d64-4b0e-9a7c-6f3e81d5b402",
       "name": "Account_Projects",
+      "description": {
+        "en": "Project boards",
+        "fr": "Tableaux de projet",
+        "nl": "Projectborden"
+      },
       "source": "Custom.Account_Projects",
       "alias": "account-projects",
       "sortColumns": [

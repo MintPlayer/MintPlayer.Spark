@@ -33,9 +33,9 @@
         "id": "df0396ff-d019-43a6-8dd6-415d2fd31a86",
         "name": "FilesCount",
         "label": {
-          "en": "Files Count",
-          "fr": "Nombre de fichiers",
-          "nl": "Aantal bestanden"
+          "en": "Files",
+          "fr": "Fichiers",
+          "nl": "Bestanden"
         },
         "description": {
           "en": "Number of source files this session's reports contained coverage for.",
@@ -77,9 +77,9 @@
         "id": "4385debf-84d2-47e1-9e70-e9d20769bcdb",
         "name": "JobName",
         "label": {
-          "en": "Job Name",
-          "fr": "Nom du job",
-          "nl": "Naam van de job"
+          "en": "Job",
+          "fr": "Job",
+          "nl": "Job"
         },
         "description": {
           "en": "Name of the CI job that produced this upload, as reported by the action.",
@@ -121,9 +121,9 @@
         "id": "8fb49001-c7d4-400f-ba5a-8afb3e71e050",
         "name": "RawFileNames",
         "label": {
-          "en": "Raw File Names",
-          "fr": "Noms des fichiers bruts",
-          "nl": "Namen van de ruwe bestanden"
+          "en": "Raw Files",
+          "fr": "Fichiers bruts",
+          "nl": "Ruwe bestanden"
         },
         "description": {
           "en": "Attachment names on the Build document holding this session's raw report files.",
@@ -187,9 +187,9 @@
         "id": "5c9d6ce5-4b25-434b-bc96-7f92c95ab4fd",
         "name": "UploadedAtUtc",
         "label": {
-          "en": "Uploaded At Utc",
-          "fr": "Envoyé le (UTC)",
-          "nl": "Geüpload op (UTC)"
+          "en": "Uploaded",
+          "fr": "Envoyé",
+          "nl": "Geüpload"
         },
         "description": {
           "en": "When this session's report files were received (UTC).",
