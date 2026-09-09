@@ -251,6 +251,29 @@ touches something the caller may change should still succeed, with the rest unch
 ⚠️ **Must not consult any model flag.** Enforcement is unconditional. Gating it on a model field
 would make an unhashed file a security control.
 
+**The client already gates the buttons — on the child type's own rights.**
+`spark-po-form.component.html:258/313` wrap `[+ Add]` and the trash in `canCreateDetailRow` /
+`canDeleteDetailRow`, fed by `GET /spark/permissions/{entityTypeId}` for the AsDetail child type. So
+`QueryReadEditNewDelete/CarreerJob` really is read today — by introspection. Only the write path
+ignored it, which is the hole this closes. Two small fixes ride along, because R5 turns them from
+cosmetic into user-visible:
+
+- ⚠️ **Fail closed.** `can-create-detail-row.pipe.ts:8` returns `true` when no entry exists.
+- ⚠️ **Decouple from the catalogue.** Permissions are reachable only via the entity-type list, which
+  is `Query`-gated (`List.cs:28-29`). A user with `New/CarreerJob` but not `Query/CarreerJob` never
+  fetches them, the fail-open default renders the button, and R5 then refuses the save. Fetch
+  `getPermissions` directly from `attr.asDetailType` instead of via `types.find`.
+- The refusal surfaces as **404** (deliberate, anti-oracle), and `spark-po-edit.component.ts:177-188`
+  only special-cases 400 and reads `error.message` rather than `error.error?.error` as the load path
+  does — so the user sees a raw Angular string in the validation summary and **the whole save is
+  discarded**. One line.
+
+⚠️ **`Edit`'s restore is invisible, and that is a defect in this rule, not just its UI.** A user
+lacking `Edit/{RowType}` gets editable inputs, a success message, and vanished edits. Gating the
+inputs is `PRD-AsDetail-Row-Edit-Affordances.md`; making a restore *visible* belongs here, because
+rights can change between load and save and a caller can post directly. Settle it when implementing
+R5 — at minimum the save response must say which rows were restored.
+
 ### R6 — Legacy rows: migrate before the property ships, and gate on it
 
 R2 keeps the `Guid` initializer, so a keyless row **cannot** be recognised once it is in memory — it
@@ -287,12 +310,41 @@ that held up:
   read and R3 needs to write.
 - SPARK016 for a decorated non-partial type with no `[ValueKey]`.
 
+⚠️ **Version: bump every package, in this PR.** `preview.75` is **already published**
+(`db6f3cc0`, on master). CI packs solution-wide and pushes with `--skip-duplicate`
+(`dotnet-build-master.yml:82-83, 148-149`), so shipping the split at `preview.75` publishes the two
+new packages fine and then **silently keeps the old `MintPlayer.Spark.Abstractions` — the one that
+still physically contains all 12 attribute types.** A consumer with both then gets CS0433. Worse for
+the generators: `GetTypeByMetadataName` returns `null` on a duplicate declaration, so
+`GenerateIndexGenerator.cs:108`/`:459`, `HostTranslationsAggregatorGenerator.cs:30`,
+`ProjectionPropertyAnalyzer.cs:30,54` and `AttributeDescriptionsGenerator.cs:82` all switch off and
+indexes vanish with no diagnostic.
+
+⚠️ **`[TypeForwardedTo]` for all 12 moved types.** Breaking changes are acceptable at preview grade,
+but this break is not one a consumer can see: the attributes are read by *runtime reflection*
+(`ModelSynchronizer.cs:684-686`, `ReferenceResolver.cs:15`), so a pre-built entity assembly against
+the new Abstractions yields a **wrong model** rather than an error. Twelve one-line forwards.
+
 ⚠️ **Carry the `GenerateIndexGenerator` fix with it.** Moving the attributes out of Abstractions
 silently broke HR's index generation: the generator filters referenced assemblies to those
 referencing Abstractions, and the C# compiler emits an `AssemblyRef` only for assemblies a
 compilation actually *uses*, so `HR.Library` — which used Abstractions for attributes and nothing else
 — stopped referencing it and was skipped without a word. Two test fixtures had the same dependency and
 need `TranslatedString` named explicitly.
+
+⚠️ **That was not bad luck.** HR was the *only* library using Abstractions for nothing but attributes;
+`CodeCoverage.Library` survived because it also touches `TransientLookupReference`. Prefer deriving
+the filter from the resolved symbol —
+`compilation.GetTypeByMetadataName(GenerateIndexAttributeFullName)!.ContainingAssembly.Name`, ∪ the
+legacy name for pre-split binaries — over asserting a literal pair, so a future third attribute host
+cannot repeat it. `tests/.../Generators/ReferencedAssemblyEntityTests.cs:18-28` already models this
+exact shape and is the gate to run.
+
+**This split frees exactly one project of four.** The other three entity libraries still reach
+Abstractions for `TranslatedString`, `TransientLookupReference`, `DynamicLookupReference` and
+`ELookupDisplayType`, and `Replication.Abstractions` pulls it in for Fleet and HR regardless.
+Finishing that job is `PRD-Entity-Library-Dependency-Split.md`; it is deliberately not in scope here,
+where the attributes move only because `[ValueObject]` needs a home.
 
 ### R8 — Completeness: an analyzer in the application, rooted at `SparkContext`
 
@@ -339,6 +391,16 @@ The division of labour, with each half asking only what its own compilation can 
 | `SourceGenerators` analyzer | the application | metadata + the context | is anything reachable **missing** `[ValueObject]`? (SPARK017) |
 
 ### R9 — Non-goals
+
+Each has a PRD of its own, written and not started, so "deferred" means scheduled rather than
+forgotten:
+
+| Deferred | Why not here | Document |
+|---|---|---|
+| Round-tripping New/Delete clicks to the row type's hooks | needs R3 and R4 first; without them it rebuilds W1 behind a nicer endpoint | `PRD-Server-Side-Row-Lifecycle.md` |
+| Disabling a row's inputs when `Edit/{RowType}` is absent | client-only, ~10 bindings, and it follows from R5 rather than blocking it | `PRD-AsDetail-Row-Edit-Affordances.md` |
+| Freeing entity libraries from ASP.NET Core | the attributes move here because `[ValueObject]` needs a home; the rest is an optimisation | `PRD-Entity-Library-Dependency-Split.md` |
+
 
 - Server round-tripping of New/Delete clicks to the row type's hooks (the previous draft's N1/N2/N3).
   It is a separate feature, it depends on everything above, and it is not what makes the rights real.
