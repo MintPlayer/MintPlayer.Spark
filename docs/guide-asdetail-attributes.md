@@ -15,7 +15,14 @@ There are two variants:
 
 ## Step 1: Define the Nested C# Class
 
-Create a class for the embedded object. It does not need an `Id` property (it is stored inline, not as a separate document), but including one is allowed.
+Create a class for the embedded object.
+
+**A single embedded object needs no id** — it is matched by its property name, which cannot go
+missing or be reordered.
+
+⚠️ **An element of an embedded *collection* does.** Mark the class `[ValueObject]` and declare it
+`partial`, and a row key is generated for it. See [Row identity](#row-identity) below for why this is
+not optional; a missing marker is a build error (SPARK017), not a silent omission.
 
 **Single object example (Address):**
 
@@ -40,7 +47,8 @@ using MintPlayer.Spark.Abstractions;
 
 namespace HR.Entities;
 
-public class CarreerJob
+[ValueObject]
+public partial class CarreerJob
 {
     [Reference(typeof(Profession))]
     public string? ProfessionId { get; set; }
@@ -172,6 +180,96 @@ The nested type needs its own model JSON file. Spark generates this automaticall
 The `displayFormat` uses `{PropertyName}` placeholders to build a summary string. When the AsDetail object is displayed on the parent's detail or edit view, the format string is used. For example, `"{Street}, {City} {State}"` produces `"123 Main St, Springfield IL"`.
 
 If no `displayFormat` is set, Spark falls back to the `displayAttribute` (a single property name), and then to the first non-null property value.
+
+## Row identity
+
+A collection element needs a stable key, and the reason is a save, not a screen.
+
+When a parent is saved, the incoming collection has to be matched against the stored one. Without a
+key that comparison is impossible, so the collection is **rebuilt from the payload** — and anything
+the payload is not allowed to carry is gone. A property the model marks `isReadOnly` is refused on
+the way in, which is correct, but on a freshly built row there is no stored value left to prefer, so
+the field is simply lost. That is a real bug this design fixes: three server-owned fields on
+`EventColumnMapping` were being wiped whenever a user edited an unrelated field on the parent.
+
+The same comparison is what makes the row type's `New/X`, `Edit/X` and `Delete/X` rights decidable.
+Before it existed those rights could be granted on an embedded type and no code read them.
+
+### Marking a type
+
+```csharp
+using MintPlayer.Spark.Abstractions;
+
+[ValueObject]
+public partial class CarreerJob
+{
+    public string Profession { get; set; } = string.Empty;
+}
+```
+
+`partial` is required because the generator adds the key:
+
+```csharp
+[ValueKey] public string Id { get; set; } = global::System.Guid.NewGuid().ToString("N");
+```
+
+### When the type already has a key
+
+Mark it, and nothing is generated:
+
+```csharp
+[ValueObject]
+public partial class ProjectColumn
+{
+    /// The GitHub single-select option id — a real key, not a surrogate.
+    [ValueKey] public string Id { get; set; } = string.Empty;
+}
+```
+
+⚠️ **Do not simply omit `[ValueObject]` because the type has an `Id`.** "Declares an id" and "has a
+row key" are different statements. A type absent from the registry is not neutral — its collections
+cannot be matched at all, which is worse than having no key, because it looks fine.
+
+The key need not be a `Guid` and need not be called `Id`; it need only be stable and unique within
+its collection.
+
+### Two checks, in two places
+
+Each runs where its question can be answered:
+
+| Check | Runs in | Asks |
+|---|---|---|
+| SPARK016 | the entity library | is a decorated type `partial`? |
+| SPARK017 | the application | is anything reachable from `SparkContext` **missing** the marker? |
+
+⚠️ SPARK017 has to live in the application because only the context knows which types the model
+reaches. Under `dotnet build` a referenced project arrives as a .dll, so it reports **without a
+source location** — a bare `CSC : error` naming the fully-qualified type. That still fails the build,
+which is the point; the message carries the type name because it is all you get. In an IDE the same
+analyzer gets a real location and the squiggle lands on the class.
+
+⚠️ SPARK017 deliberately does **not** check `partial`: that keyword is source-only and invisible in
+metadata, so no analyzer outside the declaring compilation can see it.
+
+### Existing data
+
+A row stored before its type gained a key needs a backfill migration, and it needs one **before the
+key ships**.
+
+A keyless row cannot be recognised at runtime. The key is minted by a field initializer that runs
+during deserialization, so the row comes back carrying a fresh guid — a *different one on every
+load*. In memory every row looks correctly keyed. Loading such a document also marks it dirty, so the
+next unrelated `SaveChanges` in that session writes random ids into a document nobody edited.
+
+So detection lives where the raw JSON is still visible:
+
+- a `PatchByQueryOperation` migration per collection, filtering **inside the script**
+  (`if (row.Id) return;`) rather than in a `where` clause, because patch-by-query does not wait for
+  non-stale results and a stale index matches nothing — indistinguishable from "nothing to migrate";
+- ⚠️ RavenDB's patch engine has **no guid helper** (`newGuid`, `raven`, `crypto`, `uuid` are all
+  undefined), so derive the key from `id(this)` plus the array index: unique, and reproducible, which
+  is what makes a replay a no-op;
+- a startup gate that queries for surviving keyless rows and **refuses to start**.
 
 ## How AsDetail Objects Are Displayed
 
