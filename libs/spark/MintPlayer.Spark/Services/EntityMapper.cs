@@ -669,6 +669,11 @@ internal partial class EntityMapper : IEntityMapper
 
             var incoming = attr.Objects ?? [];
             var items = new List<object?>(incoming.Count);
+
+            // Rows that are still there keep their stored instance, so anything the incoming payload
+            // is not allowed to write survives (see MatchStoredRows).
+            var unmatched = MatchStoredRows(property, entity);
+
             foreach (var childPo in incoming)
             {
                 if (childPo is null)
@@ -676,12 +681,28 @@ internal partial class EntityMapper : IEntityMapper
                     items.Add(null);
                     continue;
                 }
-                var childEntity = Activator.CreateInstance(elementType)
-                    ?? throw new InvalidOperationException(
-                        $"PopulateObjectValues: could not instantiate AsDetail element type '{elementType.FullName}'.");
+
+                object childEntity;
+                if (!string.IsNullOrEmpty(childPo.Id) && unmatched.TryGetValue(childPo.Id!, out var storedRow))
+                {
+                    // Consume it: two incoming rows claiming one stored key must not both alias the
+                    // same instance, which would put the same object in the collection twice.
+                    unmatched.Remove(childPo.Id!);
+                    childEntity = storedRow;
+                }
+                else
+                {
+                    // A row with no key, or one whose key matches nothing stored, is new. Its key is
+                    // minted by the field initializer that runs right here.
+                    childEntity = Activator.CreateInstance(elementType)
+                        ?? throw new InvalidOperationException(
+                            $"PopulateObjectValues: could not instantiate AsDetail element type '{elementType.FullName}'.");
+                }
+
                 await PopulateObjectValuesAsync(childPo, childEntity, session, cancellationToken);
                 items.Add(childEntity);
             }
+
             AccessorCache.GetSetter(property)(entity, BuildCollection(items, propertyType, elementType));
             return;
         }
@@ -694,11 +715,59 @@ internal partial class EntityMapper : IEntityMapper
 
         var targetType = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
         EnsureAsDetailTypeDeclared(targetType, attr.Name);
-        var child = Activator.CreateInstance(targetType)
-            ?? throw new InvalidOperationException(
-                $"PopulateObjectValues: could not instantiate AsDetail type '{targetType.FullName}' for attribute '{attr.Name}'.");
+
+        // A single nested object is matched by its property name, which cannot go missing or be
+        // reordered — so it needs no key, and merging onto the stored instance is unconditional.
+        var child = AccessorCache.GetGetter(property)(entity) is { } existing && existing.GetType() == targetType
+            ? existing
+            : Activator.CreateInstance(targetType)
+                ?? throw new InvalidOperationException(
+                    $"PopulateObjectValues: could not instantiate AsDetail type '{targetType.FullName}' for attribute '{attr.Name}'.");
+
         await PopulateObjectValuesAsync(attr.Object, child, session, cancellationToken);
         AccessorCache.GetSetter(property)(entity, child);
+    }
+
+    /// <summary>
+    /// The rows currently stored on <paramref name="entity"/>, keyed so an incoming row can claim
+    /// the instance it is an edit of.
+    /// </summary>
+    /// <remarks>
+    /// This is what stops a save destroying data it never carried. An AsDetail collection is
+    /// rebuilt from the wire, and <see cref="IsWritableBySchema"/> refuses to write a property the
+    /// model marks read-only — correct for a client-supplied value, but on a <em>fresh</em> instance
+    /// there is no stored value left to refuse in favour of, so the field is simply gone. On
+    /// <c>EventColumnMapping</c> that was <c>LastError</c>, <c>LastErrorAtUtc</c> and
+    /// <c>LastFiredAtUtc</c>: three fields the server owns, wiped whenever a user edited an
+    /// unrelated field on the parent board. Populating onto the stored row instead means those
+    /// values were never lost in the first place.
+    /// <para>
+    /// Empty for a create, which is the right answer — every incoming row is then new.
+    /// </para>
+    /// <para>
+    /// ⚠️ Rows whose key is empty are skipped rather than matched positionally. A keyless stored row
+    /// predates the backfill migration, and guessing which incoming row it corresponds to would be
+    /// exactly the silent mismatch the key exists to prevent.
+    /// </para>
+    /// </remarks>
+    private static Dictionary<string, object> MatchStoredRows(PropertyInfo property, object entity)
+    {
+        var byKey = new Dictionary<string, object>(StringComparer.Ordinal);
+
+        if (AccessorCache.GetGetter(property)(entity) is not System.Collections.IEnumerable stored)
+            return byKey;
+
+        foreach (var row in stored)
+        {
+            if (row is null)
+                continue;
+
+            var key = Abstractions.Model.SparkValueObjects.GetKey(row);
+            if (!string.IsNullOrEmpty(key))
+                byKey[key!] = row;
+        }
+
+        return byKey;
     }
 
     /// <summary>
