@@ -1,7 +1,9 @@
 # Branch-deletion setting — implementation plan
 
 **PRD:** [coverage_branch_deletion_setting_PRD.md](coverage_branch_deletion_setting_PRD.md)
-**Status:** in progress — all decisions taken
+**Status:** Implemented. Two things are deliberately left undone and are called out below rather
+than quietly marked complete: the S1 production measurement, and the true end-to-end — a merged
+pull request observed deleting a branch.
 **Branch:** `feat/branch-deletion-setting` · one pull request
 **Breaking changes are allowed.** The owner has confirmed no backward compatibility is required and
 that production data may be modified directly. That removes the transitional dual-read the token
@@ -62,17 +64,41 @@ Three corrections to the request, all verified:
 | | |
 |---|---|
 | **M0** ng-spark: a lookup must win over the raw data type | **Done** — 4 sites |
-| **S1** does any production Repository hold `DeleteBranchOnPrClose: true`? | not started |
+| **S1** does any production Repository hold `DeleteBranchOnPrClose: true`? | **NOT DONE** — production was never queried. The migration handles both arms, so it is safe either way, but the measurement this plan asked for was skipped |
 | ~~**S2** does a `bool?` survive the round trip?~~ | **dropped** — D-A chose an enum, whose path (`Car.Status`) is already exercised in production |
-| **M1** row filters — the write path's access control | not started |
-| **M2** rights + the read-only sweep | not started |
-| **M3** the entities, the resolver, and the migration | not started |
-| **M4** the recipient reads the effective value | not started |
-| **M5** the edit surface (shape decided by **D-A**) | not started |
-| **M6** end-to-end: tick the box, merge a PR, branch disappears | not started |
-| **M7** ApiToken grid — `Description` first | not started |
-| **M8** ApiToken grid — hide the two ids (**D-B**), reference the user | not started |
-| **M9** versions, docs, decision register | not started |
+| **M0b** the missing `EventMappings` backfill | **Done, unplanned** — the startup gate names a migration that did not exist; see below |
+| **M1** row filters — the write path's access control | **Done** — `WriteRowFilterTests`, 9 facts, executed against RavenDB |
+| **M2** rights + the read-only sweep | **Done** — `Edit/Account` + `Edit/Repository`, 17 of 18 Repository attributes locked |
+| **M3** the entities, the resolver, and the migration | **Done** — enum + `ResolveDeleteBranchOnPrClose` + `M_202609092000` |
+| **M4** the recipient reads the effective value | **Done** — 5 webhook facts + 8 resolver cases |
+| **M5** the edit surface | **Done** — lookup dropdown, plus the four ng-spark ordering/coercion fixes it needed |
+| **M6** end-to-end | **Partly** — the box was ticked in the running app and both levels persisted. **A merged PR has NOT been observed deleting a branch**: that needs a real webhook delivery |
+| **M7** ApiToken grid — `Description` first | **Done** |
+| **M8** ApiToken grid — the ids and the user reference | **Done**, and larger than planned — see D-B |
+| **M9** versions, docs, decision register | **Partly** — versions bumped (`preview.78` / `22.16.0`) and these docs updated. ⬜ `product-overview.md` and the decision-register C-number are still outstanding |
+
+### M0b — the backfill the startup gate already promised (unplanned)
+
+The app would not start. `ValueObjectKeyVerifier` refused on one keyless
+`GitHubProjects.EventMappings` row with *"Run the backfill migration for these collections before
+starting"* — and **no such migration existed**. `M_202609091200` deliberately skipped both
+GitHubProject collections because *"production has zero keyless rows in either (measured)"*: right
+about production, silent about everywhere else, while the gate is unconditional. A dev box, a
+restored backup, or any environment seeded from older data was simply stuck, with a remedy that
+named nothing.
+
+`M_202609092200` is that remedy. Keys are **derived** from the value the application itself assigns
+(`EventColumnMapping.Id = EventType`; a column's GraphQL option id), never synthesized — stamping a
+guid over a meaningful key would be a regression, which is exactly why the earlier migration left
+them alone. A row that is keyless *and* has nothing to derive from is left for a person: the gate
+keeps refusing, which is the correct outcome.
+
+### What the run in a real browser found
+
+M6's partial pass was worth doing for two defects nothing else would have caught: the new Account
+attribute had **no group**, so it rendered under a second implicit "General" tab, and its label was
+the synthesized *"Delete Branch On Pr Close"*. Both are presentational — the model hash did not move
+— and both are invisible to every test in this repository.
 
 ---
 

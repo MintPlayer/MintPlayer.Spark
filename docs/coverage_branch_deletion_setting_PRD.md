@@ -1,6 +1,7 @@
 # Making branch deletion reachable — an account-wide default and an editable flag
 
-**Status:** Planned — see [coverage_branch_deletion_setting_plan.md](coverage_branch_deletion_setting_plan.md)
+**Status:** Implemented — see [coverage_branch_deletion_setting_plan.md](coverage_branch_deletion_setting_plan.md)
+for what landed, and for the two things deliberately left undone
 **Branch:** `feat/branch-deletion-setting` · one pull request
 **Follows:** #382 (implemented the deletion), #391 (tested it), #389 (recorded that nobody can switch it on)
 
@@ -21,11 +22,11 @@ Two things are wrong, not one:
 | | |
 |---|---|
 | `Account.DeleteBranchOnPrClose` | `bool` — the GitHub account/organization-wide default |
-| `Repository.DeleteBranchOnPrClose` | **nullable** — `null` inherits the account's value |
+| `Repository.DeleteBranchOnPrClose` | `EDeleteBranchPolicy` — `Inherit` defers to the account |
 | Rights | `Edit` on Account and Repository, no `New`, no `Delete` |
 | Row filters | the access control for the new write path — **the part that must not be skipped** |
 | Read-only sweep | only `DeleteBranchOnPrClose` is editable; every other attribute is locked |
-| ApiToken grid | `[IgnoreProperty]` on two ids, `Description` first, `CreatedByUserId` as a reference |
+| ApiToken grid | `Description` first; `AccountGitHubId` off the model; `RepositoryGitHubId` replaced by a repository **list**; `CreatedByUserId` a stamped reference |
 
 ## Decisions already taken
 
@@ -106,10 +107,23 @@ makes "inherit" a stored named value rather than an absence. Deviates from the s
 change and no new Spark rights — but it is a second settings surface, and it does not give the
 Account PO its checkbox.
 
-**Recommendation: (A).** It is the only option that delivers the spec as written, and the two
-library bugs it fixes will otherwise bite the next app with a nullable boolean. If the appetite for a
-Spark release is not there, **(B)** is the honest fallback and should be chosen deliberately rather
-than discovered halfway.
+### Resolved — a lookup-driven select over an ENUM, plus the framework fix
+
+The owner chose a `<bs-select>` driven by a `LookupReference`, which is the right mechanism. The
+property could not be `bool?`, for a fourth reason none of the options above had found: **lookup keys
+are strings on the wire** (`LookupReferenceService.cs:282` stringifies the key), a boolean form value
+is a real JS boolean, and there is no `compareWith` — so a persisted `true` would render as the
+placeholder even with the other three fixed.
+
+So the shape is **(A) and (B) together**: the two library bugs are fixed because they are bugs — a
+declared `LookupReference` on a boolean silently did nothing, in four places — and the property is an
+enum because that is the honest model of three states. `Repository.DeleteBranchOnPrClose` is
+`EDeleteBranchPolicy` (`Inherit` / `Enabled` / `Disabled`); `Account.DeleteBranchOnPrClose` stays a
+plain `bool`, since the account is the bottom of the chain and has nothing to defer to.
+
+What the enum buys beyond dodging the blockers: each state carries a **name and a translated label a
+user reads**, and a migration can name `Inherit` where it could not name an absence. `Car.Status`
+(`ECarStatus?` + `CarStatus`) is the same shape already working in production.
 
 ## Requirements
 
@@ -198,11 +212,28 @@ the document, proven by `ApiToken.Hash` doing exactly this today. Hand-deleting 
 stick (synchronize regenerates it with a new id); ignoring the property is the one case where
 synchronize deletes.
 
-⚠️ **`RepositoryGitHubId` is not safe to ignore as-is.** `ApiTokenActions.cs:116` derives
-`Scope = RepositoryGitHubId is null ? "Account" : "Repository"`, and the field is **client-supplied
-on create** — the New-token form is how a repository-scoped token gets its id. Ignoring it makes
-every UI-created token account-scoped: a **silent privilege widening**. Either confirm no repo-scoped
-tokens are created through the UI, or replace the input first. **Open question — see the plan.**
+**Resolved, and larger than the question.** The owner's answer was that a person should never type
+an id at all, and that a token should serve several repositories. So `RepositoryGitHubId` does not
+become hidden — it is **replaced** by `GithubRepositories`, a `List<string>` of repository **document
+ids** with a picker, and `Scope` is derived from whether that list is empty.
+
+Three corrections to the request, each verified rather than assumed:
+
+- **Not `List<long>`.** Reference elements are document ids as strings at every layer — the
+  synchronizer, `EntityMapper`, `BreadcrumbResolver`, `ReferenceResolver`'s `.Include()`, and the
+  Angular picker, which can only emit `po.id`.
+- **Neither named query works.** `Account_UploadTokens` returns *tokens*; `Account_Repositories`
+  calls `EnsureParent("Account")` while the picker sends the *form's own* parent — `ApiToken`, or
+  nothing on New — which throws and surfaces as a **500 from the picker**. A new parent-free
+  `ApiToken_SelectableRepositories` was required.
+- **The prior art is `HR.Person.Professions`**, the only array reference in the workspace.
+
+⚠️ **And it opened a hole that had to close in the same change.** A reference *array* is written
+straight through — `EntityMapper` bypasses the collection guard that binds a scalar reference's id to
+its type — and `EnsureRowSaveAllowedAsync` re-applies only the `AccountLogin` filter, which says
+nothing about repository ownership. `ValidateRepositoryScopeAsync` is the entire defence, and it runs
+on **edit as well as create**: the original hook returned early on an edit, which would have left an
+existing token's scope unguarded — the easier attack, since the token already exists.
 
 **(b) `Description` first.** `order` is presentational — not in the structural hash — and
 synchronize preserves any value `> 0` (`:768`). ⚠️ Never use `0`; it reads as unset and gets
