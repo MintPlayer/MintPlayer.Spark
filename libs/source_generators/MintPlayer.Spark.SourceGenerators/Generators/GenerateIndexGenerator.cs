@@ -28,18 +28,6 @@ public class GenerateIndexGenerator : IncrementalGenerator
 {
     private const string GenerateIndexAttributeFullName = "MintPlayer.Spark.Abstractions.GenerateIndexAttribute";
 
-    /// <summary>
-    /// The assembly that carried the model attributes before they moved into their own package.
-    /// Still accepted, so a consumer compiled against the old layout keeps working.
-    /// </summary>
-    /// <remarks>
-    /// ⚠️ This is the <em>only</em> assembly-name literal in the repository, and it is the one that
-    /// broke: every other name-based check keys on namespace, which survives an assembly move.
-    /// The live host is not hard-coded — it is read off the resolved attribute symbol, so adding a
-    /// third attribute package cannot silently repeat the failure. See
-    /// <see cref="ResolveAttributeHostAssembly"/>.
-    /// </remarks>
-    private const string LegacyAttributeHostAssemblyName = "MintPlayer.Spark.Abstractions";
 
     private const string SparkContextFullName = "MintPlayer.Spark.SparkContext";
 
@@ -501,21 +489,25 @@ public class GenerateIndexGenerator : IncrementalGenerator
     /// </summary>
     /// <remarks>
     /// ⚠️ <c>GetTypeByMetadataName</c> also returns <see langword="null"/> when the name is declared
-    /// in <b>more than one</b> referenced assembly — the shape a consumer ends up in if it holds both
-    /// an old package that still contains the attributes and the new one that does. Emitting nothing
-    /// is the safe answer, but it is silent, which is why the moved types carry
-    /// <c>[TypeForwardedTo]</c> rather than relying on consumers to upgrade in lockstep.
+    /// in <b>more than one</b> referenced assembly — the shape a consumer reaches by mixing package
+    /// versions across the split. Emitting nothing is the safe answer, but it is a silent one, so
+    /// the packages move in lockstep and the release notes say so.
     /// </remarks>
     private static string? ResolveAttributeHostAssembly(Compilation compilation)
         => compilation.GetTypeByMetadataName(GenerateIndexAttributeFullName)?.ContainingAssembly?.Name;
 
+    /// <remarks>
+    /// ⚠️ <paramref name="attributeHost"/> is derived, never a literal. Hard-coding an assembly name
+    /// here is what made HR's indexes vanish when the attributes moved packages: the compiler emits
+    /// an <c>AssemblyRef</c> only for assemblies a compilation actually <em>uses</em>, so a library
+    /// using the old assembly for nothing but attributes stopped referencing it and was skipped
+    /// without a diagnostic. Every other name-based check in this repository keys on namespace,
+    /// which survives an assembly move; this was the one that did not.
+    /// </remarks>
     private static bool ReferencesAttributeHost(IAssemblySymbol assembly, string attributeHost)
-        => IsAttributeHost(assembly.Name, attributeHost)
+        => assembly.Name == attributeHost
         || assembly.Modules.Any(module => module.ReferencedAssemblies
-            .Any(identity => IsAttributeHost(identity.Name, attributeHost)));
-
-    private static bool IsAttributeHost(string name, string attributeHost)
-        => name == attributeHost || name == LegacyAttributeHostAssemblyName;
+            .Any(identity => identity.Name == attributeHost));
 
     private static IEnumerable<INamedTypeSymbol> AllTypes(INamespaceSymbol ns, System.Threading.CancellationToken ct)
     {
