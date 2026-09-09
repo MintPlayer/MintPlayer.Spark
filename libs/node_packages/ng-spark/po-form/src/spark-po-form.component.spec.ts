@@ -255,7 +255,7 @@ describe('SparkPoFormComponent', () => {
       const jobs = attr({ id: 'a-jobs', name: 'Jobs', dataType: 'AsDetail', isArray: true });
       component.formData.set({ Jobs: [] });
 
-      component.addArrayItem(jobs);
+      await component.addArrayItem(jobs);
       component.asDetailFormData.set({ Title: 'Dev' });
       component.saveAsDetailObject();
       expect(component.formData()['Jobs']).toEqual([{ Title: 'Dev' }]);
@@ -274,7 +274,7 @@ describe('SparkPoFormComponent', () => {
       const jobs = attr({ id: 'a-jobs', name: 'Jobs', dataType: 'AsDetail', isArray: true });
       component.formData.set({ Jobs: [{ Title: 'A' }, { Title: 'B' }] });
 
-      component.removeArrayItem(jobs, 0);
+      await component.removeArrayItem(jobs, 0);
 
       expect(component.formData()['Jobs']).toEqual([{ Title: 'B' }]);
     });
@@ -285,7 +285,7 @@ describe('SparkPoFormComponent', () => {
       const jobs = attr({ id: 'a-jobs', name: 'Jobs', dataType: 'AsDetail', isArray: true, editMode: 'inline' });
       component.formData.set({ Jobs: [] });
 
-      component.addInlineRow(jobs);
+      await component.addInlineRow(jobs);
 
       expect(component.formData()['Jobs']).toEqual([{}]);
       expect(component.showAsDetailModal()).toBe(false);

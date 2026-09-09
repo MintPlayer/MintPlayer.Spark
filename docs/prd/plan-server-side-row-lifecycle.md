@@ -117,6 +117,25 @@ refusing is not useful.
   arrives keyed *on the wire*, the hook really read the parent, an invoiced row is refused with a
   readable reason, an unknown key is refused without revealing that it is unknown.
 
+## What the sweep actually cost, and what it bought
+
+One full build + test sweep at the end, as the plan requires. It went red **11 times in the .NET unit
+suite, 3 in the client suite and 8 in the E2E** — and every one of those was worth having:
+
+- 2 unit failures were the shared-constructor-cache collision (PRD §9 F1), a bug that predates this
+  work and sat on master unfired.
+- 5 endpoint failures were the veto arriving as a 500 (F2) plus a fixture that had to answer the
+  row-security declaration gate rather than route around it.
+- 3 client failures were existing specs that had to `await` mutators which are now async — the
+  correct breakage for a genuine signature change.
+- 8 E2E failures were, in order: a nested AsDetail row needs `objectTypeId` on the wire; Create
+  answers 201 and the test asserted 200; and finally the real one, `[ValueObject]` generating nothing
+  in `Fleet.Library` (F3).
+
+The last of those is the argument for the E2E existing at all. Every in-memory test passed against a
+row with no key, because a keyless row deserialises with a freshly minted guid — the wire is the only
+place the absence is visible.
+
 ## Still not covered
 
 - **No browser-level exercise of the grid.** The client specs drive the component directly; nothing

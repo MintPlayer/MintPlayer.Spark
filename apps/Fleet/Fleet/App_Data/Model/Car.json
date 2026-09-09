@@ -341,6 +341,26 @@
         }
       },
       {
+        "id": "225b8df2-3887-4e17-8145-26c57d1b9441",
+        "name": "ServiceEntries",
+        "label": {
+          "en": "Service Entries"
+        },
+        "description": {
+          "en": "The vehicle's maintenance history — the sample for the server-side row lifecycle (#386)."
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 13,
+        "asDetailType": "Fleet.Entities.ServiceEntry",
+        "isArray": true,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "78cc91e9-6158-4172-8663-8a5b0b0b65c5",
         "name": "Status",
         "label": {

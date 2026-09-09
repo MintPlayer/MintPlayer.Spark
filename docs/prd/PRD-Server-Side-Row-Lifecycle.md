@@ -201,3 +201,43 @@ swallows any sibling `DELETE` route. The operation also needs a body. Both point
 wants a server-set date and the vehicle's plate; an invoiced entry must not silently vanish. Fleet's
 `security.json` grants administrators `QueryReadEditNewDelete/ServiceEntry` and fleet managers only
 `ReadEdit` — so the row type's own right is observably the one that governs, not the parent's.
+
+## 9. Defects the tests found, none of which was in the feature as designed
+
+All three were latent, all three were silent, and none would have been found by reading the code.
+
+### F1 — Two invokers shared one constructor cache and handed each other the wrong constructor
+
+`ReflectionCache.GetOrAdd<TKey, TValue>` is **one dictionary per `(TKey, TValue)` pair**, so three
+call sites keying a `ConstructorInfo` by bare entity `Type` — `RefreshInvoker`, `NewInvoker`,
+`DeleteRowInvoker` — shared it. Whichever ran first for a given type won; the others got its
+constructor and invoked it with their own arguments.
+
+It surfaced as `DeleteRowInvoker` calling `SparkNewArgs`'s constructor and failing on the third
+argument (`PersistentObject` vs `string`). ⚠️ **`RefreshInvoker` and `NewInvoker` were already
+colliding on master**, from the salvaged commits — it had simply never fired, because nothing called
+`/new`. Any type with both a refresh hook and a construction hook would have hit it on the first
+request. All three keys are now discriminated.
+
+### F2 — A hook's refusal surfaced as a 500, not a 400
+
+`MethodBase.Invoke` wraps whatever the invoked method throws in `TargetInvocationException`, so
+`catch (SparkValidationException)` in `New.cs` matched nothing. The veto path the salvaged commit
+advertised — "a hook may refuse; `SparkValidationException` becomes a 400 the user can read" — had
+never worked. Both invokers now pass `BindingFlags.DoNotWrapExceptions`, which also keeps the hook's
+own stack trace.
+
+### F3 — `[ValueObject]` is silently inert without the generator reference
+
+`Fleet.Library` did not reference `MintPlayer.Spark.LibraryGenerators`, and analyzer
+`ProjectReference`s are not transitive. `[ValueObject]` on `ServiceEntry` therefore compiled cleanly
+and generated **nothing**: no key property, no registration.
+
+Nothing failed. The startup key gate only inspects types that registered, so an unregistered one is
+never looked at; the rows simply reached the client with a null id. `HR.Library` carries the
+reference with a comment explaining exactly this, which is the only reason HR works.
+
+⚠️ **This is a framework-level gap, not a Fleet typo.** SPARK017 answers "should this type be a value
+object"; nothing answers "this type is marked and the generator never ran". The E2E is what caught
+it, and only because it asserted on the key *as it arrives over the wire* — every in-memory check
+passes, since a keyless row deserialises with a freshly minted guid.

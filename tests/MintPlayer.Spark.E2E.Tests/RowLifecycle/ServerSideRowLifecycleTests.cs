@@ -86,7 +86,13 @@ public class ServerSideRowLifecycleTests
     }
 
     /// <summary>Creates a car with two service entries, one of them invoiced, and returns its id.</summary>
-    private async Task<string> CreateCarWithEntriesAsync(HttpClient http, string xsrfToken)
+    /// <remarks>
+    /// ⚠️ <paramref name="entryTypeId"/> is not optional decoration: a nested AsDetail row on the wire
+    /// carries a <b>required</b> <c>objectTypeId</c>, and omitting it fails deserialization before any
+    /// endpoint code runs — a bare 500 with an empty body, which reads like a bug in the feature
+    /// rather than in the payload.
+    /// </remarks>
+    private async Task<string> CreateCarWithEntriesAsync(HttpClient http, string xsrfToken, string entryTypeId)
     {
         var payload = new
         {
@@ -108,8 +114,8 @@ public class ServerSideRowLifecycleTests
                         isValueChanged = true,
                         objects = new object[]
                         {
-                            NewEntryPayload("Oil change", invoiced: false),
-                            NewEntryPayload("Timing belt", invoiced: true),
+                            NewEntryPayload(entryTypeId, "Oil change", invoiced: false),
+                            NewEntryPayload(entryTypeId, "Timing belt", invoiced: true),
                         },
                     },
                 },
@@ -124,14 +130,19 @@ public class ServerSideRowLifecycleTests
 
         var response = await http.SendAsync(request);
         var text = await response.Content.ReadAsStringAsync();
-        response.StatusCode.Should().Be(HttpStatusCode.OK, $"creating the car should succeed. Body: {text}");
+        // Create answers 201, not 200 — asserting OK here failed on a car that had been created
+        // perfectly well, with the success envelope right there in the message.
+        response.IsSuccessStatusCode.Should().BeTrue(
+            $"creating the car should succeed. Status: {(int)response.StatusCode}. Body: {text} "
+            + $"| Fleet log: {_fixture.Host.RecentLog()}");
 
         return JsonDocument.Parse(text).RootElement.GetProperty("result").GetProperty("id").GetString()!;
     }
 
-    private static object NewEntryPayload(string description, bool invoiced) => new
+    private static object NewEntryPayload(string entryTypeId, string description, bool invoiced) => new
     {
         name = "ServiceEntry",
+        objectTypeId = entryTypeId,
         attributes = new object[]
         {
             new { name = "Description", value = description, isValueChanged = true },
@@ -169,7 +180,7 @@ public class ServerSideRowLifecycleTests
         var xsrf = await PrimeXsrfAsync(http, cookies);
 
         var entryTypeId = await ServiceEntryTypeIdAsync(http);
-        var carId = await CreateCarWithEntriesAsync(http, xsrf);
+        var carId = await CreateCarWithEntriesAsync(http, xsrf, entryTypeId);
 
         var (status, body) = await PostAsync(http, xsrf, $"/spark/po/{entryTypeId}/new", new
         {
@@ -198,7 +209,7 @@ public class ServerSideRowLifecycleTests
         var xsrf = await PrimeXsrfAsync(http, cookies);
 
         var entryTypeId = await ServiceEntryTypeIdAsync(http);
-        var carId = await CreateCarWithEntriesAsync(http, xsrf);
+        var carId = await CreateCarWithEntriesAsync(http, xsrf, entryTypeId);
 
         var (status, body) = await PostAsync(http, xsrf, $"/spark/po/{entryTypeId}/new", new
         {
@@ -225,7 +236,7 @@ public class ServerSideRowLifecycleTests
         var xsrf = await PrimeXsrfAsync(http, cookies);
 
         var entryTypeId = await ServiceEntryTypeIdAsync(http);
-        var carId = await CreateCarWithEntriesAsync(http, xsrf);
+        var carId = await CreateCarWithEntriesAsync(http, xsrf, entryTypeId);
 
         var (_, body) = await PostAsync(http, xsrf, $"/spark/po/{entryTypeId}/new", new
         {
@@ -248,7 +259,7 @@ public class ServerSideRowLifecycleTests
         var xsrf = await PrimeXsrfAsync(http, cookies);
 
         var entryTypeId = await ServiceEntryTypeIdAsync(http);
-        var carId = await CreateCarWithEntriesAsync(http, xsrf);
+        var carId = await CreateCarWithEntriesAsync(http, xsrf, entryTypeId);
         var invoicedKey = await RowKeyAsync(http, carId, "Timing belt");
 
         var (status, body) = await PostAsync(http, xsrf, $"/spark/po/{entryTypeId}/delete-row", new
@@ -276,7 +287,7 @@ public class ServerSideRowLifecycleTests
         var xsrf = await PrimeXsrfAsync(http, cookies);
 
         var entryTypeId = await ServiceEntryTypeIdAsync(http);
-        var carId = await CreateCarWithEntriesAsync(http, xsrf);
+        var carId = await CreateCarWithEntriesAsync(http, xsrf, entryTypeId);
         var openKey = await RowKeyAsync(http, carId, "Oil change");
 
         var (status, _) = await PostAsync(http, xsrf, $"/spark/po/{entryTypeId}/delete-row", new
@@ -299,7 +310,7 @@ public class ServerSideRowLifecycleTests
         var xsrf = await PrimeXsrfAsync(http, cookies);
 
         var entryTypeId = await ServiceEntryTypeIdAsync(http);
-        var carId = await CreateCarWithEntriesAsync(http, xsrf);
+        var carId = await CreateCarWithEntriesAsync(http, xsrf, entryTypeId);
 
         var (status, _) = await PostAsync(http, xsrf, $"/spark/po/{entryTypeId}/delete-row", new
         {
@@ -322,7 +333,7 @@ public class ServerSideRowLifecycleTests
         await SignInAsync(http);
         var xsrf = await PrimeXsrfAsync(http, cookies);
         var entryTypeId = await ServiceEntryTypeIdAsync(http);
-        var carId = await CreateCarWithEntriesAsync(http, xsrf);
+        var carId = await CreateCarWithEntriesAsync(http, xsrf, entryTypeId);
 
         var body = new
         {
@@ -346,7 +357,7 @@ public class ServerSideRowLifecycleTests
         await SignInAsync(adminHttp);
         var adminXsrf = await PrimeXsrfAsync(adminHttp, adminCookies);
         var entryTypeId = await ServiceEntryTypeIdAsync(adminHttp);
-        var carId = await CreateCarWithEntriesAsync(adminHttp, adminXsrf);
+        var carId = await CreateCarWithEntriesAsync(adminHttp, adminXsrf, entryTypeId);
 
         var (http, cookies) = CreateClient();
         using var owned = http;

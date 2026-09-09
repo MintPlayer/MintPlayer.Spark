@@ -62,8 +62,15 @@ internal partial class DeleteRowInvoker : IDeleteRowInvoker
         var args = CreateArgs(entityType, row, parent, asDetailAttribute, rowKey, parameters, cancellationToken);
         var actions = actionsResolver.ResolveForType(entityType);
 
-        // The hook returns Task, never Task<T>, so this cast is total.
-        await (Task)method.Invoke(actions, [args])!;
+        // The hook returns Task, never Task<T>, so this cast is total. A null would mean the method
+        // was resolved from something that is not the hook — worth failing loudly rather than
+        // silently skipping the developer's business logic.
+        // ⚠️ `DoNotWrapExceptions` is load-bearing, not tidiness. Without it `MethodBase.Invoke`
+        // wraps whatever the hook throws in a TargetInvocationException, so the endpoint's
+        // `catch (SparkValidationException)` matches nothing and a hook that politely refuses
+        // surfaces to the user as a 500. It also keeps the hook's own stack trace intact.
+        await (Task)method.Invoke(
+            actions, BindingFlags.DoNotWrapExceptions, binder: null, parameters: [args], culture: null)!;
     }
 
     private static object CreateArgs(
@@ -75,9 +82,14 @@ internal partial class DeleteRowInvoker : IDeleteRowInvoker
         IReadOnlyDictionary<string, string>? parameters,
         CancellationToken cancellationToken)
     {
-        var ctor = ReflectionCache.GetOrAdd<Type, ConstructorInfo>(
-            entityType,
-            static t => typeof(SparkDeleteRowArgs<>).MakeGenericType(t)
+        // ⚠️ The key is a tuple, not a bare Type. `GetOrAdd<TKey, TValue>` is ONE dictionary per
+        // (TKey, TValue) pair, so every invoker keying a ConstructorInfo by entity type shares it —
+        // and the first one to run for a given type hands its constructor to the others. That is not
+        // hypothetical: it made `DeleteRowInvoker` invoke `SparkNewArgs`'s constructor with a delete
+        // hook's arguments, failing on the third one. The discriminator is what keeps them apart.
+        var ctor = ReflectionCache.GetOrAdd<(string Op, Type Entity), ConstructorInfo>(
+            ("DeleteRowInvoker.args", entityType),
+            static k => typeof(SparkDeleteRowArgs<>).MakeGenericType(k.Entity)
                 .GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)
                 .Single());
 
