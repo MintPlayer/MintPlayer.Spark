@@ -387,6 +387,16 @@ the environment the previous attempt tested was the one where the mechanism happ
 
 ## Appendix A — the repro
 
+✅ **These findings are now pinned by tests**, in
+`tests/MintPlayer.Spark.Tests/Services/NestedRowIdentityTests.cs` (`SparkTestDriver`, real embedded
+RavenDB). The console programs below are how the behaviour was *discovered*; the tests are what keeps
+it true. Three cases: a stored row keeps its key (M1), a row stored without one is given a different
+key on every load (M3), and loading such a document marks it dirty (M4).
+
+⚠️ The second and third tests assert on behaviour we do **not** want. If they ever start failing,
+that is not a regression to fix by adjusting the assertion — it means the constraint that forces the
+backfill migration has gone away, and R2/R6 can be revisited.
+
 ### A.1 A nested `Id` round-trips exactly (M1, M2, M5)
 
 The whole program. `Address.Id` is initialized the way the abandoned design generated it, which is
