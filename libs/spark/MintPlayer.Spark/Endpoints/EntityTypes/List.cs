@@ -33,9 +33,20 @@ internal sealed partial class ListEntityTypes : IGetEndpoint, IMemberOf<EntityTy
             var pruned = await SubQueryPruner.PruneAsync(
                 entityType, queryLoader, permissionService, logger, httpContext.RequestAborted);
 
-            // PruneAsync already copied the definition — ModelLoader is a singleton and its
-            // instances are shared — so this per-caller answer can be written without leaking into
-            // the next request's view of the model.
+            // Row-type definitions, so an AsDetail table can render its columns even when the row
+            // type is absent from this catalogue — which is the common case, since a row edited
+            // through its parent rarely has a Query grant of its own (#385).
+            pruned = SubQueryPruner.EmbedDetailTypes(pruned, modelLoader);
+
+            // ⚠️ Copy if neither step did. Both return the SAME reference when they change nothing
+            // — that is their documented contract, and the reason they are safe — so the comment
+            // that used to sit here ("PruneAsync already copied the definition") was false for
+            // every type with no sub-queries. Writing the per-caller CanRead onto that reference
+            // mutated ModelLoader's singleton graph process-wide, so two concurrent callers with
+            // different rights could each serialize the other's answer.
+            if (ReferenceEquals(pruned, entityType))
+                pruned = entityType.ShallowCopy();
+
             pruned.CanRead = await permissionService.IsAllowedAsync(
                 "Read", entityType.Name, httpContext.RequestAborted);
 

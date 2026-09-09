@@ -27,7 +27,11 @@ internal sealed partial class GetEntityType : IGetEndpoint, IMemberOf<EntityType
         if (!await permissionService.IsAllowedAsync("Query", entityType.Name, httpContext.RequestAborted))
             return Results.Json(new { error = $"Entity type '{id}' not found" }, statusCode: 404);
 
-        return Results.Json(await SubQueryPruner.PruneAsync(
-            entityType, queryLoader, permissionService, logger, httpContext.RequestAborted));
+        var pruned = await SubQueryPruner.PruneAsync(
+            entityType, queryLoader, permissionService, logger, httpContext.RequestAborted);
+
+        // Same reason as List.cs: the row types an AsDetail attribute names are usually absent from
+        // the catalogue, so the client cannot resolve their columns from it (#385).
+        return Results.Json(SubQueryPruner.EmbedDetailTypes(pruned, modelLoader));
     }
 }

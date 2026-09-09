@@ -64,8 +64,22 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
     /// webhook emits it at all.
     /// </summary>
     private static GitHubEventsRecipient CreateRecipient(IAsyncDocumentSession session, out RecordingMessageBus bus)
+        => CreateRecipient(session, out bus, out _);
+
+    /// <summary>
+    /// Overload that also hands back the installation service, so a test can assert which branches
+    /// were deleted and make the delete fail the way GitHub does.
+    /// </summary>
+    /// <remarks>
+    /// The recording service existed before any test read it — it was added only so the class would
+    /// construct once the recipient started injecting it. Handing it back is what turns it from a
+    /// stub into coverage.
+    /// </remarks>
+    private static GitHubEventsRecipient CreateRecipient(
+        IAsyncDocumentSession session, out RecordingMessageBus bus, out RecordingInstallationService installer)
     {
         bus = new RecordingMessageBus();
+        installer = new RecordingInstallationService();
         var services = new ServiceCollection();
         services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.None));
         services.AddSingleton(session);
@@ -73,8 +87,7 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         // Required since branch deletion landed: the recipient [Inject]s it, so without a
         // registration every test in this class fails at construction — which is how the feature
         // originally shipped, having no tests of its own.
-        services.AddSingleton<MintPlayer.Spark.Webhooks.GitHub.Services.IGitHubInstallationService>(
-            new RecordingInstallationService());
+        services.AddSingleton<MintPlayer.Spark.Webhooks.GitHub.Services.IGitHubInstallationService>(installer);
         services.AddScoped<GitHubEventsRecipient>();
         return services.BuildServiceProvider().GetRequiredService<GitHubEventsRecipient>();
     }
@@ -189,11 +202,39 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         }
         """;
 
-    private static string PullRequestJson(string headSha, string baseSha, string action = "opened") => $$"""
+    /// <summary>
+    /// A fork's repository node — same shape, different <c>id</c>, which is the only thing
+    /// <c>DeleteHeadBranchIfEnabled</c> compares (<c>headRepo.Id != baseRepo.Id</c>).
+    /// </summary>
+    private const long ForkRepoId = 556;
+
+    private static readonly string ForkRepositoryJson =
+        RepositoryJson.Replace($"\"id\": {RepoId},", $"\"id\": {ForkRepoId},")
+                      .Replace("\"full_name\": \"acme/widgets\"", "\"full_name\": \"contributor/widgets\"");
+
+    /// <param name="merged">
+    /// Drives <c>merged</c>/<c>merged_at</c>/<c>state</c> together. They have to move as one: the
+    /// branch-deletion gate tests <c>action == "closed" &amp;&amp; PullRequest.Merged == true</c>, and a
+    /// payload claiming <c>merged: true</c> while still <c>state: "open"</c> is not a shape GitHub
+    /// ever sends.
+    /// </param>
+    /// <param name="headFromFork">
+    /// Puts the head branch in a different repository, so the fork arm can be exercised.
+    /// </param>
+    /// <remarks>
+    /// ⚠️ The <c>installation</c> node is not decoration. <c>DeleteHeadBranchIfEnabled</c> returns
+    /// early when <c>evt.Installation?.Id</c> is null, so without it every branch-deletion test
+    /// would pass while asserting on an empty list — proving nothing. That arm is real and is
+    /// covered by its own fact below.
+    /// </remarks>
+    private static string PullRequestJson(
+        string headSha, string baseSha, string action = "opened",
+        bool merged = false, bool headFromFork = false) => $$"""
         {
           "action": "{{action}}",
           {{(action == "synchronize" ? $"\"before\": \"{HeadSha}\", \"after\": \"{headSha}\"," : "")}}
           "number": 42,
+          "installation": { "id": 1, "node_id": "MDIzOkludGVncmF0aW9uSW5zdGFsbGF0aW9uMQ==" },
           "repository": {{RepositoryJson}},
           "sender": {{UserJson}},
           "pull_request": {
@@ -208,19 +249,21 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
             "review_comment_url": "https://api.github.com/repos/acme/widgets/pulls/comments{/number}",
             "comments_url": "https://api.github.com/repos/acme/widgets/issues/42/comments",
             "statuses_url": "https://api.github.com/repos/acme/widgets/statuses/{{headSha}}",
-            "state": "open", "locked": false, "title": "Add a thing",
+            "state": "{{(merged ? "closed" : "open")}}", "locked": false, "title": "Add a thing",
             "user": {{UserJson}}, "body": null,
             "created_at": "2026-08-18T09:00:00Z", "updated_at": "2026-08-18T09:00:00Z",
-            "closed_at": null, "merged_at": null, "merge_commit_sha": null,
+            "closed_at": {{(merged ? "\"2026-08-18T10:00:00Z\"" : "null")}},
+            "merged_at": {{(merged ? "\"2026-08-18T10:00:00Z\"" : "null")}},
+            "merge_commit_sha": {{(merged ? $"\"{BaseSha}\"" : "null")}},
             "assignee": null, "assignees": [], "requested_reviewers": [],
             "requested_teams": [], "labels": [], "milestone": null,
             "draft": false, "author_association": "MEMBER", "active_lock_reason": null,
-            "merged": false, "mergeable": true, "rebaseable": true, "mergeable_state": "clean",
+            "merged": {{(merged ? "true" : "false")}}, "mergeable": true, "rebaseable": true, "mergeable_state": "clean",
             "merged_by": null, "comments": 0, "review_comments": 0, "maintainer_can_modify": true,
             "commits": 1, "additions": 1, "deletions": 0, "changed_files": 1,
             "head": {
               "label": "acme:feature/thing", "ref": "feature/thing", "sha": "{{headSha}}",
-              "user": {{UserJson}}, "repo": {{RepositoryJson}}
+              "user": {{UserJson}}, "repo": {{(headFromFork ? ForkRepositoryJson : RepositoryJson)}}
             },
             "base": {
               "label": "acme:master", "ref": "master", "sha": "{{baseSha}}",
@@ -365,4 +408,159 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
 
         (await LoadCommit(session, HeadSha))!.ParentSha.Should().BeNull();
     }
+
+    // ---------------------------------------------------------------------------------------
+    // #389 — branch deletion. An irreversible action against a user's repository that shipped
+    // with no test of any kind. Each fact below is one arm of DeleteHeadBranchIfEnabled; the
+    // arms are what keep it safe, so proving them individually is the point.
+    // ---------------------------------------------------------------------------------------
+
+    /// <summary>Seeds the base repository with the opt-in in whatever state the test needs.</summary>
+    private static async Task SeedRepositoryAsync(IAsyncDocumentSession session, bool deleteBranchOnPrClose)
+    {
+        await session.StoreAsync(
+            new Repository
+            {
+                GitHubId = RepoId,
+                Name = "widgets",
+                OwnerLogin = "acme",
+                DeleteBranchOnPrClose = deleteBranchOnPrClose,
+            },
+            Repository.DocumentId(RepoId));
+        await session.SaveChangesAsync();
+    }
+
+    private static string MergedPr(bool headFromFork = false)
+        => PullRequestJson(HeadSha, BaseSha, action: "closed", merged: true, headFromFork: headFromFork);
+
+    [Fact]
+    public async Task A_merged_pull_request_deletes_its_head_branch_when_the_repository_opted_in()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedRepositoryAsync(session, deleteBranchOnPrClose: true);
+        var recipient = CreateRecipient(session, out _, out var installer);
+
+        await recipient.HandleAsync(Message("pull_request", MergedPr()));
+
+        installer.Deleted.Should().Equal("acme/widgets:heads/feature/thing");
+    }
+
+    [Fact]
+    public async Task A_closed_but_unmerged_pull_request_keeps_its_branch()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedRepositoryAsync(session, deleteBranchOnPrClose: true);
+        var recipient = CreateRecipient(session, out _, out var installer);
+
+        await recipient.HandleAsync(Message("pull_request",
+            PullRequestJson(HeadSha, BaseSha, action: "closed", merged: false)));
+
+        installer.Deleted.Should().BeEmpty("abandoning a pull request must not destroy the work on it");
+    }
+
+    [Fact]
+    public async Task The_opt_in_is_respected()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedRepositoryAsync(session, deleteBranchOnPrClose: false);
+        var recipient = CreateRecipient(session, out _, out var installer);
+
+        await recipient.HandleAsync(Message("pull_request", MergedPr()));
+
+        installer.Deleted.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task An_unknown_repository_deletes_nothing()
+    {
+        // No Repository document at all — the load returns null and the method must return, not throw.
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var recipient = CreateRecipient(session, out _, out var installer);
+
+        await recipient.HandleAsync(Message("pull_request", MergedPr()));
+
+        installer.Deleted.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_head_branch_in_a_fork_is_never_deleted()
+    {
+        // The opt-in is on the base repository and cannot speak for someone else's fork.
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedRepositoryAsync(session, deleteBranchOnPrClose: true);
+        var recipient = CreateRecipient(session, out _, out var installer);
+
+        await recipient.HandleAsync(Message("pull_request", MergedPr(headFromFork: true)));
+
+        installer.Deleted.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// The seventh arm, which the issue's table omits — and the one that would have made every
+    /// other fact here pass vacuously, since the shared payload carried no <c>installation</c>
+    /// node until these tests were written.
+    /// </summary>
+    [Fact]
+    public async Task A_payload_with_no_installation_deletes_nothing()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedRepositoryAsync(session, deleteBranchOnPrClose: true);
+        var recipient = CreateRecipient(session, out _, out var installer);
+
+        var withoutInstallation = MergedPr()
+            .Replace("\"installation\": { \"id\": 1, \"node_id\": \"MDIzOkludGVncmF0aW9uSW5zdGFsbGF0aW9uMQ==\" },", "");
+
+        await recipient.HandleAsync(Message("pull_request", withoutInstallation));
+
+        installer.Deleted.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// Deleting the branch is a courtesy after the merge has already landed. Failing the webhook
+    /// delivery over it would cost the event and change nothing about the merge — so every failure
+    /// shape must complete.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(DeleteFailures))]
+    public async Task A_failed_delete_never_breaks_webhook_processing(string shape, Exception failure)
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedRepositoryAsync(session, deleteBranchOnPrClose: true);
+        var recipient = CreateRecipient(session, out _, out var installer);
+        installer.DeleteThrows = failure;
+
+        var act = async () => await recipient.HandleAsync(Message("pull_request", MergedPr()));
+
+        await act.Should().NotThrowAsync($"a {shape} response must not cost the webhook delivery");
+    }
+
+    private static Octokit.IResponse ResponseWith(System.Net.HttpStatusCode status)
+    {
+        var response = Substitute.For<Octokit.IResponse>();
+        response.StatusCode.Returns(status);
+        response.Body.Returns("{}");
+        response.Headers.Returns(new Dictionary<string, string>());
+        return response;
+    }
+
+    public static TheoryData<string, Exception> DeleteFailures() => new()
+    {
+        // Lost a race with GitHub's own delete_branch_on_merge, or deleted by hand.
+        { "404 already gone", new Octokit.NotFoundException(ResponseWith(System.Net.HttpStatusCode.NotFound)) },
+        // Normally a protected branch. Retrying would fail identically every time.
+        { "422 protected", new Octokit.ApiValidationException() },
+        // A raised permission the installation has not accepted — Octokit's typed shape.
+        { "403 forbidden", new Octokit.ForbiddenException(ResponseWith(System.Net.HttpStatusCode.Forbidden)) },
+        // ...and its untyped shape. Octokit raises a bare ApiException for some 403s, which is why
+        // PullRequestCommentPublisher catches on StatusCode rather than on the exception type.
+        { "403 as a bare ApiException", new Octokit.ApiException(ResponseWith(System.Net.HttpStatusCode.Forbidden)) },
+        { "anything else", new InvalidOperationException("boom") },
+    };
 }

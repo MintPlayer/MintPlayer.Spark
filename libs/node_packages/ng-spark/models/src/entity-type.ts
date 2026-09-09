@@ -122,4 +122,17 @@ export interface EntityType {
   attributes: EntityAttributeDefinition[];
   /** Query aliases or IDs to display as related query tables on the detail page. */
   queries?: string[];
+  /**
+   * The definitions of this type's AsDetail row types, sent alongside it so a detail table can draw
+   * its columns.
+   *
+   * Needed because a row type usually has no rights of its own — a row is edited through its parent
+   * — and the entity-type catalogue is gated on `Query`. Resolving a row type from the catalogue
+   * therefore failed silently, and the table rendered with **no columns at all**.
+   *
+   * Per-caller and gated on the *parent's* right, which is the same gate that already ships each
+   * row's attribute schema inside `attr.objects`. Pruned server-side: no `queryType`, `indexName`,
+   * `queries` or `alias`.
+   */
+  detailTypes?: EntityType[];
 }

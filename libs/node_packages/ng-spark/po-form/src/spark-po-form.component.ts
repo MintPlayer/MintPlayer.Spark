@@ -27,6 +27,7 @@ import {
   AsDetailColumnsPipe,
   AsDetailCellValuePipe,
   CanCreateDetailRowPipe,
+  CanEditDetailRowPipe,
   CanDeleteDetailRowPipe,
   InlineRefOptionsPipe,
   ErrorForAttributePipe,
@@ -64,7 +65,7 @@ import { RefreshCoordinator, triggersImmediately } from './refresh-coordinator';
 
 @Component({
   selector: 'spark-po-form',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPreview, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsTreeSelectComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, SparkReferencePickerComponent, SparkLookupPickerComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayTypePipe, LookupOptionsPipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, InlineRefOptionsPipe, ErrorForAttributePipe, SparkAttributeDescriptionComponent],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPreview, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsTreeSelectComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, SparkReferencePickerComponent, SparkLookupPickerComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayTypePipe, LookupOptionsPipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, CanEditDetailRowPipe, InlineRefOptionsPipe, ErrorForAttributePipe, SparkAttributeDescriptionComponent],
   templateUrl: './spark-po-form.component.html',
   // The CDK drag placeholder is a clone of the dragged row (so it keeps the exact row
   // height). Hide its contents but keep it occupying space, so the drop gap is blank and
@@ -283,12 +284,24 @@ export class SparkPoFormComponent {
     const types = await this.sparkService.getEntityTypes();
     const newAsDetailTypes: Record<string, EntityType> = {};
 
+    // The catalogue is Query-gated, and a row type edited through its parent usually has no rights
+    // of its own — so it is normally absent from `types`, and resolving from there alone left
+    // `asDetailTypes` empty. `asDetailColumns` then returned [] and the table rendered with no
+    // columns at all. The server now ships the row definitions alongside the parent, gated on the
+    // parent's right; the catalogue stays the first source so nothing changes for a type that is
+    // in it (#385).
+    const embedded = this.entityType()?.detailTypes ?? [];
+
     for (const attr of asDetailAttrs) {
-      const asDetailType = types.find(t => t.clrType === attr.asDetailType);
+      const asDetailType =
+        types.find(t => t.clrType === attr.asDetailType)
+        ?? embedded.find(t => t.clrType === attr.asDetailType);
       if (asDetailType) {
         newAsDetailTypes[attr.name] = asDetailType;
 
         if (attr.isArray) {
+          // Ask by CLR type when the row type carries no alias — the embedded copy has its alias
+          // pruned, and `getPermissions` accepts either.
           const perms = await this.sparkService.getPermissions(asDetailType.id);
           this.asDetailPermissions.update(prev => ({ ...prev, [attr.name]: perms }));
 

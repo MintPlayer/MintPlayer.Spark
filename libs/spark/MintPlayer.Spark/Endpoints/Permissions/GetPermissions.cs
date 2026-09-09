@@ -16,7 +16,15 @@ internal sealed partial class GetPermissions : IGetEndpoint, IMemberOf<SparkGrou
     {
         var entityTypeId = (string)httpContext.Request.RouteValues["entityTypeId"]!;
 
-        var entityType = modelLoader.ResolveEntityType(entityTypeId);
+        // ClrType is a fallback rather than part of ResolveEntityType, deliberately. That helper has
+        // a dozen call sites — every persistent-object and custom-action endpoint — and widening it
+        // would make POST /spark/po/{ClrType}/... route, plus create a collision class where a CLR
+        // name equal to another type's alias silently wins. Here it is safe and needed: an AsDetail
+        // attribute names its row type by CLR name and by nothing else, so a client asking about a
+        // row type has no other key to ask with (#385). No existence oracle either — the unknown
+        // answer below is byte-identical to the fully-denied one.
+        var entityType = modelLoader.ResolveEntityType(entityTypeId)
+            ?? modelLoader.GetEntityTypeByClrType(entityTypeId);
         if (entityType is null)
         {
             // This endpoint is deliberately anonymous-callable (audit M-1), so it closes

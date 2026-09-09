@@ -558,6 +558,18 @@ it was in the same file.
 Fixed in `docs/issue_384_plan.md`. See also `docs/guide-asdetail-attributes.md`, which now states
 the invariant the gate got wrong.
 
+**A second regression of the same family, found 2026-09-09.** #382's other half — the upload-token
+refactor — added `ApiTokenActions`, whose row filter used `owners.Contains(...)` where RavenDB needs
+`.In()`. Both `ApiToken` query surfaces returned 500 in production while the whole suite stayed
+green, because the save path *compiles* a row filter and runs it in memory, where the untranslatable
+form is valid. Different subject, identical shape to the breadcrumb defect above: **something shipped
+without a path that exercises it**, and the tests that existed could not have failed.
+
+Worth naming because it is now twice in one PR. Both halves of #382 were individually well argued
+and separately tested; what neither had was a test over the surface a *user* reaches. The cheap
+guard for the next change of this kind is to ask, per shipped behaviour, "which test would go red if
+this did nothing at all?" — and to treat "none" as unfinished rather than as a coverage statistic.
+
 ---
 
 ## 6. Risks

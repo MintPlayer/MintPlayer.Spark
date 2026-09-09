@@ -6,6 +6,7 @@ import { AsDetailTypePipe } from './as-detail-type.pipe';
 import { AttributeValuePipe } from './attribute-value.pipe';
 import { CanCreateDetailRowPipe } from './can-create-detail-row.pipe';
 import { CanDeleteDetailRowPipe } from './can-delete-detail-row.pipe';
+import { CanEditDetailRowPipe } from './can-edit-detail-row.pipe';
 import { ErrorForAttributePipe } from './error-for-attribute.pipe';
 import { InlineRefOptionsPipe } from './inline-ref-options.pipe';
 import { InputTypePipe } from './input-type.pipe';
@@ -334,6 +335,37 @@ describe('CanDeleteDetailRowPipe', () => {
   });
   it('defaults to false when no permission entry exists', () => {
     expect(pipe.transform({ name: 'rows' } as any, {})).toBe(false);
+  });
+});
+
+// #387 — the third of the family. The server has answered `canEdit` all along; nothing read it for
+// the row path, so the form offered an edit the save would silently undo.
+describe('CanEditDetailRowPipe', () => {
+  const pipe = new CanEditDetailRowPipe();
+
+  it('returns the canEdit permission', () => {
+    expect(pipe.transform({ name: 'rows' } as any, { rows: { canEdit: true } as any })).toBe(true);
+  });
+
+  it('gates the row when canEdit is false', () => {
+    expect(pipe.transform({ name: 'rows' } as any, { rows: { canEdit: false } as any })).toBe(false);
+  });
+
+  // Fail closed, matching its siblings. A missing entry means the row type's permissions were never
+  // fetched -- which is the #385 condition -- not that the caller may edit.
+  it('defaults to false when no permission entry exists', () => {
+    expect(pipe.transform({ name: 'rows' } as any, {})).toBe(false);
+  });
+
+  // Guard against reading the wrong flag: canCreate and canDelete must not stand in for canEdit.
+  it('does not confuse canEdit with its siblings', () => {
+    const perms = { rows: { canCreate: true, canDelete: true, canEdit: false } as any };
+    expect(pipe.transform({ name: 'rows' } as any, perms)).toBe(false);
+  });
+
+  it('keys on the attribute name, not the first entry', () => {
+    const perms = { other: { canEdit: true } as any, rows: { canEdit: false } as any };
+    expect(pipe.transform({ name: 'rows' } as any, perms)).toBe(false);
   });
 });
 

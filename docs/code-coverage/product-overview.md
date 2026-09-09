@@ -291,9 +291,22 @@ All upstream blockers have landed:
 
 > ⚠️ **`contents` was raised from read to write** for `DeleteBranchOnPrClose`. `Git.Reference.Delete`
 > needs write; with read the call returns 403, and because branch deletion is deliberately
-> non-throwing (it must never fail a webhook), that 403 is swallowed into a log line. The feature
+> non-throwing (it must never fail a webhook), that 403 was swallowed into a log line. The feature
 > would look implemented and do nothing — which is exactly the state the flag was already in before
 > this work.
+>
+> **This paragraph is the only place the requirement is written down.** There is no App manifest, no
+> terraform, nothing machine-readable — the App's permissions live solely in GitHub's UI, so
+> "verify `contents: write` is requested" is not an operation this repository can perform or test.
+> Checked 2026-09-09: the installation page showed no permissions awaiting acceptance, which is
+> consistent both with the App having always held `contents: write` (it is also listed above for
+> source display and `push` events) and with the raise never having been made. Only the App's
+> settings page can tell them apart.
+>
+> A 403 is now logged distinctly rather than through the catch-all, naming an unaccepted permission
+> as the likely cause. Worth knowing when reading those logs: GitHub answers **404, not 403**, for
+> some refs a token may not write, so a permission failure can still surface as "branch was already
+> gone" — that message now says so.
 >
 > Raising a permission on an installed GitHub App is **not** a deploy-time change: every existing
 > installation must accept the new permission before it takes effect for that account. Until an

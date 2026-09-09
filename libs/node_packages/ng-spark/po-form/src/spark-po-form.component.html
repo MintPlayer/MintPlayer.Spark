@@ -107,7 +107,10 @@
                  <bs-select> binds to row[col.name] and shows the value while dragging. -->
             <ng-template #inlineDetailCell let-row="row" let-col="col" let-attr="attr" let-rowIndex="rowIndex">
               <td>
-                @if (col.isReadOnly) {
+                <!-- A row the caller may not edit renders through the same read-only span as a
+                     read-only column: still fully readable, just not editable. Hiding it would
+                     hide the data, and the save path would silently restore any edit anyway. -->
+                @if (col.isReadOnly || !(attr | canEditDetailRow:asDetailPermissions())) {
                   <span class="text-muted">{{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}</span>
                 } @else if (getAsDetailCellEditRenderer(col); as editRenderer) {
                   <ng-container *ngComponentOutlet="editRenderer; inputs: getAsDetailCellEditRendererInputs(editRenderer, row, col)"></ng-container>
@@ -291,9 +294,11 @@
                       </td>
                     }
                     <td class="text-nowrap">
-                      <button type="button" class="btn btn-sm btn-outline-secondary me-1" (click)="editArrayItem(attr, $index)">
-                        <spark-icon name="pencil" />
-                      </button>
+                      @if (attr | canEditDetailRow:asDetailPermissions()) {
+                        <button type="button" class="btn btn-sm btn-outline-secondary me-1" (click)="editArrayItem(attr, $index)">
+                          <spark-icon name="pencil" />
+                        </button>
+                      }
                       @if (attr | canDeleteDetailRow:asDetailPermissions()) {
                         <button type="button" class="btn btn-sm btn-outline-danger" (click)="removeArrayItem(attr, $index)">
                           <spark-icon name="trash" />

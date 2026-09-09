@@ -62,11 +62,28 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
     /// of "signed in, manages nothing" — and is why this must return a filter rather than
     /// <see langword="null"/> for that case.
     /// </para>
+    /// <para>
+    /// ⚠️ <c>In()</c> rather than <c>owners.Contains(...)</c> is load-bearing, not style — the same
+    /// rule <see cref="RepositoryVisibility"/> and <see cref="GitHubProjectVisibility"/> state. A
+    /// <c>string[]</c> receiver binds to the untranslatable <c>MemoryExtensions.Contains</c>, and
+    /// RavenDB's LINQ provider throws <c>NotSupportedException: Expression type not supported:
+    /// TypedParameterExpression</c> when it translates the query.
+    /// </para>
+    /// <para>
+    /// That is not a theoretical risk: this filter is <b>pushed into the database query</b>
+    /// (<c>RowSecurity.ComposeRowFilterAsync</c> does so whenever the element type equals the entity
+    /// type, which holds here), so it must be translatable. Written with <c>Contains</c> it took
+    /// down both ApiToken query surfaces in production with a bare 500 — while every test stayed
+    /// green, because the save path <em>compiles</em> this same expression and runs it in memory,
+    /// where <c>MemoryExtensions.Contains</c> is perfectly valid.
+    /// </para>
     /// </remarks>
     public override async Task<Expression<Func<ApiToken, bool>>?> GetRowFilterAsync(string action)
     {
         var owners = await visibility.GetAllowedOwnersAsync();
-        return token => token.AccountLogin != null && owners.Contains(token.AccountLogin);
+        // No null guard: In() simply does not match a null field, and adding one back would
+        // reintroduce the OrElse/AndAlso shape the provider chokes on.
+        return token => token.AccountLogin.In(owners);
     }
 
     /// <summary>

@@ -353,7 +353,10 @@ is the intended default — a discovered board is inert until someone enables it
 
 - `PullRequestReviewApproved`, `PullRequestReviewChangesRequested`, `PullRequestReviewRequested`
   (need a second account).
-- The `DeleteBranchOnPrClose` path (D3).
+- ~~The `DeleteBranchOnPrClose` path (D3).~~ **Not unverified — unbuilt at the time.** #369 declared
+  the flag and, in the same PR, deleted the only implementation that had ever acted on it. #382 then
+  implemented it on `Repository` and #391 covered every arm with tests. It remains unexercised
+  end-to-end for a different reason: the flag has no writer, so nobody can turn it on (#389).
 - Whether `CreateGraphQLConnectionAsync`'s token-refreshing handler behaves across a token
   expiry — the run was far shorter than an installation token's lifetime.
 - The generic-UI editing surface (M7/S2): the board document was seeded directly into RavenDB
@@ -414,6 +417,13 @@ GitHub call on **every action click** as well as every render (C5's re-materiali
 *still* needing a document for the enabled board — and its disable is destructive.
 
 ### D3 — Head-branch deletion becomes opt-in per board
+
+> ⚠️ **Superseded.** The flag moved from the **board** to the **repository** in #382
+> (`M_202609081600_MoveDeleteBranchFlagToRepository` dropped it from `GitHubProject`), because a
+> board and a repository are siblings: gating on a board made it unreachable for an owner with no
+> board, inert for a board with no pull-request rule, and duplicated for an owner with two. The
+> decision below is retained for the reasoning; read "per repository" wherever it says "per board".
+> Note also that the flag currently has **no writer** — see #389.
 
 `DeleteBranchOnPullRequestClose` deletes the head branch on **every** PR close, org-wide and
 unconditionally. `Contents: write` is now granted, so this would work — which is precisely why it

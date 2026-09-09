@@ -14,6 +14,7 @@ export * from './as-detail-cell-value.pipe';
 export * from './as-detail-display-value.pipe';
 export * from './can-create-detail-row.pipe';
 export * from './can-delete-detail-row.pipe';
+export * from './can-edit-detail-row.pipe';
 export * from './lookup-display-type.pipe';
 export * from './lookup-display-value.pipe';
 export * from './lookup-options.pipe';
