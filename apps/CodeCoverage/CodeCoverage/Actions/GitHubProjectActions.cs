@@ -83,8 +83,14 @@ public partial class GitHubProjectActions : DefaultPersistentObjectActions<GitHu
     /// <c>EventColumnMapping.Id</c> documents itself as "derived from the event type, because one
     /// board maps each event at most once" — and nothing derived it. Rules saved with
     /// <c>Id: ""</c>, verified in the database, so <b>every</b> rule on a board shared the same
-    /// key. The inline collection editor identifies rows by it across saves, which makes two
-    /// blank-keyed rows indistinguishable to the editor.
+    /// key.
+    /// <para>
+    /// ⚠️ This note used to blame the inline collection editor, saying it identifies rows by the key
+    /// across saves. It does not — it splices by array index, and nothing in ng-spark reads an
+    /// embedded row's id. The blank keys mattered because the <em>save path</em> matches stored rows
+    /// against incoming ones by key, which is what preserves server-owned fields and decides the row
+    /// type's rights. Two blank-keyed rows are indistinguishable to that comparison.
+    /// </para>
     /// <para>
     /// Derived here rather than in the entity's constructor or a property setter because the event
     /// type is not known until the client has filled the row in: the mapper materializes a rule

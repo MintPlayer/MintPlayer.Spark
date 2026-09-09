@@ -16,9 +16,17 @@ namespace CodeCoverage.Entities;
 public partial class EventColumnMapping
 {
     /// <summary>
-    /// Stable key for this row, so the generic UI's inline collection editor can identify it across
-    /// saves. Derived from the event type, because one board maps each event at most once.
+    /// Stable key for this row, so a save can match it against the stored collection. Derived from
+    /// the event type, because one board maps each event at most once.
     /// </summary>
+    /// <remarks>
+    /// ⚠️ This used to say the key existed "so the generic UI's inline collection editor can
+    /// identify it across saves". That was never true: nothing in ng-spark reads an embedded row's
+    /// id, and the inline editor splices rows by array index. The key matters on the <em>server</em>
+    /// — it is what lets a save populate onto the stored row rather than a fresh one, which is what
+    /// keeps <see cref="LastError"/> and friends from being wiped, and what makes the row type's
+    /// New/Edit/Delete rights decidable.
+    /// </remarks>
     [ValueKey]
     public string Id { get; set; } = string.Empty;
 
