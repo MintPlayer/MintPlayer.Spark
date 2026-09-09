@@ -3,6 +3,7 @@ using CodeCoverage.Entities;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Webhooks.GitHub.Messages;
+using MintPlayer.Spark.Webhooks.GitHub.Services;
 using Octokit.Webhooks.Events;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
@@ -26,6 +27,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IMessageBus messageBus;
     [Inject] private readonly ILogger<GitHubEventsRecipient> logger;
+    [Inject] private readonly IGitHubInstallationService installationService;
 
     /// <summary>Bound on a per-account repository sweep; the session's request budget is 30.</summary>
     private const int MaxRepositoriesPerAccount = 1024;
@@ -326,6 +328,10 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                 RepositoryGitHubId = evt.Repository.Id,
                 PullRequestNumber = (int)evt.Number,
             }, ct);
+
+            // After the broadcast, not before: the retention message is in-process and cheap, and
+            // it should not wait behind a GitHub round-trip that may take seconds or fail.
+            await DeleteHeadBranchIfEnabled(evt, ct);
             return;
         }
 
@@ -363,6 +369,75 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                 HeadSha = pr.Head.Sha,
                 AuthorIsBot = pr.User?.Type is not null && pr.User.Type == Octokit.Webhooks.Models.UserType.Bot,
             }, ct);
+        }
+    }
+
+    /// <summary>
+    /// Deletes a merged pull request's head branch, when the repository opted in.
+    /// </summary>
+    /// <remarks>
+    /// Ported from the WebhooksDemo recipient this replaced, with the two changes that made the
+    /// setting safe on a multi-tenant server: it is gated on a per-repository opt-in instead of
+    /// applying bot-wide, and it fires only for merged pull requests instead of every close.
+    /// <para>
+    /// Deliberately not on the project-automation path. A board and a repository are siblings, so
+    /// gating this on a board would have made it unreachable for an owner with no board, inert for
+    /// a board carrying no pull-request rule, and duplicated for an owner with two. See C16.
+    /// </para>
+    /// <para>
+    /// Never throws. Deleting the branch is a courtesy after the merge has already landed; failing
+    /// the webhook delivery over it would cost us the event and change nothing about the merge.
+    /// </para>
+    /// </remarks>
+    private async Task DeleteHeadBranchIfEnabled(PullRequestEvent evt, CancellationToken ct)
+    {
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(evt.Repository!.Id), ct);
+        if (repository is null || !repository.DeleteBranchOnPrClose)
+            return;
+
+        var pr = evt.PullRequest;
+        var headRepo = pr.Head.Repo;
+        var baseRepo = pr.Base.Repo;
+
+        // A fork's head branch lives in a repository we were never given write access to, and that
+        // its own owner still wants. The opt-in is on the base repository and cannot speak for it.
+        if (headRepo is null || baseRepo is null || headRepo.Id != baseRepo.Id)
+            return;
+
+        var installationId = evt.Installation?.Id;
+        if (installationId is null)
+        {
+            logger.LogWarning("No installation on pull_request for {FullName}; cannot delete branch {Ref}.",
+                baseRepo.FullName, pr.Head.Ref);
+            return;
+        }
+
+        var owner = baseRepo.Owner.Login;
+        var name = baseRepo.Name;
+        try
+        {
+            var client = await installationService.CreateInstallationClientAsync(installationId.Value);
+            await client.Git.Reference.Delete(owner, name, $"heads/{pr.Head.Ref}");
+            logger.LogInformation("Deleted branch {Owner}/{Repo}:{Ref} after PR #{Number} merged.",
+                owner, name, pr.Head.Ref, pr.Number);
+        }
+        catch (Octokit.NotFoundException)
+        {
+            // Lost a race with GitHub's own delete_branch_on_merge, or somebody deleted it by hand.
+            // The intended state is reached either way, so this is information, not a failure.
+            logger.LogInformation("Branch {Owner}/{Repo}:{Ref} was already gone for PR #{Number}.",
+                owner, name, pr.Head.Ref, pr.Number);
+        }
+        catch (Octokit.ApiValidationException ex)
+        {
+            // 422 is normally a protected branch. Retrying would fail identically every time.
+            logger.LogWarning(ex, "Refused to delete branch {Owner}/{Repo}:{Ref} for PR #{Number} (likely protected).",
+                owner, name, pr.Head.Ref, pr.Number);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to delete branch {Owner}/{Repo}:{Ref} for PR #{Number}.",
+                owner, name, pr.Head.Ref, pr.Number);
         }
     }
 

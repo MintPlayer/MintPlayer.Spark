@@ -285,9 +285,19 @@ All upstream blockers have landed:
 ## 11. Repo & deployment shape
 
 - **Coverage app**: standalone repo (`C:\Repos\Coverage`), scaffolded by copying the WebhooksDemo anatomy (built — see PLAN.md M1). **Versions (2026-08-12, post-M10)**: on `MintPlayer.Spark.*` **10.0.0-preview.42** (latest), `@mintplayer/ng-spark` 22.0.8, `@mintplayer/ng-spark-auth` ^22.1.0, `@mintplayer/ng-bootstrap` **22.15.0** + `@mintplayer/web-components` **2.12.0** (pinned exact), `highlight.js` **^11.11.1** as a direct dependency (optional peer upstream, but statically imported by the published code-snippet module).
-- **GitHub App** (one per environment, prod + dev, as WebhooksDemo does): repository permissions — contents: read (source display + `push` events), metadata: read (mandatory), pull requests: read (`pull_request` events); account permissions — email addresses: read (Spark's first-sign-in auto-provisioning requires a GitHub-attested verified primary email via `GET /user/emails`); checks: write + PR: write only later, with M9.11. No org permissions: viewer visibility comes from `GET /user/installations` with the user's own OAuth token. Webhook events — repository, push, pull_request (installation events are always delivered). Full setup table: README "GitHub App settings".
+- **GitHub App** (one per environment, prod + dev, as WebhooksDemo does): repository permissions — contents: **write** (source display + `push` events, and deleting a merged pull request's head branch — see below), metadata: read (mandatory), pull requests: read (`pull_request` events); account permissions — email addresses: read (Spark's first-sign-in auto-provisioning requires a GitHub-attested verified primary email via `GET /user/emails`); checks: write + PR: write only later, with M9.11. No org permissions: viewer visibility comes from `GET /user/installations` with the user's own OAuth token. Webhook events — repository, push, pull_request (installation events are always delivered). Full setup table: README "GitHub App settings".
 - **Dev loop**: RavenDB local, smee.io tunnel for webhooks, `dotnet run` (host spawns the Angular dev server — never run `ng serve` manually), `Synchronize` launch profile for model sync.
 - **Deployment**: docker-compose (app + pinned RavenDB on an internal network, Traefik labels) following WebhooksDemo's `docker-compose.yml`/Dockerfile — including its supply-chain notes (selective csproj COPY closure). Target host **coverage.mintplayer.com**. Fully automated pipeline (`publish.yml`): master push (docs/action/markdown-only pushes are path-filtered out) → test → ghcr.io image → SSH redeploy on the VPS (compose refetched from master; `.env` + `github-app.pem` are server-managed and never written by deploys). RavenDB data persists in the `raven-data` named volume; backup is out-of-band. One-time VPS/DNS checklist: README "Deployment".
+
+> ⚠️ **`contents` was raised from read to write** for `DeleteBranchOnPrClose`. `Git.Reference.Delete`
+> needs write; with read the call returns 403, and because branch deletion is deliberately
+> non-throwing (it must never fail a webhook), that 403 is swallowed into a log line. The feature
+> would look implemented and do nothing — which is exactly the state the flag was already in before
+> this work.
+>
+> Raising a permission on an installed GitHub App is **not** a deploy-time change: every existing
+> installation must accept the new permission before it takes effect for that account. Until an
+> installation accepts, branch deletion stays inert for it, and only for it.
 
 ---
 
