@@ -434,6 +434,35 @@ forgotten:
 the environment the check must run in — the browser, or a command-line build — because in every case
 the environment the previous attempt tested was the one where the mechanism happened to work.
 
+### ✅ Verified in a browser, 2026-09-09
+
+Against the HR demo, `Person.Jobs` (three `CarreerJob` rows), through the real Angular client — edit
+a field on one row, save, and read the database directly.
+
+| # | Result |
+|---|---|
+| 1 | Row 0's `ContractStart` changed; **all three rows kept their original keys**, and rows 1 and 2 were untouched. |
+| 2 | The `PUT` body carried `id` on **every** nested row (`…Jobs0`, `…Jobs1`, `…Jobs2`) — captured from the request, not inferred. |
+| 6 | Saving an unchanged collection left the change vector **and** last-modified byte-identical (`A:8491830295`). The real edit then moved it by exactly one. |
+
+Two incidental confirmations. The row keys in production shape were
+`Peoplea79d8d71cd604f6b9dcde64d03ed40b8Jobs0` — the backfill migration's derived format, so it ran at
+startup against a real database and worked on real data. And criterion 6 is the sharpest of the
+three: under the old rebuild-from-scratch behaviour every save minted fresh guids for every row, so
+an unchanged collection could not have left the change vector alone.
+
+⚠️ **What this does not cover.** `CarreerJob` has no read-only attribute in HR's model, so this
+demonstrates row *matching*, not read-only preservation. That is covered by
+`AsDetailStoredRowMergeTests`, which asserts the matched row is the **same instance** rather than a
+copy carrying the same values — the property that makes preservation hold for every read-only field
+rather than the ones a test happens to name.
+
+⚠️ **A trap worth recording for anyone repeating this.** The first attempt edited
+`input[type=date] >> nth=0`, which is `DateOfBirth` on the General tab — not a job row, which lives
+on a collapsed `Employment` tab and reports `visible: false` until it is opened. The save succeeded,
+the payload looked plausible, and the assertion under test was never exercised. Scope the selector to
+the grid (`table input[type=date]`) and open the tab first.
+
 ---
 
 ## 6. Risks
