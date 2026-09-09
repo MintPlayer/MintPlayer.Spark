@@ -28,7 +28,18 @@ public class GenerateIndexGenerator : IncrementalGenerator
 {
     private const string GenerateIndexAttributeFullName = "MintPlayer.Spark.Abstractions.GenerateIndexAttribute";
 
-    private const string SparkAbstractionsAssemblyName = "MintPlayer.Spark.Abstractions";
+    /// <summary>
+    /// The assembly that carried the model attributes before they moved into their own package.
+    /// Still accepted, so a consumer compiled against the old layout keeps working.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ This is the <em>only</em> assembly-name literal in the repository, and it is the one that
+    /// broke: every other name-based check keys on namespace, which survives an assembly move.
+    /// The live host is not hard-coded — it is read off the resolved attribute symbol, so adding a
+    /// third attribute package cannot silently repeat the failure. See
+    /// <see cref="ResolveAttributeHostAssembly"/>.
+    /// </remarks>
+    private const string LegacyAttributeHostAssemblyName = "MintPlayer.Spark.Abstractions";
 
     private const string SparkContextFullName = "MintPlayer.Spark.SparkContext";
 
@@ -450,13 +461,20 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
     /// <summary>
     /// Every <c>[GenerateIndex]</c> entity in a referenced assembly, read from metadata symbols.
-    /// <para>Filtered to assemblies that reference <c>MintPlayer.Spark.Abstractions</c>, since an assembly
-    /// that does not cannot carry the attribute. Without that filter this walks every type in every
-    /// reference, the BCL included.</para>
+    /// <para>Filtered to assemblies that reference whichever assembly declares
+    /// <c>[GenerateIndex]</c>, since an assembly that does not cannot carry it. Without that filter
+    /// this walks every type in every reference, the BCL included.</para>
+    /// <para>
+    /// ⚠️ The host assembly is <b>derived</b>, not named. Hard-coding it is what made HR's indexes
+    /// vanish when the attributes moved packages: the C# compiler emits an <c>AssemblyRef</c> only
+    /// for assemblies a compilation actually <em>uses</em>, so a library using the old assembly for
+    /// nothing but attributes stopped referencing it and was skipped without a diagnostic.
+    /// </para>
     /// </summary>
     private static ImmutableArray<GeneratedIndexInfo> DescribeReferenced(Compilation compilation, System.Threading.CancellationToken ct)
     {
-        if (compilation.GetTypeByMetadataName(GenerateIndexAttributeFullName) is null)
+        var attributeHost = ResolveAttributeHostAssembly(compilation);
+        if (attributeHost is null)
             return ImmutableArray<GeneratedIndexInfo>.Empty;
 
         var builder = ImmutableArray.CreateBuilder<GeneratedIndexInfo>();
@@ -465,7 +483,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
         {
             ct.ThrowIfCancellationRequested();
 
-            if (!ReferencesSparkAbstractions(reference)) continue;
+            if (!ReferencesAttributeHost(reference, attributeHost)) continue;
 
             foreach (var type in AllTypes(reference.GlobalNamespace, ct))
             {
@@ -477,10 +495,27 @@ public class GenerateIndexGenerator : IncrementalGenerator
         return builder.ToImmutable();
     }
 
-    private static bool ReferencesSparkAbstractions(IAssemblySymbol assembly)
-        => assembly.Name == SparkAbstractionsAssemblyName
+    /// <summary>
+    /// The simple name of the assembly declaring <c>[GenerateIndex]</c> in this compilation, or
+    /// <see langword="null"/> when the attribute is not referenced at all.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <c>GetTypeByMetadataName</c> also returns <see langword="null"/> when the name is declared
+    /// in <b>more than one</b> referenced assembly — the shape a consumer ends up in if it holds both
+    /// an old package that still contains the attributes and the new one that does. Emitting nothing
+    /// is the safe answer, but it is silent, which is why the moved types carry
+    /// <c>[TypeForwardedTo]</c> rather than relying on consumers to upgrade in lockstep.
+    /// </remarks>
+    private static string? ResolveAttributeHostAssembly(Compilation compilation)
+        => compilation.GetTypeByMetadataName(GenerateIndexAttributeFullName)?.ContainingAssembly?.Name;
+
+    private static bool ReferencesAttributeHost(IAssemblySymbol assembly, string attributeHost)
+        => IsAttributeHost(assembly.Name, attributeHost)
         || assembly.Modules.Any(module => module.ReferencedAssemblies
-            .Any(identity => identity.Name == SparkAbstractionsAssemblyName));
+            .Any(identity => IsAttributeHost(identity.Name, attributeHost)));
+
+    private static bool IsAttributeHost(string name, string attributeHost)
+        => name == attributeHost || name == LegacyAttributeHostAssemblyName;
 
     private static IEnumerable<INamedTypeSymbol> AllTypes(INamespaceSymbol ns, System.Threading.CancellationToken ct)
     {

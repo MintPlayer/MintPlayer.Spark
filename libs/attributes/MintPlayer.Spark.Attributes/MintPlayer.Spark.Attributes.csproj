@@ -6,12 +6,12 @@
 		<Nullable>enable</Nullable>
 
 		<!-- NuGet Package Metadata -->
-		<PackageId>MintPlayer.Spark.Messaging.Abstractions</PackageId>
+		<PackageId>MintPlayer.Spark.Attributes</PackageId>
 		<Version>10.0.0-preview.76</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
-		<Description>Abstractions for MintPlayer.Spark.Messaging: IMessageBus, IRecipient, and MessageQueueAttribute.</Description>
-		<PackageTags>messaging;message-bus;abstractions</PackageTags>
+		<Description>The MintPlayer.Spark model vocabulary: the attributes an entity library applies to its own types. Depends on nothing, so a library of entities need not reference the framework.</Description>
+		<PackageTags>low-code;framework;ravendb;attributes</PackageTags>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
 		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>

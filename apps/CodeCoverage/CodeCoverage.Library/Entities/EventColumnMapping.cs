@@ -12,12 +12,14 @@ namespace CodeCoverage.Entities;
 /// destroy them.
 /// </para>
 /// </summary>
-public class EventColumnMapping
+[ValueObject]
+public partial class EventColumnMapping
 {
     /// <summary>
     /// Stable key for this row, so the generic UI's inline collection editor can identify it across
     /// saves. Derived from the event type, because one board maps each event at most once.
     /// </summary>
+    [ValueKey]
     public string Id { get; set; } = string.Empty;
 
     /// <summary>Which GitHub event this rule reacts to.</summary>

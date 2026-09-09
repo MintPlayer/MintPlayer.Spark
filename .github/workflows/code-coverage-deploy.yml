@@ -25,6 +25,7 @@ on:
       # Spark dependency, add it here or a change to that library will not trigger a deploy.
       - 'libs/spark/MintPlayer.Spark/**'
       - 'libs/spark/MintPlayer.Spark.Abstractions/**'
+      - 'libs/attributes/MintPlayer.Spark.Attributes/**'
       - 'libs/authorization/MintPlayer.Spark.Authorization/**'
       - 'libs/controllers/MintPlayer.Spark.Controllers/**'
       - 'libs/cron/MintPlayer.Spark.Cron/**'
@@ -35,6 +36,7 @@ on:
       - 'libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/**'
       - 'libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/**'
       - 'libs/source_generators/MintPlayer.Spark.SourceGenerators/**'
+      - 'libs/source_generators/MintPlayer.Spark.LibraryGenerators/**'
       - 'libs/socket_extensions/MintPlayer.Dotnet.SocketExtensions/**'
       # Angular libraries baked into the image via `nx run @spark-apps/code-coverage:build`.
       - 'libs/node_packages/ng-spark/**'
