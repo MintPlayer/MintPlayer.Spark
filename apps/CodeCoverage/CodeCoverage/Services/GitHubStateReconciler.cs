@@ -205,8 +205,10 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
             project.InstallationId = installationId;
             project.Number = board.Number;
             project.Name = board.Title;
-            // AutomationEnabled, DeleteBranchOnPrClose and EventMappings are deliberately NOT
-            // touched. Discovery owns identity and reachability; the user owns configuration.
+            // AutomationEnabled and EventMappings are deliberately NOT touched. Discovery owns
+            // identity and reachability; the user owns configuration.
+            // (DeleteBranchOnPrClose used to be named here too. It moved to Repository in #382 and
+            // no longer exists on GitHubProject — the same rule applies to it there.)
             ConnectProject(project);
 
             // Columns ARE refreshed here, and that is load-bearing rather than convenience.

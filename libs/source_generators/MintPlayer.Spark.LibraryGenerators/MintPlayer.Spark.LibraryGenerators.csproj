@@ -11,7 +11,7 @@
 
         <!-- NuGet Package Metadata -->
         <PackageId>MintPlayer.Spark.LibraryGenerators</PackageId>
-		<Version>10.0.0-preview.76</Version>
+		<Version>10.0.0-preview.77</Version>
 		<Authors>MintPlayer</Authors>
         <Company>MintPlayer</Company>
         <Description>Source generators for a MintPlayer.Spark entity library: generates row keys for [ValueObject] types and registers them. Carries none of the index, actions or DI generators, which are application concerns.</Description>

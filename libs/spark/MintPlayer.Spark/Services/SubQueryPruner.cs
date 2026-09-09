@@ -90,4 +90,85 @@ internal static class SubQueryPruner
 
         return await permissionService.IsAllowedAsync("Query", query.EntityType, cancellationToken);
     }
+
+    /// <summary>
+    /// Attaches the definitions of this type's AsDetail row types, so the client can draw their
+    /// columns without finding them in the <c>Query</c>-gated catalogue (#385).
+    /// </summary>
+    /// <remarks>
+    /// Lives here rather than in a second helper because this file already owns the
+    /// copy-only-when-changed discipline, and its own remarks ask the next pruner to extend it.
+    /// The same rule applies: never mutate the singleton's graph, copy only when something is
+    /// attached, and return the same reference otherwise.
+    /// </remarks>
+    public static EntityTypeDefinition EmbedDetailTypes(
+        EntityTypeDefinition entityType,
+        IModelLoader modelLoader)
+    {
+        var collected = new Dictionary<Guid, EntityTypeDefinition>();
+        Collect(entityType, modelLoader, collected, depth: 0, visited: []);
+
+        if (collected.Count == 0)
+            return entityType;
+
+        var copy = entityType.ShallowCopy();
+        copy.DetailTypes = [.. collected.Values];
+        return copy;
+    }
+
+    /// <summary>
+    /// Walks AsDetail attributes breadth-first, collecting each row type once.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Both guards are load-bearing. AsDetail nests — <c>EntityMapper</c> recurses into a nested
+    /// AsDetail child — so a type reachable from itself (directly, or through a cycle of row types)
+    /// would otherwise recurse until the stack ran out. <paramref name="visited"/> stops a cycle;
+    /// <paramref name="depth"/> stops a legal-but-absurd nesting from producing a payload nobody
+    /// asked for.
+    /// </remarks>
+    private static void Collect(
+        EntityTypeDefinition entityType,
+        IModelLoader modelLoader,
+        Dictionary<Guid, EntityTypeDefinition> collected,
+        int depth,
+        HashSet<Guid> visited)
+    {
+        const int MaxDepth = 4;
+        if (depth > MaxDepth || !visited.Add(entityType.Id))
+            return;
+
+        foreach (var attribute in entityType.Attributes)
+        {
+            if (attribute.DataType != "AsDetail" || attribute.AsDetailType is null)
+                continue;
+
+            var rowType = modelLoader.GetEntityTypeByClrType(attribute.AsDetailType);
+            if (rowType is null || collected.ContainsKey(rowType.Id))
+                continue;
+
+            collected[rowType.Id] = Prune(rowType);
+            Collect(rowType, modelLoader, collected, depth + 1, visited);
+        }
+    }
+
+    /// <summary>
+    /// The embedded copy, minus the fields a caller with no right on the row type has no business
+    /// receiving and no client needs: the projection and query surface.
+    /// </summary>
+    /// <remarks>
+    /// This is what keeps the disclosure smaller than what <c>EntityMapper.ScaffoldFrom</c> already
+    /// ships for a non-empty collection. <c>QueryType</c> and <c>IndexName</c> name the RavenDB
+    /// projection and index; <c>Queries</c> names runnable sub-queries; <c>Alias</c> is a routable
+    /// identifier. A detail table reads <c>Attributes</c> and <c>Id</c> and nothing else.
+    /// </remarks>
+    private static EntityTypeDefinition Prune(EntityTypeDefinition rowType)
+    {
+        var copy = rowType.ShallowCopy();
+        copy.QueryType = null;
+        copy.IndexName = null;
+        copy.Queries = [];
+        copy.Alias = null;
+        copy.DetailTypes = null;   // flattened onto the root; never nested inside an embedded copy
+        return copy;
+    }
 }

@@ -39,6 +39,37 @@ public sealed class EntityTypeDefinition
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public bool? CanRead { get; set; }
     /// <summary>
+    /// The definitions of this type's AsDetail row types, so a client can render their columns
+    /// without resolving them from the <c>Query</c>-gated catalogue.
+    /// </summary>
+    /// <remarks>
+    /// An AsDetail row type frequently has no rights of its own — a row is edited through its
+    /// parent, so nobody grants <c>Query/{RowType}</c>. The client resolved the row type out of the
+    /// catalogue, which is <c>Query</c>-scoped, so those types were absent and the table rendered
+    /// with <b>no columns at all</b>: headers gone, rows reduced to an action cell (#385).
+    /// <para>
+    /// Gated on the <b>parent's</b> right, which is the same gate that already ships the row
+    /// schema: <c>EntityMapper.ScaffoldFrom</c> stamps every row in <c>attr.Objects</c> with its
+    /// type's attributes — labels, data types and validation rules included — with no permission
+    /// check on the row type. This carries the same information for the case that path cannot
+    /// reach, an empty collection.
+    /// </para>
+    /// <para>
+    /// ⚠️ Pruned, not copied wholesale. <c>QueryType</c>, <c>IndexName</c>, <c>Queries</c> and
+    /// <c>Alias</c> are cleared on the embedded copy: those are the projection-and-query surface
+    /// <c>PRD-SecurityAudit.md</c> names as worth withholding, and no client needs them to draw a
+    /// detail table.
+    /// </para>
+    /// <para>
+    /// Not persisted: <c>null</c> in a model file, filled in on the way out, per-caller — exactly
+    /// as <see cref="CanRead"/>. <c>ModelSynchronizer</c> writes definitions back to disk, so a
+    /// property that serialized by default would round-trip nested copies into every model file,
+    /// permanently.
+    /// </para>
+    /// </remarks>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public EntityTypeDefinition[]? DetailTypes { get; set; }
+    /// <summary>
     /// The CLR type name of the projection type used for RavenDB index queries.
     /// Set when a projection class has [FromIndex] attribute linking to an index for this entity.
     /// Example: "Demo.Data.VCar"

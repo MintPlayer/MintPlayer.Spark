@@ -294,6 +294,36 @@ Two consequences when writing code or tests here:
 - **Do not reintroduce an id test.** Having a key says nothing about whether a breadcrumb was resolved for the object.
 - **Test embedded breadcrumbs with a keyed type.** A keyless fixture passes with or without the mechanism working.
 
+### How the row type's definition reaches the client
+
+A detail table draws its columns from the **row type's** `EntityTypeDefinition`. The client used to
+resolve that from the entity-type catalogue (`GET /spark/types`), which is scoped to the `Query`
+right — and a row type usually has no rights of its own, because a row is edited through its parent
+and nobody thinks to grant `Query/{RowType}`.
+
+The result was silent and total: the row type was absent, `asDetailColumns` returned `[]`, and the
+table rendered with **no columns at all** — headers gone, every row reduced to an action cell. No
+console error, no server log.
+
+So the server now ships each AsDetail row type's definition alongside its parent, in
+`EntityTypeDefinition.DetailTypes`:
+
+- **Gated on the parent's right**, not the row type's. That is the same gate that already ships the
+  row *schema*: `EntityMapper.ScaffoldFrom` stamps every row in `attr.objects` with its type's
+  attributes — labels, data types and validation rules — with no check on the row type at all.
+- **Pruned.** `queryType`, `indexName`, `queries` and `alias` are cleared on the embedded copy. A
+  detail table needs `attributes` and `id`; the rest is projection-and-query surface.
+- **Per-caller, never persisted** — like `canRead`. A property that serialized by default would be
+  round-tripped into every model file by `ModelSynchronizer`, permanently.
+
+The catalogue is still the client's first source and is **not** widened. `Query`-scoping it is
+deliberate: `spark-po-detail` depends on it for sub-query pruning.
+
+> ⚠️ **Restoring the columns does not restore the buttons.** A row type with no grants gets an
+> honest `canCreate: false` / `canEdit: false`, so the table becomes readable but not editable. If
+> users are meant to manage those rows, the row type needs its own grant — a type used only as an
+> `asDetailType` still needs a type-level right.
+
 When a template renders blank, the server substitutes the **CLR type name** as a placeholder. That is deliberate but is *not* data — the client filters it out (`resolvedBreadcrumb` in `@mintplayer/ng-spark/models`) rather than printing it. Any new client code reading a breadcrumb off the wire must filter it too, or a cell with an unset template renders the literal `BuildFeedback`.
 
 ### Edit View -- Single Object (Modal)

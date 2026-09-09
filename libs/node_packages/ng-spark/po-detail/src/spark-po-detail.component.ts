@@ -319,9 +319,14 @@ export class SparkPoDetailComponent {
 
     const types = this.allEntityTypes();
     const newAsDetailTypes: Record<string, EntityType> = {};
+    // Same fallback as the form: a row type is usually absent from the Query-gated catalogue, and
+    // the server now ships its definition alongside the parent (#385).
+    const embedded = this.entityType()?.detailTypes ?? [];
 
     for (const attr of asDetailAttrs) {
-      const asDetailType = types.find(t => t.clrType === attr.asDetailType);
+      const asDetailType =
+        types.find(t => t.clrType === attr.asDetailType)
+        ?? embedded.find(t => t.clrType === attr.asDetailType);
       if (asDetailType) {
         newAsDetailTypes[attr.name] = asDetailType;
         const refCols = asDetailType.attributes.filter(a => a.dataType === 'Reference' && a.query);

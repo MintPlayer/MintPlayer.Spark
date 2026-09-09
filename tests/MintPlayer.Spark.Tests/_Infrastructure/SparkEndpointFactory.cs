@@ -16,12 +16,18 @@ namespace MintPlayer.Spark.Tests._Infrastructure;
 /// </summary>
 public sealed class SparkEndpointFactory : SparkEndpointFactory<TestSparkContext>
 {
+    /// <param name="security">
+    /// Forwarded so an authorization test can narrow the rights without dropping to the generic
+    /// base. Absent means the base's permissive default, which is what every test that is not
+    /// about authorization wants.
+    /// </param>
     public SparkEndpointFactory(
         IDocumentStore testStore,
         EntityTypeFile[] models,
         Action<IServiceCollection>? configureServices = null,
-        Action<ISparkBuilder>? configureSpark = null)
-        : base(testStore, models, configureServices, configureSpark)
+        Action<ISparkBuilder>? configureSpark = null,
+        SparkTestSecurity? security = null)
+        : base(testStore, models, configureServices, configureSpark, security: security)
     {
     }
 }
