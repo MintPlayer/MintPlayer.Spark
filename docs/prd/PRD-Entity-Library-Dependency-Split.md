@@ -66,22 +66,18 @@ package's README, not only in a PRD.
 Either drop that reference or move `[Replicated]` into the attributes package. Until this is done,
 Fleet and HR keep the framework reference no matter what else moves.
 
-### D3 — ⚠️ Resolve the marker assembly, never name it
+### D3 — ✅ Resolve the marker assembly, never name it — ALREADY DONE
 
-`GenerateIndexGenerator` filters candidate assemblies by literal name, and that is the bug that made
-HR's indexes vanish when the attributes moved. The row-identity work fixes it by accepting both
-names, which is correct but is a patch: **adding a fourth package that carries a model attribute
-reintroduces the identical failure**, and this PRD adds exactly such a package.
-
-The self-maintaining form derives the answer from the compilation, which already resolves the
-attribute at `GenerateIndexGenerator.cs:459`:
+`GenerateIndexGenerator` filtered candidate assemblies by literal name, and that is the bug that made
+HR's indexes vanish when the attributes moved. **The row-identity work already replaced it with the
+derived form** (`e75b1647`), so this PRD's extra package cannot repeat the failure:
 
 ```csharp
-compilation.GetTypeByMetadataName(GenerateIndexAttributeFullName)!.ContainingAssembly.Name
+compilation.GetTypeByMetadataName(GenerateIndexAttributeFullName)?.ContainingAssembly?.Name
 ```
 
-∪ the legacy `"MintPlayer.Spark.Abstractions"` for binaries compiled before the split. Then the claim
-is derived rather than asserted.
+The legacy name is *not* also accepted — there is no backward-compatibility requirement, and keeping
+it would have been the same asserted-literal habit in a smaller form.
 
 **The general rule, worth writing down once:** every other name-based check in this repo keys on
 *namespace*, which `GetTypeByMetadataName` and `ToDisplayString` make cheap and safe. The single
@@ -119,6 +115,9 @@ one graph, `GenerateIndexGenerator.cs:108`/`:459`, `HostTranslationsAggregatorGe
 `ProjectionPropertyAnalyzer.cs:30,54` and `AttributeDescriptionsGenerator.cs:82` all **silently
 switch off**. Indexes and translations vanish with no diagnostic. `[TypeForwardedTo]` on every moved
 type removes this entirely and costs one line each.
+
+⚠️ **The attribute split shipped without forwarders** (`19c4c4b2`), since there is no
+backward-compatibility requirement. Everything below applies only if that changes.
 
 ⚠️ These attributes and model types are read by **runtime reflection** —
 `ModelSynchronizer.cs:684-686`, `ReferenceResolver.cs:15` — so a pre-built consumer assembly does not

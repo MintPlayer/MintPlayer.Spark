@@ -7,18 +7,12 @@ frees exactly one project out of four.
 
 ## Milestones
 
-### S1 — ⚠️ Fix the assembly filter properly first
-Before adding another package that carries a model attribute, replace
-`GenerateIndexGenerator.cs:481`'s literal-name pair with the resolved symbol's assembly:
+### S1 — ✅ Assembly filter already derived — nothing to do
+`GenerateIndexGenerator` no longer names the assembly it looks for; it reads it off the resolved
+attribute symbol (`e75b1647`). That was the guard this plan needed before adding a third attribute
+host, and it is in place.
 
-```csharp
-compilation.GetTypeByMetadataName(GenerateIndexAttributeFullName)!.ContainingAssembly.Name
-```
-
-∪ `"MintPlayer.Spark.Abstractions"` for pre-split binaries. A1's fix accepts both names, which is
-correct but is a patch — **this plan adds exactly the third host that would re-break it.**
-
-Gate: `tests/.../Generators/ReferencedAssemblyEntityTests.cs:18-28` already builds an entity that uses
+Still run the gate before and after S2, since it is the cheapest way to catch a repeat: `tests/.../Generators/ReferencedAssemblyEntityTests.cs:18-28` already builds an entity that uses
 `[GenerateIndex]`/`[Search]` and nothing else Spark — the precise HR shape. It would have caught the
 original breakage. Run it, don't rely on a solution build.
 
@@ -40,8 +34,12 @@ regardless of S2. Either drop the reference or move `[Replicated]` into the attr
 ### S5 — Target `netstandard2.0` on at least one
 The actual payoff, and the proof S1–S4 worked.
 
-### S6 — `[TypeForwardedTo]` for every moved type
-⚠️ Not optional despite preview-grade breaking changes being acceptable. These types are read by
+### S6 — `[TypeForwardedTo]` for every moved type — ⚠️ ONLY IF compatibility is wanted
+The attribute split shipped **without** forwarders (`19c4c4b2`): there is no backward-compatibility
+requirement, so they serve a consumer nobody is promising anything to. Skip this step unless that has
+changed — and if it has, apply it to the attributes too, not only the types this plan moves.
+
+The reason it is worth reconsidering rather than deleting: These types are read by
 **runtime reflection** (`ModelSynchronizer.cs:684-686`, `ReferenceResolver.cs:15`), so a pre-built
 consumer does not fail loudly — it produces a **wrong model**. Verify by loading a pre-split consumer
 assembly against the new packages.

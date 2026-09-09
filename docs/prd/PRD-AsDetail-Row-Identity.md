@@ -320,10 +320,13 @@ the generators: `GetTypeByMetadataName` returns `null` on a duplicate declaratio
 `ProjectionPropertyAnalyzer.cs:30,54` and `AttributeDescriptionsGenerator.cs:82` all switch off and
 indexes vanish with no diagnostic.
 
-⚠️ **`[TypeForwardedTo]` for all 12 moved types.** Breaking changes are acceptable at preview grade,
-but this break is not one a consumer can see: the attributes are read by *runtime reflection*
-(`ModelSynchronizer.cs:684-686`, `ReferenceResolver.cs:15`), so a pre-built entity assembly against
-the new Abstractions yields a **wrong model** rather than an error. Twelve one-line forwards.
+🚫 **`[TypeForwardedTo]` was added and then removed** (`19c4c4b2`), and the reasoning is worth
+keeping because it is finely balanced. The break is not one a consumer can see — the attributes are
+read by *runtime reflection* (`ModelSynchronizer.cs:684-686`, `ReferenceResolver.cs:15`), so a
+pre-built entity assembly against the new Abstractions yields a **wrong model** rather than an error,
+which is exactly the failure class forwarders exist for. It came out because there is no
+backward-compatibility requirement at all here: forwarders serve a consumer nobody is promising
+anything to. If that ever changes, twelve one-line forwards restore it.
 
 ⚠️ **Carry the `GenerateIndexGenerator` fix with it.** Moving the attributes out of Abstractions
 silently broke HR's index generation: the generator filters referenced assemblies to those
@@ -472,7 +475,7 @@ the grid (`table input[type=date]`) and open the tab first.
 | The client change touches every AsDetail form | Reserved-key precedent already exists and is commented; covered by the ng-spark test suite. |
 | Merging onto stored rows changes save semantics for every embedded type | It only *adds* preservation of values that were previously destroyed. No value that was written before stops being written. |
 | Apps with existing keyless data | R6: migration first, then fail closed. Spark's own data is 100% keyless. |
-| Breaking change for consumers | Packages are preview-grade; breaking changes are acceptable and no `[TypeForwardedTo]` is needed. |
+| Breaking change for consumers | Packages are preview-grade and there is no compatibility requirement, so no `[TypeForwardedTo]`. ⚠️ Note the failure mode if that ever changes: these attributes are reflected at runtime, so a stale consumer gets a *wrong model*, not a load error. |
 
 ---
 
