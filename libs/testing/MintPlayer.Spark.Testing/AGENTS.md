@@ -103,6 +103,39 @@ public class CarQueryTests(CarHost host)
 }
 ```
 
+### ⚠️ `GetService<T>()` is the root provider — one scoped service, one session, forever
+
+`GetService<T>()` resolves from the **root** provider. `IAsyncDocumentSession` is scoped, and so is
+everything built over it — `IDatabaseAccess` among them. So a service resolved once in
+`InitializeAsync` and reused across a test class runs **every save through a single Raven session**.
+
+That matters because a Raven session has an identity map. The second save's `LoadAsync` returns the
+instance the *first* save stored, not the document as it is on disk — so anything that changed it in
+between (a background stamp, a migration, a second session in the test itself) is **invisible**, and
+the assertion fails against code that is entirely correct.
+
+This is exactly how it presents: a merge-preservation test failed reporting lost data, when the
+mapper had faithfully preserved everything its stale `existing` held.
+
+One save = one scope = one session, the way a real request works:
+
+```csharp
+private async Task<PersistentObject> SaveAsync(PersistentObject po)
+{
+    using var scope = _factory.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<IDatabaseAccess>();
+    return await db.SavePersistentObjectAsync(po);
+}
+```
+
+`GetService<T>()` stays fine for singletons (`IModelLoader`, `IDocumentStore`) and for a one-shot
+resolve inside a single logical request. Reach for `CreateScope()` the moment a test performs two.
+
+⚠️ Not to be confused with which *store* is in play: the factory removes Spark's own
+`IDocumentStore` registration and substitutes the driver's, so `Store` and anything resolved from the
+host are the same instance and the same database. `SparkTestDriverSmokeTests.The_host_uses_the_drivers_store`
+pins that.
+
 ### What a shared database forbids
 
 These are the ways a class silently breaks when moved. All of them are reasons to **stay on

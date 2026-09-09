@@ -1,6 +1,9 @@
 # PRD — Row identity for AsDetail collections
 
-**Status:** draft · **Branch:** `feat/asdetail-row-identity` · **Issues:** #379, #380
+**Status:** ✅ implemented, in review · **Branch:** `feat/asdetail-row-identity` · **PR:** #382 ·
+**Issues:** #379, #380
+
+All nine acceptance criteria in §5 are met — 1, 2 and 6 in a real browser (§5.1), the rest by test.
 
 Supersedes an earlier draft (`PRD-AsDetail-Server-Lifecycle.md`, never merged, kept out-of-tree at
 `~/.claude/pending-plans/asdetail-lifecycle-v1/`). That draft's central mechanism was measured to be
@@ -455,16 +458,74 @@ three: under the old rebuild-from-scratch behaviour every save minted fresh guid
 an unchanged collection could not have left the change vector alone.
 
 ⚠️ **What this does not cover.** `CarreerJob` has no read-only attribute in HR's model, so this
-demonstrates row *matching*, not read-only preservation. That is covered by
-`AsDetailStoredRowMergeTests`, which asserts the matched row is the **same instance** rather than a
-copy carrying the same values — the property that makes preservation hold for every read-only field
-rather than the ones a test happens to name.
+demonstrates row *matching*, not read-only preservation. That is covered twice over:
+`AsDetailStoredRowMergeTests` asserts the matched row is the **same instance** rather than a copy
+carrying the same values — the property that makes preservation hold for every read-only field
+rather than the ones a test happens to name — and
+`AsDetailRowIdentityRoundTripTests.A_read_only_field_survives_an_edit_to_its_row` proves it end to
+end, through `SavePersistentObjectAsync` and back out of RavenDB.
+
+### ⚠️ A preserved key proves nothing on its own
+
+The sharpest trap in this whole design, found while writing the round-trip tests, and it invalidates
+the most obvious way to check the work.
+
+`EntityMapper.TryWriteId` writes the payload's key onto the row **on both paths** — the merged stored
+instance and a freshly built one. So a row that was rebuilt from scratch is *indistinguishable by its
+key* from a row that was merged. Every "the keys were preserved" assertion, the browser check in the
+table above included, is really testing that the key round-trips and gets written back. It says
+nothing about whether R4's merge happened.
+
+**Only a field the payload does not carry separates the two.** That is why criterion 1 is the load-
+bearing one and why it names a read-only property, and it is why the round-trip test above is worth
+its cost even though six of its seven assertions duplicate cheaper tests.
+
+### ⚠️ One session is not one request
+
+`SparkEndpointFactory.GetService<T>()` resolves from the **root** provider, but
+`IAsyncDocumentSession` — and everything over it, `IDatabaseAccess` included — is *scoped*. A test
+that resolves one and reuses it therefore runs every save through a single Raven session, and a Raven
+session has an identity map: the update path is handed the instance loaded during the create, so a
+document changed out of band in between is simply invisible.
+
+Written that way, the read-only test above **failed against entirely correct mapper code** — the
+merge faithfully preserved what its stale `existing` held, which was the pre-stamp value. Use
+`SparkEndpointFactory.CreateScope()` to model a second request. This is a fixture hazard, not a
+product one: real requests get a scope each.
 
 ⚠️ **A trap worth recording for anyone repeating this.** The first attempt edited
 `input[type=date] >> nth=0`, which is `DateOfBirth` on the General tab — not a job row, which lives
 on a collapsed `Employment` tab and reports `visible: false` until it is opened. The save succeeded,
 the payload looked plausible, and the assertion under test was never exercised. Scope the selector to
 the grid (`table input[type=date]`) and open the tab first.
+
+---
+
+## 5.2 Fixed along the way
+
+Both were found by using the feature rather than by testing it, and both are pre-existing — neither
+was introduced here.
+
+**The reference picker rendered no selectable rows.** Adding a `Job` row and opening the `Profession`
+picker threw `can't access property "find", item.attributes is undefined` on every cell.
+`reference-attr-value.pipe.ts` read `item.attributes`, which is the `PersistentObject` shape — but a
+picker's rows are `QueryResultItem`s, carrying `values` (`[{ key, value, breadcrumb }]`) and no
+`attributes` at all. Latent since #155; the row shape changed under it in #327, whose M13 added
+`valueFor` for exactly this reason ("a renderer reused across a grid and an AsDetail table sees two
+[shapes]") — this pipe was simply missed in that sweep. Now goes through `valueFor`, so
+`QueryResultItem` is untouched and the pipe also works if a picker is ever pointed at an AsDetail
+sub-table.
+
+Checked for siblings: four other pipes still read `.attributes` directly (`arrayValue`,
+`attributeValue`, `rawAttributeValue`, `referenceChips`), but all four are used only from
+`spark-po-detail.component.html`, which renders `PersistentObject`s. `referenceAttrValue` was the
+only one pointed at a query row.
+
+**`isVisible` was outside the model hash.** Every field that gates a write must be structural, or a
+change to it does not register as model drift. Added to `ModelFileShape.StructuralAttributeFields`. The question arrived the other way round — whether
+`isReadOnly` should come *out*, since a synchronize has no business changing it. It stayed: every
+field that gates a write is structural, and a future SparkEditor that toggles one recomputes the hash
+anyway. Auditing the list against that rule is what turned up `isVisible`, which was the actual hole.
 
 ---
 
