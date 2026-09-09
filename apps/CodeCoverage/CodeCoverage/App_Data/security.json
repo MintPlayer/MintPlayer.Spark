@@ -77,12 +77,6 @@
       "isDenied": false
     },
     {
-      "id": "c0e5a9e1-0000-4000-8000-000000000031",
-      "resource": "Manage/UploadToken",
-      "groupId": "00000000-0000-0000-0000-000000000001",
-      "isDenied": false
-    },
-    {
       "id": "c0e5a9e1-0000-4000-8000-000000000032",
       "resource": "Manage/RepoSettings",
       "groupId": "00000000-0000-0000-0000-000000000001",
@@ -145,6 +139,18 @@
     {
       "id": "c0e5a9e1-0000-4000-8000-000000000066",
       "resource": "QueryReadEditNewDelete/EventColumnMapping",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "c0e5a9e1-0000-4000-8000-000000000069",
+      "resource": "QueryReadEditNew/ApiToken",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "c0e5a9e1-0000-4000-8000-00000000006a",
+      "resource": "Revoke/ApiToken",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
     },

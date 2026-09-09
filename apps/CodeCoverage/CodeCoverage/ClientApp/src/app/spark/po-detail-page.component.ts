@@ -6,7 +6,6 @@ import { RepoBadgePanelComponent } from '../components/repo-badge-panel/repo-bad
 import { RepoGatePanelComponent } from '../components/repo-gate-panel/repo-gate-panel.component';
 import { RepoTrendPanelComponent } from '../components/repo-trend-panel/repo-trend-panel.component';
 import { RepoSetupPanelComponent } from '../components/repo-setup-panel/repo-setup-panel.component';
-import { AccountTokensPanelComponent } from '../components/account-tokens-panel/account-tokens-panel.component';
 import { CommitFilesExtrasComponent } from './commit-files-extras.component';
 import { HomeExtrasComponent } from './home-extras.component';
 
@@ -33,8 +32,7 @@ import { HomeExtrasComponent } from './home-extras.component';
   selector: 'app-po-detail-page',
   imports: [
     SparkPoDetailComponent,
-    RepoBadgePanelComponent, RepoGatePanelComponent, RepoTrendPanelComponent, RepoSetupPanelComponent,
-    AccountTokensPanelComponent, CommitFilesExtrasComponent, HomeExtrasComponent,
+    RepoBadgePanelComponent, RepoGatePanelComponent, RepoTrendPanelComponent, RepoSetupPanelComponent, CommitFilesExtrasComponent, HomeExtrasComponent,
   ],
   template: `
     <spark-po-detail [extraContentTemplate]="extras" />
@@ -51,10 +49,6 @@ import { HomeExtrasComponent } from './home-extras.component';
         <app-commit-files-extras [po]="po" />
       } @else if (entityType.name === 'Home') {
         <app-home-extras />
-      } @else if (entityType.name === 'Account') {
-        @if (loginOf(po); as login) {
-          <app-account-tokens-panel [login]="login" />
-        }
       }
     </ng-template>
   `,
@@ -68,8 +62,4 @@ export default class PoDetailPageComponent {
     return owner && name ? { owner, name } : null;
   }
 
-  loginOf(po: PersistentObject): string | null {
-    const login = valueFor(po, 'Login')?.value;
-    return typeof login === 'string' && login ? login : null;
-  }
 }

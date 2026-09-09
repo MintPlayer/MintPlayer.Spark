@@ -156,6 +156,26 @@
   },
   "queries": [
     {
+      "id": "9b1f4c7e-2a63-4d05-8f19-6c40b7e2a913",
+      "name": "Account_UploadTokens",
+      "description": {
+        "en": "Upload tokens",
+        "fr": "Jetons d'envoi",
+        "nl": "Upload-tokens"
+      },
+      "source": "Custom.Account_UploadTokens",
+      "alias": "account-upload-tokens",
+      "sortColumns": [
+        {
+          "property": "CreatedAtUtc",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "ApiToken",
+      "isStreamingQuery": false
+    },
+    {
       "id": "cf2462ff-efde-4a89-a48e-b2b53c101f7a",
       "name": "GetApiTokens",
       "source": "Database.ApiTokens",

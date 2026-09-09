@@ -122,7 +122,8 @@
     ],
     "queries": [
       "account-repositories",
-      "account-projects"
+      "account-projects",
+      "account-upload-tokens"
     ]
   },
   "queries": [
