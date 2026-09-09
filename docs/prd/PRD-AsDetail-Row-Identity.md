@@ -594,8 +594,8 @@ using (var session1 = store.OpenSession())
         LastName = "De Clippel",
         Addresses =
         [
-            new() { Street = "Deinzestraat", Number = "231" },
-            new() { Street = "Abdijsteeg", Number = "30" },
+            new() { Street = "Voorbeeldstraat", Number = "231" },
+            new() { Street = "Voorbeeldlaan", Number = "30" },
         ]
     };
     session1.Store(newPerson);
@@ -633,8 +633,8 @@ Output — first block is what was **written**, second is what a **new session r
   "FirstName": "Pieterjan",
   "LastName": "De Clippel",
   "Addresses": [
-    { "Id": "e1d5868d333e4ae79ec9dca0ddad5d58", "Street": "Deinzestraat", "Number": "231" },
-    { "Id": "d309a4e676ee4b4ea75754472d5a9d90", "Street": "Abdijsteeg",   "Number": "30"  }
+    { "Id": "e1d5868d333e4ae79ec9dca0ddad5d58", "Street": "Voorbeeldstraat", "Number": "231" },
+    { "Id": "d309a4e676ee4b4ea75754472d5a9d90", "Street": "Voorbeeldlaan",   "Number": "30"  }
   ]
 }
 [
@@ -643,8 +643,8 @@ Output — first block is what was **written**, second is what a **new session r
     "FirstName": "Pieterjan",
     "LastName": "De Clippel",
     "Addresses": [
-      { "Id": "e1d5868d333e4ae79ec9dca0ddad5d58", "Street": "Deinzestraat", "Number": "231" },
-      { "Id": "d309a4e676ee4b4ea75754472d5a9d90", "Street": "Abdijsteeg",   "Number": "30"  }
+      { "Id": "e1d5868d333e4ae79ec9dca0ddad5d58", "Street": "Voorbeeldstraat", "Number": "231" },
+      { "Id": "d309a4e676ee4b4ea75754472d5a9d90", "Street": "Voorbeeldlaan",   "Number": "30"  }
     ]
   }
 ]

@@ -74,8 +74,8 @@ public class NestedRowIdentityTests : SparkTestDriver
             {
                 Addresses =
                 [
-                    new() { Street = "Deinzestraat", Number = "231" },
-                    new() { Street = "Abdijsteeg", Number = "30" },
+                    new() { Street = "Voorbeeldstraat", Number = "231" },
+                    new() { Street = "Voorbeeldlaan", Number = "30" },
                 ],
             };
             await session.StoreAsync(person);
@@ -120,8 +120,8 @@ public class NestedRowIdentityTests : SparkTestDriver
             {
                 Addresses =
                 [
-                    new() { Street = "Deinzestraat", Number = "231" },
-                    new() { Street = "Abdijsteeg", Number = "30" },
+                    new() { Street = "Voorbeeldstraat", Number = "231" },
+                    new() { Street = "Voorbeeldlaan", Number = "30" },
                 ],
             };
             await session.StoreAsync(legacy);
@@ -169,7 +169,7 @@ public class NestedRowIdentityTests : SparkTestDriver
         string personId;
         using (var session = store.OpenAsyncSession())
         {
-            var legacy = new LegacyPerson { Addresses = [new() { Street = "Deinzestraat", Number = "231" }] };
+            var legacy = new LegacyPerson { Addresses = [new() { Street = "Voorbeeldstraat", Number = "231" }] };
             await session.StoreAsync(legacy);
             await session.SaveChangesAsync();
             personId = legacy.Id!;

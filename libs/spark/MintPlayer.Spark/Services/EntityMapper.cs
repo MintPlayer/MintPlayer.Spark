@@ -211,11 +211,17 @@ internal partial class EntityMapper : IEntityMapper
         po.Id = idProperty is not null ? AccessorCache.GetGetter(idProperty)(entity)?.ToString() : null;
 
         // Name/Breadcrumb come from the pre-resolved breadcrumb result (recursive, server-side).
-        // Embedded AsDetail objects have no id and aren't keyed in the result → render their own
-        // [Breadcrumb] template in place, substituting the resolved breadcrumb for each reference
-        // token (the resolver descended into AsDetail children, so those targets are resolved).
+        // The gate is on the LOOKUP MISSING, not on the object having no id: BreadcrumbResult holds
+        // *document* ids, so an embedded AsDetail object is absent from it because it is embedded.
+        // It is not absent because it is unkeyed -- since #382 every [ValueObject] carries a row
+        // key, minted by a field initializer that runs during deserialization, so in memory every
+        // embedded collection row has a non-empty po.Id that is never a key in this map. Testing
+        // for an empty id here therefore skipped the renderer for every keyed row (#384).
+        // On a miss, render the object's own [Breadcrumb] template in place, substituting the
+        // resolved breadcrumb for each reference token -- the resolver descended into AsDetail
+        // children, so those targets are resolved, and a redacted one stays redacted.
         var breadcrumb = breadcrumbs?.Get(po.Id);
-        if (string.IsNullOrWhiteSpace(breadcrumb) && breadcrumbs is not null && string.IsNullOrEmpty(po.Id))
+        if (string.IsNullOrWhiteSpace(breadcrumb) && breadcrumbs is not null)
         {
             var def = modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
             breadcrumb = EmbeddedBreadcrumbRenderer.Render(

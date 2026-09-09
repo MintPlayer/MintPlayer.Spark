@@ -90,12 +90,12 @@ describe('AsDetailDisplayValuePipe', () => {
     const types = { addr: { name: 'Address', breadcrumb: '{Crumb}' } } as any;
     const formData = {
       addr: {
-        Street: 'Abdijsteeg 30', PostalCode: '9700', City: 'Oudenaarde',
-        [AS_DETAIL_SELF_BREADCRUMB_KEY]: 'Abdijsteeg 30, 9700 Oudenaarde',
+        Street: 'Voorbeeldlaan 2', PostalCode: '1000', City: 'Brussel',
+        [AS_DETAIL_SELF_BREADCRUMB_KEY]: 'Voorbeeldlaan 2, 1000 Brussel',
       },
     };
 
-    expect(pipe.transform(attr, formData, types)).toBe('Abdijsteeg 30, 9700 Oudenaarde');
+    expect(pipe.transform(attr, formData, types)).toBe('Voorbeeldlaan 2, 1000 Brussel');
   });
 
   /**

@@ -95,7 +95,20 @@ export const AS_DETAIL_ROW_KEY = '__sparkRowKey';
  * rendering nothing — it reads as a real value. `typeName` lets a caller filter it back out.
  */
 export function selfBreadcrumb(row: Record<string, any> | null | undefined, typeName?: string): string | null {
-  const value = row?.[AS_DETAIL_SELF_BREADCRUMB_KEY];
+  return resolvedBreadcrumb(row?.[AS_DETAIL_SELF_BREADCRUMB_KEY], typeName);
+}
+
+/**
+ * The same filter as {@link selfBreadcrumb}, for a caller holding the server's breadcrumb string
+ * directly rather than a flattened row dict — `attr.object.breadcrumb` on a detail page, or a query
+ * cell's `breadcrumb`.
+ *
+ * Split out so there is exactly one answer to "is this the type-name placeholder?". The first
+ * implementation lived inside `selfBreadcrumb` and so covered only the two pipes that flatten a row
+ * first; the two that read the string straight off the wire kept printing `BuildFeedback` and
+ * `GateSettings` at users (#384). A second copy of the comparison is how that happens again.
+ */
+export function resolvedBreadcrumb(value: unknown, typeName?: string): string | null {
   if (typeof value !== 'string' || value.trim() === '') return null;
 
   // Callers hold the type name in two shapes — `EntityType.name` is the short model name, while an
@@ -115,6 +128,19 @@ export function selfBreadcrumb(row: Record<string, any> | null | undefined, type
  * reference-query options page. Prefixed to avoid colliding with a real attribute name.
  */
 export const AS_DETAIL_BREADCRUMBS_KEY = '__sparkBreadcrumbs';
+
+/**
+ * Whether a flattened-row key is one this module reserved rather than a model attribute.
+ *
+ * `nestedPoToDict` and `nestedPoToDisplayRow` stash the row key and the resolved breadcrumbs
+ * alongside the real values, which is safe on the way back — `dictToNestedPo` walks the entity
+ * type's attributes and never the dict's keys. It is *not* safe for anything that enumerates the
+ * dict to build display text: a caller joining `Object.values(dict)` prints the row's guid and its
+ * own breadcrumb as though they were fields.
+ */
+export function isReservedAsDetailKey(key: string): boolean {
+  return key === AS_DETAIL_ROW_KEY || key === AS_DETAIL_SELF_BREADCRUMB_KEY || key === AS_DETAIL_BREADCRUMBS_KEY;
+}
 
 /**
  * Like {@link nestedPoToDict}, but for the read-only detail display path. In addition to each

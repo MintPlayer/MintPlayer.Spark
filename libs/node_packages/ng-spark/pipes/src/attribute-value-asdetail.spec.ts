@@ -7,7 +7,7 @@ import { EntityType, PersistentObject } from '@mintplayer/ng-spark/models';
  *
  * Observed against Fleet at `/po/company/Companies%2F1d509…`: the Address column rendered the
  * literal text `(object)` while the payload carried
- * `attributes[Address].object.breadcrumb === "Deinzestraat 231, 9700 Oudenaarde"`.
+ * `attributes[Address].object.breadcrumb === "Voorbeeldstraat 1, 1000 Brussel"`.
  *
  * The cause is structural rather than incidental. HR declares
  * `[Breadcrumb, IgnoreProperty] public string Crumb => $"{Street}, {PostalCode} {City}"`, so the
@@ -65,11 +65,11 @@ const run = (item: PersistentObject) =>
 
 describe('AttributeValuePipe — AsDetail summary', () => {
   it('uses the breadcrumb the server resolved', () => {
-    const item = personWithAddress('Deinzestraat 231, 9700 Oudenaarde', {
-      Street: 'Deinzestraat 231', PostalCode: '9700', City: 'Oudenaarde',
+    const item = personWithAddress('Voorbeeldstraat 1, 1000 Brussel', {
+      Street: 'Voorbeeldstraat 1', PostalCode: '1000', City: 'Brussel',
     });
 
-    expect(run(item)).toBe('Deinzestraat 231, 9700 Oudenaarde');
+    expect(run(item)).toBe('Voorbeeldstraat 1, 1000 Brussel');
   });
 
   /**
@@ -77,8 +77,8 @@ describe('AttributeValuePipe — AsDetail summary', () => {
    * no `Crumb` attribute, `applyFieldTemplate` yielded an empty string, and the placeholder won.
    */
   it('does not fall back to a placeholder when the template names a property the model omits', () => {
-    const item = personWithAddress('Deinzestraat 231, 9700 Oudenaarde', {
-      Street: 'Deinzestraat 231', PostalCode: '9700', City: 'Oudenaarde',
+    const item = personWithAddress('Voorbeeldstraat 1, 1000 Brussel', {
+      Street: 'Voorbeeldstraat 1', PostalCode: '1000', City: 'Brussel',
     });
 
     expect(run(item)).not.toBe('(object)');
@@ -96,14 +96,56 @@ describe('AttributeValuePipe — AsDetail summary', () => {
   });
 
   it('joins the scalar values when the server sent no breadcrumb at all', () => {
-    const item = personWithAddress(null, { Street: 'Deinzestraat 231', PostalCode: '9700', City: 'Oudenaarde' });
+    const item = personWithAddress(null, { Street: 'Voorbeeldstraat 1', PostalCode: '1000', City: 'Brussel' });
 
-    expect(run(item)).toBe('Deinzestraat 231, 9700, Oudenaarde');
+    expect(run(item)).toBe('Voorbeeldstraat 1, 1000, Brussel');
   });
 
   it('renders an empty cell for an empty object, not a placeholder', () => {
     const item = personWithAddress(null, { Street: null, PostalCode: null, City: null });
 
     expect(run(item)).toBe('');
+  });
+
+  /**
+   * #384 — the server's OTHER placeholder. `EntityMapper` substitutes the CLR type name when a
+   * template renders blank, and this pipe printed it verbatim: a `Build` whose `Feedback.State`
+   * was unset showed the literal "BuildFeedback" in the cell, which reads as a real value.
+   *
+   * `selfBreadcrumb` has filtered exactly this since it was written, but only for the two pipes
+   * that flatten a row into a dict first. This one reads `attr.object.breadcrumb` off the wire and
+   * so was never covered.
+   */
+  it('does not print the CLR type name the server substitutes for a blank template', () => {
+    const item = personWithAddress('Address', { Street: null, PostalCode: null, City: null });
+
+    expect(run(item)).toBe('');
+  });
+
+  it('filters the type name even when scalars remain, falling through to them', () => {
+    // The placeholder is not data, so the joined scalars are strictly more use than "Address".
+    const item = personWithAddress('Address', { Street: 'Voorbeeldstraat 1', PostalCode: '1000', City: null });
+
+    expect(run(item)).toBe('Voorbeeldstraat 1, 1000');
+  });
+
+  /**
+   * The scalar join enumerates the flattened dict, and `nestedPoToDict` stashes the row key and
+   * the row's own breadcrumb in it. Latent until the filter above made this branch reachable while
+   * a breadcrumb was present: before that, the only way here was the server sending none, which is
+   * exactly when there is nothing stashed to leak.
+   */
+  it('does not join the reserved row key or breadcrumb into the fallback text', () => {
+    const item = personWithAddress('Address', { Street: 'Voorbeeldstraat 1', PostalCode: null, City: null });
+    (item.attributes[0] as any).object.id = 'a1b2c3d4e5f6';
+
+    expect(run(item)).toBe('Voorbeeldstraat 1');
+  });
+
+  it('keeps a real breadcrumb that merely resembles the type name', () => {
+    // Guard on the filter being too eager: only an exact match on the short name is a placeholder.
+    const item = personWithAddress('Address 12', { Street: 'Address 12', PostalCode: null, City: null });
+
+    expect(run(item)).toBe('Address 12');
   });
 });
