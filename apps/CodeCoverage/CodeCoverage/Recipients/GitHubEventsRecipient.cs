@@ -421,11 +421,34 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             logger.LogInformation("Deleted branch {Owner}/{Repo}:{Ref} after PR #{Number} merged.",
                 owner, name, pr.Head.Ref, pr.Number);
         }
+        catch (Octokit.ApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            // The installation cannot write refs. Almost always a `contents` permission that was
+            // raised after the installation was created and never accepted -- in which case the
+            // feature is inert everywhere, not just here, and looks enabled in the UI.
+            //
+            // Caught on StatusCode rather than on ForbiddenException because Octokit raises a bare
+            // ApiException for some 403s; PullRequestCommentPublisher catches the same way, for the
+            // same reason. Logged distinctly because the catch-all below made "not permitted" look
+            // identical to a transient fault.
+            logger.LogError(ex,
+                "Not permitted to delete branch {Owner}/{Repo}:{Ref} for PR #{Number}. The GitHub App "
+                + "installation is missing `contents: write` -- a raised permission must be accepted "
+                + "per installation before branch deletion can work.",
+                owner, name, pr.Head.Ref, pr.Number);
+        }
         catch (Octokit.NotFoundException)
         {
-            // Lost a race with GitHub's own delete_branch_on_merge, or somebody deleted it by hand.
-            // The intended state is reached either way, so this is information, not a failure.
-            logger.LogInformation("Branch {Owner}/{Repo}:{Ref} was already gone for PR #{Number}.",
+            // Usually a race with GitHub's own delete_branch_on_merge, or a hand deletion -- the
+            // intended state is reached either way, so that is information rather than a failure.
+            //
+            // ⚠️ But not always: GitHub answers 404 rather than 403 for some refs a token may not
+            // write, so this arm can also be a permission failure wearing the wrong status. The
+            // message says both, because logging "already gone" at Information for a permission
+            // problem is how a dead feature looks healthy.
+            logger.LogInformation(
+                "Branch {Owner}/{Repo}:{Ref} was already gone for PR #{Number} -- or the installation "
+                + "may not be permitted to see it (GitHub answers 404 for some refs a token cannot write).",
                 owner, name, pr.Head.Ref, pr.Number);
         }
         catch (Octokit.ApiValidationException ex)
