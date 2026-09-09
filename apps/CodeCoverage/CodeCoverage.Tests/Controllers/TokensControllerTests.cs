@@ -116,10 +116,9 @@ public class TokensControllerTests : CoverageRavenTest
         Assert.Equal("Account", created.Scope);
         Assert.Equal(Owner, created.AccountLogin);
 
-        // The document is keyed by the HASH. Storing the plaintext would make a database dump a
-        // set of working upload credentials.
-        using var verify = store.OpenAsyncSession();
-        var stored = await verify.LoadAsync<ApiToken>(ApiToken.DocumentId(ApiTokenService.Hash(created.TokenValue)));
+        // Only the HASH is stored. Storing the plaintext would make a database dump a set of
+        // working upload credentials.
+        var stored = await LoadByHashAsync(store, ApiTokenService.Hash(created.TokenValue));
         Assert.NotNull(stored);
         Assert.Equal(42, stored!.AccountGitHubId);
 
@@ -168,7 +167,8 @@ public class TokensControllerTests : CoverageRavenTest
                 Scope = "Account",
                 AccountLogin = Owner,
                 CreatedAtUtc = DateTime.UtcNow,
-            }, ApiToken.DocumentId(hash));
+                Hash = hash,
+            }, ApiToken.NewDocumentId());
             await seed.SaveChangesAsync();
         }
 
@@ -181,8 +181,7 @@ public class TokensControllerTests : CoverageRavenTest
 
         Assert.IsType<ForbidResult>(result);
 
-        using var verify = store.OpenAsyncSession();
-        var stored = await verify.LoadAsync<ApiToken>(ApiToken.DocumentId(hash));
+        var stored = await LoadByHashAsync(store, hash);
         Assert.Null(stored!.RevokedAtUtc);
     }
 
@@ -199,7 +198,8 @@ public class TokensControllerTests : CoverageRavenTest
                 Scope = "Account",
                 AccountLogin = Owner,
                 CreatedAtUtc = DateTime.UtcNow,
-            }, ApiToken.DocumentId(hash));
+                Hash = hash,
+            }, ApiToken.NewDocumentId());
             await seed.SaveChangesAsync();
         }
 
@@ -209,8 +209,7 @@ public class TokensControllerTests : CoverageRavenTest
             Assert.IsType<NoContentResult>(await controller.Revoke(hash, default));
         }
 
-        using var verify = store.OpenAsyncSession();
-        Assert.NotNull((await verify.LoadAsync<ApiToken>(ApiToken.DocumentId(hash)))!.RevokedAtUtc);
+        Assert.NotNull((await LoadByHashAsync(store, hash))!.RevokedAtUtc);
     }
 
     [Fact]
@@ -233,5 +232,17 @@ public class TokensControllerTests : CoverageRavenTest
         var result = await controller.List(Owner, default);
 
         Assert.IsType<ForbidResult>(result.Result);
+    }
+
+    /// <summary>
+    /// Loads a token by its hash. The document id is a guid now, so the hash is a field lookup —
+    /// see ApiToken's remarks for why the id stopped being the hash.
+    /// </summary>
+    private static async Task<ApiToken?> LoadByHashAsync(IDocumentStore store, string hash)
+    {
+        using var session = store.OpenAsyncSession();
+        return await session.Query<ApiToken>()
+            .Customize(q => q.WaitForNonStaleResults())
+            .FirstOrDefaultAsync(t => t.Hash == hash);
     }
 }

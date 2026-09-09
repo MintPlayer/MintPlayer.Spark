@@ -108,7 +108,8 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
                 RepositoryGitHubId = id,
                 AccountLogin = "acme",
                 CreatedAtUtc = DateTime.UtcNow,
-            }, ApiToken.DocumentId($"hash{id}"));
+                Hash = $"hash{id}",
+            }, ApiToken.NewDocumentId());
         }
 
         await session.SaveChangesAsync();
@@ -145,7 +146,10 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
 
         using var verify = store.OpenAsyncSession();
         Assert.Null(await verify.LoadAsync<Repository>(Repository.DocumentId(RepoId)));
-        Assert.Null(await verify.LoadAsync<ApiToken>(ApiToken.DocumentId($"hash{RepoId}")));
+        Assert.Empty(await verify.Query<ApiToken>()
+            .Customize(q => q.WaitForNonStaleResults())
+            .Where(t => t.Hash == $"hash{RepoId}")
+            .ToListAsync());
     }
 
     /// <summary>
@@ -202,7 +206,10 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
 
         using var verify = store.OpenAsyncSession();
         Assert.NotNull(await verify.LoadAsync<Repository>(Repository.DocumentId(OtherRepoId)));
-        Assert.NotNull(await verify.LoadAsync<ApiToken>(ApiToken.DocumentId($"hash{OtherRepoId}")));
+        Assert.NotEmpty(await verify.Query<ApiToken>()
+            .Customize(q => q.WaitForNonStaleResults())
+            .Where(t => t.Hash == $"hash{OtherRepoId}")
+            .ToListAsync());
     }
 
     /// <summary>

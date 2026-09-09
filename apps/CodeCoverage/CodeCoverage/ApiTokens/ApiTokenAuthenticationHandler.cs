@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using CodeCoverage.Entities;
+using Raven.Client.Documents;
+using Raven.Client.Documents.Linq;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 using Raven.Client.Documents.Session;
@@ -50,7 +52,18 @@ public class ApiTokenAuthenticationHandler : AuthenticationHandler<Authenticatio
             return AuthenticateResult.NoResult();
 
         var hash = ApiTokenService.Hash(tokenValue);
-        var token = await session.LoadAsync<ApiToken>(ApiToken.DocumentId(hash));
+
+        // ⚠️ A query, where this used to be a point-load on ApiTokens/{hash}. The document id is a
+        // guid now, so that the hash is not part of the id a PersistentObject puts on the wire —
+        // see ApiToken's remarks. The trade is deliberate: never sending the hash beats sending it
+        // only to the right callers, which depends on a row filter staying correct.
+        //
+        // Exactly one document can match: Hash is derived from 32 bytes of RandomNumberGenerator,
+        // and the write path is the only thing that sets it.
+        var token = await session.Query<ApiToken>()
+            .Where(t => t.Hash == hash)
+            .FirstOrDefaultAsync();
+
         if (token is null)
             return AuthenticateResult.Fail("Unknown token");
         if (token.RevokedAtUtc is not null)

@@ -82,7 +82,8 @@ public partial class TokensController : ControllerBase
             CreatedByUserId = user.Id!,
             CreatedAtUtc = DateTime.UtcNow,
         };
-        await session.StoreAsync(token, ApiToken.DocumentId(ApiTokenService.Hash(tokenValue)), cancellationToken);
+        token.Hash = ApiTokenService.Hash(tokenValue);
+        await session.StoreAsync(token, ApiToken.NewDocumentId(), cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
 
         // The plaintext value exists only in this response.
@@ -116,7 +117,11 @@ public partial class TokensController : ControllerBase
     [HttpDelete("{hash}")]
     public async Task<IActionResult> Revoke(string hash, CancellationToken cancellationToken)
     {
-        var token = await session.LoadAsync<ApiToken>(ApiToken.DocumentId(hash), cancellationToken);
+        // The route still names the hash, since that is what the existing client holds. Looked up as
+        // a field now that the document id is a guid.
+        var token = await session.Query<ApiToken>()
+            .Where(t => t.Hash == hash)
+            .FirstOrDefaultAsync(cancellationToken);
         if (token is null) return NotFound();
 
         if (token.AccountLogin is null || !await gitHubAccess.IsOwnerAllowedAsync(token.AccountLogin, cancellationToken))

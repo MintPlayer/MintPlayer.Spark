@@ -1,0 +1,173 @@
+{
+  "persistentObject": {
+    "id": "c312f028-5d74-4d1f-9026-ed07d53e9be0",
+    "name": "ApiToken",
+    "clrType": "CodeCoverage.Entities.ApiToken",
+    "breadcrumb": "{Description}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "cd6f88ae-a5a8-4f6d-a4c4-1d6d647e2a02",
+        "name": "AccountGitHubId",
+        "label": {
+          "en": "Account Git Hub Id"
+        },
+        "description": {
+          "en": "GitHub's numeric id for the owner this token uploads for, when Scope is \"Account\". Null on tokens issued before this field existed, which fall back to comparing AccountLogin so that no working token is invalidated by a deploy."
+        },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2e38b951-d090-4ed3-9bb7-f020b2721c5d",
+        "name": "AccountLogin",
+        "label": {
+          "en": "Account Login"
+        },
+        "description": {
+          "en": "Owner login this token uploads for, when Scope is \"Account\". Display only — a login is renameable and a repository can be transferred out from under it, so authorizing on this string means a token keeps working for an account that no longer owns the repository, and stops working for the one that does. AccountGitHubId is the authorization key."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "19e3a2c9-b12c-4c10-b536-3a4b08b2e6be",
+        "name": "CreatedAtUtc",
+        "label": {
+          "en": "Created At Utc"
+        },
+        "description": {
+          "en": "When the token was created (UTC)."
+        },
+        "dataType": "datetime",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b61a69db-681b-4b81-85cb-8c2bad2e18a2",
+        "name": "CreatedByUserId",
+        "label": {
+          "en": "Created By User Id"
+        },
+        "description": {
+          "en": "Id of the signed-in user who created this token."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e951c859-4995-4089-a41c-cf36ed3f7c26",
+        "name": "Description",
+        "label": {
+          "en": "Description"
+        },
+        "description": {
+          "en": "Free-text label telling you where this token is used, e.g. the CI workflow it was created for."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4d492d23-dae9-47d6-b256-902bf6de28c5",
+        "name": "RepositoryGitHubId",
+        "label": {
+          "en": "Repository Git Hub Id"
+        },
+        "description": {
+          "en": "GitHub repository id this token uploads for, when Scope is \"Repository\"."
+        },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2f5256a7-689f-4b9b-a439-2eb7dc55e65e",
+        "name": "RevokedAtUtc",
+        "label": {
+          "en": "Revoked At Utc"
+        },
+        "description": {
+          "en": "When the token was revoked (UTC); null while it is still valid for uploads."
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "59dc88b6-43ac-4a6f-891f-2aae9da7313d",
+        "name": "Scope",
+        "label": {
+          "en": "Scope"
+        },
+        "description": {
+          "en": "\"Account\" (all repos of a user/org) or \"Repository\" (one repo)."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "cf2462ff-efde-4a89-a48e-b2b53c101f7a",
+      "name": "GetApiTokens",
+      "source": "Database.ApiTokens",
+      "sortColumns": [
+        {
+          "property": "AccountLogin",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "ApiToken",
+      "isStreamingQuery": false
+    }
+  ]
+}
