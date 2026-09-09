@@ -41,15 +41,16 @@ Both need the same missing thing: a way to say *this incoming row is that stored
 
 ## 2. What was measured
 
-Everything in this section was observed, not reasoned. The RavenDB findings come from a standalone
-repro at `C:\Repos\idtest` (net10.0 console, RavenDB.Client 7.2.5, server 7.1.1 at localhost:8080),
-which is left in place and re-runnable.
+Everything in this section was observed, not reasoned, against RavenDB server 7.1.1 with client
+7.2.5. **Appendix A is the whole program and its output** — twenty lines, reproducible anywhere, and
+the thing to re-run before trusting any claim below. A second repro covers the keyless case that the
+appendix program structurally cannot produce (§A.2).
 
 ### 2.1 RavenDB needs no help storing a nested id
 
 | # | Question | Measured |
 |---|---|---|
-| M1 | Does a nested object's `Id` survive a round trip? | **Yes, exactly.** Stored `39d50b43…`, loaded `39d50b43…` through a fresh `IDocumentStore` and session. |
+| M1 | Does a nested object's `Id` survive a round trip? | **Yes, exactly.** Written `e1d5868d…` / `d309a4e6…`, read back byte-identical in a new session — Appendix A. |
 | M2 | How is it stored? | An ordinary property: `{"Children":[{"Id":"39d50b43…","Value":"a"}]}`. No metadata, no special handling. |
 | M5 | Is array order preserved? | **Yes**, verbatim, for 5 elements stored 1..5. |
 
@@ -276,3 +277,143 @@ done.
 | Merging onto stored rows changes save semantics for every embedded type | It only *adds* preservation of values that were previously destroyed. No value that was written before stops being written. |
 | Apps with existing keyless data | R6: migration first, then fail closed. Spark's own data is 100% keyless. |
 | Breaking change for consumers | Packages are preview-grade; breaking changes are acceptable and no `[TypeForwardedTo]` is needed. |
+
+---
+
+## Appendix A — the repro
+
+### A.1 A nested `Id` round-trips exactly (M1, M2, M5)
+
+The whole program. `Address.Id` is initialized the way the abandoned design generated it, which is
+what makes this the relevant experiment rather than a toy.
+
+```csharp
+using Newtonsoft.Json;
+using Raven.Client.Documents;
+using Raven.Client.Exceptions;
+using Raven.Client.ServerWide;
+using Raven.Client.ServerWide.Operations;
+
+using var store = new DocumentStore
+{
+    Urls = ["http://localhost:8080"],
+    Database = "TestDb"
+};
+store.Initialize();
+
+// Create the database when it is not there yet. CreateDatabaseOperation is not idempotent -- it
+// throws rather than no-opping -- so "if not exists" is a catch, not a flag.
+try
+{
+    store.Maintenance.Server.Send(new CreateDatabaseOperation(new DatabaseRecord("TestDb")));
+}
+catch (ConcurrencyException)
+{
+    // Already exists.
+}
+
+using (var session1 = store.OpenSession())
+{
+    foreach (var item in session1.Query<Person>())
+    {
+        session1.Delete(item);
+    }
+    Person newPerson = new()
+    {
+        FirstName = "Pieterjan",
+        LastName = "De Clippel",
+        Addresses =
+        [
+            new() { Street = "Deinzestraat", Number = "231" },
+            new() { Street = "Abdijsteeg", Number = "30" },
+        ]
+    };
+    session1.Store(newPerson);
+    session1.SaveChanges();
+    Console.WriteLine(JsonConvert.SerializeObject(newPerson, Formatting.Indented));
+}
+
+using (var session2 = store.OpenSession())
+{
+    var people = session2.Query<Person>().ToArray();
+    Console.WriteLine(JsonConvert.SerializeObject(people, Formatting.Indented));
+}
+
+class Person
+{
+    public string Id { get; set; }
+    public string FirstName { get; set; }
+    public string LastName { get; set; }
+    public List<Address> Addresses { get; set; } = [];
+}
+
+class Address
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Street { get; set; }
+    public string Number { get; set; }
+}
+```
+
+Output — first block is what was **written**, second is what a **new session read back**:
+
+```json
+{
+  "Id": "people/6-A",
+  "FirstName": "Pieterjan",
+  "LastName": "De Clippel",
+  "Addresses": [
+    { "Id": "e1d5868d333e4ae79ec9dca0ddad5d58", "Street": "Deinzestraat", "Number": "231" },
+    { "Id": "d309a4e676ee4b4ea75754472d5a9d90", "Street": "Abdijsteeg",   "Number": "30"  }
+  ]
+}
+[
+  {
+    "Id": "people/6-A",
+    "FirstName": "Pieterjan",
+    "LastName": "De Clippel",
+    "Addresses": [
+      { "Id": "e1d5868d333e4ae79ec9dca0ddad5d58", "Street": "Deinzestraat", "Number": "231" },
+      { "Id": "d309a4e676ee4b4ea75754472d5a9d90", "Street": "Abdijsteeg",   "Number": "30"  }
+    ]
+  }
+]
+```
+
+Byte-identical, including array order. **RavenDB needs no help storing a nested id**, so no part of
+this design may be justified by persistence.
+
+⚠️ Note what this program **cannot** show. Every `Address` it creates runs the field initializer, so
+there is no way to produce a row whose stored JSON lacks `Id` — which is exactly the case that
+breaks. That needs a raw `PUT`, below.
+
+### A.2 A row whose JSON has no `Id` (M3, M4)
+
+Write the document directly, bypassing the model, so the nested objects carry `Value` and no `Id`:
+
+```json
+{"Children":[{"Value":"legacy-one"},{"Value":"legacy-two"}],
+ "@metadata":{"@collection":"Parents","Raven-Clr-Type":"Parent, idtest"}}
+```
+
+Then load it twice, each time through a fresh store and session:
+
+```
+load A ids: 3e79edc2c3af466eb2a0358707a9ef73, 3fa2f1fcde174630af137e52e91b7cf6
+load B ids: 864812a41a9e4080b6235a943cd68511, 76a0ecc65e2645e9a40d064757662e84
+load A == load B: False
+```
+
+And the same document, loaded once and **not mutated**:
+
+```
+HasChanges before SaveChanges: True
+WhatChanged: parents/legacy-1: NewField Children[0]/Id '' -> '4cb105cfb92546ba940221328b78d06a'
+             parents/legacy-1: NewField Children[1]/Id '' -> '545671d2ce104a0dbee89fe6c3500fc8'
+```
+
+After `SaveChanges()` the ids are persisted and the change vector goes `A:4` → `A:5`. The row is
+self-healing after one save — but that save is a phantom write of random values to a document nobody
+edited, triggered by any unrelated `SaveChanges()` in the same session.
+
+This is R2's entire justification.
