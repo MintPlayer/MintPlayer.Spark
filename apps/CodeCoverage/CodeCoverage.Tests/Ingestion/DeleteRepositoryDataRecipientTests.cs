@@ -252,4 +252,55 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
             RequestedByUserId = "users/1",
         });
     }
+
+    /// <summary>
+    /// A token serving several repositories survives the deletion of one of them, minus that entry.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ The other tests here seed one repository per token, so deleting it empties the list and
+    /// the token is removed — which means they exercise the delete arm and never the shrink. This is
+    /// the case that distinguishes them, and the one with real consequences: revoking a credential
+    /// because ONE of its repositories was deleted would break CI on the others, silently, for
+    /// repositories nobody touched.
+    /// </remarks>
+    [Fact]
+    public async Task Deleting_one_repository_shrinks_a_multi_repository_token_rather_than_revoking_it()
+    {
+        using var store = GetDocumentStore();
+        using (var seed = store.OpenAsyncSession())
+        {
+            await SeedAsync(seed, RepositoryConnection.Disconnected);
+            await seed.StoreAsync(new ApiToken
+            {
+                Scope = "Repository",
+                GithubRepositories = [Repository.DocumentId(RepoId), Repository.DocumentId(OtherRepoId)],
+                AccountLogin = "acme",
+                CreatedAtUtc = DateTime.UtcNow,
+                Hash = "hash-multi",
+            }, ApiToken.NewDocumentId());
+            await seed.SaveChangesAsync();
+        }
+        WaitForIndexing(store);
+
+        using (var session = store.OpenAsyncSession())
+        {
+            await CreateRecipient(session).HandleAsync(new DeleteRepositoryDataMessage
+            {
+                RepositoryGitHubId = RepoId,
+                RequestedByUserId = "users/1",
+            });
+        }
+
+        using var verify = store.OpenAsyncSession();
+        var survivor = await verify.Query<ApiToken>()
+            .Customize(q => q.WaitForNonStaleResults())
+            .Where(t => t.Hash == "hash-multi")
+            .SingleOrDefaultAsync();
+
+        Assert.NotNull(survivor);
+        Assert.Equal([Repository.DocumentId(OtherRepoId)], survivor!.GithubRepositories);
+        // Still repository-scoped: an emptied list would silently WIDEN it to account scope, which
+        // is the opposite of what deleting a repository should mean.
+        Assert.Equal("Repository", survivor.Scope);
+    }
 }

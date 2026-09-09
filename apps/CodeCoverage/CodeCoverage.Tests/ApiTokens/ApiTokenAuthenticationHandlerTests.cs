@@ -153,6 +153,39 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
     }
 
     /// <summary>
+    /// A token scoped to several repositories emits one claim per repository.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Asserted with <c>FindAll</c>, because that is the bug this shape invites: a reader using
+    /// <c>FindFirst</c> gets one of N and silently authorizes exactly one repository while refusing
+    /// the rest. <c>UploadsController</c> had to change for the same reason.
+    /// </remarks>
+    [Fact]
+    public async Task A_token_scoped_to_several_repositories_carries_a_claim_for_each()
+    {
+        using var store = GetDocumentStore();
+        using var seed = store.OpenAsyncSession();
+        var value = await StoreTokenAsync(seed, t =>
+        {
+            t.Scope = "Repository";
+            t.GithubRepositories = [Repository.DocumentId(777), Repository.DocumentId(888)];
+        });
+
+        using var session = store.OpenAsyncSession();
+        var handler = await CreateAsync(session, $"Bearer {value}");
+        var result = await handler.AuthenticateAsync();
+
+        Assert.True(result.Succeeded, result.Failure?.Message);
+        var claims = result.Principal!
+            .FindAll(ApiTokenAuthenticationHandler.RepositoryClaim)
+            .Select(c => c.Value)
+            .OrderBy(v => v, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(["Repositories/777", "Repositories/888"], claims);
+    }
+
+    /// <summary>
     /// A token with no owner scoping still authenticates, and simply carries no owner claims.
     /// Absent must mean absent — an empty-string claim would read as "owned by nobody named ''"
     /// to any downstream check that only tests for presence.
