@@ -114,6 +114,14 @@ internal partial class EntityMapper : IEntityMapper
     // Optional for the same test-construction reason; falls back to a stateless default so the
     // reference collection guard (security sweep C2) runs regardless of how the mapper was built.
     [Inject] private readonly ICollectionGuard? collectionGuard;
+    // Enforces the row-level New/Edit/Delete rights of an AsDetail element type (N6). Optional for
+    // the same test-construction reason as the two above; when absent, row enforcement does not run.
+    //
+    // That fallback is narrower than it looks. PopulateObjectValuesAsync has exactly one production
+    // caller -- DefaultPersistentObjectActions' save path -- and there the mapper is always resolved
+    // from DI, where IPermissionService is a core registration. A null here means the mapper was
+    // built by hand, which only test code does.
+    [Inject] private readonly Abstractions.Authorization.IPermissionService? permissionService;
 
     private static readonly ICollectionGuard DefaultCollectionGuard = new CollectionGuard();
 
@@ -191,7 +199,13 @@ internal partial class EntityMapper : IEntityMapper
     public void PopulateAttributeValues(PersistentObject po, object entity, BreadcrumbResult? breadcrumbs = null)
     {
         var entityType = entity.GetType();
-        var idProperty = entityType.GetCachedProperty("Id");
+
+        // A value object's identity is its registered row key, which need not be called Id. Reading
+        // it here is what puts the key on the wire, and putting it on the wire is what lets the save
+        // match rows and apply New/Edit/Delete — so a key that does not round-trip makes every save
+        // of the collection look like a delete of every row plus a create of its replacement.
+        var keyProperty = Abstractions.Model.SparkValueObjects.GetKeyPropertyName(entityType) ?? "Id";
+        var idProperty = entityType.GetCachedProperty(keyProperty);
         po.Id = idProperty is not null ? AccessorCache.GetGetter(idProperty)(entity)?.ToString() : null;
 
         // Name/Breadcrumb come from the pre-resolved breadcrumb result (recursive, server-side).
@@ -569,7 +583,10 @@ internal partial class EntityMapper : IEntityMapper
     private void TryWriteId(Type entityType, object entity, string? id)
     {
         if (string.IsNullOrEmpty(id)) return;
-        var idProperty = entityType.GetCachedProperty("Id");
+        // Mirrors PopulateAttributeValues: a value object's key is whichever property [ValueKey]
+        // named, and this is the write half of the same round trip.
+        var keyProperty = Abstractions.Model.SparkValueObjects.GetKeyPropertyName(entityType) ?? "Id";
+        var idProperty = entityType.GetCachedProperty(keyProperty);
         if (idProperty is null || !idProperty.CanWrite) return;
         SetPropertyValue(idProperty, entity, id);
     }
@@ -680,6 +697,11 @@ internal partial class EntityMapper : IEntityMapper
                 await PopulateObjectValuesAsync(childPo, childEntity, session, cancellationToken);
                 items.Add(childEntity);
             }
+
+            // The one point where the stored collection and the incoming one are both in hand, and
+            // therefore the only place the row-level rights can mean anything (N6).
+            await EnforceRowRightsAsync(elementType, property, entity, items, cancellationToken);
+
             AccessorCache.GetSetter(property)(entity, BuildCollection(items, propertyType, elementType));
             return;
         }
@@ -697,6 +719,132 @@ internal partial class EntityMapper : IEntityMapper
                 $"PopulateObjectValues: could not instantiate AsDetail type '{targetType.FullName}' for attribute '{attr.Name}'.");
         await PopulateObjectValuesAsync(attr.Object, child, session, cancellationToken);
         AccessorCache.GetSetter(property)(entity, child);
+    }
+
+    /// <summary>
+    /// Applies the element type's own <c>New</c> / <c>Edit</c> / <c>Delete</c> rights to an AsDetail
+    /// collection, by comparing the stored rows against the incoming ones (N6).
+    /// </summary>
+    /// <remarks>
+    /// Until this existed the three rights were fiction on the write path: they could be granted on
+    /// an embedded type and no code read them, while the save replaced the collection wholesale. The
+    /// parent's <c>Edit</c> right was the only thing consulted, so anyone who could edit the parent
+    /// could add, alter and remove rows of a type they had no rights to at all.
+    /// <para>
+    /// ⚠️ <b>Deliberately does not consult <c>ServerSideRowLifecycle</c>.</b> That flag decides
+    /// whether the client round-trips to a hook; enforcement runs either way. Making it conditional
+    /// would turn an unhashed model field into a security control, so a model edit could switch off
+    /// a right check.
+    /// </para>
+    /// <para>
+    /// The comparison is by row key, which is why every value object must be registered. An
+    /// unregistered type is not "nothing to check" — it is "cannot judge", and with stored rows in
+    /// hand that is a refusal (N9).
+    /// </para>
+    /// </remarks>
+    private async Task EnforceRowRightsAsync(Type elementType, PropertyInfo property, object entity,
+        List<object?> incoming, CancellationToken cancellationToken)
+    {
+        if (permissionService is null)
+            return;
+
+        var stored = ReadStoredRows(property, entity);
+        if (stored.Count == 0 && incoming.Count == 0)
+            return;
+
+        // EnsureAsDetailTypeDeclared already ran, so the definition is present.
+        var typeName = modelLoader.GetEntityTypeByClrType(elementType.FullName ?? elementType.Name)!.Name;
+
+        if (!Abstractions.Model.SparkValueObjects.IsKeyed(elementType))
+        {
+            // No key means rows cannot be matched. With nothing stored that is still decidable —
+            // every incoming row is new — but the moment there is a stored row to compare against,
+            // an edit is indistinguishable from a delete-plus-create and the answer would be a guess.
+            if (stored.Count > 0)
+                throw new InvalidOperationException(
+                    $"AsDetail collection of '{typeName}' cannot be saved: the type carries no row key, "
+                    + "so stored rows cannot be matched against incoming ones and the New/Edit/Delete "
+                    + $"rights cannot be applied. Decorate '{elementType.Name}' with [ValueObject], or "
+                    + "mark its existing key with [ValueKey].");
+
+            if (incoming.Count > 0)
+                await permissionService.EnsureAuthorizedAsync("New", typeName, cancellationToken);
+
+            return;
+        }
+
+        var storedByKey = new Dictionary<string, object>(StringComparer.Ordinal);
+        foreach (var row in stored)
+        {
+            var key = Abstractions.Model.SparkValueObjects.GetKey(row);
+
+            // A stored row with no key predates the backfill migration. Fail closed rather than
+            // treating it as absent, which would read as a delete of a row nobody asked to delete
+            // and as a create of the row replacing it (N9).
+            if (string.IsNullOrEmpty(key))
+                throw new InvalidOperationException(
+                    $"AsDetail collection of '{typeName}' contains a stored row with no key. Run the "
+                    + "row-key backfill migration before saving this document.");
+
+            storedByKey[key] = row;
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        bool? canEdit = null;
+
+        for (var i = 0; i < incoming.Count; i++)
+        {
+            if (incoming[i] is not { } row)
+                continue;
+
+            var key = Abstractions.Model.SparkValueObjects.GetKey(row);
+
+            if (string.IsNullOrEmpty(key) || !storedByKey.TryGetValue(key, out var storedRow))
+            {
+                await permissionService.EnsureAuthorizedAsync("New", typeName, cancellationToken);
+                continue;
+            }
+
+            seen.Add(key);
+
+            // Without Edit, the stored row goes back untouched. Restoring rather than refusing
+            // mirrors ShieldProtectedAttributesAsync: a save that also touches something the caller
+            // may change should still succeed, with the parts they may not change unchanged.
+            canEdit ??= await permissionService.IsAllowedAsync("Edit", typeName, cancellationToken);
+            if (canEdit is false)
+                incoming[i] = storedRow;
+        }
+
+        foreach (var key in storedByKey.Keys)
+        {
+            if (seen.Contains(key))
+                continue;
+
+            await permissionService.EnsureAuthorizedAsync("Delete", typeName, cancellationToken);
+            break;
+        }
+    }
+
+    /// <summary>
+    /// The rows currently on <paramref name="entity"/>, before the incoming collection replaces them.
+    /// </summary>
+    /// <remarks>
+    /// Empty for a create, which is the right answer: every incoming row is then new.
+    /// </remarks>
+    private static List<object> ReadStoredRows(PropertyInfo property, object entity)
+    {
+        var rows = new List<object>();
+
+        if (AccessorCache.GetGetter(property)(entity) is System.Collections.IEnumerable existing)
+        {
+            foreach (var row in existing)
+            {
+                if (row is not null)
+                    rows.Add(row);
+            }
+        }
+
+        return rows;
     }
 
     /// <summary>
