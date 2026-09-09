@@ -478,6 +478,22 @@ describe('ReferenceAttrValuePipe', () => {
   it('returns empty when attribute missing', () => {
     expect(pipe.transform({ attributes: [] } as any, 'Owner')).toBe('');
   });
+
+  // The shape the reference picker actually hands it, and the reason the pipe was broken: a
+  // QueryResultItem carries `values`, not `attributes`, so `item.attributes.find(...)` threw on
+  // every cell and the picker rendered nothing selectable. Every test above uses the
+  // PersistentObject shape, which is the one the picker never sends.
+  it('reads a QueryResultItem, which has values rather than attributes', () => {
+    const row = { id: 'Professions/1', values: [{ key: 'Description', value: '.NET Developer' }] } as any;
+    expect(pipe.transform(row, 'Description')).toBe('.NET Developer');
+  });
+  it('prefers a QueryResultItem cell breadcrumb over its raw value', () => {
+    const row = { id: 'p/1', values: [{ key: 'Owner', value: 'p/9', breadcrumb: 'Alice' }] } as any;
+    expect(pipe.transform(row, 'Owner')).toBe('Alice');
+  });
+  it('returns empty for a column the QueryResultItem does not carry', () => {
+    expect(pipe.transform({ id: 'p/1', values: [] } as any, 'Owner')).toBe('');
+  });
 });
 
 // ---------------------------------------------------------------------------
