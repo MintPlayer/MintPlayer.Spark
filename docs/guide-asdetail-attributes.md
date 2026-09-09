@@ -358,6 +358,82 @@ The inline table looks like:
                                          [+ Add]
 ```
 
+### Asking the server before a row is added or removed
+
+By default a detail grid is entirely client-side: **Add** pushes a blank row, the delete button
+splices one out, and the parent's save is the first the server hears of either. There is nowhere to
+put a server-computed default and nowhere to refuse a removal.
+
+A row type can opt out of that, per type, by setting `serverSideRowLifecycle` on **its own** model
+file — not on the parent's attribute, because the type that owns the hooks owns the decision, and one
+setting then governs every grid the type appears in:
+
+```json
+{
+  "persistentObject": {
+    "name": "ServiceEntry",
+    "clrType": "Fleet.Entities.ServiceEntry",
+    "serverSideRowLifecycle": true,
+    "attributes": [ ... ]
+  }
+}
+```
+
+With it on, the grid calls `POST /spark/po/{rowType}/new` before showing a new row and
+`POST /spark/po/{rowType}/delete-row` before removing a stored one, and two hooks become reachable:
+
+```csharp
+public partial class ServiceEntryActions : DefaultPersistentObjectActions<ServiceEntry>
+{
+    public override Task OnNewAsync(SparkNewArgs<ServiceEntry> args)
+    {
+        // SetOriginalValue, NOT SetValue -- see below.
+        args.PersistentObject[nameof(ServiceEntry.PerformedOn)]
+            .SetOriginalValue(DateOnly.FromDateTime(DateTime.Today));
+        return Task.CompletedTask;
+    }
+
+    public override Task OnDeleteRowAsync(SparkDeleteRowArgs<ServiceEntry> args)
+    {
+        // args.Row is the STORED row, never the caller's copy of it.
+        var invoiced = args.Row.Attributes
+            .FirstOrDefault(a => a.Name == nameof(ServiceEntry.IsInvoiced))?.Value;
+
+        if (invoiced is true)
+            throw new SparkValidationException("This entry has been invoiced.", "ServiceEntries");
+
+        return Task.CompletedTask;
+    }
+}
+```
+
+Four things about this are worth knowing before you use it.
+
+**Neither hook writes anything.** Construction is not persistence and removal is not deletion: the
+row appears or disappears for real only when the parent is saved. A hook that touches the database is
+writing outside the parent's unit of work. Record things from the *parent's* `OnBeforeSaveAsync`.
+
+**Use `SetOriginalValue` for defaults, not `SetValue`.** `SetValue` marks the attribute changed,
+which makes the object dirty before the user has typed anything — so adding a row and abandoning it
+leaves the parent falsely modified, and on a replicated type widens the property list the sync action
+reports.
+
+**⚠️ A refusal is an affordance, not enforcement.** `OnDeleteRowAsync` stops a *cooperating* client.
+It cannot stop one that never calls the endpoint and submits the parent with the row already gone,
+because the endpoint writes nothing and the save is a separate request. What stops that caller is the
+save path's per-row `Delete/{RowType}` check, which runs on every embedded collection regardless of
+this flag. Put the rule in the row type's rights; use the hook to explain it.
+
+**⚠️ The flag is not a permission and is outside the model hash.** It governs the round trip and
+nothing else. Nothing that gates a write may ever read it — an unhashed model field that could switch
+a rights check off would be one edit away from disabling it on a deployed model.
+
+The endpoints check the **row type's own** right — `New/ServiceEntry`, not `New/Car` — matching the
+button the client renders, and load the parent separately so a caller who cannot see a parent cannot
+add rows to it. A new row arrives already carrying its row key, because the server constructs the CLR
+entity rather than scaffolding from the model alone; that is also why C# property initializers show
+up as the row's defaults.
+
 ### Edit View -- Array (Modal)
 
 When `editMode` is `"modal"` (or omitted), each array item is edited via a modal dialog, similar to single-object AsDetail editing.

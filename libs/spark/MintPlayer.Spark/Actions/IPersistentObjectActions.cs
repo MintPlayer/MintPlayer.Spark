@@ -116,6 +116,34 @@ public interface IPersistentObjectActions<T> where T : class
     /// </remarks>
     Task OnNewAsync(SparkNewArgs<T> args) => Task.CompletedTask;
 
+    /// <summary>
+    /// Called when a row of this type is removed from a parent's <c>AsDetail</c> collection, before
+    /// the client splices it out — to react, or to refuse by throwing
+    /// <see cref="Abstractions.SparkValidationException"/> with a message the user can read.
+    /// <para>
+    /// ⚠️ <b>Removal is not deletion.</b> Nothing is written here either. The row leaves the
+    /// database only when the parent is saved, so a hook that needs to record something records it
+    /// from the parent's <see cref="OnBeforeSaveAsync"/>.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>A refusal here is an affordance, not enforcement.</b> It stops a cooperating client; it
+    /// cannot stop one that never calls the endpoint and submits the parent with the row already
+    /// gone. The save path's unconditional per-row <c>Delete/{RowType}</c> check is what stops that
+    /// one. See <see cref="SparkDeleteRowArgs{T}"/> for the full argument.
+    /// </para>
+    /// </summary>
+    /// <remarks>
+    /// A default implementation, for the same reason as <see cref="OnNewAsync"/>.
+    /// <para>
+    /// Named <c>OnDeleteRowAsync</c> rather than an overload of <see cref="OnDeleteAsync"/>
+    /// deliberately, and not merely for readability: <c>DatabaseAccess</c> resolves the document
+    /// delete hook by <em>name alone</em>, so a second <c>OnDeleteAsync</c> would make every
+    /// document delete in the framework throw <see cref="System.Reflection.AmbiguousMatchException"/>
+    /// — at runtime, on a path this feature does not otherwise touch.
+    /// </para>
+    /// </remarks>
+    Task OnDeleteRowAsync(SparkDeleteRowArgs<T> args) => Task.CompletedTask;
+
     // ---- Row-level security ------------------------------------------------------------------
     //
     // These three were deliberately absent from this interface and reached by reflection instead,

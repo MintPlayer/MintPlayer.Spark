@@ -106,4 +106,15 @@ public class Car
     /// </summary>
     [IgnoreProperty]
     public string? RegistrySyncEtag { get; set; }
+
+    /// <summary>
+    /// The vehicle's maintenance history — the sample for the server-side row lifecycle (#386).
+    /// </summary>
+    /// <remarks>
+    /// <see cref="IgnoreForIndexAttribute"/> for the same reason as <see cref="Manager"/> and
+    /// <see cref="CreatedBy"/>: no grid filters or sorts on the history, so indexing an embedded
+    /// collection would cost index size and re-indexing work to answer a question nobody asks.
+    /// </remarks>
+    [IgnoreForIndex]
+    public List<Entities.ServiceEntry> ServiceEntries { get; set; } = [];
 }

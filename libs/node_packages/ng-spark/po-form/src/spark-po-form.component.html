@@ -264,6 +264,9 @@
                 }
               </tbody>
             </bs-table>
+            @for (err of rowLifecycleErrorsFor(attr.name); track $index) {
+              <div class="text-danger small mt-1">{{ err.errorMessage | resolveTranslation }}</div>
+            }
             @if (attr | canCreateDetailRow:asDetailPermissions()) {
               <button type="button" [color]="colors.primary" class="w-100 rounded-0" (click)="addInlineRow(attr)">
                 <spark-icon name="plus" /> {{ 'common.add' | t }}
@@ -321,6 +324,9 @@
                 }
               </tbody>
             </bs-table>
+            @for (err of rowLifecycleErrorsFor(attr.name); track $index) {
+              <div class="text-danger small mt-1">{{ err.errorMessage | resolveTranslation }}</div>
+            }
             @if (attr | canCreateDetailRow:asDetailPermissions()) {
               <button type="button" [color]="colors.primary" class="w-100 rounded-0" (click)="addArrayItem(attr)">
                 <spark-icon name="plus" /> {{ 'common.add' | t }}

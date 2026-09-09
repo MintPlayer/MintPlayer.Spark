@@ -78,8 +78,9 @@ internal sealed partial class NewPersistentObject : IPostEndpoint, IMemberOf<Per
         var typeName = entityType.ClrType?.Split('.').Last() ?? entityType.Name;
         await permissionService.EnsureAuthorizedAsync("New", typeName);
 
-        var po = entityMapper.GetPersistentObject(entityType.Id);
-        await InvokeHookAsync(entityType, po, parent: null, asDetailParent: null, request, httpContext);
+        var clrType = typeResolver.Resolve(entityType.ClrType);
+        var po = Scaffold(entityType, clrType);
+        await InvokeHookAsync(clrType, po, parent: null, asDetailParent: null, request, httpContext);
         return ClientResult.Envelope(clientAccessor, po, StatusCodes.Status200OK);
     }
 
@@ -165,25 +166,70 @@ internal sealed partial class NewPersistentObject : IPostEndpoint, IMemberOf<Per
             }
         }
 
-        var po = entityMapper.GetPersistentObject(entityType.Id);
+        // Resolving the CLR type through the same resolver the rest of the framework uses keeps an
+        // undeclared type unreachable here, exactly as it is on the save path.
+        var clrType = typeResolver.Resolve(entityType.ClrType);
+        var po = Scaffold(entityType, clrType);
 
         // Both references, and deliberately the same instance: they differ in meaning, not identity.
         // AsDetailParent is the narrow one that says the parent owns the save.
-        await InvokeHookAsync(entityType, po, parent, asDetailParent: parent, request, httpContext);
+        await InvokeHookAsync(clrType, po, parent, asDetailParent: parent, request, httpContext);
         return ClientResult.Envelope(clientAccessor, po, StatusCodes.Status200OK);
     }
 
+    /// <summary>
+    /// Builds the object the hook is handed: the model's shape, then a freshly constructed CLR
+    /// instance reflected over it.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>The second half is not decoration.</b> <c>GetPersistentObject</c> scaffolds from the
+    /// model file and never constructs the entity, so the row-key field initializer that every
+    /// <c>[ValueObject]</c> has carried since #382 never runs — the row reaches the hook, and the
+    /// client, with <b>no key at all</b>.
+    /// <para>
+    /// That is survivable by accident on the save path (an unmatched row correctly takes the
+    /// create branch) but not here: a construction hook cannot reference the row it is building —
+    /// for an audit entry, a cross-row default, or a parent-scoped <c>(root id, child key)</c> pair
+    /// — if the row has no identity yet, and a client that round-trips a keyless row through
+    /// <c>__sparkRowKey</c> sends back nothing.
+    /// </para>
+    /// <para>
+    /// Constructing the instance settles both halves at once, and the second is the reason to
+    /// prefer it over minting a bare guid: every C# property initializer becomes the default the
+    /// user sees, which is the ordinary way a .NET developer expects to state one.
+    /// </para>
+    /// </remarks>
+    private Po Scaffold(EntityTypeDefinition entityType, Type? clrType)
+    {
+        var po = entityMapper.GetPersistentObject(entityType.Id);
+        if (clrType is null)
+            return po;
+
+        // A type with no accessible parameterless constructor is not an error — it simply cannot
+        // contribute defaults, so the model's shape stands and the hook is handed that.
+        object? instance;
+        try
+        {
+            instance = Activator.CreateInstance(clrType);
+        }
+        catch (Exception ex) when (ex is MissingMethodException or MemberAccessException)
+        {
+            return po;
+        }
+
+        if (instance is not null)
+            entityMapper.PopulateAttributeValues(po, instance);
+        return po;
+    }
+
     private async Task InvokeHookAsync(
-        EntityTypeDefinition entityType,
+        Type? clrType,
         Po po,
         Po? parent,
         Po? asDetailParent,
         NewPersistentObjectRequest request,
         HttpContext httpContext)
     {
-        // Resolving the CLR type through the same resolver the rest of the framework uses keeps an
-        // undeclared type unreachable here, exactly as it is on the save path.
-        var clrType = typeResolver.Resolve(entityType.ClrType);
         if (clrType is null)
             return;
 
