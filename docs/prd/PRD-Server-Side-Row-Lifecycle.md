@@ -1,6 +1,7 @@
 # PRD — Server-side lifecycle for New and Delete
 
-**Status: NOT STARTED.** Blocked on `PRD-AsDetail-Row-Identity.md` landing.
+**Status: NOT STARTED — but no longer blocked.** ✅ `PRD-AsDetail-Row-Identity.md` landed as
+`4f9e9319` (#382) and has been built on since (#384, #391, #392). Tracked as issue #386.
 **Origin:** sidestepped from PR #381; commits `0f013ffe`, `69749631`, `89d7b235` on the abandoned
 branch `feat/coverage-account-po-and-branch-deletion`.
 

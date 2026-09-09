@@ -1,8 +1,30 @@
 # Plan — Server-side lifecycle for New and Delete
 
-**Status: NOT STARTED** · PRD: `PRD-Server-Side-Row-Lifecycle.md`
-**Blocked on:** `PRD-AsDetail-Row-Identity.md` R3 (key round-trips through the client) and R4 (save
-merges onto the stored row). Starting before those rebuilds W1 behind a nicer endpoint.
+**Status: NOT STARTED — the blocker is lifted.** · PRD: `PRD-Server-Side-Row-Lifecycle.md`
+**Was blocked on:** `PRD-AsDetail-Row-Identity.md` R3 (key round-trips through the client) and R4
+(save merges onto the stored row). ✅ **Both shipped in `4f9e9319` (#382)** — R3 is the
+`__sparkRowKey` round-trip in `as-detail-conversions.ts`, R4 the stored-row merge in `EntityMapper`.
+#384, #391 and #392 have all built on them since. Tracked as issue #386.
+
+## ⚠️ What the salvage actually costs (measured 2026-09-09, before starting)
+
+The three commits **do** cherry-pick cleanly, but that is the easy 30% of the work:
+
+- Every **code** hunk of `0f013ffe`, `69749631` and `89d7b235` applies to master without conflict.
+  The one conflict is a modify/delete on `docs/prd/PRD-AsDetail-Server-Lifecycle.md`, which master
+  deleted (superseded by the row-identity PRD) — resolve with `git rm`; it recurs on two of the three.
+- Together they are ~577 insertions across 7 code files, and contain **zero tests**.
+- **Nothing in ng-spark posts to `/spark/po/{type}/new`.** The endpoint registers and is unreached, so
+  the client wiring in `po-create` / `addInlineRow` / `addArrayItem` / `removeArrayItem` is still to
+  write, plus the `EntityType` field that exposes the opt-in.
+- The delete round-trip (L3) was never written at all.
+- Realistically **20–30 files**, and it touches published surface — `MintPlayer.Spark.Abstractions`,
+  `MintPlayer.Spark` and `@mintplayer/ng-spark` — so a NuGet *and* npm bump. Since #391 the CI guard
+  fails a PR that changes `libs/**` without one.
+
+⚠️ **Audit rather than trust:** `0f013ffe` changes `PersistentObject.SetValue` to mark
+`IsValueChanged`. That feeds the save path and shipped with no test asserting dirty state — it is the
+same shape as the defects #384 and #391 were about, so it wants a test before it is relied on.
 
 ## Salvage
 
