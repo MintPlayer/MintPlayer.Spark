@@ -237,12 +237,23 @@ no `PackageReference`, no `ProjectReference`.
 uses ASP.NET Core — three files under `Authentication/`. An entity library that wants only
 `[ValueObject]` currently pays for the whole ASP.NET Core shared framework.
 
-⚠️ **Keep the namespace `MintPlayer.Spark.Abstractions` in the new assembly.** C# metadata names are
-namespace-based, not assembly-based, so all 365 `using MintPlayer.Spark.Abstractions;`, the 42
-hard-coded metadata strings in the generators and analyzers, and — `ProjectReference` being
-transitive — all 18 consumer csprojs stay valid untouched. **The move is then 12 file moves and 2
-csproj edits.** Renaming the namespace turns it into ~365 usings, 42 strings and 18 csprojs, for no
-gain the assembly split does not already deliver.
+**The namespace is a free choice; the verification is not.** C# metadata names are namespace-based,
+not assembly-based, so *keeping* `MintPlayer.Spark.Abstractions` makes the move 12 `git mv`s and 2
+csproj edits — every `using` stays valid, and no consumer csproj changes because `ProjectReference`
+is transitive.
+
+*Renaming* is also cheap — a find-replace over the usings — but it has one hazard worth naming.
+Thirty fully-qualified metadata strings live in the generators and analyzers
+(`"MintPlayer.Spark.Abstractions.GenerateIndexAttribute"` and friends), **all thirty in code where a
+miss fails silently**: the compiler does not check them, no test asserts on them, and a generator
+that stops recognising an attribute simply emits nothing. A blanket replace is also wrong —
+`"MintPlayer.Spark.Abstractions.Actions.ICustomAction"` shares the prefix and is not moving — so it
+is 12 targeted replaces, one per moved type.
+
+⚠️ If the namespace is renamed, verify with
+`grep -rn '"MintPlayer\.Spark\.Abstractions\.' --include=*.cs libs/` and confirm `ICustomAction` is
+the only survivor. With that check the risk is gone and the choice is taste: a zero-touch move, or an
+assembly whose name and namespace agree.
 
 `SparkAuthorizeAttribute` stays where it is. It inherits ASP.NET Core's `AuthorizeAttribute` — its
 own doc comment records that the derivation is load-bearing and that getting it wrong fails open —
