@@ -114,6 +114,16 @@ internal partial class EntityMapper : IEntityMapper
     // Optional for the same test-construction reason; falls back to a stateless default so the
     // reference collection guard (security sweep C2) runs regardless of how the mapper was built.
     [Inject] private readonly ICollectionGuard? collectionGuard;
+    // Enforces the row-level New/Edit/Delete rights of an AsDetail element type. Optional for the
+    // same test-construction reason as the two above; when absent, row enforcement does not run.
+    //
+    // That fallback is narrower than it looks: PopulateObjectValuesAsync has exactly one production
+    // caller -- the save path in DefaultPersistentObjectActions -- and there the mapper always comes
+    // from DI, where IPermissionService is a core registration. A null here means the mapper was
+    // built by hand, which only test code does.
+    [Inject] private readonly Abstractions.Authorization.IPermissionService? permissionService;
+    // Tells the user when a row was restored rather than saved. Optional for the same reason.
+    [Inject] private readonly Abstractions.ClientOperations.IClientAccessor? clientAccessor;
 
     private static readonly ICollectionGuard DefaultCollectionGuard = new CollectionGuard();
 
@@ -674,6 +684,12 @@ internal partial class EntityMapper : IEntityMapper
             // is not allowed to write survives (see MatchStoredRows).
             var unmatched = MatchStoredRows(property, entity);
 
+            // The row type's own rights, resolved once. EnsureAsDetailTypeDeclared already ran, so
+            // the definition is present.
+            var rowTypeName = modelLoader.GetEntityTypeByClrType(elementType.FullName ?? elementType.Name)!.Name;
+            bool? canEditRows = null;
+            var restored = 0;
+
             foreach (var childPo in incoming)
             {
                 if (childPo is null)
@@ -688,10 +704,28 @@ internal partial class EntityMapper : IEntityMapper
                     // Consume it: two incoming rows claiming one stored key must not both alias the
                     // same instance, which would put the same object in the collection twice.
                     unmatched.Remove(childPo.Id!);
+
+                    if (permissionService is not null)
+                        canEditRows ??= await permissionService.IsAllowedAsync("Edit", rowTypeName, cancellationToken);
+
+                    if (canEditRows is false)
+                    {
+                        // Restore rather than refuse, following ShieldProtectedAttributesAsync: a
+                        // save that also touches something the caller may change should still
+                        // succeed, with the rest unchanged. Not populating IS the restore -- the
+                        // stored instance goes back exactly as it was.
+                        items.Add(storedRow);
+                        restored++;
+                        continue;
+                    }
+
                     childEntity = storedRow;
                 }
                 else
                 {
+                    if (permissionService is not null)
+                        await permissionService.EnsureAuthorizedAsync("New", rowTypeName, cancellationToken);
+
                     // A row with no key, or one whose key matches nothing stored, is new. Its key is
                     // minted by the field initializer that runs right here.
                     childEntity = Activator.CreateInstance(elementType)
@@ -701,6 +735,19 @@ internal partial class EntityMapper : IEntityMapper
 
                 await PopulateObjectValuesAsync(childPo, childEntity, session, cancellationToken);
                 items.Add(childEntity);
+            }
+
+            // Anything still unmatched is a row the payload dropped.
+            if (unmatched.Count > 0 && permissionService is not null)
+                await permissionService.EnsureAuthorizedAsync("Delete", rowTypeName, cancellationToken);
+
+            // ⚠️ A silent restore is indistinguishable from a bug: the save succeeds, the user gets
+            // no error, and their edits are gone. Say so.
+            if (restored > 0)
+            {
+                clientAccessor?.Notify(
+                    $"{restored} {rowTypeName} row(s) were left unchanged: you may not edit them.",
+                    Abstractions.ClientOperations.NotificationKind.Warning);
             }
 
             AccessorCache.GetSetter(property)(entity, BuildCollection(items, propertyType, elementType));

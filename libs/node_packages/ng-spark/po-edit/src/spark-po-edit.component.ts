@@ -177,12 +177,20 @@ export class SparkPoEditComponent {
     } catch (e) {
       this.isSaving.set(false);
       const error = e as HttpErrorResponse;
-      if (error.status === 400 && error.error?.errors) {
-        this.validationErrors.set(error.error.errors);
+      // ⚠️ The errors live under `result`, because every endpoint wraps its body in a
+      // ClientOperationEnvelope: `{ result: { errors: [...] }, operations: [] }`. Reading
+      // `error.error.errors` matched nothing, so this branch was dead and EVERY save-time
+      // validation failure fell through to the raw Angular HTTP string below.
+      const errors = error.error?.result?.errors ?? error.error?.errors;
+      if (error.status === 400 && errors) {
+        this.validationErrors.set(errors);
       } else {
         this.validationErrors.set([{
           attributeName: '',
-          errorMessage: { en: error.message || 'An unexpected error occurred' },
+          // Prefer the server's own message, as the load path already does. A refusal arrives as
+          // 404 by design (an anti-oracle measure), and `error.message` renders that as
+          // "Http failure response for /spark/po/...: 404 Not Found" inside the validation summary.
+          errorMessage: { en: error.error?.result?.error || error.error?.error || error.message || 'An unexpected error occurred' },
           ruleType: 'error'
         }]);
       }

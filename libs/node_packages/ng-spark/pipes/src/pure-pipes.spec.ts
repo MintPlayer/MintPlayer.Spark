@@ -319,8 +319,11 @@ describe('CanCreateDetailRowPipe', () => {
   it('returns the canCreate permission', () => {
     expect(pipe.transform({ name: 'rows' } as any, { rows: { canCreate: false } as any })).toBe(false);
   });
-  it('defaults to true when no permission entry exists', () => {
-    expect(pipe.transform({ name: 'rows' } as any, {})).toBe(true);
+  // Fail closed. The save path enforces New/{RowType} now, so a missing entry must not render a
+  // button whose save is refused -- and a missing entry means the permission was never established,
+  // which is not the same as permission granted.
+  it('defaults to false when no permission entry exists', () => {
+    expect(pipe.transform({ name: 'rows' } as any, {})).toBe(false);
   });
 });
 
@@ -329,8 +332,8 @@ describe('CanDeleteDetailRowPipe', () => {
   it('returns the canDelete permission', () => {
     expect(pipe.transform({ name: 'rows' } as any, { rows: { canDelete: true } as any })).toBe(true);
   });
-  it('defaults to true when no permission entry exists', () => {
-    expect(pipe.transform({ name: 'rows' } as any, {})).toBe(true);
+  it('defaults to false when no permission entry exists', () => {
+    expect(pipe.transform({ name: 'rows' } as any, {})).toBe(false);
   });
 });
 
