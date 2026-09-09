@@ -4,6 +4,7 @@ import {
   QueryColumn,
   QueryResultItem,
   resolveTranslation,
+  resolvedBreadcrumb,
   valueFor,
 } from '@mintplayer/ng-spark/models';
 import { ReferenceChip } from './reference-chips.pipe';
@@ -30,7 +31,11 @@ export class QueryCellValuePipe implements PipeTransform {
 
     // A resolved reference display wins: the server can resolve breadcrumb templates this side
     // cannot (a template may name a computed property `[IgnoreProperty]` keeps out of the model).
-    if (cell.breadcrumb) return cell.breadcrumb;
+    // Except the CLR type name, which is the server's placeholder for a template that rendered
+    // blank, not a label (#384). `asDetailType` is undefined on every other kind of column, so
+    // nothing else is filtered.
+    const resolved = resolvedBreadcrumb(cell.breadcrumb, column.asDetailType);
+    if (resolved) return resolved;
 
     if (column.dataType === 'AsDetail') {
       // An array cell carries a child COUNT rather than the children, so the wording — and its

@@ -190,7 +190,7 @@ po-detail specs call the cell-renderer methods directly and never render the AsD
 ## M11 — carry the server-resolved breadcrumb through the AsDetail flatten
 
 Reported live: the edit form rendered `(click to edit)` where the detail page rendered
-`Abdijsteeg 30, 9700 Oudenaarde`.
+`Voorbeeldlaan 2, 1000 Brussel`.
 
 Not a data problem and not a regression — structural, and true for every row of every type shaped
 this way. HR's `Address` renders its breadcrumb as `{Crumb}`, and `Crumb` is

@@ -177,9 +177,9 @@ describe('AsDetailCellValuePipe', () => {
    */
   it('renders a nested AsDetail cell from the server breadcrumb, not [object Object]', () => {
     const col = { name: 'Address', dataType: 'AsDetail', asDetailType: 'HR.Entities.Address' } as any;
-    const row = { Address: { Street: 'Abdijsteeg 30', [AS_DETAIL_SELF_BREADCRUMB_KEY]: 'Abdijsteeg 30, 9700 Oudenaarde' } };
+    const row = { Address: { Street: 'Voorbeeldlaan 2', [AS_DETAIL_SELF_BREADCRUMB_KEY]: 'Voorbeeldlaan 2, 1000 Brussel' } };
 
-    expect(pipe.transform(row, { name: 'addr' } as any, col, {})).toBe('Abdijsteeg 30, 9700 Oudenaarde');
+    expect(pipe.transform(row, { name: 'addr' } as any, col, {})).toBe('Voorbeeldlaan 2, 1000 Brussel');
   });
 
   it('renders an empty nested AsDetail cell as blank rather than the type-name placeholder', () => {

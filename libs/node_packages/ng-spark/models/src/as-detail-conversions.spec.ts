@@ -178,16 +178,16 @@ describe('dictToNestedPo', () => {
  */
 describe('self breadcrumb', () => {
   const address = po(
-    [attr({ name: 'Street', value: 'Abdijsteeg 30' }), attr({ name: 'City', value: 'Oudenaarde' })],
-    { id: '', name: 'Address', breadcrumb: 'Abdijsteeg 30, 9700 Oudenaarde' },
+    [attr({ name: 'Street', value: 'Voorbeeldlaan 2' }), attr({ name: 'City', value: 'Brussel' })],
+    { id: '', name: 'Address', breadcrumb: 'Voorbeeldlaan 2, 1000 Brussel' },
   );
 
   it('nestedPoToDict carries it through the form flatten', () => {
-    expect(nestedPoToDict(address)[AS_DETAIL_SELF_BREADCRUMB_KEY]).toBe('Abdijsteeg 30, 9700 Oudenaarde');
+    expect(nestedPoToDict(address)[AS_DETAIL_SELF_BREADCRUMB_KEY]).toBe('Voorbeeldlaan 2, 1000 Brussel');
   });
 
   it('nestedPoToDisplayRow carries it through the display flatten', () => {
-    expect(nestedPoToDisplayRow(address)[AS_DETAIL_SELF_BREADCRUMB_KEY]).toBe('Abdijsteeg 30, 9700 Oudenaarde');
+    expect(nestedPoToDisplayRow(address)[AS_DETAIL_SELF_BREADCRUMB_KEY]).toBe('Voorbeeldlaan 2, 1000 Brussel');
   });
 
   /** Keeps the common case byte-for-byte identical to the plain flat dict. */

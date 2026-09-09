@@ -730,7 +730,7 @@ When displaying `Reference` or `AsDetail` attributes in the Angular frontend, th
 **Resolution Order:**
 
 The framework resolves the display value in this order:
-1. If `displayFormat` is specified, use template substitution (e.g., `"{Street}, {PostalCode} {City}"` → `"Deinzestraat, 9800 Deinze"`)
+1. If `displayFormat` is specified, use template substitution (e.g., `"{Street}, {PostalCode} {City}"` → `"Voorbeeldstraat, 2000 Antwerpen"`)
 2. If `displayAttribute` is specified, use that single attribute's value
 3. Fall back to common property names: `Name`, `Title`, `name`, `title`
 

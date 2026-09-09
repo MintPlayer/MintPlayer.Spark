@@ -1,5 +1,5 @@
 import { Pipe, PipeTransform } from '@angular/core';
-import { EntityAttributeDefinition, EntityType, LookupReference, PersistentObject, nestedPoToDict, resolveTranslation } from '@mintplayer/ng-spark/models';
+import { EntityAttributeDefinition, EntityType, LookupReference, PersistentObject, isReservedAsDetailKey, nestedPoToDict, resolveTranslation, resolvedBreadcrumb } from '@mintplayer/ng-spark/models';
 import { applyFieldTemplate } from './apply-field-template';
 
 @Pipe({ name: 'attributeValue', standalone: true, pure: true })
@@ -25,8 +25,14 @@ export class AttributeValuePipe implements PipeTransform {
         // keeps out of the model — HR's `Address.Crumb` is exactly that, `[Breadcrumb, IgnoreProperty]`
         // — so the template `{Crumb}` has no matching attribute here and never will. Recomputing it
         // client-side produced an empty string and fell through to "(object)" while the correct
-        // "Deinzestraat 231, 9700 Oudenaarde" sat unread on `attr.object.breadcrumb`.
-        if (attr.object.breadcrumb) return attr.object.breadcrumb;
+        // "Voorbeeldstraat 1, 1000 Brussel" sat unread on `attr.object.breadcrumb`.
+        //
+        // One value on that property is NOT a breadcrumb: when the template renders blank the
+        // server substitutes the CLR type name, and printing it reads as data — a `Build` whose
+        // `Feedback.State` was unset showed the literal "BuildFeedback" (#384). Filtering it here
+        // lets the fallbacks below run, which is what they are for.
+        const resolved = resolvedBreadcrumb(attr.object.breadcrumb, attrDef.asDetailType);
+        if (resolved) return resolved;
         return this.formatAsDetailValue(attrDef, nestedPoToDict(attr.object), allEntityTypes);
       }
     }
@@ -59,8 +65,13 @@ export class AttributeValuePipe implements PipeTransform {
     // Last resort, reached when the type declares no breadcrumb or its template resolved to
     // nothing. Joining the scalar values is always more use to a reader than "(object)", which
     // named the failure rather than the row and looked identical for every unresolvable cell.
-    return Object.values(value)
-      .filter(v => v != null && typeof v !== 'object' && String(v).trim() !== '')
+    // Reserved keys are skipped: `nestedPoToDict` stashes the row key and the row's own breadcrumb
+    // in this same dict, and joining those prints a guid and a placeholder as though they were
+    // fields. Previously masked -- this branch was only reachable when the server sent no
+    // breadcrumb, which is exactly when there was nothing stashed to leak.
+    return Object.entries(value)
+      .filter(([k, v]) => !isReservedAsDetailKey(k) && v != null && typeof v !== 'object' && String(v).trim() !== '')
+      .map(([, v]) => v)
       .join(', ');
   }
 }

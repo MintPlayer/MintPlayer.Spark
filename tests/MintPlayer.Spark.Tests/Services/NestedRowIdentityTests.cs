@@ -74,8 +74,8 @@ public class NestedRowIdentityTests : SparkTestDriver
             {
                 Addresses =
                 [
-                    new() { Street = "Deinzestraat", Number = "231" },
-                    new() { Street = "Abdijsteeg", Number = "30" },
+                    new() { Street = "Voorbeeldstraat", Number = "231" },
+                    new() { Street = "Voorbeeldlaan", Number = "30" },
                 ],
             };
             await session.StoreAsync(person);
@@ -120,8 +120,8 @@ public class NestedRowIdentityTests : SparkTestDriver
             {
                 Addresses =
                 [
-                    new() { Street = "Deinzestraat", Number = "231" },
-                    new() { Street = "Abdijsteeg", Number = "30" },
+                    new() { Street = "Voorbeeldstraat", Number = "231" },
+                    new() { Street = "Voorbeeldlaan", Number = "30" },
                 ],
             };
             await session.StoreAsync(legacy);
@@ -169,7 +169,7 @@ public class NestedRowIdentityTests : SparkTestDriver
         string personId;
         using (var session = store.OpenAsyncSession())
         {
-            var legacy = new LegacyPerson { Addresses = [new() { Street = "Deinzestraat", Number = "231" }] };
+            var legacy = new LegacyPerson { Addresses = [new() { Street = "Voorbeeldstraat", Number = "231" }] };
             await session.StoreAsync(legacy);
             await session.SaveChangesAsync();
             personId = legacy.Id!;
@@ -183,5 +183,63 @@ public class NestedRowIdentityTests : SparkTestDriver
                 "the minted key counts as a new field, so the document is dirty after a load that "
                 + "changed nothing");
         }
+    }
+
+    /// <summary>
+    /// The shape DemoApp's <c>Address</c> actually has: an embedded object owning a property named
+    /// <c>Id</c> that is nullable and has <b>no</b> initializer.
+    /// </summary>
+    /// <remarks>
+    /// Answers S1 of <c>docs/issue_384_plan.md</c>. `EntityMapper` falls back to a property literally
+    /// named <c>Id</c> when no <c>[ValueKey]</c> is registered, so on the declaration alone such a
+    /// type looks keyed, and #384 was written expecting DemoApp to reproduce the bug.
+    /// <para>
+    /// It does not, and this pins why: nothing mints the value. The generator's initializer only
+    /// exists on a <c>[ValueObject]</c>, and <c>EntityMapper.TryWriteId</c> returns early on an empty
+    /// id, so it writes back only what a client sent. The property stays null through store and
+    /// load, the mapper reads a null <c>po.Id</c>, and the embedded-breadcrumb path fires — which it
+    /// did before the #384 fix too.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task An_embedded_id_with_no_initializer_stays_null_through_a_round_trip()
+    {
+        using var store = GetDocumentStore();
+
+        string ownerId;
+        using (var session = store.OpenAsyncSession())
+        {
+            var owner = new UnkeyedOwner { Address = new() { Street = "Voorbeeldstraat", Number = "1" } };
+            await session.StoreAsync(owner);
+            await session.SaveChangesAsync();
+            ownerId = owner.Id!;
+        }
+
+        using (var session = store.OpenAsyncSession())
+        {
+            var reloaded = await session.LoadAsync<UnkeyedOwner>(ownerId);
+
+            reloaded.Address!.Id.Should().BeNull(
+                "nothing assigns it -- so a type that merely owns a property named Id is not keyed "
+                + "in practice, and takes the same mapper path as a type with no Id at all");
+
+            session.Advanced.HasChanges.Should().BeFalse(
+                "and unlike the keyless-row case above, no key is minted on load, so the document "
+                + "is not silently dirtied");
+        }
+    }
+
+    public class UnkeyedOwner
+    {
+        public string? Id { get; set; }
+        public UnkeyedAddress? Address { get; set; }
+    }
+
+    /// <summary>DemoApp's <c>Address</c> shape: an <c>Id</c> that is declared but never assigned.</summary>
+    public class UnkeyedAddress
+    {
+        public string? Id { get; set; }
+        public string Street { get; set; } = string.Empty;
+        public string Number { get; set; } = string.Empty;
     }
 }
