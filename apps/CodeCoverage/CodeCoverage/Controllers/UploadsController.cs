@@ -520,7 +520,12 @@ public partial class UploadsController : ControllerBase
 
         var scope = User.FindFirst(ApiTokenAuthenticationHandler.ScopeClaim)?.Value;
         var account = User.FindFirst(ApiTokenAuthenticationHandler.AccountClaim)?.Value;
-        var repoId = User.FindFirst(ApiTokenAuthenticationHandler.RepositoryClaim)?.Value;
+
+        // ⚠️ FindAll, not FindFirst. A token may be scoped to several repositories, and each is its
+        // own claim — FindFirst would silently authorize only one of them and refuse the rest.
+        var repoIds = User.FindAll(ApiTokenAuthenticationHandler.RepositoryClaim)
+            .Select(c => c.Value)
+            .ToArray();
 
         // Account scope compares numeric owner ids when the token carries one. A login comparison
         // is wrong in both directions once a repository is transferred: the old owner's token keeps
@@ -534,7 +539,10 @@ public partial class UploadsController : ControllerBase
                 long.TryParse(accountId, out var ownerId)
                 && repository.Account == Entities.Account.DocumentId(ownerId),
             "Account" => string.Equals(account, repository.OwnerLogin, StringComparison.OrdinalIgnoreCase),
-            "Repository" => repoId == repository.GitHubId.ToString(),
+            // Membership, not equality — the claims carry document ids, one per repository the
+            // token was scoped to.
+            "Repository" => repoIds.Contains(
+                Entities.Repository.DocumentId(repository.GitHubId), StringComparer.Ordinal),
             _ => false,
         };
 

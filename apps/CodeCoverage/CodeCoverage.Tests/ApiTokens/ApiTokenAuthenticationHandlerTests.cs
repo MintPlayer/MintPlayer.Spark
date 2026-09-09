@@ -130,7 +130,7 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
     {
         using var store = GetDocumentStore();
         using var seed = store.OpenAsyncSession();
-        var value = await StoreTokenAsync(seed, t => t.RepositoryGitHubId = 777);
+        var value = await StoreTokenAsync(seed, t => t.GithubRepositories = [Repository.DocumentId(777)]);
 
         using var session = store.OpenAsyncSession();
         var handler = await CreateAsync(session, $"{scheme} {value}");
@@ -142,7 +142,7 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         Assert.Equal("Account", principal.FindFirst(ApiTokenAuthenticationHandler.ScopeClaim)?.Value);
         Assert.Equal("acme", principal.FindFirst(ApiTokenAuthenticationHandler.AccountClaim)?.Value);
         Assert.Equal("42", principal.FindFirst(ApiTokenAuthenticationHandler.AccountIdClaim)?.Value);
-        Assert.Equal("777", principal.FindFirst(ApiTokenAuthenticationHandler.RepositoryClaim)?.Value);
+        Assert.Equal("Repositories/777", principal.FindFirst(ApiTokenAuthenticationHandler.RepositoryClaim)?.Value);
 
         // The hash, never the token value: anything downstream that logs the principal must not be
         // able to leak a working credential.
@@ -150,6 +150,39 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         Assert.NotNull(hash);
         Assert.DoesNotContain(value, hash);
         Assert.Equal(ApiTokenService.Hash(value), hash);
+    }
+
+    /// <summary>
+    /// A token scoped to several repositories emits one claim per repository.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Asserted with <c>FindAll</c>, because that is the bug this shape invites: a reader using
+    /// <c>FindFirst</c> gets one of N and silently authorizes exactly one repository while refusing
+    /// the rest. <c>UploadsController</c> had to change for the same reason.
+    /// </remarks>
+    [Fact]
+    public async Task A_token_scoped_to_several_repositories_carries_a_claim_for_each()
+    {
+        using var store = GetDocumentStore();
+        using var seed = store.OpenAsyncSession();
+        var value = await StoreTokenAsync(seed, t =>
+        {
+            t.Scope = "Repository";
+            t.GithubRepositories = [Repository.DocumentId(777), Repository.DocumentId(888)];
+        });
+
+        using var session = store.OpenAsyncSession();
+        var handler = await CreateAsync(session, $"Bearer {value}");
+        var result = await handler.AuthenticateAsync();
+
+        Assert.True(result.Succeeded, result.Failure?.Message);
+        var claims = result.Principal!
+            .FindAll(ApiTokenAuthenticationHandler.RepositoryClaim)
+            .Select(c => c.Value)
+            .OrderBy(v => v, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(["Repositories/777", "Repositories/888"], claims);
     }
 
     /// <summary>
@@ -166,7 +199,7 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         {
             t.AccountLogin = null;
             t.AccountGitHubId = null;
-            t.RepositoryGitHubId = null;
+            t.GithubRepositories = [];
         });
 
         using var session = store.OpenAsyncSession();

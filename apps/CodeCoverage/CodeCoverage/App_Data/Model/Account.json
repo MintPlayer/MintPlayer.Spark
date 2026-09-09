@@ -40,6 +40,17 @@
         },
         "tab": "a7c1f9d2-4b60-4e3a-9c85-1f27b0e6d431",
         "order": 2
+      },
+      {
+        "id": "d8a1e46f-2b93-4c07-95fe-3a6b18d2c740",
+        "name": "Defaults",
+        "label": {
+          "en": "Defaults for this account",
+          "fr": "Valeurs par défaut du compte",
+          "nl": "Standaardinstellingen van dit account"
+        },
+        "tab": "a7c1f9d2-4b60-4e3a-9c85-1f27b0e6d431",
+        "order": 3
       }
     ],
     "attributes": [
@@ -65,6 +76,27 @@
         "showedOn": "Query",
         "rules": [],
         "group": "b2e84c07-9d13-4f56-8a2b-6c9e17f0a582"
+      },
+      {
+        "id": "317fcf1b-886e-4de3-ba90-bcb93a5deae4",
+        "name": "DeleteBranchOnPrClose",
+        "label": {
+          "en": "Delete branch on merge",
+          "fr": "Supprimer la branche à la fusion",
+          "nl": "Branch verwijderen bij mergen"
+        },
+        "description": {
+          "en": "Account-wide default: delete a merged pull request's head branch, in every repository of this account that does not decide for itself."
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "d8a1e46f-2b93-4c07-95fe-3a6b18d2c740"
       },
       {
         "id": "f9c18430-234a-4ca4-b21d-9fca03049bf7",

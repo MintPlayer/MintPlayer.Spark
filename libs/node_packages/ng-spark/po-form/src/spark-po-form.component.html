@@ -50,7 +50,11 @@
           <spark-attribute-description [description]="attr.description" />
         </label>
         <div [md]="8">
-          @if (attr.dataType === 'boolean') {
+          <!-- A lookup wins over the raw data type. `[LookupReference]` does not change dataType —
+               only `[Reference]` does — so a lookup-backed bool still reports 'boolean' here. Tested
+               first, this branch swallowed it into a two-state checkbox and the select below was
+               unreachable, which made a declared lookup silently do nothing. -->
+          @if (attr.dataType === 'boolean' && !attr.lookupReferenceType) {
             <bs-checkbox
               [ngModel]="formData()[attr.name]"
               (ngModelChange)="formData()[attr.name] = $event; onFieldChange(attr)">
@@ -123,7 +127,9 @@
                       <spark-icon name="pencil" />
                     </button>
                   </div>
-                } @else if (col.dataType === 'boolean') {
+                } @else if (col.dataType === 'boolean' && !col.lookupReferenceType) {
+                  <!-- Same precedence as the top-level chain above: a lookup-backed column must
+                       reach its select rather than being swallowed by the checkbox. -->
                   <bs-checkbox
                     [(ngModel)]="row[col.name]"
                     (ngModelChange)="onInlineCellChange(attr, rowIndex, col)">

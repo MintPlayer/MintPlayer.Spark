@@ -28,5 +28,23 @@ public class Account
     /// <summary>GitHub App installation on this account, when the app is installed.</summary>
     public long? InstallationId { get; set; }
 
+    /// <summary>
+    /// Account-wide default: delete a merged pull request's head branch, in every repository of
+    /// this account that does not decide for itself.
+    /// </summary>
+    /// <remarks>
+    /// A plain <see langword="bool"/> rather than a three-state policy, deliberately: this is the
+    /// bottom of the chain, so there is nothing left to defer to. A repository overrides it with
+    /// <see cref="EDeleteBranchPolicy.Enabled"/> or <see cref="EDeleteBranchPolicy.Disabled"/>, and
+    /// inherits it with <see cref="EDeleteBranchPolicy.Inherit"/> — see
+    /// <see cref="Repository.ResolveDeleteBranchOnPrClose"/>, which is the only place the two are
+    /// combined.
+    /// <para>
+    /// Off by default. Deleting a branch is the one irreversible thing this app does to somebody
+    /// else's repository, so it is opted into rather than out of.
+    /// </para>
+    /// </remarks>
+    public bool DeleteBranchOnPrClose { get; set; }
+
     public static string DocumentId(long gitHubId) => $"Accounts/{gitHubId}";
 }

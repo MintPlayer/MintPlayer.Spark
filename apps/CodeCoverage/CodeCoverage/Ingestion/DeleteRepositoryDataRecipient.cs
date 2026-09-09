@@ -101,12 +101,23 @@ public partial class DeleteRepositoryDataRecipient : IRecipient<DeleteRepository
         }
 
         // Repository-scoped tokens: no id relationship, so this one is a query.
+        //
+        // ⚠️ Shrink, do not delete. A token may be scoped to several repositories, so deleting one
+        // repository must not revoke a credential that is still serving the others — that would
+        // break CI on repositories nobody touched. Only a token left with nothing to upload for is
+        // removed; an emptied list would otherwise silently WIDEN it to account scope, which is the
+        // opposite of what deleting its last repository should mean.
+        // Same id as above, reused rather than recomputed.
         var tokens = await session.Query<ApiToken>()
-            .Where(t => t.RepositoryGitHubId == message.RepositoryGitHubId)
+            .Where(t => t.GithubRepositories.Contains(repositoryId))
             .Take(1024)
             .ToListAsync(cancellationToken);
         foreach (var token in tokens)
-            session.Delete(token);
+        {
+            token.GithubRepositories = [.. token.GithubRepositories.Where(id => id != repositoryId)];
+            if (token.GithubRepositories.Count == 0)
+                session.Delete(token);
+        }
 
         // Last, and only now that nothing beneath it remains: this document is what the guards
         // above gate on, so while it exists the sweep can always be resumed.

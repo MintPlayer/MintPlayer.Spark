@@ -15,6 +15,15 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<!--
+		  For SparkUser, which ApiToken.CreatedByUserId references. [Reference] takes a Type, so the
+		  declaring assembly has to be referenced — there is no by-name overload.
+		  ⚠️ This pulls the authorization package into an entity library, which is the opposite of
+		  what #388 (entity libraries should not drag in dependencies) is trying to achieve. Revisit
+		  it there: either SparkUser's identity contract moves somewhere lighter, or [Reference]
+		  gains a by-name overload for exactly this case.
+		-->
+		<ProjectReference Include="..\..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
 		<!-- Runs AttributeDescriptionsGenerator here, where the /// summaries live (#348). -->
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 		<!-- Keys the [ValueObject] types declared here. Analyzer ProjectReferences are not transitive. -->

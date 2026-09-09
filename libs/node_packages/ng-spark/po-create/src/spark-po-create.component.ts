@@ -64,7 +64,9 @@ export class SparkPoCreateComponent {
         data[attr.name] = null;
       } else if (attr.dataType === 'AsDetail') {
         data[attr.name] = attr.isArray ? [] : {};
-      } else if (attr.dataType === 'boolean') {
+      } else if (attr.dataType === 'boolean' && !attr.lookupReferenceType) {
+        // Same reason as spark-po-edit: a lookup-backed boolean's third state is the absence of a
+        // value, and seeding `false` here would make every new object explicitly opted out.
         data[attr.name] = false;
       } else {
         data[attr.name] = '';

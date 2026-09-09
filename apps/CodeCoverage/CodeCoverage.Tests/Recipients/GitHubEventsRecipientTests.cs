@@ -1,4 +1,5 @@
 using CodeCoverage.Entities;
+using CodeCoverage.LookupReferences;
 using CodeCoverage.Recipients;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -416,15 +417,42 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
     // ---------------------------------------------------------------------------------------
 
     /// <summary>Seeds the base repository with the opt-in in whatever state the test needs.</summary>
-    private static async Task SeedRepositoryAsync(IAsyncDocumentSession session, bool deleteBranchOnPrClose)
+    /// <summary>The account id the shared payload's owner resolves to.</summary>
+    private const long OwnerId = 1;
+
+    /// <summary>
+    /// Seeds the repository, and optionally the account it inherits from.
+    /// </summary>
+    /// <param name="policy">The repository's own answer, or <c>Inherit</c> to defer.</param>
+    /// <param name="accountDefault">
+    /// When given, an <c>Account</c> is stored with this default. Absent means no account document
+    /// at all — which must resolve to "do not delete", not to a crash.
+    /// </param>
+    private static async Task SeedRepositoryAsync(
+        IAsyncDocumentSession session,
+        EDeleteBranchPolicy policy,
+        bool? accountDefault = null)
     {
+        if (accountDefault is not null)
+        {
+            await session.StoreAsync(
+                new Account
+                {
+                    GitHubId = OwnerId,
+                    Login = "acme",
+                    DeleteBranchOnPrClose = accountDefault.Value,
+                },
+                Account.DocumentId(OwnerId));
+        }
+
         await session.StoreAsync(
             new Repository
             {
                 GitHubId = RepoId,
                 Name = "widgets",
                 OwnerLogin = "acme",
-                DeleteBranchOnPrClose = deleteBranchOnPrClose,
+                Account = accountDefault is null ? null : Account.DocumentId(OwnerId),
+                DeleteBranchOnPrClose = policy,
             },
             Repository.DocumentId(RepoId));
         await session.SaveChangesAsync();
@@ -438,7 +466,7 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
     {
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
-        await SeedRepositoryAsync(session, deleteBranchOnPrClose: true);
+        await SeedRepositoryAsync(session, EDeleteBranchPolicy.Enabled);
         var recipient = CreateRecipient(session, out _, out var installer);
 
         await recipient.HandleAsync(Message("pull_request", MergedPr()));
@@ -451,7 +479,7 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
     {
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
-        await SeedRepositoryAsync(session, deleteBranchOnPrClose: true);
+        await SeedRepositoryAsync(session, EDeleteBranchPolicy.Enabled);
         var recipient = CreateRecipient(session, out _, out var installer);
 
         await recipient.HandleAsync(Message("pull_request",
@@ -465,7 +493,7 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
     {
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
-        await SeedRepositoryAsync(session, deleteBranchOnPrClose: false);
+        await SeedRepositoryAsync(session, EDeleteBranchPolicy.Disabled);
         var recipient = CreateRecipient(session, out _, out var installer);
 
         await recipient.HandleAsync(Message("pull_request", MergedPr()));
@@ -492,7 +520,7 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         // The opt-in is on the base repository and cannot speak for someone else's fork.
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
-        await SeedRepositoryAsync(session, deleteBranchOnPrClose: true);
+        await SeedRepositoryAsync(session, EDeleteBranchPolicy.Enabled);
         var recipient = CreateRecipient(session, out _, out var installer);
 
         await recipient.HandleAsync(Message("pull_request", MergedPr(headFromFork: true)));
@@ -510,7 +538,7 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
     {
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
-        await SeedRepositoryAsync(session, deleteBranchOnPrClose: true);
+        await SeedRepositoryAsync(session, EDeleteBranchPolicy.Enabled);
         var recipient = CreateRecipient(session, out _, out var installer);
 
         var withoutInstallation = MergedPr()
@@ -532,7 +560,7 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
     {
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
-        await SeedRepositoryAsync(session, deleteBranchOnPrClose: true);
+        await SeedRepositoryAsync(session, EDeleteBranchPolicy.Enabled);
         var recipient = CreateRecipient(session, out _, out var installer);
         installer.DeleteThrows = failure;
 
@@ -548,6 +576,117 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         response.Body.Returns("{}");
         response.Headers.Returns(new Dictionary<string, string>());
         return response;
+    }
+
+    // -------------------------------------------------------------------------------------
+    // Inheritance. The per-repository flag was unusable at scale — an owner with 180
+    // repositories would have ticked 180 boxes — so a repository that says nothing now defers
+    // to its account.
+    // -------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task An_inheriting_repository_follows_its_account()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedRepositoryAsync(session, EDeleteBranchPolicy.Inherit, accountDefault: true);
+        var recipient = CreateRecipient(session, out _, out var installer);
+
+        await recipient.HandleAsync(Message("pull_request", MergedPr()));
+
+        installer.Deleted.Should().Equal("acme/widgets:heads/feature/thing");
+    }
+
+    [Fact]
+    public async Task An_inheriting_repository_does_nothing_when_its_account_is_off()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedRepositoryAsync(session, EDeleteBranchPolicy.Inherit, accountDefault: false);
+        var recipient = CreateRecipient(session, out _, out var installer);
+
+        await recipient.HandleAsync(Message("pull_request", MergedPr()));
+
+        installer.Deleted.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// The override that matters most: an account may enable deletion broadly while one repository
+    /// opts out. Without <c>Disabled</c> as a distinct state from <c>Inherit</c>, that is
+    /// inexpressible — which is the whole reason this is an enum rather than a nullable bool.
+    /// </summary>
+    [Fact]
+    public async Task A_repository_can_opt_out_of_an_account_that_is_on()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedRepositoryAsync(session, EDeleteBranchPolicy.Disabled, accountDefault: true);
+        var recipient = CreateRecipient(session, out _, out var installer);
+
+        await recipient.HandleAsync(Message("pull_request", MergedPr()));
+
+        installer.Deleted.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_repository_can_opt_in_while_its_account_is_off()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedRepositoryAsync(session, EDeleteBranchPolicy.Enabled, accountDefault: false);
+        var recipient = CreateRecipient(session, out _, out var installer);
+
+        await recipient.HandleAsync(Message("pull_request", MergedPr()));
+
+        installer.Deleted.Should().Equal("acme/widgets:heads/feature/thing");
+    }
+
+    /// <summary>
+    /// No account document at all — a repository whose owner was never stored. Must resolve to "do
+    /// not delete" rather than throwing on the webhook path, where an exception costs the event.
+    /// </summary>
+    [Fact]
+    public async Task An_inheriting_repository_with_no_account_deletes_nothing()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedRepositoryAsync(session, EDeleteBranchPolicy.Inherit);
+        var recipient = CreateRecipient(session, out _, out var installer);
+
+        var act = async () => await recipient.HandleAsync(Message("pull_request", MergedPr()));
+
+        await act.Should().NotThrowAsync();
+        installer.Deleted.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// The resolver in isolation, so the precedence rule is pinned independently of the webhook
+    /// plumbing that consumes it.
+    /// </summary>
+    [Theory]
+    [InlineData(EDeleteBranchPolicy.Enabled, false, true)]
+    [InlineData(EDeleteBranchPolicy.Enabled, true, true)]
+    [InlineData(EDeleteBranchPolicy.Disabled, true, false)]
+    [InlineData(EDeleteBranchPolicy.Disabled, false, false)]
+    [InlineData(EDeleteBranchPolicy.Inherit, true, true)]
+    [InlineData(EDeleteBranchPolicy.Inherit, false, false)]
+    public void The_resolver_prefers_the_repository_then_the_account(
+        EDeleteBranchPolicy policy, bool accountDefault, bool expected)
+    {
+        var repository = new Repository { DeleteBranchOnPrClose = policy };
+        var account = new Account { DeleteBranchOnPrClose = accountDefault };
+
+        Repository.ResolveDeleteBranchOnPrClose(repository, account).Should().Be(expected);
+    }
+
+    [Fact]
+    public void The_resolver_is_safe_when_either_document_is_missing()
+    {
+        Repository.ResolveDeleteBranchOnPrClose(null, null).Should().BeFalse();
+        Repository.ResolveDeleteBranchOnPrClose(new Repository(), null).Should().BeFalse();
+        // An explicit Enabled still wins with no account to consult.
+        Repository.ResolveDeleteBranchOnPrClose(
+            new Repository { DeleteBranchOnPrClose = EDeleteBranchPolicy.Enabled }, null).Should().BeTrue();
     }
 
     public static TheoryData<string, Exception> DeleteFailures() => new()

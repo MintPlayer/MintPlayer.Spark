@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Identity;
 using Raven.Client.Documents.Session;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents;
@@ -50,6 +51,9 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
     [Inject] private readonly ISparkVisibility visibility;
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IManager manager;
+    // Stamps CreatedByUserId. Same pair DeleteDataAction uses to answer "who is asking".
+    [Inject] private readonly UserManager<MintPlayer.Spark.Authorization.Identity.SparkUser> userManager;
+    [Inject] private readonly IHttpContextAccessor httpContextAccessor;
 
     /// <summary>
     /// Restricted to the accounts the caller manages, for every action.
@@ -102,6 +106,12 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
     /// </remarks>
     public override async Task OnBeforeSaveAsync(PersistentObject obj, ApiToken entity)
     {
+        // ⚠️ Runs on EVERY save, create and edit alike. The early return below is only for the
+        // credential, which cannot be re-derived — the scope must be re-validated every time,
+        // because an edit can change which repositories a token covers.
+        await ValidateRepositoryScopeAsync(entity);
+        entity.Scope = entity.GithubRepositories.Count > 0 ? "Repository" : "Account";
+
         if (!string.IsNullOrEmpty(entity.Hash))
             return; // An edit; the credential is already minted and cannot be re-derived.
 
@@ -113,10 +123,57 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
 
         plaintext = ApiTokenService.GenerateTokenValue();
         entity.Hash = ApiTokenService.Hash(plaintext);
-        entity.Scope = entity.RepositoryGitHubId is null ? "Account" : "Repository";
         entity.AccountGitHubId = account?.GitHubId;
+
+        // Stamped, never trusted from the payload: the attribute is read-only in the model, so a
+        // posted value is refused by IsWritableBySchema anyway, but the field was previously
+        // writable AND stamped by nothing — every token made through the UI carried an empty string.
+        var principal = httpContextAccessor.HttpContext?.User;
+        var creator = principal is null ? null : await userManager.GetUserAsync(principal);
+        entity.CreatedByUserId = creator?.Id ?? string.Empty;
         entity.CreatedAtUtc = DateTime.UtcNow;
         entity.RevokedAtUtc = null;
+    }
+
+    /// <summary>
+    /// Refuses a token scoped to a repository the caller does not manage.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>Nothing else checks this.</b> A reference ARRAY is written straight through
+    /// (<c>EntityMapper</c> hands the posted value to the property and returns), bypassing the
+    /// collection guard that binds a scalar reference's id to its type — so whatever ids the client
+    /// posts are what get stored. And <c>EnsureRowSaveAllowedAsync</c> re-applies only the
+    /// <c>AccountLogin</c> row filter, which says nothing about repository ownership.
+    /// <para>
+    /// Without this, any signed-in user could mint a token for any repository by posting its
+    /// document id. Ids are checked against the repositories the caller actually manages, not merely
+    /// against existence.
+    /// </para>
+    /// </remarks>
+    private async Task ValidateRepositoryScopeAsync(ApiToken entity)
+    {
+        if (entity.GithubRepositories.Count == 0)
+            return;
+
+        // Distinct, because a duplicated id would otherwise mean a repeated claim on the wire.
+        entity.GithubRepositories = [.. entity.GithubRepositories.Distinct(StringComparer.Ordinal)];
+
+        var owners = await visibility.GetAllowedOwnersAsync();
+        var repositories = await session.LoadAsync<Repository>(entity.GithubRepositories);
+
+        foreach (var id in entity.GithubRepositories)
+        {
+            repositories.TryGetValue(id, out var repository);
+
+            // Unknown and unauthorized are refused identically — a caller must not be able to
+            // discover which repository ids exist by comparing error messages.
+            if (repository is null || !owners.Contains(repository.OwnerLogin, StringComparer.OrdinalIgnoreCase))
+            {
+                throw new SparkValidationException(
+                    nameof(ApiToken.GithubRepositories),
+                    "One of the selected repositories is not one you manage.");
+            }
+        }
     }
 
     /// <summary>
