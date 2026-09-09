@@ -1,7 +1,8 @@
 # PRD — Server-side lifecycle for New and Delete
 
-**Status: NOT STARTED — but no longer blocked.** ✅ `PRD-AsDetail-Row-Identity.md` landed as
-`4f9e9319` (#382) and has been built on since (#384, #391, #392). Tracked as issue #386.
+**Status: IMPLEMENTED and verified in a real browser** on `feat/issue-386-server-side-row-lifecycle` — all six acceptance criteria met; see the plan's "Verified in a real browser" section for the trace. ✅ The blocker,
+`PRD-AsDetail-Row-Identity.md`, landed as `4f9e9319` (#382) and has been built on since (#384, #391,
+#392). Tracked as issue #386.
 **Origin:** sidestepped from PR #381; commits `0f013ffe`, `69749631`, `89d7b235` on the abandoned
 branch `feat/coverage-account-po-and-branch-deletion`.
 
@@ -26,7 +27,7 @@ So there is nowhere to put a server-computed default, a parent-derived value, or
 `New/{Type}` right is never consulted for a click the server never sees. (It *is* consulted at save
 time once `PRD-AsDetail-Row-Identity.md` R5 lands; this PRD is about the click.)
 
-## 2. Why it is blocked, not merely unscheduled
+## 2. Why it *was* blocked, not merely unscheduled (resolved)
 
 The New half is mechanically independent — it constructs a persistent object and writes nothing. The
 **Delete** half is not, and the two ship together or the feature is half a feature.
@@ -37,7 +38,9 @@ stable key to be absent. Building the hook first produces the same defect that
 `PRD-AsDetail-Row-Identity.md` §3 W1 dissects — a mechanism whose unit tests pass because they
 construct the wire object by hand, over a path that never carries a key.
 
-**Row identity enables this feature.** Do not start it first.
+**Row identity enables this feature.** ✅ It landed first, and the prediction held: the delete
+half is built entirely on the row key, and `SparkDeleteRowArgs.RowKey` is the argument that would
+have had nothing to hold before #382.
 
 ## 3. What already exists, and what it is worth
 
@@ -96,17 +99,24 @@ may create rows of this kind, not which parent they may attach one to.
 - Re-litigating where per-row rights are enforced on save. That is row-identity R5 and it is settled.
 - A general client-side "server round trip on every field change". `OnRefreshAsync` already exists.
 
-## 5. What is missing
+## 5. What was missing, and what was built
 
-- **Zero tests** across all three commits.
+- ~~**Zero tests** across all three commits.~~ ✅ 20 added: 3 on `SetValue`/`SetOriginalValue`, 9 on the two invokers, 3 on the flag's hash exclusion, 4 on the row arriving keyed, plus 10 client specs and 8 E2E facts.
 - **No client wiring at all.** `po-create` still builds the form locally; `addInlineRow` /
   `addArrayItem` still push `{}`. Nothing in `ng-spark` posts to `/new` — the endpoint registers
   through `IPostEndpoint` + `PersistentObjectGroup`, so it exists at runtime and is simply unreached.
 - **No Delete counterpart**, though `ServerSideRowLifecycle`'s doc comment promises one.
 - **No model-file emitter** for the flag and no exposure of it on the client `EntityType`.
-- ⚠️ **`SetValue` becoming dirty-marking is an unaudited behaviour change** feeding the save path.
-  The commit claims only two callers, both tests, neither asserting dirty state — re-verify against
-  the tree at the time rather than re-applying blind.
+- ✅ **`SetValue` becoming dirty-marking was audited and is safe.** Measured on the current tree:
+  `EntityMapper` never reads `IsValueChanged` — the write path writes every attribute it is given —
+  so marking dirty changes nothing about what is persisted. Exactly one production caller exists
+  (`HR/Actions/CarreerJobActions.cs:47`, clearing a field on refresh, where dirty-marking is right),
+  and `SetOriginalValue` had zero. The flag changes an outcome in only two places, neither reachable
+  from a `SetValue` call site: `SyncActionInterceptor` (which properties a replicated save reports)
+  and `CarActions.OnBeforeSaveAsync` (a retry prompt), both reading the client's flag.
+  ⚠️ The residual risk is real and is why the hook's doc insists on `SetOriginalValue`: a
+  construction hook using `SetValue` on a **replicated** type would widen that `Properties[]` array
+  with fields nobody touched. Nothing enforces this but the doc comment and the test.
 
 ## 6. Acceptance criteria
 
@@ -134,3 +144,121 @@ One PR, medium. The server half is written; the work is the half never started.
 | Delete round-trip + make the flag actually gate it + model emitter + client `EntityType` exposure | medium |
 | Client wiring, error and veto surfacing | medium — touches every AsDetail form |
 | Tests, including the E2E | medium |
+
+## 8. Decisions taken during implementation
+
+### D1 — The flag gates the client, and the server does not check it
+
+The plan's L4 said "a gate in `New.cs` and the delete path". **That was not built, deliberately.**
+
+`ServerSideRowLifecycle` decides whether the *client* round-trips. The endpoints check rights and
+nothing else, so they behave identically whether the flag is on, off or absent. Two reasons:
+
+1. **A server gate buys nothing.** Both endpoints already require the row type's own `New`/`Delete`
+   right and re-load the parent through its Read right, collection guard and row filter. A caller who
+   reaches them with the flag off learns only what those rights already permit.
+2. **It is the drift that the flag's own doc warns about.** Once an unhashed model field decides
+   whether a request is *served*, the distance to it deciding whether a request is *checked* is one
+   plausible-looking refactor. Keeping the endpoints unconditional means there is no such precedent
+   to follow.
+
+`ServerSideRowLifecycleFlagTests` pins the hash exclusion that makes this safe, with a control case
+so the suite cannot pass by having stopped reading the file.
+
+### D2 — The delete round-trip is an affordance, and says so
+
+`OnDeleteRowAsync` can refuse, but a refusal only stops a cooperating client: a caller who never
+posts to `/delete-row` and submits the parent with the row already gone reaches the same end state.
+What covers that caller is the save path's per-row `Delete/{RowType}` enforcement (row identity R5,
+`EntityMapper`), which runs on every embedded collection unconditionally.
+
+This is stated three times — on `SparkDeleteRowArgs`, on the interface member, and in
+`ServiceEntryActions` — because the failure mode is an author reasonably believing the hook is the
+enforcement point and putting the only check there.
+
+### D3 — `/new` constructs the CLR instance rather than minting a guid
+
+L2 said "mint the key and set `po.Id`". Constructing the entity through `Activator.CreateInstance`
+and running `PopulateAttributeValues` over it does that *and* one more thing: every C# property
+initializer becomes the default the user sees, which is how a .NET developer expects to state one.
+A type with no accessible parameterless constructor falls back to the model's shape rather than
+failing — it simply cannot contribute defaults.
+
+### D4 — `POST /{type}/delete-row`, not `DELETE`
+
+The framework's real delete route is `DELETE /{objectTypeId}/{**id}`, whose catch-all segment
+swallows any sibling `DELETE` route. The operation also needs a body. Both point the same way.
+
+### D5 — `OnDeleteRowAsync`, never an overload of `OnDeleteAsync`
+
+`DatabaseAccess` resolves the document delete hook by **name alone** (`GetCachedActionMethod(...,
+"OnDeleteAsync")`). A second `OnDeleteAsync` would make every document delete in the framework throw
+`AmbiguousMatchException` at runtime, on a path this feature does not otherwise touch.
+
+### D6 — The demo lives in Fleet, because that is the only app the E2E suite hosts
+
+`ServiceEntry` on `Car` is a real embedded collection with a real reason for both hooks: a new entry
+wants a server-set date and the vehicle's plate; an invoiced entry must not silently vanish. Fleet's
+`security.json` grants administrators `QueryReadEditNewDelete/ServiceEntry` and fleet managers only
+`ReadEdit` — so the row type's own right is observably the one that governs, not the parent's.
+
+## 9. Defects the tests found, none of which was in the feature as designed
+
+All four were silent, and none would have been found by reading the code. Three were latent on
+master or in the salvaged commits; the fourth (F4) was in this work, and only the browser saw it.
+
+### F1 — Two invokers shared one constructor cache and handed each other the wrong constructor
+
+`ReflectionCache.GetOrAdd<TKey, TValue>` is **one dictionary per `(TKey, TValue)` pair**, so three
+call sites keying a `ConstructorInfo` by bare entity `Type` — `RefreshInvoker`, `NewInvoker`,
+`DeleteRowInvoker` — shared it. Whichever ran first for a given type won; the others got its
+constructor and invoked it with their own arguments.
+
+It surfaced as `DeleteRowInvoker` calling `SparkNewArgs`'s constructor and failing on the third
+argument (`PersistentObject` vs `string`). ⚠️ **`RefreshInvoker` and `NewInvoker` were already
+colliding on master**, from the salvaged commits — it had simply never fired, because nothing called
+`/new`. Any type with both a refresh hook and a construction hook would have hit it on the first
+request. All three keys are now discriminated.
+
+### F2 — A hook's refusal surfaced as a 500, not a 400
+
+`MethodBase.Invoke` wraps whatever the invoked method throws in `TargetInvocationException`, so
+`catch (SparkValidationException)` in `New.cs` matched nothing. The veto path the salvaged commit
+advertised — "a hook may refuse; `SparkValidationException` becomes a 400 the user can read" — had
+never worked. Both invokers now pass `BindingFlags.DoNotWrapExceptions`, which also keeps the hook's
+own stack trace.
+
+### F4 — the parent type was named by CLR name on a create page, and refused
+
+`spark-po-create` binds no `parentType` — there is no parent route segment on a create page — so the
+form fell back to `entityType()?.clrType` and sent `"Fleet.Entities.Car"`. The server resolves that
+field through `ModelLoader.ResolveEntityType`, which accepts **a GUID or a declared alias and nothing
+else**, so it resolved to null and the request was refused exactly like an unknown type.
+
+The user-visible symptom: clicking **Add** on an opted-in detail grid while *creating* an object
+showed "the server refused this change" on an ordinary click, with nothing to indicate why. The edit
+page was unaffected, because `spark-po-edit` does bind `parentType` to the route segment.
+
+⚠️ **Only the browser could find this.** The client specs bind `parentType` (they were written from
+the edit page's shape), the endpoint suite constructs the request itself, and the E2E drives the API
+directly. Every layer supplied the field that production omits.
+
+Fixed in three places, because any one alone leaves the trap set: the fallback is now
+`entityType()?.id`, which always resolves; `spark-po-create` binds `[parentType]` explicitly; and a
+spec asserts both that the id is sent *and* that the CLR name is not — without the second assertion
+it passes against the broken code.
+
+### F3 — `[ValueObject]` is silently inert without the generator reference
+
+`Fleet.Library` did not reference `MintPlayer.Spark.LibraryGenerators`, and analyzer
+`ProjectReference`s are not transitive. `[ValueObject]` on `ServiceEntry` therefore compiled cleanly
+and generated **nothing**: no key property, no registration.
+
+Nothing failed. The startup key gate only inspects types that registered, so an unregistered one is
+never looked at; the rows simply reached the client with a null id. `HR.Library` carries the
+reference with a comment explaining exactly this, which is the only reason HR works.
+
+⚠️ **This is a framework-level gap, not a Fleet typo.** SPARK017 answers "should this type be a value
+object"; nothing answers "this type is marked and the generator never ran". The E2E is what caught
+it, and only because it asserted on the key *as it arrives over the wire* — every in-memory check
+passes, since a keyless row deserialises with a freshly minted guid.

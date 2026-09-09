@@ -135,4 +135,21 @@ export interface EntityType {
    * `queries` or `alias`.
    */
   detailTypes?: EntityType[];
+  /**
+   * Whether adding or removing a row of this type asks the server first.
+   *
+   * Absent or false — the default — keeps the purely client-side behaviour: New pushes a blank row,
+   * Delete splices it out, and the parent's save is the first the server hears of either. On, the
+   * grid calls `newObject` before showing a row and `deleteRow` before removing one, so
+   * `OnNewAsync` can default it and the delete hook can refuse.
+   *
+   * ⚠️ Read it off the **row type**, never the parent: the type that owns the hooks owns the
+   * decision. For a row type resolved out of `detailTypes` the flag survives the server-side
+   * pruning, so both sources agree.
+   *
+   * ⚠️ It governs the round trip and nothing else. It is not a permission, and it is outside the
+   * model hash, so nothing that gates a write may be conditional on it — the save path enforces the
+   * row type's New/Edit/Delete rights on every embedded collection whether this is on or off.
+   */
+  serverSideRowLifecycle?: boolean;
 }

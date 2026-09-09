@@ -92,6 +92,58 @@ public interface IPersistentObjectActions<T> where T : class
     /// </summary>
     Task OnRefreshAsync(SparkRefreshArgs<T> args);
 
+    /// <summary>
+    /// Called when a new object of this type is constructed, before the client ever sees it — for a
+    /// standalone New and for a row added to an <c>AsDetail</c> collection alike. Mutate
+    /// <c>args.PersistentObject</c> to give the object the shape it should start life with:
+    /// default a date to now, copy a value down from the parent, preselect an option, hide or
+    /// reveal attributes depending on whether there is a parent at all.
+    /// <para>
+    /// ⚠️ <b>Use <see cref="PersistentObjectAttribute.SetOriginalValue{TValue}"/> for defaults</b>,
+    /// not <see cref="PersistentObjectAttribute.SetValue{TValue}"/>. The latter marks the attribute
+    /// changed, which makes the object dirty before the user has typed anything — so adding a row
+    /// and abandoning it leaves the parent falsely modified.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>Construction is not persistence.</b> Nothing is written here and the object may never
+    /// be saved. For an <c>AsDetail</c> row the parent owns the save, which is what
+    /// <see cref="SparkNewArgs{T}.AsDetailParent"/> signals.
+    /// </para>
+    /// </summary>
+    /// <remarks>
+    /// A default implementation, for the same reason as <see cref="OnQueryAsync"/>: most types have
+    /// no defaults to set, and adding a required member would break every hand-written implementer.
+    /// </remarks>
+    Task OnNewAsync(SparkNewArgs<T> args) => Task.CompletedTask;
+
+    /// <summary>
+    /// Called when a row of this type is removed from a parent's <c>AsDetail</c> collection, before
+    /// the client splices it out — to react, or to refuse by throwing
+    /// <see cref="Abstractions.SparkValidationException"/> with a message the user can read.
+    /// <para>
+    /// ⚠️ <b>Removal is not deletion.</b> Nothing is written here either. The row leaves the
+    /// database only when the parent is saved, so a hook that needs to record something records it
+    /// from the parent's <see cref="OnBeforeSaveAsync"/>.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>A refusal here is an affordance, not enforcement.</b> It stops a cooperating client; it
+    /// cannot stop one that never calls the endpoint and submits the parent with the row already
+    /// gone. The save path's unconditional per-row <c>Delete/{RowType}</c> check is what stops that
+    /// one. See <see cref="SparkDeleteRowArgs{T}"/> for the full argument.
+    /// </para>
+    /// </summary>
+    /// <remarks>
+    /// A default implementation, for the same reason as <see cref="OnNewAsync"/>.
+    /// <para>
+    /// Named <c>OnDeleteRowAsync</c> rather than an overload of <see cref="OnDeleteAsync"/>
+    /// deliberately, and not merely for readability: <c>DatabaseAccess</c> resolves the document
+    /// delete hook by <em>name alone</em>, so a second <c>OnDeleteAsync</c> would make every
+    /// document delete in the framework throw <see cref="System.Reflection.AmbiguousMatchException"/>
+    /// — at runtime, on a path this feature does not otherwise touch.
+    /// </para>
+    /// </remarks>
+    Task OnDeleteRowAsync(SparkDeleteRowArgs<T> args) => Task.CompletedTask;
+
     // ---- Row-level security ------------------------------------------------------------------
     //
     // These three were deliberately absent from this interface and reached by reflection instead,

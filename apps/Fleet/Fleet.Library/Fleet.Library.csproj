@@ -12,6 +12,14 @@
 		<ProjectReference Include="..\..\..\libs\replication\MintPlayer.Spark.Replication.Abstractions\MintPlayer.Spark.Replication.Abstractions.csproj" />
 		<!-- Runs AttributeDescriptionsGenerator here, where the /// summaries live (#348). -->
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<!--
+		  Keys the [ValueObject] types declared here. Analyzer ProjectReferences are not transitive,
+		  and its absence is SILENT: [ValueObject] compiles fine, generates nothing, and the type ends
+		  up with no key property and no registration. Nothing fails — the startup key gate only
+		  checks types that registered, so an unregistered one is simply never looked at, and the rows
+		  reach the client with a null id. Found exactly that way on ServiceEntry (#386).
+		-->
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>
 
 </Project>

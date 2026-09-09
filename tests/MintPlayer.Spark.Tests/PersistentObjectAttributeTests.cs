@@ -82,6 +82,49 @@ public class PersistentObjectAttributeTests
 
         attr.GetValue<decimal>().Should().Be(3.14m);
     }
+
+    // ---- The default-vs-edit distinction (#386) -----------------------------------------------
+    //
+    // These three exist because the pair shipped with no test asserting the one thing that
+    // distinguishes them. Both methods assign Value; if the flag were the same on both, the pair
+    // would be two names for one method and every construction hook would silently make its object
+    // dirty — so an author following the documented advice ("use SetOriginalValue for defaults")
+    // would get exactly the behaviour the advice exists to avoid, with nothing failing.
+
+    [Fact]
+    public void SetValue_MarksTheAttributeChanged()
+    {
+        var attr = new PersistentObjectAttribute { Name = "Test" };
+
+        attr.SetValue("edited");
+
+        attr.IsValueChanged.Should().BeTrue();
+    }
+
+    [Fact]
+    public void SetOriginalValue_LeavesTheAttributeUnchanged()
+    {
+        var attr = new PersistentObjectAttribute { Name = "Test" };
+
+        attr.SetOriginalValue("a default");
+
+        attr.Value.Should().Be("a default");
+        attr.IsValueChanged.Should().BeFalse(
+            "a server-set default is what the object starts as, not something the user did to it");
+    }
+
+    [Fact]
+    public void SetOriginalValue_DoesNotClearAnAlreadySetChangedFlag()
+    {
+        var attr = new PersistentObjectAttribute { Name = "Test" };
+        attr.SetValue("edited by the user");
+
+        attr.SetOriginalValue("a default applied afterwards");
+
+        attr.IsValueChanged.Should().BeTrue(
+            "clearing the flag would let a hook that defaults a field after an edit erase the fact "
+            + "that the edit happened — and replication decides which properties to send from it");
+    }
 }
 
 public class PersistentObjectTests

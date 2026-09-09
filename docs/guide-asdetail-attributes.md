@@ -195,7 +195,42 @@ the field is simply lost. That is a real bug this design fixes: three server-own
 The same comparison is what makes the row type's `New/X`, `Edit/X` and `Delete/X` rights decidable.
 Before it existed those rights could be granted on an embedded type and no code read them.
 
+### Adding a keyed collection to an app that already has documents
+
+You do not need a backfill migration for the *new* collection. The startup gate asks
+
+```rql
+from 'Cars' where ServiceEntries[].Id == null or ServiceEntries[].Id == ''
+```
+
+and an **absent array does not match** — measured against 10,009 real documents with no such field,
+`TotalResults: 0`. This is the opposite of the better-known rule for absent *scalars*, which do match
+`== null` (and why an absent boolean needs `!= true` rather than `== false`).
+
+A backfill is needed only when the collection already exists in stored documents and its rows predate
+the key — `HR/Migrations/M_202609091210_BackfillValueObjectKeys.cs` is the worked example, and note
+its `if (rows)` guard, which leaves an absent array absent for exactly this reason.
+
+⚠️ **The gate can only check types it knows about.** It walks the registered value objects, so a type
+whose generator never ran is not checked — it is skipped silently. See the warning under "Marking a
+type".
+
 ### Marking a type
+
+⚠️ **The attribute does nothing unless the declaring project references the generator.** Analyzer
+`ProjectReference`s are not transitive, so a library that references `MintPlayer.Spark.Abstractions`
+(where the attribute lives) still needs its own:
+
+```xml
+<ProjectReference Include="...\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj"
+                  OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+```
+
+Without it `[ValueObject]` compiles cleanly and generates **nothing** — no key property, no
+registration — and nothing fails: the startup gate only inspects types that registered, so the rows
+simply reach the client with a null id. It cost a day on `Fleet.Library` (#386), and only a test that
+asserted the key *as it arrives over the wire* caught it, because a keyless row deserialises with a
+freshly minted guid and looks correct in memory.
 
 ```csharp
 using MintPlayer.Spark.Abstractions;
@@ -357,6 +392,82 @@ The inline table looks like:
 | Manager     | 2022-07-01     |              | [x] |
                                          [+ Add]
 ```
+
+### Asking the server before a row is added or removed
+
+By default a detail grid is entirely client-side: **Add** pushes a blank row, the delete button
+splices one out, and the parent's save is the first the server hears of either. There is nowhere to
+put a server-computed default and nowhere to refuse a removal.
+
+A row type can opt out of that, per type, by setting `serverSideRowLifecycle` on **its own** model
+file — not on the parent's attribute, because the type that owns the hooks owns the decision, and one
+setting then governs every grid the type appears in:
+
+```json
+{
+  "persistentObject": {
+    "name": "ServiceEntry",
+    "clrType": "Fleet.Entities.ServiceEntry",
+    "serverSideRowLifecycle": true,
+    "attributes": [ ... ]
+  }
+}
+```
+
+With it on, the grid calls `POST /spark/po/{rowType}/new` before showing a new row and
+`POST /spark/po/{rowType}/delete-row` before removing a stored one, and two hooks become reachable:
+
+```csharp
+public partial class ServiceEntryActions : DefaultPersistentObjectActions<ServiceEntry>
+{
+    public override Task OnNewAsync(SparkNewArgs<ServiceEntry> args)
+    {
+        // SetOriginalValue, NOT SetValue -- see below.
+        args.PersistentObject[nameof(ServiceEntry.PerformedOn)]
+            .SetOriginalValue(DateOnly.FromDateTime(DateTime.Today));
+        return Task.CompletedTask;
+    }
+
+    public override Task OnDeleteRowAsync(SparkDeleteRowArgs<ServiceEntry> args)
+    {
+        // args.Row is the STORED row, never the caller's copy of it.
+        var invoiced = args.Row.Attributes
+            .FirstOrDefault(a => a.Name == nameof(ServiceEntry.IsInvoiced))?.Value;
+
+        if (invoiced is true)
+            throw new SparkValidationException("This entry has been invoiced.", "ServiceEntries");
+
+        return Task.CompletedTask;
+    }
+}
+```
+
+Four things about this are worth knowing before you use it.
+
+**Neither hook writes anything.** Construction is not persistence and removal is not deletion: the
+row appears or disappears for real only when the parent is saved. A hook that touches the database is
+writing outside the parent's unit of work. Record things from the *parent's* `OnBeforeSaveAsync`.
+
+**Use `SetOriginalValue` for defaults, not `SetValue`.** `SetValue` marks the attribute changed,
+which makes the object dirty before the user has typed anything — so adding a row and abandoning it
+leaves the parent falsely modified, and on a replicated type widens the property list the sync action
+reports.
+
+**⚠️ A refusal is an affordance, not enforcement.** `OnDeleteRowAsync` stops a *cooperating* client.
+It cannot stop one that never calls the endpoint and submits the parent with the row already gone,
+because the endpoint writes nothing and the save is a separate request. What stops that caller is the
+save path's per-row `Delete/{RowType}` check, which runs on every embedded collection regardless of
+this flag. Put the rule in the row type's rights; use the hook to explain it.
+
+**⚠️ The flag is not a permission and is outside the model hash.** It governs the round trip and
+nothing else. Nothing that gates a write may ever read it — an unhashed model field that could switch
+a rights check off would be one edit away from disabling it on a deployed model.
+
+The endpoints check the **row type's own** right — `New/ServiceEntry`, not `New/Car` — matching the
+button the client renders, and load the parent separately so a caller who cannot see a parent cannot
+add rows to it. A new row arrives already carrying its row key, because the server constructs the CLR
+entity rather than scaffolding from the model alone; that is also why C# property initializers show
+up as the row's defaults.
 
 ### Edit View -- Array (Modal)
 

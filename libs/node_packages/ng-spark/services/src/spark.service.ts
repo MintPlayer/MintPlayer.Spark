@@ -7,6 +7,47 @@ import { SortColumn } from '@mintplayer/pagination';
 import { RetryActionService } from './retry-action.service';
 import { SPARK_CONFIG } from '@mintplayer/ng-spark';
 
+/**
+ * Context for {@link SparkService.newObject}. Everything is optional: a standalone New sends an
+ * empty body, and an AsDetail row on a parent that has never been saved sends no `parentId` —
+ * which is the honest answer, not a gap. The server hands the hook a null parent rather than
+ * trusting the client's copy of one.
+ */
+export interface NewObjectOptions {
+  /** Name of the parent's AsDetail attribute the row is for; absent for a standalone New. */
+  asDetailAttribute?: string;
+  /** The parent's entity type — required whenever `asDetailAttribute` is set. */
+  parentType?: string;
+  /** The parent's id, absent while the parent is itself unsaved. */
+  parentId?: string;
+  /** Free-form arguments, e.g. which variant a New menu chose. */
+  parameters?: Record<string, string>;
+}
+
+/** Context for {@link SparkService.deleteRow}. Every field is required — see `DeleteRow.cs`. */
+export interface DeleteRowOptions {
+  asDetailAttribute: string;
+  parentType: string;
+  parentId: string;
+  /** The row's `__sparkRowKey`, as it arrived from the server. */
+  rowKey: string;
+  parameters?: Record<string, string>;
+}
+
+/**
+ * The union of every body the envelope helpers send.
+ *
+ * Named rather than inlined per helper because the New and delete-row calls carry neither a
+ * `persistentObject` nor a `triggeredBy`: an inline type that did not list their fields would have
+ * rejected them at the call site, and spreading them through `any` would have hidden a typo in a
+ * field name the server matches by exact spelling.
+ */
+type EnvelopeRequestBody = {
+  persistentObject?: any;
+  triggeredBy?: string;
+  retryResults?: RetryActionResult[];
+} & Partial<NewObjectOptions> & Partial<Omit<DeleteRowOptions, 'asDetailAttribute' | 'parentType' | 'parentId'>>;
+
 @Injectable({ providedIn: 'root' })
 export class SparkService {
   private readonly config = inject(SPARK_CONFIG, { optional: true });
@@ -146,6 +187,42 @@ export class SparkService {
     );
   }
 
+  /**
+   * Asks the server to construct a new object of `type`, so `OnNewAsync` can default it.
+   *
+   * Writes nothing — the object comes back unsaved, and for an AsDetail row the parent still owns
+   * the save. Only called for a row type whose `serverSideRowLifecycle` is on; every other type
+   * keeps building its blank row locally, which is why switching the flag off costs no request.
+   *
+   * ⚠️ The row comes back **keyed**: the server constructs the CLR instance, so the row-key field
+   * initializer runs and `po.id` carries the key. Flattening it with `nestedPoToDict` therefore
+   * populates `__sparkRowKey`, and the row is matchable on save from the moment it is added — the
+   * whole reason this round-trip is worth a request.
+   */
+  async newObject(type: string, options?: NewObjectOptions): Promise<PersistentObject> {
+    return this.postWithEnvelope<PersistentObject>(
+      `${this.baseUrl}/po/${encodeURIComponent(type)}/new`,
+      { ...(options ?? {}) }
+    );
+  }
+
+  /**
+   * Asks whether a stored row may leave its parent's AsDetail collection.
+   *
+   * Deletes nothing: a resolved promise means the caller may splice the row out of the collection
+   * it is editing, and the removal is persisted with the parent. A hook that refuses rejects with a
+   * 400 whose `error.error.result.errors` carries the readable reason, exactly like a save.
+   *
+   * A POST, because the framework's real delete route is a catch-all that would swallow a sibling
+   * DELETE — see `DeleteRow.cs`.
+   */
+  async deleteRow(type: string, options: DeleteRowOptions): Promise<void> {
+    await this.postWithEnvelope<{ removed: boolean }>(
+      `${this.baseUrl}/po/${encodeURIComponent(type)}/delete-row`,
+      { ...options }
+    );
+  }
+
   async delete(type: string, id: string): Promise<void> {
     return this.deleteWithEnvelope<void>(
       `${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`,
@@ -219,7 +296,7 @@ export class SparkService {
   // dispatch any non-retry operations, and translate 449 retry-operations into the existing
   // RetryActionService modal flow.
 
-  private postWithEnvelope<T>(url: string, body: { persistentObject?: any; triggeredBy?: string; retryResults?: RetryActionResult[] }): Promise<T> {
+  private postWithEnvelope<T>(url: string, body: EnvelopeRequestBody): Promise<T> {
     return this.sendWithEnvelope<T>(
       () => firstValueFrom(this.http.post<ClientOperationEnvelope<T>>(url, body)),
       body,
@@ -227,7 +304,7 @@ export class SparkService {
     );
   }
 
-  private putWithEnvelope<T>(url: string, body: { persistentObject?: any; triggeredBy?: string; retryResults?: RetryActionResult[] }): Promise<T> {
+  private putWithEnvelope<T>(url: string, body: EnvelopeRequestBody): Promise<T> {
     return this.sendWithEnvelope<T>(
       () => firstValueFrom(this.http.put<ClientOperationEnvelope<T>>(url, body)),
       body,

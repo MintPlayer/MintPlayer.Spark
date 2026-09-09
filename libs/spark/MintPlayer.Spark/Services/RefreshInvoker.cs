@@ -143,9 +143,14 @@ internal partial class RefreshInvoker : IRefreshInvoker
         bool isNew,
         CancellationToken cancellationToken)
     {
-        var ctor = ReflectionCache.GetOrAdd<Type, ConstructorInfo>(
-            entityType,
-            static t => typeof(SparkRefreshArgs<>).MakeGenericType(t)
+        // ⚠️ The key is a tuple, not a bare Type. `GetOrAdd<TKey, TValue>` is ONE dictionary per
+        // (TKey, TValue) pair, so every invoker keying a ConstructorInfo by entity type shares it —
+        // and the first one to run for a given type hands its constructor to the others. That is not
+        // hypothetical: it made `DeleteRowInvoker` invoke `SparkNewArgs`'s constructor with a delete
+        // hook's arguments, failing on the third one. The discriminator is what keeps them apart.
+        var ctor = ReflectionCache.GetOrAdd<(string Op, Type Entity), ConstructorInfo>(
+            ("RefreshInvoker.args", entityType),
+            static k => typeof(SparkRefreshArgs<>).MakeGenericType(k.Entity)
                 .GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)
                 .Single());
 

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, model, output, signal, effect, Type } from '@angular/core';
 import { CommonModule, NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { HttpErrorResponse } from '@angular/common/http';
 import { CdkDropList, CdkDrag, CdkDragHandle, CdkDragPreview, CdkDragDrop, moveItemInArray } from '@angular/cdk/drag-drop';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
@@ -49,7 +50,9 @@ import {
   RuleFailure,
   ShowedOn,
   ValidationError,
+  AS_DETAIL_ROW_KEY,
   applyOverlay,
+  nestedPoToDict,
   evaluateRules,
   hasShowedOnFlag,
   mergeRefreshValues,
@@ -128,6 +131,25 @@ export class SparkPoFormComponent {
 
   // Permissions for array AsDetail entity types
   asDetailPermissions = signal<Record<string, EntityPermissions>>({});
+
+  /**
+   * What the server said when it refused to construct or release a row.
+   *
+   * A local signal rather than the `validationErrors` input, because this is the one class of error
+   * the form raises on its own behalf: `validationErrors` is owned by the host (po-edit / po-create)
+   * and arrives from a save. Cleared at the start of each lifecycle call, so a stale refusal never
+   * outlives the click that caused it.
+   *
+   * Keyed by attribute name so a message renders against the grid it came from. A single global
+   * alert would have been less code and worse: a form with two detail grids would show one grid's
+   * refusal above the other, and the user's next click is on the grid, not the top of the page.
+   */
+  rowLifecycleErrors = signal<Record<string, ValidationError[]>>({});
+
+  /** The refusal to render under `attrName`'s grid, if any. */
+  rowLifecycleErrorsFor(attrName: string): ValidationError[] {
+    return this.rowLifecycleErrors()[attrName] ?? [];
+  }
 
   // Reference options for columns within array AsDetail types (keyed by parent attr name, then column name)
   asDetailReferenceOptions = signal<Record<string, Record<string, QueryResultItem[]>>>({});
@@ -700,20 +722,150 @@ export class SparkPoFormComponent {
     this.asDetailFormData.set({});
   }
 
+  // ---- Server-side row lifecycle ------------------------------------------------------------
+  //
+  // A row type may opt in (EntityType.serverSideRowLifecycle) to having the server construct its
+  // new rows and be consulted before one is removed. Everything below is a no-op for a type that
+  // has not — which is the point: not opting in costs no request, and the four mutators behave
+  // exactly as they did before.
+
+  /**
+   * Whether `attr`'s row type asks the server before a row is added or removed.
+   *
+   * Read off the ROW type, never the parent. `asDetailTypes` already resolves it from the Query-gated
+   * catalogue first and the parent's `detailTypes` second, and the flag survives the server-side
+   * pruning of the embedded copy, so both sources give the same answer.
+   */
+  private roundTripsRowLifecycle(attr: EntityAttributeDefinition): boolean {
+    return this.asDetailTypes()[attr.name]?.serverSideRowLifecycle === true;
+  }
+
+  /** The type id to address the row type by on the wire. */
+  private rowTypeId(attr: EntityAttributeDefinition): string | undefined {
+    return this.asDetailTypes()[attr.name]?.id;
+  }
+
+  /**
+   * How to name the PARENT's type on the wire.
+   *
+   * ⚠️ The fallback must be the type **id**, never `clrType`. The server resolves this through
+   * `ModelLoader.ResolveEntityType`, which accepts a GUID or a declared alias and nothing else — so
+   * a CLR name resolves to null and the request is refused, indistinguishably from an unknown type.
+   * The user would see "the server refused this change" on a perfectly ordinary Add.
+   *
+   * It is a live path, not a theoretical one: `spark-po-create` binds no `parentType` (there is no
+   * parent route segment on a create page), so every host that creates an object with an opted-in
+   * detail grid lands here.
+   */
+  private parentTypeForWire(): string | undefined {
+    return this.parentType() ?? this.entityType()?.id;
+  }
+
+  /**
+   * Builds the dict a new row starts from: `{}` as before, or the object the server constructed.
+   *
+   * Returns null when the server refused — the caller must then add nothing, which is the whole
+   * difference between a veto and a message.
+   */
+  private async buildNewRow(attr: EntityAttributeDefinition): Promise<Record<string, any> | null> {
+    const typeId = this.rowTypeId(attr);
+    if (!this.roundTripsRowLifecycle(attr) || !typeId) return {};
+
+    this.clearRowLifecycleError(attr.name);
+    try {
+      const po = await this.sparkService.newObject(typeId, {
+        asDetailAttribute: attr.name,
+        parentType: this.parentTypeForWire(),
+        // Absent while the parent is unsaved, deliberately: the server hands the hook a null parent
+        // rather than trusting the client's copy of one.
+        parentId: this.objectId(),
+      });
+      // nestedPoToDict carries the server-minted row key across as __sparkRowKey, so the row is
+      // matchable on save from the moment it appears — the reason the round trip is worth a request.
+      return nestedPoToDict(po);
+    } catch (e) {
+      this.captureRowLifecycleError(attr.name, e);
+      return null;
+    }
+  }
+
+  /**
+   * Asks whether a stored row may be removed. True when it may — including every case where there
+   * is nothing to ask about: a type that has not opted in, a parent that has never been saved, or a
+   * row with no key yet because it was added in this same editing session and never persisted.
+   */
+  private async mayRemoveRow(attr: EntityAttributeDefinition, row: Record<string, any> | undefined): Promise<boolean> {
+    const typeId = this.rowTypeId(attr);
+    const parentId = this.objectId();
+    const parentType = this.parentTypeForWire();
+    const rowKey = row?.[AS_DETAIL_ROW_KEY];
+
+    if (!this.roundTripsRowLifecycle(attr) || !typeId || !parentId || !parentType || !rowKey) {
+      return true;
+    }
+
+    this.clearRowLifecycleError(attr.name);
+    try {
+      await this.sparkService.deleteRow(typeId, {
+        asDetailAttribute: attr.name,
+        parentType,
+        parentId,
+        rowKey,
+      });
+      return true;
+    } catch (e) {
+      this.captureRowLifecycleError(attr.name, e);
+      return false;
+    }
+  }
+
+  /**
+   * Turns a rejected lifecycle call into something the user can read.
+   *
+   * The envelope puts validation errors under `result`, the same place the save path reads them
+   * from — reading `error.error.errors` matched nothing and made every veto silent.
+   */
+  private clearRowLifecycleError(attrName: string): void {
+    this.rowLifecycleErrors.update(prev => {
+      const next = { ...prev };
+      delete next[attrName];
+      return next;
+    });
+  }
+
+  private captureRowLifecycleError(attrName: string, e: unknown): void {
+    const error = e as HttpErrorResponse;
+    const errors: ValidationError[] | undefined = error?.error?.result?.errors ?? error?.error?.errors;
+    const resolved: ValidationError[] = error?.status === 400 && errors?.length
+      ? errors
+      : [{
+          attributeName: '',
+          errorMessage: { en: error?.error?.result?.error || error?.error?.error || error?.message || 'The server refused this change.' },
+          ruleType: 'error',
+        }];
+    this.rowLifecycleErrors.update(prev => ({ ...prev, [attrName]: resolved }));
+  }
+
   // Inline AsDetail methods
-  addInlineRow(attr: EntityAttributeDefinition): void {
+  async addInlineRow(attr: EntityAttributeDefinition): Promise<void> {
+    const row = await this.buildNewRow(attr);
+    if (row === null) return;
+
     const data = { ...this.formData() };
     const arr = [...(data[attr.name] || [])];
-    arr.push({});
+    arr.push(row);
     data[attr.name] = arr;
     this.formData.set(data);
   }
 
   // Array AsDetail methods
-  addArrayItem(attr: EntityAttributeDefinition): void {
+  async addArrayItem(attr: EntityAttributeDefinition): Promise<void> {
+    const row = await this.buildNewRow(attr);
+    if (row === null) return;
+
     this.editingAsDetailAttr.set(attr);
     this.editingArrayIndex.set(null);
-    this.asDetailFormData.set({});
+    this.asDetailFormData.set(row);
     this.showAsDetailModal.set(true);
   }
 
@@ -725,9 +877,12 @@ export class SparkPoFormComponent {
     this.showAsDetailModal.set(true);
   }
 
-  removeArrayItem(attr: EntityAttributeDefinition, index: number): void {
+  async removeArrayItem(attr: EntityAttributeDefinition, index: number): Promise<void> {
+    const current = this.formData()[attr.name] || [];
+    if (!(await this.mayRemoveRow(attr, current[index]))) return;
+
     const data = { ...this.formData() };
-    const arr = [...(data[attr.name] || [])];
+    const arr = [...current];
     arr.splice(index, 1);
     data[attr.name] = arr;
     this.formData.set(data);

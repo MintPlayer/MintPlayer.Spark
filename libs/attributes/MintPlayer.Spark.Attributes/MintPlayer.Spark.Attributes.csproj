@@ -7,7 +7,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Attributes</PackageId>
-		<Version>10.0.0-preview.78</Version>
+		<Version>10.0.0-preview.79</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>The MintPlayer.Spark model vocabulary: the attributes an entity library applies to its own types. Depends on nothing, so a library of entities need not reference the framework.</Description>

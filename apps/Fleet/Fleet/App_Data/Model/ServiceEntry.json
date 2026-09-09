@@ -1,0 +1,105 @@
+{
+  "persistentObject": {
+    "id": "256f4a27-f8e4-46d6-99c1-8fa4b8756aee",
+    "name": "ServiceEntry",
+    "clrType": "Fleet.Entities.ServiceEntry",
+    "breadcrumb": "{Description}",
+    "serverSideRowLifecycle": true,
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "4ce8d017-7b82-48a2-aee2-b1df8f25374e",
+        "name": "Cost",
+        "label": {
+          "en": "Cost"
+        },
+        "description": {
+          "en": "Amount charged, in euro."
+        },
+        "dataType": "decimal",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "225fd80d-5d5f-458f-a4e3-2954cad2162f",
+        "name": "Description",
+        "label": {
+          "en": "Description"
+        },
+        "description": {
+          "en": "What was done at this visit."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "829a8fa8-9775-42c2-8b20-5f18b5957a68",
+        "name": "IsInvoiced",
+        "label": {
+          "en": "Is Invoiced"
+        },
+        "description": {
+          "en": "Whether the visit has been billed. Once it has, the entry is an accounting record and ServiceEntryActions.OnDeleteRowAsync refuses to let it be removed."
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "6bf2349f-2de3-4ec4-88f3-98f3ca7107ac",
+        "name": "Odometer",
+        "label": {
+          "en": "Odometer"
+        },
+        "description": {
+          "en": "Odometer reading at the visit, in kilometres."
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4ac5bcda-4edb-4a49-8759-b5ed92d6d754",
+        "name": "PerformedOn",
+        "label": {
+          "en": "Performed On"
+        },
+        "description": {
+          "en": "Date the work was carried out. Defaulted to today by ServiceEntryActions.OnNewAsync."
+        },
+        "dataType": "date",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

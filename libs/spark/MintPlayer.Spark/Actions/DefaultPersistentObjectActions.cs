@@ -541,6 +541,28 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// </summary>
     public virtual Task OnRefreshAsync(SparkRefreshArgs<T> args) => Task.CompletedTask;
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// The base implementation does nothing, and in particular does not bind the child's
+    /// parent-typed attribute for you. That is a deliberate omission rather than a gap: automatic
+    /// binding is what forces a grandchild's hook to substitute a different parent before
+    /// delegating, and the ordering rule that creates ("substitute before calling base, never
+    /// after") is the kind of invisible trap that only exists because the binding is implicit.
+    /// A hook that wants a parent's value sets it explicitly, from whichever object it likes.
+    /// </remarks>
+    public virtual Task OnNewAsync(SparkNewArgs<T> args) => Task.CompletedTask;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The base implementation does nothing, which is also the answer to "what happens on a type
+    /// that opted into the round-trip but wrote no hook": the request is made, nothing objects, the
+    /// row is removed. Costing a request to accomplish nothing is the price of the flag being a
+    /// per-type opt-in rather than something inferred from whether a hook exists — and inferring it
+    /// would tie a client-visible behaviour to the presence of a method, so adding a hook would
+    /// silently start issuing requests from every grid the type appears in.
+    /// </remarks>
+    public virtual Task OnDeleteRowAsync(SparkDeleteRowArgs<T> args) => Task.CompletedTask;
+
     // StreamItems/StreamItem used to be declared here as virtuals that threw. They were never
     // called by those names: StreamingQueryExecutor resolves the streaming method by the name in the
     // query's model file, so the base declarations implied a fixed hook that does not exist and
