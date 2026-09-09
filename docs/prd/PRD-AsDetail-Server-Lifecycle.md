@@ -255,6 +255,30 @@ is 12 targeted replaces, one per moved type.
 the only survivor. With that check the risk is gone and the choice is taste: a zero-touch move, or an
 assembly whose name and namespace agree.
 
+✅ **Taken: the namespace stayed.** The move was 12 `git mv`s, and the solution built clean on the
+first attempt. What did *not* stay clean is described next, and it had nothing to do with the
+namespace.
+
+#### ⚠️ Moving attributes out of an assembly can silently unreference that assembly
+
+Splitting the attributes out broke HR's index generation, and only HR's. The mechanism is worth
+knowing well beyond this change:
+
+`GenerateIndexGenerator` finds entities in *referenced* assemblies, and first filters to references
+that themselves reference `MintPlayer.Spark.Abstractions` — a cheap proxy for "this could hold Spark
+entities", without which it walks the BCL. But **the C# compiler emits an `AssemblyRef` only for
+assemblies a compilation actually uses.** `HR.Library` used Abstractions for attributes and nothing
+else, so the moment the attributes left, `HR.Library.dll` stopped naming Abstractions at all — the
+filter skipped it, and every one of its indexes vanished. The app then failed to compile on a missing
+`HR.Indexes.VPerson`, several layers from the cause.
+
+`CodeCoverage.Library` survived only by accident: it also uses Spark interfaces, so it kept its
+reference. The filter now names `MintPlayer.Spark.Attributes` (still accepting the old name), which
+is the assembly the attributes actually live in.
+
+The general shape: **an assembly-name filter is a claim about what a compilation uses, and moving a
+type invalidates it silently.** No error, no warning — a generator that finds nothing emits nothing.
+
 `SparkAuthorizeAttribute` stays where it is. It inherits ASP.NET Core's `AuthorizeAttribute` — its
 own doc comment records that the derivation is load-bearing and that getting it wrong fails open —
 and it already lives in `MintPlayer.Spark` rather than Abstractions.
