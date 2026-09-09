@@ -188,9 +188,10 @@ asserted only by tests written alongside the code.
 - **The inline (`editMode: "inline"`) branch was never exercised in a browser.** Fleet's
   `ServiceEntries` has no `editMode`, so it renders as the modal-array table and the run above went
   through `addArrayItem`/`removeArrayItem`. `addInlineRow` is covered by the client specs only.
-- **`spark-po-create` was not exercised.** Adding a row to a parent that has never been saved sends
-  no `parentId`, and the hook is handed a null parent; the client specs cover the branch, a browser
-  has not.
+- ~~**`spark-po-create` was not exercised.**~~ ✅ Exercised, and it was **broken** — see PRD §9 F4.
+  Now verified: the create page issues `POST /new` with `parentType` as the type id and no
+  `parentId`, and the modal opens with the server's date default and an empty description, since the
+  hook finds no parent to read a plate from and guards on exactly that.
 - **`ServiceEntryActions.OnNewAsync` reading `AsDetailParent` is only covered for a saved parent**
   on the server side.
 - **A non-admin caller was not driven through the UI.** Fleet grants fleet managers `ReadEdit` but

@@ -204,7 +204,8 @@ wants a server-set date and the vehicle's plate; an invoiced entry must not sile
 
 ## 9. Defects the tests found, none of which was in the feature as designed
 
-All three were latent, all three were silent, and none would have been found by reading the code.
+All four were silent, and none would have been found by reading the code. Three were latent on
+master or in the salvaged commits; the fourth (F4) was in this work, and only the browser saw it.
 
 ### F1 — Two invokers shared one constructor cache and handed each other the wrong constructor
 
@@ -226,6 +227,26 @@ request. All three keys are now discriminated.
 advertised — "a hook may refuse; `SparkValidationException` becomes a 400 the user can read" — had
 never worked. Both invokers now pass `BindingFlags.DoNotWrapExceptions`, which also keeps the hook's
 own stack trace.
+
+### F4 — the parent type was named by CLR name on a create page, and refused
+
+`spark-po-create` binds no `parentType` — there is no parent route segment on a create page — so the
+form fell back to `entityType()?.clrType` and sent `"Fleet.Entities.Car"`. The server resolves that
+field through `ModelLoader.ResolveEntityType`, which accepts **a GUID or a declared alias and nothing
+else**, so it resolved to null and the request was refused exactly like an unknown type.
+
+The user-visible symptom: clicking **Add** on an opted-in detail grid while *creating* an object
+showed "the server refused this change" on an ordinary click, with nothing to indicate why. The edit
+page was unaffected, because `spark-po-edit` does bind `parentType` to the route segment.
+
+⚠️ **Only the browser could find this.** The client specs bind `parentType` (they were written from
+the edit page's shape), the endpoint suite constructs the request itself, and the E2E drives the API
+directly. Every layer supplied the field that production omits.
+
+Fixed in three places, because any one alone leaves the trap set: the fallback is now
+`entityType()?.id`, which always resolves; `spark-po-create` binds `[parentType]` explicitly; and a
+spec asserts both that the id is sent *and* that the CLR name is not — without the second assertion
+it passes against the broken code.
 
 ### F3 — `[ValueObject]` is silently inert without the generator reference
 
