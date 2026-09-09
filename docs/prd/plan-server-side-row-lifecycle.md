@@ -183,17 +183,44 @@ asserted only by tests written alongside the code.
    clean — no re-synchronize, no `SparkModelOutOfSyncException`. That is criterion 5's property
    demonstrated on a live host, not only in `ServerSideRowLifecycleFlagTests`.
 
+### The inline branch and a non-admin caller
+
+Both were listed here as gaps and both are now closed, in the same session.
+
+**Inline (`editMode: "inline"`).** `editMode` is not in `StructuralAttributeFields`, so it is
+presentational and unhashed — flipping it on Fleet's `ServiceEntries` and restarting produced the
+same hash `f239fdd2ac5d…` and needed no re-synchronize. With the grid rendered as an editable inline
+table, `addInlineRow` appended a third row **in place**, pre-filled with the server's values
+("Service — 1-RLC-386", today, 0, 0), and the inline delete on the invoiced row was refused with the
+same readable message. Both new client paths therefore behave identically; the flag was reverted
+afterwards, so the shipped demo still uses the modal.
+
+**A non-admin caller.** Signed in as a user in *Fleet managers*, which `security.json` grants
+`ReadEdit/ServiceEntry` and **not** `New` or `Delete`. `GET /spark/permissions/{ServiceEntry}`
+returned `canRead: true, canEdit: true, canCreate: false, canDelete: false`, and the rendered grid
+matched it exactly: every cell editable, **no Add button, and no per-row delete button at all**.
+
+That is the authorization design demonstrated rather than asserted — the row type's *own* right
+governs the grid's affordances, not the parent's. The same user holds `QueryReadEditNew/Car`, so a
+parent-right reading would have rendered an Add button the endpoint then refused, which is precisely
+the button/endpoint disagreement the PRD's §4 rejects.
+
+⚠️ One thing that surfaced on the way: **no car in the Fleet dev database has `CreatedBy`**, so
+`CarActions.GetRowFilterAsync` hides every car from every non-admin. The demo data predates the
+field. Not a defect in this work — the seeded car had to be given an owner before the manager could
+see it at all — but worth knowing before anyone else tries a non-admin scenario in Fleet.
+
 ## Still not covered
 
-- **The inline (`editMode: "inline"`) branch was never exercised in a browser.** Fleet's
-  `ServiceEntries` has no `editMode`, so it renders as the modal-array table and the run above went
-  through `addArrayItem`/`removeArrayItem`. `addInlineRow` is covered by the client specs only.
-- ~~**`spark-po-create` was not exercised.**~~ ✅ Exercised, and it was **broken** — see PRD §9 F4.
-  Now verified: the create page issues `POST /new` with `parentType` as the type id and no
-  `parentId`, and the modal opens with the server's date default and an empty description, since the
-  hook finds no parent to read a plate from and guards on exactly that.
-- **`ServiceEntryActions.OnNewAsync` reading `AsDetailParent` is only covered for a saved parent**
-  on the server side.
-- **A non-admin caller was not driven through the UI.** Fleet grants fleet managers `ReadEdit` but
-  not `New`/`Delete` on `ServiceEntry`, so the Add and delete buttons should not render for them at
-  all — asserted at the endpoint level, not the button level.
+Everything listed here earlier — the inline branch, `spark-po-create`, and a non-admin caller — has
+since been driven in a browser; `spark-po-create` was broken and is recorded as PRD §9 F4. What
+remains genuinely untested:
+
+- **The row-level `IsAllowedAsync` seam is untouched by this feature**, and deliberately: both
+  endpoints reach rows only through `GetPersistentObjectAsync`, so whatever the parent's row filter
+  and collection guard already enforce applies unchanged. Nothing pins that it stays that way.
+- **No test drives two grids of the same row type on one form.** `AsDetailAttribute` exists so a
+  hook can tell them apart, and the hook receives it, but nothing asserts a hook branching on it.
+- **The single (non-array) `AsDetail` case.** `DeleteRow.FindStoredRow` handles it — the key must
+  still match even when the collection holds exactly one row — but every test and the demo use
+  arrays.
