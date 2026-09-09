@@ -60,20 +60,20 @@ appendix program structurally cannot produce (§A.2).
 not have, and attributes it to a consumer that does not exist (§2.3). The same claim recurs at
 `GitHubProjectActions.cs:85-87`.
 
-### 2.2 ⚠️ A field-initialized Guid is worse than no key
+### 2.2 ⚠️ A field-initialized Guid disguises a missing key
 
 | # | Question | Measured |
 |---|---|---|
 | M3 | A stored row whose JSON has **no** `Id` field — what is the key after loading? | **A brand-new random guid, different on every load.** Load A: `3e79edc2…`; load B of the same untouched document: `864812a4…`. Json.NET constructs the object (running `= Guid.NewGuid().ToString("N")`) then overwrites only properties present in the JSON. |
 | M4 | Does merely loading such a document dirty it? | **Yes.** `HasChanges` is `true` before any mutation; `WhatChanged` reports `NewField Children[0]/Id '' -> '4cb105cf…'`. A `SaveChanges()` anywhere in that session writes random ids to a document nobody edited. Change vector `A:4` → `A:5`. |
 
-This is the single most important finding in this document. **The initializer that was supposed to
-guarantee identity is exactly what disguises its absence.** A legacy row is indistinguishable from a
-new one, because both arrive carrying a plausible fresh guid. Any check of the form
-`string.IsNullOrEmpty(key)` is unreachable code.
+**A legacy row is indistinguishable from a new one**, because both arrive carrying a plausible fresh
+guid, so any check of the form `string.IsNullOrEmpty(key)` is unreachable code. And a keyless row is
+not inert: it is a phantom write waiting for an unrelated `SaveChanges()` in the same session.
 
-It also means a keyless row is not inert: it is a phantom write waiting for an unrelated
-`SaveChanges()` in the same session.
+⚠️ This does **not** condemn the initializer — see R2, which keeps it. What it condemns is relying on
+the *running system* to notice a keyless row. It cannot, ever. The check has to live in the database,
+before the property ships.
 
 ### 2.3 The key does not round-trip through the client
 
@@ -99,6 +99,41 @@ mapping at `:264`, so it cannot rescue anything the mapper decided.
 Complete list of runtime readers of `SparkValueObjects`, by grep across `libs/`, `apps/`, `tests/`:
 the mapper's two round-trip sites and the rights check. No grid, no inline editor, no change
 tracking, no breadcrumb consumer. `RegisteredTypes` has zero consumers.
+
+### 2.5 An analyzer can see a referenced type, but not where it is written
+
+Measured with a purpose-built two-project solution plus an in-memory harness (Appendix B). The
+question is whether an analyzer in the **application** project can report — and a code fix repair — a
+problem in a type declared in a `*.Library` project.
+
+| # | Question | Measured |
+|---|---|---|
+| M10 | Under `dotnet build`, how does a `ProjectReference` arrive? | **As a .dll.** The app's compilation held **0 `CompilationReference`s and 168 `PortableExecutableReference`s**. |
+| M11 | Can the analyzer get a source location for the referenced type? | **No.** `DeclaringSyntaxReferences.Length == 0`, `Locations[0].Kind == MetadataFile`, `IsInSource == False`, `GetLineSpan().Path == null`. A diagnostic reported *at* that location renders as bare `CSC : warning XASM002` — no file, no line. |
+| M12 | And under a `CompilationReference`? | **Yes, fully.** `DeclaringSyntaxReferences.Length == 1`, `Kind == SourceFile`, and the diagnostic renders as `LibA\Thing.cs(1,14)`. |
+| M13 | Which does the workspace layer use? | `MSBuildWorkspace.OpenProjectAsync` on the app resolves the ProjectReference to a **`CSharpCompilationReference`** and yields the full source location. |
+| M14 | Can `partial` be checked from the app side? | **No, ever.** `partial` is source-only and leaves no trace in IL. |
+
+⚠️ **Two consequences, and they are the whole shape of R9.**
+
+*Code fixes are an IDE-only affordance.* A `CodeFixProvider` does not run during `dotnet build` at
+all, and even the diagnostic it would attach to has no file to attach to there. The prior art in
+`MintPlayer.Dotnet.Tools` confirms the pattern rather than contradicting it: its one cross-project fix
+(`InterfaceImplementationAnalyzer.Codefix.cs`, `AddMissingMembersToInterfaceAcrossProjects`) is
+IDE-only by construction and has **no multi-project test** — all five of its tests put both types in
+one document. Its analyzer skips the case outright: `if (iface.Locations.All(l => !l.IsInSource))
+continue` (`:33-35`). The MapperGenerator, cited as prior art for cross-assembly diagnostics, does
+none: it is a generator with no code fix, and every location it reports comes from an attribute's own
+application syntax in the compiling project.
+
+*But a located diagnostic was never what enforcement needed.* `Location.None` with
+`DiagnosticSeverity.Error` still fails the build, naming the type in its message. **The location is a
+convenience; the severity is the guarantee.**
+
+⚠️ `MintPlayer.SourceGenerators.Tools`'s `SymbolExtensions.cs:55` computes `IsPartial` as
+`DeclaringSyntaxReferences.Select(...).All(...)`, and `.All()` over an empty collection is **`true`** —
+so every metadata type reports as `partial`. Do not use it across assemblies. (Its sibling in
+`ValueComparerGenerator.cs:51` uses `FirstOrDefault()` and silently returns the opposite.)
 
 ---
 
@@ -145,27 +180,43 @@ wrong and gets corrected as part of this work — including `EventColumnMapping.
 (`[Sortable]`), insert and remove them, so position is not identity — it is only identity when nothing
 happened, which is the case that needs no matching.
 
-### R2 — ⚠️ The generated key defaults to empty, and the server mints it
+### R2 — The key is a `Guid.NewGuid().ToString("N")` initializer, and the migration is a prerequisite
 
 ```csharp
-// NOT this:
-public string Id { get; set; } = global::System.Guid.NewGuid().ToString("N");
-// but this:
-public string Id { get; set; } = string.Empty;
+[ValueKey] public string Id { get; set; } = global::System.Guid.NewGuid().ToString("N");
 ```
 
-This is the correction that makes everything else possible. With an empty default:
+A value object **always** has an id. The initializer is the simplest way to mean that, and Appendix A
+shows it behaves correctly: the initializer runs during construction, the persisted value overwrites
+it, and the row keeps its key forever after.
 
-- a **stored** row with an empty key is genuinely a legacy row, detectably (M3 no longer applies);
-- an **incoming** row with an empty key is genuinely a new row;
-- loading a legacy document no longer dirties it, so the phantom write in M4 disappears.
+⚠️ **The exposure is rows written before the property existed, and for most of these types that is
+every row.** On `master` today:
 
-The server mints the key, in the mapper, at the one moment it can tell the two apart: an incoming row
-whose key is empty **and** which therefore matches no stored row is new, and gets a fresh guid.
+| Type | Has an `Id` now | Stored rows |
+|---|---|---|
+| `ProjectColumn` | yes — the GitHub option id | keyed |
+| `EventColumnMapping` | yes — derived during save | keyed |
+| `BuildSession` | **no** | all keyless — **production**, `Builds.Sessions` |
+| `CarreerJob` | **no** | all keyless |
+| `ClientSecret`, `ClientClaim` | **no** | all keyless |
 
-⚠️ The cost is that a row constructed in application code — a hook adding a row server-side — starts
-keyless. The mapper mints on the save path, so this is only visible to code that inspects the key
-before saving. Documented in the migration notes rather than solved by re-adding an initializer.
+For those four, adding the property means every stored row hits M3: a fresh guid on every load, two
+loads disagreeing, and — M4 — the document marked dirty by the load alone, so the next unrelated
+`SaveChanges()` in that session writes random ids into a `Build` nobody edited.
+
+**So the backfill migration is not cleanup, it is a precondition of the property shipping.** After it
+runs, no keyless row exists and the ambiguity never arises in the running system.
+
+⚠️ The cost, stated plainly because it is real: with an initializer, a *missed* migration cannot be
+detected in-process — every row looks keyed. Detection therefore has to happen where the raw JSON is
+still visible, which is the database. The startup gate (R6) is not optional, and it **refuses to
+start** rather than warning.
+
+*The alternative was considered and rejected.* Defaulting the key to `string.Empty` and minting it
+server-side would make a legacy row detectable at save time — but it weakens the invariant to "has an
+id once saved", pushes a mint into the mapper, and buys a check that a correctly-run migration makes
+redundant anyway.
 
 ### R3 — The key round-trips through the client under a reserved dict key
 
@@ -200,19 +251,25 @@ touches something the caller may change should still succeed, with the rest unch
 ⚠️ **Must not consult any model flag.** Enforcement is unconditional. Gating it on a model field
 would make an unhashed file a security control.
 
-### R6 — Legacy rows: migrate, then fail closed
+### R6 — Legacy rows: migrate before the property ships, and gate on it
 
-With R2 in place a stored empty key is unambiguous, so:
+R2 keeps the `Guid` initializer, so a keyless row **cannot** be recognised once it is in memory — it
+arrives looking perfectly keyed. Detection has to happen where the raw JSON is still visible.
 
-- a **backfill migration** per app, stamping a guid into every keyless embedded row
-  (`PatchByQueryOperation`); Spark's own production data is 100% keyless today;
-- **fail closed** afterwards — a stored keyless row makes the save throw, naming the document, the
-  type and the migration;
-- a **startup gate** comparing the model's `isArray` element types against `SparkValueObjects`, so a
-  type that was never marked is found at boot rather than at save.
+- A **backfill migration** per app, stamping a guid into every keyless embedded row
+  (`PatchByQueryOperation`). It is idempotent, so the count it touches is itself the signal.
+  ⚠️ Four of the six value objects gain a brand-new `Id`, and for those the migration rewrites
+  **every stored row** — including `Builds.Sessions` in production.
+- A **startup gate** that queries for documents still holding keyless rows and **refuses to start**
+  if any remain. Not a warning: per M4, an unmigrated deployment does not merely mismatch, it writes
+  random ids into documents nobody edited, on the first unrelated `SaveChanges()` in the session.
+- The gate also compares the model's `isArray` element types against `SparkValueObjects`, so a type
+  that was never marked is caught at boot. ⚠️ It must verify the key actually **round-trips**, not
+  merely that the type is registered — M6–M8 is exactly the case where registration was fine and the
+  round trip was not.
 
-⚠️ The gate must also verify the key actually **round-trips**, not merely that the type is registered
-— M6–M8 is precisely the case where registration was fine and the round trip was not.
+There is deliberately **no per-save keyless check**. It would be unreachable code (M3), and pretending
+otherwise is what W2 got wrong.
 
 ### R7 — `[ValueObject]` / `[ValueKey]`, and the two packages
 
@@ -237,7 +294,51 @@ compilation actually *uses*, so `HR.Library` — which used Abstractions for att
 — stopped referencing it and was skipped without a word. Two test fixtures had the same dependency and
 need `TranslatedString` named explicitly.
 
-### R8 — Non-goals
+### R8 — Completeness: an analyzer in the application, rooted at `SparkContext`
+
+R7's marker answers "is this a value object?" but cannot answer "did you forget one?" — nothing in an
+entity library knows which of its types the model actually reaches. The application does: its
+`SparkContext` subclass is the root of the whole object graph.
+
+**The walk that failed as a generator succeeds as an analyzer.** It was abandoned earlier because a
+generator may only emit into its own compilation, and contexts and entities live in different
+assemblies. An analyzer emits nothing, so that constraint does not apply.
+
+```
+find the class extending SparkContext
+  → its IRavenQueryable<T> properties → T                        (the document roots)
+  → recursively: for each property whose type is a class, and each
+    collection whose element type is a class, require [ValueObject]
+```
+
+Rooting at the context is also strictly better than the `[GenerateIndex]` proxy root tried on the
+abandoned branch, which keyed four types with no model file — one of them a row per line of source
+code — while missing two persistent objects that carry no index. The context roots the *model*, which
+is the actual question.
+
+⚠️ **Severity is the enforcement; the location is a convenience.** Per M10–M13, under `dotnet build`
+the referenced type has no source location at all, so the diagnostic is reported with
+`Location.None` and renders as `CSC : error SPARK017: …`. That still fails the build, which is all
+the invariant requires. In the IDE the same analyzer receives a `CompilationReference`, gets a real
+location, and a `CodeFixProvider` can offer to add `partial` and `[ValueObject]` to the library file.
+
+The code fix is therefore **an affordance, never the mechanism**. It cannot run in CI (M11), and the
+one cross-project fix in the prior art has no multi-project test at all. The build-failing diagnostic
+is what guarantees the invariant; the fix just saves typing while the solution is open.
+
+⚠️ **The analyzer must not check `partial`** (M14): it is source-only and invisible in metadata, and
+the obvious helper silently answers `true` for every metadata type. Partiality is the *library-side*
+generator's question, which it already answers correctly as SPARK016 in the compilation that can see
+the syntax.
+
+The division of labour, with each half asking only what its own compilation can answer:
+
+| | Runs in | Sees | Answers |
+|---|---|---|---|
+| `LibraryGenerators` generator | the entity library | syntax | is it `partial`? emit `Id`, register (SPARK016) |
+| `SourceGenerators` analyzer | the application | metadata + the context | is anything reachable **missing** `[ValueObject]`? (SPARK017) |
+
+### R9 — Non-goals
 
 - Server round-tripping of New/Delete clicks to the row type's hooks (the previous draft's N1/N2/N3).
   It is a separate feature, it depends on everything above, and it is not what makes the rights real.
@@ -259,13 +360,17 @@ need `TranslatedString` named explicitly.
 4. With `Delete/X` withheld, removing a row is refused.
 5. With `Edit/X` withheld, editing a row succeeds and the stored content is unchanged.
 6. An unchanged collection saved twice produces **no** change vector bump on the embedded rows.
-7. A stored keyless row fails the save with a message naming the migration — and the migration
-   exists.
-8. Loading a document with keyless embedded rows does not mark it dirty.
+7. The backfill migration exists, is idempotent, and running it twice touches zero rows the second
+   time.
+8. With a keyless row left in the database, the application **refuses to start**, naming the
+   collection — verified by planting one, since this cannot be detected once loaded (M3).
+9. A build fails with SPARK017 when a type reachable from `SparkContext` is used as an embedded
+   collection element without `[ValueObject]` — verified by `dotnet build`, not only in the IDE,
+   because the IDE is the easy half (M11).
 
-⚠️ Criteria 1, 2 and 6 exist because the previous attempt passed its unit tests while being broken in
-the browser. At least one end-to-end check through the real client is required before this is called
-done.
+⚠️ Criteria 1, 2, 6 and 9 all exist because a green test suite proved nothing last time. Each names
+the environment the check must run in — the browser, or a command-line build — because in every case
+the environment the previous attempt tested was the one where the mechanism happened to work.
 
 ---
 
@@ -417,3 +522,47 @@ self-healing after one save — but that save is a phantom write of random value
 edited, triggered by any unrelated `SaveChanges()` in the same session.
 
 This is R2's entire justification.
+
+### A.3 Cross-assembly analyzer reach (M10–M14)
+
+Two projects, `LibA` declaring `public class Thing { }` and `AppB` referencing it by
+`ProjectReference`, plus an analyzer on `AppB` that resolves `Thing` and probes it.
+
+**`dotnet build AppB`:**
+
+```
+CSC : warning XASM001: PROBE || assembly=LibA || DeclaringSyntaxReferences.Length=0
+  || Locations.Length=1 || Locations[0].Kind=MetadataFile || Locations[0].IsInSource=False
+  || GetLineSpan().Path=(null) || compilationRefCount=0 || metadataRefCount=168
+CSC : warning XASM002: reported-at-symbol-location (kind=MetadataFile)
+```
+
+`XASM002` was deliberately reported *at* the symbol's own location and still rendered with no file
+and no line — the prefix is literally `CSC :`.
+
+**The same symbol, in memory, differing only in reference kind:**
+
+```
+=== CASE 1: compilationA.ToMetadataReference()  [CompilationReference] ===
+  DeclaringSyntaxReferences.Len : 1
+  Locations[0].Kind             : SourceFile
+  Diagnostic.ToString()         : C:\...\LibA\Thing.cs(1,14): warning XASM900: probe
+
+=== CASE 2: MetadataReference.CreateFromImage(emitted dll) ===
+  DeclaringSyntaxReferences.Len : 0
+  Locations[0].Kind             : MetadataFile
+  Diagnostic.ToString()         : warning XASM900: probe
+```
+
+**And through the workspace layer the IDE is built on:**
+
+```
+MSBuildWorkspace.OpenProjectAsync(AppB.csproj) → GetCompilationAsync()
+  CompilationReference count in compilation: 1  -> LibA (CSharpCompilationReference)
+  Locations[0].Kind : SourceFile
+  Diagnostic        : C:\...\LibA\Thing.cs(1,14): warning XASM901: probe
+```
+
+⚠️ Remaining inference: that Visual Studio and C# DevKit use this same workspace path in the live
+editor. That is the standard architecture and `MSBuildWorkspace` was measured, but a running IDE was
+not observed.
