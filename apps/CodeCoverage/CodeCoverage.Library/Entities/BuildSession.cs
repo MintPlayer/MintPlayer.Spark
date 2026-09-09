@@ -1,7 +1,10 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace CodeCoverage.Entities;
 
 /// <summary>One upload (one action invocation) within a Build.</summary>
-public class BuildSession
+[ValueObject]
+public partial class BuildSession
 {
     /// <summary>Unique id of this upload within the build, assigned when the action's report files are received.</summary>
     public string SessionId { get; set; } = string.Empty;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   AS_DETAIL_BREADCRUMBS_KEY,
+  AS_DETAIL_ROW_KEY,
   AS_DETAIL_SELF_BREADCRUMB_KEY,
   dictToNestedPo,
   selfBreadcrumb,
@@ -25,8 +26,10 @@ function attr(partial: Partial<PersistentObjectAttribute> & { name: string }): P
   } as PersistentObjectAttribute;
 }
 
+// `id` defaults to empty on purpose: it is carried into the flat dict under a reserved key, so a
+// default would leak into every shape assertion below. Tests about the row key set it explicitly.
 function po(attributes: PersistentObjectAttribute[], over: Partial<PersistentObject> = {}): PersistentObject {
-  return { id: 'x', name: 'X', objectTypeId: 't', attributes, ...over };
+  return { id: '', name: 'X', objectTypeId: 't', attributes, ...over };
 }
 
 describe('nestedPoToDict', () => {
@@ -146,10 +149,16 @@ describe('dictToNestedPo', () => {
     expect(artists.objects![0].attributes.find(a => a.name === 'ArtistId')!.value).toBe('Artists/40');
   });
 
-  it('round-trips with nestedPoToDict (form save then reload)', () => {
+  it('round-trips with nestedPoToDict (form save then reload), keeping the id', () => {
     const original = { Id: 'Songs/1', Title: 'Song', Artists: [{ ArtistId: 'Artists/40' }, { ArtistId: 'Artists/41' }] };
     const flatAgain = nestedPoToDict(dictToNestedPo(original, songType, resolve));
-    expect(flatAgain).toEqual({ Title: 'Song', Artists: [{ ArtistId: 'Artists/40' }, { ArtistId: 'Artists/41' }] });
+    // The id survives now, under the reserved key. It used to be dropped on this trip, which is
+    // exactly the defect: a row that loses its key looks new to the next save.
+    expect(flatAgain).toEqual({
+      Title: 'Song',
+      Artists: [{ ArtistId: 'Artists/40' }, { ArtistId: 'Artists/41' }],
+      [AS_DETAIL_ROW_KEY]: 'Songs/1',
+    });
   });
 
   it('ignores the reserved breadcrumb key if present on the input dict', () => {
@@ -228,5 +237,51 @@ describe('self breadcrumb', () => {
       expect(selfBreadcrumb({ [AS_DETAIL_SELF_BREADCRUMB_KEY]: 42 }, 'Address')).toBeNull();
       expect(selfBreadcrumb(null)).toBeNull();
     });
+  });
+});
+
+describe('row key round trip', () => {
+  // The whole point of AS_DETAIL_ROW_KEY. Before it existed, a value object's key never came back
+  // from the client, so a save saw only rows it could not match: an edit was indistinguishable from
+  // a delete plus a create, and every per-row rule built on that comparison was unenforceable.
+  const type: EntityType = {
+    id: 'addr-type',
+    name: 'Address',
+    clrType: 'HR.Entities.Address',
+    attributes: [
+      { id: 'City', name: 'City', dataType: 'string', isRequired: false, isVisible: true, isReadOnly: false, order: 0, rules: [] },
+    ],
+  } as unknown as EntityType;
+
+  it('carries the row key out of a nested PO', () => {
+    const dict = nestedPoToDict(po([attr({ name: 'City', value: 'Brussels' })], { id: 'abc123' }));
+    expect(dict[AS_DETAIL_ROW_KEY]).toBe('abc123');
+  });
+
+  it('puts it back on the PO when saving', () => {
+    const dict = nestedPoToDict(po([attr({ name: 'City', value: 'Brussels' })], { id: 'abc123' }));
+    expect(dictToNestedPo(dict, type, () => undefined).id).toBe('abc123');
+  });
+
+  it('never sends the reserved key back as an attribute', () => {
+    const dict = nestedPoToDict(po([attr({ name: 'City', value: 'Brussels' })], { id: 'abc123' }));
+    const rebuilt = dictToNestedPo(dict, type, () => undefined);
+    expect(rebuilt.attributes.map(a => a.name)).toEqual(['City']);
+  });
+
+  it('leaves a brand-new row keyless, so the server can tell it is new', () => {
+    // What `addInlineRow` produces: an empty dict. A minted key here would make a new row
+    // indistinguishable from a stored one the client failed to round-trip.
+    expect(dictToNestedPo({}, type, () => undefined).id).toBe('');
+  });
+
+  it('omits the key entirely when the PO has none', () => {
+    const dict = nestedPoToDict(po([attr({ name: 'City', value: 'Brussels' })]));
+    expect(AS_DETAIL_ROW_KEY in dict).toBe(false);
+  });
+
+  it('carries it on the display-row path too', () => {
+    const dict = nestedPoToDisplayRow(po([attr({ name: 'City', value: 'Brussels' })], { id: 'abc123' }));
+    expect(dict[AS_DETAIL_ROW_KEY]).toBe('abc123');
   });
 });

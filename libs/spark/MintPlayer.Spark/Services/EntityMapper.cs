@@ -114,6 +114,16 @@ internal partial class EntityMapper : IEntityMapper
     // Optional for the same test-construction reason; falls back to a stateless default so the
     // reference collection guard (security sweep C2) runs regardless of how the mapper was built.
     [Inject] private readonly ICollectionGuard? collectionGuard;
+    // Enforces the row-level New/Edit/Delete rights of an AsDetail element type. Optional for the
+    // same test-construction reason as the two above; when absent, row enforcement does not run.
+    //
+    // That fallback is narrower than it looks: PopulateObjectValuesAsync has exactly one production
+    // caller -- the save path in DefaultPersistentObjectActions -- and there the mapper always comes
+    // from DI, where IPermissionService is a core registration. A null here means the mapper was
+    // built by hand, which only test code does.
+    [Inject] private readonly Abstractions.Authorization.IPermissionService? permissionService;
+    // Tells the user when a row was restored rather than saved. Optional for the same reason.
+    [Inject] private readonly Abstractions.ClientOperations.IClientAccessor? clientAccessor;
 
     private static readonly ICollectionGuard DefaultCollectionGuard = new CollectionGuard();
 
@@ -191,7 +201,13 @@ internal partial class EntityMapper : IEntityMapper
     public void PopulateAttributeValues(PersistentObject po, object entity, BreadcrumbResult? breadcrumbs = null)
     {
         var entityType = entity.GetType();
-        var idProperty = entityType.GetCachedProperty("Id");
+
+        // A value object's identity is its registered row key, which need not be called Id. Reading
+        // it here is what puts the key on the wire, and putting it on the wire is what lets a save
+        // match rows at all -- so a key that does not round-trip makes every save of the collection
+        // look like a delete of every row plus a create of its replacement.
+        var keyProperty = Abstractions.Model.SparkValueObjects.GetKeyPropertyName(entityType) ?? "Id";
+        var idProperty = entityType.GetCachedProperty(keyProperty);
         po.Id = idProperty is not null ? AccessorCache.GetGetter(idProperty)(entity)?.ToString() : null;
 
         // Name/Breadcrumb come from the pre-resolved breadcrumb result (recursive, server-side).
@@ -562,7 +578,10 @@ internal partial class EntityMapper : IEntityMapper
     private void TryWriteId(Type entityType, object entity, string? id)
     {
         if (string.IsNullOrEmpty(id)) return;
-        var idProperty = entityType.GetCachedProperty("Id");
+        // Mirrors PopulateAttributeValues: a value object's key is whichever property [ValueKey]
+        // named, and this is the write half of the same round trip.
+        var keyProperty = Abstractions.Model.SparkValueObjects.GetKeyPropertyName(entityType) ?? "Id";
+        var idProperty = entityType.GetCachedProperty(keyProperty);
         if (idProperty is null || !idProperty.CanWrite) return;
         SetPropertyValue(idProperty, entity, id);
     }
@@ -660,6 +679,17 @@ internal partial class EntityMapper : IEntityMapper
 
             var incoming = attr.Objects ?? [];
             var items = new List<object?>(incoming.Count);
+
+            // Rows that are still there keep their stored instance, so anything the incoming payload
+            // is not allowed to write survives (see MatchStoredRows).
+            var unmatched = MatchStoredRows(property, entity);
+
+            // The row type's own rights, resolved once. EnsureAsDetailTypeDeclared already ran, so
+            // the definition is present.
+            var rowTypeName = modelLoader.GetEntityTypeByClrType(elementType.FullName ?? elementType.Name)!.Name;
+            bool? canEditRows = null;
+            var restored = 0;
+
             foreach (var childPo in incoming)
             {
                 if (childPo is null)
@@ -667,12 +697,59 @@ internal partial class EntityMapper : IEntityMapper
                     items.Add(null);
                     continue;
                 }
-                var childEntity = Activator.CreateInstance(elementType)
-                    ?? throw new InvalidOperationException(
-                        $"PopulateObjectValues: could not instantiate AsDetail element type '{elementType.FullName}'.");
+
+                object childEntity;
+                if (!string.IsNullOrEmpty(childPo.Id) && unmatched.TryGetValue(childPo.Id!, out var storedRow))
+                {
+                    // Consume it: two incoming rows claiming one stored key must not both alias the
+                    // same instance, which would put the same object in the collection twice.
+                    unmatched.Remove(childPo.Id!);
+
+                    if (permissionService is not null)
+                        canEditRows ??= await permissionService.IsAllowedAsync("Edit", rowTypeName, cancellationToken);
+
+                    if (canEditRows is false)
+                    {
+                        // Restore rather than refuse, following ShieldProtectedAttributesAsync: a
+                        // save that also touches something the caller may change should still
+                        // succeed, with the rest unchanged. Not populating IS the restore -- the
+                        // stored instance goes back exactly as it was.
+                        items.Add(storedRow);
+                        restored++;
+                        continue;
+                    }
+
+                    childEntity = storedRow;
+                }
+                else
+                {
+                    if (permissionService is not null)
+                        await permissionService.EnsureAuthorizedAsync("New", rowTypeName, cancellationToken);
+
+                    // A row with no key, or one whose key matches nothing stored, is new. Its key is
+                    // minted by the field initializer that runs right here.
+                    childEntity = Activator.CreateInstance(elementType)
+                        ?? throw new InvalidOperationException(
+                            $"PopulateObjectValues: could not instantiate AsDetail element type '{elementType.FullName}'.");
+                }
+
                 await PopulateObjectValuesAsync(childPo, childEntity, session, cancellationToken);
                 items.Add(childEntity);
             }
+
+            // Anything still unmatched is a row the payload dropped.
+            if (unmatched.Count > 0 && permissionService is not null)
+                await permissionService.EnsureAuthorizedAsync("Delete", rowTypeName, cancellationToken);
+
+            // ⚠️ A silent restore is indistinguishable from a bug: the save succeeds, the user gets
+            // no error, and their edits are gone. Say so.
+            if (restored > 0)
+            {
+                clientAccessor?.Notify(
+                    $"{restored} {rowTypeName} row(s) were left unchanged: you may not edit them.",
+                    Abstractions.ClientOperations.NotificationKind.Warning);
+            }
+
             AccessorCache.GetSetter(property)(entity, BuildCollection(items, propertyType, elementType));
             return;
         }
@@ -685,11 +762,59 @@ internal partial class EntityMapper : IEntityMapper
 
         var targetType = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
         EnsureAsDetailTypeDeclared(targetType, attr.Name);
-        var child = Activator.CreateInstance(targetType)
-            ?? throw new InvalidOperationException(
-                $"PopulateObjectValues: could not instantiate AsDetail type '{targetType.FullName}' for attribute '{attr.Name}'.");
+
+        // A single nested object is matched by its property name, which cannot go missing or be
+        // reordered — so it needs no key, and merging onto the stored instance is unconditional.
+        var child = AccessorCache.GetGetter(property)(entity) is { } existing && existing.GetType() == targetType
+            ? existing
+            : Activator.CreateInstance(targetType)
+                ?? throw new InvalidOperationException(
+                    $"PopulateObjectValues: could not instantiate AsDetail type '{targetType.FullName}' for attribute '{attr.Name}'.");
+
         await PopulateObjectValuesAsync(attr.Object, child, session, cancellationToken);
         AccessorCache.GetSetter(property)(entity, child);
+    }
+
+    /// <summary>
+    /// The rows currently stored on <paramref name="entity"/>, keyed so an incoming row can claim
+    /// the instance it is an edit of.
+    /// </summary>
+    /// <remarks>
+    /// This is what stops a save destroying data it never carried. An AsDetail collection is
+    /// rebuilt from the wire, and <see cref="IsWritableBySchema"/> refuses to write a property the
+    /// model marks read-only — correct for a client-supplied value, but on a <em>fresh</em> instance
+    /// there is no stored value left to refuse in favour of, so the field is simply gone. On
+    /// <c>EventColumnMapping</c> that was <c>LastError</c>, <c>LastErrorAtUtc</c> and
+    /// <c>LastFiredAtUtc</c>: three fields the server owns, wiped whenever a user edited an
+    /// unrelated field on the parent board. Populating onto the stored row instead means those
+    /// values were never lost in the first place.
+    /// <para>
+    /// Empty for a create, which is the right answer — every incoming row is then new.
+    /// </para>
+    /// <para>
+    /// ⚠️ Rows whose key is empty are skipped rather than matched positionally. A keyless stored row
+    /// predates the backfill migration, and guessing which incoming row it corresponds to would be
+    /// exactly the silent mismatch the key exists to prevent.
+    /// </para>
+    /// </remarks>
+    private static Dictionary<string, object> MatchStoredRows(PropertyInfo property, object entity)
+    {
+        var byKey = new Dictionary<string, object>(StringComparer.Ordinal);
+
+        if (AccessorCache.GetGetter(property)(entity) is not System.Collections.IEnumerable stored)
+            return byKey;
+
+        foreach (var row in stored)
+        {
+            if (row is null)
+                continue;
+
+            var key = Abstractions.Model.SparkValueObjects.GetKey(row);
+            if (!string.IsNullOrEmpty(key))
+                byKey[key!] = row;
+        }
+
+        return byKey;
     }
 
     /// <summary>

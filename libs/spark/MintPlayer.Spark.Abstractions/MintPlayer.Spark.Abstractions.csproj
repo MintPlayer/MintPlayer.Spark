@@ -9,7 +9,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Abstractions</PackageId>
-		<Version>10.0.0-preview.75</Version>
+		<Version>10.0.0-preview.76</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Abstractions and shared models for MintPlayer.Spark low-code framework.</Description>
@@ -19,6 +19,10 @@
 		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
 		<RepositoryType>git</RepositoryType>
 	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\attributes\MintPlayer.Spark.Attributes\MintPlayer.Spark.Attributes.csproj" />
+	</ItemGroup>
 
 	<ItemGroup>
 		<InternalsVisibleTo Include="MintPlayer.Spark" />

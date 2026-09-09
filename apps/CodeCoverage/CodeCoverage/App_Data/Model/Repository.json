@@ -123,6 +123,28 @@
         "rules": []
       },
       {
+        "id": "012ef5d6-bd40-41f0-b159-d749e1cbb44f",
+        "name": "DeleteBranchOnPrClose",
+        "label": {
+          "en": "Delete Branch On Merge",
+          "fr": "Supprimer la branche à la fusion",
+          "nl": "Branch verwijderen bij mergen"
+        },
+        "description": {
+          "en": "Delete a pull request's head branch when the pull request is merged.",
+          "fr": "Supprimer la branche source d'une pull request lorsque celle-ci est fusionnée.",
+          "nl": "De bronbranch van een pull request verwijderen wanneer die gemerged wordt."
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 13,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "f478a083-eb0b-4468-af19-cddbdb07fcc1",
         "name": "DisconnectedAtUtc",
         "label": {

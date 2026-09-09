@@ -36,5 +36,19 @@
     "showedOn": "detail",
     "selectionRule": "=0",
     "refreshOnCompleted": false
+  },
+  "Revoke": {
+    "displayName": {
+      "en": "Revoke",
+      "fr": "Révoquer",
+      "nl": "Intrekken"
+    },
+    "icon": "Trash",
+    "description": "Stops an upload token authenticating, by stamping RevokedAtUtc rather than deleting the document -- the record of which token existed, who created it and when it stopped working is the useful part of a credential history, which is also why security.json grants QueryReadEditNew/ApiToken with no Delete. Offered on ApiToken only, because Revoke/ApiToken is the sole grant: actions attach by RIGHT, not by declaration, and this file is evaluated against every type. The right is granted to every signed-in user because rights are group-level and there is no group per GitHub owner, so the right decides who is OFFERED this and RevokeTokenAction decides who may run it -- the caller must manage the account. confirmation because a revoked token cannot be un-revoked. selectionRule '=0' because it acts on the token whose page it is on, through args.Parent. refreshOnCompleted is false because the action emits its own RefreshQuery for the tokens grid; leaving it on simply ran the query twice.",
+    "showedOn": "detail",
+    "selectionRule": "=0",
+    "confirmationMessageKey": "apiToken.revokeConfirmation",
+    "variant": "danger",
+    "refreshOnCompleted": false
   }
 }

@@ -63,7 +63,8 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         };
         customise?.Invoke(token);
 
-        await session.StoreAsync(token, ApiToken.DocumentId(ApiTokenService.Hash(value)));
+        token.Hash = ApiTokenService.Hash(value);
+        await session.StoreAsync(token, ApiToken.NewDocumentId());
         await session.SaveChangesAsync();
         return value;
     }

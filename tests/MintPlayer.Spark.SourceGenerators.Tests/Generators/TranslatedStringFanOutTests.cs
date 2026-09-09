@@ -46,7 +46,9 @@ public class TranslatedStringFanOutTests
         => GeneratorHarness.Run(
             GeneratorName,
             [source],
-            referenceTypes: [typeof(GenerateIndexAttribute), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
+            // TranslatedString is listed because the attributes now live in their own assembly, so
+            // typeof(GenerateIndexAttribute) alone no longer brings Abstractions into the compilation.
+            referenceTypes: [typeof(GenerateIndexAttribute), typeof(TranslatedString), typeof(Raven.Client.Documents.Indexes.AbstractIndexCreationTask)],
             rootNamespace: "TestApp",
             additionalTexts: cultureJson is null
                 ? null

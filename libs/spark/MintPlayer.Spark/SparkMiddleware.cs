@@ -308,6 +308,14 @@ public static class SparkExtensions
         // Run module-specific middleware/startup tasks
         registry.ApplyMiddleware(app, SparkMiddlewareStage.AfterSpark);
 
+        // ⚠️ AFTER ApplyMiddleware, and that is the whole reason it is here rather than beside the
+        // other verifiers above. The migration runner registers itself as an AfterSpark task, so a
+        // gate placed at VerifySparkModelHash's site would refuse startup on the very run that
+        // would have fixed the data — permanently, since the fix can then never run. Calling it
+        // inline here is ordered by construction, unlike registering another AfterSpark action,
+        // which would depend on whether the app called AddMigrations() before or after.
+        VerifySparkValueObjectKeys(app);
+
         return app;
     }
 
@@ -460,6 +468,35 @@ public static class SparkExtensions
                 $"loaded; scanning the {loaded.Length} that did. First loader error: {ex.LoaderExceptions.FirstOrDefault()?.Message}");
             return loaded;
         }
+    }
+
+    /// <summary>
+    /// Refuses to start while any stored embedded row is missing its key.
+    /// </summary>
+    /// <remarks>
+    /// See <see cref="ValueObjectKeyVerifier"/> for why this asks the database rather than the
+    /// model, and why it throws rather than warns. No Development exemption, following
+    /// <c>VerifySparkSecurityConfiguration</c>: the failure is data integrity, and the migration
+    /// that fixes it has already had its chance to run by this point in startup.
+    /// </remarks>
+    private static void VerifySparkValueObjectKeys(IApplicationBuilder app)
+    {
+        var store = app.ApplicationServices.GetService<Raven.Client.Documents.IDocumentStore>();
+        if (store is null)
+            return;
+
+        using var scope = app.ApplicationServices.CreateScope();
+        var sparkContext = scope.ServiceProvider.GetService<SparkContext>();
+        if (sparkContext is null)
+        {
+            // No context registered means no model to walk — an app that never called UseContext<T>().
+            return;
+        }
+
+        ValueObjectKeyVerifier
+            .VerifyAsync(sparkContext.GetType(), store, Console.WriteLine, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
     }
 
     private static void VerifySparkModelHash(IApplicationBuilder app)

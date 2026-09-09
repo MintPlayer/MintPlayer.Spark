@@ -28,7 +28,6 @@ public class GenerateIndexGenerator : IncrementalGenerator
 {
     private const string GenerateIndexAttributeFullName = "MintPlayer.Spark.Abstractions.GenerateIndexAttribute";
 
-    private const string SparkAbstractionsAssemblyName = "MintPlayer.Spark.Abstractions";
 
     private const string SparkContextFullName = "MintPlayer.Spark.SparkContext";
 
@@ -450,13 +449,20 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
     /// <summary>
     /// Every <c>[GenerateIndex]</c> entity in a referenced assembly, read from metadata symbols.
-    /// <para>Filtered to assemblies that reference <c>MintPlayer.Spark.Abstractions</c>, since an assembly
-    /// that does not cannot carry the attribute. Without that filter this walks every type in every
-    /// reference, the BCL included.</para>
+    /// <para>Filtered to assemblies that reference whichever assembly declares
+    /// <c>[GenerateIndex]</c>, since an assembly that does not cannot carry it. Without that filter
+    /// this walks every type in every reference, the BCL included.</para>
+    /// <para>
+    /// ⚠️ The host assembly is <b>derived</b>, not named. Hard-coding it is what made HR's indexes
+    /// vanish when the attributes moved packages: the C# compiler emits an <c>AssemblyRef</c> only
+    /// for assemblies a compilation actually <em>uses</em>, so a library using the old assembly for
+    /// nothing but attributes stopped referencing it and was skipped without a diagnostic.
+    /// </para>
     /// </summary>
     private static ImmutableArray<GeneratedIndexInfo> DescribeReferenced(Compilation compilation, System.Threading.CancellationToken ct)
     {
-        if (compilation.GetTypeByMetadataName(GenerateIndexAttributeFullName) is null)
+        var attributeHost = ResolveAttributeHostAssembly(compilation);
+        if (attributeHost is null)
             return ImmutableArray<GeneratedIndexInfo>.Empty;
 
         var builder = ImmutableArray.CreateBuilder<GeneratedIndexInfo>();
@@ -465,7 +471,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
         {
             ct.ThrowIfCancellationRequested();
 
-            if (!ReferencesSparkAbstractions(reference)) continue;
+            if (!ReferencesAttributeHost(reference, attributeHost)) continue;
 
             foreach (var type in AllTypes(reference.GlobalNamespace, ct))
             {
@@ -477,10 +483,31 @@ public class GenerateIndexGenerator : IncrementalGenerator
         return builder.ToImmutable();
     }
 
-    private static bool ReferencesSparkAbstractions(IAssemblySymbol assembly)
-        => assembly.Name == SparkAbstractionsAssemblyName
+    /// <summary>
+    /// The simple name of the assembly declaring <c>[GenerateIndex]</c> in this compilation, or
+    /// <see langword="null"/> when the attribute is not referenced at all.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <c>GetTypeByMetadataName</c> also returns <see langword="null"/> when the name is declared
+    /// in <b>more than one</b> referenced assembly — the shape a consumer reaches by mixing package
+    /// versions across the split. Emitting nothing is the safe answer, but it is a silent one, so
+    /// the packages move in lockstep and the release notes say so.
+    /// </remarks>
+    private static string? ResolveAttributeHostAssembly(Compilation compilation)
+        => compilation.GetTypeByMetadataName(GenerateIndexAttributeFullName)?.ContainingAssembly?.Name;
+
+    /// <remarks>
+    /// ⚠️ <paramref name="attributeHost"/> is derived, never a literal. Hard-coding an assembly name
+    /// here is what made HR's indexes vanish when the attributes moved packages: the compiler emits
+    /// an <c>AssemblyRef</c> only for assemblies a compilation actually <em>uses</em>, so a library
+    /// using the old assembly for nothing but attributes stopped referencing it and was skipped
+    /// without a diagnostic. Every other name-based check in this repository keys on namespace,
+    /// which survives an assembly move; this was the one that did not.
+    /// </remarks>
+    private static bool ReferencesAttributeHost(IAssemblySymbol assembly, string attributeHost)
+        => assembly.Name == attributeHost
         || assembly.Modules.Any(module => module.ReferencedAssemblies
-            .Any(identity => identity.Name == SparkAbstractionsAssemblyName));
+            .Any(identity => identity.Name == attributeHost));
 
     private static IEnumerable<INamedTypeSymbol> AllTypes(INamespaceSymbol ns, System.Threading.CancellationToken ct)
     {

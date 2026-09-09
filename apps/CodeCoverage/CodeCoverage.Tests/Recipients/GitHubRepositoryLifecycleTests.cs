@@ -52,6 +52,10 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.None));
         services.AddSingleton(session);
         services.AddSingleton<IMessageBus>(bus ?? new RecordingMessageBus());
+        // Required since branch deletion landed: the recipient [Inject]s it, so without a
+        // registration every test here fails at construction rather than on an assertion.
+        services.AddSingleton<MintPlayer.Spark.Webhooks.GitHub.Services.IGitHubInstallationService>(
+            NSubstitute.Substitute.For<MintPlayer.Spark.Webhooks.GitHub.Services.IGitHubInstallationService>());
         services.AddScoped<GitHubEventsRecipient>();
         return services.BuildServiceProvider().GetRequiredService<GitHubEventsRecipient>();
     }

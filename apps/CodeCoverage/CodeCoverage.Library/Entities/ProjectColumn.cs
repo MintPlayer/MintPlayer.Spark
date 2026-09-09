@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace CodeCoverage.Entities;
 
 /// <summary>
@@ -11,13 +13,15 @@ namespace CodeCoverage.Entities;
 /// refreshed by the <c>SyncColumns</c> action and by the nightly reconciliation.
 /// </para>
 /// </summary>
-public class ProjectColumn
+[ValueObject]
+public partial class ProjectColumn
 {
     /// <summary>
     /// The single-select option id, as GraphQL reports it. This is the value a card-move mutation
     /// takes, so it is the identity that matters — not <see cref="Name"/>, which a person can rename
     /// at any time without the id changing.
     /// </summary>
+    [ValueKey]
     public string Id { get; set; } = string.Empty;
 
     /// <summary>The option's display name, e.g. <c>In Progress</c>. Shown to the user when picking a target column.</summary>

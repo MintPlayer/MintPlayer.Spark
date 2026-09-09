@@ -5,6 +5,11 @@ import { EntityAttributeDefinition, EntityPermissions } from '@mintplayer/ng-spa
 export class CanCreateDetailRowPipe implements PipeTransform {
   transform(attr: EntityAttributeDefinition, permissions: Record<string, EntityPermissions>): boolean {
     const perms = permissions[attr.name];
-    return perms ? perms.canCreate : true;
+    // Fail closed. An absent entry means the child type's permissions were never fetched, not that
+    // the user may do this -- and since the save path now enforces `New/{RowType}`, defaulting
+    // to true renders a button whose save is refused. The fetch is also not guaranteed: it used to
+    // go through the entity-type catalogue, which is Query-gated, so a user with `New` but not
+    // `Query` never got an entry at all.
+    return perms ? perms.canCreate : false;
   }
 }

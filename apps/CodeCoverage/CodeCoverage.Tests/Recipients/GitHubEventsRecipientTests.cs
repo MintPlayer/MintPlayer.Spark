@@ -3,6 +3,7 @@ using CodeCoverage.Recipients;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using MintPlayer.Spark.Webhooks.GitHub.Messages;
+using NSubstitute;
 using Octokit.Webhooks;
 using Raven.Client.Documents.Session;
 using CodeCoverage.Tests;
@@ -69,8 +70,47 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.None));
         services.AddSingleton(session);
         services.AddSingleton<MintPlayer.Spark.Messaging.Abstractions.IMessageBus>(bus);
+        // Required since branch deletion landed: the recipient [Inject]s it, so without a
+        // registration every test in this class fails at construction — which is how the feature
+        // originally shipped, having no tests of its own.
+        services.AddSingleton<MintPlayer.Spark.Webhooks.GitHub.Services.IGitHubInstallationService>(
+            new RecordingInstallationService());
         services.AddScoped<GitHubEventsRecipient>();
         return services.BuildServiceProvider().GetRequiredService<GitHubEventsRecipient>();
+    }
+
+    /// <summary>
+    /// Records the ref-delete calls the recipient makes, and can be told to fail like GitHub does.
+    /// </summary>
+    private sealed class RecordingInstallationService : MintPlayer.Spark.Webhooks.GitHub.Services.IGitHubInstallationService
+    {
+        public List<string> Deleted { get; } = [];
+        public Exception? DeleteThrows { get; set; }
+
+        public Task<Octokit.IGitHubClient> CreateInstallationClientAsync(long installationId)
+        {
+            var reference = Substitute.For<Octokit.IReferencesClient>();
+            reference
+                .When(r => r.Delete(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>()))
+                .Do(call =>
+                {
+                    if (DeleteThrows is not null) throw DeleteThrows;
+                    Deleted.Add($"{call.ArgAt<string>(0)}/{call.ArgAt<string>(1)}:{call.ArgAt<string>(2)}");
+                });
+
+            var git = Substitute.For<Octokit.IGitDatabaseClient>();
+            git.Reference.Returns(reference);
+
+            var client = Substitute.For<Octokit.IGitHubClient>();
+            client.Git.Returns(git);
+            return Task.FromResult(client);
+        }
+
+        public Task<Octokit.IGitHubClient> CreateAppClientAsync() => throw new NotSupportedException();
+
+        public Task<Octokit.GraphQL.Connection> CreateGraphQLConnectionAsync(
+            long installationId, MintPlayer.Spark.Webhooks.GitHub.Services.EClientType clientType)
+            => throw new NotSupportedException();
     }
 
     private static GitHubWebhookMessage Message(string eventType, string json) => new()

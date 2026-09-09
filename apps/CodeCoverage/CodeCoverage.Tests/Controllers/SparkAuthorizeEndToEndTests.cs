@@ -92,13 +92,19 @@ public class SparkAuthorizeEndToEndTests : IClassFixture<CoverageWebHostFixture>
     }
 
     /// <summary>
-    /// Token and settings management are not anonymous either. Worth their own cases because both
-    /// controllers carry <c>[SparkAuthorize]</c> at the TYPE level rather than per method — a
-    /// refactor that moved the attribute onto individual actions could leave one uncovered, and
-    /// unit tests of the methods would never notice, because a method call runs no filter.
+    /// Settings management is not anonymous either. Worth its own case because the controller
+    /// carries <c>[SparkAuthorize]</c> at the TYPE level rather than per method — a refactor that
+    /// moved the attribute onto individual actions could leave one uncovered, and unit tests of the
+    /// methods would never notice, because a method call runs no filter.
     /// </summary>
+    /// <remarks>
+    /// <c>/api/tokens</c> used to be a case here and is gone: upload tokens are a Spark persistent
+    /// object now, so there is no tokens controller to carry an attribute. What replaced this
+    /// coverage is not another route test but two different things — the type-level grant in
+    /// <c>security.json</c>, which is <c>Authenticated</c>, and <c>ApiTokenActions</c>&apos; row
+    /// filter, which is what keeps one signed-in user out of another&apos;s tokens.
+    /// </remarks>
     [Theory]
-    [InlineData("/api/tokens?account=acme")]
     [InlineData("/api/repos/acme/widget/settings/gate")]
     public async Task Management_endpoints_refuse_anonymous_callers(string path)
     {

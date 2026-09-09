@@ -16,6 +16,9 @@ public class BreadcrumbPlacementAnalyzerTests
     [
         typeof(BreadcrumbAttribute),
         typeof(IgnorePropertyAttribute),
+        // The attributes moved to MintPlayer.Spark.Attributes, so referencing one no longer
+        // drags Abstractions in. TranslatedString still lives there and the fixtures use it.
+        typeof(TranslatedString),
     ];
 
     [Fact]

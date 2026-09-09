@@ -34,6 +34,12 @@ export function nestedPoToDict(po: PersistentObject | null | undefined): Record<
   if (typeof po.breadcrumb === 'string' && po.breadcrumb !== '') {
     dict[AS_DETAIL_SELF_BREADCRUMB_KEY] = po.breadcrumb;
   }
+  // The row's own key, same reserved-key mechanism and for a sharper reason: without it the key
+  // never returns, and a save cannot tell an edited row from a deleted one plus a new one. See
+  // AS_DETAIL_ROW_KEY.
+  if (typeof po.id === 'string' && po.id !== '') {
+    dict[AS_DETAIL_ROW_KEY] = po.id;
+  }
   return dict;
 }
 
@@ -58,6 +64,27 @@ function attributeValueForForm(attr: PersistentObjectAttribute): any {
  * can never contain it.
  */
 export const AS_DETAIL_SELF_BREADCRUMB_KEY = '__sparkBreadcrumb';
+
+/**
+ * Reserved key under which a flattened nested object keeps its own row key — the value of whatever
+ * property the server registered as that type's `[ValueKey]`.
+ *
+ * A value object's key is not a model attribute (nothing declares `Id` in its model file), so it
+ * travels as the nested `PersistentObject`'s `id` and has to be carried across the flat-dict form
+ * state by hand. Before this existed, flattening dropped it and `dictToNestedPo` rebuilt `id` from
+ * `dict['Id']`, which is never present — so **every** embedded row reached the server with an empty
+ * id, and the fresh instance the mapper builds kept the guid its own field initializer had just
+ * minted.
+ *
+ * That is not cosmetic. Stored keys and incoming keys were then both plausible and never equal, so
+ * a save could not match rows: an edit was indistinguishable from a delete plus a create. Every
+ * per-row rule — preserving read-only fields, and the `New`/`Edit`/`Delete` rights of the row type —
+ * rests on this key surviving the round trip.
+ *
+ * Safe to carry, for the same reason the breadcrumb is: `dictToNestedPo` walks the entity type's
+ * attributes and never the dict's keys, so a reserved key is never sent back as an attribute.
+ */
+export const AS_DETAIL_ROW_KEY = '__sparkRowKey';
 
 /**
  * The breadcrumb the server resolved for a flattened object, or null when it resolved to nothing.
@@ -114,6 +141,11 @@ export function nestedPoToDisplayRow(po: PersistentObject | null | undefined): R
   if (typeof po.breadcrumb === 'string' && po.breadcrumb !== '') {
     dict[AS_DETAIL_SELF_BREADCRUMB_KEY] = po.breadcrumb;
   }
+  // And the row key, for the same reason as the form path — a display row can be handed back for
+  // saving, and a row that loses its key on that trip is indistinguishable from a new one.
+  if (typeof po.id === 'string' && po.id !== '') {
+    dict[AS_DETAIL_ROW_KEY] = po.id;
+  }
   return dict;
 }
 
@@ -144,7 +176,10 @@ export function dictToNestedPo(
     .map(attrDef => buildAttribute(attrDef, dict?.[attrDef.name], resolve));
 
   return {
-    id: (dict?.['Id'] as string) ?? (dict?.['id'] as string) ?? '',
+    // The reserved key first: it is the only one that is always present for a stored row, because
+    // a value object's key is not a model attribute. `Id`/`id` remain as fallbacks for a root
+    // object, whose id genuinely is part of the dict.
+    id: (dict?.[AS_DETAIL_ROW_KEY] as string) ?? (dict?.['Id'] as string) ?? (dict?.['id'] as string) ?? '',
     name: entityType.name,
     objectTypeId: entityType.id,
     attributes,

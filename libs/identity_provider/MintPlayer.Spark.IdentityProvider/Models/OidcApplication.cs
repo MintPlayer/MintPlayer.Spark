@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace MintPlayer.Spark.IdentityProvider.Models;
 
 /// <summary>
@@ -83,7 +85,8 @@ public class OidcApplication
     public int RefreshTokenLifetimeDays { get; set; } = 14;
 }
 
-public class ClientSecret
+[ValueObject]
+public partial class ClientSecret
 {
     /// <summary>The client secret; a plain value entered here is hashed on save and cannot be read back afterwards.</summary>
     public string Hash { get; set; } = string.Empty;
@@ -95,7 +98,8 @@ public class ClientSecret
     public DateTime? ExpiresAt { get; set; }
 }
 
-public class ClientClaim
+[ValueObject]
+public partial class ClientClaim
 {
     /// <summary>Claim type added to issued tokens, e.g. <c>tenant</c>.</summary>
     public string Type { get; set; } = string.Empty;

@@ -176,7 +176,28 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
 
     public HttpClient CreateClient() => _host.GetTestClient();
 
+    /// <summary>
+    /// Resolves from the <b>root</b> provider, so a scoped service resolved here lives as long as
+    /// the factory does.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <see cref="Raven.Client.Documents.Session.IAsyncDocumentSession"/> is scoped, and so is
+    /// everything built on it (<c>IDatabaseAccess</c> among them). Resolving one here and reusing it
+    /// across several saves means <b>one session for the whole test</b> — and a Raven session has an
+    /// identity map, so a document it already loaded comes back as the tracked instance, not as it
+    /// currently is on disk. A test that changes a document out of band (a background stamp, a
+    /// second session) and then saves through that same instance is asserting against a stale entity
+    /// and will conclude the save lost data it never saw. Real requests get a scope each, so use
+    /// <see cref="CreateScope"/> to model more than one of them.
+    /// </remarks>
     public T GetService<T>() where T : notnull => _host.Services.GetRequiredService<T>();
+
+    /// <summary>
+    /// A fresh DI scope — the test-side equivalent of one HTTP request, with its own
+    /// <see cref="Raven.Client.Documents.Session.IAsyncDocumentSession"/>. Dispose it when the
+    /// "request" is over. See the remarks on <see cref="GetService{T}"/> for why this matters.
+    /// </summary>
+    public IServiceScope CreateScope() => _host.Services.CreateScope();
 
     /// <summary>
     /// Performs a warmup GET so Spark's antiforgery middleware writes both the antiforgery

@@ -6,8 +6,42 @@
     "queryType": "CodeCoverage.Indexes.VAccount",
     "indexName": "Accounts_Overview",
     "breadcrumb": "{Login}",
-    "tabs": [],
-    "groups": [],
+    "tabs": [
+      {
+        "id": "a7c1f9d2-4b60-4e3a-9c85-1f27b0e6d431",
+        "name": "General",
+        "label": {
+          "en": "General",
+          "fr": "Général",
+          "nl": "Algemeen"
+        },
+        "order": 1
+      }
+    ],
+    "groups": [
+      {
+        "id": "b2e84c07-9d13-4f56-8a2b-6c9e17f0a582",
+        "name": "Identity",
+        "label": {
+          "en": "Identity",
+          "fr": "Identité",
+          "nl": "Identiteit"
+        },
+        "tab": "a7c1f9d2-4b60-4e3a-9c85-1f27b0e6d431",
+        "order": 1
+      },
+      {
+        "id": "c5f39a1b-6e08-42d7-b134-8d0a25c7e963",
+        "name": "Installation",
+        "label": {
+          "en": "Installation",
+          "fr": "Installation",
+          "nl": "Installatie"
+        },
+        "tab": "a7c1f9d2-4b60-4e3a-9c85-1f27b0e6d431",
+        "order": 2
+      }
+    ],
     "attributes": [
       {
         "id": "f6c2f843-1be2-4af2-902f-1547077bff03",
@@ -25,11 +59,12 @@
         "dataType": "image",
         "isRequired": false,
         "isVisible": true,
-        "isReadOnly": false,
+        "isReadOnly": true,
         "order": 4,
         "isArray": false,
         "showedOn": "Query",
-        "rules": []
+        "rules": [],
+        "group": "b2e84c07-9d13-4f56-8a2b-6c9e17f0a582"
       },
       {
         "id": "f9c18430-234a-4ca4-b21d-9fca03049bf7",
@@ -47,11 +82,12 @@
         "dataType": "number",
         "isRequired": true,
         "isVisible": false,
-        "isReadOnly": false,
+        "isReadOnly": true,
         "order": 1,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
-        "rules": []
+        "rules": [],
+        "group": "b2e84c07-9d13-4f56-8a2b-6c9e17f0a582"
       },
       {
         "id": "01dfdc3b-b185-4044-a15e-9fb7c2ce119b",
@@ -69,11 +105,12 @@
         "dataType": "number",
         "isRequired": false,
         "isVisible": false,
-        "isReadOnly": false,
+        "isReadOnly": true,
         "order": 5,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
-        "rules": []
+        "rules": [],
+        "group": "c5f39a1b-6e08-42d7-b134-8d0a25c7e963"
       },
       {
         "id": "ec42fca3-2c2c-4f8d-b022-a9db0aa8978d",
@@ -91,11 +128,12 @@
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
-        "isReadOnly": false,
+        "isReadOnly": true,
         "order": 2,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
-        "rules": []
+        "rules": [],
+        "group": "b2e84c07-9d13-4f56-8a2b-6c9e17f0a582"
       },
       {
         "id": "47ee693b-379e-469b-ba29-22a472796297",
@@ -113,16 +151,18 @@
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
-        "isReadOnly": false,
+        "isReadOnly": true,
         "order": 3,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
-        "rules": []
+        "rules": [],
+        "group": "b2e84c07-9d13-4f56-8a2b-6c9e17f0a582"
       }
     ],
     "queries": [
       "account-repositories",
-      "account-projects"
+      "account-projects",
+      "account-upload-tokens"
     ]
   },
   "queries": [
