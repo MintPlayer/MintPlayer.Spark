@@ -165,6 +165,18 @@
       "resource": "QueryRead/ProjectColumn",
       "groupId": "00000000-0000-0000-0000-000000000001",
       "isDenied": false
+    },
+    {
+      "id": "c0e5a9e1-0000-4000-8000-00000000006b",
+      "resource": "Edit/Account",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "c0e5a9e1-0000-4000-8000-00000000006c",
+      "resource": "Edit/Repository",
+      "groupId": "00000000-0000-0000-0000-000000000001",
+      "isDenied": false
     }
   ]
 }

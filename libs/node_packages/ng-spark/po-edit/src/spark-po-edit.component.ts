@@ -94,7 +94,11 @@ export class SparkPoEditComponent {
         } else {
           data[attr.name] = itemAttr?.object ? nestedPoToDict(itemAttr.object) : {};
         }
-      } else if (attr.dataType === 'boolean') {
+      } else if (attr.dataType === 'boolean' && !attr.lookupReferenceType) {
+        // `?? false` only for a real two-state checkbox. A lookup-backed boolean has a third state
+        // that is expressed as the absence of a value, and coercing it here destroyed that BEFORE
+        // the control rendered: merely opening the form and saving turned "unset" into an explicit
+        // false, permanently and with nothing shown to the user.
         data[attr.name] = itemAttr?.value ?? false;
       } else {
         data[attr.name] = itemAttr?.value ?? '';

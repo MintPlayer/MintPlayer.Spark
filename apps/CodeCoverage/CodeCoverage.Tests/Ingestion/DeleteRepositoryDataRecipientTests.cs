@@ -105,7 +105,7 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
             await session.StoreAsync(new ApiToken
             {
                 Scope = "Repository",
-                RepositoryGitHubId = id,
+                GithubRepositories = [Repository.DocumentId(id)],
                 AccountLogin = "acme",
                 CreatedAtUtc = DateTime.UtcNow,
                 Hash = $"hash{id}",

@@ -1,0 +1,77 @@
+{
+  "_comment": [
+    "HAND-AUTHORED and NOT generated. --spark-synchronize-model leaves it alone: SparkUser is not a",
+    "context root and not an embedded type, so the synchronizer never discovers it and never rewrites",
+    "this file.",
+    "",
+    "It exists so that ApiToken.CreatedByUserId renders a username instead of a raw document id.",
+    "A reference resolves its label through the target type's breadcrumb, and with no model file at",
+    "all BreadcrumbResolver falls back to the id string.",
+    "",
+    "⚠️ DO NOT register SparkUser on CoverageSparkContext to get this generated instead. The",
+    "synchronizer discovers properties by reflection, so it would emit PasswordHash, SecurityStamp,",
+    "AuthenticatorKey, TwoFactorRecoveryCodes and Claims as writable, projectable model attributes --",
+    "in production -- and [IgnoreProperty] cannot prevent it, because SparkUser is a library type this",
+    "app does not own. Hand-authoring is what lets this file declare two fields and stop.",
+    "",
+    "⚠️ The breadcrumb names UserName (capital N). A placeholder that matches no attribute renders",
+    "blank rather than raising an error, so a typo here is silent.",
+    "",
+    "⚠️ Nothing may be added here without asking what it discloses. SparkUser has no actions class and",
+    "therefore no row rule -- RowSecurity treats a missing rule as allowed -- so any attribute in this",
+    "file is readable by anyone who can read a token that references the user. Email and PhoneNumber",
+    "are deliberately absent for that reason."
+  ],
+  "persistentObject": {
+    "id": "3f7c1d92-8e4a-4b16-9c05-2a7d6e0f4b83",
+    "name": "SparkUser",
+    "description": {
+      "en": "User",
+      "fr": "Utilisateur",
+      "nl": "Gebruiker"
+    },
+    "clrType": "MintPlayer.Spark.Authorization.Identity.SparkUser",
+    "alias": "sparkuser",
+    "breadcrumb": "{UserName}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "5b2e8a41-0c93-4d7f-a618-9e3b4c1d7a02",
+        "name": "Id",
+        "label": {
+          "en": "Id",
+          "fr": "Id",
+          "nl": "Id"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7d4a2c68-1f05-4e93-b72a-6c8d0e5f3a19",
+        "name": "UserName",
+        "label": {
+          "en": "User name",
+          "fr": "Nom d'utilisateur",
+          "nl": "Gebruikersnaam"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

@@ -8,24 +8,6 @@
     "groups": [],
     "attributes": [
       {
-        "id": "cd6f88ae-a5a8-4f6d-a4c4-1d6d647e2a02",
-        "name": "AccountGitHubId",
-        "label": {
-          "en": "Account Git Hub Id"
-        },
-        "description": {
-          "en": "GitHub's numeric id for the owner this token uploads for, when Scope is \"Account\". Null on tokens issued before this field existed, which fall back to comparing AccountLogin so that no working token is invalidated by a deploy."
-        },
-        "dataType": "number",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 4,
-        "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": []
-      },
-      {
         "id": "2e38b951-d090-4ed3-9bb7-f020b2721c5d",
         "name": "AccountLogin",
         "label": {
@@ -56,7 +38,7 @@
         "isRequired": true,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 8,
+        "order": 6,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
@@ -68,13 +50,14 @@
           "en": "Created By User Id"
         },
         "description": {
-          "en": "Id of the signed-in user who created this token."
+          "en": "The signed-in user who created this token."
         },
-        "dataType": "string",
+        "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
-        "isReadOnly": false,
-        "order": 7,
+        "isReadOnly": true,
+        "order": 5,
+        "referenceType": "MintPlayer.Spark.Authorization.Identity.SparkUser",
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
@@ -92,26 +75,28 @@
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 6,
+        "order": 1,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []
       },
       {
-        "id": "4d492d23-dae9-47d6-b256-902bf6de28c5",
-        "name": "RepositoryGitHubId",
+        "id": "a959d0d2-63d7-40e2-8372-b75d9c858880",
+        "name": "GithubRepositories",
         "label": {
-          "en": "Repository Git Hub Id"
+          "en": "Github Repositories"
         },
         "description": {
-          "en": "GitHub repository id this token uploads for, when Scope is \"Repository\"."
+          "en": "Document ids of the repositories this token may upload for. Empty means the token is account-scoped and covers every repository of AccountGitHubId."
         },
-        "dataType": "number",
+        "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 5,
-        "isArray": false,
+        "order": 4,
+        "query": "ApiToken_SelectableRepositories",
+        "referenceType": "CodeCoverage.Entities.Repository",
+        "isArray": true,
         "showedOn": "Query, PersistentObject",
         "rules": []
       },
@@ -128,7 +113,7 @@
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
-        "order": 9,
+        "order": 7,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
         "rules": []

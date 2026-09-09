@@ -67,10 +67,40 @@ public class ApiToken
     /// tokens issued before this field existed, which fall back to comparing
     /// <see cref="AccountLogin"/> so that no working token is invalidated by a deploy.
     /// </summary>
+    /// <remarks>
+    /// ⚠️ <c>[IgnoreProperty]</c> is Spark's, not RavenDB's — the property stays on the document and
+    /// keeps being written and read; it is only absent from the <em>model</em>. It is stamped
+    /// server-side from the resolved account, so nobody should ever type it into a form, and the
+    /// authentication handler reads it straight off the loaded document.
+    /// </remarks>
+    [IgnoreProperty]
     public long? AccountGitHubId { get; set; }
 
-    /// <summary>GitHub repository id this token uploads for, when Scope is "Repository".</summary>
-    public long? RepositoryGitHubId { get; set; }
+    /// <summary>
+    /// Document ids of the repositories this token may upload for. Empty means the token is
+    /// account-scoped and covers every repository of <see cref="AccountGitHubId"/>.
+    /// </summary>
+    /// <remarks>
+    /// Replaces a single numeric <c>RepositoryGitHubId</c>: a token often serves several
+    /// repositories, and a person should never be asked to type a GitHub id. The picker lists the
+    /// repositories the caller manages.
+    /// <para>
+    /// ⚠️ <b>Document ids, not GitHub ids.</b> Every layer of the reference machinery — the
+    /// synchronizer, <c>EntityMapper</c>, <c>BreadcrumbResolver</c>, <c>ReferenceResolver</c>'s
+    /// <c>.Include()</c>, and the Angular picker, which can only emit <c>po.id</c> — treats an
+    /// element as a document id. A <c>List&lt;long&gt;</c> of GitHub ids would synchronize happily
+    /// and then resolve to nothing.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>This field decides who may upload where, and the array write path validates nothing</b>
+    /// — it bypasses the collection guard that protects a scalar reference. Every id is re-checked
+    /// against the caller's own repositories in <c>ApiTokenActions.OnBeforeSaveAsync</c>, on edit as
+    /// well as create. Without that check a signed-in user could scope a token to any repository by
+    /// posting its id.
+    /// </para>
+    /// </remarks>
+    [Reference(typeof(Repository), "ApiToken_SelectableRepositories")]
+    public List<string> GithubRepositories { get; set; } = [];
 
     /// <summary>Free-text label telling you where this token is used, e.g. the CI workflow it was created for.</summary>
     /// <remarks>
@@ -81,7 +111,19 @@ public class ApiToken
     [Breadcrumb]
     public string? Description { get; set; }
 
-    /// <summary>Id of the signed-in user who created this token.</summary>
+    /// <summary>The signed-in user who created this token.</summary>
+    /// <remarks>
+    /// A reference so the grid shows a username rather than a document id. Stamped server-side in
+    /// <c>OnBeforeSaveAsync</c> and read-only in the model: it was previously writable and stamped
+    /// by nothing, so every token created through the UI carried an empty string and a client could
+    /// have claimed to be anyone.
+    /// <para>
+    /// <c>SparkUser</c> is deliberately NOT a context root. Its model file is hand-authored and
+    /// declares only <c>Id</c> and <c>UserName</c> — registering the type would have synchronize
+    /// generate <c>PasswordHash</c>, <c>SecurityStamp</c> and the rest as model attributes.
+    /// </para>
+    /// </remarks>
+    [Reference(typeof(MintPlayer.Spark.Authorization.Identity.SparkUser))]
     public string CreatedByUserId { get; set; } = string.Empty;
 
     /// <summary>When the token was created (UTC).</summary>

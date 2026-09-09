@@ -79,8 +79,12 @@ public class ApiTokenAuthenticationHandler : AuthenticationHandler<Authenticatio
             claims.Add(new Claim(AccountClaim, token.AccountLogin));
         if (token.AccountGitHubId is not null)
             claims.Add(new Claim(AccountIdClaim, token.AccountGitHubId.Value.ToString()));
-        if (token.RepositoryGitHubId is not null)
-            claims.Add(new Claim(RepositoryClaim, token.RepositoryGitHubId.Value.ToString()));
+        // One claim per repository. ClaimsIdentity carries repeats happily, but a reader MUST use
+        // FindAll — FindFirst silently returns one of N, which would authorize a multi-repository
+        // token for exactly one repository and fail closed on the rest, confusingly.
+        // The value is the DOCUMENT id, matching what is stored, so nothing has to re-derive it.
+        foreach (var repositoryId in token.GithubRepositories)
+            claims.Add(new Claim(RepositoryClaim, repositoryId));
 
         var identity = new ClaimsIdentity(claims, SchemeName);
         var ticket = new AuthenticationTicket(new ClaimsPrincipal(identity), SchemeName);

@@ -67,6 +67,24 @@
         "group": "b2e84c07-9d13-4f56-8a2b-6c9e17f0a582"
       },
       {
+        "id": "317fcf1b-886e-4de3-ba90-bcb93a5deae4",
+        "name": "DeleteBranchOnPrClose",
+        "label": {
+          "en": "Delete Branch On Pr Close"
+        },
+        "description": {
+          "en": "Account-wide default: delete a merged pull request's head branch, in every repository of this account that does not decide for itself."
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
         "id": "f9c18430-234a-4ca4-b21d-9fca03049bf7",
         "name": "GitHubId",
         "label": {

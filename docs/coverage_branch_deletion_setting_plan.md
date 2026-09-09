@@ -1,39 +1,69 @@
 # Branch-deletion setting — implementation plan
 
 **PRD:** [coverage_branch_deletion_setting_PRD.md](coverage_branch_deletion_setting_PRD.md)
-**Status:** not started — **two decisions needed before M3 and M7 (see below)**
+**Status:** in progress — all decisions taken
 **Branch:** `feat/branch-deletion-setting` · one pull request
+**Breaking changes are allowed.** The owner has confirmed no backward compatibility is required and
+that production data may be modified directly. That removes the transitional dual-read the token
+work would otherwise need — it does **not** remove the migration (the data still has to move) or the
+validation gate (that is a security hole, not a compatibility concern).
 
 Red/green where there is behaviour to pin. The habit that has paid all day: **check that a RED fails
 for the right reason**, and treat "no test would go red if this did nothing" as unfinished.
 
-## Decisions needed before starting
+## Decisions taken
 
-**D-A — how the three-state value is edited.** The generic PO form **destroys `null`**
-(`spark-po-edit.component.ts:98-99` coerces `?? false`), so opening and saving an inheriting
-repository pins it to explicit `false`. Three options, PRD §"The blocker":
+**D-A — a `<bs-select>` driven by a LookupReference, over an ENUM.** The owner chose the select; the
+investigation showed the property cannot be `bool?`, for four independent reasons:
 
-| | Cost | Delivers `bool?` spec |
-|---|---|---|
-| **(A) fix the framework + an `inherited-boolean` renderer** *(recommended)* | `libs/spark` + `ng-spark` change, version bump, Spark release | yes |
-| **(B) a string enum `Inherit`/`Enabled`/`Disabled`** | app-only | no — different shape |
-| **(C) put it on `RepoSettingsController` instead** | app-only | yes, but off the PO page |
+1. `spark-po-form.component.html:53` tested `dataType === 'boolean'` **before** `:58` tested
+   `lookupReferenceType`, and a lookup does not change `dataType` — so a lookup-backed bool was
+   swallowed by the checkbox and the select was unreachable. **Fixed in this PR** (see M0).
+2. `spark-po-edit.component.ts:98` coerced `?? false` keyed on `dataType` alone, destroying `null`
+   before render. **Also fixed** — but it only matters for a lookup-backed *boolean*.
+3. Lookup keys are strings on the wire (`LookupReferenceService.cs:282`), a boolean form value is a
+   real JS boolean, and there is no `compareWith` — so `true !== "True"` and a persisted value would
+   render as the placeholder. **Not fixed; an enum sidesteps it.**
+4. A null `bool?` lookup key collapses to `""`, and `""` into a `bool?` throws inside
+   `Convert.ChangeType` and is **swallowed by a bare `catch`** (`EntityMapper.cs:1139`) — a silently
+   dropped write. The natural way to author "Inherit" is the one that discards it.
 
-⚠️ **Do not start M3 before this is chosen.** Under (A) the entity is `bool?`; under (B) it is an
-enum and the migration changes shape.
+So: `Repository.DeleteBranchOnPrClose` is `EDeleteBranchPolicy` (`Inherit` / `Enabled` / `Disabled`)
+with a `TransientLookupReference`, following `Car.Status` (`ECarStatus?` + `CarStatus`), which is that
+exact shape working in production today. `Account.DeleteBranchOnPrClose` stays a plain `bool` — two
+states, a checkbox is honest.
 
-**D-B — is `RepositoryGitHubId` safe to hide?** `ApiTokenActions.cs:116` derives
-`Scope = RepositoryGitHubId is null ? "Account" : "Repository"` from a **client-supplied** field.
-`[IgnoreProperty]` on it makes every UI-created token account-scoped — a silent privilege widening.
-If repo-scoped tokens are created through the UI, it needs a replacement input first; if they are
-not, it is safe. **M8 is blocked on this answer.**
+Each of the three states now has a **name and a translated label the user reads**, and the migration
+becomes expressible: `Inherit` is a value a patch script can name; `null` is an absence.
+
+**D-B — `RepositoryGitHubId` becomes a multi-repository reference.** The owner: *"the user will never
+enter id-numbers… a token should be allowed to work over several repositories."*
+
+```csharp
+[Reference(typeof(Repository), "ApiToken_SelectableRepositories")]
+public List<string> GithubRepositories { get; set; } = [];
+```
+
+Three corrections to the request, all verified:
+
+- **Not `List<long>`.** Reference elements are **document ids as strings** at every layer — the
+  synchronizer, `EntityMapper`, `BreadcrumbResolver`, `ReferenceResolver`'s `.Include()`, and the
+  Angular picker, which can only emit `po.id`. So `"Repositories/{gitHubId}"`.
+- **Not `Account_UploadTokens`** (that returns tokens) **and not `Account_Repositories`** either: it
+  calls `EnsureParent("Account")`, and the picker sends the *form's own* parent — `ApiToken`, or
+  nothing on New — which throws and surfaces as a **500 from the picker**. `ProjectColumnActions`
+  documents being bitten by exactly this. A new parent-free query is required.
+- **The prior art is `HR.Person.Professions`** — `[Reference(typeof(Profession))] List<string>`,
+  rendering as `bs-tree-select` + chips. Array + query is supported end to end; HR simply lets the
+  query be derived.
 
 ## Status
 
 | | |
 |---|---|
+| **M0** ng-spark: a lookup must win over the raw data type | **Done** — 4 sites |
 | **S1** does any production Repository hold `DeleteBranchOnPrClose: true`? | not started |
-| **S2** does a `bool?` survive the synchronize → wire → mapper → client round trip? | not started |
+| ~~**S2** does a `bool?` survive the round trip?~~ | **dropped** — D-A chose an enum, whose path (`Car.Status`) is already exercised in production |
 | **M1** row filters — the write path's access control | not started |
 | **M2** rights + the read-only sweep | not started |
 | **M3** the entities, the resolver, and the migration | not started |

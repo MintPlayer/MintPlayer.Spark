@@ -130,7 +130,7 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
     {
         using var store = GetDocumentStore();
         using var seed = store.OpenAsyncSession();
-        var value = await StoreTokenAsync(seed, t => t.RepositoryGitHubId = 777);
+        var value = await StoreTokenAsync(seed, t => t.GithubRepositories = [Repository.DocumentId(777)]);
 
         using var session = store.OpenAsyncSession();
         var handler = await CreateAsync(session, $"{scheme} {value}");
@@ -142,7 +142,7 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         Assert.Equal("Account", principal.FindFirst(ApiTokenAuthenticationHandler.ScopeClaim)?.Value);
         Assert.Equal("acme", principal.FindFirst(ApiTokenAuthenticationHandler.AccountClaim)?.Value);
         Assert.Equal("42", principal.FindFirst(ApiTokenAuthenticationHandler.AccountIdClaim)?.Value);
-        Assert.Equal("777", principal.FindFirst(ApiTokenAuthenticationHandler.RepositoryClaim)?.Value);
+        Assert.Equal("Repositories/777", principal.FindFirst(ApiTokenAuthenticationHandler.RepositoryClaim)?.Value);
 
         // The hash, never the token value: anything downstream that logs the principal must not be
         // able to leak a working credential.
@@ -166,7 +166,7 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         {
             t.AccountLogin = null;
             t.AccountGitHubId = null;
-            t.RepositoryGitHubId = null;
+            t.GithubRepositories = [];
         });
 
         using var session = store.OpenAsyncSession();

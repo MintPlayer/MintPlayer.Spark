@@ -1,5 +1,6 @@
 using System.Text.Json;
 using CodeCoverage.Entities;
+using CodeCoverage.LookupReferences;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Webhooks.GitHub.Messages;
@@ -392,7 +393,19 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     private async Task DeleteHeadBranchIfEnabled(PullRequestEvent evt, CancellationToken ct)
     {
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(evt.Repository!.Id), ct);
-        if (repository is null || !repository.DeleteBranchOnPrClose)
+        if (repository is null)
+            return;
+
+        // The account is loaded only when the repository defers to it — a point load on a known
+        // document id, never a query, and skipped entirely when the repository has decided for
+        // itself. Deliberately not GetOrCreateAccount: that stores on a miss, and a read path must
+        // not mint documents.
+        var account = repository.DeleteBranchOnPrClose is EDeleteBranchPolicy.Inherit
+            ? await session.LoadAsync<Account>(
+                repository.Account ?? Account.DocumentId(evt.Repository.Owner.Id), ct)
+            : null;
+
+        if (!Repository.ResolveDeleteBranchOnPrClose(repository, account))
             return;
 
         var pr = evt.PullRequest;

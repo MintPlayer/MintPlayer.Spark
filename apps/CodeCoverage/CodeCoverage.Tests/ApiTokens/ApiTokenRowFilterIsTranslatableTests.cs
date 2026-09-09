@@ -51,10 +51,18 @@ public class ApiTokenRowFilterIsTranslatableTests : CoverageRavenTest
             .OrderByDescending(c => c.GetParameters().Length)
             .First();
 
+        // Only the visibility service participates in the row filter. Everything else is supplied
+        // as a substitute where NSubstitute can make one, and as null where it cannot — a concrete
+        // class with no parameterless constructor (UserManager<SparkUser>) cannot be proxied, and
+        // passing null is honest: if the filter ever starts using one of these, the test fails with
+        // a NullReferenceException rather than quietly passing against a stub.
         var args = ctor.GetParameters()
-            .Select(p => p.ParameterType == typeof(ISparkVisibility)
-                ? visibility
-                : Substitute.For([p.ParameterType], null))
+            .Select(p =>
+            {
+                if (p.ParameterType == typeof(ISparkVisibility)) return visibility;
+                try { return Substitute.For([p.ParameterType], null); }
+                catch { return null; }
+            })
             .ToArray();
 
         var actions = (ApiTokenActions)ctor.Invoke(args);

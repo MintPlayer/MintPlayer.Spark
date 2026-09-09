@@ -1,3 +1,4 @@
+using CodeCoverage.LookupReferences;
 using MintPlayer.Spark.Abstractions;
 
 namespace CodeCoverage.Entities;
@@ -42,11 +43,28 @@ public class Repository
     /// <remarks>An archived repository no longer receives uploads.</remarks>
     public bool Archived { get; set; }
 
-    /// <summary>Delete a pull request's head branch when the pull request is merged.</summary>
+    /// <summary>
+    /// Whether a merged pull request's head branch is deleted — or whether that is left to the
+    /// owning <see cref="Account"/>.
+    /// </summary>
     /// <remarks>
-    /// Opt-in per repository, default false. On a multi-tenant server this mutates <em>other
-    /// people's</em> repositories, so it cannot be a global default; deleting a branch is also the
-    /// one irreversible thing this app does to a repository.
+    /// Defaults to <see cref="EDeleteBranchPolicy.Inherit"/>, so a repository says nothing until
+    /// somebody makes it say something. Deleting a branch is still opted into rather than out of:
+    /// the account's own default is off.
+    /// <para>
+    /// ⚠️ An earlier version of this remark said the flag "cannot be a global default" because it
+    /// mutates other people's repositories. That reasoning ruled out a <em>server-wide</em> default
+    /// and was right; it does not rule out an <em>account-wide</em> one, which is scoped to
+    /// repositories the account already owns. The account level is the "later" that decision D1 of
+    /// the project-automation plan deferred.
+    /// </para>
+    /// <para>
+    /// ⚠️ Three states, not a <see langword="bool"/>?. A nullable bool cannot be edited through the
+    /// generic form: a lookup does not change an attribute's <c>dataType</c>, so it renders as a
+    /// two-state checkbox, and the empty-string key its "unset" row would produce is silently
+    /// discarded by the mapper. <see cref="EDeleteBranchPolicy"/> gives each state a name and a
+    /// translated label. See <c>docs/coverage_branch_deletion_setting_PRD.md</c>.
+    /// </para>
     /// <para>
     /// Lives here rather than on <see cref="GitHubProject"/>, where it was first declared. A board
     /// and a repository are siblings under an <see cref="Account"/>, and deleting a ref is a
@@ -59,7 +77,25 @@ public class Repository
     /// the work on it has not landed anywhere.
     /// </para>
     /// </remarks>
-    public bool DeleteBranchOnPrClose { get; set; }
+    [LookupReference(typeof(DeleteBranchPolicy))]
+    public EDeleteBranchPolicy DeleteBranchOnPrClose { get; set; }
+
+    /// <summary>
+    /// The effective answer for one repository: its own policy, or its account's default when it
+    /// defers.
+    /// </summary>
+    /// <remarks>
+    /// The single place the two levels are combined, so the webhook path and any settings UI cannot
+    /// drift. A missing account resolves to <see langword="false"/> — the safe direction for an
+    /// irreversible operation.
+    /// </remarks>
+    public static bool ResolveDeleteBranchOnPrClose(Repository? repository, Account? account)
+        => repository?.DeleteBranchOnPrClose switch
+        {
+            EDeleteBranchPolicy.Enabled => true,
+            EDeleteBranchPolicy.Disabled => false,
+            _ => account?.DeleteBranchOnPrClose ?? false,
+        };
 
     /// <summary>Whether the GitHub App can still see this repository.</summary>
     /// <remarks>
