@@ -191,7 +191,13 @@ internal partial class EntityMapper : IEntityMapper
     public void PopulateAttributeValues(PersistentObject po, object entity, BreadcrumbResult? breadcrumbs = null)
     {
         var entityType = entity.GetType();
-        var idProperty = entityType.GetCachedProperty("Id");
+
+        // A value object's identity is its registered row key, which need not be called Id. Reading
+        // it here is what puts the key on the wire, and putting it on the wire is what lets a save
+        // match rows at all -- so a key that does not round-trip makes every save of the collection
+        // look like a delete of every row plus a create of its replacement.
+        var keyProperty = Abstractions.Model.SparkValueObjects.GetKeyPropertyName(entityType) ?? "Id";
+        var idProperty = entityType.GetCachedProperty(keyProperty);
         po.Id = idProperty is not null ? AccessorCache.GetGetter(idProperty)(entity)?.ToString() : null;
 
         // Name/Breadcrumb come from the pre-resolved breadcrumb result (recursive, server-side).
@@ -562,7 +568,10 @@ internal partial class EntityMapper : IEntityMapper
     private void TryWriteId(Type entityType, object entity, string? id)
     {
         if (string.IsNullOrEmpty(id)) return;
-        var idProperty = entityType.GetCachedProperty("Id");
+        // Mirrors PopulateAttributeValues: a value object's key is whichever property [ValueKey]
+        // named, and this is the write half of the same round trip.
+        var keyProperty = Abstractions.Model.SparkValueObjects.GetKeyPropertyName(entityType) ?? "Id";
+        var idProperty = entityType.GetCachedProperty(keyProperty);
         if (idProperty is null || !idProperty.CanWrite) return;
         SetPropertyValue(idProperty, entity, id);
     }

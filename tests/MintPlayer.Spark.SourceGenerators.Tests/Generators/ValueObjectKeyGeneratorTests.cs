@@ -141,7 +141,13 @@ public class ValueObjectKeyGeneratorTests
             """);
 
         ShouldHaveNoErrors(result);
-        Combined(result).Should().Contain(").SessionId");
+        var combined = Combined(result);
+        combined.Should().Contain(").SessionId");
+
+        // The name travels beside the accessor because the accessor can only read. Writing the key
+        // back is what completes the round trip, and before the name was registered the mapper used
+        // a hard-coded Id -- so a key named anything else silently never came back.
+        combined.Should().Contain("\"SessionId\"");
     }
 
     /// <summary>

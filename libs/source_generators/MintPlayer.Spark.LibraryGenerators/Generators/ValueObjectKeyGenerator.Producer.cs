@@ -107,7 +107,8 @@ public class ValueObjectKeyProducer : Producer
                     var key = valueObject.ExistingKeyProperty ?? "Id";
                     writer.WriteLine(
                         "global::MintPlayer.Spark.Abstractions.Model.SparkValueObjects.Register(" +
-                        $"typeof({valueObject.FullyQualifiedName}), static o => (({valueObject.FullyQualifiedName})o).{key}?.ToString());");
+                        $"typeof({valueObject.FullyQualifiedName}), \"{key}\", " +
+                        $"static o => (({valueObject.FullyQualifiedName})o).{key}?.ToString());");
                 }
             }
         }
