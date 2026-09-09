@@ -21,6 +21,10 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<ProjectReference Include="..\..\attributes\MintPlayer.Spark.Attributes\MintPlayer.Spark.Attributes.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<InternalsVisibleTo Include="MintPlayer.Spark" />
 		<InternalsVisibleTo Include="MintPlayer.Spark.Authorization" />
 		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />

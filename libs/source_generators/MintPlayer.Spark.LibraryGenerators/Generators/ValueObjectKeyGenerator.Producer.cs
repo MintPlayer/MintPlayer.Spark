@@ -1,13 +1,13 @@
-using MintPlayer.Spark.SourceGenerators.Models;
+using MintPlayer.Spark.LibraryGenerators.Models;
 using System.Collections.Immutable;
 using MintPlayer.SourceGenerators.Tools;
 using System.CodeDom.Compiler;
 
-namespace MintPlayer.Spark.SourceGenerators.Generators;
+namespace MintPlayer.Spark.LibraryGenerators.Generators;
 
 /// <summary>
-/// Emits a <c>partial</c> half carrying the row key for every discovered value object, plus the
-/// registry that tells the runtime which types have one.
+/// Emits a <c>partial</c> half carrying the row key for every <c>[ValueObject]</c> that needs one,
+/// plus the registry that tells the runtime which types have one and how to read it.
 /// </summary>
 public class ValueObjectKeyProducer : Producer
 {
@@ -21,20 +21,24 @@ public class ValueObjectKeyProducer : Producer
 
     protected override void ProduceSource(IndentedTextWriter writer, CancellationToken cancellationToken)
     {
-        // A type that brings its own Id keeps it. Both in this workspace are load-bearing: one is a
-        // GitHub single-select option id assigned from the API, the other is derived from an event
-        // type in a save hook. A generated Guid would overwrite real meaning.
-        //
-        // A non-partial type is dropped here and reported by ValueObjectKeyReporter — never dropped
-        // quietly.
-        var targets = valueObjects.Where(static v => v.IsPartial && !v.DeclaresOwnId).ToArray();
-        if (targets.Length == 0)
+        // Registered: everything that has a key, however it got one. A [ValueKey] type is registered
+        // and nothing is emitted for it — being absent from the registry is not neutral, it makes
+        // the type's collections unjudgeable at save time.
+        var registered = valueObjects
+            .Where(static v => v.ExistingKeyProperty is not null || v.IsPartial)
+            .ToArray();
+
+        // Emitted for: only those with no key of their own. A non-partial type needing one is
+        // dropped here and reported as SPARK016 — never dropped quietly.
+        var emitted = registered.Where(static v => v.ExistingKeyProperty is null).ToArray();
+
+        if (registered.Length == 0)
             return;
 
         writer.WriteLine(Header);
         writer.WriteLine();
 
-        foreach (var group in targets.GroupBy(static v => v.PathSpec?.ContainingNamespace ?? string.Empty))
+        foreach (var group in emitted.GroupBy(static v => v.PathSpec?.ContainingNamespace ?? string.Empty))
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -67,7 +71,7 @@ public class ValueObjectKeyProducer : Producer
         }
 
         writer.WriteLine();
-        WriteRegistry(writer, targets, cancellationToken);
+        WriteRegistry(writer, registered, cancellationToken);
     }
 
     /// <summary>
@@ -95,9 +99,12 @@ public class ValueObjectKeyProducer : Producer
                 foreach (var valueObject in targets)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+
+                    // Either the property the author marked [ValueKey], or the Id emitted above.
+                    var key = valueObject.ExistingKeyProperty ?? "Id";
                     writer.WriteLine(
                         "global::MintPlayer.Spark.Abstractions.Model.SparkValueObjects.Register(" +
-                        $"typeof({valueObject.FullyQualifiedName}), static o => (({valueObject.FullyQualifiedName})o).Id);");
+                        $"typeof({valueObject.FullyQualifiedName}), static o => (({valueObject.FullyQualifiedName})o).{key}?.ToString());");
                 }
             }
         }

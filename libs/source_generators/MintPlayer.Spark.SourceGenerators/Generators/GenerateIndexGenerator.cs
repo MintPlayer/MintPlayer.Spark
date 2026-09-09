@@ -28,6 +28,21 @@ public class GenerateIndexGenerator : IncrementalGenerator
 {
     private const string GenerateIndexAttributeFullName = "MintPlayer.Spark.Abstractions.GenerateIndexAttribute";
 
+    /// <summary>
+    /// The assembly that carries the model attributes, and so the marker for "this reference may
+    /// hold entities worth scanning".
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>Must name the assembly the attributes actually live in, which is no longer
+    /// Abstractions.</b> The C# compiler emits an AssemblyRef only for assemblies a compilation
+    /// genuinely uses, so once the attributes moved out, an entity library that used Abstractions
+    /// for nothing <em>but</em> attributes stopped referencing it at all — and this filter then
+    /// skipped the library silently, taking its indexes with it. HR failed exactly that way while
+    /// CodeCoverage did not, because the latter also uses Spark interfaces.
+    /// </remarks>
+    private const string SparkAttributesAssemblyName = "MintPlayer.Spark.Attributes";
+
+    /// <summary>Still accepted: a consumer compiled before the attributes moved.</summary>
     private const string SparkAbstractionsAssemblyName = "MintPlayer.Spark.Abstractions";
 
     private const string SparkContextFullName = "MintPlayer.Spark.SparkContext";
@@ -478,9 +493,12 @@ public class GenerateIndexGenerator : IncrementalGenerator
     }
 
     private static bool ReferencesSparkAbstractions(IAssemblySymbol assembly)
-        => assembly.Name == SparkAbstractionsAssemblyName
+        => IsSparkAttributeHost(assembly.Name)
         || assembly.Modules.Any(module => module.ReferencedAssemblies
-            .Any(identity => identity.Name == SparkAbstractionsAssemblyName));
+            .Any(identity => IsSparkAttributeHost(identity.Name)));
+
+    private static bool IsSparkAttributeHost(string name)
+        => name == SparkAttributesAssemblyName || name == SparkAbstractionsAssemblyName;
 
     private static IEnumerable<INamedTypeSymbol> AllTypes(INamespaceSymbol ns, System.Threading.CancellationToken ct)
     {

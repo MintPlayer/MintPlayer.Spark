@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions;
+
 namespace CodeCoverage.Entities;
 
 /// <summary>
@@ -11,6 +13,7 @@ namespace CodeCoverage.Entities;
 /// refreshed by the <c>SyncColumns</c> action and by the nightly reconciliation.
 /// </para>
 /// </summary>
+[ValueObject]
 public partial class ProjectColumn
 {
     /// <summary>
@@ -18,6 +21,7 @@ public partial class ProjectColumn
     /// takes, so it is the identity that matters — not <see cref="Name"/>, which a person can rename
     /// at any time without the id changing.
     /// </summary>
+    [ValueKey]
     public string Id { get; set; } = string.Empty;
 
     /// <summary>The option's display name, e.g. <c>In Progress</c>. Shown to the user when picking a target column.</summary>

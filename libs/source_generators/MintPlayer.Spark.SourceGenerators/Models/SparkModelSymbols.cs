@@ -261,32 +261,6 @@ internal static class SparkModelSymbols
         };
     }
 
-    /// <summary>
-    /// Whether <paramref name="type"/> is dictionary-shaped, for callers outside this class.
-    /// </summary>
-    /// <remarks>
-    /// ⚠️ A caller extracting a collection element type must ask this <b>first</b>. A
-    /// <c>Dictionary&lt;K,V&gt;</c> satisfies <c>IEnumerable&lt;KeyValuePair&lt;K,V&gt;&gt;</c>, so
-    /// <see cref="GetCollectionElementType"/> answers with a BCL struct rather than <c>V</c> — and
-    /// the runtime does not model such a property as embedded either.
-    /// </remarks>
-    public static bool IsSparkDictionaryLike(this ITypeSymbol type) => IsDictionaryLike(type);
-
-    /// <summary>
-    /// Whether <paramref name="type"/> persists as a single scalar value — a primitive, an enum, a
-    /// date, a <c>Guid</c>, a translated string or a <c>Color</c> — rather than as an embedded
-    /// object worth giving a key to.
-    /// </summary>
-    public static bool IsSparkScalarLike(this ITypeSymbol type) => IsScalarForIndex(type.UnwrapNullable());
-
-    /// <summary>
-    /// Whether the property is decorated <c>[Reference]</c>, which points at documents by id. The
-    /// runtime lets this win outright over the property's shape, so a referenced collection is never
-    /// treated as embedded.
-    /// </summary>
-    public static bool IsSparkReference(this IPropertySymbol property)
-        => property.HasAttribute("MintPlayer.Spark.Abstractions.ReferenceAttribute");
-
     private static bool IsDictionaryLike(ITypeSymbol type)
         => type is INamedTypeSymbol named
         && named.AllInterfaces.Concat(new[] { named })

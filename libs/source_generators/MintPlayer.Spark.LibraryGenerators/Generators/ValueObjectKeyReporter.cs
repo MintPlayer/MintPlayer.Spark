@@ -1,9 +1,9 @@
 using Microsoft.CodeAnalysis;
-using MintPlayer.Spark.SourceGenerators.Models;
+using MintPlayer.Spark.LibraryGenerators.Models;
 using System.Collections.Immutable;
 using MintPlayer.SourceGenerators.Tools;
 
-namespace MintPlayer.Spark.SourceGenerators.Generators;
+namespace MintPlayer.Spark.LibraryGenerators.Generators;
 
 /// <summary>
 /// Reports the value objects <see cref="ValueObjectKeyProducer"/> could not key.
@@ -23,13 +23,17 @@ public partial class ValueObjectKeyReporter : IDiagnosticReporter
     }
 
     /// <summary>
-    /// A target that is not <c>partial</c> is reported, never skipped. Skipping would leave the type
-    /// keyless and the save-time diff unable to judge its collection — a silent hole where the whole
-    /// point is that the hole cannot exist.
+    /// A type that needs a key generated and is not <c>partial</c> is reported, never skipped.
+    /// Skipping would leave it keyless and the save-time diff unable to judge its collection — a
+    /// silent hole where the whole point is that the hole cannot exist.
     /// </summary>
+    /// <remarks>
+    /// A type carrying <c>[ValueKey]</c> is exempt: nothing is emitted for it, so <c>partial</c>
+    /// buys nothing.
+    /// </remarks>
     public IEnumerable<Diagnostic> GetDiagnostics(Compilation compilation)
         => valueObjects
-            .Where(static v => !v.IsPartial && !v.DeclaresOwnId)
+            .Where(static v => !v.IsPartial && v.ExistingKeyProperty is null)
             .Select(v => ValueObjectMustBePartialRule.Create(
                 v.Location?.ToLocation(compilation), v.Name));
 }
