@@ -24,8 +24,9 @@ namespace MintPlayer.Spark.Abstractions.Model;
 ///
 /// <para>
 /// <b>Structural</b> (hashed): entity name, CLR type, alias, projection/query type, index name, per
-/// attribute — name, data type, required, read-only, array-ness, reference target, detail type,
-/// lookup type, sortability, projection membership, and validation rules — and per inline query its
+/// attribute — name, data type, required, read-only, <em>visibility</em>, array-ness, reference
+/// target, detail type, lookup type, sortability, projection membership, and validation rules — and
+/// per inline query its
 /// <c>indexName</c>. Validation is included deliberately: silently dropping a rule is an attack, not
 /// a restyling. A query's <c>indexName</c> is structural since issue #279 made it load-bearing: the
 /// runtime resolves the index through it, so a hand-edit changes which index answers the query and
@@ -34,8 +35,15 @@ namespace MintPlayer.Spark.Abstractions.Model;
 ///
 /// <para>
 /// <b>Presentational</b> (ignored): labels and translations, description, breadcrumb, renderer and
-/// renderer options, group, tabs, edit mode, reference display type, visibility, order, column span,
-/// and the generated <c>id</c> values.
+/// renderer options, group, tabs, edit mode, reference display type, order, column span, and the
+/// generated <c>id</c> values.
+/// </para>
+///
+/// <para>
+/// ⚠️ <b>Visibility used to be on the presentational list and is not.</b> It reads like rendering,
+/// but <c>IsWritableBySchema</c> refuses to write an invisible attribute — so it is a write gate,
+/// and the rule here is that every write gate is structural. See
+/// <see cref="StructuralAttributeFields"/>.
 /// </para>
 /// </summary>
 public static class ModelFileShape
@@ -135,9 +143,31 @@ public static class ModelFileShape
         }
     }
 
+    /// <summary>
+    /// The attribute fields a deployed model may not change without tripping the hash gate.
+    /// </summary>
+    /// <remarks>
+    /// The rule, stated once so the list can be checked against it rather than remembered:
+    /// <b>every field that gates a write is structural.</b>
+    /// <para>
+    /// ⚠️ That is why <c>isVisible</c> is here despite reading as presentation.
+    /// <c>EntityMapper.IsWritableBySchema</c> has two gates, and they sit on adjacent lines:
+    /// <c>if (def.IsReadOnly) return false;</c> and <c>if (!def.IsVisible) return false;</c>.
+    /// Flipping either one opens a write path, so hashing one and not the other left a
+    /// mass-assignment hole exactly where the other was guarded. Measured when it was found: four
+    /// attributes across two apps were protected by <c>isVisible</c> alone, including
+    /// <c>Repository.IsPrivate</c> — where making it writable lets a caller mark a private
+    /// repository public.
+    /// </para>
+    /// <para>
+    /// The cost is that hiding a field now needs a re-synchronize. That is the same cost
+    /// <c>isReadOnly</c> already carries, for the same reason, and it is the price of the gate
+    /// rather than an oversight.
+    /// </para>
+    /// </remarks>
     private static readonly string[] StructuralAttributeFields =
     [
-        "name", "dataType", "isRequired", "isReadOnly", "isArray",
+        "name", "dataType", "isRequired", "isReadOnly", "isVisible", "isArray",
         "referenceType", "asDetailType", "lookupReferenceType", "isSortable",
         "inCollectionType", "inQueryType", "query",
     ];
