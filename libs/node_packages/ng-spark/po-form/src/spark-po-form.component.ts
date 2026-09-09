@@ -746,6 +746,22 @@ export class SparkPoFormComponent {
   }
 
   /**
+   * How to name the PARENT's type on the wire.
+   *
+   * ⚠️ The fallback must be the type **id**, never `clrType`. The server resolves this through
+   * `ModelLoader.ResolveEntityType`, which accepts a GUID or a declared alias and nothing else — so
+   * a CLR name resolves to null and the request is refused, indistinguishably from an unknown type.
+   * The user would see "the server refused this change" on a perfectly ordinary Add.
+   *
+   * It is a live path, not a theoretical one: `spark-po-create` binds no `parentType` (there is no
+   * parent route segment on a create page), so every host that creates an object with an opted-in
+   * detail grid lands here.
+   */
+  private parentTypeForWire(): string | undefined {
+    return this.parentType() ?? this.entityType()?.id;
+  }
+
+  /**
    * Builds the dict a new row starts from: `{}` as before, or the object the server constructed.
    *
    * Returns null when the server refused — the caller must then add nothing, which is the whole
@@ -759,7 +775,7 @@ export class SparkPoFormComponent {
     try {
       const po = await this.sparkService.newObject(typeId, {
         asDetailAttribute: attr.name,
-        parentType: this.parentType() ?? this.entityType()?.clrType,
+        parentType: this.parentTypeForWire(),
         // Absent while the parent is unsaved, deliberately: the server hands the hook a null parent
         // rather than trusting the client's copy of one.
         parentId: this.objectId(),
@@ -781,7 +797,7 @@ export class SparkPoFormComponent {
   private async mayRemoveRow(attr: EntityAttributeDefinition, row: Record<string, any> | undefined): Promise<boolean> {
     const typeId = this.rowTypeId(attr);
     const parentId = this.objectId();
-    const parentType = this.parentType() ?? this.entityType()?.clrType;
+    const parentType = this.parentTypeForWire();
     const rowKey = row?.[AS_DETAIL_ROW_KEY];
 
     if (!this.roundTripsRowLifecycle(attr) || !typeId || !parentId || !parentType || !rowKey) {

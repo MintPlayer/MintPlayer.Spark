@@ -175,6 +175,25 @@ describe('SparkPoFormComponent — server-side row lifecycle', () => {
       expect(component.rowLifecycleErrorsFor('ServiceEntries')[0].errorMessage.en).toBe('Already invoiced.');
     });
 
+    it('names the parent type by id when the host binds no parentType', async () => {
+      // The create-page shape: spark-po-create has no parent route segment to bind, so the form
+      // falls back. ⚠️ The fallback must be the type ID — the server resolves parentType through
+      // ModelLoader.ResolveEntityType, which accepts a GUID or a declared alias and nothing else,
+      // so a CLR name is refused exactly like an unknown type and the user sees a bare refusal on
+      // an ordinary Add.
+      const { fixture, component, service } = createComponent(true);
+      fixture.componentRef.setInput('parentType', undefined);
+      await ready(fixture);
+
+      await component.addInlineRow(entriesAttr);
+
+      expect(service.newObject).toHaveBeenCalledWith('t-entry', expect.objectContaining({
+        parentType: 't-car',
+      }));
+      const sent = service.newObject.mock.calls[0][1].parentType;
+      expect(sent).not.toBe('Test.Car');
+    });
+
     it('addArrayItem opens the modal pre-filled with the constructed row', async () => {
       const { fixture, component } = createComponent(true);
       await ready(fixture);
