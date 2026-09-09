@@ -275,7 +275,26 @@ So detection lives where the raw JSON is still visible:
 
 ### Detail View
 
-On the parent entity's detail page, a single AsDetail attribute is shown as a formatted summary string using the nested type's `displayFormat`. If the object is null, `(not set)` is displayed.
+On the parent entity's detail page, a single AsDetail attribute is shown as a summary string rendered from the nested type's `breadcrumb` template in its model JSON (`"breadcrumb": "{Street}, {City}"`). A null object renders an empty cell.
+
+### Where an embedded breadcrumb comes from
+
+Worth understanding before changing anything near it, because the rule is not the one the shape suggests.
+
+A **root** object's breadcrumb is resolved server-side, up front, for the whole page: `BreadcrumbResolver` walks the documents a page touches and returns a `BreadcrumbResult` — a map **keyed by document id**. `EntityMapper` then looks each object up by id.
+
+An **embedded** object is not in that map, and the reason matters:
+
+> An embedded row is absent from `BreadcrumbResult` because it is **embedded** — the map holds document ids, and an embedded object does not have one. It is *not* absent because it is unkeyed.
+
+So the mapper's rule is **"the lookup missed, so render this object's own template in place"**, and nothing more. Since row identity shipped, every `[ValueObject]` carries a `[ValueKey]` — minted by a field initializer that runs during deserialization, so in memory every embedded collection row has one — and that key is *never* a key in `BreadcrumbResult`. A gate that also tested "and this object has no id" therefore skipped the renderer for every keyed row and fell through to the CLR type name. That was #384; it sat unnoticed for three months because every test fixture asserting an embedded breadcrumb used a **keyless** row type, which takes the same path either way.
+
+Two consequences when writing code or tests here:
+
+- **Do not reintroduce an id test.** Having a key says nothing about whether a breadcrumb was resolved for the object.
+- **Test embedded breadcrumbs with a keyed type.** A keyless fixture passes with or without the mechanism working.
+
+When a template renders blank, the server substitutes the **CLR type name** as a placeholder. That is deliberate but is *not* data — the client filters it out (`resolvedBreadcrumb` in `@mintplayer/ng-spark/models`) rather than printing it. Any new client code reading a breadcrumb off the wire must filter it too, or a cell with an unset template renders the literal `BuildFeedback`.
 
 ### Edit View -- Single Object (Modal)
 

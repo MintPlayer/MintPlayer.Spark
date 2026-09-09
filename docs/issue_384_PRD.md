@@ -49,17 +49,26 @@ collection row is keyed.** The embedded-breadcrumb path is not degraded; it is d
 The issue is right about the mechanism and the fix. Its framing is wrong in three ways that matter
 for how this gets verified, so they are recorded here rather than discovered during review.
 
-### 1. The bug predates #382
+### 1. The gate was wrong from #186, but harmless until #382
 
-The gate arrived in `80d4af4d` (#186, 2026-06-09) already carrying `&& string.IsNullOrEmpty(po.Id)`.
-Before #382 the key came from a property literally named `Id`, so the renderer was already skipped
-for any embedded type that happened to own one — which is exactly DemoApp's `Address`
-(`apps/DemoApp/DemoApp.Library/Entities/Address.cs:6`, `public string? Id { get; set; }`, and
-`GetKeyPropertyName` falls back to `"Id"` when nothing is registered).
+The gate arrived in `80d4af4d` (#186, 2026-06-09) already carrying `&& string.IsNullOrEmpty(po.Id)`,
+and it was already testing the wrong thing then: an embedded row is absent from `BreadcrumbResult`
+because it is embedded, never because it is unkeyed. But the term did no damage, because before #382
+nothing populated an embedded object's id.
 
-#382 did not introduce the failure. It widened it from *types that happen to own an `Id`* to *every
-keyed value object*, which is now the default shape. The issue's "regression introduced by #382" is
-half right, and the half it misses is the half that says a test would have caught this in June.
+This PRD first claimed otherwise — that DemoApp's `Address` had been broken since June, on the
+grounds that it owns a property literally named `Id` and `GetKeyPropertyName` falls back to `"Id"`.
+**Measured, and false.** `An_embedded_id_with_no_initializer_stays_null_through_a_round_trip`
+(`tests/.../NestedRowIdentityTests.cs`, S1) stores and reloads that exact shape: the property stays
+null. Nothing assigns it — the minting initializer exists only on a `[ValueObject]`, and
+`EntityMapper.TryWriteId` returns early on an empty id, so it writes back only what a client sent.
+A type that merely *declares* an `Id` is not keyed in practice.
+
+So the issue's "regression introduced by #382" is right about the timing, for a reason the issue
+does not give: #382 did not just widen an existing failure, it **armed a latent one**. The dangerous
+edit was not the gate — untouched since June — but the three lines directly above it that changed
+where `po.Id` comes from. A pre-existing condition that reads as correct is exactly what makes that
+kind of change invisible in review.
 
 ### 2. Neither template the issue names is user-visibly broken today
 
@@ -72,11 +81,13 @@ broken at the mapper, and **neither reaches a screen that shows it.**
   renders `Todo / In Progress / To Review / Done` from the `Name` attribute, and no type name
   appears anywhere. Same for `Build.Sessions`, `GitHubProject.EventMappings`,
   `OidcApplication.Claims`/`Secrets`, HR `Person.Jobs`.
-- **DemoApp's `Address` is bypassed by a custom renderer.** `Person.Address` is single, carries
-  `"renderer": "address-card"`, and the detail renderer draws `Street`/`City`/`State` straight from
-  `po.attributes`. On the edit form there is no edit renderer (deliberately, per #241/#245), so it
-  falls to `asDetailDisplayValue` → `selfBreadcrumb`, which **filters the placeholder** and shows
-  `"Click to edit"`. It is not in any query grid (`inQueryType: false`).
+- **DemoApp's `Address` is not affected at all**, on two independent grounds. Its id is never
+  populated (correction 1), so it takes the keyless path regardless. And even if it were keyed, it
+  is bypassed: `Person.Address` is single, carries `"renderer": "address-card"`, and the detail
+  renderer draws `Street`/`City`/`State` straight from `po.attributes`. On the edit form there is no
+  edit renderer (deliberately, per #241/#245), so it falls to `asDetailDisplayValue` →
+  `selfBreadcrumb`, which **filters the placeholder** and shows `"Click to edit"`. It is not in any
+  query grid (`inQueryType: false`).
 
 The issue's repro steps do not reproduce. That is the single most expensive thing in it: a plan that
 trusted them would verify the fix against two screens that never showed the bug, and conclude from

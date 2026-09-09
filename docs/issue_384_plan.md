@@ -1,7 +1,7 @@
 # Issue #384 — implementation plan
 
 **PRD:** [issue_384_PRD.md](issue_384_PRD.md)
-**Status:** M1–M3 done; S1, S2, M4 (app run) and M5 outstanding
+**Status:** Complete — everything below landed. One deviation from the plan as written, recorded in S2.
 
 Worked red/green: every behavioural change gets a test that **fails first for the stated reason**,
 and the production edit is what turns it green. The gate has survived since June 2026 precisely
@@ -12,13 +12,13 @@ deliverable here, not a formality.
 
 | | |
 |---|---|
-| **S1** does a stored `Person.Address` carry a key? | **not started** — spike, decides whether DemoApp is affected in practice |
-| **S2** a shape that actually displays a keyed embedded breadcrumb | **not started** — spike, supplies the end-to-end verification R2 says we lack |
+| **S1** does a stored `Person.Address` carry a key? | **Done — answer: NO.** Pinned by `An_embedded_id_with_no_initializer_stays_null_through_a_round_trip`. Falsified this plan's own premise; PRD correction 1 rewritten |
+| **S2** a shape that actually displays a keyed embedded breadcrumb | **Done** — `KeyedEmbeddedBreadcrumbColumnTests`, 4 facts through the real endpoint. Proven sensitive: restoring the gate term fails it with `"GateSnapshot" vs "auto"` |
 | **M1** RED — a keyed embedded row fails to render its template | **Done** — 5 facts in `EntityMapperKeyedAsDetailBreadcrumbTests`; 3 failed RED with `found "KeyedCredit"`, the CLR type name, which is the right reason |
 | **M2** GREEN — drop the `IsNullOrEmpty(po.Id)` term | **Done** — one term, plus the comment that carried the false premise |
 | **M3** RED/GREEN — the placeholder leaks through two client pipes | **Done** — and it was **three** leaks, not two; see below |
-| **M4** verify against the workspace and production | **Partly** — build clean, 2033/2033 .NET, 443/443 vitest. App run + `--spark-verify-model` still outstanding |
-| **M5** docs | **not started** |
+| **M4** verify against the workspace | **Done** — build clean; `--spark-verify-model` exits 0 on all four apps; full .NET and vitest sweeps green |
+| **M5** docs | **Done** — `guide-asdetail-attributes.md` (invariant + a stale Detail View section corrected), `PRD-AsDetail-Row-Identity.md` §5.3 |
 
 ### What M3 turned out to be
 
@@ -62,8 +62,21 @@ was never affected and correction 1 narrows to "any type that owns a populated `
 that seeds a `Person` with an `Address` through the real save path and reads the raw JSON back).
 Inspect the `Address` sub-document for an `Id` property.
 
-**Output.** One paragraph appended here, and correction 1 in the PRD adjusted to match. **Not a
-blocker** for M1/M2 — the fix and its test stand regardless.
+**Answer: no, and it falsified this plan's premise.**
+`An_embedded_id_with_no_initializer_stays_null_through_a_round_trip`
+(`tests/MintPlayer.Spark.Tests/Services/NestedRowIdentityTests.cs`) stores and reloads DemoApp's
+exact shape — an embedded object with a nullable `Id` and no initializer — and the property comes
+back null. Nothing assigns it: the minting initializer exists only on a `[ValueObject]`, and
+`EntityMapper.TryWriteId` returns early on an empty id, so it writes back only what a client sent.
+
+A type that merely *declares* a property named `Id` is therefore **not keyed in practice**, and
+DemoApp's `Address` was never affected. PRD correction 1 said the opposite and has been rewritten:
+the gate has been wrong since #186, but harmless until #382 populated `po.Id`. The dangerous edit
+was not the gate — untouched since June — but the three lines above it.
+
+Worth keeping as a caution about this PRD's own method: correction 1 was derived by reading the
+declaration and the fallback, which is exactly the kind of reasoning that produced the bug. The
+spike existed because the conclusion was cheap to check, and it was wrong.
 
 ## S2 — find a shape that displays a keyed embedded row's breadcrumb
 
@@ -80,11 +93,28 @@ type is a `[ValueObject]` with a `[ValueKey]` and a breadcrumb template, with **
 on a detail page (`attribute-value.pipe.ts:29`) and in a query grid (`query-cell.pipe.ts:33`).
 Cheapest home is a DemoApp or Fleet entity, added as a fixture rather than as a product feature.
 
-**Decide before building.** If standing it up means inventing a demo entity that exists only to hold
-a test, prefer an E2E test over the real API (`MintPlayer.Spark.E2E.Tests`) or a
-`SparkTestDriver`-backed assertion on the projected `QueryResultItemValue.Breadcrumb` — one layer
-below the pixel, but over the real save/load/project path. Record the choice and the reason here;
-do not silently downgrade to a unit test and call R2 handled.
+**Chosen: the projected cell, not the pixel.** `KeyedEmbeddedBreadcrumbColumnTests`
+(`tests/MintPlayer.Spark.Tests/Endpoints/Queries/`) drives the **real query endpoint** through
+`SparkEndpointFactory` + `SparkClient` and asserts `QueryResultItemValue.Breadcrumb` — so it covers
+`RowSecurityGate`, `EntityMapper`, the projector's
+`asDetail.Object?.Breadcrumb ?? asDetail.Breadcrumb` choice, and serialization. It stands up the
+intersection the workspace does not ship: single, keyed, on the query surface, no renderer.
+
+Not a browser test, and the reason is honest rather than convenient: rendering it in a browser
+needs a demo entity that exists only to hold the test, and the remaining gap — projected cell to
+pixel — is the one piece already covered on the client side, by `query-cell.spec.ts`. The two meet
+at the wire format.
+
+**Proven sensitive, which is the part that matters.** Restoring `&& string.IsNullOrEmpty(po.Id)`
+makes it fail with `Expected BreadcrumbOf(result, "services/1") to be "auto", but ... "GateSnapshot"`
+— the real symptom, through the real endpoint. A passing end-to-end test that was never seen to fail
+would have been worth very little here, given that this bug's whole history is tests staying green
+over a dead path.
+
+Four facts: the rendered template ships; the type name never reaches the wire; a null embedded object
+carries **no** breadcrumb rather than a type name; and the row key still ships beside it — the last
+guarding against "fixing" the breadcrumb by undoing #382's key round trip. The middle two pass with
+or without the fix by design; they are guards, not the regression.
 
 ## M1 — RED: a keyed embedded row does not render its template
 

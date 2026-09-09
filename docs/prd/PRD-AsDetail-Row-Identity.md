@@ -527,6 +527,37 @@ change to it does not register as model drift. Added to `ModelFileShape.Structur
 field that gates a write is structural, and a future SparkEditor that toggles one recomputes the hash
 anyway. Auditing the list against that rule is what turned up `isVisible`, which was the actual hole.
 
+## 5.3 Broken along the way — the embedded breadcrumb (#384)
+
+Not found by using the feature; found by reading an issue three weeks later. Recorded here because
+the failure mode belongs to *this* PRD's central change, and the next person to key something needs
+to know the shape.
+
+Giving every `[ValueObject]` a row key did not just add a value — it **changed the meaning of an
+existing test twelve lines away**. `EntityMapper` gated the embedded-`[Breadcrumb]` renderer on
+`string.IsNullOrEmpty(po.Id)`, standing in for "this object is embedded". That premise held for two
+years. Populating `po.Id` from the registered `[ValueKey]` — three lines directly above the gate, in
+the same hunk of the same commit — silently made it false for every keyed row, so the renderer was
+skipped and rows rendered as their CLR type name.
+
+Three things made it invisible, and all three are reusable warnings:
+
+1. **The gate read as correct**, with a comment asserting the premise outright. It had been right
+   when written, so nothing in the diff looked wrong.
+2. **The tests were green either way.** Every fixture asserting an embedded breadcrumb used a
+   keyless row type, which takes the same branch regardless. The keyed shape — the one this PRD made
+   the default — was the only shape untested.
+3. **No screen showed it.** Keyed embedded types all sit in AsDetail arrays, whose row breadcrumbs
+   the client discards; the single-object types that do display one are all keyless. The feature was
+   dead in production for three months with nothing to see.
+
+The lesson is narrower than "add tests": **when a change populates a field that was previously
+always empty, grep for every reader that tests it for emptiness.** `po.Id` had one such reader, and
+it was in the same file.
+
+Fixed in `docs/issue_384_plan.md`. See also `docs/guide-asdetail-attributes.md`, which now states
+the invariant the gate got wrong.
+
 ---
 
 ## 6. Risks
