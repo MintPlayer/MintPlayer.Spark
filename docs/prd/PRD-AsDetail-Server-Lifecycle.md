@@ -136,143 +136,137 @@ regardless. That is also what keeps the flag safely outside the model hash (whic
 `name`, `clrType`, `alias`, `queryType`, `indexName`): were the rights check conditional on it,
 editing one unhashed line on a deployed model would switch the check off.
 
-### N4 — Value objects are determined at compile time, not declared
-
-There is no `[ValueObject]` attribute to write. A source generator computes the set from the
-compilation itself:
-
-> **A type `C` is a value object when some type in the compilation has a persisted property whose
-> collection element type is `C`, and `C` is complex.**
-
-No attribute to forget, and no annotation migration — which is what an earlier draft of this PRD
-proposed and this replaces.
-
-**No root type is involved, and that is the crux.** The obvious design walks from the context's
-`IRavenQueryable<T>` properties. It cannot work: a generator may only add a `partial` half to a type
-**in its own compilation**, every context lives in the app project, and every entity and value
-object lives in a `*.Library`. A context-rooted walk finds zero emittable types in all four apps.
-A root is unnecessary anyway — it exists to avoid walking non-model types, and the entity libraries
-contain nothing else (`CodeCoverage.Library` is 19 entities plus one lookup reference; `HR.Library`
-is 7 entities).
-
-Recursion also falls out for free: a value object's own collections are found by the same pass,
-because the pass covers every type rather than descending from a root. The runtime twin —
-`ModelShapeDiscovery.Discover` (`:26-68`), which walks embedded types with a `Dictionary<Type,…>`
-cycle guard at `:60` — remains the reference for behaviour, but the generator needs no cycle guard
-because it never recurses.
-
-**The predicate must match `SparkModelShape` exactly**, or the model and the generator disagree
-about what a value object is:
-
-| Step | Rule | Symbol helper |
-|---|---|---|
-| Property is persisted | `Name != "Id"`, readable, no index params, not `[IgnoreProperty]` | `SparkModelSymbols.IsSparkModelProperty` |
-| `[Reference]` wins outright | a referenced collection is never AsDetail | attribute check, mirrors `ModelSynchronizer.cs:681` |
-| Dictionaries are **not** collections | `Dictionary<K,V>` ⇒ element is `KeyValuePair<,>` | `SparkModelSymbols.IsDictionaryLike` — filter **before** element extraction |
-| Element extraction | array, or `IEnumerable<T>` with `T != char` | `SparkModelSymbols.GetCollectionElementType` |
-| Complex | not string / value type / enum / primitive / `TranslatedString`; has ≥1 public property | mirrors `SparkModelShape.IsComplexType` |
-
-⚠️ **The dictionary filter is load-bearing and armed today.** `Build.FlagCoverage` is
-`Dictionary<string, CoverageSummary>`; its element type resolves to `KeyValuePair<,>`, a BCL struct
-the generator does not own. Spark already declines to model it — it synchronizes as
-`dataType: string, isArray: true` with no `asDetailType`. Unwrap dictionaries and `CoverageSummary`
-becomes a value object, which is wrong: it is a statistics DTO that is summed and rewritten
-wholesale.
-
-⚠️ **Do not reuse `SparkModelSymbols.IsComplexForIndex`.** It deliberately disagrees — structs and
-dictionaries are complex *for indexing* — and its own doc comment warns against widening the runtime
-rules to match. Follow `SparkModelShape`.
-
-### N5 — The generated key
-
-For each discovered type the generator emits a partial half:
+### N4 — `[ValueObject]` is an explicit marker
 
 ```csharp
-partial class PhoneNumber
+[ValueObject]
+public partial class PhoneNumber
 {
-    [ValueKey] public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Phone { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
 }
 ```
 
-- **`partial` is the developer's one obligation**, and a missing one is a compile error — the loud
-  kind. All six current targets (`BuildSession`, `ProjectColumn`, `EventColumnMapping`, `CarreerJob`,
-  `ClientSecret`, `ClientClaim`) need it added. Report a diagnostic rather than emitting blind;
-  `GenerateIndexGenerator.IsDeclaredPartial` (`:585`) is the precedent.
-- **Skip a type that already declares an `Id`.** Two do, and both are semantically load-bearing:
-  `ProjectColumn.Id` is the **GitHub single-select option id**, assigned from the API
-  (`SyncColumnsAction.cs:108`, `GitHubStateReconciler.cs:314`) — a generated Guid there breaks card
-  moves; `EventColumnMapping.Id` is derived from the event type in `OnBeforeSaveAsync`.
-- **Only collection-used types.** A single nested object has no siblings to distinguish, and this is
-  what leaves the four working embedded breadcrumbs alone (`CoverageSummary`, `GateSettings`, HR
-  `Address`, `AddressDescription` are all singles). Two breadcrumbs are **already** dead for the
-  converse reason — `DemoApp/Address` and `ProjectColumn` — because the fallback is gated on
-  `string.IsNullOrEmpty(po.Id)` at `EntityMapper.cs:204`. That one-line fix is in scope.
-- **Namespace and nesting** come from the symbol, never from the file path: namespace ≠ folder in
-  three of the four apps (`CodeCoverage.Library/Entities/*` declares `CodeCoverage.Entities`).
-  Several targets also share a file, so hint names must key on the type, not the source file.
+The generator finds these with `ForAttributeWithMetadataName` — Roslyn's fast path — and emits a
+`partial` half for each. That is the whole discovery mechanism.
 
-Why generated rather than hand-written: **this has already failed here.** `EventColumnMapping.Id`
-shipped unassigned — every rule on a board keyed `""`, invisible until someone opened the database —
-and the inline editor identifies rows by that key across saves, so two blank-keyed rows were
-indistinguishable to it.
+**This replaces a computed design, and the reason is worth keeping.** An earlier draft derived the set
+by walking the type graph, on the argument that a marker can be forgotten while a computed set
+cannot. Building it retired that argument twice over:
 
-### N5b — A generated registry, not an analyzer
+- **The walk cannot start where it must emit.** A generator may only add a `partial` half to a type in
+  its own compilation. Every Spark context lives in the app project; every entity lives in a
+  `*.Library` that the app references. So a context-rooted walk, running where the entities are,
+  finds no context — and running where the context is, finds nothing it may emit for.
+- **Rooting it somewhere else keyed the wrong types.** With `[GenerateIndex]` as a proxy root the
+  first build reported `TreeFileSummary`, `AssemblyBuild`, `LineCoverage` and `BranchCoverage` —
+  none of which has a model file, and one of which is a row *per line of code*. `[GenerateIndex]` is
+  also an incomplete proxy: `OidcApplication` and `Commit` are persistent objects without one, so
+  their collections were silently skipped.
 
-Each compilation that contains value objects also emits its own registration, following the two
-patterns this repo already uses — a generated static list (`ClassNameList.g.cs`) and a module
-initializer (`HostTranslationsAggregatorGenerator.Producer.cs:38`):
+A computed set is only safer than a marker when the computation can express the thing being asked.
+Here it could not, and every attempt to approximate it substituted a different question —
+"is this indexed?", "is this reachable?" — for the one that matters: *is this a value object?*
+The author knows; the compiler is guessing.
+
+`partial` was already required for a generated member, so the marginal cost is one attribute on a
+class the author is already editing. A missing `partial` is a compile error; a missing `[ValueObject]`
+is caught by the startup gate (N9), which compares the model's `isArray` AsDetail element types
+against what was registered.
+
+### N5 — `[ValueKey]`, and why a type with its own id must still be registered
+
+`[ValueKey]` marks an **existing** property as the row key. Absent, the generator emits one:
+
+| Declaration | Generated | Registered key |
+|---|---|---|
+| `[ValueObject] partial class X` | `public string Id { get; set; } = Guid.NewGuid().ToString("N");` | the generated `Id` |
+| `[ValueObject] partial class X` with `[ValueKey] public string OptionId { get; set; }` | nothing | `OptionId` |
+
+⚠️ **This closes a hole the first implementation had.** It skipped any type declaring its own `Id`,
+which conflated two different things — *do not generate a key* and *has no key*. `ProjectColumn` and
+`EventColumnMapping` both carry perfectly good keys (a GitHub single-select option id, and a value
+derived from the event type in `OnBeforeSaveAsync`) and both were dropped from the registry entirely.
+Under the fail-closed diff of N9 that makes their collections unjudgeable — for types that are
+correctly keyed. `[ValueKey]` says "this is the key" rather than leaving the generator to infer it
+from a property name.
+
+A `[ValueObject]` type that is not `partial` and has no `[ValueKey]` is reported, never skipped
+(SPARK016). Skipping is how the four non-model types above went unreported on the first run: the
+generator emitted only for what it could and said nothing about the rest.
+
+### N5b — A generated registry, per assembly
+
+Each compilation emits its list plus a module initializer, following two patterns already in this
+repo — a generated static list (`ClassNameList.g.cs`) and a module initializer
+(`HostTranslationsAggregatorGenerator.Producer.cs:38`):
 
 ```csharp
 internal static class SparkValueObjectRegistration
 {
     [System.Runtime.CompilerServices.ModuleInitializer]
     internal static void Register() => SparkValueObjects.Register(
-        (typeof(BuildSession),       nameof(BuildSession.Id)),
-        (typeof(ProjectColumn),      nameof(ProjectColumn.Id)));
+        typeof(PhoneNumber), static o => ((PhoneNumber)o).Id);
 }
 ```
 
-`SparkValueObjects` lives in `MintPlayer.Spark.Abstractions` and holds type → key-property.
+`SparkValueObjects` lives in Abstractions and holds type → key accessor. Per assembly, so the runtime
+sees the union of everything loaded — which is what lets a type declared in one assembly and used
+from another be keyed without either side knowing about the other.
 
-This does three jobs an analyzer could not:
-
-1. **It closes the cross-assembly gap outright.** Each assembly registers what it generated, so the
-   runtime sees the union. An element type declared in a third assembly — where the identity-provider
-   types sit — needs no special handling; its own library registers it.
-2. **It makes the startup gate exact.** The gate compares every `isArray` AsDetail element type in
-   the model against the registry: present ⇒ keyed, absent ⇒ refuse. No reflection over attributes,
-   and "the generator didn't run here" is indistinguishable from "this type has no key", which is
-   the answer we want in both cases.
-3. **It makes the save-path diff cheap.** N6 needs "is this element type keyed, and which property
-   is the key" on every save; a dictionary lookup beats reflecting per row.
-
-**Registry payload — decide at F5, not now, but do not store a property *name*.** A name means a
-`GetProperty` resolve, which is the one genuinely slow part of reflection. Nothing else here is:
-`typeof(X)` is `ldtoken` plus a handle lookup that the JIT often folds, `Dictionary<Type,…>` hashes a
-handle, and Spark already compiles property accessors into memoized expression-tree delegates
-(`Abstractions/Reflection/AccessorCache.cs`), so a per-row read is a delegate call rather than
-`PropertyInfo.GetValue`. Three candidate payloads, cheapest last:
-
-1. `(Type, string name)` — one `GetProperty` per type, then `AccessorCache`. Acceptable, but the
-   name buys nothing the generator could not emit directly.
-2. `(Type, Func<object, string?>)` — the generator emits `static o => ((BuildSession)o).Id`. No
-   `GetProperty`, no expression compilation at startup.
-3. The generated partial implements a small interface, so the diff does `row is ISparkValueObject vo`
-   and the registry shrinks to a `Type` set used only by the startup gate.
-
-⚠️ There is a real chance none is needed: the diff runs at `EntityMapper.cs:661`, where incoming rows
-are `PersistentObject`s already carrying `.Id`, and the stored entity's `Id` is already surfaced by
-`PopulateAttributeValues` through the same compiled-accessor path. If both sides hold the key
-already, the registry's only job is set membership for the gate. Settle it when F5 is written and it
-is obvious which side has what — the constraint to carry forward is simply **never resolve a property
-by name per row**.
+The accessor is an emitted typed lambda, never a property name: `Type.GetProperty` is the expensive
+part of reflection and this runs once per row per save, whereas `typeof` is a `ldtoken` plus a handle
+lookup and a `Type`-keyed dictionary hashes a handle.
 
 ⚠️ **Module initializers run on first use of the module, not at process start.** The gate is safe
-because loading the model resolves each `ClrType` through `SparkTypeResolver`, which forces the
-assembly to load and its initializer to run — but that ordering is an assumption, not a guarantee.
-Assert it: the gate should fail loudly on an unregistered type rather than treat an empty registry as
-"nothing to check". The translations aggregator relies on the same mechanism, so the pattern is
-proven here, but its failure mode is a missing translation, not a missing permission check.
+because loading the model resolves each `ClrType` and forces the assembly to load — but that is an
+assumption. The gate must fail loudly on an unregistered type, never treat an empty registry as
+"nothing to check".
+
+### N5c — Two new packages
+
+**`MintPlayer.Spark.Attributes`** — the 12 attributes currently in Abstractions move here:
+`GenerateIndex`, `FromIndex`, `DefaultIndex`, `IgnoreForIndex`, `IgnoreProperty`, `Search`,
+`Sortable`, `Reference`, `LookupReference`, `Breadcrumb`, `SparkTranslations`,
+`SparkAttributeDescription` — plus the new `ValueObject` and `ValueKey`. Every one depends on nothing
+but `System.Type` and primitives, so the package needs zero references and no circular dependency
+blocks the move. Model it on `MintPlayer.Spark.Messaging.Abstractions`: plain `Microsoft.NET.Sdk`,
+no `PackageReference`, no `ProjectReference`.
+
+*Why extract at all.* `MintPlayer.Spark.Abstractions` is `Sdk="Microsoft.NET.Sdk.Web"` and genuinely
+uses ASP.NET Core — three files under `Authentication/`. An entity library that wants only
+`[ValueObject]` currently pays for the whole ASP.NET Core shared framework.
+
+⚠️ **Keep the namespace `MintPlayer.Spark.Abstractions` in the new assembly.** C# metadata names are
+namespace-based, not assembly-based, so all 365 `using MintPlayer.Spark.Abstractions;`, the 42
+hard-coded metadata strings in the generators and analyzers, and — `ProjectReference` being
+transitive — all 18 consumer csprojs stay valid untouched. **The move is then 12 file moves and 2
+csproj edits.** Renaming the namespace turns it into ~365 usings, 42 strings and 18 csprojs, for no
+gain the assembly split does not already deliver.
+
+`SparkAuthorizeAttribute` stays where it is. It inherits ASP.NET Core's `AuthorizeAttribute` — its
+own doc comment records that the derivation is load-bearing and that getting it wrong fails open —
+and it already lives in `MintPlayer.Spark` rather than Abstractions.
+
+`MessageQueueAttribute` and `ReplicatedAttribute` stay in their own abstractions packages; they are
+subsystem vocabulary, not model vocabulary.
+
+**`MintPlayer.Spark.LibraryGenerators`** — the value-object generator moves here from
+`MintPlayer.Spark.SourceGenerators`. Entity libraries reference this and the attributes package;
+they need neither the index/actions/DI generators nor Abstractions itself.
+`MintPlayer.Spark.AllFeatures.SourceGenerators` is the precedent for a second generator package: a
+byte-identical csproj but for `PackageId` and `Description`, with no packing items of its own —
+`MintPlayer.SourceGenerators.Tools`'s props emits the `analyzers/dotnet/roslyn4.0|4.9/cs` entries and
+ships `Tools.dll` alongside.
+
+⚠️ **Version both at `10.0.0-preview.75`**, the current wave — not `1.0.0`. CI runs a solution-wide
+`dotnet pack` and pushes `nupkgs/*.nupkg` on merge to master, so a new packable project publishes
+automatically and a wrong major is burned permanently.
+
+⚠️ Entity libraries import no Spark `.targets` today, so the existing `SPARK001`–`SPARK003` reference
+guards never run there. A missing LibraryGenerators reference surfaces as missing generated symbols
+rather than a clean error. A guard is possible but needs new import wiring; `MintPlayer.Spark.slnx`
+also lists projects explicitly and needs a line for each new package.
 
 ### N6 — Rights are the row type's own, and the save is the enforcement point
 
@@ -360,8 +354,10 @@ mean the fragile path runs once for every document.
 - **The diff refuses a save it cannot judge.** If any *stored* row in the collection is keyless,
   throw naming the document and the type. With the migration run this never fires; without it an app
   gets one loud error instead of spurious `New`/`Delete` refusals scattered across its data.
-- **Startup gate**, in the style of `RowPolicyDeclarationValidator`: an AsDetail attribute with
-  `isArray: true` whose child type has no `[ValueKey]` is refused at startup. The registry in N5b is what makes
+- **Startup gate**, in the style of `RowPolicyDeclarationValidator`: every `isArray` AsDetail
+  element type in the model must appear in the `SparkValueObjects` registry, or startup is
+  refused. This is what catches a forgotten `[ValueObject]` — the one failure mode a marker has
+  that a computed set would not. The registry in N5b is what makes
   this exact across assemblies, and together they make "enforcement silently not applying"
   unrepresentable.
 
