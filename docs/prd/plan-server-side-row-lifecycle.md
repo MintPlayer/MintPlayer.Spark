@@ -136,11 +136,63 @@ The last of those is the argument for the E2E existing at all. Every in-memory t
 row with no key, because a keyless row deserialises with a freshly minted guid — the wire is the only
 place the absence is visible.
 
+## ✅ Verified in a real browser (2026-09-09)
+
+The gap this section used to record — "nothing clicks the Add button in a real page" — is closed.
+Driven through Playwright against Fleet on `https://localhost:5003`, signed in as an administrator,
+on a seeded car (`Cars/rowlifecycle-demo`) holding one ordinary and one invoiced entry.
+
+The whole network trace for the session, which is exactly what the design promises and nothing more:
+
+```
+POST /spark/po/{ServiceEntry}/new         → 200
+POST /spark/po/{ServiceEntry}/delete-row  → 400   (invoiced row, refused)
+POST /spark/po/{ServiceEntry}/delete-row  → 200   (ordinary row, allowed)
+PUT  /spark/po/{Car}/Cars%2Frowlifecycle-demo → 200
+```
+
+| Criterion | Result |
+|---|---|
+| 1. New round-trips and the row carries server defaults | ✅ `Description` = "Service — 1-RLC-386" (the hook read `AsDetailParent`'s plate, so the parent really was loaded server-side), `PerformedOn` = today, `Odometer`/`Cost` = 0 from the C# initializers |
+| 2. A hook's veto is readable, not a discarded save | ✅ 400, row stays, message renders against its own grid |
+| 3. Removing an opted-in row invokes the hook; a refusal leaves the collection unchanged | ✅ both halves; the stale refusal cleared on the next attempt |
+| 4. A type **not** opted in behaves exactly as today | ✅ flag flipped to `false`, app restarted: Add opened a blank modal and issued **zero** requests |
+| 5. Toggling the flag changes no rights outcome | ✅ and stronger — see below |
+| 6. At least one E2E through a real detail grid | ✅ this, plus the 8 host-level facts |
+
+**The key round-tripped, which is the entire point of the feature.** `/new` returned
+`id: d5b5bb9c9e8f4a76b0c2e366b5402f06`; after saving, the stored document holds exactly that key, and
+the untouched invoiced row kept its *original* key — so the save matched against the stored
+collection rather than rebuilding it. Two rows, two distinct non-empty keys, the new one persisted
+once rather than duplicated.
+
+**Every attribute arrived `isValueChanged: false`.** `SetOriginalValue` does what its doc claims:
+adding a row and abandoning it leaves no phantom unsaved-changes state. Until this run that was
+asserted only by tests written alongside the code.
+
+### Two facts settled by measurement rather than argument
+
+1. **Adding a keyed embedded collection to an app with existing documents needs no backfill
+   migration.** The startup gate runs `from 'Cars' where ServiceEntries[].Id == null` against 10,009
+   existing cars, none of which has the field. Measured directly against RavenDB: `TotalResults: 0`
+   — an **absent array does not match**, unlike an absent scalar, which does. Fleet then logged
+   *"row keys verified across 1 embedded collection(s)"*, so the collection is genuinely discovered
+   and checked rather than skipped.
+2. **The flag is outside the model hash, in the running application.** Flipping
+   `serverSideRowLifecycle` and restarting produced the identical hash `f239fdd2ac5d…` and started
+   clean — no re-synchronize, no `SparkModelOutOfSyncException`. That is criterion 5's property
+   demonstrated on a live host, not only in `ServerSideRowLifecycleFlagTests`.
+
 ## Still not covered
 
-- **No browser-level exercise of the grid.** The client specs drive the component directly; nothing
-  clicks the Add button in a real page. That is the same gap the row-identity PRD flags, and it is
-  the one an E2E through the ASP.NET host does not close.
-- **`ServiceEntryActions.OnNewAsync` reading `AsDetailParent` is only covered for a saved parent.**
-  The unsaved-parent branch (null parent, no defaults from it) is covered on the client, not the
-  server.
+- **The inline (`editMode: "inline"`) branch was never exercised in a browser.** Fleet's
+  `ServiceEntries` has no `editMode`, so it renders as the modal-array table and the run above went
+  through `addArrayItem`/`removeArrayItem`. `addInlineRow` is covered by the client specs only.
+- **`spark-po-create` was not exercised.** Adding a row to a parent that has never been saved sends
+  no `parentId`, and the hook is handed a null parent; the client specs cover the branch, a browser
+  has not.
+- **`ServiceEntryActions.OnNewAsync` reading `AsDetailParent` is only covered for a saved parent**
+  on the server side.
+- **A non-admin caller was not driven through the UI.** Fleet grants fleet managers `ReadEdit` but
+  not `New`/`Delete` on `ServiceEntry`, so the Add and delete buttons should not render for them at
+  all — asserted at the endpoint level, not the button level.

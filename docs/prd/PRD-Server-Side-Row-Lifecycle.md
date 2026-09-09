@@ -1,6 +1,6 @@
 # PRD — Server-side lifecycle for New and Delete
 
-**Status: IMPLEMENTED** on `feat/issue-386-server-side-row-lifecycle`. ✅ The blocker,
+**Status: IMPLEMENTED and verified in a real browser** on `feat/issue-386-server-side-row-lifecycle` — all six acceptance criteria met; see the plan's "Verified in a real browser" section for the trace. ✅ The blocker,
 `PRD-AsDetail-Row-Identity.md`, landed as `4f9e9319` (#382) and has been built on since (#384, #391,
 #392). Tracked as issue #386.
 **Origin:** sidestepped from PR #381; commits `0f013ffe`, `69749631`, `89d7b235` on the abandoned

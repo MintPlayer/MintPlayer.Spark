@@ -195,7 +195,42 @@ the field is simply lost. That is a real bug this design fixes: three server-own
 The same comparison is what makes the row type's `New/X`, `Edit/X` and `Delete/X` rights decidable.
 Before it existed those rights could be granted on an embedded type and no code read them.
 
+### Adding a keyed collection to an app that already has documents
+
+You do not need a backfill migration for the *new* collection. The startup gate asks
+
+```rql
+from 'Cars' where ServiceEntries[].Id == null or ServiceEntries[].Id == ''
+```
+
+and an **absent array does not match** — measured against 10,009 real documents with no such field,
+`TotalResults: 0`. This is the opposite of the better-known rule for absent *scalars*, which do match
+`== null` (and why an absent boolean needs `!= true` rather than `== false`).
+
+A backfill is needed only when the collection already exists in stored documents and its rows predate
+the key — `HR/Migrations/M_202609091210_BackfillValueObjectKeys.cs` is the worked example, and note
+its `if (rows)` guard, which leaves an absent array absent for exactly this reason.
+
+⚠️ **The gate can only check types it knows about.** It walks the registered value objects, so a type
+whose generator never ran is not checked — it is skipped silently. See the warning under "Marking a
+type".
+
 ### Marking a type
+
+⚠️ **The attribute does nothing unless the declaring project references the generator.** Analyzer
+`ProjectReference`s are not transitive, so a library that references `MintPlayer.Spark.Abstractions`
+(where the attribute lives) still needs its own:
+
+```xml
+<ProjectReference Include="...\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj"
+                  OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+```
+
+Without it `[ValueObject]` compiles cleanly and generates **nothing** — no key property, no
+registration — and nothing fails: the startup gate only inspects types that registered, so the rows
+simply reach the client with a null id. It cost a day on `Fleet.Library` (#386), and only a test that
+asserted the key *as it arrives over the wire* caught it, because a keyless row deserialises with a
+freshly minted guid and looks correct in memory.
 
 ```csharp
 using MintPlayer.Spark.Abstractions;
