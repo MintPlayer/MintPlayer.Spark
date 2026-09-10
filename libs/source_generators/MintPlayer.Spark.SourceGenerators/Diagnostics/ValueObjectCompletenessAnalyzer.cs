@@ -27,11 +27,19 @@ namespace MintPlayer.Spark.SourceGenerators.Diagnostics;
 /// <em>model</em>, which is the question.
 /// </para>
 /// <para>
-/// ⚠️ <b>It deliberately does not check <c>partial</c>.</b> That keyword is source-only and leaves no
-/// trace in IL, so no metadata symbol can report it — and the obvious helper gets it silently wrong,
-/// computing partial-ness as <c>All()</c> over an empty <c>DeclaringSyntaxReferences</c>, which is
-/// <see langword="true"/> for every metadata type. Partiality belongs to SPARK016, in the
-/// compilation that owns the syntax.
+/// ⚠️ <b>It deliberately does not check <c>partial</c> — as a division of responsibility, not
+/// because it could not.</b> Partiality belongs to SPARK016, in the compilation that owns the
+/// syntax. An analyzer reads it perfectly well for any source-declared symbol; the guarded idiom is
+/// <c>declarations.Length > 0 &amp;&amp; declarations.All(d => d.Modifiers.Any(SyntaxKind.PartialKeyword))</c>,
+/// already used at <c>ValueObjectKeyGenerator.cs:85-86</c>. Drop the <c>Length > 0</c> guard and
+/// <c>All()</c> over an empty <c>DeclaringSyntaxReferences</c> is vacuously <see langword="true"/>
+/// for every metadata type — a bug this file once generalised into an impossibility. Only a true
+/// metadata symbol is genuinely opaque, and there nothing is fixable anyway.
+/// <para>
+/// The <b>code fix</b> for SPARK017 consequently adds <c>partial</c> as well as the attribute, in
+/// one edit: clearing SPARK017 only to raise SPARK016 on the next build would leave the author
+/// worse off than no fix at all.
+/// </para>
 /// </para>
 /// </remarks>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
@@ -40,6 +48,21 @@ public sealed partial class ValueObjectCompletenessAnalyzer : DiagnosticAnalyzer
     private const string SparkContextFullName = "MintPlayer.Spark.SparkContext";
     private const string RavenQueryableMetadataName = "Raven.Client.Documents.Linq.IRavenQueryable`1";
     private const string ValueObjectAttributeFullName = "MintPlayer.Spark.Abstractions.ValueObjectAttribute";
+
+    /// <summary>
+    /// Diagnostic property carrying the offending type's metadata name, so the code fix can resolve
+    /// the symbol instead of guessing from the location — which may point at the context property
+    /// in another file, or at nothing at all.
+    /// </summary>
+    public const string OffendingTypeProperty = "SparkOffendingType";
+
+    /// <summary>
+    /// Namespace-qualified, no <c>global::</c> — the shape <see cref="Compilation.GetTypeByMetadataName"/>
+    /// expects on the way back in.
+    /// </summary>
+    private static readonly SymbolDisplayFormat MetadataNameFormat = new(
+        globalNamespaceStyle: SymbolDisplayGlobalNamespaceStyle.Omitted,
+        typeQualificationStyle: SymbolDisplayTypeQualificationStyle.NameAndContainingTypesAndNamespaces);
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics
         => [MissingValueObjectRule];
@@ -72,27 +95,75 @@ public sealed partial class ValueObjectCompletenessAnalyzer : DiagnosticAnalyzer
         if (roots.Count == 0)
             return;
 
-        foreach (var offender in FindUnmarked(roots, context.CancellationToken))
+        foreach (var (offender, seedLocation) in FindUnmarked(roots, context.CancellationToken))
         {
+            var fullyQualifiedName = offender.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
+
             context.ReportDiagnostic(Diagnostic.Create(
                 MissingValueObjectRule,
-                // Null renders as Location.None. Under `dotnet build` that is the only option for a
-                // type from a referenced assembly; in the IDE the source location is available and
-                // used. Neither changes whether the build fails.
-                offender.Locations.FirstOrDefault(l => l.IsInSource),
-                offender.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
+                LocationFor(compilation, offender, seedLocation),
+                // The code fix cannot re-derive which type this was from a message, and the
+                // location may point at the context property rather than the type itself. Carry
+                // the metadata name so the fix can look the symbol up directly.
+                properties: ImmutableDictionary<string, string?>.Empty
+                    .Add(OffendingTypeProperty, offender.ToDisplayString(MetadataNameFormat)),
+                fullyQualifiedName));
         }
+    }
+
+    /// <summary>
+    /// Where to point the diagnostic: the offending type's own declaration when this compilation
+    /// owns it, otherwise the <c>SparkContext</c> property that reaches it, otherwise nowhere.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>Reporting at the type's own location across a project boundary loses the diagnostic
+    /// entirely, and this was measured, not assumed.</b> Roslyn's analyzer driver discards any
+    /// diagnostic whose location lives in a syntax tree the analyzed compilation does not contain.
+    /// A referenced project in a loaded IDE solution is a <c>CompilationReference</c>, so the
+    /// offending type *does* have a source location — one belonging to the other project's tree —
+    /// and the driver dropped it: a two-project fixture reported <b>zero</b> diagnostics where the
+    /// identical single-project fixture reported one.
+    /// <para>
+    /// The effect on shipped behaviour was that a missing <c>[ValueObject]</c> on a type in an
+    /// entity library was reported by <c>dotnet build</c> (where the type is metadata, the location
+    /// is <see cref="Location.None"/>, and nothing is dropped) but was <b>invisible in the IDE</b>,
+    /// which is the one place a developer is looking. Falling back to the context property keeps
+    /// the diagnostic inside this compilation, so it survives.
+    /// </para>
+    /// <para>
+    /// This is also what makes a code fix possible at all: a provider is only ever handed a
+    /// diagnostic the IDE could attach to a document. See
+    /// <c>ValueObjectCompletenessCodeFixProvider</c>, which reads
+    /// <see cref="OffendingTypeProperty"/> and edits the other project through the solution.
+    /// </para>
+    /// </remarks>
+    private static Location? LocationFor(
+        Compilation compilation, INamedTypeSymbol offender, Location? seedLocation)
+    {
+        foreach (var location in offender.Locations)
+        {
+            if (location.IsInSource && location.SourceTree is { } tree && compilation.ContainsSyntaxTree(tree))
+                return location;
+        }
+
+        return seedLocation;
     }
 
     /// <summary>
     /// The document types the model starts from: the generic arguments of every
     /// <c>IRavenQueryable&lt;T&gt;</c> property on a <c>SparkContext</c> subclass.
     /// </summary>
-    private static List<INamedTypeSymbol> FindRoots(
+    /// <remarks>
+    /// Each root carries the location of the property that declared it. That property lives on the
+    /// context, i.e. in *this* compilation, which makes it the one place a diagnostic about a type
+    /// from a referenced project can be reported without being discarded — see
+    /// <see cref="LocationFor"/>.
+    /// </remarks>
+    private static List<(INamedTypeSymbol Root, Location? SeedLocation)> FindRoots(
         Compilation compilation, INamedTypeSymbol contextBase, INamedTypeSymbol queryable,
         System.Threading.CancellationToken ct)
     {
-        var roots = new List<INamedTypeSymbol>();
+        var roots = new List<(INamedTypeSymbol, Location?)>();
 
         foreach (var contextType in AllTypes(compilation.Assembly.GlobalNamespace, ct))
         {
@@ -108,7 +179,7 @@ public sealed partial class ValueObjectCompletenessAnalyzer : DiagnosticAnalyzer
                 if (!SymbolEqualityComparer.Default.Equals(propertyType.OriginalDefinition, queryable))
                     continue;
                 if (propertyType.TypeArguments.FirstOrDefault() is INamedTypeSymbol root)
-                    roots.Add(root);
+                    roots.Add((root, property.Locations.FirstOrDefault(l => l.IsInSource)));
             }
         }
 
@@ -134,23 +205,26 @@ public sealed partial class ValueObjectCompletenessAnalyzer : DiagnosticAnalyzer
     /// visited set for that reason.
     /// </para>
     /// </remarks>
-    private static IEnumerable<INamedTypeSymbol> FindUnmarked(
-        List<INamedTypeSymbol> roots, System.Threading.CancellationToken ct)
+    private static IEnumerable<(INamedTypeSymbol Offender, Location? SeedLocation)> FindUnmarked(
+        List<(INamedTypeSymbol Root, Location? SeedLocation)> roots, System.Threading.CancellationToken ct)
     {
         var visited = new HashSet<INamedTypeSymbol>(SymbolEqualityComparer.Default);
-        var queue = new Queue<INamedTypeSymbol>();
-        var unmarked = new Dictionary<string, INamedTypeSymbol>(System.StringComparer.Ordinal);
+        var queue = new Queue<(INamedTypeSymbol Type, Location? SeedLocation)>();
+        var unmarked = new Dictionary<string, (INamedTypeSymbol Offender, Location? SeedLocation)>(
+            System.StringComparer.Ordinal);
 
-        foreach (var root in roots)
+        foreach (var (root, seedLocation) in roots)
         {
             if (visited.Add(root))
-                queue.Enqueue(root);
+                queue.Enqueue((root, seedLocation));
         }
 
         while (queue.Count > 0)
         {
             ct.ThrowIfCancellationRequested();
-            var owner = queue.Dequeue();
+            // The seed travels with the walk: whichever context property led here is the one that
+            // can carry a diagnostic about a type this compilation does not own.
+            var (owner, seed) = queue.Dequeue();
 
             foreach (var property in owner.GetMembers().OfType<IPropertySymbol>())
             {
@@ -168,14 +242,14 @@ public sealed partial class ValueObjectCompletenessAnalyzer : DiagnosticAnalyzer
                 // Report before the visited check: the same type can be a single member in one place
                 // and a row in another, and it is the row usage that decides.
                 if (isCollectionElement && !IsMarked(embedded))
-                    unmarked[embedded.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)] = embedded;
+                    unmarked[embedded.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)] = (embedded, seed);
 
                 if (!visited.Add(embedded))
                     continue;
 
                 // Walk it either way: an unmarked type's own children are still part of the model,
                 // and reporting a whole subtree at once beats one type per build.
-                queue.Enqueue(embedded);
+                queue.Enqueue((embedded, seed));
             }
         }
 

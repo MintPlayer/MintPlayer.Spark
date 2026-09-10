@@ -21,6 +21,13 @@ document's span. It is entirely possible that SPARK017 squiggles but is never of
 that does nothing but return a no-op action with a distinctive title, load it in VS against
 `apps/HR`, and look at whether the lightbulb shows it on an unmarked type.
 
+**Answer a second question in the same sitting** (PRD C4b): SPARK017 is raised in the *app*
+compilation but its location is a file owned by a *library* project. Does the lightbulb consult the
+analyzer references of the reporting project, or of the document's project? The answer decides
+whether M4's reference list is the four app hosts or every entity library. Test it by giving only
+the app host the `LibraryGenerators` reference and seeing whether the fix appears on the library's
+file.
+
 **If negative:** the fallback is a second registration in the analyzer — keep the compilation action
 as the enforcement, and add a `RegisterSymbolAction` that re-reports the *same id* for offenders it
 can see per-symbol. Measure the double-report risk before adopting it.
@@ -65,18 +72,19 @@ The two are separable, and the answer decides the layout:
   hazard at `:26-32` / `:37-45` while shipping anyway — evidence it can work, not proof it works on
   a clean consumer build.
 
-**Measure:** put a trivial fix provider into `MintPlayer.Spark.SourceGenerators`, `dotnet pack`
-AllFeatures to a local feed, consume it from a throwaway project, and build with
-`/warnaserror:AD0001,CS8032` and `-v:n`. Then repeat with the provider in a separate
-`MintPlayer.Spark.CodeFixes` assembly packed to the same `analyzers/dotnet/cs`.
+**Placement is decided, not a spike output: both fixes go in `MintPlayer.Spark.LibraryGenerators`,
+no new project** (PRD C4). S3 therefore only has to prove the arrangement is safe, and to produce
+the fallback signal if it is not.
 
-**Decision output:** same assembly (accept RS1038, fix the harness) vs a separate
-`MintPlayer.Spark.CodeFixes` assembly with its own `<None PackagePath="analyzers/dotnet/cs">` items
-— the inherited `MintPlayer.SourceGenerators.Tools` props pack only the one analyzer DLL, so a
-second assembly must pack itself. Separate is the standard Roslyn layout and the safe default; take
-same-assembly only on a clean measurement.
+**Measure:** with the fix providers in `LibraryGenerators`, `dotnet pack` AllFeatures to a local
+feed, consume it from a throwaway project, and build with `/warnaserror:AD0001,CS8032` and `-v:n`.
+A clean build with the analyzer still reporting is a pass.
 
-**Cost:** ~2h. **Blocks:** M1's project layout, and all packaging.
+**If it fails:** the fallback is a separate `MintPlayer.Spark.CodeFixes` assembly with its own
+`<None PackagePath="analyzers/dotnet/cs">` items — the inherited `MintPlayer.SourceGenerators.Tools`
+props pack only the one analyzer DLL, so a second assembly must pack itself. Do not pre-build it.
+
+**Cost:** ~2h. **Blocks:** packaging only — M1/M2/M3 proceed regardless.
 
 ---
 
@@ -143,12 +151,19 @@ the "analyzers cannot check `partial`" claim now sitting in
 `ValueObjectCompletenessAnalyzer.Rules.cs:32-36`; M6 retires the claim. Add the keyword only when it
 is genuinely absent, and pin the already-`partial` case with a test.
 
-### M4 — the packaging and reachability defects (PRD C6)
+### M4 — the packaging and reachability defects (PRD C4b + C6)
+
+Both fixes ship inside `LibraryGenerators`, so this milestone is not housekeeping — **it is what
+makes the fixes appear at all.**
 
 - Pack `MintPlayer.Spark.LibraryGenerators.dll` into `MintPlayer.Spark.AllFeatures` alongside the
-  other two (`AllFeatures.csproj:44-53`). **SPARK016 currently reaches no external consumer at all.**
-- Add the `LibraryGenerators` analyzer ProjectReference to `apps/DemoApp/DemoApp.Library`.
-- Whatever S3 decided: pack the fix assembly the same way.
+  other two (`AllFeatures.csproj:44-53`). **SPARK016 currently reaches no external consumer at all**,
+  and now neither would either fix.
+- Add the `LibraryGenerators` analyzer ProjectReference to `apps/DemoApp/DemoApp.Library` (the one
+  entity library missing it) **and to the four app hosts** — `CodeCoverage`, `DemoApp`, `Fleet`,
+  `HR` — which raise SPARK017 but do not reference the assembly that now carries its fix.
+- Revisit that list once S1 reports: if the lightbulb consults the *document's* project rather than
+  the reporting one, every entity library needs the reference, not just the app hosts.
 - A guard so the next omission is not silent — a test that enumerates the analyzer/generator DLLs
   produced by the build and asserts each appears in some package's `analyzers/` path. This is the
   same shape of trap as the `[ValueObject]`-inert-without-the-generator-reference note and as PRD

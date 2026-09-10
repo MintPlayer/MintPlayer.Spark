@@ -81,14 +81,21 @@ internal static class GeneratorHarness
     /// analyzer whose subject is configuration rather than code — <c>security.json</c> and the model
     /// files reach the compiler this way, so an analyzer over them cannot be tested without them.
     /// </param>
+    /// <param name="additionalReferences">
+    /// Metadata references beyond those implied by <paramref name="referenceTypes"/> — the way to
+    /// hand the analyzer a *compiled* fixture library, i.e. the `dotnet build` shape where a
+    /// referenced project has become a .dll and its types carry no source location.
+    /// </param>
     public static async Task<IReadOnlyList<Diagnostic>> RunAnalyzerAsync(
         string analyzerTypeName,
         IEnumerable<string> sources,
         IEnumerable<Type>? referenceTypes = null,
-        IEnumerable<(string Path, string Text)>? additionalTexts = null)
+        IEnumerable<(string Path, string Text)>? additionalTexts = null,
+        IEnumerable<MetadataReference>? additionalReferences = null)
     {
         var analyzer = InstantiateAnalyzer(analyzerTypeName);
-        var compilation = BuildCompilation(sources, referenceTypes ?? Array.Empty<Type>());
+        var compilation = BuildCompilation(
+            sources, referenceTypes ?? Array.Empty<Type>(), additionalReferences: additionalReferences);
 
         var options = new AnalyzerOptions(
             System.Collections.Immutable.ImmutableArray.CreateRange(
@@ -142,20 +149,18 @@ internal static class GeneratorHarness
         return Assembly.Load(new AssemblyName(assemblyName));
     }
 
-    private static CSharpCompilation BuildCompilation(
-        IEnumerable<string> sources,
-        IEnumerable<Type> referenceTypes,
-        OutputKind outputKind = OutputKind.DynamicallyLinkedLibrary,
-        IEnumerable<MetadataReference>? additionalReferences = null,
-        CSharpParseOptions? parseOptions = null)
+    /// <summary>
+    /// The metadata references every in-memory compilation here gets: the BCL slice Roslyn needs to
+    /// bind, plus one per entry in <paramref name="referenceTypes"/>.
+    /// </summary>
+    /// <remarks>
+    /// Extracted from <see cref="BuildCompilation"/> so <see cref="CodeFixHarness"/> can give an
+    /// <c>AdhocWorkspace</c> project the identical reference set. A workspace project that resolved
+    /// a different set would bind different symbols, and a code-fix test would then be exercising a
+    /// compilation no analyzer test ever saw.
+    /// </remarks>
+    internal static IReadOnlyCollection<MetadataReference> BuildReferences(IEnumerable<Type> referenceTypes)
     {
-        // Default parse options carry DocumentationMode.Parse, i.e. `///` is structured trivia and
-        // GetDocumentationCommentXml() works. A real project WITHOUT GenerateDocumentationFile
-        // compiles with DocumentationMode.None instead; tests that care pass it explicitly.
-        var syntaxTrees = sources.Select((src, i) =>
-            CSharpSyntaxTree.ParseText(src, parseOptions, path: $"Source{i}.cs")).ToList();
-
-        // Minimum BCL references so Roslyn can build + resolve symbols.
         var references = new HashSet<MetadataReference>(
             new[]
             {
@@ -173,6 +178,41 @@ internal static class GeneratorHarness
 
         foreach (var t in referenceTypes)
             references.Add(MetadataReference.CreateFromFile(t.Assembly.Location));
+
+        return references;
+    }
+
+    /// <summary>
+    /// Loads a Roslyn component (analyzer, generator or code-fix provider) by type name from one of
+    /// the generator assemblies, the way every other entry point here does.
+    /// </summary>
+    internal static object InstantiateComponent(string typeName, string? assemblyName, Type expectedBase)
+    {
+        var asm = assemblyName is null ? _generatorAssembly.Value : GetOrLoadAssembly(assemblyName);
+        var type = asm.GetTypes()
+            .FirstOrDefault(t => t.Name == typeName && expectedBase.IsAssignableFrom(t))
+            ?? throw new InvalidOperationException(
+                $"Type '{typeName}' deriving from {expectedBase.Name} not found in {asm.Location}. " +
+                $"Candidates: {string.Join(", ", asm.GetTypes().Where(t => expectedBase.IsAssignableFrom(t)).Select(t => t.Name))}");
+
+        return Activator.CreateInstance(type)!;
+    }
+
+    private static CSharpCompilation BuildCompilation(
+        IEnumerable<string> sources,
+        IEnumerable<Type> referenceTypes,
+        OutputKind outputKind = OutputKind.DynamicallyLinkedLibrary,
+        IEnumerable<MetadataReference>? additionalReferences = null,
+        CSharpParseOptions? parseOptions = null)
+    {
+        // Default parse options carry DocumentationMode.Parse, i.e. `///` is structured trivia and
+        // GetDocumentationCommentXml() works. A real project WITHOUT GenerateDocumentationFile
+        // compiles with DocumentationMode.None instead; tests that care pass it explicitly.
+        var syntaxTrees = sources.Select((src, i) =>
+            CSharpSyntaxTree.ParseText(src, parseOptions, path: $"Source{i}.cs")).ToList();
+
+        // Minimum BCL references so Roslyn can build + resolve symbols.
+        var references = new HashSet<MetadataReference>(BuildReferences(referenceTypes));
 
         if (additionalReferences is not null)
             foreach (var r in additionalReferences)

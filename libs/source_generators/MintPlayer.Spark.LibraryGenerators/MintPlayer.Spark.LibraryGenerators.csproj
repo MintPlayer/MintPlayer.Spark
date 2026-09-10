@@ -28,6 +28,23 @@
         <PackageReference Include="MintPlayer.ValueComparerGenerator.Attributes" Version="10.20.0" PrivateAssets="all" GeneratePathProperty="true" />
     </ItemGroup>
 
+    <!--
+    The code fixes in CodeFixes/ derive from CodeFixProvider, which lives in
+    Microsoft.CodeAnalysis.Workspaces. ExcludeAssets="runtime" is the point of the reference: it
+    satisfies the compiler while shipping nothing, because the IDE host supplies Workspaces and the
+    command-line host (csc) never loads a fix provider at all.
+
+    ⚠️ That is also the trap. Anything that reflects over this assembly with GetTypes() at runtime
+    WITHOUT Workspaces present throws ReflectionTypeLoadException on the whole assembly, not just on
+    the fix types — which is how a fix provider in MintPlayer.Spark.SourceGenerators once broke every
+    test in the generator suite (2026-08-18, R26 in docs/issue_210_PRD.md). The test project carries
+    a real Workspaces reference for exactly this reason; see its csproj.
+    -->
+    <ItemGroup>
+      <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.3.0"
+                        PrivateAssets="all" ExcludeAssets="runtime" />
+    </ItemGroup>
+
     <ItemGroup>
       <PackageReference Update="Microsoft.CodeAnalysis" Version="5.0.0" />
       <PackageReference Update="Microsoft.CodeAnalysis.Analyzers" Version="5.3.0" />

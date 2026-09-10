@@ -165,12 +165,40 @@ Workspaces in the test project; whether the same arrangement is safe on a *consu
 open question. INTF001 ships exactly that arrangement and its test projects document the hazard
 explicitly. Spark ships analyzers to **external NuGet
 consumers** via `MintPlayer.Spark.AllFeatures`, so a discovery failure would be their build breaking,
-not ours. S3 decides between:
+not ours.
 
-- **(a) same assembly**, as INTF001 does — cheapest, accepts RS1038, requires proof that csc
-  tolerates it on a clean consumer machine;
-- **(b) separate `MintPlayer.Spark.CodeFixes` assembly** — matches the existing memory note, costs a
-  new project plus new packaging, and is the safe default if (a) shows any discovery fault.
+**Decided: no new project. Both fixes live in `MintPlayer.Spark.LibraryGenerators`.** RS1038 is
+accepted, exactly as INTF001 accepts it. A separate `MintPlayer.Spark.CodeFixes` assembly is *not*
+built: it would need its own csproj, its own `<None PackagePath="analyzers/dotnet/cs">` items (the
+inherited props pack only the one analyzer DLL), and a reference added to every consuming project.
+
+S3 keeps only its consumer-build half — prove csc tolerates an assembly carrying both a generator
+and a fix provider. The measured 2026-08-18 failure is a *harness* problem, resolved by M1 adding
+`Microsoft.CodeAnalysis.CSharp.Workspaces` to the test project (which it needs anyway for
+`AdhocWorkspace`), and the harness loads `LibraryGenerators` by name too, so the same resolution
+covers it.
+
+### C4b — reachability: `LibraryGenerators` must be referenced wherever a fix should appear
+
+This is the cost of C4's placement, and it is a requirement, not a caveat. Visual Studio offers
+fixes only from assemblies the relevant project references, and the two diagnostics are raised in
+**different compilations** — SPARK016 in the entity library, SPARK017 in the application. Today
+`LibraryGenerators` is referenced by exactly four projects (`CodeCoverage.Library`, `Fleet.Library`,
+`HR.Library`, `IdentityProvider`) and is packed into **no** NuGet package at all.
+
+So, in the same PR:
+
+1. Add the `LibraryGenerators` analyzer `ProjectReference` to every project that can raise either
+   diagnostic — the four app hosts (`CodeCoverage`, `DemoApp`, `Fleet`, `HR`) for SPARK017, and
+   `DemoApp.Library`, which is the one entity library missing it today.
+2. Pack `MintPlayer.Spark.LibraryGenerators.dll` into `MintPlayer.Spark.AllFeatures` (C6.1), without
+   which no external consumer gets either the SPARK016 diagnostic or any fix.
+
+⚠️ **Open, and S1 must answer it:** when a diagnostic is raised in the *app* compilation but its
+location is a file owned by a *library* project, it is not established whether the lightbulb
+consults the analyzer references of the reporting project or of the document's project. If it is the
+document's project, step 1's app-host references are insufficient on their own and every entity
+library needs the reference too. Measure before relying on either.
 
 ### C5 — a code-fix test harness in the existing style
 

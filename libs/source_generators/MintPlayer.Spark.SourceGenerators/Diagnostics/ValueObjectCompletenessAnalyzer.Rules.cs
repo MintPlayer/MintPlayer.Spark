@@ -14,17 +14,26 @@ public sealed partial class ValueObjectCompletenessAnalyzer
     /// applied and read-only fields cannot be preserved. Forgetting the attribute is therefore not a
     /// style problem; it silently removes a guarantee.
     /// <para>
-    /// ⚠️ <b>Error, and reported without a location on purpose.</b> Under <c>dotnet build</c> a
-    /// referenced project arrives as a .dll, so a type declared in an entity library has no source
-    /// location in the application's compilation at all — measured: zero
-    /// <c>DeclaringSyntaxReferences</c>, <c>Locations[0].Kind == MetadataFile</c>, null path. A
-    /// diagnostic reported there renders as a bare <c>CSC : error</c>. That is fine: <b>the severity
-    /// is the enforcement and the location is a convenience.</b> The message therefore names the
-    /// fully-qualified type, because the message is all the developer gets.
+    /// ⚠️ <b>The location is always inside the analyzed compilation, and that is load-bearing.</b>
+    /// Roslyn's analyzer driver <b>discards</b> any diagnostic whose location lives in a syntax tree
+    /// the compilation does not contain — measured: a two-project fixture reported zero diagnostics
+    /// where the identical single-project fixture reported one. Since the offending type usually
+    /// lives in an entity library, reporting at the type's own declaration meant that in the IDE,
+    /// where a project reference is a <c>CompilationReference</c> with real source locations, the
+    /// diagnostic <b>vanished entirely</b>. It survived only under <c>dotnet build</c>, where the
+    /// library is a .dll, the type has no source location, and <c>Location.None</c> is not dropped.
     /// </para>
     /// <para>
-    /// In the IDE the same analyzer receives a <c>CompilationReference</c> and a real location, so
-    /// the squiggle lands on the class — but nothing depends on that.
+    /// So the location falls back to the <c>SparkContext</c> property that reaches the type — the
+    /// nearest thing this compilation owns. The IDE now shows the error, and <c>dotnet build</c>
+    /// prints a file and line instead of a bare <c>CSC : error</c>. The message still names the
+    /// fully-qualified type, because the location no longer identifies it.
+    /// </para>
+    /// <para>
+    /// A code fix rides on this: a provider is only ever offered a diagnostic the IDE could attach
+    /// to a document, so the property <c>SparkOffendingType</c> carries the type's metadata name and
+    /// the fix resolves the declaration through the solution. See
+    /// <c>ValueObjectCompletenessCodeFixProvider</c> in MintPlayer.Spark.LibraryGenerators.
     /// </para>
     /// </remarks>
     internal static readonly DiagnosticDescriptor MissingValueObjectRule = new(
