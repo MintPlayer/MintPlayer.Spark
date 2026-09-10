@@ -103,6 +103,7 @@ body through a JSON object model has already lost, regardless of how carefully i
 | **D6** | Two smee implementations; the correct one is app-local and unreachable by other consumers (#397) | Medium — maintenance |
 | **D7** | Misleading comments + dangling reference to a non-existent `docs/spark-handoff.md` (#400) | Low |
 | **D8** | ~~Stray `.csproj.Backup.tmp` checked into the tree~~ — **not a defect**, see below (#400) | — |
+| **D9** | RavenDB's 623 MB embedded server enters `bin/` and the Nx cache, failing the whole test sweep | High — blocked verification |
 
 ### D2 — per-client routing was not ported
 
@@ -117,6 +118,43 @@ and no reads repo-wide. `DevWebSocketService.SendToClients`
 `AllowedDevUsers` is not a substitute: it gates **connection**, not **routing**. It fails closed when
 empty, so an unlisted developer receives nothing — but any two listed developers now see each
 other's webhook traffic, including payloads for repositories the other may not work on.
+
+### D9 — RavenDB's embedded server was poisoning the Nx cache
+
+Found while running the verification sweep, and folded in rather than deferred because it was
+blocking that sweep outright.
+
+`RavenDB.Embedded` copies a **623 MB** `RavenDBServer` tree into `$(OutDir)` on every build, and
+Nx declares `{projectRoot}/bin/Debug` as a cached output. Uploading the result aborted with an
+nginx 499, and **Nx escalates a cache failure into a task failure** — so the first sweep failed two
+build tasks, skipped all seven test tasks, and reported nothing about the code. Its exit status was
+also swallowed locally by a trailing `echo`, which is exactly the trap `CLAUDE.md` warns about.
+
+Measured on the cache server: **272 entries, every one verified to contain `RavenDBServer`,
+64.3 GB — 93% of a 69 GB volume**, on a disk at 62%.
+
+Two things make the obvious fixes wrong:
+
+- **Excluding it from `outputs` does not work.** `nrwl/nx#35150` reports that negated `outputs`
+  patterns do not prevent caching of the excluded directory — open since 2026-04-02, fix PR
+  `#35152` still unmerged. Their repro is this one down to the size: a 600 MB `.next/cache` that
+  refuses to stay out.
+- **Relocating the copy does not survive a cache hit.** Anything `build` produces is either inside
+  the cached outputs or missing after a replay, because the test task runs `dotnet test` in
+  no-build mode and never re-runs MSBuild.
+
+So the server stops being a build output at all. `RavenServerLocator` provisions it once into a
+version-scoped temp directory and points `ServerDirectory` there. It deliberately does **not** point
+at the restored NuGet package: measured 2026-09-10, the embedded server creates a `Temp` directory
+next to its own binaries at startup, and that store is shared by every solution on the machine
+(`nrwl/nx#36902` is the same hazard from the other end).
+
+The server arrives by **two** independent routes — NuGet `contentFiles` marked `copyToOutput`, and
+the package's own `CopyRavenDBServer` target — and suppressing only one looks like a no-op.
+
+Result: `MintPlayer.Spark.Testing` bin 625 MB → 2 MB, `CodeCoverage.Tests` 600 MB → 45 MB, a full
+sweep with the remote cache enabled completing with **zero** 499s, and the cache volume pruned from
+69 GB to 4.5 GB (disk 62% → 17%).
 
 ### D8 — withdrawn
 
