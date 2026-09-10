@@ -272,19 +272,40 @@ its collection.
 
 Each runs where its question can be answered:
 
-| Check | Runs in | Asks |
-|---|---|---|
-| SPARK016 | the entity library | is a decorated type `partial`? |
-| SPARK017 | the application | is anything reachable from `SparkContext` **missing** the marker? |
+| Check | Runs in | Asks | Code fix |
+|---|---|---|---|
+| SPARK016 | the entity library | is a decorated type `partial`? | **Declare the value object 'partial'** |
+| SPARK017 | the application | is anything reachable from `SparkContext` **missing** the marker? | **Make this a value object** — adds `[ValueObject]`, `partial` and the `using` in one edit |
 
-⚠️ SPARK017 has to live in the application because only the context knows which types the model
-reaches. Under `dotnet build` a referenced project arrives as a .dll, so it reports **without a
-source location** — a bare `CSC : error` naming the fully-qualified type. That still fails the build,
-which is the point; the message carries the type name because it is all you get. In an IDE the same
-analyzer gets a real location and the squiggle lands on the class.
+SPARK017 has to live in the application because only the context knows which types the model
+reaches. The type it complains about, though, usually lives in the entity library — and that
+mismatch decides where the error appears:
 
-⚠️ SPARK017 deliberately does **not** check `partial`: that keyword is source-only and invisible in
-metadata, so no analyzer outside the declaring compilation can see it.
+⚠️ **The diagnostic is reported on the `SparkContext` property that reaches the type, not on the
+type itself**, whenever the type belongs to another project. This is not cosmetic. Roslyn's analyzer
+driver *discards* any diagnostic whose location lies in a syntax tree the analyzed compilation does
+not contain, so pointing at the type's own declaration made SPARK017 **vanish silently in the IDE**
+— it showed up only at `dotnet build`, where a referenced project is a .dll and the location is
+empty. Reporting on the context property keeps it inside the compilation, so you now see it while
+editing, and `dotnet build` prints a file and line instead of a bare `CSC : error`. The message
+still names the fully-qualified type, because the location no longer does.
+
+⚠️ SPARK017 deliberately does **not** check `partial` — that is SPARK016's job, in the compilation
+that owns the syntax. It is a division of responsibility, not a limitation: an analyzer reads
+`partial` fine for any type declared in source. (Only a type that arrives purely as metadata is
+opaque, and there is nothing to fix there anyway.) The SPARK017 **code fix** therefore adds
+`partial` as well as the attribute — clearing SPARK017 only to raise SPARK016 on your next build
+would be worse than no fix.
+
+### What the code fixes can and cannot reach
+
+Both fixes ship in `MintPlayer.Spark.LibraryGenerators`, so a project only gets the lightbulb if it
+references that analyzer (in this repo, every app and every entity library does; NuGet consumers get
+it through `MintPlayer.Spark.AllFeatures`).
+
+They are an **IDE affordance and nothing else**. `dotnet build` behaviour is unchanged: the error is
+the enforcement. And a type that arrives as a true metadata reference — a NuGet-packaged entity
+library — has no document to edit, so it is reported but not fixable. Mark it by hand.
 
 ### Existing data
 

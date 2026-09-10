@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <TargetFramework>netstandard2.0</TargetFramework>
         <LangVersion>14</LangVersion>
@@ -11,7 +11,7 @@
 
         <!-- NuGet Package Metadata -->
         <PackageId>MintPlayer.Spark.SourceGenerators</PackageId>
-		<Version>10.0.0-preview.79</Version>
+		<Version>10.0.0-preview.80</Version>
 		<Authors>MintPlayer</Authors>
         <Company>MintPlayer</Company>
         <Description>Source generators for MintPlayer.Spark low-code framework. Auto-generates DI registration for Actions classes.</Description>

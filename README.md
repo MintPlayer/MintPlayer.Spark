@@ -351,8 +351,10 @@ Two things to know:
 Note that `[JsonIgnore]` does **not** do this — model synchronization does not read serialization
 attributes.
 
-A build-time analyzer (**SPARK003**) reports a `[Breadcrumb]` template that names an ignored
-property, so the contradiction surfaces when you compile rather than when you next synchronize.
+⚠️ A build-time analyzer for this was planned as **SPARK003** and never shipped — the id is retired
+and no such check exists, so a `[Breadcrumb]` template naming an ignored property surfaces only when
+you next synchronize. See [docs/diagnostics.md](docs/diagnostics.md) for the diagnostics that do
+exist.
 
 ### Contribution Workflow
 
