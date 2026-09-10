@@ -102,7 +102,7 @@ body through a JSON object model has already lost, regardless of how carefully i
 | **D5** | `SmeeWebhookTunnelService` throws `TaskCanceledException` out of `ExecuteAsync` on shutdown (#397) | Low |
 | **D6** | Two smee implementations; the correct one is app-local and unreachable by other consumers (#397) | Medium — maintenance |
 | **D7** | Misleading comments + dangling reference to a non-existent `docs/spark-handoff.md` (#400) | Low |
-| **D8** | Stray `MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj.Backup.tmp` checked into the tree (#400) | Low |
+| **D8** | ~~Stray `.csproj.Backup.tmp` checked into the tree~~ — **not a defect**, see below (#400) | — |
 
 ### D2 — per-client routing was not ported
 
@@ -117,6 +117,13 @@ and no reads repo-wide. `DevWebSocketService.SendToClients`
 `AllowedDevUsers` is not a substitute: it gates **connection**, not **routing**. It fails closed when
 empty, so an unlisted developer receives nothing — but any two listed developers now see each
 other's webhook traffic, including payloads for repositories the other may not work on.
+
+### D8 — withdrawn
+
+The audit reported `MintPlayer.Spark.Webhooks.GitHub.DevTunnel.csproj.Backup.tmp` as checked in. It
+was not: `git log -- '*/*.Backup.tmp'` returns nothing, and `.gitignore:97` already carries `*.tmp`.
+It was an untracked local artifact, already ignored. The local file was deleted; no `.gitignore`
+change was made. Acceptance criterion 12 is withdrawn.
 
 ### D3 — the version collision
 
@@ -182,7 +189,7 @@ and `apps/CodeCoverage/CodeCoverage/Services/SmeeWebhookTunnelService.cs` is del
     on graceful shutdown.
 11. No comment in the repository attributes the body corruption to smee.io pretty-printing, and no
     file references `docs/spark-handoff.md`.
-12. The `.csproj.Backup.tmp` file is gone and the pattern is git-ignored.
+12. ~~The `.csproj.Backup.tmp` file is gone and the pattern is git-ignored.~~ Withdrawn — D8 was not a defect.
 13. Full solution build clean; full test suite green.
 
 ---
