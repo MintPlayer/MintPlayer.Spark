@@ -85,7 +85,9 @@ index, still in the Spark model).
 The attribute lives in `MintPlayer.Spark.Abstractions`, which `Coverage.Library` **already
 references**. The generator is `MintPlayer.Spark.SourceGenerators`, which `Coverage` and
 `Coverage.Tests` **already reference**, already in the required `PrivateAssets="all"` +
-`IncludeAssets="…analyzers…"` form that `spark.targets` enforces via `SPARK001`/`SPARK002`/`SPARK003`.
+`IncludeAssets="…analyzers…"` form that `spark.targets` enforces via `SPARK001`/`SPARK002`.
+(An earlier draft also cited `SPARK003`; that id was retired and never shipped — see
+[docs/diagnostics.md](../diagnostics.md).)
 
 The generator does not use `ForAttributeWithMetadataName`. It pairs a syntax provider for
 source-declared entities with a `CompilationProvider` metadata walk over

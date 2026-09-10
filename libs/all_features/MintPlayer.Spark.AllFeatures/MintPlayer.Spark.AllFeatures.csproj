@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
@@ -9,7 +9,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.AllFeatures</PackageId>
-		<Version>10.0.0-preview.79</Version>
+		<Version>10.0.0-preview.80</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>All-in-one package for MintPlayer.Spark. References all Spark libraries and source-generates AddSparkFull/UseSparkFull/MapSparkFull convenience methods.</Description>
@@ -39,6 +39,12 @@
 	<ItemGroup>
 		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 		<ProjectReference Include="..\MintPlayer.Spark.AllFeatures.SourceGenerators\MintPlayer.Spark.AllFeatures.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<!--
+		  Not for this project's own compilation, but so the DLL exists to be packed below: the
+		  <None Include="...\bin\$(Configuration)\..."> item reads from the referenced project's
+		  output directory, which nothing else here would have caused to be built.
+		-->
+		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>
 
 	<!--
@@ -49,6 +55,13 @@
 		<None Include="..\MintPlayer.Spark.AllFeatures.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.AllFeatures.SourceGenerators.dll"
 			  Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
 		<None Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.SourceGenerators.dll"
+			  Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+		<!--
+		  LibraryGenerators was packed nowhere until now, so SPARK016 reached no external consumer
+		  at all: the diagnostic that guards the generated row key was in-repo only. It also
+		  carries both [ValueObject] code fixes, so without this the lightbulbs ship to nobody.
+		-->
+		<None Include="..\..\source_generators\MintPlayer.Spark.LibraryGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.LibraryGenerators.dll"
 			  Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
 	</ItemGroup>
 

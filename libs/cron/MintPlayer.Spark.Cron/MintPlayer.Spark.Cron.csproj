@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
@@ -8,7 +8,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Cron</PackageId>
-		<Version>10.0.0-preview.79</Version>
+		<Version>10.0.0-preview.80</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Cron-scheduled background jobs for MintPlayer.Spark. Define jobs by implementing ISparkCronJob, declare the schedule with a static abstract CronSchedule, and let the scheduler run them. Multi-node safe via RavenDB compare-exchange locking.</Description>
@@ -25,11 +25,11 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.20.0">
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.22.0">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.20.0" GeneratePathProperty="true" />
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.20.1" GeneratePathProperty="true" />
 		<PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.11" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />

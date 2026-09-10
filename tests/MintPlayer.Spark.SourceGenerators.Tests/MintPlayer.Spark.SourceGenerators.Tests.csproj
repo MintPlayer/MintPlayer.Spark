@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -10,6 +10,20 @@
   <ItemGroup>
     <!-- Roslyn host at the same version the generator was compiled against (5.3.0). -->
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.3.0" />
+
+    <!--
+    Workspaces, at the same version, for two reasons — and the second one is not optional.
+
+    1. CodeFixHarness needs AdhocWorkspace/Solution/Document to run a CodeFixProvider at all.
+    2. MintPlayer.Spark.LibraryGenerators now contains code fixes, and this harness loads that
+       assembly by name and calls GetTypes() on it. Reflecting over an assembly whose types derive
+       from Workspaces types throws ReflectionTypeLoadException for the ENTIRE assembly when
+       Workspaces is absent — so without this reference the generator tests that have nothing to do
+       with code fixes would all fail too. That is precisely what happened on 2026-08-18 (R26 in
+       docs/issue_210_PRD.md) and was misread at the time as "a CodeFixProvider needs its own
+       assembly"; it needs its base type resolvable wherever something reflects over it.
+    -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.3.0" />
 
     <PackageReference Include="coverlet.collector" Version="10.0.1">
       <PrivateAssets>all</PrivateAssets>
@@ -30,7 +44,7 @@
     compile assets through puts a second ModuleInitializerAttribute in scope and every use becomes
     ambiguous with the one in System.Runtime (CS0433).
     -->
-    <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="10.20.0"
+    <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="10.21.0"
                       ExcludeAssets="all" GeneratePathProperty="true" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
       <PrivateAssets>all</PrivateAssets>
