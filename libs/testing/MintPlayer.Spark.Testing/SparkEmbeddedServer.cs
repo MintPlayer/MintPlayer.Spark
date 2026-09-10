@@ -44,6 +44,10 @@ internal static class SparkEmbeddedServer
         var license = LicenseHelper.LoadOrNull();
         RavenTestDriver.ConfigureServer(new TestServerOptions
         {
+            // The server is no longer copied into bin/ — it would be a 623 MB build output and
+            // Nx caches bin/Debug. It is provisioned once into a temp directory instead; null
+            // leaves RavenDB's default (AppContext.BaseDirectory) in place. See RavenServerLocator.
+            ServerDirectory = RavenServerLocator.ServerDirectory,
             Licensing = license is not null
                 ? new ServerOptions.LicensingOptions
                 {

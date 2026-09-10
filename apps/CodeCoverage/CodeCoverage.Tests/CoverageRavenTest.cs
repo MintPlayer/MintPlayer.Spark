@@ -36,6 +36,11 @@ public abstract class CoverageRavenTest : RavenTestDriver
 
         ConfigureServer(new TestServerOptions
         {
+            // The server is no longer copied into bin/ — it would be a 623 MB build output and
+            // Nx caches bin/Debug. Provisioned once into a temp directory instead; null leaves
+            // RavenDB's default (AppContext.BaseDirectory) in place.
+            ServerDirectory = MintPlayer.Spark.Testing.RavenServerLocator.ServerDirectory,
+
             // Deliberately conditional rather than always tolerant.
             //
             // With a licence, honour it and let an invalid one fail loudly at

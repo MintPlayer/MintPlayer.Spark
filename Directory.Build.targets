@@ -3,4 +3,62 @@
 	<PropertyGroup Condition="'$(OutputType)' == 'Library'">
 		<NoDefaultLaunchSettingsFile>true</NoDefaultLaunchSettingsFile>
 	</PropertyGroup>
+
+	<!--
+	  Keep RavenDB's 623 MB embedded server out of bin/.
+
+	  RavenDB.Embedded's own build/RavenDB.Embedded.targets copies contentFiles/any/any/**
+	  (the whole RavenDBServer directory) into $(OutDir) on every build. Nx declares
+	  {projectRoot}/bin/Debug as a cached output, so each referencing project became a ~600 MB
+	  cache artifact. Pushing those to the self-hosted cache aborted with an nginx 499, and Nx
+	  turns a cache failure into a task failure — which skipped the entire test sweep.
+
+	  The server stops being a build output entirely. RavenServerLocator provisions it at run time
+	  into a temp directory and points the test driver there. That is deliberately not done here
+	  in MSBuild: the test task runs `dotnet test` in no-build mode, so on an Nx build cache hit
+	  MSBuild never executes and anything copied by a target would simply be absent.
+
+	  It also cannot just point at the restored NuGet package, tempting as that is — the server
+	  writes a Temp directory next to its own binaries at startup (measured 2026-09-10), and that
+	  store is shared by every solution on the machine.
+
+	  Emptying the item lists is deliberate rather than overriding CopyRavenDBServer: the override
+	  would depend on import order between Directory.Build.targets and NuGet's generated
+	  .nuget.g.targets, whereas an empty item list is order-independent and degrades to a no-op if
+	  the package ever stops defining them.
+
+	  The server arrives by two independent routes and both have to be closed:
+
+	    1. NuGet contentFiles. The nuspec marks the RavenDBServer tree buildAction="None"
+	       copyToOutput="true", so the files land as None items carrying NuGetPackageId
+	       metadata and are copied by the ordinary copy-to-output pass. Closing only route 2
+	       leaves this one still copying, which is what made the first attempt look like a
+	       no-op.
+	    2. The package's own CopyRavenDBServer target, hooked into PrepareForRunDependsOn.
+	-->
+	<Target Name="SparkSkipRavenDBServerContent" BeforeTargets="AssignTargetPaths">
+		<ItemGroup>
+			<None Remove="@(None->WithMetadataValue('NuGetPackageId', 'RavenDB.Embedded'))" />
+		</ItemGroup>
+	</Target>
+
+	<Target Name="SparkSkipRavenDBServerCopy" BeforeTargets="CopyRavenDBServer">
+		<ItemGroup>
+			<RavenDBServer Remove="@(RavenDBServer)" />
+		</ItemGroup>
+	</Target>
+
+	<!--
+	  Suppressing the copy does not remove what earlier builds already put there. A working tree
+	  that predates this change keeps 623 MB in bin/, and since Nx caches {projectRoot}/bin/Debug
+	  wholesale it would go on being uploaded — the original defect, surviving its own fix on every
+	  machine that had built before. Deleting it makes the transition self-healing rather than
+	  something every developer has to be told to clean by hand.
+
+	  Nothing reads the copy in bin/ any more: RavenServerLocator provisions its own directory.
+	-->
+	<Target Name="SparkRemoveStaleRavenDBServer" AfterTargets="CopyFilesToOutputDirectory"
+			Condition="Exists('$(OutDir)RavenDBServer')">
+		<RemoveDir Directories="$(OutDir)RavenDBServer" ContinueOnError="true" />
+	</Target>
 </Project>

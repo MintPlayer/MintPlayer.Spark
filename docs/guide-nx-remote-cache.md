@@ -59,3 +59,20 @@ npx nx run-many -t build
 ```
 
 Without these set, Nx falls back to the local-only cache under `.nx/cache/`.
+
+## Keeping large build products out of the cache
+
+Nx has **no size-based filter** on what is uploaded. `maxCacheSize` / `NX_MAX_CACHE_SIZE` caps the
+*local* cache directory and evicts least-recently-used entries; it never inspects a remote upload.
+The only filter is the `outputs` globs, which select by path — and negated patterns are currently
+[reported not to work](https://github.com/nrwl/nx/issues/35150).
+
+This matters because a failed cache upload is not reported as a cache problem: **Nx escalates it
+into a task failure**, so a `build` task fails with a clean compiler log and every dependent test
+task is skipped.
+
+The one instance of this in the repo — RavenDB's 623 MB embedded test server, which once occupied
+93% of the cache volume — is documented in
+[the RavenDB test server guide](guide-ravendb-test-server.md). Read it before adding a test project
+that references `RavenDB.TestDriver`, or before declaring outputs for any target that emits
+hundreds of megabytes.

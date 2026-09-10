@@ -13,6 +13,7 @@ using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Controllers;
 using MintPlayer.Spark.Extensions;
+using MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Webhooks.GitHub.Extensions;
@@ -178,12 +179,12 @@ builder.Services.AddSpark(builder.Configuration, spark =>
             && long.TryParse(builder.Configuration["GitHub:Development:AppId"], out var devAppId))
             options.DevelopmentAppId = devAppId;
 
-        // Deliberately NOT options.AddSmeeDevTunnel(smeeUrl): re-minifying the
-        // smee-relayed body is necessary (GitHub signs minified bytes), but
-        // Spark's tunnel does it via a Newtonsoft round-trip that rewrites
-        // fractional-second timestamps — so every installation event fails
-        // signature validation. Our lexically-minifying replacement is
-        // registered below; upstream fix tracked in docs/spark-handoff.md.
+        // Dev only: relay a smee.io channel into the local webhook processor.
+        // The tunnel hands the processor the exact bytes GitHub signed, so
+        // signature validation applies here as it does to a direct delivery.
+        var smeeChannelUrl = builder.Configuration["GitHub:SmeeChannelUrl"];
+        if (!string.IsNullOrEmpty(smeeChannelUrl))
+            options.AddSmeeDevTunnel(smeeChannelUrl);
     });
 });
 
@@ -195,11 +196,6 @@ builder.Services.AddDataProtection().SetApplicationName("CodeCoverage");
 builder.Services.AddOptions<Microsoft.AspNetCore.DataProtection.KeyManagement.KeyManagementOptions>()
     .Configure<Raven.Client.Documents.IDocumentStore>((options, store) =>
         options.XmlRepository = new CodeCoverage.Services.RavenDataProtectionKeyRepository(store));
-
-if (!string.IsNullOrEmpty(builder.Configuration["GitHub:SmeeChannelUrl"]))
-{
-    builder.Services.AddHostedService<CodeCoverage.Services.SmeeWebhookTunnelService>();
-}
 
 // GitHubOidc: GitHub-signed workflow JWTs, validated against GitHub's JWKS;
 // the audience must be this deployment's public base URL and the action must

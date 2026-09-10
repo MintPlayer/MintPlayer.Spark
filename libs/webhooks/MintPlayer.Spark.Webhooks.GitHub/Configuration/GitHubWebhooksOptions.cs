@@ -36,6 +36,31 @@ public class GitHubWebhooksOptions
     /// </summary>
     public List<string> AllowedDevUsers { get; set; } = [];
 
+    /// <summary>
+    /// Decides which connected developer receives a forwarded webhook. Given the delivery's
+    /// routing context and a connected developer's GitHub login, return <see langword="true"/> to
+    /// send them that delivery.
+    /// <para>
+    /// <b>Default: the delivery goes to the developer who caused it</b> — <c>sender.login</c>
+    /// matched case-insensitively against the login the developer authenticated with. A payload
+    /// with no sender falls back to every connected developer, so an unattributed delivery is
+    /// never silently lost.
+    /// </para>
+    /// <para>
+    /// <see cref="AllowedDevUsers"/> is not a substitute for this: it gates who may
+    /// <em>connect</em>, not who receives <em>which</em> delivery. Without a filter, every
+    /// connected developer sees every other developer's webhook traffic.
+    /// </para>
+    /// <para>
+    /// To restore the previous fan-out-to-everyone behaviour:
+    /// <code>options.DevSocketFilter = static (_, _) => true;</code>
+    /// </para>
+    /// </summary>
+    public Func<GitHubWebhookRoutingContext, string, bool> DevSocketFilter { get; set; } =
+        static (context, developerLogin) =>
+            string.IsNullOrEmpty(context.SenderLogin)
+            || string.Equals(context.SenderLogin, developerLogin, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>GitHub App Client ID, used for JWT authentication when making API calls.</summary>
     public string? ClientId { get; set; }
 

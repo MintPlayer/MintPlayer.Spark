@@ -74,7 +74,8 @@ internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
                             If you want to handle webhooks here, remove the GitHub:Development:AppId configuration value.
                             """);
 
-                    await devSocketService.SendToClients(caseInsensitiveHeaders, body);
+                    await devSocketService.SendToClients(
+                        caseInsensitiveHeaders, body, ReadRoutingContext(caseInsensitiveHeaders, body));
                 }
                 return;
             }
@@ -207,6 +208,42 @@ internal partial class SparkWebhookEventProcessor : WebhookEventProcessor
             // we do not know rather than an attack. Route it with empty fields instead of losing it.
             return (0, string.Empty);
         }
+    }
+
+    /// <summary>
+    /// Builds the context the dev-tunnel routing filter decides on. Only the forwarding path needs
+    /// the sender, so it is read here rather than widening <see cref="ReadRoutingFields"/> and
+    /// paying for it on every production delivery.
+    /// </summary>
+    private static GitHubWebhookRoutingContext ReadRoutingContext(
+        IDictionary<string, StringValues> headers, string body)
+    {
+        var (installationId, repositoryFullName) = ReadRoutingFields(body);
+
+        var senderLogin = string.Empty;
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            if (document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("sender", out var sender)
+                && sender.ValueKind == JsonValueKind.Object
+                && sender.TryGetProperty("login", out var login)
+                && login.ValueKind == JsonValueKind.String)
+            {
+                senderLogin = login.GetString() ?? string.Empty;
+            }
+        }
+        catch (JsonException)
+        {
+            // Same reasoning as ReadRoutingFields: an unparseable body is an unknown shape, not an
+            // attack. An empty sender makes the default filter fall back to every developer.
+        }
+
+        return new GitHubWebhookRoutingContext(
+            EventName: Header(headers, "X-GitHub-Event") ?? string.Empty,
+            SenderLogin: senderLogin,
+            RepositoryFullName: repositoryFullName,
+            InstallationId: installationId);
     }
 
     private static WebhookHeaders BuildHeaders(IDictionary<string, StringValues> headers)

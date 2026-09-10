@@ -25,6 +25,7 @@ public static class SparkBuilderExtensions
             opt.DevelopmentAppId = options.DevelopmentAppId;
             opt.DevWebSocketPath = options.DevWebSocketPath;
             opt.AllowedDevUsers = options.AllowedDevUsers;
+            opt.DevSocketFilter = options.DevSocketFilter;
             opt.ClientId = options.ClientId;
             opt.PrivateKeyPem = options.PrivateKeyPem;
             opt.PrivateKeyPath = options.PrivateKeyPath;
