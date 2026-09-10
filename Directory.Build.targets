@@ -47,4 +47,18 @@
 			<RavenDBServer Remove="@(RavenDBServer)" />
 		</ItemGroup>
 	</Target>
+
+	<!--
+	  Suppressing the copy does not remove what earlier builds already put there. A working tree
+	  that predates this change keeps 623 MB in bin/, and since Nx caches {projectRoot}/bin/Debug
+	  wholesale it would go on being uploaded — the original defect, surviving its own fix on every
+	  machine that had built before. Deleting it makes the transition self-healing rather than
+	  something every developer has to be told to clean by hand.
+
+	  Nothing reads the copy in bin/ any more: RavenServerLocator provisions its own directory.
+	-->
+	<Target Name="SparkRemoveStaleRavenDBServer" AfterTargets="CopyFilesToOutputDirectory"
+			Condition="Exists('$(OutDir)RavenDBServer')">
+		<RemoveDir Directories="$(OutDir)RavenDBServer" ContinueOnError="true" />
+	</Target>
 </Project>

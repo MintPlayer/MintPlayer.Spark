@@ -30,7 +30,14 @@ public class RavenServerLocatorTests
     {
         // Guards the actual defect: if a future change re-enables either copy route, bin/ grows by
         // 623 MB and every Nx cache upload for this project starts failing with a 499.
-        Directory.Exists(Path.Combine(AppContext.BaseDirectory, "RavenDBServer")).Should().BeFalse();
+        //
+        // Asserts on the payload rather than the directory. A working tree that predates this
+        // change can be left with an empty RavenDBServer skeleton — measured here as 80 empty
+        // directories and no files — which is harmless and which MSBuild now deletes anyway.
+        // Failing on that would report residue as a regression.
+        var copied = Path.Combine(AppContext.BaseDirectory, "RavenDBServer", "Raven.Server.dll");
+
+        File.Exists(copied).Should().BeFalse();
     }
 
     [Fact]
