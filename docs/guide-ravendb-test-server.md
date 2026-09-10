@@ -87,10 +87,32 @@ NuGet package into:
 %TEMP%/MintPlayer.Spark/RavenDBServer/<package-version>/
 ```
 
-and exposes it as `RavenServerLocator.ServerDirectory`. It is copied once per machine per version;
-a `.spark-provisioned` marker means a crashed or concurrent run can never leave a partial tree that
-a later run would trust. If anything fails it returns `null`, and RavenDB falls back to its default
-of `AppContext.BaseDirectory` rather than every test failing on a disk problem.
+and exposes it as `RavenServerLocator.ServerDirectory`. It is copied once per machine per version.
+
+Two separate concurrency problems are handled, because `nx run-many` runs test projects as parallel
+processes and three of them (`MintPlayer.Spark.Tests`, `MintPlayer.Spark.Client.Tests`,
+`MintPlayer.Spark.E2E.Tests`) resolve the same version through `MintPlayer.Spark.Testing`:
+
+- **Nobody may observe a partial tree.** The copy goes into `<target>.staging-<pid>`, the
+  `.spark-provisioned` marker is written *inside* staging, and the whole directory is published
+  with a single `Directory.Move`. The marker only becomes visible through the rename, so a reader
+  sees either no directory or a complete one.
+- **Only one process should do the copying.** An exclusive lock file serialises provisioning; the
+  others wait for the marker instead of each copying 623 MB. Without it a cold machine does ~1.9 GB
+  of simultaneous I/O, which was measured starving the E2E suite into timing-related failures. The
+  lock is a file rather than a named mutex because named mutexes are Windows-only in .NET and CI
+  runs on Linux, and it uses `FileOptions.DeleteOnClose` so a killed holder cannot wedge later
+  runs. A waiter that times out after 10 minutes copies anyway, so a stuck holder degrades to the
+  old behaviour rather than hanging.
+
+Staging directories abandoned by a process that died mid-copy are cleaned up on the next
+provisioning run.
+
+If provisioning fails, `ServerDirectory` is `null`. **That is not a working fallback** — RavenDB
+then looks in `AppContext.BaseDirectory`, which no longer contains a server, and fails to start.
+`null` is returned rather than thrown so the error surfaces from RavenDB's own start-up naming the
+missing directory, instead of as a `TypeInitializationException` from a static constructor. If the
+suite fails with the server not found, provisioning is what to investigate.
 
 **Version-scoped** because projects here pin different `RavenDB.TestDriver` versions —
 `MintPlayer.Spark.Testing` on 7.2.5, `CodeCoverage.Tests` on 7.2.1 — and two server builds must not
