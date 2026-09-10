@@ -34,6 +34,13 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<!--
+		  Linked rather than referenced through MintPlayer.Spark.Testing. That project pins
+		  RavenDB.TestDriver 7.2.5 where this one pins 7.2.1, so a ProjectReference would silently
+		  bump the server version under 435 tests of a production app and drag in Verify besides.
+		  The locator is version-agnostic — it reads the version from this project's own deps.json.
+		-->
+		<Compile Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\RavenServerLocator.cs" Link="RavenServerLocator.cs" />
 		<ProjectReference Include="..\CodeCoverage\CodeCoverage.csproj" />
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>
