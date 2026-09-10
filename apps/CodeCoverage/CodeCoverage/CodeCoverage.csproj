@@ -17,11 +17,11 @@
 		     10.0.* it carried out-of-tree: in-repo the two must not disagree. -->
 		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
 		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="10.5.0" />
-		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.20.0">
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.22.0">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.20.0" GeneratePathProperty="true" />
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.20.1" GeneratePathProperty="true" />
 		<!--
 		  Explicit rather than transitive. It arrives through MintPlayer.Spark.Webhooks.GitHub
 		  anyway, but this app now writes Projects V2 GraphQL of its own, and a BETA package that
