@@ -281,14 +281,22 @@ SPARK017 has to live in the application because only the context knows which typ
 reaches. The type it complains about, though, usually lives in the entity library — and that
 mismatch decides where the error appears:
 
-⚠️ **The diagnostic is reported on the `SparkContext` property that reaches the type, not on the
-type itself**, whenever the type belongs to another project. This is not cosmetic. Roslyn's analyzer
-driver *discards* any diagnostic whose location lies in a syntax tree the analyzed compilation does
-not contain, so pointing at the type's own declaration made SPARK017 **vanish silently in the IDE**
-— it showed up only at `dotnet build`, where a referenced project is a .dll and the location is
-empty. Reporting on the context property keeps it inside the compilation, so you now see it while
-editing, and `dotnet build` prints a file and line instead of a bare `CSC : error`. The message
-still names the fully-qualified type, because the location no longer does.
+⚠️ **The diagnostic is reported on the `SparkContext` property that reaches the type, never on the
+type itself** — including when the type lives in the same project. This is not cosmetic, and it took
+two measured failures to settle:
+
+1. Roslyn's analyzer driver *discards* any diagnostic whose location lies in a syntax tree the
+   analyzed compilation does not contain. Pointing at the type's own declaration made SPARK017
+   **vanish silently in the IDE** for a type in an entity library; it appeared only at
+   `dotnet build`, where the library is a .dll and the location is empty.
+2. The analyzer runs as a **symbol action on the context**, so Roslyn attributes its diagnostics to
+   the context's document. A location in any other file — even one in the same project — is
+   filtered out of that document's live diagnostics, so it never gets a light bulb.
+
+Reporting on the context property satisfies both: it is a location the analyzed symbol owns. You see
+the error while editing, `dotnet build` prints a file and line instead of a bare `CSC : error`, and
+the code fix is offered. The message names the fully-qualified type, because the location no longer
+does.
 
 ⚠️ SPARK017 deliberately does **not** check `partial` — that is SPARK016's job, in the compilation
 that owns the syntax. It is a division of responsibility, not a limitation: an analyzer reads

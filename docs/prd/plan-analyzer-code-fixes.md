@@ -216,3 +216,54 @@ valuable and fixes a live reachability hole.
   `Update`. Any Workspaces reference must match, and the test project's Roslyn host is already 5.3.0.
 - **One PR.** The fixes, the packaging repairs, the DemoApp reference, the guard test, the version
   bumps and the docs land together.
+
+---
+
+## Spike outcomes (measured in Visual Studio, 2026-09-10)
+
+### S2 — generator-emitted diagnostics DO get a light bulb ✅
+
+SPARK016 fires and its fix applies in the IDE. That a diagnostic comes from an `IDiagnosticReporter`
+inside a generator rather than from a `DiagnosticAnalyzer` turns out not to matter: Roslyn matches
+fixes by id, and the IDE offers them. No promotion of `ValueObjectKeyReporter` to an analyzer needed.
+
+### S1 — compilation-end diagnostics do NOT get a light bulb ❌, and that was the whole problem
+
+SPARK017 fired exactly where designed — on the context property — and **no fix was ever offered**.
+The discriminator is the registration kind, not the location:
+
+- `RegisterCompilationAction` produces compilation-*end* diagnostics. They reach the Error List on
+  build but are not live document diagnostics, and the light bulb only offers fixes for live ones.
+- INTF001 offers its fix in the same solution and uses `RegisterSymbolAction`. That contrast is what
+  identified the cause.
+
+Fixed by moving SPARK017 to `RegisterSymbolAction(SymbolKind.NamedType)` on the `SparkContext`
+subclass. Nothing was lost: the roots of the walk are the context's own `IRavenQueryable`
+properties, so a symbol action has everything the compilation-wide version had. The old comment
+claiming otherwise was wrong about its own analyzer.
+
+**A second location rule fell out of it.** Under a symbol action, Roslyn attributes diagnostics to
+the analyzed symbol's document, and a location in any *other* file is filtered from that document's
+live diagnostics — even inside one project. So the location is now the context property
+**unconditionally**, not just when the type is cross-project. The rule, which INTF001 embodies:
+**report at a location the analyzed symbol owns, and let only the fix travel.**
+
+Pinned by `SPARK017_is_reported_by_a_document_scoped_action`, which uses
+`GetAnalyzerSemanticDiagnosticsAsync` — it runs only document-scoped actions, so it fails if anyone
+moves the registration back. Every other test in the file passes under either registration, which is
+why none of them caught this.
+
+### S3 — no consumer-build fault ✅ (in-repo half)
+
+All four apps build with the fix-carrying assembly loaded as an analyzer: zero AD0001, CS8032 or
+`ReflectionTypeLoadException`. The packed nupkg carries all three analyzer DLLs. Consuming that
+nupkg from a local feed on a clean machine is still unmeasured.
+
+### Found while verifying: mixed generator package versions break the IDE
+
+Visual Studio reported errors for missing generated code while the CLI build was clean, because
+`MintPlayer.SourceGenerators.Tools` resolved as both 10.20.0 and 10.21.0 (and
+`ValueComparerGenerator.Attributes` as 10.20.0 and 10.20.1), so VS loaded two copies of the same
+analyzer. A `PackageReference` pin does not win against a higher transitive floor, so the csprojs
+all looked consistent while the graph was not — diagnose it from `project.assets.json`, never from
+the pins.

@@ -55,12 +55,23 @@ library, or any `dotnet build`, where a referenced project has become a `.dll`. 
 document to edit. In a loaded IDE solution the same reference is a `CompilationReference`, source
 locations survive, and the fix works across the project boundary.
 
-⚠️ **A diagnostic must be reported at a location inside the compilation that raises it.** Roslyn's
-analyzer driver discards anything else — measured: a two-project fixture reported zero diagnostics
-where the identical single-project fixture reported one. SPARK017 therefore reports on the
-`SparkContext` property that reaches the offending type, and carries the type's metadata name in the
-`SparkOffendingType` diagnostic property so the fix can resolve the declaration through the
-solution. Any future cross-project diagnostic must do the same, or it will be silently dropped in
-the IDE while still failing the build.
+⚠️ **Report at a location the analyzed symbol owns, and let only the fix travel.** Two separate
+measurements forced this rule, and any future cross-project diagnostic must follow it:
+
+- A diagnostic whose location lies in a syntax tree the analyzed **compilation** does not contain is
+  discarded outright — a two-project fixture reported zero where the identical single-project
+  fixture reported one.
+- A diagnostic whose location lies outside the **document** being analyzed is filtered from that
+  document's live diagnostics, so it never gets a light bulb even within one project.
+
+⚠️ **Registration kind decides whether a fix can be offered at all.** `RegisterCompilationAction`
+produces compilation-end diagnostics: they reach the Error List on build but are not live, and the
+light bulb only offers fixes for live ones. SPARK017 originally used one, squiggled correctly, and
+was never offered its fix. It is now a `RegisterSymbolAction` on the `SparkContext` subclass — the
+same registration INTF001 uses, which is why that rule's fix always worked.
+
+SPARK017 therefore reports on the `SparkContext` property that reaches the offending type, and
+carries the type's metadata name in the `SparkOffendingType` diagnostic property so the fix can
+resolve the declaration through the solution.
 
 See `docs/prd/PRD-Analyzer-Code-Fixes.md` for the full design and the measurements behind it.

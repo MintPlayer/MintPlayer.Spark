@@ -2,8 +2,8 @@ using MintPlayer.Spark.Abstractions;
 
 namespace HR.Entities;
 
-[ValueObject]
-public partial class CarreerJob
+//[ValueObject]
+public class CarreerJob
 {
     /// <summary>The profession held during this career step.</summary>
     [Reference(typeof(Profession))]

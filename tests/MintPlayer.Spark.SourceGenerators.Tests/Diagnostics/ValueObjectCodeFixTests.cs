@@ -1,3 +1,6 @@
+﻿using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Diagnostics;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.SourceGenerators.Tests._Infrastructure;
 
@@ -256,6 +259,54 @@ public class ValueObjectCodeFixTests
         // The doc comment stays above the attribute, not orphaned below it.
         fixedSource.IndexOf("<summary>", StringComparison.Ordinal)
             .Should().BeLessThan(fixedSource.IndexOf("[ValueObject]", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// ⚠️ SPARK017 must be a <b>document-scoped</b> diagnostic, or its code fix silently disappears.
+    /// </summary>
+    /// <remarks>
+    /// Found in Visual Studio, not here: the analyzer originally used
+    /// <c>RegisterCompilationAction</c>, whose diagnostics reach the Error List on build but are
+    /// not live document diagnostics — and the light bulb only offers fixes for live ones. The
+    /// error appeared on the context property exactly as designed, and no fix was ever offered.
+    /// <c>InterfaceImplementationAnalyzer</c> (INTF001) offers its fix in the same solution, and it
+    /// is a symbol action; that contrast is what identified the cause.
+    /// <para>
+    /// <c>GetAnalyzerSemanticDiagnosticsAsync</c> runs only the document-scoped actions, so a
+    /// diagnostic that appears here cannot have come from a compilation-end action. Every other
+    /// test in this file passes under either registration — this is the only one that fails if
+    /// someone moves it back.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task SPARK017_is_reported_by_a_document_scoped_action()
+    {
+        var compilation = CSharpCompilation.Create(
+            "TestInput",
+            [CSharpSyntaxTree.ParseText(AppSource, path: "AppContext.cs"),
+             CSharpSyntaxTree.ParseText(PersonSource, path: "Person.cs"),
+             CSharpSyntaxTree.ParseText("""
+                namespace TestLib;
+
+                public class PhoneNumber
+                {
+                    public string? Number { get; set; }
+                }
+                """, path: "PhoneNumber.cs")],
+            GeneratorHarness.BuildReferences(Refs),
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var analyzer = (DiagnosticAnalyzer)GeneratorHarness.InstantiateComponent(
+            "ValueObjectCompletenessAnalyzer", null, typeof(DiagnosticAnalyzer));
+
+        var contextTree = compilation.SyntaxTrees.First(t => t.FilePath == "AppContext.cs");
+
+        var diagnostics = await compilation
+            .WithAnalyzers([analyzer])
+            .GetAnalyzerSemanticDiagnosticsAsync(
+                compilation.GetSemanticModel(contextTree), filterSpan: null, default);
+
+        diagnostics.Should().ContainSingle().Which.Id.Should().Be("SPARK017");
     }
 
     /// <summary>
