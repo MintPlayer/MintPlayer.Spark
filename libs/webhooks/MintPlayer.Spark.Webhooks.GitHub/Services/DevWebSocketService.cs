@@ -1,4 +1,6 @@
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Primitives;
+using MintPlayer.Spark.Webhooks.GitHub.Configuration;
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
 
@@ -11,6 +13,12 @@ internal class DevWebSocketService : IDevWebSocketService
     // ConcurrentDictionary keyed by reference so add/remove are lock-free and
     // iteration produces a stable snapshot.
     private readonly ConcurrentDictionary<SocketClient, byte> _clients = new();
+    private readonly IOptions<GitHubWebhooksOptions> _options;
+
+    public DevWebSocketService(IOptions<GitHubWebhooksOptions> options)
+    {
+        _options = options;
+    }
 
     public async Task NewSocketClient(SocketClient client)
     {
@@ -30,16 +38,22 @@ internal class DevWebSocketService : IDevWebSocketService
         }
     }
 
-    public async Task SendToClients(IDictionary<string, StringValues> headers, string body)
+    public async Task SendToClients(IDictionary<string, StringValues> headers, string body, GitHubWebhookRoutingContext context)
     {
         var payload = $"{string.Join("\n", headers.Select(h => $"{h.Key}: {h.Value}"))}\n\n{body}";
+        var filter = _options.Value.DevSocketFilter;
 
         foreach (var client in _clients.Keys)
         {
-            if (client.WebSocket.State == WebSocketState.Open)
-            {
-                await client.SendMessage(payload);
-            }
+            if (client.WebSocket.State != WebSocketState.Open)
+                continue;
+
+            // Without this, every connected developer receives every other developer's webhook
+            // traffic. AllowedDevUsers gates who may connect, not who receives which delivery.
+            if (!filter(context, client.GitHubUsername))
+                continue;
+
+            await client.SendMessage(payload);
         }
     }
 }

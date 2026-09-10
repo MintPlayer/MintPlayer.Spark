@@ -32,11 +32,11 @@ public class SparkWebhookEventProcessorTests
     /// </summary>
     private sealed class FakeDevWebSocketService : IDevWebSocketService
     {
-        public List<(IDictionary<string, StringValues> Headers, string Body)> Sent { get; } = [];
+        public List<(IDictionary<string, StringValues> Headers, string Body, GitHubWebhookRoutingContext Context)> Sent { get; } = [];
         public bool SendToClientsCalled => Sent.Count > 0;
-        public Task SendToClients(IDictionary<string, StringValues> headers, string body)
+        public Task SendToClients(IDictionary<string, StringValues> headers, string body, GitHubWebhookRoutingContext context)
         {
-            Sent.Add((headers, body));
+            Sent.Add((headers, body, context));
             return Task.CompletedTask;
         }
         public Task NewSocketClient(SocketClient client) => Task.CompletedTask;
