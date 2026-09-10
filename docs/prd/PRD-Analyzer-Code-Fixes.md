@@ -1,6 +1,11 @@
 # PRD — Code fixes for the Spark diagnostics
 
-**Status: PROPOSED** · Plan: `plan-analyzer-code-fixes.md`
+**Status: IMPLEMENTED and verified in Visual Studio (2026-09-10)** · Plan: `plan-analyzer-code-fixes.md`
+
+Acceptance criteria 1–3 confirmed by hand in the IDE, including the cross-project case; 4–10 by the
+build and the suite. Two things the plan did not predict, both recorded in the plan's spike
+outcomes: the registration kind — not the location — decided whether a fix was offered at all, and
+the location rule turned out to be unconditional rather than cross-project only.
 
 ## 1. Problem
 

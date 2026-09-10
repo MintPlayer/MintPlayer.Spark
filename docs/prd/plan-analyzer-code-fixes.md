@@ -1,6 +1,10 @@
 # Plan — Code fixes for the Spark diagnostics
 
-**Status: NOT STARTED** · PRD: `PRD-Analyzer-Code-Fixes.md`
+**Status: IMPLEMENTED** on `feat/analyzer-code-fixes` · PRD: `PRD-Analyzer-Code-Fixes.md`
+**✅ Verified in Visual Studio, 2026-09-10** — SPARK016 offers *"Declare the value object 'partial'"*;
+SPARK017 reports on the `SparkContext` property and offers *"Make this a value object"*, whose edit
+lands in the entity library's file. Both spikes that could have killed the feature (S1, S2) are
+resolved below. 278 tests pass; solution builds clean.
 
 Three spikes first, because two of them can each kill half the feature and both are cheap to
 measure. Nothing is designed further until S1–S3 report.
@@ -228,6 +232,12 @@ inside a generator rather than from a `DiagnosticAnalyzer` turns out not to matt
 fixes by id, and the IDE offers them. No promotion of `ValueObjectKeyReporter` to an analyzer needed.
 
 ### S1 — compilation-end diagnostics do NOT get a light bulb ❌, and that was the whole problem
+
+**Resolved: after the change below, *"Make this a value object"* is offered in the IDE and applies
+across the project boundary.** This also answers PRD C4b's open question — the app host's
+`LibraryGenerators` reference is sufficient, because the diagnostic now belongs to the app's own
+document; entity libraries do not each need one for SPARK017 (they still do for SPARK016, which
+they already have).
 
 SPARK017 fired exactly where designed — on the context property — and **no fix was ever offered**.
 The discriminator is the registration kind, not the location:
