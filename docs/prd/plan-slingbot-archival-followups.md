@@ -163,6 +163,27 @@ The single test run for the whole task.
 
 ---
 
+## Outcomes
+
+**S1 — NOT RUN.** It needs a live GitHub App, a real webhook secret and a smee channel, so it is
+the user's to run, not the assistant's; a secret must never pass through the assistant. The fix
+does not depend on the answer — capturing the raw bytes is correct either way — but the
+*sufficiency* of the fix does. Run it before trusting the tunnel in anger. If a real delivery still
+fails to verify, the cause is upstream of this repo and the fallback in S1 applies.
+
+**M1–M7 — DONE.** Solution builds clean (0 errors, 47 pre-existing warnings).
+
+**Criterion 3 (timezone independence) — asserted structurally, not across two timezones.** The
+plan called for running the suite under two `TZ` values. On Windows .NET does not honour the `TZ`
+environment variable — `TimeZoneInfo.Local` comes from the OS — so that run is not achievable
+locally without changing the machine's clock settings. What the tests do assert is stronger in one
+way and weaker in another: `SmeeBodyReader` performs no date parsing at all, so there is no code
+path for `TimeZoneInfo.Local` to influence, and `SmeeSignatureFidelityTests` pins a `+02:00` offset
+surviving verbatim. To close the criterion properly, run the DevTunnel tests once on a Linux CI
+runner with `TZ=UTC` and once with `TZ=Pacific/Kiritimati`.
+
+**D8 — WITHDRAWN.** Not a defect; see the PRD.
+
 ## Notes
 
 - **Do not run the Angular dev server** for any of this; nothing here touches a SPA.
