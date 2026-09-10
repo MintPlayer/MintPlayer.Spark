@@ -21,6 +21,7 @@ public static class GitHubWebhooksDevTunnelExtensions
                 opt.ChannelUrl = smeeChannelUrl;
             });
 
+            services.AddHttpClient();
             services.AddHostedService<SmeeBackgroundService>();
         });
 
