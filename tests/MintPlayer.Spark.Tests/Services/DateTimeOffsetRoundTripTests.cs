@@ -65,7 +65,14 @@ public class DateTimeOffsetRoundTripTests : SparkTestDriver
                                   meeting.Title,
                                   meeting.Starts,
                                   meeting.MaybeEnds,
+                                  StartsRaw = new SparkIndexValue<DateTimeOffset> { V = meeting.Starts },
+                                  MaybeEndsRaw = new SparkIndexValue<DateTimeOffset?> { V = meeting.MaybeEnds },
                               };
+            // Mandatory, not decorative: without it Corax deploys this index cleanly and then parks
+            // it at state=Error, entries=0 (NotSupportedInCoraxException), so every query returns
+            // nothing. Lucene is unaffected, which is what makes it easy to miss.
+            Index(nameof(VMeeting.StartsRaw), FieldIndexing.No);
+            Index(nameof(VMeeting.MaybeEndsRaw), FieldIndexing.No);
             StoreAllFields(FieldStorage.Yes);
         }
     }
@@ -77,6 +84,12 @@ public class DateTimeOffsetRoundTripTests : SparkTestDriver
         public string Title { get; set; } = string.Empty;
         public DateTimeOffset Starts { get; set; }
         public DateTimeOffset? MaybeEnds { get; set; }
+
+        [IgnoreProperty]
+        public SparkIndexValue<DateTimeOffset>? StartsRaw { get; set; }
+
+        [IgnoreProperty]
+        public SparkIndexValue<DateTimeOffset?>? MaybeEndsRaw { get; set; }
     }
 
     public class TestContext : SparkContext
