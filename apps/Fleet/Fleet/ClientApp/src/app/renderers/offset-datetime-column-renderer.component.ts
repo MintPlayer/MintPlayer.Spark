@@ -1,31 +1,62 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { DatePipe } from '@angular/common';
 import { SparkCellColumn } from '@mintplayer/ng-spark/models';
 import { SparkAttributeColumnRenderer } from '@mintplayer/ng-spark/renderers';
 
 /**
- * Renders a `DateTimeOffset` as the wall clock and UTC offset the server actually sent.
+ * Demo renderer: shows the three values a `DateTimeOffset` has at once, so the difference between them
+ * is visible instead of having to be reasoned about.
  *
- * The default `datetime` column pipes the value through Angular's `DatePipe` with no timezone
- * argument, which formats in the **browser's** local zone. That is correct for a moment in time and
- * wrong for this demo: every row would display in your own offset, hiding the very thing the fix
- * restores. A column renderer receives the **raw wire value** rather than the piped one, so it can
- * print the ISO string verbatim.
+ * **This is a demonstration device, not a pattern to copy.** A real app shows a timestamp one way — the
+ * viewer's local time, which is what the default `datetime` column and the detail page both do. This
+ * exists because the Fleet demo's whole job is to make an invisible data defect visible.
  *
- * Nothing here parses into a JS `Date` on purpose — `new Date(...)` discards the offset immediately,
- * which is the same loss in the browser that RavenDB used to inflict in the index.
+ * The three lines:
+ *
+ * - **stored** — the wall clock and offset held in the document, recovered through the index by the
+ *   `{Name}Raw` wrapper. `17:48 −03:30` means "quarter to six in the evening, where this was registered".
+ * - **your time** — the same instant in the viewer's zone. This is what the detail page shows, and what
+ *   every other grid in the framework shows. It differs from the line above whenever the viewer's offset
+ *   differs from the value's, which is most of the time.
+ * - **index only** — what the projection would have returned before the fix: the same instant, with the
+ *   offset destroyed. Derived here from the instant rather than fetched, because that is exactly what
+ *   RavenDB's flattening produces — a UTC re-expression of the same moment.
+ *
+ * A column renderer receives the **raw wire value**, not the piped one, so the first line can print the
+ * ISO string's own fields verbatim. Nothing here parses the stored line into a `Date`: `new Date(...)`
+ * collapses the value to an instant and forgets the offset, which is the same loss in the browser that
+ * RavenDB used to inflict in the index.
  */
 @Component({
   selector: 'app-offset-datetime-column-renderer',
   standalone: true,
+  imports: [DatePipe],
   template: `
     @if (parts(); as p) {
-      <span class="font-monospace">{{ p.wallClock }}</span>
-      <span class="badge ms-2"
-            [class.text-bg-secondary]="p.offset === '+00:00'"
-            [class.text-bg-primary]="p.offset !== '+00:00'"
-            [title]="p.offset === '+00:00' ? 'UTC — round-trips correctly even without the fix' : 'Offset preserved through the index projection'">
-        {{ p.offset }}
-      </span>
+      <div class="d-flex flex-column gap-1 small lh-sm">
+        <div>
+          <span class="text-body-secondary me-1" style="display:inline-block;min-width:5.5em;">stored</span>
+          <span class="font-monospace">{{ p.wallClock }}</span>
+          <span class="badge ms-1"
+                [class.text-bg-secondary]="p.offset === '+00:00'"
+                [class.text-bg-primary]="p.offset !== '+00:00'"
+                [title]="p.offset === '+00:00'
+                  ? 'UTC — this row round-trips correctly even without the fix'
+                  : 'Offset carried through the index by the ' + p.wrapperName + ' wrapper'">{{ p.offset }}</span>
+        </div>
+        <div>
+          <span class="text-body-secondary me-1" style="display:inline-block;min-width:5.5em;">your time</span>
+          <span class="font-monospace">{{ p.instant | date:'yyyy-MM-dd HH:mm' }}</span>
+          <span class="text-body-secondary ms-1">{{ viewerZone }}</span>
+        </div>
+        <div class="text-body-tertiary">
+          <span class="me-1" style="display:inline-block;min-width:5.5em;">index only</span>
+          <span class="font-monospace">{{ p.flattened }}</span>
+          <span class="ms-1" title="What the projection returned before the fix: same instant, offset destroyed">
+            ← without the fix
+          </span>
+        </div>
+      </div>
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -35,21 +66,29 @@ export class OffsetDateTimeColumnRendererComponent implements SparkAttributeColu
   column = input<SparkCellColumn>();
   options = input<Record<string, any>>();
 
-  /**
-   * Splits an ISO-8601 string into its wall clock and its offset without going through `Date`.
-   * `Z` is normalised to `+00:00` so the control row reads the same way as the others.
-   */
+  readonly viewerZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
   parts = computed(() => {
     const raw = this.value();
     if (typeof raw !== 'string' || raw.length === 0) return null;
 
     const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:\d{2})?$/.exec(raw);
-    if (!match) return { wallClock: raw, offset: '' };
+    if (!match) return null;
 
     const [, date, time, zone] = match;
+    const instant = new Date(raw);
+    if (Number.isNaN(instant.getTime())) return null;
+
+    // The flattened form is the instant expressed at offset zero — literally what RavenDB stores in the
+    // scalar index field, so it can be derived rather than fetched.
+    const iso = instant.toISOString();
+
     return {
       wallClock: `${date} ${time}`,
       offset: !zone || zone === 'Z' ? '+00:00' : zone,
+      instant,
+      flattened: `${iso.slice(0, 10)} ${iso.slice(11, 16)} Z`,
+      wrapperName: `${this.column()?.name ?? ''}Raw`,
     };
   });
 }

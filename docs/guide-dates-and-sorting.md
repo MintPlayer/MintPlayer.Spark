@@ -193,8 +193,11 @@ server-side business logic (`.Offset`, "which country's morning was this?"), an 
 the local wall clock, or writing the value back unchanged.
 
 ⚠️ **The `offset-datetime` renderer in `apps/Fleet` is a demonstration device, not a pattern to copy.** It
-prints the raw wall clock and offset badge precisely so you can *see* that the data survived the index
-round trip. A real app should not normally show a viewer a timestamp in somebody else's timezone.
+prints three lines per cell -- `stored` (the wall clock and offset from the document, recovered through the
+wrapper), `your time` (the same instant in the viewer.s zone, which is what the detail page and every other
+grid show), and `index only` (what the projection returned before the fix, derived from the instant) -- so
+the difference between them is visible rather than something a reader has to work out. A real app shows one
+of those, the middle one.
 
 That is also why the Fleet demo's grid and detail page deliberately disagree: the grid shows
 `2026-12-31 23:59 -08:00` (the originating wall clock, via the custom renderer) while the detail page shows
