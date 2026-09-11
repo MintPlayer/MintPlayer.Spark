@@ -1568,7 +1568,9 @@ internal partial class QueryExecutor : IQueryExecutor
     /// <para>
     /// Known gap: a string field a hand-written index declares <c>FieldIndexing.Exact</c> is included and will
     /// match case-sensitively, because the CLR property carries no trace of the index's field options. The
-    /// generator only ever applies <c>Exact</c> to <c>DateTimeOffset</c>, which is excluded by type.
+    /// generator never emits <c>Exact</c> at all now — the one case that used to,
+    /// <c>DateTimeOffset</c>, was measured to gain nothing from it — so this is reachable only from a
+    /// hand-written index.
     /// </para>
     /// </summary>
     private static PropertyInfo[] ResolveSearchableProperties(Type sortType)

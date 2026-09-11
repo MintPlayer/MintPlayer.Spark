@@ -1,7 +1,9 @@
 # Summary — `DateTimeOffset` fidelity and sort companions
 
+**Status: implemented and verified in a browser** on `fix/datetimeoffset-fidelity` (not pushed).
 Short version of [PRD](raven_datetimeoffset_and_sort_companions_PRD.md) ·
-[plan](raven_datetimeoffset_and_sort_companions_plan.md). Everything below is measured.
+[plan](raven_datetimeoffset_and_sort_companions_plan.md) · developer-facing:
+[guide](guide-dates-and-sorting.md). Everything below is measured.
 
 ---
 

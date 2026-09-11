@@ -1,10 +1,17 @@
 # Plan — `DateTimeOffset` fidelity (read + write) and `*Sort` companion correction
 
 **PRD:** [raven_datetimeoffset_and_sort_companions_PRD.md](raven_datetimeoffset_and_sort_companions_PRD.md)
-**Status:** **IMPLEMENTED** (M1–M10); **M11 — a demo-app demonstration — in progress.**
-Suite green: `MintPlayer.Spark.Tests` 2134/2134, `CodeCoverage.Tests` 438/438,
-`SourceGenerators` 278/278, `Client` 38/38.
-**Branch:** `fix/datetimeoffset-fidelity`.
+**Status:** **IMPLEMENTED and verified in a browser.** M1–M9 and M11 done; **M10 is outstanding** (two
+outward-facing actions — see below). Suite green: `MintPlayer.Spark.Tests` 2134/2134,
+`CodeCoverage.Tests` 438/438, `SourceGenerators` 278/278, `Client` 38/38.
+**Branch:** `fix/datetimeoffset-fidelity` — 5 commits, **not pushed, no PR opened**.
+
+### Still outstanding
+
+| Item | Why it is not done |
+|---|---|
+| **M10** — comment on [ravendb#17901](https://github.com/ravendb/ravendb/issues/17901); hand 2sky/cronos the Defect C finding | Both are outward-facing (a public GitHub comment, a message to another team). Needs the issue owner to send them. |
+| **Client write contract** — `<input type="datetime-local">` sends no offset | Decided (client sends a full ISO string) but **not implemented**. The server now parses whatever offset it is sent and treats an absent one as UTC, so editing a timestamp in the UI currently lands as UTC. The Fleet demo fills values server-side for exactly this reason. |
 **Issues:** none — the issue owner chose to implement directly; the PR references this PRD instead.
 
 ## Decisions taken (issue owner)
@@ -23,18 +30,23 @@ repository and the same defect — it does not get its own PR.
 
 ---
 
-## Pre-work — done, uncommitted
+## Pre-work — committed
 
 `RavenDB.Client` 7.2.5 → **7.2.6** in 8 libs, `RavenDB.TestDriver` 7.2.5 → **7.2.6** in
-`MintPlayer.Spark.Testing`. `MintPlayer.Spark` builds clean.
+`MintPlayer.Spark.Testing`. Suite green on it.
 
-**The bump fixes nothing** — measured identical across clients 7.1.12/7.2.5/7.2.6. Keep it as currency
-(it matches the installed server and Vidyano's net10 pin) or drop it; not load-bearing. Decide before
-opening the PR so the diff says what it means.
+**The bump fixes nothing** — measured identical across clients 7.1.12/7.2.5/7.2.6. It is in the branch as
+routine currency (matching the installed server and Vidyano's net10 pin), not as part of the fix. Drop it
+from the PR if you would rather the diff said only one thing.
+
+⚠️ **A bare package bump needs a full `dotnet restore MintPlayer.Spark.slnx`.** The nx `test` target runs
+`dotnet test --no-build --no-restore`, so without it some projects keep a stale `project.assets.json` and
+the build fails `CS1705` on a mixed graph — which `nx run-many` then reports with **exit code 0**.
 
 `apps/CodeCoverage/CodeCoverage.Tests` stays on `RavenDB.TestDriver` **7.2.1** — documented deliberate
-skew. **Open decision (M6):** bumping it puts CodeCoverage's 435 tests on the same embedded server as
-everything else, arguably right since it is the app holding `DateTimeOffset` data.
+skew, and **left alone**: its 438 tests pass against the new index shape on that pin, so the skew is
+confirmed harmless rather than merely tolerated. Its csproj comment still says the Testing lib pins
+7.2.5; that is now 7.2.6 and worth correcting when someone next touches the file.
 
 ---
 
