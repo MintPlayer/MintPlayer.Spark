@@ -1,9 +1,8 @@
 # Plan — `DateTimeOffset` fidelity (read + write) and `*Sort` companion correction
 
 **PRD:** [raven_datetimeoffset_and_sort_companions_PRD.md](raven_datetimeoffset_and_sort_companions_PRD.md)
-**Status:** Design settled, **all three spikes resolved**, **all open decisions taken** — nothing gates
-implementation. Not started.
-**Branch:** `fix/datetimeoffset-fidelity` (not yet created).
+**Status:** **IMPLEMENTED**. All milestones done; suite green.
+**Branch:** `fix/datetimeoffset-fidelity`.
 **Issues:** none — the issue owner chose to implement directly; the PR references this PRD instead.
 
 ## Decisions taken (issue owner)

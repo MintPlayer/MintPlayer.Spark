@@ -1,7 +1,6 @@
 # PRD — `DateTimeOffset` loses its offset through index projections, and the `*Sort` companion convention is mostly cargo cult
 
-**Status:** Investigated, design settled, **all three spikes resolved** — none grows the release scope.
-Not yet implemented. Ten agents across three rounds. Every claim below is **measured on live servers** or
+**Status:** **IMPLEMENTED** on `fix/datetimeoffset-fidelity`. Twelve agents across four rounds. Every claim below is **measured on live servers** or
 cited upstream. Nothing rests on folklore.
 **Issues:** not yet filed. **Branch:** not yet created.
 **Plan:** [raven_datetimeoffset_and_sort_companions_plan.md](raven_datetimeoffset_and_sort_companions_plan.md)

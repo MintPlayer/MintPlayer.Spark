@@ -1,11 +1,8 @@
 # Dates & sort companions — what you write
 
-> ⚠️ **Status: designed and measured, NOT YET IMPLEMENTED.**
-> The "Today" columns below describe shipped behaviour. The "After" columns describe the planned fix
-> and do not exist yet. Do not write code against the `After` shape until this banner is removed.
-> Background and evidence: [PRD](raven_datetimeoffset_and_sort_companions_PRD.md) ·
-> [plan](raven_datetimeoffset_and_sort_companions_plan.md) ·
-> [summary](raven_datetimeoffset_and_sort_companions_summary.md).
+Background and evidence: [PRD](raven_datetimeoffset_and_sort_companions_PRD.md) ·
+[plan](raven_datetimeoffset_and_sort_companions_plan.md) ·
+[summary](raven_datetimeoffset_and_sort_companions_summary.md).
 
 ---
 
@@ -145,14 +142,20 @@ diagnostic is scoped accordingly and stays quiet.
 // stored:  2026-03-09T10:00:00+02:00
 var row = await client.QueryAsync<VAppointment>("Appointments");
 
-row.Starts   // today:  2026-03-09T08:00:00+00:00   ← offset destroyed
-             // after:  2026-03-09T10:00:00+02:00   ← correct
+row.Starts   // 2026-03-09T10:00:00+02:00 — offset intact
 
 appointment.Starts = newValue;
-await client.SaveAsync(appointment);
-             // today:  silently discarded — the save reports success
-             // after:  persisted
+await client.SaveAsync(appointment);   // persisted
 ```
+
+Both used to be wrong: a projected `DateTimeOffset` came back as `08:00+00:00` with the offset
+destroyed, and an edit was silently discarded while the save reported success.
+
+⚠️ **When you assert on a `DateTimeOffset`, compare the `.Offset` or use `EqualsExact` — never `==`.**
+Equality compares the *instant*, so `10:00+02:00 == 08:00+00:00` is `true`. The defect preserved the
+instant and destroyed only the offset, which is exactly why it survived a 2436-test suite: an ordinary
+equality assertion passes against the broken value. The first draft of the regression tests for this
+fix passed while the pipeline was provably returning `08:00+00:00`.
 
 ---
 

@@ -272,7 +272,7 @@ public class HandWrittenIndexEntitySortFieldsTests
     }
 
     [Fact]
-    public void A_DateTimeOffset_field_is_indexed_Exact_by_the_generated_method()
+    public void A_DateTimeOffset_field_gets_a_wrapper_declared_FieldIndexing_No()
     {
         var generated = RunFiles("""
             using System;
@@ -287,9 +287,13 @@ public class HandWrittenIndexEntitySortFieldsTests
             }
             """, IndexStub).GeneratedSources[0].Source;
 
+        // The base field is left undeclared (Exact was measured to change nothing), and the wrapper
+        // MUST be FieldIndexing.No or Corax parks the whole index at state=Error after a clean deploy.
+        generated.Should().NotContain("Index(nameof(global::TestApp.Indexes.VCar.CreatedOn),");
         generated.Should().Contain(
-            "Index(nameof(global::TestApp.Indexes.VCar.CreatedOn), global::Raven.Client.Documents.Indexes.FieldIndexing.Exact);");
-        generated.Should().Contain("CreatedOnSort");
+            "Index(nameof(global::TestApp.Indexes.VCar.CreatedOnRaw), global::Raven.Client.Documents.Indexes.FieldIndexing.No);");
+        generated.Should().Contain("CreatedOnRaw");
+        generated.Should().NotContain("CreatedOnSort");
     }
 
     /// <summary>

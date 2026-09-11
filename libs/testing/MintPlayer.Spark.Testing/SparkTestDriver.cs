@@ -85,7 +85,8 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
     /// </summary>
     protected override void PreInitialize(IDocumentStore documentStore)
     {
-        documentStore.Conventions.UseNaturalIds().UseGeneratedIds();
+        // The same call production makes -- see MintPlayer.Spark.SparkStoreConfiguration.
+        documentStore.ApplySparkConventions();
         base.PreInitialize(documentStore);
     }
 

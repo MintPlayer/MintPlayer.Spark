@@ -624,24 +624,54 @@ public class GenerateIndexGeneratorTests
         }
         """;
 
+    /// <summary>
+    /// The base field is left undeclared. Measured across 62 paired queries on both engines: <c>Exact</c>
+    /// and default produce byte-identical index terms and identical equality, <c>in</c>, range and
+    /// ordering behaviour, because RavenDB reduces the value to a canonical UTC instant before any
+    /// analyzer would see it. <c>Exact</c> had nothing to act on.
+    /// </summary>
     [Fact]
-    public void DateTimeOffset_is_indexed_Exact_with_no_attribute_needed()
+    public void DateTimeOffset_is_not_indexed_Exact()
     {
         var generated = Run(DatedCar).GeneratedSources[0].Source;
 
-        generated.Should().Contain("Index(nameof(VCar.CreatedOn), global::Raven.Client.Documents.Indexes.FieldIndexing.Exact);");
-        generated.Should().Contain("Index(nameof(VCar.ArchivedOn), global::Raven.Client.Documents.Indexes.FieldIndexing.Exact);");
+        generated.Should().NotContain("Index(nameof(VCar.CreatedOn),");
+        generated.Should().NotContain("Index(nameof(VCar.ArchivedOn),");
     }
 
+    /// <summary>
+    /// A DateTimeOffset gets a wrapper, not a sort companion. The sort companion never helped: a
+    /// same-typed copy produces a byte-identical ordering, and it is flattened by RavenDB identically,
+    /// so it could not carry the offset either.
+    /// </summary>
     [Fact]
-    public void DateTimeOffset_gets_a_sort_companion_automatically()
+    public void DateTimeOffset_gets_a_wrapper_companion_and_no_sort_companion()
     {
         var generated = Run(DatedCar).GeneratedSources[0].Source;
 
-        generated.Should().Contain("CreatedOnSort = car.CreatedOn,");
-        generated.Should().Contain("ArchivedOnSort = car.ArchivedOn,");
-        generated.Should().Contain("public global::System.DateTimeOffset CreatedOnSort { get; set; }");
-        generated.Should().Contain("public global::System.DateTimeOffset? ArchivedOnSort { get; set; }");
+        generated.Should().NotContain("CreatedOnSort");
+        generated.Should().NotContain("ArchivedOnSort");
+
+        generated.Should().Contain(
+            "CreatedOnRaw = new global::MintPlayer.Spark.Abstractions.SparkIndexValue<global::System.DateTimeOffset> { V = car.CreatedOn },");
+        generated.Should().Contain(
+            "ArchivedOnRaw = new global::MintPlayer.Spark.Abstractions.SparkIndexValue<global::System.DateTimeOffset?> { V = car.ArchivedOn },");
+        generated.Should().Contain(
+            "public global::MintPlayer.Spark.Abstractions.SparkIndexValue<global::System.DateTimeOffset> CreatedOnRaw { get; set; }");
+    }
+
+    /// <summary>
+    /// Mandatory, not stylistic: Corax faults on a complex field at any other setting, deploying the
+    /// index cleanly and then parking it at <c>state=Error, entries=0</c> so every query returns nothing.
+    /// Lucene is unaffected, which is what makes the mistake easy to miss.
+    /// </summary>
+    [Fact]
+    public void The_wrapper_companion_is_declared_FieldIndexing_No()
+    {
+        var generated = Run(DatedCar).GeneratedSources[0].Source;
+
+        generated.Should().Contain("Index(nameof(VCar.CreatedOnRaw), global::Raven.Client.Documents.Indexes.FieldIndexing.No);");
+        generated.Should().Contain("Index(nameof(VCar.ArchivedOnRaw), global::Raven.Client.Documents.Indexes.FieldIndexing.No);");
     }
 
     /// <summary>
@@ -661,18 +691,6 @@ public class GenerateIndexGeneratorTests
         generated.Should().NotContain($"nameof(VCar.{propertyName})");
     }
 
-    /// <summary>
-    /// A date companion is still left undeclared — only the base field is Exact. Declaring the companion too
-    /// would be the cargo-cult that R8 rules out.
-    /// </summary>
-    [Fact]
-    public void The_date_sort_companion_is_not_itself_declared()
-    {
-        var generated = Run(DatedCar).GeneratedSources[0].Source;
-
-        generated.Should().NotContain("nameof(VCar.CreatedOnSort)");
-        generated.Should().NotContain("nameof(VCar.ArchivedOnSort)");
-    }
 
     [Fact]
     public void Search_on_a_DateTimeOffset_is_reported_but_the_date_treatment_still_applies()
@@ -693,8 +711,9 @@ public class GenerateIndexGeneratorTests
         result.GeneratorDiagnostics.Should().Contain(d => d.Id == "SPARK_INDEX_005");
 
         var generated = result.GeneratedSources[0].Source;
-        generated.Should().Contain("Index(nameof(VCar.CreatedOn), global::Raven.Client.Documents.Indexes.FieldIndexing.Exact);");
-        generated.Should().Contain("CreatedOnSort = car.CreatedOn,");
+        generated.Should().NotContain("Index(nameof(VCar.CreatedOn),");
+        generated.Should().Contain(
+            "CreatedOnRaw = new global::MintPlayer.Spark.Abstractions.SparkIndexValue<global::System.DateTimeOffset> { V = car.CreatedOn },");
     }
 
     // --- attribute carry-over -----------------------------------------------------------------
