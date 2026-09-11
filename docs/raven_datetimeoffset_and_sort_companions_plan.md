@@ -1,17 +1,33 @@
 # Plan — `DateTimeOffset` fidelity (read + write) and `*Sort` companion correction
 
 **PRD:** [raven_datetimeoffset_and_sort_companions_PRD.md](raven_datetimeoffset_and_sort_companions_PRD.md)
-**Status:** **IMPLEMENTED and verified in a browser.** M1–M9 and M11 done; **M10 is outstanding** (two
-outward-facing actions — see below). Suite green: `MintPlayer.Spark.Tests` 2134/2134,
-`CodeCoverage.Tests` 438/438, `SourceGenerators` 278/278, `Client` 38/38.
-**Branch:** `fix/datetimeoffset-fidelity` — 5 commits, **not pushed, no PR opened**.
+**Status:** **IMPLEMENTED and verified in a browser.** M1–M9, M11 and M12 done; **M10 outstanding**.
+**Branch:** `fix/datetimeoffset-fidelity` — 11 commits, pushed.
+**PR:** [#403](https://github.com/MintPlayer/MintPlayer.Spark/pull/403), open.
+
+Suites green: `MintPlayer.Spark.Tests` **2143/2143**, `CodeCoverage.Tests` **438/438**,
+`SourceGenerators` **278/278**, `MintPlayer.Spark.Client.Tests` **38/38**, `@mintplayer/ng-spark`
+**459/459**.
+
+Versions: all 23 NuGet packages → `10.0.0-preview.81`; `@mintplayer/ng-spark` → `22.18.0`.
 
 ### Still outstanding
 
-| Item | Why it is not done |
+| Item | State |
 |---|---|
-| **M10** — comment on [ravendb#17901](https://github.com/ravendb/ravendb/issues/17901); hand 2sky/cronos the Defect C finding | Both are outward-facing (a public GitHub comment, a message to another team). Needs the issue owner to send them. |
-| **Client write contract** — `<input type="datetime-local">` sends no offset | Decided (client sends a full ISO string) but **not implemented**. The server now parses whatever offset it is sent and treats an absent one as UTC, so editing a timestamp in the UI currently lands as UTC. The Fleet demo fills values server-side for exactly this reason. |
+| **M10 — upstream + sideways** | **Not done, and not the implementer's to do.** Both actions are outward-facing: a public comment on [ravendb#17901](https://github.com/ravendb/ravendb/issues/17901) with the layer isolation, and handing 2sky/cronos the Defect C finding. Needs the issue owner to send them. |
+| **Client write contract** | **Decided, not implemented.** `<input type="datetime-local">` sends no offset, so editing a timestamp in the UI lands as UTC. The server half is done — it parses whatever offset it is sent and treats an absent one as UTC — but `ng-spark` does not yet carry the value's original offset through the editor and reattach it on submit. The Fleet demo seeds server-side for exactly this reason. **There is an unresolved product question inside it** (below), so it was not guessed at. |
+
+#### The open question inside the write contract
+
+If a viewer in Brussels edits a car registered in Seattle, what offset should the saved value carry — the
+**viewer's** `+02:00` (natural for a `datetime-local` control, which knows only a wall clock) or the
+record's original `-08:00` (preserves *which country registered it*)?
+
+For `RegisteredAt` the second is clearly right, and it cannot be inferred from the control: the client
+would have to keep the original offset alongside the value and reattach it on submit. For a field meaning
+"when did this happen, in my time" the first is right. **That is a product decision per field, not a
+technical default**, which is why nothing was implemented on a guess.
 **Issues:** none — the issue owner chose to implement directly; the PR references this PRD instead.
 
 ## Decisions taken (issue owner)
@@ -365,6 +381,40 @@ that distinction becomes obvious rather than alarming.
 so editing a timestamp in the UI still sends an offset-less string, which the server now reads as UTC.
 The demo should fill values server-side (the button) rather than through the editor, and the gap
 should be stated in the demo's own copy.
+
+### M12 — Display consistency in `ng-spark` ✅ DONE
+
+Not in the original plan. It surfaced when the issue owner compared a grid row against its own detail
+page and found them naming **different days** for one car — which is what a user actually notices, and
+which the earlier "a viewer-local UI never displayed this defect" framing had missed by comparing each
+page only against its own past.
+
+| | showed (same car) |
+|---|---|
+| Detail page | `2026-12-31T23:59:00-08:00` — the raw wire string, unformatted |
+| Grid, default renderer | `01/01/2027, 08:59` |
+
+Two defects in one cell, and only one was about timezones: the detail page had **no formatting step at
+all** for a `datetime` (`attribute-value.pipe.ts` handles `AsDetail` and `boolean`, so a date fell through
+to the generic renderer), and the two pages applied different semantics.
+
+- New `parsedDate` pipe in `ng-spark/pipes`, deliberately the same parsing contract as `queryCellValue`'s
+  (`new Date(...)`, unparseable → `null` so the caller falls back to its own text), so there is one rule
+  rather than two.
+- `spark-po-detail.component.html` formats `date`/`datetime` through it with the same `date:` pattern the
+  grid uses.
+- **The grid's meaning wins**: a timestamp is an instant, shown in the viewer's own zone. The originating
+  offset stays on the wire for code that needs it — it is simply not what a viewer is shown by default.
+- `@mintplayer/ng-spark` → `22.18.0`.
+
+⚠️ **`ProjectionBehavior.FromDocument` was measured as an alternative to the whole wrapper design and
+rejected** — on cost, not correctness. It *does* recover the offset, by making the server stop answering
+from stored index fields and read each matching document instead: a per-row document read on the paging
+path, undoing the reason `StoreAllFields` exists. Pinned by a test so it is not re-litigated from memory.
+
+Also settled while there: **a plain `DateTime` is not flattened** — ticks *and* `Kind` both survive a
+projection, because it has no offset to lose. Two tests pin it, asserted on `Ticks` and `Kind` rather than
+equality.
 
 ### M8 — Docs
 

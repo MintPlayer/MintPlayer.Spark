@@ -1,9 +1,33 @@
 # Summary — `DateTimeOffset` fidelity and sort companions
 
-**Status: implemented and verified in a browser** on `fix/datetimeoffset-fidelity`.
+**Status: implemented and verified in a browser** on `fix/datetimeoffset-fidelity` —
+[PR #403](https://github.com/MintPlayer/MintPlayer.Spark/pull/403), 11 commits, open.
 [PRD](raven_datetimeoffset_and_sort_companions_PRD.md) · [plan](raven_datetimeoffset_and_sort_companions_plan.md) ·
 developer-facing: [guide](guide-dates-and-sorting.md). Everything below is measured, and every value
 shown is a real observation from RavenDB 7.2.6 with the Fleet demo's 10,010 cars.
+
+### Done
+
+| | |
+|---|---|
+| **Read path** | `{Name}Raw` wrapper emitted automatically for every `DateTimeOffset`; `ProjectedOffsetRestorer` reads it back in `RowSecurityGate.ApplyAsync` |
+| **Write path** | `DateTimeOffset` branch in `EntityMapper.SetPropertyValue` — editing one used to do nothing while reporting success |
+| **Companions corrected** | `{Name}Sort` and `FieldIndexing.Exact` removed from `DateTimeOffset`; `[Search]` strings keep theirs; nothing else ever needed one |
+| **Display consistency** | Detail page formats `datetime` through the new `parsedDate` pipe instead of printing a raw ISO string; grid and detail now agree |
+| **Analyzer** | `SPARK005` left matching `Exact` (deliberately — see the plan); guard test pins CodeCoverage's index shape |
+| **Demo** | `apps/Fleet` — `Car.RegisteredAt`, a scatter button, a paginated sorted grid, a three-line renderer |
+| **Docs** | this file, the PRD, the plan, `guide-dates-and-sorting.md`, and a correction to `guide-queries-and-sorting.md` |
+| **Versions** | 23 NuGet packages → `10.0.0-preview.81`; `ng-spark` → `22.18.0` |
+
+Suites: `MintPlayer.Spark.Tests` 2143/2143 · `CodeCoverage.Tests` 438/438 · `SourceGenerators` 278/278 ·
+`Client` 38/38 · `ng-spark` 459/459.
+
+### Not done
+
+| | |
+|---|---|
+| **The client write contract** | `<input type="datetime-local">` sends no offset, so editing a timestamp in the UI lands as UTC. The server half is done; `ng-spark` does not yet carry the original offset through the editor. **Blocked on a product question, not on effort** — see [§9](#9-what-is-still-open). |
+| **Upstream + sideways** | A comment on [ravendb#17901](https://github.com/ravendb/ravendb/issues/17901), and handing 2sky/cronos the Defect C finding. Both outward-facing; the issue owner's to send. |
 
 ---
 
@@ -232,7 +256,31 @@ All 23 NuGet packages bumped in lockstep to `10.0.0-preview.81`; `ng-spark` to `
 
 ---
 
-## 9. Traps worth carrying forward
+## 9. What is still open
+
+**The client write contract**, and it is stuck on a product question rather than on work.
+
+`<input type="datetime-local">` knows only a wall clock — it has no offset to send. The server already
+parses whatever offset it is given and treats an absent one as UTC, so a save now persists (it silently
+did nothing before). What `ng-spark` does not yet do is carry the value's *original* offset through the
+editor and reattach it on submit.
+
+The question that has to be answered first: **if a viewer in Brussels edits a car registered in Seattle,
+what offset should the saved value carry?**
+
+- the **viewer's** `+02:00` — natural for the control, and right for a field meaning "when did this happen,
+  in my time";
+- the **record's original** `-08:00` — preserves *which country registered it*, and is clearly right for
+  `RegisteredAt`.
+
+It cannot be inferred from the control, and it is plausibly a per-field decision rather than a framework
+default. That is why nothing was implemented on a guess.
+
+Until it is settled, the Fleet demo seeds values server-side via the button rather than through the editor.
+
+---
+
+## 10. Traps worth carrying forward
 
 - **`DateTimeOffset.Equals` compares the instant.** Assert `.Offset` or `EqualsExact`, never `==`.
 - **Nesting preserves; scalar index fields normalise.** `FieldIndexing.No` does not help. Neither does
