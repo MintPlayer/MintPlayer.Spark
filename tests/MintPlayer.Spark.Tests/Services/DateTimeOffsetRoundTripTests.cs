@@ -5,6 +5,7 @@ using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Indexes;
 using Raven.Client.Documents.Linq;
+using Raven.Client.Documents.Queries;
 using Raven.Client.Documents.Session;
 
 namespace MintPlayer.Spark.Tests.Services;
@@ -218,6 +219,61 @@ public class DateTimeOffsetRoundTripTests : SparkTestDriver
 
         projected.PlainUtc.Kind.Should().Be(DateTimeKind.Utc);
         projected.PlainUnspecified.Kind.Should().Be(DateTimeKind.Unspecified);
+    }
+
+    /// <summary>
+    /// Why the fix is a wrapper field rather than <see cref="ProjectionBehavior"/>.
+    /// <para>
+    /// <c>FromDocument</c> <strong>does</strong> recover the offset, and it is worth knowing that it does
+    /// — it looks like a one-line fix. It is not one, because of <em>how</em> it recovers it: it stops the
+    /// server answering from the index's stored fields and makes it read each matching document from
+    /// storage instead. That is a per-row document read on exactly the path Spark uses for paging, and
+    /// undoing it is the entire reason <c>StoreAllFields</c> is emitted in the first place.
+    /// </para>
+    /// <para>
+    /// So the choice was never "wrapper vs. a simpler flag". It was "answer from the index" vs. "keep
+    /// offsets", and the wrapper is what buys both — one extra stored field, no extra reads.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task ProjectionBehavior_FromDocument_recovers_the_offset_by_reading_the_document()
+    {
+        await SeedAsync();
+
+        // ⚠️ Order matters, and a session per query is not enough to make it not matter. The client's
+        // query cache does not appear to key on ProjectionBehavior: run the FromDocument query first and
+        // the *default* query is then served its cached response, reporting an intact offset. That is a
+        // convincing-looking result and an entirely false one — so the default path is measured first,
+        // and each query gets its own session and NoCaching.
+        VMeeting fromIndex;
+        using (var indexSession = Store.OpenAsyncSession())
+        {
+            fromIndex = await indexSession.Query<VMeeting, Meetings_Overview>()
+                .Where(v => v.Title == "Positive")
+                .Customize(c => c.NoCaching())
+                .ProjectInto<VMeeting>()
+                .FirstAsync();
+        }
+
+        // Answered from stored index fields, so the offset is gone...
+        fromIndex.Starts.Offset.Should().Be(TimeSpan.Zero);
+
+        // ...and the wrapper carries the truth without ever leaving the index.
+        fromIndex.StartsRaw!.V.EqualsExact(Positive).Should().BeTrue();
+
+        VMeeting fromDocument;
+        using (var docSession = Store.OpenAsyncSession())
+        {
+            fromDocument = await docSession.Query<VMeeting, Meetings_Overview>()
+                .Where(v => v.Title == "Positive")
+                .Customize(c => c.NoCaching().Projection(ProjectionBehavior.FromDocument))
+                .ProjectInto<VMeeting>()
+                .FirstAsync();
+        }
+
+        fromDocument.Starts.EqualsExact(Positive).Should().BeTrue(
+            "reading from the document sidesteps the index's UTC normalisation entirely — which is why " +
+            "this is a genuine alternative, and why it is rejected on cost rather than on correctness");
     }
 
     // --- Spark pipeline: these FAIL today and are what the fix repairs ------------------------

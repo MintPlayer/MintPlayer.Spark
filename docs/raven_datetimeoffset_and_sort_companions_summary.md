@@ -1,199 +1,245 @@
 # Summary — `DateTimeOffset` fidelity and sort companions
 
-**Status: implemented and verified in a browser** on `fix/datetimeoffset-fidelity` (not pushed).
-Short version of [PRD](raven_datetimeoffset_and_sort_companions_PRD.md) ·
-[plan](raven_datetimeoffset_and_sort_companions_plan.md) · developer-facing:
-[guide](guide-dates-and-sorting.md). Everything below is measured.
+**Status: implemented and verified in a browser** on `fix/datetimeoffset-fidelity`.
+[PRD](raven_datetimeoffset_and_sort_companions_PRD.md) · [plan](raven_datetimeoffset_and_sort_companions_plan.md) ·
+developer-facing: [guide](guide-dates-and-sorting.md). Everything below is measured, and every value
+shown is a real observation from RavenDB 7.2.6 with the Fleet demo's 10,010 cars.
 
 ---
 
 ## The one-paragraph version
 
-RavenDB converts a `DateTimeOffset` to its UTC-equivalent `DateTime` whenever it becomes a **scalar
-index field**, destroying the offset. Values **nested inside a complex object** are stored opaquely
-and survive intact. So the fix is to emit a small nested wrapper alongside the real field and read
-the value back from there. Separately, `DateTimeOffset` **writes** have never worked, and the
-`{Name}Sort` companion convention turns out to be unnecessary for everything except `[Search]`
-strings.
+A `DateTimeOffset` is stored correctly in the collection. It is **not** stored correctly in the index:
+RavenDB converts it to its UTC-equivalent `DateTime` the moment the value becomes a *scalar index field*.
+So `session.Query<TIndexEntity, TIndex>().ProjectInto<T>()` hands back a different value from
+`session.Load<TEntity>(id)` for the same document — same instant, wrong offset, wrong wall clock. The fix
+carries the value through the index a second time inside a **nested object**, which RavenDB stores opaquely
+and never touches, and reads it back from there. Separately, `DateTimeOffset` *writes* had never worked at
+all.
 
 ---
 
-## What is actually broken
-
-| # | Defect | Visible symptom |
-|---|---|---|
-| A | A scalar `DateTimeOffset` read through an index projection loses its offset | timestamps off by the value's own offset; instant is correct |
-| D | `DateTimeOffset` edits are silently discarded | save succeeds, value unchanged |
-| B | `{Name}Sort` companions emitted where they do nothing | wasted index size and indexing throughput |
-
-**Not broken:** RavenDB 7.2.6 (identical to 7.1.12), the client version, Corax vs Lucene,
-`session.Load`, full-document index queries, and `DateTimeOffset` inside `[ValueObject]` children.
-
----
-
-## The rule to remember
-
-> **Nesting preserves. Scalar index fields normalise.**
-> `FieldIndexing.No` does *not* help. Neither does `ProjectionBehavior`. Neither does storing the
-> value as an ISO string — RavenDB normalises date-shaped strings too.
-
----
-
-## The new system
-
-### 1. Generated indexes gain a wrapper, and lose a useless companion
-
-One generic box ships in `MintPlayer.Spark.Abstractions`:
+## 1. The collection stores it correctly
 
 ```csharp
-public sealed class SparkIndexValue<T> { public T V { get; set; } = default!; }
-```
-
-For a scalar or array `DateTimeOffset` the generator emits:
-
-```csharp
-// into the map
-Starts    = e.Starts,                                   // real field — ordering, filtering
-StartsRaw = new SparkIndexValue<DateTimeOffset> { V = e.Starts },   // wrapper — carries the true value, offset intact
-// into the constructor — NOT optional
-Index(x => x.StartsRaw, FieldIndexing.No);
-```
-
-**Why a typed box is safe:** RavenDB's expression-to-string converter **erases every type name** before
-the index reaches the server, so `new SparkIndexValue<T> { V = x }` and `new { V = x }` are the *same bytes* server-side.
-Class, struct, generic and cross-assembly all measured identical, raw wire **and** materialised CLR, on both
-engines. No type metadata is stored — renaming the type changes nothing.
-
-⚠️ **Omitting `FieldIndexing.No` kills the index on Corax**: it deploys clean, then sits at
-`state=Error, entries=0, isInvalid=True`. Lucene is unaffected — so it fails only on the engine CI and
-production actually run.
-
-The wrapper is **additive**. It is never ordered or filtered on — a `FieldIndexing.No` field cannot
-be filtered (on Corax a range predicate returns HTTP 500).
-
-One wrapper carries a whole collection, per element, in order:
-`{"V":["…+02:00","…-08:00","…+05:45"]}`.
-
-### 2. Companion matrix
-
-| Property kind | `{Name}Sort` | Wrapper |
-|---|---|---|
-| `[Search]` string | **yes** (keep — measured necessary) | no |
-| `DateTimeOffset` scalar / array | **no** (drop — measured useless) | **yes** |
-| `DateTimeOffset` in a `[ValueObject]` child or complex property | no | **no** — already correct |
-| `DateTime`, numerics, `Guid`, `bool`, enum | no | no |
-
-### 3. Runtime restores the value at one choke point
-
-`RowSecurityGate.ApplyAsync`, between filtering and mapping. It is the only way rows become a result,
-covers index + custom/composed + streaming paths, and never sees a `session.Load` row. Absent wrapper
-degrades to today's behaviour — never throws, never half-restores.
-
-It **must** run before `ToPersistentObject`: `EntityMapper.PopulateAttributeValues` resolves properties by
-attribute name, so the `Starts` attribute reads the flattened `VCar.Starts`. Restore on the typed row first.
-
-Prefer a **generator-emitted typed restore method** over reflection — `ProjectInto<T>()` materialises the box
-as its real CLR type, so a generated index and its restorer cannot drift apart. Reflection is the fallback for
-hand-written index entities.
-
-### 4. Writes are fixed
-
-A `DateTimeOffset` branch in `EntityMapper.SetPropertyValue`, parsing with `RoundtripKind` +
-`InvariantCulture`. **Never `AdjustToUniversal`** — measured to flatten every offset to `00:00:00`.
-`AssumeUniversal` is harmless and was wrongly flagged in an earlier draft.
-
-### 5. The build stops you getting it wrong
-
-- New diagnostic at **Error** severity: a stored scalar `DateTimeOffset` with no wrapper. Errors run
-  at `dotnet build`; code fixes are IDE-only and can never be load-bearing. **Suppressible** via
-  `<NoWarn>$(NoWarn);SPARK018</NoWarn>` for anyone who deliberately does not care about offsets.
-- Scoped on **any `FieldStorage.Yes`**, not `StoreAllFields` — per-field `Store(...)` triggers the
-  identical defect.
-- **SPARK005 narrowed to `Search`** (it matched `Exact` by text suffix, which is how `DateTimeOffset`
-  got swept in).
-- **New CI index-health check.** A bad map expression *deploys successfully* and then sits at
-  `state=Error, entries=0`. Map members bind at runtime, so no build validates them.
-
----
-
-## What a developer writes
-
-**Generated index — nothing extra, before or after:**
-
-```csharp
-[GenerateIndex]
-public class Appointment : IDocument
+public class Car
 {
-    public string? Id { get; set; }
-    [Search] public string Title { get; set; } = "";
-    public DateTimeOffset Starts { get; set; }      // wrapper generated automatically
+    public DateTimeOffset RegisteredAt { get; set; }   // no attribute needed
 }
 ```
 
-**Hand-written index — one line per `DateTimeOffset` in the map.** Irreducible: the generator can add
-members to a partial class but not to an object initializer, and the value comes from the developer's
-own expression. The Error diagnostic makes it non-optional; the IDE code fix types it for you.
+```bash
+curl ".../databases/SparkFleet/queries?query=from Cars where LicensePlate='2-TAN-135' select RegisteredAt"
+```
+```json
+"RegisteredAt": "2026-12-31T04:15:00.0000000-08:00"
+```
+
+✅ Offset intact. Nothing was ever wrong here, and `session.Load<Car>(id)` returns exactly this.
+
+## 2. The index does **not**
+
+This is the part that surprises people, so it is worth being exact: it is not the client that flattens the
+value, and it is not the projection call. The value is already wrong in the server's response, over raw
+HTTP, with no .NET client involved:
+
+```bash
+curl ".../queries?query=from index 'Cars/Overview' where LicensePlate='2-TAN-135' select RegisteredAt, RegisteredAtRaw"
+```
+```json
+"RegisteredAt":    "2026-12-31T12:15:00.0000000Z"           ← ❌ flattened by the server
+"RegisteredAtRaw": { "V": "2026-12-31T04:15:00.0000000-08:00" }  ← ✅ the wrapper this fix adds
+```
+
+`04:15 -08:00` and `12:15 Z` are the **same instant**. Only the offset and the wall clock are lost — which
+is precisely why nothing failed loudly: ordering, filtering, range queries and row counts all stayed
+correct, and 2120 tests passed straight over it for years.
+
+**Where it happens:** at index time, when the value becomes a *scalar* index field. Not at query time, not
+on serialization. That is why nothing on the read side can undo it — the information is already gone.
+Upstream: [ravendb#17901](https://github.com/ravendb/ravendb/issues/17901), open since 2023-12, both Corax
+and Lucene, no fix in any 7.1.x or 7.2.x changelog.
+
+## 3. So the two read paths disagree
+
+```csharp
+// ✅ correct — reads the document
+var loaded = await session.LoadAsync<Car>("cars/1-A");
+loaded.RegisteredAt;           // 2026-12-31T04:15:00-08:00
+
+// ❌ wrong — reads the index's stored fields
+var projected = await session.Query<VCar, Cars_Overview>()
+    .ProjectInto<VCar>()
+    .FirstAsync();
+projected.RegisteredAt;        // 2026-12-31T12:15:00+00:00
+```
+
+Two values for one document, differing by eight hours of wall clock and an offset. And because `Spark`
+answers grids from indexes and detail pages from documents, that discrepancy was **visible in the app** —
+a grid and a detail page naming different days for the same car.
+
+> ⚠️ **`==` will not catch this.** `DateTimeOffset.Equals` compares the *instant*, so
+> `projected.RegisteredAt == loaded.RegisteredAt` is `true` while the offsets differ. Assert on `.Offset`
+> or use `EqualsExact`. The first draft of the regression tests for this fix passed against the broken
+> value for exactly this reason.
+
+## 4. The fix: carry it through the index in a nested object
+
+A value **nested inside a complex object** is stored by RavenDB as an opaque sub-document and is never
+decomposed into a typed field — so nothing converts it. That, not the indexing mode, is the lever.
+(A scalar field loses its offset even at `FieldIndexing.No`; a nested one keeps it even at default
+indexing.)
+
+The generator emits this automatically for every `DateTimeOffset` — the developer writes nothing:
+
+```csharp
+public sealed class SparkIndexValue<T> { public T V { get; set; } = default!; }   // shipped in Abstractions
+
+// generated into the index:
+RegisteredAt    = car.RegisteredAt,                                              // ordering, filtering
+RegisteredAtRaw = new SparkIndexValue<DateTimeOffset> { V = car.RegisteredAt },  // fidelity
+Index(nameof(VCar.RegisteredAtRaw), FieldIndexing.No);
+StoreAllFields(FieldStorage.Yes);
+```
+
+`ProjectedOffsetRestorer` then overwrites the flattened scalar from the wrapper, in
+`RowSecurityGate.ApplyAsync` — the single choke point every row-returning path passes through, and one
+`session.Load` never reaches. It is an assignment, not arithmetic: the wrapper holds the original whole, so
+applying it twice changes nothing.
+
+> ⚠️ `FieldIndexing.No` on the wrapper is **mandatory**. Without it Corax deploys the index cleanly and
+> then parks it at `state=Error, entries=0`, so every query returns nothing. Lucene is unaffected — which
+> is what makes it easy to miss, since both CI and production run Corax.
+
+### Why not `ProjectionBehavior.FromDocument`?
+
+It works — measured, it returns `04:15 -08:00`:
+
+```csharp
+.Customize(c => c.Projection(ProjectionBehavior.FromDocument))
+```
+
+And it is rejected anyway, on cost rather than correctness. It recovers the offset by making the server
+stop answering from the index's stored fields and **read each matching document from storage instead** —
+a per-row document read on exactly the path Spark uses for paging, undoing the whole reason
+`StoreAllFields` is emitted. The wrapper buys the same fidelity for one extra stored field and no extra
+reads. Pinned by a test so the trade-off is not re-litigated from memory.
+
+### Why not a `{Name}Sort` companion, or `FieldIndexing.Exact`?
+
+Both were there before this change, and both were measured to do nothing:
+
+- A same-typed `{Name}Sort` copy orders **byte-identically** to the field it copies — *and* is flattened
+  identically, so it could not have carried the offset either.
+- `Exact` on a `DateTimeOffset`: 62 paired queries across both engines, identical index terms and identical
+  equality / `in` / range / ordering. RavenDB reduces the value to a canonical UTC instant before any
+  analyzer sees it, so `Exact` had nothing to act on.
+
+Both removed. `[Search]` strings keep their sort companion — that one is measured necessary. `DateTime`,
+numerics, `Guid`, `bool` and enums get nothing, and never needed anything.
+
+## 5. `DateTime` is not affected
+
+Measured, not assumed: a plain `DateTime` survives the same projection with its **ticks and its `Kind`**
+intact. It has no offset to lose. So `session.Query<TIndexEntity, TIndex>()` mangles only
+`DateTimeOffset`, and only the offset component.
+
+(`DateTimeKind.Local` does not round-trip — it returns as `Unspecified` — but that is the JSON wire format,
+true on `session.Load` too, and unrelated to indexes.)
 
 ---
 
-## Deployment consequences
+## 6. What reaches the browser, and what the browser does with it
 
-- **Every generated index containing a `DateTimeOffset` or a `[Search]` string changes shape, so
-  RavenDB rebuilds it from scratch at every consumer.** Indexes with neither are untouched.
-- During the rebuild window the new binary must read an old index as "no wrapper" and return today's
-  value rather than half-restoring.
-- ~~Gate on spike S2~~ — **resolved: no `DateTime` companion is needed**, so no second rebuild is coming
-  from that direction.
-- Version: minor/patch inside `10.0.0-preview.*` — the NuGet major tracks .NET, never an API break.
+**The wire always carries the collection's value.** After this fix, both read paths send the same thing the
+document holds:
 
----
+```json
+{ "key": "RegisteredAt", "value": "2026-12-31T04:15:00.0000000-08:00" }
+```
 
-## Spikes — all resolved, none grows the scope
+**The Angular app then projects that into the viewer's timezone.** Both the grid and the detail page parse
+it with `new Date(...)` — which collapses it to an instant — and format it with Angular's `DatePipe` with
+no timezone argument, which renders in the browser's own zone:
 
-| Spike | Verdict |
+```
+wire:                    2026-12-31T04:15:00-08:00
+browser (Europe/Brussels):   31/12/2026, 13:15
+```
+
+That is deliberate: a timestamp is shown to a reader as *the moment, in their time*. The offset stays in
+the data for code that needs the originating wall clock — server-side logic reading `.Offset`, an export,
+an audit trail — it simply is not what a viewer is shown.
+
+⚠️ **So the displayed value is not the stored wall clock, and never was.** Three distinct things:
+
+| | example |
 |---|---|
-| **S1** Is `FieldIndexing.Exact` on `DateTimeOffset` load-bearing? | **No — drop it.** 62 measurements, zero differences; the index term is the same UTC-normalised string either way. Both modes already match by instant. |
-| **S2** Can mixed `DateTimeKind` invert `DateTime` ordering? | **No.** RavenDB re-serialises dates at index time to a fixed-width 7-digit fraction, so `Z` only ever breaks ties. **Ship no `DateTime` companion** — a ticks companion fixes nothing and can take the whole index to `state=Error`. |
-| **S3** Was production data corrupted? | **No, and no migration.** `Commit` is the only entity with a `DateTimeOffset` and the only one without a generated index, so the `StoreAllFields` trigger never meets the type. |
+| the **instant** | `2026-12-31T12:15:00Z` — always correct, never broken |
+| what the **viewer sees** | `31/12/2026, 13:15` — the instant, in their zone, *on that date* |
+| the **stored** wall clock + offset | `2026-12-31T04:15:00-08:00` — what this fix restores |
 
-## No backward-compatibility requirement
+A value and a viewer can sit in the same country and still disagree, because the zone's offset **at the
+value's own date** is what applies — a value stored `10:00+02:00` displays as `09:00` in Brussels on 9
+March, when Brussels is on CET.
 
-Confirmed by the issue owner. Consequences:
+### The detail page used to disagree with the grid
 
-- `{Name}Sort` on `DateTimeOffset` is **removed outright** — no alias, no deprecation period.
-- **SPARK005 is narrowed immediately**; the new missing-wrapper diagnostic ships at **Error** from day one.
-- The wrapper stays **implicit** (triggered by the type, no opt-in attribute) — every existing
-  `DateTimeOffset` index changes shape, and that is fine.
-- No compatibility shims, no dual-read path, no staged rollout.
+Until this change a `datetime` attribute on a detail page had no formatting step at all and printed the
+wire value verbatim — `2026-12-31T04:15:00-08:00` in a definition list — while the grid showed
+`31/12/2026, 13:15` for the same document. Not cosmetic: when the offsets differ they can disagree on the
+**date**. Both now parse through one `parsedDate` pipe and format identically.
 
-The one thing that still needs a tolerant read path is **not** compatibility but a deployment transient:
-while RavenDB rebuilds an index, the wrapper field is genuinely absent, so the runtime must treat a
-missing wrapper as "no information" and return the un-restored value rather than throwing or
-half-restoring.
+The `offset-datetime` renderer in `apps/Fleet` is the deliberate exception: it prints the raw wall clock
+and an offset badge so a reader can *see* the data survived the round trip. It is a demonstration device,
+not a pattern to copy.
 
-## See it working
+---
 
-`apps/Fleet` carries a live demonstration: `Car.RegisteredAt`, a **Scatter registration offsets**
-button that stamps every car with a random timestamp carrying a mixed-sign offset (`+02:00`, `-08:00`,
-`+05:45`, `+00:00`, `-03:30`, `+09:30`), and a paginated `Registrations` grid sorted on it.
+## 7. The other defect: writes were silently dropped
 
-Run `dotnet run --project apps/Fleet/Fleet` (needs RavenDB database `SparkFleet` and a signed-in
-admin — an anonymous caller gets `car => false` from the row filter) and open `/query/registrations`.
+`EntityMapper.SetPropertyValue` had no `DateTimeOffset` branch, so a wire string fell through to
+`Convert.ChangeType`, which throws `InvalidCastException` — `DateTimeOffset` does not implement
+`IConvertible`, while `DateTime` does — and a bare `catch` swallowed it:
 
-Two things it is built to show:
-- **The seed data is adversarial on purpose.** A UTC-only corpus would prove nothing — `TimeSpan.Zero`
-  round-trips correctly even when the fix is absent, which is why the defect hid for years. One
-  `+00:00` row is included as the control.
-- **Sorting is by instant, while each row keeps its own wall clock.** That is the point of keeping the
-  real typed field for ordering and the wrapper only for fidelity.
+```csharp
+catch { /* Skip properties that can't be converted */ }
+```
 
-⚠️ It needs a **custom column renderer** (`offset-datetime`), and that is not cosmetic: the default
-`datetime` column pipes through Angular's `DatePipe` with no timezone argument, so every row renders in
-the *browser's* zone and a correctly-restored value still looks shifted. Presentation, not data loss —
-but the demo would otherwise appear to show the bug still present.
+**Editing a `DateTimeOffset` did nothing, while the save reported success.** Clearing a nullable one always
+worked, because the null branch returns before the `try` — which is why the asymmetry went unnoticed.
 
-## Open decisions
+Now parsed with `DateTimeStyles.AssumeUniversal` + `InvariantCulture`. Both that and `RoundtripKind`
+preserve an offset the client sent, but an offset-less string is read as *local* time under
+`RoundtripKind`, which would stamp the server's offset onto the value. An absent offset means UTC.
+**Never `AdjustToUniversal`** — measured to flatten every offset to `+00:00`.
 
-Keep or drop the (measurement-neutral) `RavenDB.Client` 7.2.6 bump in this PR; whether to move
-`CodeCoverage.Tests` off its deliberate `TestDriver` 7.2.1 pin; and the wire contract for
-`<input type="datetime-local">`, which has no offset to send.
+---
+
+## 8. Deployment
+
+**Every generated index containing a `DateTimeOffset` or a `[Search]` string changes shape, so RavenDB
+rebuilds it from scratch on deploy.** Indexes with neither are untouched. During the rebuild window the
+runtime reads a missing wrapper as "no information" and returns the un-restored value rather than throwing
+— not a compatibility concession, but a live transient on every deploy.
+
+`apps/CodeCoverage` is production and **is not corrupted**: `Commit` is the only entity there with a
+`DateTimeOffset` and the only one without a generated index, so the `StoreAllFields` trigger never meets
+the type. No migration. A guard test pins it, because that safety was one missing line rather than a design
+decision.
+
+All 23 NuGet packages bumped in lockstep to `10.0.0-preview.81`; `ng-spark` to `22.18.0`.
+
+---
+
+## 9. Traps worth carrying forward
+
+- **`DateTimeOffset.Equals` compares the instant.** Assert `.Offset` or `EqualsExact`, never `==`.
+- **Nesting preserves; scalar index fields normalise.** `FieldIndexing.No` does not help. Neither does
+  storing it as a string — RavenDB normalises date-shaped strings too.
+- **`FieldIndexing.No` on a wrapper is mandatory on Corax**, and its absence fails *after* a clean deploy.
+- **The client's query cache does not appear to key on `ProjectionBehavior`.** Running a `FromDocument`
+  query first makes a subsequent default query return the cached — correct-looking — response. Use
+  `NoCaching()` when comparing the two, or the measurement lies.
+- **A bad index map fails late.** `PutIndexesOperation` succeeds and the index then sits at
+  `state=Error, entries=0`. Map members bind at runtime, so no build validates them.
