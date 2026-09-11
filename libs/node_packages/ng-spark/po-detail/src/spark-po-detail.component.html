@@ -187,6 +187,26 @@
                 }
               } @else if (attr.dataType === 'MultiLineString') {
                 <div class="spark-multiline-value">{{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) || '-' }}</div>
+              } @else if (attr.dataType === 'date' || attr.dataType === 'datetime') {
+                <!--
+                  Formatted the same way, and in the same timezone, as the grid renders it.
+
+                  Before this, a detail page printed the raw wire value — `2026-12-31T23:59:00-08:00`
+                  in a definition list — while the grid showed `01/01/2027, 08:59` for the same
+                  document. Not a rounding difference: a DateTimeOffset whose offset differs from the
+                  viewer's can disagree on the DATE, so the two pages named different days for one car.
+
+                  The grid's meaning wins because it is the one a reader can act on: a timestamp is an
+                  instant, shown in the viewer's own zone. The originating offset is still on the wire
+                  for code that needs it — server-side logic, exports, "which country's morning was
+                  this?" — it simply is not what a viewer is shown by default.
+                -->
+                @let when = (attr.name | rawAttributeValue:item()) | parsedDate;
+                @if (when) {
+                  {{ when | date:(attr.dataType === 'date' ? 'mediumDate' : 'short') }}
+                } @else {
+                  {{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) || '-' }}
+                }
               } @else {
                 {{ (attr.name | attributeValue:item():entityType():lookupReferenceOptions():allEntityTypes()) || '-' }}
               }

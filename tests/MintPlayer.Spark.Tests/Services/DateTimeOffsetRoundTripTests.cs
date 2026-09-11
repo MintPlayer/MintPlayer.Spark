@@ -43,12 +43,22 @@ public class DateTimeOffsetRoundTripTests : SparkTestDriver
     /// <summary>Control: a zero offset round-trips correctly even today.</summary>
     private static readonly DateTimeOffset Utc = new(2026, 3, 9, 12, 0, 0, TimeSpan.Zero);
 
+    /// <summary>UTC, so the wire form carries a <c>Z</c>.</summary>
+    private static readonly DateTime UtcKind = new(2026, 3, 9, 12, 0, 0, DateTimeKind.Utc);
+
+    /// <summary>No zone marker on the wire at all — the shape most .NET code produces by accident.</summary>
+    private static readonly DateTime UnspecifiedKind = new(2026, 3, 9, 12, 0, 0, DateTimeKind.Unspecified);
+
     public class Meeting
     {
         public string? Id { get; set; }
         public string Title { get; set; } = string.Empty;
         public DateTimeOffset Starts { get; set; }
         public DateTimeOffset? MaybeEnds { get; set; }
+
+        /// <summary>Plain <c>DateTime</c>, to establish whether a projection mangles it too.</summary>
+        public DateTime PlainUtc { get; set; }
+        public DateTime PlainUnspecified { get; set; }
     }
 
     /// <summary>
@@ -65,6 +75,8 @@ public class DateTimeOffsetRoundTripTests : SparkTestDriver
                                   meeting.Title,
                                   meeting.Starts,
                                   meeting.MaybeEnds,
+                                  meeting.PlainUtc,
+                                  meeting.PlainUnspecified,
                                   StartsRaw = new SparkIndexValue<DateTimeOffset> { V = meeting.Starts },
                                   MaybeEndsRaw = new SparkIndexValue<DateTimeOffset?> { V = meeting.MaybeEnds },
                               };
@@ -85,6 +97,9 @@ public class DateTimeOffsetRoundTripTests : SparkTestDriver
         public DateTimeOffset Starts { get; set; }
         public DateTimeOffset? MaybeEnds { get; set; }
 
+        public DateTime PlainUtc { get; set; }
+        public DateTime PlainUnspecified { get; set; }
+
         [IgnoreProperty]
         public SparkIndexValue<DateTimeOffset>? StartsRaw { get; set; }
 
@@ -100,7 +115,7 @@ public class DateTimeOffsetRoundTripTests : SparkTestDriver
     private async Task SeedAsync()
     {
         using var session = Store.OpenAsyncSession();
-        await session.StoreAsync(new Meeting { Title = "Positive", Starts = Positive, MaybeEnds = Positive }, "meetings/1");
+        await session.StoreAsync(new Meeting { Title = "Positive", Starts = Positive, MaybeEnds = Positive, PlainUtc = UtcKind, PlainUnspecified = UnspecifiedKind }, "meetings/1");
         await session.StoreAsync(new Meeting { Title = "Negative", Starts = Negative, MaybeEnds = null }, "meetings/2");
         await session.StoreAsync(new Meeting { Title = "Utc", Starts = Utc, MaybeEnds = Utc }, "meetings/3");
         await session.SaveChangesAsync();
@@ -157,6 +172,52 @@ public class DateTimeOffsetRoundTripTests : SparkTestDriver
         // -08:00 stored as 15:00 comes back as 23:00Z — LATER, not earlier.
         negative.Starts.Hour.Should().Be(23);
         negative.Starts.UtcTicks.Should().Be(Negative.UtcTicks);
+    }
+
+    /// <summary>
+    /// Establishes whether a plain <see cref="DateTime"/> survives the same projection that destroys a
+    /// <see cref="DateTimeOffset"/>'s offset — i.e. whether the wrapper treatment needs widening.
+    /// <para>
+    /// Asserted on <see cref="DateTime.Kind"/> and on the exact tick value, not on equality: two
+    /// <c>DateTime</c>s with different <c>Kind</c>s and the same ticks compare equal, which would hide a
+    /// <c>Kind</c> change exactly the way <c>DateTimeOffset.Equals</c> hid the offset loss.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Projecting_a_plain_DateTime_from_a_stored_index_preserves_its_ticks()
+    {
+        await SeedAsync();
+
+        using var session = Store.OpenAsyncSession();
+        var projected = await session.Query<VMeeting, Meetings_Overview>()
+            .Where(v => v.Title == "Positive")
+            .ProjectInto<VMeeting>()
+            .FirstAsync();
+
+        projected.PlainUtc.Ticks.Should().Be(UtcKind.Ticks,
+            "a DateTime has no offset for the index to normalise away, so the wall clock must survive");
+        projected.PlainUnspecified.Ticks.Should().Be(UnspecifiedKind.Ticks);
+    }
+
+    /// <summary>
+    /// The other half: <c>Kind</c> is a wire-format casualty, not an index one. A <c>Utc</c> value
+    /// serialises with a <c>Z</c> and comes back <c>Utc</c>; an <c>Unspecified</c> one has no marker and
+    /// comes back <c>Unspecified</c>. (A <c>Local</c> value is written without a marker and therefore
+    /// returns as <c>Unspecified</c> — measured, and true on <c>session.Load</c> too.)
+    /// </summary>
+    [Fact]
+    public async Task Projecting_a_plain_DateTime_preserves_its_Kind()
+    {
+        await SeedAsync();
+
+        using var session = Store.OpenAsyncSession();
+        var projected = await session.Query<VMeeting, Meetings_Overview>()
+            .Where(v => v.Title == "Positive")
+            .ProjectInto<VMeeting>()
+            .FirstAsync();
+
+        projected.PlainUtc.Kind.Should().Be(DateTimeKind.Utc);
+        projected.PlainUnspecified.Kind.Should().Be(DateTimeKind.Unspecified);
     }
 
     // --- Spark pipeline: these FAIL today and are what the fix repairs ------------------------

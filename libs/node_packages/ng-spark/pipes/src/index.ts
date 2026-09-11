@@ -1,6 +1,7 @@
 export * from './translate-key.pipe';
 export * from './resolve-translation.pipe';
 export * from './input-type.pipe';
+export * from './parsed-date.pipe';
 export * from './attribute-value.pipe';
 export * from './raw-attribute-value.pipe';
 export * from './reference-display-value.pipe';

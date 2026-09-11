@@ -24,6 +24,7 @@ import {
   ArrayValuePipe,
   ReferenceLinkRoutePipe,
   ReferenceChipsPipe,
+  ParsedDatePipe,
 } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
@@ -44,7 +45,7 @@ import {
 
 @Component({
   selector: 'spark-po-detail',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryCardComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, ReferenceChipsPipe, SparkAttributeDescriptionComponent],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryCardComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, ReferenceChipsPipe, ParsedDatePipe, SparkAttributeDescriptionComponent],
   templateUrl: './spark-po-detail.component.html',
   styleUrl: './spark-po-detail.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush

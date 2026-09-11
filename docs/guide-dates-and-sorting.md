@@ -196,6 +196,19 @@ the local wall clock, or writing the value back unchanged.
 prints the raw wall clock and offset badge precisely so you can *see* that the data survived the index
 round trip. A real app should not normally show a viewer a timestamp in somebody else's timezone.
 
+That is also why the Fleet demo's grid and detail page deliberately disagree: the grid shows
+`2026-12-31 23:59 -08:00` (the originating wall clock, via the custom renderer) while the detail page shows
+`01/01/2027, 08:59` (the same instant, in your zone, via the default). Seeing both side by side is the
+clearest illustration of what the offset is *for*. Everywhere else in the framework they agree.
+
+### The detail page used to print raw ISO strings
+
+Until this change, a `datetime` attribute on a detail page fell through to the generic value renderer and
+printed the wire value verbatim — `2026-12-31T23:59:00-08:00` in a definition list — while the grid
+formatted the same document as `01/01/2027, 08:59`. Not a cosmetic difference: a value whose offset
+differs from the viewer's can disagree on the **date**, so the two pages named different days for one car.
+Both now parse through the same `parsedDate` pipe and format identically.
+
 ## Gotchas worth knowing
 
 **`Index(x => x.XRaw, FieldIndexing.No)` is mandatory on a wrapper field.** Omit it and **Corax deploys
