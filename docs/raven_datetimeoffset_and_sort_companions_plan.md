@@ -296,9 +296,38 @@ an unauthenticated visitor sees an empty grid and no button. Then `dotnet run --
 
 The button needs `Car` documents to exist first — it stamps, it does not create.
 
-**Not verified in a browser**, and flagged rather than glossed: no RavenDB `SparkFleet` database or
-seeded admin user exists on this machine, and Fleet has no local user seeding (the E2E harness patches
-the `SparkUser` document by hand). Everything up to the rendered pixel is verified.
+#### ✅ Verified end to end in a browser (2026-09-11)
+
+Ran against RavenDB 7.2.6 and the real Fleet app with 10,010 `Car` documents, driven through Playwright.
+
+**The index deployed healthy — the Corax check that matters:**
+`State=Normal`, `MapErrors=0`, `EntriesCount=10010`, `IsStale=false`, and the definition carries
+`"RegisteredAtRaw": { "Indexing": "No" }`. Had `FieldIndexing.No` been omitted this would have read
+`state=Error, entries=0` after a clean deploy.
+
+**The defect and the fix, side by side in one projection** (`from index 'Cars/Overview' select
+RegisteredAt, RegisteredAtRaw`):
+
+| stored in document | scalar field (RavenDB flattens) | wrapper (preserved) |
+|---|---|---|
+| `13:47+02:00` | `11:47Z` | `13:47+02:00` |
+| `18:40-03:30` | `22:10Z` | `18:40-03:30` |
+| `12:10+09:30` | `02:40Z` | `12:10+09:30` |
+
+The scalar field is *still* flattened — the fix does not stop RavenDB doing it, and was never going to.
+The wrapper is what carries the truth, and the runtime reads from it.
+
+**The grid renders restored offsets**, five distinct ones on a single page: `-08:00`, `+02:00`,
+`-03:30`, `+05:45`, `+00:00`.
+
+**Sorting is provably by instant, not by displayed text.** Measured over the rendered rows:
+`sortedByInstantDesc: true` while `wallClockAlsoMonotonic: false` — the wall clocks run
+`23:59, 19:42, 19:28, 17:48, 12:36, 16:01, 20:03, 19:25, 04:55, 08:54`. A sort operating on the shown
+value could not produce that order, which is exactly the property the design intends: order by instant,
+display each row's own local time.
+
+**Pagination is continuous across the sort**: page 1 ends at `12:24Z`, page 2 begins at `12:15Z`, still
+descending, no overlap and no gap.
 
 The point is to make the fix *visible* rather than only asserted: a grid whose timestamps carry real,
 mixed-sign offsets, sorted and paginated correctly, where the offsets survive the round trip. It is
