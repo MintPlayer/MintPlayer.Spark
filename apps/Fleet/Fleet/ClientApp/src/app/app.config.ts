@@ -9,6 +9,7 @@ import { provideSparkClientOperations } from '@mintplayer/ng-spark/client-operat
 import { routes } from './app.routes';
 import { ColorDetailRendererComponent } from './renderers/color-detail-renderer.component';
 import { ColorColumnRendererComponent } from './renderers/color-column-renderer.component';
+import { OffsetDateTimeColumnRendererComponent } from './renderers/offset-datetime-column-renderer.component';
 import { VideoPlayerDetailRendererComponent } from './renderers/video-player-detail-renderer.component';
 import { VideoPlayerColumnRendererComponent } from './renderers/video-player-column-renderer.component';
 import { ColorEditRendererComponent } from './renderers/color-edit-renderer.component';
@@ -33,6 +34,12 @@ export const appConfig: ApplicationConfig = {
         name: 'video-player',
         detailComponent: VideoPlayerDetailRendererComponent,
         columnComponent: VideoPlayerColumnRendererComponent,
+      },
+      {
+        // Prints the wall clock and offset the server sent, instead of letting DatePipe
+        // re-render everything in the browser's own zone. See the component for why.
+        name: 'offset-datetime',
+        columnComponent: OffsetDateTimeColumnRendererComponent,
       },
     ]),
   ]

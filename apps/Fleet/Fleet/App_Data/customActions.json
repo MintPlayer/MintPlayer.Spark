@@ -7,5 +7,17 @@
     "selectionRule": "=1",
     "refreshOnCompleted": true,
     "confirmationMessageKey": "AreYouSure"
+  },
+  "ScatterRegistrationOffsets": {
+    "displayName": {
+      "en": "Scatter registration offsets",
+      "fr": "Disperser les décalages horaires",
+      "nl": "Tijdzones verspreiden"
+    },
+    "icon": "Clock",
+    "description": "Stamps every car with a random registration timestamp carrying a different, non-zero, mixed-sign timezone offset — so the Registered column shows offsets that could not have survived by accident.",
+    "showedOn": "query",
+    "selectionRule": "=0",
+    "refreshOnCompleted": true
   }
 }

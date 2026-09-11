@@ -169,6 +169,27 @@ while RavenDB rebuilds an index, the wrapper field is genuinely absent, so the r
 missing wrapper as "no information" and return the un-restored value rather than throwing or
 half-restoring.
 
+## See it working
+
+`apps/Fleet` carries a live demonstration: `Car.RegisteredAt`, a **Scatter registration offsets**
+button that stamps every car with a random timestamp carrying a mixed-sign offset (`+02:00`, `-08:00`,
+`+05:45`, `+00:00`, `-03:30`, `+09:30`), and a paginated `Registrations` grid sorted on it.
+
+Run `dotnet run --project apps/Fleet/Fleet` (needs RavenDB database `SparkFleet` and a signed-in
+admin — an anonymous caller gets `car => false` from the row filter) and open `/query/registrations`.
+
+Two things it is built to show:
+- **The seed data is adversarial on purpose.** A UTC-only corpus would prove nothing — `TimeSpan.Zero`
+  round-trips correctly even when the fix is absent, which is why the defect hid for years. One
+  `+00:00` row is included as the control.
+- **Sorting is by instant, while each row keeps its own wall clock.** That is the point of keeping the
+  real typed field for ordering and the wrapper only for fidelity.
+
+⚠️ It needs a **custom column renderer** (`offset-datetime`), and that is not cosmetic: the default
+`datetime` column pipes through Angular's `DatePipe` with no timezone argument, so every row renders in
+the *browser's* zone and a correctly-restored value still looks shifted. Presentation, not data loss —
+but the demo would otherwise appear to show the bug still present.
+
 ## Open decisions
 
 Keep or drop the (measurement-neutral) `RavenDB.Client` 7.2.6 bump in this PR; whether to move

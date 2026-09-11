@@ -1,7 +1,9 @@
 # Plan — `DateTimeOffset` fidelity (read + write) and `*Sort` companion correction
 
 **PRD:** [raven_datetimeoffset_and_sort_companions_PRD.md](raven_datetimeoffset_and_sort_companions_PRD.md)
-**Status:** **IMPLEMENTED**. All milestones done; suite green.
+**Status:** **IMPLEMENTED** (M1–M10); **M11 — a demo-app demonstration — in progress.**
+Suite green: `MintPlayer.Spark.Tests` 2134/2134, `CodeCoverage.Tests` 438/438,
+`SourceGenerators` 278/278, `Client` 38/38.
 **Branch:** `fix/datetimeoffset-fidelity`.
 **Issues:** none — the issue owner chose to implement directly; the PR references this PRD instead.
 
@@ -247,6 +249,81 @@ generator-emitted expression is never validated by a build.
 
 Add a CI assertion that every deployed index reaches a healthy state with `mapErrors=0`. Without it, a
 generator typo ships silently and every query returns nothing.
+
+### M11 — A working demonstration in a demo app ✅ DONE
+
+**Built in `apps/Fleet`** — the only demo app with both `[GenerateIndex]` (so the wrapper is emitted
+automatically, exercising the real path) and a working custom-action triplet to copy. `apps/DemoApp`
+was rejected: its indexes are hand-written, which would have demonstrated the *other* half of the fix.
+`apps/HR` has no custom-action machinery at all. Not `apps/CodeCoverage` — production.
+
+| Piece | Where |
+|---|---|
+| The property | `Car.RegisteredAt` (`apps/Fleet/Fleet.Library/Entities/Car.cs`) — no attribute; the type is its own trigger |
+| The button | `ScatterRegistrationOffsetsAction` (`apps/Fleet/Fleet/CustomActions/`), `selectionRule: "=0"`, `showedOn: "query"` |
+| Registration | `App_Data/customActions.json` + two grants in `App_Data/security.json` (default is deny — no grant, no button, silently) |
+| The grid | query `Registrations` in `App_Data/Model/Car.json`, `alias: registrations`, `renderMode: Pagination`, sorted on `RegisteredAt` |
+| The menu entry | `App_Data/programUnits.json` |
+| **The renderer** | `offset-datetime-column-renderer.component.ts` + registration in `app.config.ts` |
+
+**Verified:** the generator emitted, against the real entity and with nothing hand-written —
+```csharp
+RegisteredAtRaw = new SparkIndexValue<DateTimeOffset> { V = car.RegisteredAt },
+Index(nameof(VCar.RegisteredAtRaw), FieldIndexing.No);
+```
+`--spark-verify-model` exits 0; the wrapper does **not** appear as a model attribute (`[IgnoreProperty]`
+is vetoed by the synchronizer), so no stray column shows up in the grid.
+
+#### ⚠️ The renderer is not decoration — without it the demo shows nothing
+
+The default `datetime` column pipes the value through Angular's `DatePipe` with no timezone argument,
+which formats in the **browser's** local zone. Every row would render in *your* offset and the demo
+would look exactly like the unfixed bug. A column renderer receives the **raw wire value** rather than
+the piped one, so it can print the ISO string verbatim. The component deliberately never constructs a
+JS `Date` — `new Date(...)` discards the offset immediately, which is the same loss in the browser that
+RavenDB used to inflict in the index.
+
+This generalises beyond the demo: **a correctly-restored `DateTimeOffset` still *displays* shifted**
+under the default renderer. That is presentation, not data loss, and it is exactly the kind of thing
+that restarts a folklore cycle if nobody writes it down.
+
+#### Running it
+
+Needs RavenDB database `SparkFleet` on `localhost:8080`, and a signed-in user in `Administrators` or
+the Fleet-manager group — `CarActions.GetRowFilterAsync` gives an anonymous caller `car => false`, so
+an unauthenticated visitor sees an empty grid and no button. Then `dotnet run --project apps/Fleet/Fleet`
+(the host spawns the Angular dev server; never run `ng serve` beside it) and open `/query/registrations`.
+
+The button needs `Car` documents to exist first — it stamps, it does not create.
+
+**Not verified in a browser**, and flagged rather than glossed: no RavenDB `SparkFleet` database or
+seeded admin user exists on this machine, and Fleet has no local user seeding (the E2E harness patches
+the `SparkUser` document by hand). Everything up to the rendered pixel is verified.
+
+The point is to make the fix *visible* rather than only asserted: a grid whose timestamps carry real,
+mixed-sign offsets, sorted and paginated correctly, where the offsets survive the round trip. It is
+also the first end-to-end exercise of the wrapper through a generated index, the Angular client and a
+real browser — every other check so far has been a test or a harness.
+
+- A `DateTimeOffset` property on an existing entity (preferred over a new entity).
+- **A button** that fills existing documents with random timestamps carrying deliberately varied
+  offsets — at minimum one positive, one negative, one fractional (`+05:45`) and one `+00:00`. A
+  UTC-only corpus would demonstrate nothing, since `TimeSpan.Zero` round-trips even when broken.
+- The query must **sort and paginate** on that column. Since #295 a sort column must name a modelled
+  attribute of the query surface, so the property has to reach `App_Data/Model/*.json` via
+  `--spark-synchronize-model` before the column can sort at all.
+- Verify in the browser, not only by test: `dotnet run` on the app (never a separate `ng serve` — the
+  host spawns it), then read the grid.
+
+**What this demonstrates that a test cannot:** that the value survives `EntityMapper` → JSON →
+Angular's `DatePipe`. The client renders in the *browser's* local zone, so a correctly-restored value
+still displays shifted relative to UTC — that is presentation, not data loss, and the demo is where
+that distinction becomes obvious rather than alarming.
+
+⚠️ Note the client contract is **not yet implemented**: `<input type="datetime-local">` has no offset,
+so editing a timestamp in the UI still sends an offset-less string, which the server now reads as UTC.
+The demo should fill values server-side (the button) rather than through the editor, and the gap
+should be stated in the demo's own copy.
 
 ### M8 — Docs
 

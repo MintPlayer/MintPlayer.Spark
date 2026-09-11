@@ -28,6 +28,20 @@ public class Car
     public string Model { get; set; } = string.Empty;
     /// <summary>Model year of the vehicle, as stated on its registration.</summary>
     public int Year { get; set; }
+
+    /// <summary>
+    /// When the vehicle was registered, in the registering country's <em>local</em> time. The offset is
+    /// data, not presentation: a Brussels registration is <c>+02:00</c> and a Seattle one is <c>-08:00</c>,
+    /// and losing that loses which country's morning it was.
+    /// <para>
+    /// Demonstrates the <c>DateTimeOffset</c> treatment. No attribute is needed — the type is its own
+    /// trigger. The generator emits a <c>RegisteredAtRaw</c> wrapper into <c>VCar</c> because RavenDB
+    /// flattens a <c>DateTimeOffset</c> to its UTC equivalent whenever it becomes a scalar index field,
+    /// and a projection would otherwise hand back <c>+00:00</c>. Ordering still runs on the real field,
+    /// where the UTC-normalised instant is exactly what makes a sort across mixed offsets chronological.
+    /// </para>
+    /// </summary>
+    public DateTimeOffset RegisteredAt { get; set; }
     /// <summary>Exterior paint colour of the vehicle.</summary>
     public Color? Color { get; set; }
     /// <summary>Colour of the vehicle's interior upholstery and trim.</summary>
