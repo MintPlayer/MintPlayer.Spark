@@ -159,6 +159,25 @@ fix passed while the pipeline was provably returning `08:00+00:00`.
 
 ---
 
+## How to display one
+
+**Show it in the viewer's timezone.** That is the default and it needs no work: the grid hands the value
+to Angular's `DatePipe` with no timezone argument, which renders in the browser's own zone. Leave it
+alone.
+
+This works because **the instant was never the thing that broke.** RavenDB flattened the offset but kept
+`UtcTicks`, so `2026-03-09T08:00:00Z` and `2026-03-09T10:00:00+02:00` are the same moment and render
+*identically* in a viewer-local grid. A UI that shows viewer-local time never displayed this defect —
+which is a large part of why it went unnoticed for years.
+
+So what is the offset for? Anything that needs the *originating* local time rather than the viewer's:
+server-side business logic (`.Offset`, "which country's morning was this?"), an export that must reproduce
+the local wall clock, or writing the value back unchanged.
+
+⚠️ **The `offset-datetime` renderer in `apps/Fleet` is a demonstration device, not a pattern to copy.** It
+prints the raw wall clock and offset badge precisely so you can *see* that the data survived the index
+round trip. A real app should not normally show a viewer a timestamp in somebody else's timezone.
+
 ## Gotchas worth knowing
 
 **`Index(x => x.XRaw, FieldIndexing.No)` is mandatory on a wrapper field.** Omit it and **Corax deploys
