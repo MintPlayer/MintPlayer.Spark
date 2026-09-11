@@ -170,6 +170,24 @@ This works because **the instant was never the thing that broke.** RavenDB flatt
 *identically* in a viewer-local grid. A UI that shows viewer-local time never displayed this defect —
 which is a large part of why it went unnoticed for years.
 
+⚠️ **But viewer-local is not the stored wall clock, and never was.** Three different things are in play,
+and conflating them is the fastest route back into this confusion:
+
+| | example |
+|---|---|
+| the **instant** | `2026-03-09T08:00:00Z` — always correct, never broken |
+| what the **viewer sees** | `09/03/2026, 09:00` — the instant, in their zone, *on that date* |
+| the **stored** wall clock + offset | `2026-03-09T10:00:00+02:00` — what the fix restores |
+
+Measured in `Europe/Brussels`: a value stored as `10:00+02:00` displays as **09:00**, because Brussels is
+CET (`+01:00`) on 9 March even though it is CEST (`+02:00`) in September. The viewer's *current* offset is
+irrelevant — the zone's offset **at the value's own date** is what applies. A value and a viewer can sit in
+the same country and still disagree, purely because of DST.
+
+So "the grid looks right" has never meant "the grid shows the document". If you need the originating wall
+clock — an export, an audit trail, "which country's morning was this?" — you need the offset, and before
+this fix it was not on the wire to be had.
+
 So what is the offset for? Anything that needs the *originating* local time rather than the viewer's:
 server-side business logic (`.Offset`, "which country's morning was this?"), an export that must reproduce
 the local wall clock, or writing the value back unchanged.
