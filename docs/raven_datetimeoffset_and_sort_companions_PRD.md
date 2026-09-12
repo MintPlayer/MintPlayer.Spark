@@ -6,7 +6,12 @@ is **measured on live servers** or cited upstream. Nothing rests on folklore.
 **Issues:** none — implemented directly; the PR references this PRD.
 For what is done vs. still open, see the [plan](raven_datetimeoffset_and_sort_companions_plan.md) or the
 [summary](raven_datetimeoffset_and_sort_companions_summary.md).
-**Plan:** [raven_datetimeoffset_and_sort_companions_plan.md](raven_datetimeoffset_and_sort_companions_plan.md)
+
+> **The framework's timestamp semantics were settled while this shipped** and are recorded in the plan
+> under *Timestamp semantics*: a `DateTimeOffset` in Spark means an **instant**, the originating offset is
+> not business data, the **browser** converts in both directions, and a viewer-zone request header exists
+> only for server-initiated work. Read that before extending anything date-shaped — several decisions here
+> only make sense against it.
 
 ---
 
@@ -125,7 +130,7 @@ Dates survive a bare `order by` because ISO-8601 terms are lexically monotonic.
 **Corroboration:** Vidyano's generator emits a companion for exactly `[Search]` strings and
 `DateTimeOffset` — plain `DateTime`/`int`/`decimal` get none. Spark's `SparkModelSymbols.cs:70-77`
 documents the same narrow rule from a 15/15-vs-22/22 reference corpus. **The blanket "always write a
-`*Sort` property" habit at 2sky/cronos is wider than either framework and is cargo cult.**
+`*Sort` property" habit in the originating codebase is wider than either framework and is cargo cult.**
 
 **The `DateTimeOffset` sort companion is doubly pointless** — it neither improves ordering (identical)
 nor protects the value (both shift), and it is typed the same as the base field so it *cannot* carry
@@ -139,7 +144,7 @@ the offset.
 `OrderingType.String` and returns `10, 100, 1000, 2, 20, 200, 5, 9`
 ([ravendb#15631](https://github.com/ravendb/ravendb/issues/15631)). Fix is
 `OrderBy(name, OrderingType.Long)`. **Spark is immune** — `ApplySorting` builds a typed lambda, so
-the client writes `as long`/`as double` into the RQL. Pass to 2sky/cronos; it is their actual bug and
+the client writes `as long`/`as double` into the RQL. Pass to the originating team; it is their actual bug and
 no companion fixes it.
 
 ---
@@ -465,7 +470,7 @@ guard test asserting `Commits_ByRepository` declares no stored fields.
 - `DateTime.Kind=Local` → `Unspecified` round-trip loss. Measured on **every** path including
   `session.Load`; inherent to JSON. Document it — and note it makes `DateTime` the *safer* type, since
   there is no offset to normalise away.
-- Migrating 2sky/cronos off the wider companion convention. Their call; Defect C is their actual bug.
+- Migrating the originating codebase off the wider companion convention. Their call; Defect C is their actual bug.
 
 ---
 

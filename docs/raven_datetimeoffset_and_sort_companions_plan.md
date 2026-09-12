@@ -15,20 +15,112 @@ Versions: all 23 NuGet packages → `10.0.0-preview.81`; `@mintplayer/ng-spark` 
 
 | Item | State |
 |---|---|
-| **M10 — upstream + sideways** | **Not done, and not the implementer's to do.** Both actions are outward-facing: a public comment on [ravendb#17901](https://github.com/ravendb/ravendb/issues/17901) with the layer isolation, and handing 2sky/cronos the Defect C finding. Needs the issue owner to send them. |
-| **Client write contract** | **Decided, not implemented.** `<input type="datetime-local">` sends no offset, so editing a timestamp in the UI lands as UTC. The server half is done — it parses whatever offset it is sent and treats an absent one as UTC — but `ng-spark` does not yet carry the value's original offset through the editor and reattach it on submit. The Fleet demo seeds server-side for exactly this reason. **There is an unresolved product question inside it** (below), so it was not guessed at. |
+| **M10 — upstream + sideways** | **Not done, and not the implementer's to do.** Both actions are outward-facing: a public comment on [ravendb#17901](https://github.com/ravendb/ravendb/issues/17901) with the layer isolation, and handing the originating team the Defect C finding. Needs the issue owner to send them. |
+| **Client write contract** | **Semantics decided, implementation outstanding.** `<input type="datetime-local">` sends no offset, so editing a timestamp in the UI currently lands as UTC. The server half is done; `ng-spark` must compute the offset for the entered date in the browser's zone and send a complete ISO-8601 string. See *Timestamp semantics* §2. The Fleet demo seeds server-side until this lands. |
+| **Viewer-zone request header** | **Decided in shape, not built.** `X-Spark-Timezone`, for server-initiated work only (§4). Needs zone-id canonicalisation (§5) and the DST fold/gap decision (§6) before it is coded. |
 
-#### The open question inside the write contract
+#### The write contract — DECIDED (see below)
 
-If a viewer in Brussels edits a car registered in Seattle, what offset should the saved value carry — the
-**viewer's** `+02:00` (natural for a `datetime-local` control, which knows only a wall clock) or the
-record's original `-08:00` (preserves *which country registered it*)?
+The question was: if a viewer in Brussels edits a car registered in Seattle, does the saved value carry the
+**viewer's** `+02:00` or the record's original `-08:00`? It is answered by the semantics decision below —
+**the viewer's**, always, because the originating offset is not business data in Spark.
 
-For `RegisteredAt` the second is clearly right, and it cannot be inferred from the control: the client
-would have to keep the original offset alongside the value and reattach it on submit. For a field meaning
-"when did this happen, in my time" the first is right. **That is a product decision per field, not a
-technical default**, which is why nothing was implemented on a guess.
-**Issues:** none — the issue owner chose to implement directly; the PR references this PRD instead.
+What remains is implementation, plus one edge case (the DST fold/gap) that needs measuring before it is
+coded.
+
+---
+
+## Timestamp semantics — DECIDED
+
+The framework-level position, settled 2026-09-12. Everything below follows from the first line.
+
+### 1. A `DateTimeOffset` in Spark means an *instant*
+
+The originating offset is **not** business data. Two actions at the same moment in São Paulo and Shanghai
+are the same timestamp as far as Spark is concerned, even though their literal stamps differ:
+
+```
+São Paulo:  2026-03-09T10:00:00-03:00   ┐ same instant
+Shanghai:   2026-03-09T21:00:00+08:00   ┘ (identical UtcTicks)
+```
+
+> ⚠️ A `DateTimeOffset` is an instant **plus the offset it was observed at** — it is not purely an instant.
+> Spark chooses to treat the offset as incidental. An app that genuinely needs "which country's morning was
+> this?" must model that itself (a separate zone or country field); it cannot rely on the offset surviving
+> as meaning.
+
+**Consequence:** an edited value takes the **viewer's** zone. There is no "preserve the record's original
+offset" case, because there is no original-offset semantics to preserve.
+
+### 2. The browser converts, not the server
+
+The client sends a complete ISO-8601 string with the offset already applied; the server parses it and never
+infers one. This is already how `EntityMapper` behaves as of M5.
+
+```js
+// the browser computes the offset FOR THAT DATE, DST-aware, from OS-maintained rules
+new Date(2026, 2, 9, 14, 30).getTimezoneOffset()   // -60  → +01:00 (CET)
+new Date(2026, 6, 9, 14, 30).getTimezoneOffset()   // -120 → +02:00 (CEST)
+```
+
+Why the browser rather than the server, when both *can* do it:
+
+- **Freshness.** Timezone rules change (the recurring proposals to abolish EU DST are the live example). The
+  browser's rules are maintained by the OS. A container's are frozen at build time, so a stale image would
+  compute a wrong offset for dates after a rule change and store a **permanently wrong instant** — silently.
+- **No zone id crosses the wire on this path**, so none of the id-resolution hazards below can apply.
+
+### 3. `<input type="datetime-local">` is the control
+
+Correct under §1: the user types a wall clock in their own zone and the browser supplies the offset.
+(`<input type="datetime">` was removed from the HTML spec, so it is not an alternative.)
+
+### 4. A request header carries the viewer's IANA zone — for server-initiated work only
+
+`X-Spark-Timezone: Europe/Brussels`, read by an `IRequestTimeZoneResolver` mirroring the existing
+`RequestCultureResolver`, which already resolves culture from `Accept-Language`
+(`RequestCultureResolver.cs:21`).
+
+**Not needed for reads or writes** — §2 covers both. It exists for work with no browser in the loop: a
+server-side "today" filter, a scheduled export, a cron job rendering times for a user.
+
+An IANA **zone** rather than a numeric offset, because a zone is the rules and an offset is one moment's
+snapshot of them — `+02:00` sent in September is wrong for a March date.
+
+### 5. Zone-id resolution is the hazard on that path, not missing data
+
+Measured on the actual images (2026-09-12):
+
+| image | OS | `tzdata` | `tzdata-legacy` | legacy aliases |
+|---|---|---|---|---|
+| `aspnet:10.0` | **Ubuntu 24.04** | 2026c | installed | present |
+| `aspnet:9.0` | Debian 12 bookworm | 2026b | n/a (aliases in `tzdata`) | present |
+| `aspnet:8.0` | Debian 12 bookworm | 2025b | n/a | present |
+
+So `tzdata` is bundled and current, and **no package needs adding**. The real failure mode is different:
+tzdata renames zones (`America/Godthab` → `America/Nuuk` in 2020a), and newer distributions split the
+backward-compatibility aliases into a separate `tzdata-legacy` package. A container without it throws
+`TimeZoneNotFoundException` on the old id — and browsers do not all report canonical ids (ICU has long
+returned `Asia/Calcutta` rather than `Asia/Kolkata`).
+
+⚠️ **If the header is implemented, canonicalise the id and define a fallback** for
+`TimeZoneNotFoundException`. Do **not** depend on `tzdata-legacy` being present: it is a property of a
+mutable image tag, and a move to a `-chiseled` or Alpine base would drop it. Fixing the id is the durable
+answer; keeping a compatibility package alive is not.
+
+### 6. Still to measure before implementing §4
+
+`TimeZoneInfo.GetUtcOffset` during the **autumn fold** (a wall clock that occurs twice) and the **spring
+gap** (one that does not occur at all). `IsAmbiguousTime` / `IsInvalidTime` detect both. The resolution
+should be a stated decision, not whatever the default turns out to be.
+
+### 7. The wrapper stays — on consistency grounds
+
+Under §1 the flattening loses no *business* information, since the instant survives. It still breaks the
+invariant that **the wire value always equals the document value**: without the wrapper, `session.Load` and
+a query return literally different values for one document, `.Offset` reads `+00:00` from one path and the
+truth from the other, and a grid and a detail page can name different days. One cheap field buys that away.
+---
 
 ## Decisions taken (issue owner)
 
@@ -444,7 +536,7 @@ Redirect to a log file and check the exit code — never pipe the only copy into
 ### M10 — Upstream + sideways
 - Comment on [ravendb#17901](https://github.com/ravendb/ravendb/issues/17901) with the layer isolation and
   the nesting discriminator — better evidence than the original report.
-- Hand 2sky/cronos Defect C: their numeric mis-ordering is `OrderBy(string)` → `OrderingType.String`, no
+- Hand the originating team Defect C: their numeric mis-ordering is `OrderBy(string)` → `OrderingType.String`, no
   companion fixes it, and the blanket convention can be narrowed to `[Search]` strings.
 
 ---

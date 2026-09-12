@@ -27,7 +27,7 @@ Suites: `MintPlayer.Spark.Tests` 2143/2143 · `CodeCoverage.Tests` 438/438 · `S
 | | |
 |---|---|
 | **The client write contract** | `<input type="datetime-local">` sends no offset, so editing a timestamp in the UI lands as UTC. The server half is done; `ng-spark` does not yet carry the original offset through the editor. **Blocked on a product question, not on effort** — see [§9](#9-what-is-still-open). |
-| **Upstream + sideways** | A comment on [ravendb#17901](https://github.com/ravendb/ravendb/issues/17901), and handing 2sky/cronos the Defect C finding. Both outward-facing; the issue owner's to send. |
+| **Upstream + sideways** | A comment on [ravendb#17901](https://github.com/ravendb/ravendb/issues/17901), and handing the originating team the Defect C finding. Both outward-facing; the issue owner's to send. |
 
 ---
 
@@ -265,18 +265,25 @@ parses whatever offset it is given and treats an absent one as UTC, so a save no
 did nothing before). What `ng-spark` does not yet do is carry the value's *original* offset through the
 editor and reattach it on submit.
 
-The question that has to be answered first: **if a viewer in Brussels edits a car registered in Seattle,
-what offset should the saved value carry?**
+**The semantics are now decided** (plan → *Timestamp semantics*), and they answer what used to be the open
+question:
 
-- the **viewer's** `+02:00` — natural for the control, and right for a field meaning "when did this happen,
-  in my time";
-- the **record's original** `-08:00` — preserves *which country registered it*, and is clearly right for
-  `RegisteredAt`.
+> **A `DateTimeOffset` in Spark means an instant. The originating offset is not business data.**
 
-It cannot be inferred from the control, and it is plausibly a per-field decision rather than a framework
-default. That is why nothing was implemented on a guess.
+So an edited value takes the **viewer's** zone — there is no "preserve the record's original offset" case,
+because there is no original-offset semantics to preserve. An app that genuinely needs "which country's
+morning was this?" must model that itself.
 
-Until it is settled, the Fleet demo seeds values server-side via the button rather than through the editor.
+What remains is implementation: **the browser computes the offset** for the entered date and sends a
+complete ISO-8601 string; the server parses it and never infers one (already true as of this PR). The
+browser rather than the server because its timezone rules are OS-maintained and current, while a
+container's are frozen at build time — a stale image would compute a wrong offset after a rule change and
+store a permanently wrong instant, silently.
+
+A separate `X-Spark-Timezone` header is decided in shape but not built, and is **only** for work with no
+browser in the loop — a server-side "today" filter, an export, a cron job. Reads and writes do not need it.
+
+Until the client half lands, the Fleet demo seeds values server-side via the button rather than the editor.
 
 ---
 
