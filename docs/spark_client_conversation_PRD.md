@@ -436,9 +436,43 @@ So the real options are about the *diagnostic*, not the layout:
 | **Capability endpoint** — the server advertises which optional modules are on | Largest, and it is a disclosure surface of its own: it tells an anonymous caller what the deployment runs. |
 
 ⚠️ This generalises beyond auth. The same shape will recur for **every optional server module** a client
-grows methods for — messaging, replication, identity provider. Deciding it once, for the reason rather
-than for the instance, is cheaper than deciding it per package. **It belongs with M5 (endpoint
-coverage)**, which is where the client gains the methods that make the question concrete.
+grows methods for. Deciding it once, for the reason rather than for the instance, is cheaper than
+deciding it per package. **It belongs with M5 (endpoint coverage)**, which is where the client gains the
+methods that make the question concrete.
+
+### How many such packages are there actually? Measured: at most one more
+
+The issue owner's expectation, 2026-09-13, was *"a similar class library for replication,
+identity_provider, controllers, webhooks, …"* — and accepted the project-count cost. **The cost is
+mostly not there.** Counting the libraries that expose framework HTTP endpoints at all:
+
+| Library | Framework HTTP endpoints | Needs a client package? |
+|---|---|---|
+| `authorization` | `/spark/auth/*` | ✅ **already exists** |
+| `replication` | 2 — `/deploy`, `/apply` | **Maybe**, narrowly — see below |
+| `identity_provider` | OIDC + `/connect/*` | **No** — see below |
+| `controllers` | **0** | **No.** It mounts *your* MVC controllers; there is nothing generic to wrap, so the package would have no methods. |
+| `webhooks` | **0** in production | **No.** The only mapped route is a *dev* WebSocket tunnel; real deliveries arrive inbound from GitHub via smee. A client does not call it — GitHub does. |
+| `messaging`, `cron`, `subscription_worker`, `migrations` | **0** | **No.** No HTTP surface at all; queues and jobs are RavenDB-backed. |
+
+**`identity_provider` is the one worth arguing about, and the answer is still no.** Its two surfaces
+split cleanly:
+- The **admin** surface (`OidcApplication`, `OidcScope`) is ordinary PersistentObjects — `OidcAdminRouteTests`
+  drives it through `POST /spark/po/create` today. Already covered by `SparkClient`'s CRUD; a new package
+  would duplicate it.
+- The **protocol** surface (`/.well-known/openid-configuration`, `/connect/authorize`, `/connect/token`)
+  is standard OIDC, deliberately. ⚠️ Wrapping it in a Spark-flavoured client would re-implement something
+  already standardised *and* imply the endpoints are Spark-specific when their whole value is that they
+  are not. A test should drive them with an OIDC client, or raw HTTP.
+
+**`replication` is the only genuine candidate**, and it is small: two endpoints, module-to-module,
+authenticated by **client certificate** rather than a cookie. That is a different auth model from
+everything `SparkClient` does, which is an argument for a separate package if it is ever built — and an
+argument for not building it until a test actually needs it.
+
+So the realistic answer is **zero or one** more client library, not five. The principle the issue owner
+stated is right — an optional server module with endpoints gets a matching optional client package — it
+just applies to far fewer modules than the package list suggests.
 
 ---
 
