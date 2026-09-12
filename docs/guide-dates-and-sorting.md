@@ -227,10 +227,14 @@ document   2026-12-31T23:59:00-08:00
            2027-01-01T08:59:00+01:00     ← same instant, viewer's offset
 ```
 
-The value takes the **viewer's** zone on save, never the record's original offset — see
+An **edited** value takes the **viewer's** zone, never the record's original offset — see
 [the semantics decision](raven_datetimeoffset_and_sort_companions_plan.md). Under Spark's rules the
 originating offset is not business data, so there is nothing to preserve. If your app genuinely needs
 "which country's morning was this?", model that as its own field.
+
+**An untouched value is sent back exactly as it was loaded**, offset included. Preserving the instant
+is the guarantee; preserving the offset when nothing changed is what keeps "open a record and press
+Save" a genuine no-op rather than a silent relabelling of every timestamp you look at.
 
 ⚠️ **Never assign a wire timestamp straight to a date control.** `<input type="datetime-local">` accepts
 only `yyyy-MM-ddTHH:mm`; hand it `2026-12-31T23:59:00-08:00` and it does not throw, does not warn, and

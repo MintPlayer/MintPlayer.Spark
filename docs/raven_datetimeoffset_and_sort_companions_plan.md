@@ -3,12 +3,12 @@
 **PRD:** [raven_datetimeoffset_and_sort_companions_PRD.md](raven_datetimeoffset_and_sort_companions_PRD.md)
 **Status:** **IMPLEMENTED and verified in a browser.** M1–M9 and M11–M15 done; **only M10 outstanding**,
 and M10 is two outward-facing messages rather than code.
-**Branch:** `fix/datetimeoffset-fidelity` — 16 commits, pushed.
+**Branch:** `fix/datetimeoffset-fidelity` — 18 commits, pushed.
 **PR:** [#403](https://github.com/MintPlayer/MintPlayer.Spark/pull/403), open.
 
 Suites green: `MintPlayer.Spark.Tests` **2147/2147**, `CodeCoverage.Tests` **438/438**,
 `SourceGenerators` **278/278**, `MintPlayer.Spark.Client.Tests` **38/38**, `@mintplayer/ng-spark`
-**488/488**.
+**490/490**.
 
 Versions: all 23 NuGet packages → `10.0.0-preview.81`; `@mintplayer/ng-spark` → `22.18.0`.
 

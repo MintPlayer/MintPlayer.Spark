@@ -1,7 +1,7 @@
 # Summary — `DateTimeOffset` fidelity and sort companions
 
 **Status: implemented and verified in a browser** on `fix/datetimeoffset-fidelity` —
-[PR #403](https://github.com/MintPlayer/MintPlayer.Spark/pull/403), 16 commits, open.
+[PR #403](https://github.com/MintPlayer/MintPlayer.Spark/pull/403), 18 commits, open.
 [PRD](raven_datetimeoffset_and_sort_companions_PRD.md) · [plan](raven_datetimeoffset_and_sort_companions_plan.md) ·
 developer-facing: [guide](guide-dates-and-sorting.md). Everything below is measured, and every value
 shown is a real observation from RavenDB 7.2.6 with the Fleet demo's 10,010 cars.
@@ -22,7 +22,7 @@ shown is a real observation from RavenDB 7.2.6 with the Fleet demo's 10,010 cars
 | **Versions** | 23 NuGet packages → `10.0.0-preview.81`; `ng-spark` → `22.18.0` |
 
 Suites: `MintPlayer.Spark.Tests` 2147/2147 · `CodeCoverage.Tests` 438/438 · `SourceGenerators` 278/278 ·
-`Client` 38/38 · `ng-spark` 488/488.
+`Client` 38/38 · `ng-spark` 490/490.
 
 ### Not done
 
@@ -304,8 +304,30 @@ Two details that are easy to get wrong:
   comparing by instant is correct, because the question is "did the user change this", not "is the offset
   intact".)
 
-Under the decided semantics an edited value takes the **viewer's** zone; there is no "preserve the
+Under the decided semantics an **edited** value takes the **viewer's** zone; there is no "preserve the
 record's original offset" case, because the originating offset is not business data in Spark.
+
+### …but an untouched save must not rewrite anything
+
+The browser pass caught one more thing no test would have. Opening a car registered at
+`2026-12-31T23:59:00-08:00` and pressing Save **without touching the field** stored
+`2027-01-01T08:59:00+01:00` — the same instant, relabelled from Seattle to Brussels.
+
+That followed from the semantics, and it was still wrong: nothing had been edited. It would also have
+quietly eroded the Fleet demo, whose entire point is a spread of offsets — every record anyone opened
+would collapse to the viewer's.
+
+So the save side compares by instant and, when the value is unchanged, sends back **exactly what was
+loaded**. Preserving the instant is the guarantee; preserving the offset when nothing changed is free,
+and it is the difference between *open and save is a no-op* and *open and save rewrites data*.
+
+Embedded AsDetail rows have nowhere to keep the original, so they use the same reserved-key mechanism
+as the row key and the breadcrumbs — `AS_DETAIL_ORIGINAL_DATES_KEY`, registered in
+`isReservedAsDetailKey` so nothing enumerating a row prints it as a field.
+
+Measured after the change: an untouched save returns the document byte-identical, and a real edit of
+the same field stores `2026-07-04T09:30:00+02:00` — the **July** offset for the entered date, not the
+current season's and not UTC.
 
 ---
 
