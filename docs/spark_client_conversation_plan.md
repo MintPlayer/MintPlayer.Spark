@@ -15,7 +15,7 @@ that fails because the method does not compile has proven nothing.
 | Item | State |
 |---|---|
 | **S1** Does the client's wire traffic match the browser's for a full action→retry→resubmit flow? | **Not run.** Gates M3's API freeze. |
-| **S2** What does a retry from `refresh` / `new` / `delete-row` actually return today? | **Not run.** Gates M1. The PRD's first draft guessed wrong here; measure, don't reason. |
+| **S2** What does a retry from `refresh` / `new` / `delete-row` actually return today? | **Done.** The exception **escapes the pipeline unhandled** — not a 449, not a loop, not a 500 from the endpoint. See below. |
 | **S3** How should a retry from `OnLoadAsync` / `OnQueryAsync` fail? | **Not run.** Gates M2. |
 | **M0** Server: one retry seam instead of seven copies | Not started. **Gates M1.** |
 | **M1** Server: retry works from every hook that can prompt (FR7a/b) | Not started |
@@ -79,6 +79,40 @@ record status, headers and body verbatim. Then drive the same three in a **brows
 **Output.** A three-row table: endpoint → status → body → browser behaviour. Plus a yes/no on whether
 any existing demo app or `apps/CodeCoverage` hook already raises a retry from these paths — if one does,
 this is a production behaviour change, not a fix.
+
+### Done. Measured 2026-09-12.
+
+Run in-process via `SparkEndpointFactory` rather than the Fleet host — seconds instead of ~16 minutes,
+against the same real route table, antiforgery gate and `security.json` enforcement. The spike is
+committed as `tests/MintPlayer.Spark.Tests/Endpoints/PersistentObject/RetryFromEveryHookTests.cs` and
+becomes M1's RED.
+
+| Hook → endpoint | Result today |
+|---|---|
+| `OnBeforeSaveAsync` → `POST /po/{type}` | ✅ **449** with a well-formed `retry` operation |
+| `OnBeforeDeleteAsync` → `DELETE /po/{type}/{id}` | ✅ **449** |
+| `OnRefreshAsync` → `POST /po/{type}/refresh` | ❌ `SparkRetryActionException` **escapes the pipeline unhandled** |
+| `OnNewAsync` → `POST /po/{type}/new` | ❌ same |
+| `OnDeleteRowAsync` → `POST /po/{type}/delete-row` | ❌ same |
+
+**The two passing rows are the control**, and they matter: they prove the fixture is sound, so the five
+failures are the product and not the test. An earlier draft of this fixture failed all seven — wrong
+`ClrType` (`AssemblyQualifiedName` where the loader wants `FullName`) and a missing required `name` on
+the wire `PersistentObject`. Without a control, that would have read as "everything is broken".
+
+**⚠️ Both earlier readings of this defect were wrong.**
+- The PRD's first draft said *infinite loop* — reasoned from the missing `RetryResults` binding.
+- The correction said *500 from the endpoint* — reasoned from the missing `catch`.
+
+Measured, it is neither: nothing catches it anywhere, so it leaves the request pipeline as an unhandled
+exception. What a real deployment returns then depends on the host's exception handling, which is
+**not** part of this measurement — an in-process `TestServer` rethrows into the caller. ⚠️ **Confirm the
+over-the-wire status against the Fleet host before claiming what a browser sees.**
+
+**Checked, and clear: M1 is a fix, not a behaviour change.** The only retries anywhere in `apps/**` are
+in `apps/Fleet/Fleet/Actions/CarActions.cs` — two in `OnBeforeSaveAsync` (`:99`, `:109`) and one in
+`OnDeleteAsync` (`:133`). All three sit on paths that already emit 449 correctly. **`apps/CodeCoverage`
+raises none at all**, so the production app is untouched by M1.
 
 ---
 
