@@ -26,10 +26,9 @@ internal sealed partial class DeletePersistentObject : IDeleteEndpoint, IMemberO
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var objectTypeId = httpContext.Request.RouteValues["objectTypeId"]!.ToString()!;
         var id = httpContext.Request.RouteValues["id"]!.ToString()!;
 
-        var entityType = modelLoader.ResolveEntityType(objectTypeId);
+        var entityType = SparkRequestType.Resolve(modelLoader, httpContext);
         if (entityType is null)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);

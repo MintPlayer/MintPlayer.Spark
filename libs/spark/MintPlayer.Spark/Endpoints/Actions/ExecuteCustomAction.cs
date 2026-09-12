@@ -50,10 +50,9 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var objectTypeId = httpContext.Request.RouteValues["objectTypeId"]?.ToString()!;
         var actionName = httpContext.Request.RouteValues["actionName"]?.ToString()!;
 
-        var entityType = modelLoader.ResolveEntityType(objectTypeId);
+        var entityType = SparkRequestType.Resolve(modelLoader, httpContext);
         if (entityType is null)
         {
             // Same shape as a denial. This ran BEFORE the grant check below, so a specific
@@ -314,7 +313,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
         catch (Exception ex)
         {
             // R2-M1: server-side log with full detail, generic public response.
-            logger.LogError(ex, "Custom action '{ActionName}' failed for entity type '{EntityType}'", actionName, objectTypeId);
+            logger.LogError(ex, "Custom action '{ActionName}' failed for entity type '{EntityType}'", actionName, entityType.Name);
             return ClientResult.Envelope(clientAccessor, new { error = "Operation failed" }, StatusCodes.Status500InternalServerError);
         }
     }

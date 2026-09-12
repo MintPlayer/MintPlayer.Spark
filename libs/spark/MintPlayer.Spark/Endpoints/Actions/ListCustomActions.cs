@@ -16,9 +16,7 @@ internal sealed partial class ListCustomActions : IGetEndpoint, IMemberOf<Action
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var objectTypeId = httpContext.Request.RouteValues["objectTypeId"]?.ToString()!;
-
-        var entityType = modelLoader.ResolveEntityType(objectTypeId);
+        var entityType = SparkRequestType.Resolve(modelLoader, httpContext);
         if (entityType is null)
         {
             // The empty list, which is exactly what a known-but-denied type gets from the

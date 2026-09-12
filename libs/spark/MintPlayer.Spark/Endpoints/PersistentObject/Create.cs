@@ -29,9 +29,7 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint, IMemberOf<
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var objectTypeId = httpContext.Request.RouteValues["objectTypeId"]!.ToString()!;
-
-        var entityType = modelLoader.ResolveEntityType(objectTypeId);
+        var entityType = SparkRequestType.Resolve(modelLoader, httpContext);
         if (entityType is null)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);

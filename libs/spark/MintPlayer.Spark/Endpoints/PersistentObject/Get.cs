@@ -16,7 +16,6 @@ internal sealed partial class GetPersistentObject : IGetEndpoint, IMemberOf<Pers
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var objectTypeId = httpContext.Request.RouteValues["objectTypeId"]!.ToString()!;
 
         // The id is a catch-all segment, so it also matches the bare "/{objectTypeId}" path — with
         // nothing in it. That used to be someone else's route: a list endpoint sat on the bare path
@@ -31,7 +30,7 @@ internal sealed partial class GetPersistentObject : IGetEndpoint, IMemberOf<Pers
             return SparkDenial.RefuseJson(httpContext);
         }
 
-        var entityType = modelLoader.ResolveEntityType(objectTypeId);
+        var entityType = SparkRequestType.Resolve(modelLoader, httpContext);
         if (entityType is null)
         {
             return SparkDenial.RefuseJson(httpContext);
