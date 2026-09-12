@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Requests;
 using MintPlayer.Spark.Abstractions.Retry;
 using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
@@ -21,7 +22,7 @@ namespace MintPlayer.Spark.Endpoints.PersistentObject;
 /// </summary>
 internal sealed partial class NewPersistentObject : IPostEndpoint, IMemberOf<PersistentObjectGroup>
 {
-    public static string Path => "/{objectTypeId}/new";
+    public static string Path => "/new";
 
     static void IEndpointBase.Configure(RouteHandlerBuilder builder)
     {
@@ -39,14 +40,11 @@ internal sealed partial class NewPersistentObject : IPostEndpoint, IMemberOf<Per
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var entityType = SparkRequestType.Resolve(modelLoader, httpContext);
-        if (entityType is null)
+        var (request, entityType) = await SparkRequestType.ReadAsync<NewPersistentObjectRequest>(httpContext, modelLoader);
+        if (request is null || entityType is null)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
-
-        var request = await httpContext.Request.ReadFromJsonAsync<NewPersistentObjectRequest>()
-            ?? new NewPersistentObjectRequest();
 
         RetryScope.Accept(retryAccessor, request);
 
@@ -252,8 +250,11 @@ internal sealed partial class NewPersistentObject : IPostEndpoint, IMemberOf<Per
     }
 }
 
-internal sealed class NewPersistentObjectRequest : IRetryableRequest
+internal sealed class NewPersistentObjectRequest : ISparkTypedRequest, IRetryableRequest
 {
+    /// <inheritdoc />
+    public string? ObjectTypeId { get; set; }
+
     /// <inheritdoc />
     public RetryResult[]? RetryResults { get; set; }
 

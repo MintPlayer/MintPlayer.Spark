@@ -8,11 +8,16 @@ namespace MintPlayer.Spark.Client.Tests;
 
 /// <summary>
 /// <see cref="SparkClient.ExecuteQueryAsync(System.Guid,int,int,string,string,string,System.Threading.CancellationToken)"/>
-/// and its alias overload build the request URL and query string themselves. The endpoint
-/// only parses what arrives, so wrong encoding here (forgetting to URI-escape, dropping a
-/// param, mis-ordering) would silently produce incorrect behaviour on a real server. These
-/// tests assert on exactly what the client puts on the wire.
+/// and its alias overload build the request themselves. The endpoint only parses what arrives, so a
+/// dropped or misspelled field here would silently produce incorrect behaviour on a real server.
+/// These tests assert on exactly what the client puts on the wire.
 /// </summary>
+/// <remarks>
+/// ⚠️ They used to assert on a URL and a query string, and now assert on a JSON body — the reads
+/// became POSTs so their hooks could prompt, and so that column filtering has somewhere to live. The
+/// escaping facts went with the change rather than being ported: there is nothing left to escape,
+/// which is the point. An alias containing a slash is now just a string in a field.
+/// </remarks>
 public class SparkClientQueryTests
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -49,31 +54,38 @@ public class SparkClientQueryTests
         }
 
         var req = handler.Requests.Single();
-        req.Method.Should().Be(HttpMethod.Get);
-        req.RequestUri!.AbsolutePath.Should().Be("/spark/queries/abcabcab-abcd-abcd-abcd-abcabcabcabc/execute");
-        var qs = req.RequestUri!.Query;
-        qs.Should().Contain("skip=0").And.Contain("take=50");
-        qs.Should().NotContain("search=").And.NotContain("parentId=").And.NotContain("parentType=");
+        req.Method.Should().Be(HttpMethod.Post);
+        req.RequestUri!.AbsolutePath.Should().Be("/spark/queries/execute");
+
+        var body = handler.LastBody();
+        body.GetProperty("queryId").GetString().Should().Be("abcabcab-abcd-abcd-abcd-abcabcabcabc");
+        body.GetProperty("skip").GetInt32().Should().Be(0);
+        body.GetProperty("take").GetInt32().Should().Be(50);
+        body.GetProperty("search").ValueKind.Should().Be(JsonValueKind.Null);
+        body.GetProperty("parentId").ValueKind.Should().Be(JsonValueKind.Null);
+        body.GetProperty("parentType").ValueKind.Should().Be(JsonValueKind.Null);
     }
 
     [Fact]
-    public async Task Execute_by_alias_URI_encodes_the_alias_segment()
+    public async Task An_alias_with_a_slash_travels_in_the_body_unescaped()
     {
         var (client, handler) = NewClient();
         handler.Enqueue(EmptyQueryResult());
         using (client)
         {
-            // Alias contains a character that requires percent-encoding to avoid path-traversal
-            // looking syntax in the URL — prove the client escapes it.
+            // This alias used to need percent-encoding to avoid looking like path traversal. In a
+            // JSON field it needs nothing, and must arrive byte-for-byte as written — the server
+            // resolves it as a name, so an escaped copy would resolve to nothing.
             await client.ExecuteQueryAsync("my alias/with-slash");
         }
 
         var req = handler.Requests.Single();
-        req.RequestUri!.AbsolutePath.Should().Be("/spark/queries/my%20alias%2Fwith-slash/execute");
+        req.RequestUri!.AbsolutePath.Should().Be("/spark/queries/execute");
+        handler.LastBody().GetProperty("queryId").GetString().Should().Be("my alias/with-slash");
     }
 
     [Fact]
-    public async Task All_optional_parameters_surface_as_query_string_values()
+    public async Task All_optional_parameters_surface_as_body_fields()
     {
         var (client, handler) = NewClient();
         handler.Enqueue(EmptyQueryResult());
@@ -88,12 +100,34 @@ public class SparkClientQueryTests
                 parentType: "Person");
         }
 
-        var qs = handler.Requests.Single().RequestUri!.Query;
-        qs.Should().Contain("skip=10");
-        qs.Should().Contain("take=25");
-        qs.Should().Contain("search=Alice%20%26%20Bob");     // "&" URL-encoded to %26 so it doesn't split the querystring
-        qs.Should().Contain("parentId=people%2F1");
-        qs.Should().Contain("parentType=Person");
+        var body = handler.LastBody();
+        body.GetProperty("skip").GetInt32().Should().Be(10);
+        body.GetProperty("take").GetInt32().Should().Be(25);
+        // The "&" needed encoding as %26 in a query string or it split the parameters. In a JSON
+        // string it is an ordinary character, and must survive as one.
+        body.GetProperty("search").GetString().Should().Be("Alice & Bob");
+        body.GetProperty("parentId").GetString().Should().Be("people/1");
+        body.GetProperty("parentType").GetString().Should().Be("Person");
+    }
+
+    [Fact]
+    public async Task Sort_columns_travel_as_an_array_not_a_colon_separated_string()
+    {
+        var (client, handler) = NewClient();
+        handler.Enqueue(EmptyQueryResult());
+        using (client)
+        {
+            await client.ExecuteQueryAsync(Guid.NewGuid(), sortColumns: "Name:asc,RegisteredAt:desc");
+        }
+
+        var columns = (handler.LastBody())
+            .GetProperty("sortColumns")
+            .EnumerateArray()
+            .Select(c => (c.GetProperty("property").GetString(), c.GetProperty("direction").GetString()))
+            .ToArray();
+
+        columns.Should().Equal([("Name", "asc"), ("RegisteredAt", "desc")],
+            "the parameter keeps its published string shape, but the encoding it carried is gone from the wire");
     }
 
     [Fact]
@@ -119,8 +153,11 @@ public class SparkClientQueryTests
             await client.ExecuteQueryAsync(Guid.NewGuid());
         }
 
-        // Reads don't need CSRF → only one HTTP call, the GET itself.
+        // ⚠️ Still true now that the read is a POST, and deliberately so: the read endpoints carry no
+        // antiforgery metadata, because the verb changed and what they do did not. If a warmup
+        // appears here, someone added RequireAntiforgeryTokenAttribute to a read.
         handler.Requests.Should().ContainSingle();
-        handler.Requests.Single().RequestUri!.AbsolutePath.Should().NotEndWith("__warmup__");
+        handler.Requests.Single().RequestUri!.AbsolutePath.Should().Be("/spark/queries/execute");
     }
+
 }

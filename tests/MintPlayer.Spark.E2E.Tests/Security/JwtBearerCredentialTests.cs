@@ -4,6 +4,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using MintPlayer.Spark.E2E.Tests._Infrastructure;
 
+using MintPlayer.Spark.Testing;
+
 namespace MintPlayer.Spark.E2E.Tests.Security;
 
 /// <summary>
@@ -88,7 +90,7 @@ public class JwtBearerCredentialTests
 
         using var client = NewHttpsClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        var response = await client.PostAsJsonAsync($"/spark/po/{CarFixture.TypeId}", NewCarRequest());
+        var response = await client.PostAsJsonAsync("/spark/po/create", Wire.Typed(CarFixture.TypeId, NewCarRequest()));
 
         // Everything in one assertion, and every link was previously unexercised: the IdP issued a
         // machine token, the resource server validated it against the issuer's published keys, the
@@ -116,7 +118,7 @@ public class JwtBearerCredentialTests
 
         using var client = NewHttpsClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        var response = await client.PostAsJsonAsync($"/spark/po/{CarFixture.TypeId}", NewCarRequest());
+        var response = await client.PostAsJsonAsync("/spark/po/create", Wire.Typed(CarFixture.TypeId, NewCarRequest()));
 
         // 400, the anonymous-path signature: the token was refused, so the request carries no
         // credential and antiforgery answers first. Asserting the exact code rather than merely
@@ -132,7 +134,7 @@ public class JwtBearerCredentialTests
         using var client = NewHttpsClient();
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "not-a-token");
 
-        var response = await client.PostAsJsonAsync($"/spark/po/{CarFixture.TypeId}", NewCarRequest());
+        var response = await client.PostAsJsonAsync("/spark/po/create", Wire.Typed(CarFixture.TypeId, NewCarRequest()));
 
         response.IsSuccessStatusCode.Should().BeFalse();
         // A malformed credential is a refusal, not a fault. A 500 here would mean an unhandled

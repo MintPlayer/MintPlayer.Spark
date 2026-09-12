@@ -14,6 +14,8 @@ using Raven.Client.Documents.Linq;
 using PO = MintPlayer.Spark.Abstractions.PersistentObject;
 using POA = MintPlayer.Spark.Abstractions.PersistentObjectAttribute;
 
+using MintPlayer.Spark.Tests._Infrastructure;
+
 namespace MintPlayer.Spark.Tests.IdentityProvider;
 
 /// <summary>
@@ -99,9 +101,9 @@ public class OidcAdminRouteTests : SparkTestDriver
     private Task<HttpResponseMessage> PostAsync(
         string typeName, Dictionary<string, object?> attributes, bool withAntiforgery = true)
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, $"/spark/po/{typeName}")
+        var request = new HttpRequestMessage(HttpMethod.Post, "/spark/po/create")
         {
-            Content = JsonContent.Create(new
+            Content = JsonContent.Create(Wire.Typed(typeName, new
             {
                 PersistentObject = new PO
                 {
@@ -109,7 +111,7 @@ public class OidcAdminRouteTests : SparkTestDriver
                     ObjectTypeId = Guid.Empty,
                     Attributes = [.. attributes.Select(a => new POA { Name = a.Key, Value = a.Value })],
                 },
-            }),
+            })),
         };
 
         request.Headers.Add("Cookie", _cookies);

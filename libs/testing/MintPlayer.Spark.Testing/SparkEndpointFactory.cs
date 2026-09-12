@@ -210,7 +210,7 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
     public async Task<(string CookieHeader, string XsrfToken)> MintAntiforgeryAsync()
     {
         using var client = CreateClient();
-        var response = await client.GetAsync("/spark/po/__warmup__");
+        var response = await client.GetAsync("/spark");
 
         if (!response.Headers.TryGetValues("Set-Cookie", out var setCookies))
             throw new InvalidOperationException("Warmup request did not return any Set-Cookie headers.");

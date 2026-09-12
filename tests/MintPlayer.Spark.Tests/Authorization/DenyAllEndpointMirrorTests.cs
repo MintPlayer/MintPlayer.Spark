@@ -5,6 +5,8 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Tests._Infrastructure;
 
+using System.Text.Json;
+
 namespace MintPlayer.Spark.Tests.Authorization;
 
 /// <summary>
@@ -94,26 +96,37 @@ public class DenyAllEndpointMirrorTests(DenyAllHost host)
     private string _cookieHeader => host.CookieHeader;
     private string _xsrfToken => host.XsrfToken;
 
-    public static TheoryData<string, string> AccessEndpoints => new()
+    /// <summary>
+    /// Every access endpoint, with a body that names a <b>real</b> target.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ The bodies are not decoration. Since the route table became literal, an endpoint given an
+    /// empty body refuses because it cannot tell what was asked — and that refusal is a 404, the same
+    /// status this test asserts. A row with no target would therefore pass without ever reaching the
+    /// authorization it exists to check. Each row names the type or query that genuinely exists and is
+    /// genuinely denied.
+    ///
+    /// No "list all of a type" row: that endpoint is gone. It was a second list pipeline with no
+    /// paging, no search, no sort and no take cap, next to a /execute that clamps take for exactly
+    /// that reason — and it had one caller in the whole workspace.
+    /// </remarks>
+    public static TheoryData<string, string, object?> AccessEndpoints => new()
     {
-        // No "GET /spark/po/{type}" row: that endpoint is gone. It was a second list pipeline with
-        // no paging, no search, no sort and no take cap, next to a /execute that clamps take for
-        // exactly that reason — and it had one caller in the whole workspace.
-        { "GET", $"/spark/po/{DocTypeId}/docs%2F1" },
-        { "POST", $"/spark/po/{DocTypeId}" },
-        { "PUT", $"/spark/po/{DocTypeId}/docs%2F1" },
-        { "DELETE", $"/spark/po/{DocTypeId}/docs%2F1" },
-        { "GET", $"/spark/queries/{AllDocsQueryId}" },
-        { "GET", $"/spark/queries/{AllDocsQueryId}/execute" },
-        { "POST", $"/spark/actions/{DocTypeId}/Archive" },
-        { "GET", "/spark/lookupref/Colour" },
+        { "POST", "/spark/po/load", Wire.Typed(DocTypeId, id: "docs/1") },
+        { "POST", "/spark/po/create", Wire.Typed(DocTypeId, new { persistentObject = new { name = "GuardedDoc" } }) },
+        { "POST", "/spark/po/update", Wire.Typed(DocTypeId, new { persistentObject = new { name = "GuardedDoc" } }, id: "docs/1") },
+        { "POST", "/spark/po/delete", Wire.Typed(DocTypeId, id: "docs/1") },
+        { "POST", "/spark/queries/get", Wire.Query(AllDocsQueryId) },
+        { "POST", "/spark/queries/execute", Wire.Query(AllDocsQueryId) },
+        { "POST", "/spark/actions/execute", Wire.Action(DocTypeId, "Archive") },
+        { "GET", "/spark/lookupref/Colour", null },
     };
 
     [Theory]
     [MemberData(nameof(AccessEndpoints))]
-    public async Task An_access_endpoint_refuses_when_nothing_is_granted(string method, string path)
+    public async Task An_access_endpoint_refuses_when_nothing_is_granted(string method, string path, object? body)
     {
-        var (status, _) = await SendAsync(method, path);
+        var (status, _) = await SendAsync(method, path, Serialize(body));
 
         status.Should().Be(
             HttpStatusCode.NotFound,
@@ -133,16 +146,24 @@ public class DenyAllEndpointMirrorTests(DenyAllHost host)
     /// </remarks>
     [Theory]
     [MemberData(nameof(AccessEndpoints))]
-    public async Task A_refusal_is_byte_identical_to_a_genuine_not_found(string method, string path)
+    public async Task A_refusal_is_byte_identical_to_a_genuine_not_found(string method, string path, object? body)
     {
         var absent = Guid.NewGuid();
-        var unknownPath = path
+
+        // The identifiers moved from the path into the body, so the "unknown" variant is made by
+        // swapping them there. Textual substitution on the serialized JSON, deliberately: it keeps
+        // this test one edit behind the request shapes rather than one rebuild behind them.
+        string Substitute(string text) => text
             .Replace(DocTypeId.ToString(), absent.ToString())
             .Replace(AllDocsQueryId.ToString(), absent.ToString())
             .Replace("Colour", "NoSuchLookup");
 
-        var (deniedStatus, deniedBody) = await SendAsync(method, path);
-        var (unknownStatus, unknownBody) = await SendAsync(method, unknownPath);
+        var json = Serialize(body);
+        var unknownPath = Substitute(path);
+        var unknownJson = json is null ? null : Substitute(json);
+
+        var (deniedStatus, deniedBody) = await SendAsync(method, path, json);
+        var (unknownStatus, unknownBody) = await SendAsync(method, unknownPath, unknownJson);
 
         unknownStatus.Should().Be(deniedStatus, $"{method} {path}");
         Normalize(unknownBody).Should().Be(Normalize(deniedBody), $"{method} {path}");
@@ -159,14 +180,17 @@ public class DenyAllEndpointMirrorTests(DenyAllHost host)
             .Replace("Colour", "<id>");
     }
 
-    private async Task<(HttpStatusCode Status, string Body)> SendAsync(string method, string path)
+    private static string? Serialize(object? body)
+        => body is null ? null : JsonSerializer.Serialize(body, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+    private async Task<(HttpStatusCode Status, string Body)> SendAsync(string method, string path, string? json)
     {
         using var request = new HttpRequestMessage(new HttpMethod(method), path);
         request.Headers.Add("Cookie", _cookieHeader);
         request.Headers.Add("X-XSRF-TOKEN", _xsrfToken);
 
-        if (method is "POST" or "PUT")
-            request.Content = JsonContent.Create(new { });
+        if (json is not null)
+            request.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
 
         using var response = await _client.SendAsync(request);
         return (response.StatusCode, await response.Content.ReadAsStringAsync());
@@ -200,7 +224,7 @@ public class DenyAllEndpointMirrorTests(DenyAllHost host)
     {
         var id = known ? DocTypeId.ToString() : Guid.NewGuid().ToString();
 
-        using var response = await _client.GetAsync($"/spark/actions/{id}");
+        using var response = await _client.PostAsJsonAsync("/spark/actions/list", Wire.Typed(id));
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         (await response.Content.ReadAsStringAsync()).Should().Be("[]");

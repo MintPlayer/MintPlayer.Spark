@@ -7,6 +7,8 @@ using MintPlayer.Spark.Client;
 using MintPlayer.Spark.Client.Authorization;
 using MintPlayer.Spark.E2E.Tests._Infrastructure;
 
+using MintPlayer.Spark.Testing;
+
 namespace MintPlayer.Spark.E2E.Tests.Retry;
 
 /// <summary>
@@ -33,7 +35,7 @@ public class RetryActionDeleteTests
 
         // 1. First delete — server throws SparkRetryActionException, endpoint returns 449
         //    with a scaffolded ConfirmDeleteCar PO.
-        var first = await adminClient.SendAsync(HttpMethod.Delete, DeleteUrl(created.Id!), requiresAntiforgery: true);
+        var first = await adminClient.SendAsync(HttpMethod.Post, DeleteUrl, DeleteBody(created.Id!), requiresAntiforgery: true);
         ((int)first.StatusCode).Should().Be(449,
             $"first delete must surface the retry-action\n--- Fleet log tail ---\n{_fixture.Host.RecentLog()}");
 
@@ -49,9 +51,9 @@ public class RetryActionDeleteTests
 
         // 3. Retry with Option="Delete" — server validates Confirmation matches and deletes.
         var second = await adminClient.SendAsync(
-            HttpMethod.Delete,
-            DeleteUrl(created.Id!),
-            JsonContent.Create(new { retryResults = new[] { new { step, option = "Delete", persistentObject = populated } } }),
+            HttpMethod.Post,
+            DeleteUrl,
+            DeleteBody(created.Id!, new[] { new { step, option = "Delete", persistentObject = populated } }),
             requiresAntiforgery: true);
         second.StatusCode.Should().Be(HttpStatusCode.NoContent,
             $"retry delete with correct plate must succeed — response: {await second.Content.ReadAsStringAsync()}");
@@ -69,7 +71,7 @@ public class RetryActionDeleteTests
         var plate = CarFixture.RandomLicensePlate("RC");
         var created = await adminClient.CreatePersistentObjectAsync(CarFixture.New(plate));
 
-        var first = await adminClient.SendAsync(HttpMethod.Delete, DeleteUrl(created.Id!), requiresAntiforgery: true);
+        var first = await adminClient.SendAsync(HttpMethod.Post, DeleteUrl, DeleteBody(created.Id!), requiresAntiforgery: true);
         ((int)first.StatusCode).Should().Be(449);
         var payload = await first.Content.ReadFromJsonAsync<JsonElement>();
         var retry = ExtractRetryOperation(payload);
@@ -78,9 +80,9 @@ public class RetryActionDeleteTests
 
         // Cancel — server returns NoContent but doesn't delete.
         var second = await adminClient.SendAsync(
-            HttpMethod.Delete,
-            DeleteUrl(created.Id!),
-            JsonContent.Create(new { retryResults = new[] { new { step, option = "Cancel", persistentObject = po } } }),
+            HttpMethod.Post,
+            DeleteUrl,
+            DeleteBody(created.Id!, new[] { new { step, option = "Cancel", persistentObject = po } }),
             requiresAntiforgery: true);
         second.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
@@ -95,7 +97,7 @@ public class RetryActionDeleteTests
         var plate = CarFixture.RandomLicensePlate("RW");
         var created = await adminClient.CreatePersistentObjectAsync(CarFixture.New(plate));
 
-        var first = await adminClient.SendAsync(HttpMethod.Delete, DeleteUrl(created.Id!), requiresAntiforgery: true);
+        var first = await adminClient.SendAsync(HttpMethod.Post, DeleteUrl, DeleteBody(created.Id!), requiresAntiforgery: true);
         ((int)first.StatusCode).Should().Be(449);
         var payload = await first.Content.ReadFromJsonAsync<JsonElement>();
         var retry = ExtractRetryOperation(payload);
@@ -104,9 +106,9 @@ public class RetryActionDeleteTests
 
         var populated = PopulatePoConfirmation(po, "WRONG-PLATE");
         var second = await adminClient.SendAsync(
-            HttpMethod.Delete,
-            DeleteUrl(created.Id!),
-            JsonContent.Create(new { retryResults = new[] { new { step, option = "Delete", persistentObject = populated } } }),
+            HttpMethod.Post,
+            DeleteUrl,
+            DeleteBody(created.Id!, new[] { new { step, option = "Delete", persistentObject = populated } }),
             requiresAntiforgery: true);
         ((int)second.StatusCode).Should().BeGreaterThanOrEqualTo(400,
             "mismatched confirmation must refuse the delete (500 from InvalidOperationException)");
@@ -115,8 +117,21 @@ public class RetryActionDeleteTests
         refetch.Should().NotBeNull("car must survive a mismatched confirmation");
     }
 
-    private static string DeleteUrl(string carId)
-        => $"/spark/po/{CarFixture.TypeId}/{Uri.EscapeDataString(carId)}";
+    private const string DeleteUrl = "/spark/po/delete";
+
+    /// <summary>
+    /// The delete request body: the car to remove, plus any retry answers accumulated so far.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ A delete always carries a body now. It used to be a <c>DELETE</c> whose id was a catch-all
+    /// path segment, and which attached a body <i>only</i> once there were retry answers to send —
+    /// the frontend did the same, and the endpoint sniffed <c>Content-Type</c> to decide whether to
+    /// read one. That conditional is gone with the verb.
+    /// </remarks>
+    private static HttpContent DeleteBody(string carId, object? retryResults = null)
+        => JsonContent.Create(retryResults is null
+            ? Wire.Typed(CarFixture.TypeId, id: carId)
+            : Wire.Typed(CarFixture.TypeId, new { retryResults }, id: carId));
 
     /// <summary>
     /// Server wraps action responses in a <c>ClientOperationEnvelope</c> — the retry payload

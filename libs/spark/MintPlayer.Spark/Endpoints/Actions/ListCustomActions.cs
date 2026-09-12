@@ -5,9 +5,9 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Actions;
 
-internal sealed partial class ListCustomActions : IGetEndpoint, IMemberOf<ActionsGroup>
+internal sealed partial class ListCustomActions : IPostEndpoint, IMemberOf<ActionsGroup>
 {
-    public static string Path => "/{objectTypeId}";
+    public static string Path => "/list";
 
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly ICustomActionsConfigurationLoader configLoader;
@@ -16,7 +16,7 @@ internal sealed partial class ListCustomActions : IGetEndpoint, IMemberOf<Action
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var entityType = SparkRequestType.Resolve(modelLoader, httpContext);
+        var (_, entityType) = await SparkRequestType.ReadAsync<ListCustomActionsRequest>(httpContext, modelLoader);
         if (entityType is null)
         {
             // The empty list, which is exactly what a known-but-denied type gets from the

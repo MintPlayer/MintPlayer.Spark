@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Requests;
 using MintPlayer.Spark.Abstractions.Retry;
 using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
@@ -38,7 +39,7 @@ namespace MintPlayer.Spark.Endpoints.PersistentObject;
 /// </remarks>
 internal sealed partial class DeleteRowPersistentObject : IPostEndpoint, IMemberOf<PersistentObjectGroup>
 {
-    public static string Path => "/{objectTypeId}/delete-row";
+    public static string Path => "/delete-row";
 
     static void IEndpointBase.Configure(RouteHandlerBuilder builder)
     {
@@ -55,14 +56,11 @@ internal sealed partial class DeleteRowPersistentObject : IPostEndpoint, IMember
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var entityType = SparkRequestType.Resolve(modelLoader, httpContext);
-        if (entityType is null)
+        var (request, entityType) = await SparkRequestType.ReadAsync<DeleteRowRequest>(httpContext, modelLoader);
+        if (request is null || entityType is null)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
-
-        var request = await httpContext.Request.ReadFromJsonAsync<DeleteRowRequest>()
-            ?? new DeleteRowRequest();
 
         RetryScope.Accept(retryAccessor, request);
 
@@ -199,8 +197,11 @@ internal sealed partial class DeleteRowPersistentObject : IPostEndpoint, IMember
     }
 }
 
-internal sealed class DeleteRowRequest : IRetryableRequest
+internal sealed class DeleteRowRequest : ISparkTypedRequest, IRetryableRequest
 {
+    /// <inheritdoc />
+    public string? ObjectTypeId { get; set; }
+
     /// <inheritdoc />
     public RetryResult[]? RetryResults { get; set; }
 

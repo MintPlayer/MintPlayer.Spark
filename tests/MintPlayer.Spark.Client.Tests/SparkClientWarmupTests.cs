@@ -58,12 +58,14 @@ public class SparkClientWarmupTests
 
         // First request: the warmup GET.
         handler.Requests.Should().HaveCount(2);
-        handler.Requests[0].RequestUri!.AbsolutePath.Should().EndWith("__warmup__");
+        handler.Requests[0].RequestUri!.AbsolutePath.Should().Be("/spark");
         handler.Requests[0].Method.Should().Be(HttpMethod.Get);
 
-        // Second request: the DELETE, which must carry X-XSRF-TOKEN.
+        // Second request: the delete, which must carry X-XSRF-TOKEN. A POST now — every Spark
+        // endpoint is, since the route table became literal — but that is transport; what this fact
+        // is about is the token riding on the mutation that follows the warmup.
         var delete = handler.Requests[1];
-        delete.Method.Should().Be(HttpMethod.Delete);
+        delete.Method.Should().Be(HttpMethod.Post);
         delete.Headers.TryGetValues("X-XSRF-TOKEN", out var xsrfValues).Should().BeTrue();
         xsrfValues!.Should().ContainSingle().Which.Should().Be("fake-xsrf-token");
         delete.Headers.TryGetValues("Cookie", out var cookieValues).Should().BeTrue();
@@ -86,6 +88,6 @@ public class SparkClientWarmupTests
 
         // 1 warmup + 2 deletes — no second warmup call.
         handler.Requests.Should().HaveCount(3);
-        handler.Requests.Count(r => r.RequestUri!.AbsolutePath.EndsWith("__warmup__")).Should().Be(1);
+        handler.Requests.Count(r => r.RequestUri!.AbsolutePath == "/spark").Should().Be(1);
     }
 }

@@ -12,7 +12,7 @@ namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
 internal sealed partial class CreatePersistentObject : IPostEndpoint, IMemberOf<PersistentObjectGroup>
 {
-    public static string Path => "/{objectTypeId}";
+    public static string Path => "/create";
 
     static void IEndpointBase.Configure(RouteHandlerBuilder builder)
     {
@@ -29,17 +29,22 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint, IMemberOf<
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var entityType = SparkRequestType.Resolve(modelLoader, httpContext);
-        if (entityType is null)
+        // The body has to be read before anything can be authorized, because the body is where the
+        // type is. That inverts the old order, where the type-level "New" right was checked first so
+        // that a caller with no right to create this type could not learn which types exist by POSTing
+        // rubbish and comparing a 500 against a refusal (N23).
+        //
+        // The property survives because ReadAsync answers a malformed body exactly as it answers an
+        // unknown type — null, refused below. A parse failure tells the caller only that their JSON
+        // was bad, which they already knew.
+        var (request, entityType) = await SparkRequestType.ReadAsync<PersistentObjectRequest>(httpContext, modelLoader);
+        if (request is null || entityType is null)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
 
-        // Type-level "New" BEFORE the body is read, and deliberately in addition to the check
-        // EnsureSaveAuthorizedAsync makes below. Reading first meant a caller with no right to
-        // create this type got a 500 out of the two throws under it for a malformed body, while an
-        // unknown type got a refusal — so POSTing rubbish told them which entity types exist. The
-        // duplicate check costs nothing: the permission service memoises per request.
+        // Still in addition to the check EnsureSaveAuthorizedAsync makes below, and still free: the
+        // permission service memoises per request.
         try
         {
             await permissionService.EnsureAuthorizedAsync("New", entityType.ClrType?.Split('.').Last() ?? entityType.Name);
@@ -48,9 +53,6 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint, IMemberOf<
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
-
-        var request = await httpContext.Request.ReadFromJsonAsync<PersistentObjectRequest>()
-            ?? throw new InvalidOperationException("Request could not be deserialized from the request body.");
 
         var obj = request.PersistentObject
             ?? throw new InvalidOperationException("PersistentObject is required.");

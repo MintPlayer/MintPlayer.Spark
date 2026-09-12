@@ -10,6 +10,8 @@ using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Testing;
 
+using MintPlayer.Spark.Tests._Infrastructure;
+
 namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 
 using Po = Abstractions.PersistentObject;
@@ -170,14 +172,14 @@ public class RetryFromEveryHookTests : SparkTestDriver
 
     [Fact]
     public async Task Create_emits_a_retry() => await AssertEmitsRetryAsync(
-        HttpMethod.Post, $"/spark/po/{ProbeTypeId}/", NewProbeBody(), "Save?");
+        HttpMethod.Post, "/spark/po/create", Wire.Typed(ProbeTypeId, NewProbeBody()), "Save?");
 
     [Fact]
     public async Task Delete_emits_a_retry()
     {
         var probe = await SeedAsync();
         await AssertEmitsRetryAsync(
-            HttpMethod.Delete, $"/spark/po/{ProbeTypeId}/{probe.Id}", new { }, "Delete?");
+            HttpMethod.Post, "/spark/po/delete", Wire.Typed(ProbeTypeId, id: probe.Id), "Delete?");
     }
 
     [Fact]
@@ -186,8 +188,7 @@ public class RetryFromEveryHookTests : SparkTestDriver
         var probe = await SeedAsync();
         await AssertEmitsRetryAsync(
             HttpMethod.Post,
-            $"/spark/po/{ProbeTypeId}/refresh",
-            new
+            "/spark/po/refresh", Wire.Typed(ProbeTypeId, new
             {
                 persistentObject = new
                 {
@@ -197,7 +198,7 @@ public class RetryFromEveryHookTests : SparkTestDriver
                     attributes = new[] { new { name = "Reference", value = "changed", isValueChanged = true } },
                 },
                 triggeredBy = "Reference",
-            },
+            }),
             "Refresh?");
     }
 
@@ -206,7 +207,7 @@ public class RetryFromEveryHookTests : SparkTestDriver
     {
         var probe = await SeedAsync();
         await AssertEmitsRetryAsync(
-            HttpMethod.Post, $"/spark/po/{LineTypeId}/new", NewRowBody(probe.Id!), "New line?");
+            HttpMethod.Post, "/spark/po/new", Wire.Typed(LineTypeId, NewRowBody(probe.Id!)), "New line?");
     }
 
     [Fact]
@@ -215,8 +216,7 @@ public class RetryFromEveryHookTests : SparkTestDriver
         var probe = await SeedAsync();
         await AssertEmitsRetryAsync(
             HttpMethod.Post,
-            $"/spark/po/{LineTypeId}/delete-row",
-            DeleteRowBody(probe.Id!, probe.Lines[0].Id.ToString()),
+            "/spark/po/delete-row", Wire.Typed(LineTypeId, DeleteRowBody(probe.Id!, probe.Lines[0].Id.ToString())),
             "Remove line?");
     }
 
@@ -228,7 +228,7 @@ public class RetryFromEveryHookTests : SparkTestDriver
         var probe = await SeedAsync();
         var body = NewRowBody(probe.Id!);
 
-        var (status, _) = await SendAsync(HttpMethod.Post, $"/spark/po/{LineTypeId}/new", Answered(body));
+        var (status, _) = await SendAsync(HttpMethod.Post, "/spark/po/new", Wire.Typed(LineTypeId, Answered(body)));
 
         status.Should().Be(HttpStatusCode.OK,
             "once the prompt is answered the hook must run to completion, not raise the same prompt again");
@@ -240,7 +240,7 @@ public class RetryFromEveryHookTests : SparkTestDriver
         var probe = await SeedAsync();
         var body = DeleteRowBody(probe.Id!, probe.Lines[0].Id.ToString());
 
-        var (status, _) = await SendAsync(HttpMethod.Post, $"/spark/po/{LineTypeId}/delete-row", Answered(body));
+        var (status, _) = await SendAsync(HttpMethod.Post, "/spark/po/delete-row", Wire.Typed(LineTypeId, Answered(body)));
 
         status.Should().Be(HttpStatusCode.OK);
     }

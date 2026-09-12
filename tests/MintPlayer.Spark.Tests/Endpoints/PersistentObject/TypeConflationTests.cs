@@ -9,6 +9,8 @@ using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Testing;
 
+using MintPlayer.Spark.Tests._Infrastructure;
+
 namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 
 /// <summary>
@@ -17,24 +19,24 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Today the authoritative source is the <b>route</b>, and the payload's <c>objectTypeId</c> is
-/// overwritten with it (<c>Create.cs:64</c>, <c>Update.cs:59</c>) or ignored outright
-/// (<c>Refresh.cs:100-106</c>: <i>"taking the client's word for the type is how a caller reads one
-/// collection through another's permissions"</i> — security sweep C3).
+/// The authoritative source is the request's own top-level <c>objectTypeId</c>, read in exactly one
+/// place (<c>SparkRequestType.Resolve</c>). The payload's nested <c>objectTypeId</c> is overwritten
+/// with what that resolves to, or ignored outright: <i>"taking the client's word for the type is how a
+/// caller reads one collection through another's permissions"</i> — security sweep C3.
 /// </para>
 /// <para>
-/// ⚠️ <b>This test exists because that source is about to move.</b> The route table is becoming fully
-/// literal (<c>POST /spark/po/create</c>), so the type will arrive as a top-level field in the request
-/// body instead. The safety property is unchanged — one authoritative source, payload never trusted —
-/// but the distinction stops being visual. <c>request.ObjectTypeId</c> and
-/// <c>request.PersistentObject.ObjectTypeId</c> are one word apart in the same document, where a route
-/// segment and a JSON body could not be confused.
+/// ⚠️ <b>This test exists because that source moved.</b> It was written against the old
+/// <c>POST /spark/po/{objectTypeId}</c> routes, passed there, and passed unchanged afterwards — which
+/// is what it was for. The route table is fully literal now (<c>POST /spark/po/create</c>) and the type
+/// arrives as a top-level field in the request body. The safety property is the same — one
+/// authoritative source, payload never trusted — but the distinction stopped being visual:
+/// <c>request.ObjectTypeId</c> and <c>request.PersistentObject.ObjectTypeId</c> are one word apart in
+/// the same document, where a route segment and a JSON body could not be confused.
 /// </para>
 /// <para>
-/// So these facts are written against the <i>current</i> routes deliberately: they pass today, and they
-/// must still pass after the migration. If someone wires authorization to the nested field, this is
-/// what fails. Do not rewrite it to match a new implementation — it is the thing the implementation has
-/// to satisfy.
+/// Only the call sites changed in the migration — same types, same lies, same expected answers. If
+/// someone wires authorization to the nested field, this is what fails. Do not rewrite it to match an
+/// implementation; it is the thing the implementation has to satisfy.
 /// </para>
 /// </remarks>
 public class TypeConflationTests : SparkTestDriver
@@ -112,7 +114,7 @@ public class TypeConflationTests : SparkTestDriver
     {
         // Authoritative source says the permitted type; the payload claims the forbidden one.
         var (status, body) = await PostAsync(
-            $"/spark/po/{OpenTypeId}/",
+            "/spark/po/create", Wire.Typed(OpenTypeId,
             new
             {
                 persistentObject = new
@@ -121,7 +123,7 @@ public class TypeConflationTests : SparkTestDriver
                     objectTypeId = ClosedTypeId.ToString(),   // ← the lie
                     attributes = new[] { new { name = "Label", value = "created", isValueChanged = true } },
                 },
-            });
+            }));
 
         status.Should().Be(HttpStatusCode.Created,
             "the authoritative type is permitted, so the write succeeds regardless of what the payload claims");
@@ -137,7 +139,7 @@ public class TypeConflationTests : SparkTestDriver
         // The mirror image, and the one that actually matters: claiming a permitted type in the
         // payload must not buy access to a forbidden one.
         var (status, _) = await PostAsync(
-            $"/spark/po/{ClosedTypeId}/",
+            "/spark/po/create", Wire.Typed(ClosedTypeId,
             new
             {
                 persistentObject = new
@@ -146,7 +148,7 @@ public class TypeConflationTests : SparkTestDriver
                     objectTypeId = OpenTypeId.ToString(),     // ← the lie, in the useful direction
                     attributes = new[] { new { name = "Secret", value = "leaked", isValueChanged = true } },
                 },
-            });
+            }));
 
         status.Should().NotBe(HttpStatusCode.Created,
             "a denied type must stay denied no matter which type the payload names");
@@ -168,8 +170,7 @@ public class TypeConflationTests : SparkTestDriver
         }
 
         var (status, body) = await PostAsync(
-            $"/spark/po/{OpenTypeId}/refresh",
-            new
+            "/spark/po/refresh", Wire.Typed(OpenTypeId, new
             {
                 persistentObject = new
                 {
@@ -179,7 +180,7 @@ public class TypeConflationTests : SparkTestDriver
                     attributes = new[] { new { name = "Label", value = "changed", isValueChanged = true } },
                 },
                 triggeredBy = "Label",
-            });
+            }));
 
         status.Should().Be(HttpStatusCode.OK);
         body.GetProperty("result").GetProperty("attributes").EnumerateArray()

@@ -4,6 +4,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.ClientOperations;
+using MintPlayer.Spark.Abstractions.Requests;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Exceptions;
 using System.Text.Json;
@@ -23,7 +24,7 @@ namespace MintPlayer.Spark.Endpoints.PersistentObject;
 /// </summary>
 internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf<PersistentObjectGroup>
 {
-    public static string Path => "/{objectTypeId}/refresh";
+    public static string Path => "/refresh";
 
     /// <summary>
     /// Advisory ceiling for one refresh: the row-gated load, plus room for a handler that looks a
@@ -52,14 +53,11 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var entityType = SparkRequestType.Resolve(modelLoader, httpContext);
-        if (entityType is null)
+        var (request, entityType) = await SparkRequestType.ReadAsync<RefreshPersistentObjectRequest>(httpContext, modelLoader);
+        if (request is null || entityType is null)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
-
-        var request = await httpContext.Request.ReadFromJsonAsync<RefreshPersistentObjectRequest>()
-            ?? throw new InvalidOperationException("Request could not be deserialized from the request body.");
 
         var submitted = request.PersistentObject
             ?? throw new InvalidOperationException("PersistentObject is required.");
@@ -294,8 +292,11 @@ internal readonly record struct NestedTrigger(string Attribute, int Index, strin
     }
 }
 
-internal sealed class RefreshPersistentObjectRequest : IRetryableRequest
+internal sealed class RefreshPersistentObjectRequest : ISparkTypedRequest, IRetryableRequest
 {
+    /// <inheritdoc />
+    public string? ObjectTypeId { get; set; }
+
     public Po? PersistentObject { get; set; }
     public string? TriggeredBy { get; set; }
 

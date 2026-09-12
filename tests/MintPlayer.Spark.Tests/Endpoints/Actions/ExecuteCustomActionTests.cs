@@ -615,8 +615,6 @@ public class ExecuteCustomActionTests
     {
         var services = new ServiceCollection().AddLogging().BuildServiceProvider();
         var context = new DefaultHttpContext { RequestServices = services };
-        context.Request.RouteValues["objectTypeId"] = objectTypeId;
-        context.Request.RouteValues["actionName"] = actionName;
 
         if (authenticated)
         {
@@ -624,14 +622,19 @@ public class ExecuteCustomActionTests
                 [new Claim(ClaimTypes.Name, "alice")], authenticationType: "TestScheme"));
         }
 
-        if (body is not null)
-        {
-            var json = JsonSerializer.Serialize(body, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
-            var bytes = Encoding.UTF8.GetBytes(json);
-            context.Request.Body = new MemoryStream(bytes);
-            context.Request.ContentType = "application/json";
-            context.Request.ContentLength = bytes.Length;
-        }
+        // ⚠️ The type and the action name used to be route values. They are body fields now, and the
+        // body is therefore never optional — an endpoint given none cannot tell what was asked and
+        // refuses. `body: null` here still means "no parent, no selection", which is what the cases
+        // that pass it are about; it no longer means "no request".
+        var request = body ?? new CustomActionRequest();
+        request.ObjectTypeId = objectTypeId;
+        request.ActionName = actionName;
+
+        var json = JsonSerializer.Serialize(request, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        var bytes = Encoding.UTF8.GetBytes(json);
+        context.Request.Body = new MemoryStream(bytes);
+        context.Request.ContentType = "application/json";
+        context.Request.ContentLength = bytes.Length;
 
         context.Response.Body = new MemoryStream();
         return context;

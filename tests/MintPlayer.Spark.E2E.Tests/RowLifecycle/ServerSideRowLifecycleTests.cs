@@ -4,6 +4,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using MintPlayer.Spark.E2E.Tests._Infrastructure;
 
+using MintPlayer.Spark.Testing;
+
 namespace MintPlayer.Spark.E2E.Tests.RowLifecycle;
 
 /// <summary>
@@ -131,9 +133,9 @@ public class ServerSideRowLifecycleTests
             },
         };
 
-        var request = new HttpRequestMessage(HttpMethod.Post, $"/spark/po/{CarFixture.TypeId}")
+        var request = new HttpRequestMessage(HttpMethod.Post, "/spark/po/create")
         {
-            Content = JsonContent.Create(payload),
+            Content = JsonContent.Create(Wire.Typed(CarFixture.TypeId, payload)),
         };
         request.Headers.Add("X-XSRF-TOKEN", xsrfToken);
 
@@ -191,12 +193,12 @@ public class ServerSideRowLifecycleTests
         var entryTypeId = await ServiceEntryTypeIdAsync(http);
         var carId = await CreateCarWithEntriesAsync(http, xsrf, entryTypeId);
 
-        var (status, body) = await PostAsync(http, xsrf, $"/spark/po/{entryTypeId}/new", new
+        var (status, body) = await PostAsync(http, xsrf, "/spark/po/new", Wire.Typed(entryTypeId, new
         {
             asDetailAttribute = "ServiceEntries",
             parentType = CarFixture.TypeId.ToString(),
             parentId = carId,
-        });
+        }));
 
         status.Should().Be(HttpStatusCode.OK);
 
@@ -220,12 +222,12 @@ public class ServerSideRowLifecycleTests
         var entryTypeId = await ServiceEntryTypeIdAsync(http);
         var carId = await CreateCarWithEntriesAsync(http, xsrf, entryTypeId);
 
-        var (status, body) = await PostAsync(http, xsrf, $"/spark/po/{entryTypeId}/new", new
+        var (status, body) = await PostAsync(http, xsrf, "/spark/po/new", Wire.Typed(entryTypeId, new
         {
             asDetailAttribute = "ServiceEntries",
             parentType = CarFixture.TypeId.ToString(),
             parentId = carId,
-        });
+        }));
 
         status.Should().Be(HttpStatusCode.OK);
 
@@ -247,12 +249,12 @@ public class ServerSideRowLifecycleTests
         var entryTypeId = await ServiceEntryTypeIdAsync(http);
         var carId = await CreateCarWithEntriesAsync(http, xsrf, entryTypeId);
 
-        var (_, body) = await PostAsync(http, xsrf, $"/spark/po/{entryTypeId}/new", new
+        var (_, body) = await PostAsync(http, xsrf, "/spark/po/new", Wire.Typed(entryTypeId, new
         {
             asDetailAttribute = "ServiceEntries",
             parentType = CarFixture.TypeId.ToString(),
             parentId = carId,
-        });
+        }));
 
         // SetOriginalValue, not SetValue. Otherwise clicking Add and clicking away raises an
         // unsaved-changes prompt over a car nobody edited.
@@ -271,13 +273,13 @@ public class ServerSideRowLifecycleTests
         var carId = await CreateCarWithEntriesAsync(http, xsrf, entryTypeId);
         var invoicedKey = await RowKeyAsync(http, carId, "Timing belt");
 
-        var (status, body) = await PostAsync(http, xsrf, $"/spark/po/{entryTypeId}/delete-row", new
+        var (status, body) = await PostAsync(http, xsrf, "/spark/po/delete-row", Wire.Typed(entryTypeId, new
         {
             asDetailAttribute = "ServiceEntries",
             parentType = CarFixture.TypeId.ToString(),
             parentId = carId,
             rowKey = invoicedKey,
-        });
+        }));
 
         status.Should().Be(HttpStatusCode.BadRequest,
             "a hook's refusal must be a message the user can read, not a discarded save");
@@ -299,13 +301,13 @@ public class ServerSideRowLifecycleTests
         var carId = await CreateCarWithEntriesAsync(http, xsrf, entryTypeId);
         var openKey = await RowKeyAsync(http, carId, "Oil change");
 
-        var (status, _) = await PostAsync(http, xsrf, $"/spark/po/{entryTypeId}/delete-row", new
+        var (status, _) = await PostAsync(http, xsrf, "/spark/po/delete-row", Wire.Typed(entryTypeId, new
         {
             asDetailAttribute = "ServiceEntries",
             parentType = CarFixture.TypeId.ToString(),
             parentId = carId,
             rowKey = openKey,
-        });
+        }));
 
         status.Should().Be(HttpStatusCode.OK);
     }
@@ -321,13 +323,13 @@ public class ServerSideRowLifecycleTests
         var entryTypeId = await ServiceEntryTypeIdAsync(http);
         var carId = await CreateCarWithEntriesAsync(http, xsrf, entryTypeId);
 
-        var (status, _) = await PostAsync(http, xsrf, $"/spark/po/{entryTypeId}/delete-row", new
+        var (status, _) = await PostAsync(http, xsrf, "/spark/po/delete-row", Wire.Typed(entryTypeId, new
         {
             asDetailAttribute = "ServiceEntries",
             parentType = CarFixture.TypeId.ToString(),
             parentId = carId,
             rowKey = Guid.NewGuid().ToString("N"),
-        });
+        }));
 
         // Refused identically to an unknown type, so the endpoint cannot be used to ask which keys
         // exist — the same anti-oracle rule the rest of the framework's refusals follow.
@@ -352,9 +354,9 @@ public class ServerSideRowLifecycleTests
             rowKey = "anything",
         };
 
-        (await http.PostAsJsonAsync($"/spark/po/{entryTypeId}/new", body))
+        (await http.PostAsJsonAsync("/spark/po/new", Wire.Typed(entryTypeId, body)))
             .StatusCode.Should().Be(HttpStatusCode.BadRequest);
-        (await http.PostAsJsonAsync($"/spark/po/{entryTypeId}/delete-row", body))
+        (await http.PostAsJsonAsync("/spark/po/delete-row", Wire.Typed(entryTypeId, body)))
             .StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
@@ -382,8 +384,8 @@ public class ServerSideRowLifecycleTests
 
         // The token is present, so this clears the antiforgery gate and is refused by authorization
         // proper. Accepting a 400 would let the test pass on the gate alone.
-        var (newStatus, _) = await PostAsync(http, xsrf, $"/spark/po/{entryTypeId}/new", body);
-        var (deleteStatus, _) = await PostAsync(http, xsrf, $"/spark/po/{entryTypeId}/delete-row", body);
+        var (newStatus, _) = await PostAsync(http, xsrf, "/spark/po/new", Wire.Typed(entryTypeId, body));
+        var (deleteStatus, _) = await PostAsync(http, xsrf, "/spark/po/delete-row", Wire.Typed(entryTypeId, body));
 
         newStatus.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden, HttpStatusCode.NotFound);
         deleteStatus.Should().BeOneOf(HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden, HttpStatusCode.NotFound);
@@ -392,8 +394,10 @@ public class ServerSideRowLifecycleTests
     /// <summary>The stored row key of the entry whose description matches.</summary>
     private async Task<string> RowKeyAsync(HttpClient http, string carId, string description)
     {
-        var car = await http.GetFromJsonAsync<JsonElement>(
-            $"/spark/po/{CarFixture.TypeId}/{Uri.EscapeDataString(carId)}");
+        // A load is a POST with a body now, so this cannot be GetFromJsonAsync any more.
+        using var loadResponse = await http.PostAsJsonAsync(
+            "/spark/po/load", Wire.Typed(CarFixture.TypeId, id: carId));
+        var car = await loadResponse.Content.ReadFromJsonAsync<JsonElement>();
 
         var entries = car.GetProperty("attributes").EnumerateArray()
             .Single(a => a.GetProperty("name").GetString() == "ServiceEntries")

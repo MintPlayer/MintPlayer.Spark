@@ -62,13 +62,22 @@ describe('SparkService', () => {
       search: 'al',
     });
 
-    const req = httpTesting.expectOne(r => r.url === '/spark/queries/q%2F1/execute');
-    expect(req.request.params.get('sortColumns')).toBe('Name:asc,Age:desc');
-    expect(req.request.params.get('parentId')).toBe('orders/1');
-    expect(req.request.params.get('parentType')).toBe('Order');
-    expect(req.request.params.get('skip')).toBe('25');
-    expect(req.request.params.get('take')).toBe('10');
-    expect(req.request.params.get('search')).toBe('al');
+    const req = httpTesting.expectOne(r => r.url === '/spark/queries/execute');
+    expect(req.request.method).toBe('POST');
+    // The parameters travel as a typed body now. `sortColumns` is a real array rather than the
+    // `Name:asc,Age:desc` encoding a query string forced on it, and `q/1` needs no escaping.
+    expect(req.request.body).toEqual({
+      queryId: 'q/1',
+      sortColumns: [
+        { property: 'Name', direction: 'asc' },
+        { property: 'Age', direction: 'desc' },
+      ],
+      parentId: 'orders/1',
+      parentType: 'Order',
+      skip: 25,
+      take: 10,
+      search: 'al',
+    });
 
     req.flush({ data: [], totalRecords: 0, skip: 25, take: 10 });
     await expect(promise).resolves.toMatchObject({ skip: 25, take: 10 });
@@ -81,11 +90,12 @@ describe('SparkService', () => {
       { id: 'q/all', name: 'AllPeople' },
       { id: 'q/other', name: 'Other' },
     ]);
-    // Drain microtasks so the chained http.get for /queries/{id}/execute lands.
+    // Drain microtasks so the chained post to /queries/execute lands.
     await flushMicrotasks();
 
-    const req = httpTesting.expectOne(r => r.url === '/spark/queries/q%2Fall/execute');
-    expect(req.request.params.get('parentId')).toBe('p/1');
+    const req = httpTesting.expectOne(r => r.url === '/spark/queries/execute');
+    expect(req.request.body.queryId).toBe('q/all');
+    expect(req.request.body.parentId).toBe('p/1');
 
     req.flush({ data: [], totalRecords: 0, skip: 0, take: 50 });
     await expect(promise).resolves.toMatchObject({ totalRecords: 0 });
@@ -103,9 +113,12 @@ describe('SparkService', () => {
   it('create unwraps the ClientOperationEnvelope and dispatches operations', async () => {
     const promise = service.create('Person', { name: 'Alice' });
 
-    const req = httpTesting.expectOne('/spark/po/Person');
+    const req = httpTesting.expectOne('/spark/po/create');
     expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ persistentObject: { name: 'Alice' } });
+    // ⚠️ `objectTypeId` at the top level is the request parameter the server authorizes against.
+    // It is NOT the same as a nested `persistentObject.objectTypeId`, which is submitted data the
+    // server overwrites — see SparkRequestType. Moving it inside would be the confused-deputy bug.
+    expect(req.request.body).toEqual({ objectTypeId: 'Person', persistentObject: { name: 'Alice' } });
 
     req.flush({
       result: { id: 'people/1', name: 'Alice' },
@@ -118,20 +131,25 @@ describe('SparkService', () => {
     ]);
   });
 
-  it('update unwraps the envelope on PUT', async () => {
+  it('update unwraps the envelope and names its target in the body', async () => {
     const promise = service.update('Person', 'p/1', { name: 'Bob' });
 
-    httpTesting.expectOne(r => r.method === 'PUT' && r.url === '/spark/po/Person/p%2F1')
-      .flush({ result: { id: 'p/1', name: 'Bob' }, operations: [] });
+    const req = httpTesting.expectOne(r => r.method === 'POST' && r.url === '/spark/po/update');
+    // `p/1` was `p%2F1` in a catch-all route segment, for no reason other than that a Raven id
+    // contains a slash. In a body it is just the id.
+    expect(req.request.body).toEqual({ objectTypeId: 'Person', id: 'p/1', persistentObject: { name: 'Bob' } });
 
+    req.flush({ result: { id: 'p/1', name: 'Bob' }, operations: [] });
     await expect(promise).resolves.toMatchObject({ id: 'p/1' });
   });
 
-  it('delete sends a body-less DELETE when there are no retry results', async () => {
+  it('delete names its target in the body like every other call', async () => {
     const promise = service.delete('Person', 'p/1');
 
-    const req = httpTesting.expectOne(r => r.method === 'DELETE' && r.url === '/spark/po/Person/p%2F1');
-    expect(req.request.body).toBeNull();
+    // It used to be a DELETE that attached a body only once there were retry answers to send, and
+    // a server that sniffed Content-Type to decide whether to read one. Both are gone.
+    const req = httpTesting.expectOne(r => r.method === 'POST' && r.url === '/spark/po/delete');
+    expect(req.request.body).toEqual({ objectTypeId: 'Person', id: 'p/1' });
 
     req.flush({ result: undefined, operations: [] });
     await expect(promise).resolves.toBeUndefined();
@@ -144,7 +162,7 @@ describe('SparkService', () => {
 
     const promise = service.create('Person', { name: 'Alice' });
 
-    httpTesting.expectOne('/spark/po/Person').flush(
+    httpTesting.expectOne('/spark/po/create').flush(
       {
         operations: [
           { type: 'notify', message: 'pre-retry' },
@@ -167,7 +185,7 @@ describe('SparkService', () => {
     expect(dispatcher.dispatch).toHaveBeenCalledWith([{ type: 'notify', message: 'pre-retry' }]);
     expect(retryService.show).toHaveBeenCalled();
 
-    const second = httpTesting.expectOne('/spark/po/Person');
+    const second = httpTesting.expectOne('/spark/po/create');
     expect(second.request.body).toMatchObject({
       retryResults: [{ step: 'overwrite', option: 'Overwrite' }],
     });
@@ -181,7 +199,7 @@ describe('SparkService', () => {
 
     const promise = service.create('Person', { name: 'Alice' });
 
-    httpTesting.expectOne('/spark/po/Person').flush(
+    httpTesting.expectOne('/spark/po/create').flush(
       {
         operations: [{
           type: 'retry',
@@ -205,7 +223,7 @@ describe('SparkService', () => {
   it('rethrows non-449 errors without invoking the retry modal', async () => {
     const promise = service.create('Person', { name: 'Alice' });
 
-    httpTesting.expectOne('/spark/po/Person').flush('boom', { status: 500, statusText: 'Server Error' });
+    httpTesting.expectOne('/spark/po/create').flush('boom', { status: 500, statusText: 'Server Error' });
 
     await expect(promise).rejects.toMatchObject({ status: 500 });
     expect(retryService.show).not.toHaveBeenCalled();

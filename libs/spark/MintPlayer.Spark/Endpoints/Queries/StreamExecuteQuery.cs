@@ -11,6 +11,12 @@ namespace MintPlayer.Spark.Endpoints.Queries;
 
 internal sealed partial class StreamExecuteQuery : IEndpoint, IMemberOf<QueriesGroup>
 {
+    // ⚠️ The one route variable left in Spark, and the one place it cannot be removed. Every other
+    // endpoint moved its parameters into a JSON body so the route table could be fully literal; a
+    // WebSocket handshake has no body to move them into. The id stays in the path.
+    //
+    // It collides with nothing: its siblings are the single-segment literals /get and /execute, and
+    // this route needs the /stream suffix to match at all.
     public static string Path => "/{id}/stream";
 
     // CONNECT is not optional here, and GET alone is not enough for a browser.

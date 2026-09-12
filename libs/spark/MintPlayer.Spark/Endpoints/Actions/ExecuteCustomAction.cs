@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.Endpoints.Actions;
 
 internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<ActionsGroup>
 {
-    public static string Path => "/{objectTypeId}/{actionName}";
+    public static string Path => "/execute";
 
     static void IEndpointBase.Configure(RouteHandlerBuilder builder)
     {
@@ -50,10 +50,13 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var actionName = httpContext.Request.RouteValues["actionName"]?.ToString()!;
+        // Both the type and the action name arrive in the body now, so the body is read first. The
+        // ordering the old code relied on — authorize, then read — is preserved in effect because a
+        // malformed body is refused here in exactly the shape an unknown type is refused below.
+        var (request, entityType) = await SparkRequestType.ReadAsync<CustomActionRequest>(httpContext, modelLoader);
+        var actionName = request?.ActionName;
 
-        var entityType = SparkRequestType.Resolve(modelLoader, httpContext);
-        if (entityType is null)
+        if (request is null || entityType is null || string.IsNullOrEmpty(actionName))
         {
             // Same shape as a denial. This ran BEFORE the grant check below, so a specific
             // 404 here against a 401 there told an anonymous caller which entity types are
@@ -90,9 +93,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             return ClientResult.Envelope(clientAccessor, new { error = $"Custom action '{actionName}' not found" }, StatusCodes.Status404NotFound);
         }
 
-        var request = await httpContext.Request.ReadFromJsonAsync<CustomActionRequest>();
-
-        var selectedCount = request?.SelectedItemIds?.Length ?? 0;
+        var selectedCount = request.SelectedItemIds?.Length ?? 0;
 
         // A hard ceiling on the selection, whether or not a rule is declared.
         //

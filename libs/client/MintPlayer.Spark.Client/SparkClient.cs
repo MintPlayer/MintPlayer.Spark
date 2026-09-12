@@ -151,6 +151,11 @@ public class SparkClient : IDisposable
     public Task<PersistentObject?> GetPersistentObjectAsync(Guid objectTypeId, string id, CancellationToken cancellationToken = default)
         => GetPersistentObjectCoreAsync(objectTypeId.ToString(), id, cancellationToken);
 
+    // ⚠️ Every method below posts a JSON body to a literal path. Nothing is escaped into a URL any
+    // more, which removes a whole class of bug rather than moving it: a Raven id contains slashes,
+    // an alias is unvalidated, and both used to have to survive Uri.EscapeDataString and a route
+    // template to arrive intact.
+
     /// <summary>
     /// Alias-based overload. <paramref name="aliasOrName"/> is resolved server-side to an
     /// entity type, so callers that only know the type by name (e.g. <c>"Person"</c>) don't
@@ -158,11 +163,12 @@ public class SparkClient : IDisposable
     /// denied — the endpoint conflates these per security audit M-3).
     /// </summary>
     public Task<PersistentObject?> GetPersistentObjectAsync(string aliasOrName, string id, CancellationToken cancellationToken = default)
-        => GetPersistentObjectCoreAsync(Uri.EscapeDataString(aliasOrName), id, cancellationToken);
+        => GetPersistentObjectCoreAsync(aliasOrName, id, cancellationToken);
 
-    private async Task<PersistentObject?> GetPersistentObjectCoreAsync(string typeSegment, string id, CancellationToken cancellationToken)
+    private async Task<PersistentObject?> GetPersistentObjectCoreAsync(string objectTypeId, string id, CancellationToken cancellationToken)
     {
-        using var response = await SendAsync(HttpMethod.Get, $"/spark/po/{typeSegment}/{Uri.EscapeDataString(id)}", cancellationToken: cancellationToken);
+        var content = JsonContent.Create(new { objectTypeId, id }, options: JsonOptions);
+        using var response = await SendAsync(HttpMethod.Post, "/spark/po/load", content, cancellationToken: cancellationToken);
         if (response.StatusCode == HttpStatusCode.NotFound)
             return null;
         await SparkClientException.ThrowIfNotSuccessAsync(response, cancellationToken);
@@ -183,8 +189,7 @@ public class SparkClient : IDisposable
     public Task<PersistentObject> CreatePersistentObjectAsync(PersistentObject obj, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(obj);
-        var target = $"/spark/po/{obj.Name}";
-        return SendPersistentObjectAsync(HttpMethod.Post, target, obj, cancellationToken);
+        return SendPersistentObjectAsync("/spark/po/create", obj.Name, id: null, obj, cancellationToken);
     }
 
     /// <summary>
@@ -198,15 +203,16 @@ public class SparkClient : IDisposable
         ArgumentNullException.ThrowIfNull(obj);
         if (string.IsNullOrEmpty(obj.Id))
             throw new ArgumentException("PersistentObject must have an Id for update.", nameof(obj));
-        var target = $"/spark/po/{obj.ObjectTypeId}/{Uri.EscapeDataString(obj.Id)}";
-        return SendPersistentObjectAsync(HttpMethod.Put, target, obj, cancellationToken);
+        return SendPersistentObjectAsync("/spark/po/update", obj.ObjectTypeId.ToString(), obj.Id, obj, cancellationToken);
     }
 
     public async Task DeletePersistentObjectAsync(Guid objectTypeId, string id, CancellationToken cancellationToken = default)
     {
+        var content = JsonContent.Create(new { objectTypeId = objectTypeId.ToString(), id }, options: JsonOptions);
         using var response = await SendAsync(
-            HttpMethod.Delete,
-            $"/spark/po/{objectTypeId}/{Uri.EscapeDataString(id)}",
+            HttpMethod.Post,
+            "/spark/po/delete",
+            content,
             requiresAntiforgery: true,
             cancellationToken: cancellationToken);
         await SparkClientException.ThrowIfNotSuccessAsync(response, cancellationToken);
@@ -242,28 +248,49 @@ public class SparkClient : IDisposable
         string? parentType = null,
         string? sortColumns = null,
         CancellationToken cancellationToken = default)
-        => ExecuteQueryCoreAsync(Uri.EscapeDataString(queryAlias), skip, take, search, parentId, parentType, sortColumns, cancellationToken);
+        => ExecuteQueryCoreAsync(queryAlias, skip, take, search, parentId, parentType, sortColumns, cancellationToken);
 
     private async Task<QueryResult> ExecuteQueryCoreAsync(
-        string idSegment, int skip, int take, string? search, string? parentId, string? parentType, string? sortColumns,
+        string queryId, int skip, int take, string? search, string? parentId, string? parentType, string? sortColumns,
         CancellationToken cancellationToken)
     {
-        var url = BuildQueryUrl(idSegment, skip, take, search, parentId, parentType, sortColumns);
-        using var response = await SendAsync(HttpMethod.Get, url, cancellationToken: cancellationToken);
+        var content = JsonContent.Create(
+            new
+            {
+                queryId,
+                skip,
+                take,
+                search,
+                parentId,
+                parentType,
+                sortColumns = ParseSortColumns(sortColumns),
+            },
+            options: JsonOptions);
+
+        using var response = await SendAsync(HttpMethod.Post, "/spark/queries/execute", content, cancellationToken: cancellationToken);
         await SparkClientException.ThrowIfNotSuccessAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<QueryResult>(JsonOptions, cancellationToken)
             ?? throw new SparkClientException(response.StatusCode, responseBody: null, "Empty query response body.");
     }
 
-    private static string BuildQueryUrl(string idSegment, int skip, int take, string? search, string? parentId, string? parentType, string? sortColumns)
-    {
-        var qs = new List<string> { $"skip={skip}", $"take={take}" };
-        if (!string.IsNullOrEmpty(search)) qs.Add($"search={Uri.EscapeDataString(search)}");
-        if (!string.IsNullOrEmpty(parentId)) qs.Add($"parentId={Uri.EscapeDataString(parentId)}");
-        if (!string.IsNullOrEmpty(parentType)) qs.Add($"parentType={Uri.EscapeDataString(parentType)}");
-        if (!string.IsNullOrEmpty(sortColumns)) qs.Add($"sortColumns={Uri.EscapeDataString(sortColumns)}");
-        return $"/spark/queries/{idSegment}/execute?{string.Join('&', qs)}";
-    }
+    /// <summary>
+    /// Splits the legacy <c>prop:asc,other:desc</c> string into the array the endpoint now takes.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ The parameter keeps its string shape here, and only here, because it is <b>published API</b>
+    /// on a shipped package — changing its type is a separate decision from moving the route. The
+    /// encoding itself is gone from the wire: the server takes an array, and this is the one place
+    /// that still knows the old format. A typed overload belongs with the column-filtering work that
+    /// motivated the move, where there will be a second thing to express.
+    /// </remarks>
+    private static object[]? ParseSortColumns(string? sortColumns)
+        => string.IsNullOrEmpty(sortColumns)
+            ? null
+            : [.. sortColumns.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(part =>
+            {
+                var segments = part.Split(':');
+                return (object)new { property = segments[0], direction = segments.Length > 1 ? segments[1] : "asc" };
+            })];
 
     /// <summary>
     /// Returns the full definition of a single query (name, source, sort columns, etc.), or
@@ -275,11 +302,12 @@ public class SparkClient : IDisposable
 
     /// <summary>Alias-based overload for <see cref="GetQueryAsync(Guid,CancellationToken)"/>.</summary>
     public Task<SparkQuery?> GetQueryAsync(string alias, CancellationToken cancellationToken = default)
-        => GetQueryCoreAsync(Uri.EscapeDataString(alias), cancellationToken);
+        => GetQueryCoreAsync(alias, cancellationToken);
 
-    private async Task<SparkQuery?> GetQueryCoreAsync(string idSegment, CancellationToken cancellationToken)
+    private async Task<SparkQuery?> GetQueryCoreAsync(string queryId, CancellationToken cancellationToken)
     {
-        using var response = await SendAsync(HttpMethod.Get, $"/spark/queries/{idSegment}", cancellationToken: cancellationToken);
+        var content = JsonContent.Create(new { queryId }, options: JsonOptions);
+        using var response = await SendAsync(HttpMethod.Post, "/spark/queries/get", content, cancellationToken: cancellationToken);
         if (response.StatusCode == HttpStatusCode.NotFound)
             return null;
         await SparkClientException.ThrowIfNotSuccessAsync(response, cancellationToken);
@@ -347,7 +375,7 @@ public class SparkClient : IDisposable
     // --------------------------------------------------------------------------------
 
     /// <summary>
-    /// POSTs to <c>/spark/actions/{objectTypeId}/{actionName}</c>. Returns a
+    /// POSTs to <c>/spark/actions/execute</c>, naming the type and action in the body. Returns a
     /// <see cref="SparkActionResult"/> that distinguishes the server's in-protocol responses:
     /// empty-200 (action completed), 449 (retry-action — server is asking the caller a
     /// question). Actual failures (401/403/404/500) throw <see cref="SparkClientException"/>.
@@ -365,10 +393,12 @@ public class SparkClient : IDisposable
         // resolved server-side under its own Read gate. Distinct from `parent`, which is an object
         // of this action's own type. Appended after the token so existing positional calls keep
         // compiling; every caller in the repo passes by name anyway.
-        var content = JsonContent.Create(new { parent, selectedItemIds, parentId, parentType }, options: JsonOptions);
+        var content = JsonContent.Create(
+            new { objectTypeId = objectTypeId.ToString(), actionName, parent, selectedItemIds, parentId, parentType },
+            options: JsonOptions);
         using var response = await SendAsync(
             HttpMethod.Post,
-            $"/spark/actions/{objectTypeId}/{Uri.EscapeDataString(actionName)}",
+            "/spark/actions/execute",
             content,
             requiresAntiforgery: true,
             cancellationToken);
@@ -424,10 +454,13 @@ public class SparkClient : IDisposable
     // CSRF / internals
     // --------------------------------------------------------------------------------
 
-    private async Task<PersistentObject> SendPersistentObjectAsync(HttpMethod method, string url, PersistentObject obj, CancellationToken cancellationToken)
+    private async Task<PersistentObject> SendPersistentObjectAsync(string url, string? objectTypeId, string? id, PersistentObject obj, CancellationToken cancellationToken)
     {
-        var content = JsonContent.Create(new { persistentObject = obj }, options: JsonOptions);
-        using var response = await SendAsync(method, url, content, requiresAntiforgery: true, cancellationToken);
+        // objectTypeId is the request parameter; obj.ObjectTypeId travels inside the document and is
+        // overwritten server-side with whatever this one resolves to. They are separate fields on
+        // purpose — see SparkRequestType.
+        var content = JsonContent.Create(new { objectTypeId, id, persistentObject = obj }, options: JsonOptions);
+        using var response = await SendAsync(HttpMethod.Post, url, content, requiresAntiforgery: true, cancellationToken);
         await SparkClientException.ThrowIfNotSuccessAsync(response, cancellationToken);
         return await ReadEnvelopeResultAsync<PersistentObject>(response, cancellationToken)
             ?? throw new SparkClientException(response.StatusCode, responseBody: null, "Empty response body.");
@@ -451,13 +484,19 @@ public class SparkClient : IDisposable
     /// <summary>
     /// Ensures <see cref="_xsrfToken"/> is populated. If the server previously returned one
     /// via Set-Cookie (on any read), the token is already cached. Otherwise, fires a warmup
-    /// GET to <c>/spark/po/__warmup__</c> which always mints the antiforgery cookie pair.
+    /// GET to <c>/spark</c> — the health check — which always mints the antiforgery cookie pair.
     /// </summary>
+    /// <remarks>
+    /// ⚠️ It used to warm up on <c>GET /spark/po/__warmup__</c>, a deliberate miss against the
+    /// catch-all load route. That route is gone: loads are <c>POST /spark/po/load</c> now, and there
+    /// is no path left that a nonsense id can land on. The health check is a real endpoint that
+    /// answers unauthenticated, which is what this needs and all it needs.
+    /// </remarks>
     private async Task EnsureAntiforgeryAsync(CancellationToken cancellationToken)
     {
         if (_xsrfToken is not null) return;
 
-        var warmupRequest = new HttpRequestMessage(HttpMethod.Get, "/spark/po/__warmup__");
+        var warmupRequest = new HttpRequestMessage(HttpMethod.Get, "/spark");
         var cookieHeader = BuildCookieHeader();
         if (cookieHeader is not null)
             warmupRequest.Headers.Add("Cookie", cookieHeader);

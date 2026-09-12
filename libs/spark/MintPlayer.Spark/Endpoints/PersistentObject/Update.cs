@@ -10,9 +10,9 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
-internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<PersistentObjectGroup>
+internal sealed partial class UpdatePersistentObject : IPostEndpoint, IMemberOf<PersistentObjectGroup>
 {
-    public static string Path => "/{objectTypeId}/{**id}";
+    public static string Path => "/update";
 
     static void IEndpointBase.Configure(RouteHandlerBuilder builder)
     {
@@ -28,26 +28,23 @@ internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<P
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var id = httpContext.Request.RouteValues["id"]!.ToString()!;
-
-        var entityType = SparkRequestType.Resolve(modelLoader, httpContext);
-        if (entityType is null)
+        var (request, entityType) = await SparkRequestType.ReadAsync<PersistentObjectRequest>(httpContext, modelLoader);
+        if (request is null || entityType is null || string.IsNullOrEmpty(request.Id))
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
 
         try
         {
-            var decodedId = Uri.UnescapeDataString(id);
-            var existingObj = await databaseAccess.GetPersistentObjectAsync(entityType.Id, decodedId);
+            // No UnescapeDataString: the id is a JSON string now, not a path segment, so it arrives
+            // exactly as the client wrote it. Unescaping it here would corrupt any id that legitimately
+            // contains a '%'.
+            var existingObj = await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id);
 
             if (existingObj is null)
             {
                 return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
             }
-
-            var request = await httpContext.Request.ReadFromJsonAsync<PersistentObjectRequest>()
-                ?? throw new InvalidOperationException("Request could not be deserialized from the request body.");
 
             var obj = request.PersistentObject
                 ?? throw new InvalidOperationException("PersistentObject is required.");

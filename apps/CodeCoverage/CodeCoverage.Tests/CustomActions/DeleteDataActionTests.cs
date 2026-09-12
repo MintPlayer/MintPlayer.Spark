@@ -140,7 +140,7 @@ public class DeleteDataActionTests : CoverageRavenTest
     /// The reported bug: an irreversible red "Delete data" button was shown on every repository
     /// page, including ones that were never transferred, renamed or removed.
     /// <para>
-    /// It could not be fixed in the catalogue. <c>GET /spark/actions/{objectTypeId}</c> is
+    /// It could not be fixed in the catalogue. <c>POST /spark/actions/list</c> is
     /// type-level — the server is never told which row is open — and the right cannot express it
     /// either, because rights here are group-level with no group per GitHub owner. Whether THIS
     /// repository may be deleted is a property of the row.
