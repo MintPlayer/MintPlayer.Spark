@@ -6,7 +6,7 @@ and M10 is two outward-facing messages rather than code.
 **Branch:** `fix/datetimeoffset-fidelity` — 16 commits, pushed.
 **PR:** [#403](https://github.com/MintPlayer/MintPlayer.Spark/pull/403), open.
 
-Suites green: `MintPlayer.Spark.Tests` **2153/2153**, `CodeCoverage.Tests` **438/438**,
+Suites green: `MintPlayer.Spark.Tests` **2147/2147**, `CodeCoverage.Tests` **438/438**,
 `SourceGenerators` **278/278**, `MintPlayer.Spark.Client.Tests` **38/38**, `@mintplayer/ng-spark`
 **488/488**.
 
@@ -119,8 +119,10 @@ backward-compatibility aliases into a separate `tzdata-legacy` package. A contai
 `TimeZoneNotFoundException` on the old id — and browsers do not all report canonical ids (ICU has long
 returned `Asia/Calcutta` rather than `Asia/Kolkata`).
 
-⚠️ **If the header is implemented, canonicalise the id and define a fallback** for
-`TimeZoneNotFoundException`. Do **not** depend on `tzdata-legacy` being present: it is a property of a
+✅ **Done in M15:** `RequestTimeZoneResolver` falls back to UTC on `TimeZoneNotFoundException` /
+`InvalidTimeZoneException`, after one attempt at `TryConvertIanaIdToWindowsId`, and logs the unknown id
+so a rename shows up in the logs rather than as silently-UTC timestamps. It does **not** depend on
+`tzdata-legacy` being present: it is a property of a
 mutable image tag, and a move to a `-chiseled` or Alpine base would drop it. Fixing the id is the durable
 answer; keeping a compatibility package alive is not.
 

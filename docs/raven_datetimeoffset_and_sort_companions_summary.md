@@ -21,7 +21,7 @@ shown is a real observation from RavenDB 7.2.6 with the Fleet demo's 10,010 cars
 | **Docs** | this file, the PRD, the plan, `guide-dates-and-sorting.md`, and a correction to `guide-queries-and-sorting.md` |
 | **Versions** | 23 NuGet packages → `10.0.0-preview.81`; `ng-spark` → `22.18.0` |
 
-Suites: `MintPlayer.Spark.Tests` 2153/2153 · `CodeCoverage.Tests` 438/438 · `SourceGenerators` 278/278 ·
+Suites: `MintPlayer.Spark.Tests` 2147/2147 · `CodeCoverage.Tests` 438/438 · `SourceGenerators` 278/278 ·
 `Client` 38/38 · `ng-spark` 488/488.
 
 ### Not done
