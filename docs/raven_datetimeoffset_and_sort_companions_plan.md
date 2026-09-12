@@ -2,7 +2,7 @@
 
 **PRD:** [raven_datetimeoffset_and_sort_companions_PRD.md](raven_datetimeoffset_and_sort_companions_PRD.md)
 **Status:** **IMPLEMENTED and verified in a browser.** M1–M9, M11 and M12 done; **M10 outstanding**.
-**Branch:** `fix/datetimeoffset-fidelity` — 11 commits, pushed.
+**Branch:** `fix/datetimeoffset-fidelity` — 13 commits, pushed.
 **PR:** [#403](https://github.com/MintPlayer/MintPlayer.Spark/pull/403), open.
 
 Suites green: `MintPlayer.Spark.Tests` **2143/2143**, `CodeCoverage.Tests` **438/438**,
