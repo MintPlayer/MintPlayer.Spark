@@ -1,13 +1,14 @@
 # Plan — `DateTimeOffset` fidelity (read + write) and `*Sort` companion correction
 
 **PRD:** [raven_datetimeoffset_and_sort_companions_PRD.md](raven_datetimeoffset_and_sort_companions_PRD.md)
-**Status:** **IMPLEMENTED and verified in a browser.** M1–M9, M11 and M12 done; **M10 outstanding**.
-**Branch:** `fix/datetimeoffset-fidelity` — 13 commits, pushed.
+**Status:** **IMPLEMENTED and verified in a browser.** M1–M9 and M11–M15 done; **only M10 outstanding**,
+and M10 is two outward-facing messages rather than code.
+**Branch:** `fix/datetimeoffset-fidelity` — 16 commits, pushed.
 **PR:** [#403](https://github.com/MintPlayer/MintPlayer.Spark/pull/403), open.
 
-Suites green: `MintPlayer.Spark.Tests` **2143/2143**, `CodeCoverage.Tests` **438/438**,
+Suites green: `MintPlayer.Spark.Tests` **2153/2153**, `CodeCoverage.Tests` **438/438**,
 `SourceGenerators` **278/278**, `MintPlayer.Spark.Client.Tests` **38/38**, `@mintplayer/ng-spark`
-**459/459**.
+**488/488**.
 
 Versions: all 23 NuGet packages → `10.0.0-preview.81`; `@mintplayer/ng-spark` → `22.18.0`.
 
@@ -16,7 +17,7 @@ Versions: all 23 NuGet packages → `10.0.0-preview.81`; `@mintplayer/ng-spark` 
 | | |
 |---|---|
 | **Merge timing** | **Do not merge until everything is implemented.** #403 stays open until the client write half and the viewer-zone header land. A release where saving works but silently discards the viewer's offset is not wanted. |
-| **DST fold/gap** | **Spike it** — measure `GetUtcOffset` across the autumn fold and spring gap, then choose the policy deliberately. See M15. |
+| **DST fold/gap** | **Spiked and resolved 2026-09-12.** Measured: at the autumn fold .NET picks the *standard* offset and the browser picks the *daylight* one, so the same wall clock lands an hour apart depending on which side converts. The gap is benign — both sides agree on the instant. Policy: the server never reconstructs an instant from a wall clock, and where it must, it matches the browser deliberately. Full measurement and the four decisions in M15. |
 | **Backward compatibility** | **None required — except `apps/CodeCoverage`.** It is deployed and holds real production state, so its data must survive and its indexes must rebuild cleanly. The framework itself may break freely. |
 | **Third-party references** | Sweep genuine external-org references out of committed files. **Keep every Vidyano reference** — that framework is the acknowledged basis of this project and citing it is correct. See M13. |
 
@@ -25,17 +26,23 @@ Versions: all 23 NuGet packages → `10.0.0-preview.81`; `@mintplayer/ng-spark` 
 | Item | State |
 |---|---|
 | **M10 — upstream + sideways** | **Not done, and not the implementer's to do.** Both actions are outward-facing: a public comment on [ravendb#17901](https://github.com/ravendb/ravendb/issues/17901) with the layer isolation, and handing the originating team the Defect C finding. Needs the issue owner to send them. |
-| **Client write contract** | **Semantics decided, implementation outstanding.** `<input type="datetime-local">` sends no offset, so editing a timestamp in the UI currently lands as UTC. The server half is done; `ng-spark` must compute the offset for the entered date in the browser's zone and send a complete ISO-8601 string. See *Timestamp semantics* §2. The Fleet demo seeds server-side until this lands. |
-| **Viewer-zone request header** | **Decided in shape, not built.** `X-Spark-Timezone`, for server-initiated work only (§4). Needs zone-id canonicalisation (§5) and the DST fold/gap decision (§6) before it is coded. |
+| **Client write contract** | ✅ **Done (M14).** Both directions convert in one place (`models/src/datetime-local.ts`), wired into `po-edit`, `po-create` and the AsDetail row conversions. |
+| **Viewer-zone request header** | ✅ **Done (M15).** `X-Spark-Timezone` + `sparkTimezoneInterceptor` on the client, `IRequestTimeZoneResolver` on the server, with the DST policy measured rather than inherited. |
 
-#### The write contract — DECIDED (see below)
+**M10 is now the only outstanding item, and it is outward-facing.** Everything in the codebase is
+implemented, which satisfies the merge condition above.
+
+#### The write contract — DECIDED and IMPLEMENTED
 
 The question was: if a viewer in Brussels edits a car registered in Seattle, does the saved value carry the
-**viewer's** `+02:00` or the record's original `-08:00`? It is answered by the semantics decision below —
+**viewer's** `+02:00` or the record's original `-08:00`? Answered by the semantics decision below —
 **the viewer's**, always, because the originating offset is not business data in Spark.
 
-What remains is implementation, plus one edge case (the DST fold/gap) that needs measuring before it is
-coded.
+⚠️ **M14 found the write half was not merely offset-less — it was destructive.** A `datetime-local`
+control accepts only `yyyy-MM-ddTHH:mm`, and `spark-po-edit` was assigning the raw wire value
+(`2026-12-31T23:59:00-08:00`) straight into it. The control does not throw or warn on a value it cannot
+parse; it renders **blank**. So opening a record with a timestamp and saving it — without touching the
+field — wrote the blank back. The missing offset was the smaller half of the problem.
 
 ---
 
@@ -117,11 +124,22 @@ returned `Asia/Calcutta` rather than `Asia/Kolkata`).
 mutable image tag, and a move to a `-chiseled` or Alpine base would drop it. Fixing the id is the durable
 answer; keeping a compatibility package alive is not.
 
-### 6. Still to measure before implementing §4
+### 6. The DST fold and gap — MEASURED, policy chosen
 
-`TimeZoneInfo.GetUtcOffset` during the **autumn fold** (a wall clock that occurs twice) and the **spring
-gap** (one that does not occur at all). `IsAmbiguousTime` / `IsInvalidTime` detect both. The resolution
-should be a stated decision, not whatever the default turns out to be.
+Measured 2026-09-12 (full results and the four decisions in **M15**). The headline:
+
+> **At the autumn fold, .NET and the browser disagree by an hour.** `GetUtcOffset` picks the *standard*
+> offset; a browser picks the *daylight* one. So "who converts the wall clock" is not a stylistic
+> choice — it changes the stored instant, once a year.
+
+That makes §2 (the browser converts) load-bearing rather than merely preferable. Where the server must
+convert anyway — §4's server-initiated work — it deliberately reproduces the browser's choice, so the two
+paths cannot drift. The spring gap needs no policy: both sides already produce the same instant, and
+only the offset label differs.
+
+⚠️ `TimeZoneInfo.ConvertTimeToUtc` **throws** on a wall clock inside the gap, while `GetUtcOffset` returns
+a usable answer for the same input. Since these values originate from something a person typed, the
+resolver uses `GetUtcOffset` and never `ConvertTimeToUtc`.
 
 ### 7. The wrapper stays — on consistency grounds
 
@@ -478,10 +496,10 @@ Angular's `DatePipe`. The client renders in the *browser's* local zone, so a cor
 still displays shifted relative to UTC — that is presentation, not data loss, and the demo is where
 that distinction becomes obvious rather than alarming.
 
-⚠️ Note the client contract is **not yet implemented**: `<input type="datetime-local">` has no offset,
-so editing a timestamp in the UI still sends an offset-less string, which the server now reads as UTC.
-The demo should fill values server-side (the button) rather than through the editor, and the gap
-should be stated in the demo's own copy.
+✅ The client contract landed in **M14**, so editing a timestamp through the UI now round-trips: the
+control shows the instant as a wall clock in the viewer's zone, and the save sends a complete ISO-8601
+string with the offset for the entered date. The scatter button remains as the bulk seeder — it is how
+the demo gets a spread of offsets in one click — but it is no longer the *only* way to set a value.
 
 ### M12 — Display consistency in `ng-spark` ✅ DONE
 
@@ -517,7 +535,7 @@ Also settled while there: **a plain `DateTime` is not flattened** — ticks *and
 projection, because it has no offset to lose. Two tests pin it, asserted on `Ticks` and `Kind` rather than
 equality.
 
-### M13 — Sweep third-party org references ⏳
+### M13 — Sweep third-party org references ✅ DONE
 
 Standing preference: no external-org name in a committed file. **Vidyano stays** — it is the acknowledged
 basis of this project and citing it is correct attribution, not a leak.
@@ -530,7 +548,7 @@ Scope: ~42 occurrences across roughly 20 files in `docs/` and `libs/`. Two thing
 
 `apps/CodeCoverage/raven-license.json` is out of scope — a licence file, not prose.
 
-### M14 — The client write half ⏳
+### M14 — The client write half ✅ DONE
 
 `ng-spark` must compute the offset for the entered date in the browser's zone and send a complete
 ISO-8601 string. Server half is done (M5). See *Timestamp semantics* §2.
@@ -543,18 +561,68 @@ ISO-8601 string. Server half is done (M5). See *Timestamp semantics* §2.
 - Needs a round-trip test through the Angular layer: today the client side is verified only by a manual
   browser session.
 
-### M15 — DST fold/gap spike, then the viewer-zone header ⏳
+### M15 — DST fold/gap spike, then the viewer-zone header ✅ DONE
 
-**Spike first.** Measure `TimeZoneInfo.GetUtcOffset` for `Europe/Brussels` at:
+#### Spike — RESOLVED 2026-09-12
 
-- the **autumn fold** — a wall clock that occurs twice (02:30 on the October change)
-- the **spring gap** — one that does not occur at all (02:30 on the March change)
+Measured both halves against the same two wall clocks, in `Europe/Brussels` and then in three more zones
+to test generality. **.NET and the browser disagree, and .NET disagrees with itself.**
 
-with `IsAmbiguousTime` / `IsInvalidTime` alongside. Record what .NET actually does, then **choose** the
-policy rather than inheriting the default. Both cases are reachable by a user typing a time into a form.
+**The autumn fold** — `2026-10-25T02:30`, a wall clock that happens twice:
 
-Then `X-Spark-Timezone` + `IRequestTimeZoneResolver` per §4, with the zone-id canonicalisation and
-fallback of §5.
+| | offset chosen | resulting instant |
+|---|---|---|
+| .NET `GetUtcOffset` | `+01:00` (standard, the **second** occurrence) | `01:30Z` |
+| browser `new Date(...)` | `+02:00` (daylight, the **first** occurrence) | `00:30Z` |
+
+`IsAmbiguousTime` is `true` and `GetAmbiguousTimeOffsets` returns both — but `GetUtcOffset` picks one
+silently, and it is **not** the one the browser picks. A wall clock converted server-side lands an hour
+away from the same wall clock converted client-side, once a year.
+
+**The spring gap** — `2026-03-29T02:30`, a wall clock that never happens:
+
+| | behaviour | resulting instant |
+|---|---|---|
+| .NET `GetUtcOffset` | returns `+01:00`, no error, `IsInvalidTime` is `true` | `01:30Z` |
+| .NET `ConvertTimeToUtc` | **throws** `ArgumentException` | — |
+| browser `new Date(...)` | shifts forward to `03:30+02:00` | `01:30Z` |
+
+So the gap is benign for us — **both sides agree on the instant** (`01:30Z`); only the offset *label*
+differs, and the instant is what Spark stores (§1). The fold is the real divergence. Note that the two
+.NET APIs disagree with each other: one silently coerces user input, the other throws on it.
+
+**Generality** — the browser rule held in all four zones measured, including both hemispheres:
+`Europe/Brussels`, `Australia/Sydney` (fold in April), `America/Santiago`, `America/New_York`. At **both**
+discontinuities the browser picks the **larger (DST) offset** — Sydney `+11` not `+10`, New York `-04`
+not `-05`. That matches the ECMAScript rule (the offset *before* a fall-back, *after* a spring-forward),
+which is the DST offset in both cases, so it is specified behaviour and not an implementation accident.
+
+**The fold is irreducibly lossy for a wall clock, on either side.** Measured round-trips:
+
+- instant → local → instant via .NET `GetUtcOffset` loses `2026-10-25T00:30:00Z` (comes back as `01:30Z`)
+- instant → `datetime-local` → instant via the browser loses `2026-10-25T01:30:00Z` (comes back as `00:30Z`)
+
+Neither is a bug to fix. A wall clock genuinely names two instants there; no policy recovers the lost bit.
+Only carrying the offset does — which is what the wrapper already achieves on the read path (§6).
+
+#### Decisions taken from the spike
+
+1. **The server never reconstructs an instant from a wall clock on the read or write path.** This was
+   already the semantics (§1–§2); the fold divergence makes it load-bearing rather than stylistic. The
+   browser converts, and the instant it produces is authoritative.
+2. **Where the server must convert** (server-initiated work only — §4), it uses `GetUtcOffset`, never
+   `ConvertTimeToUtc`: user-originated data must not throw. For an ambiguous time it takes
+   `GetAmbiguousTimeOffsets(wall).Max()` — deliberately the DST offset, because that is what the browser
+   would have chosen, so the two paths agree. Encode this in one helper so the choice exists in exactly
+   one place, with the measurement cited.
+3. **The gap needs no policy** — the instants already agree.
+4. `IsInvalidTime` / `IsAmbiguousTime` are worth surfacing in a log at the conversion helper, so the
+   once-a-year case is identifiable after the fact rather than silent.
+
+#### Then the header
+
+`X-Spark-Timezone` + `IRequestTimeZoneResolver` per §4, with the zone-id canonicalisation and fallback
+of §5, built on the helper from decision 2.
 
 ### M8 — Docs
 

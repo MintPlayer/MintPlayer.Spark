@@ -2,7 +2,7 @@
 
 **Status:** **IMPLEMENTED and verified in a browser.** Twelve agents across four rounds. Every claim below
 is **measured on live servers** or cited upstream. Nothing rests on folklore.
-**Branch:** `fix/datetimeoffset-fidelity` (13 commits, pushed) · **PR:** [#403](https://github.com/MintPlayer/MintPlayer.Spark/pull/403), open.
+**Branch:** `fix/datetimeoffset-fidelity` (16 commits, pushed) · **PR:** [#403](https://github.com/MintPlayer/MintPlayer.Spark/pull/403), open.
 **Issues:** none — implemented directly; the PR references this PRD.
 For what is done vs. still open, see the [plan](raven_datetimeoffset_and_sort_companions_plan.md) or the
 [summary](raven_datetimeoffset_and_sort_companions_summary.md).

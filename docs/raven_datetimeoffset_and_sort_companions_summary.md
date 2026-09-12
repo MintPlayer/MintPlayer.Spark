@@ -1,7 +1,7 @@
 # Summary — `DateTimeOffset` fidelity and sort companions
 
 **Status: implemented and verified in a browser** on `fix/datetimeoffset-fidelity` —
-[PR #403](https://github.com/MintPlayer/MintPlayer.Spark/pull/403), 13 commits, open.
+[PR #403](https://github.com/MintPlayer/MintPlayer.Spark/pull/403), 16 commits, open.
 [PRD](raven_datetimeoffset_and_sort_companions_PRD.md) · [plan](raven_datetimeoffset_and_sort_companions_plan.md) ·
 developer-facing: [guide](guide-dates-and-sorting.md). Everything below is measured, and every value
 shown is a real observation from RavenDB 7.2.6 with the Fleet demo's 10,010 cars.
@@ -16,18 +16,19 @@ shown is a real observation from RavenDB 7.2.6 with the Fleet demo's 10,010 cars
 | **Display consistency** | Detail page formats `datetime` through the new `parsedDate` pipe instead of printing a raw ISO string; grid and detail now agree |
 | **Analyzer** | `SPARK005` left matching `Exact` (deliberately — see the plan); guard test pins CodeCoverage's index shape |
 | **Demo** | `apps/Fleet` — `Car.RegisteredAt`, a scatter button, a paginated sorted grid, a three-line renderer |
+| **Client write half** | `models/src/datetime-local.ts` converts wire ⇄ control in one place, wired into `po-edit`, `po-create` and the AsDetail row conversions. Found and fixed a second defect on the way — see [§9](#9-the-editor-was-blanking-timestamps) |
+| **Viewer-zone header** | `X-Spark-Timezone` + `sparkTimezoneInterceptor` on the client, `IRequestTimeZoneResolver` on the server, with the DST fold/gap policy measured rather than inherited — [§10](#10-daylight-saving-where-net-and-the-browser-disagree) |
 | **Docs** | this file, the PRD, the plan, `guide-dates-and-sorting.md`, and a correction to `guide-queries-and-sorting.md` |
 | **Versions** | 23 NuGet packages → `10.0.0-preview.81`; `ng-spark` → `22.18.0` |
 
-Suites: `MintPlayer.Spark.Tests` 2143/2143 · `CodeCoverage.Tests` 438/438 · `SourceGenerators` 278/278 ·
-`Client` 38/38 · `ng-spark` 459/459.
+Suites: `MintPlayer.Spark.Tests` 2153/2153 · `CodeCoverage.Tests` 438/438 · `SourceGenerators` 278/278 ·
+`Client` 38/38 · `ng-spark` 488/488.
 
 ### Not done
 
 | | |
 |---|---|
-| **The client write contract** | `<input type="datetime-local">` sends no offset, so editing a timestamp in the UI lands as UTC. The server half is done; `ng-spark` does not yet carry the original offset through the editor. **Blocked on a product question, not on effort** — see [§9](#9-what-is-still-open). |
-| **Upstream + sideways** | A comment on [ravendb#17901](https://github.com/ravendb/ravendb/issues/17901), and handing the originating team the Defect C finding. Both outward-facing; the issue owner's to send. |
+| **Upstream + sideways** | A comment on [ravendb#17901](https://github.com/ravendb/ravendb/issues/17901), and handing the originating team the Defect C finding. Both outward-facing; the issue owner's to send. **This is the only item left, and it is not code.** |
 
 ---
 
@@ -256,38 +257,108 @@ All 23 NuGet packages bumped in lockstep to `10.0.0-preview.81`; `ng-spark` to `
 
 ---
 
-## 9. What is still open
+## 9. The editor was blanking timestamps
 
-**The client write contract**, and it is stuck on a product question rather than on work.
+Closing the write half turned up a defect of the same family as §7, and with the same signature: silent,
+and destructive on a path nobody would think to test.
 
-`<input type="datetime-local">` knows only a wall clock — it has no offset to send. The server already
-parses whatever offset it is given and treats an absent one as UTC, so a save now persists (it silently
-did nothing before). What `ng-spark` does not yet do is carry the value's *original* offset through the
-editor and reattach it on submit.
+`spark-po-edit` built its form state by copying the wire value straight across:
 
-**The semantics are now decided** (plan → *Timestamp semantics*), and they answer what used to be the open
-question:
+```ts
+data[attr.name] = itemAttr?.value ?? '';   // "2026-12-31T23:59:00-08:00"
+```
 
-> **A `DateTimeOffset` in Spark means an instant. The originating offset is not business data.**
+That string then went into `<input type="datetime-local">`, which accepts **only** `yyyy-MM-ddTHH:mm`.
+Handed anything else, the control does not throw and does not warn. It renders **blank**:
 
-So an edited value takes the **viewer's** zone — there is no "preserve the record's original offset" case,
-because there is no original-offset semantics to preserve. An app that genuinely needs "which country's
-morning was this?" must model that itself.
+```
+document        2026-12-31T23:59:00-08:00
+control shows   (empty)
+user saves      → null written over the stored value
+```
 
-What remains is implementation: **the browser computes the offset** for the entered date and sends a
-complete ISO-8601 string; the server parses it and never infers one (already true as of this PR). The
-browser rather than the server because its timezone rules are OS-maintained and current, while a
-container's are frozen at build time — a stale image would compute a wrong offset after a rule change and
-store a permanently wrong instant, silently.
+So opening a record that had a timestamp and pressing Save — **without touching the field** — destroyed
+it. The missing offset, which is what this milestone was opened to fix, was the smaller half of the
+problem.
 
-A separate `X-Spark-Timezone` header is decided in shape but not built, and is **only** for work with no
-browser in the loop — a server-side "today" filter, an export, a cron job. Reads and writes do not need it.
+### What it does now
 
-Until the client half lands, the Fleet demo seeds values server-side via the button rather than the editor.
+Both directions convert in one place, `models/src/datetime-local.ts`:
+
+```ts
+toDateInputValue('datetime', '2026-12-31T23:59:00-08:00')  // "2027-01-01T08:59"  (viewer's zone)
+fromDateInputValue('datetime', '2027-01-01T08:59')         // "2027-01-01T08:59:00+01:00"
+```
+
+Three call sites use it — `po-edit`, `po-create`, and `as-detail-conversions` for embedded rows, so
+AsDetail tables are covered by the same code rather than a second copy.
+
+Two details that are easy to get wrong:
+
+- **The offset is computed for the *entered* date**, by building the `Date` from its parts and letting the
+  browser apply its own rules. Using the *current* offset would be wrong for any value outside the present
+  season — enter a January date in July and the stored instant is an hour off.
+- **Change detection compares instants, not text.** The round trip legitimately rewrites the offset to the
+  viewer's, so `newValue !== attr.value` marks every untouched date as edited and sends a needless write on
+  every save. `wireDatesEqual` compares by instant. (Note this is the *opposite* of the §7/§10 trap: here
+  comparing by instant is correct, because the question is "did the user change this", not "is the offset
+  intact".)
+
+Under the decided semantics an edited value takes the **viewer's** zone; there is no "preserve the
+record's original offset" case, because the originating offset is not business data in Spark.
 
 ---
 
-## 10. Traps worth carrying forward
+## 10. Daylight saving: where .NET and the browser disagree
+
+Two wall clocks a year are genuinely ambiguous, and both are reachable by a user typing into a form. This
+was measured rather than assumed, because the default behaviour turned out to be wrong for us.
+
+**The autumn fold** — `2026-10-25T02:30` in Brussels happens twice:
+
+| | offset chosen | instant |
+|---|---|---|
+| .NET `GetUtcOffset` | `+01:00` (standard — the second occurrence) | `01:30Z` |
+| browser `new Date(...)` | `+02:00` (daylight — the first occurrence) | `00:30Z` |
+
+**They differ by an hour.** So "which side converts the wall clock" is not a stylistic preference — it
+changes the stored instant. That is what makes *the browser converts* a load-bearing rule rather than a
+tidy one.
+
+**The spring gap** — `2026-03-29T02:30` never happens:
+
+| | behaviour |
+|---|---|
+| .NET `GetUtcOffset` | returns `+01:00`, no error (`IsInvalidTime` is `true`) |
+| .NET `ConvertTimeToUtc` | **throws `ArgumentException`** |
+| browser | shifts forward to `03:30+02:00` |
+
+Benign for us: both sides land on `01:30Z`, the same instant, and only the offset *label* differs. But note
+the two .NET APIs disagree with each other — one silently coerces user input, the other throws on it.
+`IRequestTimeZoneResolver` uses `GetUtcOffset` for exactly that reason.
+
+**The rule generalises.** Checked in four zones across both hemispheres — `Europe/Brussels`,
+`Australia/Sydney` (folds in April), `America/Santiago`, `America/New_York` — the browser took the **larger
+(daylight)** offset at both discontinuities every time: Sydney `+11` not `+10`, New York `-04` not `-05`.
+That matches the ECMAScript rule (the offset in force *before* a fall-back, *after* a spring-forward), so
+it is specified behaviour and not an implementation accident. The server reproduces it with
+`GetAmbiguousTimeOffsets(wall).Max()`.
+
+### The fold is irreducibly lossy, and that is not a bug
+
+```
+instant → local → instant   via .NET GetUtcOffset   loses 2026-10-25T00:30:00Z
+instant → control → instant via the browser         loses 2026-10-25T01:30:00Z
+```
+
+Both round trips drop one of the two instants. Neither is fixable: a wall clock genuinely names two
+moments there, and no disambiguation policy invents the missing bit. Only *carrying the offset* resolves
+it — which is exactly what the wrapper does on the read path. The fold is a small, annual illustration of
+why §4 exists at all.
+
+---
+
+## 11. Traps worth carrying forward
 
 - **`DateTimeOffset.Equals` compares the instant.** Assert `.Offset` or `EqualsExact`, never `==`.
 - **Nesting preserves; scalar index fields normalise.** `FieldIndexing.No` does not help. Neither does

@@ -212,6 +212,78 @@ formatted the same document as `01/01/2027, 08:59`. Not a cosmetic difference: a
 differs from the viewer's can disagree on the **date**, so the two pages named different days for one car.
 Both now parse through the same `parsedDate` pipe and format identically.
 
+## How to edit one
+
+**Nothing to do — the form handles it.** A `date` or `datetime` attribute is edited through a native
+`<input type="date">` / `<input type="datetime-local">`, and ng-spark converts in both directions around
+it: the stored instant is shown as a wall clock in **your** zone, and what you type is sent back as a
+complete ISO-8601 string carrying the offset for **the date you entered**.
+
+```
+document   2026-12-31T23:59:00-08:00
+   ↓  shown in the control (viewer in Brussels)
+           2027-01-01T08:59
+   ↓  saved back
+           2027-01-01T08:59:00+01:00     ← same instant, viewer's offset
+```
+
+The value takes the **viewer's** zone on save, never the record's original offset — see
+[the semantics decision](raven_datetimeoffset_and_sort_companions_plan.md). Under Spark's rules the
+originating offset is not business data, so there is nothing to preserve. If your app genuinely needs
+"which country's morning was this?", model that as its own field.
+
+⚠️ **Never assign a wire timestamp straight to a date control.** `<input type="datetime-local">` accepts
+only `yyyy-MM-ddTHH:mm`; hand it `2026-12-31T23:59:00-08:00` and it does not throw, does not warn, and
+renders **blank** — and saving the untouched form then writes that blank back over the stored value. If
+you build a custom editor, go through `toDateInputValue` / `fromDateInputValue` from
+`@mintplayer/ng-spark/models` rather than rolling the conversion again.
+
+⚠️ **Compare edited timestamps by instant, not by text.** The round trip legitimately rewrites the
+offset, so a string comparison marks every untouched date as changed. Use `wireDatesEqual`.
+
+### Daylight saving: the one hour that is genuinely ambiguous
+
+Two wall clocks a year are not ordinary values, and both are reachable by someone typing into a form:
+
+| | example (Brussels) | what happens |
+|---|---|---|
+| **autumn fold** | `2026-10-25T02:30` | happens **twice** — two valid instants an hour apart |
+| **spring gap** | `2026-03-29T02:30` | happens **never** — the clock jumps 02:00 → 03:00 |
+
+The browser resolves both (it takes the daylight offset in each case), so an edit always produces a
+definite instant. What you should know:
+
+- **A wall clock cannot round-trip losslessly through the fold**, on any platform. It names two instants
+  and the form can only show one. This is not a bug to report; it is what a wall clock is. The offset in
+  the document is what disambiguates, which is the read path the wrapper already fixes.
+- **Server-side, do not use `TimeZoneInfo.ConvertTimeToUtc`** on user input — it *throws* inside the gap.
+  Use `IRequestTimeZoneResolver.ToViewerDateTimeOffset`, which handles both cases and deliberately
+  reproduces the browser's choice so the two sides cannot disagree.
+- ⚠️ **.NET's own default disagrees with the browser at the fold** — `GetUtcOffset` returns the *standard*
+  offset where a browser returns the *daylight* one. Measured across four zones in both hemispheres. If
+  you convert a wall clock yourself anywhere, you will land an hour off once a year.
+
+### The viewer's timezone on the server
+
+The client sends `X-Spark-Timezone: Europe/Brussels` on every same-origin request, and
+`IRequestTimeZoneResolver` reads it.
+
+```csharp
+[Inject] private readonly IRequestTimeZoneResolver timeZones;
+
+var zone = timeZones.GetViewerTimeZone();                              // TimeZoneInfo, UTC if unknown
+var starts = timeZones.ToViewerDateTimeOffset(new DateTime(2026, 7, 4, 9, 0, 0));
+```
+
+**This is for server-initiated work only** — a scheduled export, a notification email, a "today" filter
+evaluated server-side. Reads and writes do not use it and must not: the browser's timezone rules are kept
+current by the OS, while a container's are frozen at image build time, so a stale image that converted
+server-side would store a permanently wrong instant with nothing to show for it.
+
+An unknown zone id falls back to UTC rather than failing the request. The realistic cause is not a bad
+actor but a **zone rename** between the browser's tzdata and the server's — `America/Godthab` became
+`America/Nuuk`, and ICU still reports `Asia/Calcutta` for `Asia/Kolkata`.
+
 ## Gotchas worth knowing
 
 **`Index(x => x.XRaw, FieldIndexing.No)` is mandatory on a wrapper field.** Omit it and **Corax deploys
