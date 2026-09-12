@@ -2,7 +2,7 @@ using MintPlayer.Spark.Abstractions.Retry;
 
 namespace MintPlayer.Spark.Endpoints.Actions;
 
-internal sealed class CustomActionRequest
+internal sealed class CustomActionRequest : IRetryableRequest
 {
     public Abstractions.PersistentObject? Parent { get; set; }
     /// <summary>

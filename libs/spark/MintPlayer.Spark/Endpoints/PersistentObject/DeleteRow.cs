@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Retry;
 using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
@@ -50,6 +51,7 @@ internal sealed partial class DeleteRowPersistentObject : IPostEndpoint, IMember
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IDeleteRowInvoker deleteRowInvoker;
     [Inject] private readonly ISparkTypeResolver typeResolver;
+    [Inject] private readonly IRetryAccessor retryAccessor;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -64,6 +66,8 @@ internal sealed partial class DeleteRowPersistentObject : IPostEndpoint, IMember
         var request = await httpContext.Request.ReadFromJsonAsync<DeleteRowRequest>()
             ?? new DeleteRowRequest();
 
+        RetryScope.Accept(retryAccessor, request);
+
         try
         {
             return await HandleCoreAsync(httpContext, entityType, request);
@@ -73,6 +77,12 @@ internal sealed partial class DeleteRowPersistentObject : IPostEndpoint, IMember
             // A hook refused — "this invoice line has already been settled". The one outcome of this
             // endpoint a user is meant to read.
             return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, 400);
+        }
+        catch (SparkRetryActionException ex)
+        {
+            // A hook may ask before releasing the row — "this line is invoiced, remove anyway?".
+            // Without this the exception left the pipeline and the caller saw no prompt at all.
+            return ClientResult.Retry(clientAccessor, ex);
         }
         catch (SparkRowLevelAccessDeniedException)
         {
@@ -191,8 +201,11 @@ internal sealed partial class DeleteRowPersistentObject : IPostEndpoint, IMember
     }
 }
 
-internal sealed class DeleteRowRequest
+internal sealed class DeleteRowRequest : IRetryableRequest
 {
+    /// <inheritdoc />
+    public RetryResult[]? RetryResults { get; set; }
+
     /// <summary>Name of the parent's <c>AsDetail</c> attribute the row is being removed from.</summary>
     public string? AsDetailAttribute { get; set; }
 

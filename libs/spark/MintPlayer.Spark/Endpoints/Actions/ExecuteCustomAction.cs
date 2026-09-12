@@ -133,11 +133,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
                 StatusCodes.Status400BadRequest);
         }
 
-        if (request?.RetryResults is { Length: > 0 } retryResults)
-        {
-            var accessor = (RetryAccessor)retryAccessor;
-            accessor.AnsweredResults = retryResults.ToDictionary(r => r.Step);
-        }
+        RetryScope.Accept(retryAccessor, request);
 
         try
         {

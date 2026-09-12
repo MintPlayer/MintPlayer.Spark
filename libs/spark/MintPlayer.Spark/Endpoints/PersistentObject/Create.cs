@@ -58,11 +58,7 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint, IMemberOf<
             ?? throw new InvalidOperationException("PersistentObject is required.");
 
         // Set up retry state if this is a re-invocation
-        if (request.RetryResults is { Length: > 0 } retryResults)
-        {
-            var accessor = (RetryAccessor)retryAccessor;
-            accessor.AnsweredResults = retryResults.ToDictionary(r => r.Step);
-        }
+        RetryScope.Accept(retryAccessor, request);
 
         // Ensure the ObjectTypeId matches the resolved entity type
         obj.ObjectTypeId = entityType.Id;

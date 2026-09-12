@@ -53,11 +53,7 @@ internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<P
             var obj = request.PersistentObject
                 ?? throw new InvalidOperationException("PersistentObject is required.");
 
-            if (request.RetryResults is { Length: > 0 } retryResults)
-            {
-                var accessor = (RetryAccessor)retryAccessor;
-                accessor.AnsweredResults = retryResults.ToDictionary(r => r.Step);
-            }
+            RetryScope.Accept(retryAccessor, request);
 
             obj.Id = existingObj.Id;
             obj.ObjectTypeId = entityType.Id;

@@ -81,12 +81,9 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
-
-        if (request.RetryResults is { Length: > 0 } retryResults)
-        {
-            var accessor = (RetryAccessor)retryAccessor;
-            accessor.AnsweredResults = retryResults.ToDictionary(r => r.Step);
-        }
+        // Answers from a previous attempt, so a hook that prompted last time re-enters with
+        // Retry.Result populated and takes its "the user said yes" branch instead of asking again.
+        RetryScope.Accept(retryAccessor, request);
 
         // Refresh handlers are chatty by nature — they answer "what should this form look like
         // now", which usually means looking something up — and unlike load or save this runs on
@@ -124,14 +121,25 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
         // Authorization stays on the type in the ROUTE regardless. Nested AsDetail types are not in
         // security.json — nobody grants rights on CarreerJob — so the right that governs editing a
         // row is the one governing the object that owns it.
-        if (NestedTrigger.TryParse(request.TriggeredBy) is { } nested
-            && BuildNestedRow(entityType, effective, nested) is { } row)
+        try
         {
-            await InvokeFor(row.EntityType, row.Object, nested.Column, isNew, httpContext);
-            return ClientResult.Envelope(clientAccessor, row.Object, StatusCodes.Status200OK);
-        }
+            if (NestedTrigger.TryParse(request.TriggeredBy) is { } nested
+                && BuildNestedRow(entityType, effective, nested) is { } row)
+            {
+                await InvokeFor(row.EntityType, row.Object, nested.Column, isNew, httpContext);
+                return ClientResult.Envelope(clientAccessor, row.Object, StatusCodes.Status200OK);
+            }
 
-        await InvokeFor(entityType, effective, request.TriggeredBy, isNew, httpContext);
+            await InvokeFor(entityType, effective, request.TriggeredBy, isNew, httpContext);
+        }
+        catch (SparkRetryActionException ex)
+        {
+            // A refresh hook may warn before accepting a value — "setting Status to Expired makes
+            // this card read-only forever, are you sure?". The hook is then re-entered with
+            // Retry.Result populated and decides what to do; the refresh completes either way, so
+            // "No" is a branch in the hook rather than an aborted request.
+            return ClientResult.Retry(clientAccessor, ex);
+        }
 
         if (existing is not null)
         {
@@ -288,9 +296,11 @@ internal readonly record struct NestedTrigger(string Attribute, int Index, strin
     }
 }
 
-internal sealed class RefreshPersistentObjectRequest
+internal sealed class RefreshPersistentObjectRequest : IRetryableRequest
 {
     public Po? PersistentObject { get; set; }
     public string? TriggeredBy { get; set; }
+
+    /// <inheritdoc />
     public RetryResult[]? RetryResults { get; set; }
 }

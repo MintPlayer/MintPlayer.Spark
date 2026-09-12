@@ -40,11 +40,7 @@ internal sealed partial class DeletePersistentObject : IDeleteEndpoint, IMemberO
         if (httpContext.Request.ContentType?.StartsWith("application/json", StringComparison.OrdinalIgnoreCase) == true)
         {
             var request = await httpContext.Request.ReadFromJsonAsync<PersistentObjectRequest>();
-            if (request?.RetryResults is { Length: > 0 } retryResults)
-            {
-                var accessor = (RetryAccessor)retryAccessor;
-                accessor.AnsweredResults = retryResults.ToDictionary(r => r.Step);
-            }
+            RetryScope.Accept(retryAccessor, request);
         }
 
         try
