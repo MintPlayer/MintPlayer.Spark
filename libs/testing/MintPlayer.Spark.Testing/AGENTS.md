@@ -9,7 +9,7 @@ Self-contained reference for writing tests against the MintPlayer.Spark framewor
 **Hard rules** first — most of them are about tests that pass for the wrong reason, which is the
 failure mode this document exists to prevent.
 
-Spark is **not** Vidyano. If you have written tests for CronosCore, see
+Spark is **not** Vidyano. If you have written tests for the originating framework, see
 [What is different from Vidyano](#what-is-different-from-vidyano) before assuming anything.
 
 ---
@@ -40,7 +40,7 @@ Spark is **not** Vidyano. If you have written tests for CronosCore, see
 - **Give an Actions class a globally unique name.** Discovery matches on *simple name across every
   loaded assembly* and caches the answer process-wide. [Details](#actions-class-discovery).
 - **Test naming: sentence style.** `A_refusal_is_byte_identical_to_a_genuine_not_found`. No
-  "Should"/"Assert" words. (This is *not* CronosCore's `Subject_Action_Detail`.)
+  "Should"/"Assert" words. (This is *not* the originating framework's `Subject_Action_Detail`.)
 
 ---
 
@@ -346,9 +346,9 @@ licence is always validated.
 
 ## What is different from Vidyano
 
-For readers coming from CronosCore:
+For readers coming from the originating framework:
 
-| | Spark | CronosCore / Vidyano |
+| | Spark | the originating framework / Vidyano |
 |---|---|---|
 | Runner | xUnit | NUnit |
 | Parallelism | **classes run in parallel** (capped) | sequential; `[NonParallelizable]` |

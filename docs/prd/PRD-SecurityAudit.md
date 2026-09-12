@@ -523,7 +523,7 @@ Tests **will fail initially** — that's the point. A failing test == vulnerabil
 **Scope:** master HEAD `d0729ae`. Covers (a) code changed since round 1 baseline `ea596e9`, (b) packages explicitly out-of-scope in round 1 — `MintPlayer.Spark.Authorization`, `MintPlayer.Spark.Webhooks.GitHub(.DevTunnel)`, `MintPlayer.Spark.Messaging`, `MintPlayer.Spark.Replication`, `MintPlayer.Spark.SubscriptionWorker`, `MintPlayer.Spark.Client(.Authorization)`, `node_packages/ng-spark`, the `MintPlayer.Spark.SourceGenerators` emission paths, `.github/workflows/*` — and (c) drift-check of every round-1 disposition.
 **Method:** 5 parallel auditor agents (AuthN/AuthZ; Endpoints/Middleware; Backend integrations; Client/frontend; Build/supply-chain). Findings cross-corroborated where two agents touched the same surface, then sanity-checked against master HEAD by re-reading the cited lines.
 **Threat model:** Internet-facing multi-tenant.
-**Out of scope:** `MintPlayer.Spark.IdentityProvider` (PRD at `docs/PRD-IdentityProvider.md` exists, package not yet on master); SparkEditor / VS extensions; CronosCore test infra. Re-audit when shipped.
+**Out of scope:** `MintPlayer.Spark.IdentityProvider` (PRD at `docs/PRD-IdentityProvider.md` exists, package not yet on master); SparkEditor / VS extensions; the originating framework test infra. Re-audit when shipped.
 
 ID prefix `R2-` distinguishes round-2 findings from round-1 (e.g., `R2-C1`).
 

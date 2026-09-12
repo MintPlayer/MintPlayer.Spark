@@ -34,7 +34,7 @@ namespace MintPlayer.Spark.Testing;
 /// xUnit's default parallelism is untouched. That is deliberate, and it is the whole reason this is
 /// not modelled on a single process-wide database: xUnit runs test classes CONCURRENTLY, so a
 /// database shared across classes would be entered by several at once. (NUnit is sequential by
-/// default, which is why the same design is safe in CronosCore and would not be here.)
+/// default, which is why the same design is safe in the originating framework and would not be here.)
 /// </para>
 ///
 /// <para><b>⚠️ What you give up: tests in one class share state.</b></para>

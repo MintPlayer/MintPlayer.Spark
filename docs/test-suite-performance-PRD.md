@@ -86,7 +86,7 @@ test-class instance per case — so inheriting it on the test class *forces* per
 share one embedded server (`ConfigureServer` is `public static`; the server is a static field,
 verified by reflecting over `Raven.TestDriver.dll`).
 
-**Rejected: CronosCore's single process-wide database.** xUnit runs test classes concurrently;
+**Rejected: the originating framework's single process-wide database.** xUnit runs test classes concurrently;
 NUnit is sequential by default. Their design is safe there and would not be here. Keeping the
 database as the isolation boundary means parallelism is untouched and no id-scoping scheme is
 needed at all.

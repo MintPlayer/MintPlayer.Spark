@@ -17,7 +17,7 @@ namespace MintPlayer.Spark.Testing;
 /// someone adds, and silent when forgotten.
 /// </para>
 /// <para>
-/// Originally ported from <c>CronosCore.RavenDB.UnitTests</c>'s <c>VidyanoTestDriver</c>, which has
+/// Originally ported from <c>the originating framework's RavenDB test suite</c>'s <c>VidyanoTestDriver</c>, which has
 /// had far more mileage against real indexing behaviour than anything here. Two details are the
 /// reason to prefer it over an ad-hoc poll: it <b>throws</b> rather than returning quietly when the
 /// indexes never settle, and it <b>reports the actual index errors</b> when they do not. A wait that

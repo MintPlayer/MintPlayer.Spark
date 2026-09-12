@@ -137,7 +137,7 @@ Subscription worker 'SparkMessaging-coverage-delete-repository-data' stopped
 ```
 
 ```
-"LicensedTo":"2sky"  "Status":"Commercial"  "Type":"Community"
+"LicensedTo":"<redacted>"  "Status":"Commercial"  "Type":"Community"
 "MaxNumberOfSubscriptionsPerDatabase": 3
 ```
 

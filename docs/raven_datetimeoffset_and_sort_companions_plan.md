@@ -11,6 +11,15 @@ Suites green: `MintPlayer.Spark.Tests` **2143/2143**, `CodeCoverage.Tests` **438
 
 Versions: all 23 NuGet packages → `10.0.0-preview.81`; `@mintplayer/ng-spark` → `22.18.0`.
 
+### Release decisions (issue owner, 2026-09-12)
+
+| | |
+|---|---|
+| **Merge timing** | **Do not merge until everything is implemented.** #403 stays open until the client write half and the viewer-zone header land. A release where saving works but silently discards the viewer's offset is not wanted. |
+| **DST fold/gap** | **Spike it** — measure `GetUtcOffset` across the autumn fold and spring gap, then choose the policy deliberately. See M15. |
+| **Backward compatibility** | **None required — except `apps/CodeCoverage`.** It is deployed and holds real production state, so its data must survive and its indexes must rebuild cleanly. The framework itself may break freely. |
+| **Third-party references** | Sweep genuine external-org references out of committed files. **Keep every Vidyano reference** — that framework is the acknowledged basis of this project and citing it is correct. See M13. |
+
 ### Still outstanding
 
 | Item | State |
@@ -507,6 +516,45 @@ path, undoing the reason `StoreAllFields` exists. Pinned by a test so it is not 
 Also settled while there: **a plain `DateTime` is not flattened** — ticks *and* `Kind` both survive a
 projection, because it has no offset to lose. Two tests pin it, asserted on `Ticks` and `Kind` rather than
 equality.
+
+### M13 — Sweep third-party org references ⏳
+
+Standing preference: no external-org name in a committed file. **Vidyano stays** — it is the acknowledged
+basis of this project and citing it is correct attribution, not a leak.
+
+Scope: ~42 occurrences across roughly 20 files in `docs/` and `libs/`. Two things must be told apart:
+
+- **`Cronos` the NuGet package** (cron-expression parsing) — legitimate, keep.
+- An external org's internal framework, or the org itself — replace with a neutral phrase
+  (*"the originating codebase"*, *"the originating team"*).
+
+`apps/CodeCoverage/raven-license.json` is out of scope — a licence file, not prose.
+
+### M14 — The client write half ⏳
+
+`ng-spark` must compute the offset for the entered date in the browser's zone and send a complete
+ISO-8601 string. Server half is done (M5). See *Timestamp semantics* §2.
+
+- The value bound to `<input type="datetime-local">` is a wall clock; on submit, derive the offset with
+  `new Date(y, m, d, h, min).getTimezoneOffset()` — **date-specific**, so DST is handled by the browser's
+  own rules rather than by a "current offset" that is wrong outside the present season.
+- A new record with no prior value gets the same treatment — there is no original offset to preserve
+  (§1), so the viewer's zone is simply correct.
+- Needs a round-trip test through the Angular layer: today the client side is verified only by a manual
+  browser session.
+
+### M15 — DST fold/gap spike, then the viewer-zone header ⏳
+
+**Spike first.** Measure `TimeZoneInfo.GetUtcOffset` for `Europe/Brussels` at:
+
+- the **autumn fold** — a wall clock that occurs twice (02:30 on the October change)
+- the **spring gap** — one that does not occur at all (02:30 on the March change)
+
+with `IsAmbiguousTime` / `IsInvalidTime` alongside. Record what .NET actually does, then **choose** the
+policy rather than inheriting the default. Both cases are reachable by a user typing a time into a form.
+
+Then `X-Spark-Timezone` + `IRequestTimeZoneResolver` per §4, with the zone-id canonicalisation and
+fallback of §5.
 
 ### M8 — Docs
 

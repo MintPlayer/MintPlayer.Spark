@@ -1,7 +1,7 @@
 ---
 title: PRD — PO Sticky Action Bar (Detail + List)
 status: draft (open questions resolved 2026-04-27)
-author: pieterjan@2sky.be
+author: pieterjan@example.com
 created: 2026-04-27
 updated: 2026-04-27
 related:

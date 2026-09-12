@@ -221,5 +221,5 @@ The module initializer configures Verify automatically, so snapshots land under 
 
 ## Related
 
-- [CronosCore RavenDB test helper](https://github.com/MintPlayer) — complementary JSON-seeding + Verify infrastructure standardized across MintPlayer repos.
+- [the originating framework RavenDB test helper](https://github.com/MintPlayer) — complementary JSON-seeding + Verify infrastructure standardized across MintPlayer repos.
 - [HTTP API Specification](../../../docs/Spark-API-Specification.md) — the endpoints the `SparkEndpointFactory` host exposes.
