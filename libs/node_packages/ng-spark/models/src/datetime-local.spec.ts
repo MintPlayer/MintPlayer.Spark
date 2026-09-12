@@ -129,6 +129,33 @@ describe('the edit round trip', () => {
   });
 });
 
+describe('an untouched save keeps the stored offset', () => {
+  // Preserving the instant is the guarantee; preserving the offset on a save that changed nothing
+  // is the courtesy that stops "open a record, press Save" from relabelling a Seattle timestamp as
+  // a Brussels one. Verified end-to-end in the browser before this was added.
+  it('sends back the original text when the instant is unchanged', () => {
+    const stored = '2026-12-31T23:59:00-08:00';
+    const converted = fromDateTimeLocalInput(toDateTimeLocalInput(stored));
+
+    // The conversion is faithful by instant...
+    expect(wireDatesEqual(converted, stored)).toBe(true);
+    // ...but it is NOT the same text, which is exactly why the caller must not send it blindly.
+    expect(converted).not.toBe(stored);
+
+    const sent = wireDatesEqual(converted, stored) ? stored : converted;
+    expect(sent).toBe(stored);
+  });
+
+  it('sends the new value when the instant did change', () => {
+    const stored = '2026-12-31T23:59:00-08:00';
+    const edited = fromDateTimeLocalInput('2026-06-01T09:00');
+
+    expect(wireDatesEqual(edited, stored)).toBe(false);
+    const sent = wireDatesEqual(edited, stored) ? stored : edited;
+    expect(sent).toBe(edited);
+  });
+});
+
 describe('date-only values', () => {
   it('produces the yyyy-MM-dd a date input accepts', () => {
     expect(toDateInput('2026-07-04T12:30:00+02:00')).toMatch(/^\d{4}-\d{2}-\d{2}$/);

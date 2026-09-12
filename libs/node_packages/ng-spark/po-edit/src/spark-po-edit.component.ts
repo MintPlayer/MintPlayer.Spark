@@ -172,12 +172,19 @@ export class SparkPoEditComponent {
       if (editableAttr && isDateDataType(editableAttr.dataType)) {
         // Back out of the control's bare wall clock into a complete ISO-8601 instant, carrying the
         // viewer's offset for the entered date.
-        const newValue = fromDateInputValue(editableAttr.dataType, rawValue);
+        const converted = fromDateInputValue(editableAttr.dataType, rawValue);
+        // Compare by instant, not by text: the round trip rewrites the offset to the viewer's even
+        // when nothing was edited.
+        const changed = !wireDatesEqual(converted, attr.value);
         return {
           ...attr,
-          value: newValue,
-          // By instant, not by text: the round trip rewrites the offset even when nothing was edited.
-          isValueChanged: !wireDatesEqual(newValue, attr.value),
+          // When the value did not actually change, send back exactly what was loaded. Sending the
+          // re-converted string would preserve the instant but rewrite the stored offset to the
+          // viewer's, so merely opening a record and saving it would relabel a Seattle registration
+          // as a Brussels one. The offset is not business data (so the instant is what we guarantee),
+          // but there is no reason to discard it on a save that changed nothing.
+          value: changed ? converted : attr.value,
+          isValueChanged: changed,
         };
       }
 
