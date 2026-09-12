@@ -363,6 +363,27 @@ public sealed class FleetTestHost : IAsyncLifetime
         await appStore.WaitForIndexingAsync(TestDatabase);
     }
 
+    /// <summary>
+    /// Waits for the app database's indexes to catch up.
+    /// </summary>
+    /// <remarks>
+    /// A test that writes over HTTP and then reads back through a <b>query</b> needs this: queries are
+    /// answered from indexes, and RavenDB indexes are eventually consistent, so the row is reliably
+    /// absent for a moment after the write returns 200. Reads of a single object by id do not need it —
+    /// those load the document directly.
+    /// <para>
+    /// The symptom without it is not a wrong value but a missing row, which reads like a broken query
+    /// rather than a timing problem. <c>WaitForIndexingAsync</c> polls for non-stale with a timeout, so
+    /// this is a failure bound and never a fixed sleep.
+    /// </para>
+    /// </remarks>
+    public async Task WaitForIndexingAsync()
+    {
+        using var appStore = new DocumentStore { Urls = _raven!.Store.Urls, Database = TestDatabase };
+        appStore.Initialize();
+        await appStore.WaitForIndexingAsync(TestDatabase);
+    }
+
     public async Task InitializeAsync()
     {
         _raven = new SparkTestDriverHost();

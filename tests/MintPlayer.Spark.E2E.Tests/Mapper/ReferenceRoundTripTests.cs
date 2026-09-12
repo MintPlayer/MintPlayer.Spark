@@ -92,19 +92,23 @@ public class ReferenceRoundTripTests
         return created;
     }
 
+    // Composed from CarFixture.New rather than rebuilding the attribute list, so a newly-required
+    // field on Car is added in one place instead of silently 400-ing every test that hand-rolls a
+    // payload.
     private static PersistentObject NewCarWithManager(string plate, string managerId)
-        => new()
+    {
+        var car = CarFixture.New(plate, model: "RR1");
+        return new PersistentObject
         {
-            Name = CarFixture.TypeName,
-            ObjectTypeId = CarFixture.TypeId,
+            Name = car.Name,
+            ObjectTypeId = car.ObjectTypeId,
             Attributes =
             [
-                new PersistentObjectAttribute { Name = CarFixture.AttributeNames.LicensePlate, Value = plate },
-                new PersistentObjectAttribute { Name = CarFixture.AttributeNames.Model,        Value = "RR1" },
-                new PersistentObjectAttribute { Name = CarFixture.AttributeNames.Year,         Value = 2024 },
+                .. car.Attributes,
                 new PersistentObjectAttribute { Name = "Manager", Value = managerId, DataType = "Reference" },
             ],
         };
+    }
 
     /// <summary>
     /// Rebuilds the PO's attribute collection with Manager set to <paramref name="managerId"/>,
