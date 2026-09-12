@@ -1,7 +1,8 @@
 # Spark client — completing the conversation
 
-**Status:** **Proposed.** Not started. Investigation complete (4 parallel surveys, 2026-09-12); every claim
-below is cited to code.
+**Status:** **Partially implemented.** M0, M1 and spikes S2/S4 are done on `fix/datetimeoffset-fidelity`;
+the client-side milestones (M2 onwards) are not started. Investigation complete (4 parallel surveys,
+2026-09-12); every claim below is cited to code, and the corrections are kept rather than edited away.
 **Plan:** [spark_client_conversation_plan.md](spark_client_conversation_plan.md)
 
 ---
@@ -83,9 +84,13 @@ Antiforgery is already correct: warm up, read the `XSRF-TOKEN` cookie, echo `X-X
 
 ---
 
-## Found while investigating: retry is wired to only half the hooks
+## Found while investigating: retry was wired to only half the hooks
 
-⚠️ **Live defects, reachable from the browser today, not caused by anything in this proposal.**
+✅ **D1 and D2 are FIXED (M0 + M1, 2154/2154).** D3 is superseded by *Reads become POST*. The table
+below is the state as found; it is kept because the shape of the defect is the argument for the seam
+that replaced it.
+
+⚠️ These were live defects reachable from the browser, **not** caused by anything in this proposal.
 
 A retry has **two** halves, and they are wired independently:
 
@@ -109,17 +114,24 @@ Measured across every endpoint:
 
 Three distinct defects fall out of that table.
 
-**D1 — `OnRefreshAsync` accepts answers it can never have asked for.** `Refresh.cs` binds
-`RetryResults` and populates `AnsweredResults` (`:85-87`), but catches nothing — so a hook that calls
-`Retry.Action(...)` during refresh throws `SparkRetryActionException` straight out of the endpoint. Half
-a feature, wired at the answering end only.
+**D1 — `OnRefreshAsync` accepted answers it could never have asked for.** `Refresh.cs` bound
+`RetryResults` and populated `AnsweredResults`, but caught nothing. Half a feature, wired at the
+answering end only. ✅ **Fixed.**
 
-**D2 — `OnNewAsync` / `OnDeleteRowAsync` have neither half.** A retry from either escapes as an
-unhandled exception.
+⚠️ **D1 had a second cause that the endpoint fix alone did not reach.** `RefreshInvoker` called
+`method.Invoke` **without `BindingFlags.DoNotWrapExceptions`**, which `NewInvoker` and
+`DeleteRowInvoker` both pass with a comment calling it load-bearing. So every exception from an
+`OnRefresh` hook arrived wrapped in `TargetInvocationException` and no typed `catch` could match it —
+wider than retry: a hook refusing politely with `SparkValidationException` would have surfaced as a 500
+with its stack trace lost. The diagnostic that found it: `new` and `delete-row` went green on the
+endpoint change while `refresh` stayed red after the *identical* change.
 
-**D3 — `OnLoadAsync` / `OnQueryAsync` cannot participate at all.** Both endpoints are `GET`. Even if
-they emitted a 449, there is no request body to carry the answer back. This is a design question, not a
-missing `catch`. See **FR7c**.
+**D2 — `OnNewAsync` / `OnDeleteRowAsync` had neither half.** A retry from either escaped as an
+unhandled exception. ✅ **Fixed.**
+
+**D3 — `OnLoadAsync` / `OnQueryAsync` could not participate at all.** Both endpoints were `GET`, so
+even a 449 had no request body to carry the answer back. **Superseded** — the reads become POST, and
+these become ordinary retry-capable hooks with no special case to document.
 
 > ⚠️ **Correction to this PRD's first draft.** It claimed a retry from `new`/`delete-row` produced an
 > infinite loop — prompt, answer, ignored, re-prompt. That was wrong, and wrong in the optimistic
@@ -204,6 +216,15 @@ missing `catch`. See **FR7c**.
   `catch` converting `SparkRetryActionException` into a 449 envelope, replacing the per-endpoint copies.
   ⚠️ Strictly after FR21–FR23 — centralising first turns a loud failure on the read paths into a silent
   one.
+- **FR27** — **Exactly one reachable source for the request's entity type.** A single
+  `SparkRequestType.Resolve(...)` reads a top-level `ObjectTypeId` declared by an
+  `ISparkTypedRequest` interface; after it lands, no endpoint reads `RouteValues["objectTypeId"]` or
+  `persistentObject.ObjectTypeId`. The nested field stays on **responses** and continues to be
+  overwritten with the resolved type on the way in, so a response never echoes a client's claim back
+  as fact.
+- **FR28** — The conflation invariant is a **test**, not a convention: a payload naming a different
+  type must not change which type is used, nor buy access to a denied one. Pinned by
+  `TypeConflationTests` before the migration, and verified to fail when the rule is broken.
 
 ### Release
 
@@ -263,10 +284,17 @@ last catch-all disappears, so a Raven id containing slashes stops being a routin
 plan's **S4** for the table and what it costs.
 
 ⚠️ **The type now arrives only in the body, and that is the real risk of this migration** — larger than
-the collision it removes. Several endpoints deliberately resolve the entity type from the **route** and
-ignore the `objectTypeId` on the wire object, because "taking the client's word for the type is how a
-caller reads one collection through another's permissions" (`Refresh.cs:100-106`, security sweep C3).
-That defence must be reconstructed rather than assumed once the route no longer carries the type.
+the collision it removes. Nine endpoints resolve the entity type from the **route** today, and
+`Create.cs:64` / `Update.cs:59` overwrite the payload's `objectTypeId` with it, because "taking the
+client's word for the type is how a caller reads one collection through another's permissions"
+(`Refresh.cs:100-106`, security sweep C3).
+
+The safety property survives the move — one authoritative source, payload never trusted — but the
+*visual* distinction does not: `request.ObjectTypeId` and `request.PersistentObject.ObjectTypeId` sit
+one word apart in the same document, where a route segment and a JSON body could not be confused. FR27
+answers that by making the nested field unreachable rather than merely unused, and FR28 makes the rule
+a test. See the plan's **S4**, including why promoting the nested field to be the single source does
+not work — five of the nine operations carry no `PersistentObject` at all.
 
 ⚠️ **A POST that reads is semantically odd**, and deliberate. GraphQL and Vidyano both do it. The
 responses already declare `cache-control: no-cache, no-store`, so no caching benefit is being given up.
@@ -439,6 +467,9 @@ drive.
 
 ## What must be true when this is done
 
+0. ✅ **Done (M0/M1):** a retry works from every hook behind a POST endpoint — create, update, delete,
+   custom action, refresh, new, delete-row — with one seam rather than eight copies, and a matrix test
+   that fails if a future endpoint is wired half-way.
 1. A test can execute a custom action, receive a retry prompt, set attributes on the carried
    `PersistentObject`, submit an option, and receive the next response — without touching raw
    `HttpClient`.

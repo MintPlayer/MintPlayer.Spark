@@ -1,7 +1,7 @@
 # Spark client — completing the conversation: implementation plan
 
 **PRD:** [spark_client_conversation_PRD.md](spark_client_conversation_PRD.md)
-**Status:** **M0 and M1 done** (2154/2154). S2 resolved. S3 dropped. **S4 and M2 next** — reads become POST, which is what lets `OnLoad`/`OnQuery` join the retry mechanism and makes M2b safe.
+**Status:** **M0, M1 and the S2/S4 spikes done** — 2154/2154 plus 3 new invariant facts. S3 dropped. **M2 next** — the route table becomes fully literal, which is what lets `OnLoad`/`OnQuery` join the retry mechanism and makes M2b safe.
 **Branch:** `fix/datetimeoffset-fidelity` (shared with PR #403 at the issue owner's direction).
 
 Method: red/green throughout, as `issue_384_plan.md` was. Every milestone that changes public API on
@@ -17,7 +17,7 @@ that fails because the method does not compile has proven nothing.
 | **S1** Does the client's wire traffic match the browser's for a full action→retry→resubmit flow? | **Not run.** Gates M3's API freeze. |
 | **S2** What does a retry from `refresh` / `new` / `delete-row` actually return today? | **Done.** The exception **escapes the pipeline unhandled** — not a 449, not a loop, not a 500 from the endpoint. See below. |
 | ~~**S3** How should a retry from `OnLoadAsync` / `OnQueryAsync` fail?~~ | **Dropped.** Superseded by the reads-become-POST decision — there is no failure to design, because those hooks stop being special. |
-| **S4** Route shape for the POST read: `POST /{type}/{**id}` or `POST /{type}/load`? | **Not run.** Gates M2. |
+| **S4** Route shape, and how the type is authorized once it leaves the route | **Done.** Table settled (fully literal). Invariant pinned by `TypeConflationTests` and proven to fail when broken. Single-resolver design is M2 step 0. |
 | **M0** Server: one retry seam instead of seven copies | **Done.** `IRetryableRequest` + `RetryAccessor.Accept` + `RetryScope`; five call sites, four downcasts removed. |
 | **M1** Server: retry works from every hook that can prompt (FR7a/b) | **Done.** `new`, `delete-row` and `refresh` all emit and accept. ⚠️ Refresh needed a second fix — see below. |
 | **M2** Server + clients: reads become POST (FR21–FR25) | Not started. Gated on S4. |
@@ -317,6 +317,59 @@ job is the two things that *can* still go wrong:
 **Output.** A checked route table, plus an explicit statement of how the type is resolved and
 authorized now that it arrives in the body.
 
+### Done. 2026-09-12.
+
+**The invariant is pinned and proven, in `TypeConflationTests` (3 facts).** A payload claiming a
+different type must never change which type is used, and must never buy access to a denied one. Written
+against the **current** routes on purpose: it passes today and must still pass after M2. If someone
+wires authorization to the nested field, that is what fails.
+
+⚠️ **Proven to discriminate, not assumed.** `Create` was temporarily mutated to resolve the type from
+the payload; both `Create` facts failed, including the one where trusting the payload lets a caller
+write to a type `security.json` denies. Mutation reverted, 10/10 green. A security test that cannot
+fail is worse than none — and this session already produced one vacuous fixture that looked fine.
+
+**Considered and rejected: drop the top-level field and use `persistentObject.objectTypeId` as the
+single source.** The instinct is right — one source removes the chance of checking one field and using
+the other — but that field cannot be it:
+
+| operation | carries a `PersistentObject`? |
+|---|---|
+| `create`, `update`, `refresh` | yes |
+| `load`, `delete`, `new`, `delete-row`, `queries/execute` | **no** |
+
+**Five of nine have no object to take a type from.** `NewPersistentObjectRequest` and
+`DeleteRowRequest` carry `AsDetailAttribute`/`ParentType`/`ParentId`; `load` and `delete` carry an id.
+
+And a second reason that holds even where an object *is* present: `persistentObject.objectTypeId` is
+**submitted data**, not a request parameter — the object declaring what it is. Authorizing a write
+against the written object's own self-declaration is the confused-deputy shape, which is precisely what
+`Create.cs:64` overwrites it to prevent.
+
+### The resolution — one reachable source (M2 step 0)
+
+Keep the goal, reach it differently: make the nested field **unreachable** rather than authoritative.
+
+```csharp
+// The one place in the codebase that answers "which type is this request about".
+internal static class SparkRequestType
+{
+    public static EntityTypeDefinition? Resolve(IModelLoader modelLoader, ISparkTypedRequest request);
+}
+```
+
+- `ISparkTypedRequest { string? ObjectTypeId { get; } }` on every request body, alongside
+  `IRetryableRequest`. Same pattern as the M0 seam, for the same reason.
+- Every endpoint calls it; **no endpoint reads `RouteValues["objectTypeId"]` or
+  `persistentObject.ObjectTypeId`** afterwards.
+- One line to review, one line to get wrong, and `TypeConflationTests` fails the moment it reads the
+  nested field.
+
+⚠️ The nested `ObjectTypeId` stays on the **response** — clients need it, and nested AsDetail objects
+carry their own. It is inbound use that is being designed out. Continue overwriting it with the
+resolved type on the way in (`Create.cs:64`, `Update.cs:59`) so a response never echoes a client's
+claim back as fact.
+
 ⚠️ **Scope.** This is now a full route-table migration rather than a verb change on two endpoints:
 every `ng-spark` service method, every `SparkClient` method, and every test that issues HTTP. It is
 worth doing in one pass precisely because it is all the same edit — but it should not be smuggled in as
@@ -335,6 +388,9 @@ independently of retry.
 2. A test asserting the read endpoints answer on `POST` and **no longer** on `GET`.
 
 **GREEN, in order.**
+0. **`SparkRequestType.Resolve` + `ISparkTypedRequest` first** (see S4). Land it against the *current*
+   routes so `TypeConflationTests` proves it behaves identically before anything moves — a refactor and
+   a migration in one step means a failure in either is indistinguishable from a failure in the other.
 1. Server: `Get.cs` and `ExecuteQuery.cs` become `POST` endpoints with typed request bodies
    implementing `IRetryableRequest`. Query parameters move from the query string into the body —
    `skip`, `take`, `search`, `sortColumns`, `parentId`, `parentType` — typed rather than string-parsed.
