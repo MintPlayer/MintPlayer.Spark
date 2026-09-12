@@ -249,12 +249,24 @@ read that becomes a `POST` now needs `X-XSRF-TOKEN`. Angular's built-in intercep
 (`SparkClient.cs:151-165`, `:224-265`) and every test issuing a bare `GET` to these routes must be
 updated. This is arguably an improvement, but it is a contract change, not a rename.
 
-⚠️ **Route collision with the catch-all id.** `POST /{objectTypeId}/{**id}` lands beside the existing
-`POST /{objectTypeId}` (create), `POST /{objectTypeId}/new`, `.../refresh` and `.../delete-row`.
-ASP.NET prefers literal segments over a catch-all, so those four keep winning — but it means **a
-persistent object whose id is literally `new`, `refresh` or `delete-row` becomes unreachable**. A
-separate literal segment (`POST /{objectTypeId}/load`) avoids the ambiguity entirely and is the
-recommended shape; **S4** settles it.
+⚠️ **Route collisions — resolved by removing route variables entirely.** A `POST /{objectTypeId}/{**id}`
+would land beside `POST /{objectTypeId}` (create), `.../new`, `.../refresh` and `.../delete-row`, making
+an object whose id is literally `new` unreachable. Keeping the *type* in the path and moving only the id
+to the body fixes that — **but only by convention**: measured while drafting, **nothing validates the
+character set of a type name or alias** (`SparkQueryAliases` checks duplicates only, `:49`), so one alias
+containing a `/` reintroduces it.
+
+So the route table becomes **fully literal** — `POST /spark/po/load`, `/create`, `/update`, `/delete`,
+`/new`, `/refresh`, `/delete-row`, `/queries/execute`, `/actions/execute` — with the type, id and
+everything else in the body. Zero route variables means zero collisions **by construction**, and the
+last catch-all disappears, so a Raven id containing slashes stops being a routing concern. See the
+plan's **S4** for the table and what it costs.
+
+⚠️ **The type now arrives only in the body, and that is the real risk of this migration** — larger than
+the collision it removes. Several endpoints deliberately resolve the entity type from the **route** and
+ignore the `objectTypeId` on the wire object, because "taking the client's word for the type is how a
+caller reads one collection through another's permissions" (`Refresh.cs:100-106`, security sweep C3).
+That defence must be reconstructed rather than assumed once the route no longer carries the type.
 
 ⚠️ **A POST that reads is semantically odd**, and deliberate. GraphQL and Vidyano both do it. The
 responses already declare `cache-control: no-cache, no-store`, so no caching benefit is being given up.

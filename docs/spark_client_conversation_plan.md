@@ -239,22 +239,88 @@ is a branch in the hook rather than an aborted request. The motivating case is a
 
 ---
 
-## S4 — What route shape should the POST read take?
+## S4 — Route shape once reads are POST
 
-**Question.** `POST /{objectTypeId}/{**id}` reusing the existing path, or a literal segment such as
-`POST /{objectTypeId}/load`?
+**Question.** What should the route table look like, given that REST compliance is already gone?
 
-**Why it matters.** The catch-all sits beside `POST /{objectTypeId}` (create), `.../new`,
-`.../refresh` and `.../delete-row`. ASP.NET prefers literal segments, so those four keep winning — which
-means **an object whose id is literally `new` or `refresh` becomes unreachable**. Ids are
-application-supplied; `refresh` is a plausible slug.
+**Why it matters.** `POST /{objectTypeId}/{**id}` would sit beside `POST /{objectTypeId}` (create),
+`.../new`, `.../refresh` and `.../delete-row`. ASP.NET prefers literal segments, so those four win —
+which means **an object whose id is literally `new` or `refresh` becomes unreachable**. Ids are
+application-supplied, and `refresh` is a plausible slug.
 
-**Method.** Register both shapes in a scratch host and probe: an ordinary id, an id containing slashes
-(`cars/1-A` — the catch-all exists because Raven ids contain them), and ids literally equal to each
-reserved segment. Record which handler wins.
+**The insight that dissolves it.** The catch-all exists because **Raven ids contain slashes**
+(`cars/1-A`), not because of the verb. Ids are the only user-supplied path data that can contain a
+separator. Move the id into the body and the catch-all disappears, and with it every ambiguity — while
+the *type* stays in the path, where it is worth keeping for logs and traces.
 
-**Output.** A recommendation. ⚠️ Prior belief, to be confirmed or refuted: `load` is safer and the
-catch-all's ambiguity is real rather than theoretical.
+### Recommended scheme — fully literal paths
+
+The issue owner's position, 2026-09-12: *"It doesn't necessarily need to be REST compliant, it's no
+longer REST compliant anyway now"*, and the target is **absolute zero chance of collisions**.
+
+⚠️ **Measured while drafting this: nothing validates the character set of a type name or alias.** There
+is no regex, no rejection of separators — `SparkQueryAliases` checks only for *duplicate* aliases
+(`:49`). So any scheme with a type in the path is collision-free by **convention**, not by
+construction: one alias containing a `/` reintroduces the whole problem. That rules out the
+intermediate design.
+
+**Every path becomes fully literal — no route variables at all.**
+
+| Today | Proposed | Body carries |
+|---|---|---|
+| `GET /po/{type}/{**id}` | `POST /po/load` | `objectTypeId`, `id` |
+| `POST /po/{type}` | `POST /po/create` | `objectTypeId`, `persistentObject` |
+| `PUT /po/{type}/{**id}` | `POST /po/update` | `objectTypeId`, `persistentObject` |
+| `DELETE /po/{type}/{**id}` | `POST /po/delete` | `objectTypeId`, `id` |
+| `POST /po/{type}/new` | `POST /po/new` | `objectTypeId`, `asDetailAttribute`, `parentType`, `parentId` |
+| `POST /po/{type}/refresh` | `POST /po/refresh` | `objectTypeId`, `persistentObject`, `triggeredBy` |
+| `POST /po/{type}/delete-row` | `POST /po/delete-row` | `objectTypeId`, `asDetailAttribute`, `parentId`, `rowKey` |
+| `GET /queries/{id}/execute` | `POST /queries/execute` | `queryId`, paging, sort, **filters** |
+| `GET /queries/{id}/` | `POST /queries/get` | `queryId` |
+| `POST /actions/{type}/{name}` | `POST /actions/execute` | `objectTypeId`, `actionName`, … |
+
+**Zero variables in the route table means zero collisions, permanently and by construction** — not
+"provided nobody names a type badly". It also removes the last catch-all, so an id containing slashes
+stops being a routing concern at all.
+
+**What is given up, and how much it costs.** Request logs no longer name the *type* — `POST /spark/po/load`
+covers every load. They still name the **operation**, which is what latency and error dashboards group
+by, and the type is one structured-log field away (it is in the body the endpoint already
+deserialises). ⚠️ Anything today that groups by URL *path* to distinguish types will stop doing so;
+worth a check against whatever observability the deployment runs before this lands.
+
+**Create and update stay separate verbs**, deliberately. `Create.cs:71-78` records a security fix
+(R2-M18): POST is Create and forces `Id = null`, because a client posting an existing id used to flip
+the operation to Edit and overwrite a foreign record under the New right. Collapsing both into one
+`save` verb reintroduces exactly that.
+
+**Breaking changes are in scope** — issue owner, 2026-09-12: *"Libraries still in preview, so these
+breaking changes are allowed."* So the old routes are deleted outright rather than aliased.
+
+**Create and update stay separate verbs**, deliberately. `Create.cs:71-78` records a security fix
+(R2-M18): POST is Create and forces `Id = null`, because a client posting an existing id used to flip
+the operation to Edit and overwrite a foreign record under the New right. Collapsing both into one
+`save` verb reintroduces exactly that.
+
+**Method.** With a fully literal table there is no ambiguity left to probe for — the spike's remaining
+job is the two things that *can* still go wrong:
+1. **Authorization still keys off the right thing.** Every endpoint resolves the entity type from the
+   route today. Moving it to the body must not weaken the rule that the type used for the permission
+   check is the one the *server* resolved, never one the client asserted — see `Refresh.cs:100-106`
+   ("taking the client's word for the type is how a caller reads one collection through another's
+   permissions", security sweep C3). ⚠️ **This is the real risk in the migration**, and it is larger
+   than the collision it fixes: the route was previously an independent statement of intent, and now
+   the body is the only source.
+2. **Antiforgery metadata survives.** `RequireAntiforgeryTokenAttribute(true)` is per-endpoint
+   metadata; confirm each new route carries it.
+
+**Output.** A checked route table, plus an explicit statement of how the type is resolved and
+authorized now that it arrives in the body.
+
+⚠️ **Scope.** This is now a full route-table migration rather than a verb change on two endpoints:
+every `ng-spark` service method, every `SparkClient` method, and every test that issues HTTP. It is
+worth doing in one pass precisely because it is all the same edit — but it should not be smuggled in as
+a sub-step of a retry milestone, which is why it is M2 and not part of M1.
 
 ---
 
