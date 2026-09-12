@@ -1,3 +1,4 @@
+import { fromDateInputValue, isDateDataType, toDateInputValue } from './datetime-local';
 import { EntityAttributeDefinition } from './entity-type';
 import { EntityType } from './entity-type';
 import { PersistentObject } from './persistent-object';
@@ -48,6 +49,11 @@ function attributeValueForForm(attr: PersistentObjectAttribute): any {
     if (attr.isArray) return (attr.objects ?? []).map(po => nestedPoToDict(po));
     return attr.object ? nestedPoToDict(attr.object) : null;
   }
+  // An embedded row's date cells are edited through the same native controls as a root object's,
+  // so they need the same wire -> wall-clock conversion. This is the FORM path only;
+  // `nestedPoToDisplayRow` deliberately keeps the wire value, because the display path formats
+  // through `parsedDate` rather than feeding an input.
+  if (isDateDataType(attr.dataType)) return toDateInputValue(attr.dataType, attr.value);
   return attr.value;
 }
 
@@ -252,6 +258,8 @@ function buildAttribute(
     return attr;
   }
 
-  attr.value = raw;
+  // The mirror of the conversion in `attributeValueForForm`: back from the control's bare wall
+  // clock to a complete ISO-8601 instant carrying the viewer's offset for that date.
+  attr.value = isDateDataType(attrDef.dataType) ? fromDateInputValue(attrDef.dataType, raw) : raw;
   return attr;
 }

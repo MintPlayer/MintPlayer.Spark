@@ -20,6 +20,10 @@ import {
   nestedPoToDict,
   dictToNestedPo,
   EntityTypeResolver,
+  isDateDataType,
+  toDateInputValue,
+  fromDateInputValue,
+  wireDatesEqual,
 } from '@mintplayer/ng-spark/models';
 
 @Component({
@@ -100,6 +104,11 @@ export class SparkPoEditComponent {
         // the control rendered: merely opening the form and saving turned "unset" into an explicit
         // false, permanently and with nothing shown to the user.
         data[attr.name] = itemAttr?.value ?? false;
+      } else if (isDateDataType(attr.dataType)) {
+        // The wire carries a full ISO-8601 instant with an offset; a native date/time control accepts
+        // only a bare local wall clock. Assigning the wire value directly does not fail loudly -- the
+        // control just renders blank, and saving the untouched form writes that blank back.
+        data[attr.name] = toDateInputValue(attr.dataType, itemAttr?.value);
       } else {
         data[attr.name] = itemAttr?.value ?? '';
       }
@@ -158,7 +167,21 @@ export class SparkPoEditComponent {
         }
       }
 
-      const newValue = editableAttr ? this.formData()[attr.name] : attr.value;
+      const rawValue = editableAttr ? this.formData()[attr.name] : attr.value;
+
+      if (editableAttr && isDateDataType(editableAttr.dataType)) {
+        // Back out of the control's bare wall clock into a complete ISO-8601 instant, carrying the
+        // viewer's offset for the entered date.
+        const newValue = fromDateInputValue(editableAttr.dataType, rawValue);
+        return {
+          ...attr,
+          value: newValue,
+          // By instant, not by text: the round trip rewrites the offset even when nothing was edited.
+          isValueChanged: !wireDatesEqual(newValue, attr.value),
+        };
+      }
+
+      const newValue = rawValue;
       return {
         ...attr,
         value: newValue,

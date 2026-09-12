@@ -19,6 +19,8 @@ import {
   hasShowedOnFlag,
   dictToNestedPo,
   EntityTypeResolver,
+  isDateDataType,
+  fromDateInputValue,
 } from '@mintplayer/ng-spark/models';
 
 @Component({
@@ -92,7 +94,11 @@ export class SparkPoCreateComponent {
       const base: PersistentObjectAttribute = {
         id: attr.id,
         name: attr.name,
-        value: this.formData()[attr.name],
+        // A date control hands back a bare local wall clock; the wire needs a complete ISO-8601
+        // instant carrying the viewer's offset for the entered date.
+        value: isDateDataType(attr.dataType)
+          ? fromDateInputValue(attr.dataType, this.formData()[attr.name])
+          : this.formData()[attr.name],
         dataType: attr.dataType,
         isArray: attr.isArray,
         isRequired: attr.isRequired,
