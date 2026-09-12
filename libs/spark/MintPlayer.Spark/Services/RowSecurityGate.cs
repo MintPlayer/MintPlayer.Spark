@@ -108,6 +108,9 @@ internal sealed partial class RowSecurityGate : IRowSecurityGate
     [Inject] private readonly IRowSecurity rowSecurity;
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IBreadcrumbResolver breadcrumbResolver;
+    // Optional so the test sites that construct the gate by hand keep compiling; when absent,
+    // restoration does not run and rows keep the value RavenDB projected.
+    [Inject] private readonly IProjectedOffsetRestorer? projectedOffsetRestorer;
 
     /// <summary>
     /// Rows that have been through the gate, and the only thing the result shapes accept.
@@ -191,6 +194,15 @@ internal sealed partial class RowSecurityGate : IRowSecurityGate
             ? await rowSecurity.FilterAsync(
                 context.Session, rows, context.EntityType!, context.ResultType!, context.Action, context.CancellationToken)
             : rows;
+
+        // Before ToPersistentObject, and that ordering is load-bearing: EntityMapper resolves a
+        // property by ATTRIBUTE NAME, so the "Starts" attribute reads the row's flattened "Starts"
+        // property. Restoring any later would mean fighting a name-based lookup.
+        //
+        // This gate is the choke point every row-returning path goes through -- index, custom and
+        // composed queries, and streaming -- and it is never reached by session.Load, which was
+        // already correct. See IProjectedOffsetRestorer for why running it twice is harmless.
+        projectedOffsetRestorer?.Restore(kept);
 
         var breadcrumbs = await breadcrumbResolver.ResolveAsync(
             context.Session, kept, context.Definition, context.CancellationToken);

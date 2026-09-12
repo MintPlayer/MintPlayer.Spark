@@ -1,3 +1,4 @@
+import { fromDateInputValue, isDateDataType, toDateInputValue, wireDatesEqual } from './datetime-local';
 import { EntityAttributeDefinition } from './entity-type';
 import { EntityType } from './entity-type';
 import { PersistentObject } from './persistent-object';
@@ -40,7 +41,20 @@ export function nestedPoToDict(po: PersistentObject | null | undefined): Record<
   if (typeof po.id === 'string' && po.id !== '') {
     dict[AS_DETAIL_ROW_KEY] = po.id;
   }
+  // The wire values of any date cells, kept so the save side can tell an untouched cell from an
+  // edited one. Without it, flattening to a wall clock and converting back rewrites the stored
+  // offset to the viewer's on every save, even for rows nobody touched.
+  const originalDates = originalDatesOf(po);
+  if (originalDates) dict[AS_DETAIL_ORIGINAL_DATES_KEY] = originalDates;
   return dict;
+}
+
+function originalDatesOf(po: PersistentObject): Record<string, any> | undefined {
+  let originals: Record<string, any> | undefined;
+  for (const attr of po.attributes ?? []) {
+    if (isDateDataType(attr.dataType)) (originals ??= {})[attr.name] = attr.value;
+  }
+  return originals;
 }
 
 function attributeValueForForm(attr: PersistentObjectAttribute): any {
@@ -48,6 +62,11 @@ function attributeValueForForm(attr: PersistentObjectAttribute): any {
     if (attr.isArray) return (attr.objects ?? []).map(po => nestedPoToDict(po));
     return attr.object ? nestedPoToDict(attr.object) : null;
   }
+  // An embedded row's date cells are edited through the same native controls as a root object's,
+  // so they need the same wire -> wall-clock conversion. This is the FORM path only;
+  // `nestedPoToDisplayRow` deliberately keeps the wire value, because the display path formats
+  // through `parsedDate` rather than feeding an input.
+  if (isDateDataType(attr.dataType)) return toDateInputValue(attr.dataType, attr.value);
   return attr.value;
 }
 
@@ -130,6 +149,23 @@ export function resolvedBreadcrumb(value: unknown, typeName?: string): string | 
 export const AS_DETAIL_BREADCRUMBS_KEY = '__sparkBreadcrumbs';
 
 /**
+ * Reserved key under which a flattened row keeps the **wire** values of its date cells, keyed by
+ * attribute name.
+ *
+ * A date cell is edited through a native control that speaks only a bare local wall clock, so
+ * flattening converts the stored instant into the viewer's zone and saving converts it back. That
+ * round trip preserves the instant but necessarily rewrites the **offset** to the viewer's. For a
+ * cell the user actually edited that is correct — the offset is not business data. For one nobody
+ * touched it is pure loss: merely opening a row and saving would relabel a Seattle timestamp as a
+ * Brussels one.
+ *
+ * Keeping the original lets {@link dictToNestedPo} send back exactly what it was given whenever the
+ * instant is unchanged. Safe to carry for the same reason as the other reserved keys: the rebuild
+ * walks the entity type's attributes, never the dict's keys.
+ */
+export const AS_DETAIL_ORIGINAL_DATES_KEY = '__sparkOriginalDates';
+
+/**
  * Whether a flattened-row key is one this module reserved rather than a model attribute.
  *
  * `nestedPoToDict` and `nestedPoToDisplayRow` stash the row key and the resolved breadcrumbs
@@ -139,7 +175,10 @@ export const AS_DETAIL_BREADCRUMBS_KEY = '__sparkBreadcrumbs';
  * own breadcrumb as though they were fields.
  */
 export function isReservedAsDetailKey(key: string): boolean {
-  return key === AS_DETAIL_ROW_KEY || key === AS_DETAIL_SELF_BREADCRUMB_KEY || key === AS_DETAIL_BREADCRUMBS_KEY;
+  return key === AS_DETAIL_ROW_KEY
+    || key === AS_DETAIL_SELF_BREADCRUMB_KEY
+    || key === AS_DETAIL_BREADCRUMBS_KEY
+    || key === AS_DETAIL_ORIGINAL_DATES_KEY;
 }
 
 /**
@@ -198,8 +237,9 @@ export function dictToNestedPo(
   entityType: EntityType,
   resolve: EntityTypeResolver,
 ): PersistentObject {
+  const originalDates = (dict?.[AS_DETAIL_ORIGINAL_DATES_KEY] ?? {}) as Record<string, any>;
   const attributes: PersistentObjectAttribute[] = (entityType.attributes ?? [])
-    .map(attrDef => buildAttribute(attrDef, dict?.[attrDef.name], resolve));
+    .map(attrDef => buildAttribute(attrDef, dict?.[attrDef.name], resolve, originalDates[attrDef.name]));
 
   return {
     // The reserved key first: it is the only one that is always present for a stored row, because
@@ -216,6 +256,7 @@ function buildAttribute(
   attrDef: EntityAttributeDefinition,
   raw: any,
   resolve: EntityTypeResolver,
+  originalDate?: any,
 ): PersistentObjectAttribute {
   const attr: PersistentObjectAttribute = {
     id: attrDef.id,
@@ -249,6 +290,16 @@ function buildAttribute(
     } else {
       attr.object = raw ? dictToNestedPo(raw as Record<string, any>, nestedType, resolve) : null;
     }
+    return attr;
+  }
+
+  if (isDateDataType(attrDef.dataType)) {
+    // The mirror of the conversion in `attributeValueForForm`: back from the control's bare wall
+    // clock to a complete ISO-8601 instant carrying the viewer's offset for that date. When the
+    // instant is unchanged, send back exactly what was loaded instead, so an untouched row keeps
+    // its stored offset. See AS_DETAIL_ORIGINAL_DATES_KEY.
+    const converted = fromDateInputValue(attrDef.dataType, raw);
+    attr.value = wireDatesEqual(converted, originalDate) ? originalDate : converted;
     return attr;
   }
 

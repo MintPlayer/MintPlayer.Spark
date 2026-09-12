@@ -150,6 +150,7 @@ MintPlayer.Spark/
 | [Reference Attributes](docs/guide-reference-attributes.md) | Entity-to-entity links, lookup references, reference selection modals |
 | [AsDetail Attributes](docs/guide-asdetail-attributes.md) | Embedded objects, array/collection AsDetail, inline and modal editing |
 | [Queries & Sorting](docs/guide-queries-and-sorting.md) | Index-based queries, projections, column sorting, query definitions |
+| [Dates & Sort Companions](docs/guide-dates-and-sorting.md) | What you write for a `DateTimeOffset`, why `*Sort` companions are only for `[Search]` strings, and the sorting beliefs that measurement refuted |
 | [Full-Text Search](docs/guide-search.md) | What a search term matches, why `[Search]` is not the gate, the breadcrumb narrowing, and why fuzzy search is not offered |
 | [The model hash](docs/model-hash.md) | Why a deployed app refuses to start on a stale model, verifying in CI, merge conflicts, the override |
 | [Attribute Grouping](docs/guide-attribute-grouping.md) | Two-level Tabs and Groups layout for entity forms and detail pages |

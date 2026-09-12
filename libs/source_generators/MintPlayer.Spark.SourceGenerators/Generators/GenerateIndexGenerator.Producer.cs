@@ -295,7 +295,7 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
     /// </summary>
     private static IEnumerable<string> Attributes(IndexPropertyInfo property)
     {
-        if (property.IsSortCompanion)
+        if (property.IsSortCompanion || property.IsWrapperCompanion)
             yield return $"[{SparkAbstractions}.IgnorePropertyAttribute]";
 
         foreach (var attribute in property.Attributes)

@@ -8,7 +8,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Cron</PackageId>
-		<Version>10.0.0-preview.80</Version>
+		<Version>10.0.0-preview.81</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Cron-scheduled background jobs for MintPlayer.Spark. Define jobs by implementing ISparkCronJob, declare the schedule with a static abstract CronSchedule, and let the scheduler run them. Multi-node safe via RavenDB compare-exchange locking.</Description>
@@ -34,7 +34,7 @@
 		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
 		<PackageReference Include="NCrontab" Version="3.4.0" />
-		<PackageReference Include="RavenDB.Client" Version="7.2.5" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -261,7 +261,7 @@ No behavioral change beyond two small cleanups:
 
 ---
 
-## 8. Test strategy (RavenDB-backed, per `reference_cronoscore_raven_tests.md`)
+## 8. Test strategy (RavenDB-backed)
 
 - Unit: template parser (tokens, escaped braces, errors); static closure (depth, cycle detection); renderer (scalar/single/array/redacted/cycle).
 - Integration (embedded Raven): 3-level chain request-count assertion; projection-only-field root; reference-array breadcrumbs; auth-redaction; Get vs List vs custom-query parity.

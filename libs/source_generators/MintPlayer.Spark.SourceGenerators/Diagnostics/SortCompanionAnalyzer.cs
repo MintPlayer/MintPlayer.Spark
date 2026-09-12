@@ -134,6 +134,14 @@ public sealed partial class SortCompanionAnalyzer : DiagnosticAnalyzer
             if (name != "Index") continue;
             if (invocation.ArgumentList.Arguments.Count < 2) continue;
 
+            // Both Search and Exact, still. Narrowing this to Search was considered and rejected:
+            // the reason Exact was in scope was that DateTimeOffset fields were declared Exact and so
+            // tripped a rule written for analyzed text, and that cause is now removed at the source --
+            // the generator no longer declares a DateTimeOffset Exact at all. What remains is a
+            // developer hand-declaring Exact on a string, where the warning is still earned: Exact
+            // uses the keyword analyzer, so the field orders case-sensitively by ordinal ("ZZ Top"
+            // before "Zeta One"), and a companion is what restores the case-insensitive ordering a
+            // grid almost always wants.
             var indexing = invocation.ArgumentList.Arguments[1].Expression.ToString();
             if (!indexing.EndsWith("Search") && !indexing.EndsWith("Exact")) continue;
 

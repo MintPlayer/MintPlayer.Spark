@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -105,6 +106,14 @@ public class ServerSideRowLifecycleTests
                     new { name = "LicensePlate", value = CarFixture.RandomLicensePlate() },
                     new { name = "Model", value = "Focus" },
                     new { name = "Year", value = 2020 },
+                    // Required on Car. This payload is raw JSON rather than a CarFixture.New call
+                    // because these tests drive the endpoint directly, so the required-field list has
+                    // to be mirrored here by hand -- see CarFixture.DefaultRegisteredAt.
+                    new
+                    {
+                        name = "RegisteredAt",
+                        value = CarFixture.DefaultRegisteredAt.ToString("o", CultureInfo.InvariantCulture),
+                    },
                     new
                     {
                         name = "ServiceEntries",

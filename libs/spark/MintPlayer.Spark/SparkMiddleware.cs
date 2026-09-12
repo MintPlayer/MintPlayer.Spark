@@ -89,16 +89,9 @@ public static class SparkExtensions
                 Database = options.RavenDb.Database,
             };
 
-            store.Conventions.UseNaturalIds().UseGeneratedIds();
-
-            // Register custom JSON converters for RavenDB document serialization
-            store.Conventions.Serialization = new NewtonsoftJsonSerializationConventions
-            {
-                CustomizeJsonSerializer = serializer =>
-                {
-                    serializer.Converters.Add(new ColorNewtonsoftJsonConverter());
-                }
-            };
+            // One call, shared with the test drivers. Configuring a store by hand here is how
+            // production and the suite drifted apart -- see SparkStoreConfiguration.
+            store.ApplySparkConventions();
 
             store.Initialize();
 

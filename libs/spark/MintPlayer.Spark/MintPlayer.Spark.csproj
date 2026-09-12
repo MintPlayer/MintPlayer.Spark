@@ -9,7 +9,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark</PackageId>
-		<Version>10.0.0-preview.80</Version>
+		<Version>10.0.0-preview.81</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Low-code .NET framework for building data-driven web applications with minimal boilerplate. Uses PersistentObject pattern to eliminate DTOs and repository layers.</Description>
@@ -66,7 +66,7 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.20.1" GeneratePathProperty="true" />
-		<PackageReference Include="RavenDB.Client" Version="7.2.5" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -6,6 +6,7 @@ import { provideSparkAuth, withSparkAuth } from '@mintplayer/ng-spark-auth';
 import { provideSparkAttributeRenderers } from '@mintplayer/ng-spark/renderers';
 import { provideSparkClientOperations } from '@mintplayer/ng-spark/client-operations';
 import { sparkLanguageInterceptor } from './spark/spark-language.interceptor';
+import { withSparkTimezone } from '@mintplayer/ng-spark/services';
 
 import { routes } from './app.routes';
 import { CoverageBarRendererComponent } from './spark/coverage-bar-renderer.component';
@@ -25,7 +26,7 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes),
-    provideHttpClient(withInterceptors([sparkLanguageInterceptor]), ...withSparkAuth()),
+    provideHttpClient(withInterceptors([sparkLanguageInterceptor]), ...withSparkAuth(), ...withSparkTimezone()),
     provideAnimations(),
     provideSparkAuth(),
     provideSparkAttributeRenderers([

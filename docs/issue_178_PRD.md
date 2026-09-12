@@ -56,7 +56,7 @@ Final as-built design, applied identically to **all 4 demos** (DemoApp / Fleet /
 PR open against `master`. On green CI → merge → the `publish-release` workflow publishes `@mintplayer/ng-spark@22.0.0` + `ng-spark-auth@22.0.0` to npmjs + `npm.pkg.github.com/MintPlayer`. Downstream `C:\Repos\MintPlayer` then `npm i` the new versions + builds — the first step of the larger **MintPlayer → Spark framework migration** (the end goal that motivated #178).
 
 ### Running the Fleet app (for verification)
-RavenDB runs on :8080 (DB `SparkFleet`, 10k Cars seeded). `dotnet run --project Demo/Fleet/Fleet/Fleet.csproj --launch-profile https` → https://localhost:5003 (boots `ng serve` via `UseAngularCliServer`). The **Car** query requires login as an **Administrator** (`security.json` restricts `Query/Car`; seeded `admin@cronos.be` is in Administrators). Route: `/query/cars`. Do NOT commit `--spark-synchronize-model` churn (it rewrites `App_Data/Model/*.json`; revert it). To stop the app, surgically kill the Fleet dotnet + its `ng serve` node child — **never** `taskkill /IM node.exe` (kills the MCP servers).
+RavenDB runs on :8080 (DB `SparkFleet`, 10k Cars seeded). `dotnet run --project Demo/Fleet/Fleet/Fleet.csproj --launch-profile https` → https://localhost:5003 (boots `ng serve` via `UseAngularCliServer`). The **Car** query requires login as an **Administrator** (`security.json` restricts `Query/Car`; seeded `admin@example.com` is in Administrators). Route: `/query/cars`. Do NOT commit `--spark-synchronize-model` churn (it rewrites `App_Data/Model/*.json`; revert it). To stop the app, surgically kill the Fleet dotnet + its `ng serve` node child — **never** `taskkill /IM node.exe` (kills the MCP servers).
 
 ---
 

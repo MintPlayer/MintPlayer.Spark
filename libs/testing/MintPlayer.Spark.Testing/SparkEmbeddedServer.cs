@@ -18,7 +18,7 @@ namespace MintPlayer.Spark.Testing;
 /// a cold process. The obvious hand-rolled alternative — a <c>static bool isConfigured</c> checked
 /// and then set — is a check-then-act race: two threads both observe <see langword="false"/>, both
 /// configure, and the second throws. (That is precisely the shape of the equivalent code in
-/// CronosCore's driver, which is safe only because NUnit is sequential by default. Do not copy it.)
+/// the originating framework's driver, which is safe only because NUnit is sequential by default. Do not copy it.)
 /// </para>
 /// </remarks>
 internal static class SparkEmbeddedServer
