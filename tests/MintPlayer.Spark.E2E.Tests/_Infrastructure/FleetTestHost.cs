@@ -116,7 +116,18 @@ public sealed class FleetTestHost : IAsyncLifetime
     /// and belongs to the given group (matching a name declared in Fleet's App_Data/security.json).
     /// Used by row-level-authz tests to seed a second non-admin account.
     /// </summary>
-    public async Task SeedUserAsync(string email, string password, string groupName)
+    /// <param name="roleName">
+    /// An ASP.NET Identity <b>role</b> to grant as well as the group claim, or null for none.
+    /// </param>
+    /// <remarks>
+    /// ⚠️ The group claim and the role are not interchangeable, and which one a rule reads is not
+    /// obvious from the outside. Fleet's <c>CarActions.CurrentUserIsAdmin</c> is
+    /// <c>CurrentUser.IsInRole("Administrators")</c> — a <b>role</b> — so a user seeded with only the
+    /// <c>group=Administrators</c> claim is still filtered down to rows they created. The symptom is
+    /// an empty grid during setup, which reads like a broken query rather than a missing role.
+    /// <c>SeedAdminUserAsync</c> grants both, which is why the admin behaves as expected.
+    /// </remarks>
+    public async Task SeedUserAsync(string email, string password, string groupName, string? roleName = null)
     {
         var handler = new HttpClientHandler
         {
@@ -156,6 +167,9 @@ public sealed class FleetTestHost : IAsyncLifetime
         user.NormalizedUserName ??= email.ToUpperInvariant();
         if (!user.Claims.Any(c => c.ClaimType == "group" && c.ClaimValue == groupName))
             user.Claims.Add(new SparkUserClaim { ClaimType = "group", ClaimValue = groupName });
+
+        if (roleName is not null && !user.Roles.Contains(roleName))
+            user.Roles.Add(roleName);
 
         await session.SaveChangesAsync();
     }

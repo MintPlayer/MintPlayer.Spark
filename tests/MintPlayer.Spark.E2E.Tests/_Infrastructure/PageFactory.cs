@@ -9,22 +9,39 @@ namespace MintPlayer.Spark.E2E.Tests._Infrastructure;
 public sealed class PageFactory : IAsyncDisposable
 {
     private readonly FleetE2ECollectionFixture _fixture;
-    private IBrowserContext? _context;
+    private readonly List<IBrowserContext> _contexts = [];
 
     public PageFactory(FleetE2ECollectionFixture fixture) => _fixture = fixture;
 
-    public async Task<IPage> NewPageAsync()
+    /// <summary>
+    /// Opens a page in a fresh browser context.
+    /// </summary>
+    /// <param name="timezoneId">
+    /// IANA zone the browser should believe it is in, e.g. <c>America/Los_Angeles</c>. Drives both
+    /// what Angular's <c>DatePipe</c> renders and what the <c>X-Spark-Timezone</c> header carries, so
+    /// it is the lever for testing that a viewer sees timestamps in their OWN zone. Null keeps the
+    /// machine's zone, which is what every pre-existing test wants.
+    /// </param>
+    /// <remarks>
+    /// Every context is tracked and closed on dispose. Calling this more than once per factory is a
+    /// supported and deliberate case — two viewers in two zones is exactly why the timezone parameter
+    /// exists — and it used to orphan all but the last context.
+    /// </remarks>
+    public async Task<IPage> NewPageAsync(string? timezoneId = null)
     {
-        _context = await _fixture.Browser.NewContextAsync(new BrowserNewContextOptions
+        var context = await _fixture.Browser.NewContextAsync(new BrowserNewContextOptions
         {
             IgnoreHTTPSErrors = true,
             BaseURL = _fixture.Host.FleetUrl,
+            TimezoneId = timezoneId,
         });
-        return await _context.NewPageAsync();
+        _contexts.Add(context);
+        return await context.NewPageAsync();
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (_context is not null) await _context.CloseAsync();
+        foreach (var context in _contexts) await context.CloseAsync();
+        _contexts.Clear();
     }
 }
