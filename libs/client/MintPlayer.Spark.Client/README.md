@@ -54,12 +54,27 @@ mutating call, from `GET /spark` — you never handle `X-XSRF-TOKEN` yourself.
 
 ### Signing in
 
+Sign-in lives in a **separate package**, `MintPlayer.Spark.Client.Authorization`, as extension methods
+on `SparkClient`. That mirrors the server: authentication is optional there too, shipped as
+`MintPlayer.Spark.Authorization`.
+
 ```csharp
-await client.LoginAsync(email, password);      // MintPlayer.Spark.Client.Authorization
+using MintPlayer.Spark.Client.Authorization;
+
+await client.LoginAsync(email, password);
 await client.RegisterAsync(email, password);
 var me = await client.GetCurrentUserAsync();
 await client.LogoutAsync();
 ```
+
+⚠️ **These only work if the server enabled authentication.** `/spark/auth/*` is mapped from inside
+`MintPlayer.Spark.Authorization`, so an app that never called `spark.AddAuthentication<TUser>()` does
+not expose those routes at all — and the client then gets a `SparkClientException` with **404**, which
+looks identical to every other refusal (see [Errors](#errors)). If sign-in fails with a 404 and the
+credentials are right, check the server's wiring before the credentials.
+
+Referencing the package is not the same as the server having it. Nothing at compile time can tell you
+this; the dependency runs the wrong way.
 
 ⚠️ **Both** `LoginAsync` and `LogoutAsync` invalidate the cached anti-forgery token, and login is the
 one worth knowing about: the token is bound to the authenticated principal, so the anonymous one the

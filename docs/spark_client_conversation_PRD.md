@@ -402,6 +402,46 @@ testing the Angular form, and belongs in a browser test.
 
 ---
 
+## Open question — how optional server features surface on the client
+
+**Raised by the issue owner, 2026-09-13.** `LoginAsync` / `LogoutAsync` / `RegisterAsync` only work when
+the server called `spark.AddAuthentication` (or `AddAuthorization`). Should the client offer them
+unconditionally, or split them into separate packages — and does splitting mean many more projects?
+
+**Half of this is already settled, and worth stating before anything is designed.** The split exists:
+`SparkClient` carries **zero** auth methods, and all four live in `MintPlayer.Spark.Client.Authorization`
+— its own `PackageId`, its own version — as extension methods. It already mirrors the server's own
+optional `MintPlayer.Spark.Authorization`. **No new projects are needed for the case that prompted the
+question.**
+
+### What is actually still open
+
+**Nothing tells a caller the feature is absent.** `/spark/auth/*` is mapped from inside the server's
+authorization package, so an app that never enabled it does not expose those routes — and the client
+gets a `SparkClientException` with **404**, which M-3 makes deliberately indistinguishable from a denial,
+an unknown type, and an unreadable body. Right credentials, correct code, wrong-looking error.
+
+⚠️ **Compile-time detection is impossible here and it is worth saying why once**: the dependency runs
+client → server *at runtime only*. A test project referencing `MintPlayer.Spark.Client.Authorization`
+proves nothing about what the host it will talk to has registered. No packaging arrangement changes
+that — which means **splitting further cannot solve this problem**, and a proposal to split should not
+be justified on these grounds.
+
+So the real options are about the *diagnostic*, not the layout:
+
+| Option | Cost |
+|---|---|
+| **Leave it** — document the 404, as the client README now does | Free. The failure stays confusing the first time someone hits it. |
+| **Probe once** — `GET /spark/auth/me` on first auth call; if 404, throw naming the missing `AddAuthentication` | One extra request per client, once. ⚠️ Must not weaken M-3 for anyone else: it distinguishes *route absent* from *call refused*, which is a statement about server **configuration**, not about data. Confirm that reading before building it. |
+| **Capability endpoint** — the server advertises which optional modules are on | Largest, and it is a disclosure surface of its own: it tells an anonymous caller what the deployment runs. |
+
+⚠️ This generalises beyond auth. The same shape will recur for **every optional server module** a client
+grows methods for — messaging, replication, identity provider. Deciding it once, for the reason rather
+than for the instance, is cheaper than deciding it per package. **It belongs with M5 (endpoint
+coverage)**, which is where the client gains the methods that make the question concrete.
+
+---
+
 ## Out of scope
 
 - **External login.** Genuinely browser-dependent: `window.open` plus a `postMessage` of type
