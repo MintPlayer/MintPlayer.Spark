@@ -155,10 +155,10 @@ missing `catch`. See **FR7c**.
     accepts answers, so this closes D1 with one `catch`.
   - **FR7b** — `POST /po/{type}/new` and `.../delete-row` **emit and accept**: add the `catch` and bind
     `RetryResults` on `NewPersistentObjectRequest` / `DeleteRowRequest`. Closes D2.
-  - **FR7c** — `OnLoadAsync` / `OnQueryAsync` (D3) are **out of scope and documented as unsupported**.
-    Both endpoints are `GET`; supporting them means a POST variant or an out-of-band answer channel,
-    which is a protocol change, not a fix. An analyzer or a loud runtime error is preferable to silence
-    — **S3** decides which.
+  - **FR7c** — ~~`OnLoadAsync` / `OnQueryAsync` are out of scope and documented as unsupported.~~
+    **Superseded 2026-09-12 — see *Reads become POST* below.** The two read endpoints become `POST`,
+    which gives them a request body, which makes them ordinary retry-capable endpoints. No guard, no
+    analyzer, no documented exception.
 
 ### Client operations
 
@@ -187,12 +187,81 @@ missing `catch`. See **FR7c**.
   sends neither by default and the server silently falls back
   (`RequestCultureResolver.cs:21`, `RequestTimeZoneResolver.cs`).
 
+### Reads as POST
+
+- **FR21** — `GET /spark/po/{type}/{**id}` becomes a `POST` carrying a request body.
+- **FR22** — `GET /spark/queries/{id}/execute` becomes a `POST`. Its current query-string parameters
+  (`skip`, `take`, `search`, `sortColumns`, `parentId`, `parentType`) move into the body, typed rather
+  than string-parsed.
+- **FR23** — Both bodies implement `IRetryableRequest`, so `OnLoadAsync` and `OnQueryAsync` gain retry
+  through the same seam as every other hook. No new mechanism.
+- **FR24** — The body shape leaves room for the roadmap it exists for: multiple sort columns, and
+  multiple filter columns each with a multi-selection. Filtering is **not implemented here** — the
+  shape simply must not have to change again when it is.
+- **FR25** — `ng-spark` and `MintPlayer.Spark.Client` both move, in the same change. A read that still
+  issues a `GET` must fail at compile time or in a test, not at runtime against a 404.
+- **FR26** — With every endpoint able to accept an answer, the **emit** half is centralised: one
+  `catch` converting `SparkRetryActionException` into a 449 envelope, replacing the per-endpoint copies.
+  ⚠️ Strictly after FR21–FR23 — centralising first turns a loud failure on the read paths into a silent
+  one.
+
 ### Release
 
 - **FR19** — No new NuGet package id. Everything lands in `MintPlayer.Spark.Client` or the existing
   `.Authorization` sibling.
 - **FR20** — Version bumped in lockstep across all `libs/**` packages, per the repo's CI guard
   (`pull-request.yml:172-207`).
+
+---
+
+## Reads become POST
+
+**Issue owner's decision, 2026-09-12.** `GET /spark/po/{type}/{**id}` and
+`GET /spark/queries/{id}/execute` become `POST`.
+
+### Why — and it is not primarily about retry
+
+Column filtering is on the roadmap: multiple sort columns, multiple filter columns, **multi-selection
+per column**. That does not fit a query string, and every workaround for stuffing it into one is worse
+than a body. Vidyano reached the same conclusion and posts both its query execution and its persistent
+object loads for exactly this reason.
+
+So these endpoints are going to be `POST` regardless. Doing it now rather than later means one
+migration instead of two, while the project is in preview and nothing external depends on the shape.
+
+### What it unlocks for free
+
+A `POST` has a body, and a body can carry `retryResults`. So:
+
+- **`OnLoadAsync` and `OnQueryAsync` become ordinary retry-capable hooks.** FR7's "pretty much all
+  hooks" becomes simply "all hooks", with no documented exception to explain.
+- **D3 disappears**, along with the guard, the analyzer option, and **S3** entirely.
+- **Centralising the emit half becomes safe.** Today the read paths are protected by accident — nothing
+  catches the exception, so a retry there fails loudly. A central `catch` would have turned that into a
+  well-formed 449 arriving at a client with no way to answer it: a quiet failure replacing a loud one.
+  Once every endpoint can accept an answer, that trap is gone.
+
+### What it costs — the parts that are not a verb change
+
+⚠️ **Reads start requiring an antiforgery token.** Spark's antiforgery gate keys off the method, so a
+read that becomes a `POST` now needs `X-XSRF-TOKEN`. Angular's built-in interceptor already adds it for
+`POST`, so the browser is fine — but `SparkClient` passes `requiresAntiforgery: false` on its read paths
+(`SparkClient.cs:151-165`, `:224-265`) and every test issuing a bare `GET` to these routes must be
+updated. This is arguably an improvement, but it is a contract change, not a rename.
+
+⚠️ **Route collision with the catch-all id.** `POST /{objectTypeId}/{**id}` lands beside the existing
+`POST /{objectTypeId}` (create), `POST /{objectTypeId}/new`, `.../refresh` and `.../delete-row`.
+ASP.NET prefers literal segments over a catch-all, so those four keep winning — but it means **a
+persistent object whose id is literally `new`, `refresh` or `delete-row` becomes unreachable**. A
+separate literal segment (`POST /{objectTypeId}/load`) avoids the ambiguity entirely and is the
+recommended shape; **S4** settles it.
+
+⚠️ **A POST that reads is semantically odd**, and deliberate. GraphQL and Vidyano both do it. The
+responses already declare `cache-control: no-cache, no-store`, so no caching benefit is being given up.
+
+⚠️ **This is the largest single change in this PRD.** It touches the two most-called endpoints, the
+Angular service, `SparkClient`, and every test that reads over HTTP. It is separable from the retry work
+and could ship on its own — but the retry work's remaining gap (FR7c) closes only when it lands.
 
 ---
 
@@ -332,6 +401,21 @@ adding two browser tests took the suite from 94/94 to 80/16, then 86/10 on a re-
 each time.
 *Effect here:* **favourable.** Client-driven tests are far cheaper than browser ones. But a large
 migration of tests could still concentrate traffic; the cap is per-IP, not per-test.
+
+### R6 — The read-verb change is broad, and its failure mode is a 404
+FR21–FR25 touch the two most-called endpoints in the framework, both clients, and every test that reads
+over HTTP. A missed caller does not fail loudly at build time — it issues a `GET` and gets a 404, which
+reads like a routing bug rather than a migration miss.
+*Mitigation:* remove the `GET` routes rather than leaving them as aliases, so a missed caller fails
+immediately and in an obvious place; and sweep for `GET` against these paths in both clients and the
+test suites. ⚠️ No backward-compatibility requirement (preview), so leaving the old verb working
+"just in case" would buy nothing and hide exactly the callers that need finding.
+
+### R7 — Reads begin requiring an antiforgery token
+A consequence of the verb, not a choice. The browser is unaffected (Angular adds the header for POST),
+but `SparkClient`'s read paths pass `requiresAntiforgery: false` today, and any test issuing a bare
+`GET` will need the token. A caller that misses this gets a 400 from the antiforgery gate, which is at
+least loud.
 
 ### R5 — Fidelity is assertable but not provable in general
 S1 proves equivalence for *the flows it covers*. It cannot prove the client matches the frontend

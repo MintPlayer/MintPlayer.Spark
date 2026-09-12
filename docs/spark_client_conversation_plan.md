@@ -1,8 +1,8 @@
 # Spark client — completing the conversation: implementation plan
 
 **PRD:** [spark_client_conversation_PRD.md](spark_client_conversation_PRD.md)
-**Status:** **Proposed. Nothing started.** Spikes S1–S3 gate the milestones that depend on them.
-**Branch:** not created.
+**Status:** **M0 and M1 done** (2154/2154). S2 resolved. S3 dropped. **S4 and M2 next** — reads become POST, which is what lets `OnLoad`/`OnQuery` join the retry mechanism and makes M2b safe.
+**Branch:** `fix/datetimeoffset-fidelity` (shared with PR #403 at the issue owner's direction).
 
 Method: red/green throughout, as `issue_384_plan.md` was. Every milestone that changes public API on
 `MintPlayer.Spark.Client` lands its test first, and the RED must fail for the stated reason — a test
@@ -16,10 +16,12 @@ that fails because the method does not compile has proven nothing.
 |---|---|
 | **S1** Does the client's wire traffic match the browser's for a full action→retry→resubmit flow? | **Not run.** Gates M3's API freeze. |
 | **S2** What does a retry from `refresh` / `new` / `delete-row` actually return today? | **Done.** The exception **escapes the pipeline unhandled** — not a 449, not a loop, not a 500 from the endpoint. See below. |
-| **S3** How should a retry from `OnLoadAsync` / `OnQueryAsync` fail? | **Not run.** Gates M2. |
-| **M0** Server: one retry seam instead of seven copies | Not started. **Gates M1.** |
-| **M1** Server: retry works from every hook that can prompt (FR7a/b) | Not started |
-| **M2** Server: a retry from a GET-backed hook fails loudly (FR7c) | Not started |
+| ~~**S3** How should a retry from `OnLoadAsync` / `OnQueryAsync` fail?~~ | **Dropped.** Superseded by the reads-become-POST decision — there is no failure to design, because those hooks stop being special. |
+| **S4** Route shape for the POST read: `POST /{type}/{**id}` or `POST /{type}/load`? | **Not run.** Gates M2. |
+| **M0** Server: one retry seam instead of seven copies | **Done.** `IRetryableRequest` + `RetryAccessor.Accept` + `RetryScope`; five call sites, four downcasts removed. |
+| **M1** Server: retry works from every hook that can prompt (FR7a/b) | **Done.** `new`, `delete-row` and `refresh` all emit and accept. ⚠️ Refresh needed a second fix — see below. |
+| **M2** Server + clients: reads become POST (FR21–FR25) | Not started. Gated on S4. |
+| **M2b** Server: centralise the emit half (FR26) | Not started. ⚠️ **Strictly after M2.** |
 | **M3** Client: answer a retry (FR1–FR6) | Not started |
 | **M4** Client: surface and apply client operations (FR8–FR11) | Not started |
 | **M5** Client: endpoint coverage (FR12–FR16) | Not started |
@@ -209,12 +211,103 @@ with a compile error or a 404 from a mis-typed route.
 
 **Verify:** the three new facts pass; the existing `RetryActionDeleteTests` still passes unchanged.
 
+### Done. 2154/2154.
+
+⚠️ **Refresh needed a second fix, in a different file, and the endpoint change alone did nothing.**
+`RefreshInvoker` called `method.Invoke(actions, [args])` **without `BindingFlags.DoNotWrapExceptions`**.
+`NewInvoker` and `DeleteRowInvoker` both pass it, with a comment calling it load-bearing; this one never
+did. So every exception from an `OnRefresh` hook arrived wrapped in `TargetInvocationException` and no
+typed `catch` in the endpoint could match it.
+
+That is wider than retry: a refresh hook throwing `SparkValidationException` to refuse politely would
+have surfaced as a 500 with the hook's stack trace lost. Fixed to match its siblings.
+
+**The diagnostic that mattered:** `new` and `delete-row` went green on the endpoint change alone while
+`refresh` stayed red after the *identical* change — which is what pointed at the invoker rather than the
+endpoint.
+
+⚠️ **Fixture naming:** `ActionsResolver` matches an actions class to an entity by **simple name across
+the whole assembly**, and nesting does not scope it. The spike's nested `OrderActions` claimed to be the
+actions class for another fixture's nested `Order` and broke seven of its tests. Fixture entities need a
+name no other fixture would pick — hence `RetryProbe`.
+
+**Retry from `OnRefreshAsync` is supported, deliberately.** It was nearly cut on the reasoning that
+"No" has no meaning for a refresh. That reasoning was wrong: the hook is **re-entered** with
+`Retry.Result` populated and decides the outcome itself, so the refresh completes either way and "No"
+is a branch in the hook rather than an aborted request. The motivating case is a dropdown warning —
+*"setting Status to Expired makes this read-only forever, are you sure?"*.
+
 ---
 
-## M2 — RED/GREEN: a retry from a GET-backed hook fails loudly
+## S4 — What route shape should the POST read take?
 
-**Gated on S3.** Implements whichever option S3 recommends. **RED:** a test asserting the chosen
-diagnostic or exception. **GREEN:** the analyzer rule or the `RetryAccessor` guard.
+**Question.** `POST /{objectTypeId}/{**id}` reusing the existing path, or a literal segment such as
+`POST /{objectTypeId}/load`?
+
+**Why it matters.** The catch-all sits beside `POST /{objectTypeId}` (create), `.../new`,
+`.../refresh` and `.../delete-row`. ASP.NET prefers literal segments, so those four keep winning — which
+means **an object whose id is literally `new` or `refresh` becomes unreachable**. Ids are
+application-supplied; `refresh` is a plausible slug.
+
+**Method.** Register both shapes in a scratch host and probe: an ordinary id, an id containing slashes
+(`cars/1-A` — the catch-all exists because Raven ids contain them), and ids literally equal to each
+reserved segment. Record which handler wins.
+
+**Output.** A recommendation. ⚠️ Prior belief, to be confirmed or refuted: `load` is safer and the
+catch-all's ambiguity is real rather than theoretical.
+
+---
+
+## M2 — RED/GREEN: reads become POST
+
+**Gated on S4.** The largest milestone here; see the PRD's *Reads become POST* for why it is worth it
+independently of retry.
+
+**RED.**
+1. `OnLoadAsync` and `OnQueryAsync` rows added to `RetryFromEveryHookTests` — a retry from each must
+   produce a 449 and accept its answer. These are the facts that only a body can satisfy.
+2. A test asserting the read endpoints answer on `POST` and **no longer** on `GET`.
+
+**GREEN, in order.**
+1. Server: `Get.cs` and `ExecuteQuery.cs` become `POST` endpoints with typed request bodies
+   implementing `IRetryableRequest`. Query parameters move from the query string into the body —
+   `skip`, `take`, `search`, `sortColumns`, `parentId`, `parentType` — typed rather than string-parsed.
+   ⚠️ `sortColumns` is `prop:asc|desc` comma-joined on the wire today (`spark.service.ts:114-116`);
+   in a body it becomes a real array, and the string form goes away rather than being kept as an alias.
+2. Both endpoints wrap their hook invocation in the retry `catch`, via the M0 seam.
+3. `ng-spark`: `SparkService.get` and `.executeQuery` post. ⚠️ Both must route through
+   `sendWithEnvelope`, or the read paths gain a retry the client cannot answer — the exact trap that
+   makes M2b unsafe before this lands.
+4. `MintPlayer.Spark.Client`: the same two methods, and `requiresAntiforgery: true` on both — a POST
+   goes through the antiforgery gate.
+5. Sweep every caller: `tests/MintPlayer.Spark.E2E.Tests` (several classes issue bare `GET`s),
+   `tests/MintPlayer.Spark.Tests`, and the demo apps.
+
+⚠️ **Delete the `GET` routes; do not leave them as aliases.** No backward-compatibility requirement
+applies (preview), and an alias hides exactly the callers the sweep needs to find. A missed caller
+should 404 immediately rather than work until someone removes the alias later.
+
+**Verify:** `RetryFromEveryHookTests` covers all seven hooks; full unit suite; full E2E suite.
+
+---
+
+## M2b — REFACTOR: centralise the emit half
+
+**⚠️ Strictly after M2.** Not an ordering preference — doing it first converts a *loud* failure on the
+read paths into a *silent* one, because a central `catch` would return a well-formed 449 to a client
+with no way to answer it.
+
+M0 unified the **accept** half. The **emit** half is still a `catch` clause in seven endpoints. Once
+every endpoint can accept an answer, one handler can convert `SparkRetryActionException` into a 449
+envelope for all of them.
+
+1. Catch it in `SparkMiddleware` around `await next(context)` — there is no global exception handler
+   there today, so this is new machinery rather than an extension of existing machinery.
+2. `ClientResult.Retry` needs `IClientAccessor`, which is request-scoped and resolvable at that point.
+3. Remove the seven per-endpoint `catch` clauses.
+
+**Verify:** `RetryFromEveryHookTests` unchanged and still green — it is the enforcement, and it should
+not need editing for a refactor that changes only where the exception is caught.
 
 ---
 
