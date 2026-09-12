@@ -70,10 +70,6 @@ internal sealed partial class GetPersistentObject : IPostEndpoint, IMemberOf<Per
             // other. The 449 below is enveloped because a retry has nowhere else to live.
             return Results.Json(obj);
         }
-        catch (SparkRetryActionException ex)
-        {
-            return ClientResult.Retry(clientAccessor, ex);
-        }
         catch (SparkAccessDeniedException)
         {
             return SparkDenial.RefuseJson(httpContext);

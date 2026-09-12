@@ -303,15 +303,16 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             await action.ExecuteAsync(args, httpContext.RequestAborted);
             return ClientResult.Envelope(clientAccessor, null, StatusCodes.Status200OK);
         }
-        catch (SparkRetryActionException ex)
-        {
-            return ClientResult.Retry(clientAccessor, ex);
-        }
         catch (SparkAccessDeniedException)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
-        catch (Exception ex)
+        // ⚠️ The filter is load-bearing, and this is the only endpoint that needs one. A retry is not
+        // a failure — it is the server asking the caller a question, and the middleware turns it into
+        // a 449. Every other retry-capable endpoint catches only specific exception types, so the
+        // exception simply propagates; this one has a catch-all, which would swallow the prompt and
+        // answer 500 instead. `RetryFromEveryHookTests` is what fails if this filter is removed.
+        catch (Exception ex) when (ex is not SparkRetryActionException)
         {
             // R2-M1: server-side log with full detail, generic public response.
             logger.LogError(ex, "Custom action '{ActionName}' failed for entity type '{EntityType}'", actionName, entityType.Name);

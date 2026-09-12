@@ -55,10 +55,6 @@ internal sealed partial class DeletePersistentObject : IPostEndpoint, IMemberOf<
             // tokens", say. Same envelope, so the screen shows it the same way.
             return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, 400);
         }
-        catch (SparkRetryActionException ex)
-        {
-            return ClientResult.Retry(clientAccessor, ex);
-        }
         catch (SparkRowLevelAccessDeniedException)
         {
             // R2-H2: row-level Delete denial returns 404 (M-3 uniformity).

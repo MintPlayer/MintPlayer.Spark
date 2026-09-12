@@ -74,12 +74,6 @@ internal sealed partial class DeleteRowPersistentObject : IPostEndpoint, IMember
             // endpoint a user is meant to read.
             return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, 400);
         }
-        catch (SparkRetryActionException ex)
-        {
-            // A hook may ask before releasing the row — "this line is invoiced, remove anyway?".
-            // Without this the exception left the pipeline and the caller saw no prompt at all.
-            return ClientResult.Retry(clientAccessor, ex);
-        }
         catch (SparkRowLevelAccessDeniedException)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);

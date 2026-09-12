@@ -5,6 +5,8 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Actions;
 
+using static MintPlayer.Spark.Services.SparkHookInvocation;
+
 namespace MintPlayer.Spark.Services;
 
 /// <summary>
@@ -140,7 +142,7 @@ internal partial class RefreshInvoker : IRefreshInvoker
         // stack trace intact. `NewInvoker` and `DeleteRowInvoker` have always passed it; this one
         // did not, which is exactly why a retry from OnRefresh never reached the client.
         await (Task)method.Invoke(
-            actions, BindingFlags.DoNotWrapExceptions, binder: null, parameters: [args], culture: null)!;
+            actions, HookInvoke, binder: null, parameters: [args], culture: null)!;
     }
 
     private static object CreateArgs(

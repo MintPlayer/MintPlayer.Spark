@@ -59,12 +59,6 @@ internal sealed partial class NewPersistentObject : IPostEndpoint, IMemberOf<Per
             // A construction hook may refuse outright — "this contract already has a signatory".
             return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, 400);
         }
-        catch (SparkRetryActionException ex)
-        {
-            // A construction hook may also ask before proceeding — "which variant?". Without this the
-            // exception left the pipeline entirely and the caller saw no prompt at all.
-            return ClientResult.Retry(clientAccessor, ex);
-        }
         catch (SparkRowLevelAccessDeniedException)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);

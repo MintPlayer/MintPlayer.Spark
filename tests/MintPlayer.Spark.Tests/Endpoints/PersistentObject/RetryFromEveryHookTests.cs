@@ -8,6 +8,7 @@ using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Models;
 using MintPlayer.Spark.Testing;
 
 using MintPlayer.Spark.Tests._Infrastructure;
@@ -156,6 +157,27 @@ public class RetryFromEveryHookTests : SparkTestDriver
         }
     }
 
+    /// <summary>A custom action that prompts before doing anything.</summary>
+    /// <remarks>
+    /// Registered by name through a stubbed configuration loader and resolver below, because the real
+    /// ones read <c>App_Data/customActions.json</c> from the content root — a file this fixture has no
+    /// reason to own.
+    /// </remarks>
+    public class RetryProbeConfirmAction : MintPlayer.Spark.Abstractions.Actions.ICustomAction
+    {
+        private readonly IRetryAccessor retry;
+        public RetryProbeConfirmAction(IRetryAccessor retry) => this.retry = retry;
+
+        public Task ExecuteAsync(
+            MintPlayer.Spark.Abstractions.Actions.CustomActionArgs args,
+            CancellationToken cancellationToken = default)
+        {
+            if (retry.Result is null)
+                retry.Action("Run it?", ["Yes", "No"], defaultOption: "No", message: "Confirm?");
+            return Task.CompletedTask;
+        }
+    }
+
     /// <summary>Raises a retry from the two row-lifecycle hooks.</summary>
     public class RetryProbeLineActions : DefaultPersistentObjectActions<RetryProbeLine>, ISparkOwnsRowSecurity
     {
@@ -196,6 +218,16 @@ public class RetryFromEveryHookTests : SparkTestDriver
                 services.AddScoped<RetryProbeActions>();
                 services.AddScoped<RetryProbeLineActions>();
                 services.AddScoped<RetryProbeReadActions>();
+
+                // The custom-action row needs a named action the endpoint will both find in the
+                // configuration (its M3 gate: execution must agree with the listing) and resolve to
+                // an implementation. Both come from files/assembly scanning in production; here they
+                // are stubbed so the fixture owns no App_Data.
+                services.AddScoped<RetryProbeConfirmAction>();
+                services.AddSingleton<ICustomActionsConfigurationLoader>(
+                    new StubCustomActions("RetryProbeConfirm"));
+                services.AddScoped<ICustomActionResolver>(sp =>
+                    new StubActionResolver("RetryProbeConfirm", sp.GetRequiredService<RetryProbeConfirmAction>()));
             },
             security: SparkTestSecurity.Permissive);
 
@@ -277,6 +309,27 @@ public class RetryFromEveryHookTests : SparkTestDriver
         var read = await SeedReadAsync();
         await AssertEmitsRetryAsync(
             HttpMethod.Post, "/spark/po/load", Wire.Typed(ReadTypeId, id: read.Id), "Load?");
+    }
+
+    /// <summary>
+    /// The row that guards the one endpoint whose catch-all could swallow a prompt.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Custom actions were the <b>only</b> retry-capable path this matrix did not cover, which was
+    /// invisible until the emit half moved into the middleware: <c>ExecuteCustomAction</c> has a
+    /// catch-all (R2-M1 — log the detail, return a generic 500), so removing its own retry
+    /// <c>catch</c> left the prompt being logged as a failure and answered 500. The filter
+    /// <c>when (ex is not SparkRetryActionException)</c> is what prevents that, and before this row
+    /// nothing failed when it was absent.
+    /// </remarks>
+    [Fact]
+    public async Task Custom_action_emits_a_retry()
+    {
+        await AssertEmitsRetryAsync(
+            HttpMethod.Post,
+            "/spark/actions/execute",
+            Wire.Action(ProbeTypeId, "RetryProbeConfirm"),
+            "Run it?");
     }
 
     /// <inheritdoc cref="Load_emits_a_retry" />
@@ -442,6 +495,31 @@ public class RetryFromEveryHookTests : SparkTestDriver
     };
 
     private static readonly Guid ReadQueryId = Guid.Parse("7b2d0000-0000-4000-8000-7b2d00000004");
+
+    /// <summary>Stands in for <c>App_Data/customActions.json</c>, declaring exactly one action.</summary>
+    private sealed class StubCustomActions(string actionName) : ICustomActionsConfigurationLoader
+    {
+        public CustomActionsConfiguration GetConfiguration() => new()
+        {
+            [actionName] = new CustomActionDefinition
+            {
+                DisplayName = TranslatedString.Create(actionName),
+                ShowedOn = "both",
+            },
+        };
+
+        public void InvalidateCache() { }
+    }
+
+    /// <summary>Stands in for the assembly scan, resolving exactly one action.</summary>
+    private sealed class StubActionResolver(string actionName, MintPlayer.Spark.Abstractions.Actions.ICustomAction action)
+        : ICustomActionResolver
+    {
+        public MintPlayer.Spark.Abstractions.Actions.ICustomAction? Resolve(string name)
+            => string.Equals(name, actionName, StringComparison.OrdinalIgnoreCase) ? action : null;
+
+        public IReadOnlyList<string> GetRegisteredActionNames() => [actionName];
+    }
 
     private static EntityTypeFile ReadModel() => new()
     {

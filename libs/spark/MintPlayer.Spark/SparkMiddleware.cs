@@ -5,6 +5,8 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.Spark.Abstractions.ClientOperations;
+using MintPlayer.Spark.Exceptions;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Configuration;
@@ -281,6 +283,33 @@ public static class SparkExtensions
                 });
             }
             await next(context);
+        });
+
+        // One place turns a raised retry into its 449 envelope, for every endpoint.
+        //
+        // The ACCEPT half of a retry has been centralised since M0 (RetryScope); this is the EMIT
+        // half, which was a `catch (SparkRetryActionException)` copy-pasted into nine endpoints with
+        // nothing connecting it to the accept half. Three endpoints shipped with one half and not the
+        // other, and nobody noticed until a hook finally prompted.
+        //
+        // ⚠️ Deliberately registered here rather than earlier: it must wrap endpoint execution, and
+        // everything above it — authentication, antiforgery, the origin guard — should run and fail
+        // on its own terms. A retry raised by a hook happens well inside all of that.
+        app.Use(async (context, next) =>
+        {
+            try
+            {
+                await next(context);
+            }
+            catch (SparkRetryActionException ex) when (!context.Response.HasStarted)
+            {
+                // A prompt is not an error: the server is asking the caller a question, and 449 is
+                // the answer channel. Everything the hook already pushed onto the client accessor
+                // rides along in the same envelope, so notifications raised before the prompt are
+                // not lost.
+                var client = context.RequestServices.GetRequiredService<IClientAccessor>();
+                await ClientResult.Retry(client, ex).ExecuteAsync(context);
+            }
         });
 
         app.UseMiddleware<SparkMiddleware>();

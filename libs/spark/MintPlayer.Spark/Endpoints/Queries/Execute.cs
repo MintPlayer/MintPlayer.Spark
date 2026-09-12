@@ -143,12 +143,6 @@ internal sealed partial class ExecuteQuery : IPostEndpoint, IMemberOf<QueriesGro
             var results = await queryExecutor.ExecuteQueryAsync(effectiveQuery, parent, skip, take, search, cancellationToken: httpContext.RequestAborted);
             return Results.Json(results);
         }
-        catch (SparkRetryActionException ex)
-        {
-            // OnQueryAsync can prompt. It could not before: a GET had no body to carry the answer
-            // back, so the exception left the pipeline unhandled.
-            return ClientResult.Retry(clientAccessor, ex);
-        }
         catch (SparkAccessDeniedException)
         {
             // The same 404 as the gate above, for anonymous callers too. Splitting on

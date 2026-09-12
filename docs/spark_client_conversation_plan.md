@@ -1,7 +1,7 @@
 # Spark client — completing the conversation: implementation plan
 
 **PRD:** [spark_client_conversation_PRD.md](spark_client_conversation_PRD.md)
-**Status:** **M0, M1, M2 and the S2/S4 spikes done** — 2159/2159 unit, 39/39 client, 490/490 ng-spark. S3 dropped. The route table is fully literal and `OnLoad`/`OnQuery` have joined the retry mechanism, which is what makes M2b safe. **M2b next**, then the client milestones M3–M8.
+**Status:** **M0, M1, M2, M2b and the S2/S4 spikes done** — 2159/2159 unit, 39/39 client, 490/490 ng-spark. S3 dropped. The route table is fully literal and `OnLoad`/`OnQuery` have joined the retry mechanism, which is what makes M2b safe. The **server** side is finished; next are the client milestones M3–M8, which S1 gates.
 **Branch:** `fix/datetimeoffset-fidelity` (shared with PR #403 at the issue owner's direction).
 
 Method: red/green throughout, as `issue_384_plan.md` was. Every milestone that changes public API on
@@ -21,7 +21,7 @@ that fails because the method does not compile has proven nothing.
 | **M0** Server: one retry seam instead of seven copies | **Done.** `IRetryableRequest` + `RetryAccessor.Accept` + `RetryScope`; five call sites, four downcasts removed. |
 | **M1** Server: retry works from every hook that can prompt (FR7a/b) | **Done.** `new`, `delete-row` and `refresh` all emit and accept. ⚠️ Refresh needed a second fix — see below. |
 | **M2** Server + clients: reads become POST, route table fully literal (FR21–FR25, FR29, FR30) | **Done.** 11 routes moved, both clients and 22 test files swept. See below. |
-| **M2b** Server: centralise the emit half (FR26) | Not started — and now **unblocked**, since every endpoint can accept an answer. |
+| **M2b** Server: centralise the emit half (FR26) | **Done.** One middleware catch replaces nine. ⚠️ One endpoint needs an exception filter — see below. |
 | **M3** Client: answer a retry (FR1–FR6) | Not started |
 | **M4** Client: surface and apply client operations (FR8–FR11) | Not started |
 | **M5** Client: endpoint coverage (FR12–FR16) | Not started |
@@ -507,6 +507,42 @@ that do.
 
 **Verify:** `RetryFromEveryHookTests` unchanged and still green — it is the enforcement, and it should
 not need editing for a refactor that changes only where the exception is caught.
+
+### Done. 2026-09-12.
+
+The prediction above held for the eleven existing rows: they passed untouched. What it missed is that
+the matrix had a **hole**, and centralising is what exposed it.
+
+**⚠️ One endpoint needs a filter, and it was the one endpoint the matrix did not cover.**
+`ExecuteCustomAction` has a catch-all (R2-M1: log the detail, return a generic 500). Every other
+retry-capable endpoint catches only specific types, so removing its `catch` lets the exception
+propagate — but there the catch-all swallowed the prompt and answered **500 "Operation failed"**, with
+the retry operation still sitting unused in the envelope. `when (ex is not SparkRetryActionException)`
+is the fix, and `Custom_action_emits_a_retry` is the row that now fails without it. Both verified by
+mutation.
+
+**⚠️ The emit half is no longer testable at the endpoint level, and one test had to move.**
+`ExecuteCustomActionTests` constructs the endpoint and calls `HandleAsync` directly, so no middleware
+is in the picture. Its 449 assertion became untrue the moment the conversion moved, and could only be
+made to pass by putting the `catch` back. It now asserts what the endpoint actually does — the
+exception escapes, payload intact — and the 449 is asserted end-to-end by the matrix. That is the same
+property stated where it is true, not a weaker one.
+
+**Also fixed here, because M2b depends on it:** eight more reflective invokes into application code
+were missing `DoNotWrapExceptions` (`QueryExecutor` ×3, `RowSecurity` ×3, `ReferenceResolver`,
+`StreamingQueryExecutor`, `SyncActionHandler` ×2). All now go through `SparkHookInvocation.HookInvoke`,
+and `HookInvocationTests` fails if a new call site forgets it — verified by mutation, naming file and
+line.
+
+⚠️ **`MintPlayer.Spark.Messaging` is deliberately excluded.** Its `MessageProcessor` catches
+`TargetInvocationException` explicitly and unwraps `InnerException`, including a separate
+non-retryable clause keyed on it. The rule is "a typed catch must be able to match"; there, one can.
+Applying the flag mechanically would have made working code dead.
+
+**Kept:** `ClientResult.Retry` still falls back to building the operation from the exception's own
+fields when the accessor has none, so a hook that throws `SparkRetryActionException` directly — without
+going through `IRetryAccessor` — still produces a well-formed prompt. The middleware changed where that
+runs, not what it does.
 
 ---
 

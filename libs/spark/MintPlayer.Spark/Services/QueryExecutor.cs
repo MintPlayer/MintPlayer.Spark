@@ -9,6 +9,8 @@ using Raven.Client.Documents.Session;
 using System.Linq.Expressions;
 using System.Reflection;
 
+using static MintPlayer.Spark.Services.SparkHookInvocation;
+
 namespace MintPlayer.Spark.Services;
 
 public interface IQueryExecutor
@@ -240,7 +242,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // wrapped one would leave the pipeline unhandled instead of reaching the caller as a 449.
         var method = actionsInstance.GetType().GetMethod("OnQueryAsync", [typeof(SparkQueryContext)]);
         if (method is not null &&
-            method.Invoke(actionsInstance, BindingFlags.DoNotWrapExceptions, binder: null, parameters: [context], culture: null) is Task task)
+            method.Invoke(actionsInstance, HookInvoke, binder: null, parameters: [context], culture: null) is Task task)
         {
             await task;
         }
@@ -341,7 +343,7 @@ internal partial class QueryExecutor : IQueryExecutor
         object? actions)
     {
         if (actions is not null && ResolveRestrictHook(actions.GetType()) is { } hook)
-            return hook.Invoke(actions, [source, ids])!;
+            return hook.Invoke(actions, HookInvoke, binder: null, parameters: [source, ids], culture: null)!;
 
         var declaredId = elementType.GetCachedProperty("Id");
 
@@ -887,11 +889,11 @@ internal partial class QueryExecutor : IQueryExecutor
         object? result;
         if (methodInfo.AcceptsArgs)
         {
-            result = methodInfo.Method.Invoke(actionsInstance, [args]);
+            result = methodInfo.Method.Invoke(actionsInstance, HookInvoke, binder: null, parameters: [args], culture: null);
         }
         else
         {
-            result = methodInfo.Method.Invoke(actionsInstance, []);
+            result = methodInfo.Method.Invoke(actionsInstance, HookInvoke, binder: null, parameters: null, culture: null);
         }
 
         // Await async methods (Task<IEnumerable<T>>, Task<IQueryable<T>>, etc.)

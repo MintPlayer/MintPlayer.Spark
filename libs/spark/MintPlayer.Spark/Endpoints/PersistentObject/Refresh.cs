@@ -117,25 +117,17 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
         // Authorization stays on the type in the ROUTE regardless. Nested AsDetail types are not in
         // security.json — nobody grants rights on CarreerJob — so the right that governs editing a
         // row is the one governing the object that owns it.
-        try
+        // No try/catch left here. It held exactly one clause — the retry emit — and a refresh hook's
+        // prompt is now converted by the middleware like every other endpoint's. A bare try with
+        // nothing to catch would only suggest there is something to recover from.
+        if (NestedTrigger.TryParse(request.TriggeredBy) is { } nested
+            && BuildNestedRow(entityType, effective, nested) is { } row)
         {
-            if (NestedTrigger.TryParse(request.TriggeredBy) is { } nested
-                && BuildNestedRow(entityType, effective, nested) is { } row)
-            {
-                await InvokeFor(row.EntityType, row.Object, nested.Column, isNew, httpContext);
-                return ClientResult.Envelope(clientAccessor, row.Object, StatusCodes.Status200OK);
-            }
+            await InvokeFor(row.EntityType, row.Object, nested.Column, isNew, httpContext);
+            return ClientResult.Envelope(clientAccessor, row.Object, StatusCodes.Status200OK);
+        }
 
-            await InvokeFor(entityType, effective, request.TriggeredBy, isNew, httpContext);
-        }
-        catch (SparkRetryActionException ex)
-        {
-            // A refresh hook may warn before accepting a value — "setting Status to Expired makes
-            // this card read-only forever, are you sure?". The hook is then re-entered with
-            // Retry.Result populated and decides what to do; the refresh completes either way, so
-            // "No" is a branch in the hook rather than an aborted request.
-            return ClientResult.Retry(clientAccessor, ex);
-        }
+        await InvokeFor(entityType, effective, request.TriggeredBy, isNew, httpContext);
 
         if (existing is not null)
         {

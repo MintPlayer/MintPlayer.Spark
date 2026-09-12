@@ -85,10 +85,6 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint, IMemberOf<
         {
             return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, 400);
         }
-        catch (SparkRetryActionException ex)
-        {
-            return ClientResult.Retry(clientAccessor, ex);
-        }
         catch (SparkRowLevelAccessDeniedException)
         {
             // R2-H2: row-level denial returns 404 to match the read path —

@@ -176,10 +176,12 @@ MintPlayer.Spark/
 | [GitHub Webhooks — Dev Tunnel](libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/README.md) | Dev-only: receive real webhook deliveries on localhost via smee.io or WebSocket forwarding from production |
 | [Docker Deployment](docs/guide-docker-deployment.md) | Deploy with Docker Compose, RavenDB configuration, Traefik reverse proxy |
 | [Testing Harness](libs/testing/MintPlayer.Spark.Testing/README.md) | Embedded RavenDB driver, in-memory Spark host factory, antiforgery-aware HTTP client, JSON fixtures, Verify defaults |
+| [Testing without a browser — `SparkClient`](libs/client/MintPlayer.Spark.Client/README.md) | Drive a real Spark backend from C# over the same protocol the Angular frontend uses: CRUD, queries, actions, auth. What it covers, what it cannot do yet, and why it will never replace browser tests |
 
 ### Reference
 
-- **[HTTP API Specification](docs/Spark-API-Specification.md)** - Every HTTP endpoint (routes, payloads, auth, retry protocol) exposed by the framework
+- **[HTTP API Specification](docs/Spark-API-Specification.md)** - Every HTTP endpoint (routes, payloads, auth, retry protocol) exposed by the framework. Every path is literal and every call is a `POST`; the type, id and parameters travel in the body
+- **[Spark Client API](libs/client/MintPlayer.Spark.Client/README.md)** - The typed .NET client for that protocol, and what it can and cannot test
 - **[Spark Library API](libs/spark/MintPlayer.Spark/README.md)** - Detailed API reference and usage guide
 - **[Messaging API](libs/messaging/MintPlayer.Spark.Messaging/README.md)** - Message bus API reference
 - **[Cron Jobs](libs/cron/MintPlayer.Spark.Cron/README.md)** - Cron-scheduled background jobs: `ISparkCronJob`, schedule overrides, multi-node compare-exchange locking
