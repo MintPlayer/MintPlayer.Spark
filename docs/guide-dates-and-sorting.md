@@ -192,17 +192,28 @@ So what is the offset for? Anything that needs the *originating* local time rath
 server-side business logic (`.Offset`, "which country's morning was this?"), an export that must reproduce
 the local wall clock, or writing the value back unchanged.
 
-⚠️ **The `offset-datetime` renderer in `apps/Fleet` is a demonstration device, not a pattern to copy.** It
-prints three lines per cell -- `stored` (the wall clock and offset from the document, recovered through the
-wrapper), `your time` (the same instant in the viewer.s zone, which is what the detail page and every other
-grid show), and `index only` (what the projection returned before the fix, derived from the instant) -- so
-the difference between them is visible rather than something a reader has to work out. A real app shows one
-of those, the middle one.
+**Every page agrees, and that is the point.** The grid and the detail page run the identical path — parse
+the wire value with `new Date(...)`, then format with `| date:'short'` and no timezone argument — so the
+same record renders as the same string on both, in the viewer's own zone.
 
-That is also why the Fleet demo's grid and detail page deliberately disagree: the grid shows
-`2026-12-31 23:59 -08:00` (the originating wall clock, via the custom renderer) while the detail page shows
-`01/01/2027, 08:59` (the same instant, in your zone, via the default). Seeing both side by side is the
-clearest illustration of what the offset is *for*. Everywhere else in the framework they agree.
+<details>
+<summary>There was briefly a custom renderer in <code>apps/Fleet</code> that broke that. It was removed.</summary>
+
+It printed three lines per grid cell — the stored wall clock and offset, the same instant in the viewer's
+zone, and what the projection returned before the fix — to make the difference visible. It was registered
+as a `columnComponent` only, so it changed the **grid** and not the **detail page**, and the two pages then
+showed different text for the same record.
+
+It was removed because it demonstrated the opposite of the framework's own rule. A `DateTimeOffset` means
+an instant and the originating offset is not business data (§1), so a demo whose headline cell displays
+that offset teaches a reader to expect something the framework does not promise. The fix itself already
+removed the confusion the renderer was written to explain: once the offset survives the index, the grid and
+the detail page agree natively, with nothing to annotate.
+
+The demonstration survives without it — the Scatter action still seeds a spread of offsets, and the grid
+still sorts and pages them chronologically by instant, which is what was worth showing.
+
+</details>
 
 ### The detail page used to print raw ISO strings
 

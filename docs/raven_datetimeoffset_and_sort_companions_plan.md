@@ -413,7 +413,7 @@ was rejected: its indexes are hand-written, which would have demonstrated the *o
 | Registration | `App_Data/customActions.json` + two grants in `App_Data/security.json` (default is deny — no grant, no button, silently) |
 | The grid | query `Registrations` in `App_Data/Model/Car.json`, `alias: registrations`, `renderMode: Pagination`, sorted on `RegisteredAt` |
 | The menu entry | `App_Data/programUnits.json` |
-| **The renderer** | `offset-datetime-column-renderer.component.ts` + registration in `app.config.ts` |
+| **The renderer** | None. A custom `offset-datetime` column renderer was added here and later removed — it changed the grid but not the detail page, and displaying the originating offset contradicts the decided semantics. Both pages now use the framework default. |
 
 **Verified:** the generator emitted, against the real entity and with nothing hand-written —
 ```csharp

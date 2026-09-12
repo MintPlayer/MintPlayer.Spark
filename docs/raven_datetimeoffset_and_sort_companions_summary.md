@@ -15,7 +15,7 @@ shown is a real observation from RavenDB 7.2.6 with the Fleet demo's 10,010 cars
 | **Companions corrected** | `{Name}Sort` and `FieldIndexing.Exact` removed from `DateTimeOffset`; `[Search]` strings keep theirs; nothing else ever needed one |
 | **Display consistency** | Detail page formats `datetime` through the new `parsedDate` pipe instead of printing a raw ISO string; grid and detail now agree |
 | **Analyzer** | `SPARK005` left matching `Exact` (deliberately — see the plan); guard test pins CodeCoverage's index shape |
-| **Demo** | `apps/Fleet` — `Car.RegisteredAt`, a scatter button, a paginated sorted grid, a three-line renderer |
+| **Demo** | `apps/Fleet` — `Car.RegisteredAt`, a scatter button, a paginated grid sorted by instant across mixed offsets, rendered by the framework default |
 | **Client write half** | `models/src/datetime-local.ts` converts wire ⇄ control in one place, wired into `po-edit`, `po-create` and the AsDetail row conversions. Found and fixed a second defect on the way — see [§9](#9-the-editor-was-blanking-timestamps) |
 | **Viewer-zone header** | `X-Spark-Timezone` + `sparkTimezoneInterceptor` on the client, `IRequestTimeZoneResolver` on the server, with the DST fold/gap policy measured rather than inherited — [§10](#10-daylight-saving-where-net-and-the-browser-disagree) |
 | **Docs** | this file, the PRD, the plan, `guide-dates-and-sorting.md`, and a correction to `guide-queries-and-sorting.md` |
@@ -215,9 +215,11 @@ wire value verbatim — `2026-12-31T04:15:00-08:00` in a definition list — whi
 `31/12/2026, 13:15` for the same document. Not cosmetic: when the offsets differ they can disagree on the
 **date**. Both now parse through one `parsedDate` pipe and format identically.
 
-The `offset-datetime` renderer in `apps/Fleet` is the deliberate exception: it prints the raw wall clock
-and an offset badge so a reader can *see* the data survived the round trip. It is a demonstration device,
-not a pattern to copy.
+A custom `offset-datetime` renderer briefly made the Fleet grid print the raw wall clock and an offset
+badge, so a reader could *see* the data survive the round trip. It was **removed**: it was registered as a
+`columnComponent` only, so it changed the grid and not the detail page and the two disagreed again — and
+displaying the originating offset teaches the opposite of §1, where the offset is explicitly not business
+data. With it gone both pages run the same default path and agree byte-for-byte.
 
 ---
 

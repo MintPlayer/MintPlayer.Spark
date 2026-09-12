@@ -356,8 +356,7 @@
         "order": 4,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
-        "rules": [],
-        "renderer": "offset-datetime"
+        "rules": []
       },
       {
         "id": "225b8df2-3887-4e17-8145-26c57d1b9441",
