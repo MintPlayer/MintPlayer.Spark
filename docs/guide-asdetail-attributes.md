@@ -443,8 +443,9 @@ setting then governs every grid the type appears in:
 }
 ```
 
-With it on, the grid calls `POST /spark/po/{rowType}/new` before showing a new row and
-`POST /spark/po/{rowType}/delete-row` before removing a stored one, and two hooks become reachable:
+With it on, the grid calls `POST /spark/po/new` before showing a new row and
+`POST /spark/po/delete-row` before removing a stored one — both naming the row type in the body — and
+two hooks become reachable:
 
 ```csharp
 public partial class ServiceEntryActions : DefaultPersistentObjectActions<ServiceEntry>

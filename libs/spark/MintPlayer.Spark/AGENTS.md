@@ -153,7 +153,7 @@ runs and signed-in callers are denied too. To restrict a type, *move* the grant 
 
 Mark an attribute `"triggersRefresh": true` in the model JSON (hand-set; synchronize preserves it).
 When its value changes the client posts the in-progress object to
-`/spark/po/{objectTypeId}/refresh`, and the hook may toggle `IsRequired` / `IsReadOnly` /
+`/spark/po/refresh`, and the hook may toggle `IsRequired` / `IsReadOnly` /
 `IsVisible`, rewrite `Rules`, replace an attribute's `Options`, or set a dependent value.
 
 ```csharp

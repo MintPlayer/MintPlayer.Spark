@@ -28,9 +28,10 @@ using Po = Abstractions.PersistentObject;
 /// and nobody notices until a hook finally calls <c>Retry.Action(...)</c>.
 /// </para>
 /// <para>
-/// Measured 2026-09-12: create, update, delete and custom action have both halves. <b>Refresh has
-/// accept and not emit. New and delete-row have neither.</b> These tests pin the whole matrix so the
-/// next endpoint cannot be added half-wired.
+/// Measured 2026-09-12, before M1: create, update, delete and custom action had both halves.
+/// <b>Refresh had accept and not emit. New and delete-row had neither. Load and query could not have
+/// either</b>, being behind a <c>GET</c> with no body to carry an answer. All nine work now, and these
+/// rows are what stop the next endpoint being added half-wired.
 /// </para>
 /// <para>
 /// ⚠️ The hooks here raise a retry <b>only on the first pass</b> — they check
@@ -38,13 +39,6 @@ using Po = Abstractions.PersistentObject;
 /// that answers 449 forever, and the Angular client resubmits with no depth limit
 /// (<c>spark.service.ts:375-376</c>). That is a real trap for anyone writing one of these hooks,
 /// which is why the fixtures model the correct shape rather than the shortest one.
-/// </para>
-/// <para>
-/// ⚠️ The entities here are named <c>RetryProbe</c> rather than something natural like <c>Order</c>
-/// on purpose. <c>ActionsResolver</c> matches an actions class to an entity by <b>simple name across
-/// the whole assembly</b>, so a nested <c>OrderActions</c> here claimed to be the actions class for a
-/// <i>different</i> test fixture's nested <c>Order</c> and broke seven of its tests. Nested types do
-/// not scope that lookup.
 /// </para>
 /// <para>
 /// ⚠️ The entities are named <c>RetryProbe</c> rather than something natural like <c>Order</c> on
@@ -58,6 +52,7 @@ public class RetryFromEveryHookTests : SparkTestDriver
 {
     private static readonly Guid ProbeTypeId = Guid.Parse("7b2d0000-0000-4000-8000-7b2d00000001");
     private static readonly Guid LineTypeId = Guid.Parse("7b2d0000-0000-4000-8000-7b2d00000002");
+    private static readonly Guid ReadTypeId = Guid.Parse("7b2d0000-0000-4000-8000-7b2d00000003");
 
     public class RetryProbe
     {
@@ -75,6 +70,7 @@ public class RetryFromEveryHookTests : SparkTestDriver
     private class RetryProbeContext : SparkContext
     {
         public Raven.Client.Documents.Linq.IRavenQueryable<RetryProbe> Orders => Session.Query<RetryProbe>();
+        public Raven.Client.Documents.Linq.IRavenQueryable<RetryProbeRead> Reads => Session.Query<RetryProbeRead>();
     }
 
     static RetryFromEveryHookTests()
@@ -110,6 +106,52 @@ public class RetryFromEveryHookTests : SparkTestDriver
         public override Task OnRefreshAsync(SparkRefreshArgs<RetryProbe> args)
         {
             PromptOnce("Refresh?");
+            return Task.CompletedTask;
+        }
+
+    }
+
+    /// <summary>A second entity, so the load prompt reaches only the load test.</summary>
+    /// <remarks>
+    /// ⚠️ <c>OnLoadAsync</c> cannot live on <see cref="RetryProbeActions"/>. It is not only the load
+    /// endpoint's hook — delete, refresh and delete-row all load the object first, through the same
+    /// seam — so prompting there made five of the other rows fail with <c>"Load?"</c>. Which is a
+    /// genuine warning for anyone writing one: a retry in <c>OnLoadAsync</c> fires on <b>every</b> read
+    /// of that type, including the ones another operation does on its way somewhere else.
+    /// </remarks>
+    public class RetryProbeRead
+    {
+        public string? Id { get; set; }
+        public string Reference { get; set; } = "";
+    }
+
+    /// <summary>
+    /// The hook that could not prompt at all until the read endpoints grew a body.
+    /// </summary>
+    /// <remarks>
+    /// It was not missing a <c>catch</c>: a <c>GET</c> has no body, so an answer had nowhere to travel
+    /// and the exception left the pipeline unhandled. Now that a load is <c>POST /spark/po/load</c> it
+    /// goes through the same seam as every other hook, which is the claim these rows keep honest.
+    /// </remarks>
+    public class RetryProbeReadActions : DefaultPersistentObjectActions<RetryProbeRead>, ISparkOwnsRowSecurity
+    {
+        private readonly IRetryAccessor retry;
+        public RetryProbeReadActions(IEntityMapper mapper, IRetryAccessor retry) : base(mapper) => this.retry = retry;
+
+        public string RowSecurityRationale => "Test fixture; every probe is created by the test that reads it.";
+
+        public override Task<Po?> OnLoadAsync(string id, Po? parent)
+        {
+            if (retry.Result is null)
+                retry.Action("Load?", ["Yes", "No"], defaultOption: "No", message: "Confirm?");
+            return base.OnLoadAsync(id, parent);
+        }
+
+        /// <summary>The other hook the read-verb change reached.</summary>
+        public override Task OnQueryAsync(MintPlayer.Spark.Queries.SparkQueryContext context)
+        {
+            if (retry.Result is null)
+                retry.Action("Query?", ["Yes", "No"], defaultOption: "No", message: "Confirm?");
             return Task.CompletedTask;
         }
     }
@@ -148,11 +190,12 @@ public class RetryFromEveryHookTests : SparkTestDriver
 
         _factory = new SparkEndpointFactory<RetryProbeContext>(
             Store,
-            [ProbeModel(), LineModel()],
+            [ProbeModel(), LineModel(), ReadModel()],
             configureServices: services =>
             {
                 services.AddScoped<RetryProbeActions>();
                 services.AddScoped<RetryProbeLineActions>();
+                services.AddScoped<RetryProbeReadActions>();
             },
             security: SparkTestSecurity.Permissive);
 
@@ -220,7 +263,55 @@ public class RetryFromEveryHookTests : SparkTestDriver
             "Remove line?");
     }
 
+    /// <summary>
+    /// The row M2 exists for: a read can prompt.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ This one could not be written before the route table moved, and that is the point of having
+    /// it. <c>OnLoadAsync</c> ran behind a <c>GET</c>, so a retry had no body to be answered in and the
+    /// exception left the pipeline unhandled — a missing <c>catch</c> was never the problem.
+    /// </remarks>
+    [Fact]
+    public async Task Load_emits_a_retry()
+    {
+        var read = await SeedReadAsync();
+        await AssertEmitsRetryAsync(
+            HttpMethod.Post, "/spark/po/load", Wire.Typed(ReadTypeId, id: read.Id), "Load?");
+    }
+
+    /// <inheritdoc cref="Load_emits_a_retry" />
+    [Fact]
+    public async Task Query_emits_a_retry()
+    {
+        await SeedReadAsync();
+        await AssertEmitsRetryAsync(
+            HttpMethod.Post, "/spark/queries/execute", Wire.Query(ReadQueryId), "Query?");
+    }
+
     // ---- accept: does answering it let the hook through? ---------------------------------------
+
+    [Fact]
+    public async Task Query_accepts_the_answer()
+    {
+        await SeedReadAsync();
+
+        var (status, _) = await SendAsync(
+            HttpMethod.Post, "/spark/queries/execute", Answered(Wire.Query(ReadQueryId)));
+
+        status.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Load_accepts_the_answer()
+    {
+        var read = await SeedReadAsync();
+
+        var (status, _) = await SendAsync(
+            HttpMethod.Post, "/spark/po/load", Answered(Wire.Typed(ReadTypeId, id: read.Id)));
+
+        status.Should().Be(HttpStatusCode.OK,
+            "the whole reason a load became a POST is that the answer has somewhere to travel");
+    }
 
     [Fact]
     public async Task New_row_accepts_the_answer()
@@ -296,6 +387,16 @@ public class RetryFromEveryHookTests : SparkTestDriver
         return probe;
     }
 
+    private async Task<RetryProbeRead> SeedReadAsync()
+    {
+        var read = new RetryProbeRead { Reference = "READ-1" };
+
+        using var session = Store.OpenAsyncSession();
+        await session.StoreAsync(read);
+        await session.SaveChangesAsync();
+        return read;
+    }
+
     private static object NewProbeBody() => new
     {
         persistentObject = new
@@ -338,6 +439,30 @@ public class RetryFromEveryHookTests : SparkTestDriver
                 },
             ],
         },
+    };
+
+    private static readonly Guid ReadQueryId = Guid.Parse("7b2d0000-0000-4000-8000-7b2d00000004");
+
+    private static EntityTypeFile ReadModel() => new()
+    {
+        PersistentObject = new EntityTypeDefinition
+        {
+            Id = ReadTypeId,
+            Name = "RetryProbeRead",
+            ClrType = typeof(RetryProbeRead).FullName!,
+            Attributes =
+            [
+                new() { Id = Guid.NewGuid(), Name = "Reference", DataType = "string", IsVisible = true },
+            ],
+        },
+        Queries =
+        [
+            new SparkQuery
+            {
+                Id = ReadQueryId, Name = "RetryProbeReads",
+                Source = "Database.Reads", EntityType = "RetryProbeRead",
+            },
+        ],
     };
 
     private static EntityTypeFile LineModel() => new()

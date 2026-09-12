@@ -1,8 +1,10 @@
 # Spark client — completing the conversation
 
-**Status:** **Partially implemented.** M0, M1 and spikes S2/S4 are done on `fix/datetimeoffset-fidelity`;
-the client-side milestones (M2 onwards) are not started. Investigation complete (4 parallel surveys,
-2026-09-12); every claim below is cited to code, and the corrections are kept rather than edited away.
+**Status:** **Partially implemented.** M0, M1, M2 and spikes S2/S4 are done on
+`fix/datetimeoffset-fidelity` — the server's route table is fully literal and every hook that can prompt
+now does, reads included. The **client-side** milestones (M3 onwards) are not started. Investigation
+complete (4 parallel surveys, 2026-09-12); every claim below is cited to code, and the corrections are
+kept rather than edited away.
 **Plan:** [spark_client_conversation_plan.md](spark_client_conversation_plan.md)
 
 ---
@@ -225,6 +227,22 @@ these become ordinary retry-capable hooks with no special case to document.
 - **FR28** — The conflation invariant is a **test**, not a convention: a payload naming a different
   type must not change which type is used, nor buy access to a denied one. Pinned by
   `TypeConflationTests` before the migration, and verified to fail when the rule is broken.
+- **FR29** — The route table has **no route variables at all** — not "no ambiguous ones". Every
+  persistent-object, query and action path is literal, including the two catalogue reads
+  (`GET /spark/queries/{id}` → `POST /spark/queries/get`, `GET /spark/actions/{type}` →
+  `POST /spark/actions/list`) that FR21/FR22 did not name. Zero variables is what makes collision-freedom
+  a property of the table rather than of everyone's naming discipline: **nothing validates the character
+  set of a type name or alias** (`SparkQueryAliases` checks only for *duplicates*), so any scheme keeping
+  a type in the path is collision-free by convention only.
+
+  ⚠️ **One exception, and it cannot be removed:** `/spark/queries/{id}/stream`. A WebSocket handshake has
+  no body to move the id into. It collides with nothing — its siblings are the single-segment literals
+  `/get` and `/execute`, and it needs the `/stream` suffix to match at all.
+- **FR30** — The read endpoints carry **no antiforgery metadata**, and their success responses stay
+  **bare objects rather than envelopes**. Only the 449 is enveloped, because a retry has nowhere else to
+  live. Both are deliberate limits on the blast radius: the verb moved so a read could carry a retry
+  answer; the token and the response shape are separate decisions with separate consequences, and making
+  all three at once would leave a failure in any of them indistinguishable from a failure in the others.
 
 ### Release
 
@@ -451,11 +469,42 @@ immediately and in an obvious place; and sweep for `GET` against these paths in 
 test suites. ⚠️ No backward-compatibility requirement (preview), so leaving the old verb working
 "just in case" would buy nothing and hide exactly the callers that need finding.
 
-### R7 — Reads begin requiring an antiforgery token
-A consequence of the verb, not a choice. The browser is unaffected (Angular adds the header for POST),
-but `SparkClient`'s read paths pass `requiresAntiforgery: false` today, and any test issuing a bare
-`GET` will need the token. A caller that misses this gets a 400 from the antiforgery gate, which is at
-least loud.
+⚠️ **It did materialise once, in the place nobody greps: a build artefact.** `FleetTestHost` accepted
+any existing `ClientApp/dist` as current — `if (Directory.Exists(distPath) && …Any()) return;` — so the
+Playwright tests ran a bundle built *before* the migration, issuing `GET /spark/queries/{id}/execute`
+against a server that no longer has it. The grid rendered its chrome, never its rows, and failed as a
+15-second locator timeout that reads exactly like a broken query.
+
+That harness gap is worse than the bug it hid: it silently removes the client from every browser test,
+so any frontend change is asserted against the *previous* frontend. Fixed by `IsAngularBundleStale`,
+comparing the newest source under `ClientApp/src` **and `libs/node_packages/ng-spark`** — consumed from
+source, which is why a library change reaches a browser only through a rebuild — against the oldest file
+in `dist`.
+
+**The diagnostic worth reusing:** run the app yourself (`dotnet run`; the host spawns the dev server,
+which builds from source) and drive it with the `playwright_node` MCP. That instance is the control —
+same code, current build. `POST /spark/queries/execute` answered 200 with the searched row there while
+`FleetTestHost` timed out, which located the fault in the harness rather than in the migration.
+
+**Outcome otherwise milder than feared, and for a reason worth recording.** The migration was mechanical enough
+to script (a balanced-paren rewriter over the call sites), and the failure mode it produced was not the
+silent one this risk anticipated: a rewritten call whose trailing argument got swallowed into the
+wrapper failed at **compile time**, seven times, each naming its own file and line. The interpolated
+URLs the script could not match were then a finite grep. The runtime-404 failure mode never materialised
+in the sweep — but it remains the one to watch for in any caller outside this repository.
+
+### R7 — ~~Reads begin requiring an antiforgery token~~ — did not happen, deliberately
+**Resolved, by declining the consequence.** The risk assumed the token followed from the verb. It does
+not: `RequireAntiforgeryTokenAttribute` is per-endpoint metadata, opt-in, and the read endpoints simply
+do not carry it. The verb changed; what they do did not, and an antiforgery token protects against a
+cross-site request causing a *change*. A read causes none, and a cross-origin caller still cannot read
+the response.
+
+So `load`, `queries/get`, `queries/execute` and `actions/list` take no token, `SparkClient`'s read paths
+still pass `requiresAntiforgery: false`, and no warmup fires on a read — pinned by
+`Execute_read_path_does_not_warm_up_antiforgery`, which now also names the path so the fact fails if a
+read grows the attribute. ⚠️ If one of these ever gains a side effect, it needs the attribute in the
+same commit.
 
 ### R5 — Fidelity is assertable but not provable in general
 S1 proves equivalence for *the flows it covers*. It cannot prove the client matches the frontend
@@ -470,6 +519,10 @@ drive.
 0. ✅ **Done (M0/M1):** a retry works from every hook behind a POST endpoint — create, update, delete,
    custom action, refresh, new, delete-row — with one seam rather than eight copies, and a matrix test
    that fails if a future endpoint is wired half-way.
+0b. ✅ **Done (M2):** every endpoint *is* behind a POST, on a literal path, so `OnLoadAsync` and
+   `OnQueryAsync` are no longer the exception — the sentence above has no "behind a POST endpoint"
+   qualifier left to carry. The entity type is read in exactly one place, guarded from the outside by
+   `TypeConflationTests` and from the inside by `SparkRequestTypeSingleSourceTests`.
 1. A test can execute a custom action, receive a retry prompt, set attributes on the carried
    `PersistentObject`, submit an option, and receive the next response — without touching raw
    `HttpClient`.

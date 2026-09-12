@@ -183,7 +183,12 @@ public class CarEndpointTests : SparkTestDriver
         // Note the envelope. The endpoint reads a PersistentObjectRequest, so the entity goes
         // under `persistentObject` with its attributes as name/value pairs — posting a bare
         // `new { Brand = "Tesla" }` deserializes to a request with no persistent object and fails.
-        var create = await client.PostJsonAsync($"/spark/po/{CarTypeId}", new
+        //
+        // Wire.Typed adds the top-level `objectTypeId`: every Spark route is literal, so the type is
+        // a body field rather than a path segment. It is NOT the same field as the `objectTypeId`
+        // inside `persistentObject` — the server authorizes against the first and overwrites the
+        // second.
+        var create = await client.PostJsonAsync("/spark/po/create", Wire.Typed(CarTypeId, new
         {
             persistentObject = new
             {
@@ -194,11 +199,11 @@ public class CarEndpointTests : SparkTestDriver
                     new { name = "Brand", value = (object)"Tesla" },
                 },
             },
-        });
+        }));
         create.EnsureSuccessStatusCode();
 
-        var list = await client.GetAsync($"/spark/po/{CarTypeId}");
-        list.EnsureSuccessStatusCode();
+        var read = await client.PostJsonAsync("/spark/po/load", Wire.Typed(CarTypeId, id: "cars/1-A"));
+        read.EnsureSuccessStatusCode();
     }
 }
 ```

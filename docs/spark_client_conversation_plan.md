@@ -1,7 +1,7 @@
 # Spark client — completing the conversation: implementation plan
 
 **PRD:** [spark_client_conversation_PRD.md](spark_client_conversation_PRD.md)
-**Status:** **M0, M1 and the S2/S4 spikes done** — 2154/2154 plus 3 new invariant facts. S3 dropped. **M2 next** — the route table becomes fully literal, which is what lets `OnLoad`/`OnQuery` join the retry mechanism and makes M2b safe.
+**Status:** **M0, M1, M2 and the S2/S4 spikes done** — 2159/2159 unit, 39/39 client, 490/490 ng-spark. S3 dropped. The route table is fully literal and `OnLoad`/`OnQuery` have joined the retry mechanism, which is what makes M2b safe. **M2b next**, then the client milestones M3–M8.
 **Branch:** `fix/datetimeoffset-fidelity` (shared with PR #403 at the issue owner's direction).
 
 Method: red/green throughout, as `issue_384_plan.md` was. Every milestone that changes public API on
@@ -20,8 +20,8 @@ that fails because the method does not compile has proven nothing.
 | **S4** Route shape, and how the type is authorized once it leaves the route | **Done.** Table settled (fully literal). Invariant pinned by `TypeConflationTests` and proven to fail when broken. Single-resolver design is M2 step 0. |
 | **M0** Server: one retry seam instead of seven copies | **Done.** `IRetryableRequest` + `RetryAccessor.Accept` + `RetryScope`; five call sites, four downcasts removed. |
 | **M1** Server: retry works from every hook that can prompt (FR7a/b) | **Done.** `new`, `delete-row` and `refresh` all emit and accept. ⚠️ Refresh needed a second fix — see below. |
-| **M2** Server + clients: reads become POST (FR21–FR25) | Not started. Gated on S4. |
-| **M2b** Server: centralise the emit half (FR26) | Not started. ⚠️ **Strictly after M2.** |
+| **M2** Server + clients: reads become POST, route table fully literal (FR21–FR25, FR29, FR30) | **Done.** 11 routes moved, both clients and 22 test files swept. See below. |
+| **M2b** Server: centralise the emit half (FR26) | Not started — and now **unblocked**, since every endpoint can accept an answer. |
 | **M3** Client: answer a retry (FR1–FR6) | Not started |
 | **M4** Client: surface and apply client operations (FR8–FR11) | Not started |
 | **M5** Client: endpoint coverage (FR12–FR16) | Not started |
@@ -411,22 +411,99 @@ should 404 immediately rather than work until someone removes the alias later.
 
 **Verify:** `RetryFromEveryHookTests` covers all seven hooks; full unit suite; full E2E suite.
 
+### Done. 2026-09-12. 2159/2159 unit, 39/39 client, 490/490 ng-spark.
+
+**Eleven routes**, not the two FR21/FR22 named. The two catalogue reads (`GET /spark/queries/{id}`,
+`GET /spark/actions/{type}`) were not in the original table and had to move too, or "zero route
+variables" would have been "zero variables on the endpoints we remembered". Recorded as FR29.
+
+**The order that mattered: step 0 landed as its own commit** (`cab6a0fa`), against the *old* routes.
+`SparkRequestType.Resolve` replaced nine copies of the same two lines while the route was still the
+source, `TypeConflationTests` proved the behaviour identical, and only then did the source move. A
+refactor and a migration in one commit would have left a failure in either indistinguishable from a
+failure in the other — and this is the security-relevant one.
+
+**The guard has two halves, and the second was added here.**
+`SparkRequestTypeSingleSourceTests` scans the endpoint sources: no endpoint reads the route value, and
+no `ObjectTypeId` reaches a type lookup. Both facts were **verified to go red** under a deliberate
+mutation of `Create`, each naming the offending file and line.
+
+⚠️ Its second fact deliberately forbids *"ObjectTypeId reaches a type lookup"* rather than the broader
+*"ObjectTypeId is read"*. The broad version was written first and was wrong: `Get.cs:95` compares
+`obj.ObjectTypeId` against a client-operation target on an object the **server** built from the
+database. That is a legitimate read, and a rule that bans it only teaches people to work around the
+rule.
+
+**An ordering inversion the migration forced, and why the property survives it.** The body must now be
+read before anything can be authorized, because the body is where the type is. `Create` previously
+checked the type-level "New" right *first*, so that POSTing rubbish could not tell an unauthorized
+caller which types exist (N23). `SparkRequestType.ReadAsync` preserves the property by answering a
+malformed body **exactly as it answers an unknown type** — both null, both refused identically — so a
+parse failure reveals only that the JSON was bad.
+
+**Two things deliberately not done, recorded as FR30.** The read endpoints carry no antiforgery
+metadata (the verb changed; what they do did not — see R7, which was resolved by declining its
+premise), and their success responses stay bare objects. Only the 449 is enveloped.
+
+**What the sweep cost, and what it caught.** 22 test files, both clients, 90-odd call sites. A
+balanced-paren rewriter handled the repetitive `new`/`refresh`/`delete-row` sites; the seven it wrapped
+wrongly all failed at **compile time**, which is the outcome R6 hoped for and did not expect. Two
+fixtures needed more than a call-site edit:
+
+- `DenyAllEndpointMirrorTests` — its rows now carry **bodies naming real targets**. ⚠️ Without them the
+  suite would have gone green vacuously: an endpoint given an empty body refuses because it cannot tell
+  what was asked, and that refusal is the same 404 the test asserts. The rows would have passed without
+  ever reaching the authorization they exist to check.
+- `ScriptedHttpHandler` — now captures request **bodies**. It recorded only URLs, which was enough when
+  the URL was the request; a test asserting on the body got a `NullReferenceException` from a drained
+  content stream, not an empty string.
+
+`Wire.Typed/Query/Action` live in `MintPlayer.Spark.Testing` rather than in one test project, so every
+suite builds these bodies the same way — and so that `objectTypeId` lands at the top level rather than
+inside `persistentObject` by accident.
+
 ---
 
 ## M2b — REFACTOR: centralise the emit half
 
-**⚠️ Strictly after M2.** Not an ordering preference — doing it first converts a *loud* failure on the
+**⚠️ Strictly after M2 — which is now satisfied, so this is unblocked.** Not an ordering preference — doing it first converts a *loud* failure on the
 read paths into a *silent* one, because a central `catch` would return a well-formed 449 to a client
 with no way to answer it.
 
-M0 unified the **accept** half. The **emit** half is still a `catch` clause in seven endpoints. Once
-every endpoint can accept an answer, one handler can convert `SparkRetryActionException` into a 449
-envelope for all of them.
+M0 unified the **accept** half. The **emit** half is still a `catch` clause in **nine** endpoints now —
+M2 added `load` and `queries/execute` to the seven, which is two more copies of the same three lines and
+makes the case for this stronger, not weaker.
+
+✅ **The `OnLoadAsync` / `OnQueryAsync` rows are in** (11 facts), added immediately after M2 rather than
+deferred — without them both endpoints were exactly the shape M0 exists to prevent: wired, looking
+finished, proved by nothing.
+
+⚠️ **Writing them found a third `DoNotWrapExceptions` omission, and a fourth.** `DatabaseAccess` has
+five `MethodBase.Invoke` sites and `QueryExecutor` one; none passed the flag that `NewInvoker`,
+`DeleteRowInvoker` and `RefreshInvoker` all do. Both are fixed.
+
+**Why it survived this long, and what it means for hook authors.** The flag only bites a hook that
+throws *before* its `Task` exists. An `async` override's exception lands on the returned task and
+`await` rethrows it unwrapped — so the ordinary case looked fine, and it was a **non-async override
+refusing up front** that arrived as `TargetInvocationException` with no typed `catch` matching. That is
+the shape of a validation guard, which makes it the shape most likely to be written.
+
+⚠️ **And a real warning the fixture had to be restructured around:** `OnLoadAsync` is not the load
+endpoint's hook — it is *the* load seam, so delete, refresh and delete-row all run it on their way
+elsewhere. Prompting there made five unrelated rows fail with `"Load?"`. A retry in `OnLoadAsync` fires
+on **every** read of that type. The probe needed its own entity (`RetryProbeRead`) to keep the prompt
+where the test could see it.
 
 1. Catch it in `SparkMiddleware` around `await next(context)` — there is no global exception handler
    there today, so this is new machinery rather than an extension of existing machinery.
 2. `ClientResult.Retry` needs `IClientAccessor`, which is request-scoped and resolvable at that point.
-3. Remove the seven per-endpoint `catch` clauses.
+3. Remove the nine per-endpoint `catch` clauses.
+
+⚠️ **A central catch only sees what reaches it unwrapped.** Three `DoNotWrapExceptions` omissions have
+now been found on three separate paths, each hiding a hook's exception behind
+`TargetInvocationException`. Before removing the per-endpoint catches, check every reflective hook
+invocation passes the flag — a central handler that silently fails to match is strictly worse than nine
+that do.
 
 **Verify:** `RetryFromEveryHookTests` unchanged and still green — it is the enforcement, and it should
 not need editing for a refactor that changes only where the exception is caught.
@@ -527,16 +604,40 @@ publishes inconsistent versions. No npm change unless M4 touches `ng-spark`.
 ⚠️ Major digit stays `10` — it tracks `net10.0`, not our API. A break inside a .NET generation is a
 preview bump.
 
+⚠️ **M2 makes this release breaking, and `ng-spark` moves too.** Every published route changed, so
+every consumer of `@mintplayer/ng-spark` or `MintPlayer.Spark.Client` has to take both halves together —
+an old client against a new server 404s on every call. The npm **major** still does not move (it tracks
+Angular, not our API); this is a minor with the break in the release notes.
+
+⚠️ `MintPlayer.Spark.Testing` gained public API (`Wire`), and M6b removes some (`SparkTestClient`). Both
+belong in the notes rather than passing silently.
+
 ---
 
 ## M8 — docs
 
 - `libs/client/MintPlayer.Spark.Client/README.md` (create if absent) — the conversation loop with the
   worked example from the PRD.
-- `docs/guide-*.md` — a short section on retry from hook code, naming the three hooks that gained it and
-  the two that cannot have it.
+- `docs/guide-*.md` — a short section on retry from hook code. ⚠️ Its shape changed: there is no longer
+  a set of hooks that "cannot have it". All nine can. What the section needs instead is the **route
+  table** (every path is literal, every call is a POST, parameters go in the body) and the
+  `OnLoadAsync` warning — a retry there fires on every read of the type, including the loads that
+  delete, refresh and delete-row perform on their way elsewhere.
 - Update this plan's Status table and record S1's divergence list as the standing answer to *"does the
   client match the frontend?"*
+
+✅ **The route-table half is already done, in the M2 commit rather than deferred here.** Leaving the
+guides documenting deleted routes would have been shipping a known break in the documentation. Updated:
+`guide-custom-actions`, `guide-queries-and-sorting` (its "runtime sort override" section documented
+`?sortBy=`/`?sortDirection=`, which had *already* been replaced by `sortColumns` before this work),
+`guide-search`, `guide-aliases`, `guide-authorization`, `guide-asdetail-attributes`,
+`guide-triggers-refresh`, plus the endpoint table in `MintPlayer.Spark/README.md` and the two
+`MintPlayer.Spark.Testing` documents.
+
+⚠️ **Historical PRDs, plans and build logs under `docs/` were deliberately left alone.** They are
+records of what was decided when, and rewriting the routes inside them would make them lie about their
+own moment. Only live developer documentation was updated. The same reasoning applies to the code
+comments that describe the old shape on purpose — several of them are *why* the new shape exists.
 
 ---
 

@@ -233,9 +233,17 @@ internal partial class QueryExecutor : IQueryExecutor
         if (actionsInstance is null)
             return context;
 
+        // ⚠️ `DoNotWrapExceptions`, for the same reason as `DatabaseAccess` and the three invokers:
+        // without it a hook that throws before returning its Task arrives as
+        // `TargetInvocationException` and no typed `catch` in the endpoint matches. That now matters
+        // here — since the query endpoint became a POST, `OnQueryAsync` can raise a retry, and a
+        // wrapped one would leave the pipeline unhandled instead of reaching the caller as a 449.
         var method = actionsInstance.GetType().GetMethod("OnQueryAsync", [typeof(SparkQueryContext)]);
-        if (method is not null && method.Invoke(actionsInstance, [context]) is Task task)
+        if (method is not null &&
+            method.Invoke(actionsInstance, BindingFlags.DoNotWrapExceptions, binder: null, parameters: [context], culture: null) is Task task)
+        {
             await task;
+        }
 
         return context;
     }

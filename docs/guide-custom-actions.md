@@ -216,7 +216,9 @@ Spark exposes two endpoints for custom actions under the `/spark/actions` prefix
 ### List Available Actions
 
 ```
-GET /spark/actions/{objectTypeId}
+POST /spark/actions/list
+
+{ "objectTypeId": "Car" }
 ```
 
 Returns the list of custom actions available for the given entity type. Only actions with a matching C# implementation **and** authorized for the current user are included. The response is sorted by `offset`.
@@ -242,7 +244,7 @@ Returns the list of custom actions available for the given entity type. Only act
 ### Execute an Action
 
 ```
-POST /spark/actions/{objectTypeId}/{actionName}
+POST /spark/actions/execute
 ```
 
 Executes the action. This endpoint requires an antiforgery token (`X-XSRF-TOKEN` header).
@@ -251,10 +253,20 @@ Executes the action. This endpoint requires an antiforgery token (`X-XSRF-TOKEN`
 
 ```json
 {
+  "objectTypeId": "Car",
+  "actionName": "CarCopy",
   "parent": { "id": "cars/1-A", "name": "Car" },
   "selectedItems": []
 }
 ```
+
+`objectTypeId` and `actionName` used to be path segments. They are ordinary body fields now — every
+Spark path is literal, with no route variables at all — so an action name containing a space or a slash
+needs no escaping and cannot reshape the route.
+
+⚠️ `objectTypeId` here is a **request parameter**, and it is not the same thing as an `objectTypeId`
+nested inside `parent`. The server authorizes against this one and overwrites the nested one; a payload
+claiming a different type changes nothing and buys no access.
 
 The `parent` field is set when executing from a detail view. The `selectedItems` array is set when executing from a query list with selected rows.
 
@@ -298,7 +310,7 @@ export interface CustomActionDefinition {
 }
 ```
 
-The frontend fetches available actions via `GET /spark/actions/{type}`, renders buttons or menu items based on `showedOn`, evaluates `selectionRule` against the current selection, shows a confirmation dialog if `confirmationMessageKey` is set, and executes via `POST /spark/actions/{type}/{name}`.
+The frontend fetches available actions via `POST /spark/actions/list`, renders buttons or menu items based on `showedOn`, evaluates `selectionRule` against the current selection, shows a confirmation dialog if `confirmationMessageKey` is set, and executes via `POST /spark/actions/execute`. Both name the type — and the second also the action — in the request body: every Spark path is literal, with no route variables at all.
 
 ## Complete Example
 

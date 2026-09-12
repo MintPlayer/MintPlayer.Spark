@@ -142,7 +142,7 @@ the one governing the object that owns it. Only the *dispatch* follows the row.
 
 ## What the framework does with it
 
-- **On refresh** the client POSTs the in-progress object to `/spark/po/{objectTypeId}/refresh`. The
+- **On refresh** the client POSTs the in-progress object to `/spark/po/refresh`, naming the type in the body. The
   server rebuilds it from the model — taking only *values* from the wire — runs your hook, and
   returns it. The client applies the metadata as an overlay and merges the values.
 - **On save** Spark runs your hook again, once per triggering attribute, and validates against the

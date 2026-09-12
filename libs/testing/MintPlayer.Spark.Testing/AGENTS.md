@@ -178,10 +178,11 @@ It writes the model files, `modelHashes.json` and `security.json` into a private
 then asserts the host actually loaded the security file — without that check a silently ignored
 file would make every authorization test vacuously green.
 
-**Routes take the entity type's ID, not its name**, and writes take an envelope:
+**Every route is literal and every call is a POST.** The type, the id and every parameter travel in the
+body; build it with `Wire`, which puts them where the endpoint reads them:
 
 ```csharp
-await client.PostJsonAsync($"/spark/po/{PersonTypeId}", new
+await client.PostJsonAsync("/spark/po/create", Wire.Typed(PersonTypeId, new
 {
     persistentObject = new
     {
@@ -189,10 +190,19 @@ await client.PostJsonAsync($"/spark/po/{PersonTypeId}", new
         objectTypeId = PersonTypeId,
         attributes = new[] { new { name = "FirstName", value = (object)"Alice" } },
     },
-});
+}));
 ```
 
-Posting a bare `new { FirstName = "Alice" }` deserializes to a request with no persistent object.
+Two traps in that one call:
+
+- Posting a bare `new { FirstName = "Alice" }` deserializes to a request with no persistent object.
+- ⚠️ The `objectTypeId` `Wire.Typed` adds is **top-level** — the request parameter the server
+  authorizes against. The one inside `persistentObject` is part of the submitted document and is
+  overwritten with the resolved type. They are one word apart and mean different things; use `Wire`
+  rather than hand-placing the field, or a test can end up asserting against the wrong one.
+
+Other bodies: `Wire.Query(queryId, …)` for `/spark/queries/{get,execute}`, `Wire.Action(typeId, name, …)`
+for `/spark/actions/execute`.
 
 ### Indexes are a two-step obligation
 
@@ -250,10 +260,10 @@ it", or Spark becomes an existence oracle. Three consequences for assertions:
 3. **Bodies too**, with caller-supplied identifiers normalized out. Some endpoints echo the
    requested id, which is byte-identical *for one request* (what M-3 needs) yet differs between two.
 
-**Access endpoints** (`/spark/po/*`, `/spark/actions/*/…`, `/spark/lookupref/*`) answer 404 —
+**Access endpoints** (`/spark/po/*`, `/spark/actions/execute`, `/spark/lookupref/*`) answer 404 —
 or **401** when the application has a way to sign in, because then authenticating would help.
 **Catalogue endpoints** (`/spark/types`, `/spark/queries`, `/spark/aliases`,
-`/spark/program-units`, `/spark/actions/{type}`, `/spark/permissions/{type}`) answer **200 with
+`/spark/program-units`, `/spark/actions/list`, `/spark/permissions/{type}`) answer **200 with
 everything filtered out**, because the client shell loads them on boot for every visitor. So
 asserting 200 alone would also be true of a leak — name what must *not* appear in the body.
 
