@@ -52,6 +52,24 @@ while the real client breaks. This is also what freezes the FR2 API shape before
 4. Diff: path, verb, headers (`X-XSRF-TOKEN`, `X-Spark-Timezone`, `Content-Type`, `Cookie` presence),
    and the JSON body **by shape and by the `retryResults` array specifically**.
 
+⚠️ **M2 dissolved two of those four axes, and split a third.** Re-scope before running it:
+
+- **Path and verb are now identical by construction.** The route table is fully literal, so there is one
+  literal string per operation on each side. A mismatch is a typo, not a protocol divergence — worth
+  asserting, not worth a spike.
+- **`X-XSRF-TOKEN` is no longer a "same or different" question.** On the four reads (`po/load`,
+  `queries/get`, `queries/execute`, `actions/list`) the correct assertion is that **neither side sends
+  one** — those endpoints carry no antiforgery metadata (`Get.cs:16-23`, R7). "Same headers" would pass
+  on two clients that are both wrong.
+- **The body shape is where all the remaining risk is**, and one divergence is already known and
+  unnamed by this spike: `sortColumns` is a typed array on the wire (`QueryRequests.cs:22-24`), but
+  `SparkClient.ExecuteQueryAsync` still takes the legacy `prop:asc` **string** and translates it in
+  `ParseSortColumns` (`SparkClient.cs:276-291`). That translation exists on one client and not the
+  other. It is deliberate and documented — but it is exactly the kind of thing S1 exists to turn into a
+  decision rather than an accident, so it belongs in the divergence list.
+
+The spike still gates M3's API freeze. What changed is that it is now a **body-shape** spike.
+
 **Output.** A table of the two traces side by side, and an explicit list of every deliberate divergence
 with its justification. Deliberate divergences are expected — the frontend sends `queryId` from grid
 context, fetches the query catalogue first, and dispatches non-retry operations into UI services. The
@@ -562,10 +580,29 @@ runs, not what it does.
    can rebuild it. ⚠️ Keep the conversation in the **request**, not on `SparkClient`: two concurrent
    conversations must not interfere (the one structural idea worth taking from `Vidyano.Core`).
 2. `SparkClient.ContinueAsync(SparkActionResult, string option, CancellationToken)`.
-3. `RetryResult[]` threaded onto the create/update/delete/refresh/action request bodies.
-   ⚠️ `DeletePersistentObjectAsync` currently sends **no body at all** (`SparkClient.cs:205-213`); the
+3. `RetryResult[]` threaded onto **every** retry-capable request body: create, update, delete, **load**,
+   refresh, **new**, **delete-row**, action **and `queries/execute`** — nine, not five.
+
+   ⚠️ This list read "create/update/delete/refresh/action" and was short by four. M2 made every endpoint
+   retry-capable and the server DTOs prove it: `PersistentObjectReferenceRequest` — the body of *both*
+   `po/load` and `po/delete` — implements `IRetryableRequest` (`PersistentObjectRequest.cs:36,45`), and
+   so does `ExecuteQueryRequest` (`QueryRequests.cs:27,48`). Shipping the short list would leave the
+   client unable to answer a retry raised from `OnLoadAsync` or `OnQueryAsync` — which is precisely the
+   unlock that "reads become POST" was bought for.
+
+   ⚠️ **This step's original instruction was inverted by M2 and must not be followed as it stood.** It
+   read: *"`DeletePersistentObjectAsync` currently sends no body at all (`SparkClient.cs:205-213`); the
    frontend attaches one only once `retryResults` is non-empty (`spark.service.ts:317-323`). Match that
-   exactly — sending an empty body unconditionally is a wire change S1 would flag.
+   exactly — sending an empty body unconditionally is a wire change S1 would flag."*
+
+   **Both halves of that are now false.** A delete is `POST /spark/po/delete` and **always** carries
+   `{ objectTypeId, id }` — in the client (`SparkClient.cs:211-217`) and in the frontend
+   (`spark.service.ts:231-236`) alike. The conditional body is gone from both, along with the
+   `Content-Type` sniffing the server used to do to detect it.
+
+   So the instruction now points the wrong way: following it would make the client send *less* than the
+   frontend and **cause** the divergence S1 exists to catch. The correct step is the ordinary one —
+   add `retryResults` to a body that is already there.
 4. `RetryAnswer` + the `onRetry:` convenience overload (FR4), implemented **over** `ContinueAsync`.
 5. `MaxRetryDepth` with a documented default.
 
@@ -610,7 +647,7 @@ through the client is asserting the fallback unless this is set.
 
 **No backward-compatibility constraint**, and this one removes a documented source of confusion — the
 issue owner's own first reading was *"the workspace already seems to contain a `SparkTestClient.cs` but
-that seems to be something different."* It is: a 44-line untyped CSRF shim over `TestServer`
+that seems to be something different."* It is: a 59-line untyped CSRF shim over `TestServer`
 (`libs/testing/MintPlayer.Spark.Testing/SparkTestClient.cs`), returning raw `HttpResponseMessage` and
 knowing nothing about envelopes, retry or `PersistentObject`.
 

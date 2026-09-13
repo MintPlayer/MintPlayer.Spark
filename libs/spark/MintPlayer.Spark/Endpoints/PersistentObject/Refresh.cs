@@ -97,9 +97,15 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
             // that it exists, nor to run a hook against it. It also applies attribute redaction,
             // which is used below.
             //
-            // Deliberately by entityType.Id from the ROUTE, never by the ObjectTypeId on the wire
+            // Deliberately by the SERVER-RESOLVED entityType.Id, never by the ObjectTypeId on the wire
             // object: taking the client's word for the type is how a caller reads one collection
             // through another's permissions (security sweep C3).
+            //
+            // ⚠️ This said "from the ROUTE" until M2, and the distinction it drew was easy to see then:
+            // a URL segment against a field inside the submitted document. There is no route to read
+            // from any more — the type arrives in the body and is resolved once, by SparkRequestType.
+            // The property is unchanged and the two fields are still different things; they are just
+            // no longer different KINDS of thing, which is exactly why the resolver exists.
             existing = await databaseAccess.GetPersistentObjectAsync(entityType.Id, submitted.Id!);
             if (existing is null)
             {

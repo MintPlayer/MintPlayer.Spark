@@ -73,3 +73,41 @@ a one-off:
 - **Fixtures used shapes no real model produces** (`dataType: 'LookupReference'`), which let a broken
   `triggersImmediately` pass six tests. The fixtures are corrected; nothing prevents the next one.
 - **Save runs `OnRefreshAsync`.** Newly load-bearing — see *Real-world hook idempotence* above.
+
+---
+
+## Found 2026-09-13 while surveying anonymous disclosure — NOT fixed, NOT in scope
+
+Three findings turned up by a survey run for an unrelated question (how a client should detect that an
+optional server module is absent). None is caused by the route-table work, none was in its scope, and
+each is recorded here rather than fixed so that the decision to fix is taken deliberately.
+
+**1. ⚠️ Enabling the identity provider applies wildcard CORS to the entire pipeline.**
+`SparkIdentityProviderOptions.EnableDynamicCors` defaults to `true`
+(`SparkIdentityProviderOptions.cs:38`). The policy is
+`SetIsOriginAllowed(_ => true).AllowAnyHeader().AllowAnyMethod()`
+(`SparkIdentityProviderExtensions.cs:55-64`), applied by a bare `app.UseCors("SparkOidcCors")` at
+`:74` — **not scoped to `/connect`**. So any page on any origin can read the anonymous view of
+`/spark/types`, `/spark/translations`, `/spark/permissions/*` and `/spark/auth/capabilities`
+cross-origin. There is no `AllowCredentials`, so it is the anonymous view only.
+
+⚠️ **The inline comment says `// Validated at runtime below`, and no such validation exists.**
+Verified: `AllowedCorsOrigins` occurs exactly twice in the repository — a doc comment
+(`SparkIdentityProviderOptions.cs:36`) and an unread model property (`OidcApplication.cs:63`). The
+per-application origin allow-list the comment promises was never implemented. A comment describing a
+control that does not exist is worse than no comment: it answers the reviewer's question wrongly.
+
+Two candidate fixes, and they are not exclusive: scope the policy to the `/connect` group, and/or
+implement the per-application validation against `OidcApplication.AllowedCorsOrigins`.
+
+**2. `GET /spark/culture` and `GET /spark/translations` inject no `IPermissionService`**
+(`Culture/Get.cs:13-17`, `Translations/Get.cs:13-17`). An anonymous caller receives every translation
+key and value in the application, including labels for entities and actions they can never reach.
+⚠️ **Uncertain whether this is intentional** — a shell must render before anyone signs in, so *some*
+anonymous translation access is required by design; whether it should be the whole catalogue is the
+open question. `docs/issue_236_security_sweep_PRD.md:76` caught the analogous `lookupref` hole and is
+silent on these two, which suggests they were not considered rather than cleared.
+
+**3. `GET /spark/auth/external-login?provider=X` 302s to the upstream IdP**
+(`SparkAuthenticationExtensions.cs:99-122`), disclosing the provider and its client id. Lowest of the
+three: `/spark/auth/capabilities` volunteers the provider list to anonymous callers anyway, by design.

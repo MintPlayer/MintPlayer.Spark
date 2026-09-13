@@ -16,7 +16,7 @@ kept rather than edited away.
 | *"We need a Vidyano-style `Client.cs` for Spark."* | **Half-refuted.** `MintPlayer.Spark.Client` already ships one — typed CRUD, queries, metadata, permissions, actions, auth, antiforgery, cookie jar, `CancellationToken` throughout. |
 | *"So this is a new library."* | **Refuted.** It is completing an existing published package. A new package id would be published to nuget.org permanently on first merge. |
 | *"The retry loop needs building from scratch."* | **Half-refuted.** The client already *hears* a retry (449 → `RetryActionPayload`). It cannot *answer* one. |
-| *"`SparkTestClient` is the thing to extend."* | **Refuted.** It is a 44-line CSRF shim over `TestServer` with one consumer left. Unrelated. |
+| *"`SparkTestClient` is the thing to extend."* | **Refuted.** It is a 59-line CSRF shim over `TestServer` with one consumer left. Unrelated. |
 | *"A protocol client can replace the browser tests."* | **Refuted.** Measured this session: the two defects found in `ViewerTimezoneRenderingTests`' area were a blank `datetime-local` and `DatePipe` zone conversion. A protocol client is green through both. |
 
 **The one-line statement of work:** the client can hear a retry and cannot answer one; close that, and
@@ -73,16 +73,16 @@ Antiforgery is already correct: warm up, read the `XSRF-TOKEN` cookie, echo `X-X
 
 | Gap | Evidence |
 |---|---|
-| **Answering a retry** — no method takes `RetryResult[]` | the string `retryResults` appears nowhere under `libs/client/`; server accepts it on action (`CustomActionRequest.cs:47`), create (`Create.cs:61`), update (`Update.cs:56`), delete (`Delete.cs:43`), refresh (`Refresh.cs:85`) |
+| **Answering a retry** — no method takes `RetryResult[]` | the string `retryResults` appears nowhere under `libs/client/`. ⚠️ The server-side citations here named `Create.cs:61`, `Update.cs:56` and `Delete.cs:43`; since M2 those are wrong **in kind**, not merely by line — the binding was hoisted into shared DTOs: `PersistentObjectRequest.cs:27` (create/update), `:45` (load/delete), `Refresh.cs:296`, `CustomActionRequest.cs:54`, `QueryRequests.cs:48` |
 | **Client operations** — discarded | `SparkClient.cs:437-449`, *"Operations are currently discarded"* |
 | **The action response body** — discarded entirely | `:388` returns `SparkActionResult.ForSuccess((int)response.StatusCode)`; the envelope is never read |
 | `queryId` on a custom action | server re-runs the source query narrowed to the selection (`CustomActionRequest.cs:45`); the client never sends it (`:368`) |
-| `POST /spark/po/{type}/refresh` | `Refresh.cs:26` |
-| `POST /spark/po/{type}/new`, `.../delete-row` | `New.cs:23`, `DeleteRow.cs:40` |
+| `POST /spark/po/refresh` | `Refresh.cs:25-27` |
+| `POST /spark/po/new`, `POST /spark/po/delete-row` | `New.cs:25`, `DeleteRow.cs:42` |
 | `/spark/lookupref/*` (5 endpoints) | `Endpoints/LookupReferences/*` |
-| `GET /spark/types/{id}`, `GET /spark/actions/{type}` | `EntityTypes/Get.cs:10`, `ListCustomActions.cs:10` |
+| `GET /spark/types/{id}`, `POST /spark/actions/list` | `EntityTypes/Get.cs:10`, `ListCustomActions.cs:8-10` |
 | `GET /spark/program-units`, `/culture`, `/translations` | `ProgramUnits/Get.cs:13`, `Culture/Get.cs:9`, `Translations/Get.cs:9` |
-| WebSocket `GET /spark/queries/{id}/stream` | `StreamExecuteQuery.cs:14` |
+| WebSocket `GET /spark/queries/{id}/stream` — the one surviving route variable | `StreamExecuteQuery.cs:20` |
 
 ---
 
@@ -148,8 +148,11 @@ these become ordinary retry-capable hooks with no special case to document.
 
 ### The conversation
 
-- **FR1** — `SparkClient` can **answer** a retry: submit `RetryResult[]` on custom action, create,
-  update, delete and refresh.
+- **FR1** — `SparkClient` can **answer** a retry: submit `RetryResult[]` on **every** retry-capable
+  endpoint — custom action, create, update, delete, load, refresh, new, delete-row and `queries/execute`.
+  ⚠️ This read "custom action, create, update, delete and refresh" and was short by four: M2 made the
+  reads and the row-lifecycle endpoints retry-capable too, which is what FR7c below is about. The two
+  requirements contradicted each other until this was corrected.
 - **FR2** — Answering is expressed as a **returned result with an explicit continuation**, not a
   callback invoked mid-request. See *Design → The shape of the retry API*.
 - **FR3** — The loop **accumulates** answered steps: each resubmit carries all previously answered
@@ -188,8 +191,10 @@ these become ordinary retry-capable hooks with no special case to document.
 
 - **FR12** — Typed methods for `refresh`, `new`, `delete-row`.
 - **FR13** — Typed methods for `/spark/lookupref/*` (list, get, add, update, delete).
-- **FR14** — Typed methods for `GET /spark/types/{id}`, `GET /spark/actions/{type}`,
-  `/spark/program-units`, `/culture`, `/translations`.
+- **FR14** — Typed methods for `GET /spark/types/{id}`, `POST /spark/actions/list`,
+  `/spark/program-units`, `/culture`, `/translations`. ⚠️ The action catalogue was listed as
+  `GET /spark/actions/{type}`, a route M2 deleted (`ListCustomActions.cs:8-10` is now `IPostEndpoint`
+  at `/list`, with `objectTypeId` in the body).
 - **FR15** — `ExecuteActionAsync` sends `queryId`.
 - **FR16** — The action response envelope is read; a non-null `result` is surfaced rather than dropped.
 
@@ -282,11 +287,21 @@ A `POST` has a body, and a body can carry `retryResults`. So:
 
 ### What it costs — the parts that are not a verb change
 
-⚠️ **Reads start requiring an antiforgery token.** Spark's antiforgery gate keys off the method, so a
-read that becomes a `POST` now needs `X-XSRF-TOKEN`. Angular's built-in interceptor already adds it for
-`POST`, so the browser is fine — but `SparkClient` passes `requiresAntiforgery: false` on its read paths
-(`SparkClient.cs:151-165`, `:224-265`) and every test issuing a bare `GET` to these routes must be
-updated. This is arguably an improvement, but it is a contract change, not a rename.
+⚠️ ~~**Reads start requiring an antiforgery token.** Spark's antiforgery gate keys off the method, so a
+read that becomes a `POST` now needs `X-XSRF-TOKEN`.~~
+
+**This cost was predicted and did not materialise, because its premise was wrong.** The gate does
+**not** key off the method — `RequireAntiforgeryTokenAttribute` is per-endpoint metadata, opt-in, and the
+read endpoints simply do not carry it (see the explicit note at `Get.cs:16-23`). `SparkClient` still
+passes `requiresAntiforgery: false` on its read paths, and no warmup fires on a read. See **R7**, which
+records the decision, and **FR30**, which makes it a requirement.
+
+Kept struck through rather than deleted: a predicted cost that turned out to rest on a false premise is
+worth more as a record than as a silence, and this paragraph was the first thing a reader met when
+looking up what the change cost.
+
+What the change *did* cost on this axis was a sweep: every test issuing a bare `GET` to these routes had
+to move. That is done — 22 files.
 
 ⚠️ **Route collisions — resolved by removing route variables entirely.** A `POST /{objectTypeId}/{**id}`
 would land beside `POST /{objectTypeId}` (create), `.../new`, `.../refresh` and `.../delete-row`, making
@@ -427,7 +442,39 @@ proves nothing about what the host it will talk to has registered. No packaging 
 that — which means **splitting further cannot solve this problem**, and a proposal to split should not
 be justified on these grounds.
 
-So the real options are about the *diagnostic*, not the layout:
+### Resolved, 2026-09-13: option 3 already exists, and neither option discloses anything new
+
+Two surveys settled this, and the decisive fact is that **the capability endpoint has been shipping all
+along**: `GET /spark/auth/capabilities` (`libs/authorization/.../Endpoints/GetAuthCapabilities.cs:27`).
+Option 3 is not a thing to build for the auth module; it is a thing to *call*.
+
+**Does a capability probe weaken M-3?** No — and the reasoning is worth keeping, because the answer is
+not "it's fine", it is "the framework already tells anonymous callers this, through at least six
+independent channels":
+
+- the 401-vs-404 split in `SparkDenial` is itself a *configuration* oracle by design — it answers 401
+  where signing in could help, which is precisely "authentication is enabled here"
+- `GET /spark/auth/capabilities` — volunteers the provider list
+- `GET /spark/auth/me` — responds at all only when auth is mapped
+- `/.well-known/openid-configuration` — exists only when the identity provider is on
+- `/spark/etl/deploy` answers an anonymous caller `401 {"error":"Client certificate required"}`
+  (`SyncApply.cs:45-46`) — a second, independent module-presence disclosure already in the codebase
+- route-absence on the mode-gated login routes
+
+⚠️ **M-3 is about which *data* exists — entity types, queries, rows.** Whether a *module is configured*
+is a different class of fact, and the framework discloses it deliberately (the 401 branch exists so a
+client can redirect to sign-in). Conflating the two would be the mistake here. The endpoints are
+anonymous at the ASP.NET layer by design and decide inside the handler
+(`SparkModuleRegistry.cs:105-111`).
+
+**Decision: option 2, implemented over the endpoint that already exists.** On a 404 from an auth call,
+the client may consult `/spark/auth/capabilities` and throw naming the missing
+`spark.AddAuthentication<TUser>()`. It adds no disclosure, needs no new server surface, and turns the
+framework's worst error message into its clearest. Belongs with **M5**.
+
+---
+
+For the record, the options as they were weighed before that was known:
 
 | Option | Cost |
 |---|---|
