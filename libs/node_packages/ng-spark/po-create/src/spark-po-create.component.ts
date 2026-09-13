@@ -21,6 +21,8 @@ import {
   EntityTypeResolver,
   isDateDataType,
   fromDateInputValue,
+  RefreshOverlay,
+  applyOverlay,
 } from '@mintplayer/ng-spark/models';
 
 @Component({
@@ -41,6 +43,8 @@ export class SparkPoCreateComponent {
   entityType = signal<EntityType | null>(null);
   type = signal('');
   formData = signal<Record<string, any>>({});
+  /** Bound two-way to the form. See {@link getEditableAttributes}. */
+  refreshOverlay = signal<RefreshOverlay>({});
   validationErrors = signal<ValidationError[]>([]);
   isSaving = signal(false);
   private allEntityTypes = signal<EntityType[]>([]);
@@ -77,8 +81,15 @@ export class SparkPoCreateComponent {
     this.formData.set(data);
   }
 
+  /**
+   * ⚠️ Overlaid before filtering — same reason as <c>spark-po-edit</c>, and worse here: this list is
+   * the <em>only</em> source of the create payload, so an attribute a refresh hook revealed was not
+   * merely sent stale, it was absent from the new object entirely.
+   */
   getEditableAttributes() {
+    const overlay = this.refreshOverlay();
     return this.entityType()?.attributes
+      .map(a => applyOverlay(a, overlay[a.name]))
       .filter(a => a.isVisible && !a.isReadOnly && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => a.order - b.order) || [];
   }

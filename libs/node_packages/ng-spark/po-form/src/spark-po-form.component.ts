@@ -107,8 +107,17 @@ export class SparkPoFormComponent {
    * `entityType` identity and `SparkService` caches nothing, so re-setting it would re-issue every
    * reference query and lookup fetch on every refresh; mutating it in place would not re-render at
    * all.
+   *
+   * ⚠️ A `model`, not a plain signal, because the page that owns the save has to see it. This form
+   * renders from the overlaid attribute list; `spark-po-edit` and `spark-po-create` build the
+   * payload from their own copy of the same filter. While the overlay stopped here, those two
+   * filtered on the attribute's state *as loaded* — so an attribute a refresh hook revealed was
+   * rendered, filled in by the user, and then silently left out of the save. When the same hook also
+   * made it required (the ordinary case — a field appears *because* it is now needed) the server
+   * refused the save for the very field the user had just filled, and the form became a dead end
+   * with no way forward from inside it.
    */
-  refreshOverlay = signal<RefreshOverlay>({});
+  refreshOverlay = model<RefreshOverlay>({});
   isRefreshing = signal(false);
 
   colors = Color;

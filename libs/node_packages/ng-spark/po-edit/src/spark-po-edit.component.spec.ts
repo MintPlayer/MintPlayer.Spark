@@ -26,6 +26,12 @@ const personType: EntityType = {
       isRequired: false, isVisible: true, isReadOnly: false,
       order: 2, showedOn: ShowedOn.PersistentObject,
     } as any,
+    // Hidden as loaded. A refresh hook reveals it — see the overlay test below.
+    {
+      id: 'a-reason', name: 'Reason', dataType: 'string',
+      isRequired: false, isVisible: false, isReadOnly: false,
+      order: 3, showedOn: ShowedOn.PersistentObject,
+    } as any,
   ],
 } as any;
 
@@ -36,6 +42,7 @@ const existingItem: PersistentObject = {
   attributes: [
     { id: 'a-first', name: 'FirstName', value: 'Alice' } as any,
     { id: 'a-last', name: 'LastName', value: 'Smith' } as any,
+    { id: 'a-reason', name: 'Reason', value: null } as any,
   ],
 } as any;
 
@@ -123,6 +130,45 @@ describe('SparkPoEditComponent', () => {
     expect(saved).toHaveBeenCalled();
     expect(TestBed.inject(Router).url).toBe('/po/person/people%2F1');
     expect(c.isSaving()).toBe(false);
+  });
+
+  // ⚠️ The regression this guards is not cosmetic: a refresh hook that reveals an attribute almost
+  // always does so because the attribute has just become required. While this page filtered on the
+  // attribute's state *as loaded*, such a field was rendered, filled in by the user, and then left
+  // out of the save — so the server refused the save as missing the very value the user had just
+  // typed, and the form had no way forward. Measured in Fleet: a car could not be marked stolen.
+  it('sends the value of an attribute a refresh revealed', async () => {
+    const { harness, service } = await setup();
+    const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+    await harness.fixture.whenStable();
+
+    // Hidden as loaded, so it starts out with no slot at all.
+    expect(Object.keys(c.formData())).not.toContain('Reason');
+
+    // What the form does when a refresh response reveals it, and what its control does on first
+    // keystroke: an in-place write into the shared formData object.
+    c.refreshOverlay.set({ Reason: { isVisible: true, isRequired: true } });
+    c.formData()['Reason'] = 'Moved abroad';
+
+    await c.onSave();
+
+    const [, , payload] = (service.update as any).mock.calls[0];
+    const reason = payload.attributes.find((a: any) => a.name === 'Reason');
+    expect(reason.value).toBe('Moved abroad');
+    expect(reason.isValueChanged).toBe(true);
+  });
+
+  it('does not send a value for an attribute the refresh left hidden', async () => {
+    const { harness, service } = await setup();
+    const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+    await harness.fixture.whenStable();
+
+    await c.onSave();
+
+    const [, , payload] = (service.update as any).mock.calls[0];
+    const reason = payload.attributes.find((a: any) => a.name === 'Reason');
+    expect(reason.value).toBeNull();
+    expect(reason.isValueChanged).toBe(false);
   });
 
   it('onSave 400 error populates validationErrors from the server payload', async () => {

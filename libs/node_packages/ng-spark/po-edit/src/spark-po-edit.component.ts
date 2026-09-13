@@ -24,6 +24,8 @@ import {
   toDateInputValue,
   fromDateInputValue,
   wireDatesEqual,
+  RefreshOverlay,
+  applyOverlay,
 } from '@mintplayer/ng-spark/models';
 
 @Component({
@@ -46,6 +48,11 @@ export class SparkPoEditComponent {
   type = '';
   id = '';
   formData = signal<Record<string, any>>({});
+  /**
+   * Bound two-way to the form, which is where refreshes land. Read by
+   * {@link getEditableAttributes} so the save sees the object the user was actually shown.
+   */
+  refreshOverlay = signal<RefreshOverlay>({});
   validationErrors = signal<ValidationError[]>([]);
   isSaving = signal(false);
   // Cached list of every entity type — needed by the AsDetail save path to resolve
@@ -121,8 +128,20 @@ export class SparkPoEditComponent {
     return (clrName: string) => cache.find(t => t.clrType === clrName);
   }
 
+  /**
+   * The attributes this page will read values from when it builds the save.
+   *
+   * ⚠️ <b>Overlaid before filtering, not after loading.</b> A refresh hook can reveal an attribute
+   * that was hidden when the object was loaded, and the ordinary reason it does so is that the
+   * attribute has just become required. Filtering on the loaded state left such an attribute out of
+   * both {@link initFormData} and the save payload, so the user filled in a field whose value was
+   * then dropped on the floor and refused by the server as missing — with no way out of the form.
+   * The overlay is the form's, bound two-way, so the two halves cannot drift again.
+   */
   getEditableAttributes() {
+    const overlay = this.refreshOverlay();
     return this.entityType()?.attributes
+      .map(a => applyOverlay(a, overlay[a.name]))
       .filter(a => a.isVisible && !a.isReadOnly && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => a.order - b.order) || [];
   }
@@ -167,7 +186,11 @@ export class SparkPoEditComponent {
         }
       }
 
-      const rawValue = editableAttr ? this.formData()[attr.name] : attr.value;
+      // `in`, not a truthiness or `?? attr.value` check: an attribute the refresh revealed has no
+      // slot until its control writes one, and an attribute the user cleared has a slot holding ''.
+      // Coalescing would resurrect the loaded value on exactly the edit that removed it.
+      const formData = this.formData();
+      const rawValue = editableAttr && attr.name in formData ? formData[attr.name] : attr.value;
 
       if (editableAttr && isDateDataType(editableAttr.dataType)) {
         // Back out of the control's bare wall clock into a complete ISO-8601 instant, carrying the
