@@ -54,9 +54,27 @@ public static class SparkIdentityProviderExtensions
         {
             builder.Services.AddCors(corsOptions =>
             {
-                corsOptions.AddPolicy("SparkOidcCors", policy =>
+                corsOptions.AddPolicy(CorsPolicy, policy =>
                 {
-                    policy.SetIsOriginAllowed(_ => true) // Validated at runtime below
+                    // ⚠️ Any origin, and the comment that used to sit here said "Validated at runtime
+                    // below". There was no such validation: `OidcApplication.AllowedCorsOrigins`
+                    // occurs exactly twice in this repository — its own declaration and a doc
+                    // comment — and is read by nothing. A comment describing a control that does not
+                    // exist is worse than no comment, because it answers the reviewer's question
+                    // wrongly.
+                    //
+                    // Any-origin is defensible for what this policy now covers: a public OIDC client
+                    // is a browser app with no secret, so `/token` is *designed* to be called
+                    // cross-origin and its control is PKCE — the code_verifier — not the Origin
+                    // header. What is NOT defensible is applying that to endpoints outside the
+                    // protocol, which is what the unscoped `UseCors` below used to do.
+                    //
+                    // Restricting to each application's registered origins is still worth doing as
+                    // defence in depth (it stops a hostile page burning a victim's authorization
+                    // code). It needs a cached application lookup, because SetIsOriginAllowed is
+                    // synchronous and this would otherwise hit RavenDB on every preflight. Tracked
+                    // in docs/leftovers.md.
+                    policy.SetIsOriginAllowed(_ => true)
                           .AllowAnyHeader()
                           .AllowAnyMethod();
                 });
@@ -71,7 +89,18 @@ public static class SparkIdentityProviderExtensions
         {
             if (options.EnableDynamicCors)
             {
-                app.UseCors("SparkOidcCors");
+                // ⚠️ No policy name. This was `app.UseCors("SparkOidcCors")`, which applies a policy
+                // to the ENTIRE pipeline — so merely enabling the identity provider let any page on
+                // any origin read the anonymous view of `/spark/types`, `/spark/translations`,
+                // `/spark/permissions/*` and `/spark/auth/capabilities`. The policy sets no
+                // `AllowCredentials`, so it was the anonymous view only and never the caller's own
+                // data; it was still a surface nobody asked for and nothing documented.
+                //
+                // Named here, the policy would be the pipeline default. Unnamed, the middleware
+                // applies only what each matched endpoint asked for with `RequireCors` — so the five
+                // endpoints that opt in are the five that get it, and the decision lives next to the
+                // route rather than in a path list that can drift away from one.
+                app.UseCors();
             }
 
             // The interactive pages must not be framable. Every one of them turns a single click
@@ -110,11 +139,44 @@ public static class SparkIdentityProviderExtensions
         return builder;
     }
 
+    /// <summary>
+    /// The policy the OIDC endpoints a browser reaches with <c>fetch</c> opt into, and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// Discovery and JWKS are fetched by every SPA OIDC library on boot; <c>/token</c> is the PKCE
+    /// code exchange; <c>/userinfo</c> and <c>/revoke</c> are called with the resulting token.
+    /// Everything else under <c>/connect</c> — authorize, login, consent, applications — is reached by
+    /// top-level navigation, which is not a CORS request at all, so opting those in would grant
+    /// something no caller can use.
+    ///
+    /// ⚠️ <c>/introspect</c> is deliberately left out: it is a resource-server-to-provider call
+    /// authenticated by client credentials, so a browser has no business making it.
+    /// </remarks>
+    private const string CorsPolicy = "SparkOidcCors";
+
+    /// <summary>
+    /// Opts one endpoint into <see cref="CorsPolicy"/> — but only when the application enabled it.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>The condition is not tidiness; without it the endpoint throws on every request.</b>
+    /// <c>RequireCors</c> attaches metadata, and ASP.NET fails a request whose endpoint carries CORS
+    /// metadata when no CORS middleware is in the pipeline:
+    /// <i>"contains CORS metadata, but a middleware was not found that supports CORS"</i>. Since
+    /// <c>EnableDynamicCors</c> is off by default, applying it unconditionally would mean
+    /// <c>/connect/token</c> — the PKCE code exchange, the endpoint the whole provider exists to
+    /// serve — throwing a 500 in the default configuration. Caught by
+    /// <c>OidcCorsScopeTests.By_default_the_identity_provider_grants_no_cross_origin_access</c>.
+    /// </remarks>
+    private static TBuilder WithOidcCors<TBuilder>(
+        this TBuilder builder, SparkIdentityProviderOptions options)
+        where TBuilder : IEndpointConventionBuilder
+        => options.EnableDynamicCors ? builder.RequireCors(CorsPolicy) : builder;
+
     private static IEndpointRouteBuilder MapIdentityProviderEndpoints(this IEndpointRouteBuilder endpoints, SparkIdentityProviderOptions options)
     {
         // Discovery endpoints (well-known paths)
-        endpoints.MapGet("/.well-known/openid-configuration", Discovery.Handle);
-        endpoints.MapGet("/.well-known/jwks", Jwks.Handle);
+        endpoints.MapGet("/.well-known/openid-configuration", Discovery.Handle).WithOidcCors(options);
+        endpoints.MapGet("/.well-known/jwks", Jwks.Handle).WithOidcCors(options);
 
         // OIDC protocol endpoints
         var connectGroup = endpoints.MapGroup("/connect");
@@ -143,11 +205,11 @@ public static class SparkIdentityProviderExtensions
         // a cross-site request to borrow — and a token that has to be presented cannot be
         // supplied by the browser on the caller's behalf. Requiring a token here would simply
         // break every conforming OAuth client.
-        connectGroup.MapPost("/token", (Delegate)Token.Handle);
-        connectGroup.MapGet("/userinfo", (Delegate)UserInfo.Handle);
+        connectGroup.MapPost("/token", (Delegate)Token.Handle).WithOidcCors(options);
+        connectGroup.MapGet("/userinfo", (Delegate)UserInfo.Handle).WithOidcCors(options);
         connectGroup.MapGet("/logout", (Delegate)Logout.Handle);
         connectGroup.MapPost("/introspect", (Delegate)Introspection.Handle);
-        connectGroup.MapPost("/revoke", (Delegate)Revocation.Handle);
+        connectGroup.MapPost("/revoke", (Delegate)Revocation.Handle).WithOidcCors(options);
 
         return endpoints;
     }

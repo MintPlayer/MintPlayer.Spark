@@ -76,38 +76,69 @@ a one-off:
 
 ---
 
-## Found 2026-09-13 while surveying anonymous disclosure — NOT fixed, NOT in scope
+## Found 2026-09-13 while surveying anonymous disclosure
 
 Three findings turned up by a survey run for an unrelated question (how a client should detect that an
-optional server module is absent). None is caused by the route-table work, none was in its scope, and
-each is recorded here rather than fixed so that the decision to fix is taken deliberately.
+optional server module is absent). None was caused by the route-table work. They were brought into
+scope at the issue owner's direction; the outcomes differ, so each is recorded with its verdict.
 
-**1. ⚠️ Enabling the identity provider applies wildcard CORS to the entire pipeline.**
-`SparkIdentityProviderOptions.EnableDynamicCors` defaults to `true`
-(`SparkIdentityProviderOptions.cs:38`). The policy is
-`SetIsOriginAllowed(_ => true).AllowAnyHeader().AllowAnyMethod()`
-(`SparkIdentityProviderExtensions.cs:55-64`), applied by a bare `app.UseCors("SparkOidcCors")` at
-`:74` — **not scoped to `/connect`**. So any page on any origin can read the anonymous view of
-`/spark/types`, `/spark/translations`, `/spark/permissions/*` and `/spark/auth/capabilities`
-cross-origin. There is no `AllowCredentials`, so it is the anonymous view only.
+### 1. ✅ FIXED — enabling the identity provider applied wildcard CORS to the entire pipeline
 
-⚠️ **The inline comment says `// Validated at runtime below`, and no such validation exists.**
-Verified: `AllowedCorsOrigins` occurs exactly twice in the repository — a doc comment
-(`SparkIdentityProviderOptions.cs:36`) and an unread model property (`OidcApplication.cs:63`). The
-per-application origin allow-list the comment promises was never implemented. A comment describing a
-control that does not exist is worse than no comment: it answers the reviewer's question wrongly.
+`EnableDynamicCors` defaulted to `true`, and the policy — `SetIsOriginAllowed(_ => true)` — was applied
+by a bare `app.UseCors("SparkOidcCors")`, which is **pipeline-wide**. So merely turning the identity
+provider on let any page on any origin read the anonymous view of `/spark/types`,
+`/spark/translations`, `/spark/permissions/*` and `/spark/auth/capabilities`. No `AllowCredentials`, so
+it was the anonymous view only — but a grant nobody asked for, to support a scenario nobody in this
+repository has.
 
-Two candidate fixes, and they are not exclusive: scope the policy to the `/connect` group, and/or
-implement the per-application validation against `OidcApplication.AllowedCorsOrigins`.
+⚠️ **The inline comment said `// Validated at runtime below`. There was no such validation.**
+`OidcApplication.AllowedCorsOrigins` occurs exactly twice — its declaration and a doc comment — and is
+read by nothing. A comment describing a control that does not exist is worse than no comment: it
+answers the reviewer's question wrongly.
 
-**2. `GET /spark/culture` and `GET /spark/translations` inject no `IPermissionService`**
-(`Culture/Get.cs:13-17`, `Translations/Get.cs:13-17`). An anonymous caller receives every translation
-key and value in the application, including labels for entities and actions they can never reach.
-⚠️ **Uncertain whether this is intentional** — a shell must render before anyone signs in, so *some*
-anonymous translation access is required by design; whether it should be the whole catalogue is the
-open question. `docs/issue_236_security_sweep_PRD.md:76` caught the analogous `lookupref` hole and is
-silent on these two, which suggests they were not considered rather than cleared.
+**Fixed three ways**, and the default is the important one:
+- `EnableDynamicCors` now defaults to **off**. Only a browser-based client on a *different* origin
+  needs it; an application's own Angular frontend is served from the same host, so it never did.
+- The policy is **endpoint-scoped** (`RequireCors` on the five endpoints a browser actually calls with
+  `fetch`) rather than pipeline-wide, so the decision lives next to the route instead of in a path
+  list that can drift away from one.
+- The false comment is replaced by an accurate one.
 
-**3. `GET /spark/auth/external-login?provider=X` 302s to the upstream IdP**
-(`SparkAuthenticationExtensions.cs:99-122`), disclosing the provider and its client id. Lowest of the
-three: `/spark/auth/capabilities` volunteers the provider list to anonymous callers anyway, by design.
+⚠️ **A test caught a defect in that fix, which is worth knowing before touching it again.**
+`RequireCors` attaches metadata, and ASP.NET **throws on any request** to an endpoint carrying CORS
+metadata when no CORS middleware is registered. Applied unconditionally, that would have made
+`/connect/token` — the PKCE code exchange — a 500 in the new default configuration. `WithOidcCors`
+applies the convention only when the option is on.
+
+**Still open:** turning it on grants **any** origin. Narrowing to each application's registered origins
+needs a cached lookup, because `SetIsOriginAllowed` is synchronous and would otherwise hit RavenDB on
+every preflight. Worth doing as defence in depth — it stops a hostile page burning a victim's
+authorization code — but it is a feature, not a fix, and it is not built.
+
+### 2. ⚠️ OPEN, deliberately — the translation catalogue is anonymous and unfiltered
+
+`GET /spark/translations` returns `translationsLoader.GetAll()` with no `IPermissionService` anywhere
+in the endpoint (`Translations/Get.cs`); `GET /spark/culture` is the same shape. An anonymous caller
+receives every translation key and value in the application.
+
+**The sharp form of the problem is the inconsistency, not the endpoint.** `/spark/types` is
+permission-filtered — a caller sees only the entity types they may see. `/spark/translations` is not,
+and its values can name the very types `/spark/types` withheld.
+
+**Not fixed, and not with a heuristic.** The obvious repair — drop keys that look like the names of
+entities or actions the caller cannot reach — is exactly the kind of downstream inference this
+repository has decided against (*fix the measurement, not the number*). Translation keys are arbitrary
+strings; nothing maps them to resources. A real fix is a model change: split the catalogue into a
+shell portion that must be anonymous (the app has to render a sign-in page) and an application portion
+that must not be. That is a feature with a design, and it should be decided rather than improvised.
+
+`docs/issue_236_security_sweep_PRD.md:76` caught the analogous `lookupref` hole and is silent on these
+two, which suggests they were never considered rather than considered and cleared.
+
+### 3. ✅ NOT A DEFECT — the external-login redirect
+
+`GET /spark/auth/external-login?provider=X` 302s to the upstream provider, disclosing the provider and
+its client id. Checked and dismissed on the evidence: `/spark/auth/capabilities` **already volunteers
+the provider list to anonymous callers by design** (`GetAuthCapabilities.cs:43-48`), and an OAuth
+client id is a public parameter, not a secret — it appears in every authorization URL a browser
+follows. Nothing to fix. Recorded so the next survey does not re-raise it.
