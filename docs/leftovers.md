@@ -159,3 +159,57 @@ its client id. Checked and dismissed on the evidence: `/spark/auth/capabilities`
 the provider list to anonymous callers by design** (`GetAuthCapabilities.cs:43-48`), and an OAuth
 client id is a public parameter, not a secret — it appears in every authorization URL a browser
 follows. Nothing to fix. Recorded so the next survey does not re-raise it.
+
+---
+
+## Found 2026-09-13 while running the S1 wire-fidelity spike
+
+### 1. ⏳ OPEN DECISION — optimistic concurrency is enforced for one client and not the other
+
+`DatabaseAccess.cs:242` makes the concurrency check **opt-in by the presence of the field**: it
+compares `persistentObject.Etag` against the stored change vector only when the incoming object
+carries one.
+
+`SparkClient` round-trips the object it loaded, so it carries the etag and gets the check — a stale
+save raises `SparkConcurrencyException` and surfaces as `409`. The Angular frontend rebuilds its save
+payload from form data (`spark-po-edit.component.ts`, `{ id, name, objectTypeId, attributes }`) and
+**drops the etag it was given**. So two people editing the same record in a browser get last-write-
+wins, silently, and the same two doing it through `SparkClient` get a conflict.
+
+Measured, not inferred: the two `po/update` bodies were captured side by side and `etag` appears in
+exactly one of them.
+
+**Not fixed, because it is not ours to choose.** The honest repair is for the frontend to send the
+token it already receives — the server side is already built and already correct. But that makes saves
+fail where they currently succeed, and there is no conflict UI to fail *into*: today a `409` would
+reach the user as a generic error banner with no way to see what changed or to merge. Turning silent
+data loss into an unexplained refusal is not obviously an improvement, and choosing between them is a
+product decision.
+
+Three shapes it could take, in increasing order of work:
+
+1. Send the etag and let `409` render as the generic error. Cheapest; worst message.
+2. Send the etag and give `409` its own message — "somebody else changed this record; reload to see
+   their version". Honest, and no merge UI to build.
+3. Send the etag and offer a reload-and-reapply path. The real feature.
+
+Doing nothing is also a position, but it should be a stated one: **the browser has no concurrency
+control at all**, and nothing in the UI says so.
+
+### 2. ✅ FIXED HERE — a refreshed attribute's value was never saved
+
+Not deferred; recorded because of how it hid. `spark-po-edit` and `spark-po-create` chose the
+attributes they read values from by filtering on each attribute's state **as loaded**, while
+`spark-po-form` renders from the same filter with the refresh overlay applied. An attribute that
+`OnRefreshAsync` revealed was therefore rendered, filled in, and then left out of the payload — and
+because a hook reveals a field precisely when it has just become required, the server refused the save
+as missing the very value the user had just typed. The form had no way forward. In Fleet this meant a
+car could not be marked stolen at all, through the UI, ever.
+
+The overlay is now a `model` on the form, bound two-way by both pages, so the rendering filter and the
+saving filter cannot drift apart again.
+
+⚠️ **Why nothing caught it.** `TriggersRefreshTests` asserts the refresh *response* and stops there;
+no test drove the form through the save that follows. 2184 unit tests and 95 browser tests passed over
+a form that could not be submitted. The new guards are unit tests on each page, at the level where the
+two filters actually diverged.

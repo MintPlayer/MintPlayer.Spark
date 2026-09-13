@@ -14,7 +14,7 @@ that fails because the method does not compile has proven nothing.
 
 | Item | State |
 |---|---|
-| **S1** Does the client's wire traffic match the browser's for a full action→retry→resubmit flow? | **Not run.** Gates M3's API freeze. |
+| **S1** Does the client's wire traffic match the browser's for a full action→retry→resubmit flow? | **Done 2026-09-13. Yes** — the two `po/update` bodies diff identically, key for key. Eight divergences listed below; two of them widen M3, one is open for you, five need nothing. ⚠️ Running it uncovered and fixed a live frontend defect. |
 | **S2** What does a retry from `refresh` / `new` / `delete-row` actually return today? | **Done.** The exception **escapes the pipeline unhandled** — not a 449, not a loop, not a 500 from the endpoint. See below. |
 | ~~**S3** How should a retry from `OnLoadAsync` / `OnQueryAsync` fail?~~ | **Dropped.** Superseded by the reads-become-POST decision — there is no failure to design, because those hooks stop being special. |
 | **S4** Route shape, and how the type is authorized once it leaves the route | **Done.** Table settled (fully literal). Invariant pinned by `TypeConflationTests` and proven to fail when broken. Single-resolver design is M2 step 0. |
@@ -22,7 +22,7 @@ that fails because the method does not compile has proven nothing.
 | **M1** Server: retry works from every hook that can prompt (FR7a/b) | **Done.** `new`, `delete-row` and `refresh` all emit and accept. ⚠️ Refresh needed a second fix — see below. |
 | **M2** Server + clients: reads become POST, route table fully literal (FR21–FR25, FR29, FR30) | **Done.** 11 routes moved, both clients and 22 test files swept. See below. |
 | **M2b** Server: centralise the emit half (FR26) | **Done.** One middleware catch replaces nine. ⚠️ One endpoint needs an exception filter — see below. |
-| **M3** Client: answer a retry (FR1–FR6) | **Not started.** Gated on S1. ⚠️ Its step 3 was corrected — nine endpoints, not five. |
+| **M3** Client: answer a retry (FR1–FR6) | **Not started.** Unblocked — S1 is done. ⚠️ Widened twice by S1: 449 must become in-protocol on **all nine** endpoints, not just `actions/execute`, and `ExecuteActionAsync` needs a `queryId` parameter before the API is frozen. |
 | **M4** Client: surface and apply client operations (FR8–FR11) | Not started |
 | **M5** Client: endpoint coverage (FR12–FR16) | **Not started.** ⚠️ Its endpoint list was corrected — `POST /spark/actions/list`, not `GET /spark/actions/{type}`. |
 | **M6** Client: headers (FR18) | Not started |
@@ -32,10 +32,11 @@ that fails because the method does not compile has proven nothing.
 
 ### What is left, in the order it has to happen
 
-1. **S1** — the wire-fidelity spike. Gates M3, because M3 freezes published API. Re-scoped: path and
-   verb are now identical by construction, so it is a **body-shape** spike. Needs a running Fleet host,
-   a retry-raising action, and the `playwright_node` MCP.
-2. **M3** — `ContinueAsync`. The one milestone everything else on the client side waits for.
+1. ~~**S1** — the wire-fidelity spike.~~ **Done 2026-09-13**; see its section for the answer, the
+   divergence table, and the frontend defect it uncovered.
+2. **M3** — `ContinueAsync`. The one milestone everything else on the client side waits for. S1
+   widened it: make 449 in-protocol on all nine endpoints and add `queryId` to `ExecuteActionAsync`
+   before freezing the API.
 3. **M4, M5, M6** — client operations, endpoint coverage, headers. Independent of each other.
 4. **M6b** — retire `SparkTestClient`, after M5 supplies the `lookupref` methods its last consumer needs.
 5. **M8** — the worked example, once M3 exists to demonstrate.
@@ -99,6 +100,52 @@ spike's job is to make each one a *decision*.
 pinning it as a test would add a second expensive browser test against a shared rate-limit budget
 ([R4](spark_client_conversation_PRD.md#r4--the-e2e-rate-limit-budget-is-shared)) to assert something
 that only needs to be true once, at design time.
+
+### Done. Measured 2026-09-13.
+
+Both halves were driven against one running Fleet host: the browser through the `playwright_node`
+MCP, the client through a throwaway console harness with a request-logging `DelegatingHandler`. Two
+flows — a save whose hook prompts twice (`po/update`, Status → Stolen), and a delete whose hook
+prompts once with a virtual PersistentObject (`po/delete`, answered `Cancel`, which
+`CarActions.OnDeleteAsync` treats as a no-op, so the round trip completes and nothing is destroyed).
+
+**The answer to the question is yes.** Diffed key-by-key, the two `po/update` bodies are identical:
+same top-level fields, the same 17 attributes, and the same 23 keys on every attribute. The wire is
+one protocol, not two.
+
+**What the browser does that the plan had not written down.** The retry body is the *original request
+object, mutated*: `spark.service.ts` appends to `body.retryResults` and re-sends the same object, so
+every attempt carries the full original payload and an answer array that grows by one. Each answer is
+`{step, option}` — plus `persistentObject` only when the prompt carried one — and **`step` is echoed
+from the server's retry operation, never counted by the client.** That last point is the one thing
+M3 could most easily get wrong, because counting locally works right up until a hook skips a step.
+
+**Divergences, each now a decision rather than an accident:**
+
+| # | Divergence | Standing |
+|---|---|---|
+| 1 | **The client cannot answer a retry at all.** | This is M3, as planned. |
+| 2 | **449 is translated on `actions/execute` only.** Every other endpoint throws `SparkClientException`, so a caller cannot even *read* the prompt from a save, load, refresh, new or delete. | ⚠️ **Widens M3.** M0–M2b made nine endpoints emit 449; the client still understands one. M3 is not "add `ContinueAsync`", it is "make 449 in-protocol everywhere, then add `ContinueAsync`". |
+| 3 | **No `X-Spark-Timezone`.** The browser sends `Europe/Brussels`; the client sends nothing and the server falls back silently. | M6, as planned — and the trace confirms the header name and shape. |
+| 4 | **No `queryId` on `ExecuteActionAsync`.** The grid sends it (`spark-query-grid.component.ts:347-355`); the client has no parameter for it. The server therefore re-runs the query narrowed to the selection for a browser, and falls back to loading each id for the client — a *different code path*, with different row filtering. | ⚠️ **Fold into M3's API freeze.** A test that asserts an action's behaviour over a grid selection is today asserting the path the grid never takes. |
+| 5 | **The client sends `etag`; the browser does not.** `DatabaseAccess.cs:242` makes the optimistic-concurrency check opt-in *by presence of the field*, and `spark-po-edit`'s payload drops it. So a stale save is a `409` through `SparkClient` and last-write-wins in a browser, with nothing shown to either user. | **Open — needs a decision, not code.** Recorded in [leftovers.md](leftovers.md). The honest fix is for the frontend to send the token it already receives, but that makes saves fail where they currently succeed, so it is not ours to choose. |
+| 6 | `objectTypeId` is an alias from the detail page and a Guid from the grid; the client sends a Guid on update and an alias on load. | **No action.** Both forms occur in the browser too, and `SparkRequestType.Resolve` is the single reader of either. |
+| 7 | `persistentObject` carries `breadcrumb`, `can`, `etag` from the client and not the browser. | **No action** beyond #5 — the server ignores the first two on a write. |
+| 8 | `sortColumns` is a typed array on the wire and a legacy `prop:asc` string on `ExecuteQueryAsync`. | Already known; unchanged. It belongs with the column-filtering work, where there will be a second thing to express. |
+
+**Found while running it, and fixed here** — not a client matter at all, but the spike could not
+proceed without it. The browser flow was unreachable: **an attribute that a refresh hook reveals never
+contributed its value to the save.** `spark-po-edit` and `spark-po-create` filtered the attributes
+they read values from on the attribute's state *as loaded*, while `spark-po-form` renders from the
+same filter with the refresh overlay applied. So a revealed field was rendered, filled in by the user,
+and then dropped — and since a hook reveals a field precisely when it has just become required, the
+server refused the save for the very value the user had typed, with no way forward from inside the
+form. In Fleet this meant **a car could not be marked stolen at all**. The overlay is now a `model` on
+the form, bound two-way by both pages, and both filters apply it. Guarded by unit tests on each page.
+
+⚠️ Worth saying plainly why nothing caught it: `TriggersRefreshTests` asserts the refresh *response*
+and stops there, and no test drove the form. 2184 unit tests and 95 browser tests all passed over a
+form that could not be submitted.
 
 ---
 
