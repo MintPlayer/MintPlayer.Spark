@@ -104,6 +104,23 @@ answers the reviewer's question wrongly.
   list that can drift away from one.
 - The false comment is replaced by an accurate one.
 
+**Then the model was generalised**, at the issue owner's direction, into the three tiers now documented
+in [the CORS guide](guide-cors.md): Spark's own endpoints answer cross-origin by **default** under a
+named `SparkCors` policy; a library's and an application's do not, and opt in. `UseSpark` registers the
+CORS middleware unconditionally, the way it already did antiforgery, so `RequireCors` is safe for any
+module to write.
+
+⚠️ **A named policy, never `AddDefaultPolicy`.** A default policy is last-write-wins, so Spark
+registering one would clobber an application's own — or be clobbered by it — depending on whether the
+app called `AddCors` before or after `AddSpark`. An app's controllers would break cross-origin because
+it added Spark, with the outcome depending on call order.
+
+⚠️ **This reversed an earlier decision in the same PR.** An application's default policy used to reach
+`/spark/*`, recorded as deliberate on the grounds that a default policy is the app saying "everywhere".
+Spark's named policy now wins on its own prefix, and that is better for a reason the first framing
+missed: the framework's endpoints have their own security model, and what they expose cross-origin
+should not depend on a convenience default set for an application's controllers.
+
 ⚠️ **A test caught a defect in that fix, which is worth knowing before touching it again.**
 `RequireCors` attaches metadata, and ASP.NET **throws on any request** to an endpoint carrying CORS
 metadata when no CORS middleware is registered. Applied unconditionally, that would have made

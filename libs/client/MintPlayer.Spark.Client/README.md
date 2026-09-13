@@ -147,6 +147,17 @@ The remaining work is all on this side of the wire.
 
 ---
 
+## CORS does not apply to you
+
+Spark's endpoints answer `Access-Control-Allow-Origin: *` ([why](../../../docs/guide-cors.md)), which is
+about **browsers** and has no bearing on this client. `HttpClient` is not subject to CORS: it sends what
+you tell it and reads what comes back, cross-origin or not.
+
+⚠️ Worth stating because the inverse trips people up: a test passing through `SparkClient` proves
+nothing about whether a *browser* could make the same call. If you need that, it is a browser test.
+
+---
+
 ## Errors
 
 Non-success statuses throw `SparkClientException`, carrying `StatusCode` and the response body.

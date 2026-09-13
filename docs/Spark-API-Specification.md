@@ -12,6 +12,8 @@ Reference for every HTTP endpoint the Spark framework exposes. All endpoints liv
 
 **Response envelope:** mutating endpoints answer `{ result, operations }`, where `operations` is an array of typed side-effects (`navigate`, `notify`, `refreshQuery`, `retry`, …). See [`docs/prd/PRD-ClientOperations.md`](./prd/PRD-ClientOperations.md). The reads answer a bare object; only their `449` is enveloped, because a retry has nowhere else to live.
 
+**CORS:** every endpoint below answers `Access-Control-Allow-Origin: *`, so a page on another origin may read it. That grants nothing new — a cross-origin request carries no cookies, so what it reads is the anonymous view, which any HTTP client could already fetch without a browser. ⚠️ The exception is a Spark app on a **private network**, where a public page a user visits gains a route it would not otherwise have; such a deployment opts endpoints out individually. See [CORS](guide-cors.md).
+
 ## Route Prefix Mapping
 
 All endpoints are hierarchically organized under a single top-level prefix and group-based sub-prefixes:

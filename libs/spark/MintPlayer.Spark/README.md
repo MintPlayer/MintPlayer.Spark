@@ -330,6 +330,11 @@ Mutating endpoints require an `X-XSRF-TOKEN` header; the token is provided as a 
 require one despite being POSTs — the verb changed, what they do did not, and an antiforgery token
 protects against a cross-site request causing a *change*.
 
+Every endpoint above answers `Access-Control-Allow-Origin: *`, so a page on another origin may read it.
+A cross-origin request carries no cookies, so it reads the anonymous view — the same thing any HTTP
+client could already fetch. To take that off an endpoint, or to opt one of your own endpoints in, see
+the [CORS guide](../../../docs/guide-cors.md).
+
 ## Extension Methods
 
 | Method | Description |

@@ -1,7 +1,7 @@
 # Spark client — completing the conversation: implementation plan
 
 **PRD:** [spark_client_conversation_PRD.md](spark_client_conversation_PRD.md)
-**Status:** **M0, M1, M2, M2b and the S2/S4 spikes done** — 2159/2159 unit, 39/39 client, 490/490 ng-spark. S3 dropped. The route table is fully literal and `OnLoad`/`OnQuery` have joined the retry mechanism, which is what makes M2b safe. The **server** side is finished; next are the client milestones M3–M8, which S1 gates.
+**Status:** **M0, M1, M2, M2b and the S2/S4 spikes done** — 2184/2184 unit, 95/95 E2E, 39/39 client, 490/490 ng-spark, 278/278 generators. S3 dropped. The route table is fully literal, `OnLoad`/`OnQuery` have joined the retry mechanism, and both halves of a retry are centralised. The **server** side is finished; next are the client milestones M3–M8, which S1 gates.
 **Branch:** `fix/datetimeoffset-fidelity` (shared with PR #403 at the issue owner's direction).
 
 Method: red/green throughout, as `issue_384_plan.md` was. Every milestone that changes public API on

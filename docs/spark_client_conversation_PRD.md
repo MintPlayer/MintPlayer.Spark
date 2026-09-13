@@ -1,10 +1,13 @@
 # Spark client — completing the conversation
 
-**Status:** **Partially implemented.** M0, M1, M2 and spikes S2/S4 are done on
-`fix/datetimeoffset-fidelity` — the server's route table is fully literal and every hook that can prompt
-now does, reads included. The **client-side** milestones (M3 onwards) are not started. Investigation
-complete (4 parallel surveys, 2026-09-12); every claim below is cited to code, and the corrections are
-kept rather than edited away.
+**Status:** **Server complete, client not started.** M0, M1, M2, M2b and spikes S2/S4 are done on
+`fix/datetimeoffset-fidelity` — the route table is fully literal, every hook that can prompt now does
+(reads included), and both halves of a retry are centralised. The **client-side** milestones (M3
+onwards) are not started; **S1 gates M3's API freeze and has not been run**.
+
+Investigation complete (4 parallel surveys 2026-09-12, 2 more 2026-09-13); every claim below is cited
+to code, and the corrections are kept rather than edited away. ⚠️ Two of those corrections were
+instructions that would have produced wrong code if followed — see FR1 and FR14.
 **Plan:** [spark_client_conversation_plan.md](spark_client_conversation_plan.md)
 
 ---
