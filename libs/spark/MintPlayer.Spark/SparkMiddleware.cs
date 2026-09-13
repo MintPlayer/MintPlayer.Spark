@@ -51,6 +51,21 @@ public static class SparkExtensions
         // Register antiforgery (required by Spark's POST/PUT/DELETE endpoints)
         services.AddAntiforgery(opt => opt.HeaderName = "X-XSRF-TOKEN");
 
+        // CORS services, always — for the same reason antiforgery is registered always, and with the
+        // same consequence if it is not.
+        //
+        // ⚠️ This registers **no policy**, so it grants nothing by itself. What it buys is that
+        // `UseCors()` in UseSpark can exist at all: the middleware resolves ICorsService from DI and
+        // throws at startup if AddCors was never called. Together they make `RequireCors` on any
+        // endpoint *safe to write* — which it is not otherwise, because ASP.NET fails a request whose
+        // endpoint carries CORS metadata when no CORS middleware is in the pipeline.
+        //
+        // That failure is not theoretical: the identity provider registered its own UseCors only when
+        // its opt-in flag was set, so an endpoint that asked for CORS while the flag was off threw on
+        // every request rather than simply not getting CORS. A module should be able to declare what an
+        // endpoint needs without also having to arrange the pipeline for it.
+        services.AddCors();
+
         // Ensure HttpContextAccessor is available (needed for RequestCultureResolver)
         services.AddHttpContextAccessor();
 
@@ -201,6 +216,24 @@ public static class SparkExtensions
         // same side of routing as the rest of UseSpark either way, and UseAuthorization below carries
         // the identical requirement for [Authorize] — which ASP.NET Core itself leaves unguarded.
         registry.ApplyMiddleware(app, SparkMiddlewareStage.BeforeAuthentication);
+
+        // CORS, always registered and granting nothing on its own — the same arrangement as
+        // UseAntiforgery() below, for the same reason. No policy name is passed, so this applies only
+        // what each matched endpoint asked for with RequireCors, and nothing to endpoints that ask for
+        // none. Naming a policy here would make it the pipeline default, which is how the identity
+        // provider once put an any-origin policy on every Spark endpoint.
+        //
+        // ⚠️ Before UseAuthentication deliberately. A CORS preflight is an unauthenticated OPTIONS
+        // request that carries no credentials by definition; running it after the authentication and
+        // authorization stages invites those stages to refuse the preflight for a request the browser
+        // has not made yet, and the failure surfaces as an opaque cross-origin error rather than as a
+        // 401 anyone can read.
+        //
+        // ⚠️ The point of registering it unconditionally is that RequireCors becomes safe to write.
+        // ASP.NET throws on ANY request to an endpoint carrying CORS metadata when no CORS middleware
+        // is present, so a module that attaches the metadata but forgets the pipeline turns "no CORS"
+        // into "this endpoint is dead" — which is what happened to /connect/token.
+        app.UseCors();
 
         // Any registered credential is a reason to authenticate, not just Identity. An app whose
         // only callers are machines — client certificates, or bearer tokens from the identity

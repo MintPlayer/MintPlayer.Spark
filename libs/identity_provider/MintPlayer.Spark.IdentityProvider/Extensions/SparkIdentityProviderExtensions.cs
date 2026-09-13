@@ -87,21 +87,15 @@ public static class SparkIdentityProviderExtensions
         // Register middleware to deploy indexes
         builder.Registry.AddMiddleware(app =>
         {
-            if (options.EnableDynamicCors)
-            {
-                // ⚠️ No policy name. This was `app.UseCors("SparkOidcCors")`, which applies a policy
-                // to the ENTIRE pipeline — so merely enabling the identity provider let any page on
-                // any origin read the anonymous view of `/spark/types`, `/spark/translations`,
-                // `/spark/permissions/*` and `/spark/auth/capabilities`. The policy sets no
-                // `AllowCredentials`, so it was the anonymous view only and never the caller's own
-                // data; it was still a surface nobody asked for and nothing documented.
-                //
-                // Named here, the policy would be the pipeline default. Unnamed, the middleware
-                // applies only what each matched endpoint asked for with `RequireCors` — so the five
-                // endpoints that opt in are the five that get it, and the decision lives next to the
-                // route rather than in a path list that can drift away from one.
-                app.UseCors();
-            }
+            // ⚠️ No UseCors here. `UseSpark` registers the CORS middleware unconditionally — the same
+            // arrangement as antiforgery — so this module declares only what its endpoints need
+            // (`RequireCors`) and leaves the pipeline alone.
+            //
+            // It used to call `app.UseCors("SparkOidcCors")`, which applies a policy to the ENTIRE
+            // pipeline: merely enabling the identity provider let any page on any origin read the
+            // anonymous view of `/spark/types`, `/spark/translations`, `/spark/permissions/*` and
+            // `/spark/auth/capabilities`. A module arranging the pipeline for itself is how a local
+            // decision became a global one.
 
             // The interactive pages must not be framable. Every one of them turns a single click
             // into a security decision — granting a client access, or removing it — and a framed
@@ -158,14 +152,22 @@ public static class SparkIdentityProviderExtensions
     /// Opts one endpoint into <see cref="CorsPolicy"/> — but only when the application enabled it.
     /// </summary>
     /// <remarks>
-    /// ⚠️ <b>The condition is not tidiness; without it the endpoint throws on every request.</b>
-    /// <c>RequireCors</c> attaches metadata, and ASP.NET fails a request whose endpoint carries CORS
-    /// metadata when no CORS middleware is in the pipeline:
-    /// <i>"contains CORS metadata, but a middleware was not found that supports CORS"</i>. Since
-    /// <c>EnableDynamicCors</c> is off by default, applying it unconditionally would mean
-    /// <c>/connect/token</c> — the PKCE code exchange, the endpoint the whole provider exists to
-    /// serve — throwing a 500 in the default configuration. Caught by
+    /// <para>
+    /// ⚠️ <b>The condition is not tidiness; without it the endpoint throws on every request.</b> The
+    /// named policy is registered only when the option is on, and the CORS middleware throws when an
+    /// endpoint asks for a policy that does not exist. Since <c>EnableDynamicCors</c> is off by
+    /// default, applying <c>RequireCors</c> unconditionally would make <c>/connect/token</c> — the
+    /// PKCE code exchange, the endpoint the whole provider exists to serve — fail in the default
+    /// configuration. Caught by
     /// <c>OidcCorsScopeTests.By_default_the_identity_provider_grants_no_cross_origin_access</c>.
+    /// </para>
+    /// <para>
+    /// ⚠️ It first threw for a <i>different</i> reason — <i>"contains CORS metadata, but a middleware
+    /// was not found that supports CORS"</i> — because this module registered the CORS middleware only
+    /// when its own flag was set. <c>UseSpark</c> now registers it unconditionally, the way it does
+    /// antiforgery, so that failure mode is gone for every module. This condition guards the one that
+    /// remains, which is about the policy rather than the pipeline.
+    /// </para>
     /// </remarks>
     private static TBuilder WithOidcCors<TBuilder>(
         this TBuilder builder, SparkIdentityProviderOptions options)
