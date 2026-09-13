@@ -3,12 +3,25 @@
 **PRD:** [raven_datetimeoffset_and_sort_companions_PRD.md](raven_datetimeoffset_and_sort_companions_PRD.md)
 **Status:** **IMPLEMENTED and verified in a browser.** M1–M9 and M11–M15 done; **only M10 outstanding**,
 and M10 is two outward-facing messages rather than code.
-**Branch:** `fix/datetimeoffset-fidelity` — 18 commits, pushed.
+**Branch:** `fix/datetimeoffset-fidelity`, pushed.
 **PR:** [#403](https://github.com/MintPlayer/MintPlayer.Spark/pull/403), open.
 
-Suites green: `MintPlayer.Spark.Tests` **2147/2147**, `CodeCoverage.Tests` **438/438**,
-`SourceGenerators` **278/278**, `MintPlayer.Spark.Client.Tests` **38/38**, `@mintplayer/ng-spark`
+Suites green: `MintPlayer.Spark.Tests` **2184/2184**, `MintPlayer.Spark.E2E.Tests` **95/95**,
+`SourceGenerators` **278/278**, `MintPlayer.Spark.Client.Tests` **39/39**, `@mintplayer/ng-spark`
 **490/490**.
+
+⚠️ **The branch and PR now carry far more than this plan**, at the issue owner's direction, and a reader
+who assumes otherwise will misjudge the diff. Also on it:
+
+- **The Spark protocol client initiative**, server half complete — the route table is fully literal and
+  every hook that can prompt does. See
+  [spark_client_conversation_plan.md](spark_client_conversation_plan.md), which is where the
+  outstanding work lives (S1, then M3–M8).
+- **The identity provider's CORS defect** and the three-tier model that replaced it —
+  [guide-cors.md](guide-cors.md), [leftovers.md](leftovers.md).
+
+**For this plan specifically, M10 is the only thing left**, and it is two messages the issue owner sends:
+the comment on ravendb#17901, and handing the originating team the Defect C finding.
 
 Versions: all 23 NuGet packages → `10.0.0-preview.81`; `@mintplayer/ng-spark` → `22.18.0`.
 

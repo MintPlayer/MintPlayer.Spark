@@ -22,13 +22,33 @@ that fails because the method does not compile has proven nothing.
 | **M1** Server: retry works from every hook that can prompt (FR7a/b) | **Done.** `new`, `delete-row` and `refresh` all emit and accept. ⚠️ Refresh needed a second fix — see below. |
 | **M2** Server + clients: reads become POST, route table fully literal (FR21–FR25, FR29, FR30) | **Done.** 11 routes moved, both clients and 22 test files swept. See below. |
 | **M2b** Server: centralise the emit half (FR26) | **Done.** One middleware catch replaces nine. ⚠️ One endpoint needs an exception filter — see below. |
-| **M3** Client: answer a retry (FR1–FR6) | Not started |
+| **M3** Client: answer a retry (FR1–FR6) | **Not started.** Gated on S1. ⚠️ Its step 3 was corrected — nine endpoints, not five. |
 | **M4** Client: surface and apply client operations (FR8–FR11) | Not started |
-| **M5** Client: endpoint coverage (FR12–FR16) | Not started |
+| **M5** Client: endpoint coverage (FR12–FR16) | **Not started.** ⚠️ Its endpoint list was corrected — `POST /spark/actions/list`, not `GET /spark/actions/{type}`. |
 | **M6** Client: headers (FR18) | Not started |
 | **M6b** Retire `SparkTestClient` (1 consumer left) | Not started. Gated on M5. |
-| **M7** Version bumps + guard | Not started |
-| **M8** Docs | Not started |
+| **M7** Version bumps + guard | ✅ **Satisfied.** All 23 `libs/**` packages are at `10.0.0-preview.81` against master's `.80`, and `ng-spark` at `22.18.0` against `22.17.0`. One bump per PR is what the CI guard checks, so no further bump is due — but see the note in M7 about what now needs saying in the release notes. |
+| **M8** Docs | **Partly done.** The client README exists and is M2-current; `guide-cors.md` is new; the API specification, the Spark README and both Testing documents are current. **Remaining: the worked conversation-loop example** (needs M3) and the retry section in the guides. |
+
+### What is left, in the order it has to happen
+
+1. **S1** — the wire-fidelity spike. Gates M3, because M3 freezes published API. Re-scoped: path and
+   verb are now identical by construction, so it is a **body-shape** spike. Needs a running Fleet host,
+   a retry-raising action, and the `playwright_node` MCP.
+2. **M3** — `ContinueAsync`. The one milestone everything else on the client side waits for.
+3. **M4, M5, M6** — client operations, endpoint coverage, headers. Independent of each other.
+4. **M6b** — retire `SparkTestClient`, after M5 supplies the `lookupref` methods its last consumer needs.
+5. **M8** — the worked example, once M3 exists to demonstrate.
+
+**Nothing on the server side is outstanding.** M0, M1, M2 and M2b are complete: the route table is
+literal, all nine hooks that can prompt do, and both halves of a retry are centralised.
+
+⚠️ **This PR also carries work from neither initiative**, which a reader of this plan alone would miss:
+the identity provider's CORS defect and the three-tier CORS model that replaced it, plus the corrections
+from two audits. Those are recorded in [leftovers.md](leftovers.md) and
+[guide-cors.md](guide-cors.md). Two items there are still **open and need a decision rather than
+code**: narrowing the identity provider's opt-in to each application's registered origins, and whether
+`/spark/translations` should stay anonymous and unfiltered while `/spark/types` is permission-filtered.
 
 ---
 
@@ -684,6 +704,24 @@ Angular, not our API); this is a minor with the break in the release notes.
 
 ⚠️ `MintPlayer.Spark.Testing` gained public API (`Wire`), and M6b removes some (`SparkTestClient`). Both
 belong in the notes rather than passing silently.
+
+### ✅ The bump itself is done. What still needs writing is the notes.
+
+All 23 `libs/**` packages sit at `10.0.0-preview.81` against master's `.80`, and `ng-spark` at
+`22.18.0` against `22.17.0`. The CI guard checks that a changed package differs from master, so one bump
+covers the PR and **no further bump is due**.
+
+⚠️ **The release notes now have more to carry than this milestone anticipated**, because the PR grew.
+Every item below is a break or a behaviour change a consumer can be surprised by:
+
+| Change | Who it affects |
+|---|---|
+| Every persistent-object, query and action route moved and became `POST` | anyone on `@mintplayer/ng-spark` or `MintPlayer.Spark.Client` — both halves must be taken together, an old client 404s on every call |
+| `sortColumns` is an array on the wire; the `prop:asc` string form is gone | anyone calling `/queries/execute` directly |
+| Spark's own endpoints answer `Access-Control-Allow-Origin: *` | any deployment on a **private network** — see [guide-cors.md](guide-cors.md) |
+| `SparkIdentityProviderOptions.EnableDynamicCors` now defaults to **off** | anyone with a cross-origin browser OIDC client |
+| `MintPlayer.Spark.Testing` gained `Wire` | additive |
+| Hook exceptions now arrive unwrapped on eleven more paths | a hook that threw synchronously used to surface as a 500; it now reaches its typed `catch` — **strictly better, but observably different** |
 
 ---
 
