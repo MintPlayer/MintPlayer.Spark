@@ -215,6 +215,33 @@ describe('SparkService', () => {
     await flushMicrotasks();
   });
 
+  // ⚠️ A hook that raises a retry without checking Retry.Result first re-raises on every
+  // resubmission. Without a bound the modal reopens forever: each round trip looks reasonable, the
+  // tab spins until it is closed, and nothing is logged. The .NET client has had this bound since
+  // M3; this is the browser's half of it.
+  it('gives up on a hook that re-raises forever instead of looping', async () => {
+    retryService.show.mockResolvedValue({ step: 'again', option: 'Yes' });
+
+    const promise = service.create('Person', { name: 'Alice' });
+    // Swallow here so the eventual rejection is never unhandled while we drive the loop below.
+    const settled = promise.then(() => null, (e: Error) => e);
+
+    const prompt = {
+      operations: [{ type: 'retry', step: 'again', title: 'Again?', options: ['Yes'] }],
+    };
+
+    // 16 answers, then the 17th prompt trips the bound.
+    for (let i = 0; i <= 16; i++) {
+      httpTesting.expectOne('/spark/po/create').flush(prompt, { status: 449, statusText: 'Retry With' });
+      await flushMicrotasks();
+    }
+
+    const error = await settled;
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('Gave up after answering 16');
+    expect((error as Error).message).toContain('Again?');
+  });
+
   // Yields the microtask queue several times to let chained awaits resolve.
   function flushMicrotasks() {
     return new Promise<void>(r => setTimeout(r, 0));

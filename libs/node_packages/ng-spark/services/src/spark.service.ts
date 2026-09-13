@@ -58,6 +58,14 @@ export class SparkService {
   private readonly baseUrl = this.config?.baseUrl ?? '/spark';
   private readonly http = inject(HttpClient);
   private readonly retryActionService = inject(RetryActionService);
+
+  /**
+   * How many prompts one request will answer before giving up. Matches the .NET client's
+   * `SparkClient.MaxRetryDepth`, and for the same reason: this is a termination bound, not a
+   * capacity one. Far above any real conversation (Fleet's longest is two) and far below anything
+   * that could hide a spin.
+   */
+  private static readonly MAX_RETRY_DEPTH = 16;
   private readonly dispatcher = inject(SparkClientOperationDispatcher);
 
   // Entity Types
@@ -363,6 +371,21 @@ export class SparkService {
 
     const retryOp = envelope.operations.find(o => o.type === 'retry') as RetryOperation | undefined;
     if (!retryOp) throw error;
+
+    // ⚠️ A hook that raises a retry WITHOUT first checking `Retry.Result` re-raises on every
+    // resubmission, and this loop has no natural end: the modal reopens, the user answers, the
+    // server asks again. Each round trip looks individually reasonable, so the tab spins until it is
+    // closed and nothing is logged. The trap is documented in RetryFromEveryHookTests, and the .NET
+    // client has had a bound since M3; this is the browser's.
+    //
+    // The bound is on ANSWERS ALREADY GIVEN, which is what `retryResults` is — so it counts the
+    // conversation and not the component's lifetime, and two unrelated conversations do not add up.
+    if ((body.retryResults?.length ?? 0) >= SparkService.MAX_RETRY_DEPTH) {
+      throw new Error(
+        `Gave up after answering ${SparkService.MAX_RETRY_DEPTH} retry prompts; the last was step ` +
+        `${retryOp.step} ("${retryOp.title}"). A hook that raises a retry without checking ` +
+        `Retry.Result first will do this — it re-raises on every resubmission.`);
+    }
 
     const payload: RetryActionPayload = {
       type: 'retry-action',

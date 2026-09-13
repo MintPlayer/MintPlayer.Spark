@@ -37,9 +37,14 @@ using Po = Abstractions.PersistentObject;
 /// <para>
 /// ⚠️ The hooks here raise a retry <b>only on the first pass</b> — they check
 /// <see cref="IRetryAccessor.Result"/> first. A hook that raises unconditionally makes an endpoint
-/// that answers 449 forever, and the Angular client resubmits with no depth limit
-/// (<c>spark.service.ts:375-376</c>). That is a real trap for anyone writing one of these hooks,
-/// which is why the fixtures model the correct shape rather than the shortest one.
+/// that answers 449 forever. That is a real trap for anyone writing one of these hooks, which is why
+/// the fixtures model the correct shape rather than the shortest one.
+/// <para>
+/// Both clients now stop at 16 answers rather than looping — <c>SparkClient.MaxRetryDepth</c> and
+/// <c>SparkService.MAX_RETRY_DEPTH</c>. That is a bound on the symptom, not a fix for the hook: the
+/// caller gets an error naming the step instead of a tab that spins until it is closed. Write the
+/// hook the way these fixtures do and neither bound is ever reached.
+/// </para>
 /// </para>
 /// <para>
 /// ⚠️ The entities are named <c>RetryProbe</c> rather than something natural like <c>Order</c> on
