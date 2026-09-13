@@ -22,7 +22,7 @@ that fails because the method does not compile has proven nothing.
 | **M1** Server: retry works from every hook that can prompt (FR7a/b) | **Done.** `new`, `delete-row` and `refresh` all emit and accept. ⚠️ Refresh needed a second fix — see below. |
 | **M2** Server + clients: reads become POST, route table fully literal (FR21–FR25, FR29, FR30) | **Done.** 11 routes moved, both clients and 22 test files swept. See below. |
 | **M2b** Server: centralise the emit half (FR26) | **Done.** One middleware catch replaces nine. ⚠️ One endpoint needs an exception filter — see below. |
-| **M3** Client: answer a retry (FR1–FR6) | **Not started.** Unblocked — S1 is done. ⚠️ Widened twice by S1: 449 must become in-protocol on **all nine** endpoints, not just `actions/execute`, and `ExecuteActionAsync` needs a `queryId` parameter before the API is frozen. |
+| **M3** Client: answer a retry (FR1–FR6) | **Done 2026-09-13.** Both widenings S1 asked for are in: 449 is in-protocol on every endpoint the client has, and `ExecuteActionAsync` takes `queryId`. 18 new tests, 57/57. ⚠️ One deliberate deviation from this plan's step 4 — see below. |
 | **M4** Client: surface and apply client operations (FR8–FR11) | Not started |
 | **M5** Client: endpoint coverage (FR12–FR16) | **Not started.** ⚠️ Its endpoint list was corrected — `POST /spark/actions/list`, not `GET /spark/actions/{type}`. |
 | **M6** Client: headers (FR18) | Not started |
@@ -34,9 +34,7 @@ that fails because the method does not compile has proven nothing.
 
 1. ~~**S1** — the wire-fidelity spike.~~ **Done 2026-09-13**; see its section for the answer, the
    divergence table, and the frontend defect it uncovered.
-2. **M3** — `ContinueAsync`. The one milestone everything else on the client side waits for. S1
-   widened it: make 449 in-protocol on all nine endpoints and add `queryId` to `ExecuteActionAsync`
-   before freezing the API.
+2. ~~**M3** — `ContinueAsync`.~~ **Done 2026-09-13**, including both widenings S1 asked for.
 3. **M4, M5, M6** — client operations, endpoint coverage, headers. Independent of each other.
 4. **M6b** — retire `SparkTestClient`, after M5 supplies the `lookupref` methods its last consumer needs.
 5. **M8** — the worked example, once M3 exists to demonstrate.
@@ -674,6 +672,61 @@ runs, not what it does.
 5. `MaxRetryDepth` with a documented default.
 
 **Verify:** all four facts; `nx run-many --target=test` green.
+
+### Done. 2026-09-13. 57/57 client tests (was 39).
+
+**What shipped.** `PostConversationAsync` is the one loop: post the body, and while the server answers
+449, ask a handler for an answer, append it to `retryResults`, post the **same body** again. Every
+retry-capable method the client has now runs through it — `po/load`, `po/create`, `po/update`,
+`po/delete`, `queries/execute` and `actions/execute`. (`refresh`, `new` and `delete-row` are M5's; they
+inherit the loop for free when they arrive, which is the point of having one.)
+
+Two ways to answer, differing only in who writes the loop:
+
+- **A handler** — `onRetry:` per call, or `SparkClient.RetryHandler` for all of them. The conversation
+  happens inside the call and the caller gets the finished result. This is what the Angular client
+  does.
+- **`ContinueAsync`** on an action, for a caller that wants to look at the question first. Returns the
+  next outcome, which may be another question.
+
+With neither, a 449 is now `SparkRetryRequiredException` — which **derives from**
+`SparkClientException`, so an existing `catch` still catches it, and carries the prompt so a caller
+can at least read what was asked. That is the fix for S1's divergence #2.
+
+**⚠️ One deliberate deviation from step 4 above.** The plan asked for `RetryAnswer` plus an `onRetry:`
+convenience overload implemented *over* `ContinueAsync`. It is the other way round: the handler loop
+is the primitive and `ContinueAsync` is the explicit path beside it. The reason is typing — after
+answering a prompt on `UpdatePersistentObjectAsync` the caller wants a `PersistentObject`, and on
+`ExecuteQueryAsync` a `QueryResult`. A `ContinueAsync` general enough to serve both would have to be
+generic in a result type the caller no longer has a handle on, or return a raw response and make every
+caller re-read it. A handler needs none of that: it answers the question, and the original call
+returns the type it always returned. `ContinueAsync` survives where it is naturally untyped — an
+action, which returns nothing.
+
+**What the tests pin, and why each is there rather than for completeness:**
+
+| Test | The mistake it catches |
+|---|---|
+| `ContinueAsync_resends_the_whole_body_with_the_answer_appended` | Sending a delta. The server has nothing to replay against. |
+| `Two_prompts_accumulate_both_answers` | Sending only the newest answer, so step 0 is re-asked forever. |
+| **`The_step_is_the_servers_even_when_it_skips_one`** | ⚠️ The one that separates a correct client from a plausible one. A hook may skip a step; a locally counted one agrees with the server until it does, then answers a different question than the one asked. Scripted precisely because a real host cannot easily be made to skip. |
+| `A_prompt_that_carries_a_form_gets_it_back_with_the_values` | Dropping `persistentObject` from the answer — Fleet's delete confirmation compares the typed plate against it. |
+| `An_option_that_was_not_offered_is_refused_without_a_round_trip` | FR6. The server cannot tell an option that never existed from one a hook stopped offering: both fail to match and the hook runs its else-branch as though something had been chosen. |
+| `An_unanswered_prompt_names_the_question` (×5 endpoints) | The pre-M3 behaviour — an unrecognised status and an unparsed envelope on everything but actions. |
+| `A_hook_that_never_stops_asking_is_given_up_on` + `The_explicit_loop_is_bounded_too` | FR5, on **both** paths. A bound on one of them is not a bound. |
+| `Two_conversations_through_one_client_do_not_interleave` | The reason the answers live on the result and not on the client. Were this wrong, the symptom would be a wrong answer silently accepted, not an exception. |
+
+**And the Angular client got the same bound.** `RetryFromEveryHookTests` already documented the trap —
+a hook that raises a retry without checking `Retry.Result` first re-raises on every resubmission — and
+noted in passing that *"the Angular client resubmits with no depth limit"*. Giving the .NET client one
+would have left that asymmetry as the answer to "which client survives a buggy hook", so
+`spark.service.ts` now stops at 16 answers too. Without it the modal reopens forever: every round trip
+looks individually reasonable, the tab spins until it is closed, and nothing is logged.
+
+**Scripted, not hosted — deliberately, and against this plan's suggestion.** What M3 gets right or
+wrong is entirely what goes on the wire, and `ScriptedHttpHandler` asserts exactly that. The server's
+half is already covered across all nine endpoints by `RetryFromEveryHookTests`, and S1 proved the two
+wires match. A hosted test would have re-proved the server and still not covered the skipped step.
 
 ---
 

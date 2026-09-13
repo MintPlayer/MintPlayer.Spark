@@ -398,34 +398,63 @@ Double-submit token pattern.
 
 ### Retry Action Protocol (449 Status Code)
 
-Action methods can prompt the user for confirmation/input mid-execution.
+A hook can stop mid-request and ask the caller something. **Nine endpoints can do this** — not just
+actions: `po/load`, `po/create`, `po/update`, `po/delete`, `po/refresh`, `po/new`, `po/delete-row`,
+`queries/execute` and `actions/execute`. Every one of their request bodies implements
+`IRetryableRequest`, and a single middleware catch emits the response.
 
-**Server → client (`HTTP 449`)**:
+**Server → client (`HTTP 449`)** — one element of the ordinary `{ result, operations }` envelope,
+with `type: "retry"`:
 ```json
 {
-  "type": "retry-action",
-  "step": 0,
-  "title": "Delete Car",
-  "message": "Type the license plate to confirm deletion of ABC-123.",
-  "options": ["Delete", "Cancel"],
-  "defaultOption": "Cancel",
-  "persistentObject": { /* optional scaffold PO for a form */ }
-}
-```
-
-**Client → server (resubmission of the original request)**:
-```json
-{
-  "persistentObject": { /* original body, possibly edited */ },
-  "retryResults": [
-    { "option": "Delete", "step": 0, "persistentObject": null }
+  "result": null,
+  "operations": [
+    {
+      "type": "retry",
+      "step": 0,
+      "title": "Delete Car",
+      "message": "Type the license plate to confirm deletion of ABC-123.",
+      "options": ["Delete", "Cancel"],
+      "defaultOption": "Cancel",
+      "persistentObject": { /* optional scaffold PO for a form */ }
+    }
   ]
 }
 ```
 
-Multiple sequential prompts accumulate — the client echoes back all prior answers on each resubmission. When every prompt has been answered, the endpoint returns the normal success response.
+Non-retry operations accumulated before the prompt travel in the same envelope and are dispatched
+first, so a `notify` raised on the way to the question is shown before the question.
 
-Subsumption under the Client Operations PRD: once implemented, the 449 response shape becomes one element of the unified `{ result, operations }` envelope (with `operations[0].type == "retry"`). User-visible behavior is unchanged; only the server-side JSON builder is different.
+**Client → server** — the **original request, resent whole**, with one more answer attached:
+```json
+{
+  "objectTypeId": "car",
+  "id": "Cars/35778693-…",
+  "persistentObject": { /* unchanged from the first attempt */ },
+  "retryResults": [
+    { "step": 0, "option": "Delete", "persistentObject": null }
+  ]
+}
+```
+
+Three properties of this protocol are easy to get wrong and were confirmed on the wire (S1,
+2026-09-13, a real Fleet host driven through a browser and through `SparkClient` side by side):
+
+- **The whole body is resent, not a delta.** The server replays the hook from the top on every
+  attempt and feeds it the accumulated answers; a request carrying only the answers would have
+  nothing to replay. Across a three-attempt conversation the browser's body was byte-identical but
+  for a `retryResults` array that grew by one each time.
+- **Answers accumulate.** Every attempt carries all prior answers, oldest first.
+- **`step` is the server's, echoed back — never counted by the client.** A hook may skip a step,
+  asking its second question only when the first was answered a particular way. A locally
+  incremented counter agrees with the server right up until that happens, and then answers a
+  different question than the one that was asked.
+
+`"Cancel"` is not auto-appended to `options`; a hook that wants it must offer it. The Angular client
+sends `"Cancel"` when the user dismisses the modal, and a hook that reads it typically returns
+without acting.
+
+When every prompt has been answered, the endpoint returns its normal success response.
 
 ### Authorization Model
 

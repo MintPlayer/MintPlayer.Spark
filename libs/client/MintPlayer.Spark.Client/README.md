@@ -20,11 +20,10 @@ var results = await client.ExecuteQueryAsync("cars", take: 10, search: "ABC");
 
 ## ⚠️ Read this before planning a test suite around it
 
-**This client cannot yet answer a retry prompt, and it does not cover every endpoint.** Both are being
-built (see [What is not here yet](#what-is-not-here-yet)). Today it covers the CRUD, query, action,
-metadata and authentication surface — which is enough for most tests, and is what 19 of this
-repository's own 28 end-to-end classes already use — but a flow that hits a confirmation prompt stops
-there.
+**It does not cover every endpoint yet** (see [What is not here yet](#what-is-not-here-yet)). Today it
+covers the CRUD, query, action, metadata and authentication surface — which is enough for most tests,
+and is what 19 of this repository's own 28 end-to-end classes already use. It *can* now hold a
+conversation: a server that asks a question gets an answer, on every endpoint that can ask one.
 
 **And even when it is complete, it will not replace browser tests.** That is not a scheduling
 statement; it was measured. The two defects found in this repository's timezone work — a
@@ -94,7 +93,8 @@ anti-forgery gate and no useful message.
 | `DeletePersistentObjectAsync(type, id)` | `POST /spark/po/delete` |
 | `ExecuteQueryAsync(query, skip, take, search, parentId, parentType, sortColumns)` | `POST /spark/queries/execute` |
 | `GetQueryAsync(query)` / `ListQueriesAsync()` | `POST /spark/queries/get`, `GET /spark/queries` |
-| `ExecuteActionAsync(type, name, parent, selectedItemIds, …)` | `POST /spark/actions/execute` |
+| `ExecuteActionAsync(type, name, parent, selectedItemIds, parentId, parentType, queryId, …)` | `POST /spark/actions/execute` |
+| `ContinueAsync(result, option, persistentObject)` | the same endpoint, one answer further |
 | `ListEntityTypesAsync()` / `ListAliasesAsync()` | `GET /spark/types`, `GET /spark/aliases` |
 | `GetPermissionsAsync(type)` | `GET /spark/permissions/{type}` |
 | `SendAsync(method, url, content, requiresAntiforgery)` | anything not yet typed |
@@ -103,29 +103,86 @@ Every type and query argument accepts **either a Guid or an alias** — `"cars"`
 `"a20e8400-…"` resolve to the same thing. Ids need no escaping: they travel in a JSON body, so a Raven
 id's slashes arrive intact.
 
+⚠️ **Pass `queryId` when the action is running over a grid selection.** The server re-runs that query
+narrowed to `selectedItemIds` and hands the action the rows the grid rendered; name no query and it
+falls back to loading each id — a different code path, with different row filtering. The Angular grid
+always sends it, so a test that omits it is asserting the path the grid never takes.
+
 ⚠️ **`sortColumns` is still a string here**, in the old `"Name:asc,RegisteredAt:desc"` form, and is the
 one place that encoding survives. The wire takes a typed array; this parameter is published API on a
 shipped package, so changing its type is a separate decision from moving the route. The client parses
 it for you — a typed overload belongs with the column-filtering work that motivated the change, where
 there will be a second thing to express.
 
-### Reading a retry prompt
+---
 
-`ExecuteActionAsync` returns a `SparkActionResult` rather than throwing when the server asks a question:
+## Answering a question
+
+A hook can stop mid-request and ask something — "are you sure?", "type the plate to confirm". On the
+wire that is a `449` carrying the question. **Nine endpoints can ask**, including reads: a load, a
+query, a save, a delete, an action.
+
+There are two ways to answer, and they differ only in who writes the loop.
+
+### Hand it a handler, and the whole conversation happens inside one call
+
+```csharp
+var saved = await client.UpdatePersistentObjectAsync(car, onRetry: (prompt, ct) =>
+{
+    Console.WriteLine($"{prompt.Title}: {string.Join(" / ", prompt.Options)}");
+    return Task.FromResult<RetryAnswer?>(RetryAnswer.Choose("Confirm"));
+});
+```
+
+Set `client.RetryHandler` instead to answer every call the same way. This is what the Angular client
+does — the conversation is invisible to the caller, and `saved` is the object after the questions were
+settled.
+
+Returning `null` declines: the call then fails with `SparkRetryRequiredException`, which carries the
+question it would not answer.
+
+### Or drive it yourself, one question at a time
+
+`ExecuteActionAsync` returns a result rather than throwing, so you can look at the question before
+answering it. ⚠️ This is the behaviour **when no handler applies** — if `RetryHandler` is set or
+`onRetry:` is passed, the handler answers and the call returns the finished result, so `IsRetry` is
+never true.
 
 ```csharp
 var result = await client.ExecuteActionAsync(carTypeId, "DeleteCar", parent: car);
 
-if (result.IsRetry)
+while (result.IsRetry)
 {
-    Console.WriteLine(result.Retry!.Title);       // "Delete car"
-    Console.WriteLine(result.Retry.Options);      // ["Delete", "Cancel"]
+    var form = result.Retry!.PersistentObject;          // the delete confirmation's own form
+    form?["Confirmation"].SetValue(car.LicensePlate);   // …filled in
+
+    result = await client.ContinueAsync(result, "Delete", form);
 }
 ```
 
-⚠️ **You can read the prompt but not answer it yet** — see below. To drive a retry flow today, use
-`SendAsync` and construct the resubmission by hand; the shape is in the
-[HTTP API Specification](../../../docs/Spark-API-Specification.md#retry-action-protocol-449-status-code).
+`ContinueAsync` **appends** the answer and sends the original request again in full. That is not a
+workaround for a suspended call — it is the protocol. The server replays the hook from the top on
+every attempt and feeds it the answers it has, which is why nothing has to be held open in between,
+and why two conversations through one client cannot interfere: the answers live on the result, never
+on the client.
+
+### Three things that bite
+
+⚠️ **`step` comes from the server.** Never count answers locally. A hook may skip a step — asking the
+second question only when the first was answered a particular way — and a local counter agrees with
+the server right up until that happens, then silently answers a different question.
+`ContinueAsync` and the handler loop both echo the server's.
+
+⚠️ **An option that was not offered is refused before it is sent.** The server cannot tell an option
+that never existed from one a hook stopped offering; both simply fail to match, and the hook runs its
+else-branch as though you had chosen something. A typo would assert the wrong path and pass.
+
+⚠️ **A prompt raised from `OnLoadAsync` fires on every read of that type**, and one from
+`OnQueryAsync` on every execution — including the ones a grid issues while paging. A handler that
+answers unconditionally is answering far more often than it looks.
+
+`MaxRetryDepth` (default 16) bounds the conversation, so a hook that re-raises regardless of the
+answer fails with a message naming the step instead of spinning.
 
 ---
 
@@ -137,8 +194,7 @@ is a rewrite.
 
 | Gap | Consequence today |
 |---|---|
-| **Cannot answer a retry** (M3) | No `ContinueAsync`. A multi-step confirmation flow needs raw `SendAsync`. |
-| **Client operations are discarded** (M4) | `notify`, `navigate`, `refreshAttribute` are dropped; the envelope's `result` is all you get. |
+| **Client operations are discarded** (M4) | `notify`, `navigate`, `refreshAttribute` are dropped; the envelope's `result` is all you get. Retry operations are the exception — those are handled. |
 | **Missing endpoints** (M5) | No typed `refresh`, `new`, `delete-row`, `lookupref/*`, `types/{id}`, `actions/list`, `program-units`, `culture`, `translations`. |
 | **No culture or timezone headers** (M6) | `HttpClient` sends neither, and the server falls back silently — so a test asserting culture- or timezone-dependent output is asserting the **fallback**, not your setting. |
 
@@ -169,6 +225,12 @@ denied-type, unreadable-body and genuinely-missing **identically**, on purpose: 
 
 `GetPersistentObjectAsync` and `GetQueryAsync` return `null` on `404` rather than throwing, since
 "not there, or not yours" is an ordinary answer for a read.
+
+⚠️ **`SparkRetryRequiredException` is not a failure.** It derives from `SparkClientException`, so a
+`catch (SparkClientException)` still catches it — which is the right default, because a question
+nobody answered is a request that did not complete. Catch the narrower type first when you want to
+tell them apart; its `Prompt` is the question, and answering it means calling the method again with a
+handler.
 
 ---
 
