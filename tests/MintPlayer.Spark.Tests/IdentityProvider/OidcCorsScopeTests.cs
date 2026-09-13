@@ -1,4 +1,7 @@
 using System.Net;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
@@ -8,17 +11,18 @@ using MintPlayer.Spark.Testing;
 namespace MintPlayer.Spark.Tests.IdentityProvider;
 
 /// <summary>
-/// Enabling the identity provider must not put a CORS policy on the rest of Spark.
+/// A module declares what its own endpoints need, and reaches no further.
 /// </summary>
 /// <remarks>
 /// <para>
-/// ⚠️ <b>It did.</b> <c>EnableDynamicCors</c> defaults to <see langword="true"/> and the policy is
-/// <c>SetIsOriginAllowed(_ =&gt; true)</c>; it was applied by a bare <c>app.UseCors("SparkOidcCors")</c>,
-/// which is pipeline-wide. So an application that turned the identity provider on also let any page on
-/// any origin read the anonymous view of <c>/spark/types</c>, <c>/spark/translations</c>,
-/// <c>/spark/permissions/*</c> and <c>/spark/auth/capabilities</c> — with no
-/// <c>Access-Control-Allow-Credentials</c>, so never the caller's own data, but a surface nobody asked
-/// for and nothing documented.
+/// ⚠️ <b>The identity provider once reached much further.</b> <c>EnableDynamicCors</c> defaulted to
+/// <see langword="true"/> with a <c>SetIsOriginAllowed(_ =&gt; true)</c> policy, applied by a bare
+/// <c>app.UseCors("SparkOidcCors")</c> — pipeline-wide. So an application that turned the identity
+/// provider on also let any page on any origin read the anonymous view of <c>/spark/types</c>,
+/// <c>/spark/translations</c>, <c>/spark/permissions/*</c> and <c>/spark/auth/capabilities</c>, with no
+/// <c>Access-Control-Allow-Credentials</c> — never the caller's own data, but a surface nobody asked
+/// for and nothing documented. It now defaults to off, and opts its five protocol endpoints in
+/// individually.
 /// </para>
 /// <para>
 /// The policy's inline comment said <c>// Validated at runtime below</c>. There was no such validation:
@@ -67,20 +71,27 @@ public class OidcCorsScopeTests : SparkTestDriver
     }
 
     /// <summary>
-    /// The default: enabling the identity provider grants no cross-origin access anywhere.
+    /// The default: enabling the identity provider grants no cross-origin access to its own endpoints.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// ⚠️ The protocol endpoints are in this list deliberately. A cross-origin SPA client is a real
     /// scenario, but it is not the built-in one — Spark serves an application's own Angular frontend
     /// from the same host, so it never needed CORS. Granting it by default was paying for a scenario
     /// nobody in this repository has, with a permission the caller did not ask for.
+    /// </para>
+    /// <para>
+    /// ⚠️ Every probe is <b>outside</b> the Spark prefix, and that is not an oversight. Spark's own
+    /// endpoints answer cross-origin by default (see <c>SparkCorsDefaultTests</c>), so <c>/spark/*</c>
+    /// can no longer tell "the identity provider leaked its policy" apart from "Spark's own policy
+    /// applied, correctly". An earlier version of this fixture probed <c>/spark/types</c>; left alone it
+    /// would have gone on passing for the wrong reason.
+    /// </para>
     /// </remarks>
     [Theory]
-    [InlineData("/spark/types")]
-    [InlineData("/spark/translations")]
-    [InlineData("/spark/auth/capabilities")]
     [InlineData("/.well-known/openid-configuration")]
     [InlineData("/connect/token")]
+    [InlineData("/connect/authorize")]
     public async Task By_default_the_identity_provider_grants_no_cross_origin_access(string path)
     {
         await using var factory = CreateFactory(enableCors: false);
@@ -92,11 +103,20 @@ public class OidcCorsScopeTests : SparkTestDriver
             $"{path} must not be readable from another origin unless the application opts in");
     }
 
+    /// <summary>
+    /// Opting in covers the five protocol endpoints and nothing else — not even their siblings.
+    /// </summary>
+    /// <remarks>
+    /// These paths are in the same <c>/connect</c> group as the endpoints that did opt in, which is
+    /// what makes them the right probe: a policy applied to the group, or to the pipeline, would reach
+    /// them too. The original defect was a bare <c>app.UseCors("SparkOidcCors")</c>, and this is what
+    /// fails if anything like it comes back.
+    /// </remarks>
     [Theory]
-    [InlineData("/spark/types")]
-    [InlineData("/spark/translations")]
-    [InlineData("/spark/auth/capabilities")]
-    public async Task Opting_in_does_not_grant_cross_origin_access_to_the_rest_of_spark(string path)
+    [InlineData("/connect/authorize")]
+    [InlineData("/connect/consent")]
+    [InlineData("/connect/applications")]
+    public async Task Opting_in_covers_only_the_endpoints_that_asked(string path)
     {
         await using var factory = CreateFactory(enableCors: true);
         using var client = factory.CreateClient();
@@ -104,8 +124,8 @@ public class OidcCorsScopeTests : SparkTestDriver
         using var response = await client.SendAsync(Preflight(path));
 
         response.Headers.Contains("Access-Control-Allow-Origin").Should().BeFalse(
-            $"opting in covers the OIDC protocol endpoints; it must not make {path} readable from "
-            + "another origin — that was a bare pipeline-wide UseCors, and it is the defect this pins");
+            $"{path} is reached by top-level navigation, never by fetch — it did not ask for CORS and "
+            + "must not receive it because a sibling did");
     }
 
     /// <summary>
@@ -124,9 +144,10 @@ public class OidcCorsScopeTests : SparkTestDriver
     /// note: keep the middleware present so endpoint metadata is always honourable.
     /// </para>
     /// <para>
-    /// ⚠️ Asserted here by a host with the identity provider's CORS switched <b>off</b>, so nothing in
-    /// the process has registered a policy. A request that merely succeeds proves it: the middleware is
-    /// present, resolving its services, and granting nothing.
+    /// ⚠️ Asserted with the identity provider's CORS switched <b>off</b>, so no module has registered
+    /// anything. Spark itself registers <c>SparkCorsPolicy</c>, so a request that merely succeeds is
+    /// the proof: the middleware resolved its services and ran. Had <c>AddCors</c> been missing,
+    /// <c>UseCors</c> would throw at startup and no request would be served at all.
     /// </para>
     /// </remarks>
     [Fact]
@@ -143,24 +164,26 @@ public class OidcCorsScopeTests : SparkTestDriver
     }
 
     /// <summary>
-    /// An application's own default CORS policy reaches Spark's endpoints too.
+    /// Spark's own policy wins on Spark's own endpoints, whatever the application defaults to.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// ⚠️ <b>Recorded because it is the one way the standing <c>UseCors()</c> can widen anything.</b>
-    /// Spark registers no policy of its own, so the middleware is inert — but <c>UseCors()</c> with no
-    /// policy name applies the <i>default</i> policy when one exists, and an application that calls
-    /// <c>AddDefaultPolicy</c> for its own controllers gets it on <c>/spark/*</c> as well.
+    /// ⚠️ <b>This reverses an earlier decision, and the reversal is the point.</b> When Spark's
+    /// middleware carried no policy of its own, an application's <c>AddDefaultPolicy</c> reached
+    /// <c>/spark/*</c> — and that was recorded as deliberate, on the reasoning that a default policy is
+    /// the application saying "everywhere". Spark now applies its own named policy to its own prefix,
+    /// so the application's default no longer reaches there: the wildcard below is Spark's, not the
+    /// app's specific origin.
     /// </para>
     /// <para>
-    /// Left as-is deliberately: it is the application's own default, applied to the application's own
-    /// endpoints, and an app that wants Spark excluded can name its policy instead of defaulting it.
-    /// Forcing Spark's endpoints to opt out would override a choice the app made on purpose. This
-    /// fact exists so the behaviour is a decision rather than a discovery.
+    /// That is the better outcome for a reason the first framing missed. Spark's endpoints have their
+    /// own security model — <c>security.json</c>, antiforgery, per-handler permission checks — and
+    /// what they expose cross-origin should not depend on a convenience default an application set for
+    /// its own controllers, possibly without realising the framework API was in range.
     /// </para>
     /// </remarks>
     [Fact]
-    public async Task An_applications_own_default_cors_policy_also_applies_to_spark_endpoints()
+    public async Task Sparks_own_policy_beats_an_applications_default_on_spark_paths()
     {
         await using var factory = new SparkEndpointFactory<OidcTestContext>(
             Store,
@@ -172,10 +195,33 @@ public class OidcCorsScopeTests : SparkTestDriver
 
         using var response = await client.SendAsync(Preflight("/spark/types"));
 
+        response.Headers.TryGetValues("Access-Control-Allow-Origin", out var allowed).Should().BeTrue();
+        allowed!.Should().Contain("*",
+            "Spark's endpoints answer with Spark's policy; an application's default governs the "
+            + "application's own endpoints, and reaching into the framework's was never intended");
+    }
+
+    /// <summary>
+    /// The other half: outside the Spark prefix, the application's default still governs.
+    /// </summary>
+    [Fact]
+    public async Task An_applications_default_still_governs_its_own_endpoints()
+    {
+        await using var factory = new SparkEndpointFactory<OidcTestContext>(
+            Store,
+            models: [],
+            configureServices: services => services.AddCors(
+                cors => cors.AddDefaultPolicy(policy => policy.WithOrigins(HostileOrigin))),
+            configureSpark: spark => spark.Registry.AddEndpoints(
+                endpoints => endpoints.MapGet("/app-endpoint", () => "ok")),
+            environment: "Development");
+        using var client = factory.CreateClient();
+
+        using var response = await client.SendAsync(Preflight("/app-endpoint"));
+
         response.Headers.TryGetValues("Access-Control-Allow-Origin", out var allowed).Should().BeTrue(
-            "an application that registers a DEFAULT policy has asked for it everywhere, Spark "
-            + "included — if this ever needs to stop, the fix is Spark naming its own policy, not "
-            + "silently discarding the application's");
+            "Spark scopes its policy to its own prefix; it must not swallow the application's default "
+            + "for everything else the host serves");
         allowed!.Should().Contain(HostileOrigin);
     }
 
