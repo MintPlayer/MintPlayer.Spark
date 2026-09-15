@@ -34,19 +34,35 @@ public sealed class SparkActionResult
     /// <summary>Answers already given in this conversation, oldest first.</summary>
     internal IReadOnlyList<object> Answers { get; }
 
-    private SparkActionResult(int statusCode, RetryActionPayload? retry, Dictionary<string, object?>? body, IReadOnlyList<object>? answers)
+    /// <summary>
+    /// Client operations the server emitted alongside this response, in emission order — the
+    /// notifications, refreshes and navigations the action asked the client to perform.
+    /// </summary>
+    /// <remarks>
+    /// Populated on a prompt as well as on a completed action, so a hook that says something on its
+    /// way to asking a question is not lost behind the question (FR11). Never null; empty when the
+    /// action emitted none. The retry prompt itself is in <see cref="Retry"/> rather than here.
+    /// </remarks>
+    public IReadOnlyList<SparkClientOperation> Operations { get; }
+
+    private SparkActionResult(
+        int statusCode, RetryActionPayload? retry, Dictionary<string, object?>? body,
+        IReadOnlyList<object>? answers, IReadOnlyList<SparkClientOperation>? operations)
     {
         StatusCode = statusCode;
         Retry = retry;
         Body = body;
         Answers = answers ?? [];
+        Operations = operations ?? [];
     }
 
-    internal static SparkActionResult ForSuccess(int statusCode)
-        => new(statusCode, retry: null, body: null, answers: null);
+    internal static SparkActionResult ForSuccess(int statusCode, IReadOnlyList<SparkClientOperation>? operations = null)
+        => new(statusCode, retry: null, body: null, answers: null, operations);
 
-    internal static SparkActionResult ForRetry(RetryActionPayload payload, Dictionary<string, object?> body, IReadOnlyList<object> answers)
-        => new(449, payload, body, answers);
+    internal static SparkActionResult ForRetry(
+        RetryActionPayload payload, Dictionary<string, object?> body, IReadOnlyList<object> answers,
+        IReadOnlyList<SparkClientOperation>? operations = null)
+        => new(449, payload, body, answers, operations);
 }
 
 /// <summary>

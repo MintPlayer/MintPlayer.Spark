@@ -54,6 +54,18 @@ public class SparkClient : IDisposable
     public SparkRetryHandler? RetryHandler { get; set; }
 
     /// <summary>
+    /// Observes client operations for calls that do not pass their own <c>onOperation</c>. Null by
+    /// default, in which case operations are parsed and discarded.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Operations are never <b>applied</b> automatically. This SDK keeps no registry of open
+    /// objects the way the frontend does, so there is nothing for a <c>refreshAttribute</c> to land
+    /// on until the caller says which object it holds — see
+    /// <see cref="SparkClientOperations.Apply(PersistentObject, IEnumerable{SparkClientOperation})"/>.
+    /// </remarks>
+    public SparkOperationHandler? OperationHandler { get; set; }
+
+    /// <summary>
     /// How many prompts one call will answer before giving up. Default 16.
     /// </summary>
     /// <remarks>
@@ -171,8 +183,8 @@ public class SparkClient : IDisposable
 
     /// <summary>Returns the PersistentObject with its <see cref="PersistentObject.Etag"/> populated, or null on 404.</summary>
     public Task<PersistentObject?> GetPersistentObjectAsync(
-        Guid objectTypeId, string id, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null)
-        => GetPersistentObjectCoreAsync(objectTypeId.ToString(), id, onRetry, cancellationToken);
+        Guid objectTypeId, string id, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null)
+        => GetPersistentObjectCoreAsync(objectTypeId.ToString(), id, onRetry, onOperation, cancellationToken);
 
     // ⚠️ Every method below posts a JSON body to a literal path. Nothing is escaped into a URL any
     // more, which removes a whole class of bug rather than moving it: a Raven id contains slashes,
@@ -186,11 +198,11 @@ public class SparkClient : IDisposable
     /// denied — the endpoint conflates these per security audit M-3).
     /// </summary>
     public Task<PersistentObject?> GetPersistentObjectAsync(
-        string aliasOrName, string id, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null)
-        => GetPersistentObjectCoreAsync(aliasOrName, id, onRetry, cancellationToken);
+        string aliasOrName, string id, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null)
+        => GetPersistentObjectCoreAsync(aliasOrName, id, onRetry, onOperation, cancellationToken);
 
     private Task<PersistentObject?> GetPersistentObjectCoreAsync(
-        string objectTypeId, string id, SparkRetryHandler? onRetry, CancellationToken cancellationToken)
+        string objectTypeId, string id, SparkRetryHandler? onRetry, SparkOperationHandler? onOperation, CancellationToken cancellationToken)
         // A read can prompt too: OnLoadAsync is one of the nine hooks that may call Retry.Action, and
         // making reads POST is what bought the body this needs. ⚠️ A prompt from OnLoadAsync fires on
         // EVERY read of the type, so a handler that answers unconditionally is answering far more
@@ -206,6 +218,7 @@ public class SparkClient : IDisposable
                 return await response.Content.ReadFromJsonAsync<PersistentObject>(JsonOptions, ct);
             },
             onRetry,
+            onOperation,
             cancellationToken);
 
     /// <summary>
@@ -220,10 +233,10 @@ public class SparkClient : IDisposable
     /// docs/prd/PRD-ClientOperations.md.
     /// </remarks>
     public Task<PersistentObject> CreatePersistentObjectAsync(
-        PersistentObject obj, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null)
+        PersistentObject obj, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null)
     {
         ArgumentNullException.ThrowIfNull(obj);
-        return SendPersistentObjectAsync("/spark/po/create", obj.Name, id: null, obj, onRetry, cancellationToken);
+        return SendPersistentObjectAsync("/spark/po/create", obj.Name, id: null, obj, onRetry, onOperation, cancellationToken);
     }
 
     /// <summary>
@@ -233,22 +246,30 @@ public class SparkClient : IDisposable
     /// with <c>StatusCode = HttpStatusCode.Conflict</c>.
     /// </summary>
     public Task<PersistentObject> UpdatePersistentObjectAsync(
-        PersistentObject obj, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null)
+        PersistentObject obj, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null)
     {
         ArgumentNullException.ThrowIfNull(obj);
         if (string.IsNullOrEmpty(obj.Id))
             throw new ArgumentException("PersistentObject must have an Id for update.", nameof(obj));
-        return SendPersistentObjectAsync("/spark/po/update", obj.ObjectTypeId.ToString(), obj.Id, obj, onRetry, cancellationToken);
+        return SendPersistentObjectAsync("/spark/po/update", obj.ObjectTypeId.ToString(), obj.Id, obj, onRetry, onOperation, cancellationToken);
     }
 
     public Task DeletePersistentObjectAsync(
-        Guid objectTypeId, string id, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null)
+        Guid objectTypeId, string id, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null)
         => PostConversationAsync<object?>(
             "/spark/po/delete",
             new Dictionary<string, object?> { ["objectTypeId"] = objectTypeId.ToString(), ["id"] = id },
             requiresAntiforgery: true,
-            async (response, ct) => { await SparkClientException.ThrowIfNotSuccessAsync(response, ct); return null; },
+            async (response, ct) =>
+            {
+                await SparkClientException.ThrowIfNotSuccessAsync(response, ct);
+                // Delete is enveloped, so a hook that notified on its way out is read here rather
+                // than thrown away with the body.
+                await ReadEnvelopeResultAsync<object>(response, onOperation, ct);
+                return null;
+            },
             onRetry,
+            onOperation,
             cancellationToken);
 
     // ListPersistentObjectsAsync is gone, with the GET /spark/po/{type} endpoint it called. That was
@@ -269,8 +290,9 @@ public class SparkClient : IDisposable
         string? parentType = null,
         string? sortColumns = null,
         CancellationToken cancellationToken = default,
-        SparkRetryHandler? onRetry = null)
-        => ExecuteQueryCoreAsync(queryId.ToString(), skip, take, search, parentId, parentType, sortColumns, onRetry, cancellationToken);
+        SparkRetryHandler? onRetry = null,
+        SparkOperationHandler? onOperation = null)
+        => ExecuteQueryCoreAsync(queryId.ToString(), skip, take, search, parentId, parentType, sortColumns, onRetry, onOperation, cancellationToken);
 
     /// <summary>Executes a query by its alias (e.g. <c>"allpeople"</c>) instead of by Guid.</summary>
     public Task<QueryResult> ExecuteQueryAsync(
@@ -282,12 +304,13 @@ public class SparkClient : IDisposable
         string? parentType = null,
         string? sortColumns = null,
         CancellationToken cancellationToken = default,
-        SparkRetryHandler? onRetry = null)
-        => ExecuteQueryCoreAsync(queryAlias, skip, take, search, parentId, parentType, sortColumns, onRetry, cancellationToken);
+        SparkRetryHandler? onRetry = null,
+        SparkOperationHandler? onOperation = null)
+        => ExecuteQueryCoreAsync(queryAlias, skip, take, search, parentId, parentType, sortColumns, onRetry, onOperation, cancellationToken);
 
     private Task<QueryResult> ExecuteQueryCoreAsync(
         string queryId, int skip, int take, string? search, string? parentId, string? parentType, string? sortColumns,
-        SparkRetryHandler? onRetry, CancellationToken cancellationToken)
+        SparkRetryHandler? onRetry, SparkOperationHandler? onOperation, CancellationToken cancellationToken)
         // OnQueryAsync can prompt, so a list is a conversation too. ⚠️ Like OnLoadAsync, a prompt here
         // fires on every execution of the query — including the ones a grid issues while paging.
         => PostConversationAsync(
@@ -310,6 +333,7 @@ public class SparkClient : IDisposable
                     ?? throw new SparkClientException(response.StatusCode, responseBody: null, "Empty query response body.");
             },
             onRetry,
+            onOperation,
             cancellationToken);
 
     /// <summary>
@@ -428,7 +452,8 @@ public class SparkClient : IDisposable
         string? parentId = null,
         string? parentType = null,
         string? queryId = null,
-        SparkRetryHandler? onRetry = null)
+        SparkRetryHandler? onRetry = null,
+        SparkOperationHandler? onOperation = null)
     {
         // parentId/parentType name a SUB-QUERY's container — a different type from this action's,
         // resolved server-side under its own Read gate. Distinct from `parent`, which is an object
@@ -465,10 +490,10 @@ public class SparkClient : IDisposable
                     await SparkClientException.ThrowIfNotSuccessAsync(response, ct);
                     return SparkActionResult.ForSuccess((int)response.StatusCode);
                 },
-                onRetry, cancellationToken);
+                onRetry, onOperation, cancellationToken);
         }
 
-        return await PostActionOnceAsync(body, answers: [], cancellationToken);
+        return await PostActionOnceAsync(body, answers: [], onOperation, cancellationToken);
     }
 
     /// <summary>
@@ -498,7 +523,8 @@ public class SparkClient : IDisposable
         SparkActionResult result,
         string option,
         PersistentObject? persistentObject = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        SparkOperationHandler? onOperation = null)
     {
         ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(option);
@@ -527,15 +553,17 @@ public class SparkClient : IDisposable
             new { step = result.Retry.Step, option, persistentObject },
         ];
 
-        return PostActionOnceAsync(result.Body, answers, cancellationToken);
+        return PostActionOnceAsync(result.Body, answers, onOperation, cancellationToken);
     }
 
     /// <summary>One attempt at the action endpoint, carrying whatever has been answered so far.</summary>
     private async Task<SparkActionResult> PostActionOnceAsync(
-        Dictionary<string, object?> body, List<object> answers, CancellationToken cancellationToken)
+        Dictionary<string, object?> body, List<object> answers, SparkOperationHandler? onOperation, CancellationToken cancellationToken)
     {
         if (answers.Count > 0)
             body["retryResults"] = answers.ToArray();
+
+        var sink = onOperation ?? OperationHandler;
 
         using var response = await SendAsync(
             HttpMethod.Post, "/spark/actions/execute", JsonContent.Create(body, options: JsonOptions),
@@ -546,13 +574,32 @@ public class SparkClient : IDisposable
         if ((int)response.StatusCode == 449)
         {
             var raw = await response.Content.ReadAsStringAsync(cancellationToken);
-            var retry = ParseRetryPrompt(raw)
+            var operations = SparkClientOperations.Parse(raw);
+            var retry = operations.OfType<SparkRetryOperation>().FirstOrDefault()?.Prompt
                 ?? throw new SparkClientException(response.StatusCode, raw, "Empty retry-action response body.");
-            return SparkActionResult.ForRetry(retry, body, answers);
+
+            // FR11: a caller that inspects IsRetry rather than answering through a handler still sees
+            // what the hook said on its way to asking.
+            var accompanying = operations.Where(o => o is not SparkRetryOperation).ToArray();
+            if (sink is not null)
+                foreach (var operation in accompanying)
+                    sink(operation);
+
+            return SparkActionResult.ForRetry(retry, body, answers, accompanying);
         }
 
         await SparkClientException.ThrowIfNotSuccessAsync(response, cancellationToken);
-        return SparkActionResult.ForSuccess((int)response.StatusCode);
+
+        // The success body is an envelope too, and carries whatever the action asked the client to
+        // do. ⚠️ Its `result` is always null today (ExecuteCustomAction envelopes a literal null),
+        // so `operations` is the only part of it worth reading.
+        var successBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        var successOperations = SparkClientOperations.Parse(successBody);
+        if (sink is not null)
+            foreach (var operation in successOperations)
+                sink(operation);
+
+        return SparkActionResult.ForSuccess((int)response.StatusCode, successOperations);
     }
 
     // --------------------------------------------------------------------------------
@@ -585,9 +632,11 @@ public class SparkClient : IDisposable
         bool requiresAntiforgery,
         Func<HttpResponseMessage, CancellationToken, Task<T>> readResult,
         SparkRetryHandler? onRetry,
+        SparkOperationHandler? onOperation,
         CancellationToken cancellationToken)
     {
         var handler = onRetry ?? RetryHandler;
+        var sink = onOperation ?? OperationHandler;
         var answers = new List<object>();
 
         for (var attempt = 0; ; attempt++)
@@ -599,7 +648,7 @@ public class SparkClient : IDisposable
                 return await readResult(response, cancellationToken);
 
             var raw = await response.Content.ReadAsStringAsync(cancellationToken);
-            var prompt = ParseRetryPrompt(raw)
+            var prompt = ReadPromptAndSurfaceOperations(raw, sink)
                 ?? throw new SparkClientException(response.StatusCode, raw,
                     "The server answered 449 with no retry operation in the envelope.");
 
@@ -630,33 +679,33 @@ public class SparkClient : IDisposable
     }
 
     /// <summary>
-    /// Reads the first <c>retry</c>-typed operation out of a <c>{ result, operations }</c> envelope.
-    /// Returns null when there is none — which is a malformed 449, not an ordinary outcome.
+    /// Parses a <c>449</c> envelope into the question it asks and the operations that accompany it,
+    /// and hands every non-retry operation to <paramref name="sink"/> <b>before returning</b> — FR11.
     /// </summary>
-    private static RetryActionPayload? ParseRetryPrompt(string envelopeJson)
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>One pass, both halves.</b> A hook that says something and then asks a question emits
+    /// both in the same envelope, so parsing the prompt separately from the operations would read
+    /// the body twice and deserialize the prompt's nested PersistentObject once per attempt.
+    /// </para>
+    /// <para>
+    /// The prompt is null when the envelope carries no <c>retry</c> operation — a malformed 449,
+    /// not an ordinary outcome.
+    /// </para>
+    /// </remarks>
+    private static RetryActionPayload? ReadPromptAndSurfaceOperations(string envelopeJson, SparkOperationHandler? sink)
     {
-        using var doc = JsonDocument.Parse(envelopeJson);
-        if (!doc.RootElement.TryGetProperty("operations", out var operations) || operations.ValueKind != JsonValueKind.Array)
-            return null;
+        var operations = SparkClientOperations.Parse(envelopeJson);
 
-        foreach (var op in operations.EnumerateArray())
-        {
-            if (!op.TryGetProperty("type", out var typeEl) || typeEl.GetString() != "retry") continue;
-            return new RetryActionPayload
-            {
-                Step = op.TryGetProperty("step", out var step) ? step.GetInt32() : 0,
-                Title = op.TryGetProperty("title", out var title) ? title.GetString() ?? "" : "",
-                Message = op.TryGetProperty("message", out var msg) && msg.ValueKind != JsonValueKind.Null ? msg.GetString() : null,
-                Options = op.TryGetProperty("options", out var optsEl) && optsEl.ValueKind == JsonValueKind.Array
-                    ? [.. optsEl.EnumerateArray().Select(e => e.GetString() ?? "")]
-                    : [],
-                DefaultOption = op.TryGetProperty("defaultOption", out var def) && def.ValueKind != JsonValueKind.Null ? def.GetString() : null,
-                PersistentObject = op.TryGetProperty("persistentObject", out var po) && po.ValueKind != JsonValueKind.Null
-                    ? po.Deserialize<PersistentObject>(JsonOptions)
-                    : null,
-            };
-        }
-        return null;
+        // Every non-retry operation, in emission order — not just the ones ahead of the retry. The
+        // frontend filters rather than splitting at the prompt (spark.service.ts), and a hook is
+        // free to notify after raising.
+        if (sink is not null)
+            foreach (var operation in operations)
+                if (operation is not SparkRetryOperation)
+                    sink(operation);
+
+        return operations.OfType<SparkRetryOperation>().FirstOrDefault()?.Prompt;
     }
 
     // --------------------------------------------------------------------------------
@@ -664,7 +713,7 @@ public class SparkClient : IDisposable
     // --------------------------------------------------------------------------------
 
     private Task<PersistentObject> SendPersistentObjectAsync(
-        string url, string? objectTypeId, string? id, PersistentObject obj, SparkRetryHandler? onRetry, CancellationToken cancellationToken)
+        string url, string? objectTypeId, string? id, PersistentObject obj, SparkRetryHandler? onRetry, SparkOperationHandler? onOperation, CancellationToken cancellationToken)
         // objectTypeId is the request parameter; obj.ObjectTypeId travels inside the document and is
         // overwritten server-side with whatever this one resolves to. They are separate fields on
         // purpose — see SparkRequestType.
@@ -675,22 +724,36 @@ public class SparkClient : IDisposable
             async (response, ct) =>
             {
                 await SparkClientException.ThrowIfNotSuccessAsync(response, ct);
-                return await ReadEnvelopeResultAsync<PersistentObject>(response, ct)
+                return await ReadEnvelopeResultAsync<PersistentObject>(response, onOperation, ct)
                     ?? throw new SparkClientException(response.StatusCode, responseBody: null, "Empty response body.");
             },
             onRetry,
+            onOperation,
             cancellationToken);
 
     /// <summary>
-    /// Reads a <c>{ result, operations }</c> envelope (per PRD-ClientOperations) and
-    /// extracts the typed <c>result</c> field. Returns <c>default</c> when the result is
-    /// null / absent. Operations are currently discarded — re-expose them via a richer
-    /// return type when the SDK starts surfacing client-side side-effects.
+    /// Reads a <c>{ result, operations }</c> envelope (per PRD-ClientOperations): hands every
+    /// operation to the sink, and returns the typed <c>result</c> field — <c>default</c> when it is
+    /// null or absent.
     /// </summary>
-    private async Task<T?> ReadEnvelopeResultAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
+    /// <remarks>
+    /// ⚠️ <b>Only the seven enveloped endpoints may go through this.</b> A bare-JSON endpoint has no
+    /// <c>result</c> property, so this would return <c>default</c> for every call — silently, with
+    /// no exception to notice.
+    /// </remarks>
+    private async Task<T?> ReadEnvelopeResultAsync<T>(
+        HttpResponseMessage response, SparkOperationHandler? onOperation, CancellationToken cancellationToken)
     {
-        using var doc = await response.Content.ReadFromJsonAsync<JsonDocument>(JsonOptions, cancellationToken);
-        if (doc is null) return default;
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+
+        var sink = onOperation ?? OperationHandler;
+        if (sink is not null)
+            foreach (var operation in SparkClientOperations.Parse(body))
+                sink(operation);
+
+        if (string.IsNullOrWhiteSpace(body)) return default;
+        using var doc = JsonDocument.Parse(body);
+        if (doc.RootElement.ValueKind != JsonValueKind.Object) return default;
         if (!doc.RootElement.TryGetProperty("result", out var resultEl)) return default;
         if (resultEl.ValueKind == JsonValueKind.Null) return default;
         return resultEl.Deserialize<T>(JsonOptions);

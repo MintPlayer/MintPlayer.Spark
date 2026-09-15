@@ -26,10 +26,22 @@ public sealed class SparkRetryRequiredException : SparkClientException
     {
         Prompt = prompt;
         AnsweredSoFar = answered;
+        Operations = SparkClientOperations.Parse(responseBody);
     }
 
     /// <summary>The question the server is asking.</summary>
     public RetryActionPayload Prompt { get; }
+
+    /// <summary>
+    /// Client operations that accompanied the question — everything in the envelope except the
+    /// prompt itself, in emission order.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ A prompt nobody answers still carries what the hook said before asking. Dropping these
+    /// with the exception would lose the "saved 3 of 4 rows, what about the fourth?" half of a
+    /// conversation, which is the half that explains the question.
+    /// </remarks>
+    public IReadOnlyList<SparkClientOperation> Operations { get; }
 
     /// <summary>
     /// How many prompts were answered before this one went unanswered. Zero when no handler was
