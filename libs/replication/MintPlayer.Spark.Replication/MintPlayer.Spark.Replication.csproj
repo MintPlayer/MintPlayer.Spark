@@ -27,7 +27,7 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.AspNetCore.Authentication.Certificate" Version="10.0.11" />
-		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="10.0.0" />
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.0.0" />
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
 		<ProjectReference Include="..\MintPlayer.Spark.Replication.Abstractions\MintPlayer.Spark.Replication.Abstractions.csproj" />
 		<ProjectReference Include="..\..\messaging\MintPlayer.Spark.Messaging.Abstractions\MintPlayer.Spark.Messaging.Abstractions.csproj" />
