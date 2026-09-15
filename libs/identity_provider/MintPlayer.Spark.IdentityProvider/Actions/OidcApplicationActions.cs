@@ -90,11 +90,12 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
     /// A CORS origin is compared byte-for-byte against the browser's <c>Origin</c> header, so it has
     /// to be exactly scheme + host + optional port.
     /// <para>
-    /// ⚠️ The trailing slash is the one that costs an afternoon. <c>https://app.example.com/</c>
-    /// looks right, saves fine, and can <b>never</b> match — a browser never puts a path in an
-    /// <c>Origin</c> — so the symptom is CORS silently not working for one application while the
-    /// configuration screen shows the origin listed. Same class of failure as the redirect-URI
-    /// fragment above, and refused for the same reason.
+    /// ⚠️ A trailing slash is <b>normalised away</b> rather than refused: it has one unambiguous
+    /// reading and it is what an operator most often types. Anything with real content beyond the
+    /// origin — a path, a query, credentials — is refused, because as configured it could never
+    /// match and nothing would say so: CORS would silently not work for that one application while
+    /// the screen showed the origin listed. Same class of failure as the redirect-URI fragment
+    /// above, and refused for the same reason.
     /// </para>
     /// </summary>
     private static void ValidateCorsOrigins(List<string> origins, string field)
@@ -104,7 +105,7 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
             if (OidcCorsOrigins.Normalize(origin) is null)
                 throw new SparkValidationException(
                     $"'{origin}' is not a browser origin. It has to be scheme + host + optional port, "
-                    + "with no path, query, fragment, credentials or trailing slash — e.g. https://app.example.com.",
+                    + "with no path, query, fragment or credentials — e.g. https://app.example.com.",
                     field);
         }
 

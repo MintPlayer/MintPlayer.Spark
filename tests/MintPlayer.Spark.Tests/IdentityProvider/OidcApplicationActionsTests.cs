@@ -47,11 +47,11 @@ public class OidcApplicationActionsTests
     }
 
     /// <summary>
-    /// A trailing slash is the one that costs an afternoon: it saves cleanly and can never match,
-    /// because a browser's <c>Origin</c> header never carries a path.
+    /// Anything that cannot be reduced to an origin is refused, because a browser's <c>Origin</c>
+    /// header is only ever scheme + host + optional port — so a value carrying more than that is a
+    /// rule that can never match, and nothing would say so.
     /// </summary>
     [Theory]
-    [InlineData("https://app.example.com/")]
     [InlineData("https://app.example.com/callback")]
     [InlineData("https://user:pw@app.example.com")]
     [InlineData("app.example.com")]
@@ -71,6 +71,25 @@ public class OidcApplicationActionsTests
         app.AllowedCorsOrigins = ["https://app.example.com", "http://localhost:4200"];
 
         (await SaveAsync(app)).Should().BeNull();
+    }
+
+    /// <summary>
+    /// A trailing slash is accepted and normalised away rather than refused.
+    /// </summary>
+    /// <remarks>
+    /// It is the single most likely thing an operator types, it is unambiguous, and there is exactly
+    /// one thing it can have meant. Refusing it would be correct and useless; normalising removes
+    /// the failure instead of reporting it. Everything that is genuinely ambiguous — a path, a
+    /// query, credentials — is still refused.
+    /// </remarks>
+    [Fact]
+    public async Task A_cors_origin_with_a_trailing_slash_is_normalised_not_refused()
+    {
+        var app = Valid();
+        app.AllowedCorsOrigins = ["https://app.example.com/"];
+
+        (await SaveAsync(app)).Should().BeNull();
+        OidcCorsOrigins.Normalize("https://app.example.com/").Should().Be("https://app.example.com");
     }
 
     [Fact]

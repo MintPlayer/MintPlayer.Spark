@@ -158,9 +158,12 @@ public sealed class OidcCorsOrigins
     /// an origin at all.
     /// </summary>
     /// <remarks>
-    /// ⚠️ A trailing slash is the trap worth knowing: an <c>Origin</c> header is never
-    /// <c>https://app.example.com/</c>, so a configured value with one is a rule that can never
-    /// match and gives no sign of it.
+    /// ⚠️ A trailing slash is <b>accepted and stripped</b>, not refused. An <c>Origin</c> header is
+    /// never <c>https://app.example.com/</c>, so as written it is a rule that could never match —
+    /// but it is also the single most likely thing an operator types, and there is exactly one thing
+    /// it can have meant. Refusing it would be correct and useless; normalising removes the failure
+    /// rather than reporting it. Anything genuinely ambiguous — a path, a query, a fragment,
+    /// credentials, a non-HTTP scheme — returns null instead, and the caller refuses it.
     /// </remarks>
     internal static string? Normalize(string? raw)
     {
