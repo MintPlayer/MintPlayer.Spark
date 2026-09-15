@@ -18,6 +18,22 @@ internal sealed partial class RetryAccessor : IRetryAccessor
     internal Dictionary<int, RetryResult>? AnsweredResults { get; set; }
 
     /// <summary>
+    /// Takes the answers carried by an incoming request, so hooks re-running on this attempt see
+    /// the steps that were already answered instead of prompting again.
+    /// </summary>
+    /// <remarks>
+    /// Every retry-capable endpoint calls this before running any hook. It used to be four lines
+    /// copy-pasted per endpoint, including a downcast of the injected <see cref="IRetryAccessor"/>
+    /// back to this class; that arrangement is how <c>refresh</c> ended up with the answering half
+    /// of a retry and not the asking half. Null and empty are both "first attempt".
+    /// </remarks>
+    internal void Accept(IRetryableRequest? request)
+    {
+        if (request?.RetryResults is { Length: > 0 } answered)
+            AnsweredResults = answered.ToDictionary(r => r.Step);
+    }
+
+    /// <summary>
     /// Tracks the current step index during action execution.
     /// Incremented each time Action() is called.
     /// </summary>

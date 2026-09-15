@@ -8,7 +8,7 @@
 | **Owner** | MintPlayer |
 | **Package** | `MintPlayer.Spark.Abstractions` (promoted from `MintPlayer.Spark` so the messaging and replication-abstractions packages can consume it without a new dependency edge to `MintPlayer.Spark`) |
 | **Issue** | [#151](https://github.com/MintPlayer/MintPlayer.Spark/issues/151) |
-| **Reference** | `C:\Repos\CronosCore\CronosCore.RavenDB\ReferenceObject\ReflectionCache.cs` |
+| **Reference** | `C:\Repos\the originating framework\the originating framework's RavenDB layer\ReferenceObject\ReflectionCache.cs` |
 
 > **v1.1** — design unchanged from v1.0. Implementation shipped in PR #152 includes Phase 3 (compiled accessor delegates) up-front; the Phase-2/Phase-3 split was collapsed at the user's request to ship comprehensive coverage in a single PR.
 
@@ -47,7 +47,7 @@ Spark performs the same reflection lookups repeatedly on hot request paths. None
 ### Goals
 
 1. **Generic any-use primitive** — a single static cache class that any caller can use to memoize *anything* keyed by a string (or by type). Not a domain-specific "GetAllPropertiesWith[Indexed]" helper class.
-2. **Two-tier cache** mirroring the CronosCore reference:
+2. **Two-tier cache** mirroring the the originating framework reference:
    - **Per-type tier** (`Cache<T>`) — generic-static specialization, one dictionary per `T`, ideal for "all properties of T", "the [Foo] attribute on T", etc.
    - **Global tier** — string-keyed, for cross-type lookups ("all types in assembly X derived from Y").
 3. **Thread-safe**, computation-runs-once-per-key semantics.
@@ -70,7 +70,7 @@ Spark performs the same reflection lookups repeatedly on hot request paths. None
 
 ### 3.1 Locking strategy — depart from the reference
 
-The CronosCore reference uses a `CacheLock` (a Vidyano-supplied wrapper around `ReaderWriterLockSlim`). We reject this for two reasons:
+The the originating framework reference uses a `CacheLock` (a Vidyano-supplied wrapper around `ReaderWriterLockSlim`). We reject this for two reasons:
 
 1. **No external dep available.** Vidyano is not a Spark dependency, and we don't want to add it for a single helper.
 2. **`ConcurrentDictionary<TKey, Lazy<TValue>>.GetOrAdd` is strictly better** for this workload:
@@ -78,7 +78,7 @@ The CronosCore reference uses a `CacheLock` (a Vidyano-supplied wrapper around `
    - `Lazy<T>` with `LazyThreadSafetyMode.ExecutionAndPublication` guarantees the factory runs exactly once per key, even under contention — no upgradeable-read dance, no TOCTOU window, no risk of duplicate factory execution.
    - Standard idiom; every .NET developer recognizes it.
 
-The CronosCore upgradeable-read pattern is correct but heavier than necessary for a memoize-forever cache.
+The the originating framework upgradeable-read pattern is correct but heavier than necessary for a memoize-forever cache.
 
 ### 3.2 API surface
 

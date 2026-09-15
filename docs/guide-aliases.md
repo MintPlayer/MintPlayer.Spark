@@ -67,11 +67,11 @@ Queries live in the `queries` array of their entity type's model file (e.g. `App
 > is unchanged. `GetGitHubProjects` still declares `alias: "github-projects"`.
 
 The `queryId` is what the unit *declares*; the alias is what the client *uses*. It routes to
-`/query/{alias}` and then fetches `/spark/queries/{alias}`, so if that alias resolves to a different
+`/query/{alias}` and then posts that alias as the `queryId`, so if it resolves to a different
 query — or to none — the page 404s no matter how correct the id is. The same applies to a
-`persistentObject` unit and `/po/{alias}/{objectId}`.
+`persistentObject` unit, whose alias becomes the `objectTypeId` on a load.
 
-⚠️ **The 404 carries no information.** `/spark/queries/{alias}` answers 404 for an *unauthorized*
+⚠️ **The 404 carries no information.** `/spark/queries/get` answers 404 for an *unauthorized*
 query deliberately, to close an existence oracle: a denied caller must not learn which query ids are
 real. That is correct and stays — and it means a misspelled alias and a missing `Query` right are
 byte-identical from the client. The empty page tells you nothing about which one you have.
@@ -95,9 +95,9 @@ having no server-side target.
 **A query alias identifies exactly one query.** Two queries resolving to the same alias is a
 startup failure, naming both.
 
-It has to be, because a URL cannot mean two things: `/query/{alias}`,
-`/spark/queries/{alias}`, `/spark/queries/{alias}/execute` and `/spark/queries/{alias}/stream` all
-take the same alias, and the second query would simply be unreachable by name. That used to be a
+It has to be, because a name cannot mean two things: the `/query/{alias}` client route, the `queryId`
+field that `/spark/queries/get` and `/spark/queries/execute` take, and the `/spark/queries/{alias}/stream`
+handshake all accept the same alias, and the second query would simply be unreachable by name. That used to be a
 warning on the console, which is how DemoApp shipped `GetStocks` (`Database.Stocks`, a collection
 nothing ever writes) and `StreamStocks` (its live grid) both under `stocks` — `/query/stocks`
 rendered an empty grid and the streaming query could not be reached at all.
@@ -119,10 +119,10 @@ transport choosing between them — `/execute` and `/stream` are already separat
 server could resolve each to the matching variant and refuse when there is none.
 
 It was rejected as too complicated for what it buys. The client learns whether to open a socket
-from `isStreamingQuery` in `GET /spark/queries/{alias}`, which is itself a plain HTTP request — so
+from `isStreamingQuery` in `POST /spark/queries/get`, which is itself a plain HTTP request — so
 the metadata endpoint would have to answer for both variants at once (a wire-shape change and a
 client change in both grids), or the model would need capability flags per query and a program
-unit would have to state which variant it wants. Either way a URL stops naming one thing.
+unit would have to state which variant it wants. Either way an alias stops naming one thing.
 
 If you need both a live and a paged view of the same data, give them distinct aliases.
 
@@ -184,7 +184,9 @@ GET /spark/aliases
 }
 ```
 
-Existing endpoints accept both GUIDs and aliases as identifiers. For example, `GET /spark/po/car` and `GET /spark/po/550e8400-e29b-41d4-a716-446655440000` resolve to the same entity type.
+Every endpoint accepts both GUIDs and aliases as identifiers. For example, `{"objectTypeId": "car"}` and `{"objectTypeId": "550e8400-e29b-41d4-a716-446655440000"}` resolve to the same entity type.
+
+An alias is a body field rather than a path segment, so it needs no URL escaping and one containing a slash or a space is no longer a routing hazard. ⚠️ Nothing validates an alias's character set — only that it is unique — which is why the route table carries no variables at all.
 
 ## Step 3: Angular Routing
 

@@ -1,3 +1,4 @@
+using System.Globalization;
 using MintPlayer.Spark.Abstractions;
 
 namespace MintPlayer.Spark.E2E.Tests._Infrastructure;
@@ -24,7 +25,23 @@ internal static class CarFixture
         public const string LicensePlate = "LicensePlate";
         public const string Model = "Model";
         public const string Year = "Year";
+        public const string RegisteredAt = "RegisteredAt";
     }
+
+    /// <summary>
+    /// The <c>RegisteredAt</c> every Car is seeded with unless a test overrides it.
+    /// </summary>
+    /// <remarks>
+    /// <c>RegisteredAt</c> is <b>required</b> on Car, so a fixture that omits it produces a 400 and
+    /// every Car-creating test fails on setup rather than on what it meant to assert.
+    /// <para>
+    /// The offset is deliberately not UTC and not the build agent's: a fixture that seeded
+    /// <c>+00:00</c> would let an offset-destroying regression pass unnoticed, which is the exact
+    /// defect this suite now covers.
+    /// </para>
+    /// </remarks>
+    public static readonly DateTimeOffset DefaultRegisteredAt =
+        new(2026, 6, 15, 10, 30, 0, TimeSpan.FromHours(-8));
 
     /// <summary>
     /// Builds a fresh Car PO suitable for <c>CreatePersistentObjectAsync</c>. Callers
@@ -32,7 +49,11 @@ internal static class CarFixture
     /// <paramref name="model"/> and <paramref name="year"/> take reasonable defaults
     /// since most Security tests don't care about those values beyond "valid Car".
     /// </summary>
-    public static PersistentObject New(string licensePlate, string model = "M1", int year = 2024)
+    public static PersistentObject New(
+        string licensePlate,
+        string model = "M1",
+        int year = 2024,
+        DateTimeOffset? registeredAt = null)
         => new()
         {
             Name = TypeName,
@@ -42,6 +63,14 @@ internal static class CarFixture
                 new PersistentObjectAttribute { Name = AttributeNames.LicensePlate, Value = licensePlate },
                 new PersistentObjectAttribute { Name = AttributeNames.Model,        Value = model },
                 new PersistentObjectAttribute { Name = AttributeNames.Year,         Value = year },
+                // Required on Car. Sent in round-trip format ("o") -- a complete ISO-8601 string with
+                // the offset already applied, which is what the browser sends and what the server
+                // parses without inferring anything.
+                new PersistentObjectAttribute
+                {
+                    Name = AttributeNames.RegisteredAt,
+                    Value = (registeredAt ?? DefaultRegisteredAt).ToString("o", CultureInfo.InvariantCulture),
+                },
             ],
         };
 

@@ -296,13 +296,18 @@ The `MapSpark()` extension creates these REST endpoints:
 | `/spark/types` | GET | List all entity types |
 | `/spark/types/{id}` | GET | Get entity type definition |
 | `/spark/queries` | GET | List all queries |
-| `/spark/queries/{id}` | GET | Get query definition |
-| `/spark/queries/{id}/execute` | GET | Execute query and return results (paginated) |
-| `/spark/po/{typeId}` | GET | List entities of a type |
-| `/spark/po/{typeId}/{id}` | GET | Get entity by ID |
-| `/spark/po/{typeId}` | POST | Create new entity |
-| `/spark/po/{typeId}/{id}` | PUT | Update entity |
-| `/spark/po/{typeId}/{id}` | DELETE | Delete entity |
+| `/spark/queries/get` | POST | Get query definition — body: `queryId` |
+| `/spark/queries/execute` | POST | Execute a query — body: `queryId`, `skip`, `take`, `search`, `sortColumns`, `parentId`, `parentType` |
+| `/spark/queries/{id}/stream` | GET | Open a streaming query (WebSocket) |
+| `/spark/po/load` | POST | Get entity — body: `objectTypeId`, `id` |
+| `/spark/po/create` | POST | Create entity — body: `objectTypeId`, `persistentObject` |
+| `/spark/po/update` | POST | Update entity — body: `objectTypeId`, `id`, `persistentObject` |
+| `/spark/po/delete` | POST | Delete entity — body: `objectTypeId`, `id` |
+| `/spark/po/new` | POST | Construct an unsaved object or AsDetail row |
+| `/spark/po/refresh` | POST | Reshape an in-progress object after a trigger changed |
+| `/spark/po/delete-row` | POST | Ask whether a stored AsDetail row may be removed |
+| `/spark/actions/list` | POST | Custom actions for a type — body: `objectTypeId` |
+| `/spark/actions/execute` | POST | Run a custom action — body: `objectTypeId`, `actionName`, … |
 | `/spark/program-units` | GET | Get navigation structure |
 | `/spark/lookupref` | GET | List lookup reference types |
 | `/spark/lookupref/{name}` | GET | Get lookup reference values |
@@ -310,7 +315,25 @@ The `MapSpark()` extension creates these REST endpoints:
 | `/spark/lookupref/{name}/{key}` | PUT | Update lookup value |
 | `/spark/lookupref/{name}/{key}` | DELETE | Delete lookup value |
 
-All mutation endpoints (POST, PUT, DELETE) require an `X-XSRF-TOKEN` header. The XSRF token is automatically provided as a cookie by the `UseSpark()` middleware.
+**Every persistent-object, query and action path is literal** — the type, the id and every parameter
+travel in a JSON body. Two consequences worth knowing:
+
+- A Raven id contains slashes and an alias may contain anything (nothing validates its character set),
+  and neither needs escaping any more. There are no route variables for them to break.
+- ⚠️ A top-level `objectTypeId` is the **request parameter** the server authorizes against. It is not
+  the same field as an `objectTypeId` nested inside `persistentObject`, which is part of the submitted
+  document and is overwritten with the resolved type on the way in. A payload naming a different type
+  changes nothing and buys no access.
+
+Mutating endpoints require an `X-XSRF-TOKEN` header; the token is provided as a cookie by the
+`UseSpark()` middleware. The reads (`load`, `queries/get`, `queries/execute`, `actions/list`) do **not**
+require one despite being POSTs — the verb changed, what they do did not, and an antiforgery token
+protects against a cross-site request causing a *change*.
+
+Every endpoint above answers `Access-Control-Allow-Origin: *`, so a page on another origin may read it.
+A cross-origin request carries no cookies, so it reads the anonymous view — the same thing any HTTP
+client could already fetch. To take that off an endpoint, or to opt one of your own endpoints in, see
+the [CORS guide](../../../docs/guide-cors.md).
 
 ## Extension Methods
 

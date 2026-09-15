@@ -2,6 +2,10 @@ using System.Net;
 using MintPlayer.Spark.Client;
 using MintPlayer.Spark.E2E.Tests._Infrastructure;
 
+using MintPlayer.Spark.Testing;
+
+using System.Net.Http.Json;
+
 namespace MintPlayer.Spark.E2E.Tests.Security;
 
 /// <summary>
@@ -27,8 +31,8 @@ public class QueryDosTests
         // Request an astronomical take. Server must clamp; this also means the
         // request completes quickly (no full-collection materialization).
         var start = DateTime.UtcNow;
-        var response = await http.GetAsync(
-            $"/spark/queries/{GetCompaniesQueryId}/execute?take=2147483647");
+        var response = await http.PostAsJsonAsync(
+            "/spark/queries/execute", Wire.Query(GetCompaniesQueryId, new { take = int.MaxValue }));
         var elapsed = DateTime.UtcNow - start;
 
         response.StatusCode.Should().Be(HttpStatusCode.OK,
@@ -45,8 +49,12 @@ public class QueryDosTests
     {
         using var http = SparkClientFactory.CreateHttpClient(_fixture.Host);
 
-        var response = await http.GetAsync(
-            $"/spark/queries/{GetCompaniesQueryId}/execute?skip={badValue}&take={badValue}");
+        // ⚠️ These are typed integers now, not query-string text. The endpoint used to parse the
+        // string and fall back to a default when it failed, so a value it could not read looked the
+        // same as one it never received. A JSON number it cannot use is still a number it received —
+        // the clamp is what has to hold, and that is what this asserts.
+        var response = await http.PostAsJsonAsync(
+            "/spark/queries/execute", Wire.Query(GetCompaniesQueryId, new { skip = badValue, take = badValue }));
 
         // Negative skip clamps to 0; take in [-1, 0] clamps to 1. Either way the
         // request succeeds (doesn't 500).

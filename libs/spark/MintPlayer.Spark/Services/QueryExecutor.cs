@@ -9,6 +9,8 @@ using Raven.Client.Documents.Session;
 using System.Linq.Expressions;
 using System.Reflection;
 
+using static MintPlayer.Spark.Services.SparkHookInvocation;
+
 namespace MintPlayer.Spark.Services;
 
 public interface IQueryExecutor
@@ -233,9 +235,17 @@ internal partial class QueryExecutor : IQueryExecutor
         if (actionsInstance is null)
             return context;
 
+        // ⚠️ `DoNotWrapExceptions`, for the same reason as `DatabaseAccess` and the three invokers:
+        // without it a hook that throws before returning its Task arrives as
+        // `TargetInvocationException` and no typed `catch` in the endpoint matches. That now matters
+        // here — since the query endpoint became a POST, `OnQueryAsync` can raise a retry, and a
+        // wrapped one would leave the pipeline unhandled instead of reaching the caller as a 449.
         var method = actionsInstance.GetType().GetMethod("OnQueryAsync", [typeof(SparkQueryContext)]);
-        if (method is not null && method.Invoke(actionsInstance, [context]) is Task task)
+        if (method is not null &&
+            method.Invoke(actionsInstance, HookInvoke, binder: null, parameters: [context], culture: null) is Task task)
+        {
             await task;
+        }
 
         return context;
     }
@@ -333,7 +343,7 @@ internal partial class QueryExecutor : IQueryExecutor
         object? actions)
     {
         if (actions is not null && ResolveRestrictHook(actions.GetType()) is { } hook)
-            return hook.Invoke(actions, [source, ids])!;
+            return hook.Invoke(actions, HookInvoke, binder: null, parameters: [source, ids], culture: null)!;
 
         var declaredId = elementType.GetCachedProperty("Id");
 
@@ -879,11 +889,11 @@ internal partial class QueryExecutor : IQueryExecutor
         object? result;
         if (methodInfo.AcceptsArgs)
         {
-            result = methodInfo.Method.Invoke(actionsInstance, [args]);
+            result = methodInfo.Method.Invoke(actionsInstance, HookInvoke, binder: null, parameters: [args], culture: null);
         }
         else
         {
-            result = methodInfo.Method.Invoke(actionsInstance, []);
+            result = methodInfo.Method.Invoke(actionsInstance, HookInvoke, binder: null, parameters: null, culture: null);
         }
 
         // Await async methods (Task<IEnumerable<T>>, Task<IQueryable<T>>, etc.)
@@ -1568,7 +1578,9 @@ internal partial class QueryExecutor : IQueryExecutor
     /// <para>
     /// Known gap: a string field a hand-written index declares <c>FieldIndexing.Exact</c> is included and will
     /// match case-sensitively, because the CLR property carries no trace of the index's field options. The
-    /// generator only ever applies <c>Exact</c> to <c>DateTimeOffset</c>, which is excluded by type.
+    /// generator never emits <c>Exact</c> at all now — the one case that used to,
+    /// <c>DateTimeOffset</c>, was measured to gain nothing from it — so this is reachable only from a
+    /// hand-written index.
     /// </para>
     /// </summary>
     private static PropertyInfo[] ResolveSearchableProperties(Type sortType)

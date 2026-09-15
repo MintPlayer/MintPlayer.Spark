@@ -9,7 +9,13 @@ namespace MintPlayer.Spark.Client;
 /// <c>HttpStatusCode.NotFound</c> for missing or row-level-denied entities) and
 /// <see cref="ResponseBody"/> for the server's error payload.
 /// </summary>
-public sealed class SparkClientException : Exception
+/// <remarks>
+/// Not sealed: <see cref="SparkRetryRequiredException"/> derives from it, so a caller that catches
+/// this still catches an unanswered prompt. That is the right default — an unanswered question is a
+/// request that did not complete — and a caller who wants to tell them apart catches the narrower
+/// type first.
+/// </remarks>
+public class SparkClientException : Exception
 {
     public HttpStatusCode StatusCode { get; }
     public string? ResponseBody { get; }

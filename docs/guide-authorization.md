@@ -172,7 +172,7 @@ narrower group — do not remove it. See [row security](guide-row-security.md).
 
 ## What a refusal looks like
 
-Access endpoints (`/spark/po/*`, `/spark/actions/*/…`, `/spark/lookupref/*`) answer:
+Access endpoints (`/spark/po/*`, `/spark/actions/execute`, `/spark/lookupref/*`) answer:
 
 - **401** to an anonymous caller, when the application has some way to sign in. The client
   interceptor turns this into the login redirect, and nothing else will.
@@ -181,10 +181,10 @@ Access endpoints (`/spark/po/*`, `/spark/actions/*/…`, `/spark/lookupref/*`) a
 
 A 403 would tell an unauthorized caller that the thing they asked for exists, which maps out the
 data surface one probe at a time. So the status is a function of *the caller* and never of *the
-resource's existence*: `GET /spark/po/Bogus` answers the same as `GET /spark/po/Car`.
+resource's existence*: a load naming `Bogus` answers the same as one naming `Car`.
 
 Catalogue endpoints (`/spark/types`, `/spark/queries`, `/spark/aliases`, `/spark/program-units`,
-`/spark/actions/{type}`, `/spark/permissions/{type}`) are the exception. The client shell loads
+`/spark/actions/list`, `/spark/permissions/{type}`) are the exception. The client shell loads
 them on boot for every visitor, so they answer **200 with everything filtered out** rather than
 refusing — otherwise an anonymous visitor would be bounced to sign-in merely for opening a page.
 

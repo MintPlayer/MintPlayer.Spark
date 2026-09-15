@@ -144,6 +144,16 @@ public partial class IndexPropertyInfo
     public bool IsSortCompanion { get; set; }
 
     /// <summary>
+    /// Whether this field is a generated wrapper companion — a <c>SparkIndexValue&lt;T&gt;</c> carrying a
+    /// value RavenDB would otherwise flatten. Like a sort companion it carries <c>[IgnoreProperty]</c>
+    /// and is excluded from the Spark model, but unlike one it is never a sort target.
+    /// <para>⚠️ A wrapper must always be declared <c>FieldIndexing.No</c>. Without it Corax deploys the
+    /// index cleanly and then parks it at <c>state=Error, entries=0</c>, so every query returns nothing;
+    /// Lucene is unaffected, which is what makes the mistake easy to miss.</para>
+    /// </summary>
+    public bool IsWrapperCompanion { get; set; }
+
+    /// <summary>
     /// Whether this field is a <c>TranslatedString</c> that must fan out into one field per language.
     /// <para>The expansion happens in the producer, not here: the language set comes from
     /// <c>App_Data/culture.json</c> via a different provider, and the syntax transform that builds this model

@@ -9,6 +9,8 @@ using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Testing;
 
+using MintPlayer.Spark.Tests._Infrastructure;
+
 namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 
 using Po = Abstractions.PersistentObject;
@@ -252,7 +254,7 @@ public class RowLifecycleEndpointTests : SparkTestDriver
     {
         var invoice = await SeedAsync();
 
-        var (status, body) = await PostAsync($"/spark/po/{LineTypeId}/new", NewBody(invoice.Id!));
+        var (status, body) = await PostAsync("/spark/po/new", Wire.Typed(LineTypeId, NewBody(invoice.Id!)));
 
         status.Should().Be(HttpStatusCode.OK);
         body.GetProperty("result").GetProperty("id").GetString().Should().NotBeNullOrWhiteSpace(
@@ -264,7 +266,7 @@ public class RowLifecycleEndpointTests : SparkTestDriver
     {
         var invoice = await SeedAsync();
 
-        var (_, body) = await PostAsync($"/spark/po/{LineTypeId}/new", NewBody(invoice.Id!));
+        var (_, body) = await PostAsync("/spark/po/new", Wire.Typed(LineTypeId, NewBody(invoice.Id!)));
 
         Attribute(body, "Description").GetProperty("value").GetString()
             .Should().Be("Line for INV-1", "the hook read the parent the server loaded");
@@ -277,7 +279,7 @@ public class RowLifecycleEndpointTests : SparkTestDriver
     {
         var invoice = await SeedAsync();
 
-        var (_, body) = await PostAsync($"/spark/po/{LineTypeId}/new", NewBody(invoice.Id!));
+        var (_, body) = await PostAsync("/spark/po/new", Wire.Typed(LineTypeId, NewBody(invoice.Id!)));
 
         Attribute(body, "Description").GetProperty("isValueChanged").GetBoolean().Should().BeFalse(
             "SetOriginalValue, not SetValue — otherwise adding a row and abandoning it leaves the "
@@ -289,11 +291,11 @@ public class RowLifecycleEndpointTests : SparkTestDriver
     {
         // The unsaved-parent case: there is no stored parent to vouch for, so the hook is handed
         // null rather than the client's copy. Constructing the row must still work.
-        var (status, body) = await PostAsync($"/spark/po/{LineTypeId}/new", new
+        var (status, body) = await PostAsync("/spark/po/new", Wire.Typed(LineTypeId, new
         {
             asDetailAttribute = "Lines",
             parentType = InvoiceTypeId.ToString(),
-        });
+        }));
 
         status.Should().Be(HttpStatusCode.OK);
         Attribute(body, "Description").GetProperty("value").GetString().Should().Be("Line for ");
@@ -306,7 +308,7 @@ public class RowLifecycleEndpointTests : SparkTestDriver
 
         // Naming the parent type as its own child. Without the schema check a caller could have any
         // type at all constructed under a parent that has no such collection.
-        var (status, _) = await PostAsync($"/spark/po/{InvoiceTypeId}/new", NewBody(invoice.Id!));
+        var (status, _) = await PostAsync("/spark/po/new", Wire.Typed(InvoiceTypeId, NewBody(invoice.Id!)));
 
         status.Should().Be(HttpStatusCode.NotFound);
     }
@@ -316,12 +318,12 @@ public class RowLifecycleEndpointTests : SparkTestDriver
     {
         var invoice = await SeedAsync();
 
-        var (status, _) = await PostAsync($"/spark/po/{LineTypeId}/new", new
+        var (status, _) = await PostAsync("/spark/po/new", Wire.Typed(LineTypeId, new
         {
             asDetailAttribute = "Attachments",
             parentType = InvoiceTypeId.ToString(),
             parentId = invoice.Id,
-        });
+        }));
 
         // Identical to an unknown type, so this cannot answer "does that collection exist".
         status.Should().Be(HttpStatusCode.NotFound);
@@ -330,7 +332,7 @@ public class RowLifecycleEndpointTests : SparkTestDriver
     [Fact]
     public async Task New_is_refused_for_a_parent_that_does_not_exist()
     {
-        var (status, _) = await PostAsync($"/spark/po/{LineTypeId}/new", NewBody("Invoices/does-not-exist"));
+        var (status, _) = await PostAsync("/spark/po/new", Wire.Typed(LineTypeId, NewBody("Invoices/does-not-exist")));
 
         status.Should().Be(HttpStatusCode.NotFound);
     }
@@ -340,7 +342,7 @@ public class RowLifecycleEndpointTests : SparkTestDriver
     {
         var invoice = await SeedAsync();
 
-        var (status, _) = await PostAsync($"/spark/po/{LineTypeId}/new", NewBody(invoice.Id!), withToken: false);
+        var (status, _) = await PostAsync("/spark/po/new", Wire.Typed(LineTypeId, NewBody(invoice.Id!)), withToken: false);
 
         status.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -355,7 +357,7 @@ public class RowLifecycleEndpointTests : SparkTestDriver
         await ArmAsync(SparkTestSecurity.Empty.Granting(
             "QueryReadEditNewDelete/Invoice", "QueryRead/InvoiceLine"));
 
-        var (status, _) = await PostAsync($"/spark/po/{LineTypeId}/new", NewBody(invoice.Id!));
+        var (status, _) = await PostAsync("/spark/po/new", Wire.Typed(LineTypeId, NewBody(invoice.Id!)));
 
         status.Should().Be(HttpStatusCode.NotFound);
     }
@@ -368,7 +370,7 @@ public class RowLifecycleEndpointTests : SparkTestDriver
         var invoice = await SeedAsync();
         var openKey = invoice.Lines.Single(l => !l.IsSettled).Id;
 
-        var (status, _) = await PostAsync($"/spark/po/{LineTypeId}/delete-row", DeleteBody(invoice.Id!, openKey));
+        var (status, _) = await PostAsync("/spark/po/delete-row", Wire.Typed(LineTypeId, DeleteBody(invoice.Id!, openKey)));
 
         status.Should().Be(HttpStatusCode.OK);
     }
@@ -379,7 +381,7 @@ public class RowLifecycleEndpointTests : SparkTestDriver
         var invoice = await SeedAsync();
         var openKey = invoice.Lines.Single(l => !l.IsSettled).Id;
 
-        await PostAsync($"/spark/po/{LineTypeId}/delete-row", DeleteBody(invoice.Id!, openKey));
+        await PostAsync("/spark/po/delete-row", Wire.Typed(LineTypeId, DeleteBody(invoice.Id!, openKey)));
 
         using var session = Store.OpenAsyncSession();
         var stored = await session.LoadAsync<Invoice>(invoice.Id!);
@@ -396,7 +398,7 @@ public class RowLifecycleEndpointTests : SparkTestDriver
         var invoice = await SeedAsync();
         var settledKey = invoice.Lines.Single(l => l.IsSettled).Id;
 
-        var (status, body) = await PostAsync($"/spark/po/{LineTypeId}/delete-row", DeleteBody(invoice.Id!, settledKey));
+        var (status, body) = await PostAsync("/spark/po/delete-row", Wire.Typed(LineTypeId, DeleteBody(invoice.Id!, settledKey)));
 
         status.Should().Be(HttpStatusCode.BadRequest);
         body.GetProperty("result").GetProperty("errors")[0]
@@ -413,7 +415,7 @@ public class RowLifecycleEndpointTests : SparkTestDriver
         // The attack: the caller asserts the row is not settled. The endpoint never reads a row from
         // the body, so the assertion is simply ignored — had it not been, the refusal would be
         // consulting the very claim it exists to doubt.
-        var (status, _) = await PostAsync($"/spark/po/{LineTypeId}/delete-row", new
+        var (status, _) = await PostAsync("/spark/po/delete-row", Wire.Typed(LineTypeId, new
         {
             asDetailAttribute = "Lines",
             parentType = InvoiceTypeId.ToString(),
@@ -424,7 +426,7 @@ public class RowLifecycleEndpointTests : SparkTestDriver
                 name = "InvoiceLine",
                 attributes = new object[] { new { name = "IsSettled", value = false } },
             },
-        });
+        }));
 
         status.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -435,7 +437,7 @@ public class RowLifecycleEndpointTests : SparkTestDriver
         var invoice = await SeedAsync();
 
         var (status, _) = await PostAsync(
-            $"/spark/po/{LineTypeId}/delete-row", DeleteBody(invoice.Id!, Guid.NewGuid().ToString("N")));
+            "/spark/po/delete-row", Wire.Typed(LineTypeId, DeleteBody(invoice.Id!, Guid.NewGuid().ToString("N"))));
 
         // Refused identically to an unknown type, so the endpoint cannot be used to enumerate keys.
         status.Should().Be(HttpStatusCode.NotFound);
@@ -446,12 +448,12 @@ public class RowLifecycleEndpointTests : SparkTestDriver
     {
         // Unlike New, a missing parent id is not a legitimate case here: an unsaved parent has no
         // stored rows, so there is nothing to consult and the client does not ask.
-        var (status, _) = await PostAsync($"/spark/po/{LineTypeId}/delete-row", new
+        var (status, _) = await PostAsync("/spark/po/delete-row", Wire.Typed(LineTypeId, new
         {
             asDetailAttribute = "Lines",
             parentType = InvoiceTypeId.ToString(),
             rowKey = "anything",
-        });
+        }));
 
         status.Should().Be(HttpStatusCode.NotFound);
     }
@@ -463,7 +465,7 @@ public class RowLifecycleEndpointTests : SparkTestDriver
         var openKey = invoice.Lines.Single(l => !l.IsSettled).Id;
 
         var (status, _) = await PostAsync(
-            $"/spark/po/{LineTypeId}/delete-row", DeleteBody(invoice.Id!, openKey), withToken: false);
+            "/spark/po/delete-row", Wire.Typed(LineTypeId, DeleteBody(invoice.Id!, openKey)), withToken: false);
 
         status.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -479,7 +481,7 @@ public class RowLifecycleEndpointTests : SparkTestDriver
         await ArmAsync(SparkTestSecurity.Empty.Granting(
             "QueryReadEditNewDelete/Invoice", "QueryReadEditNew/InvoiceLine"));
 
-        var (status, _) = await PostAsync($"/spark/po/{LineTypeId}/delete-row", DeleteBody(invoice.Id!, openKey));
+        var (status, _) = await PostAsync("/spark/po/delete-row", Wire.Typed(LineTypeId, DeleteBody(invoice.Id!, openKey)));
 
         status.Should().Be(HttpStatusCode.NotFound);
     }
@@ -495,7 +497,7 @@ public class RowLifecycleEndpointTests : SparkTestDriver
         // gate, and without it this would be a way to confirm an invoice exists.
         await ArmAsync(SparkTestSecurity.Empty.Granting("QueryReadEditNewDelete/InvoiceLine"));
 
-        var (status, _) = await PostAsync($"/spark/po/{LineTypeId}/delete-row", DeleteBody(invoice.Id!, openKey));
+        var (status, _) = await PostAsync("/spark/po/delete-row", Wire.Typed(LineTypeId, DeleteBody(invoice.Id!, openKey)));
 
         status.Should().Be(HttpStatusCode.NotFound);
     }

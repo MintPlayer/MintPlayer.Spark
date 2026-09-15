@@ -11,7 +11,7 @@
 
 Spark apps need a first-class way to **seed and migrate RavenDB data** at startup — create reference/lookup data, backfill or reshape documents after a schema change, etc. Today there is no mechanism: demos have no seeding, and ad-hoc seeders aren't ordered, idempotent, or cluster-safe. (This surfaced concretely when seeding the recursive-breadcrumb demo: `Person → Company → Profession`.)
 
-The team uses the **RavenMigrations** library pattern in other (Vidyano/Cronos) projects and asked whether to build the capability into Spark — in core or a dedicated library — within this PR.
+The team uses the **RavenMigrations** library pattern in other (Vidyano-based) projects and asked whether to build the capability into Spark — in core or a dedicated library — within this PR.
 
 ---
 

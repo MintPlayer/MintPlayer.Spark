@@ -376,7 +376,11 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 NeedsDefaultInitializer = property.Type.IsReferenceType
                     && property.Type.NullableAnnotation != NullableAnnotation.Annotated,
                 MapExpression = $"{itemVariable}.{property.Name}",
-                FieldIndexing = isComplex ? "No" : isSearchableText ? "Search" : isDateTimeOffset ? "Exact" : null,
+                // No Exact arm for DateTimeOffset: measured across 62 paired queries on both engines,
+                // Exact and default produce byte-identical index terms and identical equality, `in`,
+                // range and ordering behaviour. RavenDB reduces the value to a canonical UTC instant
+                // before any analyzer would see it, so Exact has nothing to act on.
+                FieldIndexing = isComplex ? "No" : isSearchableText ? "Search" : null,
                 Attributes = fieldAttributes,
                 IsTranslated = isTranslated,
                 IsSearchable = searchable,
@@ -385,8 +389,15 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
             // A searchable text field always gets its companion: analyzing the field is what destroys its
             // sortability, so the two are one decision. The companion is left undeclared on purpose.
-            if (isSearchableText || isDateTimeOffset)
+            if (isSearchableText)
                 properties.Add(SortCompanionFor(field, AttributeRenderer.ForSortCompanion(property)));
+
+            // A DateTimeOffset gets a wrapper instead of a sort companion. It never needed one -- a
+            // same-typed companion produces a byte-identical ordering AND is flattened identically, so
+            // it could not carry the offset either. What it needs is the value kept out of a scalar
+            // index field, which is what the wrapper does.
+            if (isDateTimeOffset)
+                properties.Add(WrapperCompanionFor(field, AttributeRenderer.ForSortCompanion(property)));
 
             if (breadcrumbCompanion is not null)
                 properties.Add(breadcrumbCompanion);
@@ -559,15 +570,28 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
             if (!searchable && !isDateTimeOffset) continue;
 
-            // The declared indexing for the base field, generated from the attribute so the constructor does
-            // not restate it.
-            indexedFields.Add(new IndexPropertyInfo
-            {
-                Name = property.Name,
-                FieldIndexing = searchable ? "Search" : "Exact",
-            });
+            var typeDisplay = property.Type.ToDisplayString(TypeFormat);
 
-            var companionName = IndexNaming.SortCompanion(property.Name);
+            // The declared indexing for the base field, generated so the constructor does not restate it.
+            // A DateTimeOffset base field needs nothing declared -- see DateTimeOffset_is_not_indexed_Exact.
+            // Its WRAPPER, however, must be FieldIndexing.No or Corax parks the whole index at
+            // state=Error, entries=0 after a clean deploy.
+            if (searchable)
+            {
+                indexedFields.Add(new IndexPropertyInfo { Name = property.Name, FieldIndexing = "Search" });
+            }
+            else
+            {
+                indexedFields.Add(new IndexPropertyInfo
+                {
+                    Name = IndexNaming.WrapperCompanion(property.Name),
+                    FieldIndexing = "No",
+                });
+            }
+
+            var companionName = searchable
+                ? IndexNaming.SortCompanion(property.Name)
+                : IndexNaming.WrapperCompanion(property.Name);
 
             // Already written by hand — contributing it again would be a duplicate member.
             if (existingNames.Contains(companionName)) continue;
@@ -575,10 +599,14 @@ public class GenerateIndexGenerator : IncrementalGenerator
             companions.Add(new IndexPropertyInfo
             {
                 Name = companionName,
-                TypeDisplay = property.Type.ToDisplayString(TypeFormat),
-                NeedsDefaultInitializer = property.Type.IsReferenceType
+                TypeDisplay = searchable
+                    ? typeDisplay
+                    : $"global::MintPlayer.Spark.Abstractions.SparkIndexValue<{typeDisplay}>",
+                NeedsDefaultInitializer = searchable
+                    && property.Type.IsReferenceType
                     && property.Type.NullableAnnotation != NullableAnnotation.Annotated,
-                IsSortCompanion = true,
+                IsSortCompanion = searchable,
+                IsWrapperCompanion = !searchable,
             });
         }
 
@@ -720,6 +748,27 @@ public class GenerateIndexGenerator : IncrementalGenerator
         MapExpression = field.MapExpression,
         FieldIndexing = null,
         IsSortCompanion = true,
+        Attributes = attributes,
+    };
+
+    /// <summary>
+    /// The wrapper companion for a field whose value RavenDB would flatten: same value, boxed in a
+    /// <c>SparkIndexValue&lt;T&gt;</c> so it is stored as a nested object rather than decomposed into a
+    /// scalar index field.
+    /// <para><c>FieldIndexing.No</c> is mandatory, not stylistic — Corax faults on a complex field at any
+    /// other setting, deploying the index cleanly and then parking it at <c>state=Error, entries=0</c>.</para>
+    /// <para>The carried type mirrors the base field's exactly, including nullability: a mismatch still
+    /// works but makes RavenDB inject a cast into the deployed map.</para>
+    /// </summary>
+    private static IndexPropertyInfo WrapperCompanionFor(IndexPropertyInfo field, List<string> attributes) => new()
+    {
+        Name = IndexNaming.WrapperCompanion(field.Name),
+        TypeDisplay = $"global::MintPlayer.Spark.Abstractions.SparkIndexValue<{field.TypeDisplay}>",
+        NeedsDefaultInitializer = false,
+        MapExpression =
+            $"new global::MintPlayer.Spark.Abstractions.SparkIndexValue<{field.TypeDisplay}> {{ V = {field.MapExpression} }}",
+        FieldIndexing = "No",
+        IsWrapperCompanion = true,
         Attributes = attributes,
     };
 

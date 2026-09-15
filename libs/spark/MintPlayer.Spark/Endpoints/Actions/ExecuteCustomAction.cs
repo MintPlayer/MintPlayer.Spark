@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.Endpoints.Actions;
 
 internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<ActionsGroup>
 {
-    public static string Path => "/{objectTypeId}/{actionName}";
+    public static string Path => "/execute";
 
     static void IEndpointBase.Configure(RouteHandlerBuilder builder)
     {
@@ -50,11 +50,13 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var objectTypeId = httpContext.Request.RouteValues["objectTypeId"]?.ToString()!;
-        var actionName = httpContext.Request.RouteValues["actionName"]?.ToString()!;
+        // Both the type and the action name arrive in the body now, so the body is read first. The
+        // ordering the old code relied on — authorize, then read — is preserved in effect because a
+        // malformed body is refused here in exactly the shape an unknown type is refused below.
+        var (request, entityType) = await SparkRequestType.ReadAsync<CustomActionRequest>(httpContext, modelLoader);
+        var actionName = request?.ActionName;
 
-        var entityType = modelLoader.ResolveEntityType(objectTypeId);
-        if (entityType is null)
+        if (request is null || entityType is null || string.IsNullOrEmpty(actionName))
         {
             // Same shape as a denial. This ran BEFORE the grant check below, so a specific
             // 404 here against a 401 there told an anonymous caller which entity types are
@@ -91,9 +93,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             return ClientResult.Envelope(clientAccessor, new { error = $"Custom action '{actionName}' not found" }, StatusCodes.Status404NotFound);
         }
 
-        var request = await httpContext.Request.ReadFromJsonAsync<CustomActionRequest>();
-
-        var selectedCount = request?.SelectedItemIds?.Length ?? 0;
+        var selectedCount = request.SelectedItemIds?.Length ?? 0;
 
         // A hard ceiling on the selection, whether or not a rule is declared.
         //
@@ -133,11 +133,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
                 StatusCodes.Status400BadRequest);
         }
 
-        if (request?.RetryResults is { Length: > 0 } retryResults)
-        {
-            var accessor = (RetryAccessor)retryAccessor;
-            accessor.AnsweredResults = retryResults.ToDictionary(r => r.Step);
-        }
+        RetryScope.Accept(retryAccessor, request);
 
         try
         {
@@ -307,18 +303,19 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<Act
             await action.ExecuteAsync(args, httpContext.RequestAborted);
             return ClientResult.Envelope(clientAccessor, null, StatusCodes.Status200OK);
         }
-        catch (SparkRetryActionException ex)
-        {
-            return ClientResult.Retry(clientAccessor, ex);
-        }
         catch (SparkAccessDeniedException)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
-        catch (Exception ex)
+        // ⚠️ The filter is load-bearing, and this is the only endpoint that needs one. A retry is not
+        // a failure — it is the server asking the caller a question, and the middleware turns it into
+        // a 449. Every other retry-capable endpoint catches only specific exception types, so the
+        // exception simply propagates; this one has a catch-all, which would swallow the prompt and
+        // answer 500 instead. `RetryFromEveryHookTests` is what fails if this filter is removed.
+        catch (Exception ex) when (ex is not SparkRetryActionException)
         {
             // R2-M1: server-side log with full detail, generic public response.
-            logger.LogError(ex, "Custom action '{ActionName}' failed for entity type '{EntityType}'", actionName, objectTypeId);
+            logger.LogError(ex, "Custom action '{ActionName}' failed for entity type '{EntityType}'", actionName, entityType.Name);
             return ClientResult.Envelope(clientAccessor, new { error = "Operation failed" }, StatusCodes.Status500InternalServerError);
         }
     }

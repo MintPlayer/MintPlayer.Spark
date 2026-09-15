@@ -18,7 +18,7 @@ Two related sources of CI flakiness in `MintPlayer.Spark.Tests`:
 
 ## Investigation findings (three-agent sweep, 2026-08-16)
 
-### F1 — CronosCore has no Sleep-to-deterministic transition to copy
+### F1 — the originating framework has no Sleep-to-deterministic transition to copy
 
 Searched `origin/development` commit messages and pickaxed `-S` for `WaitForIndexing`,
 `WaitForNonStale`, `WaitForIndexesAfterSaveChanges`, `Thread.Sleep`, `Task.Delay`.
@@ -28,7 +28,7 @@ Searched `origin/development` commit messages and pickaxed `-S` for `WaitForInde
 a fixed-duration wait in that repo. `WaitForNonStale` and `WaitForIndexesAfterSaveChanges` have
 **never appeared on any branch**.
 
-So there is no prior art here to port wholesale. What CronosCore does offer is a well-refined poll
+So there is no prior art here to port wholesale. What the originating framework does offer is a well-refined poll
 and two lessons learned the hard way:
 
 - **`3222181`** (2024-03-22, "Wait For Indexes before enabling Subscriptions") — moved the wait into
@@ -66,7 +66,7 @@ plus `WaitForNonStaleIndexes` are read by nothing in `libs/`; only a test assert
 predicate at `:61-62` requires that **no** `ReplacementOf/` index exists before returning — i.e. it
 deliberately waits for the swap to complete.
 
-The *code* is right and matches CronosCore exactly: while a replacement index exists, queries still
+The *code* is right and matches the originating framework exactly: while a replacement index exists, queries still
 resolve against the old definition, so returning early would hand the test a stale view. The comment
 is a mis-paraphrase introduced during the port. Fix the comment, keep the behaviour.
 
@@ -75,7 +75,7 @@ disappears when Raven completes the swap, which is exactly the condition being w
 
 ### F4 — `WaitForIndexesAfterSaveChanges` is unused in BOTH repos
 
-Zero occurrences in MintPlayer.Spark and zero in CronosCore, ever. Likewise `Changes()` /
+Zero occurrences in MintPlayer.Spark and zero in the originating framework, ever. Likewise `Changes()` /
 `ForAllIndexes` / `ForIndex` for index notifications, and `WaitForNonStaleResults`.
 
 This is the genuinely better mechanism neither codebase adopted. `session.Advanced.WaitForIndexesAfterSaveChanges(timeout, throwOnTimeout: true)`
@@ -116,19 +116,19 @@ appeared in `stats` at all, so the first poll can return before the index is eve
 buys ordering, not freshness. Every fixture still waits again after seeding, which is what actually
 matters.
 
-### F8 — The `ImportScope` trick ports BETTER here than it works in CronosCore
+### F8 — The `ImportScope` trick ports BETTER here than it works in the originating framework
 
-CronosCore's `ImportScope` stops indexing and disables subscriptions for the duration of a bulk
+the originating framework's `ImportScope` stops indexing and disables subscriptions for the duration of a bulk
 import, then restarts indexing, waits once, and only then re-enables subscriptions. It turns N racy
 incremental catch-ups into one deterministic settle.
 
 Its stated limitation is that `StopIndexingOperation` is **database-global**, so a parallel test
-would see indexing frozen — CronosCore gets away with it only because its fixtures are serial and
+would see indexing frozen — the originating framework gets away with it only because its fixtures are serial and
 share one database.
 
 **Spark has a database per test case.** Maintenance operations are database-scoped, so the same trick
 is naturally isolated here: freezing indexing on `InitializeAsync_410` cannot affect any other test.
-The constraint that makes it awkward in CronosCore does not apply to us.
+The constraint that makes it awkward in the originating framework does not apply to us.
 
 ### F9 — Synchronous waits block the thread pool under the new parallelism cap
 
@@ -185,7 +185,7 @@ is. The message had to carry a distinction the type should have been making.
 
 - **D5 — Do not make timeouts CI-aware.** Tempting, but it treats the symptom: a wait that needs
   longer on CI is either racing something or genuinely broken. Correct waits are fast on both.
-  CronosCore reached the same conclusion (its options are not environment-aware).
+  the originating framework reached the same conclusion (its options are not environment-aware).
 
 - **D6 — Consolidate the polling helpers, prioritising failure behaviour (F6).** One shared
   `WaitUntilAsync` that always throws with elapsed time and a caller-supplied description. The two

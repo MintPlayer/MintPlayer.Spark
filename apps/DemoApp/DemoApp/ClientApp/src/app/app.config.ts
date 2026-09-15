@@ -1,6 +1,7 @@
 import { ApplicationConfig, provideBrowserGlobalErrorListeners, provideZonelessChangeDetection } from '@angular/core';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient, withXsrfConfiguration } from '@angular/common/http';
+import { withSparkTimezone } from '@mintplayer/ng-spark/services';
 import { provideAnimations } from '@angular/platform-browser/animations';
 import { provideSparkAttributeRenderers } from '@mintplayer/ng-spark/renderers';
 
@@ -11,7 +12,7 @@ export const appConfig: ApplicationConfig = {
   providers: [
     provideBrowserGlobalErrorListeners(),
     provideRouter(routes),
-    provideHttpClient(withXsrfConfiguration({ cookieName: 'XSRF-TOKEN', headerName: 'X-XSRF-TOKEN' })),
+    provideHttpClient(withXsrfConfiguration({ cookieName: 'XSRF-TOKEN', headerName: 'X-XSRF-TOKEN' }), ...withSparkTimezone()),
     provideAnimations(),
     provideZonelessChangeDetection(),
     // Detail-only registration: columnComponent/editComponent deliberately omitted (#241/#245).

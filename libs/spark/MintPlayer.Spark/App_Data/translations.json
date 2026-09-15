@@ -21,7 +21,8 @@
     "clickToEdit":       { "en": "(click to edit)",  "fr": "(cliquer pour modifier)", "nl": "(klik om te bewerken)" },
     "resultFound":       { "en": "result found",     "fr": "résultat trouvé",   "nl": "resultaat gevonden" },
     "resultsFound":      { "en": "results found",    "fr": "résultats trouvés", "nl": "resultaten gevonden" },
-    "confirmDelete":     { "en": "Are you sure you want to delete this item?", "fr": "Êtes-vous sûr de vouloir supprimer cet élément ?", "nl": "Weet u zeker dat u dit item wilt verwijderen?" }
+    "confirmDelete":     { "en": "Are you sure you want to delete this item?", "fr": "Êtes-vous sûr de vouloir supprimer cet élément ?", "nl": "Weet u zeker dat u dit item wilt verwijderen?" },
+    "concurrencyConflict": { "en": "Somebody else changed this record while you were editing it. Reload the page to see their version.", "fr": "Quelqu'un d'autre a modifié cet enregistrement pendant que vous le modifiiez. Rechargez la page pour voir sa version.", "nl": "Iemand anders heeft dit record gewijzigd terwijl u het aan het bewerken was. Herlaad de pagina om hun versie te zien." }
   },
   "validation": {
     "required":      { "en": "{0} is required.", "fr": "{0} est obligatoire.", "nl": "{0} is verplicht." },

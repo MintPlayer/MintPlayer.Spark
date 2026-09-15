@@ -328,8 +328,32 @@ public class ExecuteCustomActionTests
         (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.OK);
     }
 
+    /// <summary>
+    /// A retry raised by an action <b>leaves this endpoint</b> rather than being converted here.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ This fact used to assert a 449 with the full retry payload, and it was right to until the
+    /// emit half moved into <c>SparkMiddleware</c>. It is not a weaker assertion now — it is the same
+    /// property stated where it is actually true. This class constructs the endpoint and calls
+    /// <c>HandleAsync</c> directly, so there is no middleware in the picture; a test expecting a 449
+    /// here would be asserting something the endpoint no longer does, and could only be made to pass
+    /// by putting the <c>catch</c> back.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>The endpoint must still not swallow it.</b> This one has a catch-all for R2-M1 (log the
+    /// detail, return a generic 500), and that clause carries
+    /// <c>when (ex is not SparkRetryActionException)</c> for exactly this reason — no other
+    /// retry-capable endpoint needs a filter, because no other one has a catch-all. Remove the filter
+    /// and this fact fails with a 500 instead of the exception.
+    /// </para>
+    /// <para>
+    /// The 449 itself is asserted end-to-end, through the real pipeline, by
+    /// <c>RetryFromEveryHookTests.Custom_action_emits_a_retry</c>.
+    /// </para>
+    /// </remarks>
     [Fact]
-    public async Task SparkRetryActionException_thrown_by_action_returns_449_with_retry_payload()
+    public async Task SparkRetryActionException_thrown_by_action_escapes_to_the_middleware()
     {
         var action = Substitute.For<ICustomAction>();
         action.When(a => a.ExecuteAsync(Arg.Any<CustomActionArgs>(), Arg.Any<CancellationToken>()))
@@ -343,20 +367,15 @@ public class ExecuteCustomActionTests
         var endpoint = NewEndpoint();
         var context = NewContext(CarType.Id.ToString(), "Archive", body: new CustomActionRequest());
 
-        var result = await endpoint.HandleAsync(context);
-        var body = await ExecuteBodyAsync(result, context);
+        var thrown = await Assert.ThrowsAsync<SparkRetryActionException>(
+            () => endpoint.HandleAsync(context));
 
-        ((HttpStatusCode)context.Response.StatusCode).Should().Be((HttpStatusCode)449);
-        using var doc = JsonDocument.Parse(body);
-        // Envelope shape: { result, operations: [{ type: "retry", step, title, options, ... }] }
-        var retry = doc.RootElement.GetProperty("operations").EnumerateArray()
-            .First(o => o.GetProperty("type").GetString() == "retry");
-        retry.GetProperty("step").GetInt32().Should().Be(2);
-        retry.GetProperty("title").GetString().Should().Be("Confirm?");
-        retry.GetProperty("options").EnumerateArray().Select(e => e.GetString())
-            .Should().Equal("Yes", "No");
-        retry.GetProperty("defaultOption").GetString().Should().Be("No");
-        retry.GetProperty("message").GetString().Should().Be("Are you sure?");
+        // The payload has to survive intact, because the middleware builds the envelope from it.
+        thrown.Step.Should().Be(2);
+        thrown.Title.Should().Be("Confirm?");
+        thrown.Options.Should().Equal("Yes", "No");
+        thrown.DefaultOption.Should().Be("No");
+        thrown.RetryMessage.Should().Be("Are you sure?");
     }
 
     [Fact]
@@ -615,8 +634,6 @@ public class ExecuteCustomActionTests
     {
         var services = new ServiceCollection().AddLogging().BuildServiceProvider();
         var context = new DefaultHttpContext { RequestServices = services };
-        context.Request.RouteValues["objectTypeId"] = objectTypeId;
-        context.Request.RouteValues["actionName"] = actionName;
 
         if (authenticated)
         {
@@ -624,14 +641,19 @@ public class ExecuteCustomActionTests
                 [new Claim(ClaimTypes.Name, "alice")], authenticationType: "TestScheme"));
         }
 
-        if (body is not null)
-        {
-            var json = JsonSerializer.Serialize(body, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
-            var bytes = Encoding.UTF8.GetBytes(json);
-            context.Request.Body = new MemoryStream(bytes);
-            context.Request.ContentType = "application/json";
-            context.Request.ContentLength = bytes.Length;
-        }
+        // ⚠️ The type and the action name used to be route values. They are body fields now, and the
+        // body is therefore never optional — an endpoint given none cannot tell what was asked and
+        // refuses. `body: null` here still means "no parent, no selection", which is what the cases
+        // that pass it are about; it no longer means "no request".
+        var request = body ?? new CustomActionRequest();
+        request.ObjectTypeId = objectTypeId;
+        request.ActionName = actionName;
+
+        var json = JsonSerializer.Serialize(request, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+        var bytes = Encoding.UTF8.GetBytes(json);
+        context.Request.Body = new MemoryStream(bytes);
+        context.Request.ContentType = "application/json";
+        context.Request.ContentLength = bytes.Length;
 
         context.Response.Body = new MemoryStream();
         return context;

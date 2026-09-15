@@ -5,6 +5,8 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.Spark.Abstractions.ClientOperations;
+using MintPlayer.Spark.Exceptions;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Configuration;
@@ -22,6 +24,18 @@ namespace MintPlayer.Spark;
 
 public static class SparkExtensions
 {
+    /// <summary>
+    /// The CORS policy Spark's own endpoints answer with by default.
+    /// </summary>
+    /// <remarks>
+    /// Public so an application or a library can name it — to reuse it on an endpoint of its own with
+    /// <c>RequireCors</c>, or to recognise it. Opting a Spark endpoint out is
+    /// <c>.WithMetadata(new DisableCorsAttribute())</c> — ⚠️ there is no <c>.DisableCors()</c> builder
+    /// extension, only the attribute, which is easy to assume otherwise given <c>RequireCors</c> exists;
+    /// there is nothing to un-register.
+    /// </remarks>
+    public const string SparkCorsPolicy = "SparkCors";
+
     public static IServiceCollection AddSpark(this IServiceCollection services, IConfiguration configuration, Action<ISparkBuilder> configure)
     {
         var builder = new SparkBuilder(services, configuration);
@@ -48,6 +62,38 @@ public static class SparkExtensions
 
         // Register antiforgery (required by Spark's POST/PUT/DELETE endpoints)
         services.AddAntiforgery(opt => opt.HeaderName = "X-XSRF-TOKEN");
+
+        // CORS services, always — for the same reason antiforgery is registered always, and with the
+        // same consequence if it is not. Registering them is what makes `RequireCors` *safe to write*
+        // on any endpoint: ASP.NET fails a request whose endpoint carries CORS metadata when no CORS
+        // middleware is present, and the middleware in turn throws at startup if AddCors was never
+        // called. A module should be able to declare what an endpoint needs without also having to
+        // arrange the pipeline for it — the identity provider could not, and `/connect/token` threw on
+        // every request as a result.
+        services.AddCors(cors => cors.AddPolicy(SparkCorsPolicy, policy =>
+        {
+            // ⚠️ A NAMED policy, never AddDefaultPolicy. A default policy is last-write-wins: Spark
+            // registering one would silently clobber an application's own — or be clobbered by it —
+            // depending on whether the app called AddCors before or after AddSpark. An application's
+            // controllers would stop working cross-origin because it added Spark, and the outcome
+            // would depend on call order. A named policy collides with nothing.
+            //
+            // `AllowAnyOrigin` emits `Access-Control-Allow-Origin: *` rather than echoing the caller's
+            // origin. That is the honest signal for what this is — a public, credential-free read —
+            // and it makes the dangerous combination impossible by construction: ASP.NET refuses
+            // `AllowCredentials` alongside any-origin, so nobody can later widen this into
+            // cross-origin access to a signed-in user's data without first confronting that.
+            //
+            // ⚠️ What this does and does not expose. A cross-origin request carries no cookies unless
+            // the response also grants credentials, so what a browser page can read here is the
+            // ANONYMOUS view — which any HTTP client could already fetch directly, without a browser
+            // and without CORS. The exception worth knowing is a Spark app on a private network: a
+            // public page a user visits can read its anonymous surface through their browser, which it
+            // could not reach on its own. An intranet deployment that cares should turn this off.
+            policy.AllowAnyOrigin()
+                  .AllowAnyHeader()
+                  .AllowAnyMethod();
+        }));
 
         // Ensure HttpContextAccessor is available (needed for RequestCultureResolver)
         services.AddHttpContextAccessor();
@@ -89,16 +135,9 @@ public static class SparkExtensions
                 Database = options.RavenDb.Database,
             };
 
-            store.Conventions.UseNaturalIds().UseGeneratedIds();
-
-            // Register custom JSON converters for RavenDB document serialization
-            store.Conventions.Serialization = new NewtonsoftJsonSerializationConventions
-            {
-                CustomizeJsonSerializer = serializer =>
-                {
-                    serializer.Converters.Add(new ColorNewtonsoftJsonConverter());
-                }
-            };
+            // One call, shared with the test drivers. Configuring a store by hand here is how
+            // production and the suite drifted apart -- see SparkStoreConfiguration.
+            store.ApplySparkConventions();
 
             store.Initialize();
 
@@ -207,6 +246,34 @@ public static class SparkExtensions
         // the identical requirement for [Authorize] — which ASP.NET Core itself leaves unguarded.
         registry.ApplyMiddleware(app, SparkMiddlewareStage.BeforeAuthentication);
 
+        // CORS. Two branches, because Spark's own endpoints and everyone else's have different
+        // defaults — and a single middleware cannot express that, since the policy it is constructed
+        // with becomes the default for every endpoint that carries no metadata of its own.
+        //
+        // ⚠️ Before UseAuthentication deliberately. A CORS preflight is an unauthenticated OPTIONS
+        // request that carries no credentials by definition; running it after the authentication and
+        // authorization stages invites those stages to refuse the preflight for a request the browser
+        // has not made yet, and the failure surfaces as an opaque cross-origin error rather than as a
+        // 401 anyone can read.
+        app.UseWhen(
+            // Spark's own API: the policy applies by default, so every framework endpoint answers with
+            // `Access-Control-Allow-Origin: *` without anyone opting in. An endpoint that does not want
+            // it opts OUT with `.WithMetadata(new DisableCorsAttribute())` — there is no `.DisableCors()`
+            // extension, only the attribute — and one that wants a different policy names it with
+            // `.RequireCors(...)` — endpoint metadata beats the branch's policy either way.
+            context => context.Request.Path.StartsWithSegments(Endpoints.SparkGroup.Prefix),
+            branch => branch.UseCors(SparkCorsPolicy));
+
+        app.UseWhen(
+            // Everything else — a library's endpoints outside the Spark prefix (the identity provider's
+            // `/connect` and `/.well-known`), and the application's own controllers. No policy name, so
+            // nothing is granted by default and each endpoint opts IN with `RequireCors`.
+            //
+            // ⚠️ An application that registers its own DEFAULT policy still gets it here, which is the
+            // point: that is the app saying "everywhere", and Spark has no business overriding it.
+            context => !context.Request.Path.StartsWithSegments(Endpoints.SparkGroup.Prefix),
+            branch => branch.UseCors());
+
         // Any registered credential is a reason to authenticate, not just Identity. An app whose
         // only callers are machines — client certificates, or bearer tokens from the identity
         // provider — registers no user type, and gating on that alone would leave its middleware
@@ -288,6 +355,33 @@ public static class SparkExtensions
                 });
             }
             await next(context);
+        });
+
+        // One place turns a raised retry into its 449 envelope, for every endpoint.
+        //
+        // The ACCEPT half of a retry has been centralised since M0 (RetryScope); this is the EMIT
+        // half, which was a `catch (SparkRetryActionException)` copy-pasted into nine endpoints with
+        // nothing connecting it to the accept half. Three endpoints shipped with one half and not the
+        // other, and nobody noticed until a hook finally prompted.
+        //
+        // ⚠️ Deliberately registered here rather than earlier: it must wrap endpoint execution, and
+        // everything above it — authentication, antiforgery, the origin guard — should run and fail
+        // on its own terms. A retry raised by a hook happens well inside all of that.
+        app.Use(async (context, next) =>
+        {
+            try
+            {
+                await next(context);
+            }
+            catch (SparkRetryActionException ex) when (!context.Response.HasStarted)
+            {
+                // A prompt is not an error: the server is asking the caller a question, and 449 is
+                // the answer channel. Everything the hook already pushed onto the client accessor
+                // rides along in the same envelope, so notifications raised before the prompt are
+                // not lost.
+                var client = context.RequestServices.GetRequiredService<IClientAccessor>();
+                await ClientResult.Retry(client, ex).ExecuteAsync(context);
+            }
         });
 
         app.UseMiddleware<SparkMiddleware>();

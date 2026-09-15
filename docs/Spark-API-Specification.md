@@ -1,8 +1,18 @@
 # MintPlayer.Spark HTTP API Specification
 
-Reference for every HTTP endpoint the Spark framework exposes. All endpoints live under the `/spark/*` top-level prefix. Mutating endpoints (POST/PUT/DELETE) require the anti-forgery token; read endpoints are anonymous unless noted.
+Reference for every HTTP endpoint the Spark framework exposes. All endpoints live under the `/spark/*` top-level prefix.
 
-> **Forward-compatibility note:** the response envelope is evolving. See [`docs/prd/PRD-ClientOperations.md`](./prd/PRD-ClientOperations.md) — once that PRD's endpoint-wiring milestone lands, every action-endpoint response will be wrapped in `{ result, operations }` (operations being an array of typed side-effects like `navigate`, `notify`, `refreshQuery`, `retry`, etc.). This document describes the current shape; the wrapping will be transparent to consumers that use the typed `MintPlayer.Spark.Client` SDK.
+## Two things to know before reading the table
+
+**Every persistent-object, query and action path is literal, and every such call is a `POST`.** There are no route variables: the entity type, the object id, paging, sorting and filters all travel in a JSON body. A Raven id contains slashes and nothing validates the character set of a type name or alias, so a scheme that kept either in the path was collision-free only by convention. The one exception is the WebSocket streaming route, whose handshake has no body to move an id into.
+
+**A top-level `objectTypeId` is not the same field as `persistentObject.objectTypeId`.** The first is the request parameter: the server resolves it, authorizes against it, and it is read in exactly one place. The second is part of the submitted document — the object declaring what it is — and is overwritten with the resolved type on the way in. A payload naming a different type changes nothing and buys no access. They now sit one line apart in the same document, which is why the distinction is stated here rather than left to be inferred.
+
+**Anti-forgery:** the mutating endpoints require the `X-XSRF-TOKEN` header. The four reads (`po/load`, `queries/get`, `queries/execute`, `actions/list`) do **not**, despite being POSTs — the verb changed, what they do did not, and an anti-forgery token protects against a cross-site request causing a *change*.
+
+**Response envelope:** mutating endpoints answer `{ result, operations }`, where `operations` is an array of typed side-effects (`navigate`, `notify`, `refreshQuery`, `retry`, …). See [`docs/prd/PRD-ClientOperations.md`](./prd/PRD-ClientOperations.md). The reads answer a bare object; only their `449` is enveloped, because a retry has nowhere else to live.
+
+**CORS:** every endpoint below answers `Access-Control-Allow-Origin: *`, so a page on another origin may read it. That grants nothing new — a cross-origin request carries no cookies, so what it reads is the anonymous view, which any HTTP client could already fetch without a browser. ⚠️ The exception is a Spark app on a **private network**, where a public page a user visits gains a route it would not otherwise have; such a deployment opts endpoints out individually. See [CORS](guide-cors.md).
 
 ## Route Prefix Mapping
 
@@ -39,68 +49,70 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
 
 #### Create PersistentObject
 
-**`POST /spark/po/{objectTypeId}`** — `Endpoints/PersistentObject/Create.cs`
+**`POST /spark/po/create`** — `Endpoints/PersistentObject/Create.cs`
 
-- **Route params**: `{objectTypeId}` (entity type id or alias)
-- **Request body**: `PersistentObjectRequest` — see DTOs below
+- **Request body**: `{ objectTypeId, persistentObject, retryResults? }`
 - **Response shapes**:
-  - `201 Created` — body: the created `PersistentObject` (server-assigned `id`, `etag`)
+  - `201 Created` — the created `PersistentObject` (server-assigned `id`, `etag`)
   - `400 Bad Request` — `{ "errors": [...] }` on validation failure
-  - `404 Not Found` — `{ "error": "Entity type '{objectTypeId}' not found" }`
+  - `404 Not Found` — unknown type, denied type, or unreadable body (all identical by design — M-3)
   - `449` (retry) — see [Retry Action Protocol](#retry-action-protocol-449-status-code)
   - `401` / `403` on auth failure
 - **Auth**: XSRF-TOKEN required; permission check via `IPermissionService`
 - **Notes**:
-  - `objectTypeId` on the PO body is forced to the route parameter.
-  - Retry resubmissions carry `retryResults[]` in the body.
+  - `persistentObject.objectTypeId` is **overwritten** with the resolved type. It is never the authority.
+  - `POST` is Create and never Edit: `id` is forced to null. A client posting an existing id used to flip the operation to Edit and overwrite a foreign record under the `New` right.
+  - ⚠️ The body is read **before** authorization, because the body is where the type is. A malformed body is answered exactly as an unknown type, so a parse failure cannot be used to probe which types exist.
 
-#### Get PersistentObject
+#### Load PersistentObject
 
-**`GET /spark/po/{objectTypeId}/{**id}`** — `Endpoints/PersistentObject/Get.cs`
+**`POST /spark/po/load`** — `Endpoints/PersistentObject/Get.cs`
 
-- **Route params**: `{objectTypeId}`, `{**id}` (catch-all; supports hierarchical IDs; URI-decoded)
-- **Request body**: none
+- **Request body**: `{ objectTypeId, id, retryResults? }`
 - **Response shapes**:
-  - `200 OK` — body: `PersistentObject`
-  - `404 Not Found` — `{ "error": "Object with ID ... not found" }` or entity-type-not-found
-  - `401` / `403` on auth failure
-- **Auth**: permission check on read access
-
-#### List PersistentObjects
-
-**`GET /spark/po/{objectTypeId}`** — `Endpoints/PersistentObject/List.cs`
-
-- **Route params**: `{objectTypeId}`
-- **Response shapes**:
-  - `200 OK` — body: `PersistentObject[]` (row-level authorization applies; denied rows silently omitted)
-  - `404 Not Found` on unknown entity type
-  - `401` / `403` on auth failure
-- **Auth**: permission check on read access; no pagination (use Query endpoints for paged/sorted listings)
+  - `200 OK` — a bare `PersistentObject` (**not** enveloped)
+  - `404 Not Found` — object unknown, type unknown, or denied — indistinguishable by design
+  - `449` on retry, enveloped
+  - `401` on auth failure where signing in could help
+- **Auth**: **no** anti-forgery token; permission check on read access
+- **Notes**:
+  - `OnLoadAsync` can raise a retry — this is why the endpoint has a body at all. ⚠️ It is the load *seam*, not just this endpoint's hook: delete, refresh and delete-row all run it on their way elsewhere, so a retry there fires on every read of that type.
 
 #### Update PersistentObject
 
-**`PUT /spark/po/{objectTypeId}/{**id}`** — `Endpoints/PersistentObject/Update.cs`
+**`POST /spark/po/update`** — `Endpoints/PersistentObject/Update.cs`
 
-- **Route params**: `{objectTypeId}`, `{**id}`
-- **Request body**: `PersistentObjectRequest`
+- **Request body**: `{ objectTypeId, id, persistentObject, retryResults? }`
 - **Response shapes**:
-  - `200 OK` — body: updated `PersistentObject` (new `etag`)
+  - `200 OK` — updated `PersistentObject` (new `etag`)
   - `400 Bad Request` — `{ "errors": [...] }` on validation failure
-  - `404 Not Found` — object or entity type not found
-  - `409 Conflict` — `{ "error": "..." }` on etag mismatch (optimistic-concurrency)
+  - `404 Not Found` — object or type not found, or denied
+  - `409 Conflict` — `{ "error": "Concurrency conflict" }` on etag mismatch. Deliberately generic: the server-side change vector is a version side channel.
   - `449` on retry
   - `401` / `403` on auth failure
 - **Auth**: XSRF-TOKEN required; permission check on edit access
 - **Notes**:
-  - `id` and `objectTypeId` forced to URL parameter values.
+  - The top-level `id` names the target; `persistentObject.id` and `.objectTypeId` are both overwritten from what the server loaded.
   - `etag` on the PO body is the optimistic-concurrency token; omit to skip the check.
+
+#### New PersistentObject (construct, unsaved)
+
+**`POST /spark/po/new`** — `Endpoints/PersistentObject/New.cs`
+
+- **Request body**: `{ objectTypeId, asDetailAttribute?, parentType?, parentId?, parameters?, retryResults? }`
+- **Response shapes**:
+  - `200 OK` — the constructed, unsaved `PersistentObject`, enveloped
+  - `400 Bad Request` — `{ "errors": [...] }` when `OnNewAsync` refuses
+  - `404 Not Found` — unknown type, or an `asDetailAttribute` the parent does not have
+  - `449` on retry
+- **Auth**: XSRF-TOKEN required
+- **Notes**: writes nothing. For an AsDetail row the parent still owns the save. A present `parentId` is re-loaded server-side rather than trusted; an absent one means the hook is handed a null parent, which is the honest answer.
 
 #### Refresh PersistentObject
 
-**`POST /spark/po/{objectTypeId}/refresh`** — `Endpoints/PersistentObject/Refresh.cs`
+**`POST /spark/po/refresh`** — `Endpoints/PersistentObject/Refresh.cs`
 
-- **Route params**: `{objectTypeId}` — the type being edited (guid or alias)
-- **Request body**: `{ persistentObject, triggeredBy, retryResults? }`
+- **Request body**: `{ objectTypeId, persistentObject, triggeredBy, retryResults? }`
   - `triggeredBy` is the attribute's **name**. For a trigger inside a detail grid it is the path
     form the inline validation errors use: `Jobs[1].ProfessionId`.
 - **Response shapes**:
@@ -118,23 +130,36 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
     or writable when the model says otherwise.
   - A `triggeredBy` naming a detail-grid column dispatches to that **row's** type — a change to
     `CarreerJob.ProfessionId` reaches `CarreerJobActions.OnRefreshAsync` — and the response is the
-    reshaped row, carrying its owner as `parent`. Authorization still uses the type in the route:
-    nested AsDetail types are not in `security.json`.
+    reshaped row, carrying its owner as `parent`. Authorization still uses the **request's**
+    `objectTypeId`: nested AsDetail types are not in `security.json`.
   - See [TriggersRefresh & OnRefreshAsync](./guide-triggers-refresh.md).
 
 #### Delete PersistentObject
 
-**`DELETE /spark/po/{objectTypeId}/{**id}`** — `Endpoints/PersistentObject/Delete.cs`
+**`POST /spark/po/delete`** — `Endpoints/PersistentObject/Delete.cs`
 
-- **Route params**: `{objectTypeId}`, `{**id}`
-- **Request body**: optional (present only on retry resubmissions); when present, `PersistentObjectRequest` with just the `retryResults[]` populated
+- **Request body**: `{ objectTypeId, id, retryResults? }`
 - **Response shapes**:
   - `204 No Content` — empty body
-  - `404 Not Found` — object or entity type not found
+  - `400 Bad Request` — `{ "errors": [...] }` when a hook refuses for a business reason
+  - `404 Not Found` — object or type not found, or denied
   - `449` on retry
   - `401` / `403` on auth failure
 - **Auth**: XSRF-TOKEN required; permission check on delete access
-- **Notes**: body-presence is detected via `Content-Type: application/json`, not `Content-Length` — this handles chunked transfer-encoding correctly when retry resubmissions need to carry state on DELETE.
+- **Notes**: a delete always carries a body now. It used to be a `DELETE` that attached one *only* once there were retry answers to send, with the server sniffing `Content-Type` to decide whether to read it; that conditional went with the verb.
+
+#### Delete AsDetail Row
+
+**`POST /spark/po/delete-row`** — `Endpoints/PersistentObject/DeleteRow.cs`
+
+- **Request body**: `{ objectTypeId, asDetailAttribute, parentType, parentId, rowKey, parameters?, retryResults? }`
+- **Response shapes**:
+  - `200 OK` — `{ removed: true }`, enveloped
+  - `400 Bad Request` — `{ "errors": [...] }` when `OnDeleteRowAsync` refuses ("this invoice line has already been settled")
+  - `404 Not Found` — unknown parent, attribute or row key
+  - `449` on retry
+- **Auth**: XSRF-TOKEN required
+- **Notes**: **deletes nothing.** A `200` means the caller may splice the row out of the collection it is editing; the removal is persisted with the parent. The endpoint never reads a row from the body — a client asserting the row's state is simply ignored, because the refusal exists to doubt exactly that claim.
 
 ---
 
@@ -149,38 +174,44 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
 
 #### Get Query
 
-**`GET /spark/queries/{id}`** — `Endpoints/Queries/Get.cs`
+**`POST /spark/queries/get`** — `Endpoints/Queries/Get.cs`
 
-- **Route params**: `{id}` — Guid or alias
+- **Request body**: `{ queryId }` — Guid or alias
 - **Response shapes**:
-  - `200 OK` — body: `SparkQuery`
-  - `404 Not Found` — `{ "error": "Query '{id}' not found" }` (also returned when caller is unauthorized, to avoid leaking existence)
+  - `200 OK` — body: `SparkQuery` (bare, not enveloped)
+  - `404 Not Found` — `{ "error": "Query '{id}' not found" }` (also returned when the caller is unauthorized, and when the body is unreadable, to avoid leaking existence)
+- **Auth**: **no** anti-forgery token — this is a read.
 
 #### Execute Query
 
-**`GET /spark/queries/{id}/execute`** — `Endpoints/Queries/Execute.cs`
+**`POST /spark/queries/execute`** — `Endpoints/Queries/Execute.cs`
 
-- **Route params**: `{id}` — Guid or alias
-- **Query params**:
-  - `sortColumns` — comma-separated `property:direction` pairs (e.g. `name:asc,age:desc`). Direction defaults to `asc`. Server allowlists sort properties against the query's declared `SortColumns` plus the entity's attribute set.
-  - `skip` — default `0`
-  - `take` — default `50`
+- **Request body**:
+  - `queryId` — Guid or alias
+  - `sortColumns` — an **array** of `{ property, direction }`, direction `"asc"` / `"desc"`. Server allow-lists each property against the query's declared `SortColumns` plus the entity's attribute set.
+  - `skip` — default `0`; negatives clamp to `0`
+  - `take` — default `50`; clamped to `[1, 1000]`
   - `search` — passed to the query's search handler if declared
-  - `parentId` + `parentType` — scoped-query context (requires both; 404 if parent not resolvable/authorized)
+  - `parentId` + `parentType` — scoped-query context (requires both; `404` if the parent is not resolvable or not authorized)
+  - `retryResults?` — `OnQueryAsync` can prompt
 - **Response shapes**:
-  - `200 OK` — query result (shape depends on query; typically `{ items, totalCount, ... }`)
+  - `200 OK` — query result (bare): `{ columns, items, totalItems, skip, take }`
   - `400 Bad Request` — unknown sort columns
   - `404 Not Found` — query or parent not found
+  - `449` on retry, enveloped
   - `401` / `403` on auth failure
+- **Auth**: **no** anti-forgery token — this is a read.
 - **Notes**:
-  - Sort-column allow-listing prevents reflection-based side-channel info leaks.
+  - ⚠️ `sortColumns` was `prop:asc,other:desc` in a query string — an encoding invented because a query string has no arrays. It is a real array now and the string form is gone, not kept as an alias. Column filtering (several columns, a multi-selection each) is what the shape exists to accommodate next.
+  - Sort-column allow-listing prevents reflection-based side-channel info leaks: without it a caller could order by any public property on the projection type, including fields never exposed as attributes.
+  - Authorization runs **before** the sort parse, or the parser answers questions on the caller's behalf — an unauthorized caller could otherwise enumerate attribute names by watching 400-vs-404.
   - Parent-not-found returns `404`, not silent empty results, to prevent data leakage.
 
 #### Stream Query (WebSocket)
 
 **`GET /spark/queries/{id}/stream`** — `Endpoints/Queries/StreamExecuteQuery.cs`
 
-- **Route params**: `{id}` — Guid or alias
+- **Route params**: `{id}` — Guid or alias. ⚠️ **The only route variable left in Spark**, and the only one that cannot be removed: a WebSocket handshake has no body to move an id into. It collides with nothing — its siblings are the single-segment literals `/get` and `/execute`, and this route needs the `/stream` suffix to match at all.
 - **Protocol**: WebSocket upgrade (`Connection: Upgrade`)
 - **WebSocket messages** (JSON, camelCase):
   - `StreamingMessage` — snapshot or diff patch with items/ops
@@ -197,9 +228,10 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
 
 #### List Custom Actions
 
-**`GET /spark/actions/{objectTypeId}`** — `Endpoints/Actions/ListCustomActions.cs`
+**`POST /spark/actions/list`** — `Endpoints/Actions/ListCustomActions.cs`
 
-- **Route params**: `{objectTypeId}`
+- **Request body**: `{ objectTypeId }`
+- **Auth**: **no** anti-forgery token — this is a read. Answers `200` with the **empty list** for an unknown or denied type, never a refusal: the client shell asks it for every type it renders, so refusing would bounce an anonymous visitor to sign-in merely for opening a page.
 - **Response**: `200 OK` — body: array of action-metadata objects:
   ```json
   [
@@ -221,10 +253,9 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
 
 #### Execute Custom Action
 
-**`POST /spark/actions/{objectTypeId}/{actionName}`** — `Endpoints/Actions/ExecuteCustomAction.cs`
+**`POST /spark/actions/execute`** — `Endpoints/Actions/ExecuteCustomAction.cs`
 
-- **Route params**: `{objectTypeId}`, `{actionName}`
-- **Request body**: `CustomActionRequest` — `{ parent?, selectedItems?, retryResults? }`
+- **Request body**: `CustomActionRequest` — `{ objectTypeId, actionName, parent?, selectedItemIds?, parentId?, parentType?, queryId?, retryResults? }`
 - **Response shapes**:
   - `200 OK` — empty (or action-specific)
   - `404 Not Found` — entity type or action not registered
@@ -367,34 +398,63 @@ Double-submit token pattern.
 
 ### Retry Action Protocol (449 Status Code)
 
-Action methods can prompt the user for confirmation/input mid-execution.
+A hook can stop mid-request and ask the caller something. **Nine endpoints can do this** — not just
+actions: `po/load`, `po/create`, `po/update`, `po/delete`, `po/refresh`, `po/new`, `po/delete-row`,
+`queries/execute` and `actions/execute`. Every one of their request bodies implements
+`IRetryableRequest`, and a single middleware catch emits the response.
 
-**Server → client (`HTTP 449`)**:
+**Server → client (`HTTP 449`)** — one element of the ordinary `{ result, operations }` envelope,
+with `type: "retry"`:
 ```json
 {
-  "type": "retry-action",
-  "step": 0,
-  "title": "Delete Car",
-  "message": "Type the license plate to confirm deletion of ABC-123.",
-  "options": ["Delete", "Cancel"],
-  "defaultOption": "Cancel",
-  "persistentObject": { /* optional scaffold PO for a form */ }
-}
-```
-
-**Client → server (resubmission of the original request)**:
-```json
-{
-  "persistentObject": { /* original body, possibly edited */ },
-  "retryResults": [
-    { "option": "Delete", "step": 0, "persistentObject": null }
+  "result": null,
+  "operations": [
+    {
+      "type": "retry",
+      "step": 0,
+      "title": "Delete Car",
+      "message": "Type the license plate to confirm deletion of ABC-123.",
+      "options": ["Delete", "Cancel"],
+      "defaultOption": "Cancel",
+      "persistentObject": { /* optional scaffold PO for a form */ }
+    }
   ]
 }
 ```
 
-Multiple sequential prompts accumulate — the client echoes back all prior answers on each resubmission. When every prompt has been answered, the endpoint returns the normal success response.
+Non-retry operations accumulated before the prompt travel in the same envelope and are dispatched
+first, so a `notify` raised on the way to the question is shown before the question.
 
-Subsumption under the Client Operations PRD: once implemented, the 449 response shape becomes one element of the unified `{ result, operations }` envelope (with `operations[0].type == "retry"`). User-visible behavior is unchanged; only the server-side JSON builder is different.
+**Client → server** — the **original request, resent whole**, with one more answer attached:
+```json
+{
+  "objectTypeId": "car",
+  "id": "Cars/35778693-…",
+  "persistentObject": { /* unchanged from the first attempt */ },
+  "retryResults": [
+    { "step": 0, "option": "Delete", "persistentObject": null }
+  ]
+}
+```
+
+Three properties of this protocol are easy to get wrong and were confirmed on the wire (S1,
+2026-09-13, a real Fleet host driven through a browser and through `SparkClient` side by side):
+
+- **The whole body is resent, not a delta.** The server replays the hook from the top on every
+  attempt and feeds it the accumulated answers; a request carrying only the answers would have
+  nothing to replay. Across a three-attempt conversation the browser's body was byte-identical but
+  for a `retryResults` array that grew by one each time.
+- **Answers accumulate.** Every attempt carries all prior answers, oldest first.
+- **`step` is the server's, echoed back — never counted by the client.** A hook may skip a step,
+  asking its second question only when the first was answered a particular way. A locally
+  incremented counter agrees with the server right up until that happens, and then answers a
+  different question than the one that was asked.
+
+`"Cancel"` is not auto-appended to `options`; a hook that wants it must offer it. The Angular client
+sends `"Cancel"` when the user dismisses the modal, and a hook that reads it typically returns
+without acting.
+
+When every prompt has been answered, the endpoint returns its normal success response.
 
 ### Authorization Model
 
@@ -596,34 +656,51 @@ GET /spark/queries/e5c2f1a8-9f0d-4b2e-8a1f-3c0b5d9a2e1c/execute?skip=0&take=10&s
 }
 ```
 
-### Retry round-trip on DELETE
+### Retry round-trip on a delete
 
 **Request (initial)**:
 ```http
-DELETE /spark/po/ca18ba09-6e1e-4d00-8ed3-0a0011de2f3a/persons/12345 HTTP/1.1
-X-XSRF-TOKEN: AbCd1234...
-```
-
-**Response (`449`)**:
-```json
-{
-  "type": "retry-action",
-  "step": 0,
-  "title": "Delete Person",
-  "message": "This person has 5 related orders. Delete them as well?",
-  "options": ["Cancel", "Delete All"],
-  "defaultOption": "Cancel",
-  "persistentObject": null
-}
-```
-
-**Request (resubmission)**:
-```http
-DELETE /spark/po/ca18ba09-6e1e-4d00-8ed3-0a0011de2f3a/persons/12345 HTTP/1.1
+POST /spark/po/delete HTTP/1.1
 X-XSRF-TOKEN: AbCd1234...
 Content-Type: application/json
 
-{ "retryResults": [ { "option": "Delete All", "step": 0, "persistentObject": null } ] }
+{ "objectTypeId": "ca18ba09-6e1e-4d00-8ed3-0a0011de2f3a", "id": "persons/12345" }
+```
+
+**Response (`449`)** — the prompt is an *operation inside the envelope*, not the body itself:
+```json
+{
+  "result": null,
+  "operations": [
+    {
+      "type": "retry",
+      "step": 0,
+      "title": "Delete Person",
+      "message": "This person has 5 related orders. Delete them as well?",
+      "options": ["Cancel", "Delete All"],
+      "defaultOption": "Cancel",
+      "persistentObject": null
+    }
+  ]
+}
+```
+
+**Request (resubmission)** — same endpoint, same target, plus the answer:
+```http
+POST /spark/po/delete HTTP/1.1
+X-XSRF-TOKEN: AbCd1234...
+Content-Type: application/json
+
+{
+  "objectTypeId": "ca18ba09-6e1e-4d00-8ed3-0a0011de2f3a",
+  "id": "persons/12345",
+  "retryResults": [ { "option": "Delete All", "step": 0, "persistentObject": null } ]
+}
 ```
 
 **Response**: `204 No Content` (empty body)
+
+⚠️ **Answers accumulate.** A second prompt is resubmitted with **both** entries in `retryResults`; the
+server re-runs the hook from the top and keys on `step`. A hook must therefore check whether its own
+step has already been answered before prompting again, or it prompts forever — the Angular client
+resubmits with no depth limit.

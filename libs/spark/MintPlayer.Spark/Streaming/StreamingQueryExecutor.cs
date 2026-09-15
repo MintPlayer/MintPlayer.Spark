@@ -8,6 +8,8 @@ using Raven.Client.Documents;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
+using static MintPlayer.Spark.Services.SparkHookInvocation;
+
 namespace MintPlayer.Spark.Streaming;
 
 [Register(typeof(IStreamingQueryExecutor), ServiceLifetime.Scoped)]
@@ -103,7 +105,7 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
             CancellationToken = cancellationToken,
         };
 
-        var result = methodInfo.Method.Invoke(actionsInstance, [args, cancellationToken]);
+        var result = methodInfo.Method.Invoke(actionsInstance, HookInvoke, binder: null, parameters: [args, cancellationToken], culture: null);
         if (result is null) yield break;
 
         // Iterate via IAsyncEnumerable reflection

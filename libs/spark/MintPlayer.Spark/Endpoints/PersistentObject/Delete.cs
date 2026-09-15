@@ -10,9 +10,9 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
-internal sealed partial class DeletePersistentObject : IDeleteEndpoint, IMemberOf<PersistentObjectGroup>
+internal sealed partial class DeletePersistentObject : IPostEndpoint, IMemberOf<PersistentObjectGroup>
 {
-    public static string Path => "/{objectTypeId}/{**id}";
+    public static string Path => "/delete";
 
     static void IEndpointBase.Configure(RouteHandlerBuilder builder)
     {
@@ -26,38 +26,27 @@ internal sealed partial class DeletePersistentObject : IDeleteEndpoint, IMemberO
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var objectTypeId = httpContext.Request.RouteValues["objectTypeId"]!.ToString()!;
-        var id = httpContext.Request.RouteValues["id"]!.ToString()!;
-
-        var entityType = modelLoader.ResolveEntityType(objectTypeId);
-        if (entityType is null)
+        // A delete always carries a body now, so the conditional read this used to do — "DELETE may
+        // carry JSON on retry resubmission", sniffed off Content-Type — is gone with the verb.
+        var (request, entityType) = await SparkRequestType.ReadAsync<PersistentObjectReferenceRequest>(httpContext, modelLoader);
+        if (request is null || entityType is null || string.IsNullOrEmpty(request.Id))
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
 
-        // Read retry state from body if present (DELETE may carry JSON on retry resubmission).
-        // Use Content-Type rather than Content-Length to handle chunked transfer-encoding.
-        if (httpContext.Request.ContentType?.StartsWith("application/json", StringComparison.OrdinalIgnoreCase) == true)
-        {
-            var request = await httpContext.Request.ReadFromJsonAsync<PersistentObjectRequest>();
-            if (request?.RetryResults is { Length: > 0 } retryResults)
-            {
-                var accessor = (RetryAccessor)retryAccessor;
-                accessor.AnsweredResults = retryResults.ToDictionary(r => r.Step);
-            }
-        }
+        RetryScope.Accept(retryAccessor, request);
 
         try
         {
-            var decodedId = Uri.UnescapeDataString(id);
-            var obj = await databaseAccess.GetPersistentObjectAsync(entityType.Id, decodedId);
+            // No UnescapeDataString: see the note in Update.
+            var obj = await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id);
 
             if (obj is null)
             {
                 return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
             }
 
-            await databaseAccess.DeletePersistentObjectAsync(entityType.Id, decodedId);
+            await databaseAccess.DeletePersistentObjectAsync(entityType.Id, request.Id);
             return ClientResult.Envelope(clientAccessor, null, 204);
         }
         catch (SparkValidationException ex)
@@ -65,10 +54,6 @@ internal sealed partial class DeletePersistentObject : IDeleteEndpoint, IMemberO
             // A delete can be refused for a business reason too — "this client still has live
             // tokens", say. Same envelope, so the screen shows it the same way.
             return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, 400);
-        }
-        catch (SparkRetryActionException ex)
-        {
-            return ClientResult.Retry(clientAccessor, ex);
         }
         catch (SparkRowLevelAccessDeniedException)
         {

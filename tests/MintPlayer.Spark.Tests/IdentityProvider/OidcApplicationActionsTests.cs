@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// </summary>
 public class OidcApplicationActionsTests
 {
-    private static OidcApplicationActions Actions() => new(Substitute.For<IEntityMapper>(), null!);
+    private static OidcApplicationActions Actions() => new(new OidcCorsOrigins(), Substitute.For<IEntityMapper>(), null!);
 
     private static OidcApplication Valid() => new()
     {
@@ -44,6 +44,61 @@ public class OidcApplicationActionsTests
     public async Task A_valid_application_is_accepted()
     {
         (await SaveAsync(Valid())).Should().BeNull();
+    }
+
+    /// <summary>
+    /// Anything that cannot be reduced to an origin is refused, because a browser's <c>Origin</c>
+    /// header is only ever scheme + host + optional port — so a value carrying more than that is a
+    /// rule that can never match, and nothing would say so.
+    /// </summary>
+    [Theory]
+    [InlineData("https://app.example.com/callback")]
+    [InlineData("https://user:pw@app.example.com")]
+    [InlineData("app.example.com")]
+    [InlineData("ftp://app.example.com")]
+    public async Task A_cors_origin_that_can_never_match_is_rejected(string origin)
+    {
+        var app = Valid();
+        app.AllowedCorsOrigins = [origin];
+
+        (await SaveAsync(app))!.Message.Should().Contain("browser origin");
+    }
+
+    [Fact]
+    public async Task A_bare_cors_origin_with_a_port_is_accepted()
+    {
+        var app = Valid();
+        app.AllowedCorsOrigins = ["https://app.example.com", "http://localhost:4200"];
+
+        (await SaveAsync(app)).Should().BeNull();
+    }
+
+    /// <summary>
+    /// A trailing slash is accepted and normalised away rather than refused.
+    /// </summary>
+    /// <remarks>
+    /// It is the single most likely thing an operator types, it is unambiguous, and there is exactly
+    /// one thing it can have meant. Refusing it would be correct and useless; normalising removes
+    /// the failure instead of reporting it. Everything that is genuinely ambiguous — a path, a
+    /// query, credentials — is still refused.
+    /// </remarks>
+    [Fact]
+    public async Task A_cors_origin_with_a_trailing_slash_is_normalised_not_refused()
+    {
+        var app = Valid();
+        app.AllowedCorsOrigins = ["https://app.example.com/"];
+
+        (await SaveAsync(app)).Should().BeNull();
+        OidcCorsOrigins.Normalize("https://app.example.com/").Should().Be("https://app.example.com");
+    }
+
+    [Fact]
+    public async Task A_duplicate_cors_origin_is_rejected()
+    {
+        var app = Valid();
+        app.AllowedCorsOrigins = ["https://app.example.com", "https://app.example.com"];
+
+        (await SaveAsync(app))!.Message.Should().Contain("more than once");
     }
 
     [Fact]

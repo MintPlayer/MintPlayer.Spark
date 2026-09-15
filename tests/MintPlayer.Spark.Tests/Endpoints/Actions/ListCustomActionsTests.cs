@@ -160,6 +160,11 @@ public class ListCustomActionsTests
         Offset = offset,
     };
 
+    /// <summary>
+    /// A request naming <paramref name="objectTypeId"/> in its body, as the literal route table takes
+    /// it. The name kept its shape from when these were route values, because what the cases below
+    /// are about — which actions a caller is shown — did not change with the transport.
+    /// </summary>
     private static DefaultHttpContext HttpContextWithRouteValues(params (string Key, string Value)[] values)
     {
         var context = new DefaultHttpContext
@@ -171,7 +176,14 @@ public class ListCustomActionsTests
             User = new System.Security.Claims.ClaimsPrincipal(
                 new System.Security.Claims.ClaimsIdentity(authenticationType: "Test")),
         };
-        foreach (var (k, v) in values) context.Request.RouteValues[k] = v;
+        var json = System.Text.Json.JsonSerializer.Serialize(
+            values.ToDictionary(v => v.Key, v => v.Value),
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        context.Request.Body = new MemoryStream(bytes);
+        context.Request.ContentType = "application/json";
+        context.Request.ContentLength = bytes.Length;
+
         context.Response.Body = new MemoryStream();
         return context;
     }

@@ -687,7 +687,7 @@ public static class SparkDevelopmentExtensions
                 if (resolved is null)
                 {
                     problems.Add(DescribeUnresolved(
-                        name, alias, "query", "/spark/queries/{alias}",
+                        name, alias, "query", "the alias as the queryId on /spark/queries/get",
                         target is null ? null : target.Name,
                         target is null ? null : target.Alias ?? SparkQueryAliases.Derive(target.Name),
                         target?.Alias is null));
@@ -709,7 +709,7 @@ public static class SparkDevelopmentExtensions
                 if (resolved is null)
                 {
                     problems.Add(DescribeUnresolved(
-                        name, alias, "persistent object", "/spark/po/{alias}/{objectId}",
+                        name, alias, "persistent object", "the alias as the objectTypeId on /spark/po/load",
                         target?.Name,
                         target is null ? null : target.Alias ?? target.Name.ToLowerInvariant(),
                         target?.Alias is null));
@@ -760,7 +760,7 @@ public static class SparkDevelopmentExtensions
             : $"change the unit's alias to '{targetAlias}'";
 
         return message +
-            $"The client fetches {route}, so this unit would 404 at runtime — and that 404 is " +
+            $"The client sends {route}, so this unit would 404 at runtime — and that 404 is " +
             $"indistinguishable from a missing right, because the endpoint answers the same for " +
             $"both. Fix either side: declare \"alias\": \"{alias}\" on the target, or {otherSide}.";
     }

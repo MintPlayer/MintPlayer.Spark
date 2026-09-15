@@ -2,6 +2,8 @@ using System.Net;
 using System.Net.Http.Json;
 using MintPlayer.Spark.Tests._Infrastructure;
 
+using MintPlayer.Spark.Testing;
+
 namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 
 /// <summary>
@@ -33,8 +35,8 @@ public class AntiforgerySecurityTests : MintPlayer.Spark.Testing.SparkTestDriver
     public async Task POST_without_antiforgery_token_is_rejected_with_400()
     {
         var response = await _bareClient.PostAsJsonAsync(
-            $"/spark/po/{PersonTypeId}",
-            new
+            "/spark/po/create",
+            Wire.Typed(PersonTypeId, new
             {
                 persistentObject = new
                 {
@@ -46,7 +48,7 @@ public class AntiforgerySecurityTests : MintPlayer.Spark.Testing.SparkTestDriver
                         new { name = "LastName", value = (object)"Smith" },
                     }
                 }
-            });
+            }));
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }

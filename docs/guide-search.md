@@ -4,18 +4,20 @@ How a search term travels from the query list to RavenDB, what it matches, and w
 
 ## Overview
 
-Every query list has a search box. The term is sent as `?search=`, and the server turns it into a RavenDB
-`search(...)` clause across the query type's text fields.
+Every query list has a search box. The term is sent as a `search` field in the request body, and the server
+turns it into a RavenDB `search(...)` clause across the query type's text fields.
 
 ```
-GET /spark/queries/{id}/execute?search=olkswag
+POST /spark/queries/execute
+{ "queryId": "...", "search": "olkswag" }
+
 → from index 'Cars/Overview' where (search(LicensePlate, $p0, and) or search(Model, $p1, and))
 ```
 
 **Nothing needs declaring.** Every text attribute of the query type is searchable — you do not opt a field in,
 and `[Search]` is not required (see [Searchability is not `[Search]`](#searchability-is-not-search)). There is no
-configuration, no per-query flag, and no client wiring: the search box, the `searchTerm` state and the query
-parameter already exist in `@mintplayer/ng-spark`.
+configuration, no per-query flag, and no client wiring: the search box, the `searchTerm` state and the request
+field already exist in `@mintplayer/ng-spark`.
 
 ## What a term matches
 

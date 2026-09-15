@@ -30,6 +30,12 @@ const personType: EntityType = {
       isRequired: false, isVisible: true, isReadOnly: false,
       order: 3, showedOn: ShowedOn.PersistentObject,
     } as any,
+    // Hidden as loaded; revealed by a refresh in the overlay test below.
+    {
+      id: 'a-reason', name: 'Reason', dataType: 'string',
+      isRequired: false, isVisible: false, isReadOnly: false,
+      order: 4, showedOn: ShowedOn.PersistentObject,
+    } as any,
   ],
 } as any;
 
@@ -108,6 +114,24 @@ describe('SparkPoCreateComponent', () => {
     expect(saved).toHaveBeenCalledWith({ id: 'people/new-1', name: 'Created' });
     expect(TestBed.inject(Router).url).toBe('/po/person/people%2Fnew-1');
     expect(c.isSaving()).toBe(false);
+  });
+
+  // Worse here than on the edit page: this list is the ONLY source of the create payload, so an
+  // attribute a refresh revealed was not sent stale — it was absent from the new object entirely.
+  it('includes an attribute a refresh revealed', async () => {
+    const { harness, service } = await setup();
+    const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
+    await harness.fixture.whenStable();
+
+    expect(c.getEditableAttributes().map(a => a.name)).not.toContain('Reason');
+
+    c.refreshOverlay.set({ Reason: { isVisible: true, isRequired: true } });
+    c.formData()['Reason'] = 'Relocation';
+
+    await c.onSave();
+
+    const [, payload] = (service.create as any).mock.calls[0];
+    expect(payload.attributes.find((a: any) => a.name === 'Reason')?.value).toBe('Relocation');
   });
 
   it('onSave 400 error populates validationErrors from the server payload', async () => {

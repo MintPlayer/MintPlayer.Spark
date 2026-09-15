@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions.Requests;
+using MintPlayer.Spark.Abstractions.Retry;
 using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
@@ -37,7 +39,7 @@ namespace MintPlayer.Spark.Endpoints.PersistentObject;
 /// </remarks>
 internal sealed partial class DeleteRowPersistentObject : IPostEndpoint, IMemberOf<PersistentObjectGroup>
 {
-    public static string Path => "/{objectTypeId}/delete-row";
+    public static string Path => "/delete-row";
 
     static void IEndpointBase.Configure(RouteHandlerBuilder builder)
     {
@@ -50,19 +52,17 @@ internal sealed partial class DeleteRowPersistentObject : IPostEndpoint, IMember
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IDeleteRowInvoker deleteRowInvoker;
     [Inject] private readonly ISparkTypeResolver typeResolver;
+    [Inject] private readonly IRetryAccessor retryAccessor;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var objectTypeId = httpContext.Request.RouteValues["objectTypeId"]!.ToString()!;
-
-        var entityType = modelLoader.ResolveEntityType(objectTypeId);
-        if (entityType is null)
+        var (request, entityType) = await SparkRequestType.ReadAsync<DeleteRowRequest>(httpContext, modelLoader);
+        if (request is null || entityType is null)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
 
-        var request = await httpContext.Request.ReadFromJsonAsync<DeleteRowRequest>()
-            ?? new DeleteRowRequest();
+        RetryScope.Accept(retryAccessor, request);
 
         try
         {
@@ -191,8 +191,14 @@ internal sealed partial class DeleteRowPersistentObject : IPostEndpoint, IMember
     }
 }
 
-internal sealed class DeleteRowRequest
+internal sealed class DeleteRowRequest : ISparkTypedRequest, IRetryableRequest
 {
+    /// <inheritdoc />
+    public string? ObjectTypeId { get; set; }
+
+    /// <inheritdoc />
+    public RetryResult[]? RetryResults { get; set; }
+
     /// <summary>Name of the parent's <c>AsDetail</c> attribute the row is being removed from.</summary>
     public string? AsDetailAttribute { get; set; }
 

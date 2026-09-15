@@ -6,6 +6,8 @@ using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Tests._Infrastructure;
 
+using System.Net.Http.Json;
+
 namespace MintPlayer.Spark.Tests.Endpoints;
 
 /// <summary>
@@ -33,7 +35,7 @@ public class SparkDenialPredicateTests : SparkTestDriver
             Store, [GuardedDocModel.For(DocTypeId)], security: SparkTestSecurity.Empty);
 
         using var client = factory.CreateClient();
-        using var response = await client.GetAsync($"/spark/po/{DocTypeId}");
+        using var response = await client.PostAsJsonAsync("/spark/po/load", Wire.Typed(DocTypeId, id: "docs/1"));
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
@@ -55,7 +57,7 @@ public class SparkDenialPredicateTests : SparkTestDriver
             security: SparkTestSecurity.Empty);
 
         using var client = factory.CreateClient();
-        using var response = await client.GetAsync($"/spark/po/{DocTypeId}");
+        using var response = await client.PostAsJsonAsync("/spark/po/load", Wire.Typed(DocTypeId, id: "docs/1"));
 
         response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }

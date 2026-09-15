@@ -68,10 +68,16 @@ internal static class SparkModelSymbols
 
     /// <summary>
     /// Whether <paramref name="type"/> is <c>DateTimeOffset</c> or <c>DateTimeOffset?</c>.
-    /// <para><strong><c>DateTime</c> deliberately does not match.</strong> In the reference corpus every one
-    /// of 15 <c>DateTimeOffset</c> properties is indexed <c>Exact</c> with a sort companion, and every one of
-    /// 22 <c>DateTime</c> properties has neither. The asymmetry is intentional there and is reproduced here
-    /// rather than "tidied up", because widening it would silently add fields to every existing index.</para>
+    /// <para><strong><c>DateTime</c> deliberately does not match</strong>, and the reason is now measured
+    /// rather than inherited. A <c>DateTimeOffset</c> gets a <c>{Name}Raw</c> wrapper because RavenDB
+    /// flattens it to its UTC equivalent when it becomes a scalar index field, destroying the offset. A
+    /// <c>DateTime</c> has no offset to lose, so it needs nothing — and a <c>long</c> ticks companion was
+    /// measured to be actively harmful: it reproduces the same order, or (via <c>ToUniversalTime()</c>)
+    /// shifts by the indexing node's own offset, and it takes the whole index to <c>state=Error</c> on a
+    /// value the map cannot bind.</para>
+    /// <para>Historical note: both types used to be indexed <c>Exact</c> with a sort companion, copied from
+    /// a reference corpus (15 of 15 vs 0 of 22). Both were dropped — <c>Exact</c> changes nothing on a date,
+    /// and a same-typed sort companion orders byte-identically to the field it copies.</para>
     /// </summary>
     public static bool IsDateTimeOffset(this ITypeSymbol type)
         => type.UnwrapNullable().ToDisplayString() == "System.DateTimeOffset";

@@ -7,6 +7,8 @@ using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
 
+using static MintPlayer.Spark.Services.SparkHookInvocation;
+
 namespace MintPlayer.Spark.Services;
 
 /// <summary>
@@ -398,7 +400,7 @@ internal partial class RowSecurity : IRowSecurity
                 }
             }
 
-            var task = (Task)hook!.Invoke(actions, [action, subject])!;
+            var task = (Task)hook!.Invoke(actions, HookInvoke, binder: null, parameters: [action, subject], culture: null)!;
             await task;
             var names = (IReadOnlyCollection<string>?)task.GetCompletedTaskResult();
             if (names is not { Count: > 0 })
@@ -538,7 +540,7 @@ internal partial class RowSecurity : IRowSecurity
             if (!hookOverridden)
                 return true;
 
-            var task = (Task)hook!.Invoke(actions, [action, subject])!;
+            var task = (Task)hook!.Invoke(actions, HookInvoke, binder: null, parameters: [action, subject], culture: null)!;
             await task;
             return (bool)task.GetCompletedTaskResult()!;
         };
@@ -576,7 +578,7 @@ internal partial class RowSecurity : IRowSecurity
         }
 
         var actions = actionsResolver.ResolveForType(entityType);
-        var task = (Task)method!.Invoke(actions, [action])!;
+        var task = (Task)method!.Invoke(actions, HookInvoke, binder: null, parameters: [action], culture: null)!;
         await task;
         return (LambdaExpression?)task.GetCompletedTaskResult();
     }

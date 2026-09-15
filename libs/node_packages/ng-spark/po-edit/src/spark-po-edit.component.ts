@@ -7,7 +7,7 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
-import { SparkService } from '@mintplayer/ng-spark/services';
+import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SparkPoFormComponent } from '@mintplayer/ng-spark/po-form';
 import { TranslateKeyPipe, ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
 import {
@@ -20,6 +20,12 @@ import {
   nestedPoToDict,
   dictToNestedPo,
   EntityTypeResolver,
+  isDateDataType,
+  toDateInputValue,
+  fromDateInputValue,
+  wireDatesEqual,
+  RefreshOverlay,
+  applyOverlay,
 } from '@mintplayer/ng-spark/models';
 
 @Component({
@@ -32,6 +38,7 @@ export class SparkPoEditComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
+  private readonly language = inject(SparkLanguageService);
 
   saved = output<PersistentObject>();
   cancelled = output<void>();
@@ -42,6 +49,11 @@ export class SparkPoEditComponent {
   type = '';
   id = '';
   formData = signal<Record<string, any>>({});
+  /**
+   * Bound two-way to the form, which is where refreshes land. Read by
+   * {@link getEditableAttributes} so the save sees the object the user was actually shown.
+   */
+  refreshOverlay = signal<RefreshOverlay>({});
   validationErrors = signal<ValidationError[]>([]);
   isSaving = signal(false);
   // Cached list of every entity type — needed by the AsDetail save path to resolve
@@ -100,6 +112,11 @@ export class SparkPoEditComponent {
         // the control rendered: merely opening the form and saving turned "unset" into an explicit
         // false, permanently and with nothing shown to the user.
         data[attr.name] = itemAttr?.value ?? false;
+      } else if (isDateDataType(attr.dataType)) {
+        // The wire carries a full ISO-8601 instant with an offset; a native date/time control accepts
+        // only a bare local wall clock. Assigning the wire value directly does not fail loudly -- the
+        // control just renders blank, and saving the untouched form writes that blank back.
+        data[attr.name] = toDateInputValue(attr.dataType, itemAttr?.value);
       } else {
         data[attr.name] = itemAttr?.value ?? '';
       }
@@ -112,8 +129,20 @@ export class SparkPoEditComponent {
     return (clrName: string) => cache.find(t => t.clrType === clrName);
   }
 
+  /**
+   * The attributes this page will read values from when it builds the save.
+   *
+   * ⚠️ <b>Overlaid before filtering, not after loading.</b> A refresh hook can reveal an attribute
+   * that was hidden when the object was loaded, and the ordinary reason it does so is that the
+   * attribute has just become required. Filtering on the loaded state left such an attribute out of
+   * both {@link initFormData} and the save payload, so the user filled in a field whose value was
+   * then dropped on the floor and refused by the server as missing — with no way out of the form.
+   * The overlay is the form's, bound two-way, so the two halves cannot drift again.
+   */
   getEditableAttributes() {
+    const overlay = this.refreshOverlay();
     return this.entityType()?.attributes
+      .map(a => applyOverlay(a, overlay[a.name]))
       .filter(a => a.isVisible && !a.isReadOnly && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => a.order - b.order) || [];
   }
@@ -158,7 +187,32 @@ export class SparkPoEditComponent {
         }
       }
 
-      const newValue = editableAttr ? this.formData()[attr.name] : attr.value;
+      // `in`, not a truthiness or `?? attr.value` check: an attribute the refresh revealed has no
+      // slot until its control writes one, and an attribute the user cleared has a slot holding ''.
+      // Coalescing would resurrect the loaded value on exactly the edit that removed it.
+      const formData = this.formData();
+      const rawValue = editableAttr && attr.name in formData ? formData[attr.name] : attr.value;
+
+      if (editableAttr && isDateDataType(editableAttr.dataType)) {
+        // Back out of the control's bare wall clock into a complete ISO-8601 instant, carrying the
+        // viewer's offset for the entered date.
+        const converted = fromDateInputValue(editableAttr.dataType, rawValue);
+        // Compare by instant, not by text: the round trip rewrites the offset to the viewer's even
+        // when nothing was edited.
+        const changed = !wireDatesEqual(converted, attr.value);
+        return {
+          ...attr,
+          // When the value did not actually change, send back exactly what was loaded. Sending the
+          // re-converted string would preserve the instant but rewrite the stored offset to the
+          // viewer's, so merely opening a record and saving it would relabel a Seattle registration
+          // as a Brussels one. The offset is not business data (so the instant is what we guarantee),
+          // but there is no reason to discard it on a save that changed nothing.
+          value: changed ? converted : attr.value,
+          isValueChanged: changed,
+        };
+      }
+
+      const newValue = rawValue;
       return {
         ...attr,
         value: newValue,
@@ -168,6 +222,12 @@ export class SparkPoEditComponent {
 
     const po: Partial<PersistentObject> = {
       id: currentItem.id,
+      // Send back the token this object was loaded with. Left out, the server skips the
+      // concurrency check entirely -- it is opt-in by presence -- and a save over somebody else's
+      // edit succeeds silently. Left as undefined when the server sent none, which drops the key
+      // from the JSON and restores exactly the old behaviour rather than sending an empty string
+      // that could never match.
+      etag: currentItem.etag,
       name: this.formData()['Name'] || currentItem.name,
       objectTypeId: this.entityType()!.id,
       attributes
@@ -188,6 +248,16 @@ export class SparkPoEditComponent {
       const errors = error.error?.result?.errors ?? error.error?.errors;
       if (error.status === 400 && errors) {
         this.validationErrors.set(errors);
+      } else if (error.status === 409) {
+        // Somebody saved this record between the load and this save. The server's own body says
+        // only "Concurrency conflict" -- deliberately, since the real message carries the change
+        // vector -- which is accurate, untranslated, and tells the user nothing to do about it.
+        // The form keeps its values, so the typing is not lost.
+        this.validationErrors.set([{
+          attributeName: '',
+          errorMessage: { en: this.language.t('common.concurrencyConflict') },
+          ruleType: 'error'
+        }]);
       } else {
         this.validationErrors.set([{
           attributeName: '',

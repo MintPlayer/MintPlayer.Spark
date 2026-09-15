@@ -1,5 +1,5 @@
 import { inject, Injectable } from '@angular/core';
-import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { CustomActionDefinition, EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, QueryResult, SparkQuery, RetryActionPayload, RetryActionResult } from '@mintplayer/ng-spark/models';
 import { ClientOperationEnvelope, RetryOperation, SparkClientOperationDispatcher } from '@mintplayer/ng-spark/client-operations';
@@ -43,6 +43,10 @@ export interface DeleteRowOptions {
  * field name the server matches by exact spelling.
  */
 type EnvelopeRequestBody = {
+  /** The entity type the request is about — the request parameter, not the submitted object's claim. */
+  objectTypeId?: string;
+  /** The target object's id, for update and delete. */
+  id?: string;
   persistentObject?: any;
   triggeredBy?: string;
   retryResults?: RetryActionResult[];
@@ -54,6 +58,14 @@ export class SparkService {
   private readonly baseUrl = this.config?.baseUrl ?? '/spark';
   private readonly http = inject(HttpClient);
   private readonly retryActionService = inject(RetryActionService);
+
+  /**
+   * How many prompts one request will answer before giving up. Matches the .NET client's
+   * `SparkClient.MaxRetryDepth`, and for the same reason: this is a termination bound, not a
+   * capacity one. Far above any real conversation (Fleet's longest is two) and far below anything
+   * that could hide a spin.
+   */
+  private static readonly MAX_RETRY_DEPTH = 16;
   private readonly dispatcher = inject(SparkClientOperationDispatcher);
 
   // Entity Types
@@ -84,7 +96,7 @@ export class SparkService {
   }
 
   async getQuery(id: string): Promise<SparkQuery> {
-    return firstValueFrom(this.http.get<SparkQuery>(`${this.baseUrl}/queries/${encodeURIComponent(id)}`));
+    return firstValueFrom(this.http.post<SparkQuery>(`${this.baseUrl}/queries/get`, { queryId: id }));
   }
 
   /**
@@ -109,21 +121,21 @@ export class SparkService {
     take?: number;
     search?: string;
   }): Promise<QueryResult> {
-    let params = new HttpParams();
-    if (options?.sortColumns?.length) {
-      params = params.set('sortColumns',
-        options.sortColumns.map(c => `${c.property}:${c.direction === 'descending' ? 'desc' : 'asc'}`).join(',')
-      );
-    }
-    if (options?.parentId) params = params.set('parentId', options.parentId);
-    if (options?.parentType) params = params.set('parentType', options.parentType);
-    if (options?.skip != null) params = params.set('skip', options.skip);
-    if (options?.take != null) params = params.set('take', options.take);
-    if (options?.search) params = params.set('search', options.search);
-    return firstValueFrom(this.http.get<QueryResult>(
-      `${this.baseUrl}/queries/${encodeURIComponent(queryId)}/execute`,
-      { params }
-    ));
+    // A POST with a typed body, not a GET with a query string. `sortColumns` used to be encoded as
+    // `prop:asc,other:desc` — an encoding invented because a query string has no arrays. Column
+    // filtering (several columns, several selected values each) would need a second such encoding,
+    // which is the reason the reads moved to POST at all.
+    return this.sendRead<QueryResult>(`${this.baseUrl}/queries/execute`, {
+      queryId,
+      sortColumns: options?.sortColumns?.length
+        ? options.sortColumns.map(c => ({ property: c.property, direction: c.direction === 'descending' ? 'desc' : 'asc' }))
+        : undefined,
+      parentId: options?.parentId,
+      parentType: options?.parentType,
+      skip: options?.skip,
+      take: options?.take,
+      search: options?.search,
+    });
   }
 
   /**
@@ -154,20 +166,20 @@ export class SparkService {
 
   // Persistent Objects
   async get(type: string, id: string): Promise<PersistentObject> {
-    return firstValueFrom(this.http.get<PersistentObject>(`${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`));
+    return this.sendRead<PersistentObject>(`${this.baseUrl}/po/load`, { objectTypeId: type, id });
   }
 
   async create(type: string, data: Partial<PersistentObject>): Promise<PersistentObject> {
     return this.postWithEnvelope<PersistentObject>(
-      `${this.baseUrl}/po/${encodeURIComponent(type)}`,
-      { persistentObject: data }
+      `${this.baseUrl}/po/create`,
+      { objectTypeId: type, persistentObject: data }
     );
   }
 
   async update(type: string, id: string, data: Partial<PersistentObject>): Promise<PersistentObject> {
-    return this.putWithEnvelope<PersistentObject>(
-      `${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`,
-      { persistentObject: data }
+    return this.postWithEnvelope<PersistentObject>(
+      `${this.baseUrl}/po/update`,
+      { objectTypeId: type, id, persistentObject: data }
     );
   }
 
@@ -182,8 +194,8 @@ export class SparkService {
    */
   async refresh(type: string, data: Partial<PersistentObject>, triggeredBy: string): Promise<PersistentObject> {
     return this.postWithEnvelope<PersistentObject>(
-      `${this.baseUrl}/po/${encodeURIComponent(type)}/refresh`,
-      { persistentObject: data, triggeredBy }
+      `${this.baseUrl}/po/refresh`,
+      { objectTypeId: type, persistentObject: data, triggeredBy }
     );
   }
 
@@ -201,8 +213,8 @@ export class SparkService {
    */
   async newObject(type: string, options?: NewObjectOptions): Promise<PersistentObject> {
     return this.postWithEnvelope<PersistentObject>(
-      `${this.baseUrl}/po/${encodeURIComponent(type)}/new`,
-      { ...(options ?? {}) }
+      `${this.baseUrl}/po/new`,
+      { objectTypeId: type, ...(options ?? {}) }
     );
   }
 
@@ -213,26 +225,27 @@ export class SparkService {
    * it is editing, and the removal is persisted with the parent. A hook that refuses rejects with a
    * 400 whose `error.error.result.errors` carries the readable reason, exactly like a save.
    *
-   * A POST, because the framework's real delete route is a catch-all that would swallow a sibling
-   * DELETE — see `DeleteRow.cs`.
+   * A POST — as everything is now. It used to be worth explaining: the framework's real delete route
+   * was a catch-all that would have swallowed a sibling DELETE. The catch-all is gone with the rest
+   * of the route variables.
    */
   async deleteRow(type: string, options: DeleteRowOptions): Promise<void> {
     await this.postWithEnvelope<{ removed: boolean }>(
-      `${this.baseUrl}/po/${encodeURIComponent(type)}/delete-row`,
-      { ...options }
+      `${this.baseUrl}/po/delete-row`,
+      { objectTypeId: type, ...options }
     );
   }
 
   async delete(type: string, id: string): Promise<void> {
-    return this.deleteWithEnvelope<void>(
-      `${this.baseUrl}/po/${encodeURIComponent(type)}/${encodeURIComponent(id)}`,
-      {}
+    return this.postWithEnvelope<void>(
+      `${this.baseUrl}/po/delete`,
+      { objectTypeId: type, id }
     );
   }
 
   // Custom Actions
   async getCustomActions(objectTypeId: string): Promise<CustomActionDefinition[]> {
-    return firstValueFrom(this.http.get<CustomActionDefinition[]>(`${this.baseUrl}/actions/${encodeURIComponent(objectTypeId)}`));
+    return firstValueFrom(this.http.post<CustomActionDefinition[]>(`${this.baseUrl}/actions/list`, { objectTypeId }));
   }
 
   /**
@@ -254,12 +267,13 @@ export class SparkService {
     queryId?: string,
   ): Promise<void> {
     const body: {
+      objectTypeId: string; actionName: string;
       parent?: PersistentObject; selectedItemIds?: string[];
       parentId?: string; parentType?: string; queryId?: string;
       retryResults?: RetryActionResult[];
-    } = { parent, selectedItemIds, parentId: queryParent?.id, parentType: queryParent?.type, queryId };
+    } = { objectTypeId, actionName, parent, selectedItemIds, parentId: queryParent?.id, parentType: queryParent?.type, queryId };
     return this.postWithEnvelope<void>(
-      `${this.baseUrl}/actions/${encodeURIComponent(objectTypeId)}/${encodeURIComponent(actionName)}`,
+      `${this.baseUrl}/actions/execute`,
       body as any
     );
   }
@@ -304,27 +318,25 @@ export class SparkService {
     );
   }
 
-  private putWithEnvelope<T>(url: string, body: EnvelopeRequestBody): Promise<T> {
-    return this.sendWithEnvelope<T>(
-      () => firstValueFrom(this.http.put<ClientOperationEnvelope<T>>(url, body)),
-      body,
-      () => this.putWithEnvelope<T>(url, body),
-    );
-  }
-
-  private deleteWithEnvelope<T>(url: string, body: { retryResults?: RetryActionResult[] }): Promise<T> {
-    return this.sendWithEnvelope<T>(
-      () => {
-        const hasRetry = body.retryResults && body.retryResults.length > 0;
-        return firstValueFrom(
-          hasRetry
-            ? this.http.delete<ClientOperationEnvelope<T>>(url, { body })
-            : this.http.delete<ClientOperationEnvelope<T>>(url)
-        );
-      },
-      body,
-      () => this.deleteWithEnvelope<T>(url, body),
-    );
+  /**
+   * A read: posts the request, and returns the response **as-is** rather than unwrapping an
+   * envelope.
+   *
+   * The read endpoints moved from GET to POST so their hooks could prompt, but their success
+   * responses are still bare — a `PersistentObject`, a `QueryResult`. Only the 449 is enveloped,
+   * because a retry has nowhere else to live. So this shares the retry loop with the mutating calls
+   * and nothing else.
+   */
+  private async sendRead<T>(url: string, body: Record<string, unknown>): Promise<T> {
+    try {
+      return await firstValueFrom(this.http.post<T>(url, body));
+    } catch (error) {
+      return this.handleEnvelopeRetryError<T>(
+        error as HttpErrorResponse,
+        () => this.sendRead<T>(url, body),
+        body as { retryResults?: RetryActionResult[] },
+      );
+    }
   }
 
   private async sendWithEnvelope<T>(
@@ -359,6 +371,21 @@ export class SparkService {
 
     const retryOp = envelope.operations.find(o => o.type === 'retry') as RetryOperation | undefined;
     if (!retryOp) throw error;
+
+    // ⚠️ A hook that raises a retry WITHOUT first checking `Retry.Result` re-raises on every
+    // resubmission, and this loop has no natural end: the modal reopens, the user answers, the
+    // server asks again. Each round trip looks individually reasonable, so the tab spins until it is
+    // closed and nothing is logged. The trap is documented in RetryFromEveryHookTests, and the .NET
+    // client has had a bound since M3; this is the browser's.
+    //
+    // The bound is on ANSWERS ALREADY GIVEN, which is what `retryResults` is — so it counts the
+    // conversation and not the component's lifetime, and two unrelated conversations do not add up.
+    if ((body.retryResults?.length ?? 0) >= SparkService.MAX_RETRY_DEPTH) {
+      throw new Error(
+        `Gave up after answering ${SparkService.MAX_RETRY_DEPTH} retry prompts; the last was step ` +
+        `${retryOp.step} ("${retryOp.title}"). A hook that raises a retry without checking ` +
+        `Retry.Result first will do this — it re-raises on every resubmission.`);
+    }
 
     const payload: RetryActionPayload = {
       type: 'retry-action',

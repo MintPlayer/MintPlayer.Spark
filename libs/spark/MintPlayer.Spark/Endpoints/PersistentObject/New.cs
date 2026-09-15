@@ -1,3 +1,5 @@
+using MintPlayer.Spark.Abstractions.Requests;
+using MintPlayer.Spark.Abstractions.Retry;
 using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
@@ -20,7 +22,7 @@ namespace MintPlayer.Spark.Endpoints.PersistentObject;
 /// </summary>
 internal sealed partial class NewPersistentObject : IPostEndpoint, IMemberOf<PersistentObjectGroup>
 {
-    public static string Path => "/{objectTypeId}/new";
+    public static string Path => "/new";
 
     static void IEndpointBase.Configure(RouteHandlerBuilder builder)
     {
@@ -34,19 +36,17 @@ internal sealed partial class NewPersistentObject : IPostEndpoint, IMemberOf<Per
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly INewInvoker newInvoker;
     [Inject] private readonly ISparkTypeResolver typeResolver;
+    [Inject] private readonly IRetryAccessor retryAccessor;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var objectTypeId = httpContext.Request.RouteValues["objectTypeId"]!.ToString()!;
-
-        var entityType = modelLoader.ResolveEntityType(objectTypeId);
-        if (entityType is null)
+        var (request, entityType) = await SparkRequestType.ReadAsync<NewPersistentObjectRequest>(httpContext, modelLoader);
+        if (request is null || entityType is null)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
 
-        var request = await httpContext.Request.ReadFromJsonAsync<NewPersistentObjectRequest>()
-            ?? new NewPersistentObjectRequest();
+        RetryScope.Accept(retryAccessor, request);
 
         try
         {
@@ -244,8 +244,14 @@ internal sealed partial class NewPersistentObject : IPostEndpoint, IMemberOf<Per
     }
 }
 
-internal sealed class NewPersistentObjectRequest
+internal sealed class NewPersistentObjectRequest : ISparkTypedRequest, IRetryableRequest
 {
+    /// <inheritdoc />
+    public string? ObjectTypeId { get; set; }
+
+    /// <inheritdoc />
+    public RetryResult[]? RetryResults { get; set; }
+
     /// <summary>Name of the parent's <c>AsDetail</c> attribute the row is for; absent for a standalone New.</summary>
     public string? AsDetailAttribute { get; set; }
 

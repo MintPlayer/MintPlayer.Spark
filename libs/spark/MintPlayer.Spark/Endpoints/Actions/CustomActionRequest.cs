@@ -1,9 +1,16 @@
+using MintPlayer.Spark.Abstractions.Requests;
 using MintPlayer.Spark.Abstractions.Retry;
 
 namespace MintPlayer.Spark.Endpoints.Actions;
 
-internal sealed class CustomActionRequest
+internal sealed class CustomActionRequest : ISparkTypedRequest, IRetryableRequest
 {
+    /// <inheritdoc />
+    public string? ObjectTypeId { get; set; }
+
+    /// <summary>The custom action to run, by name.</summary>
+    public string? ActionName { get; set; }
+
     public Abstractions.PersistentObject? Parent { get; set; }
     /// <summary>
     /// The ids of the selected rows. Ids, not objects: a grid row is a projection, and the server
@@ -45,4 +52,11 @@ internal sealed class CustomActionRequest
     public string? QueryId { get; set; }
 
     public RetryResult[]? RetryResults { get; set; }
+}
+
+/// <summary>The body of <c>POST /spark/actions/list</c>.</summary>
+internal sealed class ListCustomActionsRequest : ISparkTypedRequest
+{
+    /// <inheritdoc />
+    public string? ObjectTypeId { get; set; }
 }

@@ -75,7 +75,7 @@ public class RateLimiterPlacementTests : SparkTestDriver
 
         using var client = factory.CreateClient();
 
-        var admitted = await client.GetAsync($"/spark/po/{PersonTypeId}");
+        var admitted = await client.GetAsync("/spark/types");
         admitted.StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests,
             "the first request spends the only permit");
 
@@ -84,7 +84,7 @@ public class RateLimiterPlacementTests : SparkTestDriver
             "the admitted request must reach authentication, or this test proves nothing about the "
             + "rejected one");
 
-        var rejected = await client.GetAsync($"/spark/po/{PersonTypeId}");
+        var rejected = await client.GetAsync("/spark/types");
         rejected.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
 
         CountingHandler.Invocations.Should().Be(authAfterAdmitted,
@@ -114,7 +114,7 @@ public class RateLimiterPlacementTests : SparkTestDriver
 
         for (var i = 0; i < 3; i++)
         {
-            var response = await client.GetAsync($"/spark/po/{PersonTypeId}");
+            var response = await client.GetAsync("/spark/types");
             response.StatusCode.Should().NotBe(HttpStatusCode.TooManyRequests,
                 "/spark is not in PathPrefixes for this host, so it must not be metered");
         }

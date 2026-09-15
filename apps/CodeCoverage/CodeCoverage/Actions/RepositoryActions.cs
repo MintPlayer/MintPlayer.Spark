@@ -37,7 +37,7 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     /// here are group-level and there is no group per GitHub owner, so the right can express
     /// "may delete coverage data at all" and nothing narrower. Whether THIS repository may be
     /// deleted is a property of the row — it must be disconnected — and the actions catalogue at
-    /// <c>GET /spark/actions/{objectTypeId}</c> is per type, so it cannot answer that.
+    /// <c>POST /spark/actions/list</c> is per type, so it cannot answer that.
     /// </para>
     /// <para>
     /// This is the place that can: the entity is in hand, so the answer travels back on the object

@@ -60,8 +60,8 @@ public class RefreshEndpointTests : SparkTestDriver
     {
         var response = await _client.SendAsync(
             HttpMethod.Post,
-            $"/spark/po/{CarTypeId}/refresh",
-            JsonContent.Create(new { persistentObject = obj, triggeredBy }),
+            "/spark/po/refresh",
+            JsonContent.Create(Wire.Typed(CarTypeId, new { persistentObject = obj, triggeredBy })),
             requiresAntiforgery: true);
 
         var text = await response.Content.ReadAsStringAsync();
@@ -141,8 +141,8 @@ public class RefreshEndpointTests : SparkTestDriver
     {
         var response = await _client.SendAsync(
             HttpMethod.Post,
-            $"/spark/po/{Guid.NewGuid()}/refresh",
-            JsonContent.Create(new { persistentObject = Car("Stolen"), triggeredBy = "Status" }),
+            "/spark/po/refresh",
+            JsonContent.Create(Wire.Typed(Guid.NewGuid(), new { persistentObject = Car("Stolen"), triggeredBy = "Status" })),
             requiresAntiforgery: true);
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
@@ -154,8 +154,7 @@ public class RefreshEndpointTests : SparkTestDriver
         using var bare = _factory.CreateClient();
 
         var response = await bare.PostAsJsonAsync(
-            $"/spark/po/{CarTypeId}/refresh",
-            new { persistentObject = Car("Stolen"), triggeredBy = "Status" });
+            "/spark/po/refresh", Wire.Typed(CarTypeId, new { persistentObject = Car("Stolen"), triggeredBy = "Status" }));
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }

@@ -30,7 +30,8 @@ namespace MintPlayer.Spark.Abstractions;
 /// <see cref="TranslatedString"/>; anything else is reported as a diagnostic rather than silently
 /// producing an analyzed non-text field. Composes with <see cref="IgnorePropertyAttribute"/> — the field
 /// is then indexed and searchable while staying out of the model. <c>DateTimeOffset</c> properties get a
-/// sort companion automatically and need no attribute.
+/// <c>{Name}Raw</c> wrapper automatically and need no attribute — that carries the offset RavenDB strips
+/// when a value becomes a scalar index field, and is unrelated to sorting: a date needs no sort companion.
 /// </para>
 /// <para>
 /// Only needed when values can contain spaces. A code, an identifier or an enum-backed string has

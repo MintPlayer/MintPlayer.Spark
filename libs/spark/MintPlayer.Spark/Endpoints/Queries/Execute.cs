@@ -2,23 +2,42 @@ using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.ClientOperations;
+using MintPlayer.Spark.Abstractions.Retry;
+using MintPlayer.Spark.Exceptions;
 using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Queries;
 
-internal sealed partial class ExecuteQuery : IGetEndpoint, IMemberOf<QueriesGroup>
+internal sealed partial class ExecuteQuery : IPostEndpoint, IMemberOf<QueriesGroup>
 {
-    public static string Path => "/{id}/execute";
+    public static string Path => "/execute";
+
+    // No antiforgery metadata, deliberately: the verb changed, what the endpoint does did not. See
+    // the note in PersistentObject/Get.cs.
 
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IQueryExecutor queryExecutor;
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IPermissionService permissionService;
+    [Inject] private readonly IRetryAccessor retryAccessor;
+    [Inject] private readonly IClientAccessor clientAccessor;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var id = httpContext.Request.RouteValues["id"]!.ToString()!;
+        var request = await SparkRequestBody.ReadAsync<ExecuteQueryRequest>(httpContext);
+        var id = request?.QueryId;
+
+        if (request is null || string.IsNullOrEmpty(id))
+        {
+            // The same 404 the gate below gives, for the same reason.
+            return Results.Json(new { error = "Query not found" }, statusCode: 404);
+        }
+
+        // A query hook can prompt now, which is what having a body buys.
+        RetryScope.Accept(retryAccessor, request);
+
         var query = queryLoader.ResolveQuery(id);
 
         // Authorize BEFORE anything else touches the request.
@@ -51,23 +70,11 @@ internal sealed partial class ExecuteQuery : IGetEndpoint, IMemberOf<QueriesGrou
 
         try
         {
-            // Read optional sort overrides from query string
-            var sortColumnsParam = httpContext.Request.Query["sortColumns"].FirstOrDefault();
-            SortColumn[]? sortOverrides = null;
-            if (!string.IsNullOrEmpty(sortColumnsParam))
+            // Sort overrides arrive as a typed array now, not as `prop:asc,other:desc` in the query
+            // string. The allow-list below is unchanged and is the part that matters.
+            var sortOverrides = request.SortColumns is { Length: > 0 } ? request.SortColumns : null;
+            if (sortOverrides is not null)
             {
-                sortOverrides = sortColumnsParam.Split(',')
-                    .Select(part =>
-                    {
-                        var segments = part.Split(':');
-                        return new SortColumn
-                        {
-                            Property = segments[0],
-                            Direction = segments.Length > 1 ? segments[1] : "asc"
-                        };
-                    })
-                    .ToArray();
-
                 // Allow-list sort columns against the query's declared attribute set. Without
                 // this check, a caller could sort by any public property on the projection
                 // type via reflection (including fields the developer didn't expose as an
@@ -108,16 +115,14 @@ internal sealed partial class ExecuteQuery : IGetEndpoint, IMemberOf<QueriesGrou
             // any sane UI page size; apps that need streaming for batch use cases
             // should hit /spark/queries/{id}/stream instead.
             const int MaxTake = 1000;
-            var skipParam = httpContext.Request.Query["skip"].FirstOrDefault();
-            var takeParam = httpContext.Request.Query["take"].FirstOrDefault();
-            var search = httpContext.Request.Query["search"].FirstOrDefault();
-            int skip = int.TryParse(skipParam, out var s) ? Math.Max(0, s) : 0;
-            int take = int.TryParse(takeParam, out var t) ? Math.Clamp(t, 1, MaxTake) : 50;
+            var search = request.Search;
+            int skip = request.Skip is { } s ? Math.Max(0, s) : 0;
+            int take = request.Take is { } t ? Math.Clamp(t, 1, MaxTake) : 50;
 
             // Read optional parent context for custom queries
             Abstractions.PersistentObject? parent = null;
-            var parentId = httpContext.Request.Query["parentId"].FirstOrDefault();
-            var parentType = httpContext.Request.Query["parentType"].FirstOrDefault();
+            var parentId = request.ParentId;
+            var parentType = request.ParentType;
             if (!string.IsNullOrEmpty(parentId) && !string.IsNullOrEmpty(parentType))
             {
                 var parentEntityType = modelLoader.ResolveEntityType(parentType);

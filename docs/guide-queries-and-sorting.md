@@ -330,18 +330,34 @@ The `sortBy` value must match a property name on the type that the query returns
 
 ### Runtime Sort Override
 
-The frontend can override the sort order by passing query string parameters to the query execution endpoint:
+The frontend can override the sort order with a `sortColumns` array in the request body:
 
 ```
-GET /spark/queries/{queryId}/execute?sortBy=Email&sortDirection=desc
+POST /spark/queries/execute
+{
+  "queryId": "...",
+  "sortColumns": [
+    { "property": "Email", "direction": "desc" },
+    { "property": "LastName", "direction": "asc" }
+  ]
+}
 ```
 
-The backend reads these parameters and applies them instead of the defaults:
+The backend reads them off the typed request and applies them instead of the defaults:
 
 ```csharp
-var sortBy = httpContext.Request.Query["sortBy"].FirstOrDefault();
-var sortDirection = httpContext.Request.Query["sortDirection"].FirstOrDefault();
+var sortOverrides = request.SortColumns is { Length: > 0 } ? request.SortColumns : null;
 ```
+
+⚠️ **An override is allow-listed against the query's declared attribute set**, plus whatever the query
+itself declares as a sort column. Without that check a caller could order by any public property on the
+projection type — including fields never exposed as attributes — and read them as an ordering side
+channel. An unknown column is a 400.
+
+> This used to be `?sortBy=Email&sortDirection=desc`, then a comma-joined `?sortColumns=Email:desc`
+> encoding invented because a query string has no arrays. Both are gone. The array shape is also what
+> makes column filtering expressible when it arrives: several columns, each with a multi-selection, is
+> not something a second such encoding should have to carry.
 
 If `sortBy` or `sortDirection` are not provided, the query falls back to the values defined in the query JSON file.
 
@@ -398,6 +414,11 @@ per-field indexing mode, not something strings do:
 |---|---|---|---|
 | *undeclared* → `Default` | one: `volkswagen golf gti` | yes, case-insensitive | yes |
 | `Search` | three: `volkswagen`, `golf`, `gti` | no | no — full-text match |
+
+> **And nothing else needs one.** `DateTime`, numerics, `Guid`, `bool` and enums sort correctly with no
+> companion — measured, byte-identical orderings with and without. A `DateTimeOffset` gets a different
+> field for a different reason (fidelity, not ordering): see
+> [Dates & Sort Companions](guide-dates-and-sorting.md).
 | `Exact` | one: `Volkswagen Golf GTI` | yes, case-sensitive ordinal | case-sensitively only |
 
 Adding `[Search]` later emits the companion *and* activates the redirect, so there is no window where a field is
@@ -476,8 +497,11 @@ Points that matter in practice:
 - **The context must be `partial`** to receive its query roots. A hand-written root of the same name wins.
 - **`[Search]` does two things with one attribute** — analyzed indexing *and* the sort companion — because
   analyzing the field is what destroys its sortability.
-- **`DateTimeOffset` gets `Exact` indexing and a companion automatically.** `DateTime` gets neither; the
-  asymmetry is deliberate.
+- **`DateTimeOffset` gets a `{Name}Raw` wrapper automatically, not a sort companion.** RavenDB flattens a
+  `DateTimeOffset` to its UTC equivalent whenever it becomes a scalar index field, so the wrapper carries the
+  real value while the typed field does the ordering. It gets **no** `Exact` indexing and **no** `{Name}Sort`
+  — both were measured to do nothing. `DateTime` gets neither, and that asymmetry is deliberate. See
+  [Dates & Sort Companions](guide-dates-and-sorting.md).
 - **`[IgnoreForIndex]` versus `[IgnoreProperty]`**: the first keeps a property in the model but out of the
   index; the second removes it from the model everywhere, and therefore from the index too.
 - **`TranslatedString` fans out** into one `Description_{lang}` field per language in `App_Data/culture.json`.
@@ -771,12 +795,15 @@ See [custom actions](guide-custom-actions.md).
 
 ## Searching
 
-A query list's search box sends its term as `?search=`, and the server pushes it into RavenDB as a
-`search(...)` clause across the query type's text fields. Nothing needs declaring — **every text attribute is
-searchable, whether or not it carries `[Search]`** — and each word of the term is matched as a substring.
+A query list's search box sends its term as a `search` field in the request body, and the server pushes it into
+RavenDB as a `search(...)` clause across the query type's text fields. Nothing needs declaring — **every text
+attribute is searchable, whether or not it carries `[Search]`** — and each word of the term is matched as a
+substring.
 
 ```
-GET /spark/queries/{id}/execute?search=olkswag
+POST /spark/queries/execute
+{ "queryId": "...", "search": "olkswag" }
+
 → from index 'Cars/Overview' where (search(LicensePlate, $p0, and) or search(Model, $p1, and))
 ```
 

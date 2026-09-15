@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using MintPlayer.Spark.E2E.Tests._Infrastructure;
 
+using MintPlayer.Spark.Testing;
+
 namespace MintPlayer.Spark.E2E.Tests.Refresh;
 
 /// <summary>
@@ -96,9 +98,9 @@ public class TriggersRefreshTests
         if (signIn) await SignInAsync(http);
         var xsrfToken = await PrimeXsrfAsync(http, cookies);
 
-        var request = new HttpRequestMessage(HttpMethod.Post, $"/spark/po/{CarTypeId}/refresh")
+        var request = new HttpRequestMessage(HttpMethod.Post, "/spark/po/refresh")
         {
-            Content = JsonContent.Create(CarPayload(status)),
+            Content = JsonContent.Create(Wire.Typed(CarTypeId, CarPayload(status))),
         };
         request.Headers.Add("X-XSRF-TOKEN", xsrfToken);
 
@@ -154,7 +156,7 @@ public class TriggersRefreshTests
         using var owned = http;
         await SignInAsync(http);
 
-        var response = await http.PostAsJsonAsync($"/spark/po/{CarTypeId}/refresh", CarPayload("Stolen"));
+        var response = await http.PostAsJsonAsync("/spark/po/refresh", Wire.Typed(CarTypeId, CarPayload("Stolen")));
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }

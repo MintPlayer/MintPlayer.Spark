@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Services;
+using MintPlayer.Spark.Client;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Tests._Infrastructure;
 using MintPlayer.Spark.Tests.Endpoints.PersistentObject;
@@ -104,10 +105,10 @@ public class LookupReferenceEndpointTests : SparkTestDriver
         stub.AddValueAsync("CarBrand", Arg.Any<LookupReferenceValueDto>())
             .Returns(ci => Task.FromResult(ci.Arg<LookupReferenceValueDto>()));
         await using var factory = CreateFactory(stub);
-        using var client = await factory.CreateAuthorizedClientAsync();
+        using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
         var newValue = new LookupReferenceValueDto { Key = "Audi", Values = TranslatedString.Create("Audi") };
-        var response = await client.PostJsonAsync("/spark/lookupref/CarBrand", newValue);
+        var response = await client.SendAsync(HttpMethod.Post, "/spark/lookupref/CarBrand", JsonContent.Create(newValue, options: JsonOpts), requiresAntiforgery: true);
 
         response.StatusCode.Should().Be(HttpStatusCode.Created);
         var echoed = await response.Content.ReadFromJsonAsync<LookupReferenceValueDto>(JsonOpts);
@@ -121,10 +122,12 @@ public class LookupReferenceEndpointTests : SparkTestDriver
         stub.AddValueAsync("CarBrand", Arg.Any<LookupReferenceValueDto>())
             .Returns<LookupReferenceValueDto>(_ => throw new InvalidOperationException("Lookup 'CarBrand' is transient"));
         await using var factory = CreateFactory(stub);
-        using var client = await factory.CreateAuthorizedClientAsync();
+        using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
-        var response = await client.PostJsonAsync("/spark/lookupref/CarBrand",
-            new LookupReferenceValueDto { Key = "Audi", Values = TranslatedString.Create("Audi") });
+        var response = await client.SendAsync(
+            HttpMethod.Post, "/spark/lookupref/CarBrand",
+            JsonContent.Create(new LookupReferenceValueDto { Key = "Audi", Values = TranslatedString.Create("Audi") }, options: JsonOpts),
+            requiresAntiforgery: true);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>(JsonOpts);
@@ -156,7 +159,7 @@ public class LookupReferenceEndpointTests : SparkTestDriver
         stub.UpdateValueAsync("CarBrand", "BMW", Arg.Any<LookupReferenceValueDto>())
             .Returns(ci => Task.FromResult(ci.Arg<LookupReferenceValueDto>()));
         await using var factory = CreateFactory(stub);
-        using var client = await factory.CreateAuthorizedClientAsync();
+        using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
         var update = new LookupReferenceValueDto
         {
@@ -164,7 +167,7 @@ public class LookupReferenceEndpointTests : SparkTestDriver
             Values = TranslatedString.Create("Bayerische Motoren Werke"),
             IsActive = false,
         };
-        var response = await client.PutJsonAsync("/spark/lookupref/CarBrand/BMW", update);
+        var response = await client.SendAsync(HttpMethod.Put, "/spark/lookupref/CarBrand/BMW", JsonContent.Create(update, options: JsonOpts), requiresAntiforgery: true);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var echoed = await response.Content.ReadFromJsonAsync<LookupReferenceValueDto>(JsonOpts);
@@ -178,10 +181,12 @@ public class LookupReferenceEndpointTests : SparkTestDriver
         stub.UpdateValueAsync("CarBrand", "Ghost", Arg.Any<LookupReferenceValueDto>())
             .Returns<LookupReferenceValueDto>(_ => throw new InvalidOperationException("Key 'Ghost' not found"));
         await using var factory = CreateFactory(stub);
-        using var client = await factory.CreateAuthorizedClientAsync();
+        using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
-        var response = await client.PutJsonAsync("/spark/lookupref/CarBrand/Ghost",
-            new LookupReferenceValueDto { Key = "Ghost", Values = TranslatedString.Create("x") });
+        var response = await client.SendAsync(
+            HttpMethod.Put, "/spark/lookupref/CarBrand/Ghost",
+            JsonContent.Create(new LookupReferenceValueDto { Key = "Ghost", Values = TranslatedString.Create("x") }, options: JsonOpts),
+            requiresAntiforgery: true);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -194,9 +199,9 @@ public class LookupReferenceEndpointTests : SparkTestDriver
         var stub = Substitute.For<ILookupReferenceService>();
         stub.DeleteValueAsync("CarBrand", "BMW").Returns(Task.CompletedTask);
         await using var factory = CreateFactory(stub);
-        using var client = await factory.CreateAuthorizedClientAsync();
+        using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
-        var response = await client.DeleteAsync("/spark/lookupref/CarBrand/BMW");
+        var response = await client.SendAsync(HttpMethod.Delete, "/spark/lookupref/CarBrand/BMW", requiresAntiforgery: true);
 
         response.StatusCode.Should().Be(HttpStatusCode.NoContent);
         await stub.Received().DeleteValueAsync("CarBrand", "BMW");
@@ -209,9 +214,9 @@ public class LookupReferenceEndpointTests : SparkTestDriver
         stub.DeleteValueAsync("CarBrand", "Ghost")
             .Returns(_ => throw new InvalidOperationException("Key 'Ghost' not found"));
         await using var factory = CreateFactory(stub);
-        using var client = await factory.CreateAuthorizedClientAsync();
+        using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
-        var response = await client.DeleteAsync("/spark/lookupref/CarBrand/Ghost");
+        var response = await client.SendAsync(HttpMethod.Delete, "/spark/lookupref/CarBrand/Ghost", requiresAntiforgery: true);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }

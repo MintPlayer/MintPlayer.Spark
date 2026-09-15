@@ -32,8 +32,34 @@ public class SparkIdentityProviderOptions
     public TimeSpan TokenCleanupInterval { get; set; } = TimeSpan.FromHours(1);
 
     /// <summary>
-    /// If true, automatically allows origins registered in
-    /// OidcApplication.AllowedCorsOrigins for the OIDC endpoints.
+    /// Opt in to cross-origin access on the OIDC protocol endpoints. <b>Off by default.</b>
     /// </summary>
-    public bool EnableDynamicCors { get; set; } = true;
+    /// <remarks>
+    /// <para>
+    /// Only a <b>browser-based client on a different origin</b> needs this — a SPA doing
+    /// authorization-code + PKCE against this provider, hosted somewhere else. An application's own
+    /// Angular frontend does not: Spark serves it from the same host, so every call to
+    /// <c>/connect/token</c> is same-origin and CORS never enters into it.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>This said it "automatically allows origins registered in
+    /// <c>OidcApplication.AllowedCorsOrigins</c>", defaulted to <see langword="true"/>, and did neither
+    /// of those things.</b> The policy was <c>SetIsOriginAllowed(_ =&gt; true)</c> — any origin, never
+    /// consulting the registered list, which was read by nothing in this repository. So every
+    /// application that turned the identity provider on granted a cross-origin permission it did not
+    /// ask for, to support a scenario whose access control was never built, described by a comment that
+    /// said the opposite.
+    /// </para>
+    /// <para>
+    /// It now does what it always claimed: the allowed set is the union of
+    /// <c>AllowedCorsOrigins</c> across <b>enabled</b> applications. A union, because a preflight is an
+    /// anonymous <c>OPTIONS</c> with no <c>client_id</c> — see <c>OidcCorsOrigins</c>.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>Turning this on without registering an origin allows nothing.</b> The symptom is a
+    /// missing header rather than an error, so the host logs a warning at startup when that is the
+    /// case. See <c>docs/guide-cors.md</c>.
+    /// </para>
+    /// </remarks>
+    public bool EnableDynamicCors { get; set; }
 }

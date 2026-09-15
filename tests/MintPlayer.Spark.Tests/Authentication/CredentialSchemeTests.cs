@@ -9,6 +9,8 @@ using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Tests._Infrastructure;
 using MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 
+using MintPlayer.Spark.Testing;
+
 namespace MintPlayer.Spark.Tests.Authentication;
 
 /// <summary>
@@ -66,9 +68,9 @@ public class CredentialSchemeTests : MintPlayer.Spark.Testing.SparkTestDriver
 
     private static HttpRequestMessage CreatePersonRequest(string? credential)
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, $"/spark/po/{PersonTypeId}")
+        var request = new HttpRequestMessage(HttpMethod.Post, "/spark/po/create")
         {
-            Content = JsonContent.Create(new
+            Content = JsonContent.Create(Wire.Typed(PersonTypeId, new
             {
                 persistentObject = new
                 {
@@ -80,7 +82,7 @@ public class CredentialSchemeTests : MintPlayer.Spark.Testing.SparkTestDriver
                         new { name = "LastName", value = (object)"Smith" },
                     }
                 }
-            })
+            }))
         };
 
         if (credential is not null)

@@ -3,6 +3,8 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Reflection;
 using System.Reflection;
 
+using static MintPlayer.Spark.Services.SparkHookInvocation;
+
 namespace MintPlayer.Spark.Services;
 
 /// <summary>
@@ -127,7 +129,7 @@ internal partial class ReferenceResolver : IReferenceResolver
             ("ReferenceResolver.GetDefaultIncludes", actions.GetType()),
             static k => k.Actions.GetMethod("GetDefaultIncludes", Type.EmptyTypes));
 
-        var paths = (IReadOnlyCollection<string>?)method?.Invoke(actions, []);
+        var paths = (IReadOnlyCollection<string>?)method?.Invoke(actions, HookInvoke, binder: null, parameters: null, culture: null);
         if (paths is not { Count: > 0 })
             return null;
 

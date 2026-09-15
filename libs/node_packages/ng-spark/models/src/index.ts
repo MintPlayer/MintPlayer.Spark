@@ -13,6 +13,7 @@ export * from './retry-action';
 export * from './entity-permissions';
 export * from './custom-action';
 export * from './streaming-message';
+export * from './datetime-local';
 export * from './as-detail-conversions';
 export * from './query-actions';
 export * from './selection-rule';

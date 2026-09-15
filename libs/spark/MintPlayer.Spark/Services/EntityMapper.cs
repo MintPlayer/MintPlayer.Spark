@@ -4,6 +4,7 @@ using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Services.Breadcrumb;
 using Raven.Client.Documents.Session;
 using System.Drawing;
+using System.Globalization;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
@@ -1116,6 +1117,25 @@ internal partial class EntityMapper : IEntityMapper
             else if (targetType == typeof(DateTime))
             {
                 convertedValue = value is DateTime dt ? dt : DateTime.Parse(value.ToString()!);
+            }
+            // Without this branch a DateTimeOffset fell through to Convert.ChangeType, which throws
+            // InvalidCastException because DateTimeOffset does not implement IConvertible (DateTime
+            // does) — and the catch below swallowed it, so the save reported success and the value
+            // never changed. Clearing a nullable one always worked, because the null branch above
+            // returns before the try; only setting was silently dropped.
+            //
+            // AssumeUniversal, not RoundtripKind: an offset the client sent is preserved either way,
+            // but a string with NO offset is read as local time under RoundtripKind, which would
+            // stamp the server's offset onto the value. AssumeUniversal applies only when the string
+            // carries no offset, which is the contract — Spark preserves offsets it is given and
+            // treats an absent one as UTC. (AdjustToUniversal is the one to avoid: it flattens every
+            // offset to +00:00, reintroducing the read-side defect on the way in.)
+            else if (targetType == typeof(DateTimeOffset))
+            {
+                convertedValue = value is DateTimeOffset dto
+                    ? dto
+                    : DateTimeOffset.Parse(value.ToString()!, CultureInfo.InvariantCulture,
+                        DateTimeStyles.AssumeUniversal);
             }
             else if (targetType == typeof(DateOnly))
             {

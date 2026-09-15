@@ -10,9 +10,9 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
-internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<PersistentObjectGroup>
+internal sealed partial class UpdatePersistentObject : IPostEndpoint, IMemberOf<PersistentObjectGroup>
 {
-    public static string Path => "/{objectTypeId}/{**id}";
+    public static string Path => "/update";
 
     static void IEndpointBase.Configure(RouteHandlerBuilder builder)
     {
@@ -28,36 +28,28 @@ internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<P
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var objectTypeId = httpContext.Request.RouteValues["objectTypeId"]!.ToString()!;
-        var id = httpContext.Request.RouteValues["id"]!.ToString()!;
-
-        var entityType = modelLoader.ResolveEntityType(objectTypeId);
-        if (entityType is null)
+        var (request, entityType) = await SparkRequestType.ReadAsync<PersistentObjectRequest>(httpContext, modelLoader);
+        if (request is null || entityType is null || string.IsNullOrEmpty(request.Id))
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
 
         try
         {
-            var decodedId = Uri.UnescapeDataString(id);
-            var existingObj = await databaseAccess.GetPersistentObjectAsync(entityType.Id, decodedId);
+            // No UnescapeDataString: the id is a JSON string now, not a path segment, so it arrives
+            // exactly as the client wrote it. Unescaping it here would corrupt any id that legitimately
+            // contains a '%'.
+            var existingObj = await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id);
 
             if (existingObj is null)
             {
                 return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
             }
 
-            var request = await httpContext.Request.ReadFromJsonAsync<PersistentObjectRequest>()
-                ?? throw new InvalidOperationException("Request could not be deserialized from the request body.");
-
             var obj = request.PersistentObject
                 ?? throw new InvalidOperationException("PersistentObject is required.");
 
-            if (request.RetryResults is { Length: > 0 } retryResults)
-            {
-                var accessor = (RetryAccessor)retryAccessor;
-                accessor.AnsweredResults = retryResults.ToDictionary(r => r.Step);
-            }
+            RetryScope.Accept(retryAccessor, request);
 
             obj.Id = existingObj.Id;
             obj.ObjectTypeId = entityType.Id;
@@ -92,10 +84,6 @@ internal sealed partial class UpdatePersistentObject : IPutEndpoint, IMemberOf<P
         catch (SparkValidationException ex)
         {
             return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, 400);
-        }
-        catch (SparkRetryActionException ex)
-        {
-            return ClientResult.Retry(clientAccessor, ex);
         }
         catch (SparkRowLevelAccessDeniedException)
         {

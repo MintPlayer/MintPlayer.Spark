@@ -61,6 +61,13 @@ internal static class IndexNaming
     /// <summary>The sort-companion name for a field. Suffix is <c>Sort</c>, with no separator.</summary>
     public static string SortCompanion(string propertyName) => $"{propertyName}Sort";
 
+    /// <summary>
+    /// The wrapper-companion name for a field. Suffix is <c>Raw</c>, with no separator.
+    /// <para>Must stay in lockstep with <c>ProjectedOffsetRestorer.WrapperSuffix</c>, which resolves the
+    /// companion at runtime by this same convention.</para>
+    /// </summary>
+    public static string WrapperCompanion(string propertyName) => $"{propertyName}Raw";
+
     /// <summary>A per-language flattened field name, e.g. <c>Description</c> + <c>nl</c>.</summary>
     public static string LanguageField(string propertyName, string language) => $"{propertyName}_{language}";
 

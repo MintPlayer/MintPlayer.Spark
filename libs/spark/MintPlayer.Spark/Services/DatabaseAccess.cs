@@ -8,6 +8,8 @@ using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
 using System.Reflection;
 
+using static MintPlayer.Spark.Services.SparkHookInvocation;
+
 namespace MintPlayer.Spark.Services;
 
 [Register(typeof(IDatabaseAccess), ServiceLifetime.Scoped)]
@@ -96,7 +98,9 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         var actions = actionsResolver.ResolveForType(entityType);
         var onLoadMethod = GetCachedActionMethod(actions.GetType(), "OnLoadAsync");
-        var task = (Task)onLoadMethod.Invoke(actions, [id, null])!;
+        // HookInvoke is load-bearing, not tidiness — see SparkHookInvocation. This site is where the
+        // omission was finally caught, by the OnLoadAsync retry row.
+        var task = (Task)onLoadMethod.Invoke(actions, HookInvoke, binder: null, parameters: [id, null], culture: null)!;
         await task;
         return (PersistentObject?)task.GetCompletedTaskResult();
     }
@@ -140,7 +144,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var resolved = new List<PersistentObject>(ids.Count);
         foreach (var id in ids.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            var task = (Task)onLoadMethod.Invoke(actions, [id, null])!;
+            var task = (Task)onLoadMethod.Invoke(actions, HookInvoke, binder: null, parameters: [id, null], culture: null)!;
             await task;
             if ((PersistentObject?)task.GetCompletedTaskResult() is { } obj)
                 resolved.Add(obj);
@@ -489,7 +493,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (loadMethod is null)
             return null;
 
-        var task = (Task)loadMethod.Invoke(actions, [id, null])!;
+        var task = (Task)loadMethod.Invoke(actions, HookInvoke, binder: null, parameters: [id, null], culture: null)!;
         await task;
         var obj = (PersistentObject?)task.GetCompletedTaskResult();
         if (obj is null)
@@ -534,7 +538,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     {
         var actions = actionsResolver.ResolveForType(entityType);
         var onSaveMethod = GetCachedActionMethod(actions.GetType(), "OnSaveAsync");
-        var task = (Task)onSaveMethod.Invoke(actions, [session, obj])!;
+        var task = (Task)onSaveMethod.Invoke(actions, HookInvoke, binder: null, parameters: [session, obj], culture: null)!;
         await task;
         return task.GetCompletedTaskResult()!;
     }
@@ -543,7 +547,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     {
         var actions = actionsResolver.ResolveForType(entityType);
         var onDeleteMethod = GetCachedActionMethod(actions.GetType(), "OnDeleteAsync");
-        var task = (Task)onDeleteMethod.Invoke(actions, [session, id])!;
+        var task = (Task)onDeleteMethod.Invoke(actions, HookInvoke, binder: null, parameters: [session, id], culture: null)!;
         await task;
     }
 

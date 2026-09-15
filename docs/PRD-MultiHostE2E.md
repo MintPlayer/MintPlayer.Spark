@@ -157,7 +157,7 @@ name — pins the translation at unit level. **Add that alongside the two-host t
 That reduces the residue to one thing: *RavenDB accepts a well-formed ETL configuration and moves
 data*. That is RavenDB's behaviour, not Spark's, and it is a reasonable thing to take on trust.
 
-> **Worth checking before building any of this.** The repo licence (`raven-license.log`, `Name: "2sky"`)
+> **Worth checking before building any of this.** The repo licence (`raven-license.log`, `Name: "<redacted>"`)
 > lacks the ETL feature. If the organisation holds a tier that includes it, pointing CI at that licence
 > collapses this entire section into a direct end-to-end assertion and makes the layering unnecessary.
 

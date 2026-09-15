@@ -8,6 +8,8 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.Json;
 
+using static MintPlayer.Spark.Services.SparkHookInvocation;
+
 namespace MintPlayer.Spark.Services;
 
 /// <summary>
@@ -266,7 +268,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
             static k => k.Actions.GetMethod("OnSaveAsync")
                 ?? throw new InvalidOperationException(
                     $"Actions type '{k.Actions.FullName}' is missing required method 'OnSaveAsync'."));
-        var task = (Task)onSaveMethod.Invoke(actions, [session, obj])!;
+        var task = (Task)onSaveMethod.Invoke(actions, HookInvoke, binder: null, parameters: [session, obj], culture: null)!;
         await task;
         return task.GetCompletedTaskResult()!;
     }
@@ -279,7 +281,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
             static k => k.Actions.GetMethod("OnDeleteAsync")
                 ?? throw new InvalidOperationException(
                     $"Actions type '{k.Actions.FullName}' is missing required method 'OnDeleteAsync'."));
-        var task = (Task)onDeleteMethod.Invoke(actions, [session, id])!;
+        var task = (Task)onDeleteMethod.Invoke(actions, HookInvoke, binder: null, parameters: [session, id], culture: null)!;
         await task;
     }
 }

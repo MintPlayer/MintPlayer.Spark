@@ -43,7 +43,7 @@ public class VirtualObjectEndpointTests : SparkTestDriver
     private static async Task<Abstractions.PersistentObject?> GetPoAsync(SparkEndpointFactory factory, Guid typeId, string id)
     {
         using var client = factory.CreateClient();
-        var response = await client.GetAsync($"/spark/po/{typeId}/{id}");
+        var response = await client.PostAsJsonAsync("/spark/po/load", Wire.Typed(typeId, id: id));
         if (response.StatusCode == HttpStatusCode.NotFound) return null;
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         return await response.Content.ReadFromJsonAsync<Abstractions.PersistentObject>(

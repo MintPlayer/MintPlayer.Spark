@@ -26,6 +26,12 @@ const personType: EntityType = {
       isRequired: false, isVisible: true, isReadOnly: false,
       order: 2, showedOn: ShowedOn.PersistentObject,
     } as any,
+    // Hidden as loaded. A refresh hook reveals it — see the overlay test below.
+    {
+      id: 'a-reason', name: 'Reason', dataType: 'string',
+      isRequired: false, isVisible: false, isReadOnly: false,
+      order: 3, showedOn: ShowedOn.PersistentObject,
+    } as any,
   ],
 } as any;
 
@@ -33,9 +39,13 @@ const existingItem: PersistentObject = {
   id: 'people/1',
   name: 'Alice Smith',
   objectTypeId: 't-person',
+  // The server stamps a change vector on every load. The save has to send it back, or the
+  // concurrency check -- which is opt-in by presence of the field -- never runs at all.
+  etag: 'A:12-abc',
   attributes: [
     { id: 'a-first', name: 'FirstName', value: 'Alice' } as any,
     { id: 'a-last', name: 'LastName', value: 'Smith' } as any,
+    { id: 'a-reason', name: 'Reason', value: null } as any,
   ],
 } as any;
 
@@ -125,6 +135,45 @@ describe('SparkPoEditComponent', () => {
     expect(c.isSaving()).toBe(false);
   });
 
+  // ⚠️ The regression this guards is not cosmetic: a refresh hook that reveals an attribute almost
+  // always does so because the attribute has just become required. While this page filtered on the
+  // attribute's state *as loaded*, such a field was rendered, filled in by the user, and then left
+  // out of the save — so the server refused the save as missing the very value the user had just
+  // typed, and the form had no way forward. Measured in Fleet: a car could not be marked stolen.
+  it('sends the value of an attribute a refresh revealed', async () => {
+    const { harness, service } = await setup();
+    const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+    await harness.fixture.whenStable();
+
+    // Hidden as loaded, so it starts out with no slot at all.
+    expect(Object.keys(c.formData())).not.toContain('Reason');
+
+    // What the form does when a refresh response reveals it, and what its control does on first
+    // keystroke: an in-place write into the shared formData object.
+    c.refreshOverlay.set({ Reason: { isVisible: true, isRequired: true } });
+    c.formData()['Reason'] = 'Moved abroad';
+
+    await c.onSave();
+
+    const [, , payload] = (service.update as any).mock.calls[0];
+    const reason = payload.attributes.find((a: any) => a.name === 'Reason');
+    expect(reason.value).toBe('Moved abroad');
+    expect(reason.isValueChanged).toBe(true);
+  });
+
+  it('does not send a value for an attribute the refresh left hidden', async () => {
+    const { harness, service } = await setup();
+    const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+    await harness.fixture.whenStable();
+
+    await c.onSave();
+
+    const [, , payload] = (service.update as any).mock.calls[0];
+    const reason = payload.attributes.find((a: any) => a.name === 'Reason');
+    expect(reason.value).toBeNull();
+    expect(reason.isValueChanged).toBe(false);
+  });
+
   it('onSave 400 error populates validationErrors from the server payload', async () => {
     const error = new HttpErrorResponse({
       status: 400,
@@ -137,6 +186,51 @@ describe('SparkPoEditComponent', () => {
     await c.onSave();
 
     expect(c.validationErrors()[0].attributeName).toBe('FirstName');
+    expect(c.isSaving()).toBe(false);
+  });
+
+  it('sends back the etag it was loaded with', async () => {
+    const { harness, service } = await setup();
+    const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+    await harness.fixture.whenStable();
+
+    await c.onSave();
+
+    const [, , payload] = (service.update as any).mock.calls[0];
+    expect(payload.etag).toBe('A:12-abc');
+  });
+
+  it('omits the etag when the server did not send one', async () => {
+    // Guards the regression where somebody coalesces this to '' — an empty string IS present, so
+    // the server would run the check against a token that can never match and every save would 409.
+    const { etag, ...withoutEtag } = existingItem as any;
+    const { harness, service } = await setup({ get: vi.fn().mockResolvedValue(withoutEtag) } as any);
+    const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+    await harness.fixture.whenStable();
+
+    await c.onSave();
+
+    const [, , payload] = (service.update as any).mock.calls[0];
+    expect(payload.etag).toBeUndefined();
+  });
+
+  it('onSave 409 renders the translated concurrency message, not the server string', async () => {
+    const error = new HttpErrorResponse({
+      status: 409,
+      error: { result: { error: 'Concurrency conflict' }, operations: [] },
+    });
+    const { harness } = await setup({ update: vi.fn().mockRejectedValue(error) } as any);
+    const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+    await harness.fixture.whenStable();
+
+    await c.onSave();
+
+    // The stub language service echoes the key, so this asserts the key was looked up rather than
+    // the server's own untranslated wording being shown.
+    expect(c.validationErrors()[0].errorMessage.en).toBe('common.concurrencyConflict');
+    expect(c.validationErrors()[0].attributeName).toBe('');
+    // The typing is not thrown away — the user can retry or copy their values out.
+    expect(c.formData()['FirstName']).toBe('Alice');
     expect(c.isSaving()).toBe(false);
   });
 

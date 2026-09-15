@@ -4,6 +4,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.ClientOperations;
+using MintPlayer.Spark.Abstractions.Requests;
 using MintPlayer.Spark.Abstractions.Retry;
 using MintPlayer.Spark.Exceptions;
 using System.Text.Json;
@@ -23,7 +24,7 @@ namespace MintPlayer.Spark.Endpoints.PersistentObject;
 /// </summary>
 internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf<PersistentObjectGroup>
 {
-    public static string Path => "/{objectTypeId}/refresh";
+    public static string Path => "/refresh";
 
     /// <summary>
     /// Advisory ceiling for one refresh: the row-gated load, plus room for a handler that looks a
@@ -52,16 +53,11 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var objectTypeId = httpContext.Request.RouteValues["objectTypeId"]!.ToString()!;
-
-        var entityType = modelLoader.ResolveEntityType(objectTypeId);
-        if (entityType is null)
+        var (request, entityType) = await SparkRequestType.ReadAsync<RefreshPersistentObjectRequest>(httpContext, modelLoader);
+        if (request is null || entityType is null)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
-
-        var request = await httpContext.Request.ReadFromJsonAsync<RefreshPersistentObjectRequest>()
-            ?? throw new InvalidOperationException("Request could not be deserialized from the request body.");
 
         var submitted = request.PersistentObject
             ?? throw new InvalidOperationException("PersistentObject is required.");
@@ -81,12 +77,9 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
-
-        if (request.RetryResults is { Length: > 0 } retryResults)
-        {
-            var accessor = (RetryAccessor)retryAccessor;
-            accessor.AnsweredResults = retryResults.ToDictionary(r => r.Step);
-        }
+        // Answers from a previous attempt, so a hook that prompted last time re-enters with
+        // Retry.Result populated and takes its "the user said yes" branch instead of asking again.
+        RetryScope.Accept(retryAccessor, request);
 
         // Refresh handlers are chatty by nature — they answer "what should this form look like
         // now", which usually means looking something up — and unlike load or save this runs on
@@ -104,9 +97,15 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
             // that it exists, nor to run a hook against it. It also applies attribute redaction,
             // which is used below.
             //
-            // Deliberately by entityType.Id from the ROUTE, never by the ObjectTypeId on the wire
+            // Deliberately by the SERVER-RESOLVED entityType.Id, never by the ObjectTypeId on the wire
             // object: taking the client's word for the type is how a caller reads one collection
             // through another's permissions (security sweep C3).
+            //
+            // ⚠️ This said "from the ROUTE" until M2, and the distinction it drew was easy to see then:
+            // a URL segment against a field inside the submitted document. There is no route to read
+            // from any more — the type arrives in the body and is resolved once, by SparkRequestType.
+            // The property is unchanged and the two fields are still different things; they are just
+            // no longer different KINDS of thing, which is exactly why the resolver exists.
             existing = await databaseAccess.GetPersistentObjectAsync(entityType.Id, submitted.Id!);
             if (existing is null)
             {
@@ -124,6 +123,9 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
         // Authorization stays on the type in the ROUTE regardless. Nested AsDetail types are not in
         // security.json — nobody grants rights on CarreerJob — so the right that governs editing a
         // row is the one governing the object that owns it.
+        // No try/catch left here. It held exactly one clause — the retry emit — and a refresh hook's
+        // prompt is now converted by the middleware like every other endpoint's. A bare try with
+        // nothing to catch would only suggest there is something to recover from.
         if (NestedTrigger.TryParse(request.TriggeredBy) is { } nested
             && BuildNestedRow(entityType, effective, nested) is { } row)
         {
@@ -288,9 +290,14 @@ internal readonly record struct NestedTrigger(string Attribute, int Index, strin
     }
 }
 
-internal sealed class RefreshPersistentObjectRequest
+internal sealed class RefreshPersistentObjectRequest : ISparkTypedRequest, IRetryableRequest
 {
+    /// <inheritdoc />
+    public string? ObjectTypeId { get; set; }
+
     public Po? PersistentObject { get; set; }
     public string? TriggeredBy { get; set; }
+
+    /// <inheritdoc />
     public RetryResult[]? RetryResults { get; set; }
 }

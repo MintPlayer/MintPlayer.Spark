@@ -145,7 +145,7 @@ public class SparkClientAuthExtensionsTests
         await client.LogoutAsync();
 
         handler.Requests.Should().HaveCount(2);
-        handler.Requests[0].RequestUri!.AbsolutePath.Should().EndWith("__warmup__");
+        handler.Requests[0].RequestUri!.AbsolutePath.Should().Be("/spark");
 
         var logout = handler.Requests[1];
         logout.Method.Should().Be(HttpMethod.Post);
@@ -172,7 +172,7 @@ public class SparkClientAuthExtensionsTests
 
         // 1: warmup, 2: logout, 3: warmup again, 4: delete
         handler.Requests.Should().HaveCount(4);
-        handler.Requests[2].RequestUri!.AbsolutePath.Should().EndWith("__warmup__");
+        handler.Requests[2].RequestUri!.AbsolutePath.Should().Be("/spark");
         handler.Requests[3].Headers.GetValues("X-XSRF-TOKEN").Should().ContainSingle().Which.Should().Be("t-2");
     }
 

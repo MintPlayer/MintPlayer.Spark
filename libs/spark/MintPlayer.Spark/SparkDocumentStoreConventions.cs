@@ -4,6 +4,40 @@ using Raven.Client.Documents.Conventions;
 namespace MintPlayer.Spark;
 
 /// <summary>
+/// The one place a Spark document store is configured, so the middleware and the test drivers cannot
+/// drift apart.
+/// </summary>
+/// <remarks>
+/// They had drifted: production set <c>Conventions.Serialization</c> while
+/// <c>SparkTestDriver</c> and <c>SparkSharedDatabase</c> set only the id conventions, and
+/// <c>SparkEndpointFactory</c> substitutes the driver's store for the one <c>AddSpark</c> registered —
+/// so the middleware's configuration never applied under test. A green suite proved nothing about
+/// production for anything serializer-shaped.
+/// </remarks>
+public static class SparkStoreConfiguration
+{
+    /// <summary>
+    /// Applies every convention a Spark store needs. Call from the middleware and from any test
+    /// driver; never configure a store by hand.
+    /// </summary>
+    public static Raven.Client.Documents.IDocumentStore ApplySparkConventions(
+        this Raven.Client.Documents.IDocumentStore store)
+    {
+        store.Conventions.UseNaturalIds().UseGeneratedIds();
+
+        store.Conventions.Serialization = new Raven.Client.Json.Serialization.NewtonsoftJson.NewtonsoftJsonSerializationConventions
+        {
+            CustomizeJsonSerializer = serializer =>
+            {
+                serializer.Converters.Add(new Converters.ColorNewtonsoftJsonConverter());
+            }
+        };
+
+        return store;
+    }
+}
+
+/// <summary>
 /// The document-id rules every Spark store follows.
 /// <para>
 /// Exposed rather than inlined into the store setup so that a test — or an app that opens its own

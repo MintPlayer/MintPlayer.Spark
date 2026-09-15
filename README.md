@@ -150,6 +150,7 @@ MintPlayer.Spark/
 | [Reference Attributes](docs/guide-reference-attributes.md) | Entity-to-entity links, lookup references, reference selection modals |
 | [AsDetail Attributes](docs/guide-asdetail-attributes.md) | Embedded objects, array/collection AsDetail, inline and modal editing |
 | [Queries & Sorting](docs/guide-queries-and-sorting.md) | Index-based queries, projections, column sorting, query definitions |
+| [Dates & Sort Companions](docs/guide-dates-and-sorting.md) | What you write for a `DateTimeOffset`, why `*Sort` companions are only for `[Search]` strings, and the sorting beliefs that measurement refuted |
 | [Full-Text Search](docs/guide-search.md) | What a search term matches, why `[Search]` is not the gate, the breadcrumb narrowing, and why fuzzy search is not offered |
 | [The model hash](docs/model-hash.md) | Why a deployed app refuses to start on a stale model, verifying in CI, merge conflicts, the override |
 | [Attribute Grouping](docs/guide-attribute-grouping.md) | Two-level Tabs and Groups layout for entity forms and detail pages |
@@ -165,6 +166,7 @@ MintPlayer.Spark/
 | [Authentication Schemes & Well-Known Groups](docs/guide-authentication-schemes.md) | Every scheme in the repo, the `anonymous`/`authenticated` groups, what an unauthenticated caller gets, and what happens when authentication fails |
 | [Controllers](docs/guide-controllers.md) | Mounting your own MVC controllers inside Spark's pipeline, CSRF on endpoints you wrote, `[SparkAuthorize]`, and reusing a row rule outside `/spark` |
 | [Manager & Retry Actions](docs/guide-manager-retry-actions.md) | IManager interface, confirmation dialogs, chained retry actions |
+| [CORS](docs/guide-cors.md) | Which endpoints a page on another origin may read: Spark's own answer cross-origin by default, a library's and your own do not, and how each opts in or out — plus why the wildcard makes the dangerous configuration unreachable |
 | [Rate Limiting](docs/guide-rate-limiting.md) | Opting into the fixed-window limiter, metering your own path prefixes, where the middleware sits, and why a second `UseRateLimiter()` halves your budget |
 | [Durable Message Bus](libs/messaging/MintPlayer.Spark.Messaging/README.md) | RavenDB-backed messaging with per-handler retry isolation, checkpoint support, and queue isolation |
 | [Cross-Module Synchronization](docs/guide-cross-module-sync.md) | Entity replication between modules with write-back support |
@@ -175,10 +177,12 @@ MintPlayer.Spark/
 | [GitHub Webhooks — Dev Tunnel](libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/README.md) | Dev-only: receive real webhook deliveries on localhost via smee.io or WebSocket forwarding from production |
 | [Docker Deployment](docs/guide-docker-deployment.md) | Deploy with Docker Compose, RavenDB configuration, Traefik reverse proxy |
 | [Testing Harness](libs/testing/MintPlayer.Spark.Testing/README.md) | Embedded RavenDB driver, in-memory Spark host factory, antiforgery-aware HTTP client, JSON fixtures, Verify defaults |
+| [Testing without a browser — `SparkClient`](libs/client/MintPlayer.Spark.Client/README.md) | Drive a real Spark backend from C# over the same protocol the Angular frontend uses: CRUD, queries, actions, auth. What it covers, what it cannot do yet, and why it will never replace browser tests |
 
 ### Reference
 
-- **[HTTP API Specification](docs/Spark-API-Specification.md)** - Every HTTP endpoint (routes, payloads, auth, retry protocol) exposed by the framework
+- **[HTTP API Specification](docs/Spark-API-Specification.md)** - Every HTTP endpoint (routes, payloads, auth, retry protocol) exposed by the framework. Every path is literal and every call is a `POST`; the type, id and parameters travel in the body
+- **[Spark Client API](libs/client/MintPlayer.Spark.Client/README.md)** - The typed .NET client for that protocol, and what it can and cannot test
 - **[Spark Library API](libs/spark/MintPlayer.Spark/README.md)** - Detailed API reference and usage guide
 - **[Messaging API](libs/messaging/MintPlayer.Spark.Messaging/README.md)** - Message bus API reference
 - **[Cron Jobs](libs/cron/MintPlayer.Spark.Cron/README.md)** - Cron-scheduled background jobs: `ISparkCronJob`, schedule overrides, multi-node compare-exchange locking

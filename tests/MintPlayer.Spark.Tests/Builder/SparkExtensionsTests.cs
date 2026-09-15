@@ -431,7 +431,7 @@ public class SparkExtensionsTests
         var (exitCode, reported) = Verify(scratch);
 
         exitCode.Should().Be(3,
-            "the client fetches /spark/queries/{alias}, so this unit would 404 at runtime");
+            "the client sends the alias as the queryId on /spark/queries/get, so this unit would 404 at runtime");
         reported.Should().Contain("routes to alias",
             "the failure must be THIS check rather than an unrelated one that also exits 3");
         reported.Should().Contain(query.Alias,
@@ -528,8 +528,8 @@ public class SparkExtensionsTests
         exitCode.Should().Be(3);
         reported.Should().Contain("persistent object",
             "the message must name what kind of target failed to resolve, not just that one did");
-        reported.Should().Contain("/spark/po/",
-            "naming the route is what tells the reader the alias -- not the id -- is the identifier " +
+        reported.Should().Contain("/spark/po/load",
+            "naming the request is what tells the reader the alias -- not the id -- is the identifier " +
             "that reaches the server");
     }
 

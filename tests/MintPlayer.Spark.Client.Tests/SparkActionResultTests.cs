@@ -113,7 +113,13 @@ public class SparkActionResultTests
         // Skip index 0 (warmup GET); the action is the second request.
         var post = handler.Requests[^1];
         post.Method.Should().Be(HttpMethod.Post);
-        post.RequestUri!.AbsolutePath.Should().Be("/spark/actions/99999999-0000-0000-0000-000000000000/Archive");
+        post.RequestUri!.AbsolutePath.Should().Be("/spark/actions/execute");
         post.Headers.Contains("X-XSRF-TOKEN").Should().BeTrue();
+
+        // The type and the action name are body fields now, not path segments. An action name with a
+        // slash or a space in it therefore needs no escaping and cannot reshape the route.
+        var body = handler.LastBody();
+        body.GetProperty("objectTypeId").GetString().Should().Be("99999999-0000-0000-0000-000000000000");
+        body.GetProperty("actionName").GetString().Should().Be("Archive");
     }
 }

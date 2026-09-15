@@ -116,7 +116,18 @@ public sealed class FleetTestHost : IAsyncLifetime
     /// and belongs to the given group (matching a name declared in Fleet's App_Data/security.json).
     /// Used by row-level-authz tests to seed a second non-admin account.
     /// </summary>
-    public async Task SeedUserAsync(string email, string password, string groupName)
+    /// <param name="roleName">
+    /// An ASP.NET Identity <b>role</b> to grant as well as the group claim, or null for none.
+    /// </param>
+    /// <remarks>
+    /// ⚠️ The group claim and the role are not interchangeable, and which one a rule reads is not
+    /// obvious from the outside. Fleet's <c>CarActions.CurrentUserIsAdmin</c> is
+    /// <c>CurrentUser.IsInRole("Administrators")</c> — a <b>role</b> — so a user seeded with only the
+    /// <c>group=Administrators</c> claim is still filtered down to rows they created. The symptom is
+    /// an empty grid during setup, which reads like a broken query rather than a missing role.
+    /// <c>SeedAdminUserAsync</c> grants both, which is why the admin behaves as expected.
+    /// </remarks>
+    public async Task SeedUserAsync(string email, string password, string groupName, string? roleName = null)
     {
         var handler = new HttpClientHandler
         {
@@ -156,6 +167,9 @@ public sealed class FleetTestHost : IAsyncLifetime
         user.NormalizedUserName ??= email.ToUpperInvariant();
         if (!user.Claims.Any(c => c.ClaimType == "group" && c.ClaimValue == groupName))
             user.Claims.Add(new SparkUserClaim { ClaimType = "group", ClaimValue = groupName });
+
+        if (roleName is not null && !user.Roles.Contains(roleName))
+            user.Roles.Add(roleName);
 
         await session.SaveChangesAsync();
     }
@@ -363,6 +377,27 @@ public sealed class FleetTestHost : IAsyncLifetime
         await appStore.WaitForIndexingAsync(TestDatabase);
     }
 
+    /// <summary>
+    /// Waits for the app database's indexes to catch up.
+    /// </summary>
+    /// <remarks>
+    /// A test that writes over HTTP and then reads back through a <b>query</b> needs this: queries are
+    /// answered from indexes, and RavenDB indexes are eventually consistent, so the row is reliably
+    /// absent for a moment after the write returns 200. Reads of a single object by id do not need it —
+    /// those load the document directly.
+    /// <para>
+    /// The symptom without it is not a wrong value but a missing row, which reads like a broken query
+    /// rather than a timing problem. <c>WaitForIndexingAsync</c> polls for non-stale with a timeout, so
+    /// this is a failure bound and never a fixed sleep.
+    /// </para>
+    /// </remarks>
+    public async Task WaitForIndexingAsync()
+    {
+        using var appStore = new DocumentStore { Urls = _raven!.Store.Urls, Database = TestDatabase };
+        appStore.Initialize();
+        await appStore.WaitForIndexingAsync(TestDatabase);
+    }
+
     public async Task InitializeAsync()
     {
         _raven = new SparkTestDriverHost();
@@ -469,6 +504,71 @@ public sealed class FleetTestHost : IAsyncLifetime
     }
 
     /// <summary>
+    /// Whether the built Angular bundle is older than any source that goes into it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>This used to ask only whether <c>dist/</c> existed and was non-empty</b> — which meant a
+    /// bundle built at any point in the past was accepted forever. That is not a stale-cache
+    /// inconvenience; it silently removes the client from the test. Every Playwright assertion then
+    /// runs the *old* frontend against the *new* server and reports whatever mismatch that produces as
+    /// a product failure.
+    /// </para>
+    /// <para>
+    /// It cost real time when the route table moved: the grid tests failed because a bundle from
+    /// earlier the same day still issued <c>GET /spark/queries/{id}/execute</c>, which no longer
+    /// exists. The symptom — a grid that renders its chrome and never its rows — looks exactly like a
+    /// broken query, and nothing anywhere said "this frontend is not the one you just changed".
+    /// </para>
+    /// <para>
+    /// The comparison is deliberately crude: newest source timestamp against oldest output timestamp,
+    /// over the client's own sources and <c>ng-spark</c>'s. Crude in the safe direction — it rebuilds
+    /// when unsure, and the alternative is being wrong in the direction that hides a regression.
+    /// </para>
+    /// </remarks>
+    private static bool IsAngularBundleStale(string repoRoot, string distPath)
+    {
+        if (!Directory.Exists(distPath))
+            return true;
+
+        var outputs = Directory.EnumerateFiles(distPath, "*", SearchOption.AllDirectories).ToArray();
+        if (outputs.Length == 0)
+            return true;
+
+        var builtAt = outputs.Min(f => File.GetLastWriteTimeUtc(f));
+
+        string[] sourceRoots =
+        [
+            Path.Combine(repoRoot, "apps", "Fleet", "Fleet", "ClientApp", "src"),
+            // The library the app consumes from SOURCE (tsconfig.base.json maps it there), so a change
+            // here reaches the browser only through a rebuild — and is exactly what went unnoticed.
+            Path.Combine(repoRoot, "libs", "node_packages", "ng-spark"),
+        ];
+
+        foreach (var root in sourceRoots)
+        {
+            if (!Directory.Exists(root))
+                continue;
+
+            foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+            {
+                // The library's own build outputs are not inputs; including them would make every
+                // bundle look stale forever.
+                if (file.Contains($"{Path.DirectorySeparatorChar}dist{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
+                    file.Contains($"{Path.DirectorySeparatorChar}node_modules{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (File.GetLastWriteTimeUtc(file) > builtAt)
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Builds Fleet and its Angular bundle exactly once per test process, whichever host asks first.
     /// </summary>
     private static async Task BuildOnceAsync()
@@ -500,7 +600,7 @@ public sealed class FleetTestHost : IAsyncLifetime
     {
         var repoRoot = FindRepoRoot();
         var distPath = Path.Combine(repoRoot, "apps", "Fleet", "Fleet", "ClientApp", "dist", "ClientApp", "browser");
-        if (Directory.Exists(distPath) && Directory.EnumerateFileSystemEntries(distPath).Any())
+        if (!IsAngularBundleStale(repoRoot, distPath))
             return;
 
         var clientApp = Path.Combine(repoRoot, "apps", "Fleet", "Fleet", "ClientApp");

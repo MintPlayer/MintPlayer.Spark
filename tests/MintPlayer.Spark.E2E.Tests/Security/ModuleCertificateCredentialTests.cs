@@ -4,6 +4,8 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using MintPlayer.Spark.E2E.Tests._Infrastructure;
 
+using MintPlayer.Spark.Testing;
+
 namespace MintPlayer.Spark.E2E.Tests.Security;
 
 /// <summary>
@@ -78,7 +80,7 @@ public class ModuleCertificateCredentialTests
         await _fixture.Host.SeedModuleAsync(GrantedModule, Thumbprint(certificate));
         using var client = NewClient(certificate);
 
-        var response = await client.PostAsJsonAsync($"/spark/po/{CarFixture.TypeId}", NewCarRequest());
+        var response = await client.PostAsJsonAsync("/spark/po/create", Wire.Typed(CarFixture.TypeId, NewCarRequest()));
 
         // Two things at once, and both were untested. The certificate resolved to a principal at
         // all — which requires M9's composite scheme, since Spark's endpoints name no scheme and
@@ -102,7 +104,7 @@ public class ModuleCertificateCredentialTests
         await _fixture.Host.SeedModuleAsync(GrantedModule, Thumbprint(certificate));
         using var client = NewClient(certificate);
 
-        var response = await client.PostAsJsonAsync($"/spark/po/{CarFixture.TypeId}", NewCarRequest());
+        var response = await client.PostAsJsonAsync("/spark/po/create", Wire.Typed(CarFixture.TypeId, NewCarRequest()));
 
         // Asserting success, not "not 400". A refused credential also produces neither 400 nor 403
         // in some orderings, so the weaker form could pass while proving the opposite of the point.
@@ -119,7 +121,7 @@ public class ModuleCertificateCredentialTests
         using var certificate = NewModuleCertificate($"Ghost-{Guid.NewGuid():N}");
         using var client = NewClient(certificate);
 
-        var response = await client.PostAsJsonAsync($"/spark/po/{CarFixture.TypeId}", NewCarRequest());
+        var response = await client.PostAsJsonAsync("/spark/po/create", Wire.Typed(CarFixture.TypeId, NewCarRequest()));
 
         // 400, not 401 — and the difference is the point. A refused credential leaves the request on
         // the *anonymous* path, where the antiforgery gate answers before authorization ever runs:
@@ -141,7 +143,7 @@ public class ModuleCertificateCredentialTests
         await _fixture.Host.SeedModuleAsync(GrantedModule, Thumbprint(registered));
         using var client = NewClient(impostor);
 
-        var response = await client.PostAsJsonAsync($"/spark/po/{CarFixture.TypeId}", NewCarRequest());
+        var response = await client.PostAsJsonAsync("/spark/po/create", Wire.Typed(CarFixture.TypeId, NewCarRequest()));
 
         // Same anonymous-path 400 as the unregistered CN. Both refusals land in the same place,
         // which is correct: a certificate that fails the pin is not a weaker identity, it is none.

@@ -5,6 +5,8 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Actions;
 
+using static MintPlayer.Spark.Services.SparkHookInvocation;
+
 namespace MintPlayer.Spark.Services;
 
 /// <summary>
@@ -133,7 +135,14 @@ internal partial class RefreshInvoker : IRefreshInvoker
         // The hook returns Task, never Task<T>, so this cast is total. A null would mean the method
         // was resolved from something that is not the hook — worth failing loudly rather than
         // silently skipping the developer's business logic.
-        await (Task)method.Invoke(actions, [args])!;
+        // ⚠️ `DoNotWrapExceptions` is load-bearing, not tidiness. Without it `MethodBase.Invoke`
+        // wraps whatever the hook throws in a TargetInvocationException, so the endpoint's typed
+        // catches match nothing: a hook that raises a retry surfaces as an unhandled error instead
+        // of a prompt, and one that refuses politely surfaces as a 500. It also keeps the hook's own
+        // stack trace intact. `NewInvoker` and `DeleteRowInvoker` have always passed it; this one
+        // did not, which is exactly why a retry from OnRefresh never reached the client.
+        await (Task)method.Invoke(
+            actions, HookInvoke, binder: null, parameters: [args], culture: null)!;
     }
 
     private static object CreateArgs(
