@@ -1,9 +1,11 @@
 # Spark client — completing the conversation
 
-**Status:** **Server complete, client not started.** M0, M1, M2, M2b and spikes S2/S4 are done on
-`fix/datetimeoffset-fidelity` — the route table is fully literal, every hook that can prompt now does
-(reads included), and both halves of a retry are centralised. The **client-side** milestones (M3
-onwards) are not started; **S1 gates M3's API freeze and has not been run**.
+**Status:** **COMPLETE — both sides.** Every milestone and spike landed on
+`fix/datetimeoffset-fidelity`. The route table is fully literal, every hook that can prompt now does
+(reads included), both halves of a retry are centralised, and the client answers a retry, surfaces
+client operations, covers every endpoint and sends the viewer's timezone and language.
+`SparkTestClient` is gone. S1 was run (2026-09-13) and its answer is in the plan, along with three
+claims this document's plan made that measurement contradicted.
 
 Investigation complete (4 parallel surveys 2026-09-12, 2 more 2026-09-13); every claim below is cited
 to code, and the corrections are kept rather than edited away. ⚠️ Two of those corrections were
@@ -22,9 +24,10 @@ instructions that would have produced wrong code if followed — see FR1 and FR1
 | *"`SparkTestClient` is the thing to extend."* | **Refuted.** It is a 59-line CSRF shim over `TestServer` with one consumer left. Unrelated. |
 | *"A protocol client can replace the browser tests."* | **Refuted.** Measured this session: the two defects found in `ViewerTimezoneRenderingTests`' area were a blank `datetime-local` and `DatePipe` zone conversion. A protocol client is green through both. |
 
-**The one-line statement of work:** the client can hear a retry and cannot answer one; close that, and
-the ~10 endpoints with no typed method, so a test can drive the same conversation the Angular frontend
-drives.
+**The one-line statement of work:** the client could hear a retry and could not answer one; close that,
+and the ~10 endpoints with no typed method, so a test can drive the same conversation the Angular
+frontend drives. **Both are done** — it was 13 endpoints rather than ~10, and answering a retry turned
+out to mean making `449` in-protocol on *every* endpoint first, not just adding `ContinueAsync`.
 
 ---
 

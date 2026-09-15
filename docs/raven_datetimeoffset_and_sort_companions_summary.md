@@ -1,7 +1,7 @@
 # Summary — `DateTimeOffset` fidelity and sort companions
 
 **Status: implemented and verified in a browser** on `fix/datetimeoffset-fidelity` —
-[PR #403](https://github.com/MintPlayer/MintPlayer.Spark/pull/403), 44 commits, open. ⚠️ The branch carries two further initiatives beyond this one — see the [plan](raven_datetimeoffset_and_sort_companions_plan.md).
+[PR #403](https://github.com/MintPlayer/MintPlayer.Spark/pull/403), 55 commits, open, CI green. ⚠️ The branch carries two further initiatives beyond this one — see the [plan](raven_datetimeoffset_and_sort_companions_plan.md).
 [PRD](raven_datetimeoffset_and_sort_companions_PRD.md) · [plan](raven_datetimeoffset_and_sort_companions_plan.md) ·
 developer-facing: [guide](guide-dates-and-sorting.md). Everything below is measured, and every value
 shown is a real observation from RavenDB 7.2.6 with the Fleet demo's 10,010 cars.

@@ -13,7 +13,18 @@ The `IManager` interface exposes:
 | `GetTranslatedMessage()` | Get a translated string for the current request culture |
 | `GetMessage()` | Get a translated string for a specific language |
 
-The Retry Action pattern uses HTTP status **449** (Retry With) to signal the frontend that user input is needed before the operation can complete. The Angular frontend intercepts this status, displays a modal, and re-submits the request with the user's answer.
+The Retry Action pattern uses HTTP status **449** (Retry With) to signal the caller that user input is needed before the operation can complete. The caller collects the answer and re-submits the **same request** with it appended.
+
+Two callers do this today, and they speak the same wire: the Angular frontend (which shows a modal) and `MintPlayer.Spark.Client` (which asks a `SparkRetryHandler`, or hands the question back as a result).
+
+### ⚠️ All nine hooks that can prompt now do
+
+A retry is no longer a custom-action feature. Every endpoint that runs application code can raise one — create, update, delete, delete-row, new, refresh, load, query and execute-action — because **reads became `POST`** precisely so they would have a body to carry the answers in.
+
+Two consequences worth knowing before using it from a read hook:
+
+- **A prompt raised in `OnLoadAsync` fires on every read of that type**, including the loads that delete, refresh and delete-row perform on their way elsewhere. `OnQueryAsync` fires on every execution, including the ones a grid issues while paging. A handler that answers unconditionally answers far more often than it looks.
+- **The 449 is emitted centrally**, by one `catch` in `SparkMiddleware` — not by each endpoint. Adding a new endpoint that runs a hook gets retry support without doing anything; the older per-endpoint `catch` blocks are gone.
 
 ## Step 1: Inject IManager
 
@@ -239,7 +250,20 @@ export class AppComponent {}
 
 ### SparkService
 
-The `SparkService.create()`, `.update()`, `.delete()`, and `.executeCustomAction()` methods automatically handle 449 responses. They intercept the error, display the modal via `RetryActionService`, collect the user's answer, and re-submit the request with the accumulated `retryResults`. No custom error handling is needed in page components.
+`SparkService` handles 449 automatically on every method that can receive one. It intercepts the error, displays the modal via `RetryActionService`, collects the user's answer, and re-submits the request with the accumulated `retryResults`. No custom error handling is needed in page components.
+
+### From .NET — `MintPlayer.Spark.Client`
+
+The same conversation, without a browser:
+
+```csharp
+await client.UpdatePersistentObjectAsync(car, onRetry: async (prompt, ct) =>
+    prompt.Step == 0 ? RetryAnswer.Choose("Confirm") : RetryAnswer.Cancel());
+```
+
+Pass no handler and the prompt comes back instead of being answered — as `SparkActionResult.IsRetry` for an action (answer it with `ContinueAsync`), or as `SparkRetryRequiredException` elsewhere. See the [client README](../libs/client/MintPlayer.Spark.Client/README.md).
+
+⚠️ **`step` comes from the server; never count answers locally.** A hook may skip a step — asking the second question only when the first was answered a particular way — and a local counter agrees right up until that happens, then silently answers a different question.
 
 ## Request/Response Format
 
@@ -255,16 +279,19 @@ The request body for Create and Update operations wraps the PersistentObject and
 }
 ```
 
-For Delete operations, the retry results are sent in the request body (the endpoint reads the body only when `ContentLength > 0`).
+⚠️ **Every call is a `POST` to a literal path with its parameters in the body**, deletes and reads included — so `retryResults` rides along the same way everywhere. The older shapes (a `DELETE` whose body was read only when `ContentLength > 0`, a `GET` with the type in the route) are gone.
+
+⚠️ **The whole body is resent on each attempt, not a diff.** The server replays the hook from the top and feeds it the accumulated answers, so a request carrying only the answers would have nothing to replay.
 
 ## Complete Example
 
 See the Fleet demo app for a working example:
 
-- `Demo/Fleet/Fleet/Actions/CarActions.cs` -- chained retry actions on save and delete
-- `MintPlayer.Spark/Services/RetryAccessor.cs` -- step tracking and replay logic
-- `MintPlayer.Spark/Exceptions/SparkRetryActionException.cs` -- the internal exception
-- `MintPlayer.Spark/Endpoints/PersistentObject/Create.cs` -- endpoint catching 449
-- `node_packages/ng-spark/src/lib/services/retry-action.service.ts` -- Angular service
-- `node_packages/ng-spark/src/lib/components/retry-action-modal/spark-retry-action-modal.component.ts` -- modal component
-- `node_packages/ng-spark/src/lib/services/spark.service.ts` -- automatic 449 handling
+- `apps/Fleet/Fleet/Actions/CarActions.cs` -- chained retry actions on save and delete
+- `libs/spark/MintPlayer.Spark/Services/RetryAccessor.cs` -- step tracking and replay logic
+- `libs/spark/MintPlayer.Spark/Exceptions/SparkRetryActionException.cs` -- the internal exception
+- `libs/spark/MintPlayer.Spark/SparkMiddleware.cs` -- the single `catch` that turns a raised retry into its 449
+- `libs/node_packages/ng-spark/services/src/retry-action.service.ts` -- Angular service
+- `libs/node_packages/ng-spark/retry-action-modal/src/spark-retry-action-modal.component.ts` -- modal component
+- `libs/node_packages/ng-spark/services/src/spark.service.ts` -- automatic 449 handling
+- `libs/client/MintPlayer.Spark.Client/SparkClient.cs` -- the .NET conversation loop

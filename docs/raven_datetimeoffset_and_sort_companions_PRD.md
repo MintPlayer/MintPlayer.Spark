@@ -2,9 +2,9 @@
 
 **Status:** **IMPLEMENTED and verified in a browser.** Twelve agents across four rounds. Every claim below
 is **measured on live servers** or cited upstream. Nothing rests on folklore.
-**Branch:** `fix/datetimeoffset-fidelity` (44 commits, pushed — ⚠️ the branch carries two further initiatives; see the plan) · **PR:** [#403](https://github.com/MintPlayer/MintPlayer.Spark/pull/403), open.
+**Branch:** `fix/datetimeoffset-fidelity` (55 commits, pushed — ⚠️ the branch carries two further initiatives; see the plan) · **PR:** [#403](https://github.com/MintPlayer/MintPlayer.Spark/pull/403), open.
 **Issues:** none — implemented directly; the PR references this PRD.
-For what is done vs. still open, see the [plan](raven_datetimeoffset_and_sort_companions_plan.md) or the
+**Nothing here is outstanding.** M10 — two outward-facing messages rather than code — was dropped at the issue owner's direction on 2026-09-15. For the milestone-by-milestone record see the [plan](raven_datetimeoffset_and_sort_companions_plan.md) or the
 [summary](raven_datetimeoffset_and_sort_companions_summary.md).
 
 > **The framework's timestamp semantics were settled while this shipped** and are recorded in the plan
