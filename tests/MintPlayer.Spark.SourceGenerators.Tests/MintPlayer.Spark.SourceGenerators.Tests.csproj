@@ -9,7 +9,7 @@
 
   <ItemGroup>
     <!-- Roslyn host at the same version the generator was compiled against (5.3.0). -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.3.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
 
     <!--
     Workspaces, at the same version, for two reasons — and the second one is not optional.
@@ -23,14 +23,14 @@
        docs/issue_210_PRD.md) and was misread at the time as "a CodeFixProvider needs its own
        assembly"; it needs its base type resolvable wherever something reflects over it.
     -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.3.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0" />
 
     <PackageReference Include="coverlet.collector" Version="10.0.1">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="MintPlayer.Assertions" Version="1.0.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageReference Include="MintPlayer.Assertions" Version="1.1.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
     <PackageReference Include="Verify.Xunit" Version="31.12.5" />
     <PackageReference Include="xunit" Version="2.9.3" />
 
@@ -44,8 +44,7 @@
     compile assets through puts a second ModuleInitializerAttribute in scope and every use becomes
     ambiguous with the one in System.Runtime (CS0433).
     -->
-    <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="10.21.0"
-                      ExcludeAssets="all" GeneratePathProperty="true" />
+    <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="10.21.0" ExcludeAssets="all" GeneratePathProperty="true" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -65,15 +64,9 @@
     root below so coverlet's collector picks them up for instrumentation, and so the harness can
     Assembly.Load them at test time via the default probing path.
     -->
-    <ProjectReference Include="..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj"
-                      ReferenceOutputAssembly="false"
-                      SkipGetTargetFrameworkProperties="true" />
-    <ProjectReference Include="..\..\libs\all_features\MintPlayer.Spark.AllFeatures.SourceGenerators\MintPlayer.Spark.AllFeatures.SourceGenerators.csproj"
-                      ReferenceOutputAssembly="false"
-                      SkipGetTargetFrameworkProperties="true" />
-    <ProjectReference Include="..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj"
-                      ReferenceOutputAssembly="false"
-                      SkipGetTargetFrameworkProperties="true" />
+    <ProjectReference Include="..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
+    <ProjectReference Include="..\..\libs\all_features\MintPlayer.Spark.AllFeatures.SourceGenerators\MintPlayer.Spark.AllFeatures.SourceGenerators.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
+    <ProjectReference Include="..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
 
     <!-- Abstractions are needed to compile the test input sources (DefaultPersistentObjectActions, etc). -->
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
@@ -100,16 +93,11 @@
       <_GeneratorRuntimeAssets Include="$(MSBuildThisFileDirectory)..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.LibraryGenerators.dll" />
       <_GeneratorRuntimeAssets Include="$(PkgMintPlayer_SourceGenerators_Tools)\lib\netstandard2.0\MintPlayer.SourceGenerators.Tools.dll" />
 
-      <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' "
-                               Include="$(MSBuildThisFileDirectory)..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.SourceGenerators.pdb" />
-      <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' "
-                               Include="$(MSBuildThisFileDirectory)..\..\libs\all_features\MintPlayer.Spark.AllFeatures.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.AllFeatures.SourceGenerators.pdb" />
-      <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' "
-                               Include="$(MSBuildThisFileDirectory)..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.LibraryGenerators.pdb" />
+      <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' " Include="$(MSBuildThisFileDirectory)..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.SourceGenerators.pdb" />
+      <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' " Include="$(MSBuildThisFileDirectory)..\..\libs\all_features\MintPlayer.Spark.AllFeatures.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.AllFeatures.SourceGenerators.pdb" />
+      <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' " Include="$(MSBuildThisFileDirectory)..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.LibraryGenerators.pdb" />
     </ItemGroup>
-    <Copy SourceFiles="@(_GeneratorRuntimeAssets)"
-          DestinationFolder="$(OutputPath)"
-          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_GeneratorRuntimeAssets)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>
