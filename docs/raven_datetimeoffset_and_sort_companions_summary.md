@@ -21,14 +21,14 @@ shown is a real observation from RavenDB 7.2.6 with the Fleet demo's 10,010 cars
 | **Docs** | this file, the PRD, the plan, `guide-dates-and-sorting.md`, and a correction to `guide-queries-and-sorting.md` |
 | **Versions** | 23 NuGet packages → `10.0.0-preview.81`; `ng-spark` → `22.18.0` |
 
-Suites: `MintPlayer.Spark.Tests` 2147/2147 · `CodeCoverage.Tests` 438/438 · `SourceGenerators` 278/278 ·
-`Client` 38/38 · `ng-spark` 490/490.
+Suites, green on CI 2026-09-15: `MintPlayer.Spark.Tests` 2197/2197 · `MintPlayer.Spark.E2E.Tests` 95/95 ·
+`CodeCoverage.Tests` 438/438 · `SourceGenerators` 278/278 · `Client` 91/91 · `ng-spark` 497/497.
 
 ### Not done
 
 | | |
 |---|---|
-| **Upstream + sideways** | A comment on [ravendb#17901](https://github.com/ravendb/ravendb/issues/17901), and handing the originating team the Defect C finding. Both outward-facing; the issue owner's to send. **This is the only item left, and it is not code.** |
+| **Upstream + sideways** | ❌ **Dropped 2026-09-15**, at the issue owner's direction. A comment on [ravendb#17901](https://github.com/ravendb/ravendb/issues/17901), and handing the originating team the Defect C finding — both messages to other people rather than work on this repository. The findings stay written up here for whoever chooses to send them. **Nothing is left.** |
 
 ---
 
@@ -162,6 +162,39 @@ Both were there before this change, and both were measured to do nothing:
 
 Both removed. `[Search]` strings keep their sort companion — that one is measured necessary. `DateTime`,
 numerics, `Guid`, `bool` and enums get nothing, and never needed anything.
+
+#### ⚠️ The redirect itself is NOT removed, and must not be
+
+A companion is not a property that merely exists — it is one the sort is **routed to**.
+`QueryExecutor.ResolveSortProperty` looks for `{Name}Sort` on the view type, requires it to be
+`[IgnoreProperty]` (the signal that distinguishes a deliberate companion from a domain property that
+happens to be called `FooSort`), and orders by it instead. Vidyano does the same thing at a different
+moment: its Synchronize writes `SortProperty: "OrderedAtSort"` into the persistent object's JSON and its
+core reads that. Spark derives the name by convention at query time instead, so nothing has to be
+persisted and no stored name can outlive the property it points at (#272/#276, #279).
+
+That machinery is untouched by this change, and it is what still makes `[Search]` strings sortable.
+**"Mostly cargo cult" is about emitting companions blanket, never about the redirect.**
+
+#### Re-measured on a live server, 2026-09-15
+
+Re-run against standalone **Raven.Server 7.2.6 (build 72033)** with client 7.2.6 — not TestDriver's
+embedded server — on **both engines**, prompted by "didn't this work until the latest server version?".
+Lucene and Corax agreed exactly:
+
+```
+STRING  order by Name     : Apple pie | banana split | Cherry tart | zebra crossing | date loaf | Elderberry wine
+STRING  order by NameSort : Apple pie | Cherry tart | Elderberry wine | banana split | date loaf | zebra crossing
+DATE    identical         : True          PROJECT offset survived : False
+```
+
+The analyzed field orders on tokenised terms (not alphabetical at all); the `Exact` companion orders
+ordinally. **The convention still works exactly as designed, and no regression reproduces.** 7.2.6 is
+the newest published `RavenDB.Client` and `RavenDB.TestDriver`, so there is no later version to move to.
+
+⚠️ Not covered, and worth probing if the report resurfaces: a `{Name}Sort` that is a **stored entity
+property** rather than an index-computed field, a companion of a **different type** from the original,
+and Vidyano's persisted `SortProperty` binding rather than Spark's convention-at-query-time one.
 
 ## 5. `DateTime` is not affected
 

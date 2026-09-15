@@ -9,22 +9,27 @@ in the summary, which is where anyone who wants to send them will find them.
 **Branch:** `fix/datetimeoffset-fidelity`, pushed.
 **PR:** [#403](https://github.com/MintPlayer/MintPlayer.Spark/pull/403), open.
 
-Suites green: `MintPlayer.Spark.Tests` **2184/2184**, `MintPlayer.Spark.E2E.Tests` **95/95**,
-`SourceGenerators` **278/278**, `MintPlayer.Spark.Client.Tests` **39/39**, `@mintplayer/ng-spark`
-**490/490**.
+Suites green **on CI** (2026-09-15): `MintPlayer.Spark.Tests` **2197/2197**,
+`MintPlayer.Spark.E2E.Tests` **95/95**, `CodeCoverage.Tests` **438/438**, `SourceGenerators`
+**278/278**, `MintPlayer.Spark.Client.Tests` **91/91**, `@mintplayer/ng-spark` **497/497**.
+
+⚠️ **E2E fails non-deterministically under load on a shared rate-limit bucket** — one run showed 15
+failures, every one a `429` during user seeding, and the same commit passed 95/95 minutes earlier. It
+reads as a regression every time it fires and is not one.
 
 ⚠️ **The branch and PR now carry far more than this plan**, at the issue owner's direction, and a reader
 who assumes otherwise will misjudge the diff. Also on it:
 
-- **The Spark protocol client initiative**, server half complete — the route table is fully literal and
+- **The Spark protocol client initiative**, now **complete on both sides** — the route table is fully literal and
   every hook that can prompt does. See
-  [spark_client_conversation_plan.md](spark_client_conversation_plan.md), which is where the
-  outstanding work lives (S1, then M3–M8).
+  [spark_client_conversation_plan.md](spark_client_conversation_plan.md) for the milestone record; S1
+  ran on 2026-09-13 and M3–M8 all landed.
 - **The identity provider's CORS defect** and the three-tier model that replaced it —
   [guide-cors.md](guide-cors.md), [leftovers.md](leftovers.md).
 
-**For this plan specifically, M10 is the only thing left**, and it is two messages the issue owner sends:
-the comment on ravendb#17901, and handing the originating team the Defect C finding.
+**Nothing is left.** M10 was **dropped** on 2026-09-15 at the issue owner's direction — it was two messages
+to other people (the comment on ravendb#17901, and handing the originating team the Defect C finding),
+not work on this repository. Both findings stay written up here for whoever chooses to send them.
 
 Versions: all 23 NuGet packages → `10.0.0-preview.81`; `@mintplayer/ng-spark` → `22.18.0`.
 
@@ -32,21 +37,42 @@ Versions: all 23 NuGet packages → `10.0.0-preview.81`; `@mintplayer/ng-spark` 
 
 | | |
 |---|---|
-| **Merge timing** | **Do not merge until everything is implemented.** #403 stays open until the client write half and the viewer-zone header land. A release where saving works but silently discards the viewer's offset is not wanted. |
+| **Merge timing** | **Do not merge until everything is implemented.** #403 stays open until the client write half and the viewer-zone header land. A release where saving works but silently discards the viewer's offset is not wanted. ✅ **Condition met** — both landed (M14, M15). |
 | **DST fold/gap** | **Spiked and resolved 2026-09-12.** Measured: at the autumn fold .NET picks the *standard* offset and the browser picks the *daylight* one, so the same wall clock lands an hour apart depending on which side converts. The gap is benign — both sides agree on the instant. Policy: the server never reconstructs an instant from a wall clock, and where it must, it matches the browser deliberately. Full measurement and the four decisions in M15. |
 | **Backward compatibility** | **None required — except `apps/CodeCoverage`.** It is deployed and holds real production state, so its data must survive and its indexes must rebuild cleanly. The framework itself may break freely. |
 | **Third-party references** | Sweep genuine external-org references out of committed files. **Keep every Vidyano reference** — that framework is the acknowledged basis of this project and citing it is correct. See M13. |
 
-### Still outstanding
+### Closed out
 
 | Item | State |
 |---|---|
-| **M10 — upstream + sideways** | **Not done, and not the implementer's to do.** Both actions are outward-facing: a public comment on [ravendb#17901](https://github.com/ravendb/ravendb/issues/17901) with the layer isolation, and handing the originating team the Defect C finding. Needs the issue owner to send them. |
+| **M10 — upstream + sideways** | ❌ **Dropped 2026-09-15**, at the issue owner's direction. Both actions were outward-facing: a public comment on [ravendb#17901](https://github.com/ravendb/ravendb/issues/17901) with the layer isolation, and handing the originating team the Defect C finding. Messages to other people are not work on this repository, and neither gated the release. The findings stay written up here and in the summary. |
 | **Client write contract** | ✅ **Done (M14).** Both directions convert in one place (`models/src/datetime-local.ts`), wired into `po-edit`, `po-create` and the AsDetail row conversions. |
 | **Viewer-zone request header** | ✅ **Done (M15).** `X-Spark-Timezone` + `sparkTimezoneInterceptor` on the client, `IRequestTimeZoneResolver` on the server, with the DST policy measured rather than inherited. |
 
-**M10 is now the only outstanding item, and it is outward-facing.** Everything in the codebase is
-implemented, which satisfies the merge condition above.
+**Nothing is outstanding.** Everything in the codebase is implemented, which satisfies the merge
+condition above.
+
+#### Re-measured against a live server, 2026-09-15
+
+The `*Sort` conclusion was re-run against a standalone **Raven.Server 7.2.6 (build 72033)** with client
+7.2.6 — not TestDriver's embedded server — on **both engines**, after the question "didn't this work
+until the latest server version?" was raised. Results identical on Lucene and Corax:
+
+| | Result |
+|---|---|
+| Analyzed string: `OrderBy(Name)` vs `OrderBy(NameSort)` | **different** — the companion earns its keep |
+| `DateTimeOffset`: `OrderBy(OrderedAt)` vs `OrderBy(OrderedAtSort)` | **identical** — the companion does nothing |
+| Projected offset, on either field | **flattened to `+00:00`** — an `Exact` copy could never have carried it |
+
+So the convention still behaves exactly as designed, on the newest published server and client
+(7.2.6 is the latest on nuget.org for both `RavenDB.Client` and `RavenDB.TestDriver`). **No regression
+reproduces.**
+
+⚠️ What this did *not* cover, and would be worth probing if the report resurfaces: a `{Name}Sort` that
+is a **stored entity property** rather than an index-computed field, a companion of a **different type**
+from the original, and Vidyano's persisted `SortProperty` binding rather than Spark's convention-at-
+query-time `ResolveSortProperty`.
 
 #### The write contract — DECIDED and IMPLEMENTED
 
