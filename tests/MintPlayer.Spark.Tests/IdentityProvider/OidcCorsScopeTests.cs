@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.IdentityProvider.Extensions;
+using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.Testing;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
@@ -39,7 +40,30 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// </remarks>
 public class OidcCorsScopeTests : SparkTestDriver
 {
+    /// <summary>An origin no <c>OidcApplication</c> registers.</summary>
     private const string HostileOrigin = "https://evil.test";
+
+    /// <summary>An origin a seeded, enabled <c>OidcApplication</c> declares.</summary>
+    private const string RegisteredOrigin = "https://spa.test";
+
+    private async Task SeedApplicationAsync(string clientId, bool enabled, params string[] origins)
+    {
+        await SeedAsync(session => session.StoreAsync(new OidcApplication
+        {
+            ClientId = clientId,
+            DisplayName = clientId,
+            Enabled = enabled,
+            ClientType = "public",
+            AllowedGrantTypes = ["authorization_code"],
+            RedirectUris = ["https://spa.test/callback"],
+            AllowedCorsOrigins = [.. origins],
+        }));
+
+        // The host loads its origin snapshot once, at startup, so the seed has to be queryable
+        // before the factory is built — a stale read here would not fail, it would quietly allow
+        // fewer origins than the test registered.
+        await WaitForIndexesAsync();
+    }
 
     private SparkEndpointFactory<OidcTestContext> CreateFactory(bool enableCors) =>
         new(
@@ -62,10 +86,10 @@ public class OidcCorsScopeTests : SparkTestDriver
             environment: "Development");
 
     /// <summary>A CORS preflight, which is what actually reveals whether a policy applies.</summary>
-    private static HttpRequestMessage Preflight(string path, string method = "GET")
+    private static HttpRequestMessage Preflight(string path, string method = "GET", string origin = HostileOrigin)
     {
         var request = new HttpRequestMessage(HttpMethod.Options, path);
-        request.Headers.Add("Origin", HostileOrigin);
+        request.Headers.Add("Origin", origin);
         request.Headers.Add("Access-Control-Request-Method", method);
         return request;
     }
@@ -236,14 +260,106 @@ public class OidcCorsScopeTests : SparkTestDriver
     public async Task Opting_in_allows_the_protocol_endpoints_a_browser_client_calls(
         string path, string method = "GET")
     {
+        // ⚠️ This used to assert that an UNREGISTERED origin got the header, because opting in meant
+        // any origin. Narrowing changed what the control has to look like: a registered application
+        // now has to exist, or "opted in" and "refused" would be indistinguishable.
+        await SeedApplicationAsync("spa", enabled: true, RegisteredOrigin);
         await using var factory = CreateFactory(enableCors: true);
         using var client = factory.CreateClient();
 
-        using var response = await client.SendAsync(Preflight(path, method));
+        using var response = await client.SendAsync(Preflight(path, method, RegisteredOrigin));
 
         response.Headers.TryGetValues("Access-Control-Allow-Origin", out var allowed).Should().BeTrue(
             $"{path} is called cross-origin by every browser-based OIDC client; opting in has to work "
             + "or the option is decoration");
-        allowed!.Should().Contain(HostileOrigin);
+        allowed!.Should().Contain(RegisteredOrigin);
+    }
+
+    /// <summary>
+    /// The narrowing itself: a registered origin is echoed back by name, not as a wildcard.
+    /// </summary>
+    [Fact]
+    public async Task A_registered_origin_is_allowed_by_name()
+    {
+        await SeedApplicationAsync("spa", enabled: true, RegisteredOrigin);
+        await using var factory = CreateFactory(enableCors: true);
+        using var client = factory.CreateClient();
+
+        using var response = await client.SendAsync(Preflight("/connect/token", "POST", RegisteredOrigin));
+
+        response.Headers.GetValues("Access-Control-Allow-Origin").Should().Contain(RegisteredOrigin);
+        response.Headers.GetValues("Access-Control-Allow-Origin").Should().NotContain("*",
+            "echoing the specific origin is what narrowing means; a wildcard would be the old behaviour");
+        response.Headers.GetValues("Vary").Should().Contain(v => v.Contains("Origin"),
+            "a per-origin answer must not be cached as if it applied to every origin");
+    }
+
+    /// <summary>
+    /// The point of the change: an origin nobody registered gets nothing.
+    /// </summary>
+    [Fact]
+    public async Task An_unregistered_origin_is_refused()
+    {
+        await SeedApplicationAsync("spa", enabled: true, RegisteredOrigin);
+        await using var factory = CreateFactory(enableCors: true);
+        using var client = factory.CreateClient();
+
+        using var response = await client.SendAsync(Preflight("/connect/token", "POST"));
+
+        response.Headers.TryGetValues("Access-Control-Allow-Origin", out _).Should().BeFalse(
+            "a page on an origin no application registered must not be able to read a token response");
+    }
+
+    /// <summary>
+    /// A disabled application grants nothing — the same flag the protocol lookup filters on.
+    /// </summary>
+    [Fact]
+    public async Task A_disabled_application_grants_nothing()
+    {
+        await SeedApplicationAsync("spa", enabled: false, RegisteredOrigin);
+        await using var factory = CreateFactory(enableCors: true);
+        using var client = factory.CreateClient();
+
+        using var response = await client.SendAsync(Preflight("/connect/token", "POST", RegisteredOrigin));
+
+        response.Headers.TryGetValues("Access-Control-Allow-Origin", out _).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The honest statement of the breaking change: switching CORS on without registering an origin
+    /// now allows nothing, where it used to allow everything.
+    /// </summary>
+    /// <remarks>
+    /// Also the guard on failing closed. A preflight is not retried by a browser, so a snapshot that
+    /// allowed everything until it finished loading would be a hole that closes itself just late
+    /// enough to never be caught in testing.
+    /// </remarks>
+    [Fact]
+    public async Task No_registered_origins_allows_nothing()
+    {
+        await using var factory = CreateFactory(enableCors: true);
+        using var client = factory.CreateClient();
+
+        using var response = await client.SendAsync(Preflight("/connect/token", "POST", RegisteredOrigin));
+
+        response.Headers.TryGetValues("Access-Control-Allow-Origin", out _).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The set is a union across applications, because a preflight cannot say which client it is for.
+    /// </summary>
+    [Fact]
+    public async Task Origins_from_several_applications_are_unioned()
+    {
+        await SeedApplicationAsync("spa", enabled: true, RegisteredOrigin);
+        await SeedApplicationAsync("admin", enabled: true, "https://admin.test");
+        await using var factory = CreateFactory(enableCors: true);
+        using var client = factory.CreateClient();
+
+        using var first = await client.SendAsync(Preflight("/connect/token", "POST", RegisteredOrigin));
+        using var second = await client.SendAsync(Preflight("/connect/token", "POST", "https://admin.test"));
+
+        first.Headers.GetValues("Access-Control-Allow-Origin").Should().Contain(RegisteredOrigin);
+        second.Headers.GetValues("Access-Control-Allow-Origin").Should().Contain("https://admin.test");
     }
 }

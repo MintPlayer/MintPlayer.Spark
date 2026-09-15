@@ -49,6 +49,12 @@ public static class SparkIdentityProviderExtensions
         builder.Services.AddSingleton<OidcTokenGenerator>();
         builder.Services.AddHostedService<OidcTokenCleanupService>();
 
+        // Constructed rather than resolved, because the CORS policy's predicate below has no service
+        // provider of its own. Registered unconditionally: an unused snapshot costs nothing, and it
+        // saves OidcApplicationActions from taking an optional dependency.
+        var corsOrigins = new OidcCorsOrigins();
+        builder.Services.AddSingleton(corsOrigins);
+
         // Register dynamic CORS policy for OIDC endpoints
         if (options.EnableDynamicCors)
         {
@@ -56,25 +62,21 @@ public static class SparkIdentityProviderExtensions
             {
                 corsOptions.AddPolicy(CorsPolicy, policy =>
                 {
-                    // ⚠️ Any origin, and the comment that used to sit here said "Validated at runtime
-                    // below". There was no such validation: `OidcApplication.AllowedCorsOrigins`
-                    // occurs exactly twice in this repository — its own declaration and a doc
-                    // comment — and is read by nothing. A comment describing a control that does not
-                    // exist is worse than no comment, because it answers the reviewer's question
-                    // wrongly.
+                    // Narrowed to the origins registered on enabled OidcApplication documents.
+                    // `AllowedCorsOrigins` used to be read by nothing at all, which made the
+                    // "validated at runtime" comment that once sat here describe a control that did
+                    // not exist.
                     //
-                    // Any-origin is defensible for what this policy now covers: a public OIDC client
-                    // is a browser app with no secret, so `/token` is *designed* to be called
-                    // cross-origin and its control is PKCE — the code_verifier — not the Origin
-                    // header. What is NOT defensible is applying that to endpoints outside the
-                    // protocol, which is what the unscoped `UseCors` below used to do.
+                    // Any-origin was defensible for what this policy covers — a public OIDC client
+                    // has no secret, so `/token` is *designed* to be called cross-origin and its
+                    // control is PKCE, not the Origin header. Narrowing is defence in depth: it
+                    // stops a hostile page burning a victim's authorization code.
                     //
-                    // Restricting to each application's registered origins is still worth doing as
-                    // defence in depth (it stops a hostile page burning a victim's authorization
-                    // code). It needs a cached application lookup, because SetIsOriginAllowed is
-                    // synchronous and this would otherwise hit RavenDB on every preflight. Tracked
-                    // in docs/leftovers.md.
-                    policy.SetIsOriginAllowed(_ => true)
+                    // ⚠️ Do NOT add AllowCredentials here. Echoing a specific origin makes it
+                    // reachable where `AllowAnyOrigin` made it impossible by construction — the
+                    // wildcard's safety property was load-bearing, and narrowing quietly removes
+                    // it. See docs/guide-cors.md.
+                    policy.SetIsOriginAllowed(corsOrigins.IsAllowed)
                           .AllowAnyHeader()
                           .AllowAnyMethod();
                 });
@@ -114,6 +116,18 @@ public static class SparkIdentityProviderExtensions
 
             var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
             new OidcApplications_ByClientId().Execute(documentStore);
+
+            // Load the CORS origin snapshot before the first request, not lazily: a browser does
+            // not retry a preflight it lost, and this fails closed until the load lands.
+            if (options.EnableDynamicCors)
+            {
+                var corsOrigins = app.ApplicationServices.GetRequiredService<OidcCorsOrigins>();
+                corsOrigins.Initialize(
+                    documentStore,
+                    app.ApplicationServices.GetService<ILoggerFactory>()?.CreateLogger<OidcCorsOrigins>());
+                corsOrigins.LoadAsync().GetAwaiter().GetResult();
+            }
+
             new OidcTokens_ByExpiration().Execute(documentStore);
             new OidcAuthorizations_BySubject().Execute(documentStore);
 

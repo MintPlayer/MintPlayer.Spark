@@ -15,7 +15,7 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// </summary>
 public class OidcApplicationActionsTests
 {
-    private static OidcApplicationActions Actions() => new(Substitute.For<IEntityMapper>(), null!);
+    private static OidcApplicationActions Actions() => new(new OidcCorsOrigins(), Substitute.For<IEntityMapper>(), null!);
 
     private static OidcApplication Valid() => new()
     {
@@ -44,6 +44,42 @@ public class OidcApplicationActionsTests
     public async Task A_valid_application_is_accepted()
     {
         (await SaveAsync(Valid())).Should().BeNull();
+    }
+
+    /// <summary>
+    /// A trailing slash is the one that costs an afternoon: it saves cleanly and can never match,
+    /// because a browser's <c>Origin</c> header never carries a path.
+    /// </summary>
+    [Theory]
+    [InlineData("https://app.example.com/")]
+    [InlineData("https://app.example.com/callback")]
+    [InlineData("https://user:pw@app.example.com")]
+    [InlineData("app.example.com")]
+    [InlineData("ftp://app.example.com")]
+    public async Task A_cors_origin_that_can_never_match_is_rejected(string origin)
+    {
+        var app = Valid();
+        app.AllowedCorsOrigins = [origin];
+
+        (await SaveAsync(app))!.Message.Should().Contain("browser origin");
+    }
+
+    [Fact]
+    public async Task A_bare_cors_origin_with_a_port_is_accepted()
+    {
+        var app = Valid();
+        app.AllowedCorsOrigins = ["https://app.example.com", "http://localhost:4200"];
+
+        (await SaveAsync(app)).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task A_duplicate_cors_origin_is_rejected()
+    {
+        var app = Valid();
+        app.AllowedCorsOrigins = ["https://app.example.com", "https://app.example.com"];
+
+        (await SaveAsync(app))!.Message.Should().Contain("more than once");
     }
 
     [Fact]

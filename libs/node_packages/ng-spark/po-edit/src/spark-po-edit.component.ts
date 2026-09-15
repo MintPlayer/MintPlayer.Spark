@@ -7,7 +7,7 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
-import { SparkService } from '@mintplayer/ng-spark/services';
+import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SparkPoFormComponent } from '@mintplayer/ng-spark/po-form';
 import { TranslateKeyPipe, ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
 import {
@@ -38,6 +38,7 @@ export class SparkPoEditComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
+  private readonly language = inject(SparkLanguageService);
 
   saved = output<PersistentObject>();
   cancelled = output<void>();
@@ -221,6 +222,12 @@ export class SparkPoEditComponent {
 
     const po: Partial<PersistentObject> = {
       id: currentItem.id,
+      // Send back the token this object was loaded with. Left out, the server skips the
+      // concurrency check entirely -- it is opt-in by presence -- and a save over somebody else's
+      // edit succeeds silently. Left as undefined when the server sent none, which drops the key
+      // from the JSON and restores exactly the old behaviour rather than sending an empty string
+      // that could never match.
+      etag: currentItem.etag,
       name: this.formData()['Name'] || currentItem.name,
       objectTypeId: this.entityType()!.id,
       attributes
@@ -241,6 +248,16 @@ export class SparkPoEditComponent {
       const errors = error.error?.result?.errors ?? error.error?.errors;
       if (error.status === 400 && errors) {
         this.validationErrors.set(errors);
+      } else if (error.status === 409) {
+        // Somebody saved this record between the load and this save. The server's own body says
+        // only "Concurrency conflict" -- deliberately, since the real message carries the change
+        // vector -- which is accurate, untranslated, and tells the user nothing to do about it.
+        // The form keeps its values, so the typing is not lost.
+        this.validationErrors.set([{
+          attributeName: '',
+          errorMessage: { en: this.language.t('common.concurrencyConflict') },
+          ruleType: 'error'
+        }]);
       } else {
         this.validationErrors.set([{
           attributeName: '',

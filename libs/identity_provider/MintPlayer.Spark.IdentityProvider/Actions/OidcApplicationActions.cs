@@ -1,3 +1,4 @@
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.IdentityProvider.Models;
@@ -24,6 +25,13 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
     private static readonly string[] SupportedGrantTypes =
         ["authorization_code", "refresh_token", "client_credentials"];
 
+    /// <summary>
+    /// Always registered, even when <c>EnableDynamicCors</c> is off — an unused snapshot costs
+    /// nothing, and an optional dependency here would have to be an optional constructor parameter,
+    /// which the injection generator cannot place before the required ones.
+    /// </summary>
+    [Inject] private readonly OidcCorsOrigins corsOrigins;
+
     public override async Task OnBeforeSaveAsync(PersistentObject obj, OidcApplication entity)
     {
         if (string.IsNullOrWhiteSpace(entity.ClientId))
@@ -31,6 +39,7 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
 
         ValidateRedirectUris(entity.RedirectUris, nameof(entity.RedirectUris));
         ValidateRedirectUris(entity.PostLogoutRedirectUris, nameof(entity.PostLogoutRedirectUris));
+        ValidateCorsOrigins(entity.AllowedCorsOrigins, nameof(entity.AllowedCorsOrigins));
         ValidateGrantTypes(entity);
         HashAnyNewSecrets(entity);
 
@@ -73,6 +82,33 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
         }
 
         var duplicate = uris.GroupBy(u => u, StringComparer.Ordinal).FirstOrDefault(g => g.Count() > 1);
+        if (duplicate != null)
+            throw new SparkValidationException($"'{duplicate.Key}' is listed more than once.", field);
+    }
+
+    /// <summary>
+    /// A CORS origin is compared byte-for-byte against the browser's <c>Origin</c> header, so it has
+    /// to be exactly scheme + host + optional port.
+    /// <para>
+    /// ⚠️ The trailing slash is the one that costs an afternoon. <c>https://app.example.com/</c>
+    /// looks right, saves fine, and can <b>never</b> match — a browser never puts a path in an
+    /// <c>Origin</c> — so the symptom is CORS silently not working for one application while the
+    /// configuration screen shows the origin listed. Same class of failure as the redirect-URI
+    /// fragment above, and refused for the same reason.
+    /// </para>
+    /// </summary>
+    private static void ValidateCorsOrigins(List<string> origins, string field)
+    {
+        foreach (var origin in origins)
+        {
+            if (OidcCorsOrigins.Normalize(origin) is null)
+                throw new SparkValidationException(
+                    $"'{origin}' is not a browser origin. It has to be scheme + host + optional port, "
+                    + "with no path, query, fragment, credentials or trailing slash — e.g. https://app.example.com.",
+                    field);
+        }
+
+        var duplicate = origins.GroupBy(o => o, StringComparer.Ordinal).FirstOrDefault(g => g.Count() > 1);
         if (duplicate != null)
             throw new SparkValidationException($"'{duplicate.Key}' is listed more than once.", field);
     }
@@ -157,6 +193,11 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
               + "the lookup that resolves them returns whichever document is found first.",
                 nameof(entity.ClientId));
         }
+
+        // The CORS snapshot is cached with a TTL backstop, so without this an operator adding an
+        // origin would watch the screen say it saved and the browser keep refusing for minutes.
+        // The admin screen is the only in-app writer, which is what makes invalidating here enough.
+        corsOrigins.Invalidate();
 
         return entity;
     }

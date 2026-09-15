@@ -39,6 +39,9 @@ const existingItem: PersistentObject = {
   id: 'people/1',
   name: 'Alice Smith',
   objectTypeId: 't-person',
+  // The server stamps a change vector on every load. The save has to send it back, or the
+  // concurrency check -- which is opt-in by presence of the field -- never runs at all.
+  etag: 'A:12-abc',
   attributes: [
     { id: 'a-first', name: 'FirstName', value: 'Alice' } as any,
     { id: 'a-last', name: 'LastName', value: 'Smith' } as any,
@@ -183,6 +186,51 @@ describe('SparkPoEditComponent', () => {
     await c.onSave();
 
     expect(c.validationErrors()[0].attributeName).toBe('FirstName');
+    expect(c.isSaving()).toBe(false);
+  });
+
+  it('sends back the etag it was loaded with', async () => {
+    const { harness, service } = await setup();
+    const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+    await harness.fixture.whenStable();
+
+    await c.onSave();
+
+    const [, , payload] = (service.update as any).mock.calls[0];
+    expect(payload.etag).toBe('A:12-abc');
+  });
+
+  it('omits the etag when the server did not send one', async () => {
+    // Guards the regression where somebody coalesces this to '' — an empty string IS present, so
+    // the server would run the check against a token that can never match and every save would 409.
+    const { etag, ...withoutEtag } = existingItem as any;
+    const { harness, service } = await setup({ get: vi.fn().mockResolvedValue(withoutEtag) } as any);
+    const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+    await harness.fixture.whenStable();
+
+    await c.onSave();
+
+    const [, , payload] = (service.update as any).mock.calls[0];
+    expect(payload.etag).toBeUndefined();
+  });
+
+  it('onSave 409 renders the translated concurrency message, not the server string', async () => {
+    const error = new HttpErrorResponse({
+      status: 409,
+      error: { result: { error: 'Concurrency conflict' }, operations: [] },
+    });
+    const { harness } = await setup({ update: vi.fn().mockRejectedValue(error) } as any);
+    const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+    await harness.fixture.whenStable();
+
+    await c.onSave();
+
+    // The stub language service echoes the key, so this asserts the key was looked up rather than
+    // the server's own untranslated wording being shown.
+    expect(c.validationErrors()[0].errorMessage.en).toBe('common.concurrencyConflict');
+    expect(c.validationErrors()[0].attributeName).toBe('');
+    // The typing is not thrown away — the user can retry or copy their values out.
+    expect(c.formData()['FirstName']).toBe('Alice');
     expect(c.isSaving()).toBe(false);
   });
 

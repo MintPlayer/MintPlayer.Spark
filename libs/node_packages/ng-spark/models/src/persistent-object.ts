@@ -19,6 +19,16 @@ export interface PersistentObject {
   name: string;
   objectTypeId: string;
   breadcrumb?: string;
+  /**
+   * Optimistic-concurrency token -- RavenDB's change vector for the document behind this object.
+   * The server stamps it on every `/po/load` and expects it back on update.
+   *
+   * ⚠️ The check is opt-in BY PRESENCE of this field. Dropping it does not fail loudly; it makes
+   * the save unconditional, so two people editing the same record both succeed and the second
+   * silently overwrites the first. That is what used to happen here: `SparkClient` round-tripped
+   * the token and got a 409, the browser did not and got last-write-wins, on the same endpoint.
+   */
+  etag?: string;
   attributes: PersistentObjectAttribute[];
   /** Per-row edit/delete affordances; undefined = fall back to type-level permissions. */
   can?: PersistentObjectPermissions;

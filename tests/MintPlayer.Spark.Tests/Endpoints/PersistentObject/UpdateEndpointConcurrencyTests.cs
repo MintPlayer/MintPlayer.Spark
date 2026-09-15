@@ -88,11 +88,24 @@ public class UpdateEndpointConcurrencyTests : SparkTestDriver
     }
 
     [Fact]
+    public async Task Load_returns_a_populated_etag()
+    {
+        var po = await SeedAndLoadAsync("people/1", "Alice", "Smith");
+
+        // Pins the half of the contract the browser now depends on. Everything else here proves the
+        // check honours an etag it is given; nothing proved the load hands one out, and a refactor
+        // of LoadManyAsync that stopped stamping it would turn every browser save back into
+        // last-write-wins with no test going red.
+        po.Etag.Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
     public async Task Put_with_no_etag_skips_concurrency_check_and_succeeds()
     {
         var po = await SeedAndLoadAsync("people/1", "Alice", "Smith");
 
-        // Clients that don't round-trip the change vector (legacy path) must still work.
+        // Opt-in by presence, and it stays that way: a create has no etag by definition, and a
+        // non-browser caller that does not track one must still be able to write.
         po.Etag = null;
         SetAttribute(po, "FirstName", "Alicia");
         var saved = await _client.UpdatePersistentObjectAsync(po);
