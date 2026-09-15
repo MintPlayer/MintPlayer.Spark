@@ -10,7 +10,7 @@ Test-utilities library for writing automated tests against Spark apps. It provid
 |------|---------|
 | `SparkTestDriver` | xUnit base class that creates a fresh in-memory RavenDB database per test case and exposes a ready `IDocumentStore Store`. |
 | `SparkEndpointFactory<TContext>` | Boots a minimal in-memory Spark HTTP host (ASP.NET Core `TestServer`) wired to a supplied store, for endpoint/integration tests. |
-| `SparkTestClient` | `HttpClient` wrapper that attaches the antiforgery cookie + `X-XSRF-TOKEN` header to every mutating request. |
+| ~~`SparkTestClient`~~ | **Removed.** It was a CSRF shim that knew nothing about envelopes, retry or `PersistentObject`, and could not re-prime its token after a login. Use `SparkClient` from `MintPlayer.Spark.Client` — it does the same cookie/token work, and everything else besides. |
 | `JsonFixtureImporter` | Seeds a store from RavenDB query-result-format JSON fixture files. |
 | `RavenIndexHelper` | Deploys indexes and waits for them to be registered and non-stale (usable from any store-holding fixture). |
 | `AsyncWait` | Bounded polling for work with no completion signal; always throws on expiry. |
@@ -178,7 +178,7 @@ public class CarEndpointTests : SparkTestDriver
             });
 
         // Antiforgery-aware client: warms up to mint the XSRF token, then attaches it to writes.
-        using var client = await factory.CreateAuthorizedClientAsync();
+        using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
         // Note the envelope. The endpoint reads a PersistentObjectRequest, so the entity goes
         // under `persistentObject` with its attributes as name/value pairs — posting a bare
@@ -218,7 +218,7 @@ public class CarEndpointTests : SparkTestDriver
 > cannot express — recording what was asked, and deciding by predicate — swap the service instead
 > with `services.UseSparkTestAccessControl(SparkTestAccessControl.DenyAll())`.
 
-`TestServer`'s `HttpClient` does not manage cookies automatically, which is why mutating requests need the antiforgery cookie + token threaded through explicitly. `SparkTestClient` (via `CreateAuthorizedClientAsync`) does this for you; if you need the raw values, call `factory.MintAntiforgeryAsync()`.
+`TestServer`'s `HttpClient` does not manage cookies automatically, which is why mutating requests need the antiforgery cookie + token threaded through explicitly. `SparkClient` (from `MintPlayer.Spark.Client`) does this for you; if you need the raw values, call `factory.MintAntiforgeryAsync()`.
 
 ### Snapshot tests — `VerifyDefaults`
 

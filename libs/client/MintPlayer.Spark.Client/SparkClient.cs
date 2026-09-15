@@ -28,7 +28,7 @@ namespace MintPlayer.Spark.Client;
 ///     by <c>SparkEndpointFactory.CreateClient()</c> for <c>TestServer</c>-backed tests).</description></item>
 /// </list>
 /// </summary>
-public class SparkClient : IDisposable
+public partial class SparkClient : IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly bool _ownsClient;
@@ -75,6 +75,26 @@ public class SparkClient : IDisposable
     /// any real conversation (Fleet's longest is two) and far below anything that hides a spin.
     /// </remarks>
     public int MaxRetryDepth { get; set; } = 16;
+
+    /// <summary>
+    /// The viewer's IANA timezone (e.g. <c>"Europe/Brussels"</c>), sent as <c>X-Spark-Timezone</c>.
+    /// Unset by default.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>The server falls back to UTC silently</b> when the header is absent, blank or names a
+    /// zone it does not know — no error, no log. So a test asserting viewer-zone behaviour through
+    /// this client is asserting the fallback until this is set, and it passes either way.
+    /// </remarks>
+    public string? TimeZoneId { get; set; }
+
+    /// <summary>
+    /// The value to send as <c>Accept-Language</c> (e.g. <c>"nl-BE,nl;q=0.9"</c>). Unset by default.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Same silent fallback as <see cref="TimeZoneId"/>: an absent or unsupported language
+    /// resolves to the application's configured default.
+    /// </remarks>
+    public string? AcceptLanguage { get; set; }
 
     public SparkClient(string baseUrl)
         : this(BuildDefaultHttpClient(new Uri(baseUrl)), ownsClient: true)
@@ -137,6 +157,7 @@ public class SparkClient : IDisposable
             await EnsureAntiforgeryAsync(cancellationToken);
 
         var request = new HttpRequestMessage(method, url);
+        ApplyViewerHeaders(request);
         var cookieHeader = BuildCookieHeader();
         if (cookieHeader is not null)
             request.Headers.Add("Cookie", cookieHeader);
@@ -163,6 +184,31 @@ public class SparkClient : IDisposable
         }
         UpdateCookiesFromResponse(response);
         return response;
+    }
+
+    /// <summary>
+    /// Attaches <see cref="TimeZoneId"/> and <see cref="AcceptLanguage"/> when they are set.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>Called from two places, and it has to be.</b> <see cref="SendAsync"/> covers every typed
+    /// method, but the antiforgery warmup builds its own request and goes straight to the inner
+    /// <see cref="HttpClient"/> — a header attached in only one of them leaves the warmup GET
+    /// unheadered, which is precisely the kind of asymmetry nobody notices until a culture-sensitive
+    /// response comes back in the wrong language.
+    /// </para>
+    /// <para>
+    /// ⚠️ Deliberately not <c>HttpClient.DefaultRequestHeaders</c>: the
+    /// <c>(HttpClient, ownsClient: false)</c> ctor wraps a client the caller owns, and mutating its
+    /// defaults would leak this client's settings into everything else using it.
+    /// </para>
+    /// </remarks>
+    private void ApplyViewerHeaders(HttpRequestMessage request)
+    {
+        if (!string.IsNullOrWhiteSpace(TimeZoneId))
+            request.Headers.TryAddWithoutValidation("X-Spark-Timezone", TimeZoneId);
+        if (!string.IsNullOrWhiteSpace(AcceptLanguage))
+            request.Headers.TryAddWithoutValidation("Accept-Language", AcceptLanguage);
     }
 
     /// <summary>
@@ -775,6 +821,7 @@ public class SparkClient : IDisposable
         if (_xsrfToken is not null) return;
 
         var warmupRequest = new HttpRequestMessage(HttpMethod.Get, "/spark");
+        ApplyViewerHeaders(warmupRequest);
         var cookieHeader = BuildCookieHeader();
         if (cookieHeader is not null)
             warmupRequest.Headers.Add("Cookie", cookieHeader);

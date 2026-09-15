@@ -29,7 +29,7 @@ Spark is **not** Vidyano. If you have written tests for the originating framewor
   `.Granting(...)`.
 - **Mutating requests need a minted antiforgery token**, and antiforgery runs **before**
   authorization — so an unminted `POST` answers **400** and proves nothing about the permission
-  check you were testing. Call `MintAntiforgeryAsync()` (or use `CreateAuthorizedClientAsync()`).
+  check you were testing. Call `MintAntiforgeryAsync()`, or drive the endpoint through `SparkClient`.
 - **Seed with `SeedAsync`, not a raw session**, when the test then queries. It asks the *server* to
   hold the write until the covering indexes have caught up.
 - **Never assert on elapsed time to prove something was fast.** Under a suite running hundreds of

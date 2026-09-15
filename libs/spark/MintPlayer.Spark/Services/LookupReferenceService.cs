@@ -15,29 +15,8 @@ public interface ILookupReferenceService
     Task DeleteValueAsync(string name, string key);
 }
 
-public class LookupReferenceListItem
-{
-    public required string Name { get; set; }
-    public required bool IsTransient { get; set; }
-    public int ValueCount { get; set; }
-    public ELookupDisplayType DisplayType { get; set; } = ELookupDisplayType.Dropdown;
-}
-
-public class LookupReferenceDto
-{
-    public required string Name { get; set; }
-    public required bool IsTransient { get; set; }
-    public ELookupDisplayType DisplayType { get; set; } = ELookupDisplayType.Dropdown;
-    public List<LookupReferenceValueDto> Values { get; set; } = new();
-}
-
-public class LookupReferenceValueDto
-{
-    public required string Key { get; set; }
-    public required TranslatedString Values { get; set; }
-    public bool IsActive { get; set; } = true;
-    public Dictionary<string, object>? Extra { get; set; }
-}
+// The three DTOs this interface speaks in moved to MintPlayer.Spark.Abstractions — they are the
+// wire shape of the lookupref endpoints, and the typed client references only Abstractions.
 
 [Register(typeof(ILookupReferenceService), ServiceLifetime.Scoped)]
 internal partial class LookupReferenceService : ILookupReferenceService

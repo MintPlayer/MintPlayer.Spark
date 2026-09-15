@@ -205,7 +205,8 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
     /// cookie. Returns the raw <c>Cookie</c> header value (combining both cookies) and the
     /// <c>X-XSRF-TOKEN</c> request token to attach to mutating requests.
     /// <see cref="TestServer"/>'s HttpClient does not auto-manage cookies, so callers must thread
-    /// these through explicitly — see <see cref="SparkTestClient"/> for a wrapper that does this.
+    /// these through explicitly. <c>SparkClient</c> (MintPlayer.Spark.Client) does it for you and can
+    /// re-prime after a login, which is why the wrapper that used to live here is gone.
     /// </summary>
     public async Task<(string CookieHeader, string XsrfToken)> MintAntiforgeryAsync()
     {
