@@ -37,7 +37,13 @@ namespace MintPlayer.Spark.Tests.Architecture;
 public class HookInvocationTests
 {
     /// <summary>The framework source that reflects into application code.</summary>
-    private const string ScannedDirectory = @"libs\spark\MintPlayer.Spark";
+    /// <remarks>
+    /// ⚠️ Segments, not a literal <c>libs\spark\…</c>. A backslash is a path separator on Windows and
+    /// an ordinary filename character on Linux, so the literal form named a directory that exists on
+    /// a developer's machine and nowhere on CI — where this test had been red since it was written,
+    /// on the one assertion that exists to stop it passing vacuously.
+    /// </remarks>
+    private static readonly string ScannedDirectory = Path.Combine("libs", "spark", "MintPlayer.Spark");
 
     /// <summary>The one file allowed to name the flag — it defines the constant.</summary>
     private const string Definition = "SparkHookInvocation.cs";
