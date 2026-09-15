@@ -250,9 +250,9 @@ public class EndpointCoverageTests
     public async Task Culture_translations_and_program_units_read_their_own_shapes()
     {
         var handler = new ScriptedHttpHandler();
-        handler.Enqueue(Json("""{"languages":["en","nl"],"defaultLanguage":"en"}"""));
+        handler.Enqueue(Json("""{"languages":{"en":{"en":"English"},"nl":{"en":"Dutch"}},"defaultLanguage":"en"}"""));
         handler.Enqueue(Json("""{"common.save":{"en":"Save","nl":"Bewaren"}}"""));
-        handler.Enqueue(Json("""{"groups":[]}"""));
+        handler.Enqueue(Json("""{"programUnitGroups":[]}"""));
 
         using var client = NewClient(handler);
 
@@ -282,7 +282,7 @@ public class EndpointCoverageTests
     public async Task Neither_viewer_header_is_sent_by_default()
     {
         var handler = new ScriptedHttpHandler();
-        handler.Enqueue(Json("""{"languages":["en"],"defaultLanguage":"en"}"""));
+        handler.Enqueue(Json("""{"languages":{"en":{"en":"English"}},"defaultLanguage":"en"}"""));
 
         using var client = NewClient(handler);
         await client.GetCultureAsync();
@@ -297,7 +297,7 @@ public class EndpointCoverageTests
     public async Task The_viewer_headers_are_sent_when_set()
     {
         var handler = new ScriptedHttpHandler();
-        handler.Enqueue(Json("""{"languages":["en","nl"],"defaultLanguage":"en"}"""));
+        handler.Enqueue(Json("""{"languages":{"en":{"en":"English"},"nl":{"en":"Dutch"}},"defaultLanguage":"en"}"""));
 
         using var client = NewClient(handler);
         client.TimeZoneId = "Europe/Brussels";
@@ -306,7 +306,13 @@ public class EndpointCoverageTests
         await client.GetCultureAsync();
 
         handler.Requests[0].Headers.GetValues("X-Spark-Timezone").Single().Should().Be("Europe/Brussels");
-        handler.Requests[0].Headers.GetValues("Accept-Language").Single().Should().Be("nl-BE,nl;q=0.9");
+
+        // Joined rather than Single(): Accept-Language is a known comma-separated header, so
+        // HttpHeaders parses it into its two entries — and re-renders the q-value with a space
+        // ("nl; q=0.9"). Both forms are the same header to any parser; asserting the string
+        // verbatim would be asserting HttpClient's formatting, not this client's behaviour.
+        string.Join(",", handler.Requests[0].Headers.GetValues("Accept-Language"))
+            .Replace(" ", "").Should().Be("nl-BE,nl;q=0.9");
     }
 
     [Fact]

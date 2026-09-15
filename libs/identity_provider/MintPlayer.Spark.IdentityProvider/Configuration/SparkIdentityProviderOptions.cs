@@ -44,18 +44,21 @@ public class SparkIdentityProviderOptions
     /// <para>
     /// ⚠️ <b>This said it "automatically allows origins registered in
     /// <c>OidcApplication.AllowedCorsOrigins</c>", defaulted to <see langword="true"/>, and did neither
-    /// of those things.</b> The policy is <c>SetIsOriginAllowed(_ =&gt; true)</c> — any origin, never
-    /// consulting the registered list, which is read by nothing in this repository. So every
+    /// of those things.</b> The policy was <c>SetIsOriginAllowed(_ =&gt; true)</c> — any origin, never
+    /// consulting the registered list, which was read by nothing in this repository. So every
     /// application that turned the identity provider on granted a cross-origin permission it did not
     /// ask for, to support a scenario whose access control was never built, described by a comment that
     /// said the opposite.
     /// </para>
     /// <para>
-    /// Turning it on still grants <b>any</b> origin, which is why it is now a deliberate choice rather
-    /// than a default. It is a defensible one for the protocol endpoints — a public client has no
-    /// secret, so <c>/token</c> is protected by PKCE rather than by <c>Origin</c> — but it is a choice.
-    /// Narrowing it to each application's registered origins needs a cached lookup
-    /// (<c>SetIsOriginAllowed</c> is synchronous); tracked in <c>docs/leftovers.md</c>.
+    /// It now does what it always claimed: the allowed set is the union of
+    /// <c>AllowedCorsOrigins</c> across <b>enabled</b> applications. A union, because a preflight is an
+    /// anonymous <c>OPTIONS</c> with no <c>client_id</c> — see <c>OidcCorsOrigins</c>.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>Turning this on without registering an origin allows nothing.</b> The symptom is a
+    /// missing header rather than an error, so the host logs a warning at startup when that is the
+    /// case. See <c>docs/guide-cors.md</c>.
     /// </para>
     /// </remarks>
     public bool EnableDynamicCors { get; set; }

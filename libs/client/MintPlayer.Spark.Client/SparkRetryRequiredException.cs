@@ -26,7 +26,9 @@ public sealed class SparkRetryRequiredException : SparkClientException
     {
         Prompt = prompt;
         AnsweredSoFar = answered;
-        Operations = SparkClientOperations.Parse(responseBody);
+        // Everything except the prompt itself — that is what Prompt is for, and carrying it twice
+        // would make "did the hook say anything?" answerable only by filtering.
+        Operations = [.. SparkClientOperations.Parse(responseBody).Where(o => o is not SparkRetryOperation)];
     }
 
     /// <summary>The question the server is asking.</summary>

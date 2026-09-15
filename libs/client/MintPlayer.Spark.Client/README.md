@@ -95,9 +95,40 @@ anti-forgery gate and no useful message.
 | `GetQueryAsync(query)` / `ListQueriesAsync()` | `POST /spark/queries/get`, `GET /spark/queries` |
 | `ExecuteActionAsync(type, name, parent, selectedItemIds, parentId, parentType, queryId, …)` | `POST /spark/actions/execute` |
 | `ContinueAsync(result, option, persistentObject)` | the same endpoint, one answer further |
-| `ListEntityTypesAsync()` / `ListAliasesAsync()` | `GET /spark/types`, `GET /spark/aliases` |
+| `RefreshPersistentObjectAsync(obj, triggeredBy)` | `POST /spark/po/refresh` |
+| `NewPersistentObjectAsync(type, asDetailAttribute, parentType, parentId, parameters)` | `POST /spark/po/new` |
+| `DeleteRowAsync(type, asDetailAttribute, parentType, parentId, rowKey)` | `POST /spark/po/delete-row` |
+| `ListEntityTypesAsync()` / `GetEntityTypeAsync(type)` | `GET /spark/types`, `GET /spark/types/{id}` |
+| `ListAliasesAsync()` | `GET /spark/aliases` |
+| `ListCustomActionsAsync(type)` | `POST /spark/actions/list` |
+| `ListLookupReferencesAsync()` / `GetLookupReferenceAsync(name)` | `GET /spark/lookupref/`, `GET /spark/lookupref/{name}` |
+| `AddLookupReferenceValueAsync` / `UpdateLookupReferenceValueAsync` / `DeleteLookupReferenceValueAsync` | `POST`, `PUT`, `DELETE` on `/spark/lookupref/{name}[/{key}]` |
+| `GetProgramUnitsAsync()` / `GetCultureAsync()` / `GetTranslationsAsync()` | `GET /spark/program-units`, `/culture`, `/translations` |
 | `GetPermissionsAsync(type)` | `GET /spark/permissions/{type}` |
 | `SendAsync(method, url, content, requiresAntiforgery)` | anything not yet typed |
+
+⚠️ **Only `create`, `update`, `delete`, `refresh`, `new`, `delete-row` and `actions/execute` are
+enveloped, and only those can ask a question.** The rest return bare JSON, which is why they take no
+`onRetry` — offering one would advertise a conversation the server cannot start.
+
+⚠️ **`lookupref/{name}`, `lookupref/{name}/{key}` and `types/{id}` still carry route variables.** The
+literal route table covers `/po`, `/queries` and `/actions`; these three were never part of it. The
+client escapes every segment, which matters because a lookup-reference key is user data.
+
+⚠️ **`ListCustomActionsAsync` answers with an empty list for an unknown type *and* for one you may not
+see.** The endpoint refuses to tell them apart, because the difference is an existence oracle — so do
+not read empty as "no such type".
+
+### Who the viewer is
+
+```csharp
+client.TimeZoneId = "Europe/Brussels";      // → X-Spark-Timezone
+client.AcceptLanguage = "nl-BE,nl;q=0.9";   // → Accept-Language
+```
+
+Both are unset by default, and **the server falls back silently** — to UTC and to the application's
+default language, with no error and no log. So a test asserting timezone- or culture-dependent output
+through this client is asserting the fallback until you set these, and it passes either way.
 
 Every type and query argument accepts **either a Guid or an alias** — `"cars"` and
 `"a20e8400-…"` resolve to the same thing. Ids need no escaping: they travel in a JSON body, so a Raven
@@ -166,6 +197,43 @@ every attempt and feeds it the answers it has, which is why nothing has to be he
 and why two conversations through one client cannot interfere: the answers live on the result, never
 on the client.
 
+### What the server says on the way — client operations
+
+A response carries more than its result. Alongside it the server can ask the client to show a
+message, repaint an attribute, re-run a query or navigate — the same operations the Angular frontend
+acts on. Hand the call an `onOperation` and you see them, in emission order:
+
+```csharp
+var notices = new List<string>();
+
+var result = await client.ExecuteActionAsync(
+    "car", "SyncServiceHistory",
+    selectedItemIds: ["cars/1"],
+    queryId: "cars",
+    onRetry: async (prompt, ct) => RetryAnswer.Choose("Overwrite"),
+    onOperation: op =>
+    {
+        if (op is SparkNotifyOperation notify) notices.Add(notify.Message);
+    });
+
+// Or read them off the result instead of streaming them:
+foreach (var refresh in result.Operations.OfType<SparkRefreshAttributeOperation>())
+    SparkClientOperations.Apply(car, [refresh]);
+```
+
+⚠️ **Non-retry operations arrive *before* the prompt is answered.** A hook that says "saved 3 of 4
+rows" and then asks about the fourth is emitting both in one envelope, and the notify is what explains
+the question — delivering it afterwards would show the dialog first and the reason second.
+
+⚠️ **Nothing is applied for you.** `refreshAttribute` is the one operation a headless client can act
+on, and `SparkClientOperations.Apply` is explicit because this SDK keeps no registry of open objects
+the way a UI does. Only the caller knows which object a patch is for. `navigate`, `refreshQuery` and
+`disableAction` are surfaced and nothing more — the last is a no-op in the browser too.
+
+⚠️ **An operation type this client has never heard of is ignored, not thrown on.** It arrives as
+`SparkUnknownOperation` with its payload intact. That is the point of the contract: a newer server
+must be readable by an older client, so the envelope is never bound to a closed set of types.
+
 ### Three things that bite
 
 ⚠️ **`step` comes from the server.** Never count answers locally. A hook may skip a step — asking the
@@ -194,12 +262,13 @@ is a rewrite.
 
 | Gap | Consequence today |
 |---|---|
-| **Client operations are discarded** (M4) | `notify`, `navigate`, `refreshAttribute` are dropped; the envelope's `result` is all you get. Retry operations are the exception — those are handled. |
-| **Missing endpoints** (M5) | No typed `refresh`, `new`, `delete-row`, `lookupref/*`, `types/{id}`, `actions/list`, `program-units`, `culture`, `translations`. |
-| **No culture or timezone headers** (M6) | `HttpClient` sends neither, and the server falls back silently — so a test asserting culture- or timezone-dependent output is asserting the **fallback**, not your setting. |
+| **No WebSocket streaming** | `/spark/queries/{id}/stream` has no typed client. Deliberate: nothing needs it, and unused public API is a liability. |
+| **No external login** | Browser-dependent by construction — a redirect to a third party and back is not something a request/response client can drive. |
+| **No scripting DSL** | C# API only, by decision. |
 
-The server side is complete: every hook that can prompt does, on every endpoint, including reads.
-The remaining work is all on this side of the wire.
+The server side is complete, and so is this one: every hook that can prompt does, on every endpoint
+including reads; every endpoint has a typed method; operations are surfaced; and the viewer headers
+are yours to set.
 
 ---
 

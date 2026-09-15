@@ -132,11 +132,30 @@ When on, it opts in discovery, JWKS, `token`, `userinfo` and `revoke`. `introspe
 left out — it is a resource-server call authenticated by client credentials, so a browser has no
 business making it.
 
-> ⚠️ Turning it on currently allows **any** origin, not the origins registered in an application's
-> `AllowedCorsOrigins`. That property exists on the model and is read by nothing; narrowing to it is
-> tracked in [leftovers](leftovers.md). Any-origin is defensible here — a public OIDC client has no
-> secret, so `/token` is protected by PKCE rather than by `Origin` — but it is broader than the model
-> implies.
+Turning it on allows the origins listed in `AllowedCorsOrigins` on **enabled** `OidcApplication`
+documents — and nothing else.
+
+> ⚠️ **It is the union across applications, not a per-client rule, and it cannot be one.** A CORS
+> preflight is an anonymous `OPTIONS` with no body, no cookies and no `client_id`, so the only
+> question the policy can answer is "is this origin registered by anybody?". Anyone reaching for
+> per-client narrowing finds the same wall.
+
+> ⚠️ **Enabling it without registering an origin now allows nothing**, where it used to allow
+> everything. That is a missing header rather than an error, which is the hardest CORS failure to
+> diagnose, so the host logs a warning at startup when the switch is on and no enabled application
+> declares an origin.
+
+An origin has to be exactly scheme + host + optional port — `https://app.example.com`, never
+`https://app.example.com/`. A browser's `Origin` header has no path, so a trailing slash is a rule
+that can never match; saving an application rejects one rather than storing it.
+
+The snapshot is cached (`SetIsOriginAllowed` is synchronous, and it runs on every preflight), loaded
+at startup rather than on first use, and it **fails closed** until that load completes — a browser
+does not retry a preflight it lost.
+
+> ⚠️ **Do not add `AllowCredentials` to this policy.** Echoing a specific origin makes it *reachable*,
+> where `AllowAnyOrigin` made it impossible by construction. The wildcard's safety property was
+> load-bearing, and narrowing quietly removed it — see "Credentials, and why the wildcard" above.
 
 ---
 

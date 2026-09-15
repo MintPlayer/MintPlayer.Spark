@@ -1,8 +1,11 @@
 # Plan — `DateTimeOffset` fidelity (read + write) and `*Sort` companion correction
 
 **PRD:** [raven_datetimeoffset_and_sort_companions_PRD.md](raven_datetimeoffset_and_sort_companions_PRD.md)
-**Status:** **IMPLEMENTED and verified in a browser.** M1–M9 and M11–M15 done; **only M10 outstanding**,
-and M10 is two outward-facing messages rather than code.
+**Status:** **COMPLETE.** M1–M9 and M11–M15 done and verified in a browser. **M10 was dropped at the
+issue owner's direction (2026-09-15)** — its two items were an upstream comment on ravendb#17901 and
+handing the Defect C finding to the team it came from. Both are messages to other people rather than
+work on this repository, and neither gates the release. The findings themselves are recorded here and
+in the summary, which is where anyone who wants to send them will find them.
 **Branch:** `fix/datetimeoffset-fidelity`, pushed.
 **PR:** [#403](https://github.com/MintPlayer/MintPlayer.Spark/pull/403), open.
 

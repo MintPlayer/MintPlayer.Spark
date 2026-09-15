@@ -1,7 +1,10 @@
 # Spark client — completing the conversation: implementation plan
 
 **PRD:** [spark_client_conversation_PRD.md](spark_client_conversation_PRD.md)
-**Status:** **M0, M1, M2, M2b and the S2/S4 spikes done** — 2184/2184 unit, 95/95 E2E, 39/39 client, 490/490 ng-spark, 278/278 generators. S3 dropped. The route table is fully literal, `OnLoad`/`OnQuery` have joined the retry mechanism, and both halves of a retry are centralised. The **server** side is finished; next are the client milestones M3–M8, which S1 gates.
+**Status:** **COMPLETE — every milestone and spike is done.** S3 was dropped; everything else landed.
+The route table is fully literal, all nine hooks that can prompt do, both halves of a retry are
+centralised, the client answers a retry, surfaces client operations, covers every endpoint, and sends
+the viewer's timezone and language. `SparkTestClient` is gone. Test counts are in the PR description.
 **Branch:** `fix/datetimeoffset-fidelity` (shared with PR #403 at the issue owner's direction).
 
 Method: red/green throughout, as `issue_384_plan.md` was. Every milestone that changes public API on
@@ -23,31 +26,53 @@ that fails because the method does not compile has proven nothing.
 | **M2** Server + clients: reads become POST, route table fully literal (FR21–FR25, FR29, FR30) | **Done.** 11 routes moved, both clients and 22 test files swept. See below. |
 | **M2b** Server: centralise the emit half (FR26) | **Done.** One middleware catch replaces nine. ⚠️ One endpoint needs an exception filter — see below. |
 | **M3** Client: answer a retry (FR1–FR6) | **Done 2026-09-13.** Both widenings S1 asked for are in: 449 is in-protocol on every endpoint the client has, and `ExecuteActionAsync` takes `queryId`. 18 new tests, 57/57. ⚠️ One deliberate deviation from this plan's step 4 — see below. |
-| **M4** Client: surface and apply client operations (FR8–FR11) | Not started |
-| **M5** Client: endpoint coverage (FR12–FR16) | **Not started.** ⚠️ Its endpoint list was corrected — `POST /spark/actions/list`, not `GET /spark/actions/{type}`. |
-| **M6** Client: headers (FR18) | Not started |
-| **M6b** Retire `SparkTestClient` (1 consumer left) | Not started. Gated on M5. |
+| **M4** Client: surface and apply client operations (FR8–FR11) | **Done 2026-09-15.** Own operation model, not the server's DTOs — see below. A per-call `onOperation` sink mirroring `onRetry`, plus `Operations` on `SparkActionResult` and `SparkRetryRequiredException`. `refreshAttribute` is applied explicitly via `SparkClientOperations.Apply`. |
+| **M5** Client: endpoint coverage (FR12–FR16) | **Done 2026-09-15.** All 13. ⚠️ Two of this plan's own claims were wrong — see below. FR15 was already shipped by M3; FR16 has no server-side value to read. |
+| **M6** Client: headers (FR18) | **Done 2026-09-15.** `TimeZoneId` and `AcceptLanguage`, attached in **two** places — the antiforgery warmup bypasses `SendAsync`. |
+| **M6b** Retire `SparkTestClient` | **Done 2026-09-15.** ⚠️ It was never actually gated on M5 — see below. Deleted along with `CreateAuthorizedClientAsync`; `MintAntiforgeryAsync` kept (5 independent consumers). |
 | **M7** Version bumps + guard | ✅ **Satisfied.** All 23 `libs/**` packages are at `10.0.0-preview.81` against master's `.80`, and `ng-spark` at `22.18.0` against `22.17.0`. One bump per PR is what the CI guard checks, so no further bump is due — but see the note in M7 about what now needs saying in the release notes. |
-| **M8** Docs | **Partly done.** The client README exists and is M2-current; `guide-cors.md` is new; the API specification, the Spark README and both Testing documents are current. **Remaining: the worked conversation-loop example** (needs M3) and the retry section in the guides. |
+| **M8** Docs | **Done 2026-09-15.** The client README carries the worked conversation loop, the client-operations section, the full endpoint table and the viewer headers; `guide-cors.md` describes the narrowed identity-provider policy; the Testing documents no longer mention the deleted `SparkTestClient`. |
 
-### What is left, in the order it has to happen
+### Nothing is left.
 
-1. ~~**S1** — the wire-fidelity spike.~~ **Done 2026-09-13**; see its section for the answer, the
-   divergence table, and the frontend defect it uncovered.
-2. ~~**M3** — `ContinueAsync`.~~ **Done 2026-09-13**, including both widenings S1 asked for.
-3. **M4, M5, M6** — client operations, endpoint coverage, headers. Independent of each other.
-4. **M6b** — retire `SparkTestClient`, after M5 supplies the `lookupref` methods its last consumer needs.
-5. **M8** — the worked example, once M3 exists to demonstrate.
+Every milestone and spike in this plan has landed, and the findings it carried from elsewhere have
+been decided rather than deferred:
 
-**Nothing on the server side is outstanding.** M0, M1, M2 and M2b are complete: the route table is
-literal, all nine hooks that can prompt do, and both halves of a retry are centralised.
+- **Optimistic concurrency** — decided and implemented: the browser sends the etag it was loaded with,
+  and a `409` gets its own translated message. [leftovers.md](leftovers.md), *Found 2026-09-13*, item 1.
+- **The identity provider's CORS opt-in** — decided and implemented: narrowed to the union of
+  registered origins across enabled applications. [guide-cors.md](guide-cors.md).
+- **`/spark/translations` anonymous and unfiltered** — decided, and deliberately **not** changed.
+  Filtering would need a mapping from translation keys to the objects they label; no such mapping
+  exists, and inventing one is the downstream inference this repository has ruled out.
+
+The two outward-facing follow-ups the sibling initiative carried — commenting upstream on
+ravendb#17901, and handing the Defect C finding to the originating team — were **dropped at the issue
+owner's direction**. They are messages to other people, not work on this repository.
+
+### Three things this plan asserted that turned out to be wrong
+
+Recorded because each cost time to discover, and a plan that silently corrects itself teaches nobody.
+
+1. **"The route table is fully literal, no route variables bar the WebSocket."** True only of `/po`,
+   `/queries` and `/actions` — the families M2 migrated. `lookupref/{name}`, `lookupref/{name}/{key}`,
+   `types/{id}` and `permissions/{id}` still carry variables, and those are precisely the endpoints
+   M5 had to add. Every segment is escaped, because a lookup-reference key is user data.
+2. **"M6b is gated on M5."** It was not. Its one consumer asserts raw status codes — 201, 204, a 400
+   body — which typed methods erase; the 1:1 replacement was always `SparkClient.SendAsync`, which
+   does the same cookie and token work and can additionally re-prime after a login.
+3. **"M5 adds `queryId` (FR15) and reads the action envelope (FR16)."** FR15 shipped with M3. FR16 has
+   nothing to read: `ExecuteCustomAction` envelopes a literal `null` on every success, so the only
+   populated half of that envelope is `operations` — which is M4's. A test asserting a non-null result
+   could not have been made to pass without changing the server.
+
+**Nothing on the server side was outstanding either.** M0, M1, M2 and M2b completed it: the route
+table is literal, all nine hooks that can prompt do, and both halves of a retry are centralised.
 
 ⚠️ **This PR also carries work from neither initiative**, which a reader of this plan alone would miss:
-the identity provider's CORS defect and the three-tier CORS model that replaced it, plus the corrections
-from two audits. Those are recorded in [leftovers.md](leftovers.md) and
-[guide-cors.md](guide-cors.md). Two items there are still **open and need a decision rather than
-code**: narrowing the identity provider's opt-in to each application's registered origins, and whether
-`/spark/translations` should stay anonymous and unfiltered while `/spark/types` is permission-filtered.
+the identity provider's CORS defect and the three-tier CORS model that replaced it, the narrowing of
+that model to registered origins, the browser's missing etag, and the corrections from two audits. All
+of it is recorded in [leftovers.md](leftovers.md) and [guide-cors.md](guide-cors.md).
 
 ---
 

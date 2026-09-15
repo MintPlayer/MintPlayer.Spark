@@ -127,12 +127,27 @@ metadata when no CORS middleware is registered. Applied unconditionally, that wo
 `/connect/token` — the PKCE code exchange — a 500 in the new default configuration. `WithOidcCors`
 applies the convention only when the option is on.
 
-**Still open:** turning it on grants **any** origin. Narrowing to each application's registered origins
-needs a cached lookup, because `SetIsOriginAllowed` is synchronous and would otherwise hit RavenDB on
-every preflight. Worth doing as defence in depth — it stops a hostile page burning a victim's
-authorization code — but it is a feature, not a fix, and it is not built.
+**Also fixed (2026-09-15):** turning it on used to grant **any** origin. It now grants the union of
+`AllowedCorsOrigins` across enabled applications, behind the cached snapshot `SetIsOriginAllowed`
+needs (it is synchronous, and would otherwise hit RavenDB on every preflight). Defence in depth — it
+stops a hostile page burning a victim's authorization code.
 
-### 2. ⚠️ OPEN, deliberately — the translation catalogue is anonymous and unfiltered
+⚠️ A union, not a per-client rule: a preflight is an anonymous `OPTIONS` with no `client_id`, so the
+policy cannot know which application it is answering for. And enabling the switch without registering
+an origin now allows nothing, which the host warns about at startup because a missing CORS header is
+the hardest failure to diagnose. See [the CORS guide](guide-cors.md).
+
+### 2. ✅ DECIDED, not doing — the translation catalogue is anonymous and unfiltered
+
+**Decided (issue owner, 2026-09-15): leave it.** Filtering would mean the code working out which
+labels belong to which persistent object, query and action — a mapping that does not exist, and
+inventing one is precisely the downstream inference this repository has ruled out. It stays anonymous
+and unfiltered, and the entry below stays as the statement of what that means, so the next reader
+finds a decision rather than an oversight. `SparkClient.GetTranslationsAsync` carries the same
+warning.
+
+The finding:
+
 
 `GET /spark/translations` returns `translationsLoader.GetAll()` with no `IPermissionService` anywhere
 in the endpoint (`Translations/Get.cs`); `GET /spark/culture` is the same shape. An anonymous caller
@@ -164,7 +179,17 @@ follows. Nothing to fix. Recorded so the next survey does not re-raise it.
 
 ## Found 2026-09-13 while running the S1 wire-fidelity spike
 
-### 1. ⏳ OPEN DECISION — optimistic concurrency is enforced for one client and not the other
+### 1. ✅ FIXED — optimistic concurrency was enforced for one client and not the other
+
+**Decided (issue owner, 2026-09-15): shape 2 — send the etag, and give `409` its own message.** The
+browser now round-trips the token it was loaded with, and a conflict renders
+`common.concurrencyConflict` ("somebody else changed this record while you were editing it; reload to
+see their version") instead of the server's untranslated internal wording. The form keeps its values,
+so nothing the user typed is lost. Shape 3, reload-and-reapply, is a real feature and was deliberately
+not smuggled in here.
+
+The finding, kept because the asymmetry is the interesting part:
+
 
 `DatabaseAccess.cs:242` makes the concurrency check **opt-in by the presence of the field**: it
 compares `persistentObject.Etag` against the stored change vector only when the incoming object
@@ -179,12 +204,11 @@ wins, silently, and the same two doing it through `SparkClient` get a conflict.
 Measured, not inferred: the two `po/update` bodies were captured side by side and `etag` appears in
 exactly one of them.
 
-**Not fixed, because it is not ours to choose.** The honest repair is for the frontend to send the
-token it already receives — the server side is already built and already correct. But that makes saves
-fail where they currently succeed, and there is no conflict UI to fail *into*: today a `409` would
-reach the user as a generic error banner with no way to see what changed or to merge. Turning silent
-data loss into an unexplained refusal is not obviously an improvement, and choosing between them is a
-product decision.
+The repair was for the frontend to send the token it already receives — the server side was already
+built and already correct. The reason it was not obvious is that it makes saves fail where they
+currently succeed, and a `409` had nowhere good to land: it would have reached the user as a generic
+error banner with no way to see what changed. Turning silent data loss into an unexplained refusal is
+not self-evidently an improvement, which is what made it a decision rather than a bug fix.
 
 Three shapes it could take, in increasing order of work:
 
@@ -193,8 +217,8 @@ Three shapes it could take, in increasing order of work:
    their version". Honest, and no merge UI to build.
 3. Send the etag and offer a reload-and-reapply path. The real feature.
 
-Doing nothing is also a position, but it should be a stated one: **the browser has no concurrency
-control at all**, and nothing in the UI says so.
+Doing nothing was also a position, but it would have had to be a stated one: **the browser would have
+no concurrency control at all**, with nothing in the UI saying so.
 
 ### 2. ✅ FIXED HERE — a refreshed attribute's value was never saved
 
