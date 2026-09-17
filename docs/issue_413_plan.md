@@ -110,28 +110,32 @@ never invoked.
    `null` for a bare name so the root hook runs.
 4. Add the `JsonValueKind.Object` reader; fork `BuildNestedRow`'s extraction on `RowIndex`.
 5. Add the `IsArray`/`DataType` agreement guard.
-6. Server tests for both nested grammars — none exist today.
+6. Honour redaction on the nested branch: if `existing` shows the owning AsDetail attribute was
+   withheld, do not return a populated row. This closes a gap that exists on the array path today —
+   the branch returns at `Refresh.cs:133`, before `ApplyRedactionOf` at `:138-141`, so a row hook's
+   database-loaded values and any `IsVisible = true` it sets are returned unintersected.
+7. Server tests for both nested grammars and for the redaction case — none exist today.
 
 ### Phase 3: Framework client (M2)
 
-7. Add `triggerPathPrefix` / `nestedTriggerRequested`; route `noteChange` through the prefix.
-8. Wire the modal's recursive form to the parent's handler.
-9. Convert `pendingNestedTrigger` to the tagged union; add the single-object arm to
-   `applyNestedResponse`, writing `asDetailFormData.set({...})`.
-10. FR-12: pass the column from the free-text inline editors.
-11. Specs.
+8. Add `triggerPathPrefix` / `nestedTriggerRequested`; route `noteChange` through the prefix.
+9. Wire the modal's recursive form to the parent's handler.
+10. Convert `pendingNestedTrigger` to the tagged union; add the single-object arm to
+    `applyNestedResponse`, writing `asDetailFormData.set({...})`.
+11. FR-12: pass the column from the free-text inline editors.
+12. Specs.
 
 ### Phase 4: Application (M3, M4)
 
-12. Model: `Gate` writable, `GateSettings` attributes writable, `triggersRefresh` on `ProjectMode`,
+13. Model: `Gate` writable, `GateSettings` attributes writable, `triggersRefresh` on `ProjectMode`,
     lookups, labels from the deleted card. Regenerate `modelHashes.json`.
-13. `GateSettingsActions.OnRefreshAsync` — establish complete presentation state every call.
-14. `RepositoryActions` — the gate's save-time rules.
+14. `GateSettingsActions.OnRefreshAsync` — establish complete presentation state every call.
+15. `RepositoryActions` — the gate's save-time rules.
 
 ### Phase 5: Deletion and docs (M5, M6)
 
-15. Delete the panel, the mount, the browse-service methods, the two controller actions, their tests.
-16. Update `docs/guide-triggers-refresh.md`.
+16. Delete the panel, the mount, the browse-service methods, the two controller actions, their tests.
+17. Update `docs/guide-triggers-refresh.md`.
 
 ---
 
@@ -177,9 +181,17 @@ never invoked.
 
 ---
 
+### Scenario 7: A redacted AsDetail attribute is not returned by a nested refresh
+
+- **Given**: a type whose `GetProtectedAttributesAsync` withholds the owning AsDetail attribute
+- **When**: a nested refresh is addressed at a column inside it
+- **Then**: no populated row is returned, matching what the root path's `ApplyRedactionOf` does
+
+---
+
 ## Acceptance Criteria
 
-- [ ] FR-1 … FR-11 met (PRD)
+- [ ] FR-1 … FR-14 met (PRD)
 - [ ] Selecting `fixed` reveals `Project Target`; `auto` hides it, decided server-side
 - [ ] No server-side validation lost relative to `PutGate`
 - [ ] `RepoGatePanelComponent` and the gate endpoints are gone

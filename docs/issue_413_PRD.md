@@ -191,9 +191,6 @@ metadata half still runs).
   published build — requiring an RQL migration over the largest collection. It would also diverge
   the stored vocabulary from `coverage.yml`, a user-authored public file format documented at
   `docs/code-coverage/upload-api.md:383-392` that cannot be migrated.*
-- **Per-row redaction on the nested refresh response** — *Rationale: the nested branch returns at
-  `Refresh.cs:133` before `ApplyRedactionOf`, and that method is root-shaped by construction. Out
-  of scope here but documented; see Open Questions.*
 - **`GateEvaluator`'s synthetic `"whole"` basis value** (`GateEvaluator.cs:24`) — *Rationale: a
   derived, non-selectable state, not part of the user-facing vocabulary. It stays a string
   comparison and must not acquire a lookup entry.*
@@ -229,6 +226,9 @@ metadata half still runs).
       `browse.service.getGate/putGate`, and `RepoSettingsController.GetGate/PutGate` are removed.
 - [ ] **FR-11**: No stored byte in `Repositories.Gate` or `Builds.GateSnapshot` changes, and
       `coverage.yml` continues to accept lowercase `auto|fixed|scoped|projection`.
+- [ ] **FR-14**: A nested refresh honours the redaction of the attribute it is addressed at. If the
+      load withheld the owning AsDetail attribute, the nested branch does not return a populated
+      row. Applies to the existing array path as well as the new single-object one.
 
 ### Should Have (P1)
 
@@ -257,7 +257,13 @@ metadata half still runs).
 - [ ] `ObjectValue` reader beside `RowAt` for `JsonValueKind.Object`.
 - [ ] Guard that the model attribute's `IsArray` agrees with the presence of an index, following
       the precedent in `New.cs:146-152` / `DeleteRow.cs:120-124`.
-- [ ] Tests: the first server-side coverage of the nested path in either form.
+- [ ] FR-14: before returning the nested row, intersect against the load's redaction of the owning
+      attribute. Redaction has exactly one granularity — a root attribute name, applied by
+      `RowSecurity.RedactAttribute(po, name)` — so the check is "was `Gate` withheld on `existing`",
+      not a per-column diff. Mirrors what `ApplyRedactionOf` does for the root path, at the
+      granularity redaction actually has.
+- [ ] Tests: the first server-side coverage of the nested path in either form, including a
+      redacted-attribute case on the existing array path.
 
 ### Milestone 2: Client plumbing
 
@@ -296,12 +302,6 @@ metadata half still runs).
 
 ## Open Questions
 
-- [ ] **Redaction on the nested refresh response.** The nested branch returns before
-      `ApplyRedactionOf` (`Refresh.cs:133` vs `:235-258`), and a row hook that loads from the
-      database and writes onto the row is not redacted. — *Assumption: documented exemption, not
-      fixed here. `GateSettings` carries no protected attributes (`BadgeToken` lives on
-      `Repository` and is withheld by `GetProtectedAttributesAsync`), so this work adds no
-      exposure. Flagged for a follow-up issue.*
 - [ ] **Validation error keys for a single AsDetail.** The client reads inline errors keyed
       `{attr}[{i}].{col}` (`spark-po-form.component.ts:469-478`); nothing consumes a
       `Gate.ProjectMode` key yet. — *Assumption: not needed, because FR-9 puts the enforcement on
