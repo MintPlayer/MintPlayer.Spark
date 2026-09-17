@@ -237,6 +237,98 @@ public class NestedRefreshEndpointTests : SparkTestDriver
         Attribute(body, "Target").GetProperty("isVisible").GetBoolean().Should().BeTrue();
     }
 
+    // ---- saving what the refresh reshaped -----------------------------------------------------
+
+    [Fact]
+    public async Task A_single_embedded_object_is_persisted_by_a_save()
+    {
+        // ⚠️ The regression this exists for wrote NOTHING and returned 200. The client resolved the
+        // nested type out of the Query-gated catalogue, missed — an AsDetail row type has no rights
+        // of its own — and posted the attribute as a raw dict under `value` instead of a nested
+        // object. EntityMapper could not map that, and its conversion `catch` swallowed the
+        // failure. Only reading the document afterwards showed it.
+        //
+        // So this test asserts against the DOCUMENT, never against the response. A save path that
+        // silently drops a field passes every assertion made about what it returns.
+        var created = await _client.CreatePersistentObjectAsync(PolicyWithGate("fixed", 75));
+
+        using var session = Store.OpenAsyncSession();
+        var stored = await session.LoadAsync<NestedRefreshPolicy>(created.Id);
+
+        stored.Gate.Should().NotBeNull();
+        stored.Gate!.Mode.Should().Be("fixed");
+        stored.Gate.Target.Should().Be(75);
+    }
+
+    [Fact]
+    public async Task An_edit_to_a_single_embedded_object_is_persisted_by_an_update()
+    {
+        var created = await _client.CreatePersistentObjectAsync(PolicyWithGate("auto", null));
+
+        var edited = PolicyWithGate("fixed", 90);
+        edited.Id = created.Id;
+        await _client.UpdatePersistentObjectAsync(edited);
+
+        using var session = Store.OpenAsyncSession();
+        var stored = await session.LoadAsync<NestedRefreshPolicy>(created.Id);
+
+        stored.Gate!.Mode.Should().Be("fixed");
+        stored.Gate.Target.Should().Be(90);
+    }
+
+    [Fact]
+    public async Task A_rule_a_detail_rows_hook_imposes_is_NOT_enforced_on_save()
+    {
+        // Pinning a documented limitation rather than a desired behaviour, because the difference
+        // matters to anyone writing a hook. At ROOT level, Spark re-runs the refresh hook while
+        // validating a save, which is what makes an imposed rule real for a client that never calls
+        // /refresh. That re-derivation does not descend into AsDetail rows.
+        //
+        // The gate hook makes Target required in fixed mode. This save omits it and succeeds. If
+        // that ever changes, this test should fail and the guide's warning should be deleted with
+        // it — until then, a rule inside a nested type has to be enforced by the owning type's save.
+        var created = await _client.CreatePersistentObjectAsync(PolicyWithGate("fixed", target: null));
+
+        created.Id.Should().NotBeNullOrEmpty();
+
+        using var session = Store.OpenAsyncSession();
+        var stored = await session.LoadAsync<NestedRefreshPolicy>(created.Id);
+        stored.Gate!.Target.Should().Be(null);
+    }
+
+    /// <summary>
+    /// The save wire shape for a single embedded AsDetail: a nested PO under <c>Object</c>, which is
+    /// what the edit form builds — deliberately NOT the flat dict the refresh path posts under
+    /// <c>Value</c>.
+    /// </summary>
+    private static PO PolicyWithGate(string mode, double? target) => new()
+    {
+        Name = "NestedRefreshPolicy",
+        ObjectTypeId = PolicyTypeId,
+        Attributes =
+        [
+            new POA { Name = "Name", Value = "a policy" },
+            new PersistentObjectAttributeAsDetail
+            {
+                Name = "Gate",
+                DataType = "AsDetail",
+                AsDetailType = typeof(NestedRefreshGate).FullName!,
+                IsValueChanged = true,
+                Object = new PO
+                {
+                    Name = "NestedRefreshGate",
+                    ObjectTypeId = GateTypeId,
+                    Attributes =
+                    [
+                        new POA { Name = "Mode", Value = mode, IsValueChanged = true },
+                        new POA { Name = "Target", Value = target, IsValueChanged = true },
+                        new POA { Name = "Threshold", Value = 2d, IsValueChanged = true },
+                    ],
+                },
+            },
+        ],
+    };
+
     private async Task<string> SeedPolicyAsync(string name)
     {
         using var session = Store.OpenAsyncSession();
