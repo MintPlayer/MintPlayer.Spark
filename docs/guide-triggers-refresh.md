@@ -140,6 +140,56 @@ the one governing the object that owns it. Only the *dispatch* follows the row.
 
 ---
 
+## Triggers inside a single embedded object
+
+An `AsDetail` attribute that is **not** an array — one object, not a grid of them — works the same
+way, with one difference: there is no row to index, so the path has no brackets.
+
+```json
+// App_Data/Model/Repository.json — the owning attribute
+{ "name": "Gate", "dataType": "AsDetail", "asDetailType": "CodeCoverage.Entities.GateSettings",
+  "isArray": false, "isReadOnly": false }
+
+// App_Data/Model/GateSettings.json — the trigger, on the embedded type
+{ "name": "ProjectMode", "dataType": "string", "lookupReferenceType": "ProjectComparison",
+  "triggersRefresh": true }
+```
+
+The path is `Gate.ProjectMode`, and everything else is unchanged: the hook is
+`GateSettingsActions.OnRefreshAsync`, `obj.Parent` is the Repository, and authorization is the
+Repository's.
+
+```csharp
+public partial class GateSettingsActions : DefaultPersistentObjectActions<GateSettings>
+{
+    public override Task OnRefreshAsync(SparkRefreshArgs<GateSettings> args)
+    {
+        var obj = args.PersistentObject;
+        var isFixed = obj[nameof(GateSettings.ProjectMode)].GetValue<string>() == "fixed";
+
+        obj[nameof(GateSettings.ProjectTarget)].IsVisible = isFixed;
+        obj[nameof(GateSettings.ProjectTarget)].IsRequired = isFixed;
+        return Task.CompletedTask;
+    }
+}
+```
+
+⚠️ **The owning attribute must not be `isReadOnly`.** The edit form filters read-only attributes out
+before rendering, so a read-only AsDetail never opens and the trigger has nowhere to fire from. This
+looks exactly like a broken refresh and is not one.
+
+⚠️ **The path shape must match `isArray`.** `Gate[0].ProjectMode` on a single object, or
+`Jobs.Title` on an array, resolves to nothing and falls through to the *root* hook — which will not
+recognise the trigger and will leave the object alone. The symptom is a refresh that returns 200 and
+changes nothing.
+
+⚠️ **A single embedded object is edited in a modal, and the modal can be cancelled.** A refresh
+applies to the modal's working copy, not to the parent's data, so a refreshed value is discarded
+along with everything else if the user dismisses the dialog. That is the intended behaviour; do not
+"fix" it by writing through to the parent.
+
+---
+
 ## What the framework does with it
 
 - **On refresh** the client POSTs the in-progress object to `/spark/po/refresh`, naming the type in the body. The
@@ -188,4 +238,14 @@ own actions class. This deliberately is *not* a Roslyn analyzer: the
 flag lives in JSON, outside the compilation, so an analyzer would have nothing to read.
 
 ⚠️ **Redaction still applies.** An attribute hidden by `GetProtectedAttributesAsync` stays hidden and
-valueless in a refresh response, even if your hook sets it.
+valueless in a refresh response, even if your hook sets it. For a trigger addressed *inside* an
+AsDetail attribute, redaction is coarser than the path: it can withhold `Gate`, never
+`Gate.PatchTarget`. A refresh addressed inside a withheld attribute is refused outright rather than
+answered with a row scaffolded from the model.
+
+⚠️ **A rule imposed on a detail row is presentation only.** Spark re-runs the refresh hook while
+validating a save — which is what makes an imposed rule real for a client that never calls
+`/refresh` — but that re-derivation covers the **root** type and does not descend into AsDetail
+rows. If a rule inside a nested type has to hold whatever a client posts, enforce it in the owning
+type's `OnBeforeSaveAsync`, on the object that actually saves. `RepositoryActions` does exactly this
+for the coverage gate.

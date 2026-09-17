@@ -38,37 +38,10 @@ public partial class RepoSettingsController : ControllerBase
         return Ok(new { badgeToken = repository.BadgeToken });
     }
 
-    /// <summary>The stored gate policy, defaults spelled out so the UI never guesses them.</summary>
-    [HttpGet("gate")]
-    public async Task<ActionResult<GateSettings>> GetGate(string owner, string name, CancellationToken cancellationToken)
-    {
-        var repository = await ResolveOwnedRepository(owner, name, cancellationToken);
-        if (repository is null) return NotFound();
-
-        return Ok(repository.Gate ?? new GateSettings());
-    }
-
-    [HttpPut("gate")]
-    public async Task<ActionResult<GateSettings>> PutGate(string owner, string name, [FromBody] GateSettings gate, CancellationToken cancellationToken)
-    {
-        if (gate.ProjectMode is not ("auto" or "fixed"))
-            return BadRequest(new { error = "projectMode must be auto or fixed." });
-        if (gate.ProjectBasis is not ("scoped" or "projection"))
-            return BadRequest(new { error = "projectBasis must be scoped or projection." });
-        if (gate.ProjectTarget is < 0 or > 100 || gate.PatchTarget is < 0 or > 100)
-            return BadRequest(new { error = "targets are percentages (0-100)." });
-        if (gate.ProjectThreshold is < 0 or > 100 || gate.PatchThreshold is < 0 or > 100)
-            return BadRequest(new { error = "thresholds are percentage points (0-100)." });
-        if (gate.ProjectMode == "fixed" && gate.ProjectTarget is null)
-            return BadRequest(new { error = "fixed mode needs a projectTarget." });
-
-        var repository = await ResolveOwnedRepository(owner, name, cancellationToken);
-        if (repository is null) return NotFound();
-
-        repository.Gate = gate;
-        await session.SaveChangesAsync(cancellationToken);
-        return Ok(gate);
-    }
+    // The gate endpoints that lived here are gone. The policy is edited through the standard Spark
+    // PO form on Repository now — the bespoke card that called them was deleted with them (#413) —
+    // and their validation moved to RepositoryActions.OnBeforeSaveAsync, which is reached by every
+    // writer rather than only by one hand-written page.
 
     private async Task<Repository?> ResolveOwnedRepository(string owner, string name, CancellationToken cancellationToken)
     {

@@ -104,13 +104,24 @@ public class SparkAuthorizeEndToEndTests : IClassFixture<CoverageWebHostFixture>
     /// <c>security.json</c>, which is <c>Authenticated</c>, and <c>ApiTokenActions</c>&apos; row
     /// filter, which is what keeps one signed-in user out of another&apos;s tokens.
     /// </remarks>
+    /// <remarks>
+    /// <c>settings/gate</c> used to be the case here and is gone the same way: the gate is edited
+    /// through the Spark PO form on <c>Repository</c> now (#413), so there are no gate endpoints to
+    /// carry the attribute. What replaced that coverage is <c>Edit/Repository</c> in
+    /// <c>security.json</c> plus <c>RepositoryActions.GetRowFilterAsync</c>&apos;s write arm, which
+    /// is what keeps a signed-in user out of a repository they do not manage.
+    /// <para>
+    /// <c>badge-token</c> is a POST, so this probes it as one. A GET would answer 405 before any
+    /// authorization filter ran, which would pass the assertion while proving nothing.
+    /// </para>
+    /// </remarks>
     [Theory]
-    [InlineData("/api/repos/acme/widget/settings/gate")]
+    [InlineData("/api/repos/acme/widget/settings/badge-token")]
     public async Task Management_endpoints_refuse_anonymous_callers(string path)
     {
         using var client = CreateClient();
 
-        var response = await client.GetAsync(path);
+        var response = await client.PostAsync(path, content: null);
 
         Assert.True(
             response.StatusCode is HttpStatusCode.Unauthorized

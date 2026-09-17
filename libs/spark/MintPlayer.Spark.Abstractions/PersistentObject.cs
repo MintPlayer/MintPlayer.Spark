@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace MintPlayer.Spark.Abstractions;
@@ -229,11 +231,43 @@ public class PersistentObjectAttribute
     [JsonIgnore]
     public PersistentObject Parent { get; internal set; } = null!;
 
+    /// <summary>
+    /// The value as <typeparamref name="T"/>.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ A value that arrived from a client is a <see cref="JsonElement"/>, not the CLR type the
+    /// attribute's <c>dataType</c> names — the wire converter stores the element verbatim, and only
+    /// the save path maps it onto an entity. <see cref="Convert.ChangeType(object, Type)"/> throws
+    /// <see cref="InvalidCastException"/> on one ("Object must implement IConvertible"), so this
+    /// unwraps first. Without that, the obvious way to read an attribute inside a hook threw for
+    /// every hook that ran against a submitted object — refresh most of all, whose entire input is
+    /// submitted — while the same call worked in a unit test that assigned a plain string. The
+    /// shipped samples use <c>Value?.ToString()</c> and so never met it.
+    /// <para>
+    /// A conversion that is genuinely impossible still throws, exactly as before. Silence there
+    /// would hide a real mistake.
+    /// </para>
+    /// </remarks>
     public T? GetValue<T>()
     {
-        if (Value is null) return default;
-        return Convert.ChangeType(Value, typeof(T)) is T value ? value : default;
+        var raw = Value is JsonElement element ? Unwrap(element) : Value;
+        if (raw is null) return default;
+        if (raw is T typed) return typed;
+
+        var target = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
+        return Convert.ChangeType(raw, target, CultureInfo.InvariantCulture) is T converted ? converted : default;
     }
+
+    /// <summary>The CLR value behind a wire element, or null for JSON null.</summary>
+    private static object? Unwrap(JsonElement element) => element.ValueKind switch
+    {
+        JsonValueKind.String => element.GetString(),
+        JsonValueKind.Number => element.TryGetInt64(out var l) ? l : element.GetDouble(),
+        JsonValueKind.True or JsonValueKind.False => element.GetBoolean(),
+        JsonValueKind.Null or JsonValueKind.Undefined => null,
+        // An object or array has no scalar reading; hand back its text rather than guess.
+        _ => element.GetRawText(),
+    };
 
     /// <summary>
     /// Sets the value <b>as an edit</b>: the attribute is marked

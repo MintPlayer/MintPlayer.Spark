@@ -187,7 +187,7 @@
                     [required]="col.isRequired"
                     rows="3"
                     [class.is-invalid]="hasInlineError(attr, rowIndex, col)"
-                    (ngModelChange)="onFieldChange()"
+                    (ngModelChange)="onInlineCellChange(attr, rowIndex, col)"
                     (blur)="onInlineCellBlur(attr, rowIndex, col)"></textarea>
                 } @else {
                   <input
@@ -196,7 +196,7 @@
                     [required]="col.isRequired"
                     [step]="col.dataType === 'decimal' ? '0.01' : '1'"
                     [class.is-invalid]="hasInlineError(attr, rowIndex, col)"
-                    (ngModelChange)="onFieldChange()"
+                    (ngModelChange)="onInlineCellChange(attr, rowIndex, col)"
                     (blur)="onInlineCellBlur(attr, rowIndex, col)">
                 }
                 @if (inlineErrorMessage(attr, rowIndex, col); as errorMsg) {
@@ -411,7 +411,10 @@
           [entityType]="attr | asDetailType:asDetailTypes()"
           [(formData)]="asDetailFormData"
           [parentId]="parentId()"
-          [parentType]="parentType()">
+          [parentType]="parentType()"
+          [triggerPathPrefix]="attr.isArray ? null : attr.name"
+          (nestedTriggerRequested)="onEmbeddedTrigger(attr.name, $event)"
+          (nestedTriggerBlurred)="onEmbeddedTriggerBlur($event)">
         </spark-po-form>
       </div>
     }

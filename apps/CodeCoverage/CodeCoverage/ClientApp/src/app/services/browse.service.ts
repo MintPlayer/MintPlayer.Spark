@@ -217,24 +217,4 @@ export class BrowseService {
       `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/settings/badge-token`, {}));
   }
 
-  getGate(owner: string, name: string): Promise<GateSettings> {
-    return firstValueFrom(this.http.get<GateSettings>(
-      `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/settings/gate`));
-  }
-
-  putGate(owner: string, name: string, gate: GateSettings): Promise<GateSettings> {
-    return firstValueFrom(this.http.put<GateSettings>(
-      `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/settings/gate`, gate));
-  }
-}
-
-/** Mirror of the server's GateSettings; the GET spells every default out. */
-export interface GateSettings {
-  projectMode: 'auto' | 'fixed';
-  projectTarget?: number | null;
-  projectThreshold: number;
-  projectBasis: 'scoped' | 'projection';
-  patchTarget?: number | null;
-  patchThreshold: number;
-  blocking: boolean;
 }

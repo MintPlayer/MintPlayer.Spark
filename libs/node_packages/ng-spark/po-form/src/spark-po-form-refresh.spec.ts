@@ -460,6 +460,27 @@ describe('spark-po-form — TriggersRefresh', () => {
       expect(named(component, 'Notes')).toBeDefined();
     });
 
+    it('marks a free-text column pending and sends it on blur', async () => {
+      // Until #413 the free-text inline editors bound `(ngModelChange)="onFieldChange()"` with no
+      // argument, so onInlineCellChange never ran, nothing was ever marked pending, and the blur
+      // handler short-circuited on an empty pending set. A triggersRefresh on a text or number
+      // column produced no request, ever — invisible because the shipped sample uses a Reference.
+      const freeText = attr({ id: 'c-note', name: 'Note', dataType: 'string', triggersRefresh: true });
+      const { fixture, component, service } = createComponent();
+      await mount(fixture, { Jobs: [{ Note: 'x' }] });
+
+      const jobs = carType.attributes.find(a => a.name === 'Jobs')!;
+      component.onInlineCellChange(jobs, 0, freeText);
+      await flush();
+      expect(service.refresh).not.toHaveBeenCalled();
+
+      component.onInlineCellBlur(jobs, 0, freeText);
+      await flush();
+
+      expect(service.refresh).toHaveBeenCalledTimes(1);
+      expect(service.refresh.mock.calls[0][2]).toBe('Jobs[0].Note');
+    });
+
     it('leaves the row array identity intact, so rows are not rebuilt', async () => {
       // Rows are tracked by index. Replacing the array would destroy and recreate every row's DOM
       // and take focus with it — the failure mode that would make an inline trigger worse than no
@@ -478,6 +499,176 @@ describe('spark-po-form — TriggersRefresh', () => {
       await flush();
 
       expect(component.formData()['Jobs']).toBe(rows);
+    });
+  });
+
+  describe('AsDetail single-object triggers', () => {
+    // The gate attribute is isArray: false, so it renders as a textbox + pencil opening a modal,
+    // and the modal's recursive form is what raises these events.
+    const gateAttr = attr({
+      id: 'a-gate', name: 'Gate', order: 7, dataType: 'AsDetail', isArray: false,
+      asDetailType: 'Test.Gate',
+    });
+    const modeCol = attr({
+      id: 'c-mode', name: 'Mode', dataType: 'LookupReference', lookupReferenceType: 'CarStatus',
+      triggersRefresh: true,
+    });
+
+    const gateType: any = {
+      id: 't-gate', name: 'Gate', clrType: 'Test.Gate', tabs: [], groups: [], queries: [],
+      attributes: [modeCol, attr({ id: 'c-target', name: 'Target' })],
+    };
+
+    /** The host type, which must actually declare the attribute the modal edits. */
+    const gateCarType: any = { ...carType, attributes: [...carType.attributes, gateAttr] };
+
+    async function mountWithGate(fixture: any, formData: Record<string, any>) {
+      fixture.componentRef.setInput('entityType', gateCarType);
+      fixture.componentRef.setInput('objectTypeId', 't-car');
+      fixture.componentRef.setInput('formData', formData);
+      fixture.detectChanges();
+      await flush();
+    }
+
+    /** Opens the modal the way the pencil button does, with the embedded type registered. */
+    async function openGate(component: SparkPoFormComponent, fixture: any, gate: Record<string, any>) {
+      (component as any).asDetailTypes.set({ Gate: gateType });
+      component.openAsDetailEditor(gateAttr);
+      (component as any).asDetailFormData.set({ ...gate });
+      fixture.detectChanges();
+      await flush();
+    }
+
+    it('addresses the trigger without an index', async () => {
+      // "Gate.Mode", not "Gate[0].Mode". A single embedded object has nothing to index, and the
+      // server rejects a path whose shape disagrees with the attribute's isArray.
+      const { fixture, component, service } = createComponent();
+      await mount(fixture, { Gate: { Mode: 'InUse' } });
+      await openGate(component, fixture, { Mode: 'InUse' });
+
+      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', immediate: true });
+      await flush();
+
+      expect(service.refresh).toHaveBeenCalledTimes(1);
+      expect(service.refresh.mock.calls[0][2]).toBe('Gate.Mode');
+    });
+
+    it('is issued by the host form, against the host type', async () => {
+      // The child cannot issue it: its own entityType is the embedded type, so a payload built
+      // there would describe a Gate while the request must describe the Car that owns it — and the
+      // server authorizes a nested refresh on the OWNING type, which has the rights.
+      const { fixture, component, service } = createComponent();
+      await mount(fixture, { Gate: { Mode: 'InUse' } });
+      await openGate(component, fixture, { Mode: 'InUse' });
+
+      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', immediate: true });
+      await flush();
+
+      expect(service.refresh.mock.calls[0][0]).toBe('t-car');
+      expect(service.refresh.mock.calls[0][1].objectTypeId).toBe('t-car');
+    });
+
+    it('posts the modal working copy, not the parent snapshot', async () => {
+      // Caught in the browser, not here: the payload carried `Gate: {}` because buildRefreshPayload
+      // read formData, while the modal edits the copy in asDetailFormData. The hook then decided
+      // against a null ProjectMode and hid the target no matter what the user picked — which looks
+      // like it works, because hiding is the default branch.
+      const { fixture, component, service } = createComponent();
+      await mountWithGate(fixture, { Gate: {} });
+      await openGate(component, fixture, { Mode: 'Stolen' });
+
+      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', immediate: true });
+      await flush();
+
+      const posted = service.refresh.mock.calls[0][1].attributes
+        .find((a: any) => a.name === 'Gate');
+      expect(posted.value).toEqual({ Mode: 'Stolen' });
+    });
+
+    it('does not refresh for a column without the flag', async () => {
+      const { fixture, component, service } = createComponent();
+      await mount(fixture, { Gate: { Mode: 'InUse' } });
+      await openGate(component, fixture, { Mode: 'InUse' });
+
+      // The child never emits for an unflagged attribute, so nothing reaches the host.
+      await flush();
+
+      expect(service.refresh).not.toHaveBeenCalled();
+    });
+
+    it('applies the response to the modal working copy and the embedded metadata', async () => {
+      const { fixture, component } = createComponent({
+        refresh: vi.fn().mockResolvedValue({
+          id: null, name: 'Gate', objectTypeId: 't-gate',
+          attributes: [
+            { name: 'Mode', value: 'Stolen', isVisible: true, isRequired: false, isReadOnly: false, rules: [] },
+            { name: 'Target', value: 80, isVisible: true, isRequired: true, isReadOnly: false, rules: [] },
+          ],
+        }),
+      } as any);
+      await mount(fixture, { Gate: { Mode: 'InUse', Target: null } });
+      await openGate(component, fixture, { Mode: 'InUse', Target: null });
+
+      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', immediate: true });
+      await flush();
+
+      expect((component as any).asDetailFormData()['Target']).toBe(80);
+      expect(component.asDetailTypes()['Gate'].attributes.find(a => a.name === 'Target')!.isRequired).toBe(true);
+    });
+
+    it('does not write through to the parent until the modal is confirmed', async () => {
+      // openAsDetailEditor copies the embedded dict precisely so dismissing the modal discards the
+      // edit. A refreshed value written straight into formData would make a cancelled edit stick —
+      // the one invariant a single-object refresh can break that a row refresh cannot.
+      const gate = { Mode: 'InUse', Target: null };
+      const { fixture, component } = createComponent({
+        refresh: vi.fn().mockResolvedValue({
+          id: null, name: 'Gate', objectTypeId: 't-gate',
+          attributes: [{ name: 'Target', value: 80, isVisible: true, isRequired: true, isReadOnly: false, rules: [] }],
+        }),
+      } as any);
+      await mount(fixture, { Gate: gate });
+      await openGate(component, fixture, gate);
+
+      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', immediate: true });
+      await flush();
+
+      expect(component.formData()['Gate'].Target).toBeNull();
+
+      component.closeAsDetailModal();
+      expect(component.formData()['Gate'].Target).toBeNull();
+    });
+
+    it('does not apply a single-object response to the top-level overlay', async () => {
+      const { fixture, component } = createComponent({
+        refresh: vi.fn().mockResolvedValue({
+          id: null, name: 'Gate', objectTypeId: 't-gate',
+          attributes: [{ name: 'Mode', value: 'x', isVisible: true, isRequired: false, isReadOnly: false, rules: [] }],
+        }),
+      } as any);
+      await mount(fixture, { Gate: { Mode: 'InUse' }, Status: 'InUse' });
+      await openGate(component, fixture, { Mode: 'InUse' });
+
+      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', immediate: true });
+      await flush();
+      fixture.detectChanges();
+
+      expect(named(component, 'Status')).toBeDefined();
+      expect(named(component, 'Notes')).toBeDefined();
+    });
+
+    it('marks a free-text trigger pending and sends it on blur', async () => {
+      const { fixture, component, service } = createComponent();
+      await mount(fixture, { Gate: { Mode: 'InUse' } });
+      await openGate(component, fixture, { Mode: 'InUse' });
+
+      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', immediate: false });
+      await flush();
+      expect(service.refresh).not.toHaveBeenCalled();
+
+      component.onEmbeddedTriggerBlur('Gate.Mode');
+      await flush();
+      expect(service.refresh).toHaveBeenCalledTimes(1);
     });
   });
 

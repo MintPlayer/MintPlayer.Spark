@@ -3,7 +3,6 @@ import { SparkPoDetailComponent } from '@mintplayer/ng-spark/po-detail';
 import type { PersistentObject } from '@mintplayer/ng-spark/models';
 import { valueFor } from '@mintplayer/ng-spark/models';
 import { RepoBadgePanelComponent } from '../components/repo-badge-panel/repo-badge-panel.component';
-import { RepoGatePanelComponent } from '../components/repo-gate-panel/repo-gate-panel.component';
 import { RepoTrendPanelComponent } from '../components/repo-trend-panel/repo-trend-panel.component';
 import { RepoSetupPanelComponent } from '../components/repo-setup-panel/repo-setup-panel.component';
 import { CommitFilesExtrasComponent } from './commit-files-extras.component';
@@ -32,7 +31,7 @@ import { HomeExtrasComponent } from './home-extras.component';
   selector: 'app-po-detail-page',
   imports: [
     SparkPoDetailComponent,
-    RepoBadgePanelComponent, RepoGatePanelComponent, RepoTrendPanelComponent, RepoSetupPanelComponent, CommitFilesExtrasComponent, HomeExtrasComponent,
+    RepoBadgePanelComponent, RepoTrendPanelComponent, RepoSetupPanelComponent, CommitFilesExtrasComponent, HomeExtrasComponent,
   ],
   template: `
     <spark-po-detail [extraContentTemplate]="extras" />
@@ -41,7 +40,6 @@ import { HomeExtrasComponent } from './home-extras.component';
       @if (entityType.name === 'Repository') {
         @if (repoOf(po); as repo) {
           <app-repo-badge-panel [owner]="repo.owner" [name]="repo.name" />
-          <app-repo-gate-panel [owner]="repo.owner" [name]="repo.name" />
           <app-repo-trend-panel [owner]="repo.owner" [name]="repo.name" />
           <app-repo-setup-panel />
         }

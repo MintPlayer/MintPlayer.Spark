@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using CodeCoverage.Entities;
+using CodeCoverage.LookupReferences;
 using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
@@ -58,6 +59,73 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
             obj.DisableActions("DeleteData");
 
         return obj;
+    }
+
+    /// <summary>
+    /// The gate's business rules, enforced on the object that actually saves.
+    /// <para>
+    /// These moved here verbatim from <c>RepoSettingsController.PutGate</c>, which this work
+    /// deleted along with the hand-written panel that called it. They must live on Repository and
+    /// not on <c>GateSettingsActions</c>: a gate is embedded in its Repository's document, so it has
+    /// no save of its own and a hook there would never run.
+    /// </para>
+    /// <para>
+    /// ⚠️ <c>GateSettingsActions.OnRefreshAsync</c> makes <c>ProjectTarget</c> required in fixed
+    /// mode, and that is a <b>presentation</b> rule only — Spark re-derives refresh rules on save for
+    /// a root type, never for an AsDetail row. This method is what actually holds a client to it, so
+    /// the two must be changed together.
+    /// </para>
+    /// </summary>
+    public override Task OnBeforeSaveAsync(PersistentObject obj, Repository entity)
+    {
+        var gate = entity.Gate;
+        if (gate is null)
+            return base.OnBeforeSaveAsync(obj, entity);
+
+        // A form posts every attribute, including the ones nobody touched, so an unset dropdown
+        // arrives as null rather than as the property initializer's value — that initializer only
+        // ever runs for `new GateSettings()`. The deleted REST endpoint never met this because its
+        // GET handed the panel a fully populated body to send back.
+        //
+        // "Empty means every default" is the documented meaning of an unset gate, so fill the
+        // blanks rather than refuse them. Writing them explicitly is deliberate: the stored document
+        // then says what it does, and a later default change cannot silently re-judge old builds.
+        if (string.IsNullOrEmpty(gate.ProjectMode))
+            gate.ProjectMode = ProjectComparison.Auto;
+        if (string.IsNullOrEmpty(gate.ProjectBasis))
+            gate.ProjectBasis = LookupReferences.ProjectBasis.Scoped;
+
+        if (gate.ProjectMode is not (ProjectComparison.Auto or ProjectComparison.Fixed))
+            throw new SparkValidationException(
+                "Project comparison must be auto or fixed.", nameof(GateSettings.ProjectMode));
+
+        if (gate.ProjectBasis is not (LookupReferences.ProjectBasis.Scoped or LookupReferences.ProjectBasis.Projection))
+            throw new SparkValidationException(
+                "Partial builds judge must be scoped or projection.", nameof(GateSettings.ProjectBasis));
+
+        if (gate.ProjectTarget is < 0 or > 100)
+            throw new SparkValidationException(
+                "Project target is a percentage (0-100).", nameof(GateSettings.ProjectTarget));
+
+        if (gate.PatchTarget is < 0 or > 100)
+            throw new SparkValidationException(
+                "Patch target is a percentage (0-100).", nameof(GateSettings.PatchTarget));
+
+        if (gate.ProjectThreshold is < 0 or > 100)
+            throw new SparkValidationException(
+                "Allowed drop is in percentage points (0-100).", nameof(GateSettings.ProjectThreshold));
+
+        if (gate.PatchThreshold is < 0 or > 100)
+            throw new SparkValidationException(
+                "Patch tolerance is in percentage points (0-100).", nameof(GateSettings.PatchThreshold));
+
+        // The one genuinely conditional rule, and the reason a declarative model rule could not
+        // replace this method: it is a statement about two attributes at once.
+        if (gate.ProjectMode == ProjectComparison.Fixed && gate.ProjectTarget is null)
+            throw new SparkValidationException(
+                "A fixed comparison needs a project target.", nameof(GateSettings.ProjectTarget));
+
+        return base.OnBeforeSaveAsync(obj, entity);
     }
 
     public override async Task<Expression<Func<Repository, bool>>?> GetRowFilterAsync(string action)
