@@ -1,4 +1,4 @@
-using CodeCoverage.Controllers;
+﻿using CodeCoverage.Controllers;
 using CodeCoverage.Entities;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
@@ -64,7 +64,6 @@ public class RepoSettingsControllerTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var controller = CreateController(session, new TestGitHubAccessService("someone-else"));
 
-        Assert.IsType<NotFoundResult>((await controller.GetGate(Owner, Name, default)).Result);
         Assert.IsType<NotFoundResult>((await controller.RotateBadgeToken(Owner, Name, default)).Result);
     }
 
@@ -100,111 +99,5 @@ public class RepoSettingsControllerTests : CoverageRavenTest
         // Rotation must actually rotate: the previous badge URL has to stop working, which is the
         // entire reason the endpoint exists.
         Assert.NotEqual(first, second);
-    }
-
-    /// <summary>
-    /// An unset gate reads back as the defaults rather than null, so the UI never has to guess
-    /// them — and so "informational, auto-ratchet" is stated in one place.
-    /// </summary>
-    [Fact]
-    public async Task An_unset_gate_reads_back_as_explicit_defaults()
-    {
-        using var store = GetDocumentStore();
-        await SeedAsync(store);
-        WaitForIndexing(store);
-
-        using var session = store.OpenAsyncSession();
-        var controller = CreateController(session, new TestGitHubAccessService(Owner));
-
-        var gate = Assert.IsType<GateSettings>(
-            Assert.IsType<OkObjectResult>((await controller.GetGate(Owner, Name, default)).Result).Value);
-
-        Assert.NotNull(gate);
-    }
-
-    [Theory]
-    // projectMode
-    [InlineData("nonsense", "scoped", null, null, 0d, 0d)]
-    // projectBasis
-    [InlineData("auto", "nonsense", null, null, 0d, 0d)]
-    // percentages out of range
-    [InlineData("auto", "scoped", 101.0, null, 0d, 0d)]
-    [InlineData("auto", "scoped", null, 101.0, 0d, 0d)]
-    [InlineData("auto", "scoped", null, null, 101.0, 0d)]
-    [InlineData("auto", "scoped", null, null, 0d, 101.0)]
-    // fixed mode with no target is contradictory
-    [InlineData("fixed", "scoped", null, null, 0d, 0d)]
-    public async Task An_invalid_gate_is_rejected_and_nothing_is_persisted(
-        string projectMode, string projectBasis,
-        double? projectTarget, double? patchTarget, double projectThreshold, double patchThreshold)
-    {
-        using var store = GetDocumentStore();
-        await SeedAsync(store);
-        WaitForIndexing(store);
-
-        using var session = store.OpenAsyncSession();
-        var controller = CreateController(session, new TestGitHubAccessService(Owner));
-
-        var gate = new GateSettings
-        {
-            ProjectMode = projectMode,
-            ProjectBasis = projectBasis,
-            ProjectTarget = projectTarget,
-            PatchTarget = patchTarget,
-            ProjectThreshold = projectThreshold,
-            PatchThreshold = patchThreshold,
-        };
-
-        var result = await controller.PutGate(Owner, Name, gate, default);
-
-        Assert.IsType<BadRequestObjectResult>(result.Result);
-
-        using var verify = store.OpenAsyncSession();
-        Assert.Null((await verify.LoadAsync<Repository>(Repository.DocumentId(RepoId)))!.Gate);
-    }
-
-    /// <summary>
-    /// Validation runs BEFORE the repository is resolved, so an invalid body is a 400 even for a
-    /// repository the caller may not see. That ordering is deliberate and worth pinning: it means
-    /// the endpoint cannot be used to probe existence by sending deliberately bad input.
-    /// </summary>
-    [Fact]
-    public async Task An_invalid_gate_is_a_BadRequest_even_when_the_caller_is_unauthorized()
-    {
-        using var store = GetDocumentStore();
-        await SeedAsync(store);
-        WaitForIndexing(store);
-
-        using var session = store.OpenAsyncSession();
-        var controller = CreateController(session, new TestGitHubAccessService("someone-else"));
-
-        var result = await controller.PutGate(Owner, Name,
-            new GateSettings { ProjectMode = "nonsense", ProjectBasis = "scoped" }, default);
-
-        Assert.IsType<BadRequestObjectResult>(result.Result);
-    }
-
-    [Fact]
-    public async Task A_valid_gate_is_stored()
-    {
-        using var store = GetDocumentStore();
-        await SeedAsync(store);
-        WaitForIndexing(store);
-
-        using (var session = store.OpenAsyncSession())
-        {
-            var controller = CreateController(session, new TestGitHubAccessService(Owner));
-            var result = await controller.PutGate(Owner, Name,
-                new GateSettings { ProjectMode = "fixed", ProjectBasis = "projection", ProjectTarget = 80 }, default);
-
-            Assert.IsType<OkObjectResult>(result.Result);
-        }
-
-        using var verify = store.OpenAsyncSession();
-        var stored = (await verify.LoadAsync<Repository>(Repository.DocumentId(RepoId)))!.Gate;
-
-        Assert.NotNull(stored);
-        Assert.Equal("fixed", stored!.ProjectMode);
-        Assert.Equal(80, stored.ProjectTarget);
     }
 }

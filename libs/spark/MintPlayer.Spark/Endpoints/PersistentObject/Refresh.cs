@@ -129,6 +129,18 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
         if (NestedTrigger.TryParse(request.TriggeredBy) is { } nested
             && BuildNestedRow(entityType, effective, nested) is { } row)
         {
+            // Redaction is coarser than this path. RowSecurity withholds by ROOT attribute name
+            // (RedactAttribute(po, name)), so the question it can answer is "may this caller see
+            // Gate at all", never "may they see Gate.PatchTarget". Answer the question that exists:
+            // if the load withheld the owning attribute, a refresh addressed inside it returns
+            // nothing. Without this the row is scaffolded from the nested model regardless, and a
+            // hook that loads from the database and writes onto the row — or simply sets
+            // IsVisible — hands back what the load refused. The root path is already protected by
+            // ApplyRedactionOf below; this is the same intersection at the granularity redaction
+            // actually has.
+            if (existing is not null && IsRedacted(existing, entityType, nested.Attribute))
+                return ClientResult.Envelope(clientAccessor, new { errors = new[] { "Not found." } }, StatusCodes.Status404NotFound);
+
             await InvokeFor(row.EntityType, row.Object, nested.Column, isNew, httpContext);
             return ClientResult.Envelope(clientAccessor, row.Object, StatusCodes.Status200OK);
         }
@@ -156,7 +168,8 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
     /// <summary>
     /// Scaffolds the addressed detail row from its own model, carrying the submitted row's values,
     /// and links it to <paramref name="parent"/>. Null when the path does not resolve — an unknown
-    /// attribute, one that is not an AsDetail, or a row index nobody sent.
+    /// attribute, one that is not an AsDetail, a path shape that disagrees with the attribute's
+    /// <c>IsArray</c>, or a row index nobody sent.
     /// </summary>
     private (EntityTypeDefinition EntityType, Po Object)? BuildNestedRow(
         EntityTypeDefinition parentType, Po parent, NestedTrigger nested)
@@ -164,7 +177,14 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
         var attribute = parentType.Attributes
             .FirstOrDefault(a => string.Equals(a.Name, nested.Attribute, StringComparison.Ordinal));
 
-        if (attribute?.AsDetailType is null)
+        if (attribute?.AsDetailType is null || attribute.DataType != "AsDetail")
+            return null;
+
+        // The path's shape must agree with the model's. Without this, "Jobs.Title" would reach the
+        // single-object reader and lift the whole array, and "Gate[0].ProjectMode" would index an
+        // object. Both are malformed rather than merely unusual, so neither resolves. The stricter
+        // sibling endpoints check the same pair — see New.cs and DeleteRow.cs.
+        if (attribute.IsArray != nested.RowIndex.HasValue)
             return null;
 
         var nestedType = modelLoader.GetEntityTypeByClrType(attribute.AsDetailType);
@@ -175,7 +195,7 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
             .FirstOrDefault(a => string.Equals(a.Name, nested.Attribute, StringComparison.Ordinal))
             ?.Value;
 
-        var submittedRow = RowAt(rows, nested.Index);
+        var submittedRow = nested.RowIndex is { } index ? RowAt(rows, index) : SingleObject(rows);
 
         var row = effectiveObjectFactory.Build(nestedType, submittedRow);
         row.Parent = parent;
@@ -195,12 +215,31 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
         if (index < 0 || index >= array.GetArrayLength())
             return null;
 
-        var element = array[index];
+        return Lift(array[index]);
+    }
+
+    /// <summary>
+    /// Reads a single embedded AsDetail object out of its attribute's value — the
+    /// <c>isArray: false</c> counterpart to <see cref="RowAt"/>. The object arrives where a row
+    /// would, one level shallower: the attribute's value <em>is</em> the object.
+    /// </summary>
+    private static Po? SingleObject(object? value)
+        => value is JsonElement element ? Lift(element) : null;
+
+    /// <summary>
+    /// Lifts one submitted row or embedded object into the attribute list
+    /// <see cref="IEffectiveObjectFactory.Build"/> expects.
+    /// </summary>
+    /// <remarks>
+    /// A row is a flat dictionary of values, not a PersistentObject — that is the shape the form
+    /// holds and the shape it posts. Keys the nested model does not declare (the form's own
+    /// <c>__spark*</c> bookkeeping) are dropped by <c>Build</c>, which copies by model attribute.
+    /// </remarks>
+    private static Po? Lift(JsonElement element)
+    {
         if (element.ValueKind != JsonValueKind.Object)
             return null;
 
-        // A row is a flat dictionary of values, not a PersistentObject — that is the shape the form
-        // holds and the shape it posts. Lift it into the attribute list Build expects.
         var attributes = element.EnumerateObject()
             .Select(property => new PersistentObjectAttribute
             {
@@ -232,6 +271,22 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
     /// legitimately hide an attribute, and must never be able to reveal one.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Whether the load withheld <paramref name="attributeName"/> — the same delta
+    /// <see cref="ApplyRedactionOf"/> computes, asked about one attribute.
+    /// </summary>
+    private static bool IsRedacted(Po existing, EntityTypeDefinition entityType, string attributeName)
+    {
+        var declaredVisible = entityType.Attributes
+            .Any(a => a.IsVisible && string.Equals(a.Name, attributeName, StringComparison.Ordinal));
+
+        if (!declaredVisible)
+            return false;
+
+        return existing.Attributes
+            .Any(a => !a.IsVisible && string.Equals(a.Name, attributeName, StringComparison.Ordinal));
+    }
+
     private static void ApplyRedactionOf(Po existing, EntityTypeDefinition entityType, Po effective)
     {
         var declaredVisible = entityType.Attributes
@@ -265,10 +320,21 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf
 /// errors already use — <c>Jobs[2].ProfessionId</c>.
 /// </summary>
 /// <summary>
-/// A trigger addressed inside a detail grid: <c>Jobs[1].ProfessionId</c>. The same path form the
-/// inline validation errors already use, so there is one addressing scheme rather than two.
+/// A trigger addressed inside an AsDetail attribute, in one of two forms:
+/// <c>Jobs[1].ProfessionId</c> for a row of an array grid, and <c>Gate.ProjectMode</c> for a single
+/// embedded object, which has no index because there is nothing to index.
+/// <para>
+/// The indexed form is the one the inline validation errors already use, so the grid has one
+/// addressing scheme rather than two. The index-free form is its obvious reading for an attribute
+/// that holds one object.
+/// </para>
 /// </summary>
-internal readonly record struct NestedTrigger(string Attribute, int Index, string Column)
+/// <param name="RowIndex">
+/// The row's position for an array AsDetail, or <see langword="null"/> for a single embedded object.
+/// <see cref="Refresh"/> checks this against the model's <c>IsArray</c> before reading a row, so a
+/// path whose shape disagrees with the attribute resolves to nothing rather than to the wrong row.
+/// </param>
+internal readonly record struct NestedTrigger(string Attribute, int? RowIndex, string Column)
 {
     public static NestedTrigger? TryParse(string? triggeredBy)
     {
@@ -276,17 +342,34 @@ internal readonly record struct NestedTrigger(string Attribute, int Index, strin
             return null;
 
         var open = triggeredBy.IndexOf('[');
-        if (open <= 0)
+        if (open > 0)
+        {
+            var close = triggeredBy.IndexOf(']', open);
+            if (close < 0 || close + 2 >= triggeredBy.Length || triggeredBy[close + 1] != '.')
+                return null;
+
+            if (!int.TryParse(triggeredBy[(open + 1)..close], out var index))
+                return null;
+
+            return new NestedTrigger(triggeredBy[..open], index, triggeredBy[(close + 2)..]);
+        }
+
+        // No brackets: "Gate.ProjectMode". A bare name — the overwhelmingly common case — has no
+        // dot and falls through to the root hook, unchanged. So does anything whose first segment
+        // is not an AsDetail attribute, because BuildNestedRow returns null and the caller's `&&`
+        // drops through. That fallthrough is what keeps this widening safe: the grammar is
+        // permissive, the model is what decides.
+        if (open == 0)
             return null;
 
-        var close = triggeredBy.IndexOf(']', open);
-        if (close < 0 || close + 2 >= triggeredBy.Length || triggeredBy[close + 1] != '.')
+        var dot = triggeredBy.IndexOf('.');
+        if (dot <= 0 || dot + 1 >= triggeredBy.Length)
             return null;
 
-        if (!int.TryParse(triggeredBy[(open + 1)..close], out var index))
-            return null;
-
-        return new NestedTrigger(triggeredBy[..open], index, triggeredBy[(close + 2)..]);
+        // Only the FIRST dot splits. A deeper path ("Gate.Inner.X") leaves "Inner.X" as the column,
+        // which matches no attribute on the nested type, so the hook is handed a null Attribute
+        // rather than a silently mis-resolved one. Nesting beyond one level is not addressable.
+        return new NestedTrigger(triggeredBy[..dot], null, triggeredBy[(dot + 1)..]);
     }
 }
 

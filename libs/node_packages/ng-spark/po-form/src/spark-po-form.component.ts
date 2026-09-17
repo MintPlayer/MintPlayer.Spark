@@ -66,6 +66,18 @@ import { SparkReferencePickerComponent } from './spark-reference-picker.componen
 import { SparkLookupPickerComponent } from './spark-lookup-picker.component';
 import { RefreshCoordinator, triggersImmediately } from './refresh-coordinator';
 
+/**
+ * A refresh a form embedded in another form is asking its host to issue on its behalf.
+ *
+ * `immediate` mirrors the distinction the host's own editors make: a discrete editor fires on
+ * change, free text only marks itself pending and fires on blur.
+ */
+export interface NestedTriggerRequest {
+  /** The full path the server addresses, e.g. `Gate.ProjectMode`. */
+  path: string;
+  immediate: boolean;
+}
+
 @Component({
   selector: 'spark-po-form',
   imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPreview, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsTreeSelectComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, SparkReferencePickerComponent, SparkLookupPickerComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayTypePipe, LookupOptionsPipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, CanEditDetailRowPipe, InlineRefOptionsPipe, ErrorForAttributePipe, SparkAttributeDescriptionComponent],
@@ -99,6 +111,20 @@ export class SparkPoFormComponent {
   objectTypeId = input<string | undefined>(undefined);
   /** The id of the object being edited; absent for a create. */
   objectId = input<string | undefined>(undefined);
+
+  /**
+   * Set when this form renders a single embedded AsDetail object inside a host form: the name of
+   * the attribute holding it, e.g. `"Gate"`. Presence of a prefix switches the form from issuing
+   * its own refreshes to reporting them upward, because an embedded object is not something the
+   * server can be asked about on its own — the request must describe, and be authorized against,
+   * the object that owns it.
+   */
+  triggerPathPrefix = input<string | null>(null);
+
+  /** Raised instead of self-issuing when {@link triggerPathPrefix} is set. */
+  nestedTriggerRequested = output<NestedTriggerRequest>();
+  /** Blur counterpart, flushing a trigger the host only marked pending. */
+  nestedTriggerBlurred = output<string>();
 
   /**
    * What the last refresh changed about each attribute's presentation, keyed by attribute name.
@@ -486,9 +512,8 @@ export class SparkPoFormComponent {
   /**
    * The single funnel every scalar / boolean / inline-cell edit passes through.
    *
-   * `attr` is optional only so the AsDetail modal's recursive form, which has no trigger context,
-   * can still call it. A caller that knows which attribute changed should always say so — without it
-   * no refresh can fire.
+   * `attr` is optional because some editors have nothing useful to say about which attribute moved.
+   * A caller that knows should always say so — without it no refresh can fire.
    */
   onFieldChange(attr?: EntityAttributeDefinition): void {
     this.formData.set({ ...this.formData() });
@@ -505,7 +530,7 @@ export class SparkPoFormComponent {
     if (col.triggersRefresh !== true || !this.objectTypeId()) return;
 
     const path = this.inlineErrorPath(attr, rowIndex, col);
-    this.pendingNestedTrigger = { attribute: attr.name, rowIndex };
+    this.pendingNestedTrigger = { kind: 'row', attribute: attr.name, rowIndex };
 
     if (triggersImmediately(col)) {
       void this.refreshCoordinator.trigger(path);
@@ -514,8 +539,47 @@ export class SparkPoFormComponent {
     }
   }
 
-  /** Which detail row the in-flight refresh belongs to, if any. */
-  private pendingNestedTrigger: { attribute: string; rowIndex: number } | null = null;
+  /**
+   * Which embedded target the in-flight refresh belongs to, if any.
+   *
+   * ⚠️ Tagged, not a nullable `rowIndex`. The two arms write to different places — a row inside
+   * `formData`, versus the modal's working copy in `asDetailFormData` — and an index that happens
+   * to be absent is not the same statement as "this attribute holds one object". With a nullable
+   * index, a row refresh carrying a bad index would fall silently into the object arm.
+   */
+  private pendingNestedTrigger:
+    | { kind: 'row'; attribute: string; rowIndex: number }
+    | { kind: 'object'; attribute: string }
+    | null = null;
+
+  /**
+   * A trigger inside a single embedded AsDetail object, raised by the modal's recursive form.
+   *
+   * The child form does not issue the request itself, for two reasons that both bite. Its
+   * `entityType` is the embedded type, so a payload built there describes `GateSettings` while the
+   * request must describe the Repository that owns it. And nested AsDetail types carry no rights of
+   * their own — the server authorizes a nested refresh on the OWNING type — so a child-issued
+   * request would be asking the wrong question of security.json.
+   */
+  onEmbeddedTrigger(attributeName: string, event: NestedTriggerRequest): void {
+    if (!this.objectTypeId()) return;
+
+    // Set on both arms, exactly as onInlineCellChange does: the blur that later flushes a pending
+    // trigger does not know which target it belongs to, so the mark is what remembers.
+    this.pendingNestedTrigger = { kind: 'object', attribute: attributeName };
+
+    if (event.immediate) {
+      void this.refreshCoordinator.trigger(event.path);
+    } else {
+      this.refreshCoordinator.markPending(event.path);
+    }
+  }
+
+  /** Blur counterpart of {@link onEmbeddedTrigger}, for the child's free-text editors. */
+  onEmbeddedTriggerBlur(path: string): void {
+    if (!this.objectTypeId()) return;
+    void this.refreshCoordinator.blur(path);
+  }
 
   /**
    * Applies a refresh that ran against a detail row: the row's own values, and the column metadata
@@ -528,19 +592,35 @@ export class SparkPoFormComponent {
    * the template a new array destroys and rebuilds every row's DOM and takes focus with it, mid-edit.
    */
   private applyNestedResponse(
-    nested: { attribute: string; rowIndex: number },
+    nested: { kind: 'row'; attribute: string; rowIndex: number } | { kind: 'object'; attribute: string },
     response: PersistentObject,
   ): void {
     this.pendingNestedTrigger = null;
 
-    const rows = this.formData()[nested.attribute];
-    const row = Array.isArray(rows) ? rows[nested.rowIndex] : undefined;
-    if (row) {
-      for (const attribute of response.attributes ?? []) {
-        row[attribute.name] = attribute.value ?? null;
+    if (nested.kind === 'row') {
+      const rows = this.formData()[nested.attribute];
+      const row = Array.isArray(rows) ? rows[nested.rowIndex] : undefined;
+      if (row) {
+        for (const attribute of response.attributes ?? []) {
+          row[attribute.name] = attribute.value ?? null;
+        }
+        // The array identity is unchanged; this only tells the signal graph the contents moved.
+        this.formData.set({ ...this.formData() });
       }
-      // The array identity is unchanged; this only tells the signal graph the contents moved.
-      this.formData.set({ ...this.formData() });
+    } else {
+      // ⚠️ The modal's working copy, never `formData`. `openAsDetailEditor` copies the embedded dict
+      // precisely so dismissing the modal discards the edit; writing a refreshed value through to
+      // the parent would make a cancelled edit stick. `saveAsDetailObject` remains the only writer.
+      //
+      // Replacing the object identity is also correct here, where mutating in place is correct for
+      // a row: rows are tracked by index and rebuilding them costs focus, while the recursive form
+      // re-renders from this signal by design.
+      const current = this.asDetailFormData();
+      const next = { ...current };
+      for (const attribute of response.attributes ?? []) {
+        next[attribute.name] = attribute.value ?? null;
+      }
+      this.asDetailFormData.set(next);
     }
 
     const overlay = overlayFromResponse(response);
@@ -565,11 +645,28 @@ export class SparkPoFormComponent {
 
   /** Blur handler for free-text editors — sends the refresh their keystrokes only marked pending. */
   onFieldBlur(attr: EntityAttributeDefinition): void {
+    if (this.triggerPathPrefix()) {
+      if (attr.triggersRefresh !== true) return;
+      this.nestedTriggerBlurred.emit(this.nestedTriggerPath(attr));
+      return;
+    }
+
     if (!this.canRefresh(attr)) return;
     void this.refreshCoordinator.blur(attr.name);
   }
 
   private noteChange(attr: EntityAttributeDefinition): void {
+    // Embedded: report upward and stop. The parent owns the request because only it knows the
+    // object being edited and holds the right the server authorizes against.
+    if (this.triggerPathPrefix()) {
+      if (attr.triggersRefresh !== true) return;
+      this.nestedTriggerRequested.emit({
+        path: this.nestedTriggerPath(attr),
+        immediate: triggersImmediately(attr),
+      });
+      return;
+    }
+
     if (!this.canRefresh(attr)) return;
 
     if (triggersImmediately(attr)) {
@@ -578,6 +675,11 @@ export class SparkPoFormComponent {
       // Free text: marking is all a keystroke earns. The request goes on blur, or on save.
       this.refreshCoordinator.markPending(attr.name);
     }
+  }
+
+  /** `Gate.ProjectMode` — the index-free counterpart of the inline grid's `Jobs[1].Kind`. */
+  private nestedTriggerPath(attr: EntityAttributeDefinition): string {
+    return `${this.triggerPathPrefix()}.${attr.name}`;
   }
 
   private canRefresh(attr: EntityAttributeDefinition): boolean {

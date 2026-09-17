@@ -1,3 +1,4 @@
+using CodeCoverage.LookupReferences;
 using MintPlayer.Spark.Abstractions;
 
 namespace CodeCoverage.Entities;
@@ -12,7 +13,12 @@ namespace CodeCoverage.Entities;
 public class GateSettings
 {
     /// <summary>"auto" ratchets against the resolved base; "fixed" compares to <see cref="ProjectTarget"/> and needs no base at all.</summary>
-    public string ProjectMode { get; set; } = "auto";
+    /// <remarks>
+    /// Stays a <see cref="string"/> even though it now renders as a dropdown — see
+    /// <see cref="ProjectComparison"/> for why the keys cannot become enum members.
+    /// </remarks>
+    [LookupReference(typeof(ProjectComparison))]
+    public string ProjectMode { get; set; } = ProjectComparison.Auto;
 
     /// <summary>Percent target for fixed mode (e.g. 80 = 80%).</summary>
     public double? ProjectTarget { get; set; }
@@ -22,7 +28,8 @@ public class GateSettings
 
     /// <summary>Which number a partial build's project status judges.</summary>
     /// <remarks>"scoped" (like-for-like, #11) or "projection" (patched whole-workspace).</remarks>
-    public string ProjectBasis { get; set; } = "scoped";
+    [LookupReference(typeof(LookupReferences.ProjectBasis))]
+    public string ProjectBasis { get; set; } = LookupReferences.ProjectBasis.Scoped;
 
     /// <summary>Percent target for patch coverage; null disables the patch gate.</summary>
     public double? PatchTarget { get; set; }

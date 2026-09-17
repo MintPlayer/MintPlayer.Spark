@@ -216,9 +216,9 @@
         "id": "e2447502-d8a1-48d5-ad44-c28cd7308a7e",
         "name": "Gate",
         "label": {
-          "en": "Gate",
-          "fr": "Seuil",
-          "nl": "Poort"
+          "en": "Coverage gate",
+          "fr": "Seuil de couverture",
+          "nl": "Coverage gate"
         },
         "description": {
           "en": "Gate policy; empty means every default (informational, auto-ratchet).",
@@ -228,7 +228,7 @@
         "dataType": "AsDetail",
         "isRequired": false,
         "isVisible": true,
-        "isReadOnly": true,
+        "isReadOnly": false,
         "order": 10,
         "asDetailType": "CodeCoverage.Entities.GateSettings",
         "isArray": false,
