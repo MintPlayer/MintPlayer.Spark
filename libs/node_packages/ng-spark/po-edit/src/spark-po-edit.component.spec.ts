@@ -234,6 +234,59 @@ describe('SparkPoEditComponent', () => {
     expect(c.isSaving()).toBe(false);
   });
 
+  describe('a nested AsDetail type absent from the catalogue', () => {
+    // ⚠️ The catalogue from /spark/types is Query-gated, and an AsDetail row type usually has no
+    // rights of its own — nobody grants Query/GateSettings. So the type the save needs to rebuild
+    // the nested wire shape is NOT in it, and the only place it exists is `detailTypes` on the
+    // parent, which the server carries for exactly this reason.
+    //
+    // Before the fix this saved the attribute as a raw dict under `value`, the server could not map
+    // an AsDetail from that, and EntityMapper's conversion `catch` swallowed it — the save returned
+    // 200 and wrote nothing. Found by driving the real app and then reading the document.
+    const gateType: any = {
+      id: 't-gate', name: 'Gate', clrType: 'Test.Gate',
+      attributes: [
+        { id: 'g-mode', name: 'Mode', dataType: 'string', isVisible: true, isReadOnly: false, order: 1, showedOn: ShowedOn.PersistentObject },
+      ],
+    };
+
+    const withGate: any = {
+      ...personType,
+      detailTypes: [gateType],
+      attributes: [
+        ...personType.attributes,
+        {
+          id: 'a-gate', name: 'Gate', dataType: 'AsDetail', asDetailType: 'Test.Gate',
+          isArray: false, isVisible: true, isReadOnly: false, order: 4,
+          showedOn: ShowedOn.PersistentObject,
+        },
+      ],
+    };
+
+    const itemWithGate: any = {
+      ...existingItem,
+      attributes: [...existingItem.attributes, { id: 'a-gate', name: 'Gate', dataType: 'AsDetail', asDetailType: 'Test.Gate', object: null }],
+    };
+
+    it('is resolved from detailTypes and saved as a nested object', async () => {
+      const { harness, service } = await setup({
+        // Deliberately does NOT include the gate type — that is the whole point.
+        getEntityTypes: vi.fn().mockResolvedValue([withGate]),
+        get: vi.fn().mockResolvedValue(itemWithGate),
+      });
+      const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+      await harness.fixture.whenStable();
+
+      c.formData()['Gate'] = { Mode: 'fixed' };
+      await c.onSave();
+
+      const posted = service.update.mock.calls[0][2].attributes.find((a: any) => a.name === 'Gate');
+      expect(posted.value).toBeNull();
+      expect(posted.object).not.toBeNull();
+      expect(posted.object.attributes.find((a: any) => a.name === 'Mode').value).toBe('fixed');
+    });
+  });
+
   it('onCancel navigates back to detail', async () => {
     const { harness } = await setup();
     const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);

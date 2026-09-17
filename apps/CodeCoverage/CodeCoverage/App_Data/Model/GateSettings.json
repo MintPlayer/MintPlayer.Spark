@@ -3,7 +3,7 @@
     "id": "ed251b83-c8f6-4b59-bd3a-1cc948797e73",
     "name": "GateSettings",
     "clrType": "CodeCoverage.Entities.GateSettings",
-    "breadcrumb": "{ProjectMode}",
+    "breadcrumb": "Comparison: {ProjectMode}",
     "tabs": [],
     "groups": [],
     "attributes": [

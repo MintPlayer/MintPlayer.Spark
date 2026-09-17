@@ -124,9 +124,27 @@ export class SparkPoEditComponent {
     this.formData.set(data);
   }
 
+  /**
+   * Resolves a nested AsDetail type by CLR name, for rebuilding the nested PO wire shape on save.
+   *
+   * ⚠️ <b>`detailTypes` first, catalogue second.</b> The catalogue from `/spark/types` is
+   * <b>Query-gated</b>, and an AsDetail row type usually has no rights of its own — nobody grants
+   * `Query/GateSettings`, because a gate is edited through the Repository that owns it. So the
+   * catalogue does not contain it, the resolver returned undefined, and the save quietly took the
+   * scalar branch: the attribute went out as a raw dict under `value` instead of a nested PO under
+   * `object`, the server could not map it, and `EntityMapper`'s conversion `catch` swallowed the
+   * failure. The save reported success and wrote nothing.
+   * <para>
+   * `detailTypes` is the parent's own copy of its row types, carried on the type definition for
+   * exactly this reason (#385 fixed the rendering half; this is the save half). It is gated on the
+   * parent's right, which is the right that governs editing the row anyway.
+   * </para>
+   */
   private resolveEntityType(): EntityTypeResolver {
     const cache = this.allEntityTypes();
-    return (clrName: string) => cache.find(t => t.clrType === clrName);
+    const detailTypes = this.entityType()?.detailTypes ?? [];
+    return (clrName: string) =>
+      detailTypes.find(t => t.clrType === clrName) ?? cache.find(t => t.clrType === clrName);
   }
 
   /**

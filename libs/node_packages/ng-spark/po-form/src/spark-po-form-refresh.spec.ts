@@ -519,6 +519,17 @@ describe('spark-po-form — TriggersRefresh', () => {
       attributes: [modeCol, attr({ id: 'c-target', name: 'Target' })],
     };
 
+    /** The host type, which must actually declare the attribute the modal edits. */
+    const gateCarType: any = { ...carType, attributes: [...carType.attributes, gateAttr] };
+
+    async function mountWithGate(fixture: any, formData: Record<string, any>) {
+      fixture.componentRef.setInput('entityType', gateCarType);
+      fixture.componentRef.setInput('objectTypeId', 't-car');
+      fixture.componentRef.setInput('formData', formData);
+      fixture.detectChanges();
+      await flush();
+    }
+
     /** Opens the modal the way the pencil button does, with the embedded type registered. */
     async function openGate(component: SparkPoFormComponent, fixture: any, gate: Record<string, any>) {
       (component as any).asDetailTypes.set({ Gate: gateType });
@@ -555,6 +566,23 @@ describe('spark-po-form — TriggersRefresh', () => {
 
       expect(service.refresh.mock.calls[0][0]).toBe('t-car');
       expect(service.refresh.mock.calls[0][1].objectTypeId).toBe('t-car');
+    });
+
+    it('posts the modal working copy, not the parent snapshot', async () => {
+      // Caught in the browser, not here: the payload carried `Gate: {}` because buildRefreshPayload
+      // read formData, while the modal edits the copy in asDetailFormData. The hook then decided
+      // against a null ProjectMode and hid the target no matter what the user picked — which looks
+      // like it works, because hiding is the default branch.
+      const { fixture, component, service } = createComponent();
+      await mountWithGate(fixture, { Gate: {} });
+      await openGate(component, fixture, { Mode: 'Stolen' });
+
+      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', immediate: true });
+      await flush();
+
+      const posted = service.refresh.mock.calls[0][1].attributes
+        .find((a: any) => a.name === 'Gate');
+      expect(posted.value).toEqual({ Mode: 'Stolen' });
     });
 
     it('does not refresh for a column without the flag', async () => {

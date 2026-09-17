@@ -82,6 +82,19 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
         if (gate is null)
             return base.OnBeforeSaveAsync(obj, entity);
 
+        // A form posts every attribute, including the ones nobody touched, so an unset dropdown
+        // arrives as null rather than as the property initializer's value — that initializer only
+        // ever runs for `new GateSettings()`. The deleted REST endpoint never met this because its
+        // GET handed the panel a fully populated body to send back.
+        //
+        // "Empty means every default" is the documented meaning of an unset gate, so fill the
+        // blanks rather than refuse them. Writing them explicitly is deliberate: the stored document
+        // then says what it does, and a later default change cannot silently re-judge old builds.
+        if (string.IsNullOrEmpty(gate.ProjectMode))
+            gate.ProjectMode = ProjectComparison.Auto;
+        if (string.IsNullOrEmpty(gate.ProjectBasis))
+            gate.ProjectBasis = LookupReferences.ProjectBasis.Scoped;
+
         if (gate.ProjectMode is not (ProjectComparison.Auto or ProjectComparison.Fixed))
             throw new SparkValidationException(
                 "Project comparison must be auto or fixed.", nameof(GateSettings.ProjectMode));

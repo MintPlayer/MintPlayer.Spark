@@ -713,7 +713,7 @@ export class SparkPoFormComponent {
 
   private buildRefreshPayload() {
     const et = this.entityType();
-    const values = this.formData();
+    const values = this.embeddedValues();
     return {
       id: this.objectId(),
       name: et?.name ?? '',
@@ -728,6 +728,22 @@ export class SparkPoFormComponent {
         isValueChanged: true,
       })),
     } as any;
+  }
+
+  /**
+   * The values to post, with the open modal's working copy substituted for the attribute it edits.
+   *
+   * ⚠️ Without this the server receives the embedded object as it was when the modal opened — `{}`
+   * for a gate that has never been set — and the hook decides against values the user cannot see it
+   * ignoring. `formData` deliberately does not hold the in-progress edit (cancelling the modal has
+   * to discard it), so the refresh has to reach into `asDetailFormData` instead. Only the attribute
+   * under edit is substituted; everything else is the form's own state.
+   */
+  private embeddedValues(): Record<string, any> {
+    const nested = this.pendingNestedTrigger;
+    if (nested?.kind !== 'object') return this.formData();
+
+    return { ...this.formData(), [nested.attribute]: this.asDetailFormData() };
   }
 
   /**

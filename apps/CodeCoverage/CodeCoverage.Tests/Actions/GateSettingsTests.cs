@@ -101,6 +101,34 @@ public class GateSettingsTests
     }
 
     [Fact]
+    public async Task The_hook_reads_the_mode_as_it_actually_arrives_from_a_client()
+    {
+        // ⚠️ Not a duplicate of the theory above. A refresh carries its values as JsonElement, and
+        // this test failed where the theory passed: the theory assigns a plain string, which is the
+        // shape a hook only ever sees when the object was scaffolded server-side. Driving the real
+        // app is what found it.
+        var obj = new PersistentObject
+        {
+            Name = "GateSettings",
+            ObjectTypeId = Guid.Empty,
+            Attributes =
+            [
+                new PersistentObjectAttribute
+                {
+                    Name = nameof(GateSettings.ProjectMode),
+                    Value = System.Text.Json.JsonDocument.Parse("\"fixed\"").RootElement.Clone(),
+                },
+                new PersistentObjectAttribute { Name = nameof(GateSettings.ProjectTarget) },
+                new PersistentObjectAttribute { Name = nameof(GateSettings.ProjectThreshold) },
+            ],
+        };
+
+        await Create<GateSettingsActions>().OnRefreshAsync(RefreshArgs(obj));
+
+        Assert.True(obj[nameof(GateSettings.ProjectTarget)].IsVisible);
+    }
+
+    [Fact]
     public async Task The_hook_re_establishes_state_rather_than_patching_the_last_call()
     {
         // Every invocation is handed a freshly scaffolded object, so a handler with an `if` and no
@@ -169,6 +197,26 @@ public class GateSettingsTests
         };
 
         await Actions().OnBeforeSaveAsync(Po(), repository);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public async Task An_untouched_dropdown_is_filled_with_its_default_rather_than_refused(string? blank)
+    {
+        // The form posts every attribute, so a dropdown nobody touched arrives null — the property
+        // initializer only runs for `new GateSettings()`. Refusing that made saving a gate where the
+        // user set only the comparison mode impossible, which is how the first real save failed.
+        var repository = new Repository
+        {
+            OwnerLogin = "someone",
+            Gate = new GateSettings { ProjectMode = blank!, ProjectBasis = blank! },
+        };
+
+        await Actions().OnBeforeSaveAsync(Po(), repository);
+
+        Assert.Equal(ProjectComparison.Auto, repository.Gate!.ProjectMode);
+        Assert.Equal(LookupReferences.ProjectBasis.Scoped, repository.Gate.ProjectBasis);
     }
 
     [Fact]
