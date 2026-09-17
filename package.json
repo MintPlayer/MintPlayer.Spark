@@ -31,7 +31,7 @@
     "@mintplayer/ng-animations": "22.1.0",
     "@mintplayer/ng-bootstrap": "^22.18.0",
     "@mintplayer/ng-click-outside": "^22.0.0",
-    "@mintplayer/ng-focus-on-load": "^22.0.0",
+    "@mintplayer/ng-focus-on-load": "^22.1.0",
     "@mintplayer/ng-video-player": "^22.0.0",
     "@mintplayer/pagination": "^2.3.0",
     "@mintplayer/player-progress": "^20.0.0",
