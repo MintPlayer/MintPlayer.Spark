@@ -72,13 +72,20 @@ public sealed class LcovParser : ICoverageParser
                 if (parts.Length >= 4 && int.TryParse(parts[0], out var lineNumber))
                 {
                     // lcov 2.x prefixes the block with e/f (exception/fallthrough)
-                    // or U (unreachable) — strip any leading non-digit marker.
-                    var block = parts[1].TrimStart('e', 'f', 'U');
+                    // or U (unreachable). KEEP the marker: it is part of the arm's
+                    // identity, and stripping it collides e0 with block 0, which
+                    // under a set model would merge two arms that are not the
+                    // same arm (and silently over-report coverage).
+                    var block = parts[1];
                     var branch = parts[2];
-                    int? taken = parts[3] == "-"
-                        ? null
-                        : long.TryParse(parts[3], out var t) ? (int)Math.Min(t, int.MaxValue) : null;
-                    current.AddBranch(lineNumber, block, branch, taken);
+
+                    // '-' means the enclosing block never executed, so the arm was
+                    // not taken. It is a real arm either way — it counts towards
+                    // arity, which is what makes the line Partial.
+                    var taken = parts[3] != "-"
+                        && long.TryParse(parts[3], out var t)
+                        && t > 0;
+                    current.AddBranchArm(lineNumber, $"{block}:{branch}", taken);
                 }
             }
         }

@@ -188,7 +188,7 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
                         fileCoverage.Matched |= matched;
                         if (matched)
                             fileCoverage.BlobOid ??= headFileList.OidFor(path);
-                        CoverageMerger.MergeInto(fileCoverage, parsedFile, parser.FormatName);
+                        CoverageMerger.MergeInto(fileCoverage, parsedFile);
                     }
                 }
 

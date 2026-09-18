@@ -486,7 +486,10 @@ public partial class BrowseController : ControllerBase
             fileCoverage.Path,
             Source = source,
             Lines = fileCoverage.Lines,
-            Branches = fileCoverage.Branches,
+            // Per-line (covered, total), which is all the file viewer annotates
+            // with. Arm keys are an ingest-side merge detail and mean nothing to
+            // a client — it used to rebuild exactly this shape from the edges.
+            Branches = fileCoverage.Branches.Select(b => new { b.Line, b.Covered, Total = b.Arity }),
             // Null on commits that predate assemblies; Measured/Carried otherwise.
             fileCoverage.Origin,
         });

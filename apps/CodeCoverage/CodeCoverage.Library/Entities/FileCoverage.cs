@@ -35,14 +35,6 @@ public class FileCoverage
     public string? RawPath { get; set; }
 
     /// <summary>
-    /// The report format (parser FormatName) that produced Branches. Branch
-    /// identity schemes differ per format (lcov reports real block/branch ids;
-    /// Cobertura and JaCoCo synthesize edges), so branch detail only merges
-    /// within one format — a session in another format merges line status only.
-    /// </summary>
-    public string? BranchFormat { get; set; }
-
-    /// <summary>
     /// Git blob OID of <see cref="Path"/> at the measured commit, taken from the
     /// uploader's file list when it carried OIDs and the path matched. Null for
     /// unmatched paths and for uploads from action builds that sent bare paths.
@@ -61,8 +53,8 @@ public class FileCoverage
     /// <summary>Per-line coverage status for every coverable line; non-coverable lines are absent.</summary>
     public List<LineCoverage> Lines { get; set; } = [];
 
-    /// <summary>Per-branch-edge hit detail, present only for formats that report branches.</summary>
-    public List<BranchCoverage> Branches { get; set; } = [];
+    /// <summary>Per-line branch coverage, present only for formats that report branches.</summary>
+    public List<LineBranchCoverage> Branches { get; set; } = [];
 
     public static string DocumentId(string buildId, string normalizedPath)
         => $"{buildId}/files/{PathHash(normalizedPath)}";
@@ -98,17 +90,58 @@ public class LineCoverage
     public LineStatus Status { get; set; }
 }
 
-public class BranchCoverage
+/// <summary>
+/// One line's branch coverage, stored in the only shape that merges correctly
+/// across report formats.
+/// <para>
+/// Coverage report formats fall into two groups. Some identify each arm of a
+/// branching expression (lcov's block/branch ordinals, istanbul's branchMap key
+/// plus arm index, Cobertura's &lt;condition number=&gt;); the rest report a bare
+/// count of how many arms were taken without saying which (Cobertura's
+/// condition-coverage, JaCoCo's mb/cb, Clover's truecount/falsecount).
+/// </para>
+/// <para>
+/// So a line keeps <see cref="TakenArms"/> — the union of arms observed taken,
+/// meaningful only across identity-carrying reports — and <see cref="Floor"/>,
+/// the strongest "at least this many were taken" claim from a count-only report.
+/// <c>Covered = max(Floor, TakenArms.Count)</c> and <c>Total = Arity</c>. Union
+/// and max are both commutative and associative, so merging reports is
+/// order-independent by construction: the same set of uploads always yields the
+/// same stored document, whatever order they arrive in.
+/// </para>
+/// <para>
+/// A flat list of edges cannot do this, which is what the previous model got
+/// wrong. Cobertura and JaCoCo synthesize positional edge ids ("0"/0, "0"/1)
+/// that are indistinguishable from lcov's real ones but carry no meaning, so
+/// unioning across formats would claim arms that were never covered — the
+/// reason the old code discarded foreign-format branches outright instead.
+/// </para>
+/// </summary>
+public class LineBranchCoverage
 {
     /// <summary>One-based line number the branching expression sits on.</summary>
     public int Line { get; set; }
 
-    /// <summary>Branching location within the line (format-specific block id).</summary>
-    public string BlockId { get; set; } = string.Empty;
+    /// <summary>How many arms this line has — the largest arity any report claimed.</summary>
+    public int Arity { get; set; }
 
-    /// <summary>One edge of the branching expression.</summary>
-    public string BranchId { get; set; } = string.Empty;
+    /// <summary>
+    /// Arm keys observed taken, from identity-carrying reports only. Stored
+    /// sorted so two documents merged from the same reports in different orders
+    /// are byte-identical.
+    /// </summary>
+    public List<string> TakenArms { get; set; } = [];
 
-    /// <summary>Times this edge was taken; null when the enclosing block never executed.</summary>
-    public int? Taken { get; set; }
+    /// <summary>
+    /// The largest count-only "at least this many arms were taken" claim. Never
+    /// added to <see cref="TakenArms"/> — both describe the same arms, one by
+    /// name and one by number.
+    /// </summary>
+    public int Floor { get; set; }
+
+    /// <summary>Arms known to be taken: the count-only floor or the named set, whichever is larger.</summary>
+    public int Covered => Math.Max(Floor, TakenArms.Count);
+
+    /// <summary>A line is partial when it was executed but some arm was never taken.</summary>
+    public bool IsPartial => Covered < Arity;
 }

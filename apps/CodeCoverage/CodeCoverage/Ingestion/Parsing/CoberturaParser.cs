@@ -48,9 +48,27 @@ public sealed partial class CoberturaParser : ICoverageParser
                 if (!int.TryParse(line.Attribute("number")?.Value, out var number)) continue;
                 long.TryParse(line.Attribute("hits")?.Value, out var hits);
 
-                // Multiple classes for the same file describe distinct lines; a
-                // duplicated line is the same run, where AddLine accumulates.
                 file.AddLine(number, (int)Math.Min(hits, int.MaxValue));
+
+                // Prefer <conditions>, which carries per-condition identity, over
+                // the aggregated condition-coverage attribute, which is a bare
+                // count. gcovr and coverage.py emit the former; coverlet does not.
+                var conditions = line.Element("conditions")?.Elements("condition").ToList();
+                if (conditions is { Count: > 0 })
+                {
+                    foreach (var condition in conditions)
+                    {
+                        var conditionNumber = condition.Attribute("number")?.Value;
+                        if (string.IsNullOrEmpty(conditionNumber)) continue;
+
+                        // coverage="50%" — the share of this condition's own arms
+                        // that were taken. Anything above 0 means it was reached.
+                        var coverage = condition.Attribute("coverage")?.Value?.TrimEnd('%');
+                        var taken = int.TryParse(coverage, out var percent) && percent > 0;
+                        file.AddBranchArm(number, $"condition:{conditionNumber}", taken);
+                    }
+                    continue;
+                }
 
                 var conditionCoverage = line.Attribute("condition-coverage")?.Value;
                 if (conditionCoverage is not null)
@@ -60,13 +78,9 @@ public sealed partial class CoberturaParser : ICoverageParser
                         && int.TryParse(match.Groups["covered"].Value, out var covered)
                         && int.TryParse(match.Groups["total"].Value, out var total))
                     {
-                        // Cobertura aggregates all conditions on the line into one
-                        // (covered/total) pair — model it as `total` synthetic
-                        // branch edges on block "0", `covered` of them taken.
-                        for (var i = 0; i < total; i++)
-                        {
-                            file.AddBranch(number, "0", i.ToString(), i < covered ? 1 : 0);
-                        }
+                        // Count only: (1/2) says how many arms were taken but not
+                        // which, so it contributes a floor and never an arm set.
+                        file.AddBranchCount(number, covered, total);
                     }
                 }
             }
