@@ -307,6 +307,8 @@ public partial class UploadsController : ControllerBase
             ? await ResolvePartialComparison(repo, build, commit, cancellationToken)
             : (await ResolveBaseline(repo, commit, cancellationToken), null, null);
 
+        var unmatched = await ResolveUnmatched(buildId, cancellationToken);
+
         return Ok(new UploadStatusResponse(
             buildId,
             Build.ClassifyState(build),
@@ -336,7 +338,8 @@ public partial class UploadsController : ControllerBase
                 assembly.BaseResolution,
                 assembly.OldestOriginSha,
                 [.. assembly.Builds.Select(b => b.BuildId)],
-                assembly.AssembledAtUtc)));
+                assembly.AssembledAtUtc),
+            unmatched));
     }
 
     /// <summary>
@@ -404,6 +407,27 @@ public partial class UploadsController : ControllerBase
         return baseline is null ? null : new UploadStatusBaseline(baseline.Sha, baseline.Branch, baseline.Coverage);
     }
 
+    /// <summary>Bound on the unmatched sample, matching the browse endpoint's.</summary>
+    private const int UnmatchedSampleSize = 50;
+
+    /// <summary>
+    /// Reads the build's materialized tree and counts what failed to resolve.
+    /// Returns null before finalize — the tree does not exist yet, and reporting
+    /// zero unmatched then would be a lie a poller could act on.
+    /// </summary>
+    private async Task<UploadStatusUnmatched?> ResolveUnmatched(string buildId, CancellationToken cancellationToken)
+    {
+        var tree = await session.LoadAsync<BuildTreeSummary>(
+            BuildTreeSummary.DocumentId(buildId), cancellationToken);
+        if (tree is null) return null;
+
+        var unmatched = tree.Files.Where(f => !f.Matched).ToList();
+        return new UploadStatusUnmatched(
+            unmatched.Count,
+            tree.Files.Count,
+            [.. unmatched.Select(f => f.Path).Take(UnmatchedSampleSize)]);
+    }
+
     public sealed record UploadStatusResponse(
         string BuildId,
         string State,
@@ -421,7 +445,28 @@ public partial class UploadsController : ControllerBase
         PatchCoverage? Patch = null,
         IReadOnlyDictionary<string, CoverageSummary>? Flags = null,
         string? FeedbackState = null,
-        UploadStatusAssembly? Assembly = null);
+        UploadStatusAssembly? Assembly = null,
+        UploadStatusUnmatched? Unmatched = null);
+
+    /// <summary>
+    /// How many of the build's files could not be resolved to a repository path,
+    /// with a bounded sample of them.
+    /// <para>
+    /// An unmatched file is retained but excluded from the build's summary, so a
+    /// build whose files all failed to match is indistinguishable, from the
+    /// outside, from a healthy one: accepted, finalized, and empty. That silence
+    /// is what made issue #415 an investigation rather than a five-minute fix.
+    /// The uploader is the right audience — it is the only party that can still
+    /// do something about it while the run is in progress — so the counts travel
+    /// here rather than only in <c>projection.incompleteReasons</c>, where they
+    /// were computed but never surfaced for the plain whole-upload case.
+    /// </para>
+    /// <para>
+    /// Null when the build has not finalized yet, since the tree it is derived
+    /// from is materialized at finalize. Null is "not known", never "none".
+    /// </para>
+    /// </summary>
+    public sealed record UploadStatusUnmatched(int Files, int TotalFiles, string[] Sample);
 
     /// <summary>
     /// The commit-level record: the union of every finalized build of the

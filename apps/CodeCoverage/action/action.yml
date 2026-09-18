@@ -88,7 +88,11 @@ outputs:
   branch-rate:
     description: 'Branch coverage as a percentage to one decimal.'
   files-count:
-    description: 'Files with coverage in the finalized build.'
+    description: 'Files with coverage in the finalized build. Counts matched files only — an unmatched file is excluded from the summary.'
+  files-matched:
+    description: 'Files whose report paths resolved to files in this repository. Empty on a server that does not report it, or before finalize.'
+  files-unmatched:
+    description: 'Files whose report paths could not be resolved against `git ls-files`, and are therefore excluded from the percentage. Empty when not reported.'
   base-resolution:
     description: 'How the comparison base resolved for a partial build: exact | mergeBase | walked | none. Empty on whole uploads.'
   resolved-base-sha:

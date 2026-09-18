@@ -33,6 +33,13 @@ export interface UploadStatus {
   /** Patched whole-workspace projection with its completeness verdict. */
   projection?: { coverage: CoverageSummary; complete: boolean; incompleteReasons: string[] } | null;
   /**
+   * How many of the build's files could not be resolved to a repository path.
+   * Absent on a server that predates the field and null before the build
+   * finalized — both mean "not known", never "none", so a verdict is only drawn
+   * when the object is actually present.
+   */
+  unmatched?: { files: number; totalFiles: number; sample: string[] } | null;
+  /**
    * The commit-level assembly: every finalized build of the commit unioned,
    * plus files carried from the base where the git blob is unchanged. Null
    * until the commit's first build finalized; absent on older servers.

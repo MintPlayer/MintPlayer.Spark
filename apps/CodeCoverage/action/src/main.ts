@@ -8,6 +8,8 @@ import { collectContext } from './context';
 import { Credential, oidcCredential, staticCredential } from './credential';
 import { findCoverageFiles } from './files';
 import { formatFileList } from './filelist';
+import { toPosixPath } from './paths';
+import { isRebasableReport, rebaseReportContent } from './rebase';
 import { UploadStatus, rate, waitForFinalize } from './status';
 
 const MAX_RETRIES = 3;
@@ -56,7 +58,7 @@ export async function run(): Promise<void> {
     } else {
       core.info(`Uploading ${files.length} coverage file(s) for ${ctx.repository}@${ctx.commitSha}:`);
       for (const file of files) {
-        core.info(`  ${path.relative(ctx.rootDir, file)}`);
+        core.info(`  ${toPosixPath(path.relative(ctx.rootDir, file))}`);
       }
     }
 
@@ -88,13 +90,32 @@ export async function run(): Promise<void> {
     if (!carryForward) form.set('carryForward', 'false');
     const baseSha = core.getInput('base-sha');
     if (baseSha) form.set('baseSha', baseSha);
-    form.set('rootDir', ctx.rootDir);
+    // Posix on the wire, native everywhere the filesystem is touched. The server
+    // unifies separators itself, so this is hardening rather than a dependency:
+    // the action no longer relies on it choosing to.
+    form.set('rootDir', toPosixPath(ctx.rootDir));
     if (fileList) form.set('fileList', fileList);
 
+    let rewrittenTotal = 0;
     for (const file of files) {
+      let payload: Buffer;
+      if (isRebasableReport(file)) {
+        // Rebased here so no consumer has to do it in their workflow. A report
+        // that is already repository-relative rewrites nothing and is passed
+        // through unchanged.
+        const { content, rewritten } = rebaseReportContent(fs.readFileSync(file, 'utf8'), ctx.rootDir);
+        rewrittenTotal += rewritten;
+        payload = Buffer.from(content, 'utf8');
+      } else {
+        payload = fs.readFileSync(file);
+      }
+
       // Server ungzips by magic bytes; gzip keeps multi-MB lcov payloads small.
-      const gzipped = zlib.gzipSync(fs.readFileSync(file));
+      const gzipped = zlib.gzipSync(payload);
       form.append('files', new Blob([new Uint8Array(gzipped)]), path.basename(file) + '.gz');
+    }
+    if (rewrittenTotal > 0) {
+      core.info(`Rebased ${rewrittenTotal} report path(s) to repository-relative form.`);
     }
 
     const response = await postWithRetry(`${url}/api/uploads`, credential, form);
@@ -120,7 +141,7 @@ export async function run(): Promise<void> {
     }
 
     if (getBool('wait-for-finalize')) {
-      await waitAndReport(url, credential, ctx);
+      await waitAndReport(url, credential, ctx, files.length);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -172,7 +193,12 @@ function resolveCredential(url: string): Credential {
  * have the number you think you have", which is the same judgement that input
  * already encodes. Outputs are still set from whatever the server did say.
  */
-async function waitAndReport(url: string, credential: Credential, ctx: ReturnType<typeof collectContext>): Promise<void> {
+async function waitAndReport(
+  url: string,
+  credential: Credential,
+  ctx: ReturnType<typeof collectContext>,
+  uploadedReportCount: number,
+): Promise<void> {
   const timeoutSeconds = numberInput('wait-timeout', 1800);
   const pollIntervalSeconds = numberInput('wait-poll-interval', 5);
 
@@ -221,6 +247,8 @@ async function waitAndReport(url: string, credential: Credential, ctx: ReturnTyp
 
   if (status.commitUrl) core.info(status.commitUrl);
 
+  reportUnmatched(status, uploadedReportCount);
+
   if (status.state === 'CompleteWithErrors') {
     const failures = (status.sessions ?? [])
       .filter((s) => s.parseStatus !== 'Parsed')
@@ -229,6 +257,49 @@ async function waitAndReport(url: string, credential: Credential, ctx: ReturnTyp
       `The build finalized with errors, so the coverage number under-counts. ${failures.join('; ')}`.trim(),
     );
   }
+}
+
+/**
+ * Says out loud when the server could not resolve a report's paths to files in
+ * the repository.
+ *
+ * This is the half of issue #415 that cost the time. An unmatched file is
+ * retained but excluded from the build's summary, so a build whose files all
+ * failed to match looks exactly like a healthy one from the workflow's side:
+ * accepted, finalized, green, and empty. Nothing anywhere said otherwise.
+ *
+ * Total failure throws, so `fail-ci-if-error` decides what it means in the one
+ * place that already makes that judgement. Partial failure warns: some reports
+ * resolving and others not is usually a genuinely partial upload, not a broken
+ * one.
+ *
+ * Two cases deliberately produce nothing:
+ * - `uploadedReportCount === 0` — a file-list-only upload, which is how
+ *   `nx affected` carries coverage forward when every project was cached. It has
+ *   no paths to resolve and must not start failing.
+ * - `status.unmatched` absent or null — an older server, or a build that has not
+ *   finalized. Neither is evidence of success, so neither draws a verdict.
+ */
+export function reportUnmatched(status: UploadStatus, uploadedReportCount: number): void {
+  const unmatched = status.unmatched;
+  if (!unmatched || uploadedReportCount === 0) return;
+  if (unmatched.files === 0) return;
+
+  const sample = unmatched.sample?.length ? ` For example: ${unmatched.sample.slice(0, 5).join(', ')}.` : '';
+  const scale = `${unmatched.files} of ${unmatched.totalFiles} file(s)`;
+
+  if (unmatched.files >= unmatched.totalFiles) {
+    throw new Error(
+      `None of the uploaded coverage resolved to files in this repository (${scale}), so the report ` +
+        `for this commit is empty. The paths in the report do not correspond to paths in ` +
+        `\`git ls-files\` — check that the reports were produced from this checkout.${sample}`,
+    );
+  }
+
+  core.warning(
+    `${scale} in the uploaded coverage could not be matched to this repository and are excluded ` +
+      `from the reported percentage, so it under-counts.${sample}`,
+  );
 }
 
 export function setResultOutputs(status: UploadStatus): void {
@@ -245,6 +316,14 @@ export function setResultOutputs(status: UploadStatus): void {
   core.setOutput('branches-total', coverage?.branchesTotal ?? '');
   core.setOutput('branch-rate', rate(coverage?.branchesCovered, coverage?.branchesTotal));
   core.setOutput('files-count', coverage?.filesCount ?? '');
+
+  // `files-count` counts the files that *matched*, because that is what the
+  // summary is computed from. Publishing the unmatched count beside it is what
+  // lets a workflow tell "nothing was measured" from "nothing was uploaded" --
+  // the two read identically from the percentage alone. Empty, not 0, when the
+  // server did not say: a hard 0 would assert something we do not know.
+  core.setOutput('files-matched', status.unmatched ? status.unmatched.totalFiles - status.unmatched.files : '');
+  core.setOutput('files-unmatched', status.unmatched ? status.unmatched.files : '');
 
   // Empty on a first upload, where a ratchet has nothing to compare against and
   // must pass by definition.
