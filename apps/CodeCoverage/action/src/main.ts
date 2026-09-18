@@ -142,6 +142,8 @@ export async function run(): Promise<void> {
 
     if (getBool('wait-for-finalize')) {
       await waitAndReport(url, credential, ctx, files.length);
+    } else {
+      await peekForIngestErrors(url, credential, ctx);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -150,6 +152,54 @@ export async function run(): Promise<void> {
     } else {
       core.warning(`Coverage upload failed (not failing CI): ${message}`);
     }
+  }
+}
+
+/**
+ * One short status read for a consumer who did NOT ask to wait (#417).
+ *
+ * Without `wait-for-finalize` — which is the default — a consumer learns nothing
+ * past "202 Accepted". The upload behind #415 was accepted, finalized
+ * `CompleteWithErrors` with zero files measured, and stayed green; turning that
+ * flag on is literally what produced the diagnosis, a day in.
+ *
+ * So: a single poll, a few seconds at most, warning only. It never fails the step
+ * and never waits for a verdict that is not there yet -- a consumer who did not ask
+ * to wait must not start waiting. Parsing is asynchronous, so `InFlight` is the
+ * common answer and draws no verdict; this catches the case where the server has
+ * already made up its mind by the time the upload call returns, which is exactly
+ * the fast, total failure (a BOM, an empty file, an unreadable format) that this
+ * silence used to hide.
+ */
+async function peekForIngestErrors(
+  url: string,
+  credential: Credential,
+  ctx: ReturnType<typeof collectContext>,
+): Promise<void> {
+  try {
+    const status = await waitForFinalize(credential, {
+      url,
+      repository: ctx.repository,
+      commitSha: ctx.commitSha,
+      runId: ctx.runId,
+      runAttempt: ctx.runAttempt,
+      timeoutSeconds: 0,
+      pollIntervalSeconds: 0,
+    });
+
+    reportRejectedReports(status);
+
+    if (status.state === 'CompleteWithErrors') {
+      core.warning(
+        'The coverage build finalized with errors, so the reported number under-counts. ' +
+          `${describeRejections(status)} `.trim() +
+          ' Set `wait-for-finalize: true` to gate your workflow on this.',
+      );
+    }
+  } catch {
+    // Best effort, by design. A build still parsing, a server that does not answer,
+    // an expired credential -- none of them are this step's business when the
+    // consumer did not ask to wait. The upload itself already succeeded.
   }
 }
 
@@ -248,15 +298,43 @@ async function waitAndReport(
   if (status.commitUrl) core.info(status.commitUrl);
 
   reportUnmatched(status, uploadedReportCount);
+  reportRejectedReports(status);
 
   if (status.state === 'CompleteWithErrors') {
     const failures = (status.sessions ?? [])
       .filter((s) => s.parseStatus !== 'Parsed')
       .map((s) => `${s.jobName || s.sessionId}: ${s.error ?? s.parseStatus}`);
     throw new Error(
-      `The build finalized with errors, so the coverage number under-counts. ${failures.join('; ')}`.trim(),
+      `The build finalized with errors, so the coverage number under-counts. ${describeRejections(status) || failures.join('; ')}`.trim(),
     );
   }
+}
+
+/**
+ * Names every report the server could not use (#417). Reaching the consumer with
+ * the FILE and the REASON is the whole point: the upload behind #415 said only
+ * "the build finalized with errors", and identifying the BOM from that took a day.
+ *
+ * Absent `ingest` means an older server, which draws no verdict -- never a claim
+ * that nothing was rejected.
+ */
+function reportRejectedReports(status: UploadStatus): void {
+  const rejected = status.ingest?.rejected;
+  if (!rejected?.length) return;
+
+  for (const report of rejected) {
+    core.warning(
+      `Coverage report '${report.fileName}' was rejected (${report.reason ?? 'unspecified'})` +
+        `${report.detail ? `: ${report.detail}` : ''}`,
+    );
+  }
+}
+
+function describeRejections(status: UploadStatus): string {
+  const rejected = status.ingest?.rejected ?? [];
+  return rejected
+    .map((r) => `${r.fileName}: ${r.reason ?? 'rejected'}${r.detail ? ` (${r.detail})` : ''}`)
+    .join('; ');
 }
 
 /**
@@ -315,7 +393,13 @@ export function setResultOutputs(status: UploadStatus): void {
   core.setOutput('branches-covered', coverage?.branchesCovered ?? '');
   core.setOutput('branches-total', coverage?.branchesTotal ?? '');
   core.setOutput('branch-rate', rate(coverage?.branchesCovered, coverage?.branchesTotal));
-  core.setOutput('files-count', coverage?.filesCount ?? '');
+  // 0, never '', once the build is terminal (#417). The server now writes a zeroed
+  // summary on every finalize, but an older server still sends `coverage: null` when
+  // nothing was measured -- and a consumer guard testing `== "0"` silently failed to
+  // fire on exactly that, which is how the #415 upload shipped green. A terminal
+  // state means the number is known, and the number is zero.
+  const terminal = status.state === 'Complete' || status.state === 'CompleteWithErrors';
+  core.setOutput('files-count', coverage?.filesCount ?? (terminal ? 0 : ''));
 
   // `files-count` counts the files that *matched*, because that is what the
   // summary is computed from. Publishing the unmatched count beside it is what

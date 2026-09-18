@@ -95,8 +95,27 @@
         }
       </bs-alert>
     }
+    @if (t.rejectedReports && t.rejectedReports.length > 0) {
+      <!-- #417: say what was rejected and why. A page with no numbers reads as a
+           service outage; naming the file turns it into a fixable upload problem. -->
+      <bs-alert [type]="dangerColor" class="d-block mb-2" data-testid="rejected-reports">
+        <strong>This upload was rejected — no coverage was recorded.</strong>
+        <ul class="mb-0 mt-2 small">
+          @for (report of t.rejectedReports; track report.fileName) {
+            <li>
+              <code>{{ report.fileName }}</code> — {{ rejectionText(report.reason) }}
+              @if (report.detail) {
+                <span class="d-block text-muted">{{ report.detail }}</span>
+              }
+            </li>
+          }
+        </ul>
+      </bs-alert>
+    }
     @if (t.entries.length === 0) {
-      <p class="text-muted mb-0">No coverage data in this folder.</p>
+      @if (!t.rejectedReports || t.rejectedReports.length === 0) {
+        <p class="text-muted mb-0">No coverage data in this folder.</p>
+      }
     } @else {
       <!-- isResponsive is BsTable's own .table-responsive + nowrap wrapper, off by
            default; without it a wide file table overflows its card on a phone. -->

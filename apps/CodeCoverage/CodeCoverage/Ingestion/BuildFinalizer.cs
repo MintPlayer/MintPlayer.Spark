@@ -20,6 +20,14 @@ public static class BuildFinalizer
         build.FinalizedAtUtc = DateTime.UtcNow;
         build.FinalizeReason = reason;
 
+        // A terminal build ALWAYS carries a summary, zeroed rather than absent (#417).
+        // When every session failed, RecomputeBuildSummary never ran, so Coverage
+        // stayed null; the status response then emitted `coverage: null` and the
+        // action's files-count output came back as the empty string rather than "0" —
+        // which is exactly how a consumer guard testing `== "0"` failed to fire on the
+        // upload behind #415. Empty and zero must not be different things.
+        build.Coverage ??= new CoverageSummary();
+
         if (build.Id is not null)
         {
             await MaterializeTreeSummary(session, build.Id, cancellationToken);

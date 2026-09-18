@@ -48,7 +48,14 @@ public partial class BrowseController : ControllerBase
     public sealed record TreeEntry(string Name, string Path, bool IsFile, int LinesCovered, int LinesCoverable,
         string? Origin = null, string? CarriedFromSha = null);
     public sealed record TreeResponse(string BuildId, IEnumerable<TreeEntry> Entries, IEnumerable<string> UnmatchedFiles,
-        int UnmatchedTotal = 0);
+        int UnmatchedTotal = 0, IEnumerable<RejectedReport>? RejectedReports = null);
+
+    /// <summary>
+    /// A report the server could not use, named (#417). A commit whose build measured
+    /// nothing is an error state, not an empty report — without this the page renders
+    /// blank, which reads as a service outage rather than a fixable upload problem.
+    /// </summary>
+    public sealed record RejectedReport(string FileName, string? Reason, string? Detail);
 
     // UnmatchedFiles is a sample; UnmatchedTotal carries the real count so the
     // UI can disclose truncation ("showing 50 of 314") instead of passing the
@@ -368,7 +375,23 @@ public partial class BrowseController : ControllerBase
             : [];
         var unmatchedTotal = string.IsNullOrEmpty(path) ? files.Count(f => !f.Matched) : 0;
 
-        return Ok(new TreeResponse(source, result, unmatched, unmatchedTotal));
+        // Only at the tree root, and only worth loading when there is something to
+        // explain: a tree with entries speaks for itself, and a rejected report on a
+        // build that measured plenty is a per-file detail the status API carries.
+        List<RejectedReport>? rejected = null;
+        if (string.IsNullOrEmpty(path) && !result.Any())
+        {
+            var build = await session.LoadAsync<Build>(commit.LatestBuildId, cancellationToken);
+            rejected = build?.Sessions
+                .SelectMany(s => s.Reports)
+                .Where(r => !r.Parsed)
+                .Select(r => new RejectedReport(r.FileName, r.Reason, r.Detail))
+                .Take(UnmatchedSampleSize)
+                .ToList();
+        }
+
+        return Ok(new TreeResponse(source, result, unmatched, unmatchedTotal,
+            rejected is { Count: > 0 } ? rejected : null));
     }
 
     /// <summary>
