@@ -171,11 +171,11 @@ is not gated on Phase 1, because it must hold whatever Phase 1 names.
 21. In `MintPlayer/MintPlayer.DotnetDesktop.Tools`: delete `tools/Rebase-CoveragePaths.ps1` and the
     "Rebase coverage paths to repository-relative" step at `_build.yml:102`.
 22. Re-run that repo's pipeline; confirm a non-empty report with a plausible percentage (FR-3).
-23. In `MintPlayer/mintplayer-ng-seo`: delete `tools/scripts/rebase-lcov-paths.mjs` and its
-    pre-upload step; re-run and confirm the report still resolves. Its cause is suffix **ambiguity**
-    (`PathNormalizer.cs:64` wants exactly one candidate), not separators — so verify rather than
-    assume. If the ambiguity survives, keep the script and file it as its own issue.
-24. Grep the org for any other pre-upload path-massaging step. FR-0 is not met while one survives.
+23. Grep the org for any other **prefix-stripping** pre-upload step and retire it.
+24. Do **not** touch `mintplayer-ng-seo`'s `tools/scripts/rebase-lcov-paths.mjs`. It *adds* a
+    project prefix that Vitest omits; this work *strips* a workspace prefix. Different problem,
+    different direction, and the in-action rebase does nothing for it. File the underlying suffix
+    ambiguity (`PathNormalizer.cs:64`) as its own issue instead.
 
 > Per the one-PR rule in `CLAUDE.md`, steps 20-24 land in the **same unit of work** as the rest —
 > the consumer-repo changes are other repositories, not follow-up PRs, sequenced after the tag move.

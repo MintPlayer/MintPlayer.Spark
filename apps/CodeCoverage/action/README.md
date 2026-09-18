@@ -33,9 +33,14 @@ Concretely, the action owns all of this so you do not:
 - formats covered: Cobertura/Clover `filename`, lcov `SF:`, JaCoCo `sourcefile`. Anything else is
   uploaded byte-for-byte rather than guessed at.
 
-**Do not add a pre-upload path-rewriting step to your workflow.** Two repositories once carried one
-(a PowerShell script in `MintPlayer.DotnetDesktop.Tools`, a Node script in `mintplayer-ng-seo`) and
-both are obsolete: see [issue #415](https://github.com/MintPlayer/MintPlayer.Spark/issues/415).
+**Do not add a step that strips the workspace prefix or fixes separators.** `MintPlayer.DotnetDesktop.Tools`
+carried one (`tools/Rebase-CoveragePaths.ps1`) and it is obsolete:
+see [issue #415](https://github.com/MintPlayer/MintPlayer.Spark/issues/415).
+
+One thing the action does **not** do is *add* a prefix your reporter left out. Vitest, for instance,
+writes `SF:` paths relative to each project's own root, so `dock/index.ts` can be ambiguous across
+several libraries and the server drops it rather than guess. That needs a prefix the action cannot
+infer, and `mintplayer-ng-seo` rightly still handles it in its own workflow.
 
 ### When paths still cannot be resolved
 

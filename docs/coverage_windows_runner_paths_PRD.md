@@ -215,11 +215,13 @@ so in a comment at the conversion site.
 
 ### Must Have (P0)
 
-- [ ] **FR-0** *(governing requirement)*: **No consumer repository carries path-rebasing code.** A
-      workflow author never reasons about separators, workspace prefixes or report-internal path
-      shapes. `Rebase-CoveragePaths.ps1` and `rebase-lcov-paths.mjs` are deleted from the repos that
-      hold them, and no future consumer needs an equivalent. Every other requirement below is
-      subordinate to this one; where they conflict, this wins.
+- [ ] **FR-0** *(governing requirement)*: **No consumer repository carries code to strip a workspace
+      prefix or fix separators.** A workflow author never reasons about separators or absolute CI
+      paths. `Rebase-CoveragePaths.ps1` is deleted from `MintPlayer.DotnetDesktop.Tools`, and no
+      future consumer needs an equivalent. Every other requirement below is subordinate to this one;
+      where they conflict, this wins.
+      *Scope correction (2026-09-18): this does **not** cover `mintplayer-ng-seo`'s
+      `rebase-lcov-paths.mjs`, which solves the opposite problem — see Milestone 5.*
 - [ ] **FR-1**: The real defect behind the empty report is reproduced and named, with the failing
       input recorded in the repository as a test fixture.
 - [ ] **FR-2**: Every path the action sends over the wire is forward-slash, regardless of runner OS.
@@ -323,12 +325,18 @@ so in a comment at the conversion site.
 - [ ] In `MintPlayer/MintPlayer.DotnetDesktop.Tools`: delete `tools/Rebase-CoveragePaths.ps1` and the
       "Rebase coverage paths to repository-relative" step from `_build.yml` (the step at
       `_build.yml:102`), re-run, confirm a non-empty report (FR-3).
-- [ ] In `MintPlayer/mintplayer-ng-seo`: delete `tools/scripts/rebase-lcov-paths.mjs` and its
-      pre-upload step, re-run, confirm the report still resolves. Its cause is suffix **ambiguity**
-      (`PathNormalizer.cs:64` requires exactly one candidate), not separators — so verify rather than
-      assume, and if the ambiguity persists keep the script and file it separately.
-- [ ] Grep the org for any other pre-upload path-massaging step and retire it (FR-0 is not met while
-      one survives).
+- [ ] Grep the org for any other pre-upload path-massaging step of the **prefix-stripping** kind and
+      retire it.
+- [ ] **`mintplayer-ng-seo` keeps `tools/scripts/rebase-lcov-paths.mjs` — it is a different problem.**
+      Corrected after reading it: Vitest emits `SF:` paths relative to each *project's* root
+      (`dock/index.ts` for `libs/mintplayer-web-components/dock/index.ts`), so that script **adds** a
+      prefix inferred from the report's own directory. This work **strips** a workspace prefix. A
+      path that is too short is not a path that is too long, so the in-action rebase does nothing for
+      it. The underlying defect is suffix **ambiguity** — `dock/index.ts` exists under four libraries
+      and `PathNormalizer.cs:64` needs exactly one candidate — measured at 314 of 1405 files (22.3%)
+      silently dropped on ng-bootstrap PR #405. That deserves its own issue (a report-declared
+      project root the server could trust, rather than every consumer inferring one); it is **not**
+      in FR-0's scope, which is about separators and absolute workspace paths.
       **All of this lands in the same unit of work**, per the one-PR rule — sequenced after the tag move.
 
 ---
