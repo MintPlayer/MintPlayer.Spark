@@ -90,6 +90,26 @@ public class Build
     /// <summary>"Explicit" | "Debounce" | "Timeout"</summary>
     public string? FinalizeReason { get; set; }
 
+    /// <summary>
+    /// When the uploaded report attachments were deleted by the retention sweep,
+    /// or null while they are still held.
+    /// <para>
+    /// Raw reports are inert once parsed — nothing reads them again, and the
+    /// coverage they described is fully materialised into FileCoverage — so they
+    /// are the cheapest thing to drop as the database grows. The filelist
+    /// attachment is NOT reaped: <c>BuildComparer</c> and <c>CommitAssembler</c>
+    /// still read it when this build serves as a comparison base.
+    /// </para>
+    /// <para>
+    /// This marker exists because a reaped build, unlike a deleted document,
+    /// stays in every query that found it — without it the sweep would revisit
+    /// the same builds forever. It also lets a future reprocess-from-attachments
+    /// job say "this build cannot be replayed" instead of silently finding
+    /// nothing.
+    /// </para>
+    /// </summary>
+    public DateTime? ReportsReapedAtUtc { get; set; }
+
     /// <summary>The individual uploads (one per action invocation) merged into this build.</summary>
     public List<BuildSession> Sessions { get; set; } = [];
 

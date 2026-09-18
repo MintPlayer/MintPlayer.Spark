@@ -481,6 +481,77 @@ They pick up corrected numbers on their next upload. Under D7 there is no readin
 
 ---
 
+## 13a. Report retention — bounding the one thing that grows without bound
+
+Added to this PR after the storage footprint was measured on production.
+
+### Why reports and not something else
+
+| | accumulated (37 days) | per day | per year |
+|---|---|---|---|
+| Report attachments | 142 MB (1,899 files) | ~3.8 MB | ~1.4 GB |
+| Filelist attachments | 36 MB (332 files) | ~1 MB | ~0.35 GB |
+| Everything else, overwhelmingly `FileCoverage` | ~2.06 GB | ~56 MB | **~20 GB** |
+
+Reports are **inert once parsed** — `ParseSessionRecipient` reads them at ingest and nothing reads
+them again; every later consumer reads `FileCoverage` and the commit assembly. That makes them the
+cheapest thing to drop, and the only storage that can be reclaimed with no visible effect at all.
+
+They are also *not* the largest term. Documents grow ~15× faster, so this bounds one axis rather than
+solving growth. Document retention is scoped in §13b.
+
+### What ships
+
+`Ingestion/ReapReportAttachmentsCronJob` — daily at 04:10 UTC, deleting report attachments from
+builds finalized longer ago than `Coverage:Retention:ReportAttachmentDays` (**default 7**).
+Storage under this policy is `daily report bytes × window`, so the window is the entire lever: `0`
+reaps at the next sweep after a build finalizes, a negative value disables the sweep.
+
+A sweep rather than an inline delete at parse time, for two reasons: it also reclaims the ~1,899
+attachments already on disk, and a failed delete simply retries next run instead of complicating the
+ingest path.
+
+### Three things it must not get wrong
+
+1. **The filelist is never reaped.** `BuildComparer.cs:72` and `CommitAssembler.cs:149` read it
+   whenever the build serves as a comparison or carry-forward base, long after it finalized. The test
+   is the trailing segment (`/filelist`), not a prefix or extension — a report the uploader named
+   "filelist" sanitises to `…/0-filelist` and must still be reaped.
+2. **`Build.ReportsReapedAtUtc` is required for termination.** A reaped build, unlike a deleted
+   document, stays in the query that found it; without the marker the sweep revisits it forever.
+3. ⚠️ **`ReportsReapedAtUtc == null` matches nothing.** A build written before the field existed has
+   no index entry for it, and equality-to-null does not match an absent field — that is every build
+   in production, i.e. the entire backlog the sweep exists to reclaim. A build written since carries
+   an explicit null, which `exists` *does* match. **Both shapes must be matched**, so the query is
+   `Not.WhereExists(...) OrElse WhereEquals(..., null)`. Caught by a test that strips the field to
+   reproduce the legacy shape.
+
+`ReportsReapedAtUtc` is `DateTime` (UTC), not `DateTimeOffset`, matching the `*AtUtc` bookkeeping
+fields it sits among and is compared against. `DateTimeOffset` is used in this app only where the
+offset is data (`Commit.AuthoredAt`); a server-generated instant has no offset to preserve.
+
+## 13b. Document retention — scoped, not implemented
+
+`FileCoverage` is ~92% of the database and ~15× the growth rate, so it is where retention actually
+pays. It is **not** implemented here because, unlike report reaping, it is visible: it changes what
+an old commit page shows. The safety analysis is recorded so the decision can be made deliberately.
+
+Carry-forward reaches **exactly one hop** back, to the base commit's `{commitId}/assembly/files/*`;
+the chain is materialised, not recursive. `BaseResolver.UsableBuildIdAsync` probes existence
+(assembly first, then tree summary) and walks up to 50 candidates, and `BuildComparer` degrades to
+`Mode = None` rather than failing. So deletion degrades gracefully **by existing design**.
+
+| tier | delete | cost |
+|---|---|---|
+| **1** | superseded run attempts and non-finalized builds, with their files/flags/tree | none — nothing reads them |
+| **2** | the whole `{commitId}/builds` prefix, nulling `Commit.LatestBuildId` | the build/session table and per-flag trees empty; headline, tree, file view, badges and deltas all survive via the assembly |
+| **3** | `{commitId}/assembly` **and** its files and tree, together | the single-file view for that commit; must be deleted as a set so the resolver's probe correctly walks past |
+| **4** | the `Commit` document | **never** — it is the only source for badges, history, deltas and the resolver's walk |
+
+`DeletePullRequestBuildsRecipient` already implements exactly tiers 2+3 for merged PRs and is the
+model to copy. Constraint: never reap a commit that is still a live carry-forward base — keep the
+newest N default-branch commits per repository exempt.
+
 ## 14. SP2 evidence — the clover/istanbul cross-check
 
 Both formats were generated from one real run (the action's own vitest suite, v8 provider, 10 files,

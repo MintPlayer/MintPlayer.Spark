@@ -25,6 +25,37 @@ All milestones are done. Suites: **CodeCoverage.Tests 532/532**, SPA specs green
 | M10 order-independence property test | ✅ |
 | M11 rewrite the pinned tests | ✅ |
 | M12 docs, capability name, full sweep | ✅ |
+| M13 report-attachment retention (added mid-PR) | ✅ — see below |
+
+## M13 — report-attachment retention
+
+Added mid-PR once the storage footprint was measured. Rationale, tiers and the document-retention
+scoping live in **PRD §13a / §13b**; this is what was built.
+
+- `Ingestion/ReapReportAttachmentsCronJob` — daily 04:10 UTC, `ISparkCronJob`, auto-registered by the
+  cron source generator (no `Program.cs` edit). Bounded at 256 builds per run, per-build `try/catch`
+  so one bad build does not cost the run, `IgnoreMaxRequests` because each attachment delete is a
+  request.
+- `Build.ReportsReapedAtUtc` marks a swept build — required for termination, since a reaped build
+  stays in the query while a deleted document would leave it. Model synced; curated to
+  `showedOn: PersistentObject` so it stays out of the Build grid (`ModelColumnGuardTests` caught it).
+- `Coverage:Retention:ReportAttachmentDays`, default **7**. `0` reaps at the next sweep after
+  finalize; negative disables.
+- Filelist attachments are never reaped — `BuildComparer` and `CommitAssembler` still read them.
+
+**Two defects found by the tests, both of which would have been silent:**
+
+1. `ReportsReapedAtUtc == null` **matched nothing**, because a document that never carried the field
+   has no index entry and equality-to-null does not match an absent field. Every build in production
+   is that shape, so the sweep would have reclaimed nothing at all. The mirror case is also real —
+   builds written after this ships carry an explicit null, which `exists` *does* match — so the query
+   has to be `Not.WhereExists(...) OrElse WhereEquals(..., null)`. Both shapes are pinned by tests.
+2. A report the uploader names `filelist` sanitises to `…/0-filelist`. Matching on the wrong part of
+   the name would either keep every such report forever or, worse, delete the real filelist and break
+   carry-forward. Pinned by a test.
+
+**Migration re-verified afterwards**, as required: the 351 production documents were re-imported and
+the real migration re-run — 0 mismatches, 0 stamps left, 0 legacy edges left, idempotent on re-run.
 
 ## SP1b + migration rehearsal — run 2026-09-19 against real production documents
 
