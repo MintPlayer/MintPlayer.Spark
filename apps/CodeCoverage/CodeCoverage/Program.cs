@@ -305,6 +305,14 @@ if (builder.VerifySparkSecurityIfRequested(args))
 
 var app = builder.Build();
 
+// Before anything can load a FileCoverage — including the migration runner
+// inside UseSpark() — teach the store to read documents written before #420,
+// which stored branch coverage as a flat edge list. Reports opened before a
+// deploy must still open after it, and this keeps that true independently of
+// whether the migration has run.
+CodeCoverage.Services.LegacyBranchCompatibility.Enable(
+    app.Services.GetRequiredService<Raven.Client.Documents.IDocumentStore>());
+
 app.UseForwardedHeaders();
 
 app.UseHttpsRedirection();
