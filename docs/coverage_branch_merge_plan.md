@@ -5,6 +5,43 @@
 **One PR.** Workstreams A, B and C land together — B is a correctness precondition for A's
 order-independence guarantee, and C's parsers are what make A's ceiling worth raising.
 
+## Status — implemented 2026-09-19
+
+All milestones are done. Suites: **CodeCoverage.Tests 521/521**, SPA specs green, action vitest
+99/99.
+
+| milestone | state |
+|---|---|
+| SP1 production volume · SP2 fixtures · SP3 test shape | ✅ run — SP2 reversed the clover model (V11) |
+| M1 parser contract, max everywhere, null ≠ 0 | ✅ |
+| M2 storage model + merge rewrite | ✅ |
+| M3 CommitAssembler + its first branch tests | ✅ |
+| M4 Cobertura `<conditions>` | ✅ |
+| M5 Clover parser + structural discriminator | ✅ |
+| M6 Istanbul parser + JSON guard | ✅ |
+| M7 ingest diagnostic (+ model sync) | ✅ |
+| M8 browse DTO + file page | ✅ |
+| M9 migration | ✅ one-shot patch, per SP1 |
+| M10 order-independence property test | ✅ |
+| M11 rewrite the pinned tests | ✅ |
+| M12 docs, capability name, full sweep | ✅ |
+
+**Still outstanding: SP1b**, the migration's write cost. 7s is a read floor and does not price
+rewriting ~50k documents; measuring it means a patch against production, which needs the user's
+go-ahead. If it proves marginal, the fallback is the lazy read-path derivation described in M9 —
+it computes exactly the same thing, so the swap is contained.
+
+Two findings worth carrying out of the build:
+
+- **The first Clover/Cobertura discriminator was wrong** and the ingest-outcome tests caught it.
+  Requiring Cobertura's `<class` rejects a *truncated* Cobertura report, which must still be
+  diagnosed as a damaged report of a supported format. The test is now for Clover's markers only.
+- **Local test runs needed an environment fix unrelated to this work.** All 285 database-backed
+  tests failed with `ServerDirectory` null because the temp RavenDB provisioning
+  (`%TEMP%\MintPlayer.Spark\RavenDBServer\7.2.1`) held a half-finished copy — 181 of 206 files and
+  no `.spark-provisioned` marker — from an interrupted earlier run. Deleting that directory lets
+  `RavenServerLocator` re-provision, which is the self-healing path it documents.
+
 ---
 
 ## Spikes — run before M1
