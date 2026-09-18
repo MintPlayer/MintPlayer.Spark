@@ -7,7 +7,7 @@ order-independence guarantee, and C's parsers are what make A's ceiling worth ra
 
 ## Status — implemented 2026-09-19
 
-All milestones are done. Suites: **CodeCoverage.Tests 521/521**, SPA specs green, action vitest
+All milestones are done. Suites: **CodeCoverage.Tests 532/532**, SPA specs green, action vitest
 99/99.
 
 | milestone | state |
@@ -21,17 +21,53 @@ All milestones are done. Suites: **CodeCoverage.Tests 521/521**, SPA specs green
 | M6 Istanbul parser + JSON guard | ✅ |
 | M7 ingest diagnostic (+ model sync) | ✅ |
 | M8 browse DTO + file page | ✅ |
-| M9 migration | ✅ one-shot patch, per SP1 |
+| M9 migration | ✅ one-shot patch + `IgnoreMaxStepsForScript`, rehearsed on production data |
 | M10 order-independence property test | ✅ |
 | M11 rewrite the pinned tests | ✅ |
 | M12 docs, capability name, full sweep | ✅ |
 
-**Still outstanding: SP1b**, the migration's write cost. 7s is a read floor and does not price
-rewriting ~50k documents; measuring it means a patch against production, which needs the user's
-go-ahead. If it proves marginal, the fallback is the lazy read-path derivation described in M9 —
-it computes exactly the same thing, so the swap is contained.
+## SP1b + migration rehearsal — run 2026-09-19 against real production documents
 
-Two findings worth carrying out of the build:
+351 production `FileCoverage` documents were copied to a local RavenDB and the real migration script
+run against them. **It found a defect that would have taken the site down on deploy.**
+
+- **A patch script is capped at 10,000 statements per document** (`Patching.MaxStepsForScript`), and
+  the conversion walks every edge. Measured: **421 edges converts, 5,263 faults**. A census of all
+  201,698 documents found **~770 above 400 edges and ten at 5,263**. The operation would have
+  faulted, `UpAsync` would have thrown, startup would have aborted, and the deploy would have failed
+  with nothing serving.
+- Fixed with `QueryOperationOptions.IgnoreMaxStepsForScript`, scoped to this one operation — no
+  server-wide limit is relaxed. Making the loop cheaper cannot work: ~24 statements per edge means
+  the largest document needs ~125,000.
+- **Write cost (SP1b): 38.7s for 200,000 documents** at production scale and ratio, cloned from the
+  real sample. Against a 300s `WaitForCompletion`, a 180s deploy readiness poll, a 60s healthcheck
+  `start_period` and a 30-minute migration lock — nothing is near firing.
+- **Census correction.** The earlier "~25% carry branch data" came from a 2,000-document sample taken
+  from the head of the collection and was **not representative**. The true figure over all 201,698 is
+  **53.9%** (108,648 — 16,203 lcov-stamped, 92,445 cobertura-stamped, **none** JaCoCo).
+- Also established: the `Branches`-field-absent document was an artefact of the jsonl stream's
+  trailing `Stats` line, not a real document; **every** document has the field. And `BranchFormat`
+  set ⟺ edges present, with zero exceptions, so the shape classes are exactly two.
+
+### The requirement this serves
+
+*Everything openable before the deploy must be openable after it.* That is now guaranteed
+structurally rather than by the migration succeeding: `LegacyBranchCompatibility` converts pre-#420
+documents **as they load**, so reports render correctly whether or not the migration has run, has
+finished, or ever runs again. Both it and the migration are covered by tests, including the
+6,000-edge document that fails without the option.
+
+**Re-parsing from attachments was reconsidered and rejected.** A migration *can* read attachments —
+it is ordinary C# with an `IDocumentStore`; only the JavaScript patch script cannot. But 315 of 316
+builds retain gzipped reports, and every one inspected was lcov carrying `BRDA` (real arm identity,
+already preserved exactly by re-derivation) with **zero `<conditions>`**. Re-parsing would redo path
+normalization and flag/assembly attribution for no fidelity gain.
+
+Three findings worth carrying out of the build:
+
+- **Rehearsing against real data caught what unit tests could not.** The statement-budget defect only
+  appears on documents far larger than any hand-written fixture. A test for it now exists, but it was
+  written *after* the rehearsal revealed the failure — the census and the restore are what found it.
 
 - **The first Clover/Cobertura discriminator was wrong** and the ingest-outcome tests caught it.
   Requiring Cobertura's `<class` rejects a *truncated* Cobertura report, which must still be
@@ -59,22 +95,19 @@ Measured against `coverage-raven` on the production VPS:
 | Database on disk | 2.23 GB |
 | **Full collection scan** (streamed, loopback) | **7 seconds / 697 MB** |
 | Average document size | ~3.5 KB |
-| Carrying branch data (`BranchFormat != null`) | **24.9%** of a 2,000-doc sample ⇒ **~50,000** |
+| Carrying branch data | ~~24.9% of a 2,000-doc sample~~ — **superseded, see the census above: 53.9%** |
 
 The pre-measurement fear (V4) does not bind at this volume: the scan floor is ~4% of the 180s
-readiness budget, and the migration JS can `return` immediately for the 75% of documents with no
-branch data.
+readiness budget.
 
-**Still outstanding — SP1b, the write cost.** 7s is a *read* floor and does not price rewriting
-~50k documents. Measuring it means a patch against production (a write-API call) and **needs the
-user's explicit go-ahead**. A no-op `from FileCoverages update { }` exercises scan + per-document
-script without writing, bracketing the cost from below.
+⚠️ **The 24.9% figure in this table was wrong** — the 2,000-document sample came from the head of the
+collection and was not representative. The full census puts it at 53.9% (108,648 of 201,698). The
+conclusion (a one-shot migration is viable) survives; the "75% skippable" reasoning does not.
 
-**Decision rule for SP1b:** comfortably inside the budget ⇒ M9 takes the migration. Marginal or
-doubtful ⇒ M9 falls back to lazy derivation, which is fully correct and carries no deploy risk. The
-two compute the same thing, so the fallback is cheap either way.
+**SP1b was run** — see the rehearsal section above. 38.7s for 200,000 documents, and the rehearsal
+found the statement-budget defect that the read-floor measurement could not have.
 
-⚠️ Do not run SP1b during a deploy window. Never print a connection string or credential.
+⚠️ Never run a write against production during a deploy window, and never print a credential.
 
 ### ~~SP2~~ — real istanbul and clover fixtures ✅ **RUN 2026-09-18**
 **Decided:** M5's clover mapping is **count-only**, not arm-identified. See PRD §14 and V11.
