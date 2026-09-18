@@ -59,7 +59,14 @@ public partial class FinalizeBuildsCronJob : ISparkCronJob
                 foreach (var pending in build.Sessions.Where(s => s.ParseStatus == "Pending"))
                 {
                     pending.ParseStatus = "Failed";
-                    pending.Error = "Never parsed before the build timed out";
+                    // Say what a consumer can act on (#417). "Never parsed" is true but
+                    // tells them nothing: the two causes are a worker that died
+                    // mid-handler and a queue that never delivered, and the report count
+                    // separates them — 0 reports means the upload itself carried nothing.
+                    pending.Error = pending.RawFileNames.Length == 0
+                        ? "The upload carried no report files and the session was never processed before the build timed out (30 minutes)."
+                        : $"The {pending.RawFileNames.Length} uploaded report(s) were never parsed before the build timed out (30 minutes). "
+                          + "The parse worker did not complete — retry the upload; re-parsing is safe and merges idempotently.";
                 }
             }
             await BuildFinalizer.Finalize(session, diffService, build, reason, cancellationToken);

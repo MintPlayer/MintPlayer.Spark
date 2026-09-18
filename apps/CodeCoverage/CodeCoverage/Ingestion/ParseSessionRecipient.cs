@@ -43,6 +43,19 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
             var headFileList = HeadFileList.Parse(
                 fileListBytes is null ? null : ReportContent.FromBytes(fileListBytes).Text);
 
+            // Row E of the #415 table: with BOTH the workspace root and the file list
+            // absent, PathNormalizer can only fall back to "is it still absolute?", so
+            // every absolute path resolves unmatched and the build measures nothing.
+            // That combination used to be invisible — the build simply came out empty.
+            // Say it out loud, at the point it is known.
+            if (headFileList.Paths.Count == 0 && string.IsNullOrWhiteSpace(buildSession.RootDir))
+            {
+                logger.LogWarning(
+                    "Session {SessionId} of {BuildId} has neither a workspace root nor a file list — "
+                    + "absolute report paths cannot be resolved and will be reported unmatched.",
+                    message.SessionId, message.BuildId);
+            }
+
             var touched = new Dictionary<string, FileCoverage>(StringComparer.Ordinal);
             var parsedAnything = false;
             var outcomes = new List<ReportIngestOutcome>();

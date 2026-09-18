@@ -41,7 +41,23 @@ public partial class UploadsController : ControllerBase
     [Inject] private readonly ILogger<UploadsController> logger;
     [Inject] private readonly IConfiguration configuration;
 
+    /// <summary>Caps the COMPRESSED multipart body. The decompressed bound lives in the parser.</summary>
     private const long MaxReportBytes = 50 * 1024 * 1024;
+
+    /// <summary>
+    /// Reports accepted in one upload. Each costs an attachment store here and a parse
+    /// later, and they are small on the wire — a gzipped cobertura is a few KB — so the
+    /// byte limit alone does not bound the work. The largest real upload seen is a
+    /// monorepo sending one report per project, in the low hundreds.
+    /// </summary>
+    private const int MaxReportsPerUpload = 512;
+
+    /// <summary>
+    /// Characters in the `git ls-files` payload. It is held in memory and becomes two
+    /// lookups per parsed session. 8M characters is roughly 100k paths, comfortably
+    /// above any real repository.
+    /// </summary>
+    private const int MaxFileListChars = 8 * 1024 * 1024;
 
     /// <summary>
     /// The upload contract this build implements, reported by
@@ -105,6 +121,14 @@ public partial class UploadsController : ControllerBase
             return BadRequest(new { error = "repository must be owner/name." });
         if (string.IsNullOrWhiteSpace(form.CommitSha) || form.CommitSha.Length < 7)
             return BadRequest(new { error = "commitSha is required (full SHA preferred)." });
+        // Bound the work before doing any of it (#417). MaxReportBytes caps the
+        // compressed body; these cap the shapes that are small on the wire and
+        // expensive afterwards — one attachment store and one parse per file, and a
+        // file list that is held in memory and turned into two lookups per session.
+        if (form.Files.Count > MaxReportsPerUpload)
+            return BadRequest(new { error = $"Too many report files in one upload ({form.Files.Count}); the limit is {MaxReportsPerUpload}. Split the upload across sessions." });
+        if (form.FileList is { Length: > MaxFileListChars })
+            return BadRequest(new { error = $"The file list is too large ({form.FileList.Length} characters); the limit is {MaxFileListChars}." });
 
         var repository = await ResolveAuthorizedRepository(form.Repository, provision: true, cancellationToken);
         if (repository is null)
