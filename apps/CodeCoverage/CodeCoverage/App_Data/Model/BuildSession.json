@@ -140,6 +140,25 @@
         "rules": []
       },
       {
+        "id": "03922e7f-a112-435a-80ee-a54fa429f763",
+        "name": "Reports",
+        "label": {
+          "en": "Reports"
+        },
+        "description": {
+          "en": "What happened to each uploaded report file — parsed, or rejected with a named reason (#417). One entry per attachment, so a session that ingested five of six reports says so instead of resolving to an anonymous failure. Empty on sessions ingested before this existed."
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 10,
+        "asDetailType": "CodeCoverage.Entities.ReportIngestOutcome",
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
         "id": "88021ff7-e093-44a7-b9f8-d3b43a9b06d2",
         "name": "RootDir",
         "label": {

@@ -1,0 +1,122 @@
+{
+  "persistentObject": {
+    "id": "72381a60-3faa-4a95-934e-f62d19f95d04",
+    "name": "ReportIngestOutcome",
+    "clrType": "CodeCoverage.Entities.ReportIngestOutcome",
+    "breadcrumb": "{FileName}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "721f0d05-a764-4bf0-a98f-dc6a821eda5a",
+        "name": "Detail",
+        "label": {
+          "en": "Detail"
+        },
+        "description": {
+          "en": "Human-readable detail — the parser's own message, bounded."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "814a9e19-d083-4fbb-8b24-3d04354a1cdb",
+        "name": "FileName",
+        "label": {
+          "en": "File Name"
+        },
+        "description": {
+          "en": "The uploaded file's name, as the consumer would recognise it."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e1cd75d5-b440-4f81-acb0-1bf2b469a274",
+        "name": "FilesCount",
+        "label": {
+          "en": "Files Count"
+        },
+        "description": {
+          "en": "Files the report described, when it parsed."
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e38d9ebf-86eb-4257-bedc-300750b4b013",
+        "name": "Format",
+        "label": {
+          "en": "Format"
+        },
+        "description": {
+          "en": "The report format that claimed the file, when one did."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4ffe736d-724b-4659-8d29-ec590c65d888",
+        "name": "Parsed",
+        "label": {
+          "en": "Parsed"
+        },
+        "description": {
+          "en": "True when the file was parsed and its files merged."
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "922d2b24-2b95-4a9d-8ae1-da6b92e29b04",
+        "name": "Reason",
+        "label": {
+          "en": "Reason"
+        },
+        "description": {
+          "en": "Why the file was rejected, from ReportRejectionReason. Null when Parsed. A closed set so a consumer can branch on it."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}
