@@ -4,10 +4,10 @@ public interface ICoverageParser
 {
     string FormatName { get; }
 
-    /// <summary>Cheap sniff on the (decompressed) report content.</summary>
-    bool CanParse(string content);
+    /// <summary>Cheap sniff on the normalised report content.</summary>
+    bool CanParse(ReportContent content);
 
-    ParseResult Parse(string content);
+    ParseResult Parse(ReportContent content);
 }
 
 public sealed class ParseResult

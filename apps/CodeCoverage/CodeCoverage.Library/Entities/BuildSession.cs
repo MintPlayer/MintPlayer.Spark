@@ -32,4 +32,12 @@ public partial class BuildSession
 
     /// <summary>Number of source files this session's reports contained coverage for.</summary>
     public int FilesCount { get; set; }
+
+    /// <summary>
+    /// What happened to each uploaded report file — parsed, or rejected with a named
+    /// reason (#417). One entry per attachment, so a session that ingested five of six
+    /// reports says so instead of resolving to an anonymous failure.
+    /// Empty on sessions ingested before this existed.
+    /// </summary>
+    public List<ReportIngestOutcome> Reports { get; set; } = [];
 }

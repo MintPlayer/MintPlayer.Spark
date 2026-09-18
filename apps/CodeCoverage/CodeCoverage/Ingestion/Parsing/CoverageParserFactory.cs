@@ -5,7 +5,7 @@ namespace CodeCoverage.Ingestion.Parsing;
 public interface ICoverageParserFactory
 {
     /// <summary>Sniffs the report content and returns a matching parser, or null.</summary>
-    ICoverageParser? Resolve(string content);
+    ICoverageParser? Resolve(ReportContent content);
 }
 
 /// <summary>
@@ -23,6 +23,6 @@ public partial class CoverageParserFactory : ICoverageParserFactory
         new JaCoCoParser(),
     ];
 
-    public ICoverageParser? Resolve(string content)
+    public ICoverageParser? Resolve(ReportContent content)
         => parsers.FirstOrDefault(p => p.CanParse(content));
 }

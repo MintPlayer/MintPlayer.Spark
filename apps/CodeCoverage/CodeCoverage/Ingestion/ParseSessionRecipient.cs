@@ -39,29 +39,81 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
 
         try
         {
+            var fileListBytes = await ReadAttachmentBytes(build, UploadAttachments.FileListName(message.SessionId), cancellationToken);
             var headFileList = HeadFileList.Parse(
-                await ReadAttachmentText(build, UploadAttachments.FileListName(message.SessionId), cancellationToken));
+                fileListBytes is null ? null : ReportContent.FromBytes(fileListBytes).Text);
 
             var touched = new Dictionary<string, FileCoverage>(StringComparer.Ordinal);
             var parsedAnything = false;
+            var outcomes = new List<ReportIngestOutcome>();
 
             foreach (var attachmentName in buildSession.RawFileNames)
             {
-                var content = await ReadAttachmentText(build, attachmentName, cancellationToken);
-                if (content is null)
+                // Per-file isolation (#417). Before this, a parser throw escaped the
+                // loop and failed the whole session — so one malformed report
+                // discarded every report that had already merged, because
+                // SaveChangesAsync below was never reached.
+                var outcome = new ReportIngestOutcome { FileName = UploadAttachments.DisplayName(attachmentName) };
+                outcomes.Add(outcome);
+
+                ReportContent content;
+                ICoverageParser parser;
+                ParseResult result;
+                try
                 {
-                    logger.LogWarning("Attachment {Name} missing on {BuildId}", attachmentName, message.BuildId);
+                    var bytes = await ReadAttachmentBytes(build, attachmentName, cancellationToken);
+                    if (bytes is null)
+                    {
+                        Reject(outcome, ReportRejectionReason.Missing, "The upload's attachment was not found on the build.");
+                        logger.LogWarning("Attachment {Name} missing on {BuildId}", attachmentName, message.BuildId);
+                        continue;
+                    }
+
+                    content = ReportContent.FromBytes(bytes);
+                    if (content.IsEmpty)
+                    {
+                        Reject(outcome, ReportRejectionReason.Empty,
+                            bytes.Length == 0 ? "The file is empty (0 bytes)." : "The file contains no content once decoded.");
+                        logger.LogWarning("Empty report {Name} on {BuildId}", attachmentName, message.BuildId);
+                        continue;
+                    }
+
+                    var resolved = parserFactory.Resolve(content);
+                    if (resolved is null)
+                    {
+                        Reject(outcome, ReportRejectionReason.UnrecognizedFormat,
+                            "No supported parser recognised this file. Supported: Cobertura, JaCoCo and LCOV.");
+                        logger.LogWarning("Unrecognized report format in {Name} on {BuildId}", attachmentName, message.BuildId);
+                        continue;
+                    }
+
+                    parser = resolved;
+                    outcome.Format = parser.FormatName;
+                    result = parser.Parse(content);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    Reject(outcome, ClassifyParseFailure(ex), ex.Message);
+                    logger.LogWarning(ex, "Rejected report {Name} on {BuildId}", attachmentName, message.BuildId);
                     continue;
                 }
 
-                var parser = parserFactory.Resolve(content);
-                if (parser is null)
+                if (result.Files.Count == 0)
                 {
-                    logger.LogWarning("Unrecognized report format in {Name} on {BuildId}", attachmentName, message.BuildId);
+                    Reject(outcome, ReportRejectionReason.NoFiles,
+                        $"Parsed as {parser.FormatName}, but the report described no files.");
+                    logger.LogWarning("Report {Name} on {BuildId} parsed as {Format} with no files",
+                        attachmentName, message.BuildId, parser.FormatName);
                     continue;
                 }
 
-                var result = parser.Parse(content);
+                outcome.Parsed = true;
+                outcome.FilesCount = result.Files.Count;
+
                 var normalizer = new PathNormalizer(buildSession.RootDir, result.SourceRoots, headFileList.Paths);
 
                 // Each parsed file merges into the build-level document AND
@@ -105,7 +157,17 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
                     {
                         if (!touched.TryGetValue(documentId, out var fileCoverage))
                         {
-                            fileCoverage = new FileCoverage { BuildId = build.Id!, Path = path, Matched = matched };
+                            fileCoverage = new FileCoverage
+                            {
+                                BuildId = build.Id!,
+                                Path = path,
+                                Matched = matched,
+                                // Only when it differs — storing a copy of Path for every
+                                // file would double the field for no diagnostic value.
+                                RawPath = string.Equals(parsedFile.RawPath, path, StringComparison.Ordinal)
+                                    ? null
+                                    : parsedFile.RawPath,
+                            };
                             await session.StoreAsync(fileCoverage, documentId, cancellationToken);
                             touched[documentId] = fileCoverage;
                         }
@@ -125,8 +187,13 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
             // A session that deliberately carried no report (zero-report partial
             // upload) has nothing to fail at; the assembler fills the commit in.
             var nothingToParse = buildSession.RawFileNames.Length == 0;
+            buildSession.Reports = outcomes;
             buildSession.ParseStatus = parsedAnything || nothingToParse ? "Parsed" : "Failed";
-            buildSession.Error = parsedAnything || nothingToParse ? null : "No parsable coverage report found in the upload";
+            // A session fails only when EVERY report was rejected (#417). When some
+            // parsed and some did not, the session is Parsed and the per-report
+            // outcomes carry the rejections — the build still reports errors, because
+            // ClassifyState reads the outcomes too.
+            buildSession.Error = parsedAnything || nothingToParse ? null : DescribeRejections(outcomes);
             // Build-level documents only — the per-flag copies are the same
             // files again, not more files.
             buildSession.FilesCount = touched.Keys.Count(id => !id.Contains("/flags/", StringComparison.Ordinal));
@@ -180,7 +247,51 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
         build.Coverage = CoverageMerger.Summarize(files.Where(f => f.Matched));
     }
 
-    private async Task<string?> ReadAttachmentText(Build build, string name, CancellationToken cancellationToken)
+    /// <summary>
+    /// Upper bound on the DECOMPRESSED size of one report. The controller's
+    /// <c>MaxReportBytes</c> bounds the compressed multipart body only, so without
+    /// this a small upload could expand without limit (#417). 512 MB is far above any
+    /// real report — a monorepo's Cobertura is tens of megabytes — and exists to stop
+    /// a zip bomb rather than to express an expectation.
+    /// </summary>
+    private const long MaxDecompressedBytes = 512L * 1024 * 1024;
+
+    private static void Reject(ReportIngestOutcome outcome, string reason, string detail)
+    {
+        outcome.Parsed = false;
+        outcome.Reason = reason;
+        // Bounded: a parser message is usually one line, but it is attacker-influenced
+        // text that ends up in a workflow log and a document.
+        outcome.Detail = detail.Length > 500 ? detail[..500] + "…" : detail;
+    }
+
+    /// <summary>
+    /// Separates "the file stops in the middle" from "the file is not well-formed",
+    /// because they mean different things to whoever has to fix it: a truncated
+    /// report is a CI job killed mid-write, a malformed one is a bad producer.
+    /// </summary>
+    private static string ClassifyParseFailure(Exception ex) => ex switch
+    {
+        System.Xml.XmlException xml when xml.Message.Contains("Unexpected end of file", StringComparison.Ordinal)
+            => ReportRejectionReason.Truncated,
+        System.Xml.XmlException xml when xml.Message.Contains("exceeds the MaxCharacters", StringComparison.OrdinalIgnoreCase)
+            => ReportRejectionReason.TooLarge,
+        ReportTooLargeException => ReportRejectionReason.TooLarge,
+        System.IO.InvalidDataException => ReportRejectionReason.Malformed,
+        _ => ReportRejectionReason.Malformed,
+    };
+
+    private static string DescribeRejections(List<ReportIngestOutcome> outcomes)
+    {
+        if (outcomes.Count == 0)
+            return "No parsable coverage report found in the upload";
+
+        var detail = string.Join("; ", outcomes.Select(o => $"{o.FileName}: {o.Reason} ({o.Detail})"));
+        var message = $"No parsable coverage report found in the upload — {detail}";
+        return message.Length > 2000 ? message[..2000] + "…" : message;
+    }
+
+    private async Task<byte[]?> ReadAttachmentBytes(Build build, string name, CancellationToken cancellationToken)
     {
         var attachment = await session.Advanced.Attachments.GetAsync(build, name, cancellationToken);
         if (attachment is null) return null;
@@ -195,10 +306,34 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
         {
             using var gzip = new System.IO.Compression.GZipStream(new MemoryStream(bytes), System.IO.Compression.CompressionMode.Decompress);
             using var decompressed = new MemoryStream();
-            await gzip.CopyToAsync(decompressed, cancellationToken);
+            await CopyBounded(gzip, decompressed, MaxDecompressedBytes, cancellationToken);
             bytes = decompressed.ToArray();
         }
 
-        return Encoding.UTF8.GetString(bytes);
+        return bytes;
+    }
+
+    /// <summary>
+    /// Copies with a hard ceiling, so decompression cannot outrun memory. Throws
+    /// rather than truncating: a silently truncated report is exactly the failure
+    /// mode #417 exists to remove.
+    /// </summary>
+    private static async Task CopyBounded(Stream source, Stream destination, long limit, CancellationToken cancellationToken)
+    {
+        var buffer = new byte[81920];
+        long total = 0;
+        int read;
+        while ((read = await source.ReadAsync(buffer, cancellationToken)) > 0)
+        {
+            total += read;
+            if (total > limit)
+                throw new ReportTooLargeException(limit);
+
+            await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+        }
     }
 }
+
+/// <summary>Raised when a report's decompressed size exceeds the ingest bound.</summary>
+public sealed class ReportTooLargeException(long limit)
+    : Exception($"The report expands to more than {limit / (1024 * 1024)} MB when decompressed.");
