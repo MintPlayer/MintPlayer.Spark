@@ -151,7 +151,14 @@ public class Build
         // FinalizeReason "Timeout" already implies a Failed session — the cron
         // marks stragglers before closing — so this is belt-and-braces against a
         // future finalize path that times out without doing so.
-        var clean = build.Sessions.All(s => s.ParseStatus == "Parsed") && build.FinalizeReason != "Timeout";
+        var clean = build.Sessions.All(s => s.ParseStatus == "Parsed")
+            // A session that ingested five of six reports is "Parsed", because the
+            // five are real — but the build is not clean, and saying so is the whole
+            // point of #417. This is the partial-parse state the upload contract
+            // always said would be absorbed into CompleteWithErrors rather than
+            // become a fourth value, so no consumer has to change.
+            && build.Sessions.All(s => s.Reports.All(r => r.Parsed))
+            && build.FinalizeReason != "Timeout";
         return clean ? "Complete" : "CompleteWithErrors";
     }
 }

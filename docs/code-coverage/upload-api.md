@@ -146,12 +146,49 @@ Authorization: Bearer covt_…
   },
   "sessions": [
     { "sessionId": "…", "jobName": "test (ubuntu)", "flags": ["unit"],
-      "parseStatus": "Parsed", "error": null, "filesCount": 804 }
+      "parseStatus": "Parsed", "error": null, "filesCount": 804,
+      "reports": [                  // per uploaded file — see `ingest`
+        { "fileName": "coverage.cobertura.xml", "parsed": true,
+          "format": "cobertura", "filesCount": 804, "reason": null, "detail": null }
+      ] }
   ],
+  "ingest": {                       // ← what happened to each uploaded report
+    "reportsAccepted": 5,
+    "reportsRejected": 1,
+    "rejected": [
+      { "fileName": "broken.xml", "parsed": false, "format": null, "filesCount": 0,
+        "reason": "truncated",
+        "detail": "Unexpected end of file has occurred. The following elements are not closed: …" }
+    ]
+  },
   "commitUrl": "https://coverage.example.com/…",
   "feedbackState": "Posted"         // informational
 }
 ```
+
+### `ingest` — which report failed, and why
+
+Gated on the `ingest-outcomes` capability. Present on every build once supported, so
+`reportsRejected: 0` and "this server does not report it" are distinguishable — absence means **not
+known**, never "nothing was rejected".
+
+`reason` is a closed, machine-readable set. Values are added, never repurposed:
+
+| `reason` | Means |
+|---|---|
+| `empty` | The file carried no bytes, or nothing once decoded. |
+| `unrecognizedFormat` | No parser recognised it. Supported: Cobertura, JaCoCo, LCOV. **Clover and Istanbul `coverage-final.json` land here** — the action's default globs discover both and neither has a parser. |
+| `malformed` | Recognised by its root element, then not well-formed. |
+| `truncated` | The document ends mid-element — typically a CI job killed while writing it. |
+| `tooLarge` | Exceeded the decompressed-size or document bound. |
+| `noFiles` | Parsed cleanly, but described no files at all. |
+| `missing` | The attachment named by the session was not found on the build. |
+
+**One rejected report does not discard the others.** A session that uploads six reports where one is
+truncated ingests five and reports the sixth. The session's `parseStatus` is `Failed` only when
+*every* report was rejected — but `state` is `CompleteWithErrors` whenever any report was, because a
+build that measured five of six files is real and under-counting, which is exactly what that state
+has always meant.
 
 ### `state` — the contract
 
@@ -170,7 +207,19 @@ once a session with *some* unreadable reports stops being reported as fully pars
 `CompleteWithErrors`, because that already means "a real number that under-counts". You will not have
 to handle a fourth value.
 
-`coverage` is `null` while `InFlight`, and whenever no session produced any data at all.
+`coverage` is `null` **while `InFlight`**, and nothing else. On a terminal build it is always
+present — zeroed rather than absent when nothing was measured.
+
+> **This narrowed on the `ingest-outcomes` deployment, and it is the one place the meaning of an
+> existing field changed.** It used to be null whenever no session produced any data at all, which
+> made "nothing measured" and "still parsing" the same value. That cost a day: the action sets
+> `files-count` from `coverage.filesCount`, so a build that measured zero files emitted
+> `files-count: ` — the **empty string** — and a consumer's guard testing `== "0"` never fired. The
+> upload was accepted, the build finalized, the page was blank and CI was green.
+>
+> A client that read `coverage === null` as "nothing was measured" should read
+> `coverage.filesCount === 0` instead. A client that read it as "no number yet" is unaffected, and
+> that reading is now exactly true. Empty and zero are not different things.
 
 ### Termination — the four guarantees
 
@@ -289,7 +338,7 @@ What this deployment can do. Same authentication as the other three; the `upload
 applies, not the tighter `uploads` one.
 
 ```json
-{ "contract": 1, "features": ["partial-uploads", "patch-coverage", "flag-coverage", "gzip-reports", "oidc-auth", "carry-forward", "pr-base-ref"] }
+{ "contract": 1, "features": ["partial-uploads", "patch-coverage", "flag-coverage", "gzip-reports", "oidc-auth", "carry-forward", "pr-base-ref", "ingest-outcomes"] }
 ```
 
 **A client MUST treat 404 as `contract: 0`.** That is exactly what every image deployed before this

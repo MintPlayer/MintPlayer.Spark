@@ -14,15 +14,15 @@ public sealed partial class CoberturaParser : ICoverageParser
 {
     public string FormatName => "cobertura";
 
-    public bool CanParse(string content)
+    public bool CanParse(ReportContent content)
     {
-        var root = TryGetRootName(content);
+        var root = TryGetRootName(content.Text);
         return root == "coverage";
     }
 
-    public ParseResult Parse(string content)
+    public ParseResult Parse(ReportContent content)
     {
-        var doc = XDocument.Parse(content);
+        var doc = SafeXml.Load(content.Text);
         var root = doc.Root ?? throw new InvalidDataException("Empty Cobertura document");
 
         var sources = root.Element("sources")?.Elements("source")

@@ -40,6 +40,26 @@ export class CommitFilesPanelComponent {
   // The chart's zoom root; node ids are repo paths, '/' is the data root.
   readonly chartRootId = signal<string | undefined>('/');
   readonly warningColor = Color.warning;
+  readonly dangerColor = Color.danger;
+
+  /**
+   * The server's rejection reasons are a closed machine-readable set (#417); this
+   * turns each into something a workflow author can act on. An unknown reason falls
+   * back to itself rather than to "unknown", so a newly added server reason still
+   * says something useful to an older client.
+   */
+  rejectionText(reason?: string | null): string {
+    switch (reason) {
+      case 'empty': return 'the file was empty';
+      case 'unrecognizedFormat': return 'the format was not recognised (supported: Cobertura, JaCoCo, LCOV)';
+      case 'malformed': return 'the file could not be parsed';
+      case 'truncated': return 'the file ends mid-document — the job may have been killed while writing it';
+      case 'tooLarge': return 'the report exceeded the size limit';
+      case 'noFiles': return 'it parsed, but described no files';
+      case 'missing': return 'the uploaded attachment was not found';
+      default: return reason ?? 'it could not be used';
+    }
+  }
 
   // Per-flag totals of the shown build; a selected flag narrows the folder
   // list to that flag's own merged tree (the chart stays whole-build).

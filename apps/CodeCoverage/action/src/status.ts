@@ -9,6 +9,14 @@ export interface CoverageSummary {
   filesCount: number;
 }
 
+/** One uploaded report the server could not use, with a reason from a closed set. */
+export interface RejectedReport {
+  fileName: string;
+  /** empty | unrecognizedFormat | malformed | truncated | tooLarge | noFiles | missing */
+  reason?: string | null;
+  detail?: string | null;
+}
+
 export interface UploadStatus {
   buildId: string;
   /** InFlight | Complete | CompleteWithErrors — the only field to branch on. */
@@ -38,6 +46,15 @@ export interface UploadStatus {
    * finalized — both mean "not known", never "none", so a verdict is only drawn
    * when the object is actually present.
    */
+  /**
+   * Per-report ingest outcomes (#417). Absent means an older server, which is
+   * "not known" and never "nothing was rejected" -- the same rule as `unmatched`.
+   */
+  ingest?: {
+    reportsAccepted: number;
+    reportsRejected: number;
+    rejected: RejectedReport[];
+  } | null;
   unmatched?: { files: number; totalFiles: number; sample: string[] } | null;
   /**
    * The commit-level assembly: every finalized build of the commit unioned,

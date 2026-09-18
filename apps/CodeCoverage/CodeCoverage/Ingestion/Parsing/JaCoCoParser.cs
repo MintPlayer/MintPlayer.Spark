@@ -14,20 +14,21 @@ public sealed class JaCoCoParser : ICoverageParser
 {
     public string FormatName => "jacoco";
 
-    public bool CanParse(string content)
+    public bool CanParse(ReportContent content)
     {
-        if (CoberturaParser.TryGetRootName(content) != "report")
+        var text = content.Text;
+        if (CoberturaParser.TryGetRootName(text) != "report")
             return false;
         // Clover also roots at <coverage>, PHPUnit-crap4j at <report> too —
         // JaCoCo is recognizable by its DOCTYPE or its per-line mi/ci counters.
-        return content.Contains("JACOCO", StringComparison.OrdinalIgnoreCase)
-            || content.Contains("<sessioninfo", StringComparison.Ordinal)
-            || content.Contains(" mi=\"", StringComparison.Ordinal);
+        return text.Contains("JACOCO", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("<sessioninfo", StringComparison.Ordinal)
+            || text.Contains(" mi=\"", StringComparison.Ordinal);
     }
 
-    public ParseResult Parse(string content)
+    public ParseResult Parse(ReportContent content)
     {
-        var doc = XDocument.Parse(content);
+        var doc = SafeXml.Load(content.Text);
         var root = doc.Root ?? throw new InvalidDataException("Empty JaCoCo document");
 
         var byFile = new Dictionary<string, ParsedFile>(StringComparer.Ordinal);

@@ -41,7 +41,23 @@ public partial class UploadsController : ControllerBase
     [Inject] private readonly ILogger<UploadsController> logger;
     [Inject] private readonly IConfiguration configuration;
 
+    /// <summary>Caps the COMPRESSED multipart body. The decompressed bound lives in the parser.</summary>
     private const long MaxReportBytes = 50 * 1024 * 1024;
+
+    /// <summary>
+    /// Reports accepted in one upload. Each costs an attachment store here and a parse
+    /// later, and they are small on the wire — a gzipped cobertura is a few KB — so the
+    /// byte limit alone does not bound the work. The largest real upload seen is a
+    /// monorepo sending one report per project, in the low hundreds.
+    /// </summary>
+    private const int MaxReportsPerUpload = 512;
+
+    /// <summary>
+    /// Characters in the `git ls-files` payload. It is held in memory and becomes two
+    /// lookups per parsed session. 8M characters is roughly 100k paths, comfortably
+    /// above any real repository.
+    /// </summary>
+    private const int MaxFileListChars = 8 * 1024 * 1024;
 
     /// <summary>
     /// The upload contract this build implements, reported by
@@ -74,6 +90,11 @@ public partial class UploadsController : ControllerBase
         "oidc-auth",         // GitHubOidc scheme, audience = Coverage:BaseUrl
         "carry-forward",     // commit assembly: fileList with blob OIDs, carryForward, zero-report partial uploads, assembly{} on status
         "pr-base-ref",       // baseRef + prBaseSha: the branch a PR targets and its tip
+        // #417. Two guarantees a client may rely on once this is advertised:
+        // per-report ingest outcomes (ingest{} and sessions[].reports[], naming which
+        // file was rejected and why), and a CoverageSummary on EVERY terminal build —
+        // zeroed rather than null — so files-count is "0" and never the empty string.
+        "ingest-outcomes",
     ];
 
     public sealed record UploadResponse(string BuildId, string SessionId);
@@ -100,6 +121,14 @@ public partial class UploadsController : ControllerBase
             return BadRequest(new { error = "repository must be owner/name." });
         if (string.IsNullOrWhiteSpace(form.CommitSha) || form.CommitSha.Length < 7)
             return BadRequest(new { error = "commitSha is required (full SHA preferred)." });
+        // Bound the work before doing any of it (#417). MaxReportBytes caps the
+        // compressed body; these cap the shapes that are small on the wire and
+        // expensive afterwards — one attachment store and one parse per file, and a
+        // file list that is held in memory and turned into two lookups per session.
+        if (form.Files.Count > MaxReportsPerUpload)
+            return BadRequest(new { error = $"Too many report files in one upload ({form.Files.Count}); the limit is {MaxReportsPerUpload}. Split the upload across sessions." });
+        if (form.FileList is { Length: > MaxFileListChars })
+            return BadRequest(new { error = $"The file list is too large ({form.FileList.Length} characters); the limit is {MaxFileListChars}." });
 
         var repository = await ResolveAuthorizedRepository(form.Repository, provision: true, cancellationToken);
         if (repository is null)
@@ -319,7 +348,8 @@ public partial class UploadsController : ControllerBase
             build.Coverage,
             baseline,
             [.. build.Sessions.Select(s => new UploadStatusSession(
-                s.SessionId, s.JobName, s.Flags, s.ParseStatus, s.Error, s.FilesCount))],
+                s.SessionId, s.JobName, s.Flags, s.ParseStatus, s.Error, s.FilesCount,
+                [.. s.Reports.Select(ToStatusReport)]))],
             baseUrl is null ? null : $"{baseUrl}/r/{repo.FullName}/c/{commitSha}",
             build.Partial,
             baselineScope,
@@ -339,7 +369,26 @@ public partial class UploadsController : ControllerBase
                 assembly.OldestOriginSha,
                 [.. assembly.Builds.Select(b => b.BuildId)],
                 assembly.AssembledAtUtc),
-            unmatched));
+            unmatched,
+            ResolveIngest(build)));
+    }
+
+    private static UploadStatusReport ToStatusReport(ReportIngestOutcome outcome)
+        => new(outcome.FileName, outcome.Parsed, outcome.Format, outcome.FilesCount, outcome.Reason, outcome.Detail);
+
+    /// <summary>
+    /// The build-level ingest verdict, unioned across sessions. Always present, so a
+    /// consumer can tell "nothing was rejected" from "this server does not report it"
+    /// — the distinction that made #415 take a day.
+    /// </summary>
+    private static UploadStatusIngest ResolveIngest(Build build)
+    {
+        var reports = build.Sessions.SelectMany(s => s.Reports).ToList();
+        var rejected = reports.Where(r => !r.Parsed).ToList();
+        return new UploadStatusIngest(
+            reports.Count - rejected.Count,
+            rejected.Count,
+            [.. rejected.Select(ToStatusReport).Take(UnmatchedSampleSize)]);
     }
 
     /// <summary>
@@ -446,7 +495,8 @@ public partial class UploadsController : ControllerBase
         IReadOnlyDictionary<string, CoverageSummary>? Flags = null,
         string? FeedbackState = null,
         UploadStatusAssembly? Assembly = null,
-        UploadStatusUnmatched? Unmatched = null);
+        UploadStatusUnmatched? Unmatched = null,
+        UploadStatusIngest? Ingest = null);
 
     /// <summary>
     /// How many of the build's files could not be resolved to a repository path,
@@ -503,7 +553,26 @@ public partial class UploadsController : ControllerBase
     public sealed record UploadStatusProjection(CoverageSummary Coverage, bool Complete, string[] IncompleteReasons);
 
     public sealed record UploadStatusSession(
-        string SessionId, string? JobName, string[] Flags, string ParseStatus, string? Error, int FilesCount);
+        string SessionId, string? JobName, string[] Flags, string ParseStatus, string? Error, int FilesCount,
+        UploadStatusReport[] Reports);
+
+    /// <summary>
+    /// What happened to one uploaded report file (#417). A rejection names the file
+    /// and a reason from a closed set — <c>empty | unrecognizedFormat | malformed |
+    /// truncated | tooLarge | noFiles | missing</c> — so a consumer can turn "5 of 6
+    /// ingested" into a specific warning instead of discovering a blank page.
+    /// Empty for sessions ingested before this existed.
+    /// </summary>
+    public sealed record UploadStatusReport(
+        string FileName, bool Parsed, string? Format, int FilesCount, string? Reason, string? Detail);
+
+    /// <summary>
+    /// The build-level ingest verdict: how many uploaded reports were accepted and
+    /// how many were rejected, with the rejections themselves. Present on every
+    /// build, so "zero reports rejected" and "we did not look" are distinguishable.
+    /// </summary>
+    public sealed record UploadStatusIngest(
+        int ReportsAccepted, int ReportsRejected, UploadStatusReport[] Rejected);
 
     public sealed class UploadForm
     {

@@ -104,6 +104,19 @@ export interface TreeResponse {
   /** Sample of unmatched paths (capped server-side); unmatchedTotal is the real count. */
   unmatchedFiles: string[];
   unmatchedTotal: number;
+  /**
+   * Reports the server could not use, sent only when the tree is empty (#417).
+   * A build that measured nothing is an error state, not an empty report —
+   * rendering it blank reads as a service outage rather than a fixable upload.
+   */
+  rejectedReports?: RejectedReport[] | null;
+}
+
+export interface RejectedReport {
+  fileName: string;
+  /** empty | unrecognizedFormat | malformed | truncated | tooLarge | noFiles | missing */
+  reason?: string | null;
+  detail?: string | null;
 }
 
 /** Matches bs-hierarchy-chart's HierarchyNode: id = repo path ('/' for root). */

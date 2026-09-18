@@ -23,6 +23,18 @@ public class FileCoverage
     public bool Matched { get; set; } = true;
 
     /// <summary>
+    /// The path exactly as the report supplied it, kept only when it differs from
+    /// <see cref="Path"/> — so an unmatched file can be diagnosed without re-running
+    /// the upload (#417). Issue #415 cost a day partly because the server's view of
+    /// what the client actually sent was unrecoverable after normalisation.
+    ///
+    /// Diagnostic only. <see cref="Path"/> remains the stored path and the hash
+    /// identity: <see cref="DocumentId"/> derives from it, so this is an addition
+    /// and never a substitute.
+    /// </summary>
+    public string? RawPath { get; set; }
+
+    /// <summary>
     /// The report format (parser FormatName) that produced Branches. Branch
     /// identity schemes differ per format (lcov reports real block/branch ids;
     /// Cobertura and JaCoCo synthesize edges), so branch detail only merges

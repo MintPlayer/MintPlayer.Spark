@@ -10,10 +10,12 @@ public sealed class LcovParser : ICoverageParser
 {
     public string FormatName => "lcov";
 
-    public bool CanParse(string content)
+    public bool CanParse(ReportContent content)
     {
-        // First non-empty line starts with TN: or SF: per the format.
-        foreach (var line in EnumerateLines(content))
+        // First non-empty line starts with TN: or SF: per the format. A BOM used to
+        // defeat this ordinal match and silently skip the whole file (#415's
+        // lcov-shaped twin); ReportContent strips it before we get here.
+        foreach (var line in EnumerateLines(content.Text))
         {
             if (line.Length == 0) continue;
             return line.StartsWith("TN:", StringComparison.Ordinal)
@@ -22,12 +24,12 @@ public sealed class LcovParser : ICoverageParser
         return false;
     }
 
-    public ParseResult Parse(string content)
+    public ParseResult Parse(ReportContent content)
     {
         var files = new List<ParsedFile>();
         ParsedFile? current = null;
 
-        foreach (var rawLine in EnumerateLines(content))
+        foreach (var rawLine in EnumerateLines(content.Text))
         {
             var line = rawLine.TrimEnd();
             if (line.Length == 0) continue;
