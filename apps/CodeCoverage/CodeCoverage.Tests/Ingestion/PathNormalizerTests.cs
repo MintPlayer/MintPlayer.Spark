@@ -89,4 +89,79 @@ public class PathNormalizerTests
         path.Should().Be("src/Calculator.cs");
         matched.Should().BeTrue();
     }
+
+    // ---------------------------------------------------------------------
+    // #417's separator table. Explicitly NOT a bug fix: the #415 A/B proved the
+    // separators were never the cause — the same absolute backslash paths resolved
+    // all 79 files once the BOM was gone. These pin behaviour that already worked,
+    // so the next investigator reads a test instead of re-deriving it.
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void A_windows_absolute_report_path_resolves()
+    {
+        var normalizer = new PathNormalizer(@"D:\a\repo\repo", [], FileList);
+
+        normalizer.Normalize(@"D:\a\repo\repo\src\Calculator.cs")
+            .Should().Be(("src/Calculator.cs", true));
+    }
+
+    [Fact]
+    public void A_posix_absolute_report_path_resolves()
+    {
+        var normalizer = new PathNormalizer("/home/runner/work/repo/repo", [], FileList);
+
+        normalizer.Normalize("/home/runner/work/repo/repo/src/Calculator.cs")
+            .Should().Be(("src/Calculator.cs", true));
+    }
+
+    [Fact]
+    public void Mixed_separators_within_one_report_all_resolve()
+    {
+        var normalizer = new PathNormalizer(@"D:\a\repo\repo", [], FileList);
+
+        normalizer.Normalize(@"D:\a\repo\repo\src\Calculator.cs").Should().Be(("src/Calculator.cs", true));
+        normalizer.Normalize("D:/a/repo/repo/src/util.ts").Should().Be(("src/util.ts", true));
+        normalizer.Normalize(@"src\Calculator.cs").Should().Be(("src/Calculator.cs", true));
+    }
+
+    [Fact]
+    public void An_already_relative_path_passes_through_untouched()
+    {
+        var normalizer = new PathNormalizer("/home/runner/work/repo/repo", [], FileList);
+
+        normalizer.Normalize("src/Calculator.cs").Should().Be(("src/Calculator.cs", true));
+    }
+
+    /// <summary>
+    /// The one real edge case raised on #417: a backslash is a legal character in a
+    /// POSIX filename, so <c>src/weird\name.cs</c> can genuinely be committed.
+    /// Unifying first would collide it with <c>src/weird/name.cs</c> and resolve to
+    /// the wrong file — silently, because both are "matched". The literal pass runs
+    /// first, so it resolves to itself.
+    /// </summary>
+    [Fact]
+    public void A_posix_filename_containing_a_backslash_resolves_to_itself()
+    {
+        string[] fileList = [@"src/weird\name.cs", "src/weird/name.cs"];
+        var normalizer = new PathNormalizer("/home/runner/work/repo/repo", [], fileList);
+
+        normalizer.Normalize(@"src/weird\name.cs").Should().Be((@"src/weird\name.cs", true));
+        normalizer.Normalize("src/weird/name.cs").Should().Be(("src/weird/name.cs", true));
+    }
+
+    /// <summary>
+    /// The literal pass must not shadow the common case. A Windows absolute path
+    /// cannot match the repository's file list literally, so it falls straight through
+    /// to the pipeline that has always handled it.
+    /// </summary>
+    [Fact]
+    public void The_literal_pass_does_not_shadow_a_windows_absolute_path()
+    {
+        string[] fileList = [@"src/weird\name.cs", "src/Calculator.cs"];
+        var normalizer = new PathNormalizer(@"D:\a\repo\repo", [], fileList);
+
+        normalizer.Normalize(@"D:\a\repo\repo\src\Calculator.cs")
+            .Should().Be(("src/Calculator.cs", true));
+    }
 }

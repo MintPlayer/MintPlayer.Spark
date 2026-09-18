@@ -41,20 +41,35 @@ public sealed class ReportContent
 
     public bool IsEmpty => Text.Length == 0;
 
-    public static ReportContent FromBytes(ReadOnlySpan<byte> bytes)
-    {
-        var encoding = DetectEncoding(bytes, out var preambleLength);
-        var text = encoding.GetString(bytes[preambleLength..]);
+    /// <summary>
+    /// For a caller that already holds text rather than the uploaded bytes. Applies
+    /// the same trimming so the two entry points cannot diverge — but it cannot
+    /// detect an encoding, which is why the ingest path uses
+    /// <see cref="FromBytes"/> and this exists mainly for tests and literals.
+    /// </summary>
+    public static ReportContent FromText(string text)
+        => new(Normalize(text), Encoding.UTF8.GetByteCount(text), new UTF8Encoding(false));
 
-        // A BOM can also survive a correct decode when the producer wrote one
-        // *and* declared the encoding (double preamble), so strip any remaining
-        // U+FEFF defensively rather than trusting the byte-level skip alone.
+    public static implicit operator ReportContent(string text) => FromText(text);
+
+    private static string Normalize(string text)
+    {
+        // A BOM can survive a correct decode when the producer wrote one *and*
+        // declared the encoding (double preamble), so strip any remaining U+FEFF
+        // defensively rather than trusting a byte-level skip alone.
         text = text.TrimStart('﻿');
 
         // Leading whitespace before <?xml is illegal in XML and some writers emit
         // it; trailing NUL padding comes from writers that pad to a block boundary.
         // Neither is fixed by parsing from a stream — both are trimmed here.
-        return new ReportContent(text.Trim('\0', ' ', '\t', '\r', '\n'), bytes.Length, encoding);
+        return text.Trim('\0', ' ', '\t', '\r', '\n');
+    }
+
+    public static ReportContent FromBytes(ReadOnlySpan<byte> bytes)
+    {
+        var encoding = DetectEncoding(bytes, out var preambleLength);
+        var text = encoding.GetString(bytes[preambleLength..]);
+        return new ReportContent(Normalize(text), bytes.Length, encoding);
     }
 
     /// <summary>
