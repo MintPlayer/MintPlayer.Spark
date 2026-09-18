@@ -88,17 +88,36 @@ public class UploadsControllerInputBoundsTests
         Assert.Contains("Too many report files", bad.Value!.ToString());
     }
 
+    /// <summary>
+    /// The bound must not fire at exactly the limit — an off-by-one here would reject
+    /// a legitimate monorepo upload.
+    ///
+    /// <para>Asserting on what the request does <i>not</i> say, rather than on how far
+    /// it gets: past this check the controller resolves a repository that does not
+    /// exist in this harness, so the outcome is a NotFound (or a throw, depending on
+    /// the resolver). Either is fine; what matters is that it is not the
+    /// too-many-reports rejection.</para>
+    /// </summary>
     [Fact]
-    public async Task A_report_count_at_the_limit_is_accepted_past_the_bound()
+    public async Task A_report_count_at_the_limit_is_not_rejected_by_the_bound()
     {
         var form = FormWith(0);
         for (var i = 0; i < 512; i++)
             ((FormFileCollection)form.Files).Add(Report($"report-{i}.info"));
 
-        // The bound must not fire at exactly the limit. It gets past this check and
-        // then fails on the null session, which is what proves it was not rejected
-        // here — an off-by-one would have returned BadRequest instead.
-        await Assert.ThrowsAnyAsync<Exception>(() => CreateController().Upload(form, CancellationToken.None));
+        ActionResult<UploadsController.UploadResponse>? result = null;
+        try
+        {
+            result = await CreateController().Upload(form, CancellationToken.None);
+        }
+        catch
+        {
+            // Got past the bound and failed further in — which is the point.
+            return;
+        }
+
+        if (result.Result is BadRequestObjectResult bad)
+            Assert.DoesNotContain("Too many report files", bad.Value!.ToString());
     }
 
     [Fact]
