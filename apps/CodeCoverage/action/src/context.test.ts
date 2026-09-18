@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { collectContext } from './context';
+import { toPosixPath } from './paths';
 
 // `@actions/github` exports a `context` singleton built from the environment at
 // import time, so resetting modules cannot rebuild it — the singleton becomes a
@@ -148,5 +149,16 @@ describe('collectContext', () => {
     const ctx = collectWith({ GITHUB_EVENT_NAME: 'push' });
 
     expect(ctx.rootDir).toBe('/workspace');
+  });
+
+  // rootDir stays in the runner's native form here on purpose: it is handed to
+  // glob, fs and `git -C`, which all want native paths. It is converted to
+  // posix at the point it crosses the wire, which is asserted in rebase.test.ts.
+  // Written literally so this holds on a Linux CI runner too.
+  it('keeps a windows workspace in its native form for local use', () => {
+    const ctx = collectWith({ GITHUB_EVENT_NAME: 'push', GITHUB_WORKSPACE: 'D:\\a\\repo\\repo' });
+
+    expect(ctx.rootDir).toBe('D:\\a\\repo\\repo');
+    expect(toPosixPath(ctx.rootDir)).toBe('D:/a/repo/repo');
   });
 });

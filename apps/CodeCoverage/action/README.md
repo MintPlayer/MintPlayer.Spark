@@ -17,6 +17,44 @@ build to finalize and publishes the result as step outputs.
 The full input and output surface is declared in [`action.yml`](action.yml); the HTTP contract it
 speaks is [`docs/code-coverage/upload-api.md`](../../../docs/code-coverage/upload-api.md).
 
+## The path contract
+
+**A workflow never has to think about path separators or absolute paths.** Whatever your collector
+writes — backslashes on a Windows runner, absolute paths rooted at `GITHUB_WORKSPACE`, or paths that
+are already repository-relative — the action rebases them to repository-relative forward-slash form
+before uploading, so they resolve against `git ls-files` on the server.
+
+Concretely, the action owns all of this so you do not:
+
+- separators are unified to `/`, on every runner OS;
+- the `GITHUB_WORKSPACE` prefix is stripped, case-insensitively (a Windows collector and git can
+  disagree on the drive letter's case);
+- an already-relative report is passed through unchanged, and rebasing is idempotent;
+- formats covered: Cobertura/Clover `filename`, lcov `SF:`, JaCoCo `sourcefile`. Anything else is
+  uploaded byte-for-byte rather than guessed at.
+
+**Do not add a step that strips the workspace prefix or fixes separators.** `MintPlayer.DotnetDesktop.Tools`
+carried one (`tools/Rebase-CoveragePaths.ps1`) and it is obsolete:
+see [issue #415](https://github.com/MintPlayer/MintPlayer.Spark/issues/415).
+
+One thing the action does **not** do is *add* a prefix your reporter left out. Vitest, for instance,
+writes `SF:` paths relative to each project's own root, so `dock/index.ts` can be ambiguous across
+several libraries and the server drops it rather than guess. That needs a prefix the action cannot
+infer, and `mintplayer-ng-seo` rightly still handles it in its own workflow.
+
+### When paths still cannot be resolved
+
+A file the server cannot match to the repository is kept but **excluded from the percentage**, which
+used to make a wholly-unresolvable upload indistinguishable from a healthy one: accepted, finalized,
+green, and empty. It is now reported:
+
+- some files unmatched → a warning naming the count and a sample;
+- *every* file unmatched → the step fails when `fail-ci-if-error: true`, warns otherwise;
+- `files-matched` and `files-unmatched` outputs, so a workflow can assert on it directly.
+
+An upload carrying no report files at all is exempt — that is the `nx affected` carry-forward case,
+where every project was cached and the file list is the whole point.
+
 ## Why it lives here
 
 Beside the server it talks to, so a change to the upload API and the change to the action that
