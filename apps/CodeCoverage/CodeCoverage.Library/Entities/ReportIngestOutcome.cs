@@ -34,6 +34,26 @@ public partial class ReportIngestOutcome
 
     /// <summary>Human-readable detail — the parser's own message, bounded.</summary>
     public string? Detail { get; set; }
+
+    /// <summary>
+    /// Lines whose branch arms this report identified individually (lcov,
+    /// istanbul, Cobertura's &lt;conditions&gt;). These merge exactly across
+    /// reports: two reports covering different arms of one line union to both.
+    /// </summary>
+    public int BranchLinesIdentified { get; set; }
+
+    /// <summary>
+    /// Lines whose branch coverage this report gave only as a count (Cobertura's
+    /// condition-coverage, JaCoCo's mb/cb, Clover's truecount/falsecount).
+    /// <para>
+    /// These contribute a floor rather than named arms, so two such reports
+    /// covering *different* arms of one line merge to "at least N", never to
+    /// their union — the format destroyed the information before it reached us.
+    /// Surfaced because the previous model discarded such reports outright and
+    /// nothing said so; a number here explains a total that looks low.
+    /// </para>
+    /// </summary>
+    public int BranchLinesCountOnly { get; set; }
 }
 
 /// <summary>
@@ -45,7 +65,10 @@ public static class ReportRejectionReason
     /// <summary>The upload carried no bytes, or only whitespace.</summary>
     public const string Empty = "empty";
 
-    /// <summary>No parser recognised the format. Clover and Istanbul JSON land here.</summary>
+    /// <summary>
+    /// No parser recognised the format. Supported: lcov, Cobertura, JaCoCo, Clover and
+    /// Istanbul JSON — which is every format the action discovers by default.
+    /// </summary>
     public const string UnrecognizedFormat = "unrecognizedFormat";
 
     /// <summary>Recognised, but not well-formed — the generic parse failure.</summary>

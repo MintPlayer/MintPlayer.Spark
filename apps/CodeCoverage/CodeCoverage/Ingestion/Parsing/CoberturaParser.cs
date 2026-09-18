@@ -16,8 +16,18 @@ public sealed partial class CoberturaParser : ICoverageParser
 
     public bool CanParse(ReportContent content)
     {
-        var root = TryGetRootName(content.Text);
-        return root == "coverage";
+        if (TryGetRootName(content.Text) != "coverage") return false;
+
+        // Clover roots at <coverage> too. Matching on the root name alone meant
+        // a Clover report was claimed here, yielded no <class filename=> and so
+        // produced zero files — reported to the user as "noFiles, format
+        // cobertura" rather than as an unsupported format.
+        //
+        // The test is for Clover's markers rather than for Cobertura's <class,
+        // because a TRUNCATED Cobertura report has no <class either and must
+        // still be claimed here: it is a damaged report of a format we support,
+        // which is a different diagnosis from a format we do not.
+        return !LooksLikeClover(content.Text);
     }
 
     public ParseResult Parse(ReportContent content)
@@ -48,9 +58,27 @@ public sealed partial class CoberturaParser : ICoverageParser
                 if (!int.TryParse(line.Attribute("number")?.Value, out var number)) continue;
                 long.TryParse(line.Attribute("hits")?.Value, out var hits);
 
-                // Multiple classes for the same file describe distinct lines; a
-                // duplicated line is the same run, where AddLine accumulates.
                 file.AddLine(number, (int)Math.Min(hits, int.MaxValue));
+
+                // Prefer <conditions>, which carries per-condition identity, over
+                // the aggregated condition-coverage attribute, which is a bare
+                // count. gcovr and coverage.py emit the former; coverlet does not.
+                var conditions = line.Element("conditions")?.Elements("condition").ToList();
+                if (conditions is { Count: > 0 })
+                {
+                    foreach (var condition in conditions)
+                    {
+                        var conditionNumber = condition.Attribute("number")?.Value;
+                        if (string.IsNullOrEmpty(conditionNumber)) continue;
+
+                        // coverage="50%" — the share of this condition's own arms
+                        // that were taken. Anything above 0 means it was reached.
+                        var coverage = condition.Attribute("coverage")?.Value?.TrimEnd('%');
+                        var taken = int.TryParse(coverage, out var percent) && percent > 0;
+                        file.AddBranchArm(number, $"condition:{conditionNumber}", taken);
+                    }
+                    continue;
+                }
 
                 var conditionCoverage = line.Attribute("condition-coverage")?.Value;
                 if (conditionCoverage is not null)
@@ -60,13 +88,9 @@ public sealed partial class CoberturaParser : ICoverageParser
                         && int.TryParse(match.Groups["covered"].Value, out var covered)
                         && int.TryParse(match.Groups["total"].Value, out var total))
                     {
-                        // Cobertura aggregates all conditions on the line into one
-                        // (covered/total) pair — model it as `total` synthetic
-                        // branch edges on block "0", `covered` of them taken.
-                        for (var i = 0; i < total; i++)
-                        {
-                            file.AddBranch(number, "0", i.ToString(), i < covered ? 1 : 0);
-                        }
+                        // Count only: (1/2) says how many arms were taken but not
+                        // which, so it contributes a floor and never an arm set.
+                        file.AddBranchCount(number, covered, total);
                     }
                 }
             }
@@ -80,6 +104,15 @@ public sealed partial class CoberturaParser : ICoverageParser
 
         return new ParseResult { Files = files, SourceRoots = sources };
     }
+
+    /// <summary>
+    /// Clover's two structural markers under a shared &lt;coverage&gt; root: the
+    /// version attribute every writer stamps, and the &lt;project&gt; element
+    /// Cobertura has no equivalent of.
+    /// </summary>
+    internal static bool LooksLikeClover(string content)
+        => content.Contains(" clover=\"", StringComparison.Ordinal)
+        || content.Contains("<project", StringComparison.Ordinal);
 
     internal static string? TryGetRootName(string content)
     {

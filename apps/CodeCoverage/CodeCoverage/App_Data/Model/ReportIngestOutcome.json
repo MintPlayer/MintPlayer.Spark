@@ -8,6 +8,42 @@
     "groups": [],
     "attributes": [
       {
+        "id": "9f21b525-5f63-4404-a40d-7593d3fbf6b4",
+        "name": "BranchLinesCountOnly",
+        "label": {
+          "en": "Branch Lines Count Only"
+        },
+        "description": {
+          "en": "Lines whose branch coverage this report gave only as a count (Cobertura's condition-coverage, JaCoCo's mb/cb, Clover's truecount/falsecount).\nThese contribute a floor rather than named arms, so two such reports covering *different* arms of one line merge to \"at least N\", never to their union — the format destroyed the information before it reached us. Surfaced because the previous model discarded such reports outright and nothing said so; a number here explains a total that looks low."
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "05268f37-ff22-483d-ac63-4801dcf1ead0",
+        "name": "BranchLinesIdentified",
+        "label": {
+          "en": "Branch Lines Identified"
+        },
+        "description": {
+          "en": "Lines whose branch arms this report identified individually (lcov, istanbul, Cobertura's <conditions>). These merge exactly across reports: two reports covering different arms of one line union to both."
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
         "id": "721f0d05-a764-4bf0-a98f-dc6a821eda5a",
         "name": "Detail",
         "label": {

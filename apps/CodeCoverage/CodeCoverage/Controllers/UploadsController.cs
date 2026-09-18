@@ -95,6 +95,11 @@ public partial class UploadsController : ControllerBase
         // file was rejected and why), and a CoverageSummary on EVERY terminal build —
         // zeroed rather than null — so files-count is "0" and never the empty string.
         "ingest-outcomes",
+        // #420. Branch data from every supported format merges into one result,
+        // and the stored result does not depend on the order reports arrive in,
+        // so a client may upload several formats for one commit without one
+        // silently shadowing another. Also implies Clover and Istanbul parse.
+        "cross-format-branches",
     ];
 
     public sealed record UploadResponse(string BuildId, string SessionId);

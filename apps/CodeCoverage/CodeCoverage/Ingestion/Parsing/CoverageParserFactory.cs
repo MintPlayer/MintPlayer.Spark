@@ -16,11 +16,21 @@ public interface ICoverageParserFactory
 [Register(typeof(ICoverageParserFactory), ServiceLifetime.Singleton)]
 public partial class CoverageParserFactory : ICoverageParserFactory
 {
+    /// <summary>
+    /// Order matters where roots collide. Clover and Cobertura both root at
+    /// &lt;coverage&gt;, so Clover is probed first and Cobertura additionally
+    /// requires &lt;class — a Clover report used to be claimed by Cobertura,
+    /// parse to zero files and be rejected as "noFiles" instead of as an
+    /// unsupported format. Istanbul is last because it is the only JSON parser
+    /// and should never be probed against an XML report.
+    /// </summary>
     private static readonly ICoverageParser[] parsers =
     [
         new LcovParser(),
+        new CloverParser(),
         new CoberturaParser(),
         new JaCoCoParser(),
+        new IstanbulParser(),
     ];
 
     public ICoverageParser? Resolve(ReportContent content)

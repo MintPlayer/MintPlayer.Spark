@@ -177,7 +177,7 @@ known**, never "nothing was rejected".
 | `reason` | Means |
 |---|---|
 | `empty` | The file carried no bytes, or nothing once decoded. |
-| `unrecognizedFormat` | No parser recognised it. Supported: Cobertura, JaCoCo, LCOV. **Clover and Istanbul `coverage-final.json` land here** — the action's default globs discover both and neither has a parser. |
+| `unrecognizedFormat` | No parser recognised it. Supported: Cobertura, JaCoCo, LCOV, Clover, Istanbul `coverage-final.json`. |
 | `malformed` | Recognised by its root element, then not well-formed. |
 | `truncated` | The document ends mid-element — typically a CI job killed while writing it. |
 | `tooLarge` | Exceeded the decompressed-size or document bound. |

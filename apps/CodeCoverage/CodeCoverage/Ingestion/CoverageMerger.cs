@@ -4,24 +4,30 @@ using CodeCoverage.Ingestion.Parsing;
 namespace CodeCoverage.Ingestion;
 
 /// <summary>
-/// Merge semantics: MAX, never sum. A retried job, a re-run attempt, or the
-/// same file uploaded twice must not inflate counts — max is idempotent under
-/// all three. Branches merge per (line, block, branch) key WITHIN one report
-/// format only: identity schemes differ across formats (lcov's real ids vs
-/// Cobertura/JaCoCo's synthesized "0"/index edges), so a session in another
-/// format contributes line status but never branch detail. Line status is
-/// recomputed from merged hits + the surviving branch set.
+/// Merge semantics: MAX and UNION, never sum. A retried job, a re-run attempt,
+/// or the same file uploaded twice must not inflate counts — both operations are
+/// idempotent under all three.
+/// <para>
+/// Branches merge across report formats, not within one. Each line keeps an arm
+/// SET from formats that identify arms and a FLOOR from formats that only count
+/// them (see <see cref="LineBranchCoverage"/>), and merging unions the sets and
+/// maxes the floors and arities. Because union and max are commutative and
+/// associative, <b>the stored result does not depend on upload order</b> — the
+/// property the old per-format guard violated by keeping whichever format
+/// arrived first and discarding the rest.
+/// </para>
+/// <para>Line status is recomputed from merged hits plus the merged branch set.</para>
 /// </summary>
 public static class CoverageMerger
 {
-    public static void MergeInto(FileCoverage target, ParsedFile parsed, string formatName)
+    public static void MergeInto(FileCoverage target, ParsedFile parsed)
     {
         var lines = target.Lines.ToDictionary(l => l.Number);
         foreach (var (number, parsedLine) in parsed.Lines)
         {
             if (lines.TryGetValue(number, out var existing))
             {
-                existing.Hits = MaxNullable(existing.Hits, parsedLine.Hits);
+                existing.Hits = ParsedFile.MaxHits(existing.Hits, parsedLine.Hits);
                 existing.Status = (LineStatus)Math.Max((int)existing.Status, (int)parsedLine.Status);
             }
             else
@@ -30,51 +36,32 @@ public static class CoverageMerger
             }
         }
 
-        var branches = target.Branches.ToDictionary(b => (b.Line, b.BlockId, b.BranchId));
-        if (parsed.Branches.Count > 0)
+        var branches = target.Branches.ToDictionary(b => b.Line);
+        foreach (var (line, parsedBranches) in parsed.Branches)
         {
-            if (branches.Count == 0)
-            {
-                target.BranchFormat = formatName;
-            }
-            // Pre-existing documents without a stamp adopt the first format seen.
-            target.BranchFormat ??= formatName;
+            if (!branches.TryGetValue(line, out var existing))
+                branches[line] = existing = new LineBranchCoverage { Line = line };
 
-            if (target.BranchFormat == formatName)
-            {
-                foreach (var ((line, block, branch), taken) in parsed.Branches)
-                {
-                    if (branches.TryGetValue((line, block, branch), out var existing))
-                    {
-                        existing.Taken = MaxNullable(existing.Taken, taken);
-                    }
-                    else
-                    {
-                        branches[(line, block, branch)] = new BranchCoverage { Line = line, BlockId = block, BranchId = branch, Taken = taken };
-                    }
-                }
-            }
-            // else: different format — its branch identities are meaningless
-            // against the existing set; the lines merged above still count.
+            existing.Arity = Math.Max(existing.Arity, parsedBranches.Arity);
+            existing.Floor = Math.Max(existing.Floor, parsedBranches.Floor);
+            existing.TakenArms = [.. existing.TakenArms.Union(parsedBranches.TakenArms, StringComparer.Ordinal).Order(StringComparer.Ordinal)];
         }
 
-        // A line that was partial can become fully covered once another session
-        // takes the remaining branches — recompute from the merged branch set.
-        var partialLines = branches.Values
-            .GroupBy(b => b.Line)
-            .Where(g => g.Any(b => b.Taken is null or 0))
-            .Select(g => g.Key)
-            .ToHashSet();
-
+        // A line that was partial can become fully covered once another report
+        // takes the remaining arms — recompute from the merged branch set.
         foreach (var line in lines.Values)
         {
             var executed = line.Hits is > 0 || (line.Hits is null && line.Status != LineStatus.NotCovered);
             if (executed)
-                line.Status = partialLines.Contains(line.Number) ? LineStatus.PartiallyCovered : LineStatus.Covered;
+            {
+                line.Status = branches.TryGetValue(line.Number, out var lineBranches) && lineBranches.IsPartial
+                    ? LineStatus.PartiallyCovered
+                    : LineStatus.Covered;
+            }
         }
 
         target.Lines = [.. lines.Values.OrderBy(l => l.Number)];
-        target.Branches = [.. branches.Values.OrderBy(b => b.Line).ThenBy(b => b.BlockId).ThenBy(b => b.BranchId)];
+        target.Branches = [.. branches.Values.OrderBy(b => b.Line)];
     }
 
     /// <summary>
@@ -88,9 +75,17 @@ public static class CoverageMerger
         foreach (var line in source.Lines)
             parsed.Lines[line.Number] = new ParsedLine(line.Hits, line.Status);
         foreach (var branch in source.Branches)
-            parsed.Branches[(branch.Line, branch.BlockId, branch.BranchId)] = branch.Taken;
+        {
+            var parsedBranches = new ParsedBranches { Arity = branch.Arity, Floor = branch.Floor };
+            foreach (var arm in branch.TakenArms)
+            {
+                parsedBranches.Arms.Add(arm);
+                parsedBranches.TakenArms.Add(arm);
+            }
+            parsed.Branches[branch.Line] = parsedBranches;
+        }
 
-        MergeInto(target, parsed, source.BranchFormat ?? target.BranchFormat ?? "unknown");
+        MergeInto(target, parsed);
         target.Matched |= source.Matched;
         target.BlobOid ??= source.BlobOid;
     }
@@ -102,10 +97,15 @@ public static class CoverageMerger
             BuildId = source.BuildId,
             Path = source.Path,
             Matched = source.Matched,
-            BranchFormat = source.BranchFormat,
             BlobOid = source.BlobOid,
             Lines = [.. source.Lines.Select(l => new LineCoverage { Number = l.Number, Hits = l.Hits, Status = l.Status })],
-            Branches = [.. source.Branches.Select(b => new BranchCoverage { Line = b.Line, BlockId = b.BlockId, BranchId = b.BranchId, Taken = b.Taken })],
+            Branches = [.. source.Branches.Select(b => new LineBranchCoverage
+            {
+                Line = b.Line,
+                Arity = b.Arity,
+                Floor = b.Floor,
+                TakenArms = [.. b.TakenArms],
+            })],
         };
 
     public static CoverageSummary Summarize(IEnumerable<FileCoverage> files)
@@ -116,12 +116,9 @@ public static class CoverageMerger
             summary.FilesCount++;
             summary.LinesCoverable += file.Lines.Count;
             summary.LinesCovered += file.Lines.Count(l => l.Status != LineStatus.NotCovered);
-            summary.BranchesTotal += file.Branches.Count;
-            summary.BranchesCovered += file.Branches.Count(b => b.Taken is > 0);
+            summary.BranchesTotal += file.Branches.Sum(b => b.Arity);
+            summary.BranchesCovered += file.Branches.Sum(b => b.Covered);
         }
         return summary;
     }
-
-    private static int? MaxNullable(int? a, int? b)
-        => a is null ? b : b is null ? a : Math.Max(a.Value, b.Value);
 }

@@ -73,9 +73,9 @@ was green ([#415](https://github.com/MintPlayer/MintPlayer.Spark/issues/415)).
   after uploading and warns if the server already reports errors. It never waits and never fails the
   step on its own — a workflow that did not ask to wait does not start waiting.
 
-Reports the action discovers but this server cannot parse — Clover and Istanbul's
-`coverage-final.json` — are reported as `unrecognizedFormat` rather than silently contributing
-nothing.
+Every format the action discovers by default is parsed by the server: lcov, Cobertura, JaCoCo,
+Clover and Istanbul's `coverage-final.json`. Anything else is reported as `unrecognizedFormat`
+rather than silently contributing nothing.
 
 ## Why it lives here
 

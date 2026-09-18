@@ -136,9 +136,8 @@ export interface LineCoverageInfo {
 
 export interface BranchCoverageInfo {
   line: number;
-  blockId: string;
-  branchId: string;
-  taken?: number;
+  covered: number;
+  total: number;
 }
 
 export interface FileDetail {

@@ -58,12 +58,10 @@ public sealed class JaCoCoParser : ICoverageParser
 
                     file.AddLine(number, coveredInstructions == 0 ? 0 : null);
 
-                    // Same synthetic-edge model as Cobertura's (covered/total) pair.
-                    var totalBranches = missedBranches + coveredBranches;
-                    for (var i = 0; i < totalBranches; i++)
-                    {
-                        file.AddBranch(number, "0", i.ToString(), i < coveredBranches ? 1 : 0);
-                    }
+                    // mb/cb are bare counts with no arm identity, exactly like
+                    // Cobertura's condition-coverage — a floor, never an arm set.
+                    if (missedBranches + coveredBranches > 0)
+                        file.AddBranchCount(number, coveredBranches, missedBranches + coveredBranches);
                 }
             }
         }

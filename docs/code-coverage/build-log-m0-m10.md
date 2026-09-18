@@ -230,9 +230,13 @@ Status legend: ✅ built 2026-08-12 (`feature/m10-m9-backlog`) · ⏳ deferred (
     gate on `GET /user/memberships/orgs/{org}` role=admin — PRD §6.3.
 30. ⏳ Reprocess-after-parser-fix endpoint/job replaying the retained raw attachments
     (PRD §5 keeps them for exactly this; no trigger exists yet).
-31. ✅ Cross-format branch-merge guard (`FileCoverage.BranchFormat`): branch detail merges
-    within one report format only; a session in another format contributes line status only
-    (PRD §5's rule, previously unimplemented). ✅ Uploads rate-limiter partitions on the
+31. ❌ **Reversed by #420.** Cross-format branch-merge guard (`FileCoverage.BranchFormat`): branch
+    detail merged within one report format only; a session in another format contributed line
+    status only (PRD §5's rule, previously unimplemented). The guard was wrong in principle —
+    it made the stored result depend on upload order and discarded a later format's branch data
+    silently — and wrong in detail, since Cobertura and JaCoCo synthesize identical positional
+    edge ids and so dropped each other. Branch identity is a property of a *line* in a report,
+    not of a format, and is now modelled as an arm set plus a floor. ✅ Uploads rate-limiter partitions on the
     presented `covt_` token hash again (the limiter runs before authentication, so the old
     claims-based key silently degraded to per-IP). ✅ Badge `Cache-Control` no longer keyed
     on repo existence (was an existence oracle).

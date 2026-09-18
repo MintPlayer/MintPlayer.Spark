@@ -72,8 +72,12 @@ public class CoberturaParserTests
         var file = parser.Parse(Sample).Files.Single();
 
         file.Lines[12].Status.Should().Be(LineStatus.PartiallyCovered);
-        file.Branches[(12, "0", "0")].Should().Be(1);
-        file.Branches[(12, "0", "1")].Should().Be(0);
+        // condition-coverage="(1/2)" is a count with no arm identity, so it
+        // contributes a floor and names nothing.
+        file.Branches[12].Arity.Should().Be(2);
+        file.Branches[12].Floor.Should().Be(1);
+        file.Branches[12].TakenArms.Should().BeEmpty();
+        file.Branches[12].Covered.Should().Be(1);
 
         file.Lines[14].Status.Should().Be(LineStatus.NotCovered);
         file.Lines[20].Status.Should().Be(LineStatus.Covered);

@@ -416,6 +416,24 @@
         "rules": []
       },
       {
+        "id": "3f0866de-6144-4059-beff-df39c1909480",
+        "name": "ReportsReapedAtUtc",
+        "label": {
+          "en": "Reports Reaped At Utc"
+        },
+        "description": {
+          "en": "When the uploaded report attachments were deleted by the retention sweep, or null while they are still held.\nRaw reports are inert once parsed — nothing reads them again, and the coverage they described is fully materialised into FileCoverage — so they are the cheapest thing to drop as the database grows. The filelist attachment is NOT reaped: BuildComparer and CommitAssembler still read it when this build serves as a comparison base.\nThis marker exists because a reaped build, unlike a deleted document, stays in every query that found it — without it the sweep would revisit the same builds forever. It also lets a future reprocess-from-attachments job say \"this build cannot be replayed\" instead of silently finding nothing."
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 15,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "9f2e7d10-4b8c-4e35-a1d6-7c3b9e04f512",
         "name": "Run",
         "label": {
