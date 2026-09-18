@@ -2,7 +2,7 @@
 
 **Issue**: [#417](https://github.com/MintPlayer/MintPlayer.Spark/issues/417)
 **Title**: CodeCoverage: accept every valid report, reject invalid ones loudly, never silently succeed
-**Status**: Draft
+**Status**: Implemented — PR [#418](https://github.com/MintPlayer/MintPlayer.Spark/pull/418), CI green. One requirement partial (FR-16) and three items blocked on deployment; see *Status*.
 **Created**: 2026-09-18
 **Last Updated**: 2026-09-18
 
@@ -40,6 +40,35 @@ The issue also asks — and Pieterjan asked directly — whether a **database mi
 convert stored backslash paths to forward slashes. **M0b is a spike that answers that with a query
 rather than an assumption.** The code reading says no (see *The migration question* below); the spike
 exists because "the code says it cannot happen" is exactly the class of claim #415 punished twice.
+
+---
+
+## Status
+
+Everything that does not require the server to be deployed is implemented, tested and green on
+PR #418. What follows is the honest accounting, because a PRD whose boxes are all ticked is
+less useful than one that says where it stopped.
+
+| | |
+|---|---|
+| **Done** | FR-1 … FR-15, FR-17. M0, M0b, M2, M3, M4, M5, M6 (code half), M7 (bounds half). |
+| **Partial** | **FR-16** — delivered diagnosis, not durability. See the requirement. |
+| **Skipped, deliberately** | **M1**, the one-line BOM stopgap. Its entire value was shipping in minutes; the one-PR rule means it would ship at the same moment as M2, so it is pure duplicate code. Recorded rather than silently dropped. |
+| **Blocked on deploy** | The #415 acceptance numbers, deleting the consumer's BOM strip, and the tag move. None is blocked on work. |
+
+### What the spikes changed about the plan
+
+Three of M0's findings contradicted the issue's own prescription, and each is pinned by a test so
+it cannot be re-adopted by a future reader of the issue:
+
+1. **`DtdProcessing.Prohibit` would reject every JaCoCo report** (they all ship a DOCTYPE).
+   `Ignore` is the correct setting — FR-9 is restated accordingly.
+2. **Entity expansion was live**: 600 bytes expanded to 500,000 characters through the shipped
+   parser, and `XDocument.Load(Stream)` did not change that. A real vulnerability, not a
+   theoretical one.
+3. **Parsing from a stream does not cover leading whitespace or trailing NULs**, contrary to
+   "that one change covers most of the list below for free". Both still throw; both need an
+   explicit trim.
 
 ---
 
@@ -397,71 +426,105 @@ sniffing must not consume a non-seekable stream — pass a `ReadOnlyMemory<byte>
 
 ### Must Have (P0)
 
-- [ ] **FR-1**: A report byte-identical to a valid one except for a leading UTF-8 BOM parses
+- [x] **FR-1**: A report byte-identical to a valid one except for a leading UTF-8 BOM parses
       identically, for every supported format. This is #415.
-- [ ] **FR-2**: Uploaded bytes are parsed from the byte stream, not from a pre-decoded string, at the
+      *Done: `ReportContentTests.Utf8_bom_parses_identically_to_the_same_bytes_without_one`, and the lcov twin beside it.*
+- [x] **FR-2**: Uploaded bytes are parsed from the byte stream, not from a pre-decoded string, at the
       single boundary where they become text — so BOM handling, declared `encoding=`, UTF-16 and
       leading whitespace are covered once rather than per format.
-- [ ] **FR-3**: An unparseable, empty or truncated report is rejected with a **named reason and the
+      *Done: `Ingestion/Parsing/ReportContent.cs`. Note the correction: it decodes **and trims** rather than handing a reader the raw stream, because a stream fixes neither leading whitespace nor trailing NULs.*
+- [x] **FR-3**: An unparseable, empty or truncated report is rejected with a **named reason and the
       file name**, from a closed machine-readable set, surfaced in `GET /api/uploads/status`.
-- [ ] **FR-4**: One rejected report does not discard the others. A batch of six with one truncated
+      *Done: `ReportIngestOutcome` + `UploadStatusIngest`; reasons covered by `ReportIngestOutcomeTests.A_rejected_report_names_its_reason`.*
+- [x] **FR-4**: One rejected report does not discard the others. A batch of six with one truncated
       ingests five and reports the sixth. Only an all-rejected session is `Failed`.
-- [ ] **FR-5**: A report whose format is not recognised — including Clover and `coverage-final.json`,
+      *Done: `ReportIngestOutcomeTests.One_truncated_report_does_not_discard_the_others` — three reports in, two ingested, the third named.*
+- [x] **FR-5**: A report whose format is not recognised — including Clover and `coverage-final.json`,
       which the action discovers and uploads today — is reported as a named rejection rather than
       warned about server-side and forgotten.
-- [ ] **FR-6**: `files-count` is populated on every terminal build, including failures. **Empty and
+      *Done: Clover and Istanbul JSON now land in `unrecognizedFormat` instead of being claimed by `CoberturaParser` on its shared `coverage` root element.*
+- [x] **FR-6**: `files-count` is populated on every terminal build, including failures. **Empty and
       zero are not different things.** A terminal build always carries a `CoverageSummary`.
-- [ ] **FR-7**: A build that measured zero files is presented as an error state with a reason — in
+      *Done: `BuildFinalizer` always writes a summary; the action emits `0` on any terminal state even against an older server. Covered by `ingest.test.ts`.*
+- [x] **FR-7**: A build that measured zero files is presented as an error state with a reason — in
       the status response, in the action's log, and on the commit page — not as an empty report.
-- [ ] **FR-8**: `CompleteWithErrors` reaches a consumer **without** opting into `wait-for-finalize`:
+      *Done: Status response, action warnings, and the commit page's named-rejection panel.*
+- [x] **FR-8**: `CompleteWithErrors` reaches a consumer **without** opting into `wait-for-finalize`:
       the action emits a non-fatal warning annotation whenever the server reports errors.
-- [ ] **FR-9**: DTD processing and external entity resolution are disabled on every XML parse
-      (`DtdProcessing.Prohibit`, `XmlResolver = null`, `MaxCharactersFromEntities = 0`). A report
+      *Done: `peekForIngestErrors` — one bounded status read, warning only, never a wait the consumer did not ask for.*
+- [x] **FR-9** *(restated after M0 — the issue's own prescription was wrong)*: external entity
+      resolution and entity expansion are disabled on every XML parse, via
+      **`DtdProcessing.Ignore`**, `XmlResolver = null` and `MaxCharactersFromEntities = 0`. A report
       carrying a DTD with an external entity resolves no entity and makes no outbound request.
-- [ ] **FR-10**: Decompressed size is bounded, so a small upload cannot expand into memory
+      *The issue specifies `DtdProcessing.Prohibit`. Measured: that rejects **every real JaCoCo
+      report**, because JaCoCo writes `<!DOCTYPE report PUBLIC "-//JACOCO//DTD Report 1.1//EN">` and
+      `Prohibit` fails the document outright. `Ignore` skips the DOCTYPE without declaring its
+      entities, which is the property actually wanted.
+      Done: `SafeXml`, pinned by `XmlIngestSecurityTests.A_real_jacoco_doctype_still_parses` — that
+      test exists specifically to stop `Prohibit` being adopted by a later reader of the issue.*
+- [x] **FR-10**: Decompressed size is bounded, so a small upload cannot expand into memory
       exhaustion. Exceeding the bound is a named rejection (`tooLarge`), not a crash.
-- [ ] **FR-11**: The regression fixtures in the issue's table exist as tests, **byte-level** rather
+      *Done: `MaxDecompressedBytes` + `CopyBounded`. The controller's limit only ever bounded the
+      compressed body, so this was genuinely unbounded — see the entity-expansion finding under Status.*
+- [x] **FR-11**: The regression fixtures in the issue's table exist as tests, **byte-level** rather
       than pretty-printed, since the class lives below the syntax.
+      *Done: `ReportContentTests`, assembled from bytes rather than written as literals.*
 
 ### Should Have (P1)
 
-- [ ] **FR-12**: `PathNormalizer` tries the path **as received** first and only retries with
+- [x] **FR-12**: `PathNormalizer` tries the path **as received** first and only retries with
       separators unified if that fails, so a POSIX file genuinely named `src/weird\name.cs` resolves
       to itself rather than colliding with `src/weird/name.cs`.
-- [ ] **FR-13**: The raw report-supplied path is retained alongside the normalised one for diagnosis.
+      *Done: `PathNormalizerTests.A_posix_filename_containing_a_backslash_resolves_to_itself`. **This created the one case where a backslash can legitimately be stored** — see *Out of Scope*.*
+- [x] **FR-13**: The raw report-supplied path is retained alongside the normalised one for diagnosis.
       The parser already carries it (`Parsing/ParsedFile.cs:13` `RawPath`) and it is dropped at
       `ParseSessionRecipient.cs:74`; this is persisting a value that already exists, on unmatched
       files at minimum. The normalised path remains the stored path and the hash identity —
       `FileCoverage.DocumentId` depends on it, so this is an addition, never a swap.
-- [ ] **FR-16**: A parse worker that dies mid-handler does not strand the session. Today the only
-      floor is the 30-minute timeout sweep (`FinalizeBuildsCronJob.cs:59-63`), which flips a
-      still-`Pending` session to `Failed` — correct but slow, and it reports "never parsed" rather
-      than why. A crashed or redelivered parse must be safe to retry: the merge is already
-      max-based and therefore idempotent, so this is about redelivery and diagnosis, not about
-      rewriting the merge.
-- [ ] **FR-17**: The endpoint bounds its inputs before the work starts: attachment count per upload,
+      *Done: `FileCoverage.RawPath`, stored only when it differs from `Path`.*
+- [ ] **FR-16 — PARTIAL, and deliberately left open.** A parse worker that dies mid-handler does
+      not strand the session.
+      *Delivered: the **diagnosis** half. A timed-out session now distinguishes "the upload carried
+      no reports" from "N reports were never parsed", and states that retrying is safe — which it
+      is, because document ids are deterministic and the merge is max-based, so redelivery is
+      idempotent.*
+      *Not delivered: the **durability** half. The 30-minute sweep
+      (`FinalizeBuildsCronJob.cs:59-63`) is still the only floor, and nothing redelivers a message
+      whose handler died.*
+      *Why it stops here rather than being patched locally: the gap is Spark's messaging layer, where
+      the known stranded-`Processing` defect already lives — a message moved to `Processing` is
+      written by one thing and read by nothing, so any mid-handler crash strands it. Fixing that in
+      CodeCoverage would be a workaround for a framework bug, and the same defect is the likely
+      explanation for the 5,461 `SparkMessages` measured in production on 2026-09-18. It deserves one
+      fix in the right place, not two in the wrong one.*
+- [x] **FR-17**: The endpoint bounds its inputs before the work starts: attachment count per upload,
       per-file decompressed size (FR-10), and the `fileList` payload. A malformed or absent
       `rootDir`/`fileList` degrades to the documented fallback rather than throwing, and says so.
-- [ ] **FR-14**: `docs/code-coverage/upload-api.md` documents the narrowed `coverage` contract and
+      *Done: `MaxReportsPerUpload` / `MaxFileListChars`, checked before the repository is resolved.*
+- [x] **FR-14**: `docs/code-coverage/upload-api.md` documents the narrowed `coverage` contract and
       the per-file outcome shape, and the `capabilities` endpoint advertises the feature so an older
       client degrades knowingly.
-- [ ] **FR-15**: The `\`→`/` behaviour is covered by the fixture table from the #417 comment, so it
+      *Done: `upload-api.md` carries the `ingest{}` shape, the closed reason table and the narrowed `coverage` contract; `ingest-outcomes` is advertised in `capabilities`.*
+- [x] **FR-15**: The `\`→`/` behaviour is covered by the fixture table from the #417 comment, so it
       is explicit and regression-tested rather than re-derived by the next investigator.
+      *Done: the #417 comment's five-row table, plus the invariant test M0b left behind.*
 
 ---
 
 ## Timeline & Milestones
 
-### Milestone 0: Spike — the BOM fixture and the byte-level truth
+### Milestone 0: Spike — the BOM fixture and the byte-level truth ✅ **CLOSED**
 
-- [ ] Obtain a real BOM-carrying report from `Microsoft.Testing.Extensions.CodeCoverage` 18.11.2
-      (the consumer offered to attach one; otherwise reproduce locally). Commit it as a **byte-level**
-      fixture, BOM included, not a pretty-printed copy.
-- [ ] Confirm by test, before any fix, that today's pipeline fails on it with exactly
-      *"Data at the root level is invalid. Line 1, position 1."* — reproduce the reported failure
-      rather than assuming it, which is the standing lesson of #415.
-- [ ] Byte-sniff the other fixtures in the issue's table (UTF-16 LE, leading `\n\n`, 0 bytes,
-      truncated, lcov+BOM) and record which of today's three parsers each one reaches.
+- [x] A BOM-carrying cobertura fixture, assembled **from bytes** rather than written as a literal —
+      a C# string literal of a BOM-carrying report does not carry a BOM, which is the whole trap.
+      Reproduced locally rather than waiting on the consumer's attachment.
+- [x] **Reproduced before fixing**, and it failed with exactly
+      *"Data at the root level is invalid. Line 1, position 1."* — the reported string, not a
+      lookalike. This is the standing lesson of #415 and it was worth the ten minutes.
+- [x] Byte-sniffed the rest of the table. Three results changed the design and are recorded under
+      *Status*: `Prohibit` breaks JaCoCo, entity expansion was live, and stream parsing fixes
+      neither leading whitespace nor trailing NULs. Two more were quieter but mattered: UTF-16 and
+      an lcov BOM are claimed by **no** parser at all, so they were silent skips rather than throws.
 
 ### Milestone 0b: Spike — does a path migration exist to be done? ✅ **CLOSED, no migration**
 
@@ -474,104 +537,111 @@ sniffing must not consume a non-seekable stream — pass a `ReadOnlyMemory<byte>
       in case a future defect reintroduces the possibility, but nothing is built.
 - [x] `BuildSession.RootDir` stays raw: 318 values, 1 with a backslash, and that one is the #415
       upload itself — the most useful diagnostic value in the database.
-- [ ] Pin the invariant with a test: a backslash-bearing raw path never produces a backslash-bearing
-      stored path, on **both** the matched and the unmatched exit of `Normalize`.
+- [x] Invariant pinned by `PathNormalizerTests.A_backslash_never_reaches_the_stored_path`, over both
+      exits — the unmatched one is the easy one to regress, because an unmatched file is still stored.
+      **With one deliberate exception that FR-12 created**: a repository genuinely containing
+      `src/weird\name.cs` stores that path, because it is the file's real name. Named test, and the
+      consequence for the `%5C` blob URL is recorded in *Out of Scope*.
 
-### Milestone 1: The one-line unblock
+### Milestone 1: The one-line unblock — ⏭️ **SKIPPED, deliberately**
 
-- [ ] Strip a leading `U+FEFF` at `ParseSessionRecipient.cs:202` and ship it.
-- [ ] Verify against the M0 fixture, and against `MintPlayer.DotnetDesktop.Tools`: `state: Complete`,
-      `files-count: 79`, `line-rate: 56.9`.
-- [ ] This is deliberately a stopgap inside the same PR, not a substitute for M2. That repo's CI is
-      red on purpose right now; it should not stay red for the length of an interface change.
+- [x] **Not built, and the reasoning is the point.** The stopgap's entire value was shipping in
+      minutes while the interface change was reviewed. The one-PR rule means it ships at the same
+      moment as M2, so it would be duplicate code deleted in the same PR that added it.
+- [ ] The acceptance check it carried moves to M6: `state: Complete`, `files-count: 79`,
+      `line-rate: 56.9` from `MintPlayer.DotnetDesktop.Tools`, still owed, still blocked on deploy.
 
-### Milestone 2: Parse from bytes
+### Milestone 2: Parse from bytes — ✅ **DONE**
 
-- [ ] Change `ICoverageParser` to a byte-oriented contract; `ReadAttachmentText` →
-      `ReadAttachmentBytes` (`ParseSessionRecipient.cs:183-203`), gzip handling unchanged.
-- [ ] `CoberturaParser.cs:25` / `JaCoCoParser.cs:30`: `XDocument.Load(XmlReader.Create(stream, settings))`.
-- [ ] `LcovParser`: decode via `StreamReader` with BOM detection before the `SF:` match
-      (`LcovParser.cs:19-20` is the silent-zero path for lcov).
-- [ ] Byte-level `CanParse` sniffing that skips a BOM and leading whitespace, and **rewinds** — three
-      parsers sniff the same bytes in sequence (`CoverageParserFactory.cs:26-27`).
-- [ ] Delete the M1 stopgap in the same PR, once M2's tests cover it.
+- [x] `ICoverageParser` takes `ReportContent`; `ReadAttachmentText` → `ReadAttachmentBytes`, gzip
+      handling unchanged but now bounded.
+- [x] Both XML parsers go through `SafeXml.Load`.
+- [x] `LcovParser` sniffs BOM-free text, closing the silent-skip path.
+- [x] **Design correction.** The plan said "byte-level `CanParse` sniffing that rewinds", on the
+      assumption that parsers would read a shared stream. They do not: `ReportContent` decodes
+      **once**, up front, and every parser sniffs the resulting string — so there is no stream to
+      rewind and no ordering hazard between the three sniffs. Simpler than planned, and it removes
+      the trap the plan was written to avoid rather than managing it.
+- [x] No M1 stopgap to delete — M1 was skipped.
 
-### Milestone 3: Per-file outcomes and failure isolation
+### Milestone 3: Per-file outcomes and failure isolation — ✅ **DONE**
 
-- [ ] Wrap `parser.Parse` (`ParseSessionRecipient.cs:64`) per attachment; a throw rejects that file
-      and continues rather than failing the session at `:141`.
-- [ ] Turn the two silent `continue`s (`:53` missing attachment, `:60` unrecognised format) into
-      recorded rejections.
-- [ ] Add explicit rejections for empty (0 bytes) and truncated input, distinguished from each other
-      and from an unrecognised format.
-- [ ] Store the outcomes on `BuildSession`; return them per session from `GET /api/uploads/status`
-      (`UploadStatusSession`, `UploadsController.cs:505-506`).
-- [ ] Session is `Failed` only when every attachment was rejected (`:128-129` today).
+- [x] Per-attachment `try`; a throw rejects that file and continues.
+- [x] Both silent `continue`s are recorded rejections.
+- [x] `empty`, `truncated`, `tooLarge` and `noFiles` distinguished from `unrecognizedFormat`.
+- [x] Outcomes on `BuildSession.Reports`, returned as `sessions[].reports[]` and `ingest{}`.
+- [x] Session is `Failed` only when every attachment was rejected.
+- [x] **Added beyond the plan**: `Build.ClassifyState` also reads the outcomes, so a session that
+      ingested five of six reports is `Parsed` while the *build* is `CompleteWithErrors`. Without
+      that, a partial rejection would have been reported per-file and still presented as a clean
+      build — re-creating the headline defect one level up.
 
-### Milestone 4: Never silently succeed
+### Milestone 4: Never silently succeed — ✅ **DONE**
 
-- [ ] Write `build.Coverage` on every finalize, including an all-sessions-failed one, so a terminal
-      build always carries a summary — zeroed, not absent (`BuildFinalizer.cs:14-46`).
-- [ ] Action: `files-count: 0` rather than `''` on any terminal state (`main.ts:318`).
-- [ ] Action: warn on `CompleteWithErrors` **without** `wait-for-finalize` — a single cheap status
-      read after upload, or a non-fatal annotation from the accepted response, whichever the
-      capabilities contract supports.
-- [ ] Commit page: render a zero-measured-files build as a named rejection with the per-file reasons,
-      not as a blank page.
-- [ ] Advertise the narrowed `coverage` contract in `capabilities` (`UploadsController.cs:60, :68-77`)
-      and document it in `upload-api.md` (FR-14).
+- [x] `BuildFinalizer` writes a zeroed `CoverageSummary` on every finalize.
+- [x] Action emits `files-count: 0` on any terminal state, and keeps `''` while `InFlight` — because
+      asserting `0` there would be a different falsehood from the one being fixed.
+- [x] `peekForIngestErrors`: one bounded status read when not waiting, warning only.
+- [x] Commit page renders named rejections via `TreeResponse.rejectedReports`.
+- [x] `ingest-outcomes` advertised in `capabilities`; `upload-api.md` documents both the new shape
+      and the narrowed `coverage` contract.
 
-### Milestone 5: XML hardening
+### Milestone 5: XML hardening — ✅ **DONE**, with one substitution
 
-- [ ] `XmlReaderSettings { DtdProcessing = Prohibit, XmlResolver = null, MaxCharactersFromEntities = 0,
-      MaxCharactersInDocument = <bound> }` on both XML parsers.
-- [ ] Bound the bytes read out of the `GZipStream` (`ParseSessionRecipient.cs:194-200`); exceeding
-      the bound is a `tooLarge` rejection. Today only the **compressed** size is bounded
-      (`UploadsController.cs:44`, `:91`).
-- [ ] Tests: a DTD + external entity resolves nothing and makes no outbound request; a
-      billion-laughs-shaped body is rejected by name rather than by OOM.
+- [x] `SafeXml.Settings()` on both XML parsers — but **`DtdProcessing.Ignore`, not `Prohibit`**.
+      `Prohibit` rejects every real JaCoCo report; see FR-9.
+- [x] `GZipStream` output bounded by `CopyBounded`; exceeding it is a `tooLarge` rejection.
+- [x] `XmlIngestSecurityTests`: the external entity resolves nothing, billion-laughs is refused by
+      name, and a real JaCoCo DOCTYPE still parses.
 
-### Milestone 6: Separator ordering, fixtures, and consumer cleanup
+### Milestone 6: Separator ordering, fixtures, and consumer cleanup — 🟡 **code done, deploy owed**
 
-- [ ] `PathNormalizer.Normalize`: as-received first, unified second (FR-12), with the issue comment's
-      five-row fixture table including `src/weird\name.cs`.
-- [ ] `FileCoverage.RawPath` retained for diagnosis; `Path` and the hash identity unchanged (FR-13).
-- [ ] Delete the BOM-strip step from `MintPlayer/MintPlayer.DotnetDesktop.Tools#19` and re-run, in
-      **this** unit of work per the one-PR rule.
-- [ ] Move the `coverage-upload-v1` tag.
+- [x] `Normalize` tries the literal path before the unified one; the literal pass is an exact
+      file-list match only, so a Windows absolute path is untouched by construction rather than by
+      luck. Required keeping the file list in **both** forms — unifying it in the constructor had
+      already collided the two, which the plan did not anticipate.
+- [x] `FileCoverage.RawPath`; `Path` and the hash identity unchanged.
+- [x] The five-row fixture table, plus the invariant test M0b left behind.
+- [ ] **Blocked on deploy**: delete the BOM-strip step from `MintPlayer.DotnetDesktop.Tools#19`,
+      re-run, and confirm `files-count: 79` / `line-rate: 56.9`.
+- [ ] **Blocked on deploy**: move the `coverage-upload-v1` tag. It must not move before the server
+      can handle what the action stops compensating for.
 
-### Milestone 7: Durability and input bounds (FR-16, FR-17)
+### Milestone 7: Durability and input bounds — 🟡 **bounds done, durability partial**
 
-- [ ] Bound the attachment count per upload and the `fileList` payload at the controller, alongside
-      the existing `MaxReportBytes = 50 MB` (`UploadsController.cs:44`, `:91`) — which bounds the
-      **compressed wire body only**.
-- [ ] Make a redelivered or retried `ParseSessionMessage` safe and self-describing. The merge is
-      already idempotent (`CoverageMerger.MergeInto` is max-based, and document ids are
-      deterministic), so the work is redelivery on a crashed handler plus an error that says *why*
-      rather than the timeout sweep's "Never parsed before the build timed out"
-      (`FinalizeBuildsCronJob.cs:59-63`).
-- [ ] A missing or malformed `rootDir` / `fileList` degrades to the documented fallback
-      (`PathNormalizer.cs:47-48`) and records that it did, rather than silently producing the
-      `Matched: false` verdict that row E of the #415 table describes.
+- [x] `MaxReportsPerUpload` and `MaxFileListChars`, checked before the repository is resolved.
+- [x] The timeout sweep's message distinguishes "carried no reports" from "N reports never parsed",
+      and states that retrying is safe.
+- [x] Row E of the #415 table — no workspace root **and** no file list — is logged before any file
+      is parsed, instead of silently producing an empty build.
+- [ ] **NOT DONE: redelivery.** Nothing re-runs a `ParseSessionMessage` whose handler died; the
+      30-minute sweep is still the only floor. See FR-16 for why this stops here rather than being
+      patched locally — the gap is Spark's messaging layer, not this app.
 
 ---
 
 ## Open Questions
 
-- [ ] **Does M0b find any stored backslash?** — *Assumption: no, on the reading at
-      `PathNormalizer.cs:26`. The spike exists because #415 punished exactly this confidence twice,
-      and because the remedy would be expensive enough that guessing is not acceptable.*
-- [ ] **How does `CompleteWithErrors` reach a consumer who never sets `wait-for-finalize` (FR-8)?**
-      The upload response is a 202 issued before parsing starts, so it cannot carry the verdict. The
-      candidates are a single short status read after upload (cheap, but adds a request and a
-      partial wait) or leaving it to the next run. — *Assumption: one bounded status read, warning
-      only, never failing — a consumer who did not ask to wait must not start waiting.*
-- [ ] **Is a zeroed `CoverageSummary` on a terminal build safe for existing consumers?** —
-      *Assumption: yes, and it is the issue's explicit ask; mitigated by the capabilities flag and a
-      documented contract note rather than by silence.*
-- [ ] **Does the byte-oriented `CanParse` change format-detection precedence?** lcov is sniffed
-      first today (`CoverageParserFactory.cs:19-24`) and the order is load-bearing. — *Assumption:
-      order preserved exactly; tested by a fixture per format asserting which parser claims it.*
+All four closed. Kept with their answers rather than deleted — the assumption that turned out to be
+wrong is the most useful line in the section.
+
+- [x] ~~**Does M0b find any stored backslash?**~~ **No — measured 2026-09-18.** 194,548
+      `FileCoverages` paths and 193,420 `BuildTreeSummaries` paths, zero backslashes, over the whole
+      collection rather than a sample. The assumption held, but the *first* measurement of it did
+      not: it used `grep -c` against a single-line stream and returned a meaningless zero. See the
+      method note under *The migration question*.
+- [x] ~~**How does `CompleteWithErrors` reach a consumer who never sets `wait-for-finalize`?**~~
+      **One bounded status read**, exactly as assumed: `peekForIngestErrors` polls once with a zero
+      timeout, warns, and never fails the step or waits for a verdict that is not there yet.
+- [x] ~~**Is a zeroed `CoverageSummary` on a terminal build safe for existing consumers?**~~ **Yes,
+      and it is the narrowing the issue asked for.** Mitigated as planned: `ingest-outcomes` in
+      `capabilities`, and an explicit note in `upload-api.md` telling a client that read
+      `coverage === null` as "nothing measured" to read `coverage.filesCount === 0` instead.
+- [x] ~~**Does the byte-oriented `CanParse` change format-detection precedence?**~~ **The question
+      dissolved.** It assumed parsers would sniff a shared stream, which would have made order and
+      rewinding load-bearing. `ReportContent` decodes once, up front, and every parser sniffs the
+      resulting string — so there is no stream to consume, the existing order is untouched, and the
+      hazard the question was about cannot arise.
 
 ---
 

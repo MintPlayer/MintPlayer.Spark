@@ -3,7 +3,7 @@
 **Issue**: [#417](https://github.com/MintPlayer/MintPlayer.Spark/issues/417)
 **Type**: Bug / Hardening
 **Priority**: High — a production consumer's CI is deliberately red pending this fix
-**Status**: Draft
+**Status**: Implemented — PR [#418](https://github.com/MintPlayer/MintPlayer.Spark/pull/418), CI green. Phase 1 skipped deliberately; Phase 7's durability half and Phase 6's deploy half are open.
 **Created**: 2026-09-18
 **Last Updated**: 2026-09-18
 
@@ -173,67 +173,78 @@ Each is independently sufficient to hide a total failure, so each needs its own 
    the PRD's *Out of Scope* and pinned by a test, not fixed speculatively — production occurrences
    of that file shape are zero.
 
-### Phase 1: The one-line unblock (M1)
+### Phase 1: The one-line unblock (M1) — ⏭️ SKIPPED, deliberately
 
-8. Strip a leading `U+FEFF` at `ParseSessionRecipient.cs:202`. Ship it.
-9. Verify against the M0 fixture and against the consumer: `state: Complete`, `files-count: 79`,
-   `line-rate: 56.9`.
-10. Mark it in-code as a stopgap deleted by Phase 2. It exists because that repo is red *now* and
-    should not stay red for the length of an interface change.
+8. **Not built.** The stopgap's whole value was shipping in minutes ahead of the interface change.
+   Under the one-PR rule it ships at the same moment as Phase 2, so it would be duplicate code
+   added and deleted in one PR. Recorded rather than quietly dropped.
+9. The acceptance check it carried (`files-count: 79`, `line-rate: 56.9`) moves to Phase 6 and is
+   still owed — it needs the deploy, not more code.
 
-### Phase 2: Parse from bytes (M2)
+### Phase 2: Parse from bytes (M2) — ✅ DONE
 
-11. `ICoverageParser` → byte-oriented; `ReadAttachmentText` → `ReadAttachmentBytes`, gzip unchanged.
-12. `CoberturaParser.cs:25` and `JaCoCoParser.cs:30` → `XDocument.Load(XmlReader.Create(stream, settings))`.
-13. `LcovParser`: decode with BOM detection before the `SF:`/`TN:` match.
-14. Byte-level `CanParse` that skips a BOM and leading whitespace **and rewinds** between parsers.
-15. Delete the Phase 1 stopgap once Phase 2's tests cover it.
+11. ✅ `ICoverageParser` takes `ReportContent`; `ReadAttachmentBytes` replaces the text read.
+12. ✅ Both XML parsers go through `SafeXml.Load`.
+13. ✅ `LcovParser` sniffs BOM-free text.
+14. ✅ **Simpler than planned, and the plan's hazard does not exist.** Step 14 assumed parsers would
+    sniff a shared stream, needing a rewind between them. `ReportContent` decodes **once**, up front,
+    and each parser sniffs the resulting string — nothing is consumed, so there is nothing to rewind
+    and the sniff order is untouched.
+15. ✅ Nothing to delete — Phase 1 was skipped.
 
 ### Phase 3: Per-file outcomes and failure isolation (M3)
 
-16. Per-attachment `try` around `parser.Parse` (`:64`); a throw rejects that file and continues.
-17. Turn `:53` (missing attachment) and `:60` (unrecognised format) into recorded rejections.
-18. Add `empty` (0 bytes) and `truncated` as distinct named reasons.
-19. Persist outcomes on `BuildSession`; return them per session on `GET /api/uploads/status`
-    (`UploadStatusSession`, `UploadsController.cs:505-506`).
-20. Session is `Failed` only when **every** attachment was rejected.
+16. ✅ Per-attachment `try`; a throw rejects that file and continues.
+17. ✅ Both silent `continue`s are recorded rejections.
+18. ✅ Plus `tooLarge` and `noFiles`, which the plan did not name.
+19. ✅ `BuildSession.Reports`, returned as `sessions[].reports[]` and a build-level `ingest{}`.
+20. ✅ And **added beyond the plan**: `Build.ClassifyState` reads the outcomes too, so a session that
+    ingested five of six is `Parsed` while the build is `CompleteWithErrors`. Without it, a partial
+    rejection would have been reported per file and still presented as a clean build — the headline
+    defect re-created one level up.
 
 ### Phase 4: Never silently succeed (M4)
 
-21. Write `build.Coverage` on every finalize, including an all-failed one — zeroed, not absent
-    (`BuildFinalizer.cs:14-46`).
-22. Action: `files-count: 0` rather than `''` on any terminal state (`main.ts:318`).
-23. Action: annotate `CompleteWithErrors` without `wait-for-finalize` — one bounded status read,
-    warning only, never a wait a consumer did not ask for.
-24. Commit page: a zero-measured-files build renders as a named rejection listing per-file reasons.
-25. Advertise the narrowed `coverage` contract in `capabilities` and document it in `upload-api.md`.
+21. ✅ `BuildFinalizer` writes a zeroed summary on every finalize.
+22. ✅ `files-count: 0` on any terminal state — and still `''` while `InFlight`, because asserting 0
+    there would be a different falsehood from the one being fixed.
+23. ✅ `peekForIngestErrors`: one poll at zero timeout, warning only.
+24. ✅ `TreeResponse.rejectedReports` + the commit-page panel, with reasons translated for a workflow
+    author rather than shown raw.
+25. ✅ `ingest-outcomes` in `capabilities`; `upload-api.md` documents the new shape and the narrowing.
 
 ### Phase 5: XML hardening (M5)
 
-26. `XmlReaderSettings { DtdProcessing = Prohibit, XmlResolver = null, MaxCharactersFromEntities = 0,
-    MaxCharactersInDocument = <bound> }` on both XML parsers.
-27. Bound bytes read out of the `GZipStream` (`:194-200`); exceeding it is a `tooLarge` rejection.
-    Today only the **compressed** body is bounded (`UploadsController.cs:44`, `:91`).
+26. ✅ `SafeXml.Settings()` — but **`DtdProcessing.Ignore`, not `Prohibit` as written here**.
+    `Prohibit` rejects every real JaCoCo report, which all carry a DOCTYPE. Measured in M0 and
+    pinned by `XmlIngestSecurityTests.A_real_jacoco_doctype_still_parses`.
+27. ✅ `CopyBounded` on the gunzip; exceeding it is a `tooLarge` rejection.
 
 ### Phase 6: Separators, fixtures, consumer cleanup (M6)
 
-28. `PathNormalizer.Normalize`: as-received first, unified second (FR-12).
-29. Persist `ParsedFile.RawPath` onto `FileCoverage` for diagnosis (FR-13) — addition only.
-30. The #417 comment's five-row fixture table, including `src/weird\name.cs`.
-31. Delete the BOM-strip step from `MintPlayer/MintPlayer.DotnetDesktop.Tools#19`; re-run; confirm.
-32. Move the `coverage-upload-v1` tag.
+28. ✅ Literal pass before the unified one — an **exact file-list match only**, so a Windows
+    absolute path falls through by construction. Required keeping the file list in both forms, which
+    the plan did not anticipate: unifying it in the constructor had already collided the two.
+29. ✅ `FileCoverage.RawPath`, stored only when it differs from `Path`.
+30. ✅ Plus the invariant test M0b left behind, and a named test for the one path that legitimately
+    keeps its backslash.
+31. ⏳ **Blocked on deploy.**
+32. ⏳ **Blocked on deploy** — the tag must not move before the server can handle what the action
+    stops compensating for.
 
 > Per the one-PR rule in `CLAUDE.md`, steps 31-32 land in the **same unit of work** — the consumer
 > repo is another repository, not a follow-up PR, sequenced after the tag move.
 
 ### Phase 7: Durability and input bounds (M7)
 
-33. Bound attachment count per upload and the `fileList` payload at the controller.
-34. Make a redelivered `ParseSessionMessage` safe (the merge already is) and make a crashed handler
-    report why, rather than leaving the 30-minute sweep to say "Never parsed before the build timed
-    out" (`FinalizeBuildsCronJob.cs:59-63`).
-35. A missing/malformed `rootDir` or `fileList` degrades to the documented fallback
-    (`PathNormalizer.cs:47-48`) **and records that it did** — row E of the #415 table, made visible.
+33. ✅ `MaxReportsPerUpload` and `MaxFileListChars`, checked before the repository is resolved.
+34. 🟡 **Half done.** The message now says *why* — "carried no reports" vs "N reports never parsed",
+    plus that retrying is safe. **Redelivery is NOT implemented**: nothing re-runs a
+    `ParseSessionMessage` whose handler died, and the 30-minute sweep is still the only floor.
+    Deliberately stopped here: the gap is Spark's messaging layer, where the stranded-`Processing`
+    defect already lives, and patching around it in CodeCoverage would be a workaround for a
+    framework bug. Likely the same cause as the 5,461 `SparkMessages` measured in production.
+35. ✅ Row E is logged before any file is parsed.
 
 ---
 
@@ -294,20 +305,24 @@ nothing. There are no on-disk fixtures today (samples are inline C# raw-string l
 
 ## Acceptance Criteria
 
-- [ ] **The issue's own bar**: for every upload the server either measures ≥ 1 file, or reports a
+- [x] **The issue's own bar**: for every upload the server either measures ≥ 1 file, or reports a
       specific machine-readable reason — and never accepts, finalizes and measures nothing without
       comment.
-- [ ] M0 reproduced the BOM failure before any fix was written
-- [ ] M0b's verdict is recorded as a **measured** count with a date, and the migration is either
-      demonstrably unnecessary or designed as a re-key
-- [ ] FR-1 … FR-17 met (PRD)
-- [ ] All nine test scenarios covered by automated tests, with byte-level fixtures
-- [ ] `files-count` is never `''` on a terminal build
-- [ ] `MintPlayer.DotnetDesktop.Tools#19`'s BOM-strip step is deleted and that repo's CI is green
-- [ ] `upload-api.md` documents the narrowed `coverage` contract; `capabilities` advertises it
-- [ ] No new `action.yml` input — the consumer's surface is unchanged
-- [ ] Version bumps follow `CLAUDE.md`: the NuGet major tracks .NET, the npm major tracks Angular;
-      neither moves here. The action ships by moving `coverage-upload-v1`.
+- [x] M0 reproduced the BOM failure before any fix was written — *"Data at the root level is invalid.
+      Line 1, position 1."*, exactly as reported.
+- [x] M0b's verdict is recorded as a measured count with a date; the migration is demonstrably
+      unnecessary (0 of 194,548).
+- [x] FR-1 … FR-15 and FR-17 met. **FR-16 partial** — see the PRD.
+- [x] Nine test scenarios covered, byte-level. Scenario 6 was the audit's catch: it was specified and
+      unimplemented until the action-side tests were written.
+- [x] `files-count` is never `''` on a terminal build.
+- [ ] ⏳ `MintPlayer.DotnetDesktop.Tools#19`'s BOM-strip step deleted and that repo's CI green —
+      **blocked on deploy.**
+- [x] `upload-api.md` documents the narrowed `coverage` contract; `capabilities` advertises
+      `ingest-outcomes`.
+- [x] No new `action.yml` input — the consumer's surface is unchanged.
+- [x] No version bump was due: no targeted platform moved. The action ships by moving
+      `coverage-upload-v1`, which is still pending.
 
 ---
 
