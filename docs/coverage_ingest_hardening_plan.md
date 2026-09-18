@@ -148,17 +148,30 @@ Each is independently sufficient to hide a total failure, so each needs its own 
 3. Byte-sniff the rest of the issue's fixture table (UTF-16 LE, leading `\n\n`, 0 bytes, truncated,
    lcov+BOM) and record which of the three parsers each reaches today.
 
-### Phase 0b: Spike — is there a migration to do? (M0b)
+### Phase 0b: Spike — is there a migration to do? (M0b) — ✅ CLOSED 2026-09-18, **no migration**
 
-4. Run `from FileCoverages where Path like '%\\%'` against production, plus the equivalent over
-   `BuildTreeSummaries` (`Files[].Path`) and the `CommitAssembly` file documents. These are unindexed
-   on path, so it is a scan — accept the cost once.
-5. Write the count and date into the PRD's *Technical Notes* as a measured verdict.
-6. Apply the decision rule already fixed in the PRD: zero hits ⇒ no migration, pin the invariant with
-   a test, close it. Any hits ⇒ design the **re-key** migration (copy to new id, merge on collision,
-   delete old) into the PRD before Phase 2 ships. Never a `PatchByQueryOperation` on `Path`.
-7. Confirm `BuildSession.RootDir` stays raw — it is the one raw path field, it is harmless, and it is
-   the diagnostic data #415 spent a day wishing it could read.
+4. ✅ Scanned production directly. Streamed **collection** queries with a field projection, so no
+   index was needed, no auto-index was created, and nothing on the server changed.
+   **194,548 `FileCoverages` paths and 193,420 `BuildTreeSummaries` paths — 0 backslashes.**
+   `CommitAssemblies` holds counters; its per-file documents live in `FileCoverages` and are covered
+   by that count. The 194,548 equals the collection's document count from `/collections/stats`, so
+   the scan was complete rather than sampled.
+5. ✅ Verdict recorded in the PRD under *The migration question*, with the date and the counts.
+6. ✅ Decision rule applied: zero hits ⇒ **no migration**. The re-key design stays written down in
+   case a future defect reintroduces the possibility; nothing is built.
+7. ✅ `BuildSession.RootDir` stays raw: 318 values, exactly one with a backslash, and that one is the
+   #415 upload itself — the only surviving record of what that run actually sent.
+8. **Method note, worth keeping.** The first pass reported "0" using `grep -c`, which counts matching
+   *lines*, against a stream that is a single line. That zero was meaningless — indistinguishable
+   from a pattern that never matches anything. The second pass counts occurrences and carries a
+   positive control (`{"Path":"src/weird\\name.cs"}` → 1) and a negative control
+   (`{"Path":"src/normal/name.cs"}` → 0) in the same output as the result. A zero from an unvalidated
+   probe is not evidence; #415 made that point twice.
+9. **One consequence to carry forward.** FR-12 (Phase 6) *creates* the single case where a backslash
+   can legitimately be stored: a repository that genuinely contains `src/weird\name.cs`. That makes
+   the `%5C` blob-URL edge (`GitHubContentService.cs:57`) reachable for the first time. Recorded in
+   the PRD's *Out of Scope* and pinned by a test, not fixed speculatively — production occurrences
+   of that file shape are zero.
 
 ### Phase 1: The one-line unblock (M1)
 

@@ -151,6 +151,72 @@ public class PathNormalizerTests
     }
 
     /// <summary>
+    /// The deliberate exception to <see cref="A_backslash_never_reaches_the_stored_path"/>,
+    /// recorded so it is a decision rather than a surprise.
+    ///
+    /// <para>FR-12 exists so that a repository genuinely containing
+    /// <c>src/weird\name.cs</c> does not silently resolve to <c>src/weird/name.cs</c>.
+    /// The price is that this one path is stored with its backslash — which is right:
+    /// it is the file's actual name, it is what <c>git ls-files</c> reports, and the
+    /// document id hashes it consistently in both directions, so it round-trips.</para>
+    ///
+    /// <para><b>It does make one previously-unreachable sharp edge reachable.</b>
+    /// <c>Services/GitHubContentService.cs:57</c> percent-encodes the path and
+    /// un-escapes only <c>%2F</c>, so a stored backslash arrives as <c>%5C</c> and the
+    /// raw.githubusercontent fetch 404s — the file page would fail to show source.
+    /// Client-side, the breadcrumb and file-name splits on <c>'/'</c> render it as one
+    /// segment. Both are cosmetic against a file that is vanishingly rare and was
+    /// previously resolved to the <i>wrong file's</i> coverage, which is worse. Noted
+    /// here rather than fixed speculatively; measured production occurrences: zero.</para>
+    /// </summary>
+    [Fact]
+    public void A_genuinely_backslashed_repo_file_is_the_one_path_that_keeps_its_backslash()
+    {
+        string[] fileList = [@"src/weird\name.cs"];
+        var normalizer = new PathNormalizer("/home/runner/work/repo/repo", [], fileList);
+
+        var (path, matched) = normalizer.Normalize(@"src/weird\name.cs");
+
+        matched.Should().BeTrue();
+        path.Should().Be(@"src/weird\name.cs");
+    }
+
+    /// <summary>
+    /// THE INVARIANT BEHIND "no migration is needed" (#417, M0b).
+    ///
+    /// <para>Measured against production on 2026-09-18: 194,548 <c>FileCoverage.Path</c>
+    /// values and 193,420 <c>BuildTreeSummary</c> paths, <b>zero</b> containing a
+    /// backslash. That is the whole database, not a sample. This test is what keeps
+    /// it true — the stored path is hashed into the document id
+    /// (<c>{buildId}/files/{SHA256(path)}</c>), so a backslash reaching storage would
+    /// split one file across two unreachable documents with no way back.</para>
+    ///
+    /// <para>Both exits matter. The unmatched exit is the easy one to regress, because
+    /// it is the path that gets returned when nothing resolved — and an unmatched file
+    /// is still stored.</para>
+    ///
+    /// <para><b>There is exactly one deliberate exception, and FR-12 created it</b>: a
+    /// repository that genuinely contains <c>src/weird\name.cs</c> stores that path,
+    /// backslash and all, because it is the file's real name. See
+    /// <see cref="A_genuinely_backslashed_repo_file_is_the_one_path_that_keeps_its_backslash"/>
+    /// for why that is correct and what it costs.</para>
+    /// </summary>
+    [Theory]
+    [InlineData(@"D:\a\repo\repo\src\Calculator.cs")]     // matched, via the root strip
+    [InlineData(@"src\Calculator.cs")]                     // matched, already relative
+    [InlineData(@"D:\somewhere\else\Unknown.cs")]          // unmatched, absolute
+    [InlineData(@"nope\not\in\the\repo.cs")]               // unmatched, relative
+    [InlineData(@"C:\actions\work\src\deep\Thing.cs")]     // unmatched, different root
+    public void A_backslash_never_reaches_the_stored_path(string rawPath)
+    {
+        var normalizer = new PathNormalizer(@"D:\a\repo\repo", [], FileList);
+
+        var (path, _) = normalizer.Normalize(rawPath);
+
+        path.Should().NotContain(@"\");
+    }
+
+    /// <summary>
     /// The literal pass must not shadow the common case. A Windows absolute path
     /// cannot match the repository's file list literally, so it falls straight through
     /// to the pipeline that has always handled it.

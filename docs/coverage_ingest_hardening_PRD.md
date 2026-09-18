@@ -160,6 +160,39 @@ record the measured finding, pin the invariant with a test, move on. Any hits �
 migration is designed in this PRD before M1 ships, because a wrong `Path` is a wrong document id and
 gets worse with every build that references it.
 
+> ### ✅ M0b CLOSED — measured against production, 2026-09-18. **No migration is needed.**
+>
+> Run against `coverage-raven` on the production VPS, read-only: a streamed **collection** query
+> with a field projection, which needs no index, so no auto-index was created and nothing on the
+> server changed.
+>
+> | collection | `Path` values scanned | containing `\` |
+> |---|---|---|
+> | `FileCoverages` | **194,548** | **0** |
+> | `BuildTreeSummaries` | 193,420 | 0 |
+> | `CommitAssemblies` | 0 (holds counters; its file documents are `FileCoverages`) | 0 |
+>
+> **The scan is complete, not sampled**: 194,548 `Path` values is exactly the collection's document
+> count from `/collections/stats`, so every document was read.
+>
+> **The method was validated before the result was believed**, because a zero from an unproven
+> pattern is indistinguishable from a pattern that never matches — which is the mistake #415
+> punished twice. A first pass reported "0" using `grep -c`, which counts matching *lines*, against
+> a stream that is a single line; those totals were meaningless and were thrown away. The second
+> pass counts occurrences and carries a positive control (`{"Path":"src/weird\\name.cs"}` → 1) and a
+> negative control (`{"Path":"src/normal/name.cs"}` → 0) in the same output as the result.
+>
+> **`BuildSession.RootDir`: 318 values, exactly 1 with a backslash** —
+> `D:\a\MintPlayer.DotnetDesktop.Tools\MintPlayer.DotnetDesktop.Tools`. That is the #415 upload
+> itself, from before the action posted the workspace root as posix. It is harmless (unified on read
+> at `PathNormalizer.cs:19`) and it is the single most useful diagnostic value in the database, being
+> the only surviving record of what that run actually sent. **Confirmed: leave it raw.**
+>
+> Consequence: the invariant holds in production as well as in the code, so the remaining work is to
+> pin it with a test rather than to migrate anything. The `%5C` blob-URL fallback
+> (`GitHubContentService.cs:57`) stays out of scope for the reason originally given — it is
+> unreachable — and that is now measured rather than reasoned.
+
 ### The separator normalisation the issue comment asks for
 
 The comment on #417 asks for separator normalisation in the endpoint, and is careful to say it is
@@ -346,9 +379,17 @@ sniffing must not consume a non-seekable stream — pass a `ReadOnlyMemory<byte>
   memory concern for monorepos. — *Rationale: ours are ~200 KB; the bound in FR-11 caps the exposure,
   and rewriting both parsers to a pull model is a performance change with no measurement behind it.
   Revisit when a real report makes it necessary.*
-- **The `%5C` blob-URL fallback** (`Services/GitHubContentService.cs:57` un-escapes only `%2F`). —
-  *Rationale: unreachable while paths are unified before storage; M0b is what confirms that, and if
-  M0b finds backslashes this moves into scope with the migration.*
+- **The `%5C` blob-URL fallback** (`Services/GitHubContentService.cs:57` un-escapes only `%2F`, so a
+  stored backslash arrives as `%5C` and the raw.githubusercontent fetch 404s). —
+  *Rationale, updated 2026-09-18: this was listed as unreachable, and M0b confirms it is unreached
+  today (zero backslashes across 194,548 stored paths). But **FR-12 makes it reachable**: a
+  repository genuinely containing `src/weird\name.cs` now stores that path rather than silently
+  resolving it to `src/weird/name.cs`. That is the correct trade — attributing coverage to the wrong
+  file is worse than failing to render one file's source — and the consequence is recorded at
+  `PathNormalizerTests.A_genuinely_backslashed_repo_file_is_the_one_path_that_keeps_its_backslash`
+  rather than fixed speculatively for a file shape with zero production occurrences. The same
+  applies to the client's breadcrumb and file-name splits on `'/'`, which would render such a path as
+  one segment.*
 
 ---
 
@@ -422,22 +463,19 @@ sniffing must not consume a non-seekable stream — pass a `ReadOnlyMemory<byte>
 - [ ] Byte-sniff the other fixtures in the issue's table (UTF-16 LE, leading `\n\n`, 0 bytes,
       truncated, lcov+BOM) and record which of today's three parsers each one reaches.
 
-### Milestone 0b: Spike — does a path migration exist to be done?
+### Milestone 0b: Spike — does a path migration exist to be done? ✅ **CLOSED, no migration**
 
-- [ ] Query production: `from FileCoverages where Path like '%\\%'`, and the same over
-      `BuildTreeSummaries` (`Files[].Path`) and the `CommitAssembly` file documents. These collections
-      are id-addressed and unindexed on path, so this is a scan — run it on the read replica or
-      accept the cost once.
-- [ ] Record the count in this PRD's *Technical Notes* as a **measured** verdict, with the date.
-- [ ] **Decision rule, fixed in advance.** Zero hits ⇒ **no migration**; record the finding, add the
-      invariant as a test (a backslash-bearing raw path never produces a backslash-bearing stored
-      path, on both the matched and the unmatched exit), and close it. Any hits ⇒ the migration is
-      designed **in this PRD before M1 ships**, as a **re-key** — copy to the new id, merge on
-      collision, delete the old — and **never** a `PatchByQueryOperation` on `Path`, which would
-      leave the id hashed from the old value and silently break `PatchCoverageCalculator.cs:43`.
-- [ ] Either way, confirm `BuildSession.RootDir` stays raw and native. It is the one raw path field,
-      it is harmless (unified on read at `PathNormalizer.cs:19`), and it is the diagnostic data #415
-      spent a day wishing it could read.
+- [x] Query production over `FileCoverages`, `BuildTreeSummaries` and `CommitAssemblies`. Done as a
+      streamed collection query with a field projection — no index needed, so no auto-index created
+      and nothing changed on the server.
+- [x] Record the count as a **measured** verdict, with the date. See the box under
+      *The migration question*: 194,548 / 193,420 / 0 paths scanned, **0 backslashes**.
+- [x] **Decision rule applied.** Zero hits ⇒ **no migration.** The re-key design stays written down
+      in case a future defect reintroduces the possibility, but nothing is built.
+- [x] `BuildSession.RootDir` stays raw: 318 values, 1 with a backslash, and that one is the #415
+      upload itself — the most useful diagnostic value in the database.
+- [ ] Pin the invariant with a test: a backslash-bearing raw path never produces a backslash-bearing
+      stored path, on **both** the matched and the unmatched exit of `Normalize`.
 
 ### Milestone 1: The one-line unblock
 
