@@ -318,7 +318,7 @@ async function waitAndReport(
  * Absent `ingest` means an older server, which draws no verdict -- never a claim
  * that nothing was rejected.
  */
-function reportRejectedReports(status: UploadStatus): void {
+export function reportRejectedReports(status: UploadStatus): void {
   const rejected = status.ingest?.rejected;
   if (!rejected?.length) return;
 
@@ -330,7 +330,7 @@ function reportRejectedReports(status: UploadStatus): void {
   }
 }
 
-function describeRejections(status: UploadStatus): string {
+export function describeRejections(status: UploadStatus): string {
   const rejected = status.ingest?.rejected ?? [];
   return rejected
     .map((r) => `${r.fileName}: ${r.reason ?? 'rejected'}${r.detail ? ` (${r.detail})` : ''}`)

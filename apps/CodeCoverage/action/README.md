@@ -55,6 +55,28 @@ green, and empty. It is now reported:
 An upload carrying no report files at all is exempt — that is the `nx affected` carry-forward case,
 where every project was cached and the file list is the whole point.
 
+### When a report cannot be read at all
+
+Separate from a path that will not resolve: a file the server cannot *parse*. A UTF-8 BOM used to be
+enough — the parser threw, the build finalized with errors, zero files were measured, and the step
+was green ([#415](https://github.com/MintPlayer/MintPlayer.Spark/issues/415)).
+
+- Each rejected report is warned about **by name and with a reason** — `empty`,
+  `unrecognizedFormat`, `malformed`, `truncated`, `tooLarge`, `noFiles` or `missing` — rather than
+  the batch failing anonymously.
+- **One bad report no longer discards the good ones.** Six reports where one is truncated ingests
+  five and reports the sixth.
+- `files-count` is **`0`, never empty**, once the build is terminal, so a workflow guard testing
+  `== '0'` fires. It used to come back as the empty string when nothing was measured, which is
+  exactly how #415 shipped green.
+- You get the verdict **without setting `wait-for-finalize`**. The action makes one short status read
+  after uploading and warns if the server already reports errors. It never waits and never fails the
+  step on its own — a workflow that did not ask to wait does not start waiting.
+
+Reports the action discovers but this server cannot parse — Clover and Istanbul's
+`coverage-final.json` — are reported as `unrecognizedFormat` rather than silently contributing
+nothing.
+
 ## Why it lives here
 
 Beside the server it talks to, so a change to the upload API and the change to the action that
