@@ -325,7 +325,9 @@ the legacy shape is a permanently supported input, not a deferral.
 
 | risk | mitigation |
 |---|---|
-| Migration outruns the 180s deploy budget with no rollback (V4) | SP1 measured the read floor at **7s / 200,230 docs**, 75% skippable; SP1b prices the writes, and lazy derivation is a zero-risk fallback that computes the same thing |
+| Migration outruns the 180s deploy budget with no rollback (V4) | **Measured: 38.7s for 200,000 documents.** Read floor 7s. The real risk turned out to be the statement budget, not the clock — see the rehearsal section |
+| A document exceeds the patch statement budget and faults the whole migration | **Found by rehearsal, fixed** with `IgnoreMaxStepsForScript`; regression test uses a 6,000-edge document |
+| The migration fails for any other reason and old reports stop rendering | Decoupled: `LegacyBranchCompatibility` converts legacy documents on load, so reports do not depend on the migration having run |
 | Clover `truecount`/`falsecount` inversion silently flips every partial line | SP2 confirms against real output; explicit test |
 | Clover parsed as an empty cobertura (today's silent `noFiles`) | Structural discriminator + a test in **both** directions (M5) |
 | istanbul JSON has no size guard and misreports as `malformed` | Explicit guard + typed exceptions (M6) |

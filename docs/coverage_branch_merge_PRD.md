@@ -19,6 +19,9 @@ and additions matter enough to change the design:
 | **V3** | **The load-bearing false premise is in `CoberturaParser.cs:51-52`**, not only the lcov comment: *"Multiple classes for the same file describe distinct lines; a duplicated line is the same run, where AddLine accumulates."* Coverlet emits one `<class>` per type **and per closed generic instantiation**, which repeat the same line numbers. | Both comments get deleted; the cobertura one is the one that actually misleads. |
 | **V4** | **No chunked or resumable migration precedent exists anywhere in the repo.** All 11 migrations are single-shot `PatchByQueryOperation` + a hard `WaitForCompletionAsync(5 min)`, run **blocking before the port opens** (`SparkMigrationRunner.cs:19-20`), against a 180s deploy readiness budget **with no rollback** (`code-coverage-deploy.yml:194-206`). `FileCoverage` is the largest collection in the database by a wide margin. | The issue's A10 ("chunked and resumable") would require **building migration infrastructure that does not exist**. Drives D7 — the central open decision. |
 
+| **V12** | **A patch script is capped at 10,000 statements per document.** The conversion walks every edge; measured against real production documents, 421 edges converts and 5,263 faults, and production holds ~770 documents above 400 edges. Found only by rehearsing against restored data — no hand-written fixture is that large. | The migration as first written would have faulted, aborted startup and failed the deploy with nothing serving. Fixed with `IgnoreMaxStepsForScript` (§6.1), and the read path no longer depends on the migration at all. |
+| **V13** | **A migration *can* read attachments.** It is ordinary C# with an `IDocumentStore`; only the JavaScript patch script cannot. An earlier draft of this PRD conflated the two. | Re-opens option (c) as technically available — then rejected on evidence rather than on a false constraint. |
+
 Additional corrections, lower impact but in scope:
 
 - **V5** — `ReportIngestOutcome.cs:48` and `action/README.md:76-78` both claim clover lands in
@@ -233,7 +236,7 @@ The `Any(edge is null or 0)` predicate exists in **two** places — `ParsedFile.
 | **D4** | `Hits` regression for generic-heavy cobertura (max, not sum) | **Accept the label regression.** Alternative — a separate non-merged `MaxHitsSeen` — is carried as rejected unless the label matters. |
 | **D5** | lcov 2.x `e`/`f` markers are discarded (`TrimStart('e','f','U')`), so `e0` and `0` collide on block `"0"` | **Preserve the marker in the arm key.** Pre-existing, small, but a set model makes the collision *merge* arms that are not the same arm. Changes lcov-only numbers slightly; say so in the release note. |
 | **D6** | Browse DTO: emit per-line `{ line, covered, total }` instead of the verbatim edge list | **Yes.** Internal API, SPA ships in the same image, and `file.component.ts:117-137` currently rebuilds exactly that with a `Map` — the component gets *simpler*. |
-| **D7** | **Migration vs lazy read-path upgrade** (see §6) | **One-shot migration (b).** SP1 measured on production 2026-09-18: 200,230 docs, **7s** full scan, only ~25% carry branch data. Lazy read (a) is the fallback. Write-cost dry run still outstanding. |
+| **D7** | **Migration vs lazy read-path upgrade** (see §6) | **Both.** A one-shot migration converts stored documents, *and* the read path understands the legacy shape. Rehearsed against real production documents 2026-09-19: 38.7s for 200,000, after a defect that would have aborted startup was found and fixed. |
 | **D8** | A9 diagnostic shape on `ReportIngestOutcome` | Additive counters `BranchLinesIdentified` / `BranchLinesCountOnly`. Model change (V7). |
 
 ---
@@ -246,30 +249,46 @@ Read-only probe against `coverage-raven` on the production VPS:
 
 | metric | value |
 |---|---|
-| `FileCoverages` documents | **200,230** (96% of all 208,177 documents in the database) |
+| `FileCoverages` documents | **201,698** (96% of the database; 200,230 when first sampled a day earlier) |
 | Database size on disk | 2.23 GB (`FileCoverage` dominates it) |
 | Full collection scan, streamed over loopback | **7 seconds / 697 MB** |
 | Average document size | ~3.5 KB |
-| **Documents carrying branch data at all** (`BranchFormat != null`) | **24.9%** (498 of a 2,000-doc sample) ⇒ **~50,000** |
+| **Documents carrying branch data** (`BranchFormat != null`) | **53.9%** — 108,648, censused over all of them (16,203 lcov, 92,445 cobertura, **0** JaCoCo) |
+| Documents above 400 edges (the statement-budget risk) | **~770**, ten of them at 5,263 edges |
 | Other collections | Builds 314, Commits 762, CommitAssemblies 150, Repositories 172, attachments 2,222 (1,516 unique) |
 
 **This reverses the recommendation.** The pre-measurement worry (V4) was that a single-shot patch
 over the largest collection could not fit the 180s readiness budget. A 7-second full scan says
-otherwise: the scan floor is ~4% of the budget, and only ~50,000 of the 200,230 documents need
-rewriting at all — the migration's JS can `return` immediately for the other 75%, which carry no
-branch data.
+otherwise: the scan floor is ~4% of the budget.
 
 **Revised recommendation: (b), a one-shot `PatchByQueryOperation`** — the idiom the repo already uses
-11 times — keeping one shape in the database instead of two forever.
+11 times — keeping one shape in the database instead of two forever. **Plus (a)**, because the
+requirement is that every report which opens today still opens after the deploy, and that should not
+depend on 200,000 documents converting during startup (§6.1).
 
-**Remaining unknown: the write cost.** 7s is a *read* floor; it does not measure rewriting ~50k
-documents. That is the one number still missing, and measuring it means running a patch against
-production, which is a write-API call — **needs your explicit go-ahead before I run it** (a no-op
-`from FileCoverages update { }` exercises scan + per-document script without writing, which brackets
-the cost from below but still does not price the writes themselves).
+### 6.1 Rehearsal against real production documents — 2026-09-19
 
-If the dry run comes back comfortably inside the budget, take (b). If it is marginal, (a) remains a
-fully correct fallback that costs one branch in a derivation helper and carries no deploy risk.
+351 production documents were copied into a local RavenDB and the real migration run against them.
+**It found a defect that would have taken the site down.**
+
+- **A patch script is capped at 10,000 statements per document** (`Patching.MaxStepsForScript`) and
+  the conversion walks every edge. Measured: **421 edges converts, 5,263 faults**, and production
+  holds ~770 documents above 400 edges. A faulted patch throws, startup aborts, the deploy fails
+  with nothing serving — not a degraded page, no page.
+- Fixed with `QueryOperationOptions.IgnoreMaxStepsForScript`, scoped to this one operation. Making
+  the loop cheaper cannot rescue it: at ~24 statements per edge the largest document needs ~125,000.
+- **Write cost: 38.7s for 200,000 documents** at production scale and ratio. Against a 300s
+  `WaitForCompletion`, a 180s readiness poll, a 60s healthcheck `start_period` and a 30-minute
+  migration lock, nothing is close to firing.
+- `Services/LegacyBranchCompatibility` converts legacy documents **as they load**, so reports render
+  correctly whether or not the migration has run, has finished, or ever runs again.
+- Both are covered by tests, including a 6,000-edge document that fails without the option.
+
+**Re-parsing from attachments was reconsidered and rejected.** A migration *can* read attachments —
+it is ordinary C# with an `IDocumentStore`; only the JavaScript patch script cannot, which an earlier
+draft of this PRD conflated. But every retained report inspected was lcov carrying `BRDA` — real arm
+identity that re-derivation already preserves exactly — with **zero `<conditions>`**. Re-parsing
+would redo path normalization and flag/assembly attribution for no fidelity gain.
 
 ### Why it looked worse than it is
 
@@ -292,12 +311,12 @@ of it is skippable.
 
 ### Three options
 
-**(a) Lazy read-path upgrade — fallback.** See below. Correct, zero deploy risk, costs two shapes
-in the database permanently.
+**(a) Lazy read-path upgrade — SHIPPED, alongside (b).** Correct, zero deploy risk. Costs two shapes
+the code can read, which is the price of not coupling "the site works" to "the migration succeeded".
 
-**(b) One-shot `PatchByQueryOperation` re-derivation — recommended post-SP1.** The issue's proposal
-and the repo's only idiom, 11 times over. The 7s scan floor and the 75% skip rate make it viable;
-confirm the write cost with a dry run first.
+**(b) One-shot `PatchByQueryOperation` re-derivation — SHIPPED.** The issue's proposal and the repo's
+only idiom, 11 times over. Viable at 38.7s for 200,000 documents, but **only with
+`IgnoreMaxStepsForScript`** — see §6.1.
 
 **(c) Re-parse from retained attachments — higher fidelity, highest cost.** The issue ruled this out
 as a non-goal on two grounds, one of which is wrong: **the raw uploaded reports are still on the
@@ -309,14 +328,15 @@ can only ever grant it a floor. The issue's second objection (re-enqueuing would
 existing documents rather than rebuild them) is real but is an argument for delete-then-rebuild per
 build, not against re-parsing.
 
-Its cost is the opposite of cheap. There are 2,222 attachments (1,516 unique) across 314 builds, and
-each would have to be read, un-gzipped and fully re-parsed — versus a 7-second collection scan for
-(b). It would also have to delete and rebuild each build's `FileCoverage` documents rather than
-patch them, and would very likely have to run outside startup entirely. Carried as the option to
-reach for **only** if the fidelity gain is judged worth building deferred-migration infrastructure,
-which does not exist today (V4).
+**REJECTED on evidence (2026-09-19).** Every retained report inspected was lcov carrying `BRDA` —
+identity that re-derivation preserves exactly — with **zero `<conditions>`**, so the fidelity gain is
+nil for the data actually stored. Its cost is also the opposite of cheap: 1,899 report attachments
+across 316 builds would each be read, un-gzipped and re-parsed, and each build's `FileCoverage`
+documents deleted and rebuilt rather than patched, redoing path normalization and flag/assembly
+attribution. Reach for it only if a future parser fix makes the retained reports say something the
+stored documents cannot.
 
-**Fallback (a) — lazy read-path upgrade.**
+**(a) in detail — the lazy read-path upgrade.**
 
 Keep the legacy `Branches` list on the document and derive `(n, S, F)` from it on read when the new
 field is absent. The derivation is *exactly* what the migration would compute:
