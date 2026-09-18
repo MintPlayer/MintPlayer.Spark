@@ -82,9 +82,10 @@ public class JaCoCoParserTests
         var file = result.Files.Single(f => f.RawPath == "com/example/Calculator.java");
 
         file.Lines[12].Status.Should().Be(LineStatus.PartiallyCovered);
-        file.Branches.Keys.Where(k => k.Line == 12).Should().HaveCount(2);
-        file.Branches[(12, "0", "0")].Should().Be(1);
-        file.Branches[(12, "0", "1")].Should().Be(0);
+        // mb/cb are counts with no arm identity — a floor, never named arms.
+        file.Branches[12].Arity.Should().Be(2);
+        file.Branches[12].Floor.Should().Be(1);
+        file.Branches[12].TakenArms.Should().BeEmpty();
     }
 
     [Fact]
@@ -94,6 +95,8 @@ public class JaCoCoParserTests
         var file = result.Files.Single(f => f.RawPath == "com/example/Util.java");
 
         file.Lines[5].Status.Should().Be(LineStatus.Covered);
-        file.Branches.Keys.Where(k => k.Line == 5).Should().HaveCount(2);
+        file.Branches[5].Arity.Should().Be(2);
+        file.Branches[5].Covered.Should().Be(2);
+        file.Branches[5].IsPartial.Should().BeFalse();
     }
 }

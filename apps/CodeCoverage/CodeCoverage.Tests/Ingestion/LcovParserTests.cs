@@ -54,8 +54,9 @@ public class LcovParserTests
 
         // Line 2 executed but one of its two branches was never taken → partial.
         calc.Lines[2].Status.Should().Be(LineStatus.PartiallyCovered);
-        calc.Branches[(2, "0", "0")].Should().Be(2);
-        calc.Branches[(2, "0", "1")].Should().Be(0);
+        calc.Branches[2].Arity.Should().Be(2);
+        calc.Branches[2].TakenArms.Should().BeEquivalentTo(["0:0"]);
+        calc.Branches[2].Covered.Should().Be(1);
 
         // Fully covered, no branches.
         calc.Lines[1].Status.Should().Be(LineStatus.Covered);
@@ -73,16 +74,39 @@ public class LcovParserTests
             """;
 
         var file = parser.Parse(lcov2).Files.Single();
-        // '-' means the enclosing block never executed — distinct from 0 but
-        // still an untaken edge, so the line is partial.
-        file.Branches[(5, "0", "0")].Should().NotHaveValue();
-        file.Branches[(5, "0", "1")].Should().Be(4);
+        // '-' means the enclosing block never executed; either way the arm was
+        // not taken, so the line is partial.
+        file.Branches[5].Arity.Should().Be(2);
+        file.Branches[5].TakenArms.Should().BeEquivalentTo(["f0:1"]);
         file.Lines[5].Status.Should().Be(LineStatus.PartiallyCovered);
     }
 
     [Fact]
-    public void Accumulates_duplicate_DA_records()
+    public void Lcov2_block_markers_stay_part_of_the_arm_identity()
     {
+        // e0 (exception) and 0 are different blocks. Trimming the marker, as the
+        // parser used to, collides them — and under a set model that merges two
+        // arms which are not the same arm, over-reporting coverage.
+        const string collide = """
+            SF:main.c
+            DA:5,1
+            BRDA:5,0,0,1
+            BRDA:5,e0,0,-
+            end_of_record
+            """;
+
+        var file = parser.Parse(collide).Files.Single();
+        file.Branches[5].Arity.Should().Be(2);
+        file.Branches[5].TakenArms.Should().BeEquivalentTo(["0:0"]);
+        file.Lines[5].Status.Should().Be(LineStatus.PartiallyCovered);
+    }
+
+    [Fact]
+    public void Duplicate_DA_records_take_the_max_never_the_sum()
+    {
+        // Was Accumulates_duplicate_DA_records, which pinned the sum. Summing
+        // duplicates makes a report split across two uploads differ from the
+        // same data in one upload, and CoverageMerger has always maxed.
         const string dup = """
             SF:a.c
             DA:1,2
@@ -91,7 +115,7 @@ public class LcovParserTests
             """;
 
         var file = parser.Parse(dup).Files.Single();
-        file.Lines[1].Hits.Should().Be(5);
+        file.Lines[1].Hits.Should().Be(3);
     }
 
     [Fact]

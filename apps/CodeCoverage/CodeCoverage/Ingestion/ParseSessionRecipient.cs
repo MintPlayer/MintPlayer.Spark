@@ -127,6 +127,15 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
                 outcome.Parsed = true;
                 outcome.FilesCount = result.Files.Count;
 
+                // Branch identity is per line, not per format: one Cobertura
+                // report can identify arms on the lines carrying <conditions>
+                // and only count them elsewhere.
+                foreach (var branches in result.Files.SelectMany(f => f.Branches.Values))
+                {
+                    if (branches.Arms.Count > 0) outcome.BranchLinesIdentified++;
+                    else outcome.BranchLinesCountOnly++;
+                }
+
                 var normalizer = new PathNormalizer(buildSession.RootDir, result.SourceRoots, headFileList.Paths);
 
                 // Each parsed file merges into the build-level document AND

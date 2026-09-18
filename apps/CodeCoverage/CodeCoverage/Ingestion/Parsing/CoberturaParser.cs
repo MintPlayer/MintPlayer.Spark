@@ -16,8 +16,18 @@ public sealed partial class CoberturaParser : ICoverageParser
 
     public bool CanParse(ReportContent content)
     {
-        var root = TryGetRootName(content.Text);
-        return root == "coverage";
+        if (TryGetRootName(content.Text) != "coverage") return false;
+
+        // Clover roots at <coverage> too. Matching on the root name alone meant
+        // a Clover report was claimed here, yielded no <class filename=> and so
+        // produced zero files — reported to the user as "noFiles, format
+        // cobertura" rather than as an unsupported format.
+        //
+        // The test is for Clover's markers rather than for Cobertura's <class,
+        // because a TRUNCATED Cobertura report has no <class either and must
+        // still be claimed here: it is a damaged report of a format we support,
+        // which is a different diagnosis from a format we do not.
+        return !LooksLikeClover(content.Text);
     }
 
     public ParseResult Parse(ReportContent content)
@@ -94,6 +104,15 @@ public sealed partial class CoberturaParser : ICoverageParser
 
         return new ParseResult { Files = files, SourceRoots = sources };
     }
+
+    /// <summary>
+    /// Clover's two structural markers under a shared &lt;coverage&gt; root: the
+    /// version attribute every writer stamps, and the &lt;project&gt; element
+    /// Cobertura has no equivalent of.
+    /// </summary>
+    internal static bool LooksLikeClover(string content)
+        => content.Contains(" clover=\"", StringComparison.Ordinal)
+        || content.Contains("<project", StringComparison.Ordinal);
 
     internal static string? TryGetRootName(string content)
     {

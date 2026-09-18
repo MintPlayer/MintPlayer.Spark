@@ -122,9 +122,8 @@ Build              id: Commits/{repoGitHubId}/{sha}/builds/{runId}-{runAttempt}
 
 FileCoverage       id: {buildId}/files/{pathHash}
   BuildId, Path (normalized repo-relative), Matched (path resolved against git ls-files)
-  BranchFormat?    // the format that produced Branches — branch detail merges within it only
   Lines: [ { Number, Hits?, Status } ]   // merged across sessions (max)
-  Branches: [ { Line, BlockId, BranchId, Taken? } ]
+  Branches: [ { Line, Arity, TakenArms[], Floor } ]   // one entry per line, not per edge
 
 CoverageSummary    (embedded) LinesCovered, LinesCoverable, BranchesCovered, BranchesTotal,
                    FilesCount            // rates always derived, never stored
@@ -134,10 +133,15 @@ CoverageSummary    (embedded) LinesCovered, LinesCoverable, BranchesCovered, Bra
 
 ```
 Line   { Number, Hits: int?,  Status: NotCovered | PartiallyCovered | Covered }
-Branch { Line, BlockId, BranchId, Taken: int? }   // totals derive by counting edges
+Branch { Line, Arity: int, TakenArms: string[], Floor: int }
+       // covered = max(Floor, TakenArms.length), total = Arity
 ```
 
-Non-coverable lines are simply absent from the data (no `NotCoverable` member). All percentages derive from `Status`, never from `Hits`. Merge across sessions = **max** per line/branch key; branch detail never merges *across different formats* (identity schemes differ — lcov's real ids vs Cobertura/JaCoCo's synthesized edges): `FileCoverage.BranchFormat` records who owns the branch set, and a session in another format contributes line status only.
+Non-coverable lines are simply absent from the data (no `NotCoverable` member). All percentages derive from `Status`, never from `Hits`.
+
+**Branch merging is format-agnostic and order-independent.** Formats split into two groups: those that identify each arm of a branching expression (lcov's block/branch ordinals, istanbul's `branchMap` key plus arm index, Cobertura's `<condition number=>`) and those that report a bare count of how many arms were taken without saying which (Cobertura's `condition-coverage`, JaCoCo's `mb`/`cb`, Clover's `truecount`/`falsecount`). So a line keeps an arm **set** from the first group and a **floor** from the second; merging unions the sets and maxes the floors and arities. Union and max are commutative and associative, so the same set of uploads always yields the same stored document whatever order they arrive in.
+
+> Until #420 this worked the other way round: `FileCoverage.BranchFormat` was stamped by whichever report brought branch data first and every later report in a different format had its branch data discarded — silently, and with the winner decided by upload order. A count-only report arriving second contributed nothing at all rather than its floor. The guard also keyed on the wrong thing: Cobertura and JaCoCo synthesize identical positional edge ids yet dropped each other. What a count-only format still cannot express is *which* arm it covered — that information is destroyed by the format, not by us.
 
 **Raw uploads are retained** (the uploaded report files, gzipped) so the merged view *can* be lazily recomputed — late uploads and re-runs work today; a reprocess-after-parser-fix endpoint is backlog, the raw data for it is already there. Storage medium: RavenDB attachments on the Build document to start (they replicate/backup with the database); revisit if size becomes a problem.
 

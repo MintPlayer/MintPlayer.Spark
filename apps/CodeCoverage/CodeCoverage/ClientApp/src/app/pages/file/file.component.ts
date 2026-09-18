@@ -115,13 +115,9 @@ export default class FileComponent {
     const detail = this.detail();
     if (!detail) return [];
 
-    const branchesByLine = new Map<number, { taken: number; total: number }>();
-    for (const branch of detail.branches) {
-      const entry = branchesByLine.get(branch.line) ?? { taken: 0, total: 0 };
-      entry.total++;
-      if ((branch.taken ?? 0) > 0) entry.taken++;
-      branchesByLine.set(branch.line, entry);
-    }
+    // The server sends one entry per line already counted; this used to rebuild
+    // exactly that from a flat list of individual branch edges.
+    const branchesByLine = new Map(detail.branches.map((branch) => [branch.line, branch]));
 
     return detail.lines.map((line) => {
       const branches = branchesByLine.get(line.number);
@@ -132,8 +128,8 @@ export default class FileComponent {
         line: line.number,
         kind,
         label: line.hits !== null && line.hits !== undefined ? `${line.hits}×` : undefined,
-        secondaryLabel: branches ? `${branches.taken}/${branches.total}` : undefined,
-        description: branches ? `Branches: ${branches.taken} of ${branches.total} taken` : undefined,
+        secondaryLabel: branches ? `${branches.covered}/${branches.total}` : undefined,
+        description: branches ? `Branches: ${branches.covered} of ${branches.total} taken` : undefined,
       };
     });
   });
