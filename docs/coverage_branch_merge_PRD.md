@@ -84,10 +84,17 @@ positional fiction. Two cobertura reports covering *different* arms of the same 
 |---|---|---|
 | **istanbul JSON** | `branchMap` per-arm entries + parallel `b` counts | **yes, richest** |
 | **lcov** | `BRDA:<line>,<block>,<branch>,<taken>` | **yes** — real ordinals |
-| **clover** | `<line type="cond" truecount= falsecount=/>` | **yes** — real two-arm |
 | **cobertura** `<conditions>` | per-condition `number`/`type`/`coverage` | **yes**, where emitted (gcovr, coverage.py) |
 | **cobertura** `condition-coverage` | `(covered/total)` count | no |
 | **JaCoCo** | `mb`/`cb` counts | no |
+| **clover** | `<line type="cond" truecount= falsecount=/>` | **no** — see V11 |
+
+> **V11 — the issue is wrong about clover, and so was an earlier draft of this PRD.**
+> #420 states clover's `truecount`/`falsecount` is "real two-arm identity, unlike cobertura's opaque
+> count". **Measured false** (SP2, §14). `truecount` is the number of **taken arms on the line** and
+> `falsecount` the number of **untaken arms** — aggregated across every branch on that line, exactly
+> like cobertura's `(covered/total)`. It is not a true-arm/false-arm pair and not a hit count.
+> Clover is therefore a **count-only** format: `AddBranchCount(line, truecount, truecount + falsecount)`.
 
 What the fix recovers is the **categorical** loss: today a count-only report arriving second
 contributes *nothing at all* — not even its floor.
@@ -353,15 +360,27 @@ additive — note it only produces **warnings** in the action today (`capabiliti
 
 Both carry better identity than cobertura, so they raise §3's ceiling.
 
-**istanbul JSON** — flat map of absolute path → `{ path, statementMap, s, fnMap, f, branchMap, b }`.
+**istanbul JSON** — flat map of absolute path → `{ path, statementMap, s, fnMap, f, branchMap, b, meta }`.
 Lines from `statementMap[id].start.line` + `s[id]`; arms from `branchMap[id].locations[i]` + `b[id][i]`,
 key `"<branchMapKey>:<armIndex>"`. Functions are not modelled by `ParsedFile` — skip, as lcov skips
-`FN`/`FNDA`. Guard: `b` counts can be `-1`/absent for some branch types.
+`FN`/`FNDA`.
 
-**clover** — `<coverage><project><package>?<file name= path=><line num= count= type="stmt|cond|method" truecount= falsecount=/>`.
-⚠️ **`truecount`/`falsecount` are the number of *uncovered* paths** — `0` means taken. Getting this
-backwards silently flips every partial line. `<file>` can sit directly under `<project>`, so iterate
-`Descendants("file")`. No `SourceRoots` equivalent — leave `[]`.
+⚠️ **Attribute every arm to `branchMap[id].line`, not to `locations[i].start.line`.** Measured in
+SP2: **65 of ~153 branches have arms starting on a different line than the branch** (multi-line
+ternaries and `binary-expr`). Per-arm attribution would split one 2-arm branch across two lines and
+render every multi-line conditional as two *partial* lines. istanbul's own lcov and clover reporters
+attribute to the branch line; matching them is what makes our clover and istanbul readings agree.
+
+Observed branch `type`s: `if`, `cond-expr`, `binary-expr`. The v8 provider emitted **no** negative or
+absent `b` counts across 306 arms, but guard anyway — the istanbul provider is documented to use `-1`.
+Note 88 of the statements span multiple lines; attribute them to `start.line`.
+
+**clover** — `<coverage clover="3.2.0"><project><package>?<file name= path=><line num= count= type="stmt|cond|method" truecount= falsecount=/>`.
+Per V11 this is **count-only**: `covered = truecount`, `total = truecount + falsecount`. Verified
+against istanbul JSON for the same run (§14) — a line with two separate `branchMap` entries, four
+arms, all taken, is reported by clover as `truecount="4" falsecount="0"`, which no true/false pair
+could express. `<file>` sits directly under `<project>` for the istanbul producer, so iterate
+`Descendants("file")`. `RawPath` from `@path` when present, else `@name`. No `SourceRoots` — `[]`.
 
 **Sniffing hazard (V5).** The discriminator must be **structural**: cobertura has `<class filename=…>`;
 clover has `<file name=…>` under `<project>`/`<package>` and a `clover=` attribute on the root. Order
@@ -442,5 +461,40 @@ They pick up corrected numbers on their next upload. Under D7 there is no readin
 
 ---
 
-*Verified against source at `d98525c4` by four parallel investigations, 2026-09-18. Where this PRD
-and the issue disagree, the disagreement is recorded in §1 with file:line evidence.*
+## 14. SP2 evidence — the clover/istanbul cross-check
+
+Both formats were generated from one real run (the action's own vitest suite, v8 provider, 10 files,
+99 tests) by temporarily adding `'clover'` and `'json'` reporters, then reverting. The two reports
+describe the *same* execution, which is what makes them checkable against each other.
+
+`src/capabilities.ts`, clover:
+
+```xml
+<line num="49" count="1" type="cond" truecount="1" falsecount="1"/>
+<line num="55" count="8" type="cond" truecount="2" falsecount="0"/>
+<line num="99" count="6" type="cond" truecount="4" falsecount="0"/>
+<line num="117" count="6" type="cond" truecount="1" falsecount="1"/>
+```
+
+The same lines in istanbul JSON (`branchMap` id → `b` counts):
+
+| line | istanbul | arms | taken | clover |
+|---|---|---|---|---|
+| 49 | `0: cond-expr` `b=[1,0]` | 2 | 1 | `true=1 false=1` |
+| 55 | `1: if` `b=[1,7]` | 2 | 2 | `true=2 false=0` |
+| 99 | `6: if` `b=[1,5]` **and** `7: binary-expr` `b=[6,5]` | **4** | **4** | `true=4 false=0` |
+| 117 | `10: if` `b=[0,6]` | 2 | 1 | `true=1 false=1` |
+
+Line 99 is the decisive one: **two separate branches, four arms, all taken** — reported by clover as
+`truecount="4"`. A true-arm/false-arm pair cannot express four, and a hit-count reading cannot either
+(the counts were 1, 5, 6, 5). `truecount` is the count of taken arms; `falsecount` the count of
+untaken ones. Hence V11.
+
+It also confirms istanbul is genuinely arm-identified, and that a `{branchMapKey}:{armIndex}` key
+reproduces clover's totals exactly — which is the property A1 needs when the two formats merge.
+
+---
+
+*Verified against source at `d98525c4` by four parallel investigations, 2026-09-18, plus a read-only
+production measurement (§6) and a generated-fixture cross-check (§14). Where this PRD and the issue
+disagree, the disagreement is recorded in §1, V11 and §6 with evidence.*

@@ -39,21 +39,32 @@ two compute the same thing, so the fallback is cheap either way.
 
 ⚠️ Do not run SP1b during a deploy window. Never print a connection string or credential.
 
-### SP2 — real istanbul and clover fixtures
-**Decides:** M5 and M6 fixture fidelity. **No sample of either format exists anywhere in the repo.**
+### ~~SP2~~ — real istanbul and clover fixtures ✅ **RUN 2026-09-18**
+**Decided:** M5's clover mapping is **count-only**, not arm-identified. See PRD §14 and V11.
 
-Temporarily add `'clover'` and `'json'` to the `reporter` array in `apps/CodeCoverage/action/vitest.config.ts:16`,
-run the action's suite once, and capture the emitted `clover.xml` and `coverage-final.json`. Revert
-the config change — it is a spike, not a deliverable.
+Generated both formats from one run of the action's own vitest suite (v8 provider, 10 files) by
+temporarily adding `'clover'` and `'json'` reporters, then reverting `vitest.config.ts` and deleting
+`coverage/`. Because both describe the *same* execution they cross-check each other.
 
-Confirm against real output, because getting either backwards is silent:
-- clover `truecount`/`falsecount` are counts of **uncovered** paths (`0` ⇒ that path *was* taken),
-- whether `<file>` appears under `<package>` or directly under `<project>` for this producer,
-- istanbul `b` entries that are `-1` or absent, and which `branchMap` `type`s produce them,
-- whether `statementMap` entries ever span lines (start ≠ end line).
+Four measured results, three of which contradict the pre-spike plan:
 
-Distil into inline raw-string fixtures matching the existing style (V10 — the repo has zero fixture
-files on disk; do not introduce the first one).
+1. **⚠️ clover `truecount`/`falsecount` are taken/untaken ARM COUNTS**, aggregated over every branch
+   on the line — not a true/false pair, not hit counts, and not "uncovered path" counts as this plan
+   previously said. Decisive case: line 99 of `capabilities.ts` has two `branchMap` entries totalling
+   four arms, all taken, and clover reports `truecount="4" falsecount="0"`. **Clover is count-only,
+   like cobertura.** Map to `AddBranchCount(line, truecount, truecount + falsecount)`.
+2. **⚠️ istanbul arms must be attributed to `branchMap[id].line`**, not `locations[i].start.line` —
+   **65 of ~153 branches** have arms starting on a different line. Per-arm attribution would render
+   every multi-line ternary as two partial lines.
+3. `<file>` sits **directly under `<project>`** for this producer (no `<package>`), so iterate
+   `Descendants("file")`. Root carries `clover="3.2.0"` — usable as a discriminator.
+4. No negative/absent `b` counts across 306 arms with the v8 provider; branch types seen are `if`,
+   `cond-expr`, `binary-expr`. 88 statements span lines ⇒ attribute to `start.line`. Guard `-1`
+   anyway for the istanbul provider.
+
+Fixtures are distilled into inline raw strings matching the existing style (V10 — the repo has zero
+fixture files on disk; do not introduce the first one). Real captures kept in the scratchpad for
+reference only.
 
 ### SP3 — where the A1 property test can actually live
 **Decides:** M10's cost and shape.
@@ -134,8 +145,8 @@ per-line property.
   (V: `<file>` may sit directly under `<project>`). `RawPath` from `@path` when present, else `@name`.
   `SourceRoots` stays `[]`.
 - `type="stmt" | "cond" | "method"` are all coverable → `AddLine(num, count)`.
-- `type="cond"` → `AddBranchArm(num, "true", truecount == 0)` and `AddBranchArm(num, "false", falsecount == 0)`.
-  ⚠️ **The inversion is the trap** — these are *uncovered* path counts.
+- `type="cond"` → **`AddBranchCount(num, truecount, truecount + falsecount)`** (SP2/V11 — clover is
+  count-only; `truecount` is the number of *taken* arms on the line, not a true-arm hit count).
 - **Discriminator:** tighten `CoberturaParser.CanParse` to require a `<class filename=…>` descendant
   (or reject on a `clover=` root attribute), and order clover before cobertura in
   `CoverageParserFactory.cs:19-24`. Test **both** directions: clover is never cobertura, cobertura is
@@ -148,8 +159,10 @@ per-line property.
 
 - New `IstanbulParser : ICoverageParser`, `FormatName = "istanbul"`. Lines from
   `statementMap[id].start.line` + `s[id]`; arms from `branchMap[id].locations[i]` + `b[id][i]`, arm
-  key `"{branchMapKey}:{armIndex}"`. Skip `fnMap`/`f` — `ParsedFile` does not model functions.
-- Guard `b` entries that are `-1` or absent (SP2 confirms which types).
+  key `"{branchMapKey}:{armIndex}"`, **attributed to `branchMap[id].line`** (SP2 finding 2 — 65 of
+  ~153 branches have arms on another line). Skip `fnMap`/`f` — `ParsedFile` models no functions.
+- Guard `b` entries that are `-1` or absent (not emitted by the v8 provider, but the istanbul
+  provider uses them).
 - **Sniff structurally and last**: parse-and-probe for `statementMap` + `s` on the first value, ordered
   after the cheap text sniffs so a JSON parse never runs over an XML report.
 - **JSON safety gap (PRD §8):** XML gets `SafeXml`'s 256 MiB cap and DTD handling; JSON gets nothing.
