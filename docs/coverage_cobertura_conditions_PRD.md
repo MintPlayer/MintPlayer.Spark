@@ -227,6 +227,9 @@ an ad-hoc Studio query, not by repo code, and nothing depends on it.
   A document with no `conditionals`, or one consistent with both formulas, keeps the istanbul reading.
 - **A11** (D8) A JaCoCo line with `ci>0 && mi>0` is `PartiallyCovered` with no branch data invented;
   a second report with `mi="0"` clears it; a report that counts no instructions at all does not.
+- **A12** (§8c) A hand-written `description.en` survives `--spark-synchronize-model` unchanged and
+  does not fail `--spark-verify-model`; an absent or blank one is seeded from the C# summary and is
+  reported by verify until it is.
 
 ## 8. Tests that encode the bug as intent — rewrite, never delete
 
@@ -288,6 +291,37 @@ production has ingested — so the guard is procedural rather than automated:
 The nearest thing to an automated guard now exists for the narrower recurrence risk:
 `ParseResult.DegradedBranchLines` (see §4.1) makes the one remaining reasoned-about code path announce
 itself the first time a real producer takes it.
+
+## 8c. A Spark-core change this PR also carries: descriptions are seeded, not owned
+
+Not a coverage defect, but uncovered by this work and landed in the same PR (see the repo's one-PR
+rule). While correcting `ReportIngestOutcome.BranchLinesIdentified`'s doc comment, CI failed at
+`Verify Spark models are in sync` — because under #348 a `///` summary **owned** the attribute's
+`description.en` and overwrote whatever the model file said.
+
+That ownership was wrong in kind. A `///` comment is written for the next developer; a `description`
+renders as an [i] tooltip for the end user. #348 let the first overwrite the second, and made
+`--spark-verify-model` **fail the build** until the human's wording was discarded.
+
+**New rule:** the summary is a *seed*. It fills `description.en` when the model file has nothing
+there — key absent, or present but blank — and JSON owns it from then on, in every language. Blanking
+a description is how you ask for the seed back.
+
+Verify is narrowed rather than removed: it still reports a missing or blank `en`, which preserves the
+invariant that **verify fails exactly when synchronize would write something**. The two commands can
+no longer disagree, which was the actual defect.
+
+- Accepted cost: a corrected summary no longer reaches a description that already has text, so
+  user-facing wording is changed by editing the model file. #348's rule ii existed because seeding
+  only *new* attributes would leave existing ones undescribed forever — true then, spent now the
+  models are seeded.
+- No hash work: `description` was never in `ModelFileShape.StructuralAttributeFields`, so the drift
+  check was the only gate.
+- Verified end to end against `apps/CodeCoverage`: a hand-edited description survives
+  `--spark-synchronize-model`, and `--spark-verify-model` still exits 0.
+- Docs: `guide-attribute-descriptions.md` rewritten; `issue_348_PRD.md`'s decision table moved from
+  **ii** to **i** with the supersession recorded in place; `issue_348_plan.md` S2 and the preview-70
+  release note annotated rather than rewritten.
 
 ## 9. Non-goals
 

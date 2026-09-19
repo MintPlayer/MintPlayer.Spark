@@ -17,6 +17,7 @@ blocked and nothing needs a database migration — measured, see PRD §4.2a.
 | M1 — parser fix | ✅ `CoberturaParser.cs` reads `(k/n)` unconditionally; `<conditions>` is a documented last resort only when `condition-coverage` is absent or unparseable. |
 | M2 — tests | ✅ `CoberturaConditionsTests.cs`, 10 tests, built from **verbatim** coverlet output + 2 committed real-producer fixtures. Suite **551/551**. |
 | M3 — back-fill | ⏸ Reduced to re-ingesting **5 builds**; no migration. |
+| M7 — attribute descriptions are seeded, not owned | ✅ Spark-core, uncovered by this work, same PR. PRD §8c. |
 | B1 — Clover producer discriminator (D7) | ✅ Fixed + 2 tests; the incoherent `conditionals="6"` in the old sample corrected to `8`. |
 | B3 — JaCoCo `mi` instruction-partial (D8) | ✅ Fixed + 3 tests. New `LineCoverage.InstructionsMissed`, merged by MIN. No migration — no JaCoCo data exists. |
 | M4 — docs | ✅ `product-overview.md` rewritten; #420's PRD §3 row + A8 retracted, its plan M4 flagged, and its "re-parsing gains no fidelity" claim corrected. |
@@ -138,6 +139,17 @@ New `ISparkMigration`, C# not JS patch, so it can open attachments:
    count; that number is the permanent residue and belongs in the PR description.
 
 If SP3 says startup is too slow, ship it as a one-shot cron job instead and say so here.
+
+### M7 — An XML summary seeds a description, it no longer replaces it *(PRD §8c)*
+
+Spark core, not the coverage app. `ModelSynchronizer.ApplyDescriptionSeed` fills `description.en`
+only when it is absent or blank; `DescribeDescriptionDrift` reports only those, so verify and
+synchronize can never disagree. Four tests in `ModelSynchronizerDescriptionTests` changed — the two
+that pinned the overwrite are inverted, plus new cover for blank-counts-as-missing. Docs in
+`guide-attribute-descriptions.md`, `issue_348_PRD.md` (decision ii → i), `issue_348_plan.md` S2 and
+`release-notes-preview-70.md`.
+
+Landed here rather than split off, per the repo's one-PR rule: this PR is what uncovered it.
 
 ### M6 — Re-ingest the 5 affected builds *(covers A7)*
 
