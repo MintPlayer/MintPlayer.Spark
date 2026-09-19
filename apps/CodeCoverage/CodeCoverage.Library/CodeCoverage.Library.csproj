@@ -10,6 +10,8 @@
 	<ItemGroup>
 		<!-- [JsonIgnore] on transient entity properties: RavenDB serializes through
 		     Newtonsoft, so its attribute is what keeps a value out of the document. -->
+		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
 	</ItemGroup>
 
