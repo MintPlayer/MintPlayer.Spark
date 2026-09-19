@@ -142,9 +142,21 @@ If SP3 says startup is too slow, ship it as a one-shot cron job instead and say 
 ### M6 — Re-ingest the 5 affected builds *(covers A7)*
 
 Not code. After deploy, either re-run those five workflows so the fixed parser re-ingests naturally
-(no new code, preferred) or run a one-shot job over the five build ids. The ids are in PRD §4.2a's
-source measurement; four are `MintPlayer.AI`, one is another repository. Writes to production, so it
+(no new code, preferred) or run a one-shot job over the five build ids. Writes to production, so it
 needs Pieterjan's go-ahead and is deliberately **not** part of this PR.
+
+**The five, measured 2026-09-19** — so the go-ahead is a decision, not a lookup:
+
+| # | Build id | finalized (UTC) | cobertura reports |
+|---|---|---|---|
+| 1 | `Commits/1288608313/a603dba0b474376e65652c7e8064c0419cfed55d/builds/35445786794-1` | 13:28:46 | 1 of 5 |
+| 2 | `Commits/1266490237/ee7be01f8be38f9977a0576ecaeb7eb71aec42c8/builds/35446645546-1` | 13:47:47 | 3 of 3 |
+| 3 | `Commits/1266490237/249fe04f42168f00751eb66a4359278133a2ad96/builds/35446821520-1` | 13:50:38 | 3 of 3 |
+| 4 | `Commits/1266490237/18dbca03c4d1940f3fc2540a479f9f541214be0e/builds/35446787299-1` | 13:50:54 | 3 of 3 |
+| 5 | `Commits/1266490237/f24b67c6e5f9fbdc274b41df0a7ae67897db3193/builds/35447500968-1` | 14:05:26 | 3 of 3 |
+
+Repository `1266490237` is `MintPlayer.AI` (#2–#5). **#3 is the evidence in #423 itself**
+(`249fe04f…`), so it is the one to re-ingest first and re-check against the issue's reproduction.
 
 ### M4 — Correct the documents that assert the false premise *(covers A8, D6)*
 - `docs/code-coverage/product-overview.md:124-140` — cobertura moves to the count-only group; state

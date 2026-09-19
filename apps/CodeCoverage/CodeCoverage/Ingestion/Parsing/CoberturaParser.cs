@@ -45,6 +45,11 @@ public sealed partial class CoberturaParser : ICoverageParser
 
         var byFile = new Dictionary<string, ParsedFile>(StringComparer.Ordinal);
 
+        // Counts lines that fell to the last-resort reading below, so a producer
+        // that actually emits that shape is visible instead of silently
+        // under-stated. See ParseResult.DegradedBranchLines.
+        var degraded = 0;
+
         foreach (var cls in root.Descendants("class"))
         {
             var filename = cls.Attribute("filename")?.Value;
@@ -102,6 +107,7 @@ public sealed partial class CoberturaParser : ICoverageParser
                             out var percent) && percent > 0);
 
                     file.AddBranchCount(number, reached, conditions.Count);
+                    degraded++;
                 }
             }
         }
@@ -112,7 +118,7 @@ public sealed partial class CoberturaParser : ICoverageParser
             file.ResolveStatuses();
         }
 
-        return new ParseResult { Files = files, SourceRoots = sources };
+        return new ParseResult { Files = files, SourceRoots = sources, DegradedBranchLines = degraded };
     }
 
     /// <summary>

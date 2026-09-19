@@ -203,6 +203,31 @@ public class CoberturaConditionsTests
     }
 
     [Fact]
+    public void The_last_resort_reading_reports_itself()
+    {
+        // <conditions> with no usable condition-coverage is the one path still
+        // counting elements as points of unknown arity — the shape of #423,
+        // narrowed to a case no measured producer exhibits. If a producer does
+        // exhibit it, that must be visible rather than silently under-stated.
+        var result = parser.Parse(Wrap("""
+                <line number="5" hits="3" branch="true">
+                  <conditions><condition number="70" type="jump" coverage="50%" /></conditions>
+                </line>
+            """));
+
+        result.DegradedBranchLines.Should().Be(1);
+        result.Files.Single().Branches[5].Arity.Should().Be(1);
+    }
+
+    [Fact]
+    public void A_normally_read_report_is_not_flagged_as_degraded()
+    {
+        var result = parser.Parse(Wrap(PartialJump + FullJump + PartialSwitch));
+
+        result.DegradedBranchLines.Should().Be(0);
+    }
+
+    [Fact]
     public void A_gcovr_shaped_line_reads_its_arity_from_condition_coverage()
     {
         // gcovr emits exactly one <condition number="0" type="jump" coverage="X%"/>

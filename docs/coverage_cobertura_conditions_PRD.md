@@ -118,6 +118,13 @@ Guarded variant, only if SP1 finds a per-arm producer: keep the arm path but tak
 self-validating — it needs no producer sniffing, and it is false for 100% of coverlet lines, so
 coverlet lands on the count path automatically.
 
+**The one path still reasoned about rather than measured** is `<conditions>` present with no usable
+`condition-coverage`, where element count stands in for an arity the document never states. That is
+the shape of this very defect, narrowed to a case no measured producer exhibits — so it counts itself
+into `ParseResult.DegradedBranchLines` and `ParseSessionRecipient` logs a warning naming the report,
+the build and the line count. If a real producer ever takes that path, it says so instead of quietly
+under-stating arity.
+
 ### 4.2 What does *not* change
 
 The storage model, `CoverageMerger`, `LegacyBranchCompatibility`, the `202609190900` migration, the
@@ -264,6 +271,23 @@ Two further decisions fall out of this:
 |---|---|---|---|
 | D7 | Clover's two incompatible producers (B1) | (a) leave as-is; (b) discriminate on `<metrics conditionals=>`, which equals `2 × cond-lines` for Atlassian and `Σ(truecount+falsecount)` for istanbul | **(b) — DECIDED by Pieterjan, implemented.** The discriminator only flips the reading on an *unambiguous* contradiction; a missing or consistent total keeps the istanbul reading, which is the measured one. No migration: no Clover report has ever been ingested (§4.2a). |
 | D8 | JaCoCo instruction-partial (B3) | (a) leave; (b) add a partial signal to `ParsedFile` independent of branches | **(b) — DECIDED by Pieterjan, implemented.** `LineCoverage.InstructionsMissed` (`int?`, null = no claim) merges by **MIN** over claiming reports, and `ResolveStatuses` treats `> 0` as partial alongside branch partiality. No migration needed: no JaCoCo report has ever been ingested, and absent = no claim is already correct. |
+
+## 8b. Keeping the "no migration" conclusion honest
+
+§4.2a's format census is a **point-in-time measurement**, and it is what justifies shipping D7 and D8
+without a back-fill. It cannot be turned into a code assertion — no test can observe which formats
+production has ingested — so the guard is procedural rather than automated:
+
+- The method is recorded in the plan's SP2 section, including the RQL and chunked-response traps, so
+  re-running it is minutes rather than a rediscovery.
+- **Re-run it before any future decision that depends on "format X has no stored data."** It is
+  already false the moment a repository starts uploading a new format, and nothing will announce that.
+- `ReportIngestOutcome` already records the parsed format per upload, so the same question can be
+  answered from ingest diagnostics rather than attachment names once enough history accrues.
+
+The nearest thing to an automated guard now exists for the narrower recurrence risk:
+`ParseResult.DegradedBranchLines` (see §4.1) makes the one remaining reasoned-about code path announce
+itself the first time a real producer takes it.
 
 ## 9. Non-goals
 

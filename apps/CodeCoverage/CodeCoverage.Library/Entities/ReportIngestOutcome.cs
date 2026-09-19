@@ -36,9 +36,14 @@ public partial class ReportIngestOutcome
     public string? Detail { get; set; }
 
     /// <summary>
-    /// Lines whose branch arms this report identified individually (lcov,
-    /// istanbul, Cobertura's &lt;conditions&gt;). These merge exactly across
-    /// reports: two reports covering different arms of one line union to both.
+    /// Lines whose branch arms this report identified individually — lcov's
+    /// block/branch ordinals and istanbul's branchMap key plus arm index, which
+    /// are the only two that do. These merge exactly across reports: two reports
+    /// covering different arms of one line union to both.
+    /// <para>
+    /// Cobertura's &lt;conditions&gt; was counted here until #423 and should not
+    /// be: &lt;condition number=&gt; names a branch point, not an arm.
+    /// </para>
     /// </summary>
     public int BranchLinesIdentified { get; set; }
 
