@@ -35,15 +35,15 @@ public partial class ReportIngestOutcome
     /// <summary>Human-readable detail — the parser's own message, bounded.</summary>
     public string? Detail { get; set; }
 
+    // This doc comment is the attribute's description in the synced model, so it
+    // stays short and user-facing; changing it means re-running
+    // `--spark-synchronize-model`. Background: Cobertura's <conditions> was
+    // counted here until #423, wrongly — <condition number=> names a branch
+    // POINT, not an arm.
     /// <summary>
-    /// Lines whose branch arms this report identified individually — lcov's
-    /// block/branch ordinals and istanbul's branchMap key plus arm index, which
-    /// are the only two that do. These merge exactly across reports: two reports
-    /// covering different arms of one line union to both.
-    /// <para>
-    /// Cobertura's &lt;conditions&gt; was counted here until #423 and should not
-    /// be: &lt;condition number=&gt; names a branch point, not an arm.
-    /// </para>
+    /// Lines whose branch arms this report identified individually (lcov,
+    /// istanbul). These merge exactly across reports: two reports covering
+    /// different arms of one line union to both.
     /// </summary>
     public int BranchLinesIdentified { get; set; }
 

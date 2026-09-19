@@ -32,7 +32,7 @@
           "en": "Branch Lines Identified"
         },
         "description": {
-          "en": "Lines whose branch arms this report identified individually (lcov, istanbul, Cobertura's <conditions>). These merge exactly across reports: two reports covering different arms of one line union to both."
+          "en": "Lines whose branch arms this report identified individually (lcov, istanbul). These merge exactly across reports: two reports covering different arms of one line union to both."
         },
         "dataType": "number",
         "isRequired": true,
