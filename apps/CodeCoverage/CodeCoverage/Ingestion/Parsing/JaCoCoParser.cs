@@ -33,7 +33,11 @@ public sealed class JaCoCoParser : ICoverageParser
 
         var byFile = new Dictionary<string, ParsedFile>(StringComparer.Ordinal);
 
-        foreach (var package in root.Elements("package"))
+        // Descendants, not Elements: report.dtd allows <group> to nest packages
+        // (and groups within groups), which is what jacoco:report-aggregate emits
+        // for a multi-module build. Direct children only parsed those to zero
+        // files, so the whole upload was rejected as "noFiles".
+        foreach (var package in root.Descendants("package"))
         {
             var packageName = package.Attribute("name")?.Value ?? "";
 
@@ -55,8 +59,16 @@ public sealed class JaCoCoParser : ICoverageParser
                     int.TryParse(line.Attribute("ci")?.Value, out var coveredInstructions);
                     int.TryParse(line.Attribute("mb")?.Value, out var missedBranches);
                     int.TryParse(line.Attribute("cb")?.Value, out var coveredBranches);
+                    var hasMissed = int.TryParse(line.Attribute("mi")?.Value, out var missedInstructions);
 
-                    file.AddLine(number, coveredInstructions == 0 ? 0 : null);
+                    // mi is what makes a line yellow in JaCoCo's own report:
+                    // ci==0 is red, ci>0 && mi>0 is PARTIALLY covered, mi==0 is
+                    // green. Ignoring it reported every instruction-partial line
+                    // as fully covered.
+                    file.AddLine(
+                        number,
+                        coveredInstructions == 0 ? 0 : null,
+                        hasMissed ? missedInstructions : null);
 
                     // mb/cb are bare counts with no arm identity, exactly like
                     // Cobertura's condition-coverage — a floor, never an arm set.

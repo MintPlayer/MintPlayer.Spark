@@ -88,6 +88,20 @@ public class LineCoverage
 
     /// <summary>Whether the line was not covered, partially covered (some branches missed) or fully covered.</summary>
     public LineStatus Status { get; set; }
+
+    /// <summary>
+    /// Instructions on this line that were not executed, where the format counts
+    /// them (JaCoCo's <c>mi</c>). <c>null</c> means the format made no claim —
+    /// which is every format but JaCoCo, and every document written before #423.
+    /// <para>
+    /// Needed in storage, not merely at parse time, because a later report
+    /// merging into this document must not silently drop an earlier report's
+    /// claim. It merges by MIN over the reports that made a claim: another run
+    /// executing those instructions is proof they are reachable, so the smallest
+    /// observed miss count is the strongest true statement about the union.
+    /// </para>
+    /// </summary>
+    public int? InstructionsMissed { get; set; }
 }
 
 /// <summary>
@@ -96,9 +110,11 @@ public class LineCoverage
 /// <para>
 /// Coverage report formats fall into two groups. Some identify each arm of a
 /// branching expression (lcov's block/branch ordinals, istanbul's branchMap key
-/// plus arm index, Cobertura's &lt;condition number=&gt;); the rest report a bare
-/// count of how many arms were taken without saying which (Cobertura's
-/// condition-coverage, JaCoCo's mb/cb, Clover's truecount/falsecount).
+/// plus arm index); the rest report a bare count of how many arms were taken
+/// without saying which (Cobertura's condition-coverage, JaCoCo's mb/cb,
+/// Clover's truecount/falsecount). Cobertura's &lt;condition number=&gt; looks
+/// like the first group and is not — it names a branch point, not an arm; see
+/// #423.
 /// </para>
 /// <para>
 /// So a line keeps <see cref="TakenArms"/> — the union of arms observed taken,

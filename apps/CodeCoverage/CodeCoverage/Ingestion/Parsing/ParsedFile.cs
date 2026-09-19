@@ -34,18 +34,30 @@ public sealed class ParsedFile
     /// null means "executed, count unknown" (JaCoCo carries no execution counts).
     /// It must never be demoted to 0, which means "definitely not executed".
     /// </param>
-    public void AddLine(int number, int? hits)
+    /// <param name="instructionsMissed">
+    /// Unexecuted instructions on the line, for formats that count them (JaCoCo's
+    /// <c>mi</c>). Null means no claim; see <see cref="MinMissed"/>.
+    /// </param>
+    public void AddLine(int number, int? hits, int? instructionsMissed = null)
     {
         if (Lines.TryGetValue(number, out var existing))
-            Lines[number] = new ParsedLine(MaxHits(existing.Hits, hits), default);
+            Lines[number] = new ParsedLine(
+                MaxHits(existing.Hits, hits),
+                default,
+                MinMissed(existing.InstructionsMissed, instructionsMissed));
         else
-            Lines[number] = new ParsedLine(hits, default);
+            Lines[number] = new ParsedLine(hits, default, instructionsMissed);
     }
 
     /// <summary>
     /// Records one branch arm that the format identifies. Only for formats that
-    /// carry real arm identity — lcov's block/branch ordinals, istanbul's
-    /// branchMap key plus arm index, Cobertura's &lt;condition number=&gt;.
+    /// carry real arm identity — lcov's block/branch ordinals, and istanbul's
+    /// branchMap key plus arm index.
+    ///
+    /// Cobertura's &lt;condition number=&gt; is NOT such a format, though #420
+    /// treated it as one: that number names a branch POINT, so two reports each
+    /// taking a different arm of it report the same key and the arm set can never
+    /// grow with evidence. See #423 and <see cref="AddBranchCount"/>.
     /// </summary>
     public void AddBranchArm(int line, string armKey, bool taken)
     {
@@ -87,7 +99,12 @@ public sealed class ParsedFile
     {
         foreach (var (number, line) in Lines.ToList())
         {
-            var partial = Branches.TryGetValue(number, out var branches) && branches.IsPartial;
+            // Two independent reasons a line can be partial: an untaken branch
+            // arm, or — where the format counts instructions — an unexecuted
+            // instruction on an otherwise executed line (JaCoCo's yellow).
+            var partial =
+                (Branches.TryGetValue(number, out var branches) && branches.IsPartial)
+                || line.InstructionsMissed > 0;
             var status = line.Hits switch
             {
                 0 => LineStatus.NotCovered,
@@ -104,6 +121,14 @@ public sealed class ParsedFile
     /// </summary>
     internal static int? MaxHits(int? a, int? b)
         => a is null ? b : b is null ? a : Math.Max(a.Value, b.Value);
+
+    /// <summary>
+    /// Min where null means "no claim made". A report that does not count
+    /// instructions must not be read as claiming zero were missed, so null loses
+    /// to any non-null — the mirror of <see cref="MaxHits"/>.
+    /// </summary>
+    internal static int? MinMissed(int? a, int? b)
+        => a is null ? b : b is null ? a : Math.Min(a.Value, b.Value);
 }
 
 /// <summary>
@@ -142,4 +167,13 @@ public sealed class ParsedBranches
     public bool IsPartial => Covered < Arity;
 }
 
-public readonly record struct ParsedLine(int? Hits, LineStatus Status);
+/// <param name="InstructionsMissed">
+/// Unexecuted instructions on the line, where the format counts them (JaCoCo's
+/// <c>mi</c>); null when it makes no such claim. Merges by MIN over the reports
+/// that do claim, not MAX — another run executing those instructions proves they
+/// are reachable, so the smallest observed miss is the strongest true statement.
+/// </param>
+public readonly record struct ParsedLine(
+    int? Hits,
+    LineStatus Status,
+    int? InstructionsMissed = null);

@@ -29,10 +29,18 @@ public static class CoverageMerger
             {
                 existing.Hits = ParsedFile.MaxHits(existing.Hits, parsedLine.Hits);
                 existing.Status = (LineStatus)Math.Max((int)existing.Status, (int)parsedLine.Status);
+                existing.InstructionsMissed = ParsedFile.MinMissed(
+                    existing.InstructionsMissed, parsedLine.InstructionsMissed);
             }
             else
             {
-                lines[number] = new LineCoverage { Number = number, Hits = parsedLine.Hits, Status = parsedLine.Status };
+                lines[number] = new LineCoverage
+                {
+                    Number = number,
+                    Hits = parsedLine.Hits,
+                    Status = parsedLine.Status,
+                    InstructionsMissed = parsedLine.InstructionsMissed,
+                };
             }
         }
 
@@ -54,9 +62,11 @@ public static class CoverageMerger
             var executed = line.Hits is > 0 || (line.Hits is null && line.Status != LineStatus.NotCovered);
             if (executed)
             {
-                line.Status = branches.TryGetValue(line.Number, out var lineBranches) && lineBranches.IsPartial
-                    ? LineStatus.PartiallyCovered
-                    : LineStatus.Covered;
+                var partial =
+                    (branches.TryGetValue(line.Number, out var lineBranches) && lineBranches.IsPartial)
+                    || line.InstructionsMissed > 0;
+
+                line.Status = partial ? LineStatus.PartiallyCovered : LineStatus.Covered;
             }
         }
 
@@ -73,7 +83,7 @@ public static class CoverageMerger
     {
         var parsed = new ParsedFile { RawPath = source.Path };
         foreach (var line in source.Lines)
-            parsed.Lines[line.Number] = new ParsedLine(line.Hits, line.Status);
+            parsed.Lines[line.Number] = new ParsedLine(line.Hits, line.Status, line.InstructionsMissed);
         foreach (var branch in source.Branches)
         {
             var parsedBranches = new ParsedBranches { Arity = branch.Arity, Floor = branch.Floor };
@@ -98,7 +108,13 @@ public static class CoverageMerger
             Path = source.Path,
             Matched = source.Matched,
             BlobOid = source.BlobOid,
-            Lines = [.. source.Lines.Select(l => new LineCoverage { Number = l.Number, Hits = l.Hits, Status = l.Status })],
+            Lines = [.. source.Lines.Select(l => new LineCoverage
+            {
+                Number = l.Number,
+                Hits = l.Hits,
+                Status = l.Status,
+                InstructionsMissed = l.InstructionsMissed,
+            })],
             Branches = [.. source.Branches.Select(b => new LineBranchCoverage
             {
                 Line = b.Line,

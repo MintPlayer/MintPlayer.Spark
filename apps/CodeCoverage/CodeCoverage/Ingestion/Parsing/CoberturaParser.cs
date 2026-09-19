@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
@@ -8,6 +9,8 @@ namespace CodeCoverage.Ingestion.Parsing;
 /// Several &lt;class&gt; elements share one @filename (one per type in the file),
 /// so results are grouped by filename. Branch data rides in
 /// condition-coverage="50% (1/2)" — the (covered/total) pair is what we read.
+/// Cobertura is count-only: &lt;condition&gt; children name branch POINTS, not arms,
+/// so they never contribute an arm set (see #423).
 /// The &lt;source&gt; roots are surfaced for path normalization.
 /// </summary>
 public sealed partial class CoberturaParser : ICoverageParser
@@ -60,38 +63,45 @@ public sealed partial class CoberturaParser : ICoverageParser
 
                 file.AddLine(number, (int)Math.Min(hits, int.MaxValue));
 
-                // Prefer <conditions>, which carries per-condition identity, over
-                // the aggregated condition-coverage attribute, which is a bare
-                // count. gcovr and coverage.py emit the former; coverlet does not.
-                var conditions = line.Element("conditions")?.Elements("condition").ToList();
-                if (conditions is { Count: > 0 })
-                {
-                    foreach (var condition in conditions)
-                    {
-                        var conditionNumber = condition.Attribute("number")?.Value;
-                        if (string.IsNullOrEmpty(conditionNumber)) continue;
+                // Cobertura is a COUNT-ONLY format. A <condition> element is a branch
+                // POINT, not one arm of one: coverlet and gcovr both emit a single
+                // aggregate <condition coverage="50%"/> for a two-armed jump, and
+                // coverage.py emits no <conditions> at all. Reading those elements as
+                // arms halves the arity and hides partials (#423), and `condition:N`
+                // cannot serve as an arm key anyway — two reports that each take a
+                // different arm of the same point both report the same N, so the arm
+                // set could never grow with evidence.
+                //
+                // The line-level condition-coverage="k% (k/n)" is the only exact
+                // statement of arity in the document, so it is what we read.
+                var conditionCoverage = line.Attribute("condition-coverage")?.Value;
+                var match = conditionCoverage is null
+                    ? Match.Empty
+                    : ConditionCoverageRegex().Match(conditionCoverage);
 
-                        // coverage="50%" — the share of this condition's own arms
-                        // that were taken. Anything above 0 means it was reached.
-                        var coverage = condition.Attribute("coverage")?.Value?.TrimEnd('%');
-                        var taken = int.TryParse(coverage, out var percent) && percent > 0;
-                        file.AddBranchArm(number, $"condition:{conditionNumber}", taken);
-                    }
+                if (match.Success
+                    && int.TryParse(match.Groups["covered"].Value, out var covered)
+                    && int.TryParse(match.Groups["total"].Value, out var total))
+                {
+                    file.AddBranchCount(number, covered, total);
                     continue;
                 }
 
-                var conditionCoverage = line.Attribute("condition-coverage")?.Value;
-                if (conditionCoverage is not null)
+                // Last resort: <conditions> without a usable condition-coverage. No
+                // producer we have measured does this, so treating each element as a
+                // branch point of unknown arity is the least-wrong reading available —
+                // it under-states arity rather than inventing one.
+                var conditions = line.Element("conditions")?.Elements("condition").ToList();
+                if (conditions is { Count: > 0 })
                 {
-                    var match = ConditionCoverageRegex().Match(conditionCoverage);
-                    if (match.Success
-                        && int.TryParse(match.Groups["covered"].Value, out var covered)
-                        && int.TryParse(match.Groups["total"].Value, out var total))
-                    {
-                        // Count only: (1/2) says how many arms were taken but not
-                        // which, so it contributes a floor and never an arm set.
-                        file.AddBranchCount(number, covered, total);
-                    }
+                    var reached = conditions.Count(c =>
+                        double.TryParse(
+                            c.Attribute("coverage")?.Value?.TrimEnd('%'),
+                            NumberStyles.Float,
+                            CultureInfo.InvariantCulture,
+                            out var percent) && percent > 0);
+
+                    file.AddBranchCount(number, reached, conditions.Count);
                 }
             }
         }
