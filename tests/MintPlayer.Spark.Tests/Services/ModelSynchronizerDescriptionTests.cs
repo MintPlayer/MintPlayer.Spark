@@ -17,8 +17,9 @@ using Raven.Client.Documents.Linq;
 namespace MintPlayer.Spark.Tests.Services;
 
 /// <summary>
-/// #348 — how C# text becomes an attribute's <c>description</c> on synchronize, and who owns which
-/// language afterwards. C# owns <c>en</c> whenever it has text; JSON owns everything else.
+/// #348 — how C# text becomes an attribute's <c>description</c> on synchronize, and who owns it
+/// afterwards. The C# summary is a SEED: it fills <c>en</c> when the model file has nothing there,
+/// and JSON owns the value from then on, in every language including <c>en</c>.
 /// </summary>
 public sealed class ModelSynchronizerDescriptionTests : IDisposable
 {
@@ -119,11 +120,32 @@ public sealed class ModelSynchronizerDescriptionTests : IDisposable
     }
 
     [Fact]
-    public void Csharp_overwrites_a_stale_en_but_leaves_nl_alone()
+    public void Csharp_never_replaces_an_en_that_is_already_written()
     {
+        // The C# summary is a seed, not an overwrite (#348 revised). A `///` comment
+        // is written for the next developer; a description is an [i] tooltip for the
+        // end user. Once somebody has written the user-facing text, C# stops having
+        // an opinion — even when its own summary has since changed.
         SeedWidgetFile("""
             {"id":"22222222-2222-2222-2222-222222222222","name":"Title","dataType":"String",
-             "description":{"en":"Stale.","nl":"Nederlands."}}
+             "description":{"en":"Hand-written help.","nl":"Nederlands."}}
+            """);
+
+        SyncTwice();
+
+        var description = Attribute("Title").Description!.Translations;
+        description.Keys.Should().Equal("en", "nl");
+        description.Values.Should().Equal("Hand-written help.", "Nederlands.");
+    }
+
+    [Fact]
+    public void A_blank_en_counts_as_missing_and_is_seeded()
+    {
+        // "Present" means it has text. An empty or whitespace `en` is an absence
+        // wearing a key, so the seed still fills it.
+        SeedWidgetFile("""
+            {"id":"22222222-2222-2222-2222-222222222222","name":"Title","dataType":"String",
+             "description":{"en":"   ","nl":"Nederlands."}}
             """);
 
         SyncTwice();
@@ -184,27 +206,47 @@ public sealed class ModelSynchronizerDescriptionTests : IDisposable
     // ── AC7 ─────────────────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Drift_report_names_a_stale_en_and_an_absent_one_and_is_empty_after_sync()
+    public void Drift_report_names_only_what_sync_would_fill_and_is_empty_afterwards()
     {
+        // Verify and synchronize must agree: drift is exactly what synchronize
+        // would write. A description that merely diverges from the C# summary is
+        // the user-facing wording and is not drift — reporting it would fail the
+        // build over text synchronize will never change.
         SeedWidgetFile("""
             {"id":"22222222-2222-2222-2222-222222222222","name":"Title","dataType":"String",
-             "description":{"en":"Stale.","nl":"Nederlands."}},
+             "description":{"en":"Hand-written help.","nl":"Nederlands."}},
             {"id":"33333333-3333-3333-3333-333333333333","name":"Notes","dataType":"String"},
             {"id":"44444444-4444-4444-4444-444444444444","name":"Plain","dataType":"String",
-             "description":{"en":"JSON only, not drift."}}
+             "description":{"en":"   "}}
             """);
 
         var before = ModelSynchronizer.DescribeDescriptionDrift(typeof(MSD_Context), _tempDir);
 
+        // Title diverges from its C# text and is NOT reported; Plain is blank but has
+        // no C# text to seed from, so there is nothing to fill. Only Notes is drift.
         before.Should().BeEquivalentTo(
         [
-            "MSD_Widget.Title: description.en is \"Stale.\" on disk, C# says \"Explicit text.\"",
             "MSD_Widget.Notes: description.en is absent on disk, C# says \"From the summary.\"",
         ]);
 
         CreateSynchronizer().SynchronizeModels(typeof(MSD_Context));
 
         ModelSynchronizer.DescribeDescriptionDrift(typeof(MSD_Context), _tempDir).Should().BeEmpty();
+        Attribute("Title").Description!.Translations["en"].Should().Be("Hand-written help.");
+    }
+
+    [Fact]
+    public void A_blank_en_with_csharp_text_behind_it_is_drift()
+    {
+        SeedWidgetFile("""
+            {"id":"22222222-2222-2222-2222-222222222222","name":"Title","dataType":"String",
+             "description":{"en":"","nl":"Nederlands."}}
+            """);
+
+        ModelSynchronizer.DescribeDescriptionDrift(typeof(MSD_Context), _tempDir).Should().BeEquivalentTo(
+        [
+            "MSD_Widget.Title: description.en is blank on disk, C# says \"Explicit text.\"",
+        ]);
     }
 
     [Fact]
@@ -216,18 +258,27 @@ public sealed class ModelSynchronizerDescriptionTests : IDisposable
     // ── Seeding rule in isolation ───────────────────────────────────────────────────────────────
 
     [Fact]
-    public void ApplyDescriptionSeed_inserts_en_first_when_absent_and_in_place_when_present()
+    public void ApplyDescriptionSeed_fills_an_absent_or_blank_en_and_never_replaces_a_written_one()
     {
         var absent = new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "A" };
         absent.Description = new TranslatedString { Translations = { ["nl"] = "N", ["fr"] = "F" } };
         ModelSynchronizer.ApplyDescriptionSeed(absent, "E");
         absent.Description.Translations.Keys.Should().Equal("en", "nl", "fr");
 
+        // Written by a human: left alone, key order untouched.
         var present = new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "B" };
         present.Description = new TranslatedString { Translations = { ["nl"] = "N", ["en"] = "old" } };
         ModelSynchronizer.ApplyDescriptionSeed(present, "new");
         present.Description.Translations.Keys.Should().Equal("nl", "en");
-        present.Description.Translations["en"].Should().Be("new");
+        present.Description.Translations["en"].Should().Be("old");
+
+        // Blank is an absence wearing a key — filled in place, so a second pass is
+        // byte-identical.
+        var blank = new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "D" };
+        blank.Description = new TranslatedString { Translations = { ["nl"] = "N", ["en"] = "  " } };
+        ModelSynchronizer.ApplyDescriptionSeed(blank, "new");
+        blank.Description.Translations.Keys.Should().Equal("nl", "en");
+        blank.Description.Translations["en"].Should().Be("new");
 
         var untouched = new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "C" };
         ModelSynchronizer.ApplyDescriptionSeed(untouched, null);
