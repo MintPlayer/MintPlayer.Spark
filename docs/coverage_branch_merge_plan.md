@@ -16,7 +16,7 @@ All milestones are done. Suites: **CodeCoverage.Tests 532/532**, SPA specs green
 | M1 parser contract, max everywhere, null ≠ 0 | ✅ |
 | M2 storage model + merge rewrite | ✅ |
 | M3 CommitAssembler + its first branch tests | ✅ |
-| M4 Cobertura `<conditions>` | ✅ |
+| M4 Cobertura `<conditions>` | ⚠️ shipped a defect — see #423 |
 | M5 Clover parser + structural discriminator | ✅ |
 | M6 Istanbul parser + JSON guard | ✅ |
 | M7 ingest diagnostic (+ model sync) | ✅ |
@@ -93,6 +93,13 @@ it is ordinary C# with an `IDocumentStore`; only the JavaScript patch script can
 builds retain gzipped reports, and every one inspected was lcov carrying `BRDA` (real arm identity,
 already preserved exactly by re-derivation) with **zero `<conditions>`**. Re-parsing would redo path
 normalization and flag/assembly attribution for no fidelity gain.
+
+> ⚠️ **The evidence for this conclusion was a sampling artefact.** "Every one inspected had zero
+> `<conditions>`" cannot hold generally: every coverlet report emits them, including the seven sitting
+> in `CodeCoverage.Tests/coverage/`. The reports inspected must all have come from the frontend leg.
+> Re-parsing is now the *only* way to repair [#423](coverage_cobertura_conditions_PRD.md), because the
+> `(k/n)` denominator it discarded was never stored — so re-parse is strictly higher fidelity than
+> re-derivation, not equal to it.
 
 Three findings worth carrying out of the build:
 
@@ -231,8 +238,13 @@ M12.
 - Add the first assembler tests that carry branch data at all: two builds of one commit, different
   formats, both orderings, identical result.
 
-### M4 — Cobertura `<conditions><condition/>`
-*Covers A8.*
+### M4 — Cobertura `<conditions><condition/>` — ⚠️ **THIS MILESTONE SHIPPED A DEFECT**
+*Covers A8 — and A8 has since been retracted.*
+
+> Implementing this as written caused [#423](coverage_cobertura_conditions_PRD.md): a `<condition>`
+> is a branch *point*, not an arm, so arity was halved and partial branches were stored as fully
+> covered. Cobertura is a count-only format. Reverted; see
+> [coverage_cobertura_conditions_plan.md](coverage_cobertura_conditions_plan.md) M1.
 
 Read the optional `<conditions>` child where present (gcovr, coverage.py emit it) and call
 `AddBranchArm` with key `condition@{number}`; fall back to `AddBranchCount` from `condition-coverage`

@@ -127,13 +127,25 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
                 outcome.Parsed = true;
                 outcome.FilesCount = result.Files.Count;
 
-                // Branch identity is per line, not per format: one Cobertura
-                // report can identify arms on the lines carrying <conditions>
-                // and only count them elsewhere.
+                // Branch identity is per line, not per format: lcov and istanbul
+                // name arms, everything else contributes a floor, and one report
+                // can do both across different lines.
                 foreach (var branches in result.Files.SelectMany(f => f.Branches.Values))
                 {
                     if (branches.Arms.Count > 0) outcome.BranchLinesIdentified++;
                     else outcome.BranchLinesCountOnly++;
+                }
+
+                // A degraded reading means a real producer emits a shape we only
+                // reasoned about. #423 came from exactly that kind of unmeasured
+                // assumption, so it is logged rather than absorbed silently.
+                if (result.DegradedBranchLines > 0)
+                {
+                    logger.LogWarning(
+                        "Report {Name} on {BuildId} parsed as {Format} with {Count} branch lines read by a "
+                        + "degraded rule (<conditions> with no usable condition-coverage). Arity is under-stated "
+                        + "on those lines; measure this producer's output before trusting its branch totals.",
+                        attachmentName, message.BuildId, parser.FormatName, result.DegradedBranchLines);
                 }
 
                 var normalizer = new PathNormalizer(buildSession.RootDir, result.SourceRoots, headFileList.Paths);

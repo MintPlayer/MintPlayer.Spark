@@ -34,6 +34,12 @@ C# owns `en` when it has text; JSON owns the other languages. `--spark-verify-mo
 stale `en`, since the model hash deliberately ignores descriptions. Full guide:
 [`docs/guide-attribute-descriptions.md`](guide-attribute-descriptions.md).
 
+> ⚠️ **This ownership rule was reversed after preview-70.** The C# summary is now a *seed*: it fills
+> `description.en` only when the model file has nothing there, and never replaces text somebody has
+> written. `--spark-verify-model` reports a missing or blank `en`, not a divergent one. A `///`
+> comment is developer-facing and a description is an end-user tooltip, so the first should not
+> overwrite the second. See the guide and `docs/issue_348_PRD.md`.
+
 ## What to do in your app
 
 - **Entity libraries** that want `///` summaries harvested must reference the analyzer:

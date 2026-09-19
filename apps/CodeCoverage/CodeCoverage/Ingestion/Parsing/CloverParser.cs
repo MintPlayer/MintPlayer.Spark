@@ -20,6 +20,14 @@ namespace CodeCoverage.Ingestion.Parsing;
 /// which no true/false pair could express. So it maps to AddBranchCount, exactly
 /// like Cobertura's condition-coverage, and carries no arm identity.
 /// </para>
+/// <para>
+/// That holds for istanbul. <b>Atlassian Clover and Clover-PHP mean something
+/// else by the same attributes</b> — how many TIMES the condition evaluated true
+/// and false — where every conditional has exactly two arms, so a hot loop's
+/// truecount="10000" would otherwise add 10,000 phantom branches to the
+/// denominator. Both producers stamp clover="3.2.0", so they are told apart by
+/// the declared &lt;metrics conditionals=&gt;; see <see cref="UsesEvaluationCounts"/>.
+/// </para>
 /// </summary>
 public sealed class CloverParser : ICoverageParser
 {
@@ -39,6 +47,10 @@ public sealed class CloverParser : ICoverageParser
         var root = doc.Root ?? throw new InvalidDataException("Empty Clover document");
 
         var byFile = new Dictionary<string, ParsedFile>(StringComparer.Ordinal);
+
+        // Buffered, because which reading of truecount/falsecount is correct is a
+        // property of the whole document, not of one line.
+        var conditions = new List<(ParsedFile File, int Line, int True, int False)>();
 
         // Descendants, not Elements: <file> sits directly under <project> for
         // non-namespaced languages and under <package> for the rest.
@@ -70,7 +82,24 @@ public sealed class CloverParser : ICoverageParser
                 int.TryParse(line.Attribute("truecount")?.Value, out var taken);
                 int.TryParse(line.Attribute("falsecount")?.Value, out var untaken);
                 if (taken + untaken > 0)
-                    file.AddBranchCount(number, taken, taken + untaken);
+                    conditions.Add((file, number, taken, untaken));
+            }
+        }
+
+        var evaluationCounts = UsesEvaluationCounts(root, conditions);
+        foreach (var (file, number, taken, untaken) in conditions)
+        {
+            if (evaluationCounts)
+            {
+                // Atlassian semantics: one conditional, two arms, and the counts
+                // say how many TIMES each side evaluated. A hot loop's
+                // truecount="10000" is one taken arm, not 10,000 of them.
+                var covered = (taken > 0 ? 1 : 0) + (untaken > 0 ? 1 : 0);
+                file.AddBranchCount(number, covered, 2);
+            }
+            else
+            {
+                file.AddBranchCount(number, taken, taken + untaken);
             }
         }
 
@@ -81,5 +110,41 @@ public sealed class CloverParser : ICoverageParser
         }
 
         return new ParseResult { Files = files };
+    }
+
+    /// <summary>
+    /// Decides which of the two incompatible readings of truecount/falsecount the
+    /// document uses. Both producers stamp clover="3.2.0", so the root name and
+    /// version cannot tell them apart — but the declared
+    /// <c>&lt;metrics conditionals=&gt;</c> can, because the two compute it
+    /// differently:
+    /// <list type="bullet">
+    /// <item>istanbul/nyc/vitest — truecount/falsecount are ARM counts, so
+    /// conditionals is their sum over every cond line.</item>
+    /// <item>Atlassian Clover / Clover-PHP — they are EVALUATION counts, every
+    /// conditional has exactly two arms, so conditionals is 2 per cond line.</item>
+    /// </list>
+    /// Only an unambiguous match flips the reading: when the declared total is
+    /// missing, or agrees with both formulas, we keep the istanbul reading, which
+    /// is the one measured against real istanbul JSON in #420 and the only one we
+    /// knowingly ingest.
+    /// </summary>
+    private static bool UsesEvaluationCounts(
+        XElement root,
+        List<(ParsedFile File, int Line, int True, int False)> conditions)
+    {
+        if (conditions.Count == 0) return false;
+
+        var declared = root.Descendants("metrics")
+            .Select(m => m.Attribute("conditionals")?.Value)
+            .Where(v => v is not null)
+            .Select(v => int.TryParse(v, out var n) ? n : (int?)null)
+            .FirstOrDefault(n => n is not null);
+        if (declared is null) return false;
+
+        var asArmCounts = conditions.Sum(c => c.True + c.False);
+        var asEvaluations = conditions.Count * 2;
+
+        return declared == asEvaluations && declared != asArmCounts;
     }
 }

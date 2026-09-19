@@ -15,6 +15,15 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<!--
+		  Real tool-produced reports, committed as fixtures. Note the sibling
+		  coverage\ folder is matched by .gitignore's **/coverage/ rule, so reports
+		  there are local artifacts CI never sees — fixtures must live here.
+		-->
+		<Content Include="Fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<PackageReference Include="coverlet.collector" Version="6.0.4">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

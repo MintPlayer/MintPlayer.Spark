@@ -133,11 +133,24 @@ No `$schema`, no `schemas/` folder, no Spark Editor PRD in the repo (`docs/issue
 
 | | Rule | Fixed point? | Hand edits? |
 |---|---|---|---|
-| i | Seed only when JSON has none | yes | `en` and others authoritative once set — but C# text changes never propagate (silent drift) |
-| ii ★ | **C# owns `en` whenever a C# source exists; JSON owns every other language and owns `en` only when no C# source exists** | yes | Translators edit `fr`/`nl` freely; fixing English means fixing the `<summary>`, which is where a developer expects it |
+| i ★ | **Seed only when JSON has none** | yes | `en` and others authoritative once set — but C# text changes never propagate (silent drift) |
+| ii | ~~C# owns `en` whenever a C# source exists; JSON owns every other language and owns `en` only when no C# source exists~~ | yes | Translators edit `fr`/`nl` freely; fixing English means fixing the `<summary>`, which is where a developer expects it |
 | iii | Provenance marker (`descriptionSource: "clr"`) like the #275 query provenance | yes | Most flexible; adds a field only tooling reads; over-engineered for a string |
 
-**Decision: ii**, unless spike S2 shows `--spark-verify-model` cannot report the resulting `en` drift as a diff (it should — that is the point).
+~~**Decision: ii**, unless spike S2 shows `--spark-verify-model` cannot report the resulting `en` drift as a diff (it should — that is the point).~~
+
+> ⚠️ **Superseded 2026-09-19 — the decision is now i.** Rule ii rested on one argument: seeding only
+> where JSON is empty would leave every *existing* attribute undescribed forever. That was true when
+> #348 shipped and is spent now the models are seeded. What the table missed is that the two texts
+> have **different audiences** — a `///` comment is written for the next developer, a `description`
+> renders as an [i] tooltip for the end user — so ii let a developer-facing comment overwrite
+> user-facing help, and `--spark-verify-model` then *failed the build* until the human's wording was
+> discarded. Row i's stated cost (a corrected summary no longer propagates) is accepted: user-facing
+> wording is changed by editing the model file.
+>
+> Verify still reports a missing or blank `description.en`, so the invariant holds — **verify fails
+> exactly when synchronize would write something**. Row iii (provenance) would have given both
+> properties and was declined again as over-engineered for a string.
 
 ## Design
 

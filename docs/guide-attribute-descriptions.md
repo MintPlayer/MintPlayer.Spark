@@ -39,19 +39,28 @@ user without being typed twice:
 
 Precedence on synchronize: `[Description]` beats the summary; either beats nothing.
 
-### Who owns which language
+### The summary is a seed, not a source of truth
 
-**C# owns `en` whenever it has text for the property. JSON owns every other language, and owns
-`en` too when C# is silent.**
+**The C# summary fills `description.en` when the model file has nothing there — key absent, or
+present but blank. Once it has text, JSON owns it, in every language including `en`.**
+
+The two are written for different readers. A `///` comment explains the property to the next
+developer; a description is an [i] tooltip shown to the end user. Once somebody has written the
+user-facing wording, a developer-facing comment is the wrong thing to overwrite it with.
 
 - Add a `<summary>` to a property whose attribute already exists in the model file: the next
   synchronize writes `description.en` (first key), keeping any `fr`/`nl` already there.
-- Edit the summary: synchronize overwrites `en`; translators' `fr`/`nl` stay. To change the
-  English, change the summary — that is where a developer looks for it.
-- Hand-edit `en` on a property that has a summary: synchronize puts the summary back, and
-  `--spark-verify-model` fails until you do. A stale English description is drift, caught in CI
-  like any other, even though the model hash ignores descriptions.
+- Edit the summary: **nothing happens** to an attribute that already has a description. To change
+  what users read, edit `description.en` in the model file.
+- Hand-edit `en`: it stays. `--spark-verify-model` does not care that it differs from the summary,
+  because synchronize would not change it either — the two commands always agree.
+- Blank it out (`""` or whitespace): that counts as missing, so the next synchronize re-seeds it
+  from the summary. Blanking is how you ask for the seed back.
 - Remove the summary: the description stays as it is. Synchronize never deletes.
+
+> This reverses the original #348 rule, where C# owned `en` outright. That was chosen because
+> seeding only *new* attributes would have left every existing attribute undescribed forever — a
+> real problem at the time, and a spent one now that the models are seeded.
 
 Running synchronize twice always produces byte-identical files.
 

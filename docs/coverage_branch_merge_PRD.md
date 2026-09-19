@@ -87,7 +87,7 @@ positional fiction. Two cobertura reports covering *different* arms of the same 
 |---|---|---|
 | **istanbul JSON** | `branchMap` per-arm entries + parallel `b` counts | **yes, richest** |
 | **lcov** | `BRDA:<line>,<block>,<branch>,<taken>` | **yes** — real ordinals |
-| **cobertura** `<conditions>` | per-condition `number`/`type`/`coverage` | **yes**, where emitted (gcovr, coverage.py) |
+| **cobertura** `<conditions>` | per-condition `number`/`type`/`coverage` | ~~**yes**, where emitted (gcovr, coverage.py)~~ **NO — this row is wrong, and shipping it caused [#423](coverage_cobertura_conditions_PRD.md). `number` names a branch POINT, not an arm; no producer emits one `<condition>` per arm.** |
 | **cobertura** `condition-coverage` | `(covered/total)` count | no |
 | **JaCoCo** | `mb`/`cb` counts | no |
 | **clover** | `<line type="cond" truecount= falsecount=/>` | **no** — see V11 |
@@ -428,8 +428,9 @@ throw `InvalidDataException` / `ReportTooLargeException` to get the right reject
 - **A6** — `null` (unknown) is never demoted to `0`, in either `ParsedFile` or `CoverageMerger`.
 - **A7** — istanbul JSON and clover parse including branch arms; clover is never mistaken for
   cobertura **and cobertura is never mistaken for clover**.
-- **A8** — `<conditions><condition/>` is read where present, upgrading gcovr/coverage.py cobertura to
-  arm-identified.
+- **A8** — ~~`<conditions><condition/>` is read where present, upgrading gcovr/coverage.py cobertura to
+  arm-identified.~~ **RETRACTED — this criterion was wrong and implementing it caused
+  [#423](coverage_cobertura_conditions_PRD.md). Cobertura is count-only; see that PRD §3.**
 - **A9** — identity/count-only composition is surfaced in `ReportIngestOutcome`, not silent.
 - **A10** — existing documents read correctly under the new model (lazy derivation per D7), or the
   migration completes inside the deploy readiness budget — decided by SP1.

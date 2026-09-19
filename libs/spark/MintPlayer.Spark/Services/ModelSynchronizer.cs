@@ -338,14 +338,30 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     /// and the value verified can never be produced by two different pieces of code.
     /// </summary>
     /// <summary>
-    /// Rule for who owns an attribute's <c>description</c> (#348): C# owns <c>en</c> whenever it has
-    /// text for the property; JSON owns every other language, and owns <c>en</c> too when C# is
-    /// silent. Applied on update as well as on create — seeding only new attributes would leave
-    /// every attribute that already exists in a model file without a description forever.
+    /// Rule for who owns an attribute's <c>description</c> (#348, revised): the C# summary is a
+    /// SEED, never an overwrite. It fills <c>en</c> when the model file has nothing there — key
+    /// absent, or present but blank — and JSON owns the value from then on, in every language.
     /// </summary>
     /// <remarks>
-    /// Writes <c>en</c> first when it has to add the key, and in place when the key exists, so a
-    /// second synchronize produces byte-identical JSON (the converter serializes insertion order).
+    /// <para>
+    /// #348 originally had C# own <c>en</c> outright, on the reasoning that seeding only new
+    /// attributes would leave existing ones undescribed forever. That reasoning has expired — the
+    /// model has been seeded since — and the ownership was wrong in kind: a <c>///</c> comment is
+    /// written for the next developer, while a description renders as an [i] tooltip for the end
+    /// user. Those are different audiences, and the comment is the wrong source for the second once
+    /// somebody has written real help text.
+    /// </para>
+    /// <para>
+    /// The cost is accepted deliberately: a corrected summary no longer reaches a description that
+    /// already has text, so user-facing wording is changed by editing the model file. Synchronize
+    /// adds, it does not replace — the same stance <c>#253</c> takes for attributes it cannot
+    /// prove are stale.
+    /// </para>
+    /// <para>
+    /// Writes <c>en</c> first when it has to add the key, and in place when the key exists but is
+    /// blank, so a second synchronize produces byte-identical JSON (the converter serializes
+    /// insertion order).
+    /// </para>
     /// </remarks>
     internal static void ApplyDescriptionSeed(EntityAttributeDefinition attribute, string? seed)
     {
@@ -359,8 +375,13 @@ internal partial class ModelSynchronizer : IModelSynchronizer
         }
 
         var translations = attribute.Description.Translations;
-        if (translations.ContainsKey("en"))
+        if (translations.TryGetValue("en", out var existing))
         {
+            // Present and non-blank means a human owns it — leave it, however stale
+            // the C# summary has become.
+            if (!string.IsNullOrWhiteSpace(existing))
+                return;
+
             translations["en"] = seed;
             return;
         }
@@ -372,9 +393,14 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     }
 
     /// <summary>
-    /// For <c>--spark-verify-model</c>: every attribute whose on-disk <c>description.en</c> differs
-    /// from what C# would seed (#348). The structural hash ignores descriptions by design, so this
-    /// is the only place a stale English description is caught.
+    /// For <c>--spark-verify-model</c>: every attribute that C# can describe but the model file
+    /// leaves empty (#348, revised). The structural hash ignores descriptions by design, so this is
+    /// the only place a missing English description is caught.
+    /// <para>
+    /// Deliberately NOT a difference check. Since <see cref="ApplyDescriptionSeed"/> seeds and never
+    /// replaces, a description that diverges from the C# summary is a human's wording — reporting it
+    /// would fail the build over text that synchronize would not change.
+    /// </para>
     /// </summary>
     internal static IReadOnlyList<string> DescribeDescriptionDrift(Type contextType, string contentRootPath)
     {
@@ -428,10 +454,15 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
                 string? onDisk = null;
                 attribute.Description?.Translations.TryGetValue("en", out onDisk);
-                if (!string.Equals(onDisk, seed, StringComparison.Ordinal))
+
+                // Only what synchronize would actually write is drift. A description
+                // that merely differs from the C# summary is a human's wording and is
+                // left alone, so it must not fail verification either — otherwise the
+                // two commands disagree and the build blocks on text nothing will fix.
+                if (string.IsNullOrWhiteSpace(onDisk))
                 {
                     drift.Add($"{definition.Name}.{attribute.Name}: description.en is " +
-                              $"{(onDisk is null ? "absent" : $"\"{onDisk}\"")} on disk, C# says \"{seed}\"");
+                              $"{(onDisk is null ? "absent" : "blank")} on disk, C# says \"{seed}\"");
                 }
             }
         }
