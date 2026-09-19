@@ -5,9 +5,16 @@
 **Branch:** `issue-423-cobertura-conditions` off `master` ·
 **One PR.** Parser fix, back-fill migration, tests and doc corrections land together.
 
-**Status:** M1, M2, M4 and the two sibling format fixes (B1/B3) implemented 2026-09-19. All three
-spikes resolved. **D1, D5, D7, D8 decided; D3 reduced to re-ingesting 5 builds.** Nothing is
-blocked and nothing needs a database migration — measured, see PRD §4.2a.
+**Status: ✅ COMPLETE.** Merged as PR #424 (`99a28f55`, 2026-09-19 16:23Z), deployed, and the
+re-ingest verified against the issue's own reproductions. All three spikes resolved; D1, D5, D7, D8
+decided; no database migration was needed — measured, see PRD §4.2a.
+
+**Verified in production 2026-09-19** — both reproductions now match their uploaded reports exactly:
+
+| file | uploaded report | API before | API after |
+|---|---|---|---|
+| `TensorOps.cs` | 29/46, 15 partial | 23/23, 0 | **29/46, 15** |
+| `blockdude_solver.pg` | 236/250, 14 partial | 125/125, 0 | **236/250, 14** (all `1/2`, 94.4%) |
 
 | Milestone | State |
 |---|---|
@@ -15,13 +22,13 @@ blocked and nothing needs a database migration — measured, see PRD §4.2a.
 | SP2 — back-fill window | ✅ Run read-only 2026-09-19. **5 builds** affected (all 2026-09-19, all still holding reports, 1.0 MB). Deploy stamped 2026-09-18T23:32:24Z. PRD §4.2a. |
 | SP3 — re-parse cost | ✅ **Moot.** 5 builds × 1.0 MB needs no cost model; the migration infrastructure question disappears with it. |
 | M1 — parser fix | ✅ `CoberturaParser.cs` reads `(k/n)` unconditionally; `<conditions>` is a documented last resort only when `condition-coverage` is absent or unparseable. |
-| M2 — tests | ✅ `CoberturaConditionsTests.cs`, 10 tests, built from **verbatim** coverlet output + 2 committed real-producer fixtures. Suite **551/551**. |
-| M3 — back-fill | ⏸ Reduced to re-ingesting **5 builds**; no migration. |
+| M2 — tests | ✅ `CoberturaConditionsTests.cs`, 10 tests, built from **verbatim** coverlet output + 2 committed real-producer fixtures. Suite **558/558**. |
+| M3 — back-fill | ✅ Reduced to re-ingesting **5 builds** (no migration), done as M6. |
 | M7 — attribute descriptions are seeded, not owned | ✅ Spark-core, uncovered by this work, same PR. PRD §8c. |
 | B1 — Clover producer discriminator (D7) | ✅ Fixed + 2 tests; the incoherent `conditionals="6"` in the old sample corrected to `8`. |
 | B3 — JaCoCo `mi` instruction-partial (D8) | ✅ Fixed + 3 tests. New `LineCoverage.InstructionsMissed`, merged by MIN. No migration — no JaCoCo data exists. |
 | M4 — docs | ✅ `product-overview.md` rewritten; #420's PRD §3 row + A8 retracted, its plan M4 flagged, and its "re-parsing gains no fidelity" claim corrected. |
-| M5 — prod verification | ⏸ After deploy. |
+| M5 — prod verification | ✅ Both reproductions match the uploaded reports exactly (see Status). |
 | B2 — JaCoCo `<group>` nesting | ✅ Fixed + test (see PRD §8a). |
 
 ---
@@ -151,13 +158,31 @@ that pinned the overwrite are inverted, plus new cover for blank-counts-as-missi
 
 Landed here rather than split off, per the repo's one-PR rule: this PR is what uncovered it.
 
-### M6 — Re-ingest the 5 affected builds *(covers A7)*
+### M6 — ✅ DONE. Re-ingest the 5 affected builds *(covers A7)*
 
-Not code. After deploy, either re-run those five workflows so the fixed parser re-ingests naturally
-(no new code, preferred) or run a one-shot job over the five build ids. Writes to production, so it
-needs Pieterjan's go-ahead and is deliberately **not** part of this PR.
+Not code. All five workflow runs were re-run 2026-09-19 after the deploy, all succeeded, and the
+result was verified against the issue's two reproductions (see Status above). No one-shot job and no
+migration were needed.
 
-**The five, measured 2026-09-19** — so the go-ahead is a decision, not a lookup:
+**Three things worth carrying forward from doing it:**
+
+- **They are not this repository's commits, and four are not on `master`.** Four are `MintPlayer.AI`
+  on branch `m63-coverage-90` (**PR #54**); one is `MintPlayer.Polyglot` on `master`.
+- **The build id embeds the GitHub Actions run id**, so the re-ingest is just
+  `gh run rerun <runId> --repo <owner>/<repo>` — no coverage-side tooling at all.
+- **Verify the deploy before re-ingesting.** Read the running container's
+  `org.opencontainers.image.revision` label and match it to the merge commit. Re-ingesting through a
+  stale reader re-writes the same wrong data *and the workflow reports success*, which is
+  indistinguishable from a real fix.
+
+**The wrong builds did not need deleting first.** A re-run lands as attempt `-2` — a new build
+document that merges with the stale `-1` — and the merge self-corrects: `Arity` takes the max, so the
+true `n` beats the under-counted element count, and the true `Floor` (k) is always ≥ the stale arm
+count (c), because every `<condition>` with `coverage > 0%` contributes at least one taken arm. So
+`Covered = max(k, c) = k`. That was reasoning from the merge rules; the verified numbers confirm it.
+Residue: cosmetically stale `condition:N` entries in `TakenArms`, numerically inert.
+
+**The five, measured 2026-09-19:**
 
 | # | Build id | finalized (UTC) | cobertura reports |
 |---|---|---|---|
@@ -167,8 +192,9 @@ needs Pieterjan's go-ahead and is deliberately **not** part of this PR.
 | 4 | `Commits/1266490237/18dbca03c4d1940f3fc2540a479f9f541214be0e/builds/35446787299-1` | 13:50:54 | 3 of 3 |
 | 5 | `Commits/1266490237/f24b67c6e5f9fbdc274b41df0a7ae67897db3193/builds/35447500968-1` | 14:05:26 | 3 of 3 |
 
-Repository `1266490237` is `MintPlayer.AI` (#2–#5). **#3 is the evidence in #423 itself**
-(`249fe04f…`), so it is the one to re-ingest first and re-check against the issue's reproduction.
+Repository `1266490237` is `MintPlayer.AI` (#2–#5), on branch `m63-coverage-90` (PR #54);
+`1288608313` is `MintPlayer.Polyglot`, on `master`. **#3 is the evidence in #423 itself**
+(`249fe04f…`). All five were re-run at attempt `-2` on 2026-09-19 and all succeeded.
 
 ### M4 — Correct the documents that assert the false premise *(covers A8, D6)*
 - `docs/code-coverage/product-overview.md:124-140` — cobertura moves to the count-only group; state
@@ -177,24 +203,29 @@ Repository `1266490237` is `MintPlayer.AI` (#2–#5). **#3 is the evidence in #4
   this PRD rather than silently edited, so the #420 record stays readable.
 - `docs/coverage_branch_merge_plan.md` M4 — note the milestone shipped a defect and point here.
 
-### M5 — Verify on production
-After deploy, re-check the issue's own reproduction:
-`GET /api/browse/repos/MintPlayer/MintPlayer.AI/commits/249fe04f…/file?path=…/TensorOps.cs` should
-return 29/46 conditions and 15 partial lines, not 23/23 and 0. Record the before/after in the issue.
+### M5 — ✅ DONE. Verify on production
+Re-checked both of the issue's reproductions through the browse API after the re-ingest; the
+before/after table is in the Status section above and was recorded on the issue. `TensorOps.cs` came
+back 29/46 with 15 partial lines (was 23/23 and 0), and `blockdude_solver.pg` 236/250 with 14
+partials, all `1/2`.
+
+⚠️ **The browse API requires authentication** — `curl` returns 401. Use an authenticated browser
+session (the `playwright_node` MCP), navigating to the API URL and evaluating a script that returns a
+**primitive** summary; returning the parsed response object will blow the token limit on a file of
+any size.
 
 ---
 
 ## Sequencing
 
-All of it is done except M6 (re-ingest), which waits on deploy plus a go-ahead, because it writes to
-production. The original sequencing — SP1 → M1, SP2/SP3 → D3/D5 → M3 — held; SP2 simply collapsed M3
-from a 200k-document migration into a 5-build re-ingest.
+All done. The original sequencing — SP1 → M1, SP2/SP3 → D3/D5 → M3 — held; SP2 simply collapsed M3
+from a 200k-document migration into a 5-build re-ingest, which ran after the merge and deploy as M6.
 
 ## Risks
 
-- **Branch rate will visibly *drop*** on every C# repo once this deploys — 29.3% where the dashboard
-  reads 36.8% on the measured sample. That is the correction landing, not a new regression, but it
-  will look like one. Said in the PR and worth saying in the issue before it ships.
+- **Branch rate visibly *dropped*** on the re-ingested C# repos, as expected — the measured sample
+  went from a wrong 36.8% to a correct 29.3%, and `blockdude_solver.pg` from a wrong 100% to 94.4%.
+  That is the correction landing, not a new regression. Recorded in the PR and on the issue.
 - ~~Attachment retention is deleting the back-fill's inputs at 7 days.~~ **Retired by SP2:** all 5
   affected builds are from 2026-09-19 and still hold their reports, so the reaper only bites if this
   sits unshipped for a week. D5 is not needed.
