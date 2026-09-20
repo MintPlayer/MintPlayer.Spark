@@ -83,6 +83,7 @@ dropped. Changing a decision is cheap; discovering an undocumented one is not.
 | **D20** | **An upload that cannot happen reports `Neutral`, never a failure.** `fail-ci-if-error` stays `false`. | **DECIDED** — owner, this session: *"instead of a check, we can report neutral. But no error, that would be intrusive."* ⚠️ GitHub has a first-class `neutral`; GitLab and Bitbucket do not (§5.3) |
 | **D21** | **Webhook recipients take a neutral `ForgeWebhookMessage<T>` carrying a normalised domain event; normalisation lives in each forge library. Forge-specific messages remain for events only one forge has.** One handler method, and adding a forge edits no consumer. | **DECIDED** — owner, this session: *"that design looks great."* ⚠️ Enlarges M8. See §6.11 |
 | **D22** | **No backward compatibility.** One consumer, packages in preview, and a migration ships in this PR — so compatibility shims for old callers, wire formats and package versions can be deleted rather than kept. ⚠️ **Not** a licence to lose data: a shim held open by *stored* data is migrated first, deleted second. | **DECIDED** — owner, this session. See §6.12 |
+| **D23** | **No account-confirmation mail for externally provisioned users.** The forge’s SSO already proves the person controls the address. ⚠️ Consequence: the `email_verified` gate becomes the *only* check, so an unverified provider address must be **refused** rather than confirmed by us. | **DECIDED** — owner, this session: *"not necessary i think. The platform’s SSO proves the user owns the email address already."* |
 
 ---
 

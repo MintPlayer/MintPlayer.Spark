@@ -10,9 +10,10 @@ GitLab and Bitbucket providers are stages 2 and 3 and are *not* in this PR (PRD 
 **Blocked on decisions**: nothing. D6f resolved 2026-09-20 — fork PRs upload unauthenticated into a
 PR-scoped namespace on public repos only (PRD §6.7). ⚠️ **That decision lands on M6a**: the
 `pr/{n}/` segment is a document-id shape and Raven ids are immutable, so it must be reserved in the
-migration's target scheme or the 199,917-document re-key is paid twice. D1–D5, D6a–e, D7, D9, D11, D13, **D16 and D17** are decided;
-D8, D10, D12 and D14 carry recommendations nothing in stage 1 depends on. D15 is partly superseded by
-D17.
+migration's target scheme or the 199,917-document re-key is paid twice.
+
+**Decided:** D1–D7, D9, D11, D13, D16–D23. **Recommendations only** (nothing in stage 1 depends on
+them): D8, D10, D12, D14. **Partly superseded:** D15 by D17.
 
 ✅ **Vocabulary (D18): "forge", not "platform".** The thing we integrate with is a *forge*; bare
 *provider* is reserved for ASP.NET Identity's external login provider. Everything M1/M2 shipped keeps
@@ -388,7 +389,7 @@ CodeCoverage (PRD §4.1). Nothing to build.
 
 ---
 
-## M4 — Spark: confirmation mail, and the two linking modes 🟦
+## M4 — Spark: link confirmation, and the two linking modes 🟨 *(4a, 4b, 4k built)*
 
 D2 and D9. All of this is Spark-side; CodeCoverage only chooses.
 
@@ -454,13 +455,36 @@ captured**, links, signs in. Two non-negotiables (PRD §6.2):
    provider just asserted;
 2. the `providerKey` is re-verified on confirm, or the link is a bearer token for any identity.
 
-**4f — provisioning and the three cases.** Stop setting `EmailConfirmed = true` by fiat
-(`SparkAuthenticationExtensions.cs:178`). Case (1) create + send + link; case (2) resend; case (3)
-sign in. Expose `SignIn.RequireConfirmedAccount` deliberately.
+**4f — provisioning and the three cases, simplified by D23.**
+
+⚠️ **Cases (1) and (2) no longer send mail.** The owner settled it 2026-09-20: *"not necessary i
+think. The platform's SSO proves the user owns the email address already."* A forge that has
+authenticated someone and asserts a verified address has already established what a confirmation
+mail would have established, and mailing anyway is ceremony the user has no reason to complete.
+
+So the three cases collapse to two outcomes:
+
+| Case | Then |
+|---|---|
+| No user with that email | Create, link the provider, **sign in**. No mail. |
+| User exists, provider not linked | D2's linking mode decides — `ConfirmByEmail` mails the *link* request (4e), which is a different message entirely |
+| User exists, provider linked | Sign in |
+
+⚠️ **`EmailConfirmed` is still not set by fiat** (`SparkAuthenticationExtensions.cs:178`). It is set
+because the provider *said the address is verified*, which is a fact about the token rather than an
+assumption — and that distinction is the whole of 4g. Writing `true` unconditionally would make the
+field mean nothing, and it is the field the next feature will trust.
 
 **4g — generalise the verified-email gate** (`:159-168`). Drop `urn:github:email_verified`;
 `GitHubAuthenticationExtensions.cs:54-110` keeps its `/user/emails` call but emits the standard
 `email_verified` claim. A8.
+
+⚠️ **D23 promotes this from a nicety to the only check there is.** With no confirmation mail, an
+unverified provider address can no longer be resolved by asking the user — so the gate must
+**refuse** rather than provision-and-confirm. That is a sharper rule than it was, and it has to fail
+closed: a provider that does not say whether an address is verified counts as *not* verified, or the
+gate is decoration. GitHub's `/user/emails` reports the flag explicitly; a forge that cannot must
+not be trusted to assert identity by email.
 
 **4h — the two latent defects in the same method.** A non-`Success` `ExternalLoginSignInAsync` for a
 linked user must not fall into provisioning (`:143-152`, recorded at `reauth-on-401.md:80-84`);
@@ -502,6 +526,30 @@ What the milestone was really worried about survives elsewhere and is not lost:
   membership in the owner set grants access to nothing.
 - The credential a forge needs when no user is present is D6b/Q2, and is stage-2 work (GitLab group
   access token), not stage 1.
+
+### As-built — 4a, 4b, 4k
+
+- **4b** — `SparkExternalLoginLinking` (`Disabled | WhenSignedIn | ConfirmByEmail`) on
+  `SparkAuthenticationOptions`, defaulting to `Disabled`. The enum documents *what each mode
+  proves*: `WhenSignedIn` by already holding the session, `ConfirmByEmail` by controlling the
+  account's existing mailbox — which is what makes it usable by someone who cannot sign in at all.
+- **4a** — ⚠️ **rewritten, see above.** No untying. `SparkPendingExternalLogin` stores only the
+  token's *hash*; `ISparkLinkConfirmationSender<TUser>` is Spark's own contract and **takes no
+  address parameter**, so mailing the provider-asserted address is not expressible.
+- **4k** — startup guard: `ConfirmByEmail` with no sender registered throws. ⚠️ It began as
+  type-name matching on `NoOpEmailSender` (ASP.NET `TryAdd`s a no-op, so absence is invisible) and
+  became a **plain null check** once linking got its own contract, because Spark ships no default
+  for it. The old approach failed *open* on an upstream rename; SP2's measurement survives as a test
+  explaining why the contrast exists.
+- ⚠️ A test caught the guard placed **after** the `LocalCredentials = Full` short-circuit, where it
+  would never have fired for the most common configuration.
+- All 23 packable .NET projects bumped to **`10.0.0-preview.84`** — the gate fires on any `libs/`
+  change outside `node_packages`, and `dotnet pack` is solution-wide.
+
+**Still to build:** 4c (the duplicate-email branch, today `account_creation_failed`), 4d
+(`WhenSignedIn` endpoints + last-credential guard), 4e (the confirm endpoint and template), 4f/4g
+(now simplified by D23), 4h (two latent defects), 4i (the SMTP container — VPS infrastructure, and
+deliverability is the risk rather than wiring).
 
 ---
 
@@ -653,7 +701,7 @@ what the subsystem actually supports before designing the unit.
 
 ---
 
-## M8 — A neutral webhook contract 🟦 *(D21; grew 2026-09-20)*
+## M8 — A neutral webhook contract 🟨 *(8a–8d built; connection state deferred)*
 
 ⚠️ **This milestone grew.** It was "drop `required long InstallationId` and `RepositoryFullName`
 (`GitHubWebhookMessage.cs:15-16`), rename the `spark-github-all` queue". D21 makes it a **multi-forge
@@ -693,6 +741,49 @@ increase rather than folded into the old bullets. Design and rationale in PRD §
 
 **Verify:** A3. Build; no recipient signature names GitHub; one recipient handles an event from a
 second forge with no consumer edit (provable with a test double even before GitLab exists).
+
+### As-built — 8a–8d
+
+| | |
+|---|---|
+| **8a** | `ForgeEvents.cs` (six canonical events) + `ForgeWebhookMessage<T>`, in `CodeCoverage.Library/Forge/` |
+| **8b** | push + pull-request-updated split into a GitHub normaliser and `ForgeEventsRecipient` |
+| **8c** | merged pull requests, and `IForgeIntegration.DeleteBranchAsync` |
+| **8d** | owner renames; `RememberPreviousFullName` moved onto `Repository` |
+
+**The events are derived from what the app *does*, not from what GitHub sends.** That collapsed
+`opened`/`reopened`/`synchronize` into one `PullRequestUpdated` — the app treats all three
+identically — and refused to collapse `merged` into `closed`, because retention surrenders a merged
+request's build data while a closed-unmerged one keeps it. A forge that cannot determine mergedness
+must raise nothing rather than guess; deleting builds on a guess is unrecoverable.
+
+⚠️ `BranchCommitPushed` **deliberately carries no parent sha**, pinned by a test because it reads
+like an oversight. GitHub's `before` is the previous ref *tip*, which is not the commit's parent in
+three of the six push shapes, and every forge's equivalent has the same defect.
+
+**One class implements `IRecipient<>` several times** rather than becoming four classes — the
+recipient it took work from warns against "splitting one cohesive handler into five classes", and
+the generator emits one `AddScoped` per closed interface. ⚠️ Declare every interface on **one**
+partial part or each handler runs twice per message.
+
+**Two behaviour changes, both deliberate:**
+
+1. The merged path **loads** the repository instead of upserting it. My first version upserted,
+   which rewrote `Repository.Account` from the payload and lost the delete-branch policy it was
+   inheriting — caught by a test whose payload owner id (99) differed from its seeded account (1).
+   A close is not a reason to mint documents.
+2. **The payload's `installation` node is no longer the gate** for branch deletion. The credential
+   now resolves from the repository's own account, which every other GitHub call already used;
+   reading one and authenticating with the other was the inconsistency. Its test moved to
+   `GitHubForgeClientBranchDeleteTests` rather than being deleted with the code it covered.
+
+⚠️ **Deferred, as a judgement rather than an omission: the installation and repository-connection
+handlers.** That code carries *measured* behaviour — a transfer produces `repository.transferred` +
+`installation_repositories.added` inbound but only `installation_repositories.removed` outbound —
+and disconnecting on `transferred` would be a correctness bug resting on the delivery order of two
+independently queued messages. A neutral event may not be able to express that asymmetry, and its
+only consumer today is the recipient itself, so the M×N argument does not yet apply. Better for a
+second forge to show the shape than to guess it into the contract.
 
 ---
 
