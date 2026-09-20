@@ -9,14 +9,14 @@ import { SparkShellComponent, SparkShellTopbarEndDirective, SparkShellMainHeader
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
-import { GitHubLoginService } from '../services/github-login.service';
-import { HOME_URL } from '../spark/home-route';
 
 /**
  * The application frame. All responsive behaviour — breakpoints, the overlay drawer,
  * dismiss-on-navigate, the toggler↔drawer mirror — belongs to `<spark-shell>` and the
  * `mp-shell` web component underneath it; this component owns only what is specific to
- * Coverage: the GitHub sign-in block and the login-error alert.
+ * Coverage: the sign-in link and the login-error alert. The sign-in page itself is
+ * ng-spark-auth's, and renders one button per provider the server reports — so adding a
+ * forge changes nothing here.
  *
  * The sidebar menu is server-driven (`GET /spark/program-units`, already rights-filtered
  * per caller), so there are no router links here. A new entry goes in `programUnits.json`.
@@ -39,22 +39,11 @@ import { HOME_URL } from '../spark/home-route';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ShellComponent {
-  private readonly gitHubLogin = inject(GitHubLoginService);
   readonly authService = inject(SparkAuthService);
   readonly lang = inject(SparkLanguageService);
 
   loginError = signal<string | null>(null);
   readonly dangerColor = Color.danger;
-
-  // The flow itself (popup handshake, blocked → redirect fallback, error map)
-  // lives in GitHubLoginService, shared with home's reconnect banner. Every
-  // failure is surfaced here: a popup that closes with no visible effect
-  // reads as "broken".
-  async loginWithGitHub(): Promise<void> {
-    this.loginError.set(null);
-    const result = await this.gitHubLogin.login(HOME_URL);
-    if (!result.success) this.loginError.set(result.message ?? null);
-  }
 
   async logout(): Promise<void> {
     await this.authService.logout();

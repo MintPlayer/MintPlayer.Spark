@@ -28,7 +28,11 @@ export const appConfig: ApplicationConfig = {
     provideRouter(routes),
     provideHttpClient(withInterceptors([sparkLanguageInterceptor]), ...withSparkAuth(), ...withSparkTimezone()),
     provideAnimations(),
-    provideSparkAuth(),
+    // ⚠️ Not the default. loginUrl defaults to '/login', and this app mounts '/sign-in'
+    // (sparkAuthRoutes(withExternalLogin(...)) in app.routes.ts) — so the route guard, the 401
+    // interceptor and the auth bar were all redirecting to a page that does not exist. The
+    // symptom was a blank shell rather than an error, which is why it survived.
+    provideSparkAuth({ loginUrl: '/sign-in' }),
     provideSparkAttributeRenderers([
       {
         name: 'coverage-bar',

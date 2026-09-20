@@ -1,20 +1,24 @@
 import { ChangeDetectionStrategy, Component, effect, inject, signal } from '@angular/core';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
+import { RouterModule } from '@angular/router';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
 import { AccountsService } from '../services/accounts.service';
-import { GitHubLoginService } from '../services/github-login.service';
-import { HOME_URL } from './home-route';
 
 /**
- * The two pieces of the Home page that are not attributes or rows: the "reconnect GitHub"
- * banner and the "install the App" hint.
+ * The two pieces of the Home page that are not attributes or rows: the reconnect banner and
+ * the "install the App" hint.
  *
  * Both stay Angular, mounted through the poDetail route's `extraContentTemplate`, because
- * neither is data. The banner is a *remedy* — it exists to run an interactive popup flow that
- * must be user-gesture-initiated — and the hint's URL is per-environment, resolved from
+ * neither is data. The banner is a *remedy* — it points at /sign-in, which re-challenges
+ * whichever provider needs it — and the hint's URL is per-environment, resolved from
  * `/api/me/accounts` rather than from anything the model could carry.
+ *
+ * ⚠️ The banner used to run an interactive popup through a GitHub-specific service, which is why
+ * it carried its own error and in-flight state. Re-challenging through the shared sign-in page
+ * costs a full navigation instead of a popup, and in exchange it works for every provider the
+ * server reports rather than only for GitHub.
  *
  * It reads `/api/me/accounts` for those two facts only. The account list itself comes from the
  * `my-accounts` Spark query beside it; both are served by the same `IMyAccountsService`, so
@@ -22,7 +26,7 @@ import { HOME_URL } from './home-route';
  */
 @Component({
   selector: 'app-home-extras',
-  imports: [BsAlertComponent, TranslateKeyPipe],
+  imports: [RouterModule, BsAlertComponent, TranslateKeyPipe],
   template: `
     @if (reauthRequired()) {
       <bs-alert [type]="warningColor" [announce]="true" class="d-block mt-3">
@@ -31,13 +35,10 @@ import { HOME_URL } from './home-route';
             <i class="bi bi-exclamation-triangle"></i>
             {{ 'app.reauthBanner' | t }}
           </span>
-          <button class="btn btn-sm btn-warning text-nowrap" (click)="reconnect()" [disabled]="reconnecting()">
-            <i class="bi bi-github"></i> {{ 'app.reconnectGitHub' | t }}
-          </button>
+          <a class="btn btn-sm btn-warning text-nowrap" routerLink="/sign-in">
+            {{ 'app.reconnect' | t }}
+          </a>
         </div>
-        @if (reconnectError(); as err) {
-          <p class="small mb-0 mt-2">{{ err }}</p>
-        }
       </bs-alert>
     }
 
@@ -53,13 +54,10 @@ import { HOME_URL } from './home-route';
 })
 export class HomeExtrasComponent {
   private readonly accountsService = inject(AccountsService);
-  private readonly gitHubLogin = inject(GitHubLoginService);
   readonly authService = inject(SparkAuthService);
 
   readonly gitHubAppUrl = signal('https://github.com/apps/coverageproduction');
   readonly reauthRequired = signal(false);
-  readonly reconnecting = signal(false);
-  readonly reconnectError = signal<string | null>(null);
   readonly warningColor = Color.warning;
 
   constructor() {
@@ -84,24 +82,4 @@ export class HomeExtrasComponent {
     }
   }
 
-  // Button-gated on purpose: popups must be user-gesture-initiated, and calling
-  // loginWithProvider from the auth effect would re-enter forever. A successful popup
-  // re-authorizes AND re-saves fresh tokens (the Spark callback overwrites stored tokens
-  // on every success), so the reload below rebuilds visibility with a working token.
-  async reconnect(): Promise<void> {
-    this.reconnectError.set(null);
-    this.reconnecting.set(true);
-    try {
-      const result = await this.gitHubLogin.login(HOME_URL);
-      if (result.success) {
-        await this.accountsService.resync();
-        await this.load();
-        return;
-      }
-      if (result.error === 'popup_closed') return; // "not now" — no error banner
-      this.reconnectError.set(result.message ?? null);
-    } finally {
-      this.reconnecting.set(false);
-    }
-  }
 }

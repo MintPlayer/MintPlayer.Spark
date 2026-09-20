@@ -20,10 +20,10 @@
       "fr": "Connectez-vous avec votre compte GitHub pour voir vos organisations et dépôts.",
       "nl": "Meld je aan met je GitHub-account om je organisaties en repositories te zien."
     },
-    "signInWithGitHub": {
-      "en": "Sign in with GitHub",
-      "fr": "Se connecter avec GitHub",
-      "nl": "Aanmelden met GitHub"
+    "signIn": {
+      "en": "Sign in",
+      "fr": "Se connecter",
+      "nl": "Aanmelden"
     },
     "home": {
       "en": "Home",
@@ -75,10 +75,10 @@
       "fr": "Coverage a perdu l'accès à votre compte GitHub ; certaines organisations peuvent donc manquer ci-dessous. Reconnectez-vous pour les restaurer.",
       "nl": "Coverage heeft geen toegang meer tot je GitHub-account, waardoor hieronder mogelijk organisaties ontbreken. Verbind opnieuw om ze te herstellen."
     },
-    "reconnectGitHub": {
-      "en": "Reconnect GitHub",
-      "fr": "Reconnecter GitHub",
-      "nl": "GitHub opnieuw verbinden"
+    "reconnect": {
+      "en": "Reconnect",
+      "fr": "Reconnecter",
+      "nl": "Opnieuw verbinden"
     },
     "resync": {
       "en": "Resync",

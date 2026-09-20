@@ -328,7 +328,7 @@ is not "unseamed capability areas" but three things waiting on milestones that o
 
 ---
 
-## M3 — Login page, and delete the bespoke GitHub button 🟦
+## M3 — Login page, and delete the bespoke GitHub button 🟩
 
 D3. Mostly deletion — `/sign-in` is already mounted and already renders server-reported providers
 (PRD §4.1).
@@ -353,6 +353,38 @@ CodeCoverage (PRD §4.1). Nothing to build.
 
 **Verify:** run the app (`dotnet run`, never `ng serve` — see CLAUDE.md) and drive `/sign-in` with
 `playwright_node`. A4.
+
+
+### As-built
+
+- **The dead redirect is fixed.** `provideSparkAuth({ loginUrl: '/sign-in' })`. The default is
+  `/login`, this app mounts `/sign-in`, so the route guard, the 401 interceptor and the auth bar were
+  all redirecting to a page that does not exist — and the symptom was a blank shell rather than an
+  error, which is why it survived.
+- The shell's GitHub button is a link to `/sign-in`, which already renders one button per
+  server-reported provider. `services/github-login.service.ts` is **deleted**.
+- The Home reconnect banner points at the same page. ⚠️ **Behaviour change:** re-challenging is now a
+  full navigation rather than a popup. It costs the popup's "stay on the page" feel and in exchange
+  works for every provider rather than only GitHub; the popup handshake, its blocked-popup fallback
+  and its four-code error map all died with the service, along with the banner's own error and
+  in-flight state.
+- Translations: `signInWithGitHub` → `signIn`, `reconnectGitHub` → `reconnect`, retranslated in
+  en/fr/nl.
+
+### ⚠️ Two corrections to this milestone as written
+
+1. **"Delete the six dead `app.*` keys" was wrong, and deleting them would have broken the Home
+   page.** PRD §5.2 called them unreferenced in `src/` — true, and misleading: they are referenced
+   **server-side** from `Actions/HomeActions.cs`. Nine keys look dead to a client-only grep
+   (`welcomeTitle`, `welcomeSubtitle`, `signInPrompt`, `home`, `yourAccounts`, `loadingAccounts`,
+   `noAccounts`, `resync`, `resyncTooltip`) and every one of them is live. **Nothing was deleted.**
+2. **Bootstrap icons do not work the way this app uses them.** Owner, 2026-09-20: *"`bi bi-box-arrow-in-right`
+   won't work. The styles are inside the `<bs-icon>` component — same is true for all other bootstrap
+   components."* The two icons introduced here were removed rather than guessed at. ⚠️ **Nine
+   pre-existing `<i class="bi …">` usages remain** across the badge, setup, trend and commit-files
+   panels, and by that description they are all rendering nothing. Not fixed here — it is not this
+   milestone's change and the correct API was not confirmed — but it is a real, visible defect and
+   belongs in **M10**, which owns the panels most of them live in.
 
 ---
 
