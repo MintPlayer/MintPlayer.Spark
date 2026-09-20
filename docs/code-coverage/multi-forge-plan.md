@@ -697,15 +697,15 @@ snippet.
 
 ### As-built
 
--  → ,  → , on the
-  server record, the TypeScript interface and , in one commit — they are
+- `AccountsResponse.GitHubAppUrl` → `ConnectUrl` and `GitHubReauthRequired` → `ReauthRequired`, on
+  the server record, the TypeScript interface and `MyAccountsResult`, in one commit — they are
   hand-written DTOs with no codegen link, so they move together or not at all.
 - The doc comments moved too, and they were the part carrying a wrong assumption: reauth is set if
   **any** linked forge needs it, and resync drops **every** linked forge's cached owner set.
-- ⚠️ **Deferred, deliberately:**  and  (whose
-   is GitHub's account-type vocabulary). Both are grid renderers reading stored
-  fields that M6 re-keys and M7 re-routes; renaming them now would be rework. They move with the
-  panels in M10.
+- ⚠️ **Deferred, deliberately:** `app-installed-renderer` and `account-avatar-renderer` (whose
+  `Type === 'User'` is GitHub's account-type vocabulary). Both are grid renderers reading stored
+  fields that M6 re-keys and M7 re-routes, so renaming them now would be rework. They move with the
+  panels in M10, alongside the nine broken `bi` icon usages recorded against the same milestone.
 
 ---
 
