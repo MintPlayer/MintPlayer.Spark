@@ -7,9 +7,10 @@ Companion to [multi-forge-PRD.md](multi-forge-PRD.md). Issue
 suite runs once, at M13** — intermediate milestones are verified by reading the code and building.
 GitLab and Bitbucket providers are stages 2 and 3 and are *not* in this PR (PRD §1, D1).
 
-**Blocked on decisions**: only **D6f** (fork-PR uploads) is still open, and it gates **M6** — not M9
-as you might expect — because untrusted coverage needs its own document space and M6 is the one
-migration that can create it cheaply. D1–D5, D6a–e, D7, D9, D11, D13, **D16 and D17** are decided;
+**Blocked on decisions**: nothing. D6f resolved 2026-09-20 — fork PRs upload unauthenticated into a
+PR-scoped namespace on public repos only (PRD §6.7). ⚠️ **That decision lands on M6a**: the
+`pr/{n}/` segment is a document-id shape and Raven ids are immutable, so it must be reserved in the
+migration's target scheme or the 199,917-document re-key is paid twice. D1–D5, D6a–e, D7, D9, D11, D13, **D16 and D17** are decided;
 D8, D10, D12 and D14 carry recommendations nothing in stage 1 depends on. D15 is partly superseded by
 D17.
 
@@ -185,6 +186,12 @@ implementation silently redirects nine call sites (PRD §5.7a), because `[Regist
   forge, selection answers GitHub from **one explicit, commented line** that throws the moment a
   second implementation registers — not a default argument, not a `FirstOrDefault` that picks GitHub
   because it is the only registration.
+- **Fix D19 while here — suspended installations still confer management rights.** The owner set is
+  built from `installations` unfiltered (`GitHubAccessService.cs:105-109`); the backfill on the same
+  array already filters `.Where(i => !i.Suspended)` (`:235`). Add the same filter at the owner-set
+  site. ⚠️ **This is a behaviour change, not a refactor:** a user whose installation is suspended
+  loses management rights the moment it ships. That is the intent — but it is the one change in
+  M2a that can take access away from someone, so it gets its own commit and its own test.
 - **Resolve loudly.** A duplicate `Provider` among registrations is a wiring bug; throw like
   `ActionsResolver.cs:145-155` rather than `FirstOrDefault` as `ForgeAccessResolver` does today.
 

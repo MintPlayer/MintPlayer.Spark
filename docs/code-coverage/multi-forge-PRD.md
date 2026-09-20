@@ -66,7 +66,7 @@ dropped. Changing a decision is cheap; discovering an undocumented one is not.
 | **D3** | **The GitHub button in the shell is replaced by a link to a login page that renders one button per registered provider, driven by the server's capability report.** | **DECIDED** — user, this session |
 | **D4** | **Provider-scoped, not unioned: one sidebar program unit per provider, and the provider as a URL path segment. Authorization stays separate per platform — a GitHub decision never consults GitLab state.** | **DECIDED** — user, this session. Rationale in §5.4 |
 | **D5** | **Path prefix — `Repositories/github/{id}`, `Accounts/github/{id}`, `Commits/github/{repoId}/{sha}`.** Every provider looks identical; ids stay human-readable and `startsWith(id(), …)` stays a usable RQL filter. | **DECIDED** — user, this session |
-| **D6** | **Resolved by interview, 2026-09-20. The owner set stays *derived live from the forge*, per provider — no stored authorization record.** Six sub-decisions in §6.7. | **DECIDED** — except D6f (fork uploads), parked |
+| **D6** | **Resolved by interview, 2026-09-20. The owner set stays *derived live from the forge*, per provider — no stored authorization record.** Six sub-decisions in §6.7. | **DECIDED** — all six, D6f resolved 2026-09-20 |
 | **D7** | **Existing GitHub documents are re-keyed by the migration.** No implicit `github` default, no permanent asymmetry. | **DECIDED** — user, this session |
 | **D8** | Is GitHub Projects v2 automation GitHub-only forever, or do we model a generic board? | **Recommend GitHub-only** — neither forge has the primitive |
 | **D9** | **Spark ships the contract and templates; CodeCoverage ships the transport — an SMTP server run as its own container in `docker-compose.yml` on the VPS, for isolation.** | **DECIDED** — user, this session. See §6.4 |
@@ -74,11 +74,13 @@ dropped. Changing a decision is cheap; discovering an undocumented one is not.
 | **D11** | **Provider code in ids and URLs: full names (`github`/`gitlab`/`bitbucket`), not `gh`/`gl`/`bb`.** One vocabulary shared by D5's ids and the routes. | **DECIDED** — user, this session |
 | **D12** | One git repository pushed to two forges (github + bitbucket remotes) — one record or two? | **Recommend two independent records, no merging.** See §6.6 |
 | **D13** | **No backward-compatible badge route.** The legacy two-segment URL is removed, not aliased; badge URLs are replaced at source. Sound only because the deployment has no external users. | **DECIDED** — user, this session |
-| **D14** | Per-provider **assemblies**, yes; per-provider **NuGet packages**, not in stage 1. Three projects with `IsPackable=false` buy the whole architectural benefit; publishing adds a permanent public contract with no consumers. | **Recommend split-don't-publish** — see §6.9 |
+| **D14** | Per-provider **assemblies**, yes; per-provider **NuGet packages**, not in stage 1. Three projects with `IsPackable=false` buy the whole architectural benefit; publishing adds a permanent public contract with no consumers. | **DECIDED** — owner, this session: *"Not yet i guess."* Split into assemblies now; revisit publishing when a second forge ships |
 | **D15** | Which capabilities move into a provider library. | **Partly superseded by D17** — Projects V2 moves onto the interface behind `EForgeCapability.Boards`; App installations stay *internal to the GitHub library*, never on the interface. §6.9 table otherwise stands |
 | **D16** | **One `IForgeIntegration` interface; three libraries, one `[Register]`ed implementation class each; the app calls three extension methods; injection sites take `IEnumerable<IForgeIntegration>` and never know which forge they are on.** Implementations are facades over per-concern services internal to each library. | **DECIDED** — owner, this session. See §6.10 |
 | **D17** | **Capability gaps are expressed as a get-only `EForgeCapability[] Capabilities`; methods outside an implementation’s set throw.** A conformance test asserts the array and the behaviour agree, in both directions. | **DECIDED** — owner, this session. Reverses part of D15 |
 | **D18** | **Vocabulary: "forge", not "platform".** The thing we integrate with is a *forge*; bare *provider* is reserved for ASP.NET Identity's external login provider, with `EForgeProvider` the qualified name. | **DECIDED** — owner, this session: *"Use Forge wherever you like."* Everything M1/M2 shipped keeps its name; only D16/D17's identifiers changed. No id, URL or route consequence |
+| **D19** | **Suspended installations must stop conferring management rights.** The owner set is built from installations unfiltered (`GitHubAccessService.cs:105-109`) while the backfill already filters `!i.Suspended` (`:235`). Same array, one site filters. | **DECIDED** — owner, this session: fix in this PR. Carried by M2a |
+| **D20** | **An upload that cannot happen reports `Neutral`, never a failure.** `fail-ci-if-error` stays `false`. | **DECIDED** — owner, this session: *"instead of a check, we can report neutral. But no error, that would be intrusive."* ⚠️ GitHub has a first-class `neutral`; GitLab and Bitbucket do not (§5.3) |
 
 ---
 
@@ -887,19 +889,79 @@ the `NoOpEmailSender` trap in §7.2, and the reason this went unnoticed.
 4. **Vendor pulls instead of being pushed to** (Sonar Automatic Analysis). Works for static analysis
    and **cannot work for coverage**, which requires executing the fork's tests.
 
-**Recommendation (not yet accepted): pattern 2 + pattern 1's namespacing**, with pattern 3 documented
-as an escape hatch. Concretely: fork uploads authenticate with the forge-minted job credential,
-land in a PR-scoped document space that can never become a branch baseline, a badge or a
-carried-forward history entry, and are attested by a run lookup made as our own App. Zero maintainer
-setup, no anonymous rate-limit exposure, and a real identity rather than a heuristic.
+#### D6f — RESOLVED 2026-09-20
 
-⚠️ **Verify before committing to it:** whether the Actions token can actually prove what we need —
-reading a public repository proves nothing, so an installation-scoped call is required and its
-behaviour with the Actions token is unconfirmed.
+⚠️ **The earlier recommendation on this page (pattern 2 — relay the forge-minted `GITHUB_TOKEN`) is
+RETRACTED.** Investigated 2026-09-20 against GitHub's published API surface, and it does not work.
 
-**The trap in the recommendation:** asking maintainers to hand `${{ github.token }}` to a third-party
-service will raise eyebrows, and needs documenting precisely (one API call, never stored). It also
-makes forge availability an upload dependency.
+**Why it fails.** There is **no endpoint — documented or otherwise — that reflects which workflow
+run, job or pull request a `GITHUB_TOKEN` was minted for.** It is a GitHub App installation access
+token, and installation tokens carry no run-level identity. The strongest claim it can make to our
+server is *"the bearer had read access to repo X."*
+
+That is the same claim the repository owner's own CI token makes. A fork-PR token and the base
+repo's `push`-on-`master` token are the same kind of credential for the same repository, so anyone
+who can open a pull request — anyone at all, on a public repo — obtains something equivalent in what
+it proves. Treating "token resolves to repo X" as authorization to write repo X's coverage would let
+**any stranger overwrite the default-branch number and badge**, which today requires OIDC or an
+owner-minted `covt_` token. Corroborating: Coveralls is the one vendor relaying `GITHUB_TOKEN`, and
+its fork support is the flakiest of the three.
+
+Only two distinguishability questions are actually closed by such a token (a PAT, and a token for a
+*different* repo). The one that matters — a token from a *different run of the same repo* — is not.
+
+**Decision (owner, 2026-09-20): make fork uploads work, unauthenticated, confined by namespace.**
+The owner's framing: *"this should be possible, but our upload tokens (secrets) are not available for
+forks."* Correct, and there is no substitute credential — so the design carries no credential and
+bounds the blast radius structurally instead. This is Codecov's model, and Codecov is the only one of
+the three competitors that ships fork coverage with no maintainer setup.
+
+**The shape:**
+
+- **Public base repository + fork PR ⇒ accept an unauthenticated upload.** It lands under the **base**
+  repository's id space, so it is visible on the base PR — which is the entire point — but in a
+  PR-scoped segment: `Commits/github/{baseRepoId}/pr/{n}/{sha}`.
+- **That segment is structurally incapable of** becoming a branch baseline, moving a badge, or being
+  carried forward into a protected branch's history. The guarantee is the id shape, not a code path
+  that must remember to check.
+- **It never gates a merge.** A fork PR's verdict is `EForgeOutcome.Neutral` (D20), never Failure.
+- **Rendered as unverified**, labelled as contributed from a fork wherever it appears.
+- **`provision: false`** — a fork upload must never auto-create a `Repository` document.
+- **Its own rate-limit bucket** keyed on (repository, PR), a hard report-size cap, and a cap on
+  distinct fork namespaces per repository. An unauthenticated write endpoint is a storage sink, and
+  §7.1 measured how large this id space already is.
+- **Optional, advisory only:** confirm the run exists via `GET /repos/{base}/actions/runs/{id}` made
+  as **our own App**, never with a caller-supplied token. Advisory, not a gate — Codecov's notorious
+  `"Tokenless has reached GitHub rate limit"` failure is a direct measurement of what happens when
+  this call becomes a gate. For a public repo it needs no caller credential at all, which is a second
+  reason relaying `GITHUB_TOKEN` buys nothing.
+- **Private base repository + fork PR ⇒ no unauthenticated upload.** Same line Codecov draws (*"For
+  private repositories, all uploads require a token"*), and it disposes of the
+  forkability-independent-of-visibility hazard above: a forkable private repo never accepts an
+  anonymous write. Those projects use the `workflow_run` recipe, which we document and ship a
+  copy-pasteable snippet for. ⚠️ That snippet must never check out or execute fork code — the
+  artifact is **data**.
+
+**What the owner is accepting, stated plainly:**
+
+1. **Anyone can post a fabricated coverage number on any public PR.** There is no credential; the
+   protection is that the damage cannot leave that PR. This is why a fork's number must never gate a
+   merge, and why it is labelled unverified. If a fork PR's number should ever gate a merge, this
+   option is disqualified and `workflow_run` is the only answer.
+2. **Private repositories do not get frictionless fork coverage.** Their contributors either use
+   `workflow_run` or see nothing.
+3. **We inherit Codecov's trust model, including its criticisms.**
+
+**M6 consequence — this is why the decision could not wait.** The `pr/{n}/` segment is a document-id
+shape, and Raven ids are immutable. M6 re-keys 199,917 documents once; the segment must exist in that
+migration's target scheme or the whole re-key is paid twice. **M6a's id design must reserve it.**
+
+**Unsolved, and explicitly open:** the fork-build → base-PR association. This design sidesteps it for
+GitHub public repos by writing under the base repo's id space with no fork credential involved. But a
+fork-owner-provisioned token (option d) and GitLab's fork-asserting `id_token` both identify the
+*fork*, so a build made with either lands in the fork's id space and is invisible on the upstream PR.
+Attaching it is a genuine authorization question — *who may attach a build to someone else's pull
+request?* — and it is **not** answered here. It blocks GitLab fork coverage in stage 2.
 
 ### 6.8 Migrations — the rule that keeps them compiling
 
