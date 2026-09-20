@@ -102,15 +102,41 @@ public partial class GitHubAccessService : IGitHubAccessService
 
         await BackfillInstallationIdsAsync(installations, username, cancellationToken);
 
-        var owners = installations
-            .Select(i => i.Login)
-            .Concat(username is not null ? [username] : [])
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var owners = BuildOwnerSet(installations, username);
 
         memoryCache.Set(cacheKey, owners, CacheDuration);
         return new(owners, GitHubTokenState.Ok);
     }
+
+    /// <summary>
+    /// The owner logins a viewer may manage: every <em>active</em> installation they can reach, plus
+    /// their own login.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A <b>suspended installation confers nothing.</b> GitHub keeps returning it from
+    /// <c>/user/installations</c> so a UI can offer to un-suspend it, but every token minted for it
+    /// is refused — so counting it as a grant hands out management rights over an owner we can no
+    /// longer act for. <see cref="BackfillInstallationIdsAsync"/> already filtered the same array
+    /// this way; this projection did not, which meant suspending an installation revoked nothing.
+    /// </para>
+    /// <para>
+    /// The viewer's own login is always included, and deliberately does not depend on an
+    /// installation: it is what the degraded paths fall back to, so the two must agree or a GitHub
+    /// outage would widen or narrow a viewer's own repositories.
+    /// </para>
+    /// <para>
+    /// Extracted as a pure function so the suspension rule can be tested without standing up a
+    /// token service, a cache and a session.
+    /// </para>
+    /// </remarks>
+    internal static string[] BuildOwnerSet(GitHubInstallation[] installations, string? username)
+        => installations
+            .Where(i => !i.Suspended)
+            .Select(i => i.Login)
+            .Concat(username is not null ? [username] : [])
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
     private static GitHubVisibility Degraded(string? username, GitHubTokenState state)
         => new(username is not null ? [username] : [], state);
