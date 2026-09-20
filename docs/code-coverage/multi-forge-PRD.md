@@ -1,0 +1,822 @@
+# PRD — De-couple CodeCoverage from GitHub, and rebuild sign-in around providers
+
+**Issue:** [#422](https://github.com/MintPlayer/MintPlayer.Spark/issues/422) — "Should we also support
+BitBucket and GitLab?" (opened 2026-09-19 with an empty body).
+
+**Status:** design. Nothing is built, no branch exists.
+
+**Scope of *this* document's plan:** stage 1 only — remove the GitHub coupling and rebuild sign-in,
+account provisioning and account linking around a provider abstraction, **while GitHub remains the
+only implemented provider**. GitLab and Bitbucket are designed for here and implemented in later
+stages. This split is the user's own framing:
+
+> "A first step is to get rid of this tight-coupling. Then we can, in later stages, add integration
+> with other platforms more easily."
+
+Everything in stage 1 lands in **one pull request**, per the repository's one-PR rule. The later
+stages are separate units of work, not deferred parts of this one.
+
+**Evidence base.** Two investigations, both 2026-09-19, against `421e2ff6`:
+- the original four-track pass (GitHub coupling inventory, GitLab research, Bitbucket research,
+  auth/identity coupling), whose combined PRD+plan is
+  [issues/422#issuecomment-5743692719](https://github.com/MintPlayer/MintPlayer.Spark/issues/422) and
+  is **superseded by this document**;
+- a second four-track pass (Angular client inventory, Spark auth-flow audit, forge feature parity
+  with competitor research, and a read of the MintPlayer reference implementation).
+
+Claims below carry `file:line`. ⚠️ marks anything not verified against a live instance or a
+running app.
+
+---
+
+## 1. Problem
+
+CodeCoverage serves GitHub-hosted repositories only. The barrier is not the APIs — every feature it
+ships has a GitLab and a Bitbucket Cloud equivalent, and in two cases theirs is better than ours.
+The barrier is that "GitHub" is encoded as a structural fact in six subsystems rather than as one
+provider among several, and that the sign-in flow has no concept of a user holding more than one
+forge identity.
+
+A scope note, stated accurately: `product-overview.md:23` lists non-GitHub forges as a non-goal, but
+it sits under `### Non-goals (v1)` alongside carry-forward and PR comments, **both of which have
+since been built**. This revisits a v1 scope boundary, which this product does routinely. It is not
+overturning an architectural prohibition. What *is* standing policy is `:157` ("No parallel
+permission system") and `:170` ("GitHub is the authority; no join workflow") — see D6.
+
+---
+
+## 2. Decisions
+
+Decisions the user has already taken are marked **DECIDED**. The rest need answers before the
+milestones they gate.
+
+| | Decision | Status |
+|---|---|---|
+| **D1** | **Delivery shape.** De-coupling + auth rework is stage 1, one PR. Forge implementations are later stages. | **DECIDED** — user's framing, quoted above |
+| **D2** | **Account linking must support both a link-while-signed-in mode and a confirm-by-email mode, as a Spark framework option. CodeCoverage opts into confirm-by-email.** | **DECIDED** — user, this session |
+| **D3** | **The GitHub button in the shell is replaced by a link to a login page that renders one button per registered provider, driven by the server's capability report.** | **DECIDED** — user, this session |
+| **D4** | **Provider-scoped, not unioned: one sidebar program unit per provider, and the provider as a URL path segment. Authorization stays separate per platform — a GitHub decision never consults GitLab state.** | **DECIDED** — user, this session. Rationale in §5.4 |
+| **D5** | **Path prefix — `Repositories/github/{id}`, `Accounts/github/{id}`, `Commits/github/{repoId}/{sha}`.** Every provider looks identical; ids stay human-readable and `startsWith(id(), …)` stays a usable RQL filter. | **DECIDED** — user, this session |
+| **D6** | GitHub's installation list *is* the authorization system. What replaces it per provider, without creating the "parallel permission system" `:157` forbids? | **Open — the hardest one.** Inventory in §5.5 |
+| **D7** | **Existing GitHub documents are re-keyed by the migration.** No implicit `github` default, no permanent asymmetry. | **DECIDED** — user, this session |
+| **D8** | Is GitHub Projects v2 automation GitHub-only forever, or do we model a generic board? | **Recommend GitHub-only** — neither forge has the primitive |
+| **D9** | **Spark ships the contract and templates; CodeCoverage ships the transport — an SMTP server run as its own container in `docker-compose.yml` on the VPS, for isolation.** | **DECIDED** — user, this session. See §6.4 |
+| **D10** | Bitbucket Data Center / Server: in or out? | **Recommend out** — different API, a fourth provider not a config flag |
+| **D11** | **Provider code in ids and URLs: full names (`github`/`gitlab`/`bitbucket`), not `gh`/`gl`/`bb`.** One vocabulary shared by D5's ids and the routes. | **DECIDED** — user, this session |
+| **D12** | One git repository pushed to two forges (github + bitbucket remotes) — one record or two? | **Recommend two independent records, no merging.** See §6.6 |
+| **D13** | **No backward-compatible badge route.** The legacy two-segment URL is removed, not aliased; badge URLs are replaced at source. Sound only because the deployment has no external users. | **DECIDED** — user, this session |
+
+---
+
+## 3. Goals
+
+1. No caller outside a provider implementation references Octokit types or `api.github.com`.
+2. A user signs in from a **login page** that lists providers the server reports, not a hardcoded
+   GitHub button.
+3. A user who already has an account can attach a second provider's identity to it, under a policy
+   the framework exposes and the app chooses.
+4. Document ids, routes and badge URLs name their provider explicitly and cannot collide across
+   forges. Badge URLs are **replaced at their source**, not aliased (§5.4).
+5. Adding GitLab in stage 2 is writing a provider, not re-opening the data model.
+
+### Non-goals
+
+- Implementing the GitLab or Bitbucket providers (stage 2 and 3).
+- GitHub Projects v2 automation on other forges (D8) — no equivalent primitive exists.
+- Bitbucket Data Center / Server (D10).
+- Cross-provider aggregate coverage numbers (§5.4) — coverage does not sum across unrelated orgs.
+- Account *merge* (two existing accounts, one per provider, becoming one). Linking a provider to an
+  account is in scope; merging two populated accounts is not.
+
+---
+
+## 4. Findings — sign-in and identity
+
+### 4.1 The login page already exists; nothing links to it
+
+`ClientApp/src/app/app.routes.ts:31` already mounts
+`...sparkAuthRoutes(withExternalLogin(githubProvider()))`, which publishes `SparkSignInComponent` at
+`/sign-in`. That component **already renders one button per server-reported provider**
+(`ng-spark-auth/sign-in/src/spark-sign-in.component.ts:105-146`), and `githubProvider()` is purely
+presentational — `externalProvider('GitHub', { iconClass: 'bi bi-github' })`.
+
+The visible button bypasses all of it. `shell.component.html:24-26` calls a bespoke
+`GitHubLoginService.login(HOME_URL)` (`services/github-login.service.ts:43`) which hardcodes the
+scheme string `'GitHub'`. The same bespoke path is used by the "Reconnect GitHub" banner
+(`spark/home-extras.component.ts:95`).
+
+**So D3 is mostly deletion.** The work is removing the bespoke service, linking the mounted route,
+and generalising the error copy — not building a login page.
+
+**Answering "should the provider list come from the Identity configuration?" — it already does, and
+that is not incidental.** `GET /spark/auth/capabilities`
+(`Endpoints/GetAuthCapabilities.cs:43`) returns every registered ASP.NET `AuthenticationScheme` with
+a non-empty `DisplayName`, minus Identity's own five
+(`Extensions/ExternalAuthenticationSchemes.cs:73-91`). No config schema enumerates providers
+anywhere in Spark. Adding GitLab is a registration line.
+
+**Disabling local (email/password) login is also already built, and CodeCoverage already uses it.**
+Measured 2026-09-19, because it was raised as a requirement:
+
+- `SparkAuthenticationOptions.LocalCredentials` is a `SparkLocalCredentials` enum —
+  `Full` / `SignInOnly` / `Disabled` — and its **default is already `Disabled`**
+  (`Configuration/SparkAuthenticationOptions.cs:43`, `SparkLocalCredentials.cs:27-43`).
+- Endpoints are removed, not merely hidden: `LocalCredentialEndpointFilter.cs:123-130` strips
+  `/register` and `/resendConfirmationEmail` in both non-`Full` modes, and `/confirmEmail` in
+  `Disabled`.
+- The login page hides the fields: `spark-sign-in.component.html:30` gates the email/password block
+  behind `@if (localCredentialsAvailable() && routePaths.login)`, set from the capability report at
+  `spark-sign-in.component.ts:137`.
+- The client cannot disagree with the server about this, because `localCredentials` is **derived
+  from the live route table**, not from options (`Endpoints/GetAuthCapabilities.cs:32-41`): no
+  `/login` route → `Disabled`, no `/register` → `SignInOnly`, else `Full`.
+- CodeCoverage passes no `configure` at `Program.cs:87`, so it runs `Disabled` today — which is why
+  `app.routes.ts:27-30` records "GitHub is the only provider — the server's LocalCredentials are
+  Disabled".
+
+**No milestone is needed for this.** The one adjacent gap is that `Disabled` also removes
+`/confirmEmail`, which §6.3 needs back once external-login confirmation exists — see M4.
+
+Two limits of the capability payload, both of which stage 1 should address:
+- it carries `{ scheme, displayName }` and nothing else — no icon, no order, no localized label, and
+  **no "already linked to the current user" flag**, which the manage-logins UI needs;
+- ordering is `IAuthenticationSchemeProvider` registration order, not a declared order.
+
+### 4.2 A live defect that lands exactly on this feature
+
+`app.config.ts:31` calls `provideSparkAuth()` with no arguments, leaving `loginUrl` at its default
+`'/login'` (`ng-spark-auth/models/src/auth-config.ts:11-15`), while the only mounted auth route is
+`/sign-in`. The auth guard (`guards/src/spark-auth.guard.ts:15`), the 401 interceptor
+(`interceptors/src/spark-auth.interceptor.ts:26`) and the auth bar all redirect to `loginUrl` — i.e.
+to a route that does not exist. Dev-mode warning only. ⚠️ Not confirmed in a browser.
+
+This is a fix, not a follow-up: stage 1 introduces the login page those redirects are supposed to
+reach.
+
+### 4.3 The three sign-in cases, measured against what exists
+
+The desired flow is: (1) no user with that email → create, send confirmation, link; (2) user exists
+unconfirmed → resend; (3) user exists confirmed → sign in.
+
+This is indeed stock ASP.NET Core Identity. **None of it is wired up in this codebase.**
+
+| Case | Today |
+|---|---|
+| (1) | User **is** created and signed in immediately. `SparkAuthenticationExtensions.cs:178` sets `user.EmailConfirmed = true` by fiat. **No confirmation mail is sent** — there is nothing to send it with. |
+| (2) | **Unreachable.** The unconfirmed-user state cannot be entered via external login, because of the line above. |
+| (3) | Works — *if the login is already linked*. If it is not, this is not a sign-in at all; it is case (2)'s failure. |
+
+The supporting gaps:
+
+- **No `IEmailSender` or `IEmailSender<TUser>` is registered anywhere in the repository** — no mail
+  package, no SMTP config, no templates, in Spark or in CodeCoverage. A grep for
+  `IEmailSender|SmtpClient|MailKit|System.Net.Mail` returns zero hits outside `docs/`. This is
+  issue **#299**, deferred as "a feature, not a fix". D2 un-defers it.
+- **Nothing calls `GenerateEmailConfirmationTokenAsync`** anywhere in Spark.
+- CodeCoverage runs `LocalCredentials = Disabled`, and `LocalCredentialEndpointFilter.cs:126-130`
+  **removes `/confirmEmail` entirely in that mode**; `:123-124` removes `/resendConfirmationEmail`
+  in both non-`Full` modes. Case (2) has no endpoint to call even in principle.
+- `SignIn.RequireConfirmedAccount` / `RequireConfirmedEmail` are set nowhere, and CodeCoverage passes
+  no `configureIdentity` at all (`Program.cs:87`).
+
+**Measured, because it is a silent-failure trap:** in
+`C:\Program Files\dotnet\shared\Microsoft.AspNetCore.App\10.0.12\Microsoft.AspNetCore.Identity.dll`
+— the framework version this repo targets — both `NoOpEmailSender` and `DefaultMessageEmailSender`
+are present. `AddApiEndpoints` `TryAdd`s the no-op sender, so **a "send confirmation email" step
+will report success and send nothing** until a real sender is registered. Nothing logs an error.
+This is why §8 requires an acceptance criterion that a mail *arrives*, not that a call returned, and
+why §6.4 requires a startup guard.
+
+### 4.4 Linking is a hard failure today, not a missing feature
+
+Email uniqueness is enforced by the **store**, not by `IdentityOptions`: `UserStore.CreateAsync`
+reserves the normalized email through a RavenDB compare-exchange key and returns
+`IdentityError { Code = "DuplicateEmail" }` on collision (`Identity/UserStore.cs:68-95`).
+`IdentityOptions.User.RequireUniqueEmail` is never set anywhere, and is irrelevant.
+
+So a second provider presenting an email that already exists does not fall through to a link. It
+hard-fails, and the callback returns `account_creation_failed`
+(`SparkAuthenticationExtensions.cs:181-182`), whose client copy reads *"Signing in worked but
+creating your local account failed — check the server logs"*
+(`services/github-login.service.ts:30`) — actively misleading for precisely the case D2 addresses.
+
+`AddLoginAsync` is called from exactly one site in product code
+(`SparkAuthenticationExtensions.cs:184`), inside new-user provisioning. There is no
+`/manage/logins`, no link-to-signed-in-principal path, and no UI in `ng-spark-auth`.
+
+### 4.5 A second defect in the same method
+
+A non-`Success` `ExternalLoginSignInAsync` result for an **already-linked** user falls through into
+auto-provisioning (`SparkAuthenticationExtensions.cs:143-152`), because that is the only other
+branch. So lockout, not-allowed and 2FA-required all surface as `account_creation_failed`, and the
+token save at `:188-196` is skipped. Already recorded at `reauth-on-401.md:80-84`, never fixed.
+Stage 1 fixes it, because D2's linking branch has to be added to exactly this decision point.
+
+Also at that site: `AddLoginAsync` and `SignInAsync` results are not checked (`:184-185`), so a store
+failure produces a "success" outcome; and the challenge endpoint does not validate the `provider`
+query value against registered schemes (`:99-122`).
+
+### 4.6 The verified-email gate blocks every new provider
+
+Auto-provisioning requires `email_verified == "true"` **or** the literal
+`urn:github:email_verified == "true"` (`SparkAuthenticationExtensions.cs:159-168`); otherwise the
+flow ends with `email_not_verified` and no user is created. GitHub earns its claim through a bespoke
+`/user/emails` call in `GitHubAuthenticationExtensions.cs:54-110`.
+
+Until a new provider either emits a standard `email_verified` or gets the same treatment, **every
+first-time sign-in on that provider is refused**. GitLab is fine (real OIDC, standard claim).
+Bitbucket is the doubtful one: it exposes `is_confirmed` via `/2.0/user/emails` rather than as a
+claim. ⚠️
+
+### 4.7 The MintPlayer reference implementation
+
+`C:\Repos\MintPlayer\MintPlayer.Web` has a working five-provider linking implementation (Facebook,
+Microsoft, Google, Twitter, LinkedIn) on EF Core Identity. It is the reference for D2's
+*link-while-signed-in* mode. What it does:
+
+- Two parallel route families distinguished **by URL alone** — `Account/connect/{medium}/{provider}`
+  signs in, `Account/add/{medium}/{provider}` links (`AccountController.cs:346-353`, `:478-491`).
+  The bodies are identical but for the callback route name; the "this is a link" marker is the
+  callback route plus `[Authorize]` on both add actions.
+- The link callback calls `AddLoginAsync` on the signed-in principal
+  (`AccountRepository.cs:306-323`). **No email, no interstitial, no re-authentication.** Trust rests
+  on holding a valid auth cookie *and* having just completed the provider's OAuth round trip.
+- Provider discovery is server-derived (`GetExternalAuthenticationSchemesAsync`,
+  `AccountRepository.cs:204-214`) — but the UI hardcodes one Angular component per provider and uses
+  the dynamic list only to `*ngIf` blocks away.
+
+What **not** to copy, all confirmed in that codebase:
+
+1. **No last-login guard on unlink** (`AccountRepository.cs:325-338`). A user provisioned through
+   OAuth is passwordless and can remove their only login, locking themselves out permanently. The
+   `HasPasswordAsync` building block exists and is even exposed to the SPA — it is simply never
+   consulted.
+2. **`EmailConfirmed = true` on auto-provision** (`:239`) regardless of provider verification —
+   the same defect Spark has.
+3. **Dead end when the email belongs to a local account** (`:259-263`): safe, but the user is told
+   *"Please login with your {provider} account instead"* with no path forward.
+4. Blanket `catch (Exception)` renders `LoginAlreadyAssociated` and a network blip identically.
+5. Provider identity keyed off `DisplayName` rather than scheme name, then used as a route value.
+6. Mail layer: `Task.Run` + `System.Net.Mail` + interpolated HTML bodies + swallowed failures.
+
+---
+
+## 5. Findings — the forge coupling
+
+### 5.1 What CodeCoverage actually does with GitHub
+
+18 distinct integration points. The load-bearing ones: GitHub **App** install (not plain OAuth,
+`MyAccountsService.cs:30-34`); live `GET /user/installations` per request behind a 5-minute cache
+(`GitHubAccessService.cs:119`); seven webhook event types (`GitHubEventsRecipient.cs:41-65`); two
+**Check Runs** named `coverage/project` and `coverage/patch`, updated by stored id, with
+success/failure/**neutral** conclusions (`PublishFeedbackRecipient.cs:75-160`); a sticky PR comment
+published *after* the checks so it can never contradict them; badges with a per-PR HMAC capability
+so the bot can embed a working image in a private repo's comment (`Badges/BadgePrSignature.cs`);
+upload auth by stored `covt_` token **or** Actions OIDC whose claims override the request body
+(`GitHubOidc.cs`, `UploadsController.cs:116-155`); file content and diff/compare for patch coverage;
+`coverage.yml` read from the repo; Projects v2 GraphQL automation; and a periodic state reconciler.
+
+**Retracted claim.** An earlier draft of this document called `Repository.DeleteBranchOnPrClose` a
+dead flag. **That is wrong.** The feature is live and fully implemented:
+`GitHubEventsRecipient.cs:393-465` resolves `Inherit` against the account (`:403-408`), skips forks
+whose head lives in a repository we have no write access to, and calls
+`client.Git.Reference.Delete(owner, name, "heads/{ref}")`, with distinct handling for 403 (an
+unaccepted `contents: write` permission) and 404. What #369 removed was the *WebhooksDemo* recipient;
+the implementation moved onto `Repository` in **#382**. It is ordinary GitHub behaviour to port.
+
+One subtlety for stage 2, stated correctly: GitHub's own `delete_branch_on_merge` does the same job
+and `:455` names the race between the two — but it is a **repository** setting, not an organization
+one. Verified 2026-09-19 against the live API: `GET /orgs/MintPlayer` exposes no such field (its only
+branch/merge-adjacent keys are `default_repository_branch`, `members_can_delete_issues`,
+`members_can_delete_repositories`), while `GET /repos/MintPlayer/MintPlayer.Spark` returns
+`delete_branch_on_merge: false`. So on this repository the race does not arise at all, and an
+observed deletion is our implementation. GitLab and Bitbucket both have an equivalent
+**repository/project**-level setting, and a port must decide whether we act when the forge already
+will — per repository, not per org.
+
+### 5.2 Client-side coupling is narrower than expected, except in two places
+
+Only 12 files under `ClientApp/src` mention GitHub at all, and there is exactly **one** `github.com`
+literal (`spark/home-extras.component.ts:59`, a per-environment fallback overwritten from
+`/api/me/accounts`). No `api.github.com`, no forge commit/PR deep links — navigation is entirely
+internal.
+
+The two real concentrations:
+
+- **The setup panel is GitHub Actions and nothing else.** `repo-setup-panel.component.ts` emits a
+  workflow across seven language tabs — `uses: MintPlayer/MintPlayer.Spark/apps/CodeCoverage/action@…`
+  (`:65-70`), `permissions: id-token: write` (`:71-86`), `actions/setup-*` pins (`:93-187`), and
+  "store it as a repository secret" copy (`:30`). There is no GitLab CI or Bitbucket Pipelines
+  equivalent to switch to.
+- **Two-segment `{owner}/{repo}` is assumed everywhere.** `po-detail-page.component.ts:56-61`,
+  `commit-files-extras.component.ts:42` and `short-sha-renderer.component.ts:48` all
+  `fullName.split('/')` destructured as `[owner, name]` — a three-segment path silently drops the
+  tail and resolves to a **wrong repo**, with no error. Routes `r/:owner/:repo/c/:sha` are
+  fixed-arity (`app.routes.ts:36-40`), and `repo-badge-panel.component.ts:98-106` builds
+  `/badge/{owner}/{name}.svg`.
+
+Also GitHub-shaped and client-visible: `AccountsResponse.gitHubAppUrl` and `gitHubReauthRequired`
+(`services/accounts.service.ts:14-24`), `BuildInfo.runId/runAttempt/workflowName`
+(`browse.service.ts:47-56`), the "GitHub App installed" badge renderer, and 7 of 13 `app.*` keys in
+`App_Data/translations.json`. Six of those keys are **dead** — unreferenced in `src/`.
+
+**A trap for the id migration:** Spark persistent objects are read by *string name* client-side
+(`valueFor(item, 'GitHubId')`). Renaming a model attribute produces **no TypeScript error** — it
+silently returns `undefined`. `repo-name-renderer.component.ts:11-19` documents this having already
+happened once.
+
+### 5.3 Feature parity — the API surface is not the problem
+
+Every feature has an equivalent on both forges, and GitLab beats us in two places. The mismatches
+that change the design:
+
+| | GitLab SaaS | Bitbucket Cloud |
+|---|---|---|
+| Install analogue | **None.** Closest is a user OAuth grant + a group access token (Owner role, creates a bot user, you schedule rotation) | Forge app + Forge Remote. Connect is retiring; **app passwords were removed 2026-07-28** |
+| Who owns the grant | A **user** — the grant dies with that user's account | Workspace (Forge) or user (OAuth) |
+| Enumerating orgs | `GET /groups?min_access_level=40` — a **membership list, not a grant** | `GET /workspaces?role=…` ⚠️ |
+| Identity | **Real OIDC.** Discovery at `gitlab.com/.well-known/openid-configuration`; standard `email_verified`; plus a `groups/owner` claim | OAuth 2.0; verification via `/2.0/user/emails` `is_confirmed`, ⚠️ not a claim |
+| Coverage result | Commit status with a **native `coverage` float**; `description`/`target_url` ≤255 chars; 409 on concurrent same-sha update | Code Insights `PUT …/reports/{reportId}`, idempotent, `COVERAGE` type, **data capped at 10 elements** |
+| Verdict vocabulary | pending/running/success/failed/canceled/skipped | SUCCESSFUL/FAILED/INPROGRESS/STOPPED |
+| Webhook auth | **`X-Gitlab-Token`, a shared secret compared verbatim** — the credential is the header. Real HMAC only from **19.0** | **HMAC `X-Hub-Signature: sha256=`** — same shape as GitHub |
+| Webhook scope | Per project on Free; **group webhooks are Premium/Ultimate only** | Per repository or per workspace |
+| Lifecycle events | **None** — no install concept, so revocation is discovered only when a call fails | Forge install/uninstall events ⚠️ |
+| Tokenless upload | **CI `id_tokens`** — audience-scoped RS256, verified offline. Maps 1:1 onto `GitHubOidc.cs` | ⚠️ **Unproven.** Assume a stored token |
+| Path shape | Namespaces nest **up to 20 levels** | Two segments, but **slugs are renameable and reusable** — key on brace-wrapped UUIDs |
+| Rate limit | Per user ⚠️ | **1,000 req/h per token** (to ~10k with paid seats) ⚠️ — forces batching |
+| Projects v2 | No equivalent | No equivalent |
+
+Three consequences worth naming now, because they shape stage-1 abstractions:
+
+1. **`neutral` has no home outside GitHub.** `IForgeFeedbackPublisher` must define the verdict
+   vocabulary as the *intersection plus an explicit mapping*, not pass GitHub's enum through.
+2. **The markdown coverage table has nowhere to go** on either forge (255 chars / 10 cells). The
+   sticky comment carries that weight everywhere; the commit status carries a number and a link.
+3. **`GitHubStateReconciler` stops being a safety net.** With no lifecycle events on GitLab, periodic
+   reconciliation becomes the only way to learn about revocation.
+
+### 5.4 D4 — one merged list, or provider-scoped? (recommend: scoped)
+
+**Every comparable product scopes by provider, three of four by putting it in the URL.**
+
+| Product | Behaviour |
+|---|---|
+| Codecov | Provider is the first path segment: `app.codecov.io/gh`, `/gl`, `/bb`. Linking a second provider is an explicit action |
+| Coveralls | Provider is in the **badge** URL: `coveralls.io/repos/github/{owner}/{repo}/badge.svg` |
+| SonarQube Cloud | Forbids it outright: "does not support linking an organization to more than one DevOps platform… you will need to create a separate organization" |
+| Qlty Cloud | GitHub only ⚠️ |
+
+The decisive argument is badges. **A badge URL is pasted into a README and is then permanent and
+public.** `coverage.mintplayer.com/badge/{owner}/{name}.svg` becomes ambiguous the instant a second
+provider exists — and it resolves *silently to the wrong repo*, not to an error. `mintplayer` on
+GitHub and `mintplayer` on GitLab are unrelated principals and anyone can register the free one.
+
+Three supporting arguments: every route is already two-slot, so a merged view forces a third value
+into it and ends up reinventing the path segment badly; document ids need the provider regardless
+(§5.5), so it is already a first-class axis and hiding it is concealment rather than simplification;
+and each provider's "who may manage this org" rule is genuinely different, so a merged table would
+put three authorization meanings in one column with no way for the user to tell which is which.
+
+**Decided (D4): provider-scoped, and the sidebar carries it.** After sign-in the user sees **one
+program unit per provider** (GitHub, GitLab, Bitbucket) rather than a unioned list. Each unit owns
+its own account list, its own repositories and its own authorization answer. This is the strongest
+available form of the recommendation below: the provider is not merely a URL segment, it is the
+navigational top level, so no screen ever has to render three different meanings of "you may manage
+this" in one table.
+
+**Authorization is kept separate per platform.** A GitHub decision never consults GitLab state and
+vice versa. ⚠️ Whether the current code *forces* any union is being inventoried; the known risk is
+`IForgeAccessService` being given a single cross-provider allowed-owner set instead of one set per
+provider. The interface must be per-provider by construction (§6.5), or the separation is lost at
+the seam even though the UI looks scoped.
+
+**Routes (D11).** Routes become `/{provider}/{owner}/{name}` with the **full provider name** —
+`github`, `gitlab`, `bitbucket` — not Codecov's `gh`/`gl`/`bb`. These strings land in badge URLs that
+are pasted into public READMEs and can never be revisited, so legibility beats brevity:
+
+```
+coverage.mintplayer.com/badge/github/MintPlayer/MintPlayer.Spark.svg
+coverage.mintplayer.com/github/MintPlayer/MintPlayer.Spark
+```
+
+Badges take the provider segment from day one. The same spelling is used in document ids (D5), so
+there is one provider vocabulary, not two.
+
+**No backward-compatible alias is kept** (user decision, this session): the legacy two-segment
+`/badge/{owner}/{name}.svg` route is **removed**, not aliased, and the badge URLs are replaced at
+their source. This is sound here specifically because the deployment has no external users — every
+README carrying one of these badges is ours. It would be the wrong call on a public multi-tenant
+service.
+
+Two consequences to accept knowingly, both cosmetic: badge images embedded in **existing PR
+comments** will 404 for old pull requests, and any badge cached by GitHub's image proxy will serve
+until it expires. Neither affects a live coverage result.
+
+The org picker is per provider. One account still holds several provider logins, with a switcher in
+the chrome. No cross-provider aggregates.
+
+### 5.5 D6 — the authorization model is the hard part
+
+`GitHubAccessService` derives the allowed-owner set by calling `GET /user/installations` live with
+the viewer's own token (`:119`). The installation is simultaneously **the credential and the
+authorization grant**, and `product-overview.md:157` states this as intent ("No parallel permission
+system"), `:170` as policy ("GitHub is the authority; no join workflow — GitHub membership *is* the
+approval").
+
+GitLab has no installation. `GET /groups?min_access_level=40` returns **what the user can see, not
+what the user asked us to manage**. Treating them as equivalent would silently widen access — which
+is exactly the thing `:157` forbids.
+
+So each provider needs an explicit *connected org* record: an artifact of someone deliberately
+connecting an org, distinct from the membership list used to decide who may administer it. That is
+not a parallel permission system — the forge still decides *who*; we record *whether the org opted
+in*. GitHub's installation already **is** that record; stage 1 makes it explicit rather than
+inferred, which is what lets stage 2 supply a different one.
+
+The saving grace: the visibility predicates are already centralised in
+`RepositoryVisibility.cs:35-44,76-87` and `GitHubProjectVisibility.cs:45-56`, consumed via
+`SparkVisibility.cs:19-36`. The policy is in one place; only its *source* is hardcoded.
+
+⚠️ A related hazard recorded in `product-overview.md:170`: management rights today equal installation
+visibility, with **no admin-role check**. Generalising must not silently widen that; each provider
+needs an explicit answer to "who may manage this account's tokens and settings".
+
+### 5.6 Measured: exactly what is forge-coupled, and what is not
+
+A full inventory of every authorization/visibility decision (2026-09-19). **The conclusion is that
+per-platform separation is achievable, and that nothing today forces a union** — the decision shape
+is uniformly "is this row's owner in the caller's owner set", which composes per-platform cleanly.
+Only one call actually talks to GitHub: `GitHubAccessService.GetVisibilityAsync:30-88`. Everything
+downstream consumes a `string[]`.
+
+**Three things would silently union two platforms if left unchanged:**
+
+1. **The owner set is an unqualified `string[]` of logins.** `GitHubAccessService.cs:80-84` produces
+   bare logins (installation account logins ∪ the user's own), compared against `Repository.OwnerLogin`
+   and `Account.Login` by `RepositoryVisibility.cs:60-61`, `GitHubProjectVisibility.cs:219-221`,
+   `AccountActions.cs:47`, `ApiTokenActions.cs:51`, `RepositoryActions.cs:149,181` and
+   `MyAccountsService.cs:44,53`. **A GitLab group named `microsoft` and a GitHub org named
+   `microsoft` are the same string.** This is the single place where two platforms would merge into
+   one answer, and it does so silently and in the *permissive* direction.
+2. **Document ids encode a bare numeric id — inside an authorization check.**
+   `BuildActions.RepositoryIdFromCommitId:31-37` *parses* the `Commits/{repoGitHubId}/{sha}` shape to
+   decide access, and `UploadsController.cs:642,647` compares against `Repositories/{gitHubId}`. D5's
+   re-keying is therefore not only a storage change; it lands in an authz path.
+3. **The cache key is per-user, not per-(user, platform)**: `github-owners/{user.Id}`
+   (`GitHubAccessService.cs:40`, 5-minute TTL at `:25,86`).
+
+**What needs no change at all:**
+
+- **`security.json` is not forge-aware in any way.** It has exactly two groups — `anonymous` and
+  `authenticated` — and every right is a plain role grant. No per-owner group, no admin group. Every
+  forge concept lives in row filters and imperative checks, which `RepositoryActions.cs:37-41` states
+  outright ("rights here are group-level and there is no group per GitHub owner").
+- **The visibility predicates are already platform-neutral.** `RepositoryVisibility` and
+  `GitHubProjectVisibility` read only local document fields (`IsPrivate`, `OwnerLogin`, `Connection`);
+  the GitHub-ness is entirely in the *source* of the owner set.
+- **The two upload credential paths are already separate schemes**, selected by
+  `[Authorize(AuthenticationSchemes=…)]` (`UploadsController.cs:32`) and dispatched by claim presence
+  (`:623`). A third is additive.
+- **There are no `ISparkRowRule<T>` implementations in the app** — row rules are the `*Actions`
+  `GetRowFilterAsync` overrides, driven by the framework's open-generic `SparkRowRule`.
+
+**Genuinely per-platform work** (from the classification table): building the owner set; user-token
+refresh; the installation backfill; `MyAccountRow` generation (it emits `IsAppInstalled` and an
+"install the App" URL); webhook ingestion trust; the sign-in provider; and the whole OIDC upload path
+including its claim overrides and public-repo auto-provisioning.
+
+**Two live findings outside this PRD's scope, recorded because the inventory surfaced them:**
+
+- ⚠️ **A suspended installation still confers full management rights.**
+  `GitHubInstallation.Suspended` is honoured only in the backfill (`GitHubAccessService.cs:185`) and
+  **not** when computing the owner set (`:80-84`). Observed in code; not tested.
+- ⚠️ **The "no admin-role check" claim is confirmed.** Nothing anywhere reads a GitHub role,
+  permission level, `role_name`, org-admin flag, repository `permissions` object or collaborator
+  status. `CanManageOwnerAsync` (`SparkVisibility.cs:25-26`) is literally `IsOwnerAllowedAsync`. Any
+  user who can see an org's installation is a full manager of every repository under that owner —
+  able to mint upload tokens, rotate badge tokens and delete coverage data.
+
+Two smaller ones: `SyncColumnsAction:42-60` performs no explicit ownership check and relies entirely
+on the row filter having refused the load; and `BrowseController.GetAccount:240-248` applies no
+visibility check at all (consistent with `QueryRead/Account` being anonymous, but it is the one
+browse endpoint with no row scoping).
+
+---
+
+## 6. Design
+
+### 6.1 Sign-in (D3)
+
+Delete `GitHubLoginService` and the shell's bespoke button. The shell links to `/sign-in`, which is
+already mounted. `provideSparkAuth()` gets a `loginUrl: '/sign-in'` so guards and the 401 interceptor
+land somewhere real (§4.2). `githubProvider()` stays as decoration and is joined by `gitlabProvider()`
+/ `bitbucketProvider()` in later stages; the *list* still comes from the server.
+
+The capability payload gains optional presentation and state metadata — a declared order, and a
+`linked` flag when the request is authenticated — so the same endpoint drives both the login page and
+the manage-logins screen.
+
+### 6.2 Account linking (D2) — a Spark option with two modes
+
+A second property on `SparkAuthenticationOptions`, which today has exactly one (`LocalCredentials`,
+`Configuration/SparkAuthenticationOptions.cs:193`):
+
+```
+ExternalLoginLinking = Disabled | WhenSignedIn | ConfirmByEmail
+```
+
+CodeCoverage sets `ConfirmByEmail`.
+
+Both modes hang off the **same decision point** — the duplicate-email branch that today hard-fails
+(§4.4). That branch becomes: *this email belongs to an existing user* → dispatch by mode.
+
+**`WhenSignedIn`** (the MintPlayer shape, §4.7): a link/unlink endpoint pair for the current
+principal, `AddLoginAsync` on a signed-in user, plus manage-logins UI in `ng-spark-auth`. Carries a
+**last-login guard** — the bug §4.7 says not to inherit. Distinguishes `LoginAlreadyAssociated` from
+transport failure with distinct error codes.
+
+**`ConfirmByEmail`**: the callback does not sign the user in. It writes a short-lived pending-link
+record — `(userId, loginProvider, providerKey, expiresAt)`, keyed by a single-use token — and mails
+a confirmation. Clicking it verifies the token, re-checks that the `providerKey` still matches what
+was captured, calls `AddLoginAsync`, and signs in.
+
+Two rules that make this mode safe, and without which it is an account-takeover vector:
+
+1. **The mail goes to the address already stored on the existing account, never to the address the
+   new provider just asserted.** This is what makes the mode independent of whether the provider's
+   email claim can be trusted — which matters most on Bitbucket (§4.6).
+2. **The `providerKey` is captured at callback time and re-verified on confirm.** Otherwise the
+   confirmation link is a bearer token that attaches whatever provider identity is presented later.
+
+The pending-link record is a new document; `SparkUserLogin` is only
+`{ LoginProvider, ProviderKey, ProviderDisplayName }` and is not a place to park an unconfirmed state.
+
+### 6.3 Provisioning and confirmation (the three cases)
+
+`SparkAuthenticationExtensions.cs:178` stops setting `EmailConfirmed = true` by fiat. The flag
+reflects reality: true when the provider attested it *and* the app trusts that provider's attestation,
+false otherwise — which is what finally makes case (2) reachable.
+
+Case (1) creates the user, sends confirmation, links the login. Case (2) resends. Case (3) signs in.
+Whether an unconfirmed user may sign in meanwhile is `SignIn.RequireConfirmedAccount`, which Spark
+now exposes deliberately rather than leaving unset.
+
+The verified-email gate (§4.6) stops naming GitHub. Each provider extension normalises to the
+standard `email_verified` claim; `GitHubAuthenticationExtensions` keeps its `/user/emails` call and
+emits the standard claim instead of `urn:github:email_verified`.
+
+**Confirmation must stop being tied to local credentials.** `LocalCredentialEndpointFilter.cs`
+treats `/confirmEmail` and `/resendConfirmationEmail` as part of the "password recovery" family and
+removes them in `Disabled` (`:126-130`) and `:123-124` respectively. That grouping was correct when
+confirmation only ever followed a local registration. It is wrong once an *external* login can
+produce an unconfirmed user: CodeCoverage runs `Disabled`, so the very endpoints case (2) needs are
+the ones that get stripped.
+
+Confirmation therefore becomes orthogonal to `LocalCredentials`. Spark keeps the confirm and resend
+surfaces available whenever confirmation is required by configuration, regardless of whether local
+password endpoints exist. Note the second-order effect: `GetAuthCapabilities` derives
+`localCredentials` from the *presence of routes* (`:32-41`), so the filter and the capability report
+must be changed together or the client will start reporting the wrong mode.
+
+### 6.4 Mail (D9)
+
+**Spark ships the contract and the templates; the app ships the transport.** Spark depends on
+`IEmailSender<TUser>` (already in the framework) and must never register a transport. CodeCoverage
+registers a real sender.
+
+**Required: a startup guard.** If `ExternalLoginLinking == ConfirmByEmail` (or confirmation is
+required) and the resolved `IEmailSender<TUser>` is the framework's no-op, **throw at startup**.
+Measured in §4.3: without this, the feature silently sends nothing in production and logs nothing.
+Precedent for the style of guard: `LocalCredentialEndpointFilter.cs:87-98`.
+
+Not to be copied from MintPlayer: `Task.Run` + `System.Net.Mail` + interpolated HTML + swallowed
+failures (§4.7). Bodies belong in templates, and the app is already fully localized through
+`App_Data/translations.json`.
+
+### 6.5 Forge abstractions
+
+Three seams, each of which already has a natural boundary:
+
+- **`IForgeAccessService`** — replaces the direct `/user/installations` call; returns the allowed-owner
+  set per provider, backed by the explicit connected-org record of §5.5. Slots in behind the
+  already-centralised visibility predicates.
+- **`IForgeClient`** — diff/compare, file content, default branch, branch list, PR/MR head SHA.
+- **`IForgeFeedbackPublisher`** — the sticky comment and the commit status / check run, with an
+  explicit verdict vocabulary (§5.3) rather than GitHub's enum.
+
+Plus a **provider-qualified identity** (D5/D7) across document ids, the bus contract — which today
+declares `required long InstallationId` and `RepositoryFullName`
+(`GitHubWebhookMessage.cs:15-16`), so every recipient and the `spark-github-all` queue name depend on
+a GitHub-shaped envelope — and routes.
+
+`OwnerLogin`, today a bare string, becomes provider-qualified: `owner/repo` is not unique across
+forges.
+
+**Unchanged and not made forge-aware:** Spark core auth, `security.json`, the coverage parsers, the
+merge engine, the report reaper.
+
+### 6.6 One git repository, two remotes (D12)
+
+Raised while deciding D5: what if the same working tree is pushed to both GitHub and Bitbucket?
+
+**Recommendation: two independent records, and no attempt to detect or merge them.** The entity is
+not "a git repository" — it is *a repository on a forge*. Two remotes means two `Repository`
+documents, two badge URLs, two connection states, two authorization answers, and two sets of builds.
+The D5 id scheme already expresses this: `Repositories/github/{id}` and
+`Repositories/bitbucket/{uuid}` are unrelated documents, which is exactly right.
+
+Why not merge them, despite the temptation that **commit SHAs are genuinely identical across mirrors**
+(the same commit object hashes the same everywhere, so coverage data *could* in principle be shared):
+
+- **Authorization would have to be unioned**, and D4 says it must not be. Merging means a viewer
+  authorized on the Bitbucket workspace can see coverage produced from the GitHub side, which is a
+  silent widening of exactly the kind §5.6 warns about.
+- **Everything except the SHA diverges.** PR/MR numbers, build ids, default branch, visibility,
+  branch protection and the CI that produced the report are all per-forge. A merged record would have
+  to pick a winner for each, and every choice is arbitrary.
+- **Detection is unreliable.** The only honest signal is a shared commit history, and "the same SHA
+  appears on both" is also true of an unrelated fork, a vendored copy, or a rewritten mirror.
+- **Competitors don't merge.** Codecov, Coveralls and SonarQube Cloud all treat a repository on each
+  provider as its own project; SonarQube forbids a mixed tenant outright (§5.4).
+
+The honest cost of not merging: a user mirroring to two forges uploads twice and sees two entries
+with two coverage numbers, which can legitimately differ if the two CI pipelines run different test
+subsets. That is not a defect — it is two pipelines being measured, and reporting one blended number
+would be the misleading option.
+
+If a grouping concept is ever wanted, it belongs **above** `Repository` as an explicit,
+user-declared link, never as inference — and it is out of scope here.
+
+### 6.7 Migrations — the rule that keeps them compiling
+
+A database migration is **not** a risk to be minimised here; it is a certainty. Many document ids
+are natural ids hard-linked to GitHub, and they cannot be provider-qualified without rewriting
+stored data. Since a migration ships anyway, other model changes that want one should ride along in
+the same PR rather than being contorted to avoid one.
+
+**The standing rule: a migration must never reference a C# property that the same PR renames or
+removes.** This repo already follows it, and the pattern is worth naming explicitly because it is
+what makes the rule cheap. Migrations are `ISparkMigration` implementations that send a
+`PatchByQueryOperation` carrying an **RQL/JavaScript string operating on the stored JSON**, not on
+typed entities — e.g. `M_202609081600_MoveDeleteBranchFlagToRepository.cs:52`
+(`"from GitHubProjects update { delete this.DeleteBranchOnPrClose; }"`) and
+`M_202609092000_DeleteBranchFlagBecomesAPolicy.cs:64-67`, which reads and rewrites
+`r.DeleteBranchOnPrClose` entirely inside the script. A property renamed in C# therefore cannot
+break a migration, because the migration never named the C# member — only the JSON field, which is
+a historical fact about data already written and must keep its old spelling forever.
+
+Three corollaries, all of them learned the hard way in this repository:
+
+- **Never re-type a migration against the current entity.** A migration is a statement about data as
+  it was, and the entity will keep moving. `M_202609190900_BranchesBecomePerLineArmSets.cs` is the
+  model to copy.
+- **Make every migration re-runnable and no-op on already-converted documents.** The same file
+  returns before any write when the old field is absent.
+- ⚠️ **Patch scripts are capped at 10,000 statements per document** (`Patching.MaxStepsForScript`).
+  `M_202609190900` documents the measurement: 421 edges converts, 5,263 faults, and production held
+  ten documents at 5,263 — so `IgnoreMaxStepsForScript` is load-bearing, not a precaution. Without
+  it the operation faults, `UpAsync` throws, **startup aborts and the deploy fails with the site
+  down**. Any migration in M6 that walks a collection must be sized the same way, against a copy of
+  production, before it is trusted.
+
+`M_202609190900` also sets the standard for how to justify one: it states the measured population
+(201,698 `FileCoverage` documents, 108,648 with branch data), the read time (7 s against a 180 s
+readiness budget), and what happens if the migration never runs at all.
+
+---
+
+## 7. Spikes
+
+Run before the milestone each gates. None has been run.
+
+- **✅ SP1 — Migration blast radius — RUN 2026-09-19, read-only, against production.** It did **not**
+  follow #423's precedent of collapsing to nothing. It made M6 bigger. Results in §7.1.
+- **SP2 — Does the `NoOpEmailSender` actually resolve?** *(gates M4)* §4.3 confirms both types exist
+  in the 10.0.12 assembly; confirm the resolution order in *this* app's container, so the startup
+  guard tests the right condition.
+- ~~**SP3 — Badge alias behaviour**~~ — **dropped.** The legacy badge route is being removed rather
+  than aliased (§5.4), so there is nothing to keep byte-identical. What remains is a mechanical task
+  in M7: find and replace every badge URL we publish.
+- **SP4 — Can a GitLab OAuth token mint group access tokens?** *(stage 2, but decides product shape)*
+  Docs require Owner role and demonstrate with a PAT; whether an `api`-scoped OAuth token suffices is
+  unverified. **This decides one-click connect vs "paste a token here."**
+- **SP5 — Bitbucket verified-email signalling and Pipelines OIDC** *(stage 3)*. Whether
+  `is_confirmed` is reachable at callback time, and whether tokenless upload is possible at all.
+
+---
+
+### 7.1 SP1 result — measured against production, 2026-09-19
+
+Read-only. `GET /databases/Coverage/collections/stats` plus three sample ids per collection, run
+inside the `coverage-raven` container. Database: **207,423 documents, 2.48 GB on disk, 16 indexes,
+683 attachments (503 unique)**.
+
+| Collection | Docs | Id shape | Contains the GitHub repo id? |
+|---|---:|---|---|
+| `FileCoverages` | 197,973 | `Commits/{repoId}/{sha}/builds/{runId}-{attempt}/files/{hash}` | **yes** |
+| `SparkMessages` | 7,491 | — | no (framework queue) |
+| `Commits` | 804 | `Commits/{repoId}/{sha}` | **yes** |
+| `BuildTreeSummaries` | 482 | `…/builds/{runId}-{attempt}/tree` | **yes** |
+| `Builds` | 303 | `Commits/{repoId}/{sha}/builds/{runId}-{attempt}` | **yes** (+ attachments) |
+| `Repositories` | 172 | `Repositories/{repoId}` | **yes** |
+| `CommitAssemblies` | 138 | `Commits/{repoId}/{sha}/assembly` | **yes** |
+| `PullRequestFeedbacks` | 43 | `PullRequestFeedbacks/{repoId}/{pr}` | **yes** |
+| `Accounts` | 2 | `Accounts/{ownerId}` | **yes** |
+| `ApiTokens` | 2 | `ApiTokens/{raven-generated}` | no — GitHub ids are in *fields* |
+| `GitHubProjects` | 1 | `GitHubProjects/{graphql node id}` | no — already globally unique |
+| `SparkUsers`, `KeyDocuments`, `SparkMigrationRecords` | 12 | — | no |
+
+**199,917 documents carry the GitHub numeric repo id in their key** — because `FileCoverages`,
+`Builds`, `BuildTreeSummaries` and `CommitAssemblies` are all nested under the `Commits/{repoId}/…`
+prefix. The entity classes hide this: only six `DocumentId(...)` helpers name a GitHub id, but four
+collections inherit it through the path.
+
+**Two consequences that change M6's method, not just its size:**
+
+1. **RavenDB document ids are immutable.** A re-key is put-under-the-new-id plus delete-old for
+   every document. The `PatchByQueryOperation` style that every existing migration in this repo uses
+   (§6.7) **cannot do this**. M6 needs a different, slower mechanism, and it is not re-runnable in
+   the same trivially-idempotent way.
+2. **683 attachments hang off `Builds`** (`@flags: HasAttachments`). Attachments are bound to a
+   document id, so they do not travel with a put — each needs an explicit copy/move alongside the
+   re-key, and a half-finished migration leaves reports orphaned from their builds.
+
+⚠️ **This reopens D7.** It was decided ("migrate explicitly, no implicit default") on the
+understanding that the population was small. It is ~200k documents plus attachment moves on a live
+2.48 GB production database. The alternatives are unchanged — an implicit `github` default costs a
+permanent asymmetry and zero migration — but the trade has moved. **Do not start M6 until D7 is
+re-confirmed against this number.**
+
+Two smaller openings this created: `GitHubProjects` is keyed by a GraphQL node id that is already
+globally unique, and `ApiTokens` keeps forge ids in fields rather than the key — neither obviously
+needs a provider prefix, so D5 should say explicitly whether the prefix is universal or only applied
+where a collision is possible.
+
+---
+
+## 8. Exit criteria (stage 1)
+
+- **A1** — No caller outside a provider implementation references Octokit types or `api.github.com`.
+- **A2** — A GitHub repo and a hypothetical second-provider project with the **same numeric id**
+  coexist without collision, proven by a test that stores both.
+- **A3** — No bus message, queue name or recipient signature names GitHub or `InstallationId`.
+- **A4** — The shell has no provider-specific sign-in button; `/sign-in` renders one button per
+  server-reported provider, and guard/interceptor redirects reach it.
+- **A5** — With `ConfirmByEmail`, signing in with a provider whose email matches an existing account
+  **sends a mail that arrives**, and the link is made only after the token is consumed. Asserted on
+  a captured message, not on a method returning success.
+- **A6** — With `ConfirmByEmail` configured and no real sender registered, **the app fails to start**.
+- **A7** — With `WhenSignedIn`, a signed-in user links and unlinks a provider, and **cannot remove
+  their last remaining credential**.
+- **A8** — The verified-email gate accepts a standards-compliant `email_verified` from any provider;
+  no Spark code names GitHub.
+- **A9** — A non-`Success` `ExternalLoginSignInAsync` for a linked user produces a distinct, accurate
+  error — not `account_creation_failed` — and does not skip the token save.
+- **A10** — Every pre-existing production document is reachable after migration; counts before and
+  after match, **verified against production**, not a fixture.
+- **A11** — Every badge URL we publish (READMEs across our repos, the badge panel's copy-paste
+  snippet, the PR-comment renderer) uses the `/{provider}/…` form, and no source in our control
+  still emits the legacy two-segment URL.
+- **A12** — No committed document asserts that GitHub is the only supported forge.
+
+---
+
+## 9. Risks
+
+- **The id migration is the risk** (M6). It re-keys live documents in the `Coverage` database, behind
+  coverage.mintplayer.com. Mitigations: SP1 read-only first; ship the verification script *with* the
+  milestone; follow #423's precedent of measuring the affected population before assuming a migration
+  is needed at all.
+- **Renaming a model attribute is type-silent on the client** (§5.2). `valueFor(item, 'GitHubId')`
+  returns `undefined` with no compile error. Every attribute rename in M6 needs a matching client
+  sweep, and this has already bitten the repo once.
+- **Badge URLs are public and permanent** (A11). There is no fix available after the fact.
+- **Authorization widening** (§5.5). Making the grant explicit must not turn "member of the group"
+  into "may administer the connection". Today GitHub's answer to "who may manage this" is "anyone who
+  can see it" — do not generalise that answer, replace it.
+- **Mail silently doing nothing** (§4.3, A6). The framework hands you a no-op by default.
+- **Un-deferring #299** makes Spark a mail-sending framework for the first time: a new dependency
+  surface, templates, localization. D9 keeps the transport out of Spark, which limits it.
+
+---
+
+## 10. Later stages
+
+Designed for here, built later. Listed so that stage 1's abstractions are shaped correctly, and so
+that "out of scope" does not become a parking lot.
+
+- **Stage 2 — GitLab.** Preferred first forge: its CI `id_tokens` removes the stored upload token
+  entirely, and its commit status has a native `coverage` float, so it exercises the abstraction
+  without also paying a marketplace tax. Needs both webhook-auth paths (verbatim token, and 19.0
+  HMAC), and per-project hooks for Free-tier customers.
+- **Stage 3 — Bitbucket Cloud.** Forge app + Forge Remote; Code Insights reports rather than PR
+  comments; a Pipelines pipe; batching, given the 1,000 req/h per-token budget. Most likely to need
+  rework between planning and landing, given Connect's retirement.
+- **Not planned:** Projects v2 on other forges (D8), Bitbucket Data Center (D10), cross-provider
+  aggregates, account merge.
+
+---
+
+*Nothing here is implemented. D4, D5, D6, D7, D9 need answers before the milestones they gate; D6 is
+the one that needs the most thought, because it is the only one that can quietly change who can see
+what.*
