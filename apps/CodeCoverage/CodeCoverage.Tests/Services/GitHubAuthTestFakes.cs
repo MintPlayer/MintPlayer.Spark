@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging.Abstractions;
 using MintPlayer.Spark.Authorization.Identity;
+using CodeCoverage.Forge;
 
 namespace CodeCoverage.Tests.Services;
 
@@ -174,4 +175,31 @@ internal sealed class ScriptedAccessService(GitHubVisibility visibility) : IGitH
     public async Task<bool> IsOwnerAllowedAsync(string ownerLogin, CancellationToken ct = default)
         => (await GetVisibilityAsync(ct)).Owners.Contains(ownerLogin, StringComparer.OrdinalIgnoreCase);
     public Task InvalidateAsync(CancellationToken ct = default) => Task.CompletedTask;
+}
+
+/// <summary>
+/// Builds the scripted forge from a <see cref="GitHubVisibility"/>, so fixtures that already
+/// describe their world in GitHub's vocabulary keep doing so while the code under test sees only
+/// <see cref="IForgeIntegration"/>.
+/// </summary>
+internal static class ScriptedForge
+{
+    public static ScriptedDiffService From(GitHubVisibility visibility)
+    {
+        var forge = new ScriptedDiffService { State = Map(visibility.TokenState) };
+        forge.Owners.AddRange(visibility.Owners.Select(login => new ForgeOwner(EForgeProvider.GitHub, login)));
+        return forge;
+    }
+
+    /// <remarks>
+    /// Exhaustive with a throwing default, like the production adapter: a state nobody mapped must
+    /// be loud here too, or a test would quietly assert against a healthy credential.
+    /// </remarks>
+    private static EForgeCredentialState Map(GitHubTokenState state) => state switch
+    {
+        GitHubTokenState.Ok => EForgeCredentialState.Ok,
+        GitHubTokenState.ReauthRequired => EForgeCredentialState.ReauthRequired,
+        GitHubTokenState.Unavailable => EForgeCredentialState.Unavailable,
+        _ => throw new ArgumentOutOfRangeException(nameof(state), state, "Unmapped GitHub token state."),
+    };
 }

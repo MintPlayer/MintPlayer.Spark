@@ -10,7 +10,7 @@ namespace CodeCoverage.Services;
 [Register(typeof(ISparkVisibility), ServiceLifetime.Scoped)]
 public partial class SparkVisibility : ISparkVisibility
 {
-    [Inject] private readonly IForgeAccessResolver forgeAccess;
+    [Inject] private readonly IForgeIntegrationResolver forges;
     [Inject] private readonly IAsyncDocumentSession session;
 
     // Task-memoized so concurrent awaiters within the request share one computation.
@@ -35,12 +35,12 @@ public partial class SparkVisibility : ISparkVisibility
     /// </remarks>
     private async Task<string[]> QueryAllowedOwnersAsync()
     {
-        var providers = await forgeAccess.GetLinkedProvidersAsync();
+        var providers = await forges.GetLinkedProvidersAsync();
 
         var all = new List<string>();
         foreach (var provider in providers)
         {
-            var service = forgeAccess.For(provider);
+            var service = forges.For(provider);
             if (service is null)
                 continue;
 

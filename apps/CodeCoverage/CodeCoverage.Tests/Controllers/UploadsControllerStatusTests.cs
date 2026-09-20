@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using System.Security.Claims;
 using CodeCoverage.ApiTokens;
 using CodeCoverage.Controllers;
@@ -69,7 +70,9 @@ public class UploadsControllerStatusTests : CoverageRavenTest
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["Coverage:BaseUrl"] = "https://coverage.example.com" })
             .Build());
-        services.AddSingleton<IForgeClient>(new Services.ScriptedDiffService());
+        var scriptedForge = new Services.ScriptedDiffService();
+        services.AddSingleton<IForgeIntegration>(scriptedForge);
+        services.AddSingleton<IForgeIntegrationResolver>(scriptedForge);
         services.AddScoped<IBaseResolver, BaseResolver>();
         services.AddScoped<CodeCoverage.Services.IRepositoryResolver>(sp =>
             new TestRepositoryResolver(sp.GetService<Raven.Client.Documents.Session.IAsyncDocumentSession>()));

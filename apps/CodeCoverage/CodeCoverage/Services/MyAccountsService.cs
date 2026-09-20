@@ -1,4 +1,5 @@
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.SourceGenerators.Attributes;
 using Raven.Client.Documents;
@@ -12,7 +13,7 @@ namespace CodeCoverage.Services;
 public partial class MyAccountsService : IMyAccountsService
 {
     [Inject] private readonly IAsyncDocumentSession session;
-    [Inject] private readonly IGitHubAccessService gitHubAccess;
+    [Inject] private readonly IForgeIntegrationResolver forges;
     [Inject] private readonly IConfiguration configuration;
     [Inject] private readonly IWebHostEnvironment environment;
 
@@ -33,9 +34,18 @@ public partial class MyAccountsService : IMyAccountsService
             appSlug = environment.IsDevelopment() ? "coveragedevelopment" : "coverageproduction";
         var appUrl = $"https://github.com/apps/{appSlug}";
 
-        var visibility = await gitHubAccess.GetVisibilityAsync(cancellationToken);
-        var owners = visibility.Owners;
-        var reauthRequired = visibility.TokenState == GitHubTokenState.ReauthRequired;
+        // Fanned out across every forge the viewer is signed in to, so the account list is
+        // theirs rather than one forge's. Reauth is reported if ANY forge needs it: the
+        // banner asks the viewer to reconnect, and staying silent because one other forge is
+        // healthy would leave rows missing with nothing explaining why.
+        var owners = await forges.GetAllowedOwnerLoginsAsync(cancellationToken);
+        var reauthRequired = false;
+        foreach (var provider in await forges.GetLinkedProvidersAsync(cancellationToken))
+        {
+            if (forges.For(provider) is not { } forge) continue;
+            var visibility = await forge.GetVisibilityAsync(cancellationToken);
+            if (visibility.State == EForgeCredentialState.ReauthRequired) reauthRequired = true;
+        }
         if (owners.Length == 0)
             return new MyAccountsResult(appUrl, [], reauthRequired);
 

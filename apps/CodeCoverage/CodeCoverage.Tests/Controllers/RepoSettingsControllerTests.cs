@@ -5,6 +5,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 using Xunit;
+using CodeCoverage.Forge;
+using NSubstitute;
 
 namespace CodeCoverage.Tests.Controllers;
 
@@ -32,6 +34,14 @@ public class RepoSettingsControllerTests : CoverageRavenTest
         services.AddSingleton(session);
         services.AddSingleton<CodeCoverage.Services.IRepositoryResolver>(new TestRepositoryResolver(session));
         services.AddSingleton<CodeCoverage.Services.IGitHubAccessService>(access);
+        // The real adapter and facade, so the authorization call this fixture counts still
+        // happens where production would make it. The read/write halves are substituted
+        // because settings never touch them.
+        services.AddScoped<CodeCoverage.Services.IForgeAccessService, CodeCoverage.Services.GitHubForgeAccessService>();
+        services.AddSingleton(Substitute.For<CodeCoverage.Services.IForgeClient>());
+        services.AddSingleton(Substitute.For<CodeCoverage.Feedback.IForgeFeedbackPublisher>());
+        services.AddScoped<IForgeIntegration, CodeCoverage.Services.GitHubForgeIntegration>();
+        services.AddScoped<IForgeIntegrationResolver>(sp => new SingleForgeResolver(sp.GetRequiredService<IForgeIntegration>()));
         services.AddScoped<RepoSettingsController>();
 
         return services.BuildServiceProvider().GetRequiredService<RepoSettingsController>();

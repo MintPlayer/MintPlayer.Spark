@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Raven.Client.Documents.Session;
 using Xunit;
+using CodeCoverage.Forge;
 
 namespace CodeCoverage.Tests.Controllers;
 
@@ -30,6 +31,9 @@ public class BrowseControllerAssemblyTests : CoverageRavenTest
         var services = new ServiceCollection();
         services.AddSingleton(session);
         services.AddSingleton<IGitHubAccessService>(new ScriptedAccessService(new([], GitHubTokenState.Ok)));
+        var scriptedForge = ScriptedForge.From(new([], GitHubTokenState.Ok));
+        services.AddSingleton<IForgeIntegration>(scriptedForge);
+        services.AddSingleton<IForgeIntegrationResolver>(scriptedForge);
         services.AddSingleton<IGitHubContentService>(new NullContentService());
         services.AddSingleton(GitHubAuthTestFakes.TestConfiguration());
         services.AddScoped<CodeCoverage.Services.IRepositoryResolver>(sp =>

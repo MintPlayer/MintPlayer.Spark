@@ -16,8 +16,9 @@ namespace CodeCoverage.Services;
 /// </para>
 /// <para>
 /// <b>Implementations are resolved lazily, per provider.</b> A viewer with only a GitHub login must
-/// never cost a GitLab API call, so callers ask only for the providers they actually need — see
-/// <see cref="IForgeAccessResolver"/>. Rendering one provider's page must not fan out to the others.
+/// never cost a GitLab API call, so callers ask only for the forges they actually need — see
+/// <see cref="Forge.IForgeIntegrationResolver"/>. Rendering one forge's page must not fan out
+/// to the others.
 /// </para>
 /// <para>
 /// <b>Degradation is part of the contract, not an implementation detail.</b> When the provider is
@@ -63,26 +64,4 @@ public interface IForgeAccessService
     /// (the manual resync). Must not disturb any other provider's cache entry.
     /// </summary>
     Task InvalidateAsync(CancellationToken cancellationToken = default);
-}
-
-/// <summary>
-/// Hands out the <see cref="IForgeAccessService"/> for a given forge, and says which forges the
-/// current viewer actually has an identity on.
-/// </summary>
-/// <remarks>
-/// This exists so that "which providers do we consult?" is answered once, from the viewer's linked
-/// external logins, rather than by each caller looping over every known forge. That is what keeps a
-/// GitHub-only viewer from paying for GitLab and Bitbucket calls on every request.
-/// </remarks>
-public interface IForgeAccessResolver
-{
-    /// <summary>The service for one forge, or <c>null</c> when that forge has no implementation registered.</summary>
-    IForgeAccessService? For(EForgeProvider provider);
-
-    /// <summary>
-    /// The forges the current viewer holds a linked identity on, in a stable order. Empty for an
-    /// anonymous viewer. Callers that genuinely need every provider iterate this — never the full
-    /// <see cref="EForgeProvider"/> enum.
-    /// </summary>
-    Task<IReadOnlyList<EForgeProvider>> GetLinkedProvidersAsync(CancellationToken cancellationToken = default);
 }

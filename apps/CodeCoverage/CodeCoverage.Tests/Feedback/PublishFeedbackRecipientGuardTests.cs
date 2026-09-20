@@ -9,6 +9,7 @@ using NSubstitute;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 using Xunit;
+using CodeCoverage.Forge;
 
 namespace CodeCoverage.Tests.Feedback;
 
@@ -38,6 +39,15 @@ public class PublishFeedbackRecipientGuardTests : CoverageRavenTest
         services.AddSingleton(Substitute.For<IGitHubContentService>());
         services.AddSingleton(Substitute.For<IPullRequestCommentPublisher>());
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
+        // The real chain: these tests assert what the recipient does with a genuine
+        // "no installation" answer, so substituting the integration would test nothing.
+        services.AddSingleton(Substitute.For<IGitHubDiffService>());
+        services.AddSingleton(Substitute.For<IGitHubAccessService>());
+        services.AddScoped<IForgeClient, GitHubForgeClient>();
+        services.AddScoped<IForgeFeedbackPublisher, GitHubForgeFeedbackPublisher>();
+        services.AddScoped<IForgeAccessService, GitHubForgeAccessService>();
+        services.AddScoped<IForgeIntegration, GitHubForgeIntegration>();
+        services.AddScoped<IForgeIntegrationResolver>(sp => new SingleForgeResolver(sp.GetRequiredService<IForgeIntegration>()));
         services.AddScoped<PublishFeedbackRecipient>();
 
         return services.BuildServiceProvider().GetRequiredService<PublishFeedbackRecipient>();

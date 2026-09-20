@@ -8,6 +8,7 @@ using Raven.Client.Documents.Session;
 using CodeCoverage.Tests;
 using Raven.TestDriver;
 using Xunit;
+using CodeCoverage.Forge;
 
 namespace CodeCoverage.Tests.Controllers;
 
@@ -22,6 +23,9 @@ public class MeControllerTests : CoverageRavenTest
         var services = new ServiceCollection();
         services.AddSingleton(session);
         services.AddSingleton<IGitHubAccessService>(new ScriptedAccessService(visibility));
+        var scriptedForge = ScriptedForge.From(visibility);
+        services.AddSingleton<IForgeIntegration>(scriptedForge);
+        services.AddSingleton<IForgeIntegrationResolver>(scriptedForge);
         services.AddSingleton(GitHubAuthTestFakes.TestConfiguration());
         services.AddSingleton<IWebHostEnvironment>(new FakeWebHostEnvironment());
         // The real aggregation, not a stub: it is shared with the Custom.MyAccounts

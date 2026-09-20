@@ -1,4 +1,5 @@
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 using CodeCoverage.Indexes;
 using MintPlayer.SourceGenerators.Attributes;
 using Raven.Client.Documents;
@@ -11,7 +12,7 @@ namespace CodeCoverage.Services;
 public partial class BaseResolver : IBaseResolver
 {
     [Inject] private readonly IAsyncDocumentSession session;
-    [Inject] private readonly IForgeClient forgeClient;
+    [Inject] private readonly IForgeIntegrationResolver forges;
 
     // Generous enough to step over a run of cancelled/uncovered default-branch
     // commits, small enough that a repo with no usable base at all answers fast.
@@ -33,7 +34,7 @@ public partial class BaseResolver : IBaseResolver
         // the call fails — the walk below is the answer to both.
         if (repository.DefaultBranch is not null)
         {
-            var comparison = await forgeClient.CompareAsync(repository, repository.DefaultBranch, head.Sha, cancellationToken);
+            var comparison = await forges.For(repository).CompareAsync(repository, repository.DefaultBranch, head.Sha, cancellationToken);
             var mergeBaseSha = comparison?.MergeBaseSha;
             if (mergeBaseSha is not null
                 && !string.Equals(mergeBaseSha, head.Sha, StringComparison.OrdinalIgnoreCase)

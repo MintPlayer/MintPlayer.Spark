@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using System.Security.Cryptography;
 using CodeCoverage.Entities;
 using CodeCoverage.Services;
@@ -20,7 +21,7 @@ public partial class RepoSettingsController : ControllerBase
 {
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IRepositoryResolver repositories;
-    [Inject] private readonly IGitHubAccessService gitHubAccess;
+    [Inject] private readonly IForgeIntegrationResolver forges;
 
     /// <summary>
     /// (Re)generates the badge token. Rotation invalidates the previous badge
@@ -50,6 +51,7 @@ public partial class RepoSettingsController : ControllerBase
 
         // NotFound for the unauthorized too, upstream of this: an existence
         // oracle is the thing the badge-token endpoint already refuses to be.
-        return await gitHubAccess.IsOwnerAllowedAsync(repository.OwnerLogin, cancellationToken) ? repository : null;
+        var forge = forges.For(repository);
+        return await forge.IsOwnerAllowedAsync(new ForgeOwner(forge.Provider, repository.OwnerLogin), cancellationToken) ? repository : null;
     }
 }

@@ -1,4 +1,5 @@
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 using CodeCoverage.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -34,9 +35,8 @@ public partial class BrowseController : ControllerBase
 {
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IRepositoryResolver repositories;
-    [Inject] private readonly IGitHubAccessService gitHubAccess;
-    [Inject] private readonly IForgeClient forgeClient;
-    [Inject] private readonly IConfiguration configuration;
+    [Inject] private readonly IForgeIntegrationResolver forges;
+        [Inject] private readonly IConfiguration configuration;
 
     public sealed record RepoInfo(string Id, string Owner, string Name, string FullName, bool IsPrivate, string? DefaultBranch,
         CoverageSummary? LatestCoverage, string? LatestCoverageSha, bool CanManage, string? BadgeToken, string? BaseUrl);
@@ -65,7 +65,7 @@ public partial class BrowseController : ControllerBase
     [HttpGet("accounts/{login}/repos")]
     public async Task<ActionResult<IEnumerable<RepoInfo>>> GetAccountRepos(string login, CancellationToken cancellationToken)
     {
-        var owners = await gitHubAccess.GetAllowedOwnersAsync(cancellationToken);
+        var owners = await forges.GetAllowedOwnerLoginsAsync(cancellationToken);
         var includePrivate = owners.Contains(login, StringComparer.OrdinalIgnoreCase);
 
         var repos = await session.Query<Repository, Indexes.Repositories_Overview>()
@@ -84,7 +84,7 @@ public partial class BrowseController : ControllerBase
     {
         var repository = await ResolveVisibleRepository(owner, name, cancellationToken);
         if (repository is null) return NotFound();
-        var canManage = await gitHubAccess.IsOwnerAllowedAsync(repository.OwnerLogin, cancellationToken);
+        var canManage = await forges.CanManageAsync(repository, cancellationToken);
         return Ok(ToRepoInfo(repository, canManage));
     }
 
@@ -180,7 +180,7 @@ public partial class BrowseController : ControllerBase
     [HttpGet("accounts/{login}/sparklines")]
     public async Task<ActionResult<Dictionary<string, double[]>>> GetSparklines(string login, CancellationToken cancellationToken)
     {
-        var owners = await gitHubAccess.GetAllowedOwnersAsync(cancellationToken);
+        var owners = await forges.GetAllowedOwnerLoginsAsync(cancellationToken);
 
         var repos = await session.Query<Repository, Indexes.Repositories_Overview>()
             .Where(r => r.OwnerLogin == login)
@@ -479,7 +479,7 @@ public partial class BrowseController : ControllerBase
             installationId = account?.InstallationId;
         }
 
-        var source = await forgeClient.GetFileContentAsync(repository, sha, path, cancellationToken);
+        var source = await forges.For(repository).GetFileContentAsync(repository, sha, path, cancellationToken);
 
         return Ok(new
         {
@@ -544,7 +544,7 @@ public partial class BrowseController : ControllerBase
         // agree forever, and a shared doc-comment was the only thing binding
         // them. The owner list is only fetched when it can matter.
         if (!repository.IsPrivate) return repository;
-        var owners = await gitHubAccess.GetAllowedOwnersAsync(cancellationToken);
+        var owners = await forges.GetAllowedOwnerLoginsAsync(cancellationToken);
         return RepositoryVisibility.IsVisible(repository, owners) ? repository : null;
     }
 

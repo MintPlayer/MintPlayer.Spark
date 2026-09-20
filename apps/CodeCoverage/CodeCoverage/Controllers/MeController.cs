@@ -1,4 +1,5 @@
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 using CodeCoverage.Services;
 using Microsoft.AspNetCore.Authorization;
 using MintPlayer.Spark.Services;
@@ -22,7 +23,7 @@ namespace CodeCoverage.Controllers;
 [SparkAuthorize("Read", nameof(Account))]
 public partial class MeController : ControllerBase
 {
-    [Inject] private readonly IGitHubAccessService gitHubAccess;
+    [Inject] private readonly IForgeIntegrationResolver forges;
     [Inject] private readonly IMyAccountsService myAccounts;
 
     /// <summary>
@@ -57,7 +58,7 @@ public partial class MeController : ControllerBase
     [HttpPost("accounts/resync")]
     public async Task<ActionResult<AccountsResponse>> Resync(CancellationToken cancellationToken)
     {
-        await gitHubAccess.InvalidateAsync(cancellationToken);
+        await forges.InvalidateAllAsync(cancellationToken);
         return await GetAccounts(cancellationToken);
     }
 

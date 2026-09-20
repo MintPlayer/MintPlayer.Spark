@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using System.Security.Claims;
 using CodeCoverage.ApiTokens;
 using CodeCoverage.Controllers;
@@ -66,7 +67,9 @@ public class UploadsControllerAuthorizationTests : CoverageRavenTest
         services.AddSingleton(session);
         services.AddSingleton<IMessageBus>(new NullMessageBus());
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
-        services.AddSingleton<IForgeClient>(new Services.ScriptedDiffService());
+        var scriptedForge = new Services.ScriptedDiffService();
+        services.AddSingleton<IForgeIntegration>(scriptedForge);
+        services.AddSingleton<IForgeIntegrationResolver>(scriptedForge);
         services.AddScoped<IBaseResolver, BaseResolver>();
         services.AddScoped<IRepositoryResolver>(sp => new TestRepositoryResolver(sp.GetService<IAsyncDocumentSession>()));
         services.AddScoped<UploadsController>();

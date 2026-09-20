@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using System.Security.Claims;
 using System.Text;
 using CodeCoverage.ApiTokens;
@@ -44,7 +45,9 @@ public class UploadsControllerInputBoundsTests
         services.AddSingleton<IAsyncDocumentSession>(_ => null!);
         services.AddSingleton<IMessageBus>(new NullMessageBus());
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
-        services.AddSingleton<IForgeClient>(new Services.ScriptedDiffService());
+        var scriptedForge = new Services.ScriptedDiffService();
+        services.AddSingleton<IForgeIntegration>(scriptedForge);
+        services.AddSingleton<IForgeIntegrationResolver>(scriptedForge);
         services.AddScoped<IBaseResolver, BaseResolver>();
         services.AddScoped<IRepositoryResolver>(sp =>
             new TestRepositoryResolver(sp.GetService<IAsyncDocumentSession>()));

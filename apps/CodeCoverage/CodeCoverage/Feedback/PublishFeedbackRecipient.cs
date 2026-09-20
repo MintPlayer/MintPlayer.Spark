@@ -23,8 +23,7 @@ public partial class PublishFeedbackRecipient : IRecipient<PublishFeedbackMessag
 {
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IBaseResolver baseResolver;
-    [Inject] private readonly IForgeFeedbackPublisher feedbackPublisher;
-    [Inject] private readonly IForgeClient forgeClient;
+    [Inject] private readonly IForgeIntegrationResolver forges;
 
     [Inject] private readonly IConfiguration configuration;
     [Inject] private readonly ILogger<PublishFeedbackRecipient> logger;
@@ -44,10 +43,14 @@ public partial class PublishFeedbackRecipient : IRecipient<PublishFeedbackMessag
 
         var feedback = build.Feedback ??= new BuildFeedback();
 
+        // Selected from the repository, not chosen here: this method publishes to whichever
+        // forge owns the repository and never learns which one that is.
+        var forge = forges.For(repository);
+
         // The forge supplies the reason, so this stays true whichever provider the repository is on
         // — the message still names the App for a GitHub repository, without this method knowing
         // that GitHub is what it is talking to.
-        var access = await forgeClient.CheckAccessAsync(repository, cancellationToken);
+        var access = await forge.CheckAccessAsync(repository, cancellationToken);
         if (!access.Available)
         {
             feedback.State = "Unavailable";
@@ -62,7 +65,7 @@ public partial class PublishFeedbackRecipient : IRecipient<PublishFeedbackMessag
         // Policy from the base ref, so a PR can't rewrite the gate judging it.
         var ymlRef = comparison.Base.ResolvedSha ?? repository.DefaultBranch;
         var yml = ymlRef is null ? null
-            : await forgeClient.GetFileContentAsync(repository, ymlRef, CoverageYml.FileName, cancellationToken);
+            : await forge.GetFileContentAsync(repository, ymlRef, CoverageYml.FileName, cancellationToken);
         var gate = CoverageYml.Merge(repository.Gate ?? new GateSettings(), yml, out var ymlError);
         build.GateSnapshot = gate;
 
@@ -72,9 +75,9 @@ public partial class PublishFeedbackRecipient : IRecipient<PublishFeedbackMessag
 
         try
         {
-            feedback.ProjectCheckRunId = await feedbackPublisher.PublishStatusAsync(
+            feedback.ProjectCheckRunId = await forge.PublishStatusAsync(
                 repository, commit.Sha, "coverage/project", ToVerdict(project), feedback.ProjectCheckRunId, cancellationToken);
-            feedback.PatchCheckRunId = await feedbackPublisher.PublishStatusAsync(
+            feedback.PatchCheckRunId = await forge.PublishStatusAsync(
                 repository, commit.Sha, "coverage/patch", ToVerdict(patch), feedback.PatchCheckRunId, cancellationToken);
 
             feedback.State = "Posted";
@@ -123,7 +126,7 @@ public partial class PublishFeedbackRecipient : IRecipient<PublishFeedbackMessag
                     ? BadgePrSignature.Compute(configuration, repository.GitHubId, pullRequestNumber)
                     : null);
 
-            await feedbackPublisher.PublishCommentAsync(repository, pullRequestNumber, commit.Sha, body, cancellationToken);
+            await forge.PublishCommentAsync(repository, pullRequestNumber, commit.Sha, body, cancellationToken);
         }
     }
 
