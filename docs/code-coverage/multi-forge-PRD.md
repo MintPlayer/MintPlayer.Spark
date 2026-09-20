@@ -3,7 +3,8 @@
 **Issue:** [#422](https://github.com/MintPlayer/MintPlayer.Spark/issues/422) — "Should we also support
 BitBucket and GitLab?" (opened 2026-09-19 with an empty body).
 
-**Status:** design. Nothing is built, no branch exists.
+**Status:** in progress on `issue-422-forge-abstraction`. SP1 and SP2 are run (§7.1, §7.2); no
+product code written yet.
 
 **Scope of *this* document's plan:** stage 1 only — remove the GitHub coupling and rebuild sign-in,
 account provisioning and account linking around a provider abstraction, **while GitHub remains the
@@ -57,7 +58,7 @@ milestones they gate.
 | **D3** | **The GitHub button in the shell is replaced by a link to a login page that renders one button per registered provider, driven by the server's capability report.** | **DECIDED** — user, this session |
 | **D4** | **Provider-scoped, not unioned: one sidebar program unit per provider, and the provider as a URL path segment. Authorization stays separate per platform — a GitHub decision never consults GitLab state.** | **DECIDED** — user, this session. Rationale in §5.4 |
 | **D5** | **Path prefix — `Repositories/github/{id}`, `Accounts/github/{id}`, `Commits/github/{repoId}/{sha}`.** Every provider looks identical; ids stay human-readable and `startsWith(id(), …)` stays a usable RQL filter. | **DECIDED** — user, this session |
-| **D6** | GitHub's installation list *is* the authorization system. What replaces it per provider, without creating the "parallel permission system" `:157` forbids? | **Open — the hardest one.** Inventory in §5.5 |
+| **D6** | **Resolved by interview, 2026-09-20. The owner set stays *derived live from the forge*, per provider — no stored authorization record.** Six sub-decisions in §6.7. | **DECIDED** — except D6f (fork uploads), parked |
 | **D7** | **Existing GitHub documents are re-keyed by the migration.** No implicit `github` default, no permanent asymmetry. | **DECIDED** — user, this session |
 | **D8** | Is GitHub Projects v2 automation GitHub-only forever, or do we model a generic board? | **Recommend GitHub-only** — neither forge has the primitive |
 | **D9** | **Spark ships the contract and templates; CodeCoverage ships the transport — an SMTP server run as its own container in `docker-compose.yml` on the VPS, for isolation.** | **DECIDED** — user, this session. See §6.4 |
@@ -647,7 +648,89 @@ would be the misleading option.
 If a grouping concept is ever wanted, it belongs **above** `Repository` as an explicit,
 user-declared link, never as inference — and it is out of scope here.
 
-### 6.7 Migrations — the rule that keeps them compiling
+### 6.7 D6 resolved — the authorization model per provider
+
+Settled by interview on 2026-09-20. The headline: **the allowed-owner set stays derived live from
+the forge, per provider. No stored authorization record is introduced.** Each sub-decision below was
+taken against the alternatives, and the accepted risk is stated because that is the part that gets
+forgotten.
+
+**D6a — live derivation, not a stored grant.** The owner set is computed per request from the
+provider's own API (GitHub installations; GitLab `GET /groups?min_access_level=40`; Bitbucket
+workspaces by role), exactly as today. Rejected: a stored connected-org record, because the code is
+already structured this way — `MyAccountsService.cs:60-73` builds rows straight from the live set and
+`IsAppInstalled` is only a display flag, so "connected" is already decoration rather than
+authorization.
+
+*Accepted risk:* GitHub's set is `installations ∪ self`, so the install filters out orgs you merely
+belong to. GitLab and Bitbucket have no such filter, so their sets are **strictly wider**. This is
+tolerable because an unconnected org has no stored documents, so membership in the set grants access
+to nothing until someone connects it — at which point "any Maintainer may manage" is the same bargain
+`product-overview.md:170` already records for GitHub.
+
+**D6b — derive lazily, per provider, only for providers the user has linked.** A user holding only a
+GitHub login must never cost a GitLab API call. This composes with D4: the sidebar is per-provider, so
+rendering the GitHub unit needs only GitHub's set. Without this, steady-state call volume triples.
+
+**D6c — cache failures, not just successes.** Today only the successful result is cached
+(`GitHubAccessService.cs:86`) and degraded results are deliberately *not*
+(`:90-91`) — defensible at one provider, dangerous at three, because an outage then means every
+request re-attempts every unreachable provider. Bitbucket's budget is **1,000 req/h per token**, so
+failures alone can exhaust it and then keep it exhausted. Failures get a short TTL of their own
+(~30s), separate from the 5-minute success TTL. The cache key becomes per-(user, provider) — today
+`github-owners/{user.Id}` (`:40`) would collapse two providers into one entry.
+
+**D6d — degraded behaviour is unchanged, and logging becomes a contract obligation.** On an
+unreachable provider the set still collapses to the user's own login for that request. Nothing is
+added for GitHub, which already logs all three cases (`:65`, `:129`, `:139`) — but `IForgeAccessService`
+must *require* logging on degrade rather than trusting each implementation to remember.
+
+*Accepted risk:* private repositories still silently vanish from a listing during an outage, and only
+`ReauthRequired` is surfaced to the user (`MyAccountsService.cs:38`). An outage remains
+indistinguishable from "you have no orgs".
+
+**D6e — the owner set is qualified in the stored field, with a colon.** `Repository.OwnerLogin`,
+`Account.Login` and `ApiToken.AccountLogin` (`ApiTokenActions.cs:51` — found via the authorization
+inventory, not the id analysis) all become `provider:owner`: `github:mintplayer`,
+`gitlab:group/subgroup`.
+
+A colon rather than a slash **specifically because GitLab namespaces nest up to 20 levels and are
+themselves slash-delimited**. A colon is not legal in a GitHub login or a GitLab namespace path, so
+`IndexOf(':')` is unambiguous at any depth and a malformed value is detectable rather than silently
+splitting in the wrong place. ⚠️ This deliberately diverges from the document-id spelling
+(`Repositories/github/402741072`, D5), which is safe only because a numeric id contains no slashes.
+**The divergence is intentional — do not "tidy" the two into one delimiter.**
+
+Rejected: a separate `Provider` field with a bare `OwnerLogin`. It keeps the field clean for display
+but lets a seventh call site write `r.OwnerLogin.In(owners)` without the `Provider ==` clause, which
+compiles, passes review, and silently widens access across forges. Qualifying the value makes the
+cross-provider match *impossible* rather than merely discouraged.
+
+*Accepted risk:* `OwnerLogin` is no longer directly displayable or routable and needs an accessor;
+three field rewrites ride along with the migration (one `PatchByQueryOperation` per collection, so a
+partial failure names which collection stopped).
+
+**D6f — fork pull requests: PARKED**, pending investigation. The requirement is that a PR from a fork
+can still push coverage, or the coverage check is missing exactly where review matters most —
+a contribution from outside the org.
+
+⚠️ **Do not design this on the assumption that forks are always public.** An earlier draft of this
+section did, and it was wrong. Measured 2026-09-20: forkability is a **toggle independent of
+visibility**, at two levels — `allow_forking` on the repository (`true` on
+`MintPlayer/MintPlayer.Spark`, which is public) and `members_can_fork_private_repositories` on the
+organization (`false` on `MintPlayer`). Other organizations set both differently; a repository that
+refuses forks reports exactly that, regardless of whether it is private. **A private repository is
+forkable when its organization permits it**, so a permissive fork-upload rule can, in the general
+case, touch private data.
+
+What *is* true of this deployment today is narrower and should not be leaned on: the `MintPlayer`
+organization currently disallows private forks and holds `total_private_repos: 0`. That makes the
+present exposure zero; it does not make the rule safe.
+
+The risks to weigh are therefore both integrity (fabricated coverage passing a gate, poisoned
+history) **and** confidentiality (a fork upload attributed to a private base repository).
+
+### 6.8 Migrations — the rule that keeps them compiling
 
 A database migration is **not** a risk to be minimised here; it is a certainty. Many document ids
 are natural ids hard-linked to GitHub, and they cannot be provider-qualified without rewriting
@@ -751,6 +834,26 @@ Two smaller openings this created: `GitHubProjects` is keyed by a GraphQL node i
 globally unique, and `ApiTokens` keeps forge ids in fields rather than the key — neither obviously
 needs a provider prefix, so D5 should say explicitly whether the prefix is universal or only applied
 where a collision is possible.
+
+---
+
+### 7.2 SP2 result — measured 2026-09-20
+
+Run in a real DI container, and kept as a regression test at
+`tests/MintPlayer.Spark.Tests/Authorization/Extensions/EmailSenderRegistrationTests.cs`.
+
+⚠️ **The obvious guard would never fire.** `IEmailSender<SparkUser>` resolves to
+`Microsoft.AspNetCore.Identity.DefaultMessageEmailSender<SparkUser>` **whether or not a transport is
+registered** — it is an adapter that formats Identity's three messages and forwards them. Asserting
+on that type tells you nothing about deliverability.
+
+The real discriminator is the **non-generic** `Microsoft.AspNetCore.Identity.UI.Services.IEmailSender`,
+which with no transport registered is `Microsoft.AspNetCore.Identity.UI.Services.NoOpEmailSender` — it
+accepts every message and discards it, with no exception, no log line and no failed health check.
+
+So M4's startup guard inspects the **non-generic** registration. The regression test also pins that an
+application-registered transport still wins over the framework's `TryAdd`, because every application's
+mail would silently revert to the no-op if that ever stopped holding.
 
 ---
 

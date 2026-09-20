@@ -45,15 +45,31 @@ Extract the allowed-owner lookup. GitHub remains the only implementation. **No b
 - Introduce `IForgeAccessService` returning the allowed-owner set *per provider*.
 - Move `GitHubAccessService.cs:119-144` (`GET /user/installations` + 5-min `IMemoryCache`) behind it
   as `GitHubForgeAccessService`.
-- ⚠️ **Qualify the owner set — this is the milestone's real point.** Today it is an unqualified
+- ⚠️ **Qualify the owner set — this is the milestone's real point** (D6e). Today it is an unqualified
   `string[]` of logins (`GitHubAccessService.cs:80-84`) compared against `Repository.OwnerLogin` /
   `Account.Login`, so a GitLab group named `microsoft` and a GitHub org named `microsoft` are **the
-  same string** (PRD §5.6). Make the set carry its provider by construction, so a union is not
-  expressible. Every comparison site moves with it: `RepositoryVisibility.cs:60-61`,
+  same string** (PRD §5.6). The **stored value** becomes `provider:owner` — `github:mintplayer`,
+  `gitlab:group/subgroup` — so a cross-provider match is impossible rather than merely discouraged.
+  **A colon, not a slash**, because GitLab namespaces nest 20 deep and are themselves
+  slash-delimited; this deliberately diverges from the id spelling and must not be "tidied" to match.
+  Every comparison site moves with it: `RepositoryVisibility.cs:60-61`,
   `GitHubProjectVisibility.cs:219-221`, `AccountActions.cs:47`, `ApiTokenActions.cs:51`,
   `RepositoryActions.cs:149,181`, `MyAccountsService.cs:44,53`.
-- **Re-key the cache per (user, platform)** — today `github-owners/{user.Id}`
+- **Three fields carry a bare login and all need rewriting**: `Repository.OwnerLogin` (172 docs),
+  `Account.Login` (2), `ApiToken.AccountLogin` (2). These are *field* changes, so unlike M6's re-key
+  they **can** use `PatchByQueryOperation` — one per collection, so a partial failure names the
+  collection that stopped.
+- **Derive lazily, per provider, only for providers the user has linked** (D6b). A GitHub-only user
+  must never cost a GitLab call; the per-provider sidebar (D4) means one unit needs one set.
+- **Re-key the cache per (user, provider)** (D6c) — today `github-owners/{user.Id}`
   (`GitHubAccessService.cs:40`), which would collapse two providers' answers into one entry.
+- **Cache failures on a short TTL of their own (~30s)** (D6c). Today only successes are cached
+  (`:86`) and degraded results deliberately are not (`:90-91`) — fine at one provider, dangerous at
+  three, because Bitbucket's 1,000 req/h per-token budget can be exhausted by failures alone and then
+  stay exhausted.
+- **Logging on degrade is part of the interface contract** (D6d), not left to each implementation.
+  GitHub already logs all three cases (`:65`, `:129`, `:139`); nothing to add there, but
+  `IForgeAccessService` must require it.
 - ⚠️ While here, note but do **not** silently change: `Suspended` is honoured only in the backfill
   (`:185`), not in the owner set (`:80-84`), so a suspended installation still grants management
   (PRD §5.6). Fixing it is a behaviour change — raise it rather than folding it in.
@@ -202,7 +218,7 @@ The hardest milestone and the only one that can quietly change who sees what.
 (`FileCoverages`, `Builds`, `BuildTreeSummaries` and `CommitAssemblies` all nest under
 `Commits/{repoId}/…`), plus 683 attachments on `Builds`. Raven ids are immutable, so this is
 put-new + move-attachments + delete-old per document — **not** the `PatchByQueryOperation` style
-PRD §6.7 prescribes, and not trivially re-runnable.
+PRD §6.8 prescribes, and not trivially re-runnable.
 
 ⚠️ **It must not run in the startup path.** `ISparkMigration.UpAsync` runs at startup and a throw
 aborts it — `M_202609190900` documents that failure taking the site down. A ~200k-document re-key
@@ -241,7 +257,7 @@ database.
   `PullRequestFeedback/{repoGitHubId}/{prNumber}` (`PullRequestFeedback.cs:86`).
 - Provider-qualify `OwnerLogin` — `owner/repo` is not unique across forges.
 - Ships **with its verification script** (M6d), not after it.
-- ⚠️ **PRD §6.7's `PatchByQueryOperation` rule does NOT apply to the re-key itself** — a patch cannot
+- ⚠️ **PRD §6.8's `PatchByQueryOperation` rule does NOT apply to the re-key itself** — a patch cannot
   change a document id. It still applies to any *field* change riding along (e.g. provider-qualifying
   `OwnerLogin`), which should stay in JS-over-JSON so this PR's renames cannot break it.
 - Since a migration ships regardless, fold any other wanted model change into the same PR rather
