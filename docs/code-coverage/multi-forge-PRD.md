@@ -730,6 +730,46 @@ present exposure zero; it does not make the rule safe.
 The risks to weigh are therefore both integrity (fabricated coverage passing a gate, poisoned
 history) **and** confidentiality (a fork upload attributed to a private base repository).
 
+**Measured 2026-09-20 — what happens today: nothing, silently.** `action/src/main.ts:228-231` throws
+*client-side*, before any network call, because neither credential can exist on a fork PR. The throw
+is swallowed into `core.warning` at `:148-155` since `fail-ci-if-error` defaults to `false`
+(`action.yml:59-62`, set explicitly at `.github/workflows/pull-request.yml:286`). **The step goes
+green with a yellow annotation.** The server is never contacted, no build exists, and the base PR
+shows no check run and no comment — indistinguishable from a build that produced no reports. There
+is no `IsFork` field anywhere in the codebase, and the only production code comparing head to base
+repo is the branch-deletion guard (`GitHubEventsRecipient.cs:411-418`). Production is clean: all 172
+repositories belong to the two real installations, so the OIDC auto-provision path has never fired.
+
+**Platform constraints, researched 2026-09-20 (these bound the solution space):**
+
+- ⚠️ **GitHub can never mint an OIDC token for a fork PR.** `id-token: write` is downgraded to read
+  for any `pull_request` from a fork, so `ACTIONS_ID_TOKEN_REQUEST_URL` is never set. This is a
+  platform decision, not a configuration gap — **our existing OIDC path cannot be extended to forks.**
+- **`GITHUB_TOKEN` *is* present** in fork runs (read-only, scoped to the base repo, not a repository
+  secret). This is what Coveralls uses, and fork uploads work for them.
+- ⚠️ **`pull_request_target` is categorically unsuitable here.** It grants secrets and a write token,
+  but a coverage job executes the fork's test suite by definition — the "pwn request". Already
+  recorded as a rejected footgun at `coverage_branch_pr_badges_PRD.md:312`.
+- ⚠️ **Bitbucket fork PRs do not build at all** in the destination repository, with no setting to
+  enable it. Fork coverage on Bitbucket is structurally impossible, not merely unimplemented — a
+  documented product limitation, not a milestone.
+- **GitLab fork MRs *can* mint an `id_token`**, but its `project_path` asserts the **fork**. That is
+  still useful: a genuine cryptographic identity for an untrusted party, which GitHub does not give.
+
+**The transferable idea from Codecov is not authentication, it is namespacing.** Unauthenticated
+uploads are confined to a branch name containing a colon (`forkname:main`) — illegal in a git ref, so
+an untrusted upload *cannot* collide with or overwrite a real branch. That holds regardless of how
+strong the identity check is.
+
+⚠️ **This has a deadline attached to it.** Untrusted coverage needs its own document space, and Raven
+ids are immutable. M6 already re-keys 199,917 documents once; deciding later that fork coverage needs
+a separate space means paying that migration a second time. **M6 is the cheap moment and there is not
+another one.**
+
+**Separable defect, independent of whichever option is chosen:** `fail-ci-if-error` defaults to
+`false`, so *every* upload failure is a green step — not just a fork's. Same silent-success class as
+the `NoOpEmailSender` trap in §7.2, and the reason this went unnoticed.
+
 ### 6.8 Migrations — the rule that keeps them compiling
 
 A database migration is **not** a risk to be minimised here; it is a certainty. Many document ids

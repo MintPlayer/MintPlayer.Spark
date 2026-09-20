@@ -45,20 +45,20 @@ Extract the allowed-owner lookup. GitHub remains the only implementation. **No b
 - Introduce `IForgeAccessService` returning the allowed-owner set *per provider*.
 - Move `GitHubAccessService.cs:119-144` (`GET /user/installations` + 5-min `IMemoryCache`) behind it
   as `GitHubForgeAccessService`.
-- ⚠️ **Qualify the owner set — this is the milestone's real point** (D6e). Today it is an unqualified
-  `string[]` of logins (`GitHubAccessService.cs:80-84`) compared against `Repository.OwnerLogin` /
-  `Account.Login`, so a GitLab group named `microsoft` and a GitHub org named `microsoft` are **the
-  same string** (PRD §5.6). The **stored value** becomes `provider:owner` — `github:mintplayer`,
-  `gitlab:group/subgroup` — so a cross-provider match is impossible rather than merely discouraged.
-  **A colon, not a slash**, because GitLab namespaces nest 20 deep and are themselves
-  slash-delimited; this deliberately diverges from the id spelling and must not be "tidied" to match.
-  Every comparison site moves with it: `RepositoryVisibility.cs:60-61`,
-  `GitHubProjectVisibility.cs:219-221`, `AccountActions.cs:47`, `ApiTokenActions.cs:51`,
-  `RepositoryActions.cs:149,181`, `MyAccountsService.cs:44,53`.
-- **Three fields carry a bare login and all need rewriting**: `Repository.OwnerLogin` (172 docs),
-  `Account.Login` (2), `ApiToken.AccountLogin` (2). These are *field* changes, so unlike M6's re-key
-  they **can** use `PatchByQueryOperation` — one per collection, so a partial failure names the
-  collection that stopped.
+⚠️ **M1 touches no stored data.** The owner-value qualification of D6e is a *data* change and moves
+to M6, so the whole PR ships **one** migration rather than two. This is safe only because GitHub is
+the only provider in stage 1, which keeps an unqualified value unambiguous until a second one exists.
+M1 introduces the per-provider *shape*; M6 rewrites the *values*.
+
+- **Introduce the qualified owner type** (D6e) without changing what is stored. Today the set is an
+  unqualified `string[]` of logins (`GitHubAccessService.cs:80-84`) compared against
+  `Repository.OwnerLogin` / `Account.Login`, so a GitLab group named `microsoft` and a GitHub org
+  named `microsoft` would be **the same string** (PRD §5.6). The type carries its provider; the
+  GitHub implementation stamps `github:` on the way out and the comparison sites keep matching
+  today's unqualified stored values until M6 rewrites them.
+  Sites that will move in M6: `RepositoryVisibility.cs:60-61`, `GitHubProjectVisibility.cs:219-221`,
+  `AccountActions.cs:47`, `ApiTokenActions.cs:51`, `RepositoryActions.cs:149,181`,
+  `MyAccountsService.cs:44,53`.
 - **Derive lazily, per provider, only for providers the user has linked** (D6b). A GitHub-only user
   must never cost a GitLab call; the per-provider sidebar (D4) means one unit needs one set.
 - **Re-key the cache per (user, provider)** (D6c) — today `github-owners/{user.Id}`
@@ -243,6 +243,15 @@ delete the source until the target *and* its attachments are confirmed present.
   delete the old. A missing report is silent data loss — verify by count *and* by unique hash.
 - **M6d — verification script**, shipped with the milestone: per-collection counts before/after,
   zero documents left on a legacy id, zero attachments orphaned. Runs against production (A10).
+- **M6f — the three owner-login field rewrites, moved here from M1** (D6e) so the PR ships one
+  migration: `Repository.OwnerLogin` (172 docs), `Account.Login` (2), `ApiToken.AccountLogin` (2,
+  found via the authorization inventory rather than the id analysis) all become `provider:owner`
+  with a **colon** — `github:mintplayer`, `gitlab:group/subgroup`. A colon rather than a slash
+  because GitLab namespaces nest 20 deep and are themselves slash-delimited; this deliberately
+  diverges from the id spelling and must not be "tidied" to match. These are *field* changes, so
+  unlike the re-key they **can** use `PatchByQueryOperation` — one per collection, so a partial
+  failure names the collection that stopped. The six comparison sites listed in M1 flip in the same
+  commit.
 - **M6e — decide the prefix's scope** (D5 detail surfaced by SP1): `GitHubProjects` is keyed by a
   globally-unique GraphQL node id and `ApiTokens` uses Raven's id generator with forge ids in
   *fields*. State explicitly whether the provider prefix is universal or applied only where a
