@@ -74,6 +74,8 @@ dropped. Changing a decision is cheap; discovering an undocumented one is not.
 | **D11** | **Provider code in ids and URLs: full names (`github`/`gitlab`/`bitbucket`), not `gh`/`gl`/`bb`.** One vocabulary shared by D5's ids and the routes. | **DECIDED** — user, this session |
 | **D12** | One git repository pushed to two forges (github + bitbucket remotes) — one record or two? | **Recommend two independent records, no merging.** See §6.6 |
 | **D13** | **No backward-compatible badge route.** The legacy two-segment URL is removed, not aliased; badge URLs are replaced at source. Sound only because the deployment has no external users. | **DECIDED** — user, this session |
+| **D14** | Per-provider **assemblies**, yes; per-provider **NuGet packages**, not in stage 1. Three projects with `IsPackable=false` buy the whole architectural benefit; publishing adds a permanent public contract with no consumers. | **Recommend split-don't-publish** — see §6.9 |
+| **D15** | Which capabilities move into a provider assembly, and which are GitHub-only forever. | **Recommend the §6.9 table** — Projects V2 and installations stay app-side |
 
 ---
 
@@ -512,6 +514,78 @@ browse endpoint with no row scoping).
 
 ---
 
+### 5.7 Measured: the seams built in M1/M2 are not yet load-bearing
+
+Investigated 2026-09-20, when the owner proposed per-provider assemblies. Three findings, all
+verified directly against the branch. Two of them are defects in work this branch already committed,
+so they are recorded here rather than quietly fixed.
+
+**(a) Two of the three seams cannot dispatch at all.** `IForgeClient` and `IForgeFeedbackPublisher`
+both declare `EForgeProvider Provider { get; }` — and nothing reads it. Every consumer injects the
+**singular** interface; there is no `IEnumerable<IForgeClient>` anywhere:
+
+| Site | Interface |
+|---|---|
+| `Controllers/BrowseController.cs:38` | `IForgeClient` |
+| `Feedback/PublishFeedbackRecipient.cs:25` | `IForgeFeedbackPublisher` |
+| `Feedback/PublishFeedbackRecipient.cs:26` | `IForgeClient` |
+| `Ingestion/CommitAssembler.cs:24` | `IForgeClient` |
+| `Ingestion/FinalizeBuildRecipient.cs:12` | `IForgeClient` |
+| `Ingestion/FinalizeBuildsCronJob.cs:20` | `IForgeClient` |
+| `Services/BaseResolver.cs:14` | `IForgeClient` |
+| `Ingestion/BuildFinalizer.cs:14` | parameter — inherits its caller's resolution |
+| `Ingestion/PatchCoverageCalculator.cs:17` | parameter — inherits its caller's resolution |
+
+`[Register]` emits plain `AddScoped` (verified from generator source and a checked-in generated
+artifact — see §6.9), so registrations **stack** rather than dedupe, and MS.DI hands a singular
+injection the **last** one registered. Adding `GitLabForgeClient` would therefore not add a provider;
+it would silently redirect all nine sites to GitLab, including every GitHub status publish.
+
+This is the failure mode §5.6 warned about — a silent widening — arriving through DI rather than
+through an unqualified string. It is worse than the string case because it is invisible in the type
+system: the code reads as provider-neutral and compiles either way.
+
+**(b) The access seam is bypassed by five of its six consumers.** `IForgeAccessResolver` is used in
+exactly one place, `Services/SparkVisibility.cs:13`. These still inject `IGitHubAccessService`
+directly, naming the provider in their own field type:
+
+`Controllers/BrowseController.cs:37` · `Controllers/MeController.cs:25` ·
+`Controllers/RepoSettingsController.cs:23` · `CustomActions/ResyncAction.cs:35` ·
+`Services/MyAccountsService.cs:15`
+
+So M1's as-built note — that the owner set now goes through a per-forge interface — is true of the
+row-level visibility path and of nothing else. The interface exists; the migration to it does not.
+
+**(c) Five capability areas were never seamed.** The three seams cover diff/content reads, the
+allowed-owner lookup, and status/comment publishing. Untouched, and each still wholly GitHub-shaped:
+**webhook ingestion and event normalisation**, **App-installation management**, **org/account
+reconciliation**, **Projects V2 board automation**, and **CI identity (OIDC upload credentials)**.
+Eleven app files import `MintPlayer.Spark.Webhooks.GitHub.Services` for installation-token minting.
+
+**What this changes.** Nothing about the design in §6.5 — the seams are the right seams. But the exit
+criterion A1 is further away than the plan implied, and the honest statement of where the work stands
+is: *one* of three seams dispatches, on *one* of six call paths, over *three* of eight capability
+areas. The sub-milestones in the plan (M2a, M2b) exist to close that, and they are prerequisites for
+any provider assembly — a second implementation added before (a) is fixed is actively unsafe.
+
+**The fix, and its one dependency.** *(Owner, 2026-09-20: "Yes we just need to inject IEnumerable.")*
+Each of the two seams gets a resolver in the `ForgeAccessResolver` shape — inject
+`IEnumerable<IForgeClient>`, select on `Provider`. But selecting requires knowing *which* provider a
+given `Repository` belongs to, and no entity carries a provider discriminator until M6 re-keys the
+documents (D5/D7): `grep ForgeOwner|EForgeProvider` across `CodeCoverage.Library/Entities` returns
+zero hits today. So until M6 lands, the selector resolves to `EForgeProvider.GitHub` for every
+repository. That fallback must be **one explicit, commented line in the resolver** — not a default
+argument, not a `FirstOrDefault()` that happens to pick GitHub because it is the only registration.
+The difference matters: the explicit version starts throwing the moment a second provider is
+registered before M6, which is exactly when a silent fallback would start handing GitHub
+repositories to the GitLab client.
+
+Related: `ForgeAccessResolver.For` uses `FirstOrDefault`, so a duplicate registration of the same
+provider is tolerated silently. `Services/ActionsResolver.cs:145-155` throws on more than one match,
+after a bug that made the case for doing so. The new resolvers should be loud in the same way.
+
+---
+
 ## 6. Design
 
 ### 6.1 Sign-in (D3)
@@ -607,7 +681,8 @@ failures (§4.7). Bodies belong in templates, and the app is already fully local
 Three seams, each of which already has a natural boundary:
 
 - **`IForgeAccessService`** — replaces the direct `/user/installations` call; returns the allowed-owner
-  set per provider, backed by the explicit connected-org record of §5.5. Slots in behind the
+  set per provider, derived live from the forge on every request (D6a rejected the stored
+  connected-org record this section originally proposed). Slots in behind the
   already-centralised visibility predicates.
 - **`IForgeClient`** — diff/compare, file content, default branch, branch list, PR/MR head SHA.
 - **`IForgeFeedbackPublisher`** — the sticky comment and the commit status / check run, with an
@@ -854,6 +929,107 @@ readiness budget), and what happens if the migration never runs at all.
 
 ---
 
+### 6.9 Per-provider assemblies (D14, D15)
+
+Raised by the owner, 2026-09-20: register the forges as multiple services on one interface and ship
+three packages — `MintPlayer.Spark.CodeCoverage.{Github,Gitlab,Bitbucket}Integration`.
+
+**The premise holds.** `[Register(typeof(IFoo), ServiceLifetime.Scoped)]` emits plain `AddScoped`,
+never `TryAddScoped` — verified in the generator source
+(`MintPlayer.Dotnet.Tools/.../ServiceRegistrationsGenerator*.cs`; `grep TryAdd` over it returns no
+source hits) and in a checked-in generated artifact showing three implementations of one interface
+coexisting. Registrations stack; `IEnumerable<T>` returns all of them. Each assembly also gets its
+own generated `AddXxxServices()` entry point for free, named from its namespace.
+
+**And the extension point exists.** Eleven packages already extend `ISparkBuilder`.
+`libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/Extensions/SparkBuilderExtensions.cs:13-62` is a
+line-for-line template for `AddGithubIntegration(this ISparkBuilder, Action<Options>)`: options from
+a configure delegate, the generated service registration, conditional extras, routes via
+`builder.Registry.AddEndpoints(...)`.
+
+#### What a provider assembly can and cannot carry
+
+| Contribution | Cross-assembly? | Mechanism |
+|---|---|---|
+| Services | ✅ | generated `AddXxxServices()` |
+| Raven indexes, `[FromIndex]` projections | ✅ | `SparkModuleRegistry.AddIndexAssembly` — which exists *because* a module shipped as a class library got neither. Must be declared from the `AddXxx` body; inside an `AddMiddleware` callback it is a documented silent no-op |
+| `[GenerateIndex]` generation | ✅ | the generator walks `ReferencedAssemblySymbols` |
+| Translations | ✅ | `LibraryTranslationsGenerator` emits `[assembly: SparkTranslations]`; the host generator merges every referenced assembly's payload |
+| Webhook routes, credential schemes, middleware | ✅ | `Registry.AddEndpoints` / `AddCredentialScheme` |
+| Entities / persistent objects | ⚠️ ships fine, but the **app** must name them on its own `SparkContext` |
+| Model JSON + `modelHashes.json` | ❌ **app-only** — paths are `{ContentRootPath}/App_Data/Model`, no per-library model directory |
+| `security.json` | ❌ **app-only by explicit design** — the path is a `const`, and the remarks state non-configurability is deliberate: *"a second place to put the file is a second place to fail to find it"* |
+
+The last two are not engineering problems to route around; they are the framework's position. The
+consequence to accept: **a provider package is not self-contained for authorization.** Installing one
+is reference + author the grants in the app's `security.json` + re-run `--spark-synchronize-model`
+and commit — a three-step operation that CI gates. That is tolerable for a closed set of three
+providers maintained in this repo, and would be a poor experience for a third-party plugin. We are
+building the former.
+
+⚠️ One latent fragility, already burned once: the `[GenerateIndex]` cross-assembly filter keys on the
+AssemblyRef of the attribute-host assembly. An assembly that references Spark *only* for attributes
+is precisely the shape that once made HR's indexes vanish **with no diagnostic**. It is fixed, but it
+fails silently, so a new provider assembly must be *verified* to emit its indexes, never assumed to.
+
+#### D14 — split, but do not publish
+
+Three projects with `IsPackable=false` deliver the entire architectural benefit. Exit criterion A1
+("no caller outside a provider implementation references Octokit") is today a code-review promise;
+an assembly boundary with no Octokit reference outside `…GithubIntegration` makes it a **compile
+error**. `PackageId` and `GeneratePackageOnBuild` add nothing to that enforcement.
+
+What publishing would additionally cost:
+
+- **It forces a fourth package as the public contract.** The seams are typed on this app's domain
+  entities — `IForgeClient` and `IForgeFeedbackPublisher` both take `CodeCoverage.Entities.Repository`
+  — so shipping a provider package means shipping the RavenDB persistence model as public API, at the
+  exact moment #422 is still reshaping it. `CodeCoverage.Library` also carries a `ProjectReference` to
+  `MintPlayer.Spark.Authorization` that its own csproj comment (`:18-26`) flags as architecturally
+  wrong; that would become a public dependency.
+- **The first release is permanent and fast.** CI packs solution-wide and pushes globbed on merge to
+  master, with `--skip-duplicate` — which turns a *rejected* push into a silent success. A mis-shaped
+  first release is public within minutes and its version can never be reused.
+- **There are no consumers.** One production app, one container.
+
+Flipping `IsPackable` later is one line per project. Un-publishing a wrong public API is impossible.
+So: split now, publish when a second forge actually ships and the entity contracts have stopped
+moving.
+
+**Placement.** Packable projects live under `libs/`, but the PR version gate filters by **path**, not
+by packability — anything under `libs/**` demands a `<Version>` bump on every touch. Since these are
+deliberately unpublished and will churn throughout stage 1, they belong in
+`apps/CodeCoverage/CodeCoverage.{Github,Gitlab,Bitbucket}Integration/` as siblings of the app, and
+move to `libs/` if and when they are published. ⚠️ Never name a directory `coverage/` — `.gitignore`
+matches that path component case-insensitively and it would be silently untracked, which is why the
+app is `CodeCoverage`.
+
+**Dependency direction.** `CodeCoverage.Tests` → `CodeCoverage` (app) → `*Integration` →
+`CodeCoverage.Library`. Linear, no cycles, and it keeps the contract where it already is.
+
+#### D15 — what actually moves
+
+Moving a capability into a provider assembly requires a neutral seam to call it through. Three exist;
+five do not (§5.7c). So the split is staged by what is seamable, not done in one sweep:
+
+| Capability | Disposition |
+|---|---|
+| Diff / compare, first parent, file content | **moves** — `IForgeClient` exists |
+| Allowed-owner lookup, credential state | **moves** — `IForgeAccessService` exists, after M2a |
+| Commit status / check run, sticky PR comment | **moves** — `IForgeFeedbackPublisher` exists; the comment gateway needs de-Octokit-ing first |
+| Repository enumeration, `owner/name` resolution, branch delete | **moves after a seam is built** (M2b) |
+| Webhook ingestion and event normalisation | **moves after a seam is built** (M2b) — the largest piece; 11 app files import the GitHub webhooks namespace |
+| **App installations** | **stays GitHub-only.** No forge has "an installation the owner selects repositories into"; GitLab has group/project access tokens, Bitbucket has app passwords. This is not a capability to abstract — it is GitHub's *answer* to a question (`which owners may this human manage?`) that `IForgeAccessService` already asks neutrally |
+| **Projects V2 boards** | **stays GitHub-only, forever** (confirms D8). Entirely GraphQL, entirely GitHub: `ProjectV2` node ids, single-select Status fields, `closingIssuesReferences`. GitLab issue boards do not map; Bitbucket has no boards. The entity, its model JSON, its security grants and its custom actions stay in the app |
+| **CI identity (OIDC)** | **per-provider, but pluggable rather than shared.** Every forge mints job tokens; the issuer, claim names and trust decision differ entirely. One scheme registered per provider assembly, not one abstraction |
+
+The honest summary: about half the GitHub surface is a *provider implementation* and moves; the other
+half is either GitHub's private answer to a neutral question (installations) or a feature no other
+forge has (Projects V2). The second half staying in the app is the correct outcome, not a
+shortcoming — and it is why the three assemblies will not be symmetric in size.
+
+---
+
 ## 7. Spikes
 
 Run before the milestone each gates. None has been run.
@@ -1019,6 +1195,6 @@ that "out of scope" does not become a parking lot.
 
 ---
 
-*Nothing here is implemented. D4, D5, D6, D7, D9 need answers before the milestones they gate; D6 is
-the one that needs the most thought, because it is the only one that can quietly change who can see
-what.*
+*M0–M2 are implemented (see the plan for commit hashes). D8, D10 and D12 remain recommendations
+rather than decisions, and D6f — fork-pull-request uploads — is the one still parked, because it is
+the only open question that can quietly change who can write coverage for a repository.*

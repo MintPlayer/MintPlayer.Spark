@@ -148,8 +148,96 @@ Still GitHub-only.
   plus one explanatory doc-comment in `IForgeFeedbackPublisher`. Remaining stragglers are
   `PullRequestCommentGateway` / `PullRequestCommentPublisher` (GitHub implementations whose filenames
   are not GitHub-named — M11) and the installation/reconciler surface (M8).
+- ⚠️ **Correction, 2026-09-20.** The line above overstated where this left things. The seams exist
+  and are typed correctly, but **neither `IForgeClient` nor `IForgeFeedbackPublisher` dispatches** —
+  both declare `Provider` and every one of their nine consumers injects the singular interface, so a
+  second registration would silently win. `IForgeAccessService` is likewise bypassed by five of its
+  six consumers. Measured and itemised in PRD §5.7; fixed in M2a. Read M1's and M2's as-built notes
+  as *"the interface landed"*, not *"the migration to it is done"*.
 
 ---
+
+## M2a — Make the three seams actually dispatch 🟦 *(defect fix; blocks every provider)*
+
+Found 2026-09-20 while investigating per-provider assemblies; measured in PRD §5.7. Two of the three
+seams declare `Provider` and nothing reads it, and the third is bypassed by five of its six
+consumers. **A second provider registered before this lands is unsafe**, not merely incomplete: with
+`[Register]` emitting plain `AddScoped`, a singular injection silently receives the last
+registration.
+
+- **Resolvers.** Add `IForgeClientResolver` and `IForgeFeedbackPublisherResolver` in the shape of the
+  existing `ForgeAccessResolver` — inject `IEnumerable<T>`, select on `Provider`. *(Owner: "Yes we
+  just need to inject IEnumerable.")*
+- **Be loud about duplicates.** Use `Single`-style resolution, like `ActionsResolver.cs:145-155`,
+  not `ForgeAccessResolver`'s current `FirstOrDefault`. Two registrations of one provider is a wiring
+  bug, and the existing resolver hides it. Change `ForgeAccessResolver.For` to match.
+- **Repoint the 9 `IForgeClient` / `IForgeFeedbackPublisher` sites** listed in PRD §5.7a.
+  `BuildFinalizer.Finalize` and `PatchCoverageCalculator.ComputeAsync` take the client as a
+  parameter, so they inherit their caller's choice and need no change beyond the callers.
+- **Repoint the 5 `IGitHubAccessService` bypasses**: `BrowseController.cs:37`, `MeController.cs:25`,
+  `RepoSettingsController.cs:23`, `ResyncAction.cs:35`, `MyAccountsService.cs:15`. Some need more
+  than the seam currently exposes (`ResyncAction` triggers a reconcile; `MyAccountsService` wants the
+  App install URL) — those go to M2b rather than widening `IForgeAccessService` with GitHub concepts.
+- **The provider selector.** Selection needs a provider per `Repository`, and no entity carries one
+  until M6. Until then the resolver answers `EForgeProvider.GitHub` from **one explicit, commented
+  line**, which starts throwing as soon as a second provider registers. Not a default parameter, and
+  not a `FirstOrDefault` that picks GitHub by accident — see PRD §5.7.
+
+**Exit:** no singular injection of a forge interface anywhere; `grep -rn "IGitHubAccessService"` in
+`CodeCoverage/` matches only the interface, its implementation and the adapter.
+
+---
+
+## M2b — Seam the five unseamed capability areas 🟦
+
+PRD §5.7c. These are neutral operations with real cross-forge equivalents, implemented only for
+GitHub and reachable only through GitHub-typed interfaces. Each needs a seam before it can move into
+a provider assembly (M15).
+
+- **PR comment gateway** — `PullRequestCommentGateway` is already a narrow interface, but Octokit-typed
+  and living in neutral `Feedback/`. De-Octokit the signatures; `PullRequestCommentPublisher` drops
+  `using Octokit;` and its status-code catch in favour of `ForgeAccessDeniedException`.
+- **Repository enumeration** — `IInstallationRepositories.ListAsync(long installationId, …)` takes a
+  GitHub installation id in a neutral-sounding signature. Reshape to enumerate *an owner's*
+  repositories, credential resolved inside the implementation, as `IForgeClient` already does.
+- **`owner/name` → repository resolution** — `RepositoryResolver.LookupGitHubIdAsync:104-131` calls
+  GitHub directly and catches `Octokit.NotFoundException`. Note the rename-redirect behaviour it
+  relies on is **not** portable: Bitbucket slugs are renameable *and reusable*.
+- **Branch deletion** — `GitHubEventsRecipient.DeleteHeadBranchIfEnabled:393`. The `DeleteBranchPolicy`
+  is neutral; the ref delete is provider work. (This is live, working production behaviour — see the
+  retraction note in §5.6. Do not remove it.)
+- **Webhook ingestion and event normalisation** — the largest piece. Both recipients bind
+  `IRecipient<GitHubWebhookMessage>`, and 11 app files import
+  `MintPlayer.Spark.Webhooks.GitHub.Services`. Overlaps M8, which already owns de-GitHub-ing the bus
+  contract; treat M8 as the vehicle and this entry as its acceptance criteria.
+
+⚠️ **Not seamed, deliberately** (D15): App installations and Projects V2. Both are GitHub-only and
+stay in the app. Resist the pull to give them neutral names — a neutral name over a GitHub-only
+concept is worse than an honest one, because it invites a second implementation that cannot exist.
+
+---
+
+## M15 — Split the provider implementations into their own assembly 🟦 *(D14; after M2a, M2b, M8)*
+
+Three projects as siblings of the app — `CodeCoverage.{Github,Gitlab,Bitbucket}Integration` — with
+`IsPackable=false`. Only the GitHub one has content in stage 1; the other two are created empty so
+the boundary and the registration pattern are proven by more than one case.
+
+- Dependency direction `CodeCoverage` → `*Integration` → `CodeCoverage.Library`.
+- Each exposes `AddGithubIntegration(this ISparkBuilder, Action<Options>)`, modelled line-for-line on
+  `libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/Extensions/SparkBuilderExtensions.cs:13-62`.
+- Move only what D15 marks **moves**. Installations and Projects V2 stay in the app.
+- Remove the Octokit `PackageReference` from `CodeCoverage.csproj` — **this is the milestone's real
+  exit criterion**, converting A1 from a review promise into a compile error.
+- ⚠️ Verify the new assembly's `[GenerateIndex]` indexes are actually emitted. The cross-assembly
+  filter keys on the attribute-host AssemblyRef and once made HR's indexes vanish with **no
+  diagnostic** (PRD §6.9). Assume nothing; check the generated output.
+- Add the projects to `MintPlayer.Spark.slnx`, `Dockerfile` COPY lines, and the
+  `code-coverage-deploy.yml` `paths:` list — three hand-maintained closures, each of which fails
+  quietly when missed.
+- **Not** `libs/`, **not** packable, **no** `PackageId` — D14. Do not name any directory `coverage`.
+
+**Exit:** `grep -rn "Octokit" apps/CodeCoverage/CodeCoverage/` returns nothing.
 
 ## M3 — Login page, and delete the bespoke GitHub button 🟦
 
@@ -442,13 +530,22 @@ snippet.
 
 ## Ordering
 
-M0 first — SP1 can shrink M6 to a re-ingest and re-cost the plan.
+M0 done. SP1 did not shrink M6 — it grew it (199,917 documents carry the GitHub repo id in their
+key; PRD §7.1).
 
-M1 → M2 → M8 is the abstraction spine and is strictly ordered. **M6 → M7** is strictly ordered (ids
-before routes) and both depend on M5, because the connected-org record is part of what gets re-keyed.
+**M1 → M2 → M2a → M2b/M8 → M15** is the abstraction spine and is strictly ordered. M2a is the one
+piece that is *urgent* rather than merely sequenced: until it lands, registering any second provider
+silently redirects nine call sites (PRD §5.7a), so it gates all of stage 2 and 3, not just this PR.
+M15 is last on the spine because it can only move code that a seam already covers.
+
+**M6 → M7** is strictly ordered (ids before routes). M5 is dissolved, so M6 no longer waits on
+anything but D6f. M6 also unblocks the *real* provider selector in M2a, which until then answers
+GitHub from one explicit line.
+
 M3 and M4 are independent of the forge spine and can land early; M4 is the largest single milestone
-and the one most worth committing in pieces (4a–4i). M9/M10/M11 depend on M6's renames. M12, M13,
+and the one most worth committing in pieces (4a–4k). M9/M10/M11 depend on M6's renames. M12, M13,
 M14 last, in that order.
 
-The blocked milestones (M5, M6, M7) are blocked on decisions, not on work — D4, D5, D6 and D7 can be
-answered at any time.
+Only D6f (fork-PR uploads) still blocks work. D14 and D15 are recommendations that shape M15; if the
+owner prefers published NuGet packages after all, M15 grows a fourth contracts project and the
+placement moves to `libs/` — see PRD §6.9 for what that costs.
