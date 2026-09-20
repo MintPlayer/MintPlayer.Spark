@@ -845,12 +845,39 @@ baseline.
 
 **3,169 tests, no failures.**
 
-⚠️ **Not verified, and the PR says so:**
+### ✅ A4 verified in a browser, 2026-09-20
+
+Driven with `playwright_node` against `dotnet run --launch-profile https`:
+
+- `/sign-in` renders one button per **server-reported** provider (GitHub), icon intact.
+- The shell shows a **Sign in** link, not a GitHub button.
+- A guarded route while signed out lands on `/sign-in?returnUrl=%2Fpo%2Fapitoken%2Fmain` — the fix
+  preserves the destination as well as reaching a real page.
+- Sign-in completes and lands on `/po/home/main` with real data: 2 accounts, 179 repositories,
+  MintPlayer at 82.4%. **That is the proof the forge seam works** — the account list now flows
+  through `IForgeIntegration` and `ForgeFanOut` and returns what it always did.
+
+⚠️ **Three things the browser found that no suite did:**
+
+1. **Sign-in did not leave the sign-in page.** In popup mode the `returnUrl` is consumed by the
+   *popup*; the opener was never touched. Fixed in `ng-spark-auth` (the branch's only `libs/`
+   change, hence its version bump) and pinned with two tests.
+2. **The Home page still reads "across your GitHub repositories."** A server-side translation key —
+   the client-side sweep could not see it. → **M10**.
+3. **The accounts grid header still reads "GitHub App."** That is the `app-installed-renderer`
+   deferred in M11. → **M10**.
+
+⚠️ **Also: `dotnet run` bare picks the http profile on :5201, and the GitHub App registers
+`https://localhost:5200/signin-github`.** Signing in locally needs
+`dotnet run --launch-profile https`, or GitHub answers `Invalid Redirect URI`. Not a defect — but it
+looks exactly like one.
+
+⚠️ **Still not verified:**
 
 - **E2E** (`MintPlayer.Spark.E2E.Tests`) — needs a running host; belongs with M17.
-- **A4 in a browser.** The sign-in page and the fixed redirect compile and the client builds, but
-  nobody has clicked them. M3's own exit criterion asks for `playwright_node` against a running
-  `dotnet run`, and that has not happened.
+- **The repository, badge, setup and trend panels** — not opened, so the nine `bi` icon usages
+  remain unconfirmed in either direction. The sign-in and sidebar icons *do* render, so the earlier
+  assumption that all `bi` classes are dead is **not** supported.
 - **A10** — counts before and after the migration, against production. The migration is not written,
   let alone run.
 - The nine `bi` icon usages the owner flagged are **still broken** and are not covered by any test,
