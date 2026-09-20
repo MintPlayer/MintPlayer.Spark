@@ -23,10 +23,13 @@ Run first; each can invalidate a later milestone's design. Read-only.
   `Builds`. It did *not* collapse the way #423's did — it grew M6, and it invalidated the
   `PatchByQueryOperation` method, because Raven ids are immutable. **D7 was re-confirmed against this
   number: full re-key, rehearsed first (SP6, inside M6).**
-- **SP2 — no-op sender resolution** *(gates M4)*. Both `NoOpEmailSender` and
-  `DefaultMessageEmailSender` are present in the 10.0.12 `Microsoft.AspNetCore.Identity.dll` (PRD
-  §4.3). Confirm what `IEmailSender<SparkUser>` actually resolves to **in this app's container**, so
-  M4's startup guard tests the right condition rather than a type name.
+- **✅ SP2 — no-op sender resolution — DONE 2026-09-20.** Measured in a real container via
+  `tests/MintPlayer.Spark.Tests/Authorization/Extensions/EmailSenderRegistrationTests.cs` (kept as a
+  regression test). ⚠️ **`IEmailSender<SparkUser>` is ALWAYS `DefaultMessageEmailSender<SparkUser>`**,
+  transport or not — it is an adapter. The real discriminator is the **non-generic**
+  `Microsoft.AspNetCore.Identity.UI.Services.IEmailSender`, which with no transport registered is
+  `Microsoft.AspNetCore.Identity.UI.Services.NoOpEmailSender`. **A guard written against the generic
+  type would never fire.**
 - ~~**SP3 — badge alias**~~ — **dropped.** No backward-compatible badge route is being kept
   (PRD §5.4), so there is nothing to keep byte-identical.
 
