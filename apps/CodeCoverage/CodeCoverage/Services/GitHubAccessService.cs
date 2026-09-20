@@ -24,6 +24,21 @@ public partial class GitHubAccessService : IGitHubAccessService
 
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(5);
 
+    /// <summary>
+    /// How long a *failed* lookup is remembered. Deliberately far shorter than
+    /// <see cref="CacheDuration"/>: long enough to collapse a burst of requests during an outage,
+    /// short enough that recovery is noticed almost immediately.
+    /// </summary>
+    /// <remarks>
+    /// Not caching failures at all — the original behaviour — is defensible with a single provider
+    /// and becomes dangerous with several: an outage then means every request re-attempts every
+    /// unreachable forge. Bitbucket's budget is roughly 1,000 requests per hour per token, low
+    /// enough that the retries alone can exhaust it and then hold it exhausted, turning a brief
+    /// outage into a sustained one. The degraded *answer* is still never promoted to a successful
+    /// one; only the knowledge that the call failed is held briefly.
+    /// </remarks>
+    private static readonly TimeSpan FailureCacheDuration = TimeSpan.FromSeconds(30);
+
     public async Task<string[]> GetAllowedOwnersAsync(CancellationToken cancellationToken = default)
         => (await GetVisibilityAsync(cancellationToken)).Owners;
 
@@ -37,15 +52,24 @@ public partial class GitHubAccessService : IGitHubAccessService
         if (user is null)
             return new([], GitHubTokenState.Ok);
 
+        // The "github-" prefix is what keeps this per-(user, provider): a second forge's service
+        // uses its own prefix, so two providers' answers can never collide in one entry.
         var cacheKey = $"github-owners/{user.Id}";
         if (memoryCache.TryGetValue<string[]>(cacheKey, out var cached) && cached is not null)
             return new(cached, GitHubTokenState.Ok);
 
         var username = principal.FindFirstValue(ClaimTypes.Name);
 
+        // A recent failure short-circuits, so an outage costs one call per user per
+        // FailureCacheDuration rather than one per request. The degraded answer is recomputed
+        // rather than stored, so nothing stale is ever served as authoritative.
+        var failureKey = $"github-owners-failed/{user.Id}";
+        if (memoryCache.TryGetValue<GitHubTokenState>(failureKey, out var failedState))
+            return Degraded(username, failedState);
+
         var token = await tokenService.GetAccessTokenAsync(user, forceRefresh: false, cancellationToken);
         if (token.State != GitHubTokenState.Ok)
-            return Degraded(username, token.State);
+            return DegradedAndRemember(username, token.State, failureKey);
 
         var (installations, unauthorized) = await QueryGitHubInstallationsAsync(token.AccessToken!, user.Id, username, cancellationToken);
         if (unauthorized)
@@ -55,7 +79,7 @@ public partial class GitHubAccessService : IGitHubAccessService
             // Spark's installation-token TokenRefreshingHandler uses.
             token = await tokenService.GetAccessTokenAsync(user, forceRefresh: true, cancellationToken);
             if (token.State != GitHubTokenState.Ok)
-                return Degraded(username, token.State);
+                return DegradedAndRemember(username, token.State, failureKey);
 
             (installations, unauthorized) = await QueryGitHubInstallationsAsync(token.AccessToken!, user.Id, username, cancellationToken);
             if (unauthorized)
@@ -63,16 +87,17 @@ public partial class GitHubAccessService : IGitHubAccessService
                 // A just-refreshed token GitHub still refuses: the
                 // authorization itself is gone. Only a browser fixes this.
                 logger.LogWarning("GitHub refused a freshly refreshed token for user {UserId} ({Login}) — reauth required", user.Id, username);
-                return Degraded(username, GitHubTokenState.ReauthRequired);
+                return DegradedAndRemember(username, GitHubTokenState.ReauthRequired, failureKey);
             }
         }
 
         if (installations is null)
         {
-            // GitHub unreachable: visibility degrades to the user's own repos
-            // for this request, but an unknown answer is neither cached nor
-            // used to clear anything — failure is not absence.
-            return Degraded(username, GitHubTokenState.Unavailable);
+            // GitHub unreachable: visibility degrades to the user's own repos for this request.
+            // The unknown answer is never promoted to the success cache nor used to clear
+            // anything — failure is not absence. Only the fact of the failure is remembered, and
+            // only briefly, to stop an outage turning into a retry storm.
+            return DegradedAndRemember(username, GitHubTokenState.Unavailable, failureKey);
         }
 
         await BackfillInstallationIdsAsync(installations, username, cancellationToken);
@@ -90,6 +115,24 @@ public partial class GitHubAccessService : IGitHubAccessService
     private static GitHubVisibility Degraded(string? username, GitHubTokenState state)
         => new(username is not null ? [username] : [], state);
 
+    /// <summary>
+    /// Degrades, and remembers <em>that the lookup failed</em> for a short window so a sustained
+    /// outage costs one attempt per user per <see cref="FailureCacheDuration"/> instead of one per
+    /// request.
+    /// </summary>
+    /// <remarks>
+    /// Only the failure state is stored, never the degraded owner set — the set is rebuilt from the
+    /// current principal each time, so nothing stale is ever served as though it were authoritative.
+    /// The window is not extended on a cache hit either: the short-circuit path calls
+    /// <see cref="Degraded"/> directly, so an outage expires on schedule rather than sliding
+    /// forward for as long as traffic keeps arriving.
+    /// </remarks>
+    private GitHubVisibility DegradedAndRemember(string? username, GitHubTokenState state, string failureKey)
+    {
+        memoryCache.Set(failureKey, state, FailureCacheDuration);
+        return Degraded(username, state);
+    }
+
     public async Task<bool> IsOwnerAllowedAsync(string ownerLogin, CancellationToken cancellationToken = default)
     {
         var owners = await GetAllowedOwnersAsync(cancellationToken);
@@ -103,8 +146,15 @@ public partial class GitHubAccessService : IGitHubAccessService
             return;
 
         var user = await userManager.GetUserAsync(principal);
-        if (user is not null)
-            memoryCache.Remove($"github-owners/{user.Id}");
+        if (user is null)
+            return;
+
+        memoryCache.Remove($"github-owners/{user.Id}");
+
+        // The failure memo has to go too. A user who has just fixed their authorization and
+        // pressed Resync would otherwise keep getting the remembered failure for up to
+        // FailureCacheDuration, which reads as "the fix did not work".
+        memoryCache.Remove($"github-owners-failed/{user.Id}");
     }
 
     /// <summary>Null installations means "don't know" (request failed), which
