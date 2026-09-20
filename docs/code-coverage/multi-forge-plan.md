@@ -420,6 +420,37 @@ a resumable migration. Do not default to "it's a migration, so it goes in `Migra
 their builds. Every step must be safe to re-enter: skip when the target id already exists, and never
 delete the source until the target *and* its attachments are confirmed present.
 
+
+### ⚠️ Two lines that MUST change with the forge segment — measured 2026-09-20
+
+Verified by reading; both fail **silently**, and neither is in the re-key itself. The `pr/{n}/`
+segment of D6f is harmless by comparison — every parser and prefix sweep in the app absorbs it — but
+**`github/` is not**, because it shifts the positional meaning of the id's second segment.
+
+1. **`Actions/BuildActions.cs:31-37` — `RepositoryIdFromCommitId`.** It recovers the repository by
+   *position*: `parts[1]` must parse as a `long`. With `Commits/github/{repoId}/{sha}` it reads
+   `"github"`, `long.TryParse` fails, the method returns null, and `IsAllowedAsync` (`:25-29`)
+   returns **false for every build in the system**. It fails *closed*, so nothing leaks — the Builds
+   grid simply goes blank app-wide, which is the kind of failure that gets diagnosed as a broken
+   index.
+2. **`Ingestion/DeleteRepositoryDataRecipient.cs:88`** sweeps the literal prefix
+   `Commits/{RepositoryGitHubId}/`. With the forge segment that prefix matches nothing, so deleting
+   a repository would **orphan every commit, build, file and tree document it owns** — silently, and
+   permanently, since the owning `Repository` document is gone and nothing else references them.
+   Its doc comment at `:23` hard-codes the old shape.
+
+Everything else is safe and was checked: the other seventeen `'/'`-splitters parse `owner/name`, file
+paths or attachment names rather than ids; `BuildFinalizer.cs:99-104` slices *relative* to a
+composed prefix so upstream segments are absorbed; every prefix sweep composes its prefix from a real
+id; no index parses ids at all; and `DeletePullRequestBuildsRecipient` selects by **field**
+(`Commits_ByRepository` on `Repository` + `PullRequestNumber`), not by id shape — so a fork PR commit
+is swept on merge provided its `PullRequestNumber` is set.
+
+Nine document-id shapes gain the new segments, and all nine inherit it from **one** change to
+`Commit.DocumentId` (`Commit.cs:124`) — every other helper is a suffix on a passed-in commit or build
+id. The change is one line; the two above are what make it safe.
+
+
 ### Sub-milestones
 
 - **SP6 — rehearse.** Restore a copy of production, run the whole migration against it, and record
@@ -428,6 +459,13 @@ delete the source until the target *and* its attachments are confirmed present.
 - **M6a — small collections** (~1,944 docs): `Repositories` 172, `Accounts` 2, `PullRequestFeedbacks`
   43, `Commits` 804, `Builds` 303, `BuildTreeSummaries` 482, `CommitAssemblies` 138. `Commits` roots
   the nested tree, so sequence by id depth and keep parents and children consistent within a run.
+  - ⚠️ **Reserve the fork segment now** (D6f). The target id scheme must admit
+    `Commits/github/{repoId}/pr/{n}/{sha}` alongside `Commits/github/{repoId}/{sha}`, and every id
+    *parser* must tolerate the extra segment. **No existing document is re-keyed into it** — nothing
+    in production is a fork upload today — but the scheme has to have room, because Raven ids are
+    immutable and this migration touches 199,917 documents exactly once. Deciding later costs the
+    whole re-key a second time. This is the only part of M6 that exists purely for a feature M6 does
+    not itself ship.
 - **M6b — `FileCoverages`** (197,973) in batches, with progress recorded so a restart resumes.
 - **M6c — attachments**: 683 on `Builds` (503 unique). Copy to the new document id, verify, then
   delete the old. A missing report is silent data loss — verify by count *and* by unique hash.
@@ -573,6 +611,73 @@ than one case, and so M2b's conformance test has something to iterate.
 
 **Exit:** `grep -rn "Octokit" apps/CodeCoverage/CodeCoverage/` returns nothing.
 
+## M16 — Fork-PR uploads 🟦 *(D6f, D20; after M2c. M6a must reserve the id segment)*
+
+Today a fork PR uploads nothing and the step goes green with a yellow annotation. This builds the
+credential-less path decided in PRD §6.7. Measured surface, 2026-09-20.
+
+### Server
+
+- **A new `[AllowAnonymous]` action**, not a branch inside the existing one. `UploadsController` carries
+  three class-level gates — `[Authorize(schemes)]` at `:32`, `[SparkAuthorize("Upload","Coverage")]`
+  at `:33`, `[EnableRateLimiting("uploads")]` at `:34` — and a credential-less caller must escape the
+  first two. `BadgeController.cs:20-22` is the in-repo precedent for an anonymous controller.
+- ⚠️ **Do not route it through `ResolveOidcRepository`** (`:677-752`). That method holds **two**
+  mutations, not one: a reconnect/rename of an existing repository (`:689-717`) and creation of
+  `Account` + `Repository` from OIDC claims (`:720-751`). A fork PR has no OIDC claims, so both are
+  structurally unreachable *provided the new path resolves the base repository itself*. Passing
+  `provision: false` is not the protection — not calling it is.
+- **Verify `RepositoryResolver.ResolveAsync` does not store** before reusing it. It is already
+  reachable from the anonymous badge endpoint, which is good evidence, but it makes an anonymous
+  GitHub API call per unknown name (`RepositoryResolver.cs:24,64`) and its body was not read.
+- **Private base repository ⇒ 404, never 403.** `UploadsController.cs:668` and `BadgeController.cs:17-18`
+  both establish that unknown and unauthorized look identical. A 403 here would be a visibility oracle:
+  it would confirm the repository exists.
+- ⚠️ **The repository and PR number must be in the route or query string, not the body.** The rate
+  limiter runs *before authentication and before model binding* (`Program.cs:217-221`), so a
+  per-(repository, PR) partition key cannot come from claims or a bound model, and reading a multipart
+  body inside a partition lambda is not viable. Falling back to client IP would partition every
+  GitHub-hosted runner into one bucket. **This constraint decides the endpoint's shape**, so settle it
+  before writing the action side.
+- **Its own rate-limit policy and size cap.** `[EnableRateLimiting]` per action is established at
+  `UploadsController.cs:280,304`. The existing `uploads` policy is 60/min (`Program.cs:251-258`) and
+  `MaxReportBytes` is 50 MB (`:45`, applied at `:117`); the fork cap should be smaller.
+- **Cap distinct fork namespaces per repository — genuinely new.** No such counter exists anywhere.
+  Without it, an unauthenticated writer can inflate a real repository's document count indefinitely,
+  and §7.1 measured how large that id space already is.
+- **Verdict is `EForgeOutcome.Neutral`** (D20), never Failure. A fork's number must not gate a merge.
+- **Run `--spark-verify-security` afterwards.** `App_Data/securityPosture.txt` is a CI-gated record of
+  the anonymous surface; it does not currently list the anonymous badge controller, so a new
+  `[AllowAnonymous]` MVC action probably does not move it — *probably* is not good enough for a file
+  whose whole purpose is to make anonymous surface visible in review.
+
+### Action
+
+The D20 shape already exists by accident: `fail-ci-if-error` defaults false (`action.yml:46-49`), so
+the catch at `main.ts:150-154` already yields one `core.warning` and a green step. What is wrong is
+the *message* and the fact that nothing uploads.
+
+- `collectContext` (`context.ts:33-61`) gains the fork flag and the base repository identity. It
+  already destructures the PR payload, so the test costs no new plumbing —
+  `pr.head.repo.id !== pr.base.repo.id`. `context.repo` is already the **base** repo on a
+  `pull_request` event, which is the identity the new id space needs.
+- `resolveCredential` (`main.ts:214-233`) gains a third exit. It has exactly two today, both
+  terminal: return a `Credential`, or throw (`:228`). It must return "no credential" for a fork PR
+  rather than throwing. An `anonymousCredential()` beside `staticCredential` / `oidcCredential`
+  keeps the `get()`/`invalidate()` contract intact for every consumer.
+- `postWithRetry` (`main.ts:498-527`) builds the `Authorization` header unconditionally at `:507`;
+  it must omit it entirely rather than send an empty one.
+- `fetchCapabilities` (`capabilities.ts:42+`) also sends it unconditionally, but already degrades to
+  `BASELINE` and never throws — it is the one call that is already D20-safe.
+- `setResultOutputs` (`main.ts:384+`) already emits `''` for unmeasured numbers rather than `0`. A
+  Neutral fork upload follows that convention; emitting zeros would read as *measured zero coverage*.
+
+**Exit:** a fork PR on a public repository shows a coverage comment on the base PR; the same PR on a
+private repository says so in one line instead of failing; neither can move a badge or a branch
+baseline.
+
+---
+
 ## M12 — Docs 🟦
 
 - `product-overview.md`: retire the v1 non-goal at `:23`; rewrite §6.1/§6.3, which assert
@@ -628,7 +733,9 @@ M3 and M4 are independent of the forge spine and can land early; M4 is the large
 and the one most worth committing in pieces (4a–4k). M9/M10/M11 depend on M6's renames. M12, M13,
 M14 last, in that order.
 
-Only D6f (fork-PR uploads) still blocks work. D16 and D17 are decided and shape M2a/M2b/M2c/M15.
+**No decision blocks work.** D6f is resolved and built by **M16**, which is ordered *before* M6
+only in the sense that M6a must reserve its id segment — the endpoint itself can land any time after
+M2c. D16 and D17 are decided and shape M2a/M2b/M2c/M15.
 D14 remains a recommendation: if published NuGet packages are wanted after all, M15 grows a fourth
 contracts project — because `IForgeIntegration` is typed on this app's domain entities — and the
 placement moves to `libs/`. PRD §6.9 has what that costs.
