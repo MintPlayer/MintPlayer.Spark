@@ -192,6 +192,7 @@ public class ForgeIntegrationConformanceTests
         public Task<bool> IsOwnerAllowedAsync(ForgeOwner owner, CancellationToken cancellationToken = default) => Task.FromResult(false);
         public Task InvalidateAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task<ForgeAccess> CheckAccessAsync(Repository repository, CancellationToken cancellationToken = default) => Task.FromResult(ForgeAccess.Yes);
+        public Task DeleteBranchAsync(Repository repository, string branch, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task<CommitComparison?> CompareAsync(Repository repository, string baseRef, string headSha, CancellationToken cancellationToken = default) => Task.FromResult<CommitComparison?>(null);
         public Task<string?> GetFirstParentAsync(Repository repository, string sha, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
         public Task<string?> GetFileContentAsync(Repository repository, string sha, string path, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);

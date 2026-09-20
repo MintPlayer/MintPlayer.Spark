@@ -82,10 +82,18 @@ public sealed record PullRequestUpdated(
 /// about it is final. A forge that reports only "closed" must determine mergedness before raising
 /// this, and raise nothing if it cannot — deleting builds on a guess is unrecoverable.
 /// </remarks>
+/// <param name="HeadIsFromSameRepository">
+/// False when the request came from a fork. ⚠️ Load-bearing for the delete-after-merge courtesy: a
+/// fork's head branch lives in a repository we were never given write access to and whose owner
+/// still wants it, and the opt-in lives on the <em>base</em> repository, which cannot speak for it.
+/// A forge that cannot tell must report false — declining to delete is recoverable, deleting
+/// someone else's branch is not.
+/// </param>
 public sealed record PullRequestMerged(
     string RepositoryId,
     int Number,
-    string? HeadRef);
+    string? HeadRef,
+    bool HeadIsFromSameRepository);
 
 /// <summary>A repository changed its name or moved to a different owner.</summary>
 /// <remarks>

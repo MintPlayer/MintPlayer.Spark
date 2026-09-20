@@ -72,6 +72,9 @@ public partial class GitHubForgeIntegration : IForgeIntegration
     public Task<long> PublishStatusAsync(Repository repository, string sha, string name, ForgeVerdict verdict, long? existingId, CancellationToken cancellationToken = default)
         => feedback.PublishStatusAsync(repository, sha, name, verdict, existingId, cancellationToken);
 
+    public Task DeleteBranchAsync(Repository repository, string branch, CancellationToken cancellationToken = default)
+        => client.DeleteBranchAsync(repository, branch, cancellationToken);
+
     public Task PublishCommentAsync(Repository repository, int pullRequestNumber, string sha, string body, CancellationToken cancellationToken = default)
         => feedback.PublishCommentAsync(repository, pullRequestNumber, sha, body, cancellationToken);
 }

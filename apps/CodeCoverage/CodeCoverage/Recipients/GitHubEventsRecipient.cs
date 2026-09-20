@@ -29,7 +29,6 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IMessageBus messageBus;
     [Inject] private readonly ILogger<GitHubEventsRecipient> logger;
-    [Inject] private readonly IGitHubInstallationService installationService;
 
     /// <summary>Bound on a per-account repository sweep; the session's request budget is 30.</summary>
     private const int MaxRepositoriesPerAccount = 1024;
@@ -328,15 +327,25 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         // PRs keep theirs — they may reopen, and nothing about them is final.
         if (evt.Action == "closed" && evt.PullRequest.Merged == true)
         {
-            await messageBus.BroadcastAsync(new Ingestion.DeletePullRequestBuildsMessage
-            {
-                RepositoryGitHubId = evt.Repository.Id,
-                PullRequestNumber = (int)evt.Number,
-            }, ct);
+            // ⚠️ Loaded, never upserted. A close is not a reason to mint documents, and upserting
+            // here would rewrite Repository.Account from the payload — which silently re-points a
+            // repository at a different account and loses the delete-branch policy it was
+            // inheriting. An unknown repository has nothing to retain and nothing to delete.
+            var mergedRepository = await session.LoadAsync<Repository>(Repository.DocumentId(evt.Repository.Id), ct);
+            if (mergedRepository is null) return;
 
-            // After the broadcast, not before: the retention message is in-process and cheap, and
-            // it should not wait behind a GitHub round-trip that may take seconds or fail.
-            await DeleteHeadBranchIfEnabled(evt, ct);
+            var head = evt.PullRequest.Head.Repo;
+            var @base = evt.PullRequest.Base.Repo;
+
+            await messageBus.BroadcastAsync(new ForgeWebhookMessage<PullRequestMerged>(
+                EForgeProvider.GitHub,
+                new PullRequestMerged(
+                    RepositoryId: mergedRepository.Id!,
+                    Number: (int)evt.Number,
+                    HeadRef: evt.PullRequest.Head.Ref,
+                    // Unknown counts as "from a fork". Declining to delete is recoverable;
+                    // deleting someone else's branch is not.
+                    HeadIsFromSameRepository: head is not null && @base is not null && head.Id == @base.Id)), ct);
             return;
         }
 
@@ -361,110 +370,6 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                 Title: pr.Title,
                 IsFirstOpen: evt.Action is "opened" or "reopened",
                 AuthorIsBot: pr.User?.Type is not null && pr.User.Type == Octokit.Webhooks.Models.UserType.Bot)), ct);
-    }
-
-    /// <summary>
-    /// Deletes a merged pull request's head branch, when the repository opted in.
-    /// </summary>
-    /// <remarks>
-    /// Ported from the WebhooksDemo recipient this replaced, with the two changes that made the
-    /// setting safe on a multi-tenant server: it is gated on a per-repository opt-in instead of
-    /// applying bot-wide, and it fires only for merged pull requests instead of every close.
-    /// <para>
-    /// Deliberately not on the project-automation path. A board and a repository are siblings, so
-    /// gating this on a board would have made it unreachable for an owner with no board, inert for
-    /// a board carrying no pull-request rule, and duplicated for an owner with two. See C16.
-    /// </para>
-    /// <para>
-    /// Never throws. Deleting the branch is a courtesy after the merge has already landed; failing
-    /// the webhook delivery over it would cost us the event and change nothing about the merge.
-    /// </para>
-    /// </remarks>
-    private async Task DeleteHeadBranchIfEnabled(PullRequestEvent evt, CancellationToken ct)
-    {
-        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(evt.Repository!.Id), ct);
-        if (repository is null)
-            return;
-
-        // The account is loaded only when the repository defers to it — a point load on a known
-        // document id, never a query, and skipped entirely when the repository has decided for
-        // itself. Deliberately not GetOrCreateAccount: that stores on a miss, and a read path must
-        // not mint documents.
-        var account = repository.DeleteBranchOnPrClose is EDeleteBranchPolicy.Inherit
-            ? await session.LoadAsync<Account>(
-                repository.Account ?? Account.DocumentId(evt.Repository.Owner.Id), ct)
-            : null;
-
-        if (!Repository.ResolveDeleteBranchOnPrClose(repository, account))
-            return;
-
-        var pr = evt.PullRequest;
-        var headRepo = pr.Head.Repo;
-        var baseRepo = pr.Base.Repo;
-
-        // A fork's head branch lives in a repository we were never given write access to, and that
-        // its own owner still wants. The opt-in is on the base repository and cannot speak for it.
-        if (headRepo is null || baseRepo is null || headRepo.Id != baseRepo.Id)
-            return;
-
-        var installationId = evt.Installation?.Id;
-        if (installationId is null)
-        {
-            logger.LogWarning("No installation on pull_request for {FullName}; cannot delete branch {Ref}.",
-                baseRepo.FullName, pr.Head.Ref);
-            return;
-        }
-
-        var owner = baseRepo.Owner.Login;
-        var name = baseRepo.Name;
-        try
-        {
-            var client = await installationService.CreateInstallationClientAsync(installationId.Value);
-            await client.Git.Reference.Delete(owner, name, $"heads/{pr.Head.Ref}");
-            logger.LogInformation("Deleted branch {Owner}/{Repo}:{Ref} after PR #{Number} merged.",
-                owner, name, pr.Head.Ref, pr.Number);
-        }
-        catch (Octokit.ApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
-        {
-            // The installation cannot write refs. Almost always a `contents` permission that was
-            // raised after the installation was created and never accepted -- in which case the
-            // feature is inert everywhere, not just here, and looks enabled in the UI.
-            //
-            // Caught on StatusCode rather than on ForbiddenException because Octokit raises a bare
-            // ApiException for some 403s; PullRequestCommentPublisher catches the same way, for the
-            // same reason. Logged distinctly because the catch-all below made "not permitted" look
-            // identical to a transient fault.
-            logger.LogError(ex,
-                "Not permitted to delete branch {Owner}/{Repo}:{Ref} for PR #{Number}. The GitHub App "
-                + "installation is missing `contents: write` -- a raised permission must be accepted "
-                + "per installation before branch deletion can work.",
-                owner, name, pr.Head.Ref, pr.Number);
-        }
-        catch (Octokit.NotFoundException)
-        {
-            // Usually a race with GitHub's own delete_branch_on_merge, or a hand deletion -- the
-            // intended state is reached either way, so that is information rather than a failure.
-            //
-            // ⚠️ But not always: GitHub answers 404 rather than 403 for some refs a token may not
-            // write, so this arm can also be a permission failure wearing the wrong status. The
-            // message says both, because logging "already gone" at Information for a permission
-            // problem is how a dead feature looks healthy.
-            logger.LogInformation(
-                "Branch {Owner}/{Repo}:{Ref} was already gone for PR #{Number} -- or the installation "
-                + "may not be permitted to see it (GitHub answers 404 for some refs a token cannot write).",
-                owner, name, pr.Head.Ref, pr.Number);
-        }
-        catch (Octokit.ApiValidationException ex)
-        {
-            // 422 is normally a protected branch. Retrying would fail identically every time.
-            logger.LogWarning(ex, "Refused to delete branch {Owner}/{Repo}:{Ref} for PR #{Number} (likely protected).",
-                owner, name, pr.Head.Ref, pr.Number);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to delete branch {Owner}/{Repo}:{Ref} for PR #{Number}.",
-                owner, name, pr.Head.Ref, pr.Number);
-        }
     }
 
     private async Task<Account> GetOrCreateAccount(long gitHubId, CancellationToken ct)

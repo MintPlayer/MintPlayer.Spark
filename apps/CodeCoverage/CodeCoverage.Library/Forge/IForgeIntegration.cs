@@ -136,6 +136,27 @@ public interface IForgeIntegration
         long? existingId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Deletes a branch. Best-effort and never throws.
+    /// </summary>
+    /// <remarks>
+    /// No capability guards this: every forge can delete a ref, so refusing would be an
+    /// availability answer rather than a capability one.
+    /// <para>
+    /// <b>Never throws, deliberately.</b> This runs after a merge has already landed — the branch is
+    /// a courtesy, and failing the caller over it would cost the event and change nothing about the
+    /// merge. Implementations log their own outcomes, because the interesting cases are
+    /// forge-specific: a GitHub App missing an accepted <c>contents: write</c> looks identical to a
+    /// transient fault unless it is named.
+    /// </para>
+    /// <para>
+    /// ⚠️ The caller decides <em>whether</em> to delete. An implementation must not consult policy,
+    /// and must not refuse a fork's branch on its own — by the time this is called the decision has
+    /// been taken with information the implementation does not have.
+    /// </para>
+    /// </remarks>
+    Task DeleteBranchAsync(Repository repository, string branch, CancellationToken cancellationToken = default);
+
     /// <summary>Ensures the pull request carries exactly one comment with this body.</summary>
     /// <remarks>
     /// Never throws: every outcome is recorded on the feedback outbox, because a failure here must

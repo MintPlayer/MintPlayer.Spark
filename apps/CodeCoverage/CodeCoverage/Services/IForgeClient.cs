@@ -52,6 +52,9 @@ public interface IForgeClient
     /// </summary>
     Task<string?> GetFirstParentAsync(Repository repository, string sha, CancellationToken cancellationToken = default);
 
+    /// <summary>Deletes a branch. Best-effort, never throws; the implementation logs its outcome.</summary>
+    Task DeleteBranchAsync(Repository repository, string branch, CancellationToken cancellationToken = default);
+
     /// <summary>Source of one file at an exact commit, or null when unavailable. Never stored.</summary>
     Task<string?> GetFileContentAsync(Repository repository, string sha, string path, CancellationToken cancellationToken = default);
 }

@@ -2,6 +2,7 @@ using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using MintPlayer.SourceGenerators.Attributes;
 using Raven.Client.Documents.Session;
+using Microsoft.Extensions.Logging;
 
 namespace CodeCoverage.Services;
 
@@ -30,6 +31,8 @@ public partial class GitHubForgeClient : IForgeClient
     [Inject] private readonly IGitHubDiffService diffService;
     [Inject] private readonly IGitHubContentService contentService;
     [Inject] private readonly IAsyncDocumentSession session;
+    [Inject] private readonly MintPlayer.Spark.Webhooks.GitHub.Services.IGitHubInstallationService installationService;
+    [Inject] private readonly ILogger<GitHubForgeClient> logger;
 
     /// <summary>Per-request memo, keyed by repository document id. Null value means "resolved, and there is none".</summary>
     private readonly Dictionary<string, long?> installations = [];
@@ -77,5 +80,64 @@ public partial class GitHubForgeClient : IForgeClient
             installations[repository.Id] = installationId;
 
         return installationId;
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// The three outcomes are logged apart on purpose. Collapsing them is how a permanently dead
+    /// feature looks healthy: a missing <c>contents: write</c> is not a transient fault, and
+    /// "already gone" is not a failure at all.
+    /// </remarks>
+    public async Task DeleteBranchAsync(Repository repository, string branch, CancellationToken cancellationToken = default)
+    {
+        var installationId = await ResolveInstallationAsync(repository, cancellationToken);
+        if (installationId is null)
+        {
+            logger.LogWarning("No installation for {FullName}; cannot delete branch {Branch}.",
+                repository.FullName, branch);
+            return;
+        }
+
+        try
+        {
+            var client = await installationService.CreateInstallationClientAsync(installationId.Value);
+            await client.Git.Reference.Delete(repository.OwnerLogin, repository.Name, $"heads/{branch}");
+            logger.LogInformation("Deleted branch {Owner}/{Repo}:{Branch}.",
+                repository.OwnerLogin, repository.Name, branch);
+        }
+        catch (Octokit.ApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        {
+            // Almost always a `contents` permission raised after the installation was created and
+            // never accepted — in which case the feature is inert everywhere, not just here, and
+            // still looks enabled in the UI.
+            //
+            // Caught on StatusCode rather than ForbiddenException because Octokit raises a bare
+            // ApiException for some 403s.
+            logger.LogError(ex,
+                "Not permitted to delete branch {Owner}/{Repo}:{Branch}. The GitHub App installation "
+                + "is missing `contents: write` — a raised permission must be accepted per "
+                + "installation before branch deletion can work.",
+                repository.OwnerLogin, repository.Name, branch);
+        }
+        catch (Octokit.NotFoundException)
+        {
+            // Usually a race with GitHub's own delete_branch_on_merge, or a hand deletion — the
+            // intended state is reached either way.
+            //
+            // ⚠️ But not always: GitHub answers 404 rather than 403 for some refs a token may not
+            // write, so this arm can also be a permission failure wearing the wrong status. The
+            // message says both, because logging "already gone" at Information for a permission
+            // problem is how a dead feature looks healthy.
+            logger.LogInformation(
+                "Branch {Owner}/{Repo}:{Branch} was already gone, or the installation may not write it.",
+                repository.OwnerLogin, repository.Name, branch);
+        }
+        catch (Exception ex)
+        {
+            // Never throws: this runs after the merge has landed, and failing the caller would cost
+            // the event and change nothing about the merge.
+            logger.LogWarning(ex, "Failed to delete branch {Owner}/{Repo}:{Branch}.",
+                repository.OwnerLogin, repository.Name, branch);
+        }
     }
 }

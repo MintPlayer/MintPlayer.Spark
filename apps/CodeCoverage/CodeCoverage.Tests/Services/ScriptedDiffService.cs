@@ -97,6 +97,15 @@ public sealed class ScriptedDiffService(CommitComparison? comparison = null)
     public Task<string?> GetFileContentAsync(Repository repository, string sha, string path, CancellationToken cancellationToken = default)
         => Task.FromResult(Files.TryGetValue($"{sha}/{path}", out var content) ? content : null);
 
+    /// <summary>Branches this forge was asked to delete, in order.</summary>
+    public List<string> DeletedBranches { get; } = [];
+
+    public Task DeleteBranchAsync(Repository repository, string branch, CancellationToken cancellationToken = default)
+    {
+        DeletedBranches.Add(branch);
+        return Task.CompletedTask;
+    }
+
     public Task<long> PublishStatusAsync(Repository repository, string sha, string name, ForgeVerdict verdict, long? existingId, CancellationToken cancellationToken = default)
     {
         Statuses.Add((sha, name, verdict));

@@ -1,5 +1,6 @@
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
+using CodeCoverage.LookupReferences;
 using Microsoft.Extensions.Logging;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging.Abstractions;
@@ -30,11 +31,13 @@ namespace CodeCoverage.Recipients;
 /// </remarks>
 public partial class ForgeEventsRecipient :
     IRecipient<ForgeWebhookMessage<BranchCommitPushed>>,
-    IRecipient<ForgeWebhookMessage<PullRequestUpdated>>
+    IRecipient<ForgeWebhookMessage<PullRequestUpdated>>,
+    IRecipient<ForgeWebhookMessage<PullRequestMerged>>
 {
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IMessageBus messageBus;
     [Inject] private readonly ILogger<ForgeEventsRecipient> logger;
+    [Inject] private readonly IForgeIntegrationResolver forges;
 
     public async Task HandleAsync(ForgeWebhookMessage<BranchCommitPushed> message, CancellationToken cancellationToken = default)
     {
@@ -86,6 +89,63 @@ public partial class ForgeEventsRecipient :
                 AuthorIsBot = evt.AuthorIsBot,
             }, cancellationToken);
         }
+    }
+
+    /// <remarks>
+    /// Two effects, in a deliberate order. Retention runs first because it is in-process and cheap,
+    /// and must not wait behind a forge round-trip that may take seconds or fail. The branch delete
+    /// is a courtesy afterwards.
+    /// </remarks>
+    public async Task HandleAsync(ForgeWebhookMessage<PullRequestMerged> message, CancellationToken cancellationToken = default)
+    {
+        var evt = message.Event;
+        var repository = await session.LoadAsync<Repository>(evt.RepositoryId, cancellationToken);
+        if (repository is null) return;
+
+        // Retention: a merged pull request surrenders its build data. A closed-unmerged one does
+        // not, which is why the event is PullRequestMerged and not PullRequestClosed.
+        await messageBus.BroadcastAsync(new Ingestion.DeletePullRequestBuildsMessage
+        {
+            RepositoryGitHubId = repository.GitHubId,
+            PullRequestNumber = evt.Number,
+        }, cancellationToken);
+
+        await DeleteHeadBranchIfEnabledAsync(repository, evt, cancellationToken);
+    }
+
+    /// <summary>
+    /// Deletes a merged pull request's head branch, when the repository opted in.
+    /// </summary>
+    /// <remarks>
+    /// <b>Policy lives here; the ref delete lives in the forge.</b> Resolving the opt-in and
+    /// refusing to touch a fork's branch are decisions the app makes identically for every forge —
+    /// only the delete itself is forge work, and it went behind
+    /// <see cref="IForgeIntegration.DeleteBranchAsync"/>.
+    /// <para>
+    /// Deliberately not on the project-automation path. A board and a repository are siblings, so
+    /// gating this on a board would make it unreachable for an owner with no board, inert for a
+    /// board carrying no pull-request rule, and duplicated for an owner with two.
+    /// </para>
+    /// </remarks>
+    private async Task DeleteHeadBranchIfEnabledAsync(Repository repository, PullRequestMerged evt, CancellationToken cancellationToken)
+    {
+        if (evt.HeadRef is not { Length: > 0 } headRef) return;
+
+        // ⚠️ A fork's head branch lives in a repository we were never given write access to, and
+        // that its own owner still wants. The opt-in is on the base repository and cannot speak
+        // for it.
+        if (!evt.HeadIsFromSameRepository) return;
+
+        // Loaded only when the repository defers to it — a point load on a known id, never a query,
+        // and skipped entirely when the repository has decided for itself. Deliberately not a
+        // get-or-create: a read path must not mint documents.
+        var account = repository.DeleteBranchOnPrClose is EDeleteBranchPolicy.Inherit && repository.Account is { } accountId
+            ? await session.LoadAsync<Account>(accountId, cancellationToken)
+            : null;
+
+        if (!Repository.ResolveDeleteBranchOnPrClose(repository, account)) return;
+
+        await forges.For(repository).DeleteBranchAsync(repository, headRef, cancellationToken);
     }
 
     /// <summary>

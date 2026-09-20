@@ -105,12 +105,19 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
     /// worth protecting is that the two <em>compose</em>. A normaliser that emits a well-formed
     /// event nobody acts on would pass two narrower tests and still be broken.
     /// </remarks>
-    private static async Task DeliverForgeEventsAsync(IAsyncDocumentSession session, RecordingMessageBus bus)
+    private static async Task<CodeCoverage.Tests.Services.ScriptedDiffService> DeliverForgeEventsAsync(
+        IAsyncDocumentSession session, RecordingMessageBus bus,
+        CodeCoverage.Tests.Services.ScriptedDiffService? forge = null)
     {
+        forge ??= new CodeCoverage.Tests.Services.ScriptedDiffService();
         var services = new ServiceCollection();
         services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.None));
         services.AddSingleton(session);
         services.AddSingleton<MintPlayer.Spark.Messaging.Abstractions.IMessageBus>(bus);
+        // Branch deletion is forge work now, so the neutral recipient resolves an integration for
+        // it. The scripted forge is its own resolver, and records what it was asked to delete.
+        services.AddSingleton<IForgeIntegration>(forge);
+        services.AddSingleton<IForgeIntegrationResolver>(forge);
         services.AddScoped<ForgeEventsRecipient>();
         var recipient = services.BuildServiceProvider().GetRequiredService<ForgeEventsRecipient>();
 
@@ -126,8 +133,13 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
                 case ForgeWebhookMessage<PullRequestUpdated> pr:
                     await recipient.HandleAsync(pr);
                     break;
+                case ForgeWebhookMessage<PullRequestMerged> merged:
+                    await recipient.HandleAsync(merged);
+                    break;
             }
         }
+
+        return forge;
     }
 
     /// <summary>
@@ -517,11 +529,14 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
         await SeedRepositoryAsync(session, EDeleteBranchPolicy.Enabled);
-        var recipient = CreateRecipient(session, out _, out var installer);
+        var recipient = CreateRecipient(session, out var bus);
 
         await recipient.HandleAsync(Message("pull_request", MergedPr()));
+        var forge = await DeliverForgeEventsAsync(session, bus);
 
-        installer.Deleted.Should().Equal("acme/widgets:heads/feature/thing");
+        // Asserted on the forge rather than on an installation client: deleting a ref is the one
+        // part of this that is forge work, and it moved behind IForgeIntegration in M8c.
+        forge.DeletedBranches.Should().Equal("feature/thing");
     }
 
     [Fact]
@@ -530,12 +545,13 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
         await SeedRepositoryAsync(session, EDeleteBranchPolicy.Enabled);
-        var recipient = CreateRecipient(session, out _, out var installer);
+        var recipient = CreateRecipient(session, out var bus);
 
         await recipient.HandleAsync(Message("pull_request",
             PullRequestJson(HeadSha, BaseSha, action: "closed", merged: false)));
 
-        installer.Deleted.Should().BeEmpty("abandoning a pull request must not destroy the work on it");
+        var forge = await DeliverForgeEventsAsync(session, bus);
+        forge.DeletedBranches.Should().BeEmpty("abandoning a pull request must not destroy the work on it");
     }
 
     [Fact]
@@ -544,11 +560,11 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
         await SeedRepositoryAsync(session, EDeleteBranchPolicy.Disabled);
-        var recipient = CreateRecipient(session, out _, out var installer);
+        var recipient = CreateRecipient(session, out var bus);
 
         await recipient.HandleAsync(Message("pull_request", MergedPr()));
 
-        installer.Deleted.Should().BeEmpty();
+        (await DeliverForgeEventsAsync(session, bus)).DeletedBranches.Should().BeEmpty();
     }
 
     [Fact]
@@ -557,11 +573,11 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         // No Repository document at all — the load returns null and the method must return, not throw.
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
-        var recipient = CreateRecipient(session, out _, out var installer);
+        var recipient = CreateRecipient(session, out var bus);
 
         await recipient.HandleAsync(Message("pull_request", MergedPr()));
 
-        installer.Deleted.Should().BeEmpty();
+        (await DeliverForgeEventsAsync(session, bus)).DeletedBranches.Should().BeEmpty();
     }
 
     [Fact]
@@ -571,53 +587,35 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
         await SeedRepositoryAsync(session, EDeleteBranchPolicy.Enabled);
-        var recipient = CreateRecipient(session, out _, out var installer);
+        var recipient = CreateRecipient(session, out var bus);
 
         await recipient.HandleAsync(Message("pull_request", MergedPr(headFromFork: true)));
 
-        installer.Deleted.Should().BeEmpty();
+        (await DeliverForgeEventsAsync(session, bus)).DeletedBranches.Should().BeEmpty();
     }
 
     /// <summary>
-    /// The seventh arm, which the issue's table omits — and the one that would have made every
-    /// other fact here pass vacuously, since the shared payload carried no <c>installation</c>
-    /// node until these tests were written.
+    /// ⚠️ <b>The payload's installation node is no longer the gate — this is a behaviour change.</b>
     /// </summary>
-    [Fact]
-    public async Task A_payload_with_no_installation_deletes_nothing()
-    {
-        using var store = GetDocumentStore();
-        using var session = store.OpenAsyncSession();
-        await SeedRepositoryAsync(session, EDeleteBranchPolicy.Enabled);
-        var recipient = CreateRecipient(session, out _, out var installer);
-
-        var withoutInstallation = MergedPr()
-            .Replace("\"installation\": { \"id\": 1, \"node_id\": \"MDIzOkludGVncmF0aW9uSW5zdGFsbGF0aW9uMQ==\" },", "");
-
-        await recipient.HandleAsync(Message("pull_request", withoutInstallation));
-
-        installer.Deleted.Should().BeEmpty();
-    }
-
-    /// <summary>
-    /// Deleting the branch is a courtesy after the merge has already landed. Failing the webhook
-    /// delivery over it would cost the event and change nothing about the merge — so every failure
-    /// shape must complete.
-    /// </summary>
-    [Theory]
-    [MemberData(nameof(DeleteFailures))]
-    public async Task A_failed_delete_never_breaks_webhook_processing(string shape, Exception failure)
-    {
-        using var store = GetDocumentStore();
-        using var session = store.OpenAsyncSession();
-        await SeedRepositoryAsync(session, EDeleteBranchPolicy.Enabled);
-        var recipient = CreateRecipient(session, out _, out var installer);
-        installer.DeleteThrows = failure;
-
-        var act = async () => await recipient.HandleAsync(Message("pull_request", MergedPr()));
-
-        await act.Should().NotThrowAsync($"a {shape} response must not cost the webhook delivery");
-    }
+    /// <remarks>
+    /// The old test here asserted that a <c>pull_request</c> payload carrying no <c>installation</c>
+    /// deleted nothing, because the recipient read the installation straight off the delivery. M8c
+    /// moved the delete behind <see cref="CodeCoverage.Forge.IForgeIntegration.DeleteBranchAsync"/>,
+    /// which resolves the installation from the <em>repository's own account</em> — the same source
+    /// every other GitHub call in this app already used.
+    /// <para>
+    /// So the behaviour genuinely changed: a delivery with no installation node now still deletes,
+    /// provided the repository's account has one. That is the better of the two, and deliberate —
+    /// the payload field describes the delivery, while the account's installation is the credential
+    /// we would actually authenticate with. Reading one and authenticating with the other was the
+    /// inconsistency.
+    /// </para>
+    /// <para>
+    /// The protection did not disappear, it moved: no installation on the account means no
+    /// credential, and <c>GitHubForgeClient</c> declines quietly rather than calling the API. That
+    /// is covered by <c>GitHubForgeClientBranchDeleteTests.No_installation_declines_quietly</c>.
+    /// </para>
+    /// </remarks>
 
     private static Octokit.IResponse ResponseWith(System.Net.HttpStatusCode status)
     {
@@ -640,11 +638,14 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
         await SeedRepositoryAsync(session, EDeleteBranchPolicy.Inherit, accountDefault: true);
-        var recipient = CreateRecipient(session, out _, out var installer);
+        var recipient = CreateRecipient(session, out var bus);
 
         await recipient.HandleAsync(Message("pull_request", MergedPr()));
+        var forge = await DeliverForgeEventsAsync(session, bus);
 
-        installer.Deleted.Should().Equal("acme/widgets:heads/feature/thing");
+        // Asserted on the forge rather than on an installation client: deleting a ref is the one
+        // part of this that is forge work, and it moved behind IForgeIntegration in M8c.
+        forge.DeletedBranches.Should().Equal("feature/thing");
     }
 
     [Fact]
@@ -653,11 +654,11 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
         await SeedRepositoryAsync(session, EDeleteBranchPolicy.Inherit, accountDefault: false);
-        var recipient = CreateRecipient(session, out _, out var installer);
+        var recipient = CreateRecipient(session, out var bus);
 
         await recipient.HandleAsync(Message("pull_request", MergedPr()));
 
-        installer.Deleted.Should().BeEmpty();
+        (await DeliverForgeEventsAsync(session, bus)).DeletedBranches.Should().BeEmpty();
     }
 
     /// <summary>
@@ -671,11 +672,11 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
         await SeedRepositoryAsync(session, EDeleteBranchPolicy.Disabled, accountDefault: true);
-        var recipient = CreateRecipient(session, out _, out var installer);
+        var recipient = CreateRecipient(session, out var bus);
 
         await recipient.HandleAsync(Message("pull_request", MergedPr()));
 
-        installer.Deleted.Should().BeEmpty();
+        (await DeliverForgeEventsAsync(session, bus)).DeletedBranches.Should().BeEmpty();
     }
 
     [Fact]
@@ -684,11 +685,14 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
         await SeedRepositoryAsync(session, EDeleteBranchPolicy.Enabled, accountDefault: false);
-        var recipient = CreateRecipient(session, out _, out var installer);
+        var recipient = CreateRecipient(session, out var bus);
 
         await recipient.HandleAsync(Message("pull_request", MergedPr()));
+        var forge = await DeliverForgeEventsAsync(session, bus);
 
-        installer.Deleted.Should().Equal("acme/widgets:heads/feature/thing");
+        // Asserted on the forge rather than on an installation client: deleting a ref is the one
+        // part of this that is forge work, and it moved behind IForgeIntegration in M8c.
+        forge.DeletedBranches.Should().Equal("feature/thing");
     }
 
     /// <summary>
@@ -701,12 +705,12 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
         await SeedRepositoryAsync(session, EDeleteBranchPolicy.Inherit);
-        var recipient = CreateRecipient(session, out _, out var installer);
+        var recipient = CreateRecipient(session, out var bus);
 
         var act = async () => await recipient.HandleAsync(Message("pull_request", MergedPr()));
 
         await act.Should().NotThrowAsync();
-        installer.Deleted.Should().BeEmpty();
+        (await DeliverForgeEventsAsync(session, bus)).DeletedBranches.Should().BeEmpty();
     }
 
     /// <summary>
