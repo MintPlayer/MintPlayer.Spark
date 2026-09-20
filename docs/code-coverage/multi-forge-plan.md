@@ -163,7 +163,7 @@ Still GitHub-only.
 
 ---
 
-## M2a — Converge the seams into `IForgeIntegration` 🟦 *(D16/D17; blocks every forge)*
+## M2a — Converge the seams into `IForgeIntegration` 🟩 *(821f7b1d, ed9e8f2f, + conversion)*
 
 Supersedes the first draft of this milestone, which added one resolver per seam. With a single
 interface there is one selection helper, not three.
@@ -198,9 +198,37 @@ implementation silently redirects nine call sites (PRD §5.7a), because `[Regist
 **Exit:** no singular injection of a forge interface anywhere; `grep -rn "IGitHubAccessService"`
 in `CodeCoverage/` matches only the GitHub implementation's own internals.
 
+
+### As-built
+
+- `IForgeIntegration` + `IForgeIntegrationResolver` live in `CodeCoverage.Library/Forge/`, where the
+  forge libraries will need them. `CommitComparison` / `DiffFile` moved with them.
+- All **14** consumers converted. Repository-scoped calls read `forges.For(repository)`; fan-out
+  goes through `ForgeFanOut`, which iterates the viewer's **linked** forges, not every registered one.
+- The resolver **throws** on a duplicate `Provider` rather than taking the first, and
+  `ForgeAccessResolver` is deleted.
+- `ProviderOf(repository)` answers GitHub from one explicit line until M6. Written so that
+  registering a second forge before M6 fails loudly rather than mis-routing quietly.
+- The temporary `ForgeOwner` → bare-login flattening is now in **one** extension method
+  (`ForgeFanOut.GetAllowedOwnerLoginsAsync`) instead of four call sites — one thing for M6f to delete.
+- ⚠️ **Behaviour change:** `MyAccountsService` reports reauth if **any** linked forge needs it,
+  not GitHub specifically.
+- **D19 shipped separately** (`821f7b1d`) because it takes access away from anyone whose
+  installation is suspended. `BuildOwnerSet` extracted as a pure function so the rule is testable.
+- Test doubles: `ScriptedDiffService` implements the integration **and** the resolver, so its six
+  call sites pass one object. `SingleForgeResolver` wraps a *real* integration for the two fixtures
+  that must keep production behaviour in the loop — `RepoSettingsControllerTests` counts the
+  authorization call, and the feedback guard tests assert the reaction to a genuine "no
+  installation" answer.
+- ⚠️ **A pre-existing failure surfaced and was fixed.** `Refresh_failure_after_401_…` asserted a
+  degraded lookup cached *nothing*; M1's negative cache (`704ab22a`) made that false, and because
+  both halves landed in the same milestone the suite was never run between them. Now pinned to the
+  distinction that matters: the failure *state* is remembered, the degraded owner *set* is not.
+- **562 tests pass.**
+
 ---
 
-## M2b — Conformance test for `Capabilities` 🟦 *(D17)*
+## M2b — Conformance test for `Capabilities` 🟩
 
 `EForgeCapability[]` is a runtime contract with no compiler behind it. An implementation that advertises a
 capability it throws on, or quietly implements one it does not advertise, is a bug nothing else
@@ -213,6 +241,21 @@ trusting the array to decide what to skip.
   `NotSupportedException`, and every unadvertised capability's methods **do**.
 - Assert `Provider` values are distinct across registrations — the duplicate-registration bug M2a
   guards against, caught at test time rather than in production.
+
+
+### As-built
+
+- Implementations are **discovered by reflection**, not listed, so a fourth forge is covered the day
+  its assembly is referenced.
+- ⚠️ **The first draft passed vacuously.** With one implementation advertising every capability
+  that has members, the "unadvertised must throw" direction had nothing to iterate. The rules are
+  therefore extracted and also run against **three deliberately non-conforming doubles** — supports
+  more than it admits, advertises more than it supports, declares a capability with no members — so
+  each rule is *known* to bite.
+- A separate test asserts discovery returns something, because a namespace move would otherwise make
+  every theory pass vacuously and silently stop enforcing the contract.
+- `Boards` and `CiIdentity` stay in the enum ahead of their members so the third rule has something
+  to catch; declaring one early now fails.
 
 ---
 
