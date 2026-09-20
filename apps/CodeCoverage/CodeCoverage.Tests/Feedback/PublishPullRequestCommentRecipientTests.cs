@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 using Xunit;
+using CodeCoverage.Tests.Services;
 
 namespace CodeCoverage.Tests.Feedback;
 
@@ -18,21 +19,17 @@ public class PublishPullRequestCommentRecipientTests : CoverageRavenTest
     private const long RepoId = 204431316;
     private const int Pr = 79;
 
-    private sealed record Published(string Body, string Sha, long InstallationId);
+    /// <summary>
+    /// The scripted forge stands in for the publisher now that this recipient goes through the
+    /// forge seam. The old double also recorded the installation id it was handed; that assertion
+    /// is gone because the recipient no longer passes one — resolving the credential is the
+    /// implementation's business, which is the property the seam exists to enforce.
+    /// </summary>
+    private static ScriptedDiffService Forge(bool accessible = true)
+        => new() { AccessAvailable = accessible };
 
-    private sealed class RecordingPublisher : IPullRequestCommentPublisher
-    {
-        public List<Published> Calls { get; } = [];
-
-        public Task PublishAsync(Entities.Repository repository, long installationId, int pullRequestNumber, string sha, string body, CancellationToken cancellationToken)
-        {
-            Calls.Add(new Published(body, sha, installationId));
-            return Task.CompletedTask;
-        }
-    }
-
-    private static PublishPullRequestCommentRecipient Create(IAsyncDocumentSession session, RecordingPublisher publisher)
-        => new(session, publisher, NullLogger<PublishPullRequestCommentRecipient>.Instance);
+    private static PublishPullRequestCommentRecipient Create(IAsyncDocumentSession session, ScriptedDiffService forge)
+        => new(session, forge, NullLogger<PublishPullRequestCommentRecipient>.Instance);
 
     private static async Task Seed(IDocumentStore store, Action<PullRequestFeedback> configure, bool withRepository = true)
     {
@@ -76,14 +73,16 @@ public class PublishPullRequestCommentRecipientTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await Seed(store, _ => { });
 
-        var publisher = new RecordingPublisher();
+        var publisher = Forge();
         using var session = store.OpenAsyncSession();
         await Create(session, publisher).HandleAsync(Message());
 
-        publisher.Calls.Should().ContainSingle();
-        publisher.Calls[0].Body.Should().Be("the owed body");
-        publisher.Calls[0].Sha.Should().Be("sha1");
-        publisher.Calls[0].InstallationId.Should().Be(555);
+        publisher.Comments.Should().ContainSingle();
+        publisher.Comments[0].Body.Should().Be("the owed body");
+        publisher.Comments[0].Sha.Should().Be("sha1");
+        // The installation id this used to assert is gone on purpose: the recipient no longer
+        // passes a credential, because resolving one is the forge implementation's business.
+        // Asserting it here would pin the coupling the seam exists to remove.
     }
 
     /// <summary>
@@ -97,11 +96,11 @@ public class PublishPullRequestCommentRecipientTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await Seed(store, f => { f.State = "Posted"; f.PendingBody = null; f.PendingSha = null; });
 
-        var publisher = new RecordingPublisher();
+        var publisher = Forge();
         using var session = store.OpenAsyncSession();
         await Create(session, publisher).HandleAsync(Message());
 
-        publisher.Calls.Should().BeEmpty();
+        publisher.Comments.Should().BeEmpty();
     }
 
     /// <summary>
@@ -110,23 +109,28 @@ public class PublishPullRequestCommentRecipientTests : CoverageRavenTest
     /// an option.
     /// </summary>
     [Fact]
-    public async Task A_lost_installation_stops_the_retry()
+    public async Task Lost_forge_access_stops_the_retry()
     {
         using var store = GetDocumentStore();
         await Seed(store, f => f.InstallationId = null);
 
-        var publisher = new RecordingPublisher();
+        // ⚠️ Renamed, and the gate moved. This used to pass because the recipient read the stored
+        // InstallationId and bailed when it was null. That was a GitHub credential deciding whether
+        // a comment could be retried, on a record that must outlive GitHub-only — and it meant a
+        // repository whose id was never stamped could never retry at all. The recipient now asks
+        // the forge, so the seeded null is irrelevant and the forge's answer is the gate.
+        var publisher = Forge(accessible: false);
         using var session = store.OpenAsyncSession();
         await Create(session, publisher).HandleAsync(Message());
 
-        publisher.Calls.Should().BeEmpty();
+        publisher.Comments.Should().BeEmpty();
     }
 
     [Fact]
     public async Task A_missing_feedback_document_is_ignored_rather_than_throwing()
     {
         using var store = GetDocumentStore();
-        var publisher = new RecordingPublisher();
+        var publisher = Forge();
         using var session = store.OpenAsyncSession();
 
         await Create(session, publisher).HandleAsync(new PublishPullRequestCommentMessage
@@ -134,7 +138,7 @@ public class PublishPullRequestCommentRecipientTests : CoverageRavenTest
             FeedbackId = PullRequestFeedback.DocumentId(999999, 1),
         });
 
-        publisher.Calls.Should().BeEmpty();
+        publisher.Comments.Should().BeEmpty();
     }
 
     /// <summary>A deleted repository document must not take the queue down with it.</summary>
@@ -144,11 +148,11 @@ public class PublishPullRequestCommentRecipientTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await Seed(store, _ => { }, withRepository: false);
 
-        var publisher = new RecordingPublisher();
+        var publisher = Forge();
         using var session = store.OpenAsyncSession();
         await Create(session, publisher).HandleAsync(Message());
 
-        publisher.Calls.Should().BeEmpty();
+        publisher.Comments.Should().BeEmpty();
     }
 
     /// <summary>
@@ -162,11 +166,11 @@ public class PublishPullRequestCommentRecipientTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await Seed(store, f => { f.PendingSha = null; f.LastPublishedSha = "older-sha"; });
 
-        var publisher = new RecordingPublisher();
+        var publisher = Forge();
         using var session = store.OpenAsyncSession();
         await Create(session, publisher).HandleAsync(Message());
 
-        publisher.Calls.Should().ContainSingle();
-        publisher.Calls[0].Sha.Should().Be("older-sha");
+        publisher.Comments.Should().ContainSingle();
+        publisher.Comments[0].Sha.Should().Be("older-sha");
     }
 }

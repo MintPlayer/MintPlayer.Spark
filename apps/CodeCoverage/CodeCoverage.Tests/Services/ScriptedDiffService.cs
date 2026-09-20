@@ -47,7 +47,7 @@ public sealed class ScriptedDiffService(CommitComparison? comparison = null)
     public List<(string Sha, string Name, ForgeVerdict Verdict)> Statuses { get; } = [];
 
     /// <summary>Comments published against this forge, in order, for assertions.</summary>
-    public List<(int PullRequestNumber, string Body)> Comments { get; } = [];
+    public List<(int PullRequestNumber, string Sha, string Body)> Comments { get; } = [];
 
     public EForgeProvider Provider => EForgeProvider.GitHub;
 
@@ -106,7 +106,7 @@ public sealed class ScriptedDiffService(CommitComparison? comparison = null)
 
     public Task PublishCommentAsync(Repository repository, int pullRequestNumber, string sha, string body, CancellationToken cancellationToken = default)
     {
-        Comments.Add((pullRequestNumber, body));
+        Comments.Add((pullRequestNumber, sha, body));
         return Task.CompletedTask;
     }
 }

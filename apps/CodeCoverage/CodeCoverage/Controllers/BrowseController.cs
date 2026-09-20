@@ -472,13 +472,6 @@ public partial class BrowseController : ControllerBase
             FileCoverage.DocumentId(await CoverageSourceAsync(commit, cancellationToken), path), cancellationToken);
         if (fileCoverage is null) return NotFound();
 
-        long? installationId = null;
-        if (repository.Account is not null)
-        {
-            var account = await session.LoadAsync<Account>(repository.Account, cancellationToken);
-            installationId = account?.InstallationId;
-        }
-
         var source = await forges.For(repository).GetFileContentAsync(repository, sha, path, cancellationToken);
 
         return Ok(new

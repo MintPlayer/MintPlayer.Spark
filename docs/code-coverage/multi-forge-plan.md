@@ -259,7 +259,7 @@ trusting the array to decide what to skip.
 
 ---
 
-## M2c — Fold the five unseamed capability areas into the interface 🟦
+## M2c — Fold the unseamed capability areas into the interface 🟩 *(partly; the rest reassigned)*
 
 PRD §5.7c. Neutral operations with real cross-forge equivalents, implemented only for GitHub and
 reachable only through GitHub-typed interfaces. Each becomes a member of `IForgeIntegration`.
@@ -286,6 +286,45 @@ reachable only through GitHub-typed interfaces. Each becomes a member of `IForge
 ⚠️ **Not on the interface, deliberately:** App installations. They are GitHub's mechanism for
 answering a question `GetAccountsAsync` already asks neutrally; exposing them would leak the answer's
 implementation into the question. They stay internal to the GitHub library.
+
+
+### As-built — and three items reassigned
+
+Two things landed here. Three turned out to belong elsewhere under decisions taken **after** this
+milestone was written, and doing them here would have been work M7/M8/M15 then redid.
+
+**Done:**
+
+- ⚠️ **Two recipients were bypassing the forge seam entirely**, and each held its own copy of the
+  installation lookup — a sixth and seventh copy of the five M2 claimed to have removed. They
+  survived because they reach the *comment publisher* directly rather than the *client*, so neither
+  the M2 sweep nor §5.7's audit caught them. `OpenPullRequestCommentRecipient` and
+  `PublishPullRequestCommentRecipient` now resolve through `IForgeIntegrationResolver` and ask
+  `CheckAccessAsync` instead of testing `Account.InstallationId` themselves.
+- ⚠️ `PublishPullRequestCommentRecipient` no longer gates on the **stored** `feedback.InstallationId`.
+  That field is a GitHub credential on a record that has to outlive GitHub-only (M8), and using it as
+  the gate meant a repository whose installation id was never stamped could never retry a comment.
+- Dead code in `BrowseController` (~`:474-479`): an installation lookup computed and never used, left
+  behind when M2 moved resolution inside the client. It read as a live dependency in every grep.
+
+**Reassigned, with reasons:**
+
+- **`IInstallationRepositories` — no change needed.** M2c proposed reshaping it to enumerate *an
+  owner's* repositories. D15 then decided installations stay **internal to the GitHub library**, and
+  this interface is consumed only by `GitHubStateReconciler`, which is GitHub-only for the same
+  reason. It is already honestly named. Reshaping it would have invented a neutral surface for a
+  concept D15 says must not have one. It moves as-is in **M15**.
+- **`IRepositoryResolver` — belongs to M7, not here.** It is already a neutral interface with a
+  GitHub implementation, so the shape is right. The real problem is deeper: **`owner/name` means
+  nothing without knowing the forge**, so resolution is provider-scoped by nature and
+  `ResolveAsync` needs an `EForgeProvider` argument. Callers can only supply one once routes carry
+  the provider (D4/D5), which is **M7**. Until then it resolves GitHub, like `ProviderOf`.
+- **Branch deletion — belongs to M8.** `DeleteHeadBranchIfEnabled` lives inside
+  `GitHubEventsRecipient`, which is entirely webhook handling. It moves when the webhook contract
+  does, not before.
+
+**Net:** the credential-free property now holds for every path that publishes feedback. What remains
+is not "unseamed capability areas" but three things waiting on milestones that own them.
 
 ---
 
