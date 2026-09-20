@@ -533,17 +533,46 @@ what the subsystem actually supports before designing the unit.
 
 ---
 
-## M8 — De-GitHub the bus contract 🟦
+## M8 — A neutral webhook contract 🟦 *(D21; grew 2026-09-20)*
 
-`GitHubWebhookMessage.cs:15-16` declares `required long InstallationId` and `RepositoryFullName`, so
-every recipient and the `spark-github-all` queue name depend on a GitHub-shaped envelope.
+⚠️ **This milestone grew.** It was "drop `required long InstallationId` and `RepositoryFullName`
+(`GitHubWebhookMessage.cs:15-16`), rename the `spark-github-all` queue". D21 makes it a **multi-forge
+recipient model**: one recipient class handles a logical event from any forge, with one method, and
+adding a forge edits no consumer. That is a larger thing than a rename, and it is recorded as a scope
+increase rather than folded into the old bullets. Design and rationale in PRD §6.11.
 
-- Replace `InstallationId` with an opaque per-provider tenancy key; generalise the queue name.
-- ⚠️ Check `reference_spark_messaging_stranded_processing` before touching queue names, and the
-  single-subscription mode now on master — a new queue name is an ordinary modelling decision again,
-  but renaming one is not free.
+### The shape
 
-**Verify:** A3. Build; no recipient signature names GitHub.
+- **`ForgeWebhookMessage<TEvent>`** carrying the forge, the normalised event and the raw payload:
+  consumers write `IRecipient<ForgeWebhookMessage<IssueOpened>>` and nothing else.
+- **A canonical event model** — likely `PushReceived`, `PullRequestOpened`, `PullRequestClosed`,
+  `IssueOpened`, `RepositoryRenamed`. ⚠️ This has to be **designed, not discovered**, and it is the
+  part of M8 most likely to be got wrong by enumerating GitHub's events and calling them canonical.
+- **Normalisation in each forge library** (M15), not in the app: "verify this forge's signature,
+  parse its payload, publish a neutral event" is the webhook half of `IForgeIntegration`.
+- **Forge-specific messages stay** for events only one forge has — GitHub's `check_run`, Projects V2.
+  A recipient handling those is honestly forge-specific. Never a neutral name over a single-forge
+  concept (D17's reasoning, applied to messages).
+- `RawJson` is the escape hatch. A handler that reaches for it has become forge-specific again and
+  should say so.
+
+### Constraints that bind the implementation
+
+- ⚠️ **Pin the queue name.** Both existing records carry `[MessageQueue("spark-github-all")]`
+  deliberately: without it the name derives from the CLR type, and for a constructed generic that
+  embeds the argument's **assembly-qualified name**. One real database accumulated **seven**
+  `SparkMessaging-*` definitions, six orphans of exactly this shape, including separate
+  `Version=2.0.0.0` and `Version=3.0.0.0` variants of one event. `ForgeWebhookMessage<TEvent>` is the
+  same hazard.
+- ⚠️ **The subscription budget is a hard limit.** Production runs RavenDB **Community**, this repo has
+  already hit the cap once, and single-subscription mode is what resolved it. Check a one-queue-per-forge
+  design against the budget *before* building it.
+- ⚠️ **Two live defects get worse here and neither is ours**: a wire type with no handler is dropped
+  **silently**, and `Processing` is written but read by nothing, so a crash mid-handler drops the
+  webhook. Three forges multiply both. Out of scope to fix — not out of scope to record.
+
+**Verify:** A3. Build; no recipient signature names GitHub; one recipient handles an event from a
+second forge with no consumer edit (provable with a test double even before GitLab exists).
 
 ---
 

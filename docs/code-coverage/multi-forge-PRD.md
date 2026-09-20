@@ -81,6 +81,7 @@ dropped. Changing a decision is cheap; discovering an undocumented one is not.
 | **D18** | **Vocabulary: "forge", not "platform".** The thing we integrate with is a *forge*; bare *provider* is reserved for ASP.NET Identity's external login provider, with `EForgeProvider` the qualified name. | **DECIDED** — owner, this session: *"Use Forge wherever you like."* Everything M1/M2 shipped keeps its name; only D16/D17's identifiers changed. No id, URL or route consequence |
 | **D19** | **Suspended installations must stop conferring management rights.** The owner set is built from installations unfiltered (`GitHubAccessService.cs:105-109`) while the backfill already filters `!i.Suspended` (`:235`). Same array, one site filters. | **DECIDED** — owner, this session: fix in this PR. Carried by M2a |
 | **D20** | **An upload that cannot happen reports `Neutral`, never a failure.** `fail-ci-if-error` stays `false`. | **DECIDED** — owner, this session: *"instead of a check, we can report neutral. But no error, that would be intrusive."* ⚠️ GitHub has a first-class `neutral`; GitLab and Bitbucket do not (§5.3) |
+| **D21** | **Webhook recipients take a neutral `ForgeWebhookMessage<T>` carrying a normalised domain event; normalisation lives in each forge library. Forge-specific messages remain for events only one forge has.** One handler method, and adding a forge edits no consumer. | **DECIDED** — owner, this session: *"that design looks great."* ⚠️ Enlarges M8. See §6.11 |
 
 ---
 
@@ -1213,6 +1214,158 @@ Recorded here because "all necessary async methods" is right for every member ex
 redesign, and the credential-free signatures that made them correct carry over unchanged. The
 resolver-per-interface idea from the first draft of M2a is dropped: with one interface there is one
 selection helper, not three.
+
+---
+
+### 6.11 Webhook recipients see a neutral event, not a forge's (D21)
+
+Raised by the owner, 2026-09-20: can one recipient class handle the same logical event from several
+forges — `IRecipient<GitHubWebhookMessage<IssueCreated>>` **and**
+`IRecipient<BitbucketWebhookMessage<IssueCreated>>` — with lean implementations routing to one
+private method? And: *"If you can suggest a better, less-consumer-code alternative, that would be
+fine too (even better)."*
+
+**Decided: normalise in the forge library, so consumers never see a forge-shaped message at all.**
+
+The per-forge-interface version works, but its consumer cost scales with forge count — three forges
+means three interface implementations and three lean methods **per recipient**, and adding GitLab
+later edits every consumer that cares about any shared event. The neutral version costs one method
+and adding a forge touches **zero** consumers:
+
+```csharp
+class LogIssueOpened : IRecipient<ForgeWebhookMessage<IssueOpened>>
+{
+    public Task Handle(ForgeWebhookMessage<IssueOpened> m, CancellationToken ct)
+    {
+        // m.Provider — which forge, when it matters
+        // m.Event    — our IssueOpened, normalised
+        // m.RawJson  — escape hatch for something only one forge sends
+    }
+}
+```
+
+#### Why, in one line: it stops an M×N expansion
+
+*(The owner's framing, 2026-09-20: "Your proposal clearly prevents future M×N expansions.")*
+
+With a message type per forge, a codebase with **M** recipients and **N** forges needs **M×N**
+handler implementations, and every new forge edits **M** existing consumer classes. With a neutral
+message, it needs **M** — and N is absorbed once, inside the forge libraries, where a new forge is
+a new library rather than an edit to every consumer.
+
+That is the whole argument, and it is also the test for any future addition to this design: if a
+change makes consumer code grow with the number of forges, it is the wrong change.
+
+**This is not new architecture.** Normalisation belongs in the forge integration libraries already
+being built for D16/M15: "verify this forge's signature, parse its payload, publish a neutral event"
+is the same shape as `CompareAsync` or `PublishStatusAsync`, and §5.7c already classified *"normalise
+a push / PR-opened / PR-closed / repo-renamed event to a domain event"* as a neutral operation that
+merely happens to have only a GitHub implementation. The webhook half of `IForgeIntegration`.
+
+#### The rule
+
+**Neutral message for events all three forges have; forge-specific message for the rest; never a
+neutral name over a single-forge concept.** The last clause is D17's reasoning applied to messages:
+GitHub's `check_run` and Projects V2 events have no counterpart, so they keep forge-specific message
+types, and a recipient handling them is honestly forge-specific rather than pretending otherwise.
+
+#### Costs, stated plainly
+
+- **The canonical event set has to be designed, not discovered.** `PushReceived`,
+  `PullRequestOpened`, `PullRequestClosed`, `IssueOpened`, `RepositoryRenamed` is the likely starting
+  set — it is a real decision and it is not free.
+- **It is lossy by construction.** A canonical event cannot carry everything each forge sends.
+  `RawJson` covers the remainder, but a handler that reaches for it has become forge-specific again
+  and should say so rather than quietly depending on a field only one forge populates.
+- **Both shapes coexist permanently.** That is the correct outcome, not a transitional state.
+
+#### What this does to M8
+
+M8 was written as "de-GitHub the bus contract" — drop `required long InstallationId` and
+`RepositoryFullName` from the envelope, rename the `spark-github-all` queue. **D21 makes it larger**:
+the envelope splits into a neutral part and a forge-specific part, a canonical event model appears,
+and each forge library gains a publisher. Recorded as a scope increase rather than folded into an
+existing bullet, because it is one.
+
+#### Constraints any implementation must respect
+
+- ⚠️ **Queue names must stay pinned.** `GitHubWebhookMessage` and `GitHubWebhookMessage<TEvent>` both
+  carry `[MessageQueue("spark-github-all")]` deliberately: without it the name derives from the CLR
+  type, and for a constructed generic that embeds the argument's **assembly-qualified** name. Field
+  evidence in that file's doc comment — one database accumulated **seven** `SparkMessaging-*`
+  definitions, six of them orphans of exactly this shape, including separate `Version=2.0.0.0` and
+  `Version=3.0.0.0` variants of the same event. A generic `ForgeWebhookMessage<TEvent>` is the same
+  hazard and needs the same pin.
+- ⚠️ **The subscription budget is a hard limit, not a tuning knob.** Production runs RavenDB
+  **Community**, which caps subscriptions, and this repo has already hit that cap once and resolved
+  it with a single-subscription mode. A design that wants one queue per forge must be checked against
+  that budget before it is built, not after.
+- ⚠️ **Producer-side silence multiplies with fan-out.** A wire type with no handler is dropped
+  **silently** on the publish side. (The companion worry — that `Processing` was written and read by
+  nothing, so a crash mid-handler dropped the webhook — turned out to be **fixed**; see the
+  verification below.)
+
+
+#### Verified against the machinery, 2026-09-20
+
+Investigated after the decision, to confirm the design is buildable rather than merely appealing.
+**No change is needed in `libs/messaging`.**
+
+- ✅ **One class may implement `IRecipient<>` several times.** `RecipientRegistrationGenerator.cs:50-67`
+  iterates `AllInterfaces` and emits **one `AddScoped` per closed `IRecipient<T>`**; the registry keys
+  on the *message* type, never the implementation (`MessageRecipientRegistry.cs:39-55`). No
+  `[Register]` attribute is involved — the generator triggers on the base list alone. So the
+  fallback shape is available if ever needed, even though D21 means consumers should rarely want it.
+  ⚠️ No class in the repo does this today, so it is untested in practice.
+- ✅ **Three forge queues cost zero extra RavenDB subscriptions.** `SubscriptionMode` defaults to
+  `SingleSubscription` (`SparkMessagingOptions.cs:101`), which runs **one** subscription named
+  `SparkMessaging` regardless of queue count and restores per-queue FIFO in-process
+  (`MessageQueueRouter.cs:10-28`). The Community cap that caused the seven-definition incident only
+  binds under `SubscriptionPerQueue`. **And separate forge queues are better than one shared
+  `spark-forge-all`**: three independent lanes mean a slow GitHub handler cannot stall a Bitbucket
+  event, where one queue would serialise all three forges behind each other.
+- ✅ **Exact-type dispatch is not an obstacle for this design** — it is why the design works.
+  `MessageProcessor.cs:127-129` resolves `IRecipient<>` over the stored CLR type exactly, so a
+  *base* record can never be a dispatch target and `IRecipient<Base>` would silently receive nothing
+  (zero handlers, one warning, `MessageProcessor.cs:149-152`). D21 has no derivation: all three forge
+  libraries publish the **same** concrete `ForgeWebhookMessage<TEvent>`, with the forge as a *field*
+  rather than a type distinction. One type, one registration, exact match.
+- ✅ **A bonus the decision did not anticipate.** `MessageType` is stored as an assembly-qualified
+  name (`MessageBus.cs:35-42`) and compared ordinally by the allow-list
+  (`MessageTypeAllowList.cs:57-58`). For `GitHubWebhookMessage<TEvent>` that name embeds **Octokit's**
+  assembly version — so an in-flight typed message that survives an Octokit major bump is
+  dead-lettered. A neutral envelope closed over *our own* event types has no such coupling. The
+  normalisation removes a third-party version dependency from the wire format.
+
+#### Traps to build around
+
+- ⚠️ **`[MessageQueue]` is `Inherited = false`** (`MessageQueueAttribute.cs:3`) and the lookup is a
+  plain `GetCustomAttribute`. A base record's attribute is **invisible** to a derived one, which then
+  falls back to CLR-name derivation — the exact shape that produced the seven-queue incident.
+  **Every concrete envelope carries its own `[MessageQueue]`.** A shared base is fine for properties
+  and must never be relied on for the queue name.
+- ⚠️ **Do not rename `spark-github-all`.** Renaming strands in-flight documents on the old queue.
+  The GitHub queue keeps its name; new forges get new ones.
+- ⚠️ **GitLab sends no delivery id at all**, so its envelope cannot use the `BroadcastOnceAsync`
+  dedup path (`SparkWebhookEventProcessor.cs:160-168`) — idempotency has to come from the handler.
+  And **Bitbucket's `X-Hook-UUID` identifies the *hook*, not the delivery**: wiring it in as a
+  delivery id would make every Bitbucket delivery after the first look like a duplicate and be
+  **silently swallowed**. This one would look exactly like "Bitbucket webhooks don't work" and
+  nothing would log an error.
+- ⚠️ **Declare both interfaces on one partial part** if a recipient ever does implement several. The
+  generator fires per `ClassDeclarationSyntax` with a base list, so interfaces split across two
+  partial parts would emit duplicate registrations and run the handler twice per message.
+- ⚠️ **Producer-side silence is by design and survives.** A typed envelope with no recipient returns
+  after a `LogDebug` (`:321-327`); a catch-all with none returns with **no log at all** (`:138-139`).
+  Across a three-forge fan-out a mis-registered recipient therefore fails silently on the publish
+  side, even though the consumer side now dead-letters unknown types loudly.
+
+**Correction to a standing note:** *"`Processing` is written and read by nothing, so a crash
+mid-handler drops the webhook"* is **no longer true**. `SparkMessage.OwnerId` / `ClaimExpiresAtUtc`
+now exist, `ProcessAsync` verifies claim ownership (`MessageProcessor.cs:63-70`), the park uses
+`CancellationToken.None` so a shutdown still records the retry (`:295-310`), and
+`MessageRetrySweeper.ReclaimAbandonedAsync` (`:114-170`) returns abandoned messages to `Pending`. A
+crash mid-handler is reclaimed. The warning above about this in earlier drafts is withdrawn.
 
 ---
 
