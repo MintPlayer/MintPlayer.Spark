@@ -24,7 +24,14 @@ namespace MintPlayer.Spark.Authorization.Identity;
 /// </remarks>
 public class SparkPendingExternalLogin
 {
-    /// <summary>Document id. Random rather than derived, so it leaks nothing about the account.</summary>
+    /// <summary>Document id: <c>SparkPendingExternalLogins/{hash}</c>, hashed from the triple below.</summary>
+    /// <remarks>
+    /// Derived rather than random, which is a change of mind worth recording. A random id would have
+    /// forced the "is one already pending?" check to be a <em>query</em>, and an auto-index that is
+    /// stale at the wrong moment turns that check into "no" — which mails a second confirmation.
+    /// Deriving the key makes it a load. It leaks nothing about the account because it is a hash,
+    /// and it is not the capability, so carrying it in the mailed token costs nothing.
+    /// </remarks>
     public string? Id { get; set; }
 
     /// <summary>SHA-256 of the single-use token that was mailed, hex-encoded.</summary>

@@ -233,7 +233,10 @@ public class ExternalLoginCallbackTests : SparkTestDriver
         var response = await client.GetAsync("/spark/auth/external-login-callback?returnUrl=%2Foops");
 
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
-        response.Headers.Location!.OriginalString.Should().Be("/oops");
+        response.Headers.Location!.OriginalString.Should().Be(
+            "/oops?sparkExternalLogin=account_creation_failed",
+            "the redirect branch used to drop the reason entirely, so a full-page sign-in landed "
+            + "back where it started with nothing to show for it");
         // Bail-out happens before AddLogin / SignIn — confirm we did not proceed.
         await _userManager.DidNotReceive().AddLoginAsync(Arg.Any<SparkUser>(), Arg.Any<UserLoginInfo>());
         await _signInManager.DidNotReceive().SignInAsync(Arg.Any<SparkUser>(), Arg.Any<bool>(), Arg.Any<string?>());

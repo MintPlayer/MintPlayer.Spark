@@ -389,7 +389,7 @@ CodeCoverage (PRD §4.1). Nothing to build.
 
 ---
 
-## M4 — Spark: link confirmation, and the two linking modes 🟨 *(4a, 4b, 4k built)*
+## M4 — Spark: link confirmation, and the two linking modes 🟨 *(4a–4c, 4e, 4k built)*
 
 D2 and D9. All of this is Spark-side; CodeCoverage only chooses.
 
@@ -546,10 +546,81 @@ What the milestone was really worried about survives elsewhere and is not lost:
 - All 23 packable .NET projects bumped to **`10.0.0-preview.84`** — the gate fires on any `libs/`
   change outside `node_packages`, and `dotnet pack` is solution-wide.
 
-**Still to build:** 4c (the duplicate-email branch, today `account_creation_failed`), 4d
-(`WhenSignedIn` endpoints + last-credential guard), 4e (the confirm endpoint and template), 4f/4g
-(now simplified by D23), 4h (two latent defects), 4i (the SMTP container — VPS infrastructure, and
-deliverability is the risk rather than wiring).
+### As-built — 4c and 4e
+
+**4c — the duplicate-email branch.** The callback now asks `FindByEmailAsync` **before**
+provisioning, rather than inferring the case from a failed `CreateAsync`. The store's
+`DuplicateEmail` arrives with no user attached and is indistinguishable from a validation error,
+which is how this situation used to surface as `account_creation_failed` — the one answer that is
+always wrong, because it reads as "this application is broken" rather than "you already have an
+account". Each mode now gets its own code: `email_already_registered`, `sign_in_to_link`,
+`link_confirmation_sent`.
+
+⚠️ **`email_already_registered` admits that an account exists**, which the other codes deliberately
+avoid doing. Taken knowingly: the asker already proved control of that address at the provider, so
+they can learn the same fact from a password-reset form anywhere, and the alternative is the generic
+failure above.
+
+⚠️ **`link_confirmation_sent` travels on the failure channel** (`success: false`), because no
+session was created. It is not an error and the client says so — but reporting it as success would
+have the opener behave as though the user were signed in.
+
+**4e — the confirmation, as `SparkExternalLoginLinker<TUser>`.** One service rather than code in two
+endpoint lambdas, because the halves are separated by a mail round-trip: the token format, the
+document key and the provider-key rule only stay one mechanism while they live in one type.
+
+| Decision | Why |
+|---|---|
+| Document key **derived** from `(userId, provider, providerKey)` | Makes "is one already pending?" a load. As a random id it would have been a *query*, and an auto-index stale at the wrong moment answers "no" — which mails a second confirmation. |
+| Token is `{keyPart}.{secret}`, one opaque value | The key half addresses the document, the secret is the capability. One parameter, so a link cannot be assembled half-correctly. ⚠️ The key half is interpolated into a document id and is therefore constrained to 32 lowercase hex characters — without that a crafted token addresses **any** document in the database. |
+| Window of **1 hour** | The person who triggered it is at their keyboard now. A long window buys them nothing and only widens the period in which a mail obtained later still attaches a credential. |
+| A usable pending link **suppresses a second mail**, reported identically | Otherwise repeated sign-ins with someone else's address are a mail flood aimed at them, every message reading as a takeover attempt. |
+| The link attached is read from the **document** | This is what satisfies PRD §6.2's second non-negotiable. The ambient identity is never what gets linked, so a mismatch is not something the code must *catch* to be safe. It is checked anyway and refused, because a request carrying a different identity is the substitution itself. |
+| Consumed **before** the login is attached | A failure to attach cannot leave a spendable token. |
+
+⚠️ **A re-request rewrites the document in place.** Storing a second instance at the same id throws
+`NonUniqueObjectException` — the dedupe load already associated one with the session — and the case
+that reaches it is ordinary: confirm a link, then link another provider later. Caught by a test.
+
+### ⚠️ A defect found while wiring 4c: the options were never reachable
+
+`AddAuthentication` registered the configured `SparkAuthenticationOptions` with
+`AddSingleton(options)` only. `IOptions<SparkAuthenticationOptions>` still **resolves** — the options
+infrastructure constructs a default for any `T` — so a consumer asking for it gets a fully-formed
+object with every setting at its default and nothing to indicate it is not the configured one.
+
+Consequences, both silent: the ConfirmByEmail startup guard (4k) never fired in a real application,
+and every linking decision would have read `Disabled` regardless of configuration. The guard's tests
+passed because they configure through `Configure<T>`, which the application does not use.
+`Options.Create(options)` now publishes the same instance behind both, so the two cannot disagree —
+which is what the existing comment beside that line already claimed.
+
+### ⚠️ And one in the callback's redirect branch
+
+The non-popup path did `Results.Redirect(safeReturnUrl)` and dropped `error` entirely, so a
+full-page sign-in landed back where it started with nothing to show. Survivable while every refusal
+meant "it did not work"; not survivable now that one of them means "check your mail". It now carries
+`?sparkExternalLogin=<code>`, and confirmation lands with `?sparkLinkConfirmation=<code>`.
+
+**D24 — the message is plain strings.** No templating engine, no razor view, no resource file; a
+mail manager is separate, future work, and until it exists the shortest thing that says the right
+words beats a rendering pipeline with one message in it.
+
+`SparkLinkConfirmationMessage.Subject/Body` ships **in Spark** all the same, because the *wording* is
+part of the design rather than decoration. The reader who did not start the sign-in is the case that
+matters — the mail is the only place they are told somebody else's sign-in matched their address —
+and an application left to phrase it alone tends to write a notification ("your account has been
+linked"), which is untrue when sent and useless to the person who needs to act. So the body says
+nothing has happened yet, names the identity that asked, and says plainly that doing nothing is a
+valid answer. Those four properties have tests; none of them pins a whole sentence.
+
+Spark still ships **no transport**. An application implements `ISparkLinkConfirmationSender<TUser>`
+and may ignore this text entirely.
+
+**Still to build:** 4d (`WhenSignedIn` endpoints + last-credential guard), 4f/4g (now simplified by
+D23), 4h (two latent defects), 4i (the SMTP container — VPS infrastructure, and deliverability is the
+risk rather than wiring). ⚠️ **CodeCoverage implements no sender yet**, so `ConfirmByEmail` is not
+configurable there until 4i gives it something to send with.
 
 ---
 

@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using MintPlayer.AspNetCore.Endpoints;
+using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.WebUtilities;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
 using System.Security.Claims;
@@ -51,6 +54,11 @@ internal static class SparkAuthenticationExtensions
 
         builder.Services.AddScoped<IUserStore<TUser>, UserStore<TUser>>();
         builder.Services.AddScoped<IRoleStore<SparkRole>, RoleStore>();
+        builder.Services.AddScoped<SparkExternalLoginLinker<TUser>>();
+        // Not TryAdd-ed by the framework, and the linker's expiry window is the one thing tests
+        // need to move. Registered rather than reading DateTimeOffset.UtcNow inline so that
+        // "the link expired" is testable without waiting an hour for it.
+        builder.Services.TryAddSingleton(TimeProvider.System);
 
         services.AddAntiforgery(options => options.HeaderName = "X-XSRF-TOKEN");
 
@@ -127,6 +135,8 @@ internal static class SparkAuthenticationExtensions
             HttpContext context,
             SignInManager<TUser> signInManager,
             UserManager<TUser> userManager,
+            SparkExternalLoginLinker<TUser> linker,
+            IOptions<SparkAuthenticationOptions> options,
             IAntiforgery antiforgery,
             string? returnUrl) =>
         {
@@ -170,6 +180,20 @@ internal static class SparkAuthenticationExtensions
                 var userName = info.Principal.FindFirstValue(ClaimTypes.Name)
                     ?? info.Principal.FindFirstValue(ClaimTypes.NameIdentifier);
 
+                // 4c: the address may already belong to somebody. Asked *before* provisioning
+                // rather than inferred from a failed CreateAsync, because the store's DuplicateEmail
+                // arrives with no user attached and is indistinguishable from a validation failure —
+                // which is how this case used to surface as "account_creation_failed", a message
+                // that reads as "this application is broken" rather than "you already have an
+                // account".
+                var existing = await userManager.FindByEmailAsync(email);
+                if (existing is not null)
+                {
+                    return await LinkOrRefuseAsync(
+                        context, signInManager, userManager, linker, options, antiforgery,
+                        existing, info, userName, safeReturnUrl);
+                }
+
                 user = new TUser();
                 await userManager.SetUserNameAsync(user, userName);
                 await userManager.SetEmailAsync(user, email);
@@ -207,8 +231,59 @@ internal static class SparkAuthenticationExtensions
             return ExternalLoginOutcome(context, safeReturnUrl, error: null);
         }).AllowAnonymous();
 
+        // 4e: the other half of ConfirmByEmail. Reached from a link in a mailbox, so it is a plain
+        // top-level GET — there is no popup to post back to and no session to carry an antiforgery
+        // token. The single-use token *is* the credential; that is what a confirmation link is.
+        endpoints.MapGet("/spark/auth/confirm-external-link", async (
+            HttpContext context,
+            SignInManager<TUser> signInManager,
+            UserManager<TUser> userManager,
+            SparkExternalLoginLinker<TUser> linker,
+            string? token,
+            string? returnUrl) =>
+        {
+            var safeReturnUrl = SanitizeReturnUrl(returnUrl);
+
+            // Usually absent: the reader is in their mailbox, not mid-OAuth. When it *is* present
+            // and names a different identity than the confirmation was issued for, that is the
+            // substitution the whole design is built against, and the linker refuses it.
+            var ambient = await signInManager.GetExternalLoginInfoAsync();
+            var result = await linker.ConfirmAsync(token, ambient?.ProviderKey, context.RequestAborted);
+
+            if (result.Outcome != SparkLinkConfirmationOutcome.Linked)
+            {
+                return Results.Redirect(QueryHelpers.AddQueryString(
+                    safeReturnUrl, "sparkLinkConfirmation", ConfirmationCode(result.Outcome)));
+            }
+
+            // Signing in here is the point: the person proved control of the account's mailbox, and
+            // sending them back to a sign-in page after that would ask them to prove it twice.
+            var user = await userManager.FindByIdAsync(result.UserId!);
+            if (user is not null)
+                await signInManager.SignInAsync(user, isPersistent: true);
+
+            return Results.Redirect(QueryHelpers.AddQueryString(
+                safeReturnUrl, "sparkLinkConfirmation", "linked"));
+        }).AllowAnonymous();
+
         return endpoints;
     }
+
+    /// <summary>
+    /// The confirmation outcome as the client sees it.
+    /// </summary>
+    /// <remarks>
+    /// Kept as a mapping rather than serialising the enum name, so that renaming a member cannot
+    /// silently change a value that browser code and mail templates depend on.
+    /// </remarks>
+    private static string ConfirmationCode(SparkLinkConfirmationOutcome outcome) => outcome switch
+    {
+        SparkLinkConfirmationOutcome.Linked => "linked",
+        SparkLinkConfirmationOutcome.AlreadyUsed => "already_used",
+        SparkLinkConfirmationOutcome.ProviderMismatch => "provider_mismatch",
+        SparkLinkConfirmationOutcome.AccountGone => "account_gone",
+        _ => "invalid_or_expired",
+    };
 
     /// <summary>
     /// Why an external login did not sign anyone in. These codes are the popup handshake's
@@ -224,6 +299,88 @@ internal static class SparkAuthenticationExtensions
         public const string EmailNotVerified = "email_not_verified";
         /// <summary>Identity refused to create the local account (validation, duplicate, store failure).</summary>
         public const string AccountCreationFailed = "account_creation_failed";
+
+        /// <summary>
+        /// The provider's address already belongs to an account, and linking is
+        /// <see cref="SparkExternalLoginLinking.Disabled"/>.
+        /// </summary>
+        /// <remarks>
+        /// ⚠️ <b>This code admits that an account exists</b>, which the codes above deliberately
+        /// avoid doing. The trade is taken knowingly: the alternative is the generic failure this
+        /// branch used to produce, and a person who cannot tell "you already have an account" from
+        /// "this is broken" will file a bug or make a second account. The disclosure is also
+        /// narrower than it looks — the asker already proved control of the address at the provider,
+        /// so they can learn the same fact by attempting a password reset anywhere.
+        /// </remarks>
+        public const string EmailAlreadyRegistered = "email_already_registered";
+
+        /// <summary>
+        /// The address belongs to an account and linking happens from a session
+        /// (<see cref="SparkExternalLoginLinking.WhenSignedIn"/>). Sign in with a provider that is
+        /// already attached, then link this one.
+        /// </summary>
+        public const string SignInToLink = "sign_in_to_link";
+
+        /// <summary>
+        /// A confirmation was mailed to the existing account's address
+        /// (<see cref="SparkExternalLoginLinking.ConfirmByEmail"/>). Nobody is signed in yet.
+        /// </summary>
+        /// <remarks>
+        /// ⚠️ Carried on the failure channel because <em>no session was created</em>, which is what
+        /// <c>success: false</c> means to the opener. It is not an error, and the client is expected
+        /// to say so; reporting it as success would have the opener behave as though the user were
+        /// signed in.
+        /// </remarks>
+        public const string LinkConfirmationSent = "link_confirmation_sent";
+    }
+
+    /// <summary>
+    /// Decides what a known address does, once an external provider asserts one that already belongs
+    /// to an account.
+    /// </summary>
+    /// <remarks>
+    /// The three modes differ in <b>who proves what</b>, not in convenience, so each gets its own
+    /// answer rather than a shared "failed" — see <see cref="SparkExternalLoginLinking"/>.
+    /// </remarks>
+    private static async Task<IResult> LinkOrRefuseAsync<TUser>(
+        HttpContext context,
+        SignInManager<TUser> signInManager,
+        UserManager<TUser> userManager,
+        SparkExternalLoginLinker<TUser> linker,
+        IOptions<SparkAuthenticationOptions> options,
+        IAntiforgery antiforgery,
+        TUser existing,
+        ExternalLoginInfo info,
+        string? providerIdentity,
+        string safeReturnUrl)
+        where TUser : SparkUser, new()
+    {
+        switch (options.Value.ExternalLoginLinking)
+        {
+            case SparkExternalLoginLinking.WhenSignedIn:
+                return ExternalLoginOutcome(context, safeReturnUrl, ExternalLoginErrors.SignInToLink);
+
+            case SparkExternalLoginLinking.ConfirmByEmail:
+                // The link is built from this request's own origin rather than from a stored base
+                // address, because the confirmation has to come back to the host the person is
+                // actually using. Host is not attacker-chosen here: the callback is only reached
+                // through a provider redirect to a registered callback URL.
+                var origin = $"{context.Request.Scheme}://{context.Request.Host}";
+                await linker.RequestLinkAsync(
+                    existing,
+                    info.LoginProvider,
+                    info.ProviderKey,
+                    info.ProviderDisplayName ?? info.LoginProvider,
+                    providerIdentity,
+                    token => $"{origin}/spark/auth/confirm-external-link?token={Uri.EscapeDataString(token)}"
+                        + $"&returnUrl={Uri.EscapeDataString(safeReturnUrl)}",
+                    context.RequestAborted);
+
+                return ExternalLoginOutcome(context, safeReturnUrl, ExternalLoginErrors.LinkConfirmationSent);
+
+            default:
+                return ExternalLoginOutcome(context, safeReturnUrl, ExternalLoginErrors.EmailAlreadyRegistered);
+        }
     }
 
     /// <summary>
@@ -244,7 +401,15 @@ internal static class SparkAuthenticationExtensions
     private static IResult ExternalLoginOutcome(HttpContext context, string safeReturnUrl, string? error)
     {
         if (!context.Request.Query.ContainsKey("popup"))
-            return Results.Redirect(safeReturnUrl);
+        {
+            // ⚠️ The redirect branch used to drop `error` entirely, so a refused sign-in in
+            // full-page mode landed back on the sign-in page with nothing to show for it. That was
+            // survivable while every refusal meant "it did not work"; it is not survivable now that
+            // one of them means "check your mail", which the user will never do if nobody says so.
+            return Results.Redirect(error is null
+                ? safeReturnUrl
+                : QueryHelpers.AddQueryString(safeReturnUrl, "sparkExternalLogin", error));
+        }
 
         var payload = error is null
             ? "{ type: 'spark:external-login', success: true }"
