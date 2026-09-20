@@ -1,4 +1,5 @@
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 using CodeCoverage.LookupReferences;
 using CodeCoverage.Recipients;
 using Microsoft.Extensions.DependencyInjection;
@@ -91,6 +92,42 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         services.AddSingleton<MintPlayer.Spark.Webhooks.GitHub.Services.IGitHubInstallationService>(installer);
         services.AddScoped<GitHubEventsRecipient>();
         return services.BuildServiceProvider().GetRequiredService<GitHubEventsRecipient>();
+    }
+
+    /// <summary>
+    /// Runs the neutral half of the pipeline over whatever the GitHub half broadcast.
+    /// </summary>
+    /// <remarks>
+    /// M8b split one recipient into two: GitHub normalises its payload and publishes a neutral
+    /// event, and <see cref="ForgeEventsRecipient"/> does the domain work. Tests that assert on the
+    /// resulting <c>Commit</c> document therefore span both halves — and that is worth keeping
+    /// rather than splitting into "broadcast happened" and "document written", because the thing
+    /// worth protecting is that the two <em>compose</em>. A normaliser that emits a well-formed
+    /// event nobody acts on would pass two narrower tests and still be broken.
+    /// </remarks>
+    private static async Task DeliverForgeEventsAsync(IAsyncDocumentSession session, RecordingMessageBus bus)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.None));
+        services.AddSingleton(session);
+        services.AddSingleton<MintPlayer.Spark.Messaging.Abstractions.IMessageBus>(bus);
+        services.AddScoped<ForgeEventsRecipient>();
+        var recipient = services.BuildServiceProvider().GetRequiredService<ForgeEventsRecipient>();
+
+        // Snapshot first: a handler may broadcast again (the pending-comment message), and
+        // iterating the live list while it grows would throw.
+        foreach (var message in bus.Messages.ToArray())
+        {
+            switch (message)
+            {
+                case ForgeWebhookMessage<BranchCommitPushed> push:
+                    await recipient.HandleAsync(push);
+                    break;
+                case ForgeWebhookMessage<PullRequestUpdated> pr:
+                    await recipient.HandleAsync(pr);
+                    break;
+            }
+        }
     }
 
     /// <summary>
@@ -303,6 +340,8 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
 
         await CreateRecipient(session, out var bus)
             .HandleAsync(Message("pull_request", PullRequestJson(HeadSha, BaseSha, action)));
+        // The pending comment is enqueued by the neutral handler now, not by the normaliser.
+        await DeliverForgeEventsAsync(session, bus);
 
         var opens = bus.Messages.OfType<CodeCoverage.Feedback.OpenPullRequestCommentMessage>().ToList();
         opens.Should().ContainSingle();
@@ -324,6 +363,7 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
 
         await CreateRecipient(session, out var bus)
             .HandleAsync(Message("pull_request", PullRequestJson(HeadSha, BaseSha, "synchronize")));
+        await DeliverForgeEventsAsync(session, bus);
 
         bus.Messages.OfType<CodeCoverage.Feedback.OpenPullRequestCommentMessage>().Should().BeEmpty();
     }
@@ -334,7 +374,8 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
 
-        await CreateRecipient(session).HandleAsync(Message("pull_request", PullRequestJson(HeadSha, BaseSha)));
+        await CreateRecipient(session, out var bus).HandleAsync(Message("pull_request", PullRequestJson(HeadSha, BaseSha)));
+        await DeliverForgeEventsAsync(session, bus);
 
         var commit = await LoadCommit(session, HeadSha);
         commit.Should().NotBeNull();
@@ -353,10 +394,13 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
     {
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
-        var recipient = CreateRecipient(session);
+        var recipient = CreateRecipient(session, out var bus);
 
         await recipient.HandleAsync(Message("pull_request", PullRequestJson(HeadSha, BaseSha)));
+        await DeliverForgeEventsAsync(session, bus);
+        bus.Messages.Clear();
         await recipient.HandleAsync(Message("push", PushJson(after: HeadSha, before: PreviousTip)));
+        await DeliverForgeEventsAsync(session, bus);
 
         var commit = await LoadCommit(session, HeadSha);
         commit!.ParentSha.Should().Be(BaseSha, "the pull_request webhook is the only writer of this field");
@@ -371,7 +415,8 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
 
-        await CreateRecipient(session).HandleAsync(Message("push", PushJson(after: HeadSha, before: PreviousTip)));
+        await CreateRecipient(session, out var bus).HandleAsync(Message("push", PushJson(after: HeadSha, before: PreviousTip)));
+        await DeliverForgeEventsAsync(session, bus);
 
         var commit = await LoadCommit(session, HeadSha);
         commit.Should().NotBeNull();
@@ -390,10 +435,13 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         const string movedBase = "dddddddddddddddddddddddddddddddddddddddd";
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
-        var recipient = CreateRecipient(session);
+        var recipient = CreateRecipient(session, out var bus);
 
         await recipient.HandleAsync(Message("pull_request", PullRequestJson(HeadSha, BaseSha)));
+        await DeliverForgeEventsAsync(session, bus);
+        bus.Messages.Clear();
         await recipient.HandleAsync(Message("pull_request", PullRequestJson(HeadSha, movedBase, action: "synchronize")));
+        await DeliverForgeEventsAsync(session, bus);
 
         (await LoadCommit(session, HeadSha))!.ParentSha.Should().Be(movedBase);
     }
@@ -404,8 +452,10 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
 
-        await CreateRecipient(session).HandleAsync(
+        await CreateRecipient(session, out var bus).HandleAsync(
             Message("push", PushJson(after: HeadSha, before: new string('0', 40))));
+
+        await DeliverForgeEventsAsync(session, bus);
 
         (await LoadCommit(session, HeadSha))!.ParentSha.Should().BeNull();
     }

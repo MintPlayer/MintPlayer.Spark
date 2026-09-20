@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using System.Text.Json;
 using CodeCoverage.Entities;
 using CodeCoverage.LookupReferences;
@@ -301,19 +302,22 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         var repository = await UpsertRepository(evt.Repository.Id, evt.Repository.Name, evt.Repository.FullName, evt.Repository.Private, account, ct);
         repository.DefaultBranch = evt.Repository.DefaultBranch;
 
-        var commit = await GetOrCreateCommit(evt.Repository.Id, evt.After, ct);
-        commit.Branch = branch;
-        // Deliberately does NOT write ParentSha. `evt.Before` is the previous
-        // ref tip, which is not this commit's parent in three of the six push
-        // shapes: a push of five commits creates one document (the head), so
-        // Before is the tip five commits back; a branch creation gives the
-        // all-zero sha; a force-push gives an abandoned tip that need not be an
-        // ancestor at all. It also raced the PR-event writer below for the same
-        // field, so whichever arrived last decided what the value meant. One
-        // writer, one meaning — see docs/upload-result-contract.md §5.
-        commit.Message = evt.HeadCommit.Message;
-        if (DateTimeOffset.TryParse(evt.HeadCommit.Timestamp, out var timestamp))
-            commit.AuthoredAt = timestamp;
+        // The commit work itself is neutral and lives in ForgeEventsRecipient. What stays here is
+        // the part only GitHub can do: reading its payload and resolving the account and repository
+        // it names. Note the neutral event carries no parent — see BranchCommitPushed for why a
+        // push cannot honestly supply one.
+        DateTimeOffset? authoredAt = DateTimeOffset.TryParse(evt.HeadCommit.Timestamp, out var timestamp)
+            ? timestamp
+            : null;
+
+        await messageBus.BroadcastAsync(new ForgeWebhookMessage<BranchCommitPushed>(
+            EForgeProvider.GitHub,
+            new BranchCommitPushed(
+                RepositoryId: repository.Id!,
+                Branch: branch,
+                Sha: evt.After,
+                Message: evt.HeadCommit.Message,
+                AuthoredAt: authoredAt)), ct);
     }
 
     private async Task OnPullRequest(PullRequestEvent evt, CancellationToken ct)
@@ -339,38 +343,24 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         if (evt.Action is not ("opened" or "synchronize" or "reopened")) return;
 
         var pr = evt.PullRequest;
-        var commit = await GetOrCreateCommit(evt.Repository.Id, pr.Head.Sha, ct);
-        commit.Branch = pr.Head.Ref;
-        commit.PullRequestNumber = (int)evt.Number;
-        commit.Message ??= pr.Title;
-        // The authoritative writer of the PR's target, for the same reason as
-        // ParentSha below: `synchronize` re-sends a moved base, and a retarget
-        // changes the ref outright, so a frozen first-seen value goes stale.
-        commit.PullRequestBaseRef = pr.Base.Ref;
-        commit.PullRequestBaseSha = pr.Base.Sha;
-        // The sole writer of ParentSha, and the only one that ever meant
-        // anything: the PR's base tip. Plain `=` rather than `??=` because
-        // GitHub re-sends `synchronize` with an updated base when the base
-        // branch advances, and freezing the first-seen base would quietly go
-        // stale; a moved head is a new document, so this never corrupts an
-        // earlier commit. Still only a hint for finding the PR — patch coverage
-        // resolves its own merge base at compute time.
-        commit.ParentSha = pr.Base.Sha;
+        var account = await GetOrCreateAccount(evt.Repository.Owner.Id, ct);
+        var repository = await UpsertRepository(evt.Repository.Id, evt.Repository.Name, evt.Repository.FullName, evt.Repository.Private, account, ct);
 
-        // Only on open/reopen: `synchronize` is already served by the finalize
-        // path, which edits the same comment with the real numbers. Broadcast
-        // rather than post from here, so an outage on GitHub's side cannot fail
-        // the webhook delivery and cost us the event.
-        if (evt.Action is "opened" or "reopened")
-        {
-            await messageBus.BroadcastAsync(new Feedback.OpenPullRequestCommentMessage
-            {
-                RepositoryGitHubId = evt.Repository.Id,
-                PullRequestNumber = (int)evt.Number,
-                HeadSha = pr.Head.Sha,
-                AuthorIsBot = pr.User?.Type is not null && pr.User.Type == Octokit.Webhooks.Models.UserType.Bot,
-            }, ct);
-        }
+        // The three actions collapse to one neutral event because the app does the same thing for
+        // all three; only "was this the first open?" survives the collapse, because exactly one
+        // consumer — the pending coverage comment — needs it.
+        await messageBus.BroadcastAsync(new ForgeWebhookMessage<PullRequestUpdated>(
+            EForgeProvider.GitHub,
+            new PullRequestUpdated(
+                RepositoryId: repository.Id!,
+                Number: (int)evt.Number,
+                HeadSha: pr.Head.Sha,
+                HeadRef: pr.Head.Ref,
+                BaseRef: pr.Base.Ref,
+                BaseSha: pr.Base.Sha,
+                Title: pr.Title,
+                IsFirstOpen: evt.Action is "opened" or "reopened",
+                AuthorIsBot: pr.User?.Type is not null && pr.User.Type == Octokit.Webhooks.Models.UserType.Bot)), ct);
     }
 
     /// <summary>
