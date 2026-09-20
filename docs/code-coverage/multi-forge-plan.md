@@ -7,14 +7,21 @@ Companion to [multi-forge-PRD.md](multi-forge-PRD.md). Issue
 suite runs once, at M13** — intermediate milestones are verified by reading the code and building.
 GitLab and Bitbucket providers are stages 2 and 3 and are *not* in this PR (PRD §1, D1).
 
-**Blocked on decisions**: only **D6** (M5) is still open. D1-D5, D7, D9, D11 and D13 are decided;
-D8, D10 and D12 carry recommendations that nothing in stage 1 depends on.
+**Blocked on decisions**: only **D6f** (fork-PR uploads) is still open, and it gates **M6** — not M9
+as you might expect — because untrusted coverage needs its own document space and M6 is the one
+migration that can create it cheaply. D1–D5, D6a–e, D7, D9, D11 and D13 are decided; D8, D10 and D12
+carry recommendations nothing in stage 1 depends on.
+
+⚠️ **Decisions here are revisitable.** The owner's standing instruction: *"my decisions aren't a
+requirement. If other decisions turn out to be better, we can still change."* Where implementation
+has since surfaced a better option, it is recorded as a **revisit candidate** next to the decision
+rather than silently acted on.
 
 Legend: 🟦 not started · 🟨 in progress · 🟩 done · ⛔ blocked
 
 ---
 
-## M0 — Spikes 🟦
+## M0 — Spikes 🟩 *(SP1, SP2 done; SP3 dropped)*
 
 Run first; each can invalidate a later milestone's design. Read-only.
 
@@ -38,7 +45,7 @@ scoped inside M6 because it needs the migration written first.
 
 ---
 
-## M1 — `IForgeAccessService` behind the existing predicates 🟦
+## M1 — `IForgeAccessService` behind the existing predicates 🟩 *(704ab22a)*
 
 Extract the allowed-owner lookup. GitHub remains the only implementation. **No behaviour change.**
 
@@ -79,9 +86,26 @@ M1 introduces the per-provider *shape*; M6 rewrites the *values*.
 
 **Verify:** build; no caller outside the GitHub implementation names an installation.
 
+### As-built (704ab22a)
+
+- `EForgeProvider` + `ForgeProviders` (canonical lowercase spelling, explicit mapping so renaming an
+  enum member cannot change a published URL) and `ForgeOwner` (`provider:login`, colon-separated)
+  live in `CodeCoverage.Library/Forge/`.
+- `IForgeAccessService` / `IForgeAccessResolver` + `GitHubForgeAccessService` + `ForgeAccessResolver`
+  in `CodeCoverage/Services/`. The GitHub-specific machinery (installation list, token refresh,
+  backfill) deliberately stayed behind `IGitHubAccessService` — it has no counterpart on other forges.
+- Negative caching landed as `FailureCacheDuration = 30s` with a `github-owners-failed/{userId}` key.
+  Only the failure *state* is stored, never the degraded owner set; the short-circuit path does not
+  extend the window; `InvalidateAsync` clears the memo so Resync isn't defeated by it.
+- ⚠️ **Deviation worth knowing:** `SparkVisibility` still flattens `ForgeOwner` back to bare login
+  strings, because its eight consumers compare against unqualified stored values. Commented as
+  temporary; it disappears in M6f. Until then the safety property D6e buys is **not yet real** —
+  registering a second provider before M6 would make two identically-named accounts
+  indistinguishable.
+
 ---
 
-## M2 — `IForgeClient` and `IForgeFeedbackPublisher` 🟦
+## M2 — `IForgeClient` and `IForgeFeedbackPublisher` 🟩 *(ecd91c3d)*
 
 Still GitHub-only.
 
@@ -98,6 +122,32 @@ Still GitHub-only.
   cannot be implemented in stage 2.
 
 **Verify:** build. A1 is not yet met (Octokit still reachable from the implementations, by design).
+
+### As-built (ecd91c3d)
+
+- `IForgeClient` (+ `ForgeAccess`) and `GitHubForgeClient` in `CodeCoverage/Services/`;
+  `IForgeFeedbackPublisher` (+ `ForgeVerdict`, `EForgeOutcome`, `ForgeAccessDeniedException`) and
+  `GitHubForgeFeedbackPublisher` in `CodeCoverage/Feedback/`.
+- **No credential appears in any neutral signature.** The installation lookup moved inside
+  `GitHubForgeClient`, removing five verbatim copies of the same five-line resolution from
+  `CommitAssembler` (×2), `PatchCoverageCalculator`, `BaseResolver`, `PublishFeedbackRecipient` and
+  `BrowseController`.
+- `CheckAccessAsync` was added so callers can distinguish "no credential" from "the read found
+  nothing" — the feedback pipeline needs that split to park a build as `Unavailable` without retry.
+  The unavailable *message* is supplied by the provider, so it still names the GitHub App without
+  the caller knowing which forge it is on.
+- `ForgeAccessDeniedException` replaced catching `Octokit.ApiException` + status code in
+  `PublishFeedbackRecipient`, which no longer references Octokit at all.
+- ⚠️ **Behaviour change:** `GitHubForgeFeedbackPublisher.RequireInstallationAsync` **throws** when no
+  installation exists, where the old code silently parked the build. Safe only because every caller
+  now asks `CheckAccessAsync` first; a future caller that forgets gets a loud exception rather than
+  a publish that reports success and posts nothing.
+- `ScriptedDiffService` (test double) now implements `IForgeClient` and can script file content and
+  the access check as well as diffs.
+- **A1 status:** Octokit / `api.github.com` now appear only in GitHub-named implementation files,
+  plus one explanatory doc-comment in `IForgeFeedbackPublisher`. Remaining stragglers are
+  `PullRequestCommentGateway` / `PullRequestCommentPublisher` (GitHub implementations whose filenames
+  are not GitHub-named — M11) and the installation/reconciler surface (M8).
 
 ---
 

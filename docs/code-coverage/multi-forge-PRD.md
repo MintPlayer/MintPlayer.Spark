@@ -3,8 +3,10 @@
 **Issue:** [#422](https://github.com/MintPlayer/MintPlayer.Spark/issues/422) — "Should we also support
 BitBucket and GitLab?" (opened 2026-09-19 with an empty body).
 
-**Status:** in progress on `issue-422-forge-abstraction`. SP1 and SP2 are run (§7.1, §7.2); no
-product code written yet.
+**Status:** in progress on `issue-422-forge-abstraction`. SP1 and SP2 are run (§7.1, §7.2). M1 and
+M2 are built and committed (704ab22a, ecd91c3d); as-built notes live in the plan beside each
+milestone. M3 onward is not started. The only decision still open is D6f (fork-PR uploads), which
+gates M6.
 
 **Scope of *this* document's plan:** stage 1 only — remove the GitHub coupling and rebuild sign-in,
 account provisioning and account linking around a provider abstraction, **while GitHub remains the
@@ -50,6 +52,12 @@ permission system") and `:170` ("GitHub is the authority; no join workflow") —
 
 Decisions the user has already taken are marked **DECIDED**. The rest need answers before the
 milestones they gate.
+
+⚠️ **A decision here is a starting point, not a constraint.** The owner's standing instruction:
+*"my decisions aren't a requirement. If other decisions turn out to be better, we can still change."*
+So where building something has since surfaced a better option, it is written down beside the
+decision as a **revisit candidate** (see §6.7 D6d) rather than quietly implemented or quietly
+dropped. Changing a decision is cheap; discovering an undocumented one is not.
 
 | | Decision | Status |
 |---|---|---|
@@ -689,6 +697,15 @@ must *require* logging on degrade rather than trusting each implementation to re
 `ReauthRequired` is surfaced to the user (`MyAccountsService.cs:38`). An outage remains
 indistinguishable from "you have no orgs".
 
+⚠️ **Revisit candidate (raised 2026-09-20, not acted on).** Implementing D6c's failure cache made a
+third option visible that was not considered when this was decided: keep serving the degraded set
+**and** surface "this provider is unreachable" in the account list — rather than either hiding it
+(the chosen A) or refusing to render (the rejected C). It is strictly better than both, because the
+current behaviour now also persists for the 30-second negative-cache window, widening the interval in
+which a viewer sees a silently wrong answer. The wiring already exists: `MyAccountsService.cs:38`
+surfaces `ReauthRequired` to the client and simply ignores `Unavailable`. Cheap to add; needs an
+explicit decision because it changes what users see.
+
 **D6e — the owner set is qualified in the stored field, with a colon.** `Repository.OwnerLogin`,
 `Account.Login` and `ApiToken.AccountLogin` (`ApiTokenActions.cs:51` — found via the authorization
 inventory, not the id analysis) all become `provider:owner`: `github:mintplayer`,
@@ -769,6 +786,35 @@ another one.**
 **Separable defect, independent of whichever option is chosen:** `fail-ci-if-error` defaults to
 `false`, so *every* upload failure is a green step — not just a fork's. Same silent-success class as
 the `NoOpEmailSender` trap in §7.2, and the reason this went unnoticed.
+
+**The four patterns the competitors actually use**, distilled from the research:
+
+1. **Namespaced tokenless + forge-API attestation** (Codecov). Accept an unauthenticated upload, but
+   confine it to a namespace that cannot collide with a real branch, and verify the run exists via
+   the forge API. ⚠️ Codecov makes that verification call *unauthenticated*, hence its notorious
+   60 req/h ceiling — ours must be made as our own App.
+2. **Use the forge-minted job credential instead of a stored secret** (Coveralls). Its action
+   defaults `github-token` to `${{ github.token }}`; fork uploads work. Only their *write-back*
+   degrades, which is not our problem because we post from our own App installation.
+3. **`workflow_run` handoff** (SonarQube Cloud's documented recipe, py-cov-action). Untrusted half
+   produces an artifact, trusted half consumes it. The only fully-safe GitHub-native path, but it
+   doubles the workflow surface and hands the maintainer a foot-gun.
+4. **Vendor pulls instead of being pushed to** (Sonar Automatic Analysis). Works for static analysis
+   and **cannot work for coverage**, which requires executing the fork's tests.
+
+**Recommendation (not yet accepted): pattern 2 + pattern 1's namespacing**, with pattern 3 documented
+as an escape hatch. Concretely: fork uploads authenticate with the forge-minted job credential,
+land in a PR-scoped document space that can never become a branch baseline, a badge or a
+carried-forward history entry, and are attested by a run lookup made as our own App. Zero maintainer
+setup, no anonymous rate-limit exposure, and a real identity rather than a heuristic.
+
+⚠️ **Verify before committing to it:** whether the Actions token can actually prove what we need —
+reading a public repository proves nothing, so an installation-scoped call is required and its
+behaviour with the Actions token is unconfirmed.
+
+**The trap in the recommendation:** asking maintainers to hand `${{ github.token }}` to a third-party
+service will raise eyebrows, and needs documenting precisely (one API call, never stored). It also
+makes forge availability an upload dependency.
 
 ### 6.8 Migrations — the rule that keeps them compiling
 
@@ -876,6 +922,19 @@ needs a provider prefix, so D5 should say explicitly whether the prefix is unive
 where a collision is possible.
 
 ---
+
+### 7.1a Side effect of running SP1 against production
+
+⚠️ Recorded because it was described as read-only and was not quite. The ad-hoc RQL used to sample id
+shapes caused RavenDB to create two **auto-indexes** on the production `Coverage` database:
+`Auto/Repositories/ByCountReducedByAccount` and `Auto/Repositories/ByAccountAndGitHubId`. They are
+trivial against a 172-document collection and RavenDB retires idle auto-indexes on its own, so they
+were left in place — deleting them is also a write. Noted so a later index audit does not treat them
+as evidence of a code path that queries those fields.
+
+The related check they were used for: all 172 repositories belong to the two real installations
+(`PieterjanDeClippel` 159464742, `MintPlayer` 153617061) and none has a null `Account`, so the OIDC
+auto-provision path at `UploadsController.cs:726-751` has **never fired in production**.
 
 ### 7.2 SP2 result — measured 2026-09-20
 
