@@ -13,9 +13,9 @@ migration that can create it cheaply. D1–D5, D6a–e, D7, D9, D11, D13, **D16 
 D8, D10, D12 and D14 carry recommendations nothing in stage 1 depends on. D15 is partly superseded by
 D17.
 
-⚠️ **One naming collision is open** — see the note at the end of this file. `IPlatformIntegration`
-(D16) says *platform*; the shipped `EForgeProvider` / `ForgeOwner` say *provider*. They mean the same
-thing, and "provider" is also ASP.NET Identity's word for an external login provider.
+✅ **Vocabulary (D18): "forge", not "platform".** The thing we integrate with is a *forge*; bare
+*provider* is reserved for ASP.NET Identity's external login provider. Everything M1/M2 shipped keeps
+its name; only D16/D17's new identifiers changed. See the closing note.
 
 ⚠️ **Decisions here are revisitable.** The owner's standing instruction: *"my decisions aren't a
 requirement. If other decisions turn out to be better, we can still change."* Where implementation
@@ -162,7 +162,7 @@ Still GitHub-only.
 
 ---
 
-## M2a — Converge the seams into `IPlatformIntegration` 🟦 *(D16/D17; blocks every platform)*
+## M2a — Converge the seams into `IForgeIntegration` 🟦 *(D16/D17; blocks every forge)*
 
 Supersedes the first draft of this milestone, which added one resolver per seam. With a single
 interface there is one selection helper, not three.
@@ -171,48 +171,48 @@ Urgency is unchanged and independent of the redesign: until this lands, register
 implementation silently redirects nine call sites (PRD §5.7a), because `[Register]` emits plain
 `AddScoped` and a singular injection receives the **last** registration.
 
-- **Define the contract** in `CodeCoverage.Library`: `IPlatformIntegration` with `EPlatform Platform`,
-  `ECapability[] Capabilities`, and the async members consolidated from `IForgeAccessService`,
+- **Define the contract** in `CodeCoverage.Library`: `IForgeIntegration` with `EForgeProvider Provider`,
+  `EForgeCapability[] Capabilities`, and the async members consolidated from `IForgeAccessService`,
   `IForgeClient` and `IForgeFeedbackPublisher`. Their signatures carry over — in particular the
   property that **no credential appears in any of them**, which is what made them real seams.
-- **`GitHubPlatformIntegration` as a facade** (D16) over the existing per-concern services, which stay
+- **`GitHubForgeIntegration` as a facade** (D16) over the existing per-concern services, which stay
   where they are for now and become internal to the GitHub library in M15. The ~30 existing GitHub
   test files keep targeting the internals and need no rewrite.
-- **Convert the injection sites to `IEnumerable<IPlatformIntegration>`** — the 9 in PRD §5.7a plus the
-  5 `IGitHubAccessService` bypasses in §5.7b. No call site names a platform after this milestone.
+- **Convert the injection sites to `IEnumerable<IForgeIntegration>`** — the 9 in PRD §5.7a plus the
+  5 `IGitHubAccessService` bypasses in §5.7b. No call site names a forge after this milestone.
 - **Two call shapes, one helper** (§6.10): fan-out (`GetAccounts`, `GetRepositories`) iterates all;
-  select-one (compare, publish, file read) picks by `repository.Platform`. Until M6 gives entities a
-  platform, selection answers GitHub from **one explicit, commented line** that throws the moment a
+  select-one (compare, publish, file read) picks by `repository.Provider`. Until M6 gives entities a
+  forge, selection answers GitHub from **one explicit, commented line** that throws the moment a
   second implementation registers — not a default argument, not a `FirstOrDefault` that picks GitHub
   because it is the only registration.
-- **Resolve loudly.** A duplicate `Platform` among registrations is a wiring bug; throw like
+- **Resolve loudly.** A duplicate `Provider` among registrations is a wiring bug; throw like
   `ActionsResolver.cs:145-155` rather than `FirstOrDefault` as `ForgeAccessResolver` does today.
 
-**Exit:** no singular injection of a platform interface anywhere; `grep -rn "IGitHubAccessService"`
+**Exit:** no singular injection of a forge interface anywhere; `grep -rn "IGitHubAccessService"`
 in `CodeCoverage/` matches only the GitHub implementation's own internals.
 
 ---
 
 ## M2b — Conformance test for `Capabilities` 🟦 *(D17)*
 
-`ECapability[]` is a runtime contract with no compiler behind it. An implementation that advertises a
+`EForgeCapability[]` is a runtime contract with no compiler behind it. An implementation that advertises a
 capability it throws on, or quietly implements one it does not advertise, is a bug nothing else
 catches — and the second direction is the dangerous one, because it works until a caller starts
 trusting the array to decide what to skip.
 
-- One test parameterised over **every registered `IPlatformIntegration`**, so a fourth platform is
+- One test parameterised over **every registered `IForgeIntegration`**, so a fourth forge is
   covered the day it registers without anyone remembering to extend the test.
 - Assert both directions: every advertised capability's methods do **not** throw
   `NotSupportedException`, and every unadvertised capability's methods **do**.
-- Assert `Platform` values are distinct across registrations — the duplicate-registration bug M2a
+- Assert `Provider` values are distinct across registrations — the duplicate-registration bug M2a
   guards against, caught at test time rather than in production.
 
 ---
 
 ## M2c — Fold the five unseamed capability areas into the interface 🟦
 
-PRD §5.7c. Neutral operations with real cross-platform equivalents, implemented only for GitHub and
-reachable only through GitHub-typed interfaces. Each becomes a member of `IPlatformIntegration`.
+PRD §5.7c. Neutral operations with real cross-forge equivalents, implemented only for GitHub and
+reachable only through GitHub-typed interfaces. Each becomes a member of `IForgeIntegration`.
 
 - **PR comment gateway** — already a narrow interface but Octokit-typed and sitting in neutral
   `Feedback/`. De-Octokit the signatures; `PullRequestCommentPublisher` drops `using Octokit;` and its
@@ -224,12 +224,12 @@ reachable only through GitHub-typed interfaces. Each becomes a member of `IPlatf
   catches `Octokit.NotFoundException`. ⚠️ The rename-redirect behaviour it relies on is **not**
   portable: Bitbucket slugs are renameable *and reusable*.
 - **Branch deletion** — `GitHubEventsRecipient.DeleteHeadBranchIfEnabled:393`. The policy is neutral;
-  the ref delete is platform work. This is live, working production behaviour — do not remove it.
+  the ref delete is forge work. This is live, working production behaviour — do not remove it.
 - **Webhook ingestion and event normalisation** — the largest piece; both recipients bind
   `IRecipient<GitHubWebhookMessage>` and 11 app files import the GitHub webhooks namespace. M8 already
   owns de-GitHub-ing the bus contract; treat M8 as the vehicle and this entry as its acceptance
   criteria.
-- **Boards** — Projects V2 becomes `ListBoardsAsync` behind `ECapability.Boards` (D17), rather than
+- **Boards** — Projects V2 becomes `ListBoardsAsync` behind `EForgeCapability.Boards` (D17), rather than
   staying app-side as the superseded D15 proposed. The `GitHubProject` *entity*, its model JSON and
   its security grants still live in the app; only the API surface moves.
 
@@ -493,16 +493,16 @@ snippet.
 
 ---
 
-## M15 — Three platform libraries 🟦 *(D14, D16; after M2a, M2b, M2c, M8)*
+## M15 — Three forge libraries 🟦 *(D14, D16; after M2a, M2b, M2c, M8)*
 
 Three projects as siblings of the app — `CodeCoverage.{Github,Gitlab,Bitbucket}Integration` — with
-`IsPackable=false` (D14: split now, publish only when a second platform ships and the entity
+`IsPackable=false` (D14: split now, publish only when a second forge ships and the entity
 contracts have stopped moving). Only the GitHub one has content in stage 1; the other two are created
 with a stub implementation so the registration pattern and the capability contract are proven by more
 than one case, and so M2b's conformance test has something to iterate.
 
 - Dependency direction: `CodeCoverage` → `*Integration` → `CodeCoverage.Library` (which holds
-  `IPlatformIntegration`). Linear, no cycles.
+  `IForgeIntegration`). Linear, no cycles.
 - Each library exposes **one extension method** — `AddGithubIntegration(this ISparkBuilder, …)` —
   modelled line-for-line on
   `libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/Extensions/SparkBuilderExtensions.cs:13-62`. The app
@@ -513,7 +513,7 @@ than one case, and so M2b's conformance test has something to iterate.
 - ⚠️ Verify the new assemblies' `[GenerateIndex]` indexes are actually emitted. The cross-assembly
   filter keys on the attribute-host AssemblyRef and once made HR's indexes vanish with **no
   diagnostic** (PRD §6.9). Check the generated output; assume nothing.
-- ⚠️ `security.json` and model sync are **app-only by design** (PRD §6.9) — platform rights are
+- ⚠️ `security.json` and model sync are **app-only by design** (PRD §6.9) — forge rights are
   authored in the app, and a library shipping entities forces a model re-sync the app must commit.
 - Add all three to `MintPlayer.Spark.slnx`, the `Dockerfile` COPY lines, and
   `code-coverage-deploy.yml`'s `paths:` list — three hand-maintained closures, each failing quietly
@@ -580,48 +580,47 @@ M14 last, in that order.
 
 Only D6f (fork-PR uploads) still blocks work. D16 and D17 are decided and shape M2a/M2b/M2c/M15.
 D14 remains a recommendation: if published NuGet packages are wanted after all, M15 grows a fourth
-contracts project — because `IPlatformIntegration` is typed on this app's domain entities — and the
+contracts project — because `IForgeIntegration` is typed on this app's domain entities — and the
 placement moves to `libs/`. PRD §6.9 has what that costs.
 
 ---
 
-## Open: one vocabulary, two words (D18)
+## Vocabulary: forge, not platform (D18, decided)
 
-D16 introduced `IPlatformIntegration`, `EPlatform`, `ECapability`. M1 shipped `EForgeProvider`,
-`ForgeProviders`, `ForgeOwner`, `ForgeAccess`, `ForgeVerdict`, `EForgeOutcome`,
-`ForgeAccessDeniedException`. The PRD says "provider" roughly a hundred times and "forge" in its own
-title. Three words for one concept, and one of them is overloaded.
+**Decided by the owner, 2026-09-20: "Use Forge wherever you like."** So *forge* is the single word
+for the thing we integrate with, and the D16 names move to match rather than the shipped ones.
 
-**The overload is the real problem.** ASP.NET Identity already uses *provider* to mean an external
-login provider — `SparkUser.Logins[].LoginProvider`, and D3's "one button per registered provider"
-is literally that list. `ForgeAccessResolver` reads linked providers off exactly that field. So
-"provider" currently means both *the ASP.NET authentication scheme* and *the forge we integrate
-with*, which happen to be 1:1 today and will not obviously stay so — a user can sign in with GitHub
-and have no GitHub repositories at all.
+This is the cheaper direction. Everything M1 and M2 shipped stays exactly as it is —
+`EForgeProvider`, `ForgeProviders`, `ForgeOwner`, `ForgeAccess`, `ForgeVerdict`, `EForgeOutcome`,
+`ForgeAccessDeniedException` — and only the three identifiers introduced with D16/D17 change:
 
-**Recommendation: `platform` for the integration, `provider` only for the ASP.NET login provider.**
+| D16/D17 draft | Final |
+|---|---|
+| `IPlatformIntegration` | **`IForgeIntegration`** |
+| `EPlatform Platform { get; }` | **`EForgeProvider Provider { get; }`** — already shipped |
+| `ECapability` | **`EForgeCapability`** |
+| `GitHubPlatformIntegration` | **`GitHubForgeIntegration`** |
 
-- `IPlatformIntegration`, `EPlatform`, `ECapability` — the integration surface (D16's own words).
-- `EForgeProvider` → `EPlatform`; `ForgeOwner` → `PlatformOwner`; `ForgeAccess`/`ForgeVerdict`/
-  `EForgeOutcome`/`ForgeAccessDeniedException` → `Platform*`.
-- `LoginProvider` stays untouched — it is ASP.NET's, and `EPlatform.TryParse(login.LoginProvider)`
-  becomes an honest conversion between two different things rather than a redundant-looking one.
-- Canonical strings stay `github` / `gitlab` / `bitbucket` (D11), so **no URL, document id or badge
-  changes** — this is a rename of C# identifiers and prose only.
+**The overload that prompted the question still needs a rule**, because *provider* remains
+ASP.NET Identity's word for an external login provider (`SparkUser.Logins[].LoginProvider`, and the
+list D3's login page renders). The rule:
 
-**Cost:** cheap now, expensive later. The affected types are a few files from M1/M2 plus their
-usages, and nothing is published (D14). After M6 re-keys documents and M7 publishes routes, a rename
-starts touching things with external consequences.
+- **Bare "provider"** in prose and in ASP.NET-facing code means the **login provider** — the
+  authentication scheme.
+- **The thing we integrate with is a "forge"**, and where a qualified name is needed it is a **"forge
+  provider"** (`EForgeProvider`), never a bare "provider".
+- `EForgeProvider.TryParse(login.LoginProvider)` is therefore an honest conversion between two
+  different things that happen to be 1:1 today, and reads as one.
 
-**The trap in the recommendation:** "forge" is the more precise word — it means specifically a
-code-hosting platform, where "platform" means almost anything — and the PRD's title and filenames use
-it. Renaming to the vaguer word loses a little precision, and leaves `multi-forge-PRD.md` named after
-a term the code no longer uses. Accepted because D16's wording is the owner's and internal
-consistency beats lexical precision.
+⚠️ Prose in these two documents still uses bare "provider" for the forge in many places written
+before this rule existed — D4's "provider-scoped", D5's "provider-qualified ids", M1's "per provider".
+Those are **not** being mass-renamed: the URL and id vocabulary is fixed by D11 (`github` / `gitlab` /
+`bitbucket` as path segments) and unaffected either way, and a global search-and-replace across two
+large documents would churn far more than it clarifies. The rule applies to **code identifiers and
+new prose**; existing prose is corrected where a sentence is being rewritten anyway.
 
-**Alternative if this is not wanted:** keep `EForgeProvider` and name the property
-`EForgeProvider Provider { get; }` on `IPlatformIntegration`. Cheapest possible, and leaves the
-interface the only member of the "platform" vocabulary.
+**No data, URL or route consequence.** Canonical strings stay `github` / `gitlab` / `bitbucket`
+(D11), so no document id, badge URL or route changes. This is C# identifiers and prose only.
 
-**Not decided — do not act on the recommendation without an answer.** M2a is the milestone that
-would carry the rename, since it rewrites these types anyway.
+**Carried by M2a**, which rewrites these types anyway.
+
