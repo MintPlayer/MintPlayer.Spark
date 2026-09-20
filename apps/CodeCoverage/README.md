@@ -168,9 +168,10 @@ it. Optionally set the **Setup URL** to the app's home page so installs land
 back in the app.
 The App's *Client ID* / a generated *client secret* go into
 `GitHub:{Development|Production}:ClientId` / `:ClientSecret` below. **These are
-required to boot.** GitHub is the only authentication provider this app
-registers, and Spark's local credentials are disabled, so a missing `ClientId`
-means nobody could sign in at all — startup throws a named error naming the key
+required to boot.** GitHub is currently the only authentication provider this
+app registers (see [multi-forge-PRD](../../docs/code-coverage/multi-forge-PRD.md)
+for the work to add others), and Spark's local credentials are disabled, so a
+missing `ClientId` means nobody could sign in at all — startup throws a named error naming the key
 rather than serving an app whose sign-in button is broken. A fresh clone must
 configure user-secrets before its first `dotnet run`.
 

@@ -806,7 +806,7 @@ baseline.
 
 ---
 
-## M12 — Docs 🟦
+## M12 — Docs 🟩 *(the A12 sweep; the rest follows the code)*
 
 - `product-overview.md`: retire the v1 non-goal at `:23`; rewrite §6.1/§6.3, which assert
   GitHub-as-authority as **policy** (`:157`, `:170`) — restate what is still true (the forge decides
@@ -817,7 +817,7 @@ baseline.
 
 ---
 
-## M13 — Verification sweep 🟦
+## M13 — Verification sweep 🟨 *(suites green; browser + production checks outstanding)*
 
 **The only full test run.** Everything before this is verified by reading and building.
 
@@ -829,9 +829,44 @@ baseline.
   pressure, not regression.
 - Walk A1–A12.
 
+
+### As-built — 2026-09-20
+
+**Green, measured:**
+
+| Suite | Result |
+|---|---|
+| `MintPlayer.Spark.Tests` | 2,232 passed |
+| `CodeCoverage.Tests` | 568 passed |
+| `MintPlayer.Spark.SourceGenerators.Tests` | 278 passed |
+| `MintPlayer.Spark.Client.Tests` | 91 passed |
+| `MintPlayer.Spark.slnx` | builds, 0 errors |
+| `@spark-apps/code-coverage` (Angular) | builds, 0 errors |
+
+**3,169 tests, no failures.**
+
+⚠️ **Not verified, and the PR says so:**
+
+- **E2E** (`MintPlayer.Spark.E2E.Tests`) — needs a running host; belongs with M17.
+- **A4 in a browser.** The sign-in page and the fixed redirect compile and the client builds, but
+  nobody has clicked them. M3's own exit criterion asks for `playwright_node` against a running
+  `dotnet run`, and that has not happened.
+- **A10** — counts before and after the migration, against production. The migration is not written,
+  let alone run.
+- The nine `bi` icon usages the owner flagged are **still broken** and are not covered by any test,
+  because nothing asserts on rendered icons.
+
+### Version bump: none needed, and that is deliberate
+
+The CI gate (`pull-request.yml`) fires on changes under `libs/**`. This branch changes
+`apps/CodeCoverage`, `docs/code-coverage` and one file under `tests/` — **zero files under
+`libs/`** — so the gate does not fire and no package version moves. Bumping anyway would burn a
+preview version for a release that contains nothing, and per `CLAUDE.md` a burned version cannot be
+reused.
+
 ---
 
-## M14 — Version bumps and PR 🟦
+## M14 — Version bumps and PR 🟨 *(PR open; no version bump needed — see below)*
 
 - `libs/` version bump is a **CI-only gate** — a green `dotnet test` does not catch it.
 - **Majors do not move.** npm major = Angular major, NuGet major = .NET major. These are
