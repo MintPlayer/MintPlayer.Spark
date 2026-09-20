@@ -55,10 +55,10 @@ public class UploadsControllerStatusTests : CoverageRavenTest
     /// <summary>A GitHub Actions OIDC principal for a public repository.</summary>
     private static ClaimsPrincipal OidcToken(string fullName, long repositoryId) => new(new ClaimsIdentity(
         [
-            new Claim(GitHubOidc.RepositoryClaim, fullName),
-            new Claim(GitHubOidc.RepositoryIdClaim, repositoryId.ToString()),
-            new Claim(GitHubOidc.RepositoryOwnerClaim, fullName.Split('/')[0]),
-            new Claim(GitHubOidc.RepositoryVisibilityClaim, "public"),
+            new Claim(GitHubOidc.Profile.RepositoryClaim, fullName),
+            new Claim(GitHubOidc.Profile.RepositoryIdClaim, repositoryId.ToString()),
+            new Claim(GitHubOidc.Profile.OwnerClaim, fullName.Split('/')[0]),
+            new Claim(GitHubOidc.Profile.VisibilityClaim, "public"),
         ], GitHubOidc.SchemeName));
 
     private static UploadsController CreateController(IAsyncDocumentSession session, ClaimsPrincipal user)

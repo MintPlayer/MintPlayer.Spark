@@ -662,7 +662,7 @@ second forge with no consumer edit (provable with a test double even before GitL
 
 ---
 
-## M9 — Generalise the uploader surface 🟦
+## M9 — Generalise the uploader surface 🟩
 
 - `GitHubOidc.cs` + `UploadsController.cs:116-155`: the OIDC claim mapping
   (`repository`, `repository_id`, `repository_owner`, `repository_visibility`, `run_id`,

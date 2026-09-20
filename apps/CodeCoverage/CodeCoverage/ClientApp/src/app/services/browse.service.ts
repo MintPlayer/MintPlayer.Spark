@@ -45,11 +45,12 @@ export interface SessionInfo {
 }
 
 export interface BuildInfo {
-  runId: number;
-  runAttempt: number;
+  // runId, runAttempt and workflowName are deliberately NOT declared here. They are GitHub Actions
+  // run identity, the server still sends them, and nothing in this app has ever bound them — so
+  // declaring them advertised a shape the UI does not depend on and that a second forge would have
+  // had to supply an equivalent for. Re-declare them only alongside a template that reads them.
   status: string;
   finalizeReason?: string;
-  workflowName?: string;
   createdAtUtc: string;
   coverage?: CoverageSummary;
   sessions: SessionInfo[];

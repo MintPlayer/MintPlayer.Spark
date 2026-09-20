@@ -1,5 +1,6 @@
 using CodeCoverage.ApiTokens;
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 using CodeCoverage.Indexes;
 using CodeCoverage.Ingestion;
 using CodeCoverage.Services;
@@ -35,6 +36,17 @@ namespace CodeCoverage.Controllers;
 public partial class UploadsController : ControllerBase
 {
     [Inject] private readonly IAsyncDocumentSession session;
+
+    /// <summary>
+    /// The OIDC vocabulary this request's token speaks.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Temporary: fixed to GitHub because it is the only scheme registered. When a second forge
+    /// registers one, this selects by the authenticated scheme
+    /// (<c>User.Identity.AuthenticationType</c>) rather than assuming — and it is a single
+    /// expression precisely so that change is one line rather than eleven claim lookups.
+    /// </remarks>
+    private static ForgeOidcProfile Oidc => ForgeOidcProfile.GitHub;
     [Inject] private readonly IRepositoryResolver repositories;
     [Inject] private readonly IMessageBus messageBus;
     [Inject] private readonly IBaseResolver baseResolver;
@@ -143,9 +155,9 @@ public partial class UploadsController : ControllerBase
         // body's copies so a workflow can't attach its coverage to someone
         // else's run. The `sha` claim is NOT used: on pull_request events it
         // is the ephemeral merge commit, while the body carries the PR head.
-        if (long.TryParse(User.FindFirst(GitHubOidc.RunIdClaim)?.Value, out var claimRunId))
+        if (long.TryParse(User.FindFirst(Oidc.RunIdClaim)?.Value, out var claimRunId))
             form.RunId = claimRunId;
-        if (int.TryParse(User.FindFirst(GitHubOidc.RunAttemptClaim)?.Value, out var claimRunAttempt))
+        if (int.TryParse(User.FindFirst(Oidc.RunAttemptClaim!)?.Value, out var claimRunAttempt))
             form.RunAttempt = claimRunAttempt;
 
         var commitId = Entities.Commit.DocumentId(repository.GitHubId, form.CommitSha);
@@ -619,7 +631,7 @@ public partial class UploadsController : ControllerBase
     {
         // OIDC path: the GitHub-signed `repository` claim IS the authorization —
         // a workflow can only ever upload for the repository it runs in.
-        var oidcRepository = User.FindFirst(GitHubOidc.RepositoryClaim)?.Value;
+        var oidcRepository = User.FindFirst(Oidc.RepositoryClaim)?.Value;
         if (oidcRepository is not null)
         {
             if (!string.Equals(oidcRepository, fullName, StringComparison.OrdinalIgnoreCase))
@@ -676,7 +688,7 @@ public partial class UploadsController : ControllerBase
     /// </summary>
     private async Task<Repository?> ResolveOidcRepository(bool provision, CancellationToken cancellationToken)
     {
-        if (!long.TryParse(User.FindFirst(GitHubOidc.RepositoryIdClaim)?.Value, out var gitHubRepoId))
+        if (!long.TryParse(User.FindFirst(Oidc.RepositoryIdClaim)?.Value, out var gitHubRepoId))
             return null;
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(gitHubRepoId), cancellationToken);
@@ -703,14 +715,14 @@ public partial class UploadsController : ControllerBase
                 repository.DisconnectedAtUtc = null;
             }
 
-            var claimedFullName = User.FindFirst(GitHubOidc.RepositoryClaim)?.Value;
+            var claimedFullName = User.FindFirst(Oidc.RepositoryClaim)?.Value;
             if (!string.IsNullOrEmpty(claimedFullName) && claimedFullName != repository.FullName)
             {
                 if (!repository.PreviousFullNames.Contains(repository.FullName, StringComparer.OrdinalIgnoreCase))
                     repository.PreviousFullNames.Add(repository.FullName);
                 repository.FullName = claimedFullName;
                 repository.Name = claimedFullName.Split('/')[1];
-                repository.OwnerLogin = User.FindFirst(GitHubOidc.RepositoryOwnerClaim)?.Value
+                repository.OwnerLogin = User.FindFirst(Oidc.OwnerClaim)?.Value
                     ?? claimedFullName.Split('/')[0];
             }
 
@@ -720,14 +732,14 @@ public partial class UploadsController : ControllerBase
         if (!provision)
             return null;
 
-        if (User.FindFirst(GitHubOidc.RepositoryVisibilityClaim)?.Value != "public")
+        if (User.FindFirst(Oidc.VisibilityClaim)?.Value != Oidc.PublicVisibilityValue)
             return null;
 
-        var fullName = User.FindFirst(GitHubOidc.RepositoryClaim)!.Value;
-        var ownerLogin = User.FindFirst(GitHubOidc.RepositoryOwnerClaim)?.Value ?? fullName.Split('/')[0];
+        var fullName = User.FindFirst(Oidc.RepositoryClaim)!.Value;
+        var ownerLogin = User.FindFirst(Oidc.OwnerClaim)?.Value ?? fullName.Split('/')[0];
 
         Account? account = null;
-        if (long.TryParse(User.FindFirst(GitHubOidc.RepositoryOwnerIdClaim)?.Value, out var ownerId))
+        if (long.TryParse(User.FindFirst(Oidc.OwnerIdClaim)?.Value, out var ownerId))
         {
             account = await session.LoadAsync<Account>(Account.DocumentId(ownerId), cancellationToken);
             if (account is null)
