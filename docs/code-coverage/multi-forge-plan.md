@@ -685,6 +685,49 @@ Restructure so the snippet is chosen by **provider × language** rather than lan
 GitHub the only populated provider in stage 1. Without this, stage 2 has nowhere to put a GitLab CI
 snippet.
 
+### ⚠️ Deferred: the app should not be loading `bootstrap-icons.css` at all
+
+Owner, 2026-09-20: *"that's not supposed to. Remove that line, and use the `<bs-icon>` instead."*
+**Left as-is for now, deliberately** — recorded here rather than done, because the gap is in the
+libraries rather than in this app, and fixing only the app's half makes things worse.
+
+**What is true today.** `apps/CodeCoverage/CodeCoverage/ClientApp/project.json:27` lists
+`node_modules/bootstrap-icons/font/bootstrap-icons.css` in the build's global `styles`. That is why
+every `<i class="bi …">` in this app renders, and it is the wrong layer — icons are supposed to come
+from a component, not from a global font stylesheet the app happens to pull in.
+
+**Why removing the line alone breaks more than it fixes.** `SparkIconComponent`
+(`<spark-icon name="…">`) renders a registered SVG *and falls back to* `<i class="bi bi-{name}">`
+when the name is unknown. Only **seven** icons are registered
+(`SPARK_BUILT_IN_ICONS`: `arrow-left`, `pencil`, `plus`, `plus-lg`, `search`, `trash`, `x-lg`).
+Everything else in play depends on the global CSS:
+
+| Depends on the CSS | Where |
+|---|---|
+| `github`, `google`, `facebook`, `microsoft` | **`ng-spark-auth`**, hard-coded as `iconClass: 'bi bi-github'` in `spark-auth-routes.ts:198-216` — this is the sign-in page's provider button |
+| `graph-up`, `house` | **`programUnits.json:32,42`**, server-supplied program-unit icons |
+| `arrow-return-right`, `check2`, `patch-check`, `clipboard`, `arrow-repeat`, `rocket-takeoff`, `graph-up`, `exclamation-triangle` | this app's own templates (8 distinct) |
+
+So dropping the stylesheet without the rest would blank the **GitHub button on the sign-in page** and
+the **sidebar icons** — the two most visible icons in the product.
+
+**What doing it properly involves**, roughly in dependency order:
+
+1. **`ng-spark`** — add the provider and program-unit icons to `SPARK_BUILT_IN_ICONS`, so
+   `spark-icon` resolves them without a CSS fallback. Any consumer benefits.
+2. **`ng-spark-auth`** — `iconClass: 'bi bi-github'` becomes an icon *name* resolved through
+   `spark-icon`, so a provider button stops depending on a stylesheet the app might not load.
+3. **`apps/CodeCoverage`** — register the 8 app-specific SVGs, convert its templates to
+   `<spark-icon>`, and only then remove the `styles` entry.
+
+⚠️ Steps 1 and 2 are `libs/node_packages/` changes, so both packages need version bumps and the PR
+grows a second library concern. That is the main reason this is recorded rather than folded into
+#422, which is already about forges.
+
+**Note the failure shape**, because it is the same one as several other findings on this branch: an
+unregistered icon does not error, it renders nothing — and `spark-icon`'s CSS fallback is exactly
+what hides the missing registration today.
+
 ---
 
 ## M11 — Rename the GitHub-shaped client surface 🟩 *(partly — DTOs done, renderers deferred)*
