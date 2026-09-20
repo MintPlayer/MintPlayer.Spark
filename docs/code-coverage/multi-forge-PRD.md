@@ -74,10 +74,11 @@ dropped. Changing a decision is cheap; discovering an undocumented one is not.
 | **D11** | **Provider code in ids and URLs: full names (`github`/`gitlab`/`bitbucket`), not `gh`/`gl`/`bb`.** One vocabulary shared by D5's ids and the routes. | **DECIDED** — user, this session |
 | **D12** | One git repository pushed to two forges (github + bitbucket remotes) — one record or two? | **Recommend two independent records, no merging.** See §6.6 |
 | **D13** | **No backward-compatible badge route.** The legacy two-segment URL is removed, not aliased; badge URLs are replaced at source. Sound only because the deployment has no external users. | **DECIDED** — user, this session |
-| **D16** | **One `IPlatformIntegration` interface; three libraries, one `[Register]`ed implementation class each; the app calls three extension methods; injection sites take `IEnumerable<IPlatformIntegration>` and never know which platform they are on.** Implementations are facades over per-concern services internal to each library. | **DECIDED** — owner, this session. See §6.10 |
-| **D17** | **Capability gaps are expressed as a get-only `ECapability[] Capabilities`; methods outside an implementation’s set throw.** A conformance test asserts the array and the behaviour agree, in both directions. | **DECIDED** — owner, this session. Reverses part of D15 |
 | **D14** | Per-provider **assemblies**, yes; per-provider **NuGet packages**, not in stage 1. Three projects with `IsPackable=false` buy the whole architectural benefit; publishing adds a permanent public contract with no consumers. | **Recommend split-don't-publish** — see §6.9 |
 | **D15** | Which capabilities move into a provider library. | **Partly superseded by D17** — Projects V2 moves onto the interface behind `ECapability.Boards`; App installations stay *internal to the GitHub library*, never on the interface. §6.9 table otherwise stands |
+| **D16** | **One `IPlatformIntegration` interface; three libraries, one `[Register]`ed implementation class each; the app calls three extension methods; injection sites take `IEnumerable<IPlatformIntegration>` and never know which platform they are on.** Implementations are facades over per-concern services internal to each library. | **DECIDED** — owner, this session. See §6.10 |
+| **D17** | **Capability gaps are expressed as a get-only `ECapability[] Capabilities`; methods outside an implementation’s set throw.** A conformance test asserts the array and the behaviour agree, in both directions. | **DECIDED** — owner, this session. Reverses part of D15 |
+| **D18** | **Naming collision:** D16 says *platform*, shipped M1/M2 code says *forge*/*provider*, and ASP.NET Identity already owns *provider* for external logins. | **OPEN** — recommend `platform` for the integration, `provider` only for the ASP.NET login provider. Rename carried by M2a; canonical URL strings unaffected. See the plan's closing note |
 
 ---
 
@@ -571,8 +572,10 @@ areas. The sub-milestones in the plan (M2a, M2b) exist to close that, and they a
 any provider assembly — a second implementation added before (a) is fixed is actively unsafe.
 
 **The fix, and its one dependency.** *(Owner, 2026-09-20: "Yes we just need to inject IEnumerable.")*
-Each of the two seams gets a resolver in the `ForgeAccessResolver` shape — inject
-`IEnumerable<IForgeClient>`, select on `Provider`. But selecting requires knowing *which* provider a
+⚠️ The first draft of this paragraph gave each seam its own resolver; **D16 replaced the three seams
+with one `IPlatformIntegration`**, so there is one selection helper, not three (§6.10). Everything
+below about *selection* is unchanged by that — inject the `IEnumerable`, select on the discriminator.
+But selecting requires knowing *which* provider a
 given `Repository` belongs to, and no entity carries a provider discriminator until M6 re-keys the
 documents (D5/D7): `grep ForgeOwner|EForgeProvider` across `CodeCoverage.Library/Entities` returns
 zero hits today. So until M6 lands, the selector resolves to `EForgeProvider.GitHub` for every
@@ -1027,7 +1030,7 @@ five do not (§5.7c). So the split is staged by what is seamable, not done in on
 | Repository enumeration, `owner/name` resolution, branch delete | **moves after a seam is built** (M2b) |
 | Webhook ingestion and event normalisation | **moves after a seam is built** (M2b) — the largest piece; 11 app files import the GitHub webhooks namespace |
 | **App installations** | **stays GitHub-only.** No forge has "an installation the owner selects repositories into"; GitLab has group/project access tokens, Bitbucket has app passwords. This is not a capability to abstract — it is GitHub's *answer* to a question (`which owners may this human manage?`) that `IForgeAccessService` already asks neutrally |
-| **Projects V2 boards** | **stays GitHub-only, forever** (confirms D8). Entirely GraphQL, entirely GitHub: `ProjectV2` node ids, single-select Status fields, `closingIssuesReferences`. GitLab issue boards do not map; Bitbucket has no boards. The entity, its model JSON, its security grants and its custom actions stay in the app |
+| **Projects V2 boards** | ⚠️ **SUPERSEDED by D17 — see §6.10.** This row said "stays GitHub-only, forever", which held only while there was no capability channel. Boards now go **on the interface** behind `ECapability.Boards`, and the app iterates and skips. What was right and still stands: the API surface is entirely GraphQL and entirely GitHub (`ProjectV2` node ids, single-select Status fields, `closingIssuesReferences`), GitLab issue boards do not map, Bitbucket has none — and the `GitHubProject` *entity*, its model JSON, its security grants and its custom actions stay in the app |
 | **CI identity (OIDC)** | **per-provider, but pluggable rather than shared.** Every forge mints job tokens; the issuer, claim names and trust decision differ entirely. One scheme registered per provider assembly, not one abstraction |
 
 The honest summary: about half the GitHub surface is a *provider implementation* and moves; the other
