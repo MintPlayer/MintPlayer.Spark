@@ -471,6 +471,10 @@ id. The change is one line; the two above are what make it safe.
   delete the old. A missing report is silent data loss — verify by count *and* by unique hash.
 - **M6d — verification script**, shipped with the milestone: per-collection counts before/after,
   zero documents left on a legacy id, zero attachments orphaned. Runs against production (A10).
+- **M6e — decide the prefix's scope** (D5 detail surfaced by SP1): `GitHubProjects` is keyed by a
+  globally-unique GraphQL node id and `ApiTokens` uses Raven's id generator with forge ids in
+  *fields*. State explicitly whether the provider prefix is universal or applied only where a
+  collision is possible, and write the reason down.
 - **M6f — the three owner-login field rewrites, moved here from M1** (D6e) so the PR ships one
   migration: `Repository.OwnerLogin` (172 docs), `Account.Login` (2), `ApiToken.AccountLogin` (2,
   found via the authorization inventory rather than the id analysis) all become `provider:owner`
@@ -480,10 +484,21 @@ id. The change is one line; the two above are what make it safe.
   unlike the re-key they **can** use `PatchByQueryOperation` — one per collection, so a partial
   failure names the collection that stopped. The six comparison sites listed in M1 flip in the same
   commit.
-- **M6e — decide the prefix's scope** (D5 detail surfaced by SP1): `GitHubProjects` is keyed by a
-  globally-unique GraphQL node id and `ApiTokens` uses Raven's id generator with forge ids in
-  *fields*. State explicitly whether the provider prefix is universal or applied only where a
-  collision is possible, and write the reason down.
+- **M6g — delete the compatibility shims D22 releases.** Runs *after* the re-key. ⚠️ **See M17: the
+  `LegacyBranchCompatibility` half should NOT ship in the same deployment as the re-key**, because it
+  is what lets the app tolerate an unfinished migration.
+  - `Services/LegacyBranchCompatibility.cs` + its hook at `Program.cs:313`. ⚠️ **Confirm
+    `M_202609190900_BranchesBecomePerLineArmSets` completed in production first.** The shim exists so
+    the app does not depend on migration state; deleting it re-couples them, and a half-migrated
+    `FileCoverage` would then render wrong rather than render old.
+  - `ApiToken.AccountLogin` (`:63-68`) and its comparison branch in `UploadsController`, after the
+    migration backfills `AccountGitHubId`. ⚠️ Any token the backfill cannot resolve **stops working** —
+    fine under D22, but **count and report them**, do not discover it from a support question.
+  - ⚠️ **Not** `Commit.ParentSha`'s trust rules (`Commit.cs:55`, `CommitAssembler.cs:371-387`). That is
+    a data-quality guard against values already stored, not backward compatibility, and deleting it
+    would trust a value the code knows may be wrong.
+  - Rule of thumb: *if deleting this shim would make something already in RavenDB read wrong, migrate
+    first and delete second.*
 
 
 **This is the milestone that can go wrong.** It re-keys live documents in the production `Coverage`
@@ -742,6 +757,82 @@ baseline.
 
 ---
 
+## M17 — Deploy to the VPS, with the app still working 🟦 *(last; D22 does not relax this)*
+
+The owner's acceptance criterion, stated 2026-09-20: *"Just make sure I can deploy this to my vps, and
+have the app still working as best as possible."* D22 removed the obligation to old callers and wire
+formats; it did **not** remove this one.
+
+### ⚠️ The re-key is irreversible — this is the point of no return
+
+RavenDB ids are immutable, so M6 is **put-new + delete-old**, not a patch. The moment it runs:
+
+- **Rolling the code back does not roll the data back.** Old code looks for `Commits/{repoId}/{sha}`
+  and finds `Commits/github/{repoId}/{sha}`. Every commit, build, file and tree reads as missing —
+  the app comes up and serves an empty site rather than failing loudly.
+- **There is therefore no rollback except a restore.** Nothing else in this PR has that property.
+
+**So: take a backup immediately before, and verify it can be read back.** An unverified backup is a
+belief, not a rollback. This is the single step whose absence turns a bad migration from an
+inconvenience into data loss, and it is currently nowhere in this plan.
+
+### Deployment shape (measured)
+
+- **One container, no blue/green.** There is a downtime window by design; the question is only its
+  length and what the app does inside it.
+- **RavenDB runs as `coverage-raven` and publishes no host ports** — queries go through the container.
+  The backup and the verification both have to happen from inside it.
+- The deploy workflow's `paths:` list is hand-maintained (`code-coverage-deploy.yml`). If M15 adds
+  projects, they must be added there too or the deploy silently does not rebuild.
+
+### Order of operations
+
+1. **Back up, and read the backup back.** Before any new code is running.
+2. **Deploy the new code with the migration not yet run**, if the framework allows it to be triggered
+   rather than run at startup. The app should come up on old data and still work — which is what
+   `LegacyBranchCompatibility` does for the *previous* migration and is the pattern to copy.
+3. **Run the migration**, resumably (M6b already records progress so a restart resumes).
+4. **Run M6d's verification script** — per-collection counts before and after. This is exit criterion
+   **A10**, and it is verified *against production*, not a fixture.
+5. **Only then** delete the compatibility shims (M6g).
+
+### What the app must do while half-migrated
+
+Step 3 can stop: a crash, an OOM, a `Patching.MaxStepsForScript` cap, or simply being interrupted.
+With 199,917 documents this is a real possibility, not a theoretical one, so **"half-migrated" is a
+state the app has to survive**, and the honest goal is *degraded but not wrong*:
+
+- A commit whose documents have moved and one whose documents have not must both render, or the
+  un-migrated one must be visibly absent — never silently empty.
+- ⚠️ **Never silently empty** is the specific failure to design against, because it is
+  indistinguishable from "this repository has no coverage", which is a legitimate state.
+
+### ⚠️ This tempers M6g
+
+M6g deletes the shims D22 releases, and one of them —
+`LegacyBranchCompatibility` — is precisely what lets the app tolerate an unfinished migration. Deleting
+it in the same deployment that runs a 199,917-document re-key removes the tolerance at the exact
+moment it is most needed.
+
+**Recommendation: keep `LegacyBranchCompatibility` through this deployment and delete it once
+production is verified migrated.** It costs a type check per loaded entity. That is a smaller price
+than the failure it prevents, and it is not backward compatibility in the sense D22 released — it is
+*migration-state tolerance*, which D22's own wording carves out.
+
+`ApiToken.AccountLogin` has no such constraint and can go with the backfill, provided the tokens the
+backfill cannot resolve are **counted and reported** rather than discovered later.
+
+### Queue rename (if D22's licence is used)
+
+Renaming `spark-github-all` strands in-flight `SparkMessage` documents on the old queue name. If the
+rename happens, the migration rewrites their queue field, and the safer sequencing is to let the
+queue drain before deploying rather than to migrate messages mid-flight.
+
+**Exit:** the site serves at coverage.mintplayer.com, a fresh upload produces a build and a PR
+comment, counts match A10, and a verified backup exists from before the migration ran.
+
+---
+
 ## Ordering
 
 M0 done. SP1 did not shrink M6 — it grew it (199,917 documents carry the GitHub repo id in their
@@ -760,7 +851,8 @@ GitHub from one explicit line.
 
 M3 and M4 are independent of the forge spine and can land early; M4 is the largest single milestone
 and the one most worth committing in pieces (4a–4k). M9/M10/M11 depend on M6's renames. M12, M13,
-M14 last, in that order.
+M14 last, in that order — then **M17**, the deployment itself, which is the only milestone whose
+failure mode is irreversible and which therefore starts with a verified backup.
 
 **No decision blocks work.** D6f is resolved and built by **M16**, which is ordered *before* M6
 only in the sense that M6a must reserve its id segment — the endpoint itself can land any time after

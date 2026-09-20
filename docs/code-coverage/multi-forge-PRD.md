@@ -82,6 +82,7 @@ dropped. Changing a decision is cheap; discovering an undocumented one is not.
 | **D19** | **Suspended installations must stop conferring management rights.** The owner set is built from installations unfiltered (`GitHubAccessService.cs:105-109`) while the backfill already filters `!i.Suspended` (`:235`). Same array, one site filters. | **DECIDED** — owner, this session: fix in this PR. Carried by M2a |
 | **D20** | **An upload that cannot happen reports `Neutral`, never a failure.** `fail-ci-if-error` stays `false`. | **DECIDED** — owner, this session: *"instead of a check, we can report neutral. But no error, that would be intrusive."* ⚠️ GitHub has a first-class `neutral`; GitLab and Bitbucket do not (§5.3) |
 | **D21** | **Webhook recipients take a neutral `ForgeWebhookMessage<T>` carrying a normalised domain event; normalisation lives in each forge library. Forge-specific messages remain for events only one forge has.** One handler method, and adding a forge edits no consumer. | **DECIDED** — owner, this session: *"that design looks great."* ⚠️ Enlarges M8. See §6.11 |
+| **D22** | **No backward compatibility.** One consumer, packages in preview, and a migration ships in this PR — so compatibility shims for old callers, wire formats and package versions can be deleted rather than kept. ⚠️ **Not** a licence to lose data: a shim held open by *stored* data is migrated first, deleted second. | **DECIDED** — owner, this session. See §6.12 |
 
 ---
 
@@ -1344,8 +1345,10 @@ Investigated after the decision, to confirm the design is buildable rather than 
   falls back to CLR-name derivation — the exact shape that produced the seven-queue incident.
   **Every concrete envelope carries its own `[MessageQueue]`.** A shared base is fine for properties
   and must never be relied on for the queue name.
-- ⚠️ **Do not rename `spark-github-all`.** Renaming strands in-flight documents on the old queue.
-  The GitHub queue keeps its name; new forges get new ones.
+- ~~**Do not rename `spark-github-all`.**~~ **Lifted by D22.** Renaming strands in-flight documents,
+  but a migration ships in this PR and can rewrite their queue field, so the name is an ordinary
+  modelling decision again. If it is renamed, the migration must cover in-flight `SparkMessage`
+  documents — stranding them is silent.
 - ⚠️ **GitLab sends no delivery id at all**, so its envelope cannot use the `BroadcastOnceAsync`
   dedup path (`SparkWebhookEventProcessor.cs:160-168`) — idempotency has to come from the handler.
   And **Bitbucket's `X-Hook-UUID` identifies the *hook*, not the delivery**: wiring it in as a
@@ -1366,6 +1369,66 @@ now exist, `ProcessAsync` verifies claim ownership (`MessageProcessor.cs:63-70`)
 `CancellationToken.None` so a shutdown still records the retry (`:295-310`), and
 `MessageRetrySweeper.ReclaimAbandonedAsync` (`:114-170`) returns abandoned messages to `Pending`. A
 crash mid-handler is reclaimed. The warning above about this in earlier drafts is withdrawn.
+
+---
+
+### 6.12 No backward compatibility (D22)
+
+**Decided by the owner, 2026-09-20:** *"no backward compat needed. I'm the only consumer atm, packages
+still in preview, and a database migration can fix everything."*
+
+This is a licence to delete, and it removes several constraints recorded earlier in this document as
+though they were hard. What it is **not** is a licence to lose data — see the line below, because the
+two are easy to conflate and the difference is the whole of production.
+
+#### What it unblocks
+
+- **`spark-github-all` can be renamed after all.** §6.11 recorded "do not rename — it strands
+  in-flight documents" as a constraint. With a migration in the PR, in-flight `SparkMessage`
+  documents can have their queue field rewritten, so the name becomes an ordinary modelling
+  decision again. (A drain window would also do it, but the migration is already being written.)
+- **The webhook envelope may break outright.** `required long InstallationId` and
+  `RepositoryFullName` can go, rather than being kept alongside a neutral replacement.
+- **No compatibility shims for the new id scheme.** D5/D7 already said the migration re-keys rather
+  than dual-reading; D22 confirms nothing needs to read both shapes during or after.
+- **D14 gets easier later, not now.** "Packages still in preview" means a first publish is less
+  frightening, but the argument against publishing was never about breaking consumers — it was about
+  putting a persistence model on nuget.org while it is still moving. That still holds.
+
+#### Existing compatibility code this makes deletable
+
+Three shims exist today, and each has a different safety condition. They are listed because a
+blanket "no backward compat" would otherwise be read as "delete all three", and one of them is
+holding real production documents together.
+
+1. **`Services/LegacyBranchCompatibility.cs`** — a *read-time* shim attached at `Program.cs:313` that
+   derives the new per-line arm-set shape from pre-migration `FileCoverage` documents, so they render
+   whether or not `M_202609190900_BranchesBecomePerLineArmSets` has run, finished, or ever runs again.
+   ⚠️ **Deletable only after confirming that migration completed in production.** Its whole purpose is
+   to make the app independent of migration state; removing it re-couples them. This is a *data*
+   question, not a compatibility one.
+2. **`ApiToken.AccountLogin`** (`:63-68`) — the login-based fallback for tokens minted before
+   `AccountGitHubId` existed, kept "so that no working token is invalidated by a deploy". The
+   migration can backfill the id for those tokens, after which the fallback and its comparison branch
+   in `UploadsController` go. ⚠️ Any token the backfill cannot resolve **stops working** — acceptable
+   under D22, but it should be a counted, reported outcome rather than a surprise.
+3. **`Commit.ParentSha` trust rules** (`Commit.cs:55`, `CommitAssembler.cs:371-387`) — "older action
+   builds sent the PR base sha under this name", so only an `api`-sourced value is trusted for the
+   Δ-vs-parent. ⚠️ **Not actually backward compatibility.** It is a data-quality guard against values
+   already stored, and it stays until those rows are corrected or aged out. Deleting it would trust a
+   value the code knows may be wrong.
+
+#### The line
+
+**No compatibility, but no data loss.** D22 removes obligations to *old callers, old wire formats and
+old package versions* — all of which are ours, in preview, and replaceable. It does not remove the
+obligation to the 199,917 production documents measured in §7.1, whose survival is exit criterion
+**A10** ("counts before and after match, verified against production"). A shim that exists for a
+*consumer* is fair game; a shim that exists because *stored data is in an older shape* is not,
+until the data is migrated.
+
+The practical test: *if this shim were deleted, would anything already in RavenDB read wrong?* If yes,
+migrate first and delete second — in that order, in the same PR.
 
 ---
 
