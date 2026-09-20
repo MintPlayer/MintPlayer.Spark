@@ -55,16 +55,3 @@ public interface IForgeClient
     /// <summary>Source of one file at an exact commit, or null when unavailable. Never stored.</summary>
     Task<string?> GetFileContentAsync(Repository repository, string sha, string path, CancellationToken cancellationToken = default);
 }
-
-/// <summary>Whether the forge can be acted upon for a repository.</summary>
-/// <param name="Available">True when a usable credential was resolved.</param>
-/// <param name="UnavailableReason">
-/// Provider-supplied, user-facing explanation when <paramref name="Available"/> is false. Null when
-/// available. Supplied by the provider precisely so neutral callers never have to name a forge.
-/// </param>
-public sealed record ForgeAccess(bool Available, string? UnavailableReason)
-{
-    public static ForgeAccess Yes { get; } = new(true, null);
-
-    public static ForgeAccess No(string reason) => new(false, reason);
-}

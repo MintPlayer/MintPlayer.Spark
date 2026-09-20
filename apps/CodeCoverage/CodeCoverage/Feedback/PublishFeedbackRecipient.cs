@@ -1,5 +1,6 @@
 using CodeCoverage.Badges;
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 using CodeCoverage.Ingestion;
 using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;

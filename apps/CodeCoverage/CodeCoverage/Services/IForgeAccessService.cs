@@ -65,32 +65,6 @@ public interface IForgeAccessService
     Task InvalidateAsync(CancellationToken cancellationToken = default);
 }
 
-/// <summary>What the viewer may see on one forge, and whether the answer can be trusted as complete.</summary>
-/// <param name="Owners">The accounts the viewer may see. Degraded answers carry only their own.</param>
-/// <param name="State">Why the set is what it is — see <see cref="EForgeCredentialState"/>.</param>
-public sealed record ForgeVisibility(ForgeOwner[] Owners, EForgeCredentialState State);
-
-/// <summary>
-/// The health of the viewer's credential for one forge.
-/// </summary>
-/// <remarks>
-/// The distinction between <see cref="Unavailable"/> and an empty <see cref="Ok"/> is load-bearing:
-/// one means "we could not find out", the other means "we asked and the answer is none". Collapsing
-/// them makes an outage indistinguishable from having no accounts, which is exactly the confusion
-/// this product has already been bitten by.
-/// </remarks>
-public enum EForgeCredentialState
-{
-    /// <summary>The forge answered. The owner set is complete.</summary>
-    Ok,
-
-    /// <summary>The credential is dead and only a browser round trip can fix it.</summary>
-    ReauthRequired,
-
-    /// <summary>The forge could not be reached. The owner set is degraded, not empty.</summary>
-    Unavailable,
-}
-
 /// <summary>
 /// Hands out the <see cref="IForgeAccessService"/> for a given forge, and says which forges the
 /// current viewer actually has an identity on.
