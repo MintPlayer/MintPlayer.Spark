@@ -46,6 +46,34 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
             => BroadcastAsync(message, cancellationToken);
     }
 
+    /// <summary>
+    /// Runs the neutral half of the pipeline over whatever the GitHub half broadcast.
+    /// </summary>
+    /// <remarks>
+    /// M8d split the owner rename: GitHub resolves which account the payload names, and
+    /// <see cref="ForgeEventsRecipient"/> rewrites the account and every full name beneath it.
+    /// Asserting across both is deliberate — a normaliser that emits a well-formed event nobody
+    /// acts on would pass a narrower test and still leave every repository stale.
+    /// </remarks>
+    private static async Task DeliverForgeEventsAsync(IAsyncDocumentSession session, RecordingMessageBus bus)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.None));
+        services.AddSingleton(session);
+        services.AddSingleton<IMessageBus>(bus);
+        var forge = new CodeCoverage.Tests.Services.ScriptedDiffService();
+        services.AddSingleton<CodeCoverage.Forge.IForgeIntegration>(forge);
+        services.AddSingleton<CodeCoverage.Forge.IForgeIntegrationResolver>(forge);
+        services.AddScoped<ForgeEventsRecipient>();
+        var recipient = services.BuildServiceProvider().GetRequiredService<ForgeEventsRecipient>();
+
+        foreach (var message in bus.Messages.ToArray())
+        {
+            if (message is CodeCoverage.Forge.ForgeWebhookMessage<CodeCoverage.Forge.OwnerRenamed> renamed)
+                await recipient.HandleAsync(renamed);
+        }
+    }
+
     private static GitHubEventsRecipient CreateRecipient(IAsyncDocumentSession session, RecordingMessageBus? bus = null)
     {
         var services = new ServiceCollection();
@@ -630,7 +658,9 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
               "sender": {{OwnerJson(OldOwnerId, "acme-renamed")}}
             }
             """;
-        await CreateRecipient(session).HandleAsync(Message("organization", json));
+        var bus = new RecordingMessageBus();
+        await CreateRecipient(session, bus).HandleAsync(Message("organization", json));
+        await DeliverForgeEventsAsync(session, bus);
 
         var account = await session.LoadAsync<Account>(Account.DocumentId(OldOwnerId));
         Assert.Equal("acme-renamed", account!.Login);

@@ -4,6 +4,8 @@ using CodeCoverage.LookupReferences;
 using Microsoft.Extensions.Logging;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging.Abstractions;
+using Raven.Client.Documents;
+using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
 
 namespace CodeCoverage.Recipients;
@@ -32,7 +34,8 @@ namespace CodeCoverage.Recipients;
 public partial class ForgeEventsRecipient :
     IRecipient<ForgeWebhookMessage<BranchCommitPushed>>,
     IRecipient<ForgeWebhookMessage<PullRequestUpdated>>,
-    IRecipient<ForgeWebhookMessage<PullRequestMerged>>
+    IRecipient<ForgeWebhookMessage<PullRequestMerged>>,
+    IRecipient<ForgeWebhookMessage<OwnerRenamed>>
 {
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IMessageBus messageBus;
@@ -146,6 +149,62 @@ public partial class ForgeEventsRecipient :
         if (!Repository.ResolveDeleteBranchOnPrClose(repository, account)) return;
 
         await forges.For(repository).DeleteBranchAsync(repository, headRef, cancellationToken);
+    }
+
+    /// <summary>
+    /// An owner renamed itself, so every full name beneath it is now wrong.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>Not a one-document change.</b> The account keeps its id, but the owner half of every
+    /// repository's full name changes with it — and those old names are baked into published badge
+    /// URLs, so each one is remembered before it is overwritten.
+    /// <para>
+    /// The sweep is bounded. An owner with more repositories than the cap leaves the remainder
+    /// stale rather than exhausting the session's request budget mid-rename; the nightly reconciler
+    /// is what corrects them. A partial rename is recoverable, a failed handler is not.
+    /// </para>
+    /// </remarks>
+    public async Task HandleAsync(ForgeWebhookMessage<OwnerRenamed> message, CancellationToken cancellationToken = default)
+    {
+        var evt = message.Event;
+        var account = await session.LoadAsync<Account>(evt.AccountId, cancellationToken);
+        if (account is null)
+        {
+            logger.LogDebug("Rename for unknown account {AccountId}; ignored", evt.AccountId);
+            return;
+        }
+
+        var previousLogin = account.Login;
+        account.Login = evt.NewLogin;
+        if (evt.NewAvatarUrl is not null) account.AvatarUrl = evt.NewAvatarUrl;
+
+        // Nothing beneath it moves unless the login actually changed. A forge may report a rename
+        // that only touched the avatar, and rewriting every repository for that would be a large
+        // write for no change.
+        if (string.IsNullOrEmpty(previousLogin) || previousLogin == account.Login) return;
+
+        foreach (var repository in await LoadRepositoriesOfAsync(account, cancellationToken))
+        {
+            var newFullName = $"{account.Login}/{repository.Name}";
+            repository.RememberPreviousFullName(newFullName);
+            repository.OwnerLogin = account.Login;
+            repository.FullName = newFullName;
+        }
+
+        logger.LogInformation("Account {Previous} renamed to {Current}", previousLogin, account.Login);
+    }
+
+    /// <summary>Bound on a per-account repository sweep; the session's request budget is 30.</summary>
+    private const int MaxRepositoriesPerAccount = 1024;
+
+    private async Task<IReadOnlyList<Repository>> LoadRepositoriesOfAsync(Account account, CancellationToken cancellationToken)
+    {
+        if (account.Id is null) return [];
+
+        return await session.Query<Repository, Indexes.Repositories_Overview>()
+            .Where(r => r.Account == account.Id)
+            .Take(MaxRepositoriesPerAccount)
+            .ToListAsync(cancellationToken);
     }
 
     /// <summary>

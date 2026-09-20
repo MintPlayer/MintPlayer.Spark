@@ -89,6 +89,32 @@ public class Repository
     /// drift. A missing account resolves to <see langword="false"/> — the safe direction for an
     /// irreversible operation.
     /// </remarks>
+    /// <summary>How many former names one repository remembers, oldest dropped first.</summary>
+    public const int MaxPreviousFullNames = 16;
+
+    /// <summary>
+    /// Records the name this repository is about to stop being known by.
+    /// </summary>
+    /// <remarks>
+    /// The name we knew a repository by is baked into every published badge URL, so a rename or a
+    /// transfer is the moment to remember it — afterwards the old name is unrecoverable.
+    /// <para>
+    /// Lives on the entity rather than on a webhook recipient because it is a rule about what a
+    /// repository remembers, and both the forge-specific normaliser and the neutral rename handler
+    /// need it. Two copies of a capped, de-duplicated list are two chances to cap it differently.
+    /// </para>
+    /// </remarks>
+    public void RememberPreviousFullName(string newFullName)
+    {
+        var previous = FullName;
+        if (string.IsNullOrEmpty(previous) || previous == newFullName) return;
+        if (PreviousFullNames.Contains(previous, StringComparer.OrdinalIgnoreCase)) return;
+
+        PreviousFullNames.Add(previous);
+        if (PreviousFullNames.Count > MaxPreviousFullNames)
+            PreviousFullNames.RemoveAt(0);
+    }
+
     public static bool ResolveDeleteBranchOnPrClose(Repository? repository, Account? account)
         => repository?.DeleteBranchOnPrClose switch
         {

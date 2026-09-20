@@ -33,9 +33,6 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     /// <summary>Bound on a per-account repository sweep; the session's request budget is 30.</summary>
     private const int MaxRepositoriesPerAccount = 1024;
 
-    /// <summary>How many former names one repository remembers, oldest dropped first.</summary>
-    private const int MaxPreviousFullNames = 16;
-
     public async Task HandleAsync(GitHubWebhookMessage message, CancellationToken cancellationToken = default)
     {
         switch (message.EventType)
@@ -208,7 +205,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         // baked into published badge URLs, and a rename or transfer is the moment to remember it.
         var previous = await session.LoadAsync<Repository>(Repository.DocumentId(ghRepo.Id), ct);
         if (evt.Action is "renamed" or "transferred")
-            RememberFullName(previous, ghRepo.FullName);
+            previous?.RememberPreviousFullName(ghRepo.FullName);
 
         var repository = await UpsertRepository(ghRepo.Id, ghRepo.Name, ghRepo.FullName, ghRepo.Private, account, ct);
         repository.DefaultBranch = ghRepo.DefaultBranch;
@@ -272,23 +269,19 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         var login = ghAccount.TryGetProperty("login", out var loginElement) ? loginElement.GetString() : null;
         if (string.IsNullOrEmpty(login)) return;
 
+        // Created if absent, because a rename for an owner we have never seen still establishes
+        // who they are — unlike a merged pull request, where minting a document would invent
+        // tracking nobody asked for.
         var account = await GetOrCreateAccount(accountId, ct);
-        var previousLogin = account.Login;
-        account.Login = login;
-        if (ghAccount.TryGetProperty("avatar_url", out var avatarElement))
-            account.AvatarUrl = avatarElement.GetString();
 
-        if (string.IsNullOrEmpty(previousLogin) || previousLogin == account.Login)
-            return;
-
-        foreach (var repository in await LoadRepositoriesOfAsync(account, ct))
-        {
-            RememberFullName(repository, $"{account.Login}/{repository.Name}");
-            repository.OwnerLogin = account.Login;
-            repository.FullName = $"{account.Login}/{repository.Name}";
-        }
-
-        logger.LogInformation("Account {Previous} renamed to {Current}", previousLogin, account.Login);
+        await messageBus.BroadcastAsync(new ForgeWebhookMessage<OwnerRenamed>(
+            EForgeProvider.GitHub,
+            new OwnerRenamed(
+                AccountId: account.Id ?? Account.DocumentId(accountId),
+                NewLogin: login,
+                NewAvatarUrl: ghAccount.TryGetProperty("avatar_url", out var avatarElement)
+                    ? avatarElement.GetString()
+                    : null)), ct);
     }
 
     private async Task OnPush(PushEvent evt, CancellationToken ct)
@@ -486,18 +479,6 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     /// already recorded it. Capped, because a repository renamed often would otherwise grow an
     /// unbounded array inside an index.
     /// </summary>
-    private static void RememberFullName(Repository? repository, string newFullName)
-    {
-        if (repository is null) return;
-
-        var previous = repository.FullName;
-        if (string.IsNullOrEmpty(previous) || previous == newFullName) return;
-        if (repository.PreviousFullNames.Contains(previous, StringComparer.OrdinalIgnoreCase)) return;
-
-        repository.PreviousFullNames.Add(previous);
-        if (repository.PreviousFullNames.Count > MaxPreviousFullNames)
-            repository.PreviousFullNames.RemoveAt(0);
-    }
 
     private async Task<Commit> GetOrCreateCommit(long repoGitHubId, string sha, CancellationToken ct)
     {

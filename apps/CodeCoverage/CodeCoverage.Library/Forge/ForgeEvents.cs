@@ -108,9 +108,20 @@ public sealed record RepositoryRenamed(
     string NewOwnerLogin);
 
 /// <summary>An account (user or organisation) changed its login.</summary>
+/// <param name="NewAvatarUrl">
+/// The account's avatar as of the rename, when the forge sends one. Carried here rather than on an
+/// event of its own because every forge reports it alongside the rename, and a separate
+/// "avatar changed" event would have no consumer.
+/// </param>
+/// <remarks>
+/// ⚠️ The account keeps its numeric id, so the document is the same one — but its login, and the
+/// owner half of every full name beneath it, are now wrong. Renaming an owner is therefore not a
+/// one-document change; it rewrites every repository under it.
+/// </remarks>
 public sealed record OwnerRenamed(
     string AccountId,
-    string NewLogin);
+    string NewLogin,
+    string? NewAvatarUrl);
 
 /// <summary>
 /// Whether we can still act on a repository changed.
