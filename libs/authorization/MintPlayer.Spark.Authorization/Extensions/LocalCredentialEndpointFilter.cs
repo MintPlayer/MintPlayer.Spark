@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Primitives;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace MintPlayer.Spark.Authorization.Extensions;
 
@@ -49,6 +51,12 @@ internal static class LocalCredentialEndpointFilter
         SparkLocalCredentials mode)
         where TUser : SparkUser, new()
     {
+        // Before the Full short-circuit below: confirm-by-email linking is orthogonal to the
+        // local-credential surface, so an application running Full is exactly as able to configure
+        // a mode whose mail would be discarded. Placing this after the early return would have
+        // meant the guard never fired for the most common configuration.
+        GuardAgainstSilentlyDiscardedMail(endpoints.ServiceProvider);
+
         if (mode == SparkLocalCredentials.Full)
         {
             // The default takes the original code path verbatim — no throwaway builder, no
@@ -96,6 +104,56 @@ internal static class LocalCredentialEndpointFilter
             + "(for example identity.AddGitHub(...) via the configureProviders callback), or use "
             + "SparkLocalCredentials.SignInOnly or SparkLocalCredentials.Full instead.");
     }
+
+    /// <summary>
+    /// Refuses a configuration whose confirmation mail would be silently discarded.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="SparkExternalLoginLinking.ConfirmByEmail"/> is only as good as the mail it sends:
+    /// the link is made when a confirmation is followed, so a discarded message means the link is
+    /// never made and nothing anywhere reports a failure. The user sees a sign-in that appears to
+    /// do nothing; the log is clean.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>The check is on the NON-GENERIC sender, and that is the entire subtlety.</b> Measured
+    /// 2026-09-20 in a real container: <c>IEmailSender&lt;TUser&gt;</c> is <em>always</em>
+    /// <c>DefaultMessageEmailSender&lt;TUser&gt;</c> whether or not a transport exists — it is an
+    /// adapter, not the transport. The thing that differs is
+    /// <c>Microsoft.AspNetCore.Identity.UI.Services.IEmailSender</c>, which with no transport
+    /// registered is that namespace's <c>NoOpEmailSender</c>. A guard written against the generic
+    /// interface — the obvious one to write — would never fire.
+    /// </para>
+    /// <para>
+    /// Matched by type name rather than by type reference: <c>NoOpEmailSender</c> is internal to
+    /// ASP.NET Core Identity UI, so there is nothing public to compare against. A rename upstream
+    /// would make this stop firing, which fails <em>open</em> — so the regression test pins the
+    /// name from the other side.
+    /// </para>
+    /// </remarks>
+    private static void GuardAgainstSilentlyDiscardedMail(IServiceProvider services)
+    {
+        var options = services.GetService<IOptions<SparkAuthenticationOptions>>()?.Value;
+        if (options?.ExternalLoginLinking != SparkExternalLoginLinking.ConfirmByEmail)
+            return;
+
+        var sender = services.GetService<Microsoft.AspNetCore.Identity.UI.Services.IEmailSender>();
+        if (sender is null || sender.GetType().FullName != NoOpEmailSenderTypeName)
+            return;
+
+        throw new InvalidOperationException(
+            "Spark authentication is configured with ExternalLoginLinking = ConfirmByEmail, but no "
+            + "email transport is registered, so every confirmation message would be discarded and "
+            + "no external login would ever be linked. Register an IEmailSender implementation, or "
+            + "use SparkExternalLoginLinking.WhenSignedIn or SparkExternalLoginLinking.Disabled "
+            + "instead.");
+    }
+
+    /// <summary>
+    /// The framework's discard-everything sender. Internal to ASP.NET Core Identity UI, so it can
+    /// only be recognised by name.
+    /// </summary>
+    internal const string NoOpEmailSenderTypeName = "Microsoft.AspNetCore.Identity.UI.Services.NoOpEmailSender";
 
     private static void StampAntiforgery(IEndpointConventionBuilder convention) =>
         convention.Add(builder =>

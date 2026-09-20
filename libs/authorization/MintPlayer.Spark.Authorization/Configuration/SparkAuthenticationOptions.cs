@@ -41,4 +41,22 @@ public class SparkAuthenticationOptions
     /// </para>
     /// </remarks>
     public SparkLocalCredentials LocalCredentials { get; set; } = SparkLocalCredentials.Disabled;
+
+    /// <summary>
+    /// What to do when an external provider asserts an email that already belongs to an existing
+    /// account. Defaults to <see cref="SparkExternalLoginLinking.Disabled"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Disabled by default for the same reason as <see cref="LocalCredentials"/>: both linking
+    /// modes are account-takeover surface if implemented carelessly, and an application with one
+    /// provider cannot reach the situation at all. An application that accepts several says so.
+    /// </para>
+    /// <para>
+    /// ⚠️ <see cref="SparkExternalLoginLinking.ConfirmByEmail"/> requires a real mail transport.
+    /// The framework deliberately registers none, and the combination of that mode with the no-op
+    /// sender is rejected at startup rather than silently discarding every confirmation.
+    /// </para>
+    /// </remarks>
+    public SparkExternalLoginLinking ExternalLoginLinking { get; set; } = SparkExternalLoginLinking.Disabled;
 }
