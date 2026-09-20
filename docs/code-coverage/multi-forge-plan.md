@@ -392,11 +392,45 @@ CodeCoverage (PRD §4.1). Nothing to build.
 
 D2 and D9. All of this is Spark-side; CodeCoverage only chooses.
 
-**4a — untie confirmation from local credentials** (PRD §6.3). `LocalCredentialEndpointFilter.cs:123-130`
-strips `/confirmEmail` and `/resendConfirmationEmail`, which CodeCoverage needs precisely *because*
-it runs `Disabled`. Make confirmation orthogonal to `LocalCredentials`, and change
-`GetAuthCapabilities.cs:32-41` in the same commit — it derives the mode from route presence, so the
-two must move together or the client reports the wrong mode.
+**4a — ~~untie confirmation from local credentials~~ → DROPPED. Ship a link-confirmation mail of
+our own instead.**
+
+The original plan was to make Identity's `/confirmEmail` and `/resendConfirmationEmail` orthogonal
+to `LocalCredentials`, because `LocalCredentialEndpointFilter` strips them in `Disabled` and
+CodeCoverage runs `Disabled`.
+
+⚠️ **The owner stopped this, correctly** (2026-09-20): *"How are you supposed to confirm an email
+when local login isn't even enabled? … instead of using the confirmation email feature for this
+specific scenario, we should just send a separate email, that most likely does quite the same, but
+can contain different text."*
+
+**Why it was the wrong tool.** Email confirmation is a password-world mechanism: it proves you own
+an address before you are allowed to sign in with it. With external-only login the provider has
+already vouched for the identity, so there is nothing for that flow to establish. Untying the
+endpoints would have made a password feature reachable in an app with no passwords, purely to
+borrow its plumbing.
+
+**And the two are not the same message.** Confirmation says *"prove this address is yours."* Linking
+says *"someone signed in with GitLab using your address — do you want it attached to your account?"*
+Different text, different decision, and a different thing to get wrong.
+
+⚠️ **The token semantics differ too, and that is the part worth being careful about.** An
+account-confirmation token attests address ownership. A link-confirmation token authorises attaching
+a *credential*. Reusing the first as the second conflates two authorisations: anyone holding a
+confirmation token — issued for an entirely different purpose, possibly much earlier — could attach
+a login. Separate tokens keep the two decisions separate.
+
+**So 4a becomes:** ship a pending-link document and a link-confirmation mail with its own token,
+its own single-use endpoint and its own template (this is 4e, which already described exactly that —
+the untying was never needed to build it). `LocalCredentialEndpointFilter` is left alone, and
+`GetAuthCapabilities` keeps deriving `localCredentials` from `/login` and `/register` presence,
+which this no longer disturbs.
+
+⚠️ **Open, and deliberately not decided here:** whether newly provisioned users still get an
+*account* confirmation mail at all (PRD §6.3 cases 1 and 2). The argument for dropping it is the
+same one above — the provider vouches. The argument for keeping it is that a provider asserting an
+address has not necessarily *verified* it, which is what 4g's `email_verified` gate is about. Those
+two should be settled together, since the answer to one decides the other.
 
 **4b — the option.** Add to `SparkAuthenticationOptions` (today a single property, `:43`):
 `ExternalLoginLinking = Disabled | WhenSignedIn | ConfirmByEmail`.

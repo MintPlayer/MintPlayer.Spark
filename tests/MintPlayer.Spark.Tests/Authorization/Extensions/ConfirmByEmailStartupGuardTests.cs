@@ -33,9 +33,12 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// </remarks>
 public class ConfirmByEmailStartupGuardTests : SparkTestDriver
 {
-    private sealed class RecordingEmailSender : Microsoft.AspNetCore.Identity.UI.Services.IEmailSender
+    private sealed class RecordingLinkConfirmationSender : ISparkLinkConfirmationSender<SparkUser>
     {
-        public Task SendEmailAsync(string email, string subject, string htmlMessage) => Task.CompletedTask;
+        public Task SendLinkConfirmationAsync(
+            SparkUser user, string providerDisplayName, string? providerIdentity,
+            string confirmationLink, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
     }
 
     /// <summary>The failure this guard exists for: silent, total, and invisible in the log.</summary>
@@ -48,7 +51,7 @@ public class ConfirmByEmailStartupGuardTests : SparkTestDriver
 
         var thrown = await act.Should().ThrowAsync<InvalidOperationException>();
         thrown.Which.Message.Should().Contain("ConfirmByEmail")
-            .And.Contain("no email transport", "the message must name the cause, not just the mode");
+            .And.Contain("ISparkLinkConfirmationSender", "the message must name what to register, not just the mode");
     }
 
     [Fact]
@@ -66,14 +69,18 @@ public class ConfirmByEmailStartupGuardTests : SparkTestDriver
         => await StartAsync(linking, registerTransport: false);
 
     /// <summary>
-    /// ⚠️ The guard matches <c>NoOpEmailSender</c> by type name, because it is internal to ASP.NET
-    /// Core Identity UI and there is nothing public to compare against. An upstream rename would
-    /// make the guard stop firing — which fails <b>open</b>, so this pins the name from the other
-    /// side: if the framework's default sender is ever called something else, this fails and says
-    /// where to look.
+    /// Why the guard above can be a plain null check, recorded because the contrast is the design
+    /// decision.
     /// </summary>
+    /// <remarks>
+    /// ASP.NET Identity <c>TryAdd</c>s a no-op sender, so an application with no mail transport
+    /// still resolves one and absence is invisible — detectable only by recognising an internal
+    /// type by name, which fails <b>open</b> if that type is ever renamed. Spark ships no default
+    /// for <c>ISparkLinkConfirmationSender</c> precisely so its own guard does not inherit that
+    /// problem. This pins the framework behaviour the contrast rests on.
+    /// </remarks>
     [Fact]
-    public async Task The_frameworks_default_sender_is_still_called_NoOpEmailSender()
+    public async Task Identitys_mail_still_resolves_to_a_no_op_when_no_transport_is_registered()
     {
         using var host = BuildHost(SparkExternalLoginLinking.Disabled, registerTransport: false);
         await host.StartAsync();
@@ -82,8 +89,10 @@ public class ConfirmByEmailStartupGuardTests : SparkTestDriver
 
         sender.GetType().FullName.Should().Be(
             "Microsoft.AspNetCore.Identity.UI.Services.NoOpEmailSender",
-            "the ConfirmByEmail startup guard recognises it by this name, and a rename would make "
-            + "the guard silently stop firing");
+            "an absent transport is invisible through ASP.NET's contract, which is why Spark's own "
+            + "contract has no default");
+
+        await host.StopAsync();
     }
 
     private async Task StartAsync(SparkExternalLoginLinking linking, bool registerTransport)
@@ -113,7 +122,7 @@ public class ConfirmByEmailStartupGuardTests : SparkTestDriver
 
                     if (registerTransport)
                     {
-                        services.AddSingleton<Microsoft.AspNetCore.Identity.UI.Services.IEmailSender, RecordingEmailSender>();
+                        services.AddSingleton<ISparkLinkConfirmationSender<SparkUser>, RecordingLinkConfirmationSender>();
                     }
                 })
                 .Configure(app =>
