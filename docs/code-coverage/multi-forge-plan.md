@@ -193,20 +193,22 @@ success — the framework hands you a silent no-op by default.
 
 ---
 
-## M5 — Connected orgs: make the grant explicit ⛔ *(D6)*
+## ~~M5 — Connected orgs: make the grant explicit~~ ❌ **DISSOLVED by D6a**
 
-The hardest milestone and the only one that can quietly change who sees what.
+This milestone proposed introducing an explicit connected-org record. **D6a decided the opposite** —
+the owner set stays derived live from the forge, with no stored authorization record — so there is
+nothing here to build. Removed rather than left in place, because a milestone nobody should implement
+is worse than no milestone.
 
-- Introduce an explicit **connected-org** record: the artifact of someone deliberately connecting an
-  org, distinct from the membership list used to decide who may administer it. GitHub's installation
-  already *is* that record — make it explicit rather than inferred, so stage 2 can supply a
-  different one.
-- Keep the forge as the authority on *who* (`product-overview.md:157`, `:170`). This records
-  *whether the org opted in*; it is not a parallel permission system.
-- ⚠️ **Do not widen management rights.** Today management equals installation visibility with **no
-  admin-role check** (`:170`). Replace that answer per provider; do not generalise it.
+What the milestone was really worried about survives elsewhere and is not lost:
 
-**Verify:** a test that a viewer who can *see* an org but whose org has not connected gets nothing.
+- *"Do not widen management rights"* — carried into M1's contract
+  (`IForgeAccessService.IsOwnerAllowedAsync` documents that today's check is set membership with no
+  role check) and recorded as an accepted risk in PRD §6.7 D6a.
+- *"An org that never opted in"* — answered by D6a: an unconnected org has no stored documents, so
+  membership in the owner set grants access to nothing.
+- The credential a forge needs when no user is present is D6b/Q2, and is stage-2 work (GitLab group
+  access token), not stage 1.
 
 ---
 

@@ -35,7 +35,7 @@ public partial class BrowseController : ControllerBase
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IRepositoryResolver repositories;
     [Inject] private readonly IGitHubAccessService gitHubAccess;
-    [Inject] private readonly IGitHubContentService gitHubContent;
+    [Inject] private readonly IForgeClient forgeClient;
     [Inject] private readonly IConfiguration configuration;
 
     public sealed record RepoInfo(string Id, string Owner, string Name, string FullName, bool IsPrivate, string? DefaultBranch,
@@ -479,7 +479,7 @@ public partial class BrowseController : ControllerBase
             installationId = account?.InstallationId;
         }
 
-        var source = await gitHubContent.GetFileContentAsync(repository, installationId, sha, path, cancellationToken);
+        var source = await forgeClient.GetFileContentAsync(repository, sha, path, cancellationToken);
 
         return Ok(new
         {

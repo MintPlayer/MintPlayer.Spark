@@ -36,7 +36,7 @@ public class UploadsControllerAssemblyStatusTests : CoverageRavenTest
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["Coverage:BaseUrl"] = "https://coverage.example.com" })
             .Build());
-        services.AddSingleton<IGitHubDiffService>(new Services.ScriptedDiffService());
+        services.AddSingleton<IForgeClient>(new Services.ScriptedDiffService());
         services.AddScoped<IBaseResolver, BaseResolver>();
         services.AddScoped<CodeCoverage.Services.IRepositoryResolver>(sp =>
             new TestRepositoryResolver(sp.GetService<Raven.Client.Documents.Session.IAsyncDocumentSession>()));

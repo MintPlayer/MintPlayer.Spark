@@ -11,7 +11,7 @@ namespace CodeCoverage.Ingestion;
 /// </summary>
 public static class BuildFinalizer
 {
-    public static async Task Finalize(IAsyncDocumentSession session, IGitHubDiffService diffService, Build build, string reason, CancellationToken cancellationToken)
+    public static async Task Finalize(IAsyncDocumentSession session, IForgeClient forgeClient, Build build, string reason, CancellationToken cancellationToken)
     {
         if (build.Status == "Finalized")
             return;
@@ -41,7 +41,7 @@ public static class BuildFinalizer
             {
                 // Null whenever there is no diff base or no API path — a patch
                 // verdict is earned, never guessed, and never blocks a finalize.
-                build.Patch = await PatchCoverageCalculator.ComputeAsync(session, diffService, build, commit, cancellationToken);
+                build.Patch = await PatchCoverageCalculator.ComputeAsync(session, forgeClient, build, commit, cancellationToken);
 
                 // The commit's headline is no longer this build's total: the
                 // assembler (queued by the caller after SaveChanges) unions every

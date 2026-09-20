@@ -21,7 +21,7 @@ public partial class CommitAssembler : ICommitAssembler
 {
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IBaseResolver baseResolver;
-    [Inject] private readonly IGitHubDiffService diffService;
+    [Inject] private readonly IForgeClient forgeClient;
     [Inject] private readonly ILogger<CommitAssembler> logger;
 
     private const int LoadChunk = 512;
@@ -274,9 +274,7 @@ public partial class CommitAssembler : ICommitAssembler
     /// </summary>
     private async Task<HashSet<string>?> ChangedFilesViaCompare(Repository repository, string baseSha, string headSha, CancellationToken cancellationToken)
     {
-        long? installationId = repository.Account is null ? null
-            : (await session.LoadAsync<Account>(repository.Account, cancellationToken))?.InstallationId;
-        var comparison = await diffService.CompareAsync(repository, installationId, baseSha, headSha, cancellationToken);
+        var comparison = await forgeClient.CompareAsync(repository, baseSha, headSha, cancellationToken);
         if (comparison is null || comparison.Truncated)
             return null;
 
@@ -372,9 +370,7 @@ public partial class CommitAssembler : ICommitAssembler
         // The API is authoritative for the parent: older action builds sent the
         // PR base sha under this name, and a Δ against the wrong commit is worse
         // than none.
-        long? installationId = repository.Account is null ? null
-            : (await session.LoadAsync<Account>(repository.Account, cancellationToken))?.InstallationId;
-        var apiParent = await diffService.GetFirstParentAsync(repository, installationId, commit.Sha, cancellationToken);
+        var apiParent = await forgeClient.GetFirstParentAsync(repository, commit.Sha, cancellationToken);
         commit.ParentLookupAttemptedAtUtc = DateTime.UtcNow;
         if (apiParent is not null)
         {

@@ -17,7 +17,7 @@ namespace CodeCoverage.Ingestion;
 public partial class FinalizeBuildsCronJob : ISparkCronJob
 {
     [Inject] private readonly IAsyncDocumentSession session;
-    [Inject] private readonly IGitHubDiffService diffService;
+    [Inject] private readonly IForgeClient forgeClient;
     [Inject] private readonly MintPlayer.Spark.Messaging.Abstractions.IMessageBus messageBus;
     [Inject] private readonly ILogger<FinalizeBuildsCronJob> logger;
 
@@ -69,7 +69,7 @@ public partial class FinalizeBuildsCronJob : ISparkCronJob
                           + "The parse worker did not complete — retry the upload; re-parsing is safe and merges idempotently.";
                 }
             }
-            await BuildFinalizer.Finalize(session, diffService, build, reason, cancellationToken);
+            await BuildFinalizer.Finalize(session, forgeClient, build, reason, cancellationToken);
             logger.LogInformation("Finalized build {BuildId} ({Reason})", build.Id, reason);
         }
 

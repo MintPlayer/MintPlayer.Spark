@@ -38,7 +38,7 @@ public class CommitAssemblerTests : CoverageRavenTest
     private static string FileList(params (string Path, string Oid)[] entries)
         => string.Join('\n', entries.Select(e => $"{e.Oid} {e.Path}"));
 
-    public static ICommitAssembler CreateAssembler(IDocumentStore store, IAsyncDocumentSession session, IGitHubDiffService diffService)
+    public static ICommitAssembler CreateAssembler(IDocumentStore store, IAsyncDocumentSession session, IForgeClient diffService)
     {
         var services = new ServiceCollection()
             .AddSingleton(store)
@@ -121,7 +121,7 @@ public class CommitAssemblerTests : CoverageRavenTest
         return buildId;
     }
 
-    private async Task<CommitAssembly?> Assemble(IDocumentStore store, string sha, IGitHubDiffService? diffService = null)
+    private async Task<CommitAssembly?> Assemble(IDocumentStore store, string sha, IForgeClient? diffService = null)
     {
         WaitForIndexing(store);
         using var session = store.OpenAsyncSession();
@@ -418,7 +418,7 @@ public class CommitAssemblerTests : CoverageRavenTest
             var services = new ServiceCollection()
                 .AddSingleton(store)
                 .AddSingleton(session)
-                .AddSingleton<IGitHubDiffService>(github)
+                .AddSingleton<IForgeClient>(github)
                 .AddSingleton<IBaseResolver, BaseResolver>()
                 .AddSingleton<ICommitAssembler, CommitAssembler>()
                 .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))

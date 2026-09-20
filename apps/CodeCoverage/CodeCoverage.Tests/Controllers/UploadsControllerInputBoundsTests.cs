@@ -44,7 +44,7 @@ public class UploadsControllerInputBoundsTests
         services.AddSingleton<IAsyncDocumentSession>(_ => null!);
         services.AddSingleton<IMessageBus>(new NullMessageBus());
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
-        services.AddSingleton<IGitHubDiffService>(new Services.ScriptedDiffService());
+        services.AddSingleton<IForgeClient>(new Services.ScriptedDiffService());
         services.AddScoped<IBaseResolver, BaseResolver>();
         services.AddScoped<IRepositoryResolver>(sp =>
             new TestRepositoryResolver(sp.GetService<IAsyncDocumentSession>()));
