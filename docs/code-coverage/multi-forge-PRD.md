@@ -74,8 +74,10 @@ dropped. Changing a decision is cheap; discovering an undocumented one is not.
 | **D11** | **Provider code in ids and URLs: full names (`github`/`gitlab`/`bitbucket`), not `gh`/`gl`/`bb`.** One vocabulary shared by D5's ids and the routes. | **DECIDED** — user, this session |
 | **D12** | One git repository pushed to two forges (github + bitbucket remotes) — one record or two? | **Recommend two independent records, no merging.** See §6.6 |
 | **D13** | **No backward-compatible badge route.** The legacy two-segment URL is removed, not aliased; badge URLs are replaced at source. Sound only because the deployment has no external users. | **DECIDED** — user, this session |
+| **D16** | **One `IPlatformIntegration` interface; three libraries, one `[Register]`ed implementation class each; the app calls three extension methods; injection sites take `IEnumerable<IPlatformIntegration>` and never know which platform they are on.** Implementations are facades over per-concern services internal to each library. | **DECIDED** — owner, this session. See §6.10 |
+| **D17** | **Capability gaps are expressed as a get-only `ECapability[] Capabilities`; methods outside an implementation’s set throw.** A conformance test asserts the array and the behaviour agree, in both directions. | **DECIDED** — owner, this session. Reverses part of D15 |
 | **D14** | Per-provider **assemblies**, yes; per-provider **NuGet packages**, not in stage 1. Three projects with `IsPackable=false` buy the whole architectural benefit; publishing adds a permanent public contract with no consumers. | **Recommend split-don't-publish** — see §6.9 |
-| **D15** | Which capabilities move into a provider assembly, and which are GitHub-only forever. | **Recommend the §6.9 table** — Projects V2 and installations stay app-side |
+| **D15** | Which capabilities move into a provider library. | **Partly superseded by D17** — Projects V2 moves onto the interface behind `ECapability.Boards`; App installations stay *internal to the GitHub library*, never on the interface. §6.9 table otherwise stands |
 
 ---
 
@@ -678,6 +680,11 @@ failures (§4.7). Bodies belong in templates, and the app is already fully local
 
 ### 6.5 Forge abstractions
 
+> ⚠️ **Superseded by §6.10 (D16).** The owner has since chosen a single
+> `IPlatformIntegration` interface rather than three typed seams. The seam *boundaries* below were
+> right and their signatures carry over; the surface they are exposed through changed. Kept because
+> M1/M2 shipped this shape and the as-built notes refer to it.
+
 Three seams, each of which already has a natural boundary:
 
 - **`IForgeAccessService`** — replaces the direct `/user/installations` call; returns the allowed-owner
@@ -1027,6 +1034,120 @@ The honest summary: about half the GitHub surface is a *provider implementation*
 half is either GitHub's private answer to a neutral question (installations) or a feature no other
 forge has (Projects V2). The second half staying in the app is the correct outcome, not a
 shortcoming — and it is why the three assemblies will not be symmetric in size.
+
+---
+
+### 6.10 `IPlatformIntegration` — the shape the owner asked for (D16, D17)
+
+Decided by the owner, 2026-09-20, and it **supersedes the three-seam design of §6.5**. The goal, in
+his words: one `IPlatformIntegration` interface; three libraries each holding one implementation
+class decorated with `[Register]`; the app calls three extension methods; **injection sites take
+`IEnumerable<IPlatformIntegration>` and do not know at all which platform they are working with**.
+
+That last clause is the design constraint, and it is stronger than what §6.5 delivered. §6.5 gave
+three *typed* seams that a caller still selected between; this gives one surface that callers iterate.
+
+#### The two call shapes
+
+The constraint holds in both cases, but they resolve differently, and conflating them is the easiest
+way to get this wrong:
+
+- **Fan-out** — `GetAccountsAsync`, `GetRepositoriesAsync`. Ask *every* registered integration and
+  concatenate. The caller never learns which platforms exist, or how many. This is what
+  `SparkVisibility.QueryAllowedOwnersAsync` already wants to do.
+- **Select-one** — `CompareAsync`, `PublishStatusAsync`, `GetFileContentAsync`, anything scoped to a
+  repository. Exactly one integration can answer. The caller *still* does not choose: selection is
+  driven off the entity (`repository.Platform`), so there is no `if (github)` anywhere — the platform
+  is data, not control flow.
+
+⚠️ Select-one depends on entities carrying a platform discriminator, which they do not today
+(`grep ForgeOwner|EForgeProvider` across `CodeCoverage.Library/Entities` → zero hits). Until M6
+re-keys the documents, selection answers GitHub from one explicit, commented line that throws as soon
+as a second integration registers. See §5.7.
+
+#### D17 — capability gaps
+
+The platforms are not feature-equivalent: GitHub has Projects V2 boards, GitLab has issue boards that
+do not map, Bitbucket has no boards at all. The interface expresses this with a **get-only
+`ECapability[] Capabilities`** property; methods outside a given implementation's capability set
+**throw** `NotSupportedException`.
+
+```csharp
+public interface IPlatformIntegration
+{
+    EPlatform Platform { get; }
+    ECapability[] Capabilities { get; }
+
+    Task<Account[]> GetAccountsAsync(...);
+    Task<Repository[]> GetRepositoriesAsync(...);
+    Task<CommitComparison?> CompareAsync(...);
+    Task PublishStatusAsync(...);
+    Task<Board[]> ListBoardsAsync(...);   // ECapability.Boards
+}
+
+foreach (var integration in integrations.Where(i => i.Capabilities.Contains(ECapability.Boards)))
+    await integration.ListBoardsAsync(...);
+```
+
+This **reverses an earlier recommendation.** §6.9's D15 table said Projects V2 should stay app-side
+because no other forge has boards. With a capability array that is no longer necessary: boards go on
+the interface behind `ECapability.Boards`, and the app iterates and skips. The earlier reasoning was
+sound only under a one-size-fits-all interface with no capability channel.
+
+**App installations still do not go on the interface** — not as a capability, not at all. They are
+GitHub's *mechanism* for answering "which owners may this user manage?", and `GetAccountsAsync`
+already asks that question neutrally. Putting installations on the interface would leak the answer's
+implementation into the question. They stay internal to the GitHub library.
+
+⚠️ **The failure mode to guard.** `Capabilities` and actual behaviour can drift: an implementation
+that advertises a capability but throws, or implements a method it does not advertise, is a runtime
+bug that no compiler catches and no ordinary test exercises. M2c therefore ships a **conformance test
+that runs against every registered implementation** and asserts the two agree in both directions.
+Without it the array is documentation, not a contract.
+
+#### D16 — implementation shape: a facade
+
+Each library's `XxxPlatformIntegration` is a **thin class implementing the interface and delegating
+to per-concern services kept internal to that library**. The registration and injection surface is
+exactly as the owner described — one `[Register(typeof(IPlatformIntegration), …)]` per library — while
+the implementation stays decomposed.
+
+Why not one real class: GitHub's surface is ~3,000 lines across accounts, repositories, OIDC, diffs,
+content, status, comments, reconciliation and boards. Collapsing that into a single type makes the
+one file nobody can review, and would force rewriting the ~30 existing test files that target the
+current services. The facade keeps those tests pointed at the internals and adds a thin layer whose
+own test is the conformance test above.
+
+```csharp
+[Register(typeof(IPlatformIntegration), ServiceLifetime.Scoped)]
+public partial class GitHubPlatformIntegration : IPlatformIntegration
+{
+    [Inject] private readonly IGitHubAccounts accounts;
+    [Inject] private readonly IGitHubDiffs diffs;
+
+    public EPlatform Platform => EPlatform.GitHub;
+    public ECapability[] Capabilities => [ECapability.Boards, ECapability.Oidc, /* … */];
+
+    public Task<Account[]> GetAccountsAsync(...) => accounts.ListAsync(...);
+}
+```
+
+#### One member that is not a plain async call
+
+`oidcLogin` does not fit the shape of the others. Validating an upload's CI token is an
+`AddJwtBearer` scheme registered **at startup**, not a method invoked per request — issuer, JWKS URL
+and claim names are configuration, and the trust decision differs entirely per platform. It is
+therefore exposed as *configuration the integration contributes* during `AddXxxIntegration(...)`,
+not as a runtime method, with the per-request work staying in the existing authentication handler.
+Recorded here because "all necessary async methods" is right for every member except this one.
+
+#### What this changes in already-committed work
+
+`IForgeAccessService`, `IForgeClient` and `IForgeFeedbackPublisher` (M1, M2) converge into
+`IPlatformIntegration`. Their method signatures are largely reusable — the work is consolidation, not
+redesign, and the credential-free signatures that made them correct carry over unchanged. The
+resolver-per-interface idea from the first draft of M2a is dropped: with one interface there is one
+selection helper, not three.
 
 ---
 
