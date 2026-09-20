@@ -45,7 +45,7 @@ import { AccountsService } from '../services/accounts.service';
     @if (authService.user()?.isAuthenticated) {
       <p class="text-muted small mt-3 mb-0">
         {{ 'app.installAppHintBefore' | t }}
-        <a [href]="gitHubAppUrl()" target="_blank" rel="noopener">{{ 'app.installAppHintLink' | t }}</a>
+        <a [href]="connectUrl()" target="_blank" rel="noopener">{{ 'app.installAppHintLink' | t }}</a>
         {{ 'app.installAppHintAfter' | t }}
       </p>
     }
@@ -56,7 +56,7 @@ export class HomeExtrasComponent {
   private readonly accountsService = inject(AccountsService);
   readonly authService = inject(SparkAuthService);
 
-  readonly gitHubAppUrl = signal('https://github.com/apps/coverageproduction');
+  readonly connectUrl = signal('https://github.com/apps/coverageproduction');
   readonly reauthRequired = signal(false);
   readonly warningColor = Color.warning;
 
@@ -73,8 +73,8 @@ export class HomeExtrasComponent {
   private async load(): Promise<void> {
     try {
       const response = await this.accountsService.getMyAccounts();
-      this.gitHubAppUrl.set(response.gitHubAppUrl);
-      this.reauthRequired.set(response.gitHubReauthRequired ?? false);
+      this.connectUrl.set(response.connectUrl);
+      this.reauthRequired.set(response.reauthRequired ?? false);
     } catch {
       // The banner is an escalation, not a diagnosis: if we cannot tell whether the
       // token is dead, saying nothing beats claiming it is.

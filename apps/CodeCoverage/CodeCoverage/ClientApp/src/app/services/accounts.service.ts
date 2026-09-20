@@ -12,15 +12,15 @@ export interface AccountInfo {
 }
 
 export interface AccountsResponse {
-  /** Public page of this environment's GitHub App ("install the App" link target). */
-  gitHubAppUrl: string;
+  /** Where to send someone to connect a forge to an account. Per-environment. */
+  connectUrl: string;
   accounts: AccountInfo[];
   /**
-   * The server's stored GitHub token is dead and silent refresh failed — only
-   * the "Reconnect GitHub" browser round-trip can fix it. While set, accounts
-   * is degraded to the user's own account.
+   * A linked forge's stored credential is dead and silent refresh failed — only a browser
+   * round-trip can fix it. Set if ANY linked forge needs it, so a missing row always has a
+   * visible explanation. While set, accounts is degraded.
    */
-  gitHubReauthRequired?: boolean;
+  reauthRequired?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })

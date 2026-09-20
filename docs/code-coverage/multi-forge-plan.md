@@ -687,12 +687,25 @@ snippet.
 
 ---
 
-## M11 — Rename the GitHub-shaped client surface 🟦
+## M11 — Rename the GitHub-shaped client surface 🟩 *(partly — DTOs done, renderers deferred)*
 
 - `AccountsResponse.gitHubAppUrl` / `gitHubReauthRequired` (`accounts.service.ts:14-24`) → provider-neutral.
 - `app-installed-renderer.component.ts` → a provider-appropriate "connected" state (M5's record).
 - `account-avatar-renderer.component.ts:44` — `Type === 'User'` is GitHub's account-type vocabulary.
 - These are hand-written DTOs with no codegen link to the server (PRD §5.2); change both ends together.
+
+
+### As-built
+
+-  → ,  → , on the
+  server record, the TypeScript interface and , in one commit — they are
+  hand-written DTOs with no codegen link, so they move together or not at all.
+- The doc comments moved too, and they were the part carrying a wrong assumption: reauth is set if
+  **any** linked forge needs it, and resync drops **every** linked forge's cached owner set.
+- ⚠️ **Deferred, deliberately:**  and  (whose
+   is GitHub's account-type vocabulary). Both are grid renderers reading stored
+  fields that M6 re-keys and M7 re-routes; renaming them now would be rework. They move with the
+  panels in M10.
 
 ---
 

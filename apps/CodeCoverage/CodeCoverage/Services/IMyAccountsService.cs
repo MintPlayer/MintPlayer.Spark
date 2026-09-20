@@ -31,12 +31,12 @@ public interface IMyAccountsService
     Task<MyAccountsResult> GetAsync(CancellationToken cancellationToken, bool waitForNonStaleResults = false);
 }
 
-/// <param name="GitHubAppUrl">The environment's GitHub App public page, so an "install the App"
+/// <param name="ConnectUrl">Where to send someone to connect a forge to an account — the GitHub
 /// link points at the right App rather than at a hardcoded slug.</param>
 /// <param name="ReauthRequired">The stored GitHub token is dead and silent refresh failed — only
 /// a browser round-trip can fix it. While set, <paramref name="Accounts"/> is degraded to the
 /// user's own account.</param>
-public sealed record MyAccountsResult(string GitHubAppUrl, MyAccountRow[] Accounts, bool ReauthRequired);
+public sealed record MyAccountsResult(string ConnectUrl, MyAccountRow[] Accounts, bool ReauthRequired);
 
 /// <summary>
 /// One row of the accounts list.

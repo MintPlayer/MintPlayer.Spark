@@ -28,10 +28,10 @@ public partial class MeController : ControllerBase
 
     /// <summary>
     /// The accounts (user + organizations) the signed-in user may see, joined
-    /// with what we know about them (App installed or not) and an aggregate of
-    /// their repositories' latest coverage. Carries the environment's GitHub
-    /// App public page (GitHub:{env}:AppSlug, defaulting to the well-known
-    /// per-environment slug) so "install the App" links point at the right App.
+    /// with what we know about them (connected or not) and an aggregate of their
+    /// repositories' latest coverage. Carries a per-environment connect URL — the
+    /// GitHub App's public page today (GitHub:{env}:AppSlug) — so "connect this
+    /// account" links point at the right place.
     /// </summary>
     [HttpGet("accounts")]
     public async Task<ActionResult<AccountsResponse>> GetAccounts(CancellationToken cancellationToken)
@@ -45,15 +45,15 @@ public partial class MeController : ControllerBase
         var result = await myAccounts.GetAsync(cancellationToken);
 
         return Ok(new AccountsResponse(
-            result.GitHubAppUrl,
+            result.ConnectUrl,
             [.. result.Accounts.Select(a => new AccountInfo(
                 a.Login, a.Type, a.AvatarUrl, a.IsAppInstalled, a.RepoCount, a.AggregateCoverage))],
             result.ReauthRequired));
     }
 
     /// <summary>
-    /// Drops the cached GitHub visibility for the signed-in user and returns
-    /// the freshly queried account list (manual counterpart of the 5-min TTL).
+    /// Drops the cached owner set on every forge the signed-in user is linked to and returns the
+    /// freshly queried account list (manual counterpart of the 5-min TTL).
     /// </summary>
     [HttpPost("accounts/resync")]
     public async Task<ActionResult<AccountsResponse>> Resync(CancellationToken cancellationToken)
@@ -62,9 +62,12 @@ public partial class MeController : ControllerBase
         return await GetAccounts(cancellationToken);
     }
 
-    /// <param name="GitHubReauthRequired">The stored GitHub token is dead and silent refresh
-    /// failed — only a browser round-trip (the "Reconnect GitHub" button) can fix it. While
-    /// set, <paramref name="Accounts"/> is degraded to the user's own account.</param>
-    public sealed record AccountsResponse(string GitHubAppUrl, AccountInfo[] Accounts, bool GitHubReauthRequired = false);
+    /// <param name="ConnectUrl">Where to send someone to connect this forge to an account — the
+    /// GitHub App's public page today. Per-environment, so it cannot live in the model.</param>
+    /// <param name="ReauthRequired">A linked forge's stored credential is dead and silent refresh
+    /// failed; only a browser round-trip can fix it. Set if <em>any</em> linked forge needs it, so
+    /// staying silent because one other forge is healthy cannot leave rows missing with nothing on
+    /// screen explaining why. While set, <paramref name="Accounts"/> is degraded.</param>
+    public sealed record AccountsResponse(string ConnectUrl, AccountInfo[] Accounts, bool ReauthRequired = false);
     public sealed record AccountInfo(string Login, string Type, string? AvatarUrl, bool Installed, int RepoCount, double? AggregateCoverage);
 }

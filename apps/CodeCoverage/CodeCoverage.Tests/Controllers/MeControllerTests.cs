@@ -48,7 +48,7 @@ public class MeControllerTests : CoverageRavenTest
 
         var response = Body(await controller.GetAccounts(CancellationToken.None));
 
-        response.GitHubReauthRequired.Should().BeTrue();
+        response.ReauthRequired.Should().BeTrue();
         response.Accounts.Should().ContainSingle().Which.Login.Should().Be("pieterjan");
     }
 
@@ -61,7 +61,7 @@ public class MeControllerTests : CoverageRavenTest
 
         var response = Body(await controller.GetAccounts(CancellationToken.None));
 
-        response.GitHubReauthRequired.Should().BeFalse();
+        response.ReauthRequired.Should().BeFalse();
     }
 
     [Fact]
@@ -73,6 +73,6 @@ public class MeControllerTests : CoverageRavenTest
 
         var response = Body(await controller.GetAccounts(CancellationToken.None));
 
-        response.GitHubReauthRequired.Should().BeFalse();
+        response.ReauthRequired.Should().BeFalse();
     }
 }
