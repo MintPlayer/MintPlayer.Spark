@@ -676,7 +676,7 @@ second forge with no consumer edit (provable with a test double even before GitL
 
 ---
 
-## M10 — The setup panel 🟦
+## M10 — The setup panel 🟩
 
 `repo-setup-panel.component.ts` emits GitHub Actions YAML across seven tabs and nothing else
 (`:27,65-70,71-86,93-187`, plus "repository secret" copy at `:30`).

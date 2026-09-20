@@ -11,14 +11,14 @@
       "nl": "Welkom bij Coverage"
     },
     "welcomeSubtitle": {
-      "en": "Track code coverage per commit across your GitHub repositories.",
-      "fr": "Suivez la couverture de code par commit dans vos dépôts GitHub.",
-      "nl": "Volg de codedekking per commit in je GitHub-repositories."
+      "en": "Track code coverage per commit across your repositories.",
+      "fr": "Suivez la couverture de code par commit dans vos dépôts.",
+      "nl": "Volg code coverage per commit in je repositories."
     },
     "signInPrompt": {
-      "en": "Sign in with your GitHub account to see your organizations and repositories.",
-      "fr": "Connectez-vous avec votre compte GitHub pour voir vos organisations et dépôts.",
-      "nl": "Meld je aan met je GitHub-account om je organisaties en repositories te zien."
+      "en": "Sign in to see your organizations and repositories.",
+      "fr": "Connectez-vous pour voir vos organisations et dépôts.",
+      "nl": "Meld je aan om je organisaties en repositories te zien."
     },
     "signIn": {
       "en": "Sign in",
@@ -71,9 +71,9 @@
       "nl": "op je account of organisatie."
     },
     "reauthBanner": {
-      "en": "Coverage lost access to your GitHub account, so some organizations may be missing below. Reconnect to restore them.",
-      "fr": "Coverage a perdu l'accès à votre compte GitHub ; certaines organisations peuvent donc manquer ci-dessous. Reconnectez-vous pour les restaurer.",
-      "nl": "Coverage heeft geen toegang meer tot je GitHub-account, waardoor hieronder mogelijk organisaties ontbreken. Verbind opnieuw om ze te herstellen."
+      "en": "Coverage lost access to your account, so some organizations may be missing below. Reconnect to restore them.",
+      "fr": "Coverage a perdu l'accès à votre compte ; certaines organisations peuvent manquer ci-dessous. Reconnectez-vous pour les restaurer.",
+      "nl": "Coverage heeft de toegang tot je account verloren, waardoor sommige organisaties hieronder kunnen ontbreken. Verbind opnieuw om ze te herstellen."
     },
     "reconnect": {
       "en": "Reconnect",
@@ -86,9 +86,9 @@
       "nl": "Hersynchroniseren"
     },
     "resyncTooltip": {
-      "en": "Re-query GitHub for your organizations and installations.",
-      "fr": "Reinterroger GitHub pour vos organisations et installations.",
-      "nl": "GitHub opnieuw bevragen voor je organisaties en installaties."
+      "en": "Re-query your connected accounts and repositories.",
+      "fr": "Interroger à nouveau vos comptes et dépôts connectés.",
+      "nl": "Je verbonden accounts en repositories opnieuw opvragen."
     }
   },
   "repository": {
