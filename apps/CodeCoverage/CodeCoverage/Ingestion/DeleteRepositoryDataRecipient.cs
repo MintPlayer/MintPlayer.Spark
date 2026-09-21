@@ -120,13 +120,13 @@ public partial class DeleteRepositoryDataRecipient : IRecipient<DeleteRepository
         // opposite of what deleting its last repository should mean.
         // Same id as above, reused rather than recomputed.
         var tokens = await session.Query<ApiToken>()
-            .Where(t => t.GithubRepositories.Contains(repositoryId))
+            .Where(t => t.RepositoryIds.Contains(repositoryId))
             .Take(1024)
             .ToListAsync(cancellationToken);
         foreach (var token in tokens)
         {
-            token.GithubRepositories = [.. token.GithubRepositories.Where(id => id != repositoryId)];
-            if (token.GithubRepositories.Count == 0)
+            token.RepositoryIds = [.. token.RepositoryIds.Where(id => id != repositoryId)];
+            if (token.RepositoryIds.Count == 0)
                 session.Delete(token);
         }
 

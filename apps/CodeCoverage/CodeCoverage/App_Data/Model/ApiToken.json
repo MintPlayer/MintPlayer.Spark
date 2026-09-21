@@ -14,12 +14,12 @@
           "en": "Account Login"
         },
         "description": {
-          "en": "Owner login this token uploads for, when Scope is \"Account\". Display only — a login is renameable and a repository can be transferred out from under it, so authorizing on this string means a token keeps working for an account that no longer owns the repository, and stops working for the one that does. AccountGitHubId is the authorization key."
+          "en": "Owner login this token uploads for, when Scope is \"Account\". Display only — a login is renameable and a repository can be transferred out from under it, so authorizing on this string means a token keeps working for an account that no longer owns the repository, and stops working for the one that does. AccountId is the authorization key."
         },
         "dataType": "string",
         "isRequired": false,
         "isVisible": true,
-        "isReadOnly": false,
+        "isReadOnly": true,
         "order": 3,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
@@ -55,7 +55,7 @@
         "dataType": "datetime",
         "isRequired": true,
         "isVisible": true,
-        "isReadOnly": false,
+        "isReadOnly": true,
         "order": 6,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
@@ -99,13 +99,13 @@
         "rules": []
       },
       {
-        "id": "a959d0d2-63d7-40e2-8372-b75d9c858880",
-        "name": "GithubRepositories",
+        "id": "bf276ab8-026d-4e46-a943-10a29c3e6168",
+        "name": "RepositoryIds",
         "label": {
-          "en": "Github Repositories"
+          "en": "Repository Ids"
         },
         "description": {
-          "en": "Document ids of the repositories this token may upload for. Empty means the token is account-scoped and covers every repository of AccountGitHubId."
+          "en": "Document ids of the repositories this token may upload for. Empty means the token is account-scoped and covers every repository of AccountId."
         },
         "dataType": "Reference",
         "isRequired": false,
@@ -130,7 +130,7 @@
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
-        "isReadOnly": false,
+        "isReadOnly": true,
         "order": 7,
         "isArray": false,
         "showedOn": "Query, PersistentObject",

@@ -29,21 +29,45 @@ public enum RepositoryConnection
 public static class DisconnectedReasons
 {
     /// <summary>Transferred to an owner the App cannot see.</summary>
+    /// <remarks>
+    /// ⚠️ <b>Never written, and with GitHub it cannot be.</b> A transfer <em>out</em> of an
+    /// installation reaches us only as <c>installation_repositories.removed</c>, which is
+    /// byte-for-byte what a plain deselection sends — so the code correctly writes
+    /// <see cref="RemovedFromInstallation"/> and has no honest way to tell the two apart. Verified
+    /// 2026-09-21: no production path assigns this, and none ever has; the only use is one test
+    /// fixture.
+    /// <para>
+    /// It is kept as a statement of intent for a forge whose API <em>does</em> distinguish them, not
+    /// as something to reach for on GitHub. Reaching for it there would put a word in front of an
+    /// owner that the event cannot support.
+    /// </para>
+    /// </remarks>
     public const string TransferredAway = "TransferredAway";
 
     /// <summary>Deselected from the installation's chosen repositories.</summary>
     public const string RemovedFromInstallation = "RemovedFromInstallation";
 
-    /// <summary>The App was uninstalled from the owning account.</summary>
-    public const string AppUninstalled = "AppUninstalled";
+    /// <summary>
+    /// The integration was removed from the owning account — a GitHub App uninstalled, a GitLab
+    /// token revoked, a Bitbucket app removed.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>Renamed from <c>AppUninstalled</c>, and these are STORED STRINGS</b>, so the rename is
+    /// a migration rather than a rename — <c>M_202609230900</c>. "App" is GitHub's word for its
+    /// integration; on GitLab and Bitbucket it names nothing, and a reason string is shown to an
+    /// owner, so a word that means nothing on their forge is worse than a vague one.
+    /// </remarks>
+    public const string IntegrationRemoved = "IntegrationRemoved";
 
     /// <summary>
-    /// The App was suspended on the owning account. Distinct from uninstalled because it is
-    /// explicitly temporary — the owner is expected to lift it, and an unsuspend restores every
+    /// The integration was suspended on the owning account. Distinct from removed because it is
+    /// explicitly temporary — the owner is expected to lift it, and lifting it restores every
     /// repository — so the page can say so rather than inviting someone to delete the data.
     /// </summary>
-    public const string AppSuspended = "AppSuspended";
+    /// <remarks>⚠️ Renamed from <c>AppSuspended</c>; see <see cref="IntegrationRemoved"/>.</remarks>
+    public const string IntegrationSuspended = "IntegrationSuspended";
 
-    /// <summary>Deleted on GitHub. The numeric id can never come back.</summary>
-    public const string DeletedOnGitHub = "DeletedOnGitHub";
+    /// <summary>Deleted on the forge. The numeric id can never come back.</summary>
+    /// <remarks>⚠️ Renamed from <c>DeletedOnGitHub</c>; see <see cref="IntegrationRemoved"/>.</remarks>
+    public const string DeletedOnForge = "DeletedOnForge";
 }

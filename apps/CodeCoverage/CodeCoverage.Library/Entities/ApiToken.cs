@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using MintPlayer.Spark.Abstractions;
 
 namespace CodeCoverage.Entities;
@@ -58,7 +59,7 @@ public class ApiToken
     /// Owner login this token uploads for, when Scope is "Account". Display only — a login is
     /// renameable and a repository can be transferred out from under it, so authorizing on this
     /// string means a token keeps working for an account that no longer owns the repository, and
-    /// stops working for the one that does. <see cref="AccountGitHubId"/> is the authorization key.
+    /// stops working for the one that does. <see cref="AccountId"/> is the authorization key.
     /// </summary>
     public string? AccountLogin { get; set; }
 
@@ -72,23 +73,52 @@ public class ApiToken
     /// </remarks>
     public string? AccountOwnerKey { get; set; }
 
-    /// <summary>
-    /// GitHub's numeric id for the owner this token uploads for, when Scope is "Account". Null on
-    /// tokens issued before this field existed, which fall back to comparing
-    /// <see cref="AccountLogin"/> so that no working token is invalidated by a deploy.
-    /// </summary>
+    /// <summary>The forge this token uploads to.</summary>
     /// <remarks>
-    /// ⚠️ <c>[IgnoreProperty]</c> is Spark's, not RavenDB's — the property stays on the document and
-    /// keeps being written and read; it is only absent from the <em>model</em>. It is stamped
-    /// server-side from the resolved account, so nobody should ever type it into a form, and the
-    /// authentication handler reads it straight off the loaded document.
+    /// ⚠️ <b>Without this, <see cref="AccountId"/> is ambiguous.</b> A numeric account id is unique
+    /// only <em>within</em> a forge — GitHub user 1234 and GitLab group 1234 are different
+    /// principals — so a token carrying an id and no forge would authorize uploads for whichever
+    /// one the reader happened to assume. The upload path assumed GitHub, as a literal, until
+    /// 2026-09-22.
+    /// <para>
+    /// Defaults to GitHub, which is correct for every token that existed before the field: it was
+    /// the only forge.
+    /// </para>
     /// </remarks>
     [IgnoreProperty]
-    public long? AccountGitHubId { get; set; }
+    public EForgeProvider Provider { get; set; } = EForgeProvider.GitHub;
+
+    /// <summary>
+    /// The forge's numeric id for the owner this token uploads for, when Scope is "Account".
+    /// </summary>
+    /// <remarks>
+    /// <b>The authorization key</b>, and the reason it is the numeric id rather than
+    /// <see cref="AccountOwnerKey"/>: a key is <c>provider:login</c> and therefore login-derived, so
+    /// it is wrong in both directions once a repository is transferred — the old owner's token keeps
+    /// working for a repository they no longer own, and the new owner's does not work for one they
+    /// do. A numeric id survives a rename, which is exactly what makes it safe to authorize on.
+    /// <para>
+    /// Null on tokens issued before the field existed, which fall back to comparing
+    /// <see cref="AccountLogin"/> so no working token is invalidated by a deploy.
+    /// <c>M_202609221000</c> backfills what it can and reports what it cannot; the fallback can go
+    /// once that list is empty.
+    /// </para>
+    /// <para>
+    /// ⚠️ <c>[IgnoreProperty]</c> is Spark's, not RavenDB's — the property stays on the document and
+    /// keeps being written and read; it is only absent from the <em>model</em>. It is stamped
+    /// server-side from the resolved account, so nobody should ever type it into a form.
+    /// </para>
+    /// <para>
+    /// Was <c>AccountGitHubId</c> until 2026-09-22. Renamed with <c>M_202609220950</c>, because a
+    /// name is a contract when it is the name of a stored field.
+    /// </para>
+    /// </remarks>
+    [IgnoreProperty]
+    public long? AccountId { get; set; }
 
     /// <summary>
     /// Document ids of the repositories this token may upload for. Empty means the token is
-    /// account-scoped and covers every repository of <see cref="AccountGitHubId"/>.
+    /// account-scoped and covers every repository of <see cref="AccountId"/>.
     /// </summary>
     /// <remarks>
     /// Replaces a single numeric <c>RepositoryGitHubId</c>: a token often serves several
@@ -110,7 +140,7 @@ public class ApiToken
     /// </para>
     /// </remarks>
     [Reference(typeof(Repository), "ApiToken_SelectableRepositories")]
-    public List<string> GithubRepositories { get; set; } = [];
+    public List<string> RepositoryIds { get; set; } = [];
 
     /// <summary>Free-text label telling you where this token is used, e.g. the CI workflow it was created for.</summary>
     /// <remarks>

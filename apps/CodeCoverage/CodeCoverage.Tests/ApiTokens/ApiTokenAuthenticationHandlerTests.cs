@@ -58,7 +58,11 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         {
             Scope = "Account",
             AccountLogin = "acme",
-            AccountGitHubId = 42,
+            // ⚠️ The KEY is what the handler emits as the account claim. Every token minted since
+            // the forge qualification carries one — ApiTokenActions derives it on every save — so a
+            // fixture without it is not a legacy token, it is an impossible one.
+            AccountOwnerKey = ForgeOwner.KeyFromUnqualifiedLogin("acme"),
+            AccountId = 42,
             CreatedAtUtc = DateTime.UtcNow,
             Description = "ci",
         };
@@ -131,7 +135,7 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
     {
         using var store = GetDocumentStore();
         using var seed = store.OpenAsyncSession();
-        var value = await StoreTokenAsync(seed, t => t.GithubRepositories = [Repository.DocumentId(EForgeProvider.GitHub, 777)]);
+        var value = await StoreTokenAsync(seed, t => t.RepositoryIds = [Repository.DocumentId(EForgeProvider.GitHub, 777)]);
 
         using var session = store.OpenAsyncSession();
         var handler = await CreateAsync(session, $"{scheme} {value}");
@@ -141,7 +145,8 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
 
         var principal = result.Principal!;
         Assert.Equal("Account", principal.FindFirst(ApiTokenAuthenticationHandler.ScopeClaim)?.Value);
-        Assert.Equal("acme", principal.FindFirst(ApiTokenAuthenticationHandler.AccountClaim)?.Value);
+        // ⚠️ Qualified: the claim carries `github:acme`, because a bare login unions forges.
+        Assert.Equal("github:acme", principal.FindFirst(ApiTokenAuthenticationHandler.AccountClaim)?.Value);
         Assert.Equal("42", principal.FindFirst(ApiTokenAuthenticationHandler.AccountIdClaim)?.Value);
         Assert.Equal(Repository.DocumentId(EForgeProvider.GitHub, 777), principal.FindFirst(ApiTokenAuthenticationHandler.RepositoryClaim)?.Value);
 
@@ -169,7 +174,7 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         var value = await StoreTokenAsync(seed, t =>
         {
             t.Scope = "Repository";
-            t.GithubRepositories = [Repository.DocumentId(EForgeProvider.GitHub, 777), Repository.DocumentId(EForgeProvider.GitHub, 888)];
+            t.RepositoryIds = [Repository.DocumentId(EForgeProvider.GitHub, 777), Repository.DocumentId(EForgeProvider.GitHub, 888)];
         });
 
         using var session = store.OpenAsyncSession();
@@ -199,8 +204,12 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         var value = await StoreTokenAsync(seed, t =>
         {
             t.AccountLogin = null;
-            t.AccountGitHubId = null;
-            t.GithubRepositories = [];
+            // ⚠️ The KEY, not the login, is what the account claim is emitted from — nulling only
+            // the login would leave the claim present and this assertion would pass for the
+            // wrong reason, or rather fail for one.
+            t.AccountOwnerKey = null;
+            t.AccountId = null;
+            t.RepositoryIds = [];
         });
 
         using var session = store.OpenAsyncSession();

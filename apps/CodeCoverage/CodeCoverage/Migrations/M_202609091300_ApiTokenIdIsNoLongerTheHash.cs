@@ -62,7 +62,7 @@ public partial class M_202609091300_ApiTokenIdIsNoLongerTheHash : ISparkMigratio
                         put('ApiTokens/', {
                             Scope: t.Scope,
                             AccountLogin: t.AccountLogin,
-                            AccountGitHubId: t.AccountGitHubId,
+                            AccountId: t.AccountId,
                             RepositoryGitHubId: t.RepositoryGitHubId,
                             Description: t.Description,
                             CreatedByUserId: t.CreatedByUserId,

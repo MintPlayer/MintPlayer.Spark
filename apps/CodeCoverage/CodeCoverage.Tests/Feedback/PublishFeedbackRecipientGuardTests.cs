@@ -46,6 +46,7 @@ public class PublishFeedbackRecipientGuardTests : CoverageRavenTest
         services.AddScoped<IForgeClient, GitHubForgeClient>();
         services.AddScoped<IForgeFeedbackPublisher, GitHubForgeFeedbackPublisher>();
         services.AddScoped<IForgeAccessService, GitHubForgeAccessService>();
+        services.AddSingleton(Substitute.For<IGitHubStateReconciler>());
         services.AddScoped<IForgeIntegration, GitHubForgeIntegration>();
         services.AddScoped<IForgeIntegrationResolver>(sp => new SingleForgeResolver(sp.GetRequiredService<IForgeIntegration>()));
         services.AddScoped<PublishFeedbackRecipient>();

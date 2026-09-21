@@ -49,7 +49,7 @@ public class UploadsControllerStatusTests : CoverageRavenTest
     private static ClaimsPrincipal AccountToken(string owner) => new(new ClaimsIdentity(
         [
             new Claim(ApiTokenAuthenticationHandler.ScopeClaim, "Account"),
-            new Claim(ApiTokenAuthenticationHandler.AccountClaim, owner),
+            new Claim(ApiTokenAuthenticationHandler.AccountClaim, ForgeOwner.KeyFromUnqualifiedLogin(owner)),
         ], ApiTokenAuthenticationHandler.SchemeName));
 
     /// <summary>A GitHub Actions OIDC principal for a public repository.</summary>

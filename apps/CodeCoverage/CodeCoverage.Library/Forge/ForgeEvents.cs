@@ -25,6 +25,25 @@ public static class ForgeEvents
     // file because they are one vocabulary and reading them apart loses the point.
 }
 
+/// <summary>
+/// A fact about a repository, pull request or owner, in this app's vocabulary rather than any
+/// forge's.
+/// </summary>
+/// <remarks>
+/// <para>
+/// ⚠️ <b>Implementing this is a commitment, not a label.</b> An event in this vocabulary must have a
+/// producer in every forge library and a consumer in the app — <c>ForgeEventContractTests</c>
+/// asserts both, because a declared event with neither is worse than a missing one: a gap is
+/// obvious, while a promise the next person reasonably believes is not.
+/// </para>
+/// <para>
+/// It also makes the set discoverable. Somebody writing the GitLab normaliser needs to know what
+/// they are expected to raise, and "every record in this file" is not something a compiler or a
+/// reader can check.
+/// </para>
+/// </remarks>
+public interface IForgeEvent;
+
 /// <summary>A commit arrived on a branch.</summary>
 /// <param name="RepositoryId">The repository document this concerns.</param>
 /// <param name="Branch">Branch name with any refs/heads/ prefix already stripped — that shape is GitHub's wire format, not ours.</param>
@@ -44,7 +63,7 @@ public sealed record BranchCommitPushed(
     string Branch,
     string Sha,
     string? Message,
-    DateTimeOffset? AuthoredAt);
+    DateTimeOffset? AuthoredAt) : IForgeEvent;
 
 /// <summary>
 /// A pull request was opened, reopened, or had new commits pushed to it.
@@ -72,7 +91,7 @@ public sealed record PullRequestUpdated(
     string BaseSha,
     string? Title,
     bool IsFirstOpen,
-    bool AuthorIsBot);
+    bool AuthorIsBot) : IForgeEvent;
 
 /// <summary>A pull request was merged.</summary>
 /// <param name="HeadRef">The source branch, for the optional delete-after-merge courtesy.</param>
@@ -93,7 +112,7 @@ public sealed record PullRequestMerged(
     string RepositoryId,
     int Number,
     string? HeadRef,
-    bool HeadIsFromSameRepository);
+    bool HeadIsFromSameRepository) : IForgeEvent;
 
 /// <summary>A repository changed its name or moved to a different owner.</summary>
 /// <remarks>
@@ -101,11 +120,22 @@ public sealed record PullRequestMerged(
 /// exactly why ids are keyed on it rather than on the name. ⚠️ Bitbucket slugs are renameable
 /// <em>and reusable</em>, so a Bitbucket implementation must not treat a name as an identity.
 /// </remarks>
+/// <param name="PreviousFullName">
+/// The <c>owner/name</c> we knew it by until now, or null when the forge cannot say.
+/// <para>
+/// ⚠️ <b>Carried on the event rather than read from the document, because by the time a consumer
+/// runs the document may already say the new name.</b> A forge library that upserts repository
+/// metadata from the same payload will have overwritten it, and then the alias appended would be
+/// the name it already has — which is not an alias, it is a no-op that looks like one. The value a
+/// consumer needs is the one only the producer still knows.
+/// </para>
+/// </param>
 public sealed record RepositoryRenamed(
     string RepositoryId,
     string NewName,
     string NewFullName,
-    string NewOwnerLogin);
+    string NewOwnerLogin,
+    string? PreviousFullName) : IForgeEvent;
 
 /// <summary>An account (user or organisation) changed its login.</summary>
 /// <param name="NewAvatarUrl">
@@ -121,7 +151,7 @@ public sealed record RepositoryRenamed(
 public sealed record OwnerRenamed(
     string AccountId,
     string NewLogin,
-    string? NewAvatarUrl);
+    string? NewAvatarUrl) : IForgeEvent;
 
 /// <summary>
 /// Whether we can still act on a repository changed.
@@ -138,7 +168,25 @@ public sealed record OwnerRenamed(
 /// revoked group token, Bitbucket from an uninstalled app — different mechanisms, same fact. Naming
 /// the event after the mechanism would have made it GitHub-only for no reason (D15).
 /// </remarks>
+/// <param name="ReportedByAccountId">
+/// The account whose access changed, when the forge can say which one — or null when the fact is
+/// about the repository itself rather than about somebody's access to it (a deletion, say).
+/// <para>
+/// ⚠️ <b>Load-bearing for a lost-access event, and it settles an ordering hazard without needing an
+/// order.</b> When one repository moves between two owners we both have access to, three events
+/// describe the move and arrive in no guaranteed sequence: the old owner reports losing it, the new
+/// owner reports gaining it. A consumer that acts on the loss unconditionally would disconnect a
+/// repository it can plainly still see, and leave it that way until the next reconcile.
+/// </para>
+/// <para>
+/// With this, the consumer compares: if the repository has already been re-parented, the loss is
+/// the <em>old</em> owner reporting something that is no longer theirs, and it is stale. If it has
+/// not, the loss is current. Correct whichever way round the two arrive — which is the only way to
+/// be correct, because there is no order to rely on.
+/// </para>
+/// </param>
 public sealed record RepositoryConnectionChanged(
     string RepositoryId,
     bool Connected,
-    string? Reason);
+    string? Reason,
+    string? ReportedByAccountId = null) : IForgeEvent;

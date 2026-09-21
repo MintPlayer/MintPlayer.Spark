@@ -3,9 +3,17 @@
 Companion to [multi-forge-PRD.md](multi-forge-PRD.md). Issue
 [#422](https://github.com/MintPlayer/MintPlayer.Spark/issues/422).
 
-**One PR** off `master`, branch `issue-422-forge-abstraction`. Commits per milestone; **the test
-suite runs once, at M13** — intermediate milestones are verified by reading the code and building.
-GitLab and Bitbucket providers are stages 2 and 3 and are *not* in this PR (PRD §1, D1).
+**Originally one PR** off `master` (`issue-422-forge-abstraction`), which landed as
+[#434](https://github.com/MintPlayer/MintPlayer.Spark/pull/434) — `0a084191`. The tail has since
+shipped as **#435** (`e0a2ef40`, M19 + fork-PR coverage) and **#436** (`fix/owner-key-authorization`,
+M6d + M6g's backfill + the M8 tail + the authorization fixes). Commits per milestone.
+
+⚠️ **"The test suite runs once, at M13" was the plan and is not what happened.** It ran at M13, again
+at M18 — because CI ran an E2E project the local sweep never did — and per PR since. Intermediate
+milestones were verified by reading the code and building; **M18 and M19 are the record of what that
+missed**, and they are the reason this line now says so out loud.
+
+GitLab and Bitbucket providers are stages 2 and 3 and are *not* in these PRs (PRD §1, D1).
 
 **Blocked on decisions**: nothing. D6f resolved 2026-09-20 — fork PRs upload unauthenticated into a
 PR-scoped namespace on public repos only (PRD §6.7). ⚠️ **That decision lands on M6a**: the
@@ -748,7 +756,7 @@ one forge the situation the modes exist for cannot arise. The infrastructure is 
 
 ---
 
-## M6 — Provider-qualified document ids + migration 🟨 *(built, rehearsed, tested and applied to dev; M6d outstanding)*
+## M6 — Provider-qualified document ids + migration ✅ *(built, rehearsed, deployed; the M6d verifier shipped in #436)*
 
 **D7 re-confirmed 2026-09-19 against the measured number: full re-key, rehearsed first.**
 
@@ -1118,8 +1126,9 @@ id. The change is one line; the two above are what make it safe.
     the app does not depend on migration state; deleting it re-couples them, and a half-migrated
     `FileCoverage` would then render wrong rather than render old.
   - `ApiToken.AccountLogin` (`:63-68`) and its comparison branch in `UploadsController`, after the
-    migration backfills `AccountGitHubId`. ⚠️ Any token the backfill cannot resolve **stops working** —
-    fine under D22, but **count and report them**, do not discover it from a support question.
+    migration backfills `AccountId` (✅ done in #436: `M_202609221000`). ⚠️ Any token the backfill
+    cannot resolve **stops working** — fine under D22, but **count and report them**, do not discover
+    it from a support question. The migration logs them at warning rather than revoking them.
   - ⚠️ **Not** `Commit.ParentSha`'s trust rules (`Commit.cs:55`, `CommitAssembler.cs:371-387`). That is
     a data-quality guard against values already stored, not backward compatibility, and deleting it
     would trust a value the code knows may be wrong.
@@ -1346,7 +1355,7 @@ action prints into the job log.
 
 ---
 
-## M8 — A neutral webhook contract 🟨 *(8a–8d built; connection state deferred)*
+## M8 — A neutral webhook contract ✅ *(8a–8d; the connection-state tail completed in #436)*
 
 ⚠️ **This milestone grew.** It was "drop `required long InstallationId` and `RepositoryFullName`
 (`GitHubWebhookMessage.cs:15-16`), rename the `spark-github-all` queue". D21 makes it a **multi-forge
@@ -1422,7 +1431,10 @@ partial part or each handler runs twice per message.
    reading one and authenticating with the other was the inconsistency. Its test moved to
    `GitHubForgeClientBranchDeleteTests` rather than being deleted with the code it covered.
 
-⚠️ **Deferred, as a judgement rather than an omission: the installation and repository-connection
+✅ **No longer deferred — built in #436; see the as-built section above.** The reasoning is kept
+because the asymmetry it describes is still real and still shapes the handlers.
+
+⚠️ **Was deferred, as a judgement rather than an omission: the installation and repository-connection
 handlers.** That code carries *measured* behaviour — a transfer produces `repository.transferred` +
 `installation_repositories.added` inbound but only `installation_repositories.removed` outbound —
 and disconnecting on `transferred` would be a correctness bug resting on the delivery order of two
@@ -1500,7 +1512,7 @@ what hides the missing registration today.
 
 ---
 
-## M11 — Rename the GitHub-shaped client surface 🟩 *(partly — DTOs done, renderers deferred)*
+## M11 — Rename the GitHub-shaped client surface ✅ *(DTOs #422; renderers and the dead keys in #435)*
 
 - `AccountsResponse.gitHubAppUrl` / `gitHubReauthRequired` (`accounts.service.ts:14-24`) → provider-neutral.
 - `app-installed-renderer.component.ts` → a provider-appropriate "connected" state (M5's record).
@@ -1612,7 +1624,142 @@ before — the extra generated copies are never deployed.
 them `[Register]` and `[Inject]` are inert **with no diagnostic**, which is the same failure this
 milestone's registration guard exists to catch.
 
-## M8 tail + M11 tail — partly built 🟨 *(2026-09-21)*
+## ✅ M6d, M6g, M8 tail and the storage quota — built 2026-09-22
+
+Everything below shipped in one unit of work, with the five authorization bugs that were found on
+the way. Four investigations fed it; **two of their recommendations were wrong and are not
+followed**, which is recorded here because the reasoning matters more than the conclusion.
+
+### ✅ M6d — the verification script, and three references it would have caught
+
+`--verify-forge-ids` (deliberately **not** `--spark-verify-*`: that prefix makes `Program.cs` skip
+the sign-in provider registration *including its missing-secret throw*, so a database verb there
+could let production boot with no auth provider).
+
+⚠️ **Three reference fields shipped dangling to production** and are repaired by
+`M_202609220900`:
+
+| Field | Why the first pass missed it |
+|---|---|
+| `PullRequestFeedback.Repository` | its script re-keys `id(d)` and nothing else |
+| `FileCoverage.Origin.FromBuildId` | its script rewrites `d.BuildId` only — and `Origin` is on every carried-forward file, so this is the widest |
+| `GitHubProject.Account` | `GitHubProjects` is in **no phase**; its ids are node-id-derived and correctly do not move, but the reference still had to follow |
+
+None failed loudly: a dangling reference is not an error in RavenDB, `LoadAsync` returns null. Each
+surfaces as a *different, smaller-looking* bug — an empty panel, a missing avatar, a comment that
+re-posts instead of editing.
+
+The migration's own guard could never have caught them: it refuses to delete only on **total**
+failure (`legacy > 0 && qualified == 0`), so one re-keyed document out of 220,000 satisfies it, and
+it counts ids and nothing else. The verifier asserts zero legacy survivors, zero double-qualified
+ids, all eleven reference fields, and — the one independent ground truth — that every attachment
+named by `Build.Sessions[].RawFileNames` exists.
+
+### ✅ M6g — the backfill, and an investigation recommendation refused
+
+⚠️ **The investigation advised deleting `ApiToken.AccountGitHubId` and standing on
+`AccountOwnerKey`. That would have been a security regression.** `AccountOwnerKey` is
+`provider:login` — *login-derived*, so it carries exactly the weakness the numeric id exists to
+avoid. `UploadsController` compares `repository.Account == Accounts/github/{id}` precisely because a
+login comparison is wrong **in both directions** once a repository is transferred.
+
+The two fields do different jobs: the key answers **visibility** (which token rows you may see,
+where unioning forges was the bug), the numeric id answers **authorization** (which repositories a
+token may upload to, where surviving a transfer is the point).
+
+So M6g's real target is the weak login **fallback arm**, and `M_202609221000` is the backfill it
+needed. ⚠️ It cannot resolve every token — and that is the point of running it, because the
+unresolvable ones *are* the population the fallback protects. It logs them at warning with their ids
+rather than leaving a silent null, and does **not** revoke them.
+
+### ✅ The storage quota — the app's first accumulating limit
+
+Nothing accumulated before this. `Repository.ForkUploads`: 200/day, checked after the repository
+loads and **before** the forge round trip.
+
+- **A budget separate from anything the owner spends.** The anonymous endpoint has no caller
+  identity to charge, so the only thing a quota can attach to is the target repository — and sharing
+  it with the owner's own uploads would turn a storage problem into an **availability** one.
+- **Documents are metered, not bytes.** Attachments are bounded by the 7-day reaper; the documents
+  they expand into are permanent. ⚠️ **Nothing reaps a fork pull request closed unmerged or left
+  open** — only a merge triggers cleanup.
+- ⚠️ `Flags` was an **unvalidated document multiplier**: the parser writes one `FileCoverage` per
+  file *per flag*, so `N × (1 + F)` with F caller-chosen and free. Now de-duplicated and capped — 32
+  first-party, 4 for forks.
+
+### ✅ M8 tail — the neutral event contract is complete in both directions
+
+⚠️ `RepositoryRenamed` and `RepositoryConnectionChanged` were declared, documented, and had **zero
+producers and zero consumers** from the day they were written; the facts were handled inline in the
+GitHub library. The contract *looked* complete, and a second forge would have raised two of its six
+events and found them silently dropped.
+
+Both are now wired, and the reconciliation seam with them:
+
+| | Before | Now |
+|---|---|---|
+| Repository rename / transfer | inline in GitHub | `RepositoryRenamed` |
+| Repository deleted / removed / app uninstalled | inline in GitHub | `RepositoryConnectionChanged` |
+| Reconciliation entry point | `IGitHubStateReconciler`, named by **three app classes** | `IForgeIntegration.ReconcileAsync`; the app names no forge |
+| Account connection | `account.InstallationId is not null` in the neutral layer | `Account.Connection`, a stored neutral field |
+| `ReconcileAccountMessage` | `AccountGitHubId`, provider hard-coded to GitHub in the recipient | `AccountId` + `Provider` |
+
+`Account` implements `IForgeConnectable` because two of the three callers ask "is this account
+connected" **inside RQL** — an interface method cannot be pushed down, so a stored field was the only
+shape that worked. It is a *reachability flag, not a credential*: a neutral layer must never hold
+one.
+
+⚠️ The message rename is a **persisted-payload** change — `SparkMessage` stores JSON and Json.NET
+ignores a member it cannot bind, so an in-flight message would deserialize with `AccountId = 0` and
+silently no-op. Done only because the owner confirmed the queue was empty; `M_202609221100` drops
+stragglers rather than leaving them to fail quietly.
+
+**Enforced:** `IForgeEvent` marks the vocabulary, `ForgeWebhookMessage<T>` is constrained to it, and
+`ForgeEventContractTests` asserts every event has a producer *and* a consumer and that no consumer
+names a forge. Documented in [`forge-webhooks.md`](forge-webhooks.md), which
+`ForgeWebhookDocsTests` keeps in step with the code.
+
+### ⚠️ Five authorization bugs found on the way — all live, all fail-closed
+
+`SparkVisibility.CanManageOwnerAsync` takes an owner **key**; five call sites passed a bare login.
+Token creation, repository-scoped token saves, token revocation, delete-data and **every project
+board** were refused for every user.
+
+The root cause was a **comment**: `QueryAllowedOwnersAsync`'s remark still described the
+pre-migration behaviour, and five call sites were written against it.
+
+⚠️ **The tests agreed with the bugs.** `ApiTokenRepositoryScopeTests` fed its `ISparkVisibility`
+double bare logins while the real service returns keys — *a test double more permissive than the
+real service does not test the code, it tests the double*. All seven doubles were audited; the two
+that were immune are immune because they return `ForgeOwner[]`, where the mistake is a compile error.
+
+`OwnerKeyComparisonTests` sweeps for the shape and **found the fifth site**, which three
+investigations had missed.
+
+⚠️ **A sixth, found by review rather than by the sweep: the fix closed the mint and not the field.**
+Authorization moved onto `AccountOwnerKey`, but identity was derived from it *only when minting* —
+and `OnBeforeSaveAsync` returns early once `Hash` is set. One edit later, `AccountLogin` could still
+be repointed at another account, which is what `UploadsController`'s legacy arm authorizes on.
+Derivation now runs on **every** save, and `AccountLogin`, `CreatedAtUtc` and `RevokedAtUtc` are
+`isReadOnly` in `App_Data/Model/ApiToken.json` (`EntityMapper.IsWritableBySchema` refuses a
+read-only attribute), so "revoked" is terminal and the display login cannot be posted at all.
+
+### ❌ Still not done
+
+- **GitLab / Bitbucket implementations.** Stage 2 and 3. The stubs are *documentation, not
+  scaffolding*: zero lines of implementation, and the app references neither project.
+- **`workflow_run` recipe** for private base repositories. ⚠️ It must never check out or execute fork
+  code — the artifact is data.
+- **Fork provenance in the UI.** The flag exists; no view reads it.
+- ~~**SP-R1**, the production forwarded-headers bypass — still needs the VPS proxy address.~~ ✅ **FIXED** — it never needed the address; see below.
+- **`DisconnectedReasons` still speaks GitHub.** ⚠️ The values are *stored on documents*, so renaming
+  them is a data migration. `TransferredAway` is now documented as never written and **unwritable on
+  GitHub** — a transfer out arrives as `installation_repositories.removed`, byte-for-byte identical
+  to a deselection.
+
+---
+
+## M8 tail + M11 tail — 📜 *(2026-09-21; ALL of it shipped in #436, DisconnectedReasons last)*
 
 ### ✅ Built
 
@@ -1633,21 +1780,38 @@ milestone's registration guard exists to catch.
   seeing their own private and disconnected repositories through every imperative caller — which is
   why no security test caught it.
 
-### ❌ Still open
+### ✅ Closed in #436 — four of the five
 
-- The two dead events (`RepositoryRenamed`, `RepositoryConnectionChanged`) are **still dead**. The
-  de-duplication above removes the *reason* they were needed most, so the "wire or delete" decision
-  is now genuinely open rather than forced.
-- `ReconcileAccountMessage.AccountGitHubId` — a contract name a second forge cannot fill honestly.
-- No per-forge reconciliation entry point on `IForgeIntegration`.
-- `DisconnectedReasons` still speaks GitHub (`AppUninstalled`, `DeletedOnGitHub`). ⚠️ These strings
-  are **stored on documents**, so renaming them is a migration, not a rename.
-- The account-level `IsConnected` is still derived from `account.InstallationId is not null` in the
-  neutral layer. It moves onto the forge seam with the repository-level half.
+- ~~The two dead events (`RepositoryRenamed`, `RepositoryConnectionChanged`) are **still dead**.~~
+  Both are wired end to end, producer and consumer, and `ForgeEventContractTests` fails if an event
+  ever loses either half again.
+- ~~`ReconcileAccountMessage.AccountGitHubId` — a contract name a second forge cannot fill
+  honestly.~~ Now `AccountId` + `Provider`; the in-flight queue was drained by `M_202609221100`.
+- ~~No per-forge reconciliation entry point on `IForgeIntegration`.~~ `IForgeIntegration.ReconcileAsync`
+  (`:151`); all three callers go through it.
+- ~~The account-level `IsConnected` is derived from `account.InstallationId is not null`.~~
+  `Account.Connection` is a stored neutral field and `Account` implements `IForgeConnectable`.
+
+### ✅ Closed in #436 — the last one
+
+- ~~`DisconnectedReasons` still speaks GitHub (`AppUninstalled`, `DeletedOnGitHub`).~~ Now
+  `IntegrationRemoved`, `IntegrationSuspended` and `DeletedOnForge`, migrated by
+  **`M_202609230900_DisconnectedReasonsStopNamingGitHub`** across `Repositories`, `Accounts` and
+  `GitHubProjects`.
+
+  ⚠️ **A rename alone would have compiled, passed, and been wrong for ever.** These are
+  `const string`s whose values are written into documents, and nothing branches on a reason — it is
+  only displayed. Renaming the constants changes what the code compares, never what the documents
+  hold, so production would have kept showing "AppUninstalled" with no failure anywhere.
+  `DisconnectedReasonRenameTests` seeds the old values **through a patch** for the same reason the
+  ApiToken rename tests do: a C# fixture would write the new string and assert nothing.
+
+  `AppSuspended` was renamed too, though this bullet did not list it — "App" is GitHub's word for
+  its integration, and leaving one of three is the inconsistency that bites later.
 
 ---
 
-## M8 tail + M11 tail — what "deferred" actually left behind 🟦 *(investigated 2026-09-21)*
+## M8 tail + M11 tail — the original investigation 📜 *(superseded by the section above; kept for its findings)*
 
 Both milestones are marked partly done. The investigation separates **functional gaps that would
 block a second forge** from **renames that would not**, because the two were being carried as one
@@ -1878,7 +2042,7 @@ cannot otherwise see.
 
 ---
 
-## M16 — Fork-PR uploads 🟦 *(D6f, D20; after M2c. M6a must reserve the id segment)*
+## M16 — Fork-PR uploads 📜 *(the original investigation; its design is SUPERSEDED — read the built section above)*
 
 ### Investigated 2026-09-21 — two findings that change the design
 
@@ -2049,6 +2213,9 @@ baseline.
 
 ## M13 — Verification sweep 🟨 *(suites green; browser done on migrated data; production checks outstanding)*
 
+⚠️ The table below is a **dated snapshot from 2026-09-20**, five milestones ago. Re-run on
+`fix/owner-key-authorization` (#436): **`CodeCoverage.Tests` 750 passed, 0 failed.**
+
 **The only full test run.** Everything before this is verified by reading and building.
 
 - `dotnet test` for the solution; the Angular suite for the workspace.
@@ -2073,7 +2240,7 @@ baseline.
 | `MintPlayer.Spark.slnx` | builds, 0 errors |
 | `@spark-apps/code-coverage` (Angular) | builds, 0 errors |
 
-**3,169 tests, no failures.**
+**3,169 tests, no failures** — as of 2026-09-20. `CodeCoverage.Tests` alone is 750 on #436.
 
 ### ✅ A4 verified in a browser, 2026-09-20
 
@@ -2108,8 +2275,10 @@ looks exactly like one.
 - **The repository, badge, setup and trend panels** — not opened, so the nine `bi` icon usages
   remain unconfirmed in either direction. The sign-in and sidebar icons *do* render, so the earlier
   assumption that all `bi` classes are dead is **not** supported.
-- **A10** — counts before and after the migration, against production. The migration is not written,
-  let alone run.
+- **A10** — counts before and after the migration, against production. ⚠️ **This entry said "the
+  migration is not written, let alone run"; it was written, deployed and ran** (#434), and
+  `--verify-forge-ids` now produces the before/after table. What remains is running it *against
+  production*.
 - The nine `bi` icon usages the owner flagged are **still broken** and are not covered by any test,
   because nothing asserts on rendered icons.
 
@@ -2138,9 +2307,24 @@ into reuse.
 
 `code-coverage-deploy.yml` triggers on push to `master` under `apps/CodeCoverage/**`. So squashing
 this PR does not merely land code: it builds the image, ships it to the VPS, and the container runs
-`M_202609210900_ForgeQualifiedDocumentIds` against **production** before it serves a request. There
-is no manual gate between the merge button and the re-key of ~224,000 live documents, and D22 keeps
-no backward-compatible path.
+pending migrations against **production** before it serves a request. There is no manual gate between
+the merge button and the re-key of ~224,000 live documents, and D22 keeps no backward-compatible path.
+
+#434 ran `M_202609210900_ForgeQualifiedDocumentIds`. **#436 adds four more, and their order is
+load-bearing:**
+
+| # | Migration | What it does |
+|---|---|---|
+| 1 | `M_202609220900_ForgeQualifiedReferencesTheFirstPassMissed` | Repairs 3 dangling references the first pass left behind |
+| 2 | `M_202609220950_ApiTokenFieldsAreForgeNeutral` | `AccountGitHubId`→`AccountId`, `GithubRepositories`→`RepositoryIds`, adds `Provider` |
+| 3 | `M_202609221000_BackfillApiTokenAccountIds` | Stamps `AccountId`; logs what it cannot resolve |
+| 4 | `M_202609221100_AccountConnectionAndNeutralReconcileMessage` | Stored `Account.Connection`; drops in-flight legacy reconcile messages |
+
+⚠️ **#2 was renumbered from `202609221200` so that it precedes #3.** Until the rename has run, a
+legacy token deserializes `AccountId` as null, so the backfill's "already stamped" guard is dead on
+every production document and it re-derives each id *from the login* — the resolution its own
+remarks forbid. `ApiTokenForgeNeutralRenameTests` now asserts the version ordering, because the fix
+is one digit and nothing else guarded it.
 
 **Therefore, immediately before the merge, not the evening before:**
 
@@ -2230,7 +2414,7 @@ So the budget fails on **bursts**, not volume. Raising it is therefore honest ra
 6. **`docs/guide-rate-limiting.md` is corrected.** It currently points at `RateLimitTests` as the
    pattern *"worth copying"*, which is how the flaw propagates.
 
-### ⚠ Found on the way, and NOT fixed here — a production rate-limiter bypass
+### ✅ Found on the way, and FIXED after all — a production rate-limiter bypass
 
 `apps/CodeCoverage/CodeCoverage/Program.cs:34-39` clears both `KnownNetworks` and `KnownProxies` while
 honouring `X-Forwarded-For`. ASP.NET only runs its known-proxy check when one of those lists is
@@ -2243,16 +2427,41 @@ production's limiters key on it:
 | `browse` (300/min) | `RemoteIpAddress` | yes |
 | `uploads` (60/min) | token hash, **else** `RemoteIpAddress` | yes, unauthenticated |
 
-Deliberately out of scope here: the fix needs the real proxy address in `KnownProxies`, which is
-deployment knowledge rather than a code change, and guessing it would break the limiter's ability to
-see real client IPs at all. **It is also why the tempting test fix was rejected** — per-test
-partitions via `X-Forwarded-For` work only because of this bug, and would make CI depend on it.
+⚠️ **The paragraph that used to sit here said this was out of scope because "the fix needs the real
+proxy address in `KnownProxies`, which is deployment knowledge rather than a code change". That was
+wrong, and it kept a production bypass open for weeks.**
+
+The deployment *is* described in this repository. `apps/CodeCoverage/docker-compose.yml` gives
+`coverage-app` no host ports and puts it on the external `web` network, where Traefik is the sole
+ingress. Every inbound request therefore arrives from a container address on a Docker bridge, so
+the proxy's address never had to be known — trusting the private ranges is exactly as tight as
+naming the container, because nothing on a public address can reach port 8080 at all.
+
+Fixed in the same PR as the API-token escalation: `KnownIPNetworks` holds the private ranges and
+`ForwardLimit = 1` is spelled out rather than defaulted. Traefik **appends** the real peer, so
+taking one entry from the right reads Traefik's value and never the caller's. All three limiters
+above are now keyed on a value the caller cannot choose.
+
+**The tempting test fix is still rejected**, for its original reason: the demo apps still clear
+both lists (deliberate, `ModuleCertificateForwarding.cs:28-32`), so per-test partitions via
+`X-Forwarded-For` still work there — and building CI on a misconfiguration is what was wrong with
+it, not whether the misconfiguration happens to persist.
+
+⚠️ **The lesson, which is bigger than the bug:** a finding parked on "we lack a deployment fact"
+deserves a check of whether the deployment is described in the repo before it is parked. Worse than
+the delay, a later fix (the fork-upload limiter's partition key) was built to *depend* on the
+spoofable value — so the bypass made a subsequent control read as protection while providing none.
+A reviewer caught that; nothing in the plan would have.
 
 ---
 
-## ⚠ Open questions that only production can answer — 2026-09-21
+## ⚠ Open questions that only production can answer — 2026-09-21 *(updated after #436)*
 
-These gate M6d and M6g. **Nothing below can be settled from the repository**, and each one is a
+⚠️ **This section gated M6d and M6g. Both have since shipped**, so it no longer reads as written:
+**5 and 6 are closed**, and **2 and 4 are now executable** — `--verify-forge-ids` answers them
+instead of a hand-written query. 1, 3 and 7 still cannot be settled from the repository.
+
+These gated M6d and M6g. **Nothing below could be settled from the repository at the time**, and each one is a
 question whose wrong answer is expensive. RavenDB publishes no host ports, so every query runs from
 inside the `coverage-raven` container.
 
@@ -2262,19 +2471,24 @@ inside the `coverage-raven` container.
 | 2 | Per collection, how many documents remain on a **legacy** id? | M6d, A10 | The migration's guard only catches *total* failure. A partial put followed by a successful delete is **silent**. |
 | 3 | Was a **pre-deploy baseline** captured from the live database? | M6d | The plan's numbers come from a restored copy. Without a true baseline the script can only prove self-consistency, never "nothing was lost". |
 | 4 | Attachments: **683 or 708**, and how many unique hashes? | M6d step 5 | This document states both. Asserting against the wrong one either passes vacuously or fails forever. |
-| 5 | How many `ApiTokens` have **`AccountGitHubId == null`**? | M6g step 4 | Exactly the tokens the login fallback keeps alive. This count **is** the blast radius, and nothing backfills the field. |
-| 6 | How many `ApiTokens` have `AccountLogin` set but `AccountOwnerKey` still null? | M6d step 4 | Would mean the migration's `ApiTokens` pass did not reach them. |
+| 5 | ~~How many `ApiTokens` have **`AccountGitHubId == null`**?~~ ✅ **CLOSED** | M6g step 4 | Answered by *running* `M_202609221000`, which backfills `AccountId` (the field's new name) and logs every token it cannot resolve. |
+| 6 | How many `ApiTokens` have `AccountLogin` set but `AccountOwnerKey` still null? ✅ **MECHANISED** | M6d step 4 | Would mean the migration's `ApiTokens` pass did not reach them — now asserted by `--verify-forge-ids` rather than asked. |
 | 7 | Did the healthcheck `start_period` raise actually ship in the deployed compose file? | M17 | Put ~80s + delete ~20s exceeds a 60s `start_period`; a container can mark itself unhealthy while doing exactly what it should. |
 
-⚠ **Question 5 is the one to ask first.** It is cheap, and if the answer is "many", M6g's
-`ApiToken.AccountLogin` half is not a deletion at all — it is a backfill project.
+✅ **Question 5 was the one to ask first, and the prediction held.** It was not a deletion at all —
+it was a backfill project, and `M_202609221000` is that project.
 
 ---
 
-## M6d — the verification script 🟦 *(investigated 2026-09-21; not written)*
+## M6d — the verification script 📜 *(the original investigation — BUILT in #436; read the as-built section above)*
+
+⚠️ **Superseded.** This section is kept for its reasoning, not its status. The verifier exists:
+`Services/ForgeQualifiedIdVerifier.cs` behind the `--verify-forge-ids` verb — see
+"✅ M6d — the verification script, and three references it would have caught" above. The paragraph
+below describes the state on 2026-09-21, when it did not.
 
 The migration is deployed and ran. This is the script that proves it did what it claimed, and it
-does **not** exist — confirmed: no `.ps1`/`.sh`/`.csx` under `apps/CodeCoverage`, and the only
+did **not** exist — confirmed at the time: no `.ps1`/`.sh`/`.csx` under `apps/CodeCoverage`, and the only
 `--spark-*` verbs are `synchronize/verify-model` and `synchronize/verify-security`, all of which
 deliberately return **before `Build()`** and touch no database.
 
@@ -2310,7 +2524,8 @@ inside the container.
 3. **Reference integrity — nothing checks this today.** Every `Commit.Repository`,
    `Commit.LatestBuildId`, `Build.Commit`, `BuildTreeSummary.BuildId`, `CommitAssembly.Commit` /
    `.Repository` / `.Builds[].BuildId`, `FileCoverage.BuildId`, `Repository.Account` and
-   `ApiToken.GithubRepositories[]` must carry the qualified prefix. A dangling reference renders an
+   `ApiToken.RepositoryIds[]` (renamed from `GithubRepositories` by `M_202609220950`) must carry the
+   qualified prefix. A dangling reference renders an
    **empty page, not an error**.
 4. **Field backfills:** zero `Repositories`/`Accounts` lacking `Provider` or `OwnerKey`; zero
    `ApiTokens` with `AccountLogin` set and `AccountOwnerKey` null.
@@ -2330,32 +2545,62 @@ at deploy time. Without a true pre-deploy baseline, this script can only prove t
 
 ---
 
-## M6g — delete the compatibility shims 🟦 *(investigated 2026-09-21; two corrections to the plan)*
+## M6g — delete the compatibility shims 🟨 *(step 4 and the forge hole are closed; the deletions remain)*
 
-### ⚠ Correction 1 — the stated precondition is NOT satisfied
+✅ **Step 4 — the backfill — is done**, as `M_202609221000_BackfillApiTokenAccountIds`. It stamps
+`AccountId` and **logs** the tokens it cannot resolve rather than revoking them.
 
-M6g says `ApiToken.AccountLogin` can go *"after the migration backfills `AccountGitHubId`"*.
-**Nothing in this repository backfills `AccountGitHubId`.** Verified: the ForgeQualified migration's
+✅ **The multi-forge hole in the fallback is closed**, which is what actually mattered about it. The
+`AccountClaim` now carries `ApiToken.AccountOwnerKey` (`github:acme`) and is compared against
+`Repository.OwnerKey`, which is computed from the repository's own `Provider`. Both sides qualified,
+so they can only match when the forge matches. Before that, a token for a GitLab group called `acme`
+authorized uploads to GitHub's `acme`.
+
+⚠️ **Steps 5–6 — deleting the claim and the property — were attempted and deliberately backed
+out.** The escalation they were written against is already closed: `AccountOwnerKey` is
+server-derived on every save and `AccountLogin` is `isReadOnly` in the model, so neither is a value
+a client can choose. What remained was a *forge* bug, not an authorization one, and qualifying the
+comparison fixes it in two files while keeping every legacy token working.
+
+Deleting the property cost ~19 files, because `--spark-synchronize-model` never deletes (so the
+model attribute had to come out by hand) and ~12 test fixtures seeded it. It also invalidated every
+token the backfill could not resolve. The reasoning is kept here because the steps are still
+*available* — but they are cleanup, and they should be priced as cleanup rather than as the fix.
+
+⛔ **Steps 1–3 remain blocked.** They delete `LegacyBranchCompatibility`, and step 1 is a production
+question no repository check can answer: whether `M_202609190900_BranchesBecomePerLineArmSets` left
+zero `FileCoverage` documents carrying a legacy `BranchId`-shaped first entry. Its marker proves it
+ran, not that every document converted, and without the shim such a document deserializes to **zero
+branch coverage on every line** — a wrong number rather than a missing one.
+
+### ⚠ Correction 1 — the stated precondition is NOT satisfied — ✅ CLOSED
+
+✅ **Closed in #436** by `M_202609221000_BackfillApiTokenAccountIds`, which does exactly what this
+finding said had to be written first. The field is also **renamed**: it is `AccountId` now, not
+`AccountGitHubId` (`M_202609220950`). The finding is kept because it is why the backfill exists.
+
+M6g said `ApiToken.AccountLogin` can go *"after the migration backfills `AccountGitHubId`"*.
+**Nothing in this repository backfilled it.** Verified at the time: the ForgeQualified migration's
 `ApiTokens` pass backfills `AccountOwnerKey` only —
 
 ```js
 if (d.AccountLogin && !d.AccountOwnerKey) { d.AccountOwnerKey = 'github:' + d.AccountLogin; }
 ```
 
-`AccountGitHubId` is stamped only at token-save time. So deleting the login fallback today breaks
-**every token whose `AccountGitHubId` is null** — precisely the case `ApiToken` documents as
-deliberately supported. A backfill must be **written and run first**, and the tokens it cannot
-resolve **counted and reported**, not discovered from a support question.
+The id was stamped only at token-save time. So deleting the login fallback would have broken
+**every token whose id is null** — precisely the case `ApiToken` documents as deliberately supported.
+A backfill had to be **written and run first**, and the tokens it cannot resolve **counted and
+reported**, not discovered from a support question. That is what `M_202609221000` does.
 
 ### ⚠ Correction 2 — `AccountLogin` is used far more widely than "a comparison branch"
 
 M6g names one site in `UploadsController`. The real set also includes `ApiTokenActions` (four uses,
-including a query that matches on login *because* `AccountGitHubId` is null on older tokens),
+including a query that matches on login *because* the id is null on older tokens),
 `RevokeTokenAction`, the `AccountClaim` emission in `ApiTokenAuthenticationHandler`,
 `App_Data/Model/ApiToken.json` (so deleting it forces a model re-synchronize or CI fails), a prior
 migration that still has to compile, and ~12 test references.
 
-### ⚠ Correction 3 — `Program.cs:313` is stale; the hook is now at `:356`
+### ⚠ Correction 3 — `Program.cs:313` is stale; the hook is now at `:451`
 
 ### Ordered, with the blocking gate first
 
@@ -2421,9 +2666,9 @@ its own page linked to one. Fixed to `!= true` at eight sites, and pinned by
 
 ---
 
-## M19 — The six links M7 missed and A11 could not see 🟨 *(fixed on `fix/forge-route-navigation`, not yet merged)*
+## M19 — The six links M7 missed and A11 could not see ✅ *(merged as `e0a2ef40`, PR #435)*
 
-Found in production by the owner, minutes after the deploy. **Branch pushed, PR not yet opened.**
+Found in production by the owner, minutes after the deploy. **Merged in #435 and browser-verified by clicking through** — see the browser-verification section above.
 
 ### What was broken
 
@@ -2479,7 +2724,7 @@ filesystem to walk.
 
 ---
 
-## M17 — Deploy to the VPS, with the app still working 🟨 *(deployed 2026-09-21; one regression found in production)*
+## M17 — Deploy to the VPS, with the app still working 🟨 *(deployed 2026-09-21; the regression is fixed in #435 and awaiting the next deploy)*
 
 ### As-deployed
 

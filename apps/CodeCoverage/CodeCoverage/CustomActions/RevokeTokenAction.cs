@@ -53,7 +53,8 @@ public partial class RevokeTokenAction : SparkCustomAction
         // ⚠️ Re-checked here, not inherited from the row filter. The filter decides what a caller
         // can see; a write must decide for itself, because a caller can post an id it was never
         // shown.
-        if (token.AccountLogin is null || !await visibility.CanManageOwnerAsync(token.AccountLogin))
+        // ⚠️ An owner KEY, not a login — see ApiTokenActions. This refused every revoke.
+        if (token.AccountOwnerKey is null || !await visibility.CanManageOwnerAsync(token.AccountOwnerKey))
         {
             manager.Client.Notify("You do not manage the account this token belongs to.", NotificationKind.Error);
             return;

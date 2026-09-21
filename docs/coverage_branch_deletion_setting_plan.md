@@ -46,6 +46,10 @@ enter id-numbers… a token should be allowed to work over several repositories.
 public List<string> GithubRepositories { get; set; } = [];
 ```
 
+> ⚠️ **Renamed to `RepositoryIds` by `M_202609220950` (PR #436)**, along with
+> `AccountGitHubId` → `AccountId`. The snippet is left as it was written, because it is the record
+> of what this PR added.
+
 Three corrections to the request, all verified:
 
 - **Not `List<long>`.** Reference elements are **document ids as strings** at every layer — the

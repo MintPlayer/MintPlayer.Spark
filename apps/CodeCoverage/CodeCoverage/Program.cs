@@ -1,4 +1,5 @@
 using CodeCoverage.GithubIntegration.Extensions;
+using System.Net;
 using System.Text.RegularExpressions;
 using MintPlayer.Spark.Authorization.Configuration;
 using System.Threading.RateLimiting;
@@ -34,8 +35,38 @@ var isSparkBuildCommand = args.Any(a => a.StartsWith("--spark-", StringCompariso
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
-    options.KnownNetworks.Clear();
+
+    // ⚠️ These lists used to be CLEARED, which does not mean "no proxies" — it disables peer
+    // validation entirely, so ASP.NET Core took `X-Forwarded-For` from whoever sent it. Any
+    // anonymous caller could therefore choose the address every rate limiter partitions on and
+    // every log line records, which is a bypass of the fork-upload limiter rather than a
+    // theoretical one.
+    //
+    // The proxy's address cannot be pinned (Docker assigns it), but it does not have to be. See
+    // docker-compose.yml: `coverage-app` publishes no host ports and is reachable only from the
+    // `web` network, where Traefik is the sole ingress. So the transport peer is ALWAYS a
+    // container address on a Docker bridge network, and trusting the private ranges is exactly
+    // as tight as naming the container would be — nothing on a public address can reach this
+    // process to be trusted in the first place.
+    //
+    // ⚠️ If this app is ever exposed directly, or put behind a proxy that is not on a private
+    // network, this must become an explicit KnownProxies entry. The safety argument is the
+    // topology, not the address family.
+    options.KnownIPNetworks.Clear();
     options.KnownProxies.Clear();
+    options.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Parse("10.0.0.0"), 8));
+    options.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Parse("172.16.0.0"), 12));
+    options.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Parse("192.168.0.0"), 16));
+    options.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Parse("127.0.0.0"), 8));
+    options.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Parse("::1"), 128));
+    options.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Parse("fc00::"), 7));
+
+    // One hop, which is what makes a spoofed header harmless rather than merely validated.
+    // Traefik APPENDS the real peer to whatever the client sent, so with a limit of one the
+    // rightmost entry — the only one Traefik wrote — is the one taken, and the attacker-supplied
+    // entries to its left are never read. It is the default; it is spelled out because the whole
+    // argument above collapses without it.
+    options.ForwardLimit = 1;
 });
 
 builder.Services.AddControllers()
@@ -289,9 +320,28 @@ static string ForkUploadsPartitionKey(HttpContext context)
 {
     var segments = context.Request.Path.Value?.Split('/', StringSplitOptions.RemoveEmptyEntries);
     // api / uploads / fork / provider / owner / name / ...
-    return segments is { Length: >= 6 }
+    var repository = segments is { Length: >= 6 }
         ? string.Join('/', segments[3], segments[4], segments[5]).ToLowerInvariant()
         : "unattributed";
+
+    // ⚠️ The CALLER is part of the key, not just the target. Keyed on the repository alone, the
+    // partition is a string the caller chooses: varying the name segment yields a fresh window per
+    // request, so there was no aggregate bound on an anonymous caller at all — and each request
+    // still reached RepositoryResolver, which spends a forge API call on any unknown name under a
+    // known owner. That is the installation's shared budget, which the reconciler, the comment
+    // publisher and every badge depend on.
+    //
+    // Keeping the repository in the key is what stops one caller spending every repository's
+    // allowance at once; adding the caller is what stops them having an unlimited number of
+    // allowances.
+    //
+    // ⚠️⚠️ THIS ONLY WORKS BECAUSE THE FORWARDED-HEADER OPTIONS ARE NOW PINNED. While
+    // `KnownProxies` and `KnownNetworks` were cleared, `RemoteIpAddress` was whatever the caller
+    // put in `X-Forwarded-For` — so keying on it would have been exactly as caller-chosen as
+    // keying on the path: one header per request, one fresh window per request, the same abuse
+    // through a different string. See the ForwardedHeadersOptions at the top of this file; if the
+    // trust list is ever emptied again, this stops being a control and silently reads as one.
+    return $"{context.Connection.RemoteIpAddress?.ToString() ?? "anonymous"}|{repository}";
 }
 
 static string UploadsPartitionKey(HttpContext context)
@@ -348,8 +398,8 @@ builder.Services.AddRateLimiter(options =>
     // Anonymous fork uploads. Deliberately the tightest window in the app: the caller holds no
     // credential, every accepted request stores documents and each one costs a forge round trip to
     // read the pull request. A real fork pull request uploads a handful of times per run — once per
-    // job — so 10/min per repository is generous for the honest case and cheap to survive
-    // otherwise. Partitioned on the target repository; see ForkUploadsPartitionKey for why.
+    // job — so 10/min per (caller, repository) is generous for the honest case and cheap to survive
+    // otherwise. See ForkUploadsPartitionKey for why the key has both halves.
     options.AddPolicy("fork-uploads", context => RateLimitPartition.GetFixedWindowLimiter(
         partitionKey: ForkUploadsPartitionKey(context),
         _ => new FixedWindowRateLimiterOptions
@@ -400,6 +450,36 @@ var app = builder.Build();
 // whether the migration has run.
 CodeCoverage.Services.LegacyBranchCompatibility.Enable(
     app.Services.GetRequiredService<Raven.Client.Documents.IDocumentStore>());
+
+// M6d. Proves the forge-qualifying migration left the database in the shape it claims, and exits
+// without serving. Placed here on purpose: after Build() because it needs a store, after the
+// LegacyBranchCompatibility hook because it streams Build documents, and before UseSpark() because
+// that is where pending migrations run — a verifier must observe the database as the migrations
+// left it, not race them.
+//
+// ⚠️ Deliberately NOT named `--spark-verify-*`. Program.cs treats any `--spark-` argument as a build
+// command and skips registering the GitHub sign-in provider, including its missing-secret throw —
+// so a database verb in that namespace would let a production start come up with no auth provider
+// if the secret were absent. The prefix is load-bearing in a way its name does not suggest.
+if (args.Contains("--verify-forge-ids", StringComparer.Ordinal))
+{
+    var findings = await CodeCoverage.Services.ForgeQualifiedIdVerifier.VerifyAsync(
+        app.Services.GetRequiredService<Raven.Client.Documents.IDocumentStore>());
+
+    foreach (var finding in findings)
+        Console.WriteLine($"{(finding.Ok ? "ok  " : "FAIL")}  {finding.Check}: {finding.Detail}");
+
+    var failed = findings.Count(f => !f.Ok);
+    Console.WriteLine(failed == 0
+        ? $"All {findings.Count} checks passed."
+        : $"{failed} of {findings.Count} checks FAILED.");
+
+    // Non-zero on failure so this is usable from a deploy script without parsing the output.
+    // Set rather than returned: the other --spark-* verbs above exit with a bare `return`, and a
+    // returning entry point would force every one of them to produce a value.
+    Environment.ExitCode = failed == 0 ? 0 : 1;
+    return;
+}
 
 app.UseForwardedHeaders();
 

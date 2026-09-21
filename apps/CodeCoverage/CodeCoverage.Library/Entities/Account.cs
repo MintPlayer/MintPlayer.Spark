@@ -9,7 +9,7 @@ namespace CodeCoverage.Entities;
 /// webhook upserts are idempotent.
 /// </summary>
 [GenerateIndex]
-public class Account
+public class Account : IForgeConnectable
 {
     /// <summary>Document id of this account, <c>Accounts/{GitHubId}</c>.</summary>
     public string? Id { get; set; }
@@ -27,7 +27,41 @@ public class Account
     public string? AvatarUrl { get; set; }
 
     /// <summary>GitHub App installation on this account, when the app is installed.</summary>
+    /// <remarks>
+    /// ⚠️ <b>GitHub's mechanism, not the fact.</b> Ask <see cref="Connection"/> whether we can act
+    /// on this account — GitLab grants access with a group token and Bitbucket with a workspace
+    /// credential, and neither has an installation id to put here. A neutral caller reading this
+    /// field is a neutral caller that only works for one forge.
+    /// </remarks>
     public long? InstallationId { get; set; }
+
+    /// <summary>Whether we can still act on this account's repositories.</summary>
+    /// <remarks>
+    /// <para>
+    /// The neutral answer to "is this account connected", which three callers ask and two of them
+    /// ask <em>inside a RavenDB query</em> — the account sweep in the reconciliation cron job and
+    /// the manual resync. That is why it is a stored field rather than a method on
+    /// <c>IForgeIntegration</c>: an interface call cannot be pushed into RQL, and the alternative is
+    /// every caller reading <see cref="InstallationId"/> and thereby naming GitHub.
+    /// </para>
+    /// <para>
+    /// ⚠️ A <b>reachability flag, not a credential.</b> What it means to be connected is each
+    /// forge's business and each forge writes it; what a neutral caller needs is only whether we
+    /// still are. A neutral layer must never hold the credential itself.
+    /// </para>
+    /// <para>
+    /// Defaults to <see cref="RepositoryConnection.Connected"/>, which is what every document
+    /// written before this field existed deserializes to — and, for those, correct: an account only
+    /// existed because an installation created it.
+    /// </para>
+    /// </remarks>
+    public RepositoryConnection Connection { get; set; } = RepositoryConnection.Connected;
+
+    /// <summary>Why the account is disconnected, from <see cref="DisconnectedReasons"/>; null while connected.</summary>
+    public string? DisconnectedReason { get; set; }
+
+    /// <summary>When the account was last disconnected (UTC); null while connected.</summary>
+    public DateTime? DisconnectedAtUtc { get; set; }
 
     /// <summary>
     /// Account-wide default: delete a merged pull request's head branch, in every repository of

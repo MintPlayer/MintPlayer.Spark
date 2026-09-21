@@ -13,6 +13,7 @@ failure on Spark PR #123.
 
 | Doc | What it is |
 |---|---|
+| [`forge-webhooks.md`](forge-webhooks.md) | **How to handle a webhook from any forge.** The minimal recipient API — one interface, one method — the six-event neutral vocabulary with its GitHub/GitLab/Bitbucket mapping, and the traps a port must not get wrong. Start here for anything webhook-shaped. |
 | [`upload-api.md`](upload-api.md) | The stable CI↔server upload contract. Fields are added, never removed; the action and every consuming pipeline depend on it. |
 | [`../../apps/CodeCoverage/action/README.md`](../../apps/CodeCoverage/action/README.md) | The upload action itself: what it sends, how it degrades against an older server, and **how to release a new version** (the one-click bump, and the two-tag scheme). |
 | [`compile-ts-action-handoff.md`](compile-ts-action-handoff.md) | **Delivered.** The shared TypeScript→`index.js` build action in `MintPlayer/github-actions` that builds the bundle, why it lives there rather than here, and the six ways the implementation had to deviate from the spec. |

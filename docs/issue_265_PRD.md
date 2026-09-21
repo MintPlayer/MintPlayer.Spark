@@ -274,15 +274,45 @@ The partition key is *exactly* `httpContext.Connection.RemoteIpAddress?.ToString
 (`SparkBuilderRateLimiterExtensions.cs:99-101`). Nothing else — no path, no user, no header.
 
 ASP.NET's forwarded-headers middleware performs its known-proxy check **only** when
-`KnownProxies.Count > 0 || KnownNetworks.Count > 0`. Both `apps/Fleet/Fleet/Program.cs:16-21` **and**
-`apps/CodeCoverage/CodeCoverage/Program.cs:34-39` clear both lists, so no trust check runs and any
-caller's `X-Forwarded-For` overwrites `Connection.RemoteIpAddress` before the limiter reads it.
+`KnownProxies.Count > 0 || KnownNetworks.Count > 0`. When both lists are empty no trust check runs
+at all, and any caller's `X-Forwarded-For` overwrites `Connection.RemoteIpAddress` before the
+limiter reads it.
 
-⚠ **On production this means every IP-keyed limit can be bypassed by rotating one header**, including
+That was the state of `apps/CodeCoverage/CodeCoverage/Program.cs` until PR #436 — see the fix
+below. `apps/Fleet/Fleet/Program.cs:16-21`, `apps/DemoApp` and `apps/HR` still clear both lists,
+deliberately (`ModuleCertificateForwarding.cs:28-32`), and are not deployed.
+
+⚠ **On production this meant every IP-keyed limit could be bypassed by rotating one header**, including
 the `browse` policy (300/min) whose stated purpose is protecting the GitHub App's shared API budget
-from an unmetered crawler, and `uploads` (60/min) whenever the caller has no `covt_` token. Filed
-separately — the fix needs the real proxy address in `KnownProxies`, which is deployment knowledge,
-not a code change.
+from an unmetered crawler, and `uploads` (60/min) whenever the caller has no `covt_` token.
+
+✅ **FIXED for `apps/CodeCoverage` (PR #436).** ⚠️ And the reason it stayed open for weeks is the
+part worth keeping: it was parked on *"the fix needs the real proxy address in `KnownProxies`,
+which is deployment knowledge, not a code change"* — the sentence this paragraph used to end with.
+That premise was false, and the refutation was in the repository the whole time.
+
+`apps/CodeCoverage/docker-compose.yml` gives `coverage-app` **no host ports** and puts it on the
+external `web` network where **Traefik is the sole ingress**. The transport peer is therefore
+always a container address on a Docker bridge, so the proxy's address never had to be known:
+trusting the private ranges is exactly as tight as naming the container, because nothing on a
+public address can reach port 8080 to be trusted at all.
+
+```csharp
+options.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Parse("172.16.0.0"), 12));
+// … 10/8, 192.168/16, 127/8, ::1, fc00::/7
+options.ForwardLimit = 1;   // spelled out, not defaulted
+```
+
+`ForwardLimit = 1` is what makes a spoofed header harmless rather than merely validated: Traefik
+**appends** the real peer, so `X-Forwarded-For: 1.2.3.4` arrives as `1.2.3.4, <real>` and taking
+one entry from the right reads Traefik's value.
+
+The demo apps (`Fleet`, `DemoApp`, `HR`) still clear both lists. That is deliberate, documented at
+`ModuleCertificateForwarding.cs:28-32`, and they are not deployed — so the rejection recorded above
+still stands: per-test partitions via `X-Forwarded-For` remain the wrong thing to build CI on.
+
+⚠️ Loopback is in the trust list, so in local dev and E2E `X-Forwarded-For` **is** honoured from
+127.0.0.1. Safe only because of the topology, which is the whole argument — not the address family.
 
 ### SP-R2 — is configuration binding idiomatic here? Yes; the limiter was the exception
 

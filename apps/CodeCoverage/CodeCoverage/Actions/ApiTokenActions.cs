@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using Microsoft.AspNetCore.Identity;
 using Raven.Client.Documents.Session;
 using Raven.Client.Documents.Linq;
@@ -106,24 +107,71 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
     /// </remarks>
     public override async Task OnBeforeSaveAsync(PersistentObject obj, ApiToken entity)
     {
-        // ⚠️ Runs on EVERY save, create and edit alike. The early return below is only for the
-        // credential, which cannot be re-derived — the scope must be re-validated every time,
-        // because an edit can change which repositories a token covers.
+        // ⚠️ Runs on EVERY save, create and edit alike — as do the owner authorization and the
+        // identity derivation below it. The early return further down is ONLY for the credential,
+        // which cannot be re-derived. Everything a later request authorizes on has to be re-derived
+        // here, because an edit can change which repositories a token covers AND which account it
+        // claims to be.
         await ValidateRepositoryScopeAsync(entity);
-        entity.Scope = entity.GithubRepositories.Count > 0 ? "Repository" : "Account";
+        entity.Scope = entity.RepositoryIds.Count > 0 ? "Repository" : "Account";
+
+        // ⚠️ `CanManageOwnerAsync` takes an owner KEY (`github:acme`), which is what its parameter
+        // name says and what `GetAllowedOwnersAsync` returns. Passing the bare login refused every
+        // single token creation — fail-closed, so no security hole, but the feature simply did not
+        // work. `AccountOwnerKey` is the field the row filter already compares.
+        var ownerKey = entity.AccountOwnerKey;
+        if (string.IsNullOrWhiteSpace(ownerKey) || !await visibility.CanManageOwnerAsync(ownerKey))
+            throw new SparkValidationException(nameof(ApiToken.AccountOwnerKey), "You do not manage that account.");
+
+        // ⚠️⚠️ EVERYTHING BELOW IS DERIVED FROM THE KEY THAT WAS JUST AUTHORIZED. Nothing reads
+        // another posted field.
+        //
+        // This authorized `AccountOwnerKey` and then resolved the account from `AccountLogin` — a
+        // SECOND, independently client-writable field that nothing validated and nothing
+        // server-assigned. Posting a key you genuinely manage together with somebody else's login
+        // minted a token stamped with THEIR account: the row filter compares the key, so the token
+        // stayed visible and editable by the attacker, while `UploadsController` authorized its
+        // uploads against the victim's repositories. Where no account matched the posted login it
+        // was worse, not better — `AccountId` stayed null, the authentication handler fell back to
+        // emitting the login as a claim, and the legacy login-comparison arm authorized every
+        // repository owned by that name.
+        //
+        // The rule the whole multi-forge design rests on: one field decides who you are, and
+        // everything else follows from it.
+        if (!ForgeOwner.TryParse(ownerKey, out var owner))
+            throw new SparkValidationException(nameof(ApiToken.AccountOwnerKey), "That is not a valid account key.");
+
+        var provider = owner.Value.Provider;
+        var ownerLogin = owner.Value.Login;
+
+        // ⚠️ Matched on provider AND login. A bare `a.Login == login` unions forges: a GitLab group
+        // and a GitHub organisation of the same name are different principals, and `FirstOrDefault`
+        // would pick whichever RavenDB returned first.
+        var account = await session.Query<Account>()
+            .FirstOrDefaultAsync(a => a.Provider == provider && a.Login == ownerLogin);
+
+        // Overwritten, not read: `AccountLogin` is display-only by its own documentation, and a
+        // posted value must never survive into a field anything authorizes on — the login fallback
+        // in `UploadsController` still reads it.
+        //
+        // ⚠️⚠️ AND THIS RUNS ON EVERY SAVE, WHICH IS THE WHOLE POINT. The first fix derived
+        // these three fields only when minting, so one PUT after creation put the token straight
+        // back into the state the fix describes as the attack: `AccountLogin` is writable, the
+        // authentication handler emits it as the account claim, and `UploadsController`'s legacy
+        // arm authorizes every repository owned by that name. Re-deriving is safe because it reads
+        // nothing but `AccountOwnerKey`, which was authorized a few lines up — and it is what binds
+        // `AccountId` to the key when an EDIT moves the key to another account the caller also
+        // manages. Leave them create-only and the token keeps authorizing against the old account
+        // for ever, including after the caller's membership of that account is revoked.
+        entity.AccountLogin = ownerLogin;
+        entity.Provider = provider;
+        entity.AccountId = account?.GitHubId;
 
         if (!string.IsNullOrEmpty(entity.Hash))
             return; // An edit; the credential is already minted and cannot be re-derived.
 
-        var login = entity.AccountLogin;
-        if (string.IsNullOrWhiteSpace(login) || !await visibility.CanManageOwnerAsync(login))
-            throw new SparkValidationException(nameof(ApiToken.AccountLogin), "You do not manage that account.");
-
-        var account = await session.Query<Account>().FirstOrDefaultAsync(a => a.Login == login);
-
         plaintext = ApiTokenService.GenerateTokenValue();
         entity.Hash = ApiTokenService.Hash(plaintext);
-        entity.AccountGitHubId = account?.GitHubId;
 
         // Stamped, never trusted from the payload: the attribute is read-only in the model, so a
         // posted value is refused by IsWritableBySchema anyway, but the field was previously
@@ -152,25 +200,27 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
     /// </remarks>
     private async Task ValidateRepositoryScopeAsync(ApiToken entity)
     {
-        if (entity.GithubRepositories.Count == 0)
+        if (entity.RepositoryIds.Count == 0)
             return;
 
         // Distinct, because a duplicated id would otherwise mean a repeated claim on the wire.
-        entity.GithubRepositories = [.. entity.GithubRepositories.Distinct(StringComparer.Ordinal)];
+        entity.RepositoryIds = [.. entity.RepositoryIds.Distinct(StringComparer.Ordinal)];
 
         var owners = await visibility.GetAllowedOwnersAsync();
-        var repositories = await session.LoadAsync<Repository>(entity.GithubRepositories);
+        var repositories = await session.LoadAsync<Repository>(entity.RepositoryIds);
 
-        foreach (var id in entity.GithubRepositories)
+        foreach (var id in entity.RepositoryIds)
         {
             repositories.TryGetValue(id, out var repository);
 
             // Unknown and unauthorized are refused identically — a caller must not be able to
             // discover which repository ids exist by comparing error messages.
-            if (repository is null || !owners.Contains(repository.OwnerLogin, StringComparer.OrdinalIgnoreCase))
+            // ⚠️ `owners` holds KEYS. `OwnerLogin` never matched one, so every repository-scoped
+            // token save was refused.
+            if (repository is null || !owners.Contains(repository.OwnerKey, StringComparer.OrdinalIgnoreCase))
             {
                 throw new SparkValidationException(
-                    nameof(ApiToken.GithubRepositories),
+                    nameof(ApiToken.RepositoryIds),
                     "One of the selected repositories is not one you manage.");
             }
         }
@@ -215,7 +265,7 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
     {
         args.EnsureParent("Account");
 
-        // Matched on login rather than the numeric id: AccountGitHubId is null on tokens issued
+        // Matched on login rather than the numeric id: AccountId is null on tokens issued
         // before that field existed, and the same fallback is what ApiTokenAuthenticationHandler
         // relies on so a deploy never invalidates a working token.
         var login = args.Parent!.Attributes

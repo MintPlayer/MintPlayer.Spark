@@ -34,7 +34,13 @@ public partial class BackfillCommitDeltasCronJob : ISparkCronJob
     public async Task RunAsync(CancellationToken cancellationToken)
     {
         var pending = await session.Query<Commits_ByRepository.Result, Commits_ByRepository>()
-            .Where(r => r.HasCoverage && !r.ParentLookupDone)
+            // ⚠️ Fork-contributed commits are excluded, and the reason is capacity rather than correctness:
+            // this is ONE global queue draining a handful of commits every five minutes for the whole
+            // installation, and each one costs a forge call. Fork uploads are anonymous and bounded only
+            // per repository, so without this an attacker with pull requests on a few dozen public
+            // repositories can fill the queue faster than it drains and stall delta backfill for
+            // everybody. A fork commit has no first-party delta worth computing anyway.
+            .Where(r => r.HasCoverage && !r.ParentLookupDone && r.ContributedFromFork != true)
             .OrderBy(r => r.AuthoredAt)
             .OfType<Commit>()
             .Take(SliceSize)

@@ -196,7 +196,7 @@ public class GitHubStateReconcilerTests : CoverageRavenTest
         {
             var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, id));
             Assert.Equal(RepositoryConnection.Disconnected, repository!.Connection);
-            Assert.Equal(DisconnectedReasons.AppUninstalled, repository.DisconnectedReason);
+            Assert.Equal(DisconnectedReasons.IntegrationRemoved, repository.DisconnectedReason);
         }
     }
 

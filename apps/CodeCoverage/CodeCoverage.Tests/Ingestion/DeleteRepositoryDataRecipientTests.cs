@@ -106,7 +106,7 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
             await session.StoreAsync(new ApiToken
             {
                 Scope = "Repository",
-                GithubRepositories = [Repository.DocumentId(EForgeProvider.GitHub, id)],
+                RepositoryIds = [Repository.DocumentId(EForgeProvider.GitHub, id)],
                 AccountLogin = "acme",
                 CreatedAtUtc = DateTime.UtcNow,
                 Hash = $"hash{id}",
@@ -294,7 +294,7 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
             await seed.StoreAsync(new ApiToken
             {
                 Scope = "Repository",
-                GithubRepositories = [Repository.DocumentId(EForgeProvider.GitHub, RepoId), Repository.DocumentId(EForgeProvider.GitHub, OtherRepoId)],
+                RepositoryIds = [Repository.DocumentId(EForgeProvider.GitHub, RepoId), Repository.DocumentId(EForgeProvider.GitHub, OtherRepoId)],
                 AccountLogin = "acme",
                 CreatedAtUtc = DateTime.UtcNow,
                 Hash = "hash-multi",
@@ -319,7 +319,7 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
             .SingleOrDefaultAsync();
 
         Assert.NotNull(survivor);
-        Assert.Equal([Repository.DocumentId(EForgeProvider.GitHub, OtherRepoId)], survivor!.GithubRepositories);
+        Assert.Equal([Repository.DocumentId(EForgeProvider.GitHub, OtherRepoId)], survivor!.RepositoryIds);
         // Still repository-scoped: an emptied list would silently WIDEN it to account scope, which
         // is the opposite of what deleting a repository should mean.
         Assert.Equal("Repository", survivor.Scope);

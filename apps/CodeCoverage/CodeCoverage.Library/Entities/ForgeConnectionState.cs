@@ -42,7 +42,7 @@ public static class ForgeConnectionState
     /// </summary>
     /// <remarks>
     /// Clearing the reason is the point, not tidiness: the reason is what the owner is shown, and a
-    /// reconnected repository still carrying <c>AppUninstalled</c> tells them to reinstall an App
+    /// reconnected repository still carrying <c>IntegrationRemoved</c> tells them to reinstall an App
     /// that is already installed.
     /// </remarks>
     public static void MarkConnected(this IForgeConnectable connectable)
@@ -62,9 +62,14 @@ public static class ForgeConnectionState
     /// value, and the report URLs keep resolving — the resource simply stops being advertised to
     /// anyone but its owner.
     /// <para>
-    /// ⚠️ <paramref name="reason"/> must come from <see cref="DisconnectedReasons"/>. It is stored
-    /// verbatim and read back by code that compares strings, so an ad-hoc value is a silent
-    /// mismatch rather than an error — which is why this refuses an empty one outright.
+    /// ⚠️ <paramref name="reason"/> must come from <see cref="DisconnectedReasons"/>, but <b>not</b>
+    /// because anything branches on it — nothing does, and
+    /// <see cref="DisconnectedReasons"/>'s own remark is the accurate one. It must, because it is
+    /// <b>displayed</b>: it is interpolated verbatim into the message a board sync shows its owner,
+    /// and it is published as a Spark model attribute on both <c>Repository</c> and
+    /// <c>GitHubProject</c>, so an ad-hoc string is shown to a user exactly as written. An empty one
+    /// is refused outright for the same reason — "disconnected, reason blank" is not something a
+    /// page can explain.
     /// </para>
     /// </remarks>
     public static void MarkDisconnected(this IForgeConnectable connectable, string reason)

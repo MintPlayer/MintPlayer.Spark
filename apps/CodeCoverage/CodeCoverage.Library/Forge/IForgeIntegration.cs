@@ -127,6 +127,29 @@ public interface IForgeIntegration
     /// </summary>
     Task<ForgePullRequest?> GetPullRequestAsync(Repository repository, int number, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Re-derives what this forge says an account owns, correcting whatever drifted.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>Mutates documents in the caller's session and does NOT save.</b> The caller owns the
+    /// unit of work — a nightly sweep saves once for the whole pass, a single-account reconcile
+    /// saves immediately, and an implementation that saved for itself would take that choice away
+    /// and turn one failure into a half-applied sweep.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>Fail closed.</b> A transient error must leave everything as it was rather than
+    /// disconnecting what could not be listed — an outage is not the same fact as "the owner
+    /// revoked us", and treating it as one un-advertises every repository until the next pass.
+    /// </para>
+    /// <para>
+    /// This exists so the app can sweep <em>every</em> linked forge without naming one. The
+    /// scheduler asks each integration in turn; what "listing an account's repositories" means is
+    /// the implementation's business.
+    /// </para>
+    /// </remarks>
+    Task ReconcileAsync(Account account, CancellationToken cancellationToken = default);
+
     // ── Writes ───────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>

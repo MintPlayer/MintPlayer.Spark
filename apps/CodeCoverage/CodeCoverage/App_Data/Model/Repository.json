@@ -190,6 +190,25 @@
         "rules": []
       },
       {
+        "id": "c473d639-0ae7-4483-a12e-3f82ab49c71f",
+        "name": "ForkUploads",
+        "label": {
+          "en": "Fork Uploads"
+        },
+        "description": {
+          "en": "How many fork-contributed uploads this repository has accepted in the current window."
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 21,
+        "asDetailType": "CodeCoverage.Entities.ForkUploadBudget",
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "a6ac6d37-7d03-4094-8d19-8c86a4fefa7f",
         "name": "FullName",
         "label": {

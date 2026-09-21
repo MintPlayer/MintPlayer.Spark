@@ -113,6 +113,22 @@ public partial class ForkUploadsController : ControllerBase
         if (repository.IsPrivate)
             return NotFoundLikeEverythingElse();
 
+        // 2b. The repository's fork budget. Checked HERE — after the repository is loaded, before
+        //     the forge round trip — so an over-budget repository costs neither an outbound API call
+        //     nor a single stored document. It cannot move earlier: the rate limiter runs before
+        //     model binding and has no session to read a budget from.
+        //
+        //     ⚠️ Refused as 404 like everything else. A distinct 429 would tell an anonymous caller
+        //     that the repository exists, has the app installed, and is being actively contributed
+        //     to — which is exactly the information every other arm here refuses to leak.
+        if (!ForkUploadBudget.HasRoom(repository.ForkUploads, DateTime.UtcNow))
+        {
+            logger.LogWarning(
+                "Fork upload refused for {FullName}: {Count} already accepted in the current window.",
+                repository.FullName, repository.ForkUploads?.Count);
+            return NotFoundLikeEverythingElse();
+        }
+
         var forge = forges.For(repository);
 
         // 3. Read the pull request. Null is a refusal, never an absence — see IForgeClient. This
@@ -143,6 +159,11 @@ public partial class ForkUploadsController : ControllerBase
             logger.LogInformation("Learned default branch {Branch} for {FullName} from pull request #{Number}.",
                 pull.BaseRepositoryDefaultBranch, repository.FullName, number);
         }
+
+        // Spent only once everything above has passed, so a refused request costs nothing from the
+        // repository's allowance. The ingestor's SaveChanges persists this along with the documents
+        // it writes — the budget and the thing it is paying for commit together or not at all.
+        repository.ForkUploads = ForkUploadBudget.Accept(repository.ForkUploads, DateTime.UtcNow);
 
         var result = await ingestor.IngestAsync(new UploadIngestRequest(
             Repository: repository,

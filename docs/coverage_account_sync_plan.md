@@ -10,6 +10,26 @@ One pull request, spanning `libs/webhooks/MintPlayer.Spark.Webhooks.GitHub`,
 M1-M11 are implemented on `coverage-account-sync`; M10 is this file plus the READMEs; M12 awaits
 deploy. **CodeCoverage 307 passed**, **MintPlayer.Spark 1924 passed**, **ng-spark 398 passed**.
 
+> ✅ **M12 has since deployed** — this progress note is a 2026-09-05 snapshot and is kept as one.
+> The test figures are that day's; `CodeCoverage.Tests` is **750** as of PR #436.
+> ⚠️ **Identifiers below have since been renamed. This document is a record of what was planned
+> and built at the time; its body is deliberately left as written.** Current names, for anyone
+> following a reference out of it:
+>
+> | Written here | Today | Renamed by |
+> |---|---|---|
+> | `ApiToken.AccountGitHubId` | `ApiToken.AccountId` | `M_202609220950` (PR #436) |
+> | `ApiToken.GithubRepositories` | `ApiToken.RepositoryIds` | `M_202609220950` (PR #436) |
+> | `TokensController` | `ApiTokenActions` | the Spark actions migration |
+> | `ReconcileGitHubStateCronJob` | `ReconcileForgeStateCronJob` | #422 / PR #434 |
+> | `GitHubEventsRecipient` | `ForgeEventsRecipient` | #422 / PR #434 |
+>
+> ⚠️ `ApiToken` also gained a `Provider`, and **`AccountLogin` is no longer an authorization key
+> at all** — it is read-only in the model and re-derived from `AccountOwnerKey` on every save
+> (PR #436). Any passage below that treats it as a writable or authoritative field is describing
+> behaviour that has since been removed as a privilege-escalation path.
+
+
 Four things were added after the milestones were first called done, each because a question was
 asked rather than because a test failed:
 
@@ -407,6 +427,11 @@ what the viewer sees in one click.
   `ApiTokenAuthenticationHandler.cs:63-64`, and compared at `UploadsController.cs:522` in preference
   to the login. Tokens without the id fall back to the login comparison, so no token is invalidated
   by the deploy.
+
+  > ⚠️ **Every identifier in that bullet has moved.** `TokensController` no longer exists — the
+  > write path is `ApiTokenActions.OnBeforeSaveAsync`, and the field is `AccountId`. The login
+  > fallback is still present in `UploadsController` and is now tracked for deletion as M6g steps
+  > 5–6 in the multi-forge plan, because leaving it cost a privilege escalation (PR #436).
 
 ## M8 — Owner-invoked delete
 

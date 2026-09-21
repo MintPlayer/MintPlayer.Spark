@@ -42,6 +42,17 @@
         "order": 2
       },
       {
+        "id": "e4b7205c-8f31-4a9d-b6e2-71c05f3a8d19",
+        "name": "Connection",
+        "label": {
+          "en": "Connection",
+          "fr": "Connexion",
+          "nl": "Verbinding"
+        },
+        "tab": "a7c1f9d2-4b60-4e3a-9c85-1f27b0e6d431",
+        "order": 3
+      },
+      {
         "id": "d8a1e46f-2b93-4c07-95fe-3a6b18d2c740",
         "name": "Defaults",
         "label": {
@@ -50,7 +61,7 @@
           "nl": "Standaardinstellingen van dit account"
         },
         "tab": "a7c1f9d2-4b60-4e3a-9c85-1f27b0e6d431",
-        "order": 3
+        "order": 4
       }
     ],
     "attributes": [
@@ -78,6 +89,25 @@
         "group": "b2e84c07-9d13-4f56-8a2b-6c9e17f0a582"
       },
       {
+        "id": "5edc4d64-35ee-476d-89e7-41618672bd44",
+        "name": "Connection",
+        "label": {
+          "en": "Connection"
+        },
+        "description": {
+          "en": "Whether we can still act on this account's repositories."
+        },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "e4b7205c-8f31-4a9d-b6e2-71c05f3a8d19"
+      },
+      {
         "id": "317fcf1b-886e-4de3-ba90-bcb93a5deae4",
         "name": "DeleteBranchOnPrClose",
         "label": {
@@ -97,6 +127,44 @@
         "showedOn": "Query, PersistentObject",
         "rules": [],
         "group": "d8a1e46f-2b93-4c07-95fe-3a6b18d2c740"
+      },
+      {
+        "id": "bebedc41-cc23-4296-8341-1529056db3af",
+        "name": "DisconnectedAtUtc",
+        "label": {
+          "en": "Disconnected At Utc"
+        },
+        "description": {
+          "en": "When the account was last disconnected (UTC); null while connected."
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "e4b7205c-8f31-4a9d-b6e2-71c05f3a8d19"
+      },
+      {
+        "id": "6dc56c67-ce60-4cb1-a882-ab1341c9e75e",
+        "name": "DisconnectedReason",
+        "label": {
+          "en": "Disconnected Reason"
+        },
+        "description": {
+          "en": "Why the account is disconnected, from DisconnectedReasons; null while connected."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "group": "e4b7205c-8f31-4a9d-b6e2-71c05f3a8d19"
       },
       {
         "id": "f9c18430-234a-4ca4-b21d-9fca03049bf7",
@@ -178,12 +246,13 @@
         },
         "dataType": "string",
         "isRequired": false,
-        "isVisible": true,
+        "isVisible": false,
         "isReadOnly": false,
         "order": 8,
         "isArray": false,
         "showedOn": "PersistentObject",
-        "rules": []
+        "rules": [],
+        "group": "b2e84c07-9d13-4f56-8a2b-6c9e17f0a582"
       },
       {
         "id": "cb7179a2-eb61-4290-ac91-66fd239e266a",
@@ -201,7 +270,8 @@
         "order": 7,
         "isArray": false,
         "showedOn": "Query, PersistentObject",
-        "rules": []
+        "rules": [],
+        "group": "b2e84c07-9d13-4f56-8a2b-6c9e17f0a582"
       },
       {
         "id": "47ee693b-379e-469b-ba29-22a472796297",

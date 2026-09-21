@@ -62,9 +62,9 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
                 installationId, account.Login);
             account.InstallationId = null;
             foreach (var repository in await LoadRepositoriesOfAsync(account, cancellationToken))
-                repository.MarkDisconnected(DisconnectedReasons.AppUninstalled);
+                repository.MarkDisconnected(DisconnectedReasons.IntegrationRemoved);
             foreach (var project in await LoadProjectsOfAsync(account, cancellationToken))
-                project.MarkDisconnected(DisconnectedReasons.AppUninstalled);
+                project.MarkDisconnected(DisconnectedReasons.IntegrationRemoved);
             return;
         }
 
@@ -163,7 +163,7 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
                 "Installation {InstallationId} cannot see boards for {Login}; disconnecting them",
                 installationId, account.Login);
             foreach (var project in await LoadProjectsOfAsync(account, cancellationToken))
-                project.MarkDisconnected(DisconnectedReasons.AppUninstalled);
+                project.MarkDisconnected(DisconnectedReasons.IntegrationRemoved);
             return;
         }
         catch (Exception ex)

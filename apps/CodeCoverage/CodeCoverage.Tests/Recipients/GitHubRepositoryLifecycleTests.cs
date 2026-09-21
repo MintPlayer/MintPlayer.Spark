@@ -51,10 +51,13 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
     /// Runs the neutral half of the pipeline over whatever the GitHub half broadcast.
     /// </summary>
     /// <remarks>
-    /// M8d split the owner rename: GitHub resolves which account the payload names, and
-    /// <see cref="ForgeEventsRecipient"/> rewrites the account and every full name beneath it.
-    /// Asserting across both is deliberate — a normaliser that emits a well-formed event nobody
-    /// acts on would pass a narrower test and still leave every repository stale.
+    /// ⚠️ <b>Every repository lifecycle fact now crosses this boundary</b>, not just the owner
+    /// rename: GitHub normalises the payload and raises a neutral event, and
+    /// <see cref="ForgeEventsRecipient"/> performs the write. That is the whole point of the split —
+    /// a second forge writes a normaliser and nothing else — so these tests deliberately assert
+    /// across BOTH halves. A normaliser that emits a well-formed event nobody acts on would pass a
+    /// narrower test and leave every repository stale, which is exactly the state two of these
+    /// events were in before they were wired.
     /// </remarks>
     private static async Task DeliverForgeEventsAsync(IAsyncDocumentSession session, RecordingMessageBus bus)
     {
@@ -68,11 +71,42 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         services.AddScoped<ForgeEventsRecipient>();
         var recipient = services.BuildServiceProvider().GetRequiredService<ForgeEventsRecipient>();
 
+        // ⚠️ DRAINS. A test that delivers after each webhook would otherwise re-deliver every
+        // earlier event on every call, which both hides ordering bugs and invents ones that are not
+        // there. Non-forge messages (ReconcileAccountMessage) stay, because tests assert on them.
         foreach (var message in bus.Messages.ToArray())
         {
-            if (message is CodeCoverage.Forge.ForgeWebhookMessage<CodeCoverage.Forge.OwnerRenamed> renamed)
-                await recipient.HandleAsync(renamed);
+            switch (message)
+            {
+                case CodeCoverage.Forge.ForgeWebhookMessage<CodeCoverage.Forge.OwnerRenamed> ownerRenamed:
+                    await recipient.HandleAsync(ownerRenamed);
+                    bus.Messages.Remove(message);
+                    break;
+                case CodeCoverage.Forge.ForgeWebhookMessage<CodeCoverage.Forge.RepositoryRenamed> repositoryRenamed:
+                    await recipient.HandleAsync(repositoryRenamed);
+                    bus.Messages.Remove(message);
+                    break;
+                case CodeCoverage.Forge.ForgeWebhookMessage<CodeCoverage.Forge.RepositoryConnectionChanged> connection:
+                    await recipient.HandleAsync(connection);
+                    bus.Messages.Remove(message);
+                    break;
+            }
         }
+    }
+
+    /// <summary>
+    /// Runs the GitHub normaliser over one webhook, then delivers whatever it raised.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Both halves, always. The repository lifecycle writes live in the neutral consumer now, so
+    /// a test that ran only the normaliser would assert on a document nothing had written yet — and
+    /// would pass for any normaliser that raised nothing at all.
+    /// </remarks>
+    private static async Task HandleAndDeliverAsync(IAsyncDocumentSession session, GitHubWebhookMessage message)
+    {
+        var bus = new RecordingMessageBus();
+        await CreateRecipient(session, bus).HandleAsync(message);
+        await DeliverForgeEventsAsync(session, bus);
     }
 
     private static GitHubEventsRecipient CreateRecipient(IAsyncDocumentSession session, RecordingMessageBus? bus = null)
@@ -245,13 +279,13 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         await SeedAsync(session);
 
-        await CreateRecipient(session).HandleAsync(
+        await HandleAndDeliverAsync(session,
             Message("repository", RepositoryEventJson("deleted", OldOwnerId, "acme", "widgets")));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         Assert.NotNull(repository);
         Assert.Equal(RepositoryConnection.Disconnected, repository.Connection);
-        Assert.Equal(DisconnectedReasons.DeletedOnGitHub, repository.DisconnectedReason);
+        Assert.Equal(DisconnectedReasons.DeletedOnForge, repository.DisconnectedReason);
 
         // The point of not deleting: the commit under it is still reachable, so a report link
         // someone shared still resolves.
@@ -280,7 +314,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         await SeedAsync(session);
 
-        await CreateRecipient(session).HandleAsync(
+        await HandleAndDeliverAsync(session,
             Message("repository", RepositoryEventJson("transferred", NewOwnerId, "acme-archive", "widgets")));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
@@ -306,7 +340,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         await SeedAsync(session);
 
-        await CreateRecipient(session).HandleAsync(Message(
+        await HandleAndDeliverAsync(session,Message(
             "installation_repositories",
             InstallationRepositoriesJson("removed", added: "", removed: LiteRepositoryJson("acme", "widgets"))));
 
@@ -330,13 +364,15 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         await SeedAsync(session);
 
-        var recipient = CreateRecipient(session);
+        var bus = new RecordingMessageBus();
+        var recipient = CreateRecipient(session, bus);
         var transferred = Message("repository", RepositoryEventJson("transferred", NewOwnerId, "acme-archive", "widgets"));
         var added = Message("installation_repositories",
             InstallationRepositoriesJson("added", added: LiteRepositoryJson("acme-archive", "widgets"), removed: ""));
 
         foreach (var message in reversed ? new[] { added, transferred } : new[] { transferred, added })
             await recipient.HandleAsync(message);
+            await DeliverForgeEventsAsync(session, bus);
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         Assert.NotNull(repository);
@@ -350,7 +386,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         await SeedAsync(session);
 
-        await CreateRecipient(session).HandleAsync(
+        await HandleAndDeliverAsync(session,
             Message("repository", RepositoryEventJson("renamed", OldOwnerId, "acme", "gadgets")));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
@@ -367,7 +403,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         await SeedAsync(session);
 
-        await CreateRecipient(session).HandleAsync(
+        await HandleAndDeliverAsync(session,
             Message("repository", RepositoryEventJson("archived", OldOwnerId, "acme", "widgets", archived: true)));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
@@ -383,7 +419,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         await SeedAsync(session);
 
-        await CreateRecipient(session).HandleAsync(Message(
+        await HandleAndDeliverAsync(session,Message(
             "installation_repositories",
             InstallationRepositoriesJson("removed", added: "", removed: LiteRepositoryJson("acme", "widgets"))));
 
@@ -401,13 +437,16 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         await SeedAsync(session);
 
-        var recipient = CreateRecipient(session);
+        var bus = new RecordingMessageBus();
+        var recipient = CreateRecipient(session, bus);
         await recipient.HandleAsync(Message(
             "installation_repositories",
             InstallationRepositoriesJson("removed", added: "", removed: LiteRepositoryJson("acme", "widgets"))));
+        await DeliverForgeEventsAsync(session, bus);
         await recipient.HandleAsync(Message(
             "installation_repositories",
             InstallationRepositoriesJson("added", added: LiteRepositoryJson("acme", "widgets"), removed: "")));
+        await DeliverForgeEventsAsync(session, bus);
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         Assert.NotNull(repository);
@@ -441,13 +480,15 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         await SeedAsync(session);
 
-        var recipient = CreateRecipient(session);
+        var bus = new RecordingMessageBus();
+        var recipient = CreateRecipient(session, bus);
         var removedByOldOwner = Message("installation_repositories",
             InstallationRepositoriesJson("removed", added: "", removed: LiteRepositoryJson("acme", "widgets")));
         var gained = Message("repository", RepositoryEventJson("transferred", NewOwnerId, "acme-archive", "widgets"));
 
         foreach (var message in removalLast ? new[] { gained, removedByOldOwner } : new[] { removedByOldOwner, gained })
             await recipient.HandleAsync(message);
+            await DeliverForgeEventsAsync(session, bus);
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         Assert.Equal(Account.DocumentId(EForgeProvider.GitHub, NewOwnerId), repository!.Account);
@@ -466,7 +507,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         await SeedAsync(session);
 
-        await CreateRecipient(session).HandleAsync(Message("installation_repositories",
+        await HandleAndDeliverAsync(session,Message("installation_repositories",
             InstallationRepositoriesJson("removed", added: "", removed: LiteRepositoryJson("acme", "widgets"))));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
@@ -484,7 +525,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
 
-        await CreateRecipient(session).HandleAsync(
+        await HandleAndDeliverAsync(session,
             Message("repository", RepositoryEventJson("created", OldOwnerId, "acme", "widgets")));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
@@ -510,7 +551,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
 
         var json = RepositoryEventJson(action, OldOwnerId, "acme", "widgets")
             .Replace("\"private\": false", $"\"private\": {(expectedPrivate ? "true" : "false")}");
-        await CreateRecipient(session).HandleAsync(Message("repository", json));
+        await HandleAndDeliverAsync(session,Message("repository", json));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         Assert.Equal(expectedPrivate, repository!.IsPrivate);
@@ -524,11 +565,14 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         await SeedAsync(session);
 
-        var recipient = CreateRecipient(session);
+        var bus = new RecordingMessageBus();
+        var recipient = CreateRecipient(session, bus);
         await recipient.HandleAsync(Message("repository",
             RepositoryEventJson("archived", OldOwnerId, "acme", "widgets", archived: true)));
+        await DeliverForgeEventsAsync(session, bus);
         await recipient.HandleAsync(Message("repository",
             RepositoryEventJson("unarchived", OldOwnerId, "acme", "widgets", archived: false)));
+        await DeliverForgeEventsAsync(session, bus);
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         Assert.False(repository!.Archived);
@@ -541,7 +585,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
 
-        await CreateRecipient(session).HandleAsync(Message("installation",
+        await HandleAndDeliverAsync(session,Message("installation",
             InstallationJson("created", repositories: LiteRepositoryJson("acme", "widgets"))));
 
         var account = await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, OldOwnerId));
@@ -561,11 +605,11 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         await SeedAsync(session);
         WaitForIndexing(store);
 
-        await CreateRecipient(session).HandleAsync(Message("installation", InstallationJson("deleted")));
+        await HandleAndDeliverAsync(session,Message("installation", InstallationJson("deleted")));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         Assert.Equal(RepositoryConnection.Disconnected, repository!.Connection);
-        Assert.Equal(DisconnectedReasons.AppUninstalled, repository.DisconnectedReason);
+        Assert.Equal(DisconnectedReasons.IntegrationRemoved, repository.DisconnectedReason);
         Assert.NotNull(await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, RepoId, "abc")));
     }
 
@@ -592,7 +636,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
 
         Assert.Contains(
             bus.Messages.OfType<CodeCoverage.Ingestion.ReconcileAccountMessage>(),
-            m => m.AccountGitHubId == OldOwnerId);
+            m => m.AccountId == OldOwnerId && m.Provider == EForgeProvider.GitHub);
     }
 
     [Fact]
@@ -603,11 +647,11 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         await SeedAsync(session);
         WaitForIndexing(store);
 
-        await CreateRecipient(session).HandleAsync(Message("installation", InstallationJson("suspend")));
+        await HandleAndDeliverAsync(session,Message("installation", InstallationJson("suspend")));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         Assert.Equal(RepositoryConnection.Disconnected, repository!.Connection);
-        Assert.Equal(DisconnectedReasons.AppSuspended, repository.DisconnectedReason);
+        Assert.Equal(DisconnectedReasons.IntegrationSuspended, repository.DisconnectedReason);
         Assert.Null((await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, OldOwnerId)))!.InstallationId);
     }
 
@@ -629,13 +673,15 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         var bus = new RecordingMessageBus();
         var recipient = CreateRecipient(session, bus);
         await recipient.HandleAsync(Message("installation", InstallationJson("suspend")));
+        await DeliverForgeEventsAsync(session, bus);
         await recipient.HandleAsync(Message("installation", InstallationJson("unsuspend")));
+        await DeliverForgeEventsAsync(session, bus);
 
         var account = await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, OldOwnerId));
         Assert.NotNull(account!.InstallationId);
 
         var reconcile = bus.Messages.OfType<CodeCoverage.Ingestion.ReconcileAccountMessage>().ToList();
-        Assert.Contains(reconcile, m => m.AccountGitHubId == OldOwnerId);
+        Assert.Contains(reconcile, m => m.AccountId == OldOwnerId && m.Provider == EForgeProvider.GitHub);
     }
 
     /// <summary>
@@ -686,7 +732,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
               "sender": {{OwnerJson(OldOwnerId, "acme")}}
             }
             """;
-        await CreateRecipient(session).HandleAsync(Message("organization", json));
+        await HandleAndDeliverAsync(session,Message("organization", json));
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         Assert.Equal("acme/widgets", repository!.FullName);
@@ -703,7 +749,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         // The guard this replaces refreshed the login only when it was empty, so a rename of an
         // account we already knew was ignored — and which event arrived next decided whether we
         // ever found out.
-        await CreateRecipient(session).HandleAsync(
+        await HandleAndDeliverAsync(session,
             Message("repository", RepositoryEventJson("edited", OldOwnerId, "acme-renamed", "widgets")));
 
         var account = await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, OldOwnerId));
