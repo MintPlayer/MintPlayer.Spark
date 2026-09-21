@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using System.Linq.Expressions;
 using CodeCoverage.Actions;
 using CodeCoverage.Entities;
@@ -35,9 +36,14 @@ public class WriteRowFilterTests : CoverageRavenTest
     private static ISparkVisibility VisibilityFor(params string[] owners)
     {
         var visibility = Substitute.For<ISparkVisibility>();
-        visibility.GetAllowedOwnersAsync().Returns(Task.FromResult(owners));
+        // Bare logins in, provider-qualified keys out - the shape the production flattening
+        // produces, and the shape the row filters compare.
+        visibility.GetAllowedOwnersAsync().Returns(Task.FromResult(
+            owners.Select(ForgeOwner.KeyFromUnqualifiedLogin).ToArray()));
         visibility.CanManageOwnerAsync(Arg.Any<string>())
-            .Returns(call => Task.FromResult(owners.Contains(call.Arg<string>(), StringComparer.OrdinalIgnoreCase)));
+            .Returns(call => Task.FromResult(owners
+                .Select(ForgeOwner.KeyFromUnqualifiedLogin)
+                .Contains(call.Arg<string>(), StringComparer.OrdinalIgnoreCase)));
         return visibility;
     }
 
@@ -68,17 +74,17 @@ public class WriteRowFilterTests : CoverageRavenTest
         {
             GitHubId = 1, Name = "public-of-acme", FullName = "acme/public-of-acme",
             OwnerLogin = "acme", IsPrivate = false,
-        }, Repository.DocumentId(1));
+        }, Repository.DocumentId(EForgeProvider.GitHub, 1));
         await session.StoreAsync(new Repository
         {
             GitHubId = 2, Name = "public-of-other", FullName = "other/public-of-other",
             OwnerLogin = "other", IsPrivate = false,
-        }, Repository.DocumentId(2));
+        }, Repository.DocumentId(EForgeProvider.GitHub, 2));
         await session.StoreAsync(new Repository
         {
             GitHubId = 3, Name = "private-of-other", FullName = "other/private-of-other",
             OwnerLogin = "other", IsPrivate = true,
-        }, Repository.DocumentId(3));
+        }, Repository.DocumentId(EForgeProvider.GitHub, 3));
         await session.SaveChangesAsync();
     }
 
@@ -149,8 +155,8 @@ public class WriteRowFilterTests : CoverageRavenTest
     private static async Task SeedAccountsAsync(IDocumentStore store)
     {
         using var session = store.OpenAsyncSession();
-        await session.StoreAsync(new Account { GitHubId = 1, Login = "acme" }, Account.DocumentId(1));
-        await session.StoreAsync(new Account { GitHubId = 2, Login = "other" }, Account.DocumentId(2));
+        await session.StoreAsync(new Account { GitHubId = 1, Login = "acme" }, Account.DocumentId(EForgeProvider.GitHub, 1));
+        await session.StoreAsync(new Account { GitHubId = 2, Login = "other" }, Account.DocumentId(EForgeProvider.GitHub, 2));
         await session.SaveChangesAsync();
     }
 

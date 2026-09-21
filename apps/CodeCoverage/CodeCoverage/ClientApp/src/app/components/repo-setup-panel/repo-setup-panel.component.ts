@@ -3,6 +3,25 @@ import { BsCardComponent, BsCardHeaderComponent, BsCardBodyComponent } from '@mi
 import { BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective } from '@mintplayer/ng-bootstrap/tab-control';
 import { BsCodeSnippetComponent } from '@mintplayer/ng-bootstrap/code-snippet';
 
+/**
+ * One forge's setup guide: where the file goes, how to say it, and the per-language examples.
+ *
+ * ⚠️ The intro is part of the guide rather than fixed copy above the tabs, because almost every
+ * word of it is forge-specific — the file path, what a stored credential is called ("repository
+ * secret" on GitHub, "CI/CD variable" on GitLab, "repository variable" on Bitbucket) and whether a
+ * tokenless upload is possible at all. Leaving it outside would make the first GitLab snippet
+ * arrive under instructions describing GitHub.
+ */
+interface ForgeSetupGuide {
+  /** Canonical forge code, matching EForgeProvider's spelling: github | gitlab | bitbucket. */
+  provider: string;
+  /** What to call it in the tab header. */
+  label: string;
+  /** Intro paragraph, rendered as HTML so it can mark up file names and inputs. */
+  intro: string;
+  examples: WorkflowExample[];
+}
+
 interface WorkflowExample {
   key: string;
   label: string;
@@ -23,14 +42,36 @@ interface WorkflowExample {
     <bs-card class="mt-3 d-block">
       <bs-card-header><i class="bi bi-rocket-takeoff"></i> Set up coverage uploads</bs-card-header>
       <bs-card-body>
-        <p class="text-muted small">
-          Add a workflow like this to <code>.github/workflows/ci.yml</code>. Public repositories upload
-          tokenless via OIDC (the <code>id-token: write</code> permission); for a private repository,
-          create an upload token on the account page, store it as a repository secret and replace the
-          <code>use-oidc</code> line with a <code>token</code> input.
-        </p>
+        @if (singleGuide()) {
+          <p class="text-muted small" [innerHTML]="guides()[0].intro"></p>
+        }
         <bs-tab-control [border]="true">
-          @for (example of workflowExamples(); track example.key) {
+          @if (!singleGuide()) {
+            @for (guide of guides(); track guide.provider) {
+              <bs-tab-page>
+                <ng-container *bsTabPageHeader>{{ guide.label }}</ng-container>
+                <div class="p-3">
+                  <p class="text-muted small" [innerHTML]="guide.intro"></p>
+                  <bs-tab-control [border]="true">
+                    @for (example of guide.examples; track example.key) {
+                      <bs-tab-page>
+                        <ng-container *bsTabPageHeader>{{ example.label }}</ng-container>
+                        <div class="p-3">
+                          @if (example.config; as config) {
+                            <p class="small text-muted">{{ config.note }}</p>
+                            <bs-code-snippet [code]="config.code" [language]="config.language" class="mb-3" />
+                          }
+                          <p class="small text-muted">{{ example.note }}</p>
+                          <bs-code-snippet [code]="example.code" language="yaml" />
+                        </div>
+                      </bs-tab-page>
+                    }
+                  </bs-tab-control>
+                </div>
+              </bs-tab-page>
+            }
+          }
+          @for (example of singleGuide() ? guides()[0].examples : []; track example.key) {
             <bs-tab-page>
               <ng-container *bsTabPageHeader>{{ example.label }}</ng-container>
               <div class="p-3">
@@ -53,8 +94,31 @@ export class RepoSetupPanelComponent {
   /** The server's public base URL (Coverage:BaseUrl); falls back to location.origin. */
   baseUrl = input<string | undefined>();
 
+  /**
+   * Setup guides by forge. GitHub is the only populated one in stage 1 — the structure exists so
+   * that adding GitLab is adding an entry here rather than reshaping the component.
+   */
+  readonly guides = computed<ForgeSetupGuide[]>(() => [
+    {
+      provider: 'github',
+      label: 'GitHub Actions',
+      intro:
+        'Add a workflow like this to <code>.github/workflows/ci.yml</code>. Public repositories '
+        + 'upload tokenless via OIDC (the <code>id-token: write</code> permission); for a private '
+        + 'repository, create an upload token on the account page, store it as a repository secret '
+        + 'and replace the <code>use-oidc</code> line with a <code>token</code> input.',
+      examples: this.gitHubExamples(),
+    },
+  ]);
+
+  /**
+   * True while one forge is configured, which is when a forge tab strip would be a row with one
+   * item in it. The per-language tabs render directly instead.
+   */
+  readonly singleGuide = computed(() => this.guides().length === 1);
+
   /** Example CI workflows per ecosystem, built against this deployment's URL. */
-  readonly workflowExamples = computed<WorkflowExample[]>(() => {
+  private readonly gitHubExamples = computed<WorkflowExample[]>(() => {
     const url = this.baseUrl() || location.origin;
     // Pinned to the moving major tag, never to a branch: `master` of that
     // monorepo moves many times a day for unrelated reasons, while

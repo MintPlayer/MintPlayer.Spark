@@ -1,3 +1,5 @@
+using CodeCoverage.Forge;
+
 namespace CodeCoverage.Services;
 
 /// <summary>
@@ -28,27 +30,51 @@ public interface IMyAccountsService
     /// having done nothing at all.
     /// </para>
     /// </param>
-    Task<MyAccountsResult> GetAsync(CancellationToken cancellationToken, bool waitForNonStaleResults = false);
+    /// <param name="provider">
+    /// Narrow the result to one forge. Null fans out across every forge the caller is signed in
+    /// to, which is what the merged Home page wants.
+    /// <para>
+    /// ⚠ This filters the OWNER SET — it does not merely hide rows. A GitHub page must not cost
+    /// a GitLab API call, both because it is slow and because D4 requires the authorization answers
+    /// to stay separate: a GitHub decision never consults GitLab state.
+    /// </para>
+    /// </param>
+    Task<MyAccountsResult> GetAsync(
+        CancellationToken cancellationToken,
+        bool waitForNonStaleResults = false,
+        EForgeProvider? provider = null);
 }
 
-/// <param name="GitHubAppUrl">The environment's GitHub App public page, so an "install the App"
+/// <param name="ConnectUrl">Where to send someone to connect a forge to an account — the GitHub
 /// link points at the right App rather than at a hardcoded slug.</param>
 /// <param name="ReauthRequired">The stored GitHub token is dead and silent refresh failed — only
 /// a browser round-trip can fix it. While set, <paramref name="Accounts"/> is degraded to the
 /// user's own account.</param>
-public sealed record MyAccountsResult(string GitHubAppUrl, MyAccountRow[] Accounts, bool ReauthRequired);
+public sealed record MyAccountsResult(string ConnectUrl, MyAccountRow[] Accounts, bool ReauthRequired);
 
 /// <summary>
 /// One row of the accounts list.
 /// <para>
 /// Deliberately not an entity: it is an aggregate over Account and Repository documents that
-/// exists only for the duration of a request. <c>Id</c> is <c>Login</c> — a query result row must
-/// carry a readable, unique id or the grid collapses, and login is already unique per account.
+/// exists only for the duration of a request.
+/// </para>
+/// <para>
+/// ⚠ <b><c>Id</c> is the owner KEY (<c>github:mintplayer</c>), not the login.</b> A query result
+/// row must carry a unique id or the projector throws by name — and a login is unique only
+/// <em>per forge</em>. <c>mintplayer</c> on GitHub and <c>mintplayer</c> on GitLab are unrelated
+/// principals that produce the same string, so with a second forge linked the login form would
+/// collapse the grid rather than merely confuse it. The key is unique by construction.
+/// </para>
+/// <para>
+/// <see cref="Provider"/> is carried separately so the <c>account-link</c> renderer can build
+/// <c>/{provider}/a/{login}</c>. It is the canonical lowercase spelling — the same vocabulary as
+/// document ids and routes — never the enum's <c>ToString()</c>.
 /// </para>
 /// </summary>
 public sealed record MyAccountRow(
     string Id,
     string Login,
+    string Provider,
     string Type,
     string? AvatarUrl,
     int RepoCount,

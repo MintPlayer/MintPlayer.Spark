@@ -231,4 +231,46 @@ public sealed class ModelLoaderTests : IDisposable
 
         loader.GetEntityTypes().Should().ContainSingle("the loader is Singleton + Lazy — disk changes after first call are not seen");
     }
+
+    /// <summary>
+    /// A type whose alias is NOT simply its lowercased name must still resolve by name.
+    /// </summary>
+    /// <remarks>
+    /// ⚠ This is not a convenience. A sub-query request carries <c>parentType</c>, and the client
+    /// takes it from the parent persistent object's <b>name</b> — while this method resolved by
+    /// alias only. Every generated type has <c>alias == name.ToLower()</c>, so the two agreed and
+    /// nothing ever noticed; a type that declares its own alias resolved to null, and
+    /// <c>Queries/Execute</c> answered <c>404 "Parent not found"</c>. That reads as a missing
+    /// document, not as a name nobody looked up, which is why it cost an afternoon to find in
+    /// CodeCoverage's per-forge accounts page.
+    /// </remarks>
+    [Fact]
+    public void ResolveEntityType_falls_back_to_the_name_when_the_alias_differs()
+    {
+        WriteModel("ForgeAccounts.json", ModelJson(
+            "33333333-3333-3333-3333-333333333333", "ForgeAccounts", "Demo.ForgeAccounts",
+            alias: "forge-accounts"));
+        var loader = CreateLoader();
+
+        loader.ResolveEntityType("forge-accounts").Should().NotBeNull("the alias is the addressable form");
+        loader.ResolveEntityType("ForgeAccounts").Should().NotBeNull("the wire carries the NAME as parentType");
+        loader.ResolveEntityType("forgeaccounts").Should().NotBeNull("name matching is case-insensitive");
+        loader.ResolveEntityType("nope").Should().BeNull();
+    }
+
+    /// <summary>
+    /// When one type's name is another type's alias, the alias wins — it is the addressable form,
+    /// and the name lookup is only a fallback for callers that never had the alias.
+    /// </summary>
+    [Fact]
+    public void An_alias_beats_another_types_name()
+    {
+        WriteModel("Car.json", ModelJson(
+            "11111111-1111-1111-1111-111111111111", "Car", "Demo.Car", alias: "vehicle"));
+        WriteModel("Vehicle.json", ModelJson(
+            "22222222-2222-2222-2222-222222222222", "Vehicle", "Demo.Vehicle", alias: "transport"));
+        var loader = CreateLoader();
+
+        loader.ResolveEntityType("vehicle")!.Name.Should().Be("Car");
+    }
 }

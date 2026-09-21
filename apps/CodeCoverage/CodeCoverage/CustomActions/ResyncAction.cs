@@ -1,4 +1,5 @@
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;
 using Raven.Client.Documents;
@@ -32,7 +33,7 @@ namespace CodeCoverage.CustomActions;
 /// </remarks>
 public partial class ResyncAction : SparkCustomAction
 {
-    [Inject] private readonly IGitHubAccessService gitHubAccess;
+    [Inject] private readonly IForgeIntegrationResolver forges;
     [Inject] private readonly IMyAccountsService myAccounts;
     [Inject] private readonly IGitHubStateReconciler reconciler;
     [Inject] private readonly IAsyncDocumentSession session;
@@ -41,18 +42,18 @@ public partial class ResyncAction : SparkCustomAction
 
     public override async Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
     {
-        await gitHubAccess.InvalidateAsync(cancellationToken);
+        await forges.InvalidateAllAsync(cancellationToken);
 
         // Dropping the cache re-reads which owners the caller can see, but says nothing about what
         // each installation now holds — and a repository that was transferred away is still sitting
         // in our documents looking perfectly current. So the button also reconciles, which is the
         // same work the nightly job does, scoped to the accounts this caller actually manages. It
         // is what makes the button repair what the person pressing it is looking at.
-        var owners = await gitHubAccess.GetAllowedOwnersAsync(cancellationToken);
+        var owners = await forges.GetAllowedOwnerKeysAsync(cancellationToken);
         if (owners.Length > 0)
         {
             var accounts = await session.Query<Account, Indexes.Accounts_Overview>()
-                .Where(a => a.Login.In(owners) && a.InstallationId != null)
+                .Where(a => a.OwnerKey.In(owners) && a.InstallationId != null)
                 .ToListAsync(cancellationToken);
 
             foreach (var account in accounts)

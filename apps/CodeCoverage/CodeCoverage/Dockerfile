@@ -20,6 +20,9 @@ WORKDIR /src
 # fails the restore inside the image rather than at review time.
 COPY ["apps/CodeCoverage/CodeCoverage/CodeCoverage.csproj", "apps/CodeCoverage/CodeCoverage/"]
 COPY ["apps/CodeCoverage/CodeCoverage.Library/CodeCoverage.Library.csproj", "apps/CodeCoverage/CodeCoverage.Library/"]
+COPY ["apps/CodeCoverage/CodeCoverage.GithubIntegration/CodeCoverage.GithubIntegration.csproj", "apps/CodeCoverage/CodeCoverage.GithubIntegration/"]
+COPY ["apps/CodeCoverage/CodeCoverage.GitlabIntegration/CodeCoverage.GitlabIntegration.csproj", "apps/CodeCoverage/CodeCoverage.GitlabIntegration/"]
+COPY ["apps/CodeCoverage/CodeCoverage.BitbucketIntegration/CodeCoverage.BitbucketIntegration.csproj", "apps/CodeCoverage/CodeCoverage.BitbucketIntegration/"]
 COPY ["libs/spark/MintPlayer.Spark/MintPlayer.Spark.csproj", "libs/spark/MintPlayer.Spark/"]
 COPY ["libs/spark/MintPlayer.Spark.Abstractions/MintPlayer.Spark.Abstractions.csproj", "libs/spark/MintPlayer.Spark.Abstractions/"]
 COPY ["libs/authorization/MintPlayer.Spark.Authorization/MintPlayer.Spark.Authorization.csproj", "libs/authorization/MintPlayer.Spark.Authorization/"]

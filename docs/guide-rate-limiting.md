@@ -177,9 +177,23 @@ your own paths, both are now configuration — delete the manual call.
 ## Testing a limiter
 
 A fixed window partitioned by IP means every test in a shared collection draws on the same bucket
-(`127.0.0.1`). A test that saturates the bucket must let the window roll over before the next one
-runs, or the next test inherits its 429s. `tests/MintPlayer.Spark.E2E.Tests/Security/RateLimitTests.cs`
-does exactly this and is worth copying.
+(`127.0.0.1`).
+
+⚠ **Do not solve this with a cooldown. It does not work, and this guide used to recommend it.**
+Letting the window roll over after a saturating test protects only the *next* test; everything
+already running inside that same window still inherits the 429s. Worse, a cooldown placed after an
+assertion is skipped on failure — the run that saturates the bucket most is the run that does not
+drain it. Measured on this repository: 88 serialized E2E tests average ~2-5 requests/second against
+a 15/second allowance, so the suite is not too big for the budget; it fails in **bursts**, where ~25
+fast tests at ~6 requests each fill a 10-second window between them. One browser test is a dozen or
+more `/spark` calls on its own.
+
+**Raise the budget for the test environment instead, and leave the limiter wired.** Since
+`SparkRateLimiterOptions` binds from the `Spark:RateLimiter` configuration section, a test host can
+set `PermitLimit` in the `appsettings.{Environment}.json` it generates. The middleware stays in the
+pipeline at the same position and still returns 429, so a test that *wants* a 429 still gets one —
+it just has to burst past the **configured** limit rather than a hard-coded number, which also stops
+the test being silently defeated the next time that limit changes.
 
 For unit-level work, set `PermitLimit = 1` and a long `Window` — the first request is admitted and
 everything after it is rejected, with no timing sensitivity at all.

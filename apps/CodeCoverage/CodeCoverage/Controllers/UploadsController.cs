@@ -1,5 +1,6 @@
 using CodeCoverage.ApiTokens;
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 using CodeCoverage.Indexes;
 using CodeCoverage.Ingestion;
 using CodeCoverage.Services;
@@ -35,6 +36,17 @@ namespace CodeCoverage.Controllers;
 public partial class UploadsController : ControllerBase
 {
     [Inject] private readonly IAsyncDocumentSession session;
+
+    /// <summary>
+    /// The OIDC vocabulary this request's token speaks.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Temporary: fixed to GitHub because it is the only scheme registered. When a second forge
+    /// registers one, this selects by the authenticated scheme
+    /// (<c>User.Identity.AuthenticationType</c>) rather than assuming — and it is a single
+    /// expression precisely so that change is one line rather than eleven claim lookups.
+    /// </remarks>
+    private static ForgeOidcProfile Oidc => ForgeOidcProfile.GitHub;
     [Inject] private readonly IRepositoryResolver repositories;
     [Inject] private readonly IMessageBus messageBus;
     [Inject] private readonly IBaseResolver baseResolver;
@@ -143,12 +155,12 @@ public partial class UploadsController : ControllerBase
         // body's copies so a workflow can't attach its coverage to someone
         // else's run. The `sha` claim is NOT used: on pull_request events it
         // is the ephemeral merge commit, while the body carries the PR head.
-        if (long.TryParse(User.FindFirst(GitHubOidc.RunIdClaim)?.Value, out var claimRunId))
+        if (long.TryParse(User.FindFirst(Oidc.RunIdClaim)?.Value, out var claimRunId))
             form.RunId = claimRunId;
-        if (int.TryParse(User.FindFirst(GitHubOidc.RunAttemptClaim)?.Value, out var claimRunAttempt))
+        if (int.TryParse(User.FindFirst(Oidc.RunAttemptClaim!)?.Value, out var claimRunAttempt))
             form.RunAttempt = claimRunAttempt;
 
-        var commitId = Entities.Commit.DocumentId(repository.GitHubId, form.CommitSha);
+        var commitId = Entities.Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, form.CommitSha);
         var commit = await session.LoadAsync<Commit>(commitId, cancellationToken);
         if (commit is null)
         {
@@ -167,7 +179,7 @@ public partial class UploadsController : ControllerBase
             commit.ParentShaSource = "upload";
         }
 
-        var buildId = Build.DocumentId(repository.GitHubId, form.CommitSha, form.RunId, form.RunAttempt);
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, repository.GitHubId, form.CommitSha, form.RunId, form.RunAttempt);
         var build = await session.LoadAsync<Build>(buildId, cancellationToken);
         if (build is null)
         {
@@ -246,7 +258,7 @@ public partial class UploadsController : ControllerBase
         if (repository is null)
             return NotFound();
 
-        var buildId = Build.DocumentId(repository.GitHubId, request.CommitSha, request.RunId, request.RunAttempt);
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, repository.GitHubId, request.CommitSha, request.RunId, request.RunAttempt);
         var build = await session.LoadAsync<Build>(buildId, cancellationToken);
         if (build is null)
             return NotFound();
@@ -320,7 +332,7 @@ public partial class UploadsController : ControllerBase
         if (repo is null)
             return NotFound();
 
-        var buildId = Build.DocumentId(repo.GitHubId, commitSha, runId, runAttempt);
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, repo.GitHubId, commitSha, runId, runAttempt);
         var build = await session.LoadAsync<Build>(buildId, cancellationToken);
         if (build is null)
         {
@@ -355,7 +367,7 @@ public partial class UploadsController : ControllerBase
             [.. build.Sessions.Select(s => new UploadStatusSession(
                 s.SessionId, s.JobName, s.Flags, s.ParseStatus, s.Error, s.FilesCount,
                 [.. s.Reports.Select(ToStatusReport)]))],
-            baseUrl is null ? null : $"{baseUrl}/r/{repo.FullName}/c/{commitSha}",
+            baseUrl is null ? null : $"{baseUrl}/{repo.Provider.ToCanonicalString()}/r/{repo.FullName}/c/{commitSha}",
             build.Partial,
             baselineScope,
             projection,
@@ -619,7 +631,7 @@ public partial class UploadsController : ControllerBase
     {
         // OIDC path: the GitHub-signed `repository` claim IS the authorization —
         // a workflow can only ever upload for the repository it runs in.
-        var oidcRepository = User.FindFirst(GitHubOidc.RepositoryClaim)?.Value;
+        var oidcRepository = User.FindFirst(Oidc.RepositoryClaim)?.Value;
         if (oidcRepository is not null)
         {
             if (!string.Equals(oidcRepository, fullName, StringComparison.OrdinalIgnoreCase))
@@ -633,7 +645,13 @@ public partial class UploadsController : ControllerBase
         var nameParts = fullName.Split('/');
         if (nameParts.Length != 2)
             return null;
-        var repository = (await repositories.ResolveAsync(nameParts[0], nameParts[1], cancellationToken)).Repository;
+        // ⚠️ Explicit, not defaulted. Uploads arrive with a repository full name and a
+        // credential, and neither carries a forge today — GitHub is the only integration that can
+        // authenticate an upload at all. When a second one can, the forge must come from the
+        // credential rather than from here (M16), which is why this names GitHub out loud instead
+        // of letting a default decide.
+        var repository = (await repositories.ResolveAsync(
+            EForgeProvider.GitHub, nameParts[0], nameParts[1], cancellationToken)).Repository;
         if (repository is null)
             return null;
 
@@ -656,12 +674,12 @@ public partial class UploadsController : ControllerBase
         {
             "Account" when accountId is not null =>
                 long.TryParse(accountId, out var ownerId)
-                && repository.Account == Entities.Account.DocumentId(ownerId),
+                && repository.Account == Entities.Account.DocumentId(EForgeProvider.GitHub, ownerId),
             "Account" => string.Equals(account, repository.OwnerLogin, StringComparison.OrdinalIgnoreCase),
             // Membership, not equality — the claims carry document ids, one per repository the
             // token was scoped to.
             "Repository" => repoIds.Contains(
-                Entities.Repository.DocumentId(repository.GitHubId), StringComparer.Ordinal),
+                Entities.Repository.DocumentId(EForgeProvider.GitHub, repository.GitHubId), StringComparer.Ordinal),
             _ => false,
         };
 
@@ -676,10 +694,10 @@ public partial class UploadsController : ControllerBase
     /// </summary>
     private async Task<Repository?> ResolveOidcRepository(bool provision, CancellationToken cancellationToken)
     {
-        if (!long.TryParse(User.FindFirst(GitHubOidc.RepositoryIdClaim)?.Value, out var gitHubRepoId))
+        if (!long.TryParse(User.FindFirst(Oidc.RepositoryIdClaim)?.Value, out var gitHubRepoId))
             return null;
 
-        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(gitHubRepoId), cancellationToken);
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, gitHubRepoId), cancellationToken);
         if (repository is not null)
         {
             // Gated on `provision`, which is true only on the upload itself. The status endpoint is
@@ -703,14 +721,14 @@ public partial class UploadsController : ControllerBase
                 repository.DisconnectedAtUtc = null;
             }
 
-            var claimedFullName = User.FindFirst(GitHubOidc.RepositoryClaim)?.Value;
+            var claimedFullName = User.FindFirst(Oidc.RepositoryClaim)?.Value;
             if (!string.IsNullOrEmpty(claimedFullName) && claimedFullName != repository.FullName)
             {
                 if (!repository.PreviousFullNames.Contains(repository.FullName, StringComparer.OrdinalIgnoreCase))
                     repository.PreviousFullNames.Add(repository.FullName);
                 repository.FullName = claimedFullName;
                 repository.Name = claimedFullName.Split('/')[1];
-                repository.OwnerLogin = User.FindFirst(GitHubOidc.RepositoryOwnerClaim)?.Value
+                repository.OwnerLogin = User.FindFirst(Oidc.OwnerClaim)?.Value
                     ?? claimedFullName.Split('/')[0];
             }
 
@@ -720,20 +738,20 @@ public partial class UploadsController : ControllerBase
         if (!provision)
             return null;
 
-        if (User.FindFirst(GitHubOidc.RepositoryVisibilityClaim)?.Value != "public")
+        if (User.FindFirst(Oidc.VisibilityClaim)?.Value != Oidc.PublicVisibilityValue)
             return null;
 
-        var fullName = User.FindFirst(GitHubOidc.RepositoryClaim)!.Value;
-        var ownerLogin = User.FindFirst(GitHubOidc.RepositoryOwnerClaim)?.Value ?? fullName.Split('/')[0];
+        var fullName = User.FindFirst(Oidc.RepositoryClaim)!.Value;
+        var ownerLogin = User.FindFirst(Oidc.OwnerClaim)?.Value ?? fullName.Split('/')[0];
 
         Account? account = null;
-        if (long.TryParse(User.FindFirst(GitHubOidc.RepositoryOwnerIdClaim)?.Value, out var ownerId))
+        if (long.TryParse(User.FindFirst(Oidc.OwnerIdClaim)?.Value, out var ownerId))
         {
-            account = await session.LoadAsync<Account>(Account.DocumentId(ownerId), cancellationToken);
+            account = await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, ownerId), cancellationToken);
             if (account is null)
             {
                 account = new Account { GitHubId = ownerId, Login = ownerLogin };
-                await session.StoreAsync(account, Account.DocumentId(ownerId), cancellationToken);
+                await session.StoreAsync(account, Account.DocumentId(EForgeProvider.GitHub, ownerId), cancellationToken);
             }
         }
 
@@ -746,7 +764,7 @@ public partial class UploadsController : ControllerBase
             OwnerLogin = ownerLogin,
             IsPrivate = false,
         };
-        await session.StoreAsync(repository, Repository.DocumentId(gitHubRepoId), cancellationToken);
+        await session.StoreAsync(repository, Repository.DocumentId(EForgeProvider.GitHub, gitHubRepoId), cancellationToken);
         logger.LogInformation("Auto-provisioned public repository {FullName} from OIDC upload", fullName);
         return repository;
     }

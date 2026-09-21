@@ -1,4 +1,5 @@
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging.Abstractions;
@@ -9,7 +10,7 @@ namespace CodeCoverage.Ingestion;
 public partial class FinalizeBuildRecipient : IRecipient<FinalizeBuildMessage>
 {
     [Inject] private readonly IAsyncDocumentSession session;
-    [Inject] private readonly IGitHubDiffService diffService;
+    [Inject] private readonly IForgeIntegrationResolver forges;
     [Inject] private readonly ILogger<FinalizeBuildRecipient> logger;
     [Inject] private readonly IMessageBus messageBus;
 
@@ -22,7 +23,7 @@ public partial class FinalizeBuildRecipient : IRecipient<FinalizeBuildMessage>
             return;
         }
 
-        await BuildFinalizer.Finalize(session, diffService, build, "Explicit", cancellationToken);
+        await BuildFinalizer.Finalize(session, forges, build, "Explicit", cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
         // Feedback is published by the assembler once the commit's headline is
         // rebuilt; publishing here would report this build alone.

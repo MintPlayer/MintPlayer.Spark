@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
 using Xunit;
@@ -28,7 +29,7 @@ public class PullRequestCommentRendererTests
     private static Entities.Commit Commit(int? pr = 79, string? baseRef = "master") => new()
     {
         Sha = "79bc284939350991803acc84ced894ade844b9f0",
-        Repository = Entities.Repository.DocumentId(204431316),
+        Repository = Entities.Repository.DocumentId(EForgeProvider.GitHub, 204431316),
         Branch = "feature/x",
         PullRequestNumber = pr,
         PullRequestBaseRef = baseRef,
@@ -97,9 +98,48 @@ public class PullRequestCommentRendererTests
             Repo(isPrivate: false), Commit(), Verdict("success", "71.4%"), Verdict("neutral", "80.9%"),
             Assembly(CommitAssembly.Complete), BaseUrl, badgeSignature: null);
 
-        body.Should().Contain($"{BaseUrl}/badge/MintPlayer/MintPlayer.Spark.svg?pr=79");
+        body.Should().Contain($"{BaseUrl}/badge/github/MintPlayer/MintPlayer.Spark.svg?pr=79");
         body.Should().NotContain("sig=");
         body.Should().NotContain("token=");
+    }
+
+    /// <summary>
+    /// Both links the comment publishes carry the forge. This is the surface where getting it
+    /// wrong is least recoverable: the comment is posted INTO the forge and stays in the pull
+    /// request forever, so a two-segment URL here is a permanent 404 on somebody else's page.
+    /// </summary>
+    [Fact]
+    public void Both_published_links_carry_the_forge_segment()
+    {
+        var body = PullRequestCommentRenderer.Render(
+            Repo(isPrivate: false), Commit(), Verdict("success", "71.4%"), Verdict("neutral", "80.9%"),
+            Assembly(CommitAssembly.Complete), BaseUrl, badgeSignature: null);
+
+        body.Should().Contain($"{BaseUrl}/github/r/MintPlayer/MintPlayer.Spark");
+
+        // The two-segment forms, spelled out so this fails on a regression rather than on a typo.
+        body.Should().NotContain($"{BaseUrl}/badge/MintPlayer/");
+        body.Should().NotContain($"{BaseUrl}/r/MintPlayer/");
+    }
+
+    /// <summary>
+    /// A forge whose web address we cannot build renders the sha as plain text rather than as a
+    /// link to github.com. The comment lands on GitLab or Bitbucket, where a github.com deep link
+    /// is not merely wrong but confusing — it looks like a link to the change being reviewed.
+    /// </summary>
+    [Fact]
+    public void A_non_github_repository_does_not_deep_link_to_github_com()
+    {
+        var repo = Repo(isPrivate: false);
+        repo.Provider = EForgeProvider.GitLab;
+
+        var body = PullRequestCommentRenderer.Render(
+            repo, Commit(), Verdict("success", "71.4%"), Verdict("neutral", "80.9%"),
+            Assembly(CommitAssembly.Complete), BaseUrl, badgeSignature: null);
+
+        body.Should().NotContain("github.com");
+        body.Should().Contain("79bc284");
+        body.Should().Contain($"{BaseUrl}/gitlab/r/MintPlayer/MintPlayer.Spark");
     }
 
     /// <summary>

@@ -30,6 +30,8 @@ export class CommitFilesPanelComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly browse = inject(BrowseService);
 
+  /** Canonical forge spelling, e.g. "github". Sourced from the PO's OwnerKey. */
+  provider = input.required<string>();
   owner = input.required<string>();
   name = input.required<string>();
   sha = input.required<string>();
@@ -144,7 +146,7 @@ export class CommitFilesPanelComponent {
   private async loadCommitMeta(owner: string, name: string, sha: string): Promise<void> {
     const token = ++this.metaToken;
     try {
-      const hierarchy = await this.browse.getHierarchy(owner, name, sha);
+      const hierarchy = await this.browse.getHierarchy(this.provider(), owner, name, sha);
       if (token !== this.metaToken) return;
       this.hierarchy.set(hierarchy);
     } catch {
@@ -152,7 +154,7 @@ export class CommitFilesPanelComponent {
       this.hierarchy.set(null);
     }
     try {
-      const commit = await this.browse.getCommit(owner, name, sha);
+      const commit = await this.browse.getCommit(this.provider(), owner, name, sha);
       if (token !== this.metaToken) return;
       this.flagTotals.set(commit.flagTotals ?? null);
       this.assembly.set(commit.assembly ?? null);
@@ -174,7 +176,7 @@ export class CommitFilesPanelComponent {
     this.chartRootId.set(path || '/');
     this.tree.set(null);
     try {
-      const tree = await this.browse.getTree(this.owner(), this.name(), this.sha(), path || undefined, this.selectedFlag() ?? undefined);
+      const tree = await this.browse.getTree(this.provider(), this.owner(), this.name(), this.sha(), path || undefined, this.selectedFlag() ?? undefined);
       if (token !== this.treeToken) return;
       this.tree.set(tree);
     } catch {

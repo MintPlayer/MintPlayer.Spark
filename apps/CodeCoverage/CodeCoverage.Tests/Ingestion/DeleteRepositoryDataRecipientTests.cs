@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using CodeCoverage.Ingestion;
 using Microsoft.Extensions.DependencyInjection;
@@ -81,31 +82,31 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
                 FullName = $"acme/{name}",
                 OwnerLogin = "acme",
                 Connection = id == RepoId ? connection : RepositoryConnection.Connected,
-            }, Repository.DocumentId(id));
+            }, Repository.DocumentId(EForgeProvider.GitHub, id));
 
-            var commitId = Commit.DocumentId(id, Sha);
+            var commitId = Commit.DocumentId(EForgeProvider.GitHub, id, Sha);
             await session.StoreAsync(new Commit
             {
                 Sha = Sha,
-                Repository = Repository.DocumentId(id),
+                Repository = Repository.DocumentId(EForgeProvider.GitHub, id),
                 FirstSeenAtUtc = DateTimeOffset.UtcNow,
             }, commitId);
 
-            var buildId = Build.DocumentId(id, Sha, 7, 1);
+            var buildId = Build.DocumentId(EForgeProvider.GitHub, id, Sha, 7, 1);
             await session.StoreAsync(new Build { Commit = commitId, CiRunId = 7, CiRunAttempt = 1 }, buildId);
             await session.StoreAsync(new FileCoverage(), FileCoverage.DocumentId(buildId, "src/a.cs"));
             await session.StoreAsync(new BuildTreeSummary(), BuildTreeSummary.DocumentId(buildId));
             await session.StoreAsync(new CommitAssembly(), CommitAssembly.DocumentId(commitId));
             await session.StoreAsync(new PullRequestFeedback
             {
-                Repository = Repository.DocumentId(id),
+                Repository = Repository.DocumentId(EForgeProvider.GitHub, id),
                 PullRequestNumber = 3,
-            }, PullRequestFeedback.DocumentId(id, 3));
+            }, PullRequestFeedback.DocumentId(EForgeProvider.GitHub, id, 3));
 
             await session.StoreAsync(new ApiToken
             {
                 Scope = "Repository",
-                GithubRepositories = [Repository.DocumentId(id)],
+                GithubRepositories = [Repository.DocumentId(EForgeProvider.GitHub, id)],
                 AccountLogin = "acme",
                 CreatedAtUtc = DateTime.UtcNow,
                 Hash = $"hash{id}",
@@ -113,6 +114,26 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
         }
 
         await session.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// ⚠️ Composed from the id helper, never spelled literally.
+    /// </summary>
+    /// <remarks>
+    /// These assertions used to read <c>$"Commits/{RepoId}/"</c>. The forge segment made that
+    /// prefix match nothing, so the test asserting that a reconnected repository keeps its history
+    /// failed — and the mirror-image assertion, that a deleted repository's history is gone, would
+    /// have passed for the wrong reason: zero documents under a prefix that cannot match. That is
+    /// exactly the silent failure the recipient's own literal prefix would have caused in
+    /// production.
+    /// </remarks>
+    private static string CommitPrefix(long repositoryId)
+        => Commit.DocumentId(EForgeProvider.GitHub, repositoryId, string.Empty);
+
+    private static string FeedbackPrefix(long repositoryId)
+    {
+        var id = PullRequestFeedback.DocumentId(EForgeProvider.GitHub, repositoryId, 0);
+        return id[..(id.LastIndexOf('/') + 1)];
     }
 
     private static async Task<int> CountUnderAsync(IDocumentStore store, string prefix)
@@ -141,11 +162,11 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
             });
         }
 
-        Assert.Equal(0, await CountUnderAsync(store, $"Commits/{RepoId}/"));
-        Assert.Equal(0, await CountUnderAsync(store, $"PullRequestFeedbacks/{RepoId}/"));
+        Assert.Equal(0, await CountUnderAsync(store, CommitPrefix(RepoId)));
+        Assert.Equal(0, await CountUnderAsync(store, FeedbackPrefix(RepoId)));
 
         using var verify = store.OpenAsyncSession();
-        Assert.Null(await verify.LoadAsync<Repository>(Repository.DocumentId(RepoId)));
+        Assert.Null(await verify.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId)));
         Assert.Empty(await verify.Query<ApiToken>()
             .Customize(q => q.WaitForNonStaleResults())
             .Where(t => t.Hash == $"hash{RepoId}")
@@ -191,7 +212,7 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
             await SeedAsync(seed, RepositoryConnection.Disconnected);
         WaitForIndexing(store);
 
-        var before = await CountUnderAsync(store, $"Commits/{OtherRepoId}/");
+        var before = await CountUnderAsync(store, CommitPrefix(OtherRepoId));
 
         using (var session = store.OpenAsyncSession())
         {
@@ -202,10 +223,10 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
             });
         }
 
-        Assert.Equal(before, await CountUnderAsync(store, $"Commits/{OtherRepoId}/"));
+        Assert.Equal(before, await CountUnderAsync(store, CommitPrefix(OtherRepoId)));
 
         using var verify = store.OpenAsyncSession();
-        Assert.NotNull(await verify.LoadAsync<Repository>(Repository.DocumentId(OtherRepoId)));
+        Assert.NotNull(await verify.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, OtherRepoId)));
         Assert.NotEmpty(await verify.Query<ApiToken>()
             .Customize(q => q.WaitForNonStaleResults())
             .Where(t => t.Hash == $"hash{OtherRepoId}")
@@ -236,8 +257,8 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
         }
 
         using var verify = store.OpenAsyncSession();
-        Assert.NotNull(await verify.LoadAsync<Repository>(Repository.DocumentId(RepoId)));
-        Assert.True(await CountUnderAsync(store, $"Commits/{RepoId}/") > 0);
+        Assert.NotNull(await verify.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId)));
+        Assert.True(await CountUnderAsync(store, CommitPrefix(RepoId)) > 0);
     }
 
     [Fact]
@@ -273,7 +294,7 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
             await seed.StoreAsync(new ApiToken
             {
                 Scope = "Repository",
-                GithubRepositories = [Repository.DocumentId(RepoId), Repository.DocumentId(OtherRepoId)],
+                GithubRepositories = [Repository.DocumentId(EForgeProvider.GitHub, RepoId), Repository.DocumentId(EForgeProvider.GitHub, OtherRepoId)],
                 AccountLogin = "acme",
                 CreatedAtUtc = DateTime.UtcNow,
                 Hash = "hash-multi",
@@ -298,7 +319,7 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
             .SingleOrDefaultAsync();
 
         Assert.NotNull(survivor);
-        Assert.Equal([Repository.DocumentId(OtherRepoId)], survivor!.GithubRepositories);
+        Assert.Equal([Repository.DocumentId(EForgeProvider.GitHub, OtherRepoId)], survivor!.GithubRepositories);
         // Still repository-scoped: an emptied list would silently WIDEN it to account scope, which
         // is the opposite of what deleting a repository should mean.
         Assert.Equal("Repository", survivor.Scope);

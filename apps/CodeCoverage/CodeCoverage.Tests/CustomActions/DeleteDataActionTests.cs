@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -63,7 +64,7 @@ public class DeleteDataActionTests : CoverageRavenTest
             FullName = "acme/doomed",
             OwnerLogin = "acme",
             Connection = connection,
-        }, Repository.DocumentId(RepoId));
+        }, Repository.DocumentId(EForgeProvider.GitHub, RepoId));
 
         await session.SaveChangesAsync();
     }
@@ -120,12 +121,12 @@ public class DeleteDataActionTests : CoverageRavenTest
                 Name = "legacy",
                 FullName = "acme/legacy",
                 OwnerLogin = "acme",
-            }, Repository.DocumentId(RepoId));
+            }, Repository.DocumentId(EForgeProvider.GitHub, RepoId));
             await raw.SaveChangesAsync();
         }
 
         using var session = store.OpenAsyncSession();
-        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(RepoId));
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
 
         Assert.NotNull(repository);
         Assert.Equal(RepositoryConnection.Connected, repository!.Connection);
@@ -166,21 +167,21 @@ public class DeleteDataActionTests : CoverageRavenTest
                 FullName = "acme/widget",
                 OwnerLogin = "acme",
                 Connection = connection,
-            }, Repository.DocumentId(RepoId));
+            }, Repository.DocumentId(EForgeProvider.GitHub, RepoId));
             await seed.SaveChangesAsync();
         }
 
         using var session = store.OpenAsyncSession();
         var obj = new MintPlayer.Spark.Abstractions.PersistentObject
         {
-            Id = Repository.DocumentId(RepoId),
+            Id = Repository.DocumentId(EForgeProvider.GitHub, RepoId),
             Name = "Repository",
             ObjectTypeId = Guid.Empty,
         };
 
         // The hook's decision, exercised directly: OnLoadAsync needs the framework's load pipeline,
         // so this asserts the rule it applies rather than re-hosting that pipeline.
-        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(RepoId));
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         if (repository!.Connection != RepositoryConnection.Disconnected)
             obj.DisableActions("DeleteData");
 
@@ -217,6 +218,6 @@ public class DeleteDataActionTests : CoverageRavenTest
         }
 
         using var verify = store.OpenAsyncSession();
-        Assert.NotNull(await verify.LoadAsync<Repository>(Repository.DocumentId(RepoId)));
+        Assert.NotNull(await verify.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId)));
     }
 }

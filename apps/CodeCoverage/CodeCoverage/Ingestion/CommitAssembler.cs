@@ -1,4 +1,5 @@
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 using CodeCoverage.Indexes;
 using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;
@@ -21,7 +22,7 @@ public partial class CommitAssembler : ICommitAssembler
 {
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IBaseResolver baseResolver;
-    [Inject] private readonly IGitHubDiffService diffService;
+    [Inject] private readonly IForgeIntegrationResolver forges;
     [Inject] private readonly ILogger<CommitAssembler> logger;
 
     private const int LoadChunk = 512;
@@ -195,7 +196,7 @@ public partial class CommitAssembler : ICommitAssembler
             reasons.Add(CommitAssembly.ReasonNoFileList);
             return;
         }
-        var baseCommitId = Entities.Commit.DocumentId(repository.GitHubId, resolved.ResolvedSha);
+        var baseCommitId = Entities.Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, resolved.ResolvedSha);
         var baseHasAssembly = await session.Advanced.ExistsAsync(CommitAssembly.DocumentId(baseCommitId), cancellationToken);
         if (!baseHasAssembly && resolved.BaseBuildId is null)
         {
@@ -274,9 +275,7 @@ public partial class CommitAssembler : ICommitAssembler
     /// </summary>
     private async Task<HashSet<string>?> ChangedFilesViaCompare(Repository repository, string baseSha, string headSha, CancellationToken cancellationToken)
     {
-        long? installationId = repository.Account is null ? null
-            : (await session.LoadAsync<Account>(repository.Account, cancellationToken))?.InstallationId;
-        var comparison = await diffService.CompareAsync(repository, installationId, baseSha, headSha, cancellationToken);
+        var comparison = await forges.For(repository).CompareAsync(repository, baseSha, headSha, cancellationToken);
         if (comparison is null || comparison.Truncated)
             return null;
 
@@ -336,7 +335,7 @@ public partial class CommitAssembler : ICommitAssembler
         if (origins.Count == 1 || repository is null)
             return origins[0];
 
-        var ids = origins.Select(sha => Entities.Commit.DocumentId(repository.GitHubId, sha)).ToArray();
+        var ids = origins.Select(sha => Entities.Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, sha)).ToArray();
         var commits = await session.LoadAsync<Commit>(ids, cancellationToken);
         return commits.Values
             .Where(c => c is not null)
@@ -372,9 +371,7 @@ public partial class CommitAssembler : ICommitAssembler
         // The API is authoritative for the parent: older action builds sent the
         // PR base sha under this name, and a Δ against the wrong commit is worse
         // than none.
-        long? installationId = repository.Account is null ? null
-            : (await session.LoadAsync<Account>(repository.Account, cancellationToken))?.InstallationId;
-        var apiParent = await diffService.GetFirstParentAsync(repository, installationId, commit.Sha, cancellationToken);
+        var apiParent = await forges.For(repository).GetFirstParentAsync(repository, commit.Sha, cancellationToken);
         commit.ParentLookupAttemptedAtUtc = DateTime.UtcNow;
         if (apiParent is not null)
         {
@@ -394,7 +391,7 @@ public partial class CommitAssembler : ICommitAssembler
         commit.CoverageDeltaVsParent = null;
         if (commit.ParentSha is not null && parentTrusted && percent is not null)
         {
-            var parent = await session.LoadAsync<Commit>(Entities.Commit.DocumentId(repository.GitHubId, commit.ParentSha), cancellationToken);
+            var parent = await session.LoadAsync<Commit>(Entities.Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, commit.ParentSha), cancellationToken);
             commit.CoverageDeltaVsParent = Delta(percent, Percent(parent?.Coverage));
         }
 

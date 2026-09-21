@@ -61,11 +61,24 @@ public class CommitIndexShapeGuardTests
     /// The claim the two tests above rest on. If a <c>DateTimeOffset</c> ever appears on another
     /// entity, that entity needs checking too — most likely it has a generated index and therefore
     /// needs wrapper companions.
+    /// <para>
+    /// ⚠️ Scoped to the entity namespace, deliberately. It used to scan the whole assembly, which
+    /// made it fire on <c>BranchCommitPushed.AuthoredAt</c> — a bus message payload that is never a
+    /// document, never indexed and never projected. That is a false positive, and the tempting
+    /// "fix" of changing the message to <c>DateTime</c> would have dropped the offset in transit:
+    /// precisely the class of silent loss this guard was written to catch.
+    /// </para>
     /// </summary>
     [Fact]
     public void Commit_is_still_the_only_entity_carrying_a_DateTimeOffset()
     {
         var offenders = typeof(Commit).Assembly.GetTypes()
+            // Entities only. The defect is an index projection flattening the offset, so it can
+            // only reach a type that becomes a Raven document and gets indexed. A bus message
+            // payload lives inside SparkMessage's JSON, is never indexed and is never projected, so
+            // a DateTimeOffset on one is a different risk class — and forcing it to DateTime would
+            // drop the offset in transit, which is the very thing this guard exists to prevent.
+            .Where(t => t.Namespace == typeof(Commit).Namespace)
             .Where(t => t.IsClass && !t.IsAbstract && t != typeof(Commit))
             .SelectMany(t => t.GetProperties(BindingFlags.Public | BindingFlags.Instance)
                 .Where(p => (Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType) == typeof(DateTimeOffset))

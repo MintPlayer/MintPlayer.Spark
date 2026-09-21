@@ -1,4 +1,5 @@
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging.Abstractions;
 using Raven.Client.Documents.Session;
@@ -18,7 +19,7 @@ namespace CodeCoverage.Feedback;
 public partial class PublishPullRequestCommentRecipient : IRecipient<PublishPullRequestCommentMessage>
 {
     [Inject] private readonly IAsyncDocumentSession session;
-    [Inject] private readonly IPullRequestCommentPublisher publisher;
+    [Inject] private readonly IForgeIntegrationResolver forges;
     [Inject] private readonly ILogger<PublishPullRequestCommentRecipient> logger;
 
     public async Task HandleAsync(PublishPullRequestCommentMessage message, CancellationToken cancellationToken = default)
@@ -26,11 +27,11 @@ public partial class PublishPullRequestCommentRecipient : IRecipient<PublishPull
         var feedback = await session.LoadAsync<PullRequestFeedback>(message.FeedbackId, cancellationToken);
         if (feedback is null) return;
 
-        // Nothing owed, or nothing to publish through: a terminal state or a
-        // repository that lost its installation between attempts.
-        if (feedback.PendingBody is not { Length: > 0 } body
-            || feedback.InstallationId is not { } installationId
-            || feedback.Repository is null)
+        // Nothing owed, or nowhere to publish it: a terminal state or a repository that lost its
+        // forge access between attempts. The stored InstallationId is deliberately no longer the
+        // gate — it is a GitHub credential on a record that must outlive GitHub-only (M8), and the
+        // forge answers "can we still write here?" without one.
+        if (feedback.PendingBody is not { Length: > 0 } body || feedback.Repository is null)
             return;
 
         var repository = await session.LoadAsync<Entities.Repository>(feedback.Repository, cancellationToken);
@@ -39,8 +40,15 @@ public partial class PublishPullRequestCommentRecipient : IRecipient<PublishPull
         logger.LogInformation("Retrying the coverage comment on {Repo}#{Pr} (attempt {Attempts})",
             repository.FullName, feedback.PullRequestNumber, feedback.Attempts + 1);
 
-        await publisher.PublishAsync(
-            repository, installationId, feedback.PullRequestNumber,
+        var forge = forges.For(repository);
+        if (!(await forge.CheckAccessAsync(repository, cancellationToken)).Available)
+        {
+            logger.LogDebug("No forge access for {Repo}; leaving the comment owed", repository.FullName);
+            return;
+        }
+
+        await forge.PublishCommentAsync(
+            repository, feedback.PullRequestNumber,
             feedback.PendingSha ?? feedback.LastPublishedSha ?? string.Empty,
             body, cancellationToken);
     }

@@ -87,7 +87,7 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
         var owners = await visibility.GetAllowedOwnersAsync();
         // No null guard: In() simply does not match a null field, and adding one back would
         // reintroduce the OrElse/AndAlso shape the provider chokes on.
-        return token => token.AccountLogin.In(owners);
+        return token => token.AccountOwnerKey.In(owners);
     }
 
     /// <summary>

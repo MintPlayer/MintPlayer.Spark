@@ -189,8 +189,9 @@ public class ExternalLoginCallbackTests : SparkTestDriver
         {
             new Claim(ClaimTypes.Email, "noname@test.org"),
             new Claim(ClaimTypes.NameIdentifier, "github-handle"),
-            // R2-H11: required for auto-provisioning to proceed
-            new Claim("urn:github:email_verified", "true"),
+            // R2-H11: required for auto-provisioning to proceed. 4g: one standard claim for
+            // every provider, including GitHub, which used to emit a urn:github: one of its own.
+            new Claim("email_verified", "true"),
             // intentionally no ClaimTypes.Name
         }));
         var info = new ExternalLoginInfo(principal, "GitHub", "12345", "GitHub");
@@ -233,7 +234,10 @@ public class ExternalLoginCallbackTests : SparkTestDriver
         var response = await client.GetAsync("/spark/auth/external-login-callback?returnUrl=%2Foops");
 
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
-        response.Headers.Location!.OriginalString.Should().Be("/oops");
+        response.Headers.Location!.OriginalString.Should().Be(
+            "/oops?sparkExternalLogin=account_creation_failed",
+            "the redirect branch used to drop the reason entirely, so a full-page sign-in landed "
+            + "back where it started with nothing to show for it");
         // Bail-out happens before AddLogin / SignIn — confirm we did not proceed.
         await _userManager.DidNotReceive().AddLoginAsync(Arg.Any<SparkUser>(), Arg.Any<UserLoginInfo>());
         await _signInManager.DidNotReceive().SignInAsync(Arg.Any<SparkUser>(), Arg.Any<bool>(), Arg.Any<string?>());

@@ -167,7 +167,10 @@ public class MapSparkIdentityApiTests : SparkTestDriver
         var response = await manualClient.GetAsync("/spark/auth/external-login-callback?returnUrl=%2Fhome");
 
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
-        response.Headers.Location!.OriginalString.Should().Be("/home");
+        // The reason now travels with the redirect. It used to be dropped, so a full-page sign-in
+        // landed back where it started with nothing to show — survivable while every refusal meant
+        // "it did not work", not survivable once one of them means "check your mail".
+        response.Headers.Location!.OriginalString.Should().Be("/home?sparkExternalLogin=no_login_info");
     }
 
     [Fact]
@@ -179,6 +182,6 @@ public class MapSparkIdentityApiTests : SparkTestDriver
         var response = await client.GetAsync("/spark/auth/external-login-callback");
 
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
-        response.Headers.Location!.OriginalString.Should().Be("/");
+        response.Headers.Location!.OriginalString.Should().Be("/?sparkExternalLogin=no_login_info");
     }
 }

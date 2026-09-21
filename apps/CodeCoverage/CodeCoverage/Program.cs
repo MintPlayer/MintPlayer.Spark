@@ -1,4 +1,6 @@
+using CodeCoverage.GithubIntegration.Extensions;
 using System.Text.RegularExpressions;
+using MintPlayer.Spark.Authorization.Configuration;
 using System.Threading.RateLimiting;
 using CodeCoverage;
 using CodeCoverage.ApiTokens;
@@ -46,6 +48,11 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<CodeCoverage.Services.ISourceContentCache, CodeCoverage.Services.SourceContentCache>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddCodeCoverage();
+// Outgoing mail. Bound before AddSpark so the conditional registration below can read it.
+builder.Services.Configure<CoverageMailOptions>(builder.Configuration.GetSection("Coverage:Mail"));
+var mailOptions = builder.Configuration.GetSection("Coverage:Mail").Get<CoverageMailOptions>()
+    ?? new CoverageMailOptions();
+
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
     spark.UseContext<CoverageSparkContext>();
@@ -84,7 +91,24 @@ builder.Services.AddSpark(builder.Configuration, spark =>
         antiforgery.WarnOnly = true;
     });
 
-    spark.AddAuthentication<SparkUser>(configureProviders: identity =>
+    spark.AddAuthentication<SparkUser>(configure: auth =>
+    {
+        // Disabled | WhenSignedIn | ConfirmByEmail, from Spark:Auth:ExternalLoginLinking.
+        // Left at Spark's default until there is a second forge worth linking to — GitHub
+        // is currently the only way in, so the situation the modes exist for cannot arise.
+        //
+        // ⚠️ ConfirmByEmail is refused at startup unless a link-confirmation sender is
+        // registered, which is conditional on the mail settings below. That pairing is
+        // deliberate: a confirmation nobody sends is a link nobody makes, and the symptom
+        // is a sign-in that appears to do nothing.
+        if (Enum.TryParse<SparkExternalLoginLinking>(
+                builder.Configuration["Spark:Auth:ExternalLoginLinking"], ignoreCase: true,
+                out var linking))
+        {
+            auth.ExternalLoginLinking = linking;
+        }
+    },
+    configureProviders: identity =>
     {
         // Fail loud (D5). GitHub is the only way into this app: LocalCredentials
         // defaults to Disabled since preview.58, so an unregistered provider means
@@ -154,6 +178,16 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddCustomActions();
     spark.AddRecipients();
     spark.AddCronJobs();
+
+    // ⚠ The four calls above are source-generated over THIS assembly only, so they do not see
+    // anything in CodeCoverage.GithubIntegration. Its own entry point has to be called explicitly,
+    // or every GitHub service and recipient silently fails to register - the app would still start
+    // and still serve pages, it would just stop publishing pull-request comments and handling
+    // webhooks. RegistrationInventoryTests is what stops that shipping unnoticed.
+    //
+    // One line per forge. When GitLab and Bitbucket gain implementations, they are added here
+    // beside this, and nothing else in the composition root changes.
+    spark.AddGithubIntegration();
     // Pending ISparkMigration classes run inside UseSpark(), after indexes are
     // created and before the app serves — once per database, in Version order,
     // under a cluster-wide lock. Committed and replayed automatically, so a
@@ -201,6 +235,15 @@ builder.Services.AddOptions<Microsoft.AspNetCore.DataProtection.KeyManagement.Ke
 // the audience must be this deployment's public base URL and the action must
 // request exactly that audience. (ApiToken is registered inside AddSpark as a
 // credential scheme — see above.)
+// ⚠️ Registered only when there is somewhere to send. Spark ships the contract and no
+// transport on purpose, so an unregistered sender is how "this deployment cannot send mail"
+// is expressed — and it is what makes the ConfirmByEmail startup guard a plain null check
+// rather than a guess about whether some default is a real transport.
+if (mailOptions.IsConfigured)
+{
+    builder.Services.AddScoped<ISparkLinkConfirmationSender<SparkUser>, SmtpLinkConfirmationSender>();
+}
+
 builder.Services.AddAuthentication()
     .AddJwtBearer(GitHubOidc.SchemeName, options =>
     {

@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using MintPlayer.Spark.Abstractions;
 
 namespace CodeCoverage.Entities;
@@ -83,6 +84,7 @@ public class PullRequestFeedback
     /// <summary>Head sha <see cref="PendingBody"/> describes.</summary>
     public string? PendingSha { get; set; }
 
-    public static string DocumentId(long repoGitHubId, int pullRequestNumber)
-        => $"PullRequestFeedbacks/{repoGitHubId}/{pullRequestNumber}";
+    /// <summary><c>PullRequestFeedbacks/{provider}/{repositoryId}/{pullRequestNumber}</c>.</summary>
+    public static string DocumentId(EForgeProvider provider, long repositoryId, int pullRequestNumber)
+        => $"PullRequestFeedbacks/{provider.ToCanonicalString()}/{repositoryId}/{pullRequestNumber}";
 }

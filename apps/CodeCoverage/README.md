@@ -1,6 +1,6 @@
 # Coverage
 
-[![Coverage](https://coverage.mintplayer.com/badge/MintPlayer/MintPlayer.Spark.svg)](https://coverage.mintplayer.com/r/MintPlayer/MintPlayer.Spark)
+[![Coverage](https://coverage.mintplayer.com/badge/github/MintPlayer/MintPlayer.Spark.svg)](https://coverage.mintplayer.com/github/r/MintPlayer/MintPlayer.Spark)
 [![CI](https://github.com/MintPlayer/MintPlayer.Spark/actions/workflows/pull-request.yml/badge.svg)](https://github.com/MintPlayer/MintPlayer.Spark/actions/workflows/pull-request.yml)
 [![Deploy](https://github.com/MintPlayer/MintPlayer.Spark/actions/workflows/code-coverage-deploy.yml/badge.svg)](https://github.com/MintPlayer/MintPlayer.Spark/actions/workflows/code-coverage-deploy.yml)
 
@@ -22,17 +22,17 @@ Built on [MintPlayer.Spark](https://github.com/MintPlayer/MintPlayer.Spark)
 
 ## Badges
 
-`GET /badge/{owner}/{name}.svg` — deliberately unauthenticated, rate-limited per IP, cached for
+`GET /badge/{provider}/{owner}/{name}.svg` — deliberately unauthenticated, rate-limited per IP, cached for
 300 s, and never a 404 (see below). Three variants:
 
 | URL | Shows |
 |---|---|
-| `…/badge/{owner}/{name}.svg` | The repository headline — the newest **complete** assembly on the default branch. |
+| `…/badge/{provider}/{owner}/{name}.svg` | The repository headline — the newest **complete** assembly on the default branch. |
 | `…?branch={ref}` | The newest covered commit of that branch. |
 | `…?pr={number}` | The newest covered commit of that pull request. |
 
 ```markdown
-[![Coverage](https://coverage.mintplayer.com/badge/MintPlayer/MintPlayer.Spark.svg?branch=feature/x)](https://coverage.mintplayer.com/r/MintPlayer/MintPlayer.Spark)
+[![Coverage](https://coverage.mintplayer.com/badge/github/MintPlayer/MintPlayer.Spark.svg?branch=feature/x)](https://coverage.mintplayer.com/github/r/MintPlayer/MintPlayer.Spark)
 ```
 
 The repository page's badge panel has a branch picker that writes these snippets for you.
@@ -168,9 +168,10 @@ it. Optionally set the **Setup URL** to the app's home page so installs land
 back in the app.
 The App's *Client ID* / a generated *client secret* go into
 `GitHub:{Development|Production}:ClientId` / `:ClientSecret` below. **These are
-required to boot.** GitHub is the only authentication provider this app
-registers, and Spark's local credentials are disabled, so a missing `ClientId`
-means nobody could sign in at all — startup throws a named error naming the key
+required to boot.** GitHub is currently the only authentication provider this
+app registers (see [multi-forge-PRD](../../docs/code-coverage/multi-forge-PRD.md)
+for the work to add others), and Spark's local credentials are disabled, so a
+missing `ClientId` means nobody could sign in at all — startup throws a named error naming the key
 rather than serving an app whose sign-in button is broken. A fresh clone must
 configure user-secrets before its first `dotnet run`.
 
@@ -226,7 +227,8 @@ repository deleted on GitHub. **None of them destroys anything.** The repository
 
 - it disappears from account pages, repository grids and the owner's repo count, for everyone except
   someone who manages the owner;
-- `/r/{owner}/{name}`, the report pages and `/badge/{owner}/{name}.svg` keep answering, with the
+- `/{provider}/r/{owner}/{name}`, the report pages and `/badge/{provider}/{owner}/{name}.svg` keep
+  answering, with the
   coverage frozen at its last known value — README badges and links already posted in pull-request
   comments do not die with a transfer;
 - a successful OIDC upload reconnects it, because a workflow that still runs is proof the repository
@@ -274,6 +276,82 @@ signed-in human's GitHub access — so no CI credential can read a private repos
 and they answer `404` identically for "no data yet" and "not allowed". Building a gate on them will
 work right up until it doesn't.
 
+## Outgoing mail
+
+The app sends exactly one kind of message: the "do you want this login attached to your
+account?" confirmation, and only when `Spark__Auth__ExternalLoginLinking=ConfirmByEmail`.
+It is **off by default** — there is no second forge worth linking to yet — so a deployment
+that leaves `MAIL_FROM_ADDRESS` unset registers no mail transport at all, which is a
+supported state.
+
+**The app never talks to the internet.** It hands the message to the `coverage-smtp`
+container on the internal network and returns; that container queues it and does the
+delivering. This is not tidiness: the send happens *inside the external-login callback*,
+while somebody is waiting on an HTTP response, and a handoff one hop away takes
+milliseconds whether or not the receiving mail server is reachable.
+
+⚠️ **Delivery is the hard part, not the wiring.** All of the following was measured
+against this VPS on 2026-09-21, and every step of it was necessary:
+
+| | |
+|---|---|
+| Hetzner blocks outbound **25 and 465** on all Cloud Servers | Request an unblock from the Hetzner console (Limits page). 587 is open by default, so relaying through a provider needs no request. |
+| Reverse DNS must match the HELO name | Set the PTR to `coverage.mintplayer.com` in the Hetzner console. It forward-resolves to the server, which is what receivers check. |
+| `mintplayer.com` publishes DMARC **`sp=reject`** | Every subdomain inherits it. Mail that fails alignment is **rejected**, not junked — measured: `550 5.7.509 ... does not pass DMARC verification and has a DMARC policy of reject`. |
+
+Two DNS records make it pass, both on `mintplayer.com`'s zone:
+
+```
+coverage                    TXT   v=spf1 ip4:188.245.190.60 ip6:2a01:4f8:c0c:f87c:: -all
+mail._domainkey.coverage    TXT   v=DKIM1;k=rsa;p=<public key>
+```
+
+⚠️ The SPF record lists **both** address families. `coverage.mintplayer.com` has an AAAA,
+so Postfix would otherwise be free to send over IPv6 and fail SPF there. The compose file
+additionally pins `smtp_address_preference=ipv4`, because the large receivers hold IPv6
+senders to a stricter standard — chiefly a valid PTR for the v6 address, which Hetzner
+sets per address and which is not configured here.
+
+Generating the DKIM key, on the VPS:
+
+```bash
+cd /var/www/code-coverage
+mkdir -p mail-dkim && cd mail-dkim
+docker run --rm -v "$PWD":/out alpine:3.20 sh -c \
+  'apk add --no-cache opendkim-utils && opendkim-genkey -b 2048 \
+     -d coverage.mintplayer.com -s mail -D /out'
+mv coverage.mintplayer.com/mail.private coverage.mintplayer.com.private   # see below
+chown -R 101:104 . && chmod 600 *.private                                 # see below
+```
+
+⚠️ **Two layout traps, each of which cost a deploy cycle:**
+
+1. **The key must be flat** — `mail-dkim/<domain>.private`. `opendkim-genkey` writes
+   `<domain>/<selector>.private`, and with that layout the image logs `Skipping DKIM` and
+   delivers the message **unsigned**. It still arrives, because SPF passes on its own, so
+   the failure is invisible unless you read the container log or the message headers.
+2. **The key must be owned by opendkim on the host** (`101:104` in `boky/postfix:v4.3.0`).
+   The image tries to `chown` a key it cannot read, the read-only mount refuses, and the
+   container exits — which at least fails loudly, unlike the first trap.
+
+Verify the key against what is published, which is the check that actually proves it:
+
+```bash
+docker run --rm -v /var/www/code-coverage/mail-dkim:/keys:ro alpine:3.20 sh -c \
+  'apk add --no-cache opendkim-utils bind-tools >/dev/null &&
+   opendkim-testkey -d coverage.mintplayer.com -s mail \
+     -k /keys/coverage.mintplayer.com.private -vvv'
+```
+
+`key OK` means the private key and the DNS record agree. Anything else means the record
+was pasted wrong — most often line-wrapping inside the base64.
+
+**If deliverability ever degrades**, set `MAIL_RELAY_HOST` (plus username and password)
+to a provider's submission host. Postfix then relays instead of delivering directly, the
+port 25 unblock stops mattering, and the provider's reputation replaces this IP's.
+
+---
+
 ## Deployment
 
 `docker-compose.yml` runs the app plus a pinned RavenDB on an internal network behind
@@ -293,7 +371,11 @@ One-time VPS setup:
    Mind the `.env`'s line endings: it must be LF, a CRLF file poisons every value with
    an invisible `\r`. Optionally add `RAVENDB_LICENSE` here — see
    [RavenDB licence](#ravendb-licence) below.
-2. Place the **production** GitHub App's private key at `/var/www/code-coverage/github-app.pem`,
+2. Optional, for mail: create `/var/www/code-coverage/mail-dkim` and follow
+   [Outgoing mail](#outgoing-mail) above. Skipping this leaves the app unable to send,
+   which is fine unless `ExternalLoginLinking` is `ConfirmByEmail` — Spark refuses to
+   start in that combination rather than discarding confirmations silently.
+3. Place the **production** GitHub App's private key at `/var/www/code-coverage/github-app.pem`,
    readable by the container's `app` user (UID 1654) — e.g. `chmod 644` or `chown 1654`.
    Beware: if the file is missing at first `up`, Docker silently creates a *directory*
    at that path and App auth fails at runtime.
@@ -317,17 +399,17 @@ One-time VPS setup:
    **After fixing a bad key:** check-run publishing gives up per build after 5 attempts
    and never revisits it (`FeedbackState: Failed` is terminal) — a **new build** is
    required; existing failed builds will not retroactively get their check-runs.
-3. `docker network create web` if it doesn't exist; Traefik must be attached to it, with
+4. `docker network create web` if it doesn't exist; Traefik must be attached to it, with
    an entrypoint named `websecure` and an ACME resolver named `letsencrypt` (the compose
    labels assume those exact names).
-4. DNS A/AAAA record for the subdomain → the VPS, *before* the first deploy (Let's
+5. DNS A/AAAA record for the subdomain → the VPS, *before* the first deploy (Let's
    Encrypt won't issue without it).
-5. GitHub side: repository secrets `VPS_HOST`, `VPS_USERNAME`, `VPS_SSH_KEY`
+6. GitHub side: repository secrets `VPS_HOST`, `VPS_USERNAME`, `VPS_SSH_KEY`
    (dedicated ed25519 deploy key in the VPS user's `authorized_keys`), optional
    `VPS_PORT` / `VPS_SSH_KEY_PASSPHRASE`. Verify the ghcr package is **public** after
    the first publish (the workflow's visibility PATCH is best-effort), or
    `docker login ghcr.io` on the VPS with a `read:packages` PAT.
-6. Production GitHub App: callback URL `https://<host>/signin-github`, webhook URL
+7. Production GitHub App: callback URL `https://<host>/signin-github`, webhook URL
    `https://<host>/api/github/webhooks`, same permissions as the dev App.
 
 Manual redeploy: the workflow's `workflow_dispatch` button, or on the VPS
@@ -335,8 +417,74 @@ Manual redeploy: the workflow's `workflow_dispatch` button, or on the VPS
 (always pull-then-up; the compose file has no build block by design).
 
 RavenDB data lives in the `raven-data` named volume — it survives `pull`/`down`/`up`
-deploys; only `docker compose down -v` or a volume prune destroys it. There is no
-automated backup yet; back up the volume out-of-band if the data matters.
+deploys; only `docker compose down -v` or a volume prune destroys it.
+
+### Backing up the database
+
+⚠️ **There is still no *automated* backup.** The procedure below is manual, and was run and
+verified end to end on 2026-09-21; RavenDB reported `BackupInfo: null` before it, meaning the
+database had never been backed up at all. Run it before anything irreversible — a migration, a
+re-key, a bulk delete.
+
+```bash
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+DIR=/var/backups/coverage-raven && mkdir -p "$DIR"
+NET=code-coverage_coverage-internal
+
+# Stats first: this is what the restore gets checked against.
+docker run --rm --network $NET --user 0 -v "$DIR":/out curlimages/curl:8.11.1 \
+  -sS "http://coverage-raven:8080/databases/Coverage/stats" -o "/out/coverage-$STAMP.stats.json"
+
+docker run --rm --network $NET --user 0 -v "$DIR":/out curlimages/curl:8.11.1 \
+  -sS -f --max-time 3600 \
+  -X POST "http://coverage-raven:8080/databases/Coverage/smuggler/export" \
+  -H "Content-Type: application/json" \
+  --data '{"OperateOnTypes":"Documents,RevisionDocuments,Indexes,Identities,CompareExchange,Attachments,CounterGroups,Subscriptions,TimeSeries","IncludeExpired":true}' \
+  -o "/out/coverage-$STAMP.ravendbdump"
+```
+
+⚠️ `CompareExchange` is not optional. The Identity **email reservations** live in compare-exchange,
+not in any collection, so a dump without it restores a database in which every existing address can
+be registered again.
+
+⚠️ `--user 0` is needed because `curlimages/curl` runs unprivileged and cannot write into a
+root-owned bind mount. It fails as `curl: (23) client returned ERROR on write`, which names neither
+permissions nor the directory.
+
+**Three things about verifying it**, each of which produced a misleading answer first:
+
+1. The dump is **Zstandard**, not gzip — `gzip -t` reports "not in gzip format" on a perfectly good
+   file. Use `zstd -t`.
+2. Grepping the decompressed stream for attachment markers finds **nothing**, because attachments
+   are not a top-level section. That is not evidence of absence.
+3. The only check that settles it is a **restore**. Import into a scratch database and compare
+   `CountOfDocuments` and `CountOfAttachments` against the stats file captured above:
+
+```bash
+docker run --rm --network $NET --user 0 curlimages/curl:8.11.1 -sS \
+  -X PUT "http://coverage-raven:8080/admin/databases?name=CoverageRestoreTest&replicationFactor=1" \
+  -H 'Content-Type: application/json' --data '{"DatabaseName":"CoverageRestoreTest"}'
+
+docker run --rm --network $NET --user 0 -v "$DIR":/b curlimages/curl:8.11.1 -sS -f --max-time 3600 \
+  -X POST "http://coverage-raven:8080/databases/CoverageRestoreTest/smuggler/import" \
+  -F 'importOptions={"OperateOnTypes":"Documents,RevisionDocuments,Identities,CompareExchange,Attachments,CounterGroups,TimeSeries"}' \
+  -F "file=@/b/coverage-$STAMP.ravendbdump"
+
+# ... compare stats, then hard-delete the scratch database ...
+docker run --rm --network $NET --user 0 curlimages/curl:8.11.1 -sS \
+  -X DELETE "http://coverage-raven:8080/admin/databases?name=CoverageRestoreTest&hard-delete=true" \
+  -H 'Content-Type: application/json' \
+  --data '{"DatabaseNames":["CoverageRestoreTest"],"HardDelete":true}'
+```
+
+⚠️ Exclude `Subscriptions` and `Indexes` from the *restore test* import. The Community licence caps
+subscriptions cluster-wide, so importing the live database's could disturb production; and
+re-indexing 228k documents burns CPU on the production host for nothing, since the index
+*definitions* are confirmed present in the dump either way.
+
+Finally, **copy the dump off the server** and compare `sha256sum` at both ends. A backup on the
+same disk as the data protects against a bad migration, which is the common case, but not against
+losing the disk.
 
 ### RavenDB licence
 

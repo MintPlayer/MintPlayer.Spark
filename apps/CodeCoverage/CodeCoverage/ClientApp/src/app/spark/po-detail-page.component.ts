@@ -22,9 +22,10 @@ import { HomeExtrasComponent } from './home-extras.component';
  *
  * ⚠️ It no longer forwards anything. Until preview.67 this component pre-fetched the whole
  * PersistentObject on every navigation just to decide whether Account should redirect to a
- * hand-written `/a/{login}` page — a wasted round-trip on every detail view of every type.
- * The vanity URLs now point the other way, as guards in `vanity-redirects.ts`: `/a/{login}`,
- * `/r/{owner}/{name}` and the commit URL resolve their document id and forward INTO `/po/...`.
+ * hand-written `/{provider}/a/{login}` page — a wasted round-trip on every detail view of every type.
+ * The vanity URLs now point the other way, as guards in `vanity-redirects.ts`:
+ * `/{provider}/a/{login}`, `/{provider}/r/{owner}/{name}` and the commit URL resolve their
+ * document id and forward INTO `/po/...`.
  * People hold the readable URL, so that is the one that redirects.
  */
 @Component({
@@ -39,8 +40,8 @@ import { HomeExtrasComponent } from './home-extras.component';
     <ng-template #extras let-po let-entityType="entityType">
       @if (entityType.name === 'Repository') {
         @if (repoOf(po); as repo) {
-          <app-repo-badge-panel [owner]="repo.owner" [name]="repo.name" />
-          <app-repo-trend-panel [owner]="repo.owner" [name]="repo.name" />
+          <app-repo-badge-panel [provider]="repo.provider" [owner]="repo.owner" [name]="repo.name" />
+          <app-repo-trend-panel [provider]="repo.provider" [owner]="repo.owner" [name]="repo.name" />
           <app-repo-setup-panel />
         }
       } @else if (entityType.name === 'Commit') {
@@ -53,11 +54,19 @@ import { HomeExtrasComponent } from './home-extras.component';
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export default class PoDetailPageComponent {
-  repoOf(po: PersistentObject): { owner: string; name: string } | null {
+  repoOf(po: PersistentObject): { provider: string; owner: string; name: string } | null {
     const fullName = valueFor(po, 'FullName')?.value;
     if (typeof fullName !== 'string') return null;
     const [owner, name] = fullName.split('/');
-    return owner && name ? { owner, name } : null;
+
+    // ⚠️ The provider comes from OwnerKey ("github:MintPlayer"), not from the Provider enum.
+    // Provider serialises as "GitHub", and lowercasing it to reach the URL spelling would work
+    // only by coincidence of how these three are spelled. OwnerKey already holds the canonical
+    // form, which is the whole reason it is a stored value rather than a computed display string.
+    const ownerKey = valueFor(po, 'OwnerKey')?.value;
+    const provider = typeof ownerKey === 'string' ? ownerKey.split(':')[0] : '';
+
+    return owner && name && provider ? { provider, owner, name } : null;
   }
 
 }

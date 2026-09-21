@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using System.Text;
 using Xunit;
 using CodeCoverage.Entities;
@@ -42,14 +43,14 @@ public class ReapReportAttachmentsCronJobTests : CoverageRavenTest
         using var seed = store.OpenAsyncSession();
         var build = new Build
         {
-            Commit = Commit.DocumentId(RepoId, Sha),
+            Commit = Commit.DocumentId(EForgeProvider.GitHub, RepoId, Sha),
             Status = finalizedAtUtc is null ? "Open" : "Finalized",
             CreatedAtUtc = DateTime.UtcNow.AddDays(-30),
             FinalizedAtUtc = finalizedAtUtc,
             ReportsReapedAtUtc = alreadyReapedAtUtc,
             Sessions = [new BuildSession { SessionId = sessionId, RootDir = "/w", RawFileNames = reportNames }],
         };
-        var id = Build.DocumentId(RepoId, Sha, 31694883768, 2);
+        var id = Build.DocumentId(EForgeProvider.GitHub, RepoId, Sha, 31694883768, 2);
         await seed.StoreAsync(build, id);
 
         foreach (var name in reportNames)

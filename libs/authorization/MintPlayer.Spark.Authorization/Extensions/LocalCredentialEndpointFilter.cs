@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Primitives;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace MintPlayer.Spark.Authorization.Extensions;
 
@@ -49,6 +51,12 @@ internal static class LocalCredentialEndpointFilter
         SparkLocalCredentials mode)
         where TUser : SparkUser, new()
     {
+        // Before the Full short-circuit below: confirm-by-email linking is orthogonal to the
+        // local-credential surface, so an application running Full is exactly as able to configure
+        // a mode whose mail would be discarded. Placing this after the early return would have
+        // meant the guard never fired for the most common configuration.
+        GuardAgainstSilentlyDiscardedMail<TUser>(endpoints.ServiceProvider);
+
         if (mode == SparkLocalCredentials.Full)
         {
             // The default takes the original code path verbatim — no throwaway builder, no
@@ -95,6 +103,46 @@ internal static class LocalCredentialEndpointFilter
             + "authentication provider is registered, so no user could sign in. Register a provider "
             + "(for example identity.AddGitHub(...) via the configureProviders callback), or use "
             + "SparkLocalCredentials.SignInOnly or SparkLocalCredentials.Full instead.");
+    }
+
+    /// <summary>
+    /// Refuses a configuration whose link-confirmation mail would never be sent.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="SparkExternalLoginLinking.ConfirmByEmail"/> is only as good as the message it
+    /// sends: the link is made when a confirmation is followed, so a message that goes nowhere means
+    /// the link is never made and nothing reports a failure. The user sees a sign-in that appears to
+    /// do nothing, and the log stays clean.
+    /// </para>
+    /// <para>
+    /// <b>The check is simply whether a sender is registered</b>, which it can be because Spark
+    /// deliberately ships <em>no</em> default for
+    /// <see cref="ISparkLinkConfirmationSender{TUser}"/>. That is worth contrasting with ASP.NET
+    /// Identity's mail: there, <c>AddIdentityApiEndpoints</c> <c>TryAdd</c>s a no-op sender, so
+    /// absence is invisible and the only way to detect it is to recognise an internal type by name.
+    /// Measured 2026-09-20: <c>IEmailSender&lt;TUser&gt;</c> is <em>always</em>
+    /// <c>DefaultMessageEmailSender&lt;TUser&gt;</c> whether or not a transport exists, so the
+    /// obvious guard against the generic interface would never fire. Shipping no default turns that
+    /// whole problem into a null check.
+    /// </para>
+    /// </remarks>
+    private static void GuardAgainstSilentlyDiscardedMail<TUser>(IServiceProvider services)
+        where TUser : SparkUser, new()
+    {
+        var options = services.GetService<IOptions<SparkAuthenticationOptions>>()?.Value;
+        if (options?.ExternalLoginLinking != SparkExternalLoginLinking.ConfirmByEmail)
+            return;
+
+        if (services.GetService<ISparkLinkConfirmationSender<TUser>>() is not null)
+            return;
+
+        throw new InvalidOperationException(
+            "Spark authentication is configured with ExternalLoginLinking = ConfirmByEmail, but no "
+            + $"{nameof(ISparkLinkConfirmationSender<TUser>)} is registered, so no confirmation "
+            + "would ever be sent and no external login would ever be linked. Register one, or use "
+            + "SparkExternalLoginLinking.WhenSignedIn or SparkExternalLoginLinking.Disabled "
+            + "instead.");
     }
 
     private static void StampAntiforgery(IEndpointConventionBuilder convention) =>

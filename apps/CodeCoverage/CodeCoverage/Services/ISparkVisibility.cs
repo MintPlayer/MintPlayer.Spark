@@ -5,7 +5,8 @@ namespace CodeCoverage.Services;
 /// up to three times per detail read (once per action) plus once per save, and the
 /// redaction hook runs per row — so every answer here is memoized for the request.
 /// The underlying owner list is additionally cached ~5 minutes per user by
-/// <see cref="IGitHubAccessService"/>.
+/// <see cref="Forge.IForgeIntegrationResolver"/>, fanned out across every forge the viewer is
+/// signed in to.
 /// </summary>
 public interface ISparkVisibility
 {
@@ -20,5 +21,6 @@ public interface ISparkVisibility
     Task<string[]> GetVisibleRepositoryIdsAsync();
 
     /// <summary>Whether the viewer manages this owner (gates BadgeToken/InstallationId visibility).</summary>
-    Task<bool> CanManageOwnerAsync(string ownerLogin);
+    /// <param name="ownerKey">A <c>provider:login</c> key, not a bare login.</param>
+    Task<bool> CanManageOwnerAsync(string ownerKey);
 }

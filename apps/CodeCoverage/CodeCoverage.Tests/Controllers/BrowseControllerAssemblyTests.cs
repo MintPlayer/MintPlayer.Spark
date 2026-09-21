@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Raven.Client.Documents.Session;
 using Xunit;
+using CodeCoverage.Forge;
 
 namespace CodeCoverage.Tests.Controllers;
 
@@ -30,6 +31,9 @@ public class BrowseControllerAssemblyTests : CoverageRavenTest
         var services = new ServiceCollection();
         services.AddSingleton(session);
         services.AddSingleton<IGitHubAccessService>(new ScriptedAccessService(new([], GitHubTokenState.Ok)));
+        var scriptedForge = ScriptedForge.From(new([], GitHubTokenState.Ok));
+        services.AddSingleton<IForgeIntegration>(scriptedForge);
+        services.AddSingleton<IForgeIntegrationResolver>(scriptedForge);
         services.AddSingleton<IGitHubContentService>(new NullContentService());
         services.AddSingleton(GitHubAuthTestFakes.TestConfiguration());
         services.AddScoped<CodeCoverage.Services.IRepositoryResolver>(sp =>
@@ -42,8 +46,8 @@ public class BrowseControllerAssemblyTests : CoverageRavenTest
     public async Task Tree_and_file_come_from_the_assembly_when_one_exists()
     {
         using var store = GetDocumentStore();
-        var commitId = Commit.DocumentId(RepoId, Sha);
-        var buildId = Build.DocumentId(RepoId, Sha, runId: 7, runAttempt: 1);
+        var commitId = Commit.DocumentId(EForgeProvider.GitHub, RepoId, Sha);
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, RepoId, Sha, runId: 7, runAttempt: 1);
         var assemblyId = CommitAssembly.DocumentId(commitId);
 
         using (var seed = store.OpenAsyncSession())
@@ -51,8 +55,8 @@ public class BrowseControllerAssemblyTests : CoverageRavenTest
             await seed.StoreAsync(new Repository
             {
                 GitHubId = RepoId, Name = "repo", FullName = "owner/repo", OwnerLogin = "owner", IsPrivate = false,
-            }, Repository.DocumentId(RepoId));
-            await seed.StoreAsync(new Commit { Sha = Sha, Repository = Repository.DocumentId(RepoId), LatestBuildId = buildId }, commitId);
+            }, Repository.DocumentId(EForgeProvider.GitHub, RepoId));
+            await seed.StoreAsync(new Commit { Sha = Sha, Repository = Repository.DocumentId(EForgeProvider.GitHub, RepoId), LatestBuildId = buildId }, commitId);
 
             // The build measured only a.cs …
             await seed.StoreAsync(new BuildTreeSummary
@@ -86,7 +90,7 @@ public class BrowseControllerAssemblyTests : CoverageRavenTest
         var controller = CreateController(session);
 
         var tree = (BrowseController.TreeResponse)((OkObjectResult)
-            (await controller.GetTree("owner", "repo", Sha, path: "src", flag: null, CancellationToken.None)).Result!).Value!;
+            (await controller.GetTree("github", "owner", "repo", Sha, path: "src", flag: null, CancellationToken.None)).Result!).Value!;
         tree.BuildId.Should().Be(assemblyId);
         var entries = tree.Entries.ToDictionary(e => e.Name);
         entries.Should().HaveCount(2);
@@ -94,7 +98,7 @@ public class BrowseControllerAssemblyTests : CoverageRavenTest
         entries["b.cs"].Origin.Should().Be(FileOrigin.Carried);
         entries["b.cs"].CarriedFromSha.Should().Be("base");
 
-        var file = (await controller.GetFile("owner", "repo", Sha, "src/b.cs", CancellationToken.None)).Result;
+        var file = (await controller.GetFile("github", "owner", "repo", Sha, "src/b.cs", CancellationToken.None)).Result;
         file.Should().BeOfType<OkObjectResult>();
     }
 
@@ -102,16 +106,16 @@ public class BrowseControllerAssemblyTests : CoverageRavenTest
     public async Task Without_an_assembly_the_latest_build_is_still_the_source()
     {
         using var store = GetDocumentStore();
-        var commitId = Commit.DocumentId(RepoId, Sha);
-        var buildId = Build.DocumentId(RepoId, Sha, runId: 7, runAttempt: 1);
+        var commitId = Commit.DocumentId(EForgeProvider.GitHub, RepoId, Sha);
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, RepoId, Sha, runId: 7, runAttempt: 1);
 
         using (var seed = store.OpenAsyncSession())
         {
             await seed.StoreAsync(new Repository
             {
                 GitHubId = RepoId, Name = "repo", FullName = "owner/repo", OwnerLogin = "owner", IsPrivate = false,
-            }, Repository.DocumentId(RepoId));
-            await seed.StoreAsync(new Commit { Sha = Sha, Repository = Repository.DocumentId(RepoId), LatestBuildId = buildId }, commitId);
+            }, Repository.DocumentId(EForgeProvider.GitHub, RepoId));
+            await seed.StoreAsync(new Commit { Sha = Sha, Repository = Repository.DocumentId(EForgeProvider.GitHub, RepoId), LatestBuildId = buildId }, commitId);
             await seed.StoreAsync(new BuildTreeSummary
             {
                 BuildId = buildId,
@@ -123,7 +127,7 @@ public class BrowseControllerAssemblyTests : CoverageRavenTest
 
         using var session = store.OpenAsyncSession();
         var tree = (BrowseController.TreeResponse)((OkObjectResult)
-            (await CreateController(session).GetTree("owner", "repo", Sha, path: null, flag: null, CancellationToken.None)).Result!).Value!;
+            (await CreateController(session).GetTree("github", "owner", "repo", Sha, path: null, flag: null, CancellationToken.None)).Result!).Value!;
 
         tree.BuildId.Should().Be(buildId);
         tree.Entries.Single().Origin.Should().BeNull();

@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Actions;
 using CodeCoverage.Entities;
 using CodeCoverage.Services;
@@ -74,19 +75,19 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
     private static async Task SeedAsync(IDocumentStore store)
     {
         using var session = store.OpenAsyncSession();
-        await session.StoreAsync(new Account { GitHubId = 1, Login = Managed }, Account.DocumentId(1));
+        await session.StoreAsync(new Account { GitHubId = 1, Login = Managed }, Account.DocumentId(EForgeProvider.GitHub, 1));
         await session.StoreAsync(new Repository
         {
             GitHubId = 10, Name = "mine", FullName = $"{Managed}/mine", OwnerLogin = Managed,
-        }, Repository.DocumentId(10));
+        }, Repository.DocumentId(EForgeProvider.GitHub, 10));
         await session.StoreAsync(new Repository
         {
             GitHubId = 11, Name = "also-mine", FullName = $"{Managed}/also-mine", OwnerLogin = Managed,
-        }, Repository.DocumentId(11));
+        }, Repository.DocumentId(EForgeProvider.GitHub, 11));
         await session.StoreAsync(new Repository
         {
             GitHubId = 20, Name = "theirs", FullName = $"{Foreign}/theirs", OwnerLogin = Foreign,
-        }, Repository.DocumentId(20));
+        }, Repository.DocumentId(EForgeProvider.GitHub, 20));
         await session.SaveChangesAsync();
     }
 
@@ -109,7 +110,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         await SeedAsync(store);
         using var session = store.OpenAsyncSession();
         var actions = CreateActions(session, Managed);
-        var token = NewToken(Repository.DocumentId(20));
+        var token = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 20));
 
         var act = async () => await actions.OnBeforeSaveAsync(Po(), token);
 
@@ -127,7 +128,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         await SeedAsync(store);
         using var session = store.OpenAsyncSession();
         var actions = CreateActions(session, Managed);
-        var token = NewToken(Repository.DocumentId(10), Repository.DocumentId(20));
+        var token = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 10), Repository.DocumentId(EForgeProvider.GitHub, 20));
 
         var act = async () => await actions.OnBeforeSaveAsync(Po(), token);
 
@@ -149,7 +150,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         var unknown = await Record.ExceptionAsync(() =>
             actions.OnBeforeSaveAsync(Po(), NewToken("Repositories/999999")));
         var foreignId = await Record.ExceptionAsync(() =>
-            actions.OnBeforeSaveAsync(Po(), NewToken(Repository.DocumentId(20))));
+            actions.OnBeforeSaveAsync(Po(), NewToken(Repository.DocumentId(EForgeProvider.GitHub, 20))));
 
         unknown.Should().BeOfType<SparkValidationException>();
         foreignId.Should().BeOfType<SparkValidationException>();
@@ -163,7 +164,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         await SeedAsync(store);
         using var session = store.OpenAsyncSession();
         var actions = CreateActions(session, Managed);
-        var token = NewToken(Repository.DocumentId(10), Repository.DocumentId(11));
+        var token = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 10), Repository.DocumentId(EForgeProvider.GitHub, 11));
 
         await actions.OnBeforeSaveAsync(Po(), token);
 
@@ -193,11 +194,11 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         await SeedAsync(store);
         using var session = store.OpenAsyncSession();
         var actions = CreateActions(session, Managed);
-        var token = NewToken(Repository.DocumentId(10), Repository.DocumentId(10));
+        var token = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 10), Repository.DocumentId(EForgeProvider.GitHub, 10));
 
         await actions.OnBeforeSaveAsync(Po(), token);
 
-        token.GithubRepositories.Should().Equal(Repository.DocumentId(10));
+        token.GithubRepositories.Should().Equal(Repository.DocumentId(EForgeProvider.GitHub, 10));
     }
 
     /// <summary>
@@ -213,7 +214,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var actions = CreateActions(session, Managed);
 
-        var existing = NewToken(Repository.DocumentId(20));
+        var existing = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 20));
         existing.Hash = "already-minted";   // an edit: the credential exists
 
         var act = async () => await actions.OnBeforeSaveAsync(Po(), existing);

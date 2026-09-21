@@ -9,6 +9,8 @@ import {
   SparkExternalLoginError,
   SparkExternalLoginOptions,
   SparkExternalLoginResult,
+  SparkExternalLogins,
+  SparkUnlinkResult,
 } from '@mintplayer/ng-spark-auth/models';
 
 /** How often the popup is checked for a manual close. */
@@ -94,8 +96,61 @@ export class SparkAuthService {
    * replaced, and the outcome arrives as the next page load rather than as a value.
    */
   loginWithProvider(provider: string, options: SparkExternalLoginOptions = {}): Promise<SparkExternalLoginResult> {
+    return this.externalFlow('/external-login', provider, options);
+  }
+
+  /**
+   * What external logins are attached to the signed-in account, and what else could be.
+   *
+   * Only served when the deployment allows linking at all; under `Disabled` the endpoint is not
+   * mapped, so this rejects with a 404. That is deliberate on the server side — an account page
+   * offering an action the deployment forbids is worse than one that is absent.
+   */
+  async externalLogins(): Promise<SparkExternalLogins> {
+    return await firstValueFrom(
+      this.http.get<SparkExternalLogins>(`${this.config.apiBasePath}/external-logins`));
+  }
+
+  /**
+   * Attaches another provider to the account that is already signed in.
+   *
+   * The same handshake as {@link loginWithProvider}, against the endpoint that links rather than
+   * the one that signs in — the difference that matters is on the server, where the challenge is
+   * keyed on the current user so the identity coming back cannot land in somebody else's session.
+   */
+  linkProvider(provider: string, options: SparkExternalLoginOptions = {}): Promise<SparkExternalLoginResult> {
+    return this.externalFlow('/external-logins/link', provider, options);
+  }
+
+  /**
+   * Detaches a provider from the signed-in account.
+   *
+   * ⚠️ Resolves with `error: 'last_credential'` rather than throwing when the server refuses to
+   * remove the account's last way in. It is an expected answer to a reasonable request, not a
+   * fault — and it is the server's refusal that protects the user, not the `canUnlink` flag the
+   * list hands out.
+   */
+  async unlinkProvider(provider: string, providerKey: string): Promise<SparkUnlinkResult> {
+    const url = `${this.config.apiBasePath}/external-logins/unlink`
+      + `?provider=${encodeURIComponent(provider)}`
+      + `&providerKey=${encodeURIComponent(providerKey)}`;
+    try {
+      await firstValueFrom(this.http.post<{ unlinked: boolean }>(url, {}));
+      await this.checkAuth();
+      return { success: true };
+    } catch (response: unknown) {
+      const error = (response as { error?: { error?: SparkUnlinkResult['error'] } })?.error?.error;
+      return { success: false, error: error ?? 'unlink_failed' };
+    }
+  }
+
+  private externalFlow(
+    path: string,
+    provider: string,
+    options: SparkExternalLoginOptions,
+  ): Promise<SparkExternalLoginResult> {
     const { returnUrl = this.config.defaultRedirectUrl, mode = 'popup' } = options;
-    const url = `${this.config.apiBasePath}/external-login?provider=${encodeURIComponent(provider)}`
+    const url = `${this.config.apiBasePath}${path}?provider=${encodeURIComponent(provider)}`
       + `&returnUrl=${encodeURIComponent(returnUrl)}`;
 
     if (mode === 'redirect') {

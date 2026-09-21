@@ -147,6 +147,7 @@ export default class FileComponent {
     combineLatest([this.route.paramMap, this.route.queryParamMap, this.route.fragment])
       .pipe(takeUntilDestroyed())
       .subscribe(async ([params, query, fragment]) => {
+        const provider = params.get('provider') ?? '';
         const owner = params.get('owner') ?? '';
         const name = params.get('repo') ?? '';
         const sha = params.get('sha') ?? '';
@@ -165,7 +166,7 @@ export default class FileComponent {
         this.loading.set(true);
         this.detail.set(null);
         try {
-          this.detail.set(await this.browse.getFile(owner, name, sha, path));
+          this.detail.set(await this.browse.getFile(provider, owner, name, sha, path));
         } finally {
           this.loading.set(false);
           setTimeout(() => this.scrollToTarget());

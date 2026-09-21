@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using System.Text.Json;
 using CodeCoverage.Entities;
 using CodeCoverage.LookupReferences;
@@ -28,13 +29,9 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IMessageBus messageBus;
     [Inject] private readonly ILogger<GitHubEventsRecipient> logger;
-    [Inject] private readonly IGitHubInstallationService installationService;
 
     /// <summary>Bound on a per-account repository sweep; the session's request budget is 30.</summary>
     private const int MaxRepositoriesPerAccount = 1024;
-
-    /// <summary>How many former names one repository remembers, oldest dropped first.</summary>
-    private const int MaxPreviousFullNames = 16;
 
     public async Task HandleAsync(GitHubWebhookMessage message, CancellationToken cancellationToken = default)
     {
@@ -130,7 +127,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             (evt.RepositoriesAdded ?? []).Select(r => (r.Id, r.Name, r.FullName, r.Private)), account, ct);
 
         var removedIds = (evt.RepositoriesRemoved ?? [])
-            .Select(r => Repository.DocumentId(r.Id))
+            .Select(r => Repository.DocumentId(EForgeProvider.GitHub, r.Id))
             .ToArray();
         if (removedIds.Length > 0)
         {
@@ -190,7 +187,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             // is still ours and someone may still be reading a report through a link. It stops
             // being advertised; the owner decides whether the data goes, through the explicit
             // delete action.
-            var existing = await session.LoadAsync<Repository>(Repository.DocumentId(ghRepo.Id), ct);
+            var existing = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, ghRepo.Id), ct);
             if (existing is not null)
                 Disconnect(existing, DisconnectedReasons.DeletedOnGitHub);
             return;
@@ -206,9 +203,9 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
 
         // Before the upsert overwrites it: the name we knew this repository by is the one that is
         // baked into published badge URLs, and a rename or transfer is the moment to remember it.
-        var previous = await session.LoadAsync<Repository>(Repository.DocumentId(ghRepo.Id), ct);
+        var previous = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, ghRepo.Id), ct);
         if (evt.Action is "renamed" or "transferred")
-            RememberFullName(previous, ghRepo.FullName);
+            previous?.RememberPreviousFullName(ghRepo.FullName);
 
         var repository = await UpsertRepository(ghRepo.Id, ghRepo.Name, ghRepo.FullName, ghRepo.Private, account, ct);
         repository.DefaultBranch = ghRepo.DefaultBranch;
@@ -272,23 +269,19 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         var login = ghAccount.TryGetProperty("login", out var loginElement) ? loginElement.GetString() : null;
         if (string.IsNullOrEmpty(login)) return;
 
+        // Created if absent, because a rename for an owner we have never seen still establishes
+        // who they are — unlike a merged pull request, where minting a document would invent
+        // tracking nobody asked for.
         var account = await GetOrCreateAccount(accountId, ct);
-        var previousLogin = account.Login;
-        account.Login = login;
-        if (ghAccount.TryGetProperty("avatar_url", out var avatarElement))
-            account.AvatarUrl = avatarElement.GetString();
 
-        if (string.IsNullOrEmpty(previousLogin) || previousLogin == account.Login)
-            return;
-
-        foreach (var repository in await LoadRepositoriesOfAsync(account, ct))
-        {
-            RememberFullName(repository, $"{account.Login}/{repository.Name}");
-            repository.OwnerLogin = account.Login;
-            repository.FullName = $"{account.Login}/{repository.Name}";
-        }
-
-        logger.LogInformation("Account {Previous} renamed to {Current}", previousLogin, account.Login);
+        await messageBus.BroadcastAsync(new ForgeWebhookMessage<OwnerRenamed>(
+            EForgeProvider.GitHub,
+            new OwnerRenamed(
+                AccountId: account.Id ?? Account.DocumentId(EForgeProvider.GitHub, accountId),
+                NewLogin: login,
+                NewAvatarUrl: ghAccount.TryGetProperty("avatar_url", out var avatarElement)
+                    ? avatarElement.GetString()
+                    : null)), ct);
     }
 
     private async Task OnPush(PushEvent evt, CancellationToken ct)
@@ -301,19 +294,22 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         var repository = await UpsertRepository(evt.Repository.Id, evt.Repository.Name, evt.Repository.FullName, evt.Repository.Private, account, ct);
         repository.DefaultBranch = evt.Repository.DefaultBranch;
 
-        var commit = await GetOrCreateCommit(evt.Repository.Id, evt.After, ct);
-        commit.Branch = branch;
-        // Deliberately does NOT write ParentSha. `evt.Before` is the previous
-        // ref tip, which is not this commit's parent in three of the six push
-        // shapes: a push of five commits creates one document (the head), so
-        // Before is the tip five commits back; a branch creation gives the
-        // all-zero sha; a force-push gives an abandoned tip that need not be an
-        // ancestor at all. It also raced the PR-event writer below for the same
-        // field, so whichever arrived last decided what the value meant. One
-        // writer, one meaning — see docs/upload-result-contract.md §5.
-        commit.Message = evt.HeadCommit.Message;
-        if (DateTimeOffset.TryParse(evt.HeadCommit.Timestamp, out var timestamp))
-            commit.AuthoredAt = timestamp;
+        // The commit work itself is neutral and lives in ForgeEventsRecipient. What stays here is
+        // the part only GitHub can do: reading its payload and resolving the account and repository
+        // it names. Note the neutral event carries no parent — see BranchCommitPushed for why a
+        // push cannot honestly supply one.
+        DateTimeOffset? authoredAt = DateTimeOffset.TryParse(evt.HeadCommit.Timestamp, out var timestamp)
+            ? timestamp
+            : null;
+
+        await messageBus.BroadcastAsync(new ForgeWebhookMessage<BranchCommitPushed>(
+            EForgeProvider.GitHub,
+            new BranchCommitPushed(
+                RepositoryId: repository.Id!,
+                Branch: branch,
+                Sha: evt.After,
+                Message: evt.HeadCommit.Message,
+                AuthoredAt: authoredAt)), ct);
     }
 
     private async Task OnPullRequest(PullRequestEvent evt, CancellationToken ct)
@@ -324,162 +320,54 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         // PRs keep theirs — they may reopen, and nothing about them is final.
         if (evt.Action == "closed" && evt.PullRequest.Merged == true)
         {
-            await messageBus.BroadcastAsync(new Ingestion.DeletePullRequestBuildsMessage
-            {
-                RepositoryGitHubId = evt.Repository.Id,
-                PullRequestNumber = (int)evt.Number,
-            }, ct);
+            // ⚠️ Loaded, never upserted. A close is not a reason to mint documents, and upserting
+            // here would rewrite Repository.Account from the payload — which silently re-points a
+            // repository at a different account and loses the delete-branch policy it was
+            // inheriting. An unknown repository has nothing to retain and nothing to delete.
+            var mergedRepository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, evt.Repository.Id), ct);
+            if (mergedRepository is null) return;
 
-            // After the broadcast, not before: the retention message is in-process and cheap, and
-            // it should not wait behind a GitHub round-trip that may take seconds or fail.
-            await DeleteHeadBranchIfEnabled(evt, ct);
+            var head = evt.PullRequest.Head.Repo;
+            var @base = evt.PullRequest.Base.Repo;
+
+            await messageBus.BroadcastAsync(new ForgeWebhookMessage<PullRequestMerged>(
+                EForgeProvider.GitHub,
+                new PullRequestMerged(
+                    RepositoryId: mergedRepository.Id!,
+                    Number: (int)evt.Number,
+                    HeadRef: evt.PullRequest.Head.Ref,
+                    // Unknown counts as "from a fork". Declining to delete is recoverable;
+                    // deleting someone else's branch is not.
+                    HeadIsFromSameRepository: head is not null && @base is not null && head.Id == @base.Id)), ct);
             return;
         }
 
         if (evt.Action is not ("opened" or "synchronize" or "reopened")) return;
 
         var pr = evt.PullRequest;
-        var commit = await GetOrCreateCommit(evt.Repository.Id, pr.Head.Sha, ct);
-        commit.Branch = pr.Head.Ref;
-        commit.PullRequestNumber = (int)evt.Number;
-        commit.Message ??= pr.Title;
-        // The authoritative writer of the PR's target, for the same reason as
-        // ParentSha below: `synchronize` re-sends a moved base, and a retarget
-        // changes the ref outright, so a frozen first-seen value goes stale.
-        commit.PullRequestBaseRef = pr.Base.Ref;
-        commit.PullRequestBaseSha = pr.Base.Sha;
-        // The sole writer of ParentSha, and the only one that ever meant
-        // anything: the PR's base tip. Plain `=` rather than `??=` because
-        // GitHub re-sends `synchronize` with an updated base when the base
-        // branch advances, and freezing the first-seen base would quietly go
-        // stale; a moved head is a new document, so this never corrupts an
-        // earlier commit. Still only a hint for finding the PR — patch coverage
-        // resolves its own merge base at compute time.
-        commit.ParentSha = pr.Base.Sha;
+        var account = await GetOrCreateAccount(evt.Repository.Owner.Id, ct);
+        var repository = await UpsertRepository(evt.Repository.Id, evt.Repository.Name, evt.Repository.FullName, evt.Repository.Private, account, ct);
 
-        // Only on open/reopen: `synchronize` is already served by the finalize
-        // path, which edits the same comment with the real numbers. Broadcast
-        // rather than post from here, so an outage on GitHub's side cannot fail
-        // the webhook delivery and cost us the event.
-        if (evt.Action is "opened" or "reopened")
-        {
-            await messageBus.BroadcastAsync(new Feedback.OpenPullRequestCommentMessage
-            {
-                RepositoryGitHubId = evt.Repository.Id,
-                PullRequestNumber = (int)evt.Number,
-                HeadSha = pr.Head.Sha,
-                AuthorIsBot = pr.User?.Type is not null && pr.User.Type == Octokit.Webhooks.Models.UserType.Bot,
-            }, ct);
-        }
-    }
-
-    /// <summary>
-    /// Deletes a merged pull request's head branch, when the repository opted in.
-    /// </summary>
-    /// <remarks>
-    /// Ported from the WebhooksDemo recipient this replaced, with the two changes that made the
-    /// setting safe on a multi-tenant server: it is gated on a per-repository opt-in instead of
-    /// applying bot-wide, and it fires only for merged pull requests instead of every close.
-    /// <para>
-    /// Deliberately not on the project-automation path. A board and a repository are siblings, so
-    /// gating this on a board would have made it unreachable for an owner with no board, inert for
-    /// a board carrying no pull-request rule, and duplicated for an owner with two. See C16.
-    /// </para>
-    /// <para>
-    /// Never throws. Deleting the branch is a courtesy after the merge has already landed; failing
-    /// the webhook delivery over it would cost us the event and change nothing about the merge.
-    /// </para>
-    /// </remarks>
-    private async Task DeleteHeadBranchIfEnabled(PullRequestEvent evt, CancellationToken ct)
-    {
-        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(evt.Repository!.Id), ct);
-        if (repository is null)
-            return;
-
-        // The account is loaded only when the repository defers to it — a point load on a known
-        // document id, never a query, and skipped entirely when the repository has decided for
-        // itself. Deliberately not GetOrCreateAccount: that stores on a miss, and a read path must
-        // not mint documents.
-        var account = repository.DeleteBranchOnPrClose is EDeleteBranchPolicy.Inherit
-            ? await session.LoadAsync<Account>(
-                repository.Account ?? Account.DocumentId(evt.Repository.Owner.Id), ct)
-            : null;
-
-        if (!Repository.ResolveDeleteBranchOnPrClose(repository, account))
-            return;
-
-        var pr = evt.PullRequest;
-        var headRepo = pr.Head.Repo;
-        var baseRepo = pr.Base.Repo;
-
-        // A fork's head branch lives in a repository we were never given write access to, and that
-        // its own owner still wants. The opt-in is on the base repository and cannot speak for it.
-        if (headRepo is null || baseRepo is null || headRepo.Id != baseRepo.Id)
-            return;
-
-        var installationId = evt.Installation?.Id;
-        if (installationId is null)
-        {
-            logger.LogWarning("No installation on pull_request for {FullName}; cannot delete branch {Ref}.",
-                baseRepo.FullName, pr.Head.Ref);
-            return;
-        }
-
-        var owner = baseRepo.Owner.Login;
-        var name = baseRepo.Name;
-        try
-        {
-            var client = await installationService.CreateInstallationClientAsync(installationId.Value);
-            await client.Git.Reference.Delete(owner, name, $"heads/{pr.Head.Ref}");
-            logger.LogInformation("Deleted branch {Owner}/{Repo}:{Ref} after PR #{Number} merged.",
-                owner, name, pr.Head.Ref, pr.Number);
-        }
-        catch (Octokit.ApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
-        {
-            // The installation cannot write refs. Almost always a `contents` permission that was
-            // raised after the installation was created and never accepted -- in which case the
-            // feature is inert everywhere, not just here, and looks enabled in the UI.
-            //
-            // Caught on StatusCode rather than on ForbiddenException because Octokit raises a bare
-            // ApiException for some 403s; PullRequestCommentPublisher catches the same way, for the
-            // same reason. Logged distinctly because the catch-all below made "not permitted" look
-            // identical to a transient fault.
-            logger.LogError(ex,
-                "Not permitted to delete branch {Owner}/{Repo}:{Ref} for PR #{Number}. The GitHub App "
-                + "installation is missing `contents: write` -- a raised permission must be accepted "
-                + "per installation before branch deletion can work.",
-                owner, name, pr.Head.Ref, pr.Number);
-        }
-        catch (Octokit.NotFoundException)
-        {
-            // Usually a race with GitHub's own delete_branch_on_merge, or a hand deletion -- the
-            // intended state is reached either way, so that is information rather than a failure.
-            //
-            // ⚠️ But not always: GitHub answers 404 rather than 403 for some refs a token may not
-            // write, so this arm can also be a permission failure wearing the wrong status. The
-            // message says both, because logging "already gone" at Information for a permission
-            // problem is how a dead feature looks healthy.
-            logger.LogInformation(
-                "Branch {Owner}/{Repo}:{Ref} was already gone for PR #{Number} -- or the installation "
-                + "may not be permitted to see it (GitHub answers 404 for some refs a token cannot write).",
-                owner, name, pr.Head.Ref, pr.Number);
-        }
-        catch (Octokit.ApiValidationException ex)
-        {
-            // 422 is normally a protected branch. Retrying would fail identically every time.
-            logger.LogWarning(ex, "Refused to delete branch {Owner}/{Repo}:{Ref} for PR #{Number} (likely protected).",
-                owner, name, pr.Head.Ref, pr.Number);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to delete branch {Owner}/{Repo}:{Ref} for PR #{Number}.",
-                owner, name, pr.Head.Ref, pr.Number);
-        }
+        // The three actions collapse to one neutral event because the app does the same thing for
+        // all three; only "was this the first open?" survives the collapse, because exactly one
+        // consumer — the pending coverage comment — needs it.
+        await messageBus.BroadcastAsync(new ForgeWebhookMessage<PullRequestUpdated>(
+            EForgeProvider.GitHub,
+            new PullRequestUpdated(
+                RepositoryId: repository.Id!,
+                Number: (int)evt.Number,
+                HeadSha: pr.Head.Sha,
+                HeadRef: pr.Head.Ref,
+                BaseRef: pr.Base.Ref,
+                BaseSha: pr.Base.Sha,
+                Title: pr.Title,
+                IsFirstOpen: evt.Action is "opened" or "reopened",
+                AuthorIsBot: pr.User?.Type is not null && pr.User.Type == Octokit.Webhooks.Models.UserType.Bot)), ct);
     }
 
     private async Task<Account> GetOrCreateAccount(long gitHubId, CancellationToken ct)
     {
-        var id = Account.DocumentId(gitHubId);
+        var id = Account.DocumentId(EForgeProvider.GitHub, gitHubId);
         var account = await session.LoadAsync<Account>(id, ct);
         if (account is null)
         {
@@ -491,7 +379,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
 
     private async Task<Repository> UpsertRepository(long gitHubId, string name, string fullName, bool isPrivate, Account account, CancellationToken ct)
     {
-        var id = Repository.DocumentId(gitHubId);
+        var id = Repository.DocumentId(EForgeProvider.GitHub, gitHubId);
         var repository = await session.LoadAsync<Repository>(id, ct);
         if (repository is null)
         {
@@ -514,11 +402,11 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         if (items.Count == 0) return;
 
         var loaded = await session.LoadAsync<Repository>(
-            items.Select(r => Repository.DocumentId(r.GitHubId)), ct);
+            items.Select(r => Repository.DocumentId(EForgeProvider.GitHub, r.GitHubId)), ct);
 
         foreach (var item in items)
         {
-            var id = Repository.DocumentId(item.GitHubId);
+            var id = Repository.DocumentId(EForgeProvider.GitHub, item.GitHubId);
             var repository = loaded.GetValueOrDefault(id);
             if (repository is null)
             {
@@ -591,26 +479,14 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
     /// already recorded it. Capped, because a repository renamed often would otherwise grow an
     /// unbounded array inside an index.
     /// </summary>
-    private static void RememberFullName(Repository? repository, string newFullName)
-    {
-        if (repository is null) return;
-
-        var previous = repository.FullName;
-        if (string.IsNullOrEmpty(previous) || previous == newFullName) return;
-        if (repository.PreviousFullNames.Contains(previous, StringComparer.OrdinalIgnoreCase)) return;
-
-        repository.PreviousFullNames.Add(previous);
-        if (repository.PreviousFullNames.Count > MaxPreviousFullNames)
-            repository.PreviousFullNames.RemoveAt(0);
-    }
 
     private async Task<Commit> GetOrCreateCommit(long repoGitHubId, string sha, CancellationToken ct)
     {
-        var id = Commit.DocumentId(repoGitHubId, sha);
+        var id = Commit.DocumentId(EForgeProvider.GitHub, repoGitHubId, sha);
         var commit = await session.LoadAsync<Commit>(id, ct);
         if (commit is null)
         {
-            commit = new Commit { Sha = sha, Repository = Repository.DocumentId(repoGitHubId), FirstSeenAtUtc = DateTimeOffset.UtcNow };
+            commit = new Commit { Sha = sha, Repository = Repository.DocumentId(EForgeProvider.GitHub, repoGitHubId), FirstSeenAtUtc = DateTimeOffset.UtcNow };
             await session.StoreAsync(commit, id, ct);
         }
         return commit;

@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using CodeCoverage.Tests._Infrastructure;
 using Raven.Client.Documents;
@@ -133,7 +134,7 @@ public class UploadActionWindowsPathsTests : CoverageRavenTest
     /// </summary>
     private static async Task AssertFileMatchedAndCounted(IDocumentStore store)
     {
-        var buildId = Build.DocumentId(RepoId, Sha, RunId, 1);
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, RepoId, Sha, RunId, 1);
         var deadline = DateTime.UtcNow.AddSeconds(30);
         Build? build = null;
 

@@ -32,16 +32,21 @@ public static class RepositoryVisibility
     /// on when they evaluate this same expression against one loaded document.
     /// </para>
     /// </summary>
-    public static Expression<Func<Repository, bool>> Filter(string[] allowedOwners)
-        => repository => !repository.IsPrivate || repository.OwnerLogin.In(allowedOwners);
+    public static Expression<Func<Repository, bool>> Filter(string[] allowedOwnerKeys)
+        => repository => !repository.IsPrivate || repository.OwnerKey.In(allowedOwnerKeys);
 
     /// <summary>
     /// The same rule for one already-loaded repository, so an imperative caller
     /// cannot drift from the query one.
     /// </summary>
-    public static bool IsVisible(Repository repository, string[] allowedOwners)
+    /// <remarks>
+    /// ⚠️ Compares <see cref="Repository.OwnerKey"/>, not <c>OwnerLogin</c>. A bare login unions
+    /// forges — a GitLab <c>mintplayer</c> would see the GitHub <c>mintplayer</c>'s private
+    /// repositories — and the failure grants access, so nothing about it is visible.
+    /// </remarks>
+    public static bool IsVisible(Repository repository, string[] allowedOwnerKeys)
         => !repository.IsPrivate
-            || allowedOwners.Contains(repository.OwnerLogin, StringComparer.OrdinalIgnoreCase);
+            || allowedOwnerKeys.Contains(repository.OwnerKey, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// The rule for <em>enumerating</em> repositories, as opposed to resolving one by name.
@@ -73,9 +78,9 @@ public static class RepositoryVisibility
     /// which is what they are.
     /// </para>
     /// </summary>
-    public static Expression<Func<Repository, bool>> ListingFilter(string[] allowedOwners)
+    public static Expression<Func<Repository, bool>> ListingFilter(string[] allowedOwnerKeys)
         => repository => (repository.Connection != RepositoryConnection.Disconnected && !repository.IsPrivate)
-            || repository.OwnerLogin.In(allowedOwners);
+            || repository.OwnerKey.In(allowedOwnerKeys);
 
     /// <summary>
     /// <see cref="ListingFilter"/> for one already-loaded repository. Same negation, for the same

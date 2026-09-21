@@ -8,8 +8,15 @@ namespace MintPlayer.Spark.E2E.Tests.Security;
 /// <summary>
 /// L-3 — demo apps must ship a rate limiter. This test hammers an anonymous endpoint and
 /// expects at least one 429 response. It intentionally fires sequential requests to keep
-/// the assertion deterministic across CI environments; the limiter's threshold should be
-/// low enough that a 200-request burst crosses it.
+/// the assertion deterministic across CI environments.
+/// <para>
+/// ⚠️ The burst is sized from <see cref="FleetTestHost.RateLimitPermits"/>, <b>not</b> from a
+/// literal. The E2E host raises the budget so that 88 serialized tests stop competing for a
+/// 150-request window, and a hard-coded burst would then quietly stop reaching the limit — this
+/// test would pass by never proving anything, which is the failure mode it exists to prevent.
+/// Sizing it from the configured value means changing the budget either keeps this honest or
+/// makes it fail loudly.
+/// </para>
 /// </summary>
 [Collection(FleetE2ECollection.Name)]
 public class RateLimitTests
@@ -24,26 +31,38 @@ public class RateLimitTests
 
         // GetCurrentUserAsync hits /spark/auth/me, same target as the original test. On 429,
         // the client throws SparkClientException; we break as soon as we see one.
+        // Enough to cross the configured budget with margin, whatever that budget is.
+        var burst = FleetTestHost.RateLimitPermits + 50;
+
         var saw429 = false;
-        for (var i = 0; i < 200 && !saw429; i++)
+        try
         {
-            try
+            for (var i = 0; i < burst && !saw429; i++)
             {
-                await client.GetCurrentUserAsync();
+                try
+                {
+                    await client.GetCurrentUserAsync();
+                }
+                catch (SparkClientException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
+                {
+                    saw429 = true;
+                }
             }
-            catch (SparkClientException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
-            {
-                saw429 = true;
-            }
+
+            saw429.Should().BeTrue(
+                $"a rapid burst of {burst} anonymous requests to /spark/auth/me should cross the "
+                + $"configured limit of {FleetTestHost.RateLimitPermits}");
         }
-
-        saw429.Should().BeTrue(
-            "a rapid burst of 200 anonymous requests to /spark/auth/me should hit the rate limiter");
-
-        // Fleet's rate limiter is a fixed window partitioned by IP. Every test in this
-        // collection shares 127.0.0.1 as its partition key, so leaving the bucket saturated
-        // would cause the next test to inherit our 429 state. Wait slightly longer than the
-        // configured 10 s window so the bucket rolls over before the next test runs.
-        await Task.Delay(TimeSpan.FromSeconds(11));
+        finally
+        {
+            // Fleet's rate limiter is a fixed window partitioned by IP, and every test in this
+            // collection shares 127.0.0.1 as its partition key — so leaving the bucket saturated
+            // makes the next test inherit our 429s.
+            //
+            // ⚠️ In a `finally`, which it was not. The drain used to sit after the assertion, so a
+            // FAILING run — the one that leaves the bucket most saturated — was exactly the run
+            // that skipped the cooldown, converting one failure into a cascade of unrelated ones.
+            await Task.Delay(TimeSpan.FromSeconds(11));
+        }
     }
 }

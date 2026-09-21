@@ -1,11 +1,11 @@
 using CodeCoverage.Badges;
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 using CodeCoverage.Ingestion;
 using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Webhooks.GitHub.Services;
-using Octokit;
 using Raven.Client.Documents.Session;
 
 namespace CodeCoverage.Feedback;
@@ -23,9 +23,8 @@ public partial class PublishFeedbackRecipient : IRecipient<PublishFeedbackMessag
 {
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IBaseResolver baseResolver;
-    [Inject] private readonly IGitHubInstallationService installationService;
-    [Inject] private readonly IGitHubContentService contentService;
-    [Inject] private readonly IPullRequestCommentPublisher commentPublisher;
+    [Inject] private readonly IForgeIntegrationResolver forges;
+
     [Inject] private readonly IConfiguration configuration;
     [Inject] private readonly ILogger<PublishFeedbackRecipient> logger;
 
@@ -44,13 +43,18 @@ public partial class PublishFeedbackRecipient : IRecipient<PublishFeedbackMessag
 
         var feedback = build.Feedback ??= new BuildFeedback();
 
-        long? installationId = null;
-        if (repository.Account is not null)
-            installationId = (await session.LoadAsync<Entities.Account>(repository.Account, cancellationToken))?.InstallationId;
-        if (installationId is null)
+        // Selected from the repository, not chosen here: this method publishes to whichever
+        // forge owns the repository and never learns which one that is.
+        var forge = forges.For(repository);
+
+        // The forge supplies the reason, so this stays true whichever provider the repository is on
+        // — the message still names the App for a GitHub repository, without this method knowing
+        // that GitHub is what it is talking to.
+        var access = await forge.CheckAccessAsync(repository, cancellationToken);
+        if (!access.Available)
         {
             feedback.State = "Unavailable";
-            feedback.Error = "No GitHub App installation for this repository.";
+            feedback.Error = access.UnavailableReason;
             feedback.NextAttemptAtUtc = null;
             await SyncAndSave(build, feedback, cancellationToken);
             return;
@@ -61,7 +65,7 @@ public partial class PublishFeedbackRecipient : IRecipient<PublishFeedbackMessag
         // Policy from the base ref, so a PR can't rewrite the gate judging it.
         var ymlRef = comparison.Base.ResolvedSha ?? repository.DefaultBranch;
         var yml = ymlRef is null ? null
-            : await contentService.GetFileContentAsync(repository, installationId, ymlRef, CoverageYml.FileName, cancellationToken);
+            : await forge.GetFileContentAsync(repository, ymlRef, CoverageYml.FileName, cancellationToken);
         var gate = CoverageYml.Merge(repository.Gate ?? new GateSettings(), yml, out var ymlError);
         build.GateSnapshot = gate;
 
@@ -71,19 +75,20 @@ public partial class PublishFeedbackRecipient : IRecipient<PublishFeedbackMessag
 
         try
         {
-            var client = await installationService.CreateInstallationClientAsync(installationId.Value);
-            feedback.ProjectCheckRunId = await PostAsync(client, repository, commit.Sha, "coverage/project", project, feedback.ProjectCheckRunId);
-            feedback.PatchCheckRunId = await PostAsync(client, repository, commit.Sha, "coverage/patch", patch, feedback.PatchCheckRunId);
+            feedback.ProjectCheckRunId = await forge.PublishStatusAsync(
+                repository, commit.Sha, "coverage/project", ToVerdict(project), feedback.ProjectCheckRunId, cancellationToken);
+            feedback.PatchCheckRunId = await forge.PublishStatusAsync(
+                repository, commit.Sha, "coverage/patch", ToVerdict(patch), feedback.PatchCheckRunId, cancellationToken);
 
             feedback.State = "Posted";
             feedback.Error = ymlError;
             feedback.NextAttemptAtUtc = null;
             logger.LogInformation("Posted check-runs for {BuildId}: project={Project}, patch={Patch}", build.Id, project.Conclusion, patch.Conclusion);
         }
-        catch (Octokit.ApiException ex) when (ex.StatusCode == System.Net.HttpStatusCode.Forbidden)
+        catch (ForgeAccessDeniedException ex)
         {
-            // Same reasoning as the comment publisher: an installation that has
-            // not accepted the raised permissions cannot be helped by retrying.
+            // A permission the forge will not grant: an installation that has not accepted the
+            // raised permissions cannot be helped by retrying.
             feedback.State = "Unavailable";
             feedback.Error = ex.Message;
             feedback.NextAttemptAtUtc = null;
@@ -121,7 +126,7 @@ public partial class PublishFeedbackRecipient : IRecipient<PublishFeedbackMessag
                     ? BadgePrSignature.Compute(configuration, repository.GitHubId, pullRequestNumber)
                     : null);
 
-            await commentPublisher.PublishAsync(repository, installationId.Value, pullRequestNumber, commit.Sha, body, cancellationToken);
+            await forge.PublishCommentAsync(repository, pullRequestNumber, commit.Sha, body, cancellationToken);
         }
     }
 
@@ -132,33 +137,22 @@ public partial class PublishFeedbackRecipient : IRecipient<PublishFeedbackMessag
         await session.SaveChangesAsync(cancellationToken);
     }
 
-    private static async Task<long> PostAsync(IGitHubClient client, Entities.Repository repository, string sha, string name, CheckVerdict verdict, long? existingId)
-    {
-        var conclusion = verdict.Conclusion switch
+    /// <summary>
+    /// Maps the gate's own verdict onto the provider-neutral one.
+    /// </summary>
+    /// <remarks>
+    /// The gate speaks in strings because that is what it stores; anything that is neither
+    /// "success" nor "failure" is a genuine absence of judgement and becomes
+    /// <see cref="EForgeOutcome.Neutral"/>. That default is deliberate and must not become
+    /// <see cref="EForgeOutcome.Success"/>: a gate that could not evaluate has not passed.
+    /// </remarks>
+    private static ForgeVerdict ToVerdict(CheckVerdict verdict) => new(
+        verdict.Conclusion switch
         {
-            "success" => CheckConclusion.Success,
-            "failure" => CheckConclusion.Failure,
-            _ => CheckConclusion.Neutral,
-        };
-        var output = new NewCheckRunOutput(verdict.Title, verdict.Summary);
-
-        if (existingId is { } id)
-        {
-            await client.Check.Run.Update(repository.OwnerLogin, repository.Name, id, new CheckRunUpdate
-            {
-                Status = CheckStatus.Completed,
-                Conclusion = conclusion,
-                Output = output,
-            });
-            return id;
-        }
-
-        var created = await client.Check.Run.Create(repository.OwnerLogin, repository.Name, new NewCheckRun(name, sha)
-        {
-            Status = CheckStatus.Completed,
-            Conclusion = conclusion,
-            Output = output,
-        });
-        return created.Id;
-    }
+            "success" => EForgeOutcome.Success,
+            "failure" => EForgeOutcome.Failure,
+            _ => EForgeOutcome.Neutral,
+        },
+        verdict.Title,
+        verdict.Summary);
 }

@@ -72,6 +72,72 @@ services:
       - "http://coverage-raven:8080/admin/license/activate"
     restart: "no"
 
+  # Outgoing mail only. The app hands a message to this container and returns; the
+  # container queues it and does the delivering.
+  #
+  # ⚠️ Why a container rather than the app talking SMTP itself: the send happens INSIDE
+  # the external-login callback, while somebody is waiting on an HTTP response. A handoff
+  # one hop away takes milliseconds and succeeds whether or not the receiving mail server
+  # is reachable, and a queue that retries for days is the difference between "delivered
+  # late" and "the link was never sent". Putting an internet round-trip and its timeouts
+  # in the middle of a sign-in is the thing being avoided.
+  #
+  # ⚠️ It is NOT a mail server in the inbound sense. No ports are published and it sits
+  # only on coverage-internal, so nothing outside this compose project can reach it —
+  # which is also what makes running it without authentication safe.
+  coverage-smtp:
+    image: boky/postfix:v4.3.0
+    environment:
+      # Which envelope senders are accepted. Anything else is refused rather than
+      # relayed, so a bug cannot turn this into an open relay for another domain.
+      - ALLOWED_SENDER_DOMAINS=${MAIL_SENDER_DOMAIN:-coverage.mintplayer.com}
+      # Announced in HELO and used in Message-ID. ⚠️ Must match the server's reverse DNS
+      # or a good share of receivers will refuse the mail outright — see README.
+      - HOSTNAME=${MAIL_HELO_HOSTNAME:-coverage.mintplayer.com}
+      # Empty = deliver straight to each recipient's MX, which needs outbound port 25.
+      # Set it to a provider's submission host to relay instead, which is the fallback if
+      # deliverability from this IP turns out to be poor.
+      - RELAYHOST=${MAIL_RELAY_HOST:-}
+      - RELAYHOST_USERNAME=${MAIL_RELAY_USERNAME:-}
+      - RELAYHOST_PASSWORD=${MAIL_RELAY_PASSWORD:-}
+      # The DKIM selector half of the DNS record; the key is mounted below.
+      - DKIM_SELECTOR=${MAIL_DKIM_SELECTOR:-mail}
+      # ⚠️ Send over IPv4 even though coverage.mintplayer.com has an AAAA. Postfix would
+      # otherwise prefer IPv6, and the large receivers — Outlook most of all — hold IPv6
+      # senders to a stricter standard, chiefly a valid PTR for the v6 address. Hetzner
+      # sets reverse DNS per address and the v6 one is not configured, so preferring IPv6
+      # would turn delivery into a coin flip that depends on which family the recipient
+      # publishes. SPF authorises both, so this is about reputation, not authorisation.
+      - POSTFIX_smtp_address_preference=ipv4
+    volumes:
+      # ⚠️ Close to mandatory. mintplayer.com publishes DMARC sp=reject, so mail from a
+      # subdomain that fails alignment is REJECTED rather than junked, and without DKIM
+      # the whole thing rests on SPF — which breaks the moment a recipient forwards the
+      # message. Both gotchas below were measured against this image, twice each:
+      #
+      #   1. The key must be FLAT: mail-dkim/<domain>.private. opendkim-genkey writes
+      #      <domain>/<selector>.private, and the image silently logs "Skipping DKIM"
+      #      and delivers UNSIGNED — which still succeeds on SPF, so the failure hides.
+      #   2. It must be owned by opendkim (101:104 in v4.3.0) on the HOST. The image
+      #      tries to chown what it cannot read, the read-only mount refuses, and the
+      #      container then exits rather than starting unsigned.
+      #
+      # Verify with opendkim-testkey; it prints "key OK" only when the private key and
+      # the published TXT record agree. See README "Outgoing mail".
+      - ./mail-dkim:/etc/opendkim/keys:ro
+      # Survives recreation, so a message queued during an outage is not lost when the
+      # stack is redeployed.
+      - smtp-queue:/var/spool/postfix
+    networks:
+      - coverage-internal
+    healthcheck:
+      test: ["CMD", "sh", "-c", "exec 3<>/dev/tcp/127.0.0.1/587"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: unless-stopped
+
   coverage-app:
     # Pull-only: no build block, so `docker compose up -d` on the VPS can
     # never fall back to building from source — deploys are pull + restart.
@@ -87,6 +153,10 @@ services:
     depends_on:
       coverage-raven:
         condition: service_healthy
+      # Started, not waited on: mail is not on the critical path for serving coverage, and
+      # a relay that is slow to come up must not hold back the whole deployment.
+      coverage-smtp:
+        condition: service_started
     environment:
       # Explicit: Program.cs derives the GitHub__{env}__* config prefix from
       # the environment name — anything else silently disables sign-in.
@@ -111,6 +181,17 @@ services:
       - GitHub__Production__ClientId=${GITHUB_APP_CLIENT_ID}
       - GitHub__Production__ClientSecret=${GITHUB_APP_CLIENT_SECRET}
       - GitHub__Production__PrivateKeyPath=/run/secrets/github-app.pem
+      # Outgoing mail. Unset Host disables it: Spark registers no transport of its own,
+      # so the app simply has no way to send, which is a supported state as long as
+      # ExternalLoginLinking is not ConfirmByEmail (startup refuses that combination
+      # rather than discarding confirmations silently).
+      - Coverage__Mail__Host=${MAIL_HOST:-coverage-smtp}
+      - Coverage__Mail__Port=${MAIL_PORT:-587}
+      - Coverage__Mail__FromAddress=${MAIL_FROM_ADDRESS:-}
+      - Coverage__Mail__FromName=${MAIL_FROM_NAME:-MintPlayer Coverage}
+      # Disabled | WhenSignedIn | ConfirmByEmail. Left at the Spark default (Disabled)
+      # until there is a second forge worth linking to.
+      - Spark__Auth__ExternalLoginLinking=${EXTERNAL_LOGIN_LINKING:-Disabled}
     volumes:
       # GitHub App private key, downloaded from the App settings page; see
       # .env.example for the expected location.
@@ -134,7 +215,17 @@ services:
       interval: 15s
       timeout: 5s
       retries: 8
-      start_period: 60s
+      # ⚠️ Raised from 60s for the M6 re-key, which runs at startup and blocks before the app
+      # listens. Measured on a restored production copy: ~80s to write the new ids across 224k
+      # documents, ~20s to delete the legacy ones, plus 708 attachment moves. This VPS is a
+      # shared-vCPU box, so the budget is deliberately several times the measured figure — the
+      # failure this prevents is a container marked unhealthy while doing precisely what the
+      # deploy asked of it, which reads as a broken release.
+      #
+      # It is a *start* period, not a timeout: a healthy app is marked healthy at the first
+      # successful check, so an over-generous value costs nothing on an ordinary deploy where no
+      # migration is pending.
+      start_period: 600s
     networks:
       - web
       - coverage-internal
@@ -142,6 +233,7 @@ services:
 
 volumes:
   raven-data:
+  smtp-queue:
 
 networks:
   web:

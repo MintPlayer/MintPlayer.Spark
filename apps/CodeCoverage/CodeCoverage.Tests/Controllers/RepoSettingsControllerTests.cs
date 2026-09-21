@@ -5,6 +5,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 using Xunit;
+using CodeCoverage.Forge;
+using NSubstitute;
 
 namespace CodeCoverage.Tests.Controllers;
 
@@ -32,6 +34,14 @@ public class RepoSettingsControllerTests : CoverageRavenTest
         services.AddSingleton(session);
         services.AddSingleton<CodeCoverage.Services.IRepositoryResolver>(new TestRepositoryResolver(session));
         services.AddSingleton<CodeCoverage.Services.IGitHubAccessService>(access);
+        // The real adapter and facade, so the authorization call this fixture counts still
+        // happens where production would make it. The read/write halves are substituted
+        // because settings never touch them.
+        services.AddScoped<CodeCoverage.Services.IForgeAccessService, CodeCoverage.Services.GitHubForgeAccessService>();
+        services.AddSingleton(Substitute.For<CodeCoverage.Services.IForgeClient>());
+        services.AddSingleton(Substitute.For<CodeCoverage.Feedback.IForgeFeedbackPublisher>());
+        services.AddScoped<IForgeIntegration, CodeCoverage.Services.GitHubForgeIntegration>();
+        services.AddScoped<IForgeIntegrationResolver>(sp => new SingleForgeResolver(sp.GetRequiredService<IForgeIntegration>()));
         services.AddScoped<RepoSettingsController>();
 
         return services.BuildServiceProvider().GetRequiredService<RepoSettingsController>();
@@ -46,7 +56,7 @@ public class RepoSettingsControllerTests : CoverageRavenTest
             Name = Name,
             FullName = $"{Owner}/{Name}",
             OwnerLogin = Owner,
-        }, Repository.DocumentId(RepoId));
+        }, Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         await session.SaveChangesAsync();
     }
 
@@ -64,7 +74,7 @@ public class RepoSettingsControllerTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var controller = CreateController(session, new TestGitHubAccessService("someone-else"));
 
-        Assert.IsType<NotFoundResult>((await controller.RotateBadgeToken(Owner, Name, default)).Result);
+        Assert.IsType<NotFoundResult>((await controller.RotateBadgeToken("github", Owner, Name, default)).Result);
     }
 
     [Fact]
@@ -79,10 +89,10 @@ public class RepoSettingsControllerTests : CoverageRavenTest
         using (var session = store.OpenAsyncSession())
         {
             var controller = CreateController(session, new TestGitHubAccessService(Owner));
-            Assert.IsType<OkObjectResult>((await controller.RotateBadgeToken(Owner, Name, default)).Result);
+            Assert.IsType<OkObjectResult>((await controller.RotateBadgeToken("github", Owner, Name, default)).Result);
 
             using var read = store.OpenAsyncSession();
-            first = (await read.LoadAsync<Repository>(Repository.DocumentId(RepoId)))!.BadgeToken;
+            first = (await read.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!.BadgeToken;
         }
 
         Assert.False(string.IsNullOrWhiteSpace(first));
@@ -90,10 +100,10 @@ public class RepoSettingsControllerTests : CoverageRavenTest
         using (var session = store.OpenAsyncSession())
         {
             var controller = CreateController(session, new TestGitHubAccessService(Owner));
-            await controller.RotateBadgeToken(Owner, Name, default);
+            await controller.RotateBadgeToken("github", Owner, Name, default);
 
             using var read = store.OpenAsyncSession();
-            second = (await read.LoadAsync<Repository>(Repository.DocumentId(RepoId)))!.BadgeToken;
+            second = (await read.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!.BadgeToken;
         }
 
         // Rotation must actually rotate: the previous badge URL has to stop working, which is the

@@ -296,10 +296,96 @@ public class SparkBuilderRateLimiterExtensionsTests
         return codes;
     }
 
+    // ── Configuration binding (Spark:RateLimiter) ────────────────────────────────────────────────
+
+    /// <summary>
+    /// The budget binds from <c>Spark:RateLimiter</c>, so an operator can retune it per environment
+    /// without a redeploy — and so a test host can raise it without disabling the limiter.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ This path exists because <c>issue_265_PRD.md</c> D5 deferred it, and D5's stated objection
+    /// was "a second, untested path to the same setting". These three tests are the answer to that
+    /// objection; deleting them puts the objection back.
+    /// </remarks>
+    [Fact]
+    public void AddRateLimiter_binds_the_budget_from_configuration()
+    {
+        var captured = new SparkRateLimiterOptions();
+        var builder = new TestBuilder(new Dictionary<string, string?>
+        {
+            ["Spark:RateLimiter:PermitLimit"] = "1000",
+            ["Spark:RateLimiter:Window"] = "00:00:30",
+        });
+
+        builder.AddRateLimiter(captured.CopyFrom);
+
+        captured.PermitLimit.Should().Be(1000);
+        captured.Window.Should().Be(TimeSpan.FromSeconds(30));
+    }
+
+    /// <summary>
+    /// Code wins over configuration, matching <c>AddReplication</c> and <c>AddMessaging</c>.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ The consequence is that an app which assigns a value in its configurator cannot be
+    /// overridden from appsettings, and the override fails <b>silently</b>. Fleet passes
+    /// <c>_ => { }</c> precisely so the E2E budget survives; adding an assignment there would revert
+    /// the suite to the default budget with nothing announcing it. Pinned here so that change breaks
+    /// a test instead.
+    /// </remarks>
+    [Fact]
+    public void A_code_configurator_wins_over_configuration()
+    {
+        var captured = new SparkRateLimiterOptions();
+        var builder = new TestBuilder(new Dictionary<string, string?>
+        {
+            ["Spark:RateLimiter:PermitLimit"] = "1000",
+        });
+
+        builder.AddRateLimiter(options =>
+        {
+            options.PermitLimit = 7;
+            captured.CopyFrom(options);
+        });
+
+        captured.PermitLimit.Should().Be(7, "the configurator runs after the binder");
+    }
+
+    /// <summary>
+    /// A builder with no configuration at all still works — the parameterless <c>AddSpark</c>
+    /// overload constructs one, so binding has to be null-tolerant.
+    /// </summary>
+    [Fact]
+    public void Binding_is_skipped_when_the_builder_carries_no_configuration()
+    {
+        var captured = new SparkRateLimiterOptions();
+        var builder = new TestBuilder();
+
+        builder.AddRateLimiter(captured.CopyFrom);
+
+        captured.PermitLimit.Should().Be(150, "the documented default survives a null configuration");
+    }
+
     private sealed class TestBuilder : ISparkBuilder
     {
+        public TestBuilder(IDictionary<string, string?>? settings = null)
+            => Configuration = settings is null
+                ? null
+                : new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+
         public IServiceCollection Services { get; } = new ServiceCollection();
-        public IConfiguration? Configuration => null;
+        public IConfiguration? Configuration { get; }
         public SparkModuleRegistry Registry { get; } = new();
+    }
+}
+
+file static class SparkRateLimiterOptionsTestExtensions
+{
+    /// <summary>Copies the values under test out of the live options object.</summary>
+    public static void CopyFrom(this SparkRateLimiterOptions target, SparkRateLimiterOptions source)
+    {
+        target.PermitLimit = source.PermitLimit;
+        target.Window = source.Window;
+        target.PathPrefixes = source.PathPrefixes;
     }
 }

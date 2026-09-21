@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using CodeCoverage.Services;
 using Raven.Client.Documents;
@@ -74,14 +75,14 @@ public class RepositoryVisibilityTests : CoverageRavenTest
 
         using (var session = store.OpenAsyncSession())
         {
-            await session.StoreAsync(Repo(1, "acme", "widgets"), Repository.DocumentId(1));
+            await session.StoreAsync(Repo(1, "acme", "widgets"), Repository.DocumentId(EForgeProvider.GitHub, 1));
             await session.SaveChangesAsync();
         }
 
         // Actually remove the property, rather than setting it to null: "absent" and "null" are
         // different things to RavenDB, and "absent" is what a pre-existing document has.
         store.Operations.Send(new PatchOperation(
-            Repository.DocumentId(1),
+            Repository.DocumentId(EForgeProvider.GitHub, 1),
             changeVector: null,
             new PatchRequest { Script = "delete this.Connection;" }));
 

@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 
 namespace CodeCoverage.Services;
@@ -33,5 +34,10 @@ public interface IRepositoryResolver
     /// A live full name always wins over a remembered one, so a new repository occupying an old
     /// name shadows the alias rather than colliding with it.
     /// </summary>
-    Task<RepositoryResolution> ResolveAsync(string owner, string name, CancellationToken cancellationToken = default);
+    /// <param name="provider">
+    /// The forge the URL named. An <c>owner/name</c> pair is only unique within a forge, so this is
+    /// required rather than defaulted.
+    /// </param>
+    Task<RepositoryResolution> ResolveAsync(
+        EForgeProvider provider, string owner, string name, CancellationToken cancellationToken = default);
 }

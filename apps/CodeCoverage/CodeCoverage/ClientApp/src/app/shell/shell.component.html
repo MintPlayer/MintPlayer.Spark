@@ -2,9 +2,9 @@
   <!--
     Replaces the slot's default (<spark-language-selector/>), so the language
     selector is re-rendered here explicitly — omitting it would silently drop it.
-    The GitHub auth block stays app-owned rather than <spark-auth-bar>: the popup
-    handshake, the popup→redirect fallback and the four-code error map all live in
-    GitHubLoginService, and none of that is expressible through the generic bar.
+    The sign-in control is a plain link to /sign-in, which renders one button per provider
+    the server reports. It is app-owned only because this topbar slot is; there is nothing
+    forge-specific left in it.
   -->
   <div *sparkShellTopbarEnd class="d-flex align-items-center gap-2">
     @if (lang.languages() | keyvalue; as langs) {
@@ -21,9 +21,9 @@
       <span class="text-light">{{ authService.user()?.userName }}</span>
       <button class="btn btn-outline-light btn-sm" (click)="logout()">{{ 'auth.logout' | t }}</button>
     } @else {
-      <button class="btn btn-outline-light btn-sm" (click)="loginWithGitHub()">
-        <i class="bi bi-github"></i> {{ 'app.signInWithGitHub' | t }}
-      </button>
+      <a class="btn btn-outline-light btn-sm" routerLink="/sign-in">
+        {{ 'app.signIn' | t }}
+      </a>
     }
   </div>
 

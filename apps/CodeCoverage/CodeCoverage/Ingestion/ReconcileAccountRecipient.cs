@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;
@@ -15,7 +16,7 @@ public partial class ReconcileAccountRecipient : IRecipient<ReconcileAccountMess
 
     public async Task HandleAsync(ReconcileAccountMessage message, CancellationToken cancellationToken = default)
     {
-        var account = await session.LoadAsync<Account>(Account.DocumentId(message.AccountGitHubId), cancellationToken);
+        var account = await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, message.AccountGitHubId), cancellationToken);
         if (account is null) return;
 
         // No installation means there is nothing to ask. The account's repositories were already

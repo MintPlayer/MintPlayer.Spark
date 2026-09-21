@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;
@@ -28,13 +29,17 @@ public partial class BuildActions : DefaultPersistentObjectActions<Build>
         return visible.Contains(repoId, StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <remarks>
+    /// ⚠️ This used to parse <c>parts[1]</c> as a <c>long</c> directly. With the forge segment that
+    /// reads <c>"github"</c>, the parse fails, this returns null, and
+    /// <see cref="IsAllowedAsync"/> denies <em>every build in the system</em> — silently, because
+    /// it fails closed and the grid simply goes blank. The shape-aware parse lives on
+    /// <see cref="Commit.TryParseRepository"/> so the id format has one reader.
+    /// </remarks>
     private static string? RepositoryIdFromCommitId(string? commitId)
-    {
-        var parts = commitId?.Split('/');
-        if (parts is not { Length: >= 3 } || !long.TryParse(parts[1], out var repoGitHubId))
-            return null;
-        return Repository.DocumentId(repoGitHubId);
-    }
+        => Commit.TryParseRepository(commitId, out var provider, out var repositoryId)
+            ? Repository.DocumentId(provider, repositoryId)
+            : null;
 
     public override IReadOnlyCollection<string>? GetDefaultIncludes() => [nameof(Build.Commit)];
 

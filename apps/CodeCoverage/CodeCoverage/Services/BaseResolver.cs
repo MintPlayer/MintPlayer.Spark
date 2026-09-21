@@ -1,4 +1,5 @@
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 using CodeCoverage.Indexes;
 using MintPlayer.SourceGenerators.Attributes;
 using Raven.Client.Documents;
@@ -11,7 +12,7 @@ namespace CodeCoverage.Services;
 public partial class BaseResolver : IBaseResolver
 {
     [Inject] private readonly IAsyncDocumentSession session;
-    [Inject] private readonly IGitHubDiffService diffService;
+    [Inject] private readonly IForgeIntegrationResolver forges;
 
     // Generous enough to step over a run of cancelled/uncovered default-branch
     // commits, small enough that a repo with no usable base at all answers fast.
@@ -23,7 +24,7 @@ public partial class BaseResolver : IBaseResolver
 
         if (requested is not null && !string.Equals(requested, head.Sha, StringComparison.OrdinalIgnoreCase))
         {
-            var declared = await session.LoadAsync<Commit>(Entities.Commit.DocumentId(repository.GitHubId, requested), cancellationToken);
+            var declared = await session.LoadAsync<Commit>(Entities.Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, requested), cancellationToken);
             if (await UsableBuildIdAsync(declared, cancellationToken) is { } declaredBuildId)
                 return new ResolvedBase(requested, declared!.Sha, ResolvedBase.Exact, declaredBuildId, declared.Coverage, declared.Branch);
         }
@@ -33,17 +34,13 @@ public partial class BaseResolver : IBaseResolver
         // the call fails — the walk below is the answer to both.
         if (repository.DefaultBranch is not null)
         {
-            long? installationId = null;
-            if (repository.Account is not null)
-                installationId = (await session.LoadAsync<Account>(repository.Account, cancellationToken))?.InstallationId;
-
-            var comparison = await diffService.CompareAsync(repository, installationId, repository.DefaultBranch, head.Sha, cancellationToken);
+            var comparison = await forges.For(repository).CompareAsync(repository, repository.DefaultBranch, head.Sha, cancellationToken);
             var mergeBaseSha = comparison?.MergeBaseSha;
             if (mergeBaseSha is not null
                 && !string.Equals(mergeBaseSha, head.Sha, StringComparison.OrdinalIgnoreCase)
                 && !string.Equals(mergeBaseSha, requested, StringComparison.OrdinalIgnoreCase))
             {
-                var mergeBase = await session.LoadAsync<Commit>(Entities.Commit.DocumentId(repository.GitHubId, mergeBaseSha), cancellationToken);
+                var mergeBase = await session.LoadAsync<Commit>(Entities.Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, mergeBaseSha), cancellationToken);
                 if (await UsableBuildIdAsync(mergeBase, cancellationToken) is { } mergeBuildId)
                     return new ResolvedBase(requested, mergeBase!.Sha, ResolvedBase.MergeBase, mergeBuildId, mergeBase.Coverage, mergeBase.Branch);
             }

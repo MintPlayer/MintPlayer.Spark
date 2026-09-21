@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using System.Text.Json;
 using CodeCoverage.Entities;
 using Microsoft.Extensions.Caching.Memory;

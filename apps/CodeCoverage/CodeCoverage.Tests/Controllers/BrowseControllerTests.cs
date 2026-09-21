@@ -9,6 +9,7 @@ using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 using Raven.TestDriver;
 using Xunit;
+using CodeCoverage.Forge;
 
 namespace CodeCoverage.Tests.Controllers;
 
@@ -25,6 +26,9 @@ public class BrowseControllerTests : CoverageRavenTest
         var services = new ServiceCollection();
         services.AddSingleton(session);
         services.AddSingleton<IGitHubAccessService>(new ScriptedAccessService(new([], GitHubTokenState.Ok)));
+        var scriptedForge = ScriptedForge.From(new([], GitHubTokenState.Ok));
+        services.AddSingleton<IForgeIntegration>(scriptedForge);
+        services.AddSingleton<IForgeIntegrationResolver>(scriptedForge);
         services.AddSingleton<IGitHubContentService>(new NullContentService());
         services.AddSingleton(GitHubAuthTestFakes.TestConfiguration());
         services.AddScoped<CodeCoverage.Services.IRepositoryResolver>(sp =>
@@ -47,7 +51,7 @@ public class BrowseControllerTests : CoverageRavenTest
         using var store = GetDocumentStore();
         const long repoId = 1;
         const string sha = "79bc284939350991803acc84ced894ade844b9f0";
-        var buildId = Build.DocumentId(repoId, sha, runId: 42, runAttempt: 1);
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, repoId, sha, runId: 42, runAttempt: 1);
 
         using (var seed = store.OpenAsyncSession())
         {
@@ -58,12 +62,12 @@ public class BrowseControllerTests : CoverageRavenTest
                 FullName = "owner/repo",
                 OwnerLogin = "owner",
                 IsPrivate = false,
-            }, Repository.DocumentId(repoId));
-            await seed.StoreAsync(new Commit { Sha = sha, Repository = Repository.DocumentId(repoId) },
-                Commit.DocumentId(repoId, sha));
+            }, Repository.DocumentId(EForgeProvider.GitHub, repoId));
+            await seed.StoreAsync(new Commit { Sha = sha, Repository = Repository.DocumentId(EForgeProvider.GitHub, repoId) },
+                Commit.DocumentId(EForgeProvider.GitHub, repoId, sha));
             await seed.StoreAsync(new Build
             {
-                Commit = Commit.DocumentId(repoId, sha),
+                Commit = Commit.DocumentId(EForgeProvider.GitHub, repoId, sha),
                 CiRunId = 42,
                 CiRunAttempt = 1,
                 Status = "Finalized",
@@ -88,7 +92,7 @@ public class BrowseControllerTests : CoverageRavenTest
         WaitForIndexing(store); // ResolveVisibleRepository queries by FullName
 
         using var session = store.OpenAsyncSession();
-        var result = await CreateController(session).GetCommit("owner", "repo", sha, CancellationToken.None);
+        var result = await CreateController(session).GetCommit("github", "owner", "repo", sha, CancellationToken.None);
 
         var payload = JsonDocument.Parse(JsonSerializer.Serialize(((OkObjectResult)result.Result!).Value));
         var builds = payload.RootElement.GetProperty("Builds").EnumerateArray().ToList();
@@ -109,7 +113,7 @@ public class BrowseControllerTests : CoverageRavenTest
         using var store = GetDocumentStore();
         const long repoId = 2;
         const string sha = "aa11284939350991803acc84ced894ade844b9f0";
-        var buildId = Build.DocumentId(repoId, sha, runId: 7, runAttempt: 1);
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, repoId, sha, runId: 7, runAttempt: 1);
 
         using (var seed = store.OpenAsyncSession())
         {
@@ -120,13 +124,13 @@ public class BrowseControllerTests : CoverageRavenTest
                 FullName = "owner/repo",
                 OwnerLogin = "owner",
                 IsPrivate = false,
-            }, Repository.DocumentId(repoId));
+            }, Repository.DocumentId(EForgeProvider.GitHub, repoId));
             await seed.StoreAsync(new Commit
             {
                 Sha = sha,
-                Repository = Repository.DocumentId(repoId),
+                Repository = Repository.DocumentId(EForgeProvider.GitHub, repoId),
                 LatestBuildId = buildId,
-            }, Commit.DocumentId(repoId, sha));
+            }, Commit.DocumentId(EForgeProvider.GitHub, repoId, sha));
 
             var files = new List<TreeFileSummary>
             {
@@ -147,14 +151,14 @@ public class BrowseControllerTests : CoverageRavenTest
         var controller = CreateController(session);
 
         var root = (BrowseController.TreeResponse)((OkObjectResult)
-            (await controller.GetTree("owner", "repo", sha, path: null, flag: null, CancellationToken.None)).Result!).Value!;
+            (await controller.GetTree("github", "owner", "repo", sha, path: null, flag: null, CancellationToken.None)).Result!).Value!;
         root.UnmatchedFiles.Should().HaveCount(50, "the sample stays capped");
         root.UnmatchedTotal.Should().Be(314, "the real count must be disclosed");
 
         // Subfolder responses carry no unmatched info at all today; the total
         // must agree with the (empty) sample rather than leak the root count.
         var sub = (BrowseController.TreeResponse)((OkObjectResult)
-            (await controller.GetTree("owner", "repo", sha, path: "src", flag: null, CancellationToken.None)).Result!).Value!;
+            (await controller.GetTree("github", "owner", "repo", sha, path: "src", flag: null, CancellationToken.None)).Result!).Value!;
         sub.UnmatchedFiles.Should().BeEmpty();
         sub.UnmatchedTotal.Should().Be(0);
     }
@@ -177,7 +181,7 @@ public class BrowseControllerTests : CoverageRavenTest
                 OwnerLogin = "owner",
                 IsPrivate = false,
                 DefaultBranch = defaultBranch,
-            }, Repository.DocumentId(repoId));
+            }, Repository.DocumentId(EForgeProvider.GitHub, repoId));
 
             await StoreCoveredCommit(seed, repoId, "aaa", "master", 80, days: -2);
             await StoreCoveredCommit(seed, repoId, "bbb", "feature/x", 10, days: -1);
@@ -186,7 +190,7 @@ public class BrowseControllerTests : CoverageRavenTest
         WaitForIndexing(store);
 
         using var session = store.OpenAsyncSession();
-        var result = await CreateController(session).GetHistory($"owner", $"repo{repoId}", branch: null, take: 100, CancellationToken.None);
+        var result = await CreateController(session).GetHistory("github", $"owner", $"repo{repoId}", branch: null, take: 100, CancellationToken.None);
         return ((OkObjectResult)result.Result!).Value is IEnumerable<BrowseController.HistoryPoint> points
             ? points.ToList()
             : throw new InvalidOperationException("unexpected payload");
@@ -197,10 +201,10 @@ public class BrowseControllerTests : CoverageRavenTest
         {
             Sha = sha,
             Branch = branch,
-            Repository = Repository.DocumentId(repoId),
+            Repository = Repository.DocumentId(EForgeProvider.GitHub, repoId),
             AuthoredAt = DateTimeOffset.UtcNow.AddDays(days),
             Coverage = new CoverageSummary { LinesCovered = covered, LinesCoverable = 100, FilesCount = 1 },
-        }, Commit.DocumentId(repoId, sha));
+        }, Commit.DocumentId(EForgeProvider.GitHub, repoId, sha));
 
     /// <summary>
     /// #17: the chart ordered commits by time alone, so a feature branch's points
@@ -251,7 +255,7 @@ public class BrowseControllerTests : CoverageRavenTest
                     OwnerLogin = "sparks",
                     IsPrivate = false,
                     DefaultBranch = defaultBranch,
-                }, Repository.DocumentId(repoId));
+                }, Repository.DocumentId(EForgeProvider.GitHub, repoId));
                 await StoreCoveredCommit(seed, repoId, $"{repoId}a", "master", 80, days: -2);
                 await StoreCoveredCommit(seed, repoId, $"{repoId}b", "feature/x", 10, days: -1);
             }
@@ -260,7 +264,7 @@ public class BrowseControllerTests : CoverageRavenTest
         WaitForIndexing(store);
 
         using var session = store.OpenAsyncSession();
-        var result = await CreateController(session).GetSparklines("sparks", CancellationToken.None);
+        var result = await CreateController(session).GetSparklines("github", "sparks", CancellationToken.None);
         var series = (Dictionary<string, double[]>)((OkObjectResult)result.Result!).Value!;
 
         series["sparks/repo81"].Should().Equal([80.0], "the feature branch is not part of this repo's trend");

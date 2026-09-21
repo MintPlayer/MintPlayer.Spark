@@ -185,8 +185,24 @@ public class SparkMigrationRunnerTests : SparkTestDriver
             .Should().BeTrue("the later run re-acquired the released lock and applied the new migration");
     }
 
+    /// <summary>
+    /// ⚠️ This used to assert the runner <b>skipped</b> when another instance held the lock — and
+    /// skipping meant the caller went on to serve.
+    /// </summary>
+    /// <remarks>
+    /// Measured 2026-09-21 by killing a container midway through a 224,000-document re-key: the
+    /// compare-exchange lock outlives the process, because a killed process runs no <c>finally</c>.
+    /// Every restart for the next 30 minutes then skipped the migration and served a
+    /// <b>half-migrated database</b>, silently. A migration that <em>throws</em> releases the lock
+    /// and retries, which is what made skipping look safe.
+    /// <para>
+    /// A node that cannot take the lock has, by definition, migrations that are not applied yet, so
+    /// there is no state in which serving is correct. It waits, and fails loudly if the wait is
+    /// hopeless.
+    /// </para>
+    /// </remarks>
     [Fact]
-    public async Task Run_skips_when_lock_is_held_by_another_instance()
+    public async Task Run_refuses_to_proceed_while_another_instance_holds_the_lock()
     {
         // Pre-seed a live (future-dated) lock as if another node holds it.
         await Store.Operations.SendAsync(new PutCompareExchangeValueOperation<DateTime>(
@@ -194,14 +210,47 @@ public class SparkMigrationRunnerTests : SparkTestDriver
 
         var sp = BuildProvider(typeof(Mig_1), typeof(Mig_2));
 
-        await SparkMigrationRunner.RunAsync(sp, CancellationToken.None);
+        var act = async () => await SparkMigrationRunner.RunAsync(
+            sp, CancellationToken.None, lockWaitBudget: TimeSpan.FromSeconds(2));
 
-        // The runner saw the held, unexpired lock and skipped — nothing applied.
-        _recorder.Applied.Should().BeEmpty();
+        (await act.Should().ThrowAsync<InvalidOperationException>())
+            .WithMessage("*serving now would serve un-migrated data*");
+
+        _recorder.Applied.Should().BeEmpty("the lock holder is the one applying them");
 
         using var session = Store.OpenAsyncSession();
         (await session.Advanced.ExistsAsync(SparkMigrationRunner.MarkerId(202601010001)))
-            .Should().BeFalse("a held, unexpired lock makes this node skip the run");
+            .Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The legitimate multi-instance case: the holder finishes while this node waits, so there is
+    /// nothing left to apply and startup continues normally.
+    /// </summary>
+    [Fact]
+    public async Task Run_continues_once_the_holder_has_applied_everything()
+    {
+        await Store.Operations.SendAsync(new PutCompareExchangeValueOperation<DateTime>(
+            LockKey, DateTime.UtcNow.AddMinutes(20), 0));
+
+        // Markers for both migrations, as the holder would have written them.
+        using (var seed = Store.OpenAsyncSession())
+        {
+            foreach (var version in new[] { 202601010001L, 202601010002L })
+            {
+                await seed.StoreAsync(
+                    new SparkMigrationRecord { Version = version, Name = "x", AppliedOnUtc = DateTimeOffset.UtcNow },
+                    SparkMigrationRunner.MarkerId(version));
+            }
+
+            await seed.SaveChangesAsync();
+        }
+
+        var sp = BuildProvider(typeof(Mig_1), typeof(Mig_2));
+
+        await SparkMigrationRunner.RunAsync(sp, CancellationToken.None, lockWaitBudget: TimeSpan.FromSeconds(5));
+
+        _recorder.Applied.Should().BeEmpty("they were already applied by the instance holding the lock");
     }
 
     [Fact]

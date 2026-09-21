@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using System.Security.Claims;
 using CodeCoverage.ApiTokens;
 using CodeCoverage.Controllers;
@@ -53,10 +54,10 @@ public class UploadsControllerAuthorizationTests : CoverageRavenTest
     private static ClaimsPrincipal OidcToken(string fullName, long repositoryId) =>
         new(new ClaimsIdentity(
             [
-                new Claim(GitHubOidc.RepositoryClaim, fullName),
-                new Claim(GitHubOidc.RepositoryIdClaim, repositoryId.ToString()),
-                new Claim(GitHubOidc.RepositoryOwnerClaim, fullName.Split('/')[0]),
-                new Claim(GitHubOidc.RepositoryVisibilityClaim, "public"),
+                new Claim(GitHubOidc.Profile.RepositoryClaim, fullName),
+                new Claim(GitHubOidc.Profile.RepositoryIdClaim, repositoryId.ToString()),
+                new Claim(GitHubOidc.Profile.OwnerClaim, fullName.Split('/')[0]),
+                new Claim(GitHubOidc.Profile.VisibilityClaim, "public"),
             ], GitHubOidc.SchemeName));
 
     private static UploadsController CreateController(IAsyncDocumentSession session, ClaimsPrincipal user)
@@ -66,7 +67,9 @@ public class UploadsControllerAuthorizationTests : CoverageRavenTest
         services.AddSingleton(session);
         services.AddSingleton<IMessageBus>(new NullMessageBus());
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
-        services.AddSingleton<IGitHubDiffService>(new Services.ScriptedDiffService());
+        var scriptedForge = new Services.ScriptedDiffService();
+        services.AddSingleton<IForgeIntegration>(scriptedForge);
+        services.AddSingleton<IForgeIntegrationResolver>(scriptedForge);
         services.AddScoped<IBaseResolver, BaseResolver>();
         services.AddScoped<IRepositoryResolver>(sp => new TestRepositoryResolver(sp.GetService<IAsyncDocumentSession>()));
         services.AddScoped<UploadsController>();
@@ -80,18 +83,18 @@ public class UploadsControllerAuthorizationTests : CoverageRavenTest
     private static async Task SeedAsync(IAsyncDocumentSession session, long ownerId, string ownerLogin,
         RepositoryConnection connection = RepositoryConnection.Connected)
     {
-        await session.StoreAsync(new Account { GitHubId = ownerId, Login = ownerLogin }, Account.DocumentId(ownerId));
+        await session.StoreAsync(new Account { GitHubId = ownerId, Login = ownerLogin }, Account.DocumentId(EForgeProvider.GitHub, ownerId));
         await session.StoreAsync(new Repository
         {
             GitHubId = RepoId,
-            Account = Account.DocumentId(ownerId),
+            Account = Account.DocumentId(EForgeProvider.GitHub, ownerId),
             Name = "widgets",
             FullName = $"{ownerLogin}/widgets",
             OwnerLogin = ownerLogin,
             Connection = connection,
             DisconnectedReason = connection == RepositoryConnection.Disconnected
                 ? DisconnectedReasons.TransferredAway : null,
-        }, Repository.DocumentId(RepoId));
+        }, Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         await session.SaveChangesAsync();
     }
 
@@ -185,7 +188,7 @@ public class UploadsControllerAuthorizationTests : CoverageRavenTest
         var controller = CreateController(session, OidcToken("acme/widgets", RepoId));
         await UploadAsync(controller, "acme/widgets");
 
-        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(RepoId));
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         Assert.Equal(RepositoryConnection.Connected, repository!.Connection);
         Assert.Null(repository.DisconnectedReason);
     }
@@ -205,7 +208,7 @@ public class UploadsControllerAuthorizationTests : CoverageRavenTest
         var controller = CreateController(session, OidcToken("acme-renamed/widgets", RepoId));
         await UploadAsync(controller, "acme-renamed/widgets");
 
-        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(RepoId));
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         Assert.Equal("acme-renamed/widgets", repository!.FullName);
         Assert.Equal("acme-renamed", repository.OwnerLogin);
         Assert.Contains("acme/widgets", repository.PreviousFullNames);
@@ -227,7 +230,7 @@ public class UploadsControllerAuthorizationTests : CoverageRavenTest
         var controller = CreateController(session, OidcToken("acme/widgets", RepoId));
         await controller.Status("acme/widgets", "0123456789abcdef0123456789abcdef01234567", runId: 7);
 
-        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(RepoId));
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         Assert.Equal(RepositoryConnection.Disconnected, repository!.Connection);
     }
 }

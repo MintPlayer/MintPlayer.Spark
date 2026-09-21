@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.LookupReferences;
 using MintPlayer.Spark.Abstractions;
 
@@ -20,6 +21,61 @@ public class Repository
     /// <summary>GitHub's numeric id for this repository.</summary>
     /// <remarks>Stable across renames and transfers.</remarks>
     public long GitHubId { get; set; }
+
+    /// <summary>
+    /// The forge that hosts this repository. Set on every document by the M6 re-key.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ This is what replaces <c>ForgeIntegrationResolver.ProviderOf</c>, which returned
+    /// <see cref="EForgeProvider.GitHub"/> unconditionally as an explicit placeholder until M6.
+    /// <para>
+    /// [IgnoreForIndex] because index membership is opt-out: without it this lands in VRepository
+    /// and synchronize adds a column to the /spark repository grid, which security.json grants to
+    /// Everyone. It is a routing discriminator, not something the grid is about — and a guard test
+    /// caught it appearing there, which is the guard working.
+    /// </para>
+    /// </remarks>
+    [IgnoreForIndex]
+    public EForgeProvider Provider { get; set; } = EForgeProvider.GitHub;
+
+    /// <summary>
+    /// <see cref="Provider"/> and <see cref="OwnerLogin"/> as one comparable value,
+    /// <c>github:mintplayer</c> — the form authorization filters on.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>A separate field rather than a rewrite of <see cref="OwnerLogin"/>, which is what the
+    /// plan originally called for.</b> Two reasons, and the second is the deciding one.
+    /// </para>
+    /// <para>
+    /// First, <c>OwnerLogin</c> is what URLs are built from — <c>/api/repos/{owner}/{repo}</c> — and
+    /// several lookups compare it against a route segment. Qualifying it in place would break every
+    /// one of those the moment the migration ran, and they cannot be fixed until routes carry the
+    /// provider (M7). Adding a field keeps the two concerns independent: the login stays the
+    /// human-readable, URL-shaped thing it always was, and the key is what decides access.
+    /// </para>
+    /// <para>
+    /// Second, an owner set flattened to bare logins <b>silently unions forges</b>: a GitLab user
+    /// named <c>mintplayer</c> would inherit the GitHub <c>mintplayer</c>'s repositories. That is
+    /// the bug this field exists to make unrepresentable, and it is a query-shaped problem — the
+    /// row filters are <c>IN</c> clauses — so the answer has to be a single stored comparable value
+    /// rather than a pair of fields compared in application code.
+    /// </para>
+    /// <para>
+    /// A colon, not a slash: GitLab namespaces nest and are themselves slash-delimited, so a slash
+    /// could not be split back apart. See <see cref="Forge.ForgeOwner"/>. This deliberately differs
+    /// from the spelling used in document ids and must not be "tidied" to match.
+    /// </para>
+    /// </remarks>
+    /// <remarks>
+    /// ⚠️ <b>Derived, not settable.</b> A settable field is one every write path can forget, and
+    /// forgetting it here does not fail — it produces a repository that no owner filter matches,
+    /// which reads as "the grid is empty" rather than as a bug. Computing it from the two fields it
+    /// summarises makes the two impossible to disagree. RavenDB serialises the getter, so it is
+    /// stored and indexed exactly as a field would be; the migration still backfills documents
+    /// written before it existed, because their stored JSON has no such property.
+    /// </remarks>
+    public string OwnerKey => new Forge.ForgeOwner(Provider, OwnerLogin).ToString();
 
     /// <summary>The repository name without the owner, e.g. <c>MintPlayer.Spark</c>.</summary>
     public string Name { get; set; } = string.Empty;
@@ -89,6 +145,32 @@ public class Repository
     /// drift. A missing account resolves to <see langword="false"/> — the safe direction for an
     /// irreversible operation.
     /// </remarks>
+    /// <summary>How many former names one repository remembers, oldest dropped first.</summary>
+    public const int MaxPreviousFullNames = 16;
+
+    /// <summary>
+    /// Records the name this repository is about to stop being known by.
+    /// </summary>
+    /// <remarks>
+    /// The name we knew a repository by is baked into every published badge URL, so a rename or a
+    /// transfer is the moment to remember it — afterwards the old name is unrecoverable.
+    /// <para>
+    /// Lives on the entity rather than on a webhook recipient because it is a rule about what a
+    /// repository remembers, and both the forge-specific normaliser and the neutral rename handler
+    /// need it. Two copies of a capped, de-duplicated list are two chances to cap it differently.
+    /// </para>
+    /// </remarks>
+    public void RememberPreviousFullName(string newFullName)
+    {
+        var previous = FullName;
+        if (string.IsNullOrEmpty(previous) || previous == newFullName) return;
+        if (PreviousFullNames.Contains(previous, StringComparer.OrdinalIgnoreCase)) return;
+
+        PreviousFullNames.Add(previous);
+        if (PreviousFullNames.Count > MaxPreviousFullNames)
+            PreviousFullNames.RemoveAt(0);
+    }
+
     public static bool ResolveDeleteBranchOnPrClose(Repository? repository, Account? account)
         => repository?.DeleteBranchOnPrClose switch
         {
@@ -162,5 +244,11 @@ public class Repository
     /// <remarks>From the newest finalized default-branch build.</remarks>
     public DateTime? LatestCoverageAtUtc { get; set; }
 
-    public static string DocumentId(long gitHubId) => $"Repositories/{gitHubId}";
+    /// <summary><c>Repositories/{provider}/{repositoryId}</c>.</summary>
+    /// <remarks>
+    /// The provider segment is required because a numeric repository id is only unique
+    /// <em>within</em> a forge (D25, and test A2 pins exactly this collision).
+    /// </remarks>
+    public static string DocumentId(EForgeProvider provider, long repositoryId)
+        => $"Repositories/{provider.ToCanonicalString()}/{repositoryId}";
 }

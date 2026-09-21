@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter, Routes } from '@angular/router';
+import { Router, provideRouter, Routes } from '@angular/router';
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- see the provider below
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { RouterTestingHarness } from '@angular/router/testing';
@@ -44,7 +44,7 @@ function capabilities(overrides: Partial<SparkAuthCapabilities> = {}): SparkAuth
 async function setup(capabilitiesImpl: () => Promise<SparkAuthCapabilities>) {
   const auth: any = {
     capabilities: vi.fn(capabilitiesImpl),
-    loginWithProvider: vi.fn().mockResolvedValue(undefined),
+    loginWithProvider: vi.fn().mockResolvedValue({ success: false, error: 'popup_closed' }),
   };
 
   TestBed.configureTestingModule({
@@ -91,7 +91,37 @@ describe('SparkSignInComponent', () => {
 
     buttons(harness)[0].click();
 
-    expect(auth.loginWithProvider).toHaveBeenCalledWith('Google', { returnUrl: undefined });
+    expect(auth.loginWithProvider).toHaveBeenCalledWith('Google', { returnUrl: '/' });
+  });
+
+  it('leaves the sign-in page once sign-in succeeds', async () => {
+    // The bug this pins: in popup mode the returnUrl is consumed by the POPUP — it tells the server
+    // where to send that window before it closes — so the opener, which is the tab the user is
+    // actually looking at, was never touched. Sign-in worked, the topbar flipped to the signed-in
+    // state, and the user sat on the login page wondering whether it had.
+    const { harness, auth } = await setup(async () => capabilities({ externalProviders: [google] }));
+    auth.loginWithProvider.mockResolvedValue({ success: true });
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
+
+    buttons(harness)[0].click();
+    await harness.fixture.whenStable();
+
+    expect(navigate).toHaveBeenCalledWith('/');
+  });
+
+  it('stays put when sign-in fails, so the error it renders stays visible', async () => {
+    // Navigating away on failure would hide the very message this page just rendered. 'popup_closed'
+    // is not a failure either — it is "not now" — and it takes the same path.
+    const { harness, auth } = await setup(async () => capabilities({ externalProviders: [google] }));
+    auth.loginWithProvider.mockResolvedValue({ success: false, error: 'popup_blocked' });
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
+
+    buttons(harness)[0].click();
+    await harness.fixture.whenStable();
+
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it('reports that sign-in is unavailable when capabilities cannot be loaded', async () => {

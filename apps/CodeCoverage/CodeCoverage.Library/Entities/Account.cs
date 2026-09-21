@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using MintPlayer.Spark.Abstractions;
 
 namespace CodeCoverage.Entities;
@@ -46,5 +47,26 @@ public class Account
     /// </remarks>
     public bool DeleteBranchOnPrClose { get; set; }
 
-    public static string DocumentId(long gitHubId) => $"Accounts/{gitHubId}";
+    /// <summary>
+    /// The forge that hosts this account. Set on every document by the M6 re-key.
+    /// </summary>
+    /// <remarks>
+    /// Stored rather than parsed back out of the id, because callers that hold an entity should not
+    /// have to re-derive what the entity already knows — and because the id is a storage detail
+    /// while this is a fact about the account.
+    /// </remarks>
+    public EForgeProvider Provider { get; set; } = EForgeProvider.GitHub;
+
+    /// <summary><see cref="Provider"/> and <c>Login</c> as one comparable value, <c>github:acme</c>.</summary>
+    /// <remarks>See <see cref="Repository.OwnerKey"/> for why this is a field of its own.</remarks>
+    /// <remarks>Derived — see <see cref="Repository.OwnerKey"/> for why it is not settable.</remarks>
+    public string OwnerKey => new Forge.ForgeOwner(Provider, Login ?? string.Empty).ToString();
+
+    /// <summary><c>Accounts/{provider}/{accountId}</c>.</summary>
+    /// <remarks>
+    /// The provider segment is required because a numeric account id is only unique <em>within</em>
+    /// a forge — GitHub user 1234 and GitLab group 1234 are different accounts (D25).
+    /// </remarks>
+    public static string DocumentId(EForgeProvider provider, long accountId)
+        => $"Accounts/{provider.ToCanonicalString()}/{accountId}";
 }

@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using System.Security.Cryptography;
 using System.Text;
 using CodeCoverage.Entities;
@@ -40,7 +41,7 @@ public partial class PullRequestCommentPublisher : IPullRequestCommentPublisher
 
     public async Task PublishAsync(Entities.Repository repository, long installationId, int pullRequestNumber, string sha, string body, CancellationToken cancellationToken)
     {
-        var id = PullRequestFeedback.DocumentId(repository.GitHubId, pullRequestNumber);
+        var id = PullRequestFeedback.DocumentId(EForgeProvider.GitHub, repository.GitHubId, pullRequestNumber);
         var feedback = await session.LoadAsync<PullRequestFeedback>(id, cancellationToken);
         if (feedback is null)
         {
@@ -161,7 +162,7 @@ public partial class PullRequestCommentPublisher : IPullRequestCommentPublisher
         var comments = await gateway.ListAsync(repository, installationId, pullRequestNumber, cancellationToken);
         foreach (var comment in comments)
         {
-            if (comment.AuthoredByApp && comment.Body.Contains(PullRequestCommentRenderer.Marker, StringComparison.Ordinal))
+            if (comment.AuthoredByApp && comment.Body.Contains(CoverageCommentMarker.Value, StringComparison.Ordinal))
                 return comment.Id;
         }
         return null;

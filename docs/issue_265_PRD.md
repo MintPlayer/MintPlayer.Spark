@@ -230,6 +230,87 @@ only (via `AddRateLimiter(configure)` or `SparkFullOptions.RateLimiter`), and `s
 that would bind cleanly if that changes later. Adding a config section now would be a second, untested
 path to the same setting.
 
+> ### ✅ D5 SUPERSEDED — 2026-09-21, on `issue-422-forge-abstraction`
+>
+> **`SparkRateLimiterOptions` now binds from `Spark:RateLimiter`, configuration first and the
+> `configure` lambda second** — the same order `AddReplication` and `AddMessaging` already use.
+>
+> D5 did not forbid this; it deferred it, and said so: *"`string[]` is the shape that would bind
+> cleanly **if that changes later**."* This is later, and the evidence D5 lacked is below. Its stated
+> objection — "a second, untested path to the same setting" — is answered by testing the path rather
+> than by avoiding it.
+>
+> **What forced it.** The E2E suite is 88 tests in a single serialized collection sharing one bucket
+> keyed on `127.0.0.1`. Ordinary load is ~2–5 requests/second against a 15/second allowance, so the
+> budget is not globally too small — it fails on **bursts**: ~25 fast API tests at ~6 requests each
+> land 150 requests inside one 10-second window. The repository had already recorded this
+> independently, in `ViewerTimezoneRenderingTests.cs:26-31`, where adding **one** extra browser test
+> *"pushed unrelated tests elsewhere in the suite into 429s"* — with `RateLimitTests` untouched. So
+> the flake is structural, not the burst test's fault.
+>
+> **What was rejected, and why it matters more than what was chosen:**
+>
+> | Rejected | Reason |
+> |---|---|
+> | An `Enabled = false` flag | A limiter that silently does nothing is the exact outcome `NormalizePrefixes` **throws** to prevent (`SparkBuilderRateLimiterExtensions.cs:167-179`). Adding a quiet second route to it contradicts the design, and would give a production app a way to ship unmetered by accident. |
+> | Per-test partitions via `X-Forwarded-For` | It works — but only because Fleet clears `KnownNetworks`/`KnownProxies`. Building CI on that cements a misconfiguration as load-bearing, and tightening it later would revive the flake **silently**. See SP-R1. |
+> | `Window = 1s` instead of a raised limit | Makes `RateLimitTests` depend on pushing 150 requests through loopback inside one second — precisely the timing sensitivity `guide-rate-limiting.md` warns against. |
+>
+> ⚠ **Ordering trap, deliberately accepted.** Configuration binds first and code wins, matching the
+> other two modules. Fleet passes `_ => { }`, which sets nothing, so the test override survives — but
+> the day anyone adds `options.PermitLimit = X` to that lambda, the E2E override stops working with
+> no failure to announce it. The comment at the binding site says so.
+
+---
+
+## Spikes behind the D5 reversal — 2026-09-21
+
+Three read-only investigations. Recorded because two of them found things worth more than the
+decision they were run for.
+
+### SP-R1 — can a test get its own limiter partition? ⚠ It can, and that is a production finding
+
+The partition key is *exactly* `httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown"`
+(`SparkBuilderRateLimiterExtensions.cs:99-101`). Nothing else — no path, no user, no header.
+
+ASP.NET's forwarded-headers middleware performs its known-proxy check **only** when
+`KnownProxies.Count > 0 || KnownNetworks.Count > 0`. Both `apps/Fleet/Fleet/Program.cs:16-21` **and**
+`apps/CodeCoverage/CodeCoverage/Program.cs:34-39` clear both lists, so no trust check runs and any
+caller's `X-Forwarded-For` overwrites `Connection.RemoteIpAddress` before the limiter reads it.
+
+⚠ **On production this means every IP-keyed limit can be bypassed by rotating one header**, including
+the `browse` policy (300/min) whose stated purpose is protecting the GitHub App's shared API budget
+from an unmetered crawler, and `uploads` (60/min) whenever the caller has no `covt_` token. Filed
+separately — the fix needs the real proxy address in `KnownProxies`, which is deployment knowledge,
+not a code change.
+
+### SP-R2 — is configuration binding idiomatic here? Yes; the limiter was the exception
+
+`Spark` (`SparkMiddleware.cs:42`), `Spark:Replication` and `Spark:Messaging` all bind already, and
+messaging's doc comment states the rule: *"Options bind from the `Spark:Messaging` configuration
+section first, then `configure` runs — so code wins over configuration."* `AddSparkFull` already
+receives `IConfiguration`, so no signature changes.
+
+Also found: Spark gates behaviour by environment in several places, but **always** on
+`IsDevelopment()` — there is no `IsEnvironment("Test")` anywhere, and the strongest precedent
+(`SparkMiddleware.cs:147-148`) pairs an environment check with an explicit config flag rather than
+relying on the environment alone.
+
+### SP-R3 — what would a disable cost? One test, and the suite is burst-bound not volume-bound
+
+Only `RateLimitTests` asserts a 429 against a real app. Everything else about the limiter — defaults,
+prefix scoping and normalization, one-bucket-per-caller, fail-fast on a no-op configuration, and
+placement ahead of authentication — is already proven by `SparkBuilderRateLimiterExtensionsTests`
+and `RateLimiterPlacementTests` against their own hosts. No analyzer depends on it.
+
+Measured: ~600–900 requests across 88 tests; a browser boot is a dozen-plus `/spark` calls; and
+`BrowserSignIn.WaitForAuthenticatedAsync` polls `/spark/auth/me` every 250 ms for up to 10 s
+(`BrowserSignIn.cs:41-51`) — up to 40 extra requests, which is its own amplifier under load.
+
+⚠ A second defect found while reading: `RateLimitTests.cs:40-47` performs its 11-second drain
+**after** the assertion with no `try`/`finally`, so the run that leaves the bucket most saturated —
+a failing one — is exactly the run that skips the cooldown.
+
 **D6 — a bare `"/"` is refused, not honoured as meter-everything.** Both were defensible. `"/"` reads as
 *the root path* and means the opposite, so honouring it converts a likely misreading into a silently
 over-applied limiter — metering static assets, the one outcome the extension's design is explicit about

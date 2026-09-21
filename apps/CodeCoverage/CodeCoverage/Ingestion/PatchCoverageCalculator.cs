@@ -1,4 +1,5 @@
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 using CodeCoverage.Services;
 using Raven.Client.Documents.Session;
 
@@ -14,7 +15,7 @@ namespace CodeCoverage.Ingestion;
 public static class PatchCoverageCalculator
 {
     public static async Task<PatchCoverage?> ComputeAsync(
-        IAsyncDocumentSession session, IGitHubDiffService diffService, Build build, Commit commit, CancellationToken cancellationToken)
+        IAsyncDocumentSession session, IForgeIntegrationResolver forges, Build build, Commit commit, CancellationToken cancellationToken)
     {
         if (build.Id is null || commit.Repository is null)
             return null;
@@ -30,11 +31,7 @@ public static class PatchCoverageCalculator
         if (repository is null)
             return null;
 
-        long? installationId = null;
-        if (repository.Account is not null)
-            installationId = (await session.LoadAsync<Account>(repository.Account, cancellationToken))?.InstallationId;
-
-        var comparison = await diffService.CompareAsync(repository, installationId, baseRef, commit.Sha, cancellationToken);
+        var comparison = await forges.For(repository).CompareAsync(repository, baseRef, commit.Sha, cancellationToken);
         if (comparison is null)
             return null;
 

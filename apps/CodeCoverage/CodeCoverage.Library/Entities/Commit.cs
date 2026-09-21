@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using MintPlayer.Spark.Abstractions;
 
 namespace CodeCoverage.Entities;
@@ -121,5 +122,64 @@ public class Commit
     /// <remarks>The file tree reads its FileCoverage documents.</remarks>
     public string? LatestBuildId { get; set; }
 
-    public static string DocumentId(long repoGitHubId, string sha) => $"Commits/{repoGitHubId}/{sha}";
+    /// <summary>
+    /// <c>Commits/{provider}/{repositoryId}/{sha}</c>, or <c>.../pr/{n}/{sha}</c> for a fork's
+    /// pull-request head.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>Nine document-id shapes inherit the forge segment from this one line</b> — every other
+    /// helper in this assembly is a suffix on a commit or build id produced here. That is why the
+    /// provider is a required parameter rather than a defaulted one: a caller that forgets it would
+    /// otherwise mint a GitHub id for a GitLab repository, which is unrecoverable once stored,
+    /// because RavenDB ids are immutable.
+    /// </para>
+    /// <para>
+    /// ⚠️ <paramref name="pullRequestNumber"/> reserves the fork-upload shape (D6f). <b>Nothing
+    /// writes it today</b> and no existing document is migrated into it — it exists because the
+    /// re-key that introduces the provider segment touches ~224,000 documents exactly once, and
+    /// deciding this later would cost that migration a second time. Every parser of this id must
+    /// therefore tolerate the extra pair of segments.
+    /// </para>
+    /// </remarks>
+    public static string DocumentId(
+        EForgeProvider provider, long repositoryId, string sha, int? pullRequestNumber = null)
+        => pullRequestNumber is { } pr
+            ? $"Commits/{provider.ToCanonicalString()}/{repositoryId}/pr/{pr}/{sha}"
+            : $"Commits/{provider.ToCanonicalString()}/{repositoryId}/{sha}";
+
+    /// <summary>
+    /// Recovers the owning repository from a commit id, or anything nested under one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>Parses by shape, not by position.</b> The previous version of this logic lived in
+    /// <c>BuildActions</c> and required <c>parts[1]</c> to parse as a <c>long</c>; with the forge
+    /// segment that reads <c>"github"</c>, fails, and denies access to <em>every build in the
+    /// system</em> — silently, because it fails closed and the grid merely goes blank.
+    /// </para>
+    /// <para>
+    /// Tolerates the legacy <c>Commits/{repositoryId}/…</c> shape so a half-finished migration
+    /// renders rather than blanks. ⚠️ That branch is a migration shim: delete it in M6g, once the
+    /// re-key is confirmed complete in production.
+    /// </para>
+    /// </remarks>
+    public static bool TryParseRepository(
+        string? commitId, out EForgeProvider provider, out long repositoryId)
+    {
+        provider = EForgeProvider.GitHub;
+        repositoryId = 0;
+
+        var parts = commitId?.Split('/');
+        if (parts is not { Length: >= 3 } || parts[0] != "Commits")
+            return false;
+
+        // Current shape: Commits/{provider}/{repositoryId}/...
+        if (ForgeProviders.TryParse(parts[1], out provider))
+            return parts.Length >= 4 && long.TryParse(parts[2], out repositoryId);
+
+        // Legacy shape: Commits/{repositoryId}/... — see the remarks.
+        provider = EForgeProvider.GitHub;
+        return long.TryParse(parts[1], out repositoryId);
+    }
 }

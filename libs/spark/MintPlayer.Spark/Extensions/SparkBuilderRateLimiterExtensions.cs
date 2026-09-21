@@ -23,6 +23,8 @@ namespace MintPlayer.Spark.Extensions;
 /// </summary>
 public static class SparkBuilderRateLimiterExtensions
 {
+    private const string ConfigurationSection = "Spark:RateLimiter";
+
     /// <summary>
     /// Registers a fixed-window rate limiter for Spark endpoints. Calling with no configurator
     /// uses the documented defaults (<see cref="SparkRateLimiterOptions"/>).
@@ -68,7 +70,21 @@ public static class SparkBuilderRateLimiterExtensions
         this ISparkBuilder builder,
         Action<SparkRateLimiterOptions>? configure = null)
     {
+        // Configuration first, then code — the order AddReplication and AddMessaging already use, so
+        // an operator can retune a budget per environment without a redeploy.
+        //
+        // ⚠ Code therefore WINS. An app that sets PermitLimit in its configurator cannot be
+        // overridden from appsettings, and the override fails silently rather than loudly. The E2E
+        // test host depends on this: Fleet passes `_ => { }`, which sets nothing, so the configured
+        // PermitLimit survives. Adding an assignment to that lambda would switch the E2E suite back
+        // to the default budget with no test announcing it.
+        //
+        // Superseding issue_265_PRD.md D5, which deferred rather than forbade this: "string[] is the
+        // shape that would bind cleanly if that changes later."
+        var section = builder.Configuration?.GetSection(ConfigurationSection);
+
         var options = new SparkRateLimiterOptions();
+        section?.Bind(options);
         configure?.Invoke(options);
 
         // Normalized once here rather than per request: the prefixes cannot change after startup,

@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using System.Security.Claims;
 using CodeCoverage.ApiTokens;
 using CodeCoverage.Controllers;
@@ -36,7 +37,9 @@ public class UploadsControllerAssemblyStatusTests : CoverageRavenTest
         services.AddSingleton<IConfiguration>(new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["Coverage:BaseUrl"] = "https://coverage.example.com" })
             .Build());
-        services.AddSingleton<IGitHubDiffService>(new Services.ScriptedDiffService());
+        var scriptedForge = new Services.ScriptedDiffService();
+        services.AddSingleton<IForgeIntegration>(scriptedForge);
+        services.AddSingleton<IForgeIntegrationResolver>(scriptedForge);
         services.AddScoped<IBaseResolver, BaseResolver>();
         services.AddScoped<CodeCoverage.Services.IRepositoryResolver>(sp =>
             new TestRepositoryResolver(sp.GetService<Raven.Client.Documents.Session.IAsyncDocumentSession>()));
@@ -64,18 +67,18 @@ public class UploadsControllerAssemblyStatusTests : CoverageRavenTest
     public async Task Status_reports_the_commit_assembly_beside_the_builds_own_coverage()
     {
         using var store = GetDocumentStore();
-        var commitId = Commit.DocumentId(RepoId, Sha);
-        var buildId = Build.DocumentId(RepoId, Sha, 7, 1);
+        var commitId = Commit.DocumentId(EForgeProvider.GitHub, RepoId, Sha);
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, RepoId, Sha, 7, 1);
 
         using (var seed = store.OpenAsyncSession())
         {
             await seed.StoreAsync(new Repository
             {
                 GitHubId = RepoId, Name = "gadgets", FullName = RepoName, OwnerLogin = "acme", IsPrivate = true, DefaultBranch = "master",
-            }, Repository.DocumentId(RepoId));
+            }, Repository.DocumentId(EForgeProvider.GitHub, RepoId));
             await seed.StoreAsync(new Commit
             {
-                Sha = Sha, Repository = Repository.DocumentId(RepoId), Branch = "feature", FirstSeenAtUtc = DateTimeOffset.UtcNow,
+                Sha = Sha, Repository = Repository.DocumentId(EForgeProvider.GitHub, RepoId), Branch = "feature", FirstSeenAtUtc = DateTimeOffset.UtcNow,
                 Coverage = new CoverageSummary { LinesCovered = 50, LinesCoverable = 100, FilesCount = 10 },
                 AssemblyCompleteness = CommitAssembly.Complete,
             }, commitId);
@@ -118,20 +121,20 @@ public class UploadsControllerAssemblyStatusTests : CoverageRavenTest
     public async Task Status_has_no_assembly_before_the_first_finalize()
     {
         using var store = GetDocumentStore();
-        var commitId = Commit.DocumentId(RepoId, Sha);
+        var commitId = Commit.DocumentId(EForgeProvider.GitHub, RepoId, Sha);
 
         using (var seed = store.OpenAsyncSession())
         {
             await seed.StoreAsync(new Repository
             {
                 GitHubId = RepoId, Name = "gadgets", FullName = RepoName, OwnerLogin = "acme", IsPrivate = true, DefaultBranch = "master",
-            }, Repository.DocumentId(RepoId));
-            await seed.StoreAsync(new Commit { Sha = Sha, Repository = Repository.DocumentId(RepoId), FirstSeenAtUtc = DateTimeOffset.UtcNow }, commitId);
+            }, Repository.DocumentId(EForgeProvider.GitHub, RepoId));
+            await seed.StoreAsync(new Commit { Sha = Sha, Repository = Repository.DocumentId(EForgeProvider.GitHub, RepoId), FirstSeenAtUtc = DateTimeOffset.UtcNow }, commitId);
             await seed.StoreAsync(new Build
             {
                 Commit = commitId, CiRunId = 7, CiRunAttempt = 1, Status = "Open", CreatedAtUtc = DateTime.UtcNow,
                 Sessions = [new BuildSession { SessionId = "s1", ParseStatus = "Pending" }],
-            }, Build.DocumentId(RepoId, Sha, 7, 1));
+            }, Build.DocumentId(EForgeProvider.GitHub, RepoId, Sha, 7, 1));
             await seed.SaveChangesAsync();
         }
         WaitForIndexing(store);

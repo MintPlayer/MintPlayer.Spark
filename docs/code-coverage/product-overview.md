@@ -1,6 +1,6 @@
 # Coverage — Product Requirements Document
 
-A self-hosted code-coverage analyzer for GitHub (in the spirit of codecov.io / coveralls.io), built on **MintPlayer.Spark** (ASP.NET Core + RavenDB + Angular 22) with **mintplayer-ng-bootstrap** as the UI framework, plus a **GitHub Action** that uploads coverage reports from workflows.
+A self-hosted code-coverage analyzer (in the spirit of codecov.io / coveralls.io) — GitHub today, with GitLab and Bitbucket planned (#422), built on **MintPlayer.Spark** (ASP.NET Core + RavenDB + Angular 22) with **mintplayer-ng-bootstrap** as the UI framework, plus a **GitHub Action** that uploads coverage reports from workflows.
 
 > Companion document: [PLAN.md](PLAN.md) (milestones and sequencing).
 > Research basis: a four-agent investigation (2026-08-07) of the MintPlayer.Spark and mintplayer-ng-bootstrap codebases, the Codecov open-sourced backend (`codecov/umbrella`), Coveralls' API/action, and coverage-format specifications. Key claims below carry their source.
@@ -20,7 +20,9 @@ A self-hosted code-coverage analyzer for GitHub (in the spirit of codecov.io / c
 
 ### Non-goals (v1)
 
-- Non-GitHub forges (GitLab, Bitbucket).
+- ~~Non-GitHub forges (GitLab, Bitbucket).~~ → **no longer a non-goal.** Being de-coupled from
+  GitHub under [#422](https://github.com/MintPlayer/MintPlayer.Spark/issues/422); GitLab is
+  stage 2 and Bitbucket stage 3. See [multi-forge-PRD](multi-forge-PRD.md).
 - Codecov-style YAML config files in the repo, path fixes, ignore rules.
 - Carryforward flags (design for it — per-session storage makes it retrofittable — but don't build it).
   *Revised 2026-09: carry-forward was built, but per **file** verified by git blob OID rather than per

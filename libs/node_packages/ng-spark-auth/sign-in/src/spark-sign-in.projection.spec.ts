@@ -57,7 +57,7 @@ async function setup(
 ) {
   const auth: any = {
     capabilities: vi.fn(async () => reported),
-    loginWithProvider: vi.fn().mockResolvedValue(undefined),
+    loginWithProvider: vi.fn().mockResolvedValue({ success: false, error: 'popup_closed' }),
   };
 
   TestBed.configureTestingModule({
@@ -97,7 +97,7 @@ describe('SparkSignInComponent projection', () => {
 
     buttons(harness, 'button.custom')[0].click();
 
-    expect(auth.loginWithProvider).toHaveBeenCalledWith('Google', { returnUrl: undefined });
+    expect(auth.loginWithProvider).toHaveBeenCalledWith('Google', { returnUrl: '/' });
   });
 
   it('threads returnUrl into the sign-in call', async () => {
@@ -154,7 +154,7 @@ describe('SparkSignInComponent projection', () => {
 
     const auth: any = {
       capabilities: vi.fn(() => pending),
-      loginWithProvider: vi.fn().mockResolvedValue(undefined),
+      loginWithProvider: vi.fn().mockResolvedValue({ success: false, error: 'popup_closed' }),
     };
 
     TestBed.configureTestingModule({

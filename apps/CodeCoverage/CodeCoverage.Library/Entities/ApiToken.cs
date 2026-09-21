@@ -63,6 +63,16 @@ public class ApiToken
     public string? AccountLogin { get; set; }
 
     /// <summary>
+    /// The owning account as <c>provider:login</c> — what the row filter compares.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ See <see cref="Repository.OwnerKey"/>. A token scoped to a bare login would authorise
+    /// uploads for the same-named owner on <em>any</em> forge, and an upload token is exactly the
+    /// credential where that must not be possible.
+    /// </remarks>
+    public string? AccountOwnerKey { get; set; }
+
+    /// <summary>
     /// GitHub's numeric id for the owner this token uploads for, when Scope is "Account". Null on
     /// tokens issued before this field existed, which fall back to comparing
     /// <see cref="AccountLogin"/> so that no working token is invalidated by a deploy.

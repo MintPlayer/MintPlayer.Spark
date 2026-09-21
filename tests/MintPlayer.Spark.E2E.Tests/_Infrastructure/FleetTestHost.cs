@@ -37,6 +37,30 @@ public sealed class FleetTestHost : IAsyncLifetime
     public string EnvironmentName { get; init; } = "E2E";
 
     /// <summary>
+    /// Requests per window the E2E host allows, written into its generated settings and read back
+    /// by the one test that deliberately exceeds it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The production default is 150 per 10 seconds, which this suite cannot live inside. It is not
+    /// too small on average — 88 serialized tests make ~600-900 requests at roughly 2-5 per second
+    /// against a 15 per second allowance — it is too small for BURSTS: about 25 fast API tests at
+    /// ~6 requests each fill a window between them, and one browser boot is a dozen or more
+    /// <c>/spark</c> calls on its own. The repository had already recorded this independently, in
+    /// <c>ViewerTimezoneRenderingTests</c>, where adding a single extra browser test pushed
+    /// unrelated tests into 429s.
+    /// </para>
+    /// <para>
+    /// ⚠ <b>Raised, never disabled.</b> The limiter stays wired at the same pipeline position and
+    /// still returns 429, so <c>RateLimitTests</c> keeps proving that the shipped demo app really is
+    /// rate limited. Turning it off would delete the only end-to-end evidence of that, and would put
+    /// a security control into the one state <c>AddRateLimiter</c> otherwise throws to prevent:
+    /// present but doing nothing.
+    /// </para>
+    /// </remarks>
+    public const int RateLimitPermits = 1000;
+
+    /// <summary>
     /// Cross-module certificate enforcement. Defaults to <c>Production</c> — the strict setting, so
     /// the shared host keeps proving that an uncertificated caller is refused. A host that needs to
     /// exercise what happens <i>after</i> authentication succeeds sets <c>Development</c>, which
@@ -732,7 +756,8 @@ public sealed class FleetTestHost : IAsyncLifetime
               "ClientCertificate": { "Mode": "{{CertificateMode}}" }
             },
             "HttpsRedirection": false,
-            "JwtBearer": { "Audience": "fleet-api" }
+            "JwtBearer": { "Audience": "fleet-api" },
+            "RateLimiter": { "PermitLimit": {{RateLimitPermits}} }
           },
           "SparkIdentityProvider": {
             "Issuer": "http://localhost:{{httpPort}}",

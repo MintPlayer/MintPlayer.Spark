@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, TemplateRef, computed, inject, input, isDevMode, signal } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
@@ -11,6 +11,7 @@ import {
   SparkAuthCapabilities,
   SparkExternalProvider,
   SparkExternalProviderPresentation,
+  SPARK_AUTH_CONFIG,
   isSafeReturnUrl,
 } from '@mintplayer/ng-spark-auth/models';
 import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
@@ -60,6 +61,8 @@ export class SparkSignInComponent {
   private readonly authService = inject(SparkAuthService);
   private readonly declaredProviders = inject(SPARK_EXTERNAL_PROVIDERS, { optional: true }) ?? [];
   private readonly route = inject(ActivatedRoute, { optional: true });
+  private readonly router = inject(Router);
+  private readonly config = inject(SPARK_AUTH_CONFIG);
   readonly routePaths = inject(SPARK_AUTH_ROUTE_PATHS);
   readonly colors = Color;
 
@@ -165,8 +168,22 @@ export class SparkSignInComponent {
     return { $implicit: provider, signIn: () => this.signInWith(provider) };
   }
 
-  signInWith(provider: SparkExternalProviderView): void {
-    void this.authService.loginWithProvider(provider.scheme, { returnUrl: this.effectiveReturnUrl() });
+  /**
+   * Signs in, then *leaves this page*.
+   *
+   * The navigation is the part that is easy to miss. In `'popup'` mode the `returnUrl` is consumed
+   * by the popup — it tells the server where to send that window before it closes — and the opener,
+   * which is the tab the user is actually looking at, is never touched. So without this the sign-in
+   * succeeds, the topbar flips to the signed-in state, and the user is left staring at the login
+   * page wondering whether it worked.
+   *
+   * Failures deliberately do not navigate: the page already renders the error, and moving away
+   * would hide it. `popup_closed` is not an error — it is "not now" — so it is left alone too.
+   */
+  async signInWith(provider: SparkExternalProviderView): Promise<void> {
+    const returnUrl = this.effectiveReturnUrl() ?? this.config.defaultRedirectUrl;
+    const result = await this.authService.loginWithProvider(provider.scheme, { returnUrl });
+    if (result.success) await this.router.navigateByUrl(returnUrl);
   }
 }
 

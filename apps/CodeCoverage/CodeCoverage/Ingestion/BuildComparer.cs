@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using CodeCoverage.Services;
 using Raven.Client.Documents.Session;
@@ -33,7 +34,7 @@ public static class BuildComparer
 
         // The base's assembled tree when it has one (complete even if the base
         // itself was a partial upload), else its build tree.
-        var baseCommitId = resolved.ResolvedSha is null ? null : Commit.DocumentId(repository.GitHubId, resolved.ResolvedSha);
+        var baseCommitId = resolved.ResolvedSha is null ? null : Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, resolved.ResolvedSha);
         var baseTree = baseCommitId is null ? null
             : await session.LoadAsync<BuildTreeSummary>(CommitAssembly.TreeDocumentId(baseCommitId), cancellationToken);
         baseTree ??= await session.LoadAsync<BuildTreeSummary>(BuildTreeSummary.DocumentId(resolved.BaseBuildId), cancellationToken);

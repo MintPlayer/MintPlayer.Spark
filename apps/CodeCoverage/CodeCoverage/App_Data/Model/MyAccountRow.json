@@ -39,6 +39,24 @@
         "rules": []
       },
       {
+        "id": "3f1c9d52-7e44-4a6b-8d0f-2c5a91b7e604",
+        "name": "Provider",
+        "label": {
+          "en": "Forge",
+          "fr": "Forge",
+          "nl": "Forge"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": false,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "_comment": "Carried for the account-link renderer, which reads it off the ROW (the `item` input) rather than off its own cell -- a column renderer only receives its own value, but it does receive the whole row when it declares `item`. isVisible false so the forge is not drawn as a column: the grid is already provider-scoped by the program unit that opened it, so a column repeating the same word on every line says nothing.",
+        "showedOn": "Query",
+        "rules": []
+      },
+      {
         "id": "0589f77f-8a4e-4289-9549-38b6aca0f7af",
         "name": "Login",
         "label": {

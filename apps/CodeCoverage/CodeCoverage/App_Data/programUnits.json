@@ -45,6 +45,20 @@
           "alias": "home",
           "objectId": "main",
           "order": 1
+        },
+        {
+          "id": "1c7e9a03-5d84-4b21-9f68-0a3e5c7d1b46",
+          "name": {
+            "en": "GitHub",
+            "fr": "GitHub",
+            "nl": "GitHub"
+          },
+          "icon": "bi-github",
+          "type": "persistentObject",
+          "persistentObjectId": "2d6f4b10-9c27-4e83-b5a1-7f0c8e3d6a94",
+          "alias": "forge-accounts",
+          "objectId": "github",
+          "order": 2
         }
       ]
     }

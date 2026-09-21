@@ -8,6 +8,7 @@ using Raven.Client.Documents.Session;
 using CodeCoverage.Tests;
 using Raven.TestDriver;
 using Xunit;
+using CodeCoverage.Forge;
 
 namespace CodeCoverage.Tests.Controllers;
 
@@ -22,6 +23,9 @@ public class MeControllerTests : CoverageRavenTest
         var services = new ServiceCollection();
         services.AddSingleton(session);
         services.AddSingleton<IGitHubAccessService>(new ScriptedAccessService(visibility));
+        var scriptedForge = ScriptedForge.From(visibility);
+        services.AddSingleton<IForgeIntegration>(scriptedForge);
+        services.AddSingleton<IForgeIntegrationResolver>(scriptedForge);
         services.AddSingleton(GitHubAuthTestFakes.TestConfiguration());
         services.AddSingleton<IWebHostEnvironment>(new FakeWebHostEnvironment());
         // The real aggregation, not a stub: it is shared with the Custom.MyAccounts
@@ -44,7 +48,7 @@ public class MeControllerTests : CoverageRavenTest
 
         var response = Body(await controller.GetAccounts(CancellationToken.None));
 
-        response.GitHubReauthRequired.Should().BeTrue();
+        response.ReauthRequired.Should().BeTrue();
         response.Accounts.Should().ContainSingle().Which.Login.Should().Be("pieterjan");
     }
 
@@ -57,7 +61,7 @@ public class MeControllerTests : CoverageRavenTest
 
         var response = Body(await controller.GetAccounts(CancellationToken.None));
 
-        response.GitHubReauthRequired.Should().BeFalse();
+        response.ReauthRequired.Should().BeFalse();
     }
 
     [Fact]
@@ -69,6 +73,6 @@ public class MeControllerTests : CoverageRavenTest
 
         var response = Body(await controller.GetAccounts(CancellationToken.None));
 
-        response.GitHubReauthRequired.Should().BeFalse();
+        response.ReauthRequired.Should().BeFalse();
     }
 }

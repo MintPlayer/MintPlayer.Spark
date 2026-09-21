@@ -26,6 +26,24 @@
         "rules": []
       },
       {
+        "id": "b7d78081-ce41-47c5-b43c-97faf802808b",
+        "name": "AccountOwnerKey",
+        "label": {
+          "en": "Account Owner Key"
+        },
+        "description": {
+          "en": "The owning account as provider:login — what the row filter compares."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
         "id": "19e3a2c9-b12c-4c10-b536-3a4b08b2e6be",
         "name": "CreatedAtUtc",
         "label": {

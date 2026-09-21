@@ -1,4 +1,5 @@
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 using CodeCoverage.Ingestion;
 using CodeCoverage.Services;
 using CodeCoverage.Tests.Services;
@@ -28,12 +29,12 @@ public class PatchCoverageCalculatorTests : CoverageRavenTest
             Name = "repo",
             FullName = "acme/repo",
             OwnerLogin = "acme",
-        }, Repository.DocumentId(RepoGitHubId));
+        }, Repository.DocumentId(EForgeProvider.GitHub, RepoGitHubId));
 
-        var commit = new Commit { Sha = HeadSha, Repository = Repository.DocumentId(RepoGitHubId), FirstSeenAtUtc = DateTimeOffset.UtcNow };
-        await session.StoreAsync(commit, Commit.DocumentId(RepoGitHubId, HeadSha));
+        var commit = new Commit { Sha = HeadSha, Repository = Repository.DocumentId(EForgeProvider.GitHub, RepoGitHubId), FirstSeenAtUtc = DateTimeOffset.UtcNow };
+        await session.StoreAsync(commit, Commit.DocumentId(EForgeProvider.GitHub, RepoGitHubId, HeadSha));
 
-        var buildId = Build.DocumentId(RepoGitHubId, HeadSha, 1, 1);
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, RepoGitHubId, HeadSha, 1, 1);
         var build = new Build { Commit = commit.Id, CiRunId = 1, CiRunAttempt = 1, DeclaredBaseSha = BaseSha, CreatedAtUtc = DateTime.UtcNow };
         await session.StoreAsync(build, buildId);
 

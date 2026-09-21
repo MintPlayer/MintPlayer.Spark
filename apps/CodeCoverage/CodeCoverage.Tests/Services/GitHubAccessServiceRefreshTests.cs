@@ -84,8 +84,21 @@ public class GitHubAccessServiceRefreshTests : CoverageRavenTest
         harness.Handler.Requests.Should().HaveCount(2, "the stale token 401s once, the refreshed token succeeds");
     }
 
+    /// <summary>
+    /// A failed lookup degrades to the viewer's own login, and the <em>failure</em> is remembered
+    /// briefly while the degraded owner set is not.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ This test previously asserted that nothing at all was cached, and the negative cache added
+    /// with <c>IForgeAccessService</c> (D6c) made that false without anyone noticing — the two halves
+    /// were committed in the same milestone and the suite was not run between them. The distinction
+    /// that actually matters is preserved and is what this now pins: the failure <em>state</em> is
+    /// cached so an outage costs one attempt per window rather than one per request, while the
+    /// degraded owner set is recomputed from the principal every time, so nothing stale is ever
+    /// served as though it were authoritative.
+    /// </remarks>
     [Fact]
-    public async Task Refresh_failure_after_401_degrades_to_own_login_with_reauth_required_and_caches_nothing()
+    public async Task Refresh_failure_after_401_degrades_to_own_login_and_remembers_only_the_failure()
     {
         using var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
@@ -101,10 +114,17 @@ public class GitHubAccessServiceRefreshTests : CoverageRavenTest
 
         first.Owners.Should().BeEquivalentTo(["pieterjan"]);
         first.TokenState.Should().Be(GitHubTokenState.ReauthRequired);
-        // Degraded results are never cached: the second call re-consults the
-        // token service instead of replaying a cached owner list.
+
+        // The second call short-circuits on the remembered failure rather than re-attempting:
+        // 2 token calls (initial + forced) for the first, none for the second.
+        harness.Tokens.Calls.Should().Be(2, "the failure is remembered, so an outage costs one attempt per window");
+        harness.Handler.Requests.Should().HaveCount(1, "the short-circuit must not reach GitHub again");
+
+        // But the answer is rebuilt, not replayed: the same degraded state and the same own-login
+        // set, derived from the principal rather than served from a cache entry.
         second.TokenState.Should().Be(GitHubTokenState.ReauthRequired);
-        harness.Tokens.Calls.Should().Be(4, "two visibility calls × (initial + forced) — nothing was cached");
+        // ...and the degraded set is recomputed, never cached.
+        second.Owners.Should().BeEquivalentTo(["pieterjan"]);
     }
 
     [Fact]

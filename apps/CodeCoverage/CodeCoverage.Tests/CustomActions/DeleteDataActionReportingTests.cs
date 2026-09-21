@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using System.Security.Claims;
 using CodeCoverage.CustomActions;
 using CodeCoverage.Entities;
@@ -100,7 +101,7 @@ public class DeleteDataActionReportingTests : CoverageRavenTest
             FullName = $"{Owner}/widget",
             OwnerLogin = Owner,
             Connection = connection,
-        }, Repository.DocumentId(RepoId));
+        }, Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         await session.SaveChangesAsync();
     }
 
@@ -139,7 +140,7 @@ public class DeleteDataActionReportingTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var harness = CreateAction(session, canManageOwner: true);
 
-        await harness.Action.ExecuteAsync(ArgsFor(Repository.DocumentId(999999)));
+        await harness.Action.ExecuteAsync(ArgsFor(Repository.DocumentId(EForgeProvider.GitHub, 999999)));
 
         harness.Client.Received().Notify(Arg.Any<string>(), NotificationKind.Info, Arg.Any<TimeSpan?>());
         Assert.Empty(harness.Broadcast);
@@ -158,7 +159,7 @@ public class DeleteDataActionReportingTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var harness = CreateAction(session, canManageOwner: false);
 
-        await harness.Action.ExecuteAsync(ArgsFor(Repository.DocumentId(RepoId)));
+        await harness.Action.ExecuteAsync(ArgsFor(Repository.DocumentId(EForgeProvider.GitHub, RepoId)));
 
         harness.Client.Received().Notify(
             Arg.Is<string>(m => m.Contains(Owner)), NotificationKind.Error, Arg.Any<TimeSpan?>());
@@ -178,7 +179,7 @@ public class DeleteDataActionReportingTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var harness = CreateAction(session, canManageOwner: true);
 
-        await harness.Action.ExecuteAsync(ArgsFor(Repository.DocumentId(RepoId)));
+        await harness.Action.ExecuteAsync(ArgsFor(Repository.DocumentId(EForgeProvider.GitHub, RepoId)));
 
         harness.Client.Received().Notify(
             Arg.Is<string>(m => m.Contains("Resync")), NotificationKind.Warning, Arg.Any<TimeSpan?>());
@@ -199,7 +200,7 @@ public class DeleteDataActionReportingTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var harness = CreateAction(session, canManageOwner: true);
 
-        await harness.Action.ExecuteAsync(ArgsFor(Repository.DocumentId(RepoId)));
+        await harness.Action.ExecuteAsync(ArgsFor(Repository.DocumentId(EForgeProvider.GitHub, RepoId)));
 
         var queued = Assert.Single(harness.Broadcast);
         var message = Assert.IsType<DeleteRepositoryDataMessage>(queued);

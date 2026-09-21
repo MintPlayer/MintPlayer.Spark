@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using CodeCoverage.ApiTokens;
@@ -130,7 +131,7 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
     {
         using var store = GetDocumentStore();
         using var seed = store.OpenAsyncSession();
-        var value = await StoreTokenAsync(seed, t => t.GithubRepositories = [Repository.DocumentId(777)]);
+        var value = await StoreTokenAsync(seed, t => t.GithubRepositories = [Repository.DocumentId(EForgeProvider.GitHub, 777)]);
 
         using var session = store.OpenAsyncSession();
         var handler = await CreateAsync(session, $"{scheme} {value}");
@@ -142,7 +143,7 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         Assert.Equal("Account", principal.FindFirst(ApiTokenAuthenticationHandler.ScopeClaim)?.Value);
         Assert.Equal("acme", principal.FindFirst(ApiTokenAuthenticationHandler.AccountClaim)?.Value);
         Assert.Equal("42", principal.FindFirst(ApiTokenAuthenticationHandler.AccountIdClaim)?.Value);
-        Assert.Equal("Repositories/777", principal.FindFirst(ApiTokenAuthenticationHandler.RepositoryClaim)?.Value);
+        Assert.Equal(Repository.DocumentId(EForgeProvider.GitHub, 777), principal.FindFirst(ApiTokenAuthenticationHandler.RepositoryClaim)?.Value);
 
         // The hash, never the token value: anything downstream that logs the principal must not be
         // able to leak a working credential.
@@ -168,7 +169,7 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         var value = await StoreTokenAsync(seed, t =>
         {
             t.Scope = "Repository";
-            t.GithubRepositories = [Repository.DocumentId(777), Repository.DocumentId(888)];
+            t.GithubRepositories = [Repository.DocumentId(EForgeProvider.GitHub, 777), Repository.DocumentId(EForgeProvider.GitHub, 888)];
         });
 
         using var session = store.OpenAsyncSession();
@@ -182,7 +183,7 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
             .OrderBy(v => v, StringComparer.Ordinal)
             .ToArray();
 
-        Assert.Equal(["Repositories/777", "Repositories/888"], claims);
+        Assert.Equal([Repository.DocumentId(EForgeProvider.GitHub, 777), Repository.DocumentId(EForgeProvider.GitHub, 888)], claims);
     }
 
     /// <summary>

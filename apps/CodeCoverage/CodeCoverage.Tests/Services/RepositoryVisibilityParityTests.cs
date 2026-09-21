@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using CodeCoverage.Indexes;
 using CodeCoverage.Services;
@@ -45,7 +46,7 @@ public class RepositoryVisibilityParityTests : CoverageRavenTest
         var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
         foreach (var repository in Corpus)
-            await session.StoreAsync(repository, Repository.DocumentId(repository.GitHubId));
+            await session.StoreAsync(repository, Repository.DocumentId(EForgeProvider.GitHub, repository.GitHubId));
         await session.SaveChangesAsync();
         WaitForIndexing(store);
         return store;
@@ -63,6 +64,10 @@ public class RepositoryVisibilityParityTests : CoverageRavenTest
     public async Task Both_surfaces_resolve_the_same_repositories_for_the_same_principal(
         string[] allowedOwners, string[] expected)
     {
+        // ⚠️ The InlineData stays bare logins because that is what reads clearly; the filter
+        // compares provider-qualified keys, because a bare login unions forges.
+        allowedOwners = [.. allowedOwners.Select(ForgeOwner.KeyFromUnqualifiedLogin)];
+
         using var store = await SeedCorpus();
         using var session = store.OpenAsyncSession();
 
@@ -88,7 +93,9 @@ public class RepositoryVisibilityParityTests : CoverageRavenTest
     {
         using var store = await SeedCorpus();
         using var session = store.OpenAsyncSession();
-        string[] allowed = ["ACME"];
+        // Qualified, like every other owner set the filter sees — the casing is what this test is
+        // about, and it must survive the qualification.
+        string[] allowed = [ForgeOwner.KeyFromUnqualifiedLogin("ACME")];
 
         var throughRowFilter = await session.Query<Repository, Repositories_Overview>()
             .Where(RepositoryVisibility.Filter(allowed))

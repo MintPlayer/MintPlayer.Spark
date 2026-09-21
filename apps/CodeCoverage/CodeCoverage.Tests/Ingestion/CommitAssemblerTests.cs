@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using System.Text;
 using CodeCoverage.Entities;
 using CodeCoverage.Ingestion;
@@ -22,7 +23,7 @@ namespace CodeCoverage.Tests.Ingestion;
 public class CommitAssemblerTests : CoverageRavenTest
 {
     private const long RepoId = 7;
-    private static readonly string RepositoryId = Repository.DocumentId(RepoId);
+    private static readonly string RepositoryId = Repository.DocumentId(EForgeProvider.GitHub, RepoId);
 
     // a.cs: 1 of 2 lines at the base, 2 of 2 when re-measured; b.cs: 3 of 4.
     private const string LcovABase = "SF:/w/src/a.cs\nDA:1,1\nDA:2,0\nend_of_record\n";
@@ -38,7 +39,7 @@ public class CommitAssemblerTests : CoverageRavenTest
     private static string FileList(params (string Path, string Oid)[] entries)
         => string.Join('\n', entries.Select(e => $"{e.Oid} {e.Path}"));
 
-    public static ICommitAssembler CreateAssembler(IDocumentStore store, IAsyncDocumentSession session, IGitHubDiffService diffService)
+    public static ICommitAssembler CreateAssembler(IDocumentStore store, IAsyncDocumentSession session, IForgeIntegrationResolver diffService)
     {
         var services = new ServiceCollection()
             .AddSingleton(store)
@@ -79,7 +80,7 @@ public class CommitAssemblerTests : CoverageRavenTest
             Repository = RepositoryId, Sha = sha, Branch = branch, AuthoredAt = date, ParentSha = parentSha,
             // As the new action sends it on a push: trusted without an API round-trip.
             ParentShaSource = parentSha is null ? null : "upload",
-        }, Commit.DocumentId(RepoId, sha));
+        }, Commit.DocumentId(EForgeProvider.GitHub, RepoId, sha));
         await seed.SaveChangesAsync();
     }
 
@@ -87,8 +88,8 @@ public class CommitAssemblerTests : CoverageRavenTest
     private static async Task<string> Upload(IDocumentStore store, string sha, long runId, string lcov, string fileList,
         bool partial = false, string? baseSha = null, bool carryForward = true)
     {
-        var commitId = Commit.DocumentId(RepoId, sha);
-        var buildId = Build.DocumentId(RepoId, sha, runId, 1);
+        var commitId = Commit.DocumentId(EForgeProvider.GitHub, RepoId, sha);
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, RepoId, sha, runId, 1);
         var sessionId = $"s{runId}";
         var reportName = UploadAttachments.ReportName(sessionId, 0, "lcov.info");
 
@@ -121,11 +122,11 @@ public class CommitAssemblerTests : CoverageRavenTest
         return buildId;
     }
 
-    private async Task<CommitAssembly?> Assemble(IDocumentStore store, string sha, IGitHubDiffService? diffService = null)
+    private async Task<CommitAssembly?> Assemble(IDocumentStore store, string sha, ScriptedDiffService? diffService = null)
     {
         WaitForIndexing(store);
         using var session = store.OpenAsyncSession();
-        var assembly = await CreateAssembler(store, session, diffService ?? new ScriptedDiffService()).AssembleAsync(Commit.DocumentId(RepoId, sha));
+        var assembly = await CreateAssembler(store, session, diffService ?? new ScriptedDiffService()).AssembleAsync(Commit.DocumentId(EForgeProvider.GitHub, RepoId, sha));
         await session.SaveChangesAsync();
         WaitForIndexing(store);
         return assembly;
@@ -140,7 +141,7 @@ public class CommitAssemblerTests : CoverageRavenTest
     private static async Task<Dictionary<string, FileCoverage>> AssembledFiles(IDocumentStore store, string sha)
     {
         using var session = store.OpenAsyncSession();
-        var files = await session.Advanced.LoadStartingWithAsync<FileCoverage>(CommitAssembly.FilesPrefix(Commit.DocumentId(RepoId, sha)), pageSize: 1024);
+        var files = await session.Advanced.LoadStartingWithAsync<FileCoverage>(CommitAssembly.FilesPrefix(Commit.DocumentId(EForgeProvider.GitHub, RepoId, sha)), pageSize: 1024);
         return files.ToDictionary(f => f.Path, StringComparer.Ordinal);
     }
 
@@ -161,8 +162,8 @@ public class CommitAssemblerTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await SeedAssembledBase(store, T0);
 
-        var assembly = await Load<CommitAssembly>(store, CommitAssembly.DocumentId(Commit.DocumentId(RepoId, "m1")));
-        var build = await Load<Build>(store, Build.DocumentId(RepoId, "m1", 1, 1));
+        var assembly = await Load<CommitAssembly>(store, CommitAssembly.DocumentId(Commit.DocumentId(EForgeProvider.GitHub, RepoId, "m1")));
+        var build = await Load<Build>(store, Build.DocumentId(EForgeProvider.GitHub, RepoId, "m1", 1, 1));
         var repository = await Load<Repository>(store, RepositoryId);
 
         assembly.Should().NotBeNull();
@@ -205,7 +206,7 @@ public class CommitAssemblerTests : CoverageRavenTest
         files["src/b.cs"].Origin!.FromSha.Should().Be("m1");
         files["src/b.cs"].Origin!.OriginSha.Should().Be("m1");
 
-        var commit = await Load<Commit>(store, Commit.DocumentId(RepoId, "p1"));
+        var commit = await Load<Commit>(store, Commit.DocumentId(EForgeProvider.GitHub, RepoId, "p1"));
         commit!.Coverage!.LinesCovered.Should().Be(5);
         commit.AssemblyCompleteness.Should().Be(CommitAssembly.Complete);
 
@@ -365,7 +366,7 @@ public class CommitAssemblerTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await SeedAssembledBase(store, T0); // m1: 4/6 = 66.67%
 
-        var m1 = await Load<Commit>(store, Commit.DocumentId(RepoId, "m1"));
+        var m1 = await Load<Commit>(store, Commit.DocumentId(EForgeProvider.GitHub, RepoId, "m1"));
         Assert.Null(m1!.CoverageDeltaVsParent);
         Assert.Null(m1.CoverageDeltaVsDefaultBranch);
 
@@ -374,7 +375,7 @@ public class CommitAssemblerTests : CoverageRavenTest
         await Upload(store, "m2", runId: 2, LcovAHead + LcovB, FileList(("src/a.cs", OidA2), ("src/b.cs", OidB1)));
         await Assemble(store, "m2");
 
-        var m2 = await Load<Commit>(store, Commit.DocumentId(RepoId, "m2"));
+        var m2 = await Load<Commit>(store, Commit.DocumentId(EForgeProvider.GitHub, RepoId, "m2"));
         var expected = 5 * 100d / 6 - 4 * 100d / 6;
         Assert.NotNull(m2!.CoverageDeltaVsParent);
         Math.Abs(m2.CoverageDeltaVsParent!.Value - expected).Should().BeLessThan(0.0001);
@@ -386,7 +387,7 @@ public class CommitAssemblerTests : CoverageRavenTest
         await Upload(store, "p6", runId: 3, LcovABase, FileList(("src/a.cs", OidA1), ("src/b.cs", OidB1)), partial: true, baseSha: "m2");
         await Assemble(store, "p6");
 
-        var p6 = await Load<Commit>(store, Commit.DocumentId(RepoId, "p6"));
+        var p6 = await Load<Commit>(store, Commit.DocumentId(EForgeProvider.GitHub, RepoId, "p6"));
         Math.Abs(p6!.CoverageDeltaVsParent!.Value + expected).Should().BeLessThan(0.0001);
         Math.Abs(p6.CoverageDeltaVsDefaultBranch!.Value + expected).Should().BeLessThan(0.0001);
     }
@@ -404,7 +405,7 @@ public class CommitAssemblerTests : CoverageRavenTest
             {
                 Repository = RepositoryId, Sha = "m2", Branch = "master", AuthoredAt = T0.AddHours(1),
                 Coverage = new CoverageSummary { LinesCovered = 5, LinesCoverable = 6, FilesCount = 2 },
-            }, Commit.DocumentId(RepoId, "m2"));
+            }, Commit.DocumentId(EForgeProvider.GitHub, RepoId, "m2"));
             await seed.SaveChangesAsync();
         }
         WaitForIndexing(store);
@@ -418,7 +419,8 @@ public class CommitAssemblerTests : CoverageRavenTest
             var services = new ServiceCollection()
                 .AddSingleton(store)
                 .AddSingleton(session)
-                .AddSingleton<IGitHubDiffService>(github)
+                .AddSingleton<IForgeIntegration>(github)
+                .AddSingleton<IForgeIntegrationResolver>(github)
                 .AddSingleton<IBaseResolver, BaseResolver>()
                 .AddSingleton<ICommitAssembler, CommitAssembler>()
                 .AddSingleton(typeof(ILogger<>), typeof(NullLogger<>))
@@ -434,7 +436,7 @@ public class CommitAssemblerTests : CoverageRavenTest
 
         (await RunJob()).Should().Be(0);
 
-        var m2 = await Load<Commit>(store, Commit.DocumentId(RepoId, "m2"));
+        var m2 = await Load<Commit>(store, Commit.DocumentId(EForgeProvider.GitHub, RepoId, "m2"));
         m2!.ParentSha.Should().Be("m1");
         m2.ParentShaSource.Should().Be("api");
         Assert.NotNull(m2.ParentLookupAttemptedAtUtc);
@@ -444,7 +446,7 @@ public class CommitAssemblerTests : CoverageRavenTest
         Assert.NotNull(m2.CoverageDeltaVsDefaultBranch);
 
         // m1 had no parent to find, but was still marked as attempted by its assembly.
-        var m1 = await Load<Commit>(store, Commit.DocumentId(RepoId, "m1"));
+        var m1 = await Load<Commit>(store, Commit.DocumentId(EForgeProvider.GitHub, RepoId, "m1"));
         Assert.NotNull(m1!.ParentLookupAttemptedAtUtc);
     }
 
@@ -461,7 +463,7 @@ public class CommitAssemblerTests : CoverageRavenTest
         await Upload(store, "m1", runId: 9, LcovAHead, FileList(("src/a.cs", OidA1), ("src/b.cs", OidB1)));
         await Assemble(store, "m1");
 
-        var m2 = await Load<Commit>(store, Commit.DocumentId(RepoId, "m2"));
+        var m2 = await Load<Commit>(store, Commit.DocumentId(EForgeProvider.GitHub, RepoId, "m2"));
         Assert.NotNull(m2!.CoverageDeltaVsParent);
         Math.Abs(m2.CoverageDeltaVsParent!.Value).Should().BeLessThan(0.0001);
     }

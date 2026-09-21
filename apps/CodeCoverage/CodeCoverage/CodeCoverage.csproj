@@ -22,20 +22,21 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.20.1" GeneratePathProperty="true" />
-		<!--
-		  Explicit rather than transitive. It arrives through MintPlayer.Spark.Webhooks.GitHub
-		  anyway, but this app now writes Projects V2 GraphQL of its own, and a BETA package that
-		  the code depends on directly should not be pinned by accident: a version bump in the
-		  webhooks library would otherwise silently move this app's GraphQL surface. Its
-		  Octokit.GraphQL.Core types (ID, the Switch/Cast builders) are also only referenceable with
-		  a direct reference.
-		-->
-		<PackageReference Include="Octokit.GraphQL" Version="0.4.0-beta" />
 		<PackageReference Include="YamlDotNet" Version="16.3.0" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<ProjectReference Include="..\CodeCoverage.Library\CodeCoverage.Library.csproj" />
+		<ProjectReference Include="..\CodeCoverage.GithubIntegration\CodeCoverage.GithubIntegration.csproj" />
+		<!--
+		  Referenced but NOT registered: their AddXxxIntegration() is a no-op until there is
+		  something to register, and Program.cs calls only AddGithubIntegration(). Referencing them
+		  now means a port adds one line to the composition root rather than also discovering that
+		  three hand-maintained closures - this file, the Dockerfile restore layer and the solution
+		  - each need editing too.
+		-->
+		<ProjectReference Include="..\CodeCoverage.GitlabIntegration\CodeCoverage.GitlabIntegration.csproj" />
+		<ProjectReference Include="..\CodeCoverage.BitbucketIntegration\CodeCoverage.BitbucketIntegration.csproj" />
 		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
 		<ProjectReference Include="..\..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
 		<ProjectReference Include="..\..\..\libs\controllers\MintPlayer.Spark.Controllers\MintPlayer.Spark.Controllers.csproj" />

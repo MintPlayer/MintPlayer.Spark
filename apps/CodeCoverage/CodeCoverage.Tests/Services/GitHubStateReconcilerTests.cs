@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using CodeCoverage.Services;
 using Microsoft.Extensions.DependencyInjection;
@@ -92,18 +93,18 @@ public class GitHubStateReconcilerTests : CoverageRavenTest
             Type = "Organization",
             InstallationId = InstallationId,
         };
-        await session.StoreAsync(account, Account.DocumentId(AccountId));
+        await session.StoreAsync(account, Account.DocumentId(EForgeProvider.GitHub, AccountId));
 
         foreach (var (id, name) in new[] { (KeptRepoId, "kept"), (GoneRepoId, "gone") })
         {
             await session.StoreAsync(new Repository
             {
                 GitHubId = id,
-                Account = Account.DocumentId(AccountId),
+                Account = Account.DocumentId(EForgeProvider.GitHub, AccountId),
                 Name = name,
                 FullName = $"acme/{name}",
                 OwnerLogin = "acme",
-            }, Repository.DocumentId(id));
+            }, Repository.DocumentId(EForgeProvider.GitHub, id));
         }
 
         await session.SaveChangesAsync();
@@ -130,8 +131,8 @@ public class GitHubStateReconcilerTests : CoverageRavenTest
         await CreateReconciler(session, github).ReconcileAsync(account);
         await session.SaveChangesAsync();
 
-        var kept = await session.LoadAsync<Repository>(Repository.DocumentId(KeptRepoId));
-        var gone = await session.LoadAsync<Repository>(Repository.DocumentId(GoneRepoId));
+        var kept = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, KeptRepoId));
+        var gone = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, GoneRepoId));
 
         Assert.Equal(RepositoryConnection.Connected, kept!.Connection);
         Assert.Equal(RepositoryConnection.Disconnected, gone!.Connection);
@@ -150,12 +151,12 @@ public class GitHubStateReconcilerTests : CoverageRavenTest
         var github = new FakeInstallationRepositories { Throws = new HttpRequestException("connection reset") };
         await Assert.ThrowsAsync<HttpRequestException>(() => CreateReconciler(session, github).ReconcileAsync(account));
 
-        var kept = await session.LoadAsync<Repository>(Repository.DocumentId(KeptRepoId));
-        var gone = await session.LoadAsync<Repository>(Repository.DocumentId(GoneRepoId));
+        var kept = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, KeptRepoId));
+        var gone = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, GoneRepoId));
 
         Assert.Equal(RepositoryConnection.Connected, kept!.Connection);
         Assert.Equal(RepositoryConnection.Connected, gone!.Connection);
-        Assert.Equal(InstallationId, (await session.LoadAsync<Account>(Account.DocumentId(AccountId)))!.InstallationId);
+        Assert.Equal(InstallationId, (await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, AccountId)))!.InstallationId);
     }
 
     [Fact]
@@ -173,7 +174,7 @@ public class GitHubStateReconcilerTests : CoverageRavenTest
         };
         await Assert.ThrowsAsync<ApiException>(() => CreateReconciler(session, github).ReconcileAsync(account));
 
-        var gone = await session.LoadAsync<Repository>(Repository.DocumentId(GoneRepoId));
+        var gone = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, GoneRepoId));
         Assert.Equal(RepositoryConnection.Connected, gone!.Connection);
     }
 
@@ -188,12 +189,12 @@ public class GitHubStateReconcilerTests : CoverageRavenTest
         await CreateReconciler(session, github).ReconcileAsync(account);
         await session.SaveChangesAsync();
 
-        var reloaded = await session.LoadAsync<Account>(Account.DocumentId(AccountId));
+        var reloaded = await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, AccountId));
         Assert.Null(reloaded!.InstallationId);
 
         foreach (var id in new[] { KeptRepoId, GoneRepoId })
         {
-            var repository = await session.LoadAsync<Repository>(Repository.DocumentId(id));
+            var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, id));
             Assert.Equal(RepositoryConnection.Disconnected, repository!.Connection);
             Assert.Equal(DisconnectedReasons.AppUninstalled, repository.DisconnectedReason);
         }
@@ -213,7 +214,7 @@ public class GitHubStateReconcilerTests : CoverageRavenTest
         await CreateReconciler(session, github).ReconcileAsync(account);
         await session.SaveChangesAsync();
 
-        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(KeptRepoId));
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, KeptRepoId));
         Assert.Equal("acme/renamed", repository!.FullName);
         Assert.Equal("renamed", repository.Name);
         Assert.Contains("acme/kept", repository.PreviousFullNames);
@@ -226,7 +227,7 @@ public class GitHubStateReconcilerTests : CoverageRavenTest
         using var _ = store;
         using var __ = session;
 
-        var gone = await session.LoadAsync<Repository>(Repository.DocumentId(GoneRepoId));
+        var gone = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, GoneRepoId));
         gone!.Connection = RepositoryConnection.Disconnected;
         gone.DisconnectedReason = DisconnectedReasons.RemovedFromInstallation;
         gone.DisconnectedAtUtc = DateTime.UtcNow;
@@ -240,7 +241,7 @@ public class GitHubStateReconcilerTests : CoverageRavenTest
         await CreateReconciler(session, github).ReconcileAsync(account);
         await session.SaveChangesAsync();
 
-        var reloaded = await session.LoadAsync<Repository>(Repository.DocumentId(GoneRepoId));
+        var reloaded = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, GoneRepoId));
         Assert.Equal(RepositoryConnection.Connected, reloaded!.Connection);
         Assert.Null(reloaded.DisconnectedReason);
     }

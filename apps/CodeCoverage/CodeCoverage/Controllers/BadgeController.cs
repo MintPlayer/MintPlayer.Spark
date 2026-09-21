@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Badges;
 using CodeCoverage.Entities;
 using CodeCoverage.Services;
@@ -36,17 +37,22 @@ public partial class BadgeController : ControllerBase
     /// understood for a repository the caller cannot see.
     /// </para>
     /// </summary>
-    [HttpGet("badge/{owner}/{name}.svg")]
+    [HttpGet("badge/{provider}/{owner}/{name}.svg")]
     [ResponseCache(Duration = 300, Location = ResponseCacheLocation.Any)]
     public async Task<IActionResult> Get(
-        string owner, string name,
+        string provider, string owner, string name,
         [FromQuery] string? token, [FromQuery] string? branch, [FromQuery] int? pr, [FromQuery] string? sig,
         CancellationToken cancellationToken)
     {
         // Resolved rather than queried, so a badge embedded in a README keeps rendering after the
         // repository is renamed or transferred. No redirect is issued even when the name is a stale
         // one: this response is an image, and a 301 through GitHub's camo proxy buys nothing.
-        var repository = (await repositories.ResolveAsync(owner, name, cancellationToken)).Repository;
+        // ⚠️ An unrecognised forge takes the same path as an unknown repository — it must NOT
+        // 404. This endpoint's never-404 rule exists so a badge URL cannot be used to probe which
+        // repositories exist, and a 404 here would reintroduce exactly that oracle for forges.
+        var repository = ForgeProviders.TryParse(provider, out var forge)
+            ? (await repositories.ResolveAsync(forge, owner, name, cancellationToken)).Repository
+            : null;
 
         double? percent = null;
         var partial = false;

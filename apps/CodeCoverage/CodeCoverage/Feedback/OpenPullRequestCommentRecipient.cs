@@ -1,4 +1,5 @@
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging.Abstractions;
 using Raven.Client.Documents;
@@ -20,7 +21,7 @@ namespace CodeCoverage.Feedback;
 public partial class OpenPullRequestCommentRecipient : IRecipient<OpenPullRequestCommentMessage>
 {
     [Inject] private readonly IAsyncDocumentSession session;
-    [Inject] private readonly IPullRequestCommentPublisher publisher;
+    [Inject] private readonly IForgeIntegrationResolver forges;
     [Inject] private readonly IConfiguration configuration;
     [Inject] private readonly ILogger<OpenPullRequestCommentRecipient> logger;
 
@@ -32,17 +33,20 @@ public partial class OpenPullRequestCommentRecipient : IRecipient<OpenPullReques
             return;
 
         var repository = await session.LoadAsync<Entities.Repository>(
-            Entities.Repository.DocumentId(message.RepositoryGitHubId), cancellationToken);
+            Entities.Repository.DocumentId(EForgeProvider.GitHub, message.RepositoryGitHubId), cancellationToken);
         if (repository is null) return;
 
-        long? installationId = null;
-        if (repository.Account is not null)
-            installationId = (await session.LoadAsync<Entities.Account>(repository.Account, cancellationToken))?.InstallationId;
-        if (installationId is null)
+        // Was a sixth verbatim copy of the installation lookup M2 set out to remove; it survived
+        // because this recipient reaches the comment publisher directly rather than through the
+        // forge seam. The forge answers the same question without naming a credential.
+        var forge = forges.For(repository);
+        var access = await forge.CheckAccessAsync(repository, cancellationToken);
+        if (!access.Available)
         {
             // OIDC-only repositories are a supported population, and they get
             // no check-runs either. Silent, as there.
-            logger.LogDebug("No installation for {Repo}; skipping the pending coverage comment", repository.FullName);
+            logger.LogDebug("No forge access for {Repo} ({Reason}); skipping the pending coverage comment",
+                repository.FullName, access.UnavailableReason);
             return;
         }
 
@@ -55,7 +59,7 @@ public partial class OpenPullRequestCommentRecipient : IRecipient<OpenPullReques
         }
 
         var body = PullRequestCommentRenderer.RenderPending(repository, message.HeadSha, configuration["Coverage:BaseUrl"]);
-        await publisher.PublishAsync(repository, installationId.Value, message.PullRequestNumber, message.HeadSha, body, cancellationToken);
+        await forge.PublishCommentAsync(repository, message.PullRequestNumber, message.HeadSha, body, cancellationToken);
     }
 
     /// <summary>
