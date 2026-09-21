@@ -1811,6 +1811,88 @@ the same operation.
 
 ---
 
+## M18 — The E2E rate limiter, because CI could not go green without it 🟨 *(unplanned; found by CI)*
+
+**Not multi-forge work.** It is here because it blocks this PR's CI, and because the one-PR rule puts
+what you find in the same unit of work as what you were doing.
+
+### How it surfaced, and what that says about the rest of this plan
+
+The `libs/` and `apps/CodeCoverage` suites were green locally — 622 and 2313 — and I reported the
+branch as verified on that basis. **CI had been red all day.** The E2E project is the one I never ran,
+and it is exactly where authentication changes surface.
+
+Two different failures were hiding behind one red tick:
+
+| | |
+|---|---|
+| `ExternalLoginReturnUrlTests` ×7 | **Real, and mine.** M4 made a refused sign-in carry *why* (`?sparkExternalLogin=<code>`); the tests asserted `Location == "/"` exactly. Not a security regression — `SanitizeReturnUrl` still substitutes `/` for every hostile input — but a real contract change. Fixed by asserting the property (path is the sanitized default **and** nothing caller-supplied survives) rather than the string, which is strictly stronger: the old assertion would have passed if the code appended the outcome to `/` while discarding a legitimate `/dashboard`. |
+| Everything else | **429, and not mine.** See below. |
+
+⚠ **Fixing the first made the second worse**, which is worth understanding rather than shrugging at:
+seven tests that used to fail fast at an assertion now run to completion, consuming more of a shared
+budget and tipping others over. Failure counts moved 7 → 15 between runs. A test suite where fixing a
+test breaks other tests is reporting something about itself.
+
+### The flake predates this branch — the repository says so
+
+`tests/MintPlayer.Spark.E2E.Tests/Mapper/ViewerTimezoneRenderingTests.cs:26-31` records a 429 cascade
+caused by adding **one** extra browser test, with `RateLimitTests` untouched:
+
+> *"A browser test is expensive in that budget — one Angular boot is a dozen `/spark` calls — so a
+> second near-duplicate test pushed unrelated tests elsewhere in the suite into 429s."*
+
+That test's author worked around it by writing fewer tests. That is the cost this milestone removes.
+
+### Measured
+
+| | |
+|---|---|
+| Suite | 88 tests, one **serialized** collection (xunit v2 never parallelises within a collection) |
+| Volume | ~600–900 requests, ~2–5 rps against a 15 rps allowance — **not** globally too small |
+| Burst | ~25 fast API tests × ~6 requests = 150 inside one 10-second window |
+| Amplifier | `BrowserSignIn` polls `/spark/auth/me` every 250 ms for up to 10 s — up to 40 extra requests |
+
+So the budget fails on **bursts**, not volume. Raising it is therefore honest rather than a cover-up.
+
+### The change
+
+1. **`AddRateLimiter` binds `Spark:RateLimiter`**, configuration first then `configure`, matching
+   `AddReplication` and `AddMessaging`. This supersedes **D5 of `issue_265_PRD.md`**, which deferred
+   rather than forbade it — see that document for the reversal and the three spikes behind it.
+2. **No `Enabled` flag.** A limiter that silently does nothing is what `NormalizePrefixes` already
+   throws to prevent; a quiet second route to the same state would contradict the design and give a
+   production app a way to ship unmetered by accident.
+3. **`FleetTestHost` writes `"RateLimiter": { "PermitLimit": 1000 }`** into the
+   `appsettings.{Environment}.json` it already generates. The limiter stays wired, in the same
+   pipeline position, still returning 429 — with ~6× headroom over the worst observed burst.
+4. **`RateLimitTests` bursts past the *configured* limit**, not a hard-coded 200, so it keeps proving
+   audit finding L-3 and cannot be silently defeated by a future budget change.
+5. **The drain moves into `try`/`finally`** — today it sits after the assertion, so the run that
+   leaves the bucket most saturated is the one that skips the cooldown.
+6. **`docs/guide-rate-limiting.md` is corrected.** It currently points at `RateLimitTests` as the
+   pattern *"worth copying"*, which is how the flaw propagates.
+
+### ⚠ Found on the way, and NOT fixed here — a production rate-limiter bypass
+
+`apps/CodeCoverage/CodeCoverage/Program.cs:34-39` clears both `KnownNetworks` and `KnownProxies` while
+honouring `X-Forwarded-For`. ASP.NET only runs its known-proxy check when one of those lists is
+non-empty, so **any caller can set their own `Connection.RemoteIpAddress`** — and all three of
+production's limiters key on it:
+
+| Limiter | Key | Bypassable |
+|---|---|---|
+| Spark's (`/spark`, `/connect`, `/api/browse`) | `RemoteIpAddress` | yes |
+| `browse` (300/min) | `RemoteIpAddress` | yes |
+| `uploads` (60/min) | token hash, **else** `RemoteIpAddress` | yes, unauthenticated |
+
+Deliberately out of scope here: the fix needs the real proxy address in `KnownProxies`, which is
+deployment knowledge rather than a code change, and guessing it would break the limiter's ability to
+see real client IPs at all. **It is also why the tempting test fix was rejected** — per-test
+partitions via `X-Forwarded-For` work only because of this bug, and would make CI depend on it.
+
+---
+
 ## M17 — Deploy to the VPS, with the app still working 🟦 *(last; D22 does not relax this)*
 
 The owner's acceptance criterion, stated 2026-09-20: *"Just make sure I can deploy this to my vps, and
