@@ -1851,14 +1851,26 @@ names**, since a contributor can rename a fork. It reports `true` when it cannot
 `Authorization` sites (upload, status poll, capabilities probe — the plan said two) go through
 `authHeaders`, which yields **no header** rather than `Bearer undefined`.
 
+### ✅ Feedback — built 2026-09-21
+
+`ToVerdict` takes provenance and forces <b>Neutral</b> whatever the gate concluded (D20). Both
+directions are tested, and the <b>failing</b> case is the one that matters: an implementation of
+"never succeed" would leave red reachable, and a contributor able to turn a maintainer's pull
+request red is exactly what D20 prevents. Green would be dishonest for the same reason pointed the
+other way.
+
+The check-run title carries `(from a fork)`, because a check list shows titles and not bodies. The
+pull-request comment states it **above** the results table — a reader who takes the numbers at face
+value and stops has still been told the one thing that changes how to read them.
+
+⚠️ The badge signature stays keyed on `IsPrivate` rather than gaining a fork arm. Fork uploads can
+only target public repositories, so the branch is unreachable today — but if that changes, minting a
+badge capability on an anonymous contributor's behalf would publish access to a repository they
+cannot otherwise see.
+
 ### Still open
 
-1. **Feedback.** The PR comment and check-run path is untouched, so fork coverage stores and badges
-   but does not yet comment. `PublishFeedbackRecipient` must be taught to treat a fork commit's
-   verdict as `Neutral` (D20) — it currently maps from the gate's own conclusion.
-2. **Provenance in the UI.** Nothing renders "contributed from a fork" anywhere. The flag exists;
-   no view reads it.
-3. **The `workflow_run` recipe** for private base repositories. Still unwritten. ⚠️ It must never
+1. **The `workflow_run` recipe** for private base repositories. Still unwritten. ⚠️ It must never
    check out or execute fork code — the artifact is data.
 4. **A fork-namespace cap.** Open item 4 below, unchanged.
 5. **GitLab/Bitbucket** `GetPullRequestAsync` — the stubs do not implement it. ⚠️ GitLab's `iid`,
@@ -2370,6 +2382,42 @@ migration that still has to compile, and ~12 test references.
 M7 promised *"a grep for it should find no callers"*. Verified: the only non-test hit is the
 declaration itself. Six test lines use it as a convenience to build `github:login` keys. Replace
 those and delete it — this no longer waits on anything.
+
+---
+
+## ✅ Browser verification — 2026-09-21
+
+Done by **clicking**, not by loading pages, because M19's bug was that the pages rendered fine and
+the links inside them did not work.
+
+| Step | Route reached | |
+|---|---|---|
+| accounts grid → account | `/github/a/acme` | ✅ |
+| account → repository | `/github/r/acme/demo` | ✅ |
+| repository → commit | `/github/r/acme/demo/c/{sha}` | ✅ |
+| **commit → file** | `/github/r/acme/demo/c/{sha}/f?path=src%2Fx.ts` | ✅ **this is the production bug** |
+| file → breadcrumb → commit | back to the commit page | ✅ |
+
+No `NG04002`, no unmatched route, 0 console errors. The `Connected` column (renamed from
+`IsAppInstalled`) renders on the accounts grid, and `Contributed From Fork` renders on the commit
+page, so both model changes survived `--spark-synchronize-model` into the browser.
+
+⚠️ **The dev database has no real coverage data.** Only 18 bare commits and a synthetic
+`acme/demo` (repo 999001) fixture with a build tree. The click-through above used that fixture, made
+visible by flipping `IsPrivate` in the local RavenDB. Its "Source unavailable" banner is correct —
+there is no such file on GitHub — and the *navigation* is what was under test.
+
+### ⚠️ What the browser caught that the test suites did not
+
+The first fork commit wrote the exclusions as `!c.ContributedFromFork`. An absent JSON field does not
+satisfy an equality in RavenDB, and every commit written before the field existed has no such
+property — so the predicate matched **nothing**, emptying the commit list, history chart, sparklines,
+branch list and `?branch=` badge for every pre-existing repository.
+
+**658 .NET tests and a clean Angular build both passed through it**, because every fixture constructs
+a `Commit` and therefore writes the field. The symptom was a repository reporting `commits=0` while
+its own page linked to one. Fixed to `!= true` at eight sites, and pinned by
+`AbsentFieldPredicateTests` (source sweep) and a behaviour test that patches the property out.
 
 ---
 
