@@ -8,7 +8,7 @@ using Xunit;
 namespace CodeCoverage.Tests.Model;
 
 /// <summary>
-/// Backfilling <c>ApiToken.AccountGitHubId</c> — what resolves, and what deliberately does not.
+/// Backfilling <c>ApiToken.AccountId</c> — what resolves, and what deliberately does not.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -55,7 +55,7 @@ public class ApiTokenAccountIdBackfillTests : CoverageRavenTest
             Scope = scope,
             AccountLogin = Login,
             AccountOwnerKey = ownerKey,
-            AccountGitHubId = accountGitHubId,
+            AccountId = accountGitHubId,
         }, id);
         await session.SaveChangesAsync();
     }
@@ -63,7 +63,7 @@ public class ApiTokenAccountIdBackfillTests : CoverageRavenTest
     private static async Task<long?> AccountIdOfAsync(IDocumentStore store, string id)
     {
         using var verify = store.OpenAsyncSession();
-        return (await verify.LoadAsync<ApiToken>(id)).AccountGitHubId;
+        return (await verify.LoadAsync<ApiToken>(id)).AccountId;
     }
 
     [Fact]

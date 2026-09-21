@@ -611,11 +611,22 @@ public partial class UploadsController : ControllerBase
         // they do. Tokens issued before the id existed fall back to the login, so a deploy
         // invalidates nothing.
         var accountId = User.FindFirst(ApiTokenAuthenticationHandler.AccountIdClaim)?.Value;
+
+        // ⚠️ The forge comes from the TOKEN, not from a literal. A numeric account id is unique only
+        // within a forge, so comparing one against a GitHub-shaped document id — which this did until
+        // 2026-09-22 — authorizes a token against whichever forge the code assumed. An unparseable or
+        // absent provider fails the match rather than defaulting, because defaulting is the bug.
+        var tokenProvider = ForgeProviders.TryParse(
+            User.FindFirst(ApiTokenAuthenticationHandler.ProviderClaim)?.Value, out var parsedProvider)
+            ? parsedProvider
+            : (EForgeProvider?)null;
+
         var authorized = scope switch
         {
             "Account" when accountId is not null =>
-                long.TryParse(accountId, out var ownerId)
-                && repository.Account == Entities.Account.DocumentId(EForgeProvider.GitHub, ownerId),
+                tokenProvider is { } provider
+                && long.TryParse(accountId, out var ownerId)
+                && repository.Account == Entities.Account.DocumentId(provider, ownerId),
             "Account" => string.Equals(account, repository.OwnerLogin, StringComparison.OrdinalIgnoreCase),
             // Membership, not equality — the claims carry document ids, one per repository the
             // token was scoped to.

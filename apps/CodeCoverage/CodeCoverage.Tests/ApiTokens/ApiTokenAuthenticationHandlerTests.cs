@@ -58,7 +58,7 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         {
             Scope = "Account",
             AccountLogin = "acme",
-            AccountGitHubId = 42,
+            AccountId = 42,
             CreatedAtUtc = DateTime.UtcNow,
             Description = "ci",
         };
@@ -131,7 +131,7 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
     {
         using var store = GetDocumentStore();
         using var seed = store.OpenAsyncSession();
-        var value = await StoreTokenAsync(seed, t => t.GithubRepositories = [Repository.DocumentId(EForgeProvider.GitHub, 777)]);
+        var value = await StoreTokenAsync(seed, t => t.RepositoryIds = [Repository.DocumentId(EForgeProvider.GitHub, 777)]);
 
         using var session = store.OpenAsyncSession();
         var handler = await CreateAsync(session, $"{scheme} {value}");
@@ -169,7 +169,7 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         var value = await StoreTokenAsync(seed, t =>
         {
             t.Scope = "Repository";
-            t.GithubRepositories = [Repository.DocumentId(EForgeProvider.GitHub, 777), Repository.DocumentId(EForgeProvider.GitHub, 888)];
+            t.RepositoryIds = [Repository.DocumentId(EForgeProvider.GitHub, 777), Repository.DocumentId(EForgeProvider.GitHub, 888)];
         });
 
         using var session = store.OpenAsyncSession();
@@ -199,8 +199,8 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         var value = await StoreTokenAsync(seed, t =>
         {
             t.AccountLogin = null;
-            t.AccountGitHubId = null;
-            t.GithubRepositories = [];
+            t.AccountId = null;
+            t.RepositoryIds = [];
         });
 
         using var session = store.OpenAsyncSession();

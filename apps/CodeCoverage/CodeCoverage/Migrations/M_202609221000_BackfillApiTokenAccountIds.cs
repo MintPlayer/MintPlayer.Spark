@@ -7,7 +7,7 @@ using Raven.Client.Documents;
 namespace CodeCoverage.Migrations;
 
 /// <summary>
-/// Stamps <see cref="ApiToken.AccountGitHubId"/> on account-scoped tokens that predate the field,
+/// Stamps <see cref="ApiToken.AccountId"/> on account-scoped tokens that predate the field,
 /// so the login-comparison fallback in the upload authorization can eventually be removed — M6g.
 /// </summary>
 /// <remarks>
@@ -52,7 +52,7 @@ namespace CodeCoverage.Migrations;
 public partial class M_202609221000_BackfillApiTokenAccountIds : ISparkMigration
 {
     public static long Version => 202609221000;
-    public static string? Description => "ApiToken.AccountGitHubId, so the login fallback can go";
+    public static string? Description => "ApiToken.AccountId, so the login fallback can go";
 
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly ILogger<M_202609221000_BackfillApiTokenAccountIds> logger;
@@ -73,7 +73,7 @@ public partial class M_202609221000_BackfillApiTokenAccountIds : ISparkMigration
             var token = stream.Current.Document;
 
             // Already stamped, or scoped in a way that never reads the field.
-            if (token.AccountGitHubId is not null || token.Scope != "Account")
+            if (token.AccountId is not null || token.Scope != "Account")
                 continue;
 
             // ⚠️ Resolve through the owner KEY, not the bare login. Two forges can host the same
@@ -85,7 +85,7 @@ public partial class M_202609221000_BackfillApiTokenAccountIds : ISparkMigration
             {
                 // Loaded through the session so the change is tracked, not through the stream.
                 var tracked = await session.LoadAsync<ApiToken>(token.Id, cancellationToken);
-                tracked.AccountGitHubId = accountId;
+                tracked.AccountId = accountId;
                 stamped++;
 
                 // The session holds every tracked token until SaveChanges; flush periodically so a
@@ -104,7 +104,7 @@ public partial class M_202609221000_BackfillApiTokenAccountIds : ISparkMigration
 
         await session.SaveChangesAsync(cancellationToken);
 
-        logger.LogInformation("Backfilled AccountGitHubId on {Stamped} account-scoped API tokens.", stamped);
+        logger.LogInformation("Backfilled AccountId on {Stamped} account-scoped API tokens.", stamped);
 
         if (unresolvable.Count > 0)
         {

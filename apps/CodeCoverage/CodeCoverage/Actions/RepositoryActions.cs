@@ -159,7 +159,7 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
 
     /// <summary>
     /// The repositories a caller may scope an upload token to — the option list behind
-    /// <c>ApiToken.GithubRepositories</c>.
+    /// <c>ApiToken.RepositoryIds</c>.
     /// </summary>
     /// <remarks>
     /// ⚠️ <b>Parent-free, deliberately.</b> A reference picker sends the FORM's own parent, so an

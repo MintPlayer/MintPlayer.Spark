@@ -116,7 +116,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         AccountLogin = Managed,
         AccountOwnerKey = KeyOf(Managed),
         Description = "ci",
-        GithubRepositories = [.. repositoryIds],
+        RepositoryIds = [.. repositoryIds],
     };
 
     /// <summary>The escalation attempt: a token scoped to a repository the caller does not manage.</summary>
@@ -185,7 +185,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
 
         await actions.OnBeforeSaveAsync(Po(), token);
 
-        token.GithubRepositories.Should().HaveCount(2);
+        token.RepositoryIds.Should().HaveCount(2);
         token.Scope.Should().Be("Repository");
     }
 
@@ -215,7 +215,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
 
         await actions.OnBeforeSaveAsync(Po(), token);
 
-        token.GithubRepositories.Should().Equal(Repository.DocumentId(EForgeProvider.GitHub, 10));
+        token.RepositoryIds.Should().Equal(Repository.DocumentId(EForgeProvider.GitHub, 10));
     }
 
     /// <summary>

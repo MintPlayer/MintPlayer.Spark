@@ -119,6 +119,26 @@
         "rules": []
       },
       {
+        "id": "bf276ab8-026d-4e46-a943-10a29c3e6168",
+        "name": "RepositoryIds",
+        "label": {
+          "en": "Repository Ids"
+        },
+        "description": {
+          "en": "Document ids of the repositories this token may upload for. Empty means the token is account-scoped and covers every repository of AccountId."
+        },
+        "dataType": "Reference",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "query": "ApiToken_SelectableRepositories",
+        "referenceType": "CodeCoverage.Entities.Repository",
+        "isArray": true,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
         "id": "2f5256a7-689f-4b9b-a439-2eb7dc55e65e",
         "name": "RevokedAtUtc",
         "label": {

@@ -48,6 +48,10 @@ public class UploadsControllerAuthorizationTests : CoverageRavenTest
                     new Claim(ApiTokenAuthenticationHandler.ScopeClaim, "Account"),
                     new Claim(ApiTokenAuthenticationHandler.AccountClaim, login),
                     new Claim(ApiTokenAuthenticationHandler.AccountIdClaim, accountId.Value.ToString()),
+                    // ⚠️ The handler emits these two together and the controller now requires both: a
+                    // numeric account id is unique only WITHIN a forge, so an id with no provider is
+                    // ambiguous and fails closed rather than defaulting to GitHub.
+                    new Claim(ApiTokenAuthenticationHandler.ProviderClaim, EForgeProvider.GitHub.ToCanonicalString()),
                   ],
             ApiTokenAuthenticationHandler.SchemeName));
 
@@ -122,6 +126,35 @@ public class UploadsControllerAuthorizationTests : CoverageRavenTest
 
         var controller = CreateController(session, AccountToken("acme", OwnerId));
         Assert.True(await IsAuthorizedAsync(controller, "acme"));
+    }
+
+    /// <summary>
+    /// A token carrying an account id but no forge is refused, rather than assumed to be GitHub's.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>A numeric account id is unique only WITHIN a forge.</b> GitHub user 1234 and a GitLab
+    /// group 1234 are different principals, so a comparison that supplies the forge itself — as this
+    /// did, as a literal, until 2026-09-22 — authorizes a token against whichever one the code
+    /// assumed. Absent means refuse: defaulting is the bug, not the fallback.
+    /// </remarks>
+    [Fact]
+    public async Task An_account_token_with_no_forge_is_refused_rather_than_assumed_to_be_GitHub()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedAsync(session, OwnerId, "acme");
+        WaitForIndexing(store);
+
+        var withoutProvider = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim(ApiTokenAuthenticationHandler.ScopeClaim, "Account"),
+                new Claim(ApiTokenAuthenticationHandler.AccountClaim, "acme"),
+                new Claim(ApiTokenAuthenticationHandler.AccountIdClaim, OwnerId.ToString()),
+            ],
+            ApiTokenAuthenticationHandler.SchemeName));
+
+        var controller = CreateController(session, withoutProvider);
+        Assert.False(await IsAuthorizedAsync(controller, "acme"));
     }
 
     /// <summary>

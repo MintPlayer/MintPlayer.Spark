@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using Microsoft.AspNetCore.Identity;
 using Raven.Client.Documents.Session;
 using Raven.Client.Documents.Linq;
@@ -110,7 +111,7 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
         // credential, which cannot be re-derived — the scope must be re-validated every time,
         // because an edit can change which repositories a token covers.
         await ValidateRepositoryScopeAsync(entity);
-        entity.Scope = entity.GithubRepositories.Count > 0 ? "Repository" : "Account";
+        entity.Scope = entity.RepositoryIds.Count > 0 ? "Repository" : "Account";
 
         if (!string.IsNullOrEmpty(entity.Hash))
             return; // An edit; the credential is already minted and cannot be re-derived.
@@ -128,7 +129,11 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
 
         plaintext = ApiTokenService.GenerateTokenValue();
         entity.Hash = ApiTokenService.Hash(plaintext);
-        entity.AccountGitHubId = account?.GitHubId;
+        // ⚠️ Both, together. A numeric account id is unique only WITHIN a forge, so an id stored
+        // without one authorizes against whichever forge the reader assumes — which is what the
+        // upload path did, as a literal, until the provider was carried here.
+        entity.Provider = account?.Provider ?? EForgeProvider.GitHub;
+        entity.AccountId = account?.GitHubId;
 
         // Stamped, never trusted from the payload: the attribute is read-only in the model, so a
         // posted value is refused by IsWritableBySchema anyway, but the field was previously
@@ -157,16 +162,16 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
     /// </remarks>
     private async Task ValidateRepositoryScopeAsync(ApiToken entity)
     {
-        if (entity.GithubRepositories.Count == 0)
+        if (entity.RepositoryIds.Count == 0)
             return;
 
         // Distinct, because a duplicated id would otherwise mean a repeated claim on the wire.
-        entity.GithubRepositories = [.. entity.GithubRepositories.Distinct(StringComparer.Ordinal)];
+        entity.RepositoryIds = [.. entity.RepositoryIds.Distinct(StringComparer.Ordinal)];
 
         var owners = await visibility.GetAllowedOwnersAsync();
-        var repositories = await session.LoadAsync<Repository>(entity.GithubRepositories);
+        var repositories = await session.LoadAsync<Repository>(entity.RepositoryIds);
 
-        foreach (var id in entity.GithubRepositories)
+        foreach (var id in entity.RepositoryIds)
         {
             repositories.TryGetValue(id, out var repository);
 
@@ -177,7 +182,7 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
             if (repository is null || !owners.Contains(repository.OwnerKey, StringComparer.OrdinalIgnoreCase))
             {
                 throw new SparkValidationException(
-                    nameof(ApiToken.GithubRepositories),
+                    nameof(ApiToken.RepositoryIds),
                     "One of the selected repositories is not one you manage.");
             }
         }
@@ -222,7 +227,7 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
     {
         args.EnsureParent("Account");
 
-        // Matched on login rather than the numeric id: AccountGitHubId is null on tokens issued
+        // Matched on login rather than the numeric id: AccountId is null on tokens issued
         // before that field existed, and the same fallback is what ApiTokenAuthenticationHandler
         // relies on so a deploy never invalidates a working token.
         var login = args.Parent!.Attributes
