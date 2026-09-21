@@ -748,7 +748,7 @@ one forge the situation the modes exist for cannot arise. The infrastructure is 
 
 ---
 
-## M6 — Provider-qualified document ids + migration 🟦 *(D7 re-confirmed; gated by SP6)*
+## M6 — Provider-qualified document ids + migration 🟨 *(built and rehearsed; M6d outstanding)*
 
 **D7 re-confirmed 2026-09-19 against the measured number: full re-key, rehearsed first.**
 
@@ -1413,7 +1413,7 @@ baseline.
 
 ---
 
-## M13 — Verification sweep 🟨 *(suites green; browser + production checks outstanding)*
+## M13 — Verification sweep 🟨 *(suites green; browser done on migrated data; production checks outstanding)*
 
 **The only full test run.** Everything before this is verified by reading and building.
 
