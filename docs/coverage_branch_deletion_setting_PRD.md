@@ -26,7 +26,7 @@ Two things are wrong, not one:
 | Rights | `Edit` on Account and Repository, no `New`, no `Delete` |
 | Row filters | the access control for the new write path — **the part that must not be skipped** |
 | Read-only sweep | only `DeleteBranchOnPrClose` is editable; every other attribute is locked |
-| ApiToken grid | `Description` first; `AccountGitHubId` off the model; `RepositoryGitHubId` replaced by a repository **list**; `CreatedByUserId` a stamped reference |
+| ApiToken grid | `Description` first; `AccountGitHubId` off the model; `RepositoryGitHubId` replaced by a repository **list**; `CreatedByUserId` a stamped reference — ⚠️ the two GitHub-named fields are now `AccountId` and `RepositoryIds` (`M_202609220950`, PR #436) |
 
 ## Decisions already taken
 

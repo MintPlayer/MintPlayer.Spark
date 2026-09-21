@@ -1,6 +1,25 @@
 # PRD — Keeping the advertised accounts and repositories in step with GitHub
 
-**Status:** written 2026-09-05, not implemented
+**Status:** ✅ **Implemented and deployed.** (This line read *"written 2026-09-05, not
+implemented"* until 2026-09-22 — it was false for most of its life: the companion plan recorded
+M1–M11 built on 2026-09-05, and the code has been live since.)
+> ⚠️ **Identifiers below have since been renamed. This document is a record of what was planned
+> and built at the time; its body is deliberately left as written.** Current names, for anyone
+> following a reference out of it:
+>
+> | Written here | Today | Renamed by |
+> |---|---|---|
+> | `ApiToken.AccountGitHubId` | `ApiToken.AccountId` | `M_202609220950` (PR #436) |
+> | `ApiToken.GithubRepositories` | `ApiToken.RepositoryIds` | `M_202609220950` (PR #436) |
+> | `TokensController` | `ApiTokenActions` | the Spark actions migration |
+> | `ReconcileGitHubStateCronJob` | `ReconcileForgeStateCronJob` | #422 / PR #434 |
+> | `GitHubEventsRecipient` | `ForgeEventsRecipient` | #422 / PR #434 |
+>
+> ⚠️ `ApiToken` also gained a `Provider`, and **`AccountLogin` is no longer an authorization key
+> at all** — it is read-only in the model and re-derived from `AccountOwnerKey` on every save
+> (PR #436). Any passage below that treats it as a writable or authoritative field is describing
+> behaviour that has since been removed as a privilege-escalation path.
+
 **App:** `apps/CodeCoverage` (production, coverage.mintplayer.com) + `libs/webhooks/MintPlayer.Spark.Webhooks.GitHub`
 **Plan:** [coverage_account_sync_plan.md](coverage_account_sync_plan.md)
 
@@ -406,6 +425,13 @@ non-`renamed` action, since `organization` also fires for membership changes.
 `AccountGitHubId`, written on creation and used for the comparison; `AccountLogin` is kept for
 display only. Existing tokens without the id fall back to the login comparison, so nothing breaks on
 deploy.
+
+> ✅ **Built, and the field is now `AccountId`.** ⚠️ The fallback this paragraph introduces
+> outlived its purpose and became a **privilege-escalation path**: because `AccountLogin` stayed
+> client-writable, a token could be minted honestly and then edited to name another account, and
+> the login-comparison arm authorized every repository owned by that name. Closed in PR #436 —
+> identity is derived from `AccountOwnerKey` on every save and `AccountLogin` is read-only.
+> `M_202609221000` backfills the id; the fallback arm itself is still to be deleted (M6g steps 5–6).
 
 ### D11 — An installation change is a trigger, not a description
 
