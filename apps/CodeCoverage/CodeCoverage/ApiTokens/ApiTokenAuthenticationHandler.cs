@@ -83,8 +83,13 @@ public class ApiTokenAuthenticationHandler : AuthenticationHandler<Authenticatio
             new(ScopeClaim, token.Scope),
             new(TokenHashClaim, hash),
         };
-        if (token.AccountLogin is not null)
-            claims.Add(new Claim(AccountClaim, token.AccountLogin));
+        // ⚠️ The KEY (`github:acme`), not the bare login. This is the fallback for tokens minted
+        // before `AccountId` existed, and a bare login is ambiguous the moment there is a second
+        // forge: a GitLab group and a GitHub organisation of the same name would authorize each
+        // other's uploads. `AccountOwnerKey` is server-derived on every save and read-only in the
+        // model, so unlike the login it was never a value the client could choose.
+        if (token.AccountOwnerKey is not null)
+            claims.Add(new Claim(AccountClaim, token.AccountOwnerKey));
         if (token.AccountId is not null)
         {
             claims.Add(new Claim(AccountIdClaim, token.AccountId.Value.ToString()));

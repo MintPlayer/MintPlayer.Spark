@@ -627,7 +627,11 @@ public partial class UploadsController : ControllerBase
                 tokenProvider is { } provider
                 && long.TryParse(accountId, out var ownerId)
                 && repository.Account == Entities.Account.DocumentId(provider, ownerId),
-            "Account" => string.Equals(account, repository.OwnerLogin, StringComparison.OrdinalIgnoreCase),
+            // ⚠️ `OwnerKey`, not `OwnerLogin` — both sides qualified. Comparing bare logins unions
+            // forges, so a GitLab group called `acme` would authorize uploads to GitHub's `acme`.
+            // `Repository.OwnerKey` is computed from the repository's own `Provider`, so the two
+            // sides can only match when the forge matches too.
+            "Account" => string.Equals(account, repository.OwnerKey, StringComparison.OrdinalIgnoreCase),
             // Membership, not equality — the claims carry document ids, one per repository the
             // token was scoped to.
             "Repository" => repoIds.Contains(

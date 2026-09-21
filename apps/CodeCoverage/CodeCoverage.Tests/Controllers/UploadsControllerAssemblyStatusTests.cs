@@ -54,7 +54,7 @@ public class UploadsControllerAssemblyStatusTests : CoverageRavenTest
                 User = new ClaimsPrincipal(new ClaimsIdentity(
                 [
                     new Claim(ApiTokenAuthenticationHandler.ScopeClaim, "Account"),
-                    new Claim(ApiTokenAuthenticationHandler.AccountClaim, "acme"),
+                    new Claim(ApiTokenAuthenticationHandler.AccountClaim, ForgeOwner.KeyFromUnqualifiedLogin("acme")),
                 ], ApiTokenAuthenticationHandler.SchemeName)),
             },
         };

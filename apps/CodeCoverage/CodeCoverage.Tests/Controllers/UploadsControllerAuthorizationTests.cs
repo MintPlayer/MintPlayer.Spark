@@ -42,11 +42,11 @@ public class UploadsControllerAuthorizationTests : CoverageRavenTest
             accountId is null
                 ? [
                     new Claim(ApiTokenAuthenticationHandler.ScopeClaim, "Account"),
-                    new Claim(ApiTokenAuthenticationHandler.AccountClaim, login),
+                    new Claim(ApiTokenAuthenticationHandler.AccountClaim, ForgeOwner.KeyFromUnqualifiedLogin(login)),
                   ]
                 : [
                     new Claim(ApiTokenAuthenticationHandler.ScopeClaim, "Account"),
-                    new Claim(ApiTokenAuthenticationHandler.AccountClaim, login),
+                    new Claim(ApiTokenAuthenticationHandler.AccountClaim, ForgeOwner.KeyFromUnqualifiedLogin(login)),
                     new Claim(ApiTokenAuthenticationHandler.AccountIdClaim, accountId.Value.ToString()),
                     // ⚠️ The handler emits these two together and the controller now requires both: a
                     // numeric account id is unique only WITHIN a forge, so an id with no provider is
@@ -116,6 +116,64 @@ public class UploadsControllerAuthorizationTests : CoverageRavenTest
         return result.Result is not NotFoundObjectResult and not NotFoundResult;
     }
 
+    /// <summary>
+    /// ⚠️ The legacy fallback must not union forges.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A token minted before <c>AccountId</c> existed still authorizes by owner rather than by id,
+    /// so that no working credential is invalidated by a deploy. That fallback compared a <b>bare
+    /// login</b> until 2026-09-22 — which was correct while GitHub was the only forge and silently
+    /// wrong the moment it was not: a GitLab group called <c>acme</c> and a GitHub organisation
+    /// called <c>acme</c> are different principals, and the comparison could not tell them apart.
+    /// </para>
+    /// <para>
+    /// Both sides are qualified now. The claim carries <c>ApiToken.AccountOwnerKey</c>
+    /// (<c>gitlab:acme</c>) and it is compared against <c>Repository.OwnerKey</c>, which is computed
+    /// from the repository's own <c>Provider</c> — so they can only match when the forge matches.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_legacy_token_for_another_forge_does_not_authorize_the_same_login_here()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedAsync(session, OwnerId, "acme");
+        WaitForIndexing(store);
+
+        // Same login, different forge, and no numeric id — so the legacy arm is what runs.
+        var gitlabToken = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim(ApiTokenAuthenticationHandler.ScopeClaim, "Account"),
+                new Claim(
+                    ApiTokenAuthenticationHandler.AccountClaim,
+                    new ForgeOwner(EForgeProvider.GitLab, "acme").ToString()),
+            ],
+            ApiTokenAuthenticationHandler.SchemeName));
+
+        var controller = CreateController(session, gitlabToken);
+        (await IsAuthorizedAsync(controller, "acme")).Should().BeFalse(
+            "a token keyed to another forge must not authorize the same login here");
+    }
+
+    /// <summary>
+    /// The paired positive, so the test above cannot pass against a fallback that authorizes
+    /// nothing at all.
+    /// </summary>
+    [Fact]
+    public async Task A_legacy_token_for_this_forge_still_authorizes()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        await SeedAsync(session, OwnerId, "acme");
+        WaitForIndexing(store);
+
+        var controller = CreateController(session, AccountToken("acme", accountId: null));
+        (await IsAuthorizedAsync(controller, "acme")).Should().BeTrue(
+            "the legacy fallback still has to work, or the test above would pass against a fallback "
+            + "that authorizes nothing at all");
+    }
+
     [Fact]
     public async Task An_account_token_carrying_the_owner_id_authorizes_on_the_id()
     {
@@ -148,7 +206,7 @@ public class UploadsControllerAuthorizationTests : CoverageRavenTest
         var withoutProvider = new ClaimsPrincipal(new ClaimsIdentity(
             [
                 new Claim(ApiTokenAuthenticationHandler.ScopeClaim, "Account"),
-                new Claim(ApiTokenAuthenticationHandler.AccountClaim, "acme"),
+                new Claim(ApiTokenAuthenticationHandler.AccountClaim, ForgeOwner.KeyFromUnqualifiedLogin("acme")),
                 new Claim(ApiTokenAuthenticationHandler.AccountIdClaim, OwnerId.ToString()),
             ],
             ApiTokenAuthenticationHandler.SchemeName));
