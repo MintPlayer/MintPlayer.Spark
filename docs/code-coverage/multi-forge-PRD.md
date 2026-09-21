@@ -3,10 +3,13 @@
 **Issue:** [#422](https://github.com/MintPlayer/MintPlayer.Spark/issues/422) — "Should we also support
 BitBucket and GitLab?" (opened 2026-09-19 with an empty body).
 
-**Status:** in progress on `issue-422-forge-abstraction`. SP1 and SP2 are run (§7.1, §7.2). M1 and
-M2 are built and committed (704ab22a, ecd91c3d); as-built notes live in the plan beside each
-milestone. M3 onward is not started. The only decision still open is D6f (fork-PR uploads), which
-gates M6.
+**Status:** stage 1 is **built and deployed**. #434 (`0a084191`) landed M0–M18; #435 (`e0a2ef40`)
+landed M19 and fork-PR coverage; #436 (`fix/owner-key-authorization`) landed M6d, M6g's backfill, the
+M8 connection-state tail and six authorization fixes. As-built notes live in the plan beside each
+milestone.
+
+**No decision is open.** D6f (fork-PR uploads) was resolved 2026-09-20 and built by M16. GitLab and
+Bitbucket remain stages 2 and 3, and the app references neither project.
 
 **Scope of *this* document's plan:** stage 1 only — remove the GitHub coupling and rebuild sign-in,
 account provisioning and account linking around a provider abstraction, **while GitHub remains the
@@ -801,8 +804,8 @@ surfaces `ReauthRequired` to the client and simply ignores `Unavailable`. Cheap 
 explicit decision because it changes what users see.
 
 **D6e — the owner set is qualified in the stored field, with a colon.** `Repository.OwnerLogin`,
-`Account.Login` and `ApiToken.AccountLogin` (`ApiTokenActions.cs:51` — found via the authorization
-inventory, not the id analysis) all become `provider:owner`: `github:mintplayer`,
+`Account.Login` and `ApiToken.AccountLogin` (found via the authorization inventory, not the id
+analysis) all become `provider:owner`: `github:mintplayer`,
 `gitlab:group/subgroup`.
 
 A colon rather than a slash **specifically because GitLab namespaces nest up to 20 levels and are
@@ -1421,11 +1424,15 @@ holding real production documents together.
    ⚠️ **Deletable only after confirming that migration completed in production.** Its whole purpose is
    to make the app independent of migration state; removing it re-couples them. This is a *data*
    question, not a compatibility one.
-2. **`ApiToken.AccountLogin`** (`:63-68`) — the login-based fallback for tokens minted before
-   `AccountGitHubId` existed, kept "so that no working token is invalidated by a deploy". The
-   migration can backfill the id for those tokens, after which the fallback and its comparison branch
-   in `UploadsController` go. ⚠️ Any token the backfill cannot resolve **stops working** — acceptable
-   under D22, but it should be a counted, reported outcome rather than a surprise.
+2. **`ApiToken.AccountLogin`** (`:63-68`) — the login-based fallback for tokens minted before the
+   numeric id existed, kept "so that no working token is invalidated by a deploy". ✅ **The backfill
+   shipped in #436** (`M_202609221000`), and the field it fills is now called `AccountId`
+   (`M_202609220950`). It logs the tokens it cannot resolve rather than revoking them, which is the
+   counted, reported outcome this entry asked for.
+
+   `AccountLogin` itself is now `isReadOnly` in the model and re-derived from `AccountOwnerKey` on
+   every save, so it can no longer be posted. ❌ **Still to delete:** the `AccountClaim` emission in
+   `ApiTokenAuthenticationHandler` and the login-comparison arm in `UploadsController`.
 3. **`Commit.ParentSha` trust rules** (`Commit.cs:55`, `CommitAssembler.cs:371-387`) — "older action
    builds sent the PR base sha under this name", so only an `api`-sourced value is trusted for the
    Δ-vs-parent. ⚠️ **Not actually backward compatibility.** It is a data-quality guard against values
@@ -1630,6 +1637,7 @@ that "out of scope" does not become a parking lot.
 
 ---
 
-*M0–M2 are implemented (see the plan for commit hashes). D8, D10 and D12 remain recommendations
-rather than decisions, and D6f — fork-pull-request uploads — is the one still parked, because it is
-the only open question that can quietly change who can write coverage for a repository.*
+*Stage 1 — M0–M19 — is implemented and deployed; see the plan for commit hashes. D8, D10 and D12
+remain recommendations rather than decisions. D6f — fork-pull-request uploads — was resolved
+2026-09-20 and built by M16, with a per-repository upload budget precisely because it is the one
+change that quietly alters who can write coverage for a repository.*

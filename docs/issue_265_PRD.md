@@ -274,9 +274,13 @@ The partition key is *exactly* `httpContext.Connection.RemoteIpAddress?.ToString
 (`SparkBuilderRateLimiterExtensions.cs:99-101`). Nothing else — no path, no user, no header.
 
 ASP.NET's forwarded-headers middleware performs its known-proxy check **only** when
-`KnownProxies.Count > 0 || KnownNetworks.Count > 0`. Both `apps/Fleet/Fleet/Program.cs:16-21` **and**
-`apps/CodeCoverage/CodeCoverage/Program.cs:34-39` clear both lists, so no trust check runs and any
-caller's `X-Forwarded-For` overwrites `Connection.RemoteIpAddress` before the limiter reads it.
+`KnownProxies.Count > 0 || KnownNetworks.Count > 0`. When both lists are empty no trust check runs
+at all, and any caller's `X-Forwarded-For` overwrites `Connection.RemoteIpAddress` before the
+limiter reads it.
+
+That was the state of `apps/CodeCoverage/CodeCoverage/Program.cs` until PR #436 — see the fix
+below. `apps/Fleet/Fleet/Program.cs:16-21`, `apps/DemoApp` and `apps/HR` still clear both lists,
+deliberately (`ModuleCertificateForwarding.cs:28-32`), and are not deployed.
 
 ⚠ **On production this meant every IP-keyed limit could be bypassed by rotating one header**, including
 the `browse` policy (300/min) whose stated purpose is protecting the GitHub App's shared API budget
