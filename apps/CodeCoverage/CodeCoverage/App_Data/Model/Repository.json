@@ -387,7 +387,6 @@
         "isReadOnly": false,
         "order": 4,
         "isArray": false,
-        "_comment": "Shipped on query rows but never DRAWN. The coverage-sparkline renderer needs the forge, and a column renderer only gets the whole row when the row carries it -- ShowedOn alone decides what ships, IsVisible only decides what is drawn (QueryResultProjector). Drawn it would print \"github:MintPlayer\" in a column beside the login, which is the exact leak a test already caught once.",
         "showedOn": "Query, PersistentObject",
         "rules": []
       },

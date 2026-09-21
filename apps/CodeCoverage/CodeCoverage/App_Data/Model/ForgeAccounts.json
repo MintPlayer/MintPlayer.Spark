@@ -25,6 +25,8 @@
   "persistentObject": {
     "id": "2d6f4b10-9c27-4e83-b5a1-7f0c8e3d6a94",
     "name": "ForgeAccounts",
+    "_aliasComment": "Declared rather than derived. The client sends the alias as the objectTypeId on /spark/po/load, and the derived form would be 'forgeaccounts' -- the program unit says 'forge-accounts', and a mismatch 404s indistinguishably from a missing right.",
+    "alias": "forge-accounts",
     "breadcrumb": "{Title}",
     "tabs": [],
     "groups": [],
