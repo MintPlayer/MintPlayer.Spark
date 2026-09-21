@@ -1015,6 +1015,28 @@ id. The change is one line; the two above are what make it safe.
 
   Total documents are +17, fully accounted for: +1 migration marker and +16 `SparkMessages` the app
   enqueued while running. No domain document was lost, duplicated or left behind.
+
+  #### ✅ Surveyed in the browser, signed in, against the migrated production copy
+
+  The app was run against the migrated database and driven through the UI. Every read below crosses
+  at least one re-keyed id, and the deepest one crosses all of them.
+
+  | Surface | Result |
+  |---|---|
+  | Home, signed in | Accounts 2, Repositories 171, grid renders — **0 console errors** |
+  | `/api/me/accounts` | `MintPlayer` 15 repos 82.7%, `PieterjanDeClippel` 156 — correct logins, ⚠️ **no `github:` prefix leaked** |
+  | `/api/browse/accounts/{login}/repos` | ids are `Repositories/github/925854479` |
+  | Repository detail | `latestCoverage` 26,714 / 31,942 lines across 736 files |
+  | Commit + tree | `Commits/github/1006469943/421e…/assembly`, `libs` 21,922 / 25,066 |
+  | **File source + coverage** | a `FileCoverage` resolved by its re-keyed id, 4 / 7 covered |
+
+  ⚠️ **171 shown against 172 stored is correct**, and worth writing down because it reads like a
+  lost document: exactly one repository is disconnected, and `MyAccountsService` excludes those
+  deliberately so the headline counts do not include repositories the app can no longer reach.
+
+  The `github:` check is the pointed one. `OwnerKey` is a comparison value, and an earlier version
+  of this work let it reach the rendered account name — the browser survey is what would catch that
+  again.
 - **M6a — small collections** (~1,944 docs): `Repositories` 172, `Accounts` 2, `PullRequestFeedbacks`
   43, `Commits` 804, `Builds` 303, `BuildTreeSummaries` 482, `CommitAssemblies` 138. `Commits` roots
   the nested tree, so sequence by id depth and keep parents and children consistent within a run.
