@@ -389,7 +389,7 @@ CodeCoverage (PRD §4.1). Nothing to build.
 
 ---
 
-## M4 — Spark: link confirmation, and the two linking modes 🟨 *(4a–4c, 4e, 4k built)*
+## M4 — Spark: link confirmation, and the two linking modes 🟨 *(4a–4e, 4k built)*
 
 D2 and D9. All of this is Spark-side; CodeCoverage only chooses.
 
@@ -617,10 +617,59 @@ valid answer. Those four properties have tests; none of them pins a whole senten
 Spark still ships **no transport**. An application implements `ISparkLinkConfirmationSender<TUser>`
 and may ignore this text entirely.
 
-**Still to build:** 4d (`WhenSignedIn` endpoints + last-credential guard), 4f/4g (now simplified by
-D23), 4h (two latent defects), 4i (the SMTP container — VPS infrastructure, and deliverability is the
-risk rather than wiring). ⚠️ **CodeCoverage implements no sender yet**, so `ConfirmByEmail` is not
-configurable there until 4i gives it something to send with.
+### As-built — 4d
+
+Four endpoints under `/spark/auth`, **mapped by mode**, because the modes differ in who may attach
+a credential and how:
+
+| Mode | `GET /external-logins` | `POST /external-logins/unlink` | `GET /external-logins/link` + callback |
+|---|:--:|:--:|:--:|
+| `Disabled` | — | — | — |
+| `WhenSignedIn` | ✔ | ✔ | ✔ |
+| `ConfirmByEmail` | ✔ | ✔ | — |
+
+⚠️ **`ConfirmByEmail` gets the unlink but not the attach.** Its way in is the mailed confirmation;
+without an unlink, links accumulate with no way to undo one — a worse position than not linking at
+all. And `Disabled` maps nothing: an account page offering an action the deployment forbids is worse
+than one that is absent.
+
+**The last-credential guard**, as `SparkCredentialInventory.WouldRemoveLastCredential` — a pure
+function, because the arithmetic is the whole of it and every branch is worth pinning. Removing an
+account's last way in is permanent and silent: Identity does it without complaint, no password to
+fall back on, no provider left to prove ownership, and the person finds out at their next sign-in,
+by which point recovery means an operator editing the database. MintPlayer's own account page has
+exactly this bug (`AccountRepository.cs:325-338`).
+
+⚠️ **A password only counts where the application serves a way to use it.** Under
+`LocalCredentials.Disabled` there is no login endpoint, so a stored hash is an artefact rather than
+a credential. A guard that counted it would wave through the very lockout it exists to prevent —
+and would do so in the application most likely to hit this, since external-only login is why the
+account has no usable password in the first place. Both halves of that are pinned.
+
+**The rest, briefly.** The attach challenge is keyed on the signed-in user (`XsrfId`), so the
+identity coming back cannot land in another session. `LoginAlreadyAssociated` is told apart from a
+store failure: the first is a fact the user can act on, the second is not, and one message for both
+sends people looking for the wrong problem — it says no more than "taken", since naming the other
+account would turn an account page into a lookup service. Both paths call `RefreshSignInAsync`, so
+the change reaches other sessions through the security stamp. Unlink carries antiforgery metadata.
+
+**Client** — `SparkAuthService` gains `externalLogins()`, `linkProvider()` and `unlinkProvider()`;
+the popup handshake is now shared with `loginWithProvider` rather than duplicated, since the two
+differ only in the URL. ⚠️ `unlinkProvider` **resolves** with `error: 'last_credential'` rather than
+throwing: it is an expected answer to a reasonable request, and a caller forced to tell it from a
+network fault inside a `catch` will eventually get it wrong — the failure mode being to tell
+somebody their unlink worked. `canUnlink` is served per login so the UI can disable the control,
+and is advisory: the server refuses regardless.
+
+**Not built:** the manage-logins **UI component**. CodeCoverage has no account page and runs
+`Disabled`, so the endpoints do not even map there; a component nobody mounts would be guesswork
+about a page that does not exist. The service methods are the part that has a caller the moment one
+does.
+
+**Still to build:** 4f/4g (now simplified by D23), 4h (two latent defects), 4i (the SMTP container —
+VPS infrastructure, and deliverability is the risk rather than wiring). ⚠️ **CodeCoverage implements
+no sender yet**, so `ConfirmByEmail` is not configurable there until 4i gives it something to send
+with.
 
 ---
 

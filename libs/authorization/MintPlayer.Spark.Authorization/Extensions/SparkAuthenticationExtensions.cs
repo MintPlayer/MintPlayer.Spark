@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MintPlayer.AspNetCore.Endpoints;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.WebUtilities;
 using MintPlayer.Spark.Authorization.Configuration;
@@ -266,7 +268,184 @@ internal static class SparkAuthenticationExtensions
                 safeReturnUrl, "sparkLinkConfirmation", "linked"));
         }).AllowAnonymous();
 
+        MapExternalLoginManagement<TUser>(endpoints, authGroup, localCredentials);
+
         return endpoints;
+    }
+
+    /// <summary>
+    /// 4d: the account-page half of linking — list what is attached, attach another, detach one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Which of these exist depends on the mode</b>, because the modes differ in who is allowed
+    /// to attach a credential and how.
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>
+    /// <see cref="SparkExternalLoginLinking.Disabled"/> maps <b>nothing</b>. Linking is off, so an
+    /// account page that offers it is surface with no purpose.
+    /// </description></item>
+    /// <item><description>
+    /// <see cref="SparkExternalLoginLinking.WhenSignedIn"/> maps all four. This is the mode's whole
+    /// point: proof comes from already holding the session.
+    /// </description></item>
+    /// <item><description>
+    /// <see cref="SparkExternalLoginLinking.ConfirmByEmail"/> maps the list and the <b>unlink</b>,
+    /// but not the attach. Its way in is the mailed confirmation; without unlink, links would
+    /// accumulate with no way to undo one, which is a worse position than not linking at all.
+    /// </description></item>
+    /// </list>
+    /// </remarks>
+    private static void MapExternalLoginManagement<TUser>(
+        IEndpointRouteBuilder endpoints,
+        RouteGroupBuilder authGroup,
+        SparkLocalCredentials localCredentials)
+        where TUser : SparkUser, new()
+    {
+        var linking = endpoints.ServiceProvider
+            .GetService<IOptions<SparkAuthenticationOptions>>()?.Value.ExternalLoginLinking
+            ?? SparkExternalLoginLinking.Disabled;
+
+        if (linking == SparkExternalLoginLinking.Disabled)
+            return;
+
+        authGroup.MapGet("/external-logins", async (
+            HttpContext context,
+            UserManager<TUser> userManager,
+            IAuthenticationSchemeProvider schemes) =>
+        {
+            var user = await userManager.GetUserAsync(context.User);
+            if (user is null)
+                return Results.Unauthorized();
+
+            var logins = await userManager.GetLoginsAsync(user);
+            var hasPassword = await userManager.HasPasswordAsync(user);
+
+            // Computed per login rather than once for the account, because it is the answer to
+            // "can I remove *this* one" — and it is served to the client so the UI can disable the
+            // button instead of offering an action that will be refused.
+            var canUnlink = !SparkCredentialInventory.WouldRemoveLastCredential(
+                logins.Count, hasPassword, localCredentials);
+
+            var external = await schemes.GetAllSchemesAsync();
+            var linked = logins.Select(l => l.LoginProvider).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            return Results.Ok(new
+            {
+                linked = logins.Select(l => new
+                {
+                    provider = l.LoginProvider,
+                    providerKey = l.ProviderKey,
+                    displayName = l.ProviderDisplayName ?? l.LoginProvider,
+                    canUnlink,
+                }),
+                available = external
+                    .Where(scheme => scheme.DisplayName is not null && !linked.Contains(scheme.Name))
+                    .Select(scheme => new { provider = scheme.Name, displayName = scheme.DisplayName }),
+            });
+        }).RequireAuthorization();
+
+        authGroup.MapPost("/external-logins/unlink", async (
+            HttpContext context,
+            UserManager<TUser> userManager,
+            SignInManager<TUser> signInManager,
+            string provider,
+            string providerKey) =>
+        {
+            var user = await userManager.GetUserAsync(context.User);
+            if (user is null)
+                return Results.Unauthorized();
+
+            var logins = await userManager.GetLoginsAsync(user);
+            if (!logins.Any(l =>
+                    string.Equals(l.LoginProvider, provider, StringComparison.Ordinal)
+                    && string.Equals(l.ProviderKey, providerKey, StringComparison.Ordinal)))
+            {
+                return Results.BadRequest(new { error = ExternalLoginErrors.LoginNotFound });
+            }
+
+            // ⚠️ The guard. Removing the last way in is permanent: no password to fall back on, no
+            // provider left to prove ownership, and no self-service route back. Identity will
+            // happily do it.
+            if (SparkCredentialInventory.WouldRemoveLastCredential(
+                    logins.Count, await userManager.HasPasswordAsync(user), localCredentials))
+            {
+                return Results.BadRequest(new { error = ExternalLoginErrors.LastCredential });
+            }
+
+            var result = await userManager.RemoveLoginAsync(user, provider, providerKey);
+            if (!result.Succeeded)
+                return Results.BadRequest(new { error = ExternalLoginErrors.UnlinkFailed });
+
+            // The security stamp carries into the cookie, so refreshing it is what makes the
+            // removal take effect on sessions other than this one.
+            await signInManager.RefreshSignInAsync(user);
+            return Results.Ok(new { unlinked = true });
+        })
+            .RequireAuthorization()
+            .WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+
+        if (linking != SparkExternalLoginLinking.WhenSignedIn)
+            return;
+
+        authGroup.MapGet("/external-logins/link", (
+            HttpContext context,
+            SignInManager<TUser> signInManager,
+            string provider,
+            string? returnUrl,
+            string? popup) =>
+        {
+            var safeReturnUrl = SanitizeReturnUrl(returnUrl);
+            var callbackUrl = $"/spark/auth/link-external-login-callback?returnUrl={Uri.EscapeDataString(safeReturnUrl)}";
+            if (popup is not null)
+                callbackUrl += "&popup=1";
+
+            // ⚠️ Keyed on the signed-in user so that the identity coming back is attached to the
+            // session that asked, not to whoever the callback happens to find signed in. Identity
+            // uses it to reject a callback that lands in a different session.
+            var properties = signInManager.ConfigureExternalAuthenticationProperties(
+                provider, callbackUrl, userId: context.User.FindFirstValue(ClaimTypes.NameIdentifier));
+            return Results.Challenge(properties, [provider]);
+        }).RequireAuthorization();
+
+        endpoints.MapGet("/spark/auth/link-external-login-callback", async (
+            HttpContext context,
+            SignInManager<TUser> signInManager,
+            UserManager<TUser> userManager,
+            IAntiforgery antiforgery,
+            string? returnUrl) =>
+        {
+            var safeReturnUrl = SanitizeReturnUrl(returnUrl);
+
+            var user = await userManager.GetUserAsync(context.User);
+            if (user is null)
+                return ExternalLoginOutcome(context, safeReturnUrl, ExternalLoginErrors.SignInToLink);
+
+            var info = await signInManager.GetExternalLoginInfoAsync(
+                await userManager.GetUserIdAsync(user));
+            if (info is null)
+                return ExternalLoginOutcome(context, safeReturnUrl, ExternalLoginErrors.NoLoginInfo);
+
+            var result = await userManager.AddLoginAsync(user, info);
+            if (!result.Succeeded)
+            {
+                // Told apart deliberately. "Already attached somewhere" is a fact about the world
+                // the user can act on — sign in with it, or detach it there first — while a store
+                // failure is not, and reporting them the same way sends people looking for the
+                // wrong problem.
+                var error = result.Errors.Any(e => e.Code == "LoginAlreadyAssociated")
+                    ? ExternalLoginErrors.LoginAlreadyAssociated
+                    : ExternalLoginErrors.LinkFailed;
+                return ExternalLoginOutcome(context, safeReturnUrl, error);
+            }
+
+            // Nothing about the session changed except which credentials reach it, and the external
+            // cookie is spent; refreshing keeps this consistent with the unlink path.
+            await signInManager.RefreshSignInAsync(user);
+            antiforgery.GetAndStoreTokens(context);
+            return ExternalLoginOutcome(context, safeReturnUrl, error: null);
+        }).RequireAuthorization();
     }
 
     /// <summary>
@@ -332,6 +511,32 @@ internal static class SparkAuthenticationExtensions
         /// signed in.
         /// </remarks>
         public const string LinkConfirmationSent = "link_confirmation_sent";
+
+        /// <summary>
+        /// The provider identity is already attached to an account — possibly this one, possibly
+        /// another.
+        /// </summary>
+        /// <remarks>
+        /// Deliberately distinct from <see cref="LinkFailed"/>. This is a fact the user can act on
+        /// — sign in with it, or detach it where it is — while a store failure is not, and one
+        /// message for both sends people looking for the wrong problem. It says no more than
+        /// "taken": naming the other account would turn an account page into a lookup service.
+        /// </remarks>
+        public const string LoginAlreadyAssociated = "login_already_associated";
+
+        /// <summary>The store refused to attach the login, for a reason that is not the above.</summary>
+        public const string LinkFailed = "link_failed";
+
+        /// <summary>
+        /// ⚠️ Unlinking was refused because it would have removed the account's last way in.
+        /// </summary>
+        public const string LastCredential = "last_credential";
+
+        /// <summary>The login named for removal is not attached to this account.</summary>
+        public const string LoginNotFound = "login_not_found";
+
+        /// <summary>The store refused to detach the login.</summary>
+        public const string UnlinkFailed = "unlink_failed";
     }
 
     /// <summary>
