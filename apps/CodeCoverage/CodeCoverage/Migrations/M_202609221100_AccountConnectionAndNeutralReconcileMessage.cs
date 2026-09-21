@@ -38,6 +38,13 @@ public partial class M_202609221100_AccountConnectionAndNeutralReconcileMessage 
     public static long Version => 202609221100;
     public static string? Description => "Account.Connection, and stale reconcile messages";
 
+    /// <summary>How long to let a new auto-index catch up before the delete gives up.</summary>
+    /// <remarks>
+    /// Settable so a test does not wait ten minutes to prove a timeout. Matches the budget the
+    /// forge-qualifying migration settled on after this same hazard took a deploy down.
+    /// </remarks>
+    internal static TimeSpan IndexCatchUpBudget { get; set; } = TimeSpan.FromMinutes(10);
+
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly ILogger<M_202609221100_AccountConnectionAndNeutralReconcileMessage> logger;
 
@@ -67,12 +74,21 @@ public partial class M_202609221100_AccountConnectionAndNeutralReconcileMessage 
         // The type name is assembly-qualified in SparkMessage.MessageType, so match on the simple
         // name rather than reconstructing it — a message written by an older assembly version
         // carries that version's string and would not match an exact comparison.
+        // ⚠️ `WaitForNonStaleResults` is NOT optional, and this exact omission crash-looped a
+        // previous deploy. A `where` on a field forces a brand-new auto-index, which is stale by
+        // definition until it has covered the collection — and RavenDB REFUSES a bulk delete on a
+        // stale index ("Cannot perform bulk operation. Index is stale."), which throws, aborts
+        // startup, and retries forever. The indexing pipeline is also saturated at this moment: the
+        // migration two versions earlier has just patched ~220,000 FileCoverages, and the Accounts
+        // patch above ran three statements ago.
         var drop = await store.Operations.SendAsync(new DeleteByQueryOperation(new IndexQuery
         {
             Query = """
                 from SparkMessages as d
                 where startsWith(d.MessageType, 'CodeCoverage.Ingestion.ReconcileAccountMessage')
                 """,
+            WaitForNonStaleResults = true,
+            WaitForNonStaleResultsTimeout = IndexCatchUpBudget,
         }), token: cancellationToken);
 
         var dropped = await drop.WaitForCompletionAsync<BulkOperationResult>();

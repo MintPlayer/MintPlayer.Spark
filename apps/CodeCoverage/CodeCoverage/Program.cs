@@ -289,9 +289,21 @@ static string ForkUploadsPartitionKey(HttpContext context)
 {
     var segments = context.Request.Path.Value?.Split('/', StringSplitOptions.RemoveEmptyEntries);
     // api / uploads / fork / provider / owner / name / ...
-    return segments is { Length: >= 6 }
+    var repository = segments is { Length: >= 6 }
         ? string.Join('/', segments[3], segments[4], segments[5]).ToLowerInvariant()
         : "unattributed";
+
+    // ⚠️ The CALLER is part of the key, not just the target. Keyed on the repository alone, the
+    // partition is a string the caller chooses: varying the name segment yields a fresh window per
+    // request, so there was no aggregate bound on an anonymous caller at all — and each request
+    // still reached RepositoryResolver, which spends a forge API call on any unknown name under a
+    // known owner. That is the installation's shared budget, which the reconciler, the comment
+    // publisher and every badge depend on.
+    //
+    // Keeping the repository in the key is what stops one caller spending every repository's
+    // allowance at once; adding the IP is what stops one caller having an unlimited number of
+    // allowances. Both halves are load-bearing.
+    return $"{context.Connection.RemoteIpAddress?.ToString() ?? "anonymous"}|{repository}";
 }
 
 static string UploadsPartitionKey(HttpContext context)
@@ -348,8 +360,8 @@ builder.Services.AddRateLimiter(options =>
     // Anonymous fork uploads. Deliberately the tightest window in the app: the caller holds no
     // credential, every accepted request stores documents and each one costs a forge round trip to
     // read the pull request. A real fork pull request uploads a handful of times per run — once per
-    // job — so 10/min per repository is generous for the honest case and cheap to survive
-    // otherwise. Partitioned on the target repository; see ForkUploadsPartitionKey for why.
+    // job — so 10/min per (caller, repository) is generous for the honest case and cheap to survive
+    // otherwise. See ForkUploadsPartitionKey for why the key has both halves.
     options.AddPolicy("fork-uploads", context => RateLimitPartition.GetFixedWindowLimiter(
         partitionKey: ForkUploadsPartitionKey(context),
         _ => new FixedWindowRateLimiterOptions

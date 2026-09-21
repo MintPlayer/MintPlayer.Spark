@@ -71,18 +71,24 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         services.AddScoped<ForgeEventsRecipient>();
         var recipient = services.BuildServiceProvider().GetRequiredService<ForgeEventsRecipient>();
 
+        // ⚠️ DRAINS. A test that delivers after each webhook would otherwise re-deliver every
+        // earlier event on every call, which both hides ordering bugs and invents ones that are not
+        // there. Non-forge messages (ReconcileAccountMessage) stay, because tests assert on them.
         foreach (var message in bus.Messages.ToArray())
         {
             switch (message)
             {
                 case CodeCoverage.Forge.ForgeWebhookMessage<CodeCoverage.Forge.OwnerRenamed> ownerRenamed:
                     await recipient.HandleAsync(ownerRenamed);
+                    bus.Messages.Remove(message);
                     break;
                 case CodeCoverage.Forge.ForgeWebhookMessage<CodeCoverage.Forge.RepositoryRenamed> repositoryRenamed:
                     await recipient.HandleAsync(repositoryRenamed);
+                    bus.Messages.Remove(message);
                     break;
                 case CodeCoverage.Forge.ForgeWebhookMessage<CodeCoverage.Forge.RepositoryConnectionChanged> connection:
                     await recipient.HandleAsync(connection);
+                    bus.Messages.Remove(message);
                     break;
             }
         }
@@ -366,6 +372,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
 
         foreach (var message in reversed ? new[] { added, transferred } : new[] { transferred, added })
             await recipient.HandleAsync(message);
+            await DeliverForgeEventsAsync(session, bus);
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         Assert.NotNull(repository);
@@ -435,9 +442,11 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         await recipient.HandleAsync(Message(
             "installation_repositories",
             InstallationRepositoriesJson("removed", added: "", removed: LiteRepositoryJson("acme", "widgets"))));
+        await DeliverForgeEventsAsync(session, bus);
         await recipient.HandleAsync(Message(
             "installation_repositories",
             InstallationRepositoriesJson("added", added: LiteRepositoryJson("acme", "widgets"), removed: "")));
+        await DeliverForgeEventsAsync(session, bus);
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         Assert.NotNull(repository);
@@ -479,6 +488,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
 
         foreach (var message in removalLast ? new[] { gained, removedByOldOwner } : new[] { removedByOldOwner, gained })
             await recipient.HandleAsync(message);
+            await DeliverForgeEventsAsync(session, bus);
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         Assert.Equal(Account.DocumentId(EForgeProvider.GitHub, NewOwnerId), repository!.Account);
@@ -559,8 +569,10 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         var recipient = CreateRecipient(session, bus);
         await recipient.HandleAsync(Message("repository",
             RepositoryEventJson("archived", OldOwnerId, "acme", "widgets", archived: true)));
+        await DeliverForgeEventsAsync(session, bus);
         await recipient.HandleAsync(Message("repository",
             RepositoryEventJson("unarchived", OldOwnerId, "acme", "widgets", archived: false)));
+        await DeliverForgeEventsAsync(session, bus);
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         Assert.False(repository!.Archived);
@@ -661,7 +673,9 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         var bus = new RecordingMessageBus();
         var recipient = CreateRecipient(session, bus);
         await recipient.HandleAsync(Message("installation", InstallationJson("suspend")));
+        await DeliverForgeEventsAsync(session, bus);
         await recipient.HandleAsync(Message("installation", InstallationJson("unsuspend")));
+        await DeliverForgeEventsAsync(session, bus);
 
         var account = await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, OldOwnerId));
         Assert.NotNull(account!.InstallationId);

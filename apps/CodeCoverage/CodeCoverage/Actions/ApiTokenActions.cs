@@ -120,19 +120,45 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
         // name says and what `GetAllowedOwnersAsync` returns. Passing the bare login refused every
         // single token creation — fail-closed, so no security hole, but the feature simply did not
         // work. `AccountOwnerKey` is the field the row filter already compares.
-        var login = entity.AccountLogin;
         var ownerKey = entity.AccountOwnerKey;
         if (string.IsNullOrWhiteSpace(ownerKey) || !await visibility.CanManageOwnerAsync(ownerKey))
             throw new SparkValidationException(nameof(ApiToken.AccountOwnerKey), "You do not manage that account.");
 
-        var account = await session.Query<Account>().FirstOrDefaultAsync(a => a.Login == login);
+        // ⚠️⚠️ EVERYTHING BELOW IS DERIVED FROM THE KEY THAT WAS JUST AUTHORIZED. Nothing reads
+        // another posted field.
+        //
+        // This authorized `AccountOwnerKey` and then resolved the account from `AccountLogin` — a
+        // SECOND, independently client-writable field that nothing validated and nothing
+        // server-assigned. Posting a key you genuinely manage together with somebody else's login
+        // minted a token stamped with THEIR account: the row filter compares the key, so the token
+        // stayed visible and editable by the attacker, while `UploadsController` authorized its
+        // uploads against the victim's repositories. Where no account matched the posted login it
+        // was worse, not better — `AccountId` stayed null, the authentication handler fell back to
+        // emitting the login as a claim, and the legacy login-comparison arm authorized every
+        // repository owned by that name.
+        //
+        // The rule the whole multi-forge design rests on: one field decides who you are, and
+        // everything else follows from it.
+        if (!ForgeOwner.TryParse(ownerKey, out var owner))
+            throw new SparkValidationException(nameof(ApiToken.AccountOwnerKey), "That is not a valid account key.");
+
+        var provider = owner.Value.Provider;
+        var ownerLogin = owner.Value.Login;
+
+        // ⚠️ Matched on provider AND login. A bare `a.Login == login` unions forges: a GitLab group
+        // and a GitHub organisation of the same name are different principals, and `FirstOrDefault`
+        // would pick whichever RavenDB returned first.
+        var account = await session.Query<Account>()
+            .FirstOrDefaultAsync(a => a.Provider == provider && a.Login == ownerLogin);
 
         plaintext = ApiTokenService.GenerateTokenValue();
         entity.Hash = ApiTokenService.Hash(plaintext);
-        // ⚠️ Both, together. A numeric account id is unique only WITHIN a forge, so an id stored
-        // without one authorizes against whichever forge the reader assumes — which is what the
-        // upload path did, as a literal, until the provider was carried here.
-        entity.Provider = account?.Provider ?? EForgeProvider.GitHub;
+
+        // Overwritten, not read: `AccountLogin` is display-only by its own documentation, and a
+        // posted value must never survive into a field anything authorizes on — the login fallback
+        // in `UploadsController` still reads it.
+        entity.AccountLogin = ownerLogin;
+        entity.Provider = provider;
         entity.AccountId = account?.GitHubId;
 
         // Stamped, never trusted from the payload: the attribute is read-only in the model, so a

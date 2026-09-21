@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using MintPlayer.SourceGenerators.Attributes;
@@ -62,6 +63,13 @@ public partial class M_202609221000_BackfillApiTokenAccountIds : ISparkMigration
         var accountsByKey = await LoadAccountIdsByOwnerKeyAsync(cancellationToken);
 
         using var session = store.OpenAsyncSession();
+
+        // ⚠️ One `LoadAsync` per resolvable token, and a RavenDB session allows 30 requests. Without
+        // this the migration THROWS on the 30th token, the version marker is never written, startup
+        // aborts — and the next start fails at exactly the same place. A deterministic restart loop
+        // in which the app never serves. The repo's own idiom, used in six other places.
+        using var requestScope = session.IgnoreMaxRequests(logger: logger);
+
         var stamped = 0;
         var unresolvable = new List<string>();
 
@@ -88,8 +96,9 @@ public partial class M_202609221000_BackfillApiTokenAccountIds : ISparkMigration
                 tracked.AccountId = accountId;
                 stamped++;
 
-                // The session holds every tracked token until SaveChanges; flush periodically so a
-                // large collection does not build one unbounded batch.
+                // Bounds the tracked-entity set, not the request count — `Clear()` does not reset
+                // `NumberOfRequests`, which is why the scope above is what actually keeps this
+                // alive.
                 if (stamped % 256 == 0)
                 {
                     await session.SaveChangesAsync(cancellationToken);

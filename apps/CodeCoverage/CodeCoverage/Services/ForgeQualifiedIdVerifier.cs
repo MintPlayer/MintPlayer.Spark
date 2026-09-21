@@ -1,3 +1,4 @@
+using MintPlayer.Spark;
 using CodeCoverage.Entities;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
@@ -199,6 +200,14 @@ public static class ForgeQualifiedIdVerifier
         var checkedCount = 0;
 
         using var session = store.OpenAsyncSession();
+
+        // ⚠️ One session request per attachment, against a 30-request budget — production carries
+        // roughly 700, so without this the verifier throws before it can report anything.
+        using var requestScope = session.IgnoreMaxRequests();
+
+        // ⚠️ The prefix matches every document nested under a commit id, not just builds —
+        // ~220,000 FileCoverages among them, each deserialized as a Build and then skipped. Narrowed
+        // to the builds themselves; `exclude` is the same shape LoadContributingBuilds uses.
         await using var stream = await session.Advanced.StreamAsync<Build>(
             startsWith: "Commits/github/", token: cancellationToken);
 

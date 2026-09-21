@@ -38,14 +38,24 @@ namespace CodeCoverage.Migrations;
 /// Idempotent: each rename is guarded on the old name still being present, so a re-run is a no-op
 /// and a partially-applied run completes.
 /// </para>
+/// <para>
+/// ⚠️ <b>Runs BEFORE the <c>AccountId</c> backfill, and the order is a correctness property.</b>
+/// The entity no longer declares <c>AccountGitHubId</c>, so until this has run every legacy token
+/// deserializes <c>AccountId</c> as <b>null</b>. A backfill running first would therefore find its
+/// "already stamped" guard dead on every production document, re-derive each id <em>from the
+/// login</em> — the resolution its own remarks forbid — and, because the RavenDB client re-serializes
+/// the entity on save, <b>delete the authoritative <c>AccountGitHubId</c> it was about to need</b>.
+/// Where a forge has since reassigned a login, that writes a different account's id over the real
+/// one, unrecoverably.
+/// </para>
 /// </remarks>
-public partial class M_202609221200_ApiTokenFieldsAreForgeNeutral : ISparkMigration
+public partial class M_202609220950_ApiTokenFieldsAreForgeNeutral : ISparkMigration
 {
-    public static long Version => 202609221200;
+    public static long Version => 202609220950;
     public static string? Description => "ApiToken fields carry a forge instead of naming one";
 
     [Inject] private readonly IDocumentStore store;
-    [Inject] private readonly ILogger<M_202609221200_ApiTokenFieldsAreForgeNeutral> logger;
+    [Inject] private readonly ILogger<M_202609220950_ApiTokenFieldsAreForgeNeutral> logger;
 
     public async Task UpAsync(CancellationToken cancellationToken)
     {

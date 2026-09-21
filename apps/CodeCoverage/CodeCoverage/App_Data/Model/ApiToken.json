@@ -14,7 +14,7 @@
           "en": "Account Login"
         },
         "description": {
-          "en": "Owner login this token uploads for, when Scope is \"Account\". Display only — a login is renameable and a repository can be transferred out from under it, so authorizing on this string means a token keeps working for an account that no longer owns the repository, and stops working for the one that does. AccountGitHubId is the authorization key."
+          "en": "Owner login this token uploads for, when Scope is \"Account\". Display only — a login is renameable and a repository can be transferred out from under it, so authorizing on this string means a token keeps working for an account that no longer owns the repository, and stops working for the one that does. AccountId is the authorization key."
         },
         "dataType": "string",
         "isRequired": false,
@@ -95,26 +95,6 @@
         "isReadOnly": false,
         "order": 1,
         "isArray": false,
-        "showedOn": "Query, PersistentObject",
-        "rules": []
-      },
-      {
-        "id": "a959d0d2-63d7-40e2-8372-b75d9c858880",
-        "name": "GithubRepositories",
-        "label": {
-          "en": "Github Repositories"
-        },
-        "description": {
-          "en": "Document ids of the repositories this token may upload for. Empty means the token is account-scoped and covers every repository of AccountGitHubId."
-        },
-        "dataType": "Reference",
-        "isRequired": false,
-        "isVisible": true,
-        "isReadOnly": false,
-        "order": 4,
-        "query": "ApiToken_SelectableRepositories",
-        "referenceType": "CodeCoverage.Entities.Repository",
-        "isArray": true,
         "showedOn": "Query, PersistentObject",
         "rules": []
       },
