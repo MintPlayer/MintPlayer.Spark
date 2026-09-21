@@ -115,9 +115,14 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
         if (!string.IsNullOrEmpty(entity.Hash))
             return; // An edit; the credential is already minted and cannot be re-derived.
 
+        // ⚠️ `CanManageOwnerAsync` takes an owner KEY (`github:acme`), which is what its parameter
+        // name says and what `GetAllowedOwnersAsync` returns. Passing the bare login refused every
+        // single token creation — fail-closed, so no security hole, but the feature simply did not
+        // work. `AccountOwnerKey` is the field the row filter already compares.
         var login = entity.AccountLogin;
-        if (string.IsNullOrWhiteSpace(login) || !await visibility.CanManageOwnerAsync(login))
-            throw new SparkValidationException(nameof(ApiToken.AccountLogin), "You do not manage that account.");
+        var ownerKey = entity.AccountOwnerKey;
+        if (string.IsNullOrWhiteSpace(ownerKey) || !await visibility.CanManageOwnerAsync(ownerKey))
+            throw new SparkValidationException(nameof(ApiToken.AccountOwnerKey), "You do not manage that account.");
 
         var account = await session.Query<Account>().FirstOrDefaultAsync(a => a.Login == login);
 
@@ -167,7 +172,9 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
 
             // Unknown and unauthorized are refused identically — a caller must not be able to
             // discover which repository ids exist by comparing error messages.
-            if (repository is null || !owners.Contains(repository.OwnerLogin, StringComparer.OrdinalIgnoreCase))
+            // ⚠️ `owners` holds KEYS. `OwnerLogin` never matched one, so every repository-scoped
+            // token save was refused.
+            if (repository is null || !owners.Contains(repository.OwnerKey, StringComparer.OrdinalIgnoreCase))
             {
                 throw new SparkValidationException(
                     nameof(ApiToken.GithubRepositories),

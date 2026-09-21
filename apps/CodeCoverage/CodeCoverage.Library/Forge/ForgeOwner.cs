@@ -40,16 +40,31 @@ public readonly record struct ForgeOwner(EForgeProvider Provider, string Login)
     public const char Separator = ':';
 
     /// <summary>
-    /// The key for an owner login that arrived without a provider — from a URL path segment.
+    /// The key for a bare owner login, assuming GitHub.
     /// </summary>
     /// <remarks>
-    /// ⚠️ <b>Interim, and deliberately explicit rather than a silent default.</b> Routes are
-    /// <c>/api/repos/{owner}/{repo}</c> and carry no forge, so a login taken from one has to be
-    /// qualified with something; today GitHub is the only implemented forge, so it is the only
-    /// answer that can be right. M7 gives routes a provider segment and this method goes with it.
     /// <para>
-    /// A named method rather than an inline concatenation so every such site is greppable, and so
-    /// the assumption is written down once instead of being re-made silently at each call.
+    /// <b>Its original job is done.</b> It existed because routes were <c>/api/repos/{owner}/{repo}</c>
+    /// with no forge segment, so a login taken from one had to be qualified with something. M7 gave
+    /// routes their provider segment, and as of 2026-09-21 this has <b>no production callers at
+    /// all</b> — which is exactly what M7 said should happen.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>It is kept anyway, because the remaining callers are test doubles and that is load
+    /// bearing.</b> <c>SparkVisibility.GetAllowedOwnersAsync</c> returns <c>provider:login</c> keys,
+    /// and a substitute fed bare logins is <em>more permissive than the real service</em> — it tests
+    /// the double, not the code. That has now let the same bug class ship three times: owners lost
+    /// sight of their own private repositories, and token creation, token revocation, delete-data
+    /// and every project board were refused for every user on production. The one test file that
+    /// caught none of it was the one whose double spelled <c>"acme"</c>; the two that were immune
+    /// called this method.
+    /// </para>
+    /// <para>
+    /// So deleting it would remove the construct that makes a double speak production's dialect by
+    /// default, and the next person writes <c>"acme"</c> again. If it is ever removed, the doubles
+    /// must move to <see cref="ForgeOwner"/> values first — a typed contract cannot express this
+    /// mistake, which is why <c>IForgeAccessService</c> returning <c>ForgeOwner[]</c> has never had
+    /// it.
     /// </para>
     /// </remarks>
     public static string KeyFromUnqualifiedLogin(string login)

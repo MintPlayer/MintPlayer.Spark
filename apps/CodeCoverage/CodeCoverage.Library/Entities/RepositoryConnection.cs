@@ -29,6 +29,19 @@ public enum RepositoryConnection
 public static class DisconnectedReasons
 {
     /// <summary>Transferred to an owner the App cannot see.</summary>
+    /// <remarks>
+    /// ⚠️ <b>Never written, and with GitHub it cannot be.</b> A transfer <em>out</em> of an
+    /// installation reaches us only as <c>installation_repositories.removed</c>, which is
+    /// byte-for-byte what a plain deselection sends — so the code correctly writes
+    /// <see cref="RemovedFromInstallation"/> and has no honest way to tell the two apart. Verified
+    /// 2026-09-21: no production path assigns this, and none ever has; the only use is one test
+    /// fixture.
+    /// <para>
+    /// It is kept as a statement of intent for a forge whose API <em>does</em> distinguish them, not
+    /// as something to reach for on GitHub. Reaching for it there would put a word in front of an
+    /// owner that the event cannot support.
+    /// </para>
+    /// </remarks>
     public const string TransferredAway = "TransferredAway";
 
     /// <summary>Deselected from the installation's chosen repositories.</summary>

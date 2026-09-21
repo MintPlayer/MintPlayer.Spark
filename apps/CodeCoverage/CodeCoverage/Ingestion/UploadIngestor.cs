@@ -159,7 +159,7 @@ public partial class UploadIngestor : IUploadIngestor
         {
             SessionId = sessionId,
             JobName = request.JobName,
-            Flags = (request.Flags ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            Flags = ParseFlags(request.Flags, request.ContributedFromFork),
             UploadedAtUtc = DateTime.UtcNow,
             RootDir = request.RootDir,
         };
@@ -192,4 +192,43 @@ public partial class UploadIngestor : IUploadIngestor
 
         return new UploadIngestResult(buildId, sessionId);
     }
+
+    /// <summary>Flags a first-party upload may declare in one session.</summary>
+    /// <remarks>
+    /// Comfortably above any real use — a monorepo labelling by language or by test tier uses a
+    /// handful — and low enough that the multiplier below cannot run away.
+    /// </remarks>
+    private const int MaxFlagsPerSession = 32;
+
+    /// <summary>Flags a fork upload may declare. Deliberately far tighter; see <see cref="ParseFlags"/>.</summary>
+    private const int MaxForkFlagsPerSession = 4;
+
+    /// <summary>
+    /// The session's flags: de-duplicated, and capped.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>The flag list is a document multiplier, and it is chosen by the caller.</b> The parser
+    /// writes one <c>FileCoverage</c> document per file <em>per flag</em> on top of the build-level
+    /// one, so a session naming F flags over N files produces <c>N × (1 + F)</c> documents. Nothing
+    /// downstream bounds N either — it is however many paths the reports mention.
+    /// </para>
+    /// <para>
+    /// That is acceptable from an authenticated uploader, who is spending their own repository's
+    /// storage and can be asked to stop. It is not acceptable from the fork endpoint, where the
+    /// caller holds no credential, is not identifiable, and is spending <em>somebody else's</em>
+    /// quota — so a fork session gets a much smaller cap. Excess flags are dropped rather than
+    /// refused: the coverage itself is still worth recording, and a 400 here would be a confusing
+    /// failure for an honest contributor whose workflow happens to label generously.
+    /// </para>
+    /// <para>
+    /// De-duplication is free correctness rather than a bound — two identical flags compose the same
+    /// document id, so they were never extra documents, only extra work.
+    /// </para>
+    /// </remarks>
+    private static string[] ParseFlags(string? flags, bool contributedFromFork)
+        => [.. (flags ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(contributedFromFork ? MaxForkFlagsPerSession : MaxFlagsPerSession)];
 }

@@ -1500,7 +1500,7 @@ what hides the missing registration today.
 
 ---
 
-## M11 — Rename the GitHub-shaped client surface 🟩 *(partly — DTOs done, renderers deferred)*
+## M11 — Rename the GitHub-shaped client surface ✅ *(DTOs #422; renderers and the dead keys in #435)*
 
 - `AccountsResponse.gitHubAppUrl` / `gitHubReauthRequired` (`accounts.service.ts:14-24`) → provider-neutral.
 - `app-installed-renderer.component.ts` → a provider-appropriate "connected" state (M5's record).
@@ -1647,7 +1647,7 @@ milestone's registration guard exists to catch.
 
 ---
 
-## M8 tail + M11 tail — what "deferred" actually left behind 🟦 *(investigated 2026-09-21)*
+## M8 tail + M11 tail — the original investigation 📜 *(superseded by the section above; kept for its findings)*
 
 Both milestones are marked partly done. The investigation separates **functional gaps that would
 block a second forge** from **renames that would not**, because the two were being carried as one
@@ -1878,7 +1878,7 @@ cannot otherwise see.
 
 ---
 
-## M16 — Fork-PR uploads 🟦 *(D6f, D20; after M2c. M6a must reserve the id segment)*
+## M16 — Fork-PR uploads 📜 *(the original investigation; its design is SUPERSEDED — read the built section above)*
 
 ### Investigated 2026-09-21 — two findings that change the design
 
@@ -2421,9 +2421,9 @@ its own page linked to one. Fixed to `!= true` at eight sites, and pinned by
 
 ---
 
-## M19 — The six links M7 missed and A11 could not see 🟨 *(fixed on `fix/forge-route-navigation`, not yet merged)*
+## M19 — The six links M7 missed and A11 could not see ✅ *(merged as `e0a2ef40`, PR #435)*
 
-Found in production by the owner, minutes after the deploy. **Branch pushed, PR not yet opened.**
+Found in production by the owner, minutes after the deploy. **Merged in #435 and browser-verified by clicking through** — see the browser-verification section above.
 
 ### What was broken
 
@@ -2479,7 +2479,7 @@ filesystem to walk.
 
 ---
 
-## M17 — Deploy to the VPS, with the app still working 🟨 *(deployed 2026-09-21; one regression found in production)*
+## M17 — Deploy to the VPS, with the app still working 🟨 *(deployed 2026-09-21; the regression is fixed in #435 and awaiting the next deploy)*
 
 ### As-deployed
 

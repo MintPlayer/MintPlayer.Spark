@@ -63,7 +63,8 @@ public partial class DeleteDataAction : SparkCustomAction
             return;
         }
 
-        if (!await visibility.CanManageOwnerAsync(repository.OwnerLogin))
+        // ⚠️ An owner KEY, not a login — see ApiTokenActions. This refused every delete.
+        if (!await visibility.CanManageOwnerAsync(repository.OwnerKey))
         {
             logger.LogWarning("Refused DeleteData on {FullName}: caller does not manage {Owner}",
                 repository.FullName, repository.OwnerLogin);

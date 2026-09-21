@@ -31,6 +31,22 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
     private const string Managed = "acme";
     private const string Foreign = "other";
 
+    /// <summary>
+    /// The owner set as <see cref="ISparkVisibility"/> really returns it: <c>provider:login</c> KEYS.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>These tests fed the double bare logins until 2026-09-21, and that is why they passed
+    /// while the feature was broken in production.</b> The real
+    /// <c>SparkVisibility.GetAllowedOwnersAsync</c> returns <c>github:acme</c>; the double returned
+    /// <c>acme</c>, so the production code could compare against the wrong thing and still go green.
+    /// <para>
+    /// A test double that is more permissive than the real service does not test the code — it tests
+    /// the double. Spelling the key out here, rather than hiding it in a helper, is deliberate: the
+    /// mismatch has to be visible at the point a reader would otherwise write <c>Managed</c>.
+    /// </para>
+    /// </remarks>
+    private static string KeyOf(string login) => new ForgeOwner(EForgeProvider.GitHub, login).ToString();
+
     private static ApiTokenActions CreateActions(IAsyncDocumentSession session, params string[] owners)
     {
         var visibility = Substitute.For<ISparkVisibility>();
@@ -78,15 +94,15 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         await session.StoreAsync(new Account { GitHubId = 1, Login = Managed }, Account.DocumentId(EForgeProvider.GitHub, 1));
         await session.StoreAsync(new Repository
         {
-            GitHubId = 10, Name = "mine", FullName = $"{Managed}/mine", OwnerLogin = Managed,
+            GitHubId = 10, Name = "mine", FullName = $"{Managed}/mine", OwnerLogin = Managed, Provider = EForgeProvider.GitHub,
         }, Repository.DocumentId(EForgeProvider.GitHub, 10));
         await session.StoreAsync(new Repository
         {
-            GitHubId = 11, Name = "also-mine", FullName = $"{Managed}/also-mine", OwnerLogin = Managed,
+            GitHubId = 11, Name = "also-mine", FullName = $"{Managed}/also-mine", OwnerLogin = Managed, Provider = EForgeProvider.GitHub,
         }, Repository.DocumentId(EForgeProvider.GitHub, 11));
         await session.StoreAsync(new Repository
         {
-            GitHubId = 20, Name = "theirs", FullName = $"{Foreign}/theirs", OwnerLogin = Foreign,
+            GitHubId = 20, Name = "theirs", FullName = $"{Foreign}/theirs", OwnerLogin = Foreign, Provider = EForgeProvider.GitHub,
         }, Repository.DocumentId(EForgeProvider.GitHub, 20));
         await session.SaveChangesAsync();
     }
@@ -98,6 +114,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
     private static ApiToken NewToken(params string[] repositoryIds) => new()
     {
         AccountLogin = Managed,
+        AccountOwnerKey = KeyOf(Managed),
         Description = "ci",
         GithubRepositories = [.. repositoryIds],
     };
@@ -109,7 +126,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await SeedAsync(store);
         using var session = store.OpenAsyncSession();
-        var actions = CreateActions(session, Managed);
+        var actions = CreateActions(session, KeyOf(Managed));
         var token = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 20));
 
         var act = async () => await actions.OnBeforeSaveAsync(Po(), token);
@@ -127,7 +144,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await SeedAsync(store);
         using var session = store.OpenAsyncSession();
-        var actions = CreateActions(session, Managed);
+        var actions = CreateActions(session, KeyOf(Managed));
         var token = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 10), Repository.DocumentId(EForgeProvider.GitHub, 20));
 
         var act = async () => await actions.OnBeforeSaveAsync(Po(), token);
@@ -145,7 +162,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await SeedAsync(store);
         using var session = store.OpenAsyncSession();
-        var actions = CreateActions(session, Managed);
+        var actions = CreateActions(session, KeyOf(Managed));
 
         var unknown = await Record.ExceptionAsync(() =>
             actions.OnBeforeSaveAsync(Po(), NewToken("Repositories/999999")));
@@ -163,7 +180,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await SeedAsync(store);
         using var session = store.OpenAsyncSession();
-        var actions = CreateActions(session, Managed);
+        var actions = CreateActions(session, KeyOf(Managed));
         var token = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 10), Repository.DocumentId(EForgeProvider.GitHub, 11));
 
         await actions.OnBeforeSaveAsync(Po(), token);
@@ -178,7 +195,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await SeedAsync(store);
         using var session = store.OpenAsyncSession();
-        var actions = CreateActions(session, Managed);
+        var actions = CreateActions(session, KeyOf(Managed));
         var token = NewToken();
 
         await actions.OnBeforeSaveAsync(Po(), token);
@@ -193,7 +210,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await SeedAsync(store);
         using var session = store.OpenAsyncSession();
-        var actions = CreateActions(session, Managed);
+        var actions = CreateActions(session, KeyOf(Managed));
         var token = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 10), Repository.DocumentId(EForgeProvider.GitHub, 10));
 
         await actions.OnBeforeSaveAsync(Po(), token);
@@ -212,7 +229,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await SeedAsync(store);
         using var session = store.OpenAsyncSession();
-        var actions = CreateActions(session, Managed);
+        var actions = CreateActions(session, KeyOf(Managed));
 
         var existing = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 20));
         existing.Hash = "already-minted";   // an edit: the credential exists

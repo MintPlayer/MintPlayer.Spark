@@ -66,8 +66,19 @@ public class DeleteDataActionReportingTests : CoverageRavenTest
         var manager = Substitute.For<IManager>();
         manager.Client.Returns(client);
 
+        // ⚠️ Argument-SENSITIVE, deliberately. This stub used to answer `canManageOwner` for
+        // `Arg.Any<string>()`, which made it structurally incapable of noticing that the action
+        // passed the wrong thing — and it did: `DeleteDataAction` handed `OwnerLogin` ("acme") to a
+        // method that compares owner KEYS ("github:acme"), so delete-data was refused for every user
+        // on production while this file stayed green.
+        //
+        // A double that ignores the argument carrying the bug is not coverage. It answers only when
+        // it is given the key the real service would have matched.
         var visibility = Substitute.For<ISparkVisibility>();
-        visibility.CanManageOwnerAsync(Arg.Any<string>()).Returns(canManageOwner);
+        var expectedKey = new ForgeOwner(EForgeProvider.GitHub, Owner).ToString();
+        visibility.CanManageOwnerAsync(Arg.Any<string>())
+            .Returns(call => Task.FromResult(
+                canManageOwner && string.Equals(call.Arg<string>(), expectedKey, StringComparison.OrdinalIgnoreCase)));
 
         var bus = new RecordingBus();
 

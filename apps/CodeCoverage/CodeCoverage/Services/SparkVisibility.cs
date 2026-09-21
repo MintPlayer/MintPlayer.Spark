@@ -21,17 +21,22 @@ public partial class SparkVisibility : ISparkVisibility
         => owners ??= QueryAllowedOwnersAsync();
 
     /// <summary>
-    /// Asks the forge services for the viewer's owners and flattens them to bare logins.
+    /// Asks the forge services for the viewer's owners, as <c>provider:login</c> KEYS.
     /// </summary>
     /// <remarks>
-    /// ⚠️ <b>The flattening is temporary and only safe while GitHub is the sole provider.</b>
-    /// Consumers still compare these strings against the unqualified <c>OwnerLogin</c> /
-    /// <c>Login</c> values currently in the database, so qualifying them here would match nothing.
-    /// The stored values become <c>provider:login</c> in the same migration that re-keys the
-    /// documents, and at that point this method returns <see cref="ForgeOwner"/> and the
-    /// <c>.Login</c> unwrapping below disappears. Until then, adding a second provider would make
-    /// two identically-named accounts on different forges indistinguishable here — which is exactly
-    /// why no second provider is registered yet.
+    /// <para>
+    /// ⚠️ <b>Every consumer must compare these against an <c>OwnerKey</c>, never a bare
+    /// <c>OwnerLogin</c> or <c>Login</c>.</b> <c>"acme"</c> is not <c>"github:acme"</c>, so a bare
+    /// login matches nothing at all.
+    /// </para>
+    /// <para>
+    /// This remark used to say the opposite — that the set was flattened to bare logins, pending the
+    /// re-key migration. That migration ran in #422 and this method changed with it; the remark did
+    /// not, and four call sites were written against it. Token creation, repository-scoped token
+    /// saves, token revocation and delete-data were all refused for every user until 2026-09-21.
+    /// Every one failed <em>closed</em>, which is why nothing alerted and no test caught it — the
+    /// feature simply stopped working.
+    /// </para>
     /// </remarks>
     private async Task<string[]> QueryAllowedOwnersAsync()
     {
