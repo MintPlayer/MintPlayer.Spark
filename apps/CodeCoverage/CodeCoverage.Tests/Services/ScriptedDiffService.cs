@@ -38,10 +38,23 @@ public sealed class ScriptedDiffService(CommitComparison? comparison = null)
     public List<ForgeOwner> Owners { get; } = [];
 
     /// <summary>
+    /// Scripted pull requests by number; anything unlisted answers null.
+    /// </summary>
+    /// <remarks>
+    /// ⚠ Null is a REFUSAL in this contract, not an absence — the fork-upload path treats it as
+    /// "cannot accept". So the default of "no pull requests scripted" makes a test that forgot to
+    /// script one fail closed, which is the direction a security test should fail in.
+    /// </remarks>
+    public Dictionary<int, ForgePullRequest> PullRequests { get; } = [];
+
+    /// <summary>
     /// Whether the scripted forge claims a usable credential. Defaults to true so the feedback
     /// pipeline proceeds past its access check; set false to exercise the Unavailable branch.
     /// </summary>
     public bool AccessAvailable { get; set; } = true;
+
+    public Task<ForgePullRequest?> GetPullRequestAsync(Repository repository, int number, CancellationToken cancellationToken = default)
+        => Task.FromResult(PullRequests.TryGetValue(number, out var pull) ? pull : null);
 
     /// <summary>Statuses published against this forge, in order, for assertions.</summary>
     public List<(string Sha, string Name, ForgeVerdict Verdict)> Statuses { get; } = [];

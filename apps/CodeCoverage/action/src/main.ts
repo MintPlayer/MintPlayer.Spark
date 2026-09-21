@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as zlib from 'zlib';
 import { fetchCapabilities, warnAboutUnsupportedInputs } from './capabilities';
 import { collectContext } from './context';
-import { Credential, oidcCredential, staticCredential } from './credential';
+import { anonymousCredential, authHeaders, Credential, oidcCredential, staticCredential } from './credential';
 import { findCoverageFiles } from './files';
 import { formatFileList } from './filelist';
 import { toPosixPath } from './paths';
@@ -25,8 +25,10 @@ export async function run(): Promise<void> {
 
   try {
     const url = core.getInput('url', { required: true }).replace(/\/+$/, '');
-    const credential = resolveCredential(url);
+    // Context first: the credential depends on it, because a fork pull request
+    // has no credential to resolve and only the context can say that it is one.
     const ctx = collectContext();
+    const credential = resolveCredential(url, ctx);
 
     // Probed before anything is sent, so an input this server will ignore is
     // reported next to the upload it affects rather than after it.
@@ -211,9 +213,19 @@ async function peekForIngestErrors(
  * Returns a credential rather than a token because an OIDC id-token lives five
  * minutes and `wait-for-finalize` can run for thirty; see credential.ts.
  */
-function resolveCredential(url: string): Credential {
+function resolveCredential(url: string, ctx?: { isFork?: boolean }): Credential {
   const token = core.getInput('token');
   const oidcAvailable = !!process.env['ACTIONS_ID_TOKEN_REQUEST_URL'];
+
+  // The third exit, and it must come first. A fork pull request has neither
+  // half of the usual answer, so both branches below would throw — which is
+  // what this action did until now, and why fork coverage was simply lost. An
+  // explicitly configured token still wins: a maintainer who arranged one
+  // (via `pull_request_target`, knowingly) means it.
+  if (ctx?.isFork && !token && !oidcAvailable) {
+    core.info('Pull request from a fork: uploading anonymously against the pull request.');
+    return anonymousCredential();
+  }
 
   if (getBool('use-oidc') || (!token && oidcAvailable)) {
     if (!oidcAvailable) {
@@ -504,7 +516,7 @@ async function postWithRetry(
   let lastError: unknown;
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const headers: Record<string, string> = { Authorization: `Bearer ${await credential.get()}` };
+      const headers: Record<string, string> = { ...(await authHeaders(credential)) };
       if (contentType) headers['Content-Type'] = contentType;
       const response = await fetch(url, { method: 'POST', headers, body });
       if (response.ok) return response;

@@ -74,6 +74,24 @@
         "rules": []
       },
       {
+        "id": "e7ef3cbf-0c66-4b68-b440-23303108af97",
+        "name": "ContributedFromFork",
+        "label": {
+          "en": "Contributed From Fork"
+        },
+        "description": {
+          "en": "True when this commit's coverage was contributed from a fork, by a caller holding no credential for this repository."
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
         "id": "98971124-8b79-43ed-951c-29110c46577f",
         "name": "Coverage",
         "label": {

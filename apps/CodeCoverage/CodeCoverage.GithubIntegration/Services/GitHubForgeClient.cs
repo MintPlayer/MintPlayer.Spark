@@ -59,6 +59,62 @@ public partial class GitHubForgeClient : IForgeClient
         => await contentService.GetFileContentAsync(
             repository, await ResolveInstallationAsync(repository, cancellationToken), sha, path, cancellationToken);
 
+    /// <inheritdoc />
+    /// <remarks>
+    /// Deliberately requires an installation rather than falling back to the App JWT, although the
+    /// JWT can read a public repository's pull requests. The fork-upload design requires the app
+    /// installed on the target repository, and an implicit anonymous fallback here would quietly
+    /// undo that: the endpoint would start answering for repositories whose owner never installed
+    /// anything, which is the consent the installation represents.
+    /// </remarks>
+    public async Task<ForgePullRequest?> GetPullRequestAsync(Repository repository, int number, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(repository);
+
+        var installationId = await ResolveInstallationAsync(repository, cancellationToken);
+        if (installationId is null)
+        {
+            logger.LogDebug("No installation for {FullName}; cannot read pull request #{Number}.",
+                repository.FullName, number);
+            return null;
+        }
+
+        try
+        {
+            var client = await installationService.CreateInstallationClientAsync(installationId.Value);
+            var pull = await client.PullRequest.Get(repository.OwnerLogin, repository.Name, number);
+
+            return new ForgePullRequest(
+                Number: pull.Number,
+                HeadSha: pull.Head.Sha,
+                // GitHub reports the head branch bare here, unlike the `ref` on a push payload.
+                HeadRef: pull.Head.Ref,
+                // ⚠️ Null when the fork was deleted after the pull request was opened. Carried
+                // through as null rather than coalesced to the base id, because `IsFromFork` must
+                // read "cannot tell" as "fork" and coalescing would make it read the opposite.
+                HeadRepositoryId: pull.Head.Repository?.Id,
+                BaseRef: pull.Base.Ref,
+                BaseRepositoryId: pull.Base.Repository.Id,
+                BaseRepositoryDefaultBranch: pull.Base.Repository.DefaultBranch,
+                IsOpen: pull.State.Value == Octokit.ItemState.Open);
+        }
+        catch (Octokit.NotFoundException)
+        {
+            // A number that does not exist, or a repository this installation can no longer see.
+            // Both are "no" to the caller, and neither should be distinguishable from outside.
+            return null;
+        }
+        catch (Exception ex)
+        {
+            // Rate limited, GitHub down, credential broken. ⚠️ Not knowing must not read as a pass:
+            // the fork-upload path treats null as a refusal, which is why this returns null rather
+            // than rethrowing into a 500 that would invite a retry loop against GitHub.
+            logger.LogWarning(ex, "Could not read pull request #{Number} on {FullName}.",
+                number, repository.FullName);
+            return null;
+        }
+    }
+
     /// <summary>
     /// The repository's owning account's installation id, or null when the repository has no
     /// account or the account has no installation.

@@ -21,16 +21,31 @@ namespace CodeCoverage.Tests.Services;
 public class RepositoryVisibilityTests : CoverageRavenTest
 {
     private static Repository Repo(long id, string owner, string name, bool isPrivate = false,
-        RepositoryConnection connection = RepositoryConnection.Connected)
+        RepositoryConnection connection = RepositoryConnection.Connected,
+        EForgeProvider provider = EForgeProvider.GitHub)
         => new()
         {
             GitHubId = id,
             Name = name,
             FullName = $"{owner}/{name}",
             OwnerLogin = owner,
+            Provider = provider,
             IsPrivate = isPrivate,
             Connection = connection,
         };
+
+    /// <summary>
+    /// The allowed set both rules take: owner KEYS, never bare logins.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ These tests passed bare logins until 2026-09-21, which is how
+    /// <see cref="RepositoryVisibility.IsListed"/> came to compare <c>OwnerLogin</c> — the test
+    /// agreed with the bug, so the multi-forge merge moved its query twin to <c>OwnerKey</c> and
+    /// left this one behind with nothing to notice. Spelling the key out here is deliberate: a
+    /// helper that silently qualified a login would hide exactly the mistake that happened.
+    /// </remarks>
+    private static string[] Owners(params string[] logins)
+        => [.. logins.Select(l => new ForgeOwner(EForgeProvider.GitHub, l).ToString())];
 
     [Fact]
     public void A_disconnected_public_repository_is_still_visible_but_no_longer_listed()
@@ -46,7 +61,7 @@ public class RepositoryVisibilityTests : CoverageRavenTest
     {
         var repository = Repo(1, "acme", "widgets", connection: RepositoryConnection.Disconnected);
 
-        Assert.True(RepositoryVisibility.IsListed(repository, ["acme"]));
+        Assert.True(RepositoryVisibility.IsListed(repository, Owners("acme")));
     }
 
     [Fact]
@@ -59,7 +74,30 @@ public class RepositoryVisibilityTests : CoverageRavenTest
     public void A_private_repository_is_never_listed_to_a_stranger()
     {
         Assert.False(RepositoryVisibility.IsListed(Repo(1, "acme", "secret", isPrivate: true), []));
-        Assert.True(RepositoryVisibility.IsListed(Repo(1, "acme", "secret", isPrivate: true), ["acme"]));
+        Assert.True(RepositoryVisibility.IsListed(Repo(1, "acme", "secret", isPrivate: true), Owners("acme")));
+    }
+
+    /// <summary>
+    /// The reason both rules compare a KEY and not a login: a login is unique only per forge.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <c>acme</c> on GitLab and <c>acme</c> on GitHub are unrelated principals that produce
+    /// the same string. Compared by login, whoever holds one would list the other's private
+    /// repositories — and the failure grants access, so nothing about it is visible. Both rules are
+    /// asserted here because they are separately written and have already drifted apart once.
+    /// </remarks>
+    [Fact]
+    public void The_same_login_on_another_forge_is_a_different_principal()
+    {
+        var gitlab = Repo(1, "acme", "secret", isPrivate: true, provider: EForgeProvider.GitLab);
+        var github = Repo(1, "acme", "secret", isPrivate: true);
+
+        // Holding the GitHub owner grants nothing on GitLab, and vice versa.
+        Assert.False(RepositoryVisibility.IsListed(gitlab, Owners("acme")));
+        Assert.False(RepositoryVisibility.IsVisible(gitlab, Owners("acme")));
+
+        Assert.True(RepositoryVisibility.IsListed(github, Owners("acme")));
+        Assert.True(RepositoryVisibility.IsVisible(github, Owners("acme")));
     }
 
     /// <summary>

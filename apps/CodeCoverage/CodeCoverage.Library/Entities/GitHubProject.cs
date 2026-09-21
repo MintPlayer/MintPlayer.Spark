@@ -22,7 +22,7 @@ namespace CodeCoverage.Entities;
 /// </para>
 /// </summary>
 [GenerateIndex]
-public class GitHubProject
+public class GitHubProject : IForgeConnectable
 {
     /// <summary>Document id of this board, <c>GitHubProjects/{NodeId}</c>.</summary>
     public string? Id { get; set; }

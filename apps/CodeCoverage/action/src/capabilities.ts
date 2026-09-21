@@ -1,5 +1,5 @@
 import * as core from '@actions/core';
-import { Credential } from './credential';
+import { authHeaders, Credential } from './credential';
 
 /**
  * What the server on the other end can actually do.
@@ -43,7 +43,7 @@ export async function fetchCapabilities(url: string, credential: Credential): Pr
   let response: Response;
   try {
     response = await fetch(`${url}/api/uploads/capabilities`, {
-      headers: { Authorization: `Bearer ${await credential.get()}` },
+      headers: await authHeaders(credential),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -41,5 +41,19 @@ export class AccountAvatarRendererComponent implements SparkAttributeColumnRende
     return typeof login === 'string' ? login : '';
   });
 
-  readonly isUser = computed(() => valueFor(this.item(), 'Type')?.value === 'User');
+  readonly isUser = computed(() => {
+    const type = valueFor(this.item(), 'Type')?.value;
+    return typeof type !== 'string' || !GROUP_ACCOUNT_TYPES.has(type.toLowerCase());
+  });
 }
+
+/**
+ * The account types that mean "several people", across the forges we know about: GitHub says
+ * `Organization`, GitLab says `group`, Bitbucket says `workspace` or `team`.
+ *
+ * ⚠ Matched as a deny-list on purpose, so an unrecognised value draws the person icon rather than
+ * nothing. `Type` is whatever the forge library stored — this renderer never sees the forge — so
+ * the one thing it must not do is assume the value it does not know is an organisation. Getting it
+ * wrong picks the wrong icon; the previous `=== 'User'` test got it wrong for every forge but one.
+ */
+const GROUP_ACCOUNT_TYPES = new Set(['organization', 'organisation', 'group', 'team', 'workspace']);

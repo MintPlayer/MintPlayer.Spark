@@ -84,6 +84,16 @@ public partial class BaseResolver : IBaseResolver
         if (commit?.Coverage is null || commit.LatestBuildId is null || commit.Id is null)
             return null;
 
+        // ⚠️ Fork-contributed coverage is never a comparison base, and this is the chokepoint all
+        // three tiers pass through — which is why the check lives here rather than in each of them.
+        // The stake is higher than a wrong delta: CarryForward copies a base's files into the
+        // comparing commit's own assembly, so a fork's numbers would become a first-party commit's
+        // numbers, and that commit may promote. The walk tier is the live route — it queries
+        // Commits_ByRepository, which indexes every commit carrying this repository's id
+        // regardless of its document-id shape.
+        if (commit.ContributedFromFork)
+            return null;
+
         // An assembled commit is usable by definition (the assembly is the
         // preferred base); a bare finalized build remains acceptable for commits
         // that predate assemblies.

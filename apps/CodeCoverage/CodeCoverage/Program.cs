@@ -262,6 +262,38 @@ builder.Services.AddAuthentication()
 // anonymous here — the partition key must come from the presented credential
 // itself, not claims. That ordering is the framework's since preview.52; before
 // it, this app hand-rolled the limiter specifically to keep it.
+/// <summary>
+/// Partition key for anonymous fork uploads: the TARGET repository, not the caller.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The caller is anonymous by construction, so there is no credential to key on, and an IP is
+/// nearly free to change. Keying on the target bounds the two things that actually cost us — stored
+/// documents and forge API calls — per repository, which is the unit a repository owner consented
+/// to and the unit an abuser has to multiply to do damage.
+/// </para>
+/// <para>
+/// ⚠️ The trade is deliberate and worth stating: one abusive fork can exhaust a repository's own
+/// window and delay a legitimate contributor's coverage for the rest of the minute. That is a
+/// recoverable annoyance on a best-effort courtesy feature; the alternative — keying on the IP —
+/// lets one actor spend every repository's budget at once, which is not.
+/// </para>
+/// <para>
+/// Read from the PATH rather than from route values, because this runs at the
+/// BeforeAuthentication stage and must not depend on endpoint selection having happened. The shape
+/// is <c>/api/uploads/fork/{provider}/{owner}/{name}/pull/{number}</c>; anything that does not
+/// match falls back to one shared bucket, which is the restrictive answer.
+/// </para>
+/// </remarks>
+static string ForkUploadsPartitionKey(HttpContext context)
+{
+    var segments = context.Request.Path.Value?.Split('/', StringSplitOptions.RemoveEmptyEntries);
+    // api / uploads / fork / provider / owner / name / ...
+    return segments is { Length: >= 6 }
+        ? string.Join('/', segments[3], segments[4], segments[5]).ToLowerInvariant()
+        : "unattributed";
+}
+
 static string UploadsPartitionKey(HttpContext context)
 {
     var authorization = context.Request.Headers.Authorization.ToString();
@@ -310,6 +342,19 @@ builder.Services.AddRateLimiter(options =>
         _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = 300,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+        }));
+    // Anonymous fork uploads. Deliberately the tightest window in the app: the caller holds no
+    // credential, every accepted request stores documents and each one costs a forge round trip to
+    // read the pull request. A real fork pull request uploads a handful of times per run — once per
+    // job — so 10/min per repository is generous for the honest case and cheap to survive
+    // otherwise. Partitioned on the target repository; see ForkUploadsPartitionKey for why.
+    options.AddPolicy("fork-uploads", context => RateLimitPartition.GetFixedWindowLimiter(
+        partitionKey: ForkUploadsPartitionKey(context),
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0,
         }));

@@ -1612,6 +1612,41 @@ before — the extra generated copies are never deployed.
 them `[Register]` and `[Inject]` are inert **with no diagnostic**, which is the same failure this
 milestone's registration guard exists to catch.
 
+## M8 tail + M11 tail — partly built 🟨 *(2026-09-21)*
+
+### ✅ Built
+
+- **The neutral connection-state write path.** `IForgeConnectable` + `MarkConnected()` /
+  `MarkDisconnected(reason)` in `CodeCoverage.Library`. The tri-field write was duplicated **five**
+  times — twice for `Repository` and once for `GitHubProject` as private helpers in two
+  `CodeCoverage.GithubIntegration` classes, plus once inline in `UploadsController` — every copy in
+  GitHub-specific code, so a second forge had no way to write connection state except a sixth copy.
+- **M11 cosmetics.** `IsAppInstalled` → `IsConnected` (record, controller, model JSON, renderer,
+  translations); `app-installed` renderer → `connected`; the avatar renderer's `Type === 'User'` now
+  deny-lists known group vocabularies (`organization`, `group`, `team`, `workspace`) and defaults to
+  the person icon, so an unknown forge's value is drawn rather than mis-drawn.
+- **6 dead translation keys deleted**, verified dead in **both** directions. ⚠️ The four traps
+  (`welcomeTitle`, `welcomeSubtitle`, `signInPrompt`, `forgeAccountsTitle`) are alive only via
+  server-side `Translate(...)`; a client-only grep would have deleted them.
+- **A regression the merge introduced:** `RepositoryVisibility.IsListed` compared `OwnerLogin`
+  against a list of owner **keys**, so it could never match. It failed *closed* — an owner stopped
+  seeing their own private and disconnected repositories through every imperative caller — which is
+  why no security test caught it.
+
+### ❌ Still open
+
+- The two dead events (`RepositoryRenamed`, `RepositoryConnectionChanged`) are **still dead**. The
+  de-duplication above removes the *reason* they were needed most, so the "wire or delete" decision
+  is now genuinely open rather than forced.
+- `ReconcileAccountMessage.AccountGitHubId` — a contract name a second forge cannot fill honestly.
+- No per-forge reconciliation entry point on `IForgeIntegration`.
+- `DisconnectedReasons` still speaks GitHub (`AppUninstalled`, `DeletedOnGitHub`). ⚠️ These strings
+  are **stored on documents**, so renaming them is a migration, not a rename.
+- The account-level `IsConnected` is still derived from `account.InstallationId is not null` in the
+  neutral layer. It moves onto the forge seam with the repository-level half.
+
+---
+
 ## M8 tail + M11 tail — what "deferred" actually left behind 🟦 *(investigated 2026-09-21)*
 
 Both milestones are marked partly done. The investigation separates **functional gaps that would
@@ -1689,6 +1724,145 @@ But four more — `welcomeTitle`, `welcomeSubtitle`, `signInPrompt`, `forgeAccou
 unreferenced **in `ClientApp/src`** and alive via server-side `Translate(...)`. A "grep the client
 and delete the rest" sweep breaks the home page and the per-forge title. **18 of 19 keys resolve by
 string literal with no compile-time link in either direction.**
+
+---
+
+## M16 — Fork-PR uploads ✅ *(built 2026-09-21; the design changed — read this before the section below)*
+
+The investigated section that follows is kept because its findings are what forced the change. **Its
+central design is superseded.** What shipped is different in one decisive way, and better.
+
+### The decision: the target repository must have the app installed
+
+D6f tried to make fork uploads safe for *any* public repository, which is what made everything hard:
+with no installation there is no webhook, so `Repository.DefaultBranch` is null — and null is exactly
+the state in which `Promote` promoted every branch. The rule "refuse the default branch" could not
+even be evaluated for the population it was written for.
+
+Requiring the app on the **base** repository dissolves that. The fork itself needs nothing.
+
+| | |
+|---|---|
+| Base repository | app installed, public, connected. Consent, and the credential for the forge read. |
+| Fork repository | nothing. It is never resolved, never stored, never given a document. |
+
+### What replaces the credential: a forge round trip
+
+`IForgeClient.GetPullRequestAsync` is new. One read of the pull request turns four uploader-supplied
+strings into forge-supplied facts:
+
+| Read back | Replaces | Closes |
+|---|---|---|
+| `HeadSha` — must equal the uploaded sha | `form.CommitSha` | fabricated shas becoming baselines |
+| `HeadRef` | `form.Branch` | `?branch=` badge poisoning |
+| `HeadRepositoryId != BaseRepositoryId` | nothing — **no fork signal existed at all** | fork/first-party confusion |
+| `BaseRepositoryDefaultBranch` | a field that is simply null for this population | `Promote`'s null escape |
+
+**The pull request is the credential.** Only someone who actually opened it can name a number whose
+head sha matches the report they hold.
+
+⚠️ `GetPullRequestAsync` returns null for *"cannot read"* as well as *"does not exist"*, and callers
+must treat null as a refusal. Never cache it across a head change.
+
+### Why NOT "refuse uploads for the default branch"
+
+It was the starting proposal and it is the right instinct, but the literal form breaks legitimate
+use: a fork PR's head ref is very often `main`, because contributors fork and commit on their
+default branch. Refusing on the name would reject ordinary contributions while still not protecting
+the `?pr=` badge, which never looks at a branch at all.
+
+What shipped achieves the same intent structurally: **a fork upload is always pull-request-scoped,
+and a pull-request-scoped commit never promotes.** The default branch is protected by construction
+rather than by a string comparison.
+
+### `Commit.ContributedFromFork` — stored, not inferred
+
+The investigation below assumed the `pr/{n}/` id shape would carry the meaning. It cannot: **no
+query parses document ids** — every one of them filters on the `Repository` field — so inferring
+would mean teaching each consumer a string shape, and the one that was missed would treat fork
+coverage as first-party. A stored bool is greppable, queryable and indexed.
+
+Old documents deserialize to `false`, which is correct: nothing could be fork-contributed before
+there was a path to contribute it. **No migration.**
+
+### What the flag gates
+
+| Surface | Fork coverage |
+|---|---|
+| `Repository.LatestCoverage` (headline badge, repo page, account aggregate) | ❌ `Promote` refuses first |
+| `BaseResolver` — all three tiers | ❌ refused at `UsableBuildIdAsync`, the shared chokepoint |
+| Δ vs default branch, and the 200-commit restamp fan-out | ❌ |
+| Commit list, history chart, sparklines, branch list | ❌ |
+| `?branch=` badge | ❌ |
+| **`?pr={n}` badge, and the PR comment** | ✅ **the point of the feature** |
+
+⚠️ `BaseResolver` matters more than it looks: `CarryForward` copies a base's files *into* the
+comparing commit's assembly, so a fork base would make a fork's numbers into a first-party commit's
+numbers — and that commit may promote.
+
+### ⚠️ A pre-existing production bug, fixed here
+
+`Promote` used to be a three-way `&&` that engaged only once a repository had coverage **and** a
+known default branch. So a repository missing either promoted every complete assembly on every
+branch, with `commit.Branch` uploader-supplied. On an OIDC-provisioned repository — which never
+learns its default branch from any webhook — that was permanent: **the badge tracked the last
+complete upload, whatever branch it claimed.**
+
+The `LatestCoverage is null` escape is gone. The unknown-default-branch case still promotes,
+deliberately — refusing would leave such a repository with no badge at all — and the fork endpoint
+now backfills the default branch from the pull request, so the case shrinks.
+
+⚠️ **This is a visible behaviour change on production.** A repository whose first-ever coverage
+lands on a feature branch no longer gets a badge from it.
+
+### The anonymous surface
+
+`ForkUploadsController`, a separate type — `UploadsController`'s own class comment says relaxing its
+`[Authorize]` is "the one change here that would fail open", so an `[AllowAnonymous]` action inside
+it was not an option.
+
+`securityPosture.txt` **does not record this** (finding 2 below: it is 11 lines of Spark rights and
+lists no MVC endpoint, not even `BadgeController`'s existing `[AllowAnonymous]`). Replaced by
+`AnonymousSurfaceTests`, which asserts the **exact set** of anonymous actions by reflection, with a
+falsification test proving the finder distinguishes an authenticated controller.
+
+Every refusal is a 404 with one body: unknown repository, app not installed, no such pull request,
+not a fork, and wrong sha are indistinguishable from outside.
+
+### Bounds
+
+`fork-uploads` rate-limit policy: **10/min, partitioned on the target repository**, read from the
+path (the limiter runs before endpoint selection). Keying on the caller is meaningless — they are
+anonymous — and keying on IP lets one actor spend every repository's budget. ⚠️ The trade: one
+abusive fork can exhaust its target's own window.
+
+64 reports per upload and a 1 MB file list, both an order of magnitude below the authenticated
+endpoint's.
+
+⚠️ **There is still no storage quota anywhere in the app** — verified: only per-request caps and
+rate limits, no accumulating counter. The installation requirement bounds this to repositories that
+opted in; it does not bound total bytes.
+
+### Action side
+
+`collectContext` now reports `isFork`, comparing `head.repo.id` to `base.repo.id` — **ids, never
+names**, since a contributor can rename a fork. It reports `true` when it cannot tell.
+`resolveCredential` gained a third exit returning `anonymousCredential()`, and all three
+`Authorization` sites (upload, status poll, capabilities probe — the plan said two) go through
+`authHeaders`, which yields **no header** rather than `Bearer undefined`.
+
+### Still open
+
+1. **Feedback.** The PR comment and check-run path is untouched, so fork coverage stores and badges
+   but does not yet comment. `PublishFeedbackRecipient` must be taught to treat a fork commit's
+   verdict as `Neutral` (D20) — it currently maps from the gate's own conclusion.
+2. **Provenance in the UI.** Nothing renders "contributed from a fork" anywhere. The flag exists;
+   no view reads it.
+3. **The `workflow_run` recipe** for private base repositories. Still unwritten. ⚠️ It must never
+   check out or execute fork code — the artifact is data.
+4. **A fork-namespace cap.** Open item 4 below, unchanged.
+5. **GitLab/Bitbucket** `GetPullRequestAsync` — the stubs do not implement it. ⚠️ GitLab's `iid`,
+   not `id`.
 
 ---
 

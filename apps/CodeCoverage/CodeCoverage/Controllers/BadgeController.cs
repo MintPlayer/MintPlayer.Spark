@@ -59,10 +59,16 @@ public partial class BadgeController : ControllerBase
         if (repository is not null && MayView(repository, token, pr, sig))
         {
             CoverageSummary? summary;
+            // ⚠️ The two selectors differ on fork-contributed commits, deliberately and
+            // asymmetrically. A pull-request badge SHOULD serve them — a fork's coverage on its own
+            // pull request is what the fork-upload path exists to produce, and the number is only
+            // ever read next to that pull request. A branch badge must NOT: branch badges are
+            // embedded in READMEs as a statement about the repository, and the branch a fork's head
+            // happens to be called (very often `main`) is not this repository's branch of that name.
             if (pr is not null)
                 (summary, partial) = await LoadSelectorCoverage(repository, c => c.PullRequestNumber == pr, cancellationToken);
             else if (!string.IsNullOrEmpty(branch))
-                (summary, partial) = await LoadSelectorCoverage(repository, c => c.Branch == branch, cancellationToken);
+                (summary, partial) = await LoadSelectorCoverage(repository, c => c.Branch == branch && !c.ContributedFromFork, cancellationToken);
             else
                 summary = repository.LatestCoverage;
 

@@ -129,11 +129,11 @@
       },
       {
         "id": "b0ba053b-3218-4e17-a3c1-97c38ffedaee",
-        "name": "IsAppInstalled",
+        "name": "IsConnected",
         "label": {
-          "en": "GitHub App",
-          "fr": "Application GitHub",
-          "nl": "GitHub App"
+          "en": "Connected",
+          "fr": "Connecte",
+          "nl": "Verbonden"
         },
         "dataType": "boolean",
         "isRequired": false,
@@ -143,7 +143,7 @@
         "isArray": false,
         "_comment": "A boolean column renders a checkbox; today this is a translated green/grey badge, which is a colour-carrying affordance rather than a truth value. Hence the renderer.",
         "showedOn": "Query",
-        "renderer": "app-installed",
+        "renderer": "connected",
         "rules": []
       }
     ],

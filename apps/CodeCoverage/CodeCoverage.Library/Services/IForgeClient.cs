@@ -57,4 +57,28 @@ public interface IForgeClient
 
     /// <summary>Source of one file at an exact commit, or null when unavailable. Never stored.</summary>
     Task<string?> GetFileContentAsync(Repository repository, string sha, string path, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reads one pull request on <paramref name="repository"/>, or null when it cannot be read.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>Null means "we do not know", and callers must treat it as a refusal, not as an
+    /// absence.</b> A missing pull request, a repository we lost access to, and a forge outage all
+    /// produce null, and the caller that matters — the fork-upload path — is deciding whether to
+    /// trust an anonymous request. Reading null as "no pull request, carry on" would accept exactly
+    /// the uploads this call exists to verify.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>Never cache the result across a head change.</b> Its whole value is that
+    /// <see cref="ForgePullRequest.HeadSha"/> is current: a cached head lets an upload for a
+    /// superseded commit pass verification after the branch has moved on.
+    /// </para>
+    /// <para>
+    /// Requires a credential for <paramref name="repository"/>. That is not a limitation to work
+    /// around — it is why the fork design requires the app installed on the <em>target</em>
+    /// repository, which is also the only repository whose owner ever consented to us.
+    /// </para>
+    /// </remarks>
+    Task<ForgePullRequest?> GetPullRequestAsync(Repository repository, int number, CancellationToken cancellationToken = default);
 }

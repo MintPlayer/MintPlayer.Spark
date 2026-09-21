@@ -17,6 +17,21 @@ export interface UploadContext {
    * is not guaranteed to be the merge-base.
    */
   prBaseSha?: string;
+  /**
+   * True when the pull request's head branch lives in a different repository
+   * than its base — i.e. a contribution from a fork.
+   *
+   * Load-bearing, because a fork run has no credential at all: GitHub refuses
+   * to mint an OIDC token for it and withholds secrets, so the ordinary upload
+   * cannot authenticate and must not try. Undefined on non-PR events.
+   *
+   * WARNING compared by repository ID, never by full name. A name can be
+   * changed to match the base repository's, and on a `pull_request_target` run
+   * the names are easy to confuse; the numeric IDs cannot be spoofed by the
+   * contributor. When either ID is missing we report `true`, because the safe
+   * reading of "cannot tell" is the one that withholds the credential.
+   */
+  isFork?: boolean;
   runId: number;
   runAttempt: number;
   jobName: string;
@@ -50,6 +65,7 @@ export function collectContext(): UploadContext {
     commitSha,
     branch,
     pullRequestNumber: isPullRequest && pr?.number ? (pr.number as number) : undefined,
+    isFork: isPullRequest ? isForkPullRequest(pr) : undefined,
     baseRef,
     prBaseSha: isPullRequest ? ((pr?.base?.sha as string | undefined) || undefined) : undefined,
     runId: context.runId,
@@ -59,4 +75,19 @@ export function collectContext(): UploadContext {
     eventName: context.eventName,
     rootDir: process.env['GITHUB_WORKSPACE'] || process.cwd(),
   };
+}
+
+/**
+ * Whether a pull-request payload describes a fork contribution.
+ *
+ * Deliberately defaults to `true` for a payload it cannot read. Being wrong in
+ * that direction costs a fork-path upload for a same-repository PR, which
+ * simply gets less feedback; being wrong in the other direction sends a
+ * credential to a workflow a stranger can modify.
+ */
+function isForkPullRequest(pr: Record<string, any> | undefined): boolean {
+  const headId = pr?.head?.repo?.id;
+  const baseId = pr?.base?.repo?.id;
+  if (typeof headId !== 'number' || typeof baseId !== 'number') return true;
+  return headId !== baseId;
 }

@@ -23,6 +23,22 @@ public class Commits_ByRepository : AbstractIndexCreationTask<Commit>
         public bool ParentLookupDone { get; set; }
         /// <summary>Coverage present and the assembly complete (or predating assemblies, i.e. a full upload).</summary>
         public bool CompleteCoverage { get; set; }
+
+        /// <summary>
+        /// Contributed from a fork by a caller holding no credential for this repository.
+        /// </summary>
+        /// <remarks>
+        /// ⚠️ Indexed so that branch-keyed reads can exclude these, because they share the
+        /// repository field with first-party commits and are otherwise indistinguishable to every
+        /// query. The pull-request-keyed reads deliberately do <b>not</b> exclude them — a fork's
+        /// coverage appearing on its own pull request is the entire feature.
+        /// <para>
+        /// Mapped as <c>!= true</c> rather than <c>== false</c> would be, had it been nullable:
+        /// the field is a non-nullable bool, so a document written before it existed indexes as
+        /// false, which is the correct answer for every one of them.
+        /// </para>
+        /// </remarks>
+        public bool ContributedFromFork { get; set; }
     }
 
     public Commits_ByRepository()
@@ -39,6 +55,7 @@ public class Commits_ByRepository : AbstractIndexCreationTask<Commit>
                              ParentLookupDone = commit.ParentLookupAttemptedAtUtc != null,
                              CompleteCoverage = commit.Coverage != null
                                  && (commit.AssemblyCompleteness == null || commit.AssemblyCompleteness == "Complete"),
+                             ContributedFromFork = commit.ContributedFromFork,
                          };
     }
 }

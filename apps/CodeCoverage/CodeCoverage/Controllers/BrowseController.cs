@@ -99,8 +99,12 @@ public partial class BrowseController : ControllerBase
         var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
         if (repository is null) return NotFound();
 
+        // Fork-contributed commits are excluded from every repository-level listing: they carry
+        // this repository's id, so without this they read as its own history, under a branch name
+        // the fork chose. They remain reachable through their pull request, which is the only
+        // context in which they mean anything.
         var query = session.Query<Indexes.Commits_ByRepository.Result, Indexes.Commits_ByRepository>()
-            .Where(c => c.Repository == repository.Id);
+            .Where(c => c.Repository == repository.Id && !c.ContributedFromFork);
         if (!string.IsNullOrEmpty(branch))
             query = query.Where(c => c.Branch == branch);
         if (withCoverageOnly)
@@ -148,8 +152,12 @@ public partial class BrowseController : ControllerBase
         // repository with effectively one branch it is the same picture anyway.
         var effectiveBranch = string.IsNullOrEmpty(branch) ? repository.DefaultBranch : branch;
 
+        // ⚠️ Excluded here for a second reason beyond the listing one: when DefaultBranch is null
+        // the branch filter below is dropped entirely, so every branch's points are drawn as the
+        // repository's history — and that is exactly the population (no installation, no webhook)
+        // whose default branch is unknown.
         var query = session.Query<Indexes.Commits_ByRepository.Result, Indexes.Commits_ByRepository>()
-            .Where(c => c.Repository == repository.Id && c.HasCoverage);
+            .Where(c => c.Repository == repository.Id && c.HasCoverage && !c.ContributedFromFork);
         if (!string.IsNullOrEmpty(effectiveBranch))
             query = query.Where(c => c.Branch == effectiveBranch);
 
@@ -197,7 +205,9 @@ public partial class BrowseController : ControllerBase
 
         var repoIds = visible.Keys.ToArray();
         var commits = await session.Query<Indexes.Commits_ByRepository.Result, Indexes.Commits_ByRepository>()
-            .Where(c => c.Repository.In(repoIds) && c.HasCoverage)
+            // The in-memory filter below admits every branch when DefaultBranch is null, so the
+            // exclusion has to happen in the query rather than relying on that pass.
+            .Where(c => c.Repository.In(repoIds) && c.HasCoverage && !c.ContributedFromFork)
             .OrderByDescending(c => c.AuthoredAt)
             .Take(1000)
             .OfType<Commit>()
@@ -226,8 +236,10 @@ public partial class BrowseController : ControllerBase
         var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
         if (repository is null) return NotFound();
 
+        // A fork's head branch must not appear in this repository's branch list: it is a branch
+        // name from somebody else's repository, and picking it would render an empty badge.
         var branches = await session.Query<Indexes.Commits_ByRepository.Result, Indexes.Commits_ByRepository>()
-            .Where(c => c.Repository == repository.Id && c.HasCoverage)
+            .Where(c => c.Repository == repository.Id && c.HasCoverage && !c.ContributedFromFork)
             .Select(c => c.Branch)
             .Distinct()
             .Take(200)

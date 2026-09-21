@@ -62,9 +62,9 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
                 installationId, account.Login);
             account.InstallationId = null;
             foreach (var repository in await LoadRepositoriesOfAsync(account, cancellationToken))
-                Disconnect(repository, DisconnectedReasons.AppUninstalled);
+                repository.MarkDisconnected(DisconnectedReasons.AppUninstalled);
             foreach (var project in await LoadProjectsOfAsync(account, cancellationToken))
-                DisconnectProject(project, DisconnectedReasons.AppUninstalled);
+                project.MarkDisconnected(DisconnectedReasons.AppUninstalled);
             return;
         }
 
@@ -111,7 +111,7 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
             repository.IsPrivate = ghRepo.IsPrivate;
             repository.DefaultBranch = ghRepo.DefaultBranch;
             repository.Archived = ghRepo.Archived;
-            Connect(repository);
+            repository.MarkConnected();
         }
 
         // Ours, but absent from what the installation returned: the App cannot see it any more.
@@ -124,7 +124,7 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
 
             logger.LogInformation("{FullName} is no longer visible to installation {InstallationId}; disconnecting",
                 repository.FullName, installationId);
-            Disconnect(repository, DisconnectedReasons.RemovedFromInstallation);
+            repository.MarkDisconnected(DisconnectedReasons.RemovedFromInstallation);
         }
 
         await ReconcileProjectsAsync(account, installationId, cancellationToken);
@@ -163,7 +163,7 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
                 "Installation {InstallationId} cannot see boards for {Login}; disconnecting them",
                 installationId, account.Login);
             foreach (var project in await LoadProjectsOfAsync(account, cancellationToken))
-                DisconnectProject(project, DisconnectedReasons.AppUninstalled);
+                project.MarkDisconnected(DisconnectedReasons.AppUninstalled);
             return;
         }
         catch (Exception ex)
@@ -210,7 +210,7 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
             // identity and reachability; the user owns configuration.
             // (DeleteBranchOnPrClose used to be named here too. It moved to Repository in #382 and
             // no longer exists on GitHubProject — the same rule applies to it there.)
-            ConnectProject(project);
+            project.MarkConnected();
 
             // Columns ARE refreshed here, and that is load-bearing rather than convenience.
             //
@@ -238,7 +238,7 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
             logger.LogInformation(
                 "Board #{Number} ({Name}) is no longer visible to installation {InstallationId}; disconnecting",
                 project.Number, project.Name, installationId);
-            DisconnectProject(project, DisconnectedReasons.RemovedFromInstallation);
+            project.MarkDisconnected(DisconnectedReasons.RemovedFromInstallation);
         }
     }
 
@@ -259,20 +259,6 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
             .Where(r => r.Account == account.Id)
             .Take(MaxRepositoriesPerAccount)
             .ToListAsync(ct);
-    }
-
-    private static void Connect(Repository repository)
-    {
-        repository.Connection = RepositoryConnection.Connected;
-        repository.DisconnectedReason = null;
-        repository.DisconnectedAtUtc = null;
-    }
-
-    private static void Disconnect(Repository repository, string reason)
-    {
-        repository.Connection = RepositoryConnection.Disconnected;
-        repository.DisconnectedReason = reason;
-        repository.DisconnectedAtUtc = DateTime.UtcNow;
     }
 
     /// <summary>
@@ -347,19 +333,5 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
             .Where(p => p.Account == account.Id)
             .Take(MaxProjectsPerAccount)
             .ToListAsync(ct);
-    }
-
-    private static void ConnectProject(GitHubProject project)
-    {
-        project.Connection = RepositoryConnection.Connected;
-        project.DisconnectedReason = null;
-        project.DisconnectedAtUtc = null;
-    }
-
-    private static void DisconnectProject(GitHubProject project, string reason)
-    {
-        project.Connection = RepositoryConnection.Disconnected;
-        project.DisconnectedReason = reason;
-        project.DisconnectedAtUtc = DateTime.UtcNow;
     }
 }

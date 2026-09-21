@@ -52,6 +52,7 @@ public partial class UploadsController : ControllerBase
     [Inject] private readonly IBaseResolver baseResolver;
     [Inject] private readonly ILogger<UploadsController> logger;
     [Inject] private readonly IConfiguration configuration;
+    [Inject] private readonly IUploadIngestor ingestor;
 
     /// <summary>Caps the COMPRESSED multipart body. The decompressed bound lives in the parser.</summary>
     private const long MaxReportBytes = 50 * 1024 * 1024;
@@ -160,94 +161,32 @@ public partial class UploadsController : ControllerBase
         if (int.TryParse(User.FindFirst(Oidc.RunAttemptClaim!)?.Value, out var claimRunAttempt))
             form.RunAttempt = claimRunAttempt;
 
-        var commitId = Entities.Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, form.CommitSha);
-        var commit = await session.LoadAsync<Commit>(commitId, cancellationToken);
-        if (commit is null)
-        {
-            commit = new Commit { Sha = form.CommitSha, Repository = repository.Id, FirstSeenAtUtc = DateTimeOffset.UtcNow };
-            await session.StoreAsync(commit, commitId, cancellationToken);
-        }
-        commit.Branch ??= form.Branch;
-        commit.PullRequestNumber ??= form.PullRequestNumber;
-        // Best-effort, like the two above: the pull_request webhook is the
-        // authoritative writer and uses plain assignment.
-        commit.PullRequestBaseRef ??= form.BaseRef;
-        commit.PullRequestBaseSha ??= form.PrBaseSha;
-        if (commit.ParentSha is null && !string.IsNullOrWhiteSpace(form.ParentSha))
-        {
-            commit.ParentSha = form.ParentSha;
-            commit.ParentShaSource = "upload";
-        }
+        var result = await ingestor.IngestAsync(new UploadIngestRequest(
+            Repository: repository,
+            CommitSha: form.CommitSha,
+            Branch: form.Branch,
+            PullRequestNumber: form.PullRequestNumber,
+            BaseRef: form.BaseRef,
+            PrBaseSha: form.PrBaseSha,
+            ParentSha: form.ParentSha,
+            RunId: form.RunId,
+            RunAttempt: form.RunAttempt,
+            Workflow: form.Workflow,
+            EventName: form.EventName,
+            JobName: form.JobName,
+            Flags: form.Flags,
+            RootDir: form.RootDir,
+            FileList: form.FileList,
+            Partial: form.Partial,
+            CarryForward: form.CarryForward,
+            BaseSha: form.BaseSha,
+            Files: form.Files,
+            // First-party by construction: this action authenticated the caller against this
+            // repository. The fork path is a different controller precisely so that this stays a
+            // literal rather than something derived from the request.
+            ContributedFromFork: false), cancellationToken);
 
-        var buildId = Build.DocumentId(EForgeProvider.GitHub, repository.GitHubId, form.CommitSha, form.RunId, form.RunAttempt);
-        var build = await session.LoadAsync<Build>(buildId, cancellationToken);
-        if (build is null)
-        {
-            build = new Build
-            {
-                Commit = commitId,
-                CiRunId = form.RunId,
-                CiRunAttempt = form.RunAttempt,
-                Run = Build.ComposeRun(form.RunId, form.RunAttempt),
-                WorkflowName = form.Workflow,
-                EventName = form.EventName,
-                CreatedAtUtc = DateTime.UtcNow,
-            };
-            await session.StoreAsync(build, buildId, cancellationToken);
-        }
-        else if (build.Status == "Finalized")
-        {
-            // A late upload re-opens the build; the finalizer will close it again
-            // and recompute — max-merge keeps this correct.
-            build.Status = "Open";
-            build.FinalizedAtUtc = null;
-            build.FinalizeReason = null;
-        }
-
-        // One partial job makes the whole build partial: the totals under-count
-        // the workspace regardless of what the other jobs measured. The declared
-        // base is fixed by the first job that names one (all jobs of a run pass
-        // the same inputs; ??= just makes a disagreeing straggler harmless).
-        build.Partial |= form.Partial;
-        build.DeclaredBaseSha ??= form.BaseSha;
-        // One job whose tests failed disables carry-forward for the whole build.
-        build.CarryForward &= form.CarryForward ?? true;
-
-        var sessionId = Guid.NewGuid().ToString("N")[..12];
-        var buildSession = new BuildSession
-        {
-            SessionId = sessionId,
-            JobName = form.JobName,
-            Flags = (form.Flags ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
-            UploadedAtUtc = DateTime.UtcNow,
-            RootDir = form.RootDir,
-        };
-
-        var attachmentNames = new List<string>();
-        var index = 0;
-        foreach (var file in form.Files)
-        {
-            var name = UploadAttachments.ReportName(sessionId, index++, file.FileName);
-            session.Advanced.Attachments.Store(build, name, file.OpenReadStream());
-            attachmentNames.Add(name);
-        }
-        if (!string.IsNullOrEmpty(form.FileList))
-        {
-            session.Advanced.Attachments.Store(build, UploadAttachments.FileListName(sessionId),
-                new MemoryStream(System.Text.Encoding.UTF8.GetBytes(form.FileList)));
-        }
-
-        buildSession.RawFileNames = [.. attachmentNames];
-        build.Sessions.Add(buildSession);
-        build.LastUploadAtUtc = DateTime.UtcNow;
-
-        await session.SaveChangesAsync(cancellationToken);
-        await messageBus.BroadcastAsync(new ParseSessionMessage { BuildId = buildId, SessionId = sessionId }, cancellationToken);
-
-        logger.LogInformation("Accepted upload for {Repo}@{Sha} run {RunId}.{Attempt} session {SessionId} ({Files} files)",
-            form.Repository, form.CommitSha, form.RunId, form.RunAttempt, sessionId, form.Files.Count);
-
-        return Accepted(new UploadResponse(buildId, sessionId));
+        return Accepted(new UploadResponse(result.BuildId, result.SessionId));
     }
 
     /// <summary>Explicitly closes the run's build instead of waiting for the debounce.</summary>
@@ -457,8 +396,10 @@ public partial class UploadsController : ControllerBase
         // polled commit's own branch rather than returning no baseline at all.
         var branch = repo.DefaultBranch ?? commit?.Branch;
 
+        // Never ratchet against fork-contributed coverage — same reasoning as BaseResolver's
+        // chokepoint, and this baseline is computed independently of it.
         var query = session.Query<Commits_ByRepository.Result, Commits_ByRepository>()
-            .Where(r => r.Repository == repo.Id && r.HasCoverage);
+            .Where(r => r.Repository == repo.Id && r.HasCoverage && !r.ContributedFromFork);
         if (branch is not null)
             query = query.Where(r => r.Branch == branch);
 
@@ -716,9 +657,7 @@ public partial class UploadsController : ControllerBase
             {
                 logger.LogInformation("Reconnecting {FullName} on an OIDC upload (was {Reason})",
                     repository.FullName, repository.DisconnectedReason);
-                repository.Connection = RepositoryConnection.Connected;
-                repository.DisconnectedReason = null;
-                repository.DisconnectedAtUtc = null;
+                repository.MarkConnected();
             }
 
             var claimedFullName = User.FindFirst(Oidc.RepositoryClaim)?.Value;

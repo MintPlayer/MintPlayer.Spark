@@ -101,6 +101,11 @@ public partial class MyAccountsService : IMyAccountsService
                 var provider = isOwnerKey ? parsed!.Value.Provider.ToCanonicalString() : string.Empty;
 
                 return byKey.TryGetValue(owner, out var account)
+                    // ⚠ `InstallationId is not null` is GitHub's answer to "is this account
+                    // connected", evaluated here in the neutral layer because there is no per-forge
+                    // predicate yet. A second forge cannot answer it — it has no installation — so
+                    // this is the account-level half of the connection-state gap M8 records, and it
+                    // moves onto the forge seam with the repository-level half, not before.
                     ? new MyAccountRow(owner, account.Login, provider, account.Type, account.AvatarUrl,
                         ownerRepos.Count, aggregate, account.InstallationId is not null)
                     : new MyAccountRow(owner, displayLogin, provider, "User", null, ownerRepos.Count, aggregate, false);

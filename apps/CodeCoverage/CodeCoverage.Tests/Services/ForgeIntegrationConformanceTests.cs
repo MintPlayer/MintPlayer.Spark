@@ -196,6 +196,7 @@ public class ForgeIntegrationConformanceTests
         public Task<CommitComparison?> CompareAsync(Repository repository, string baseRef, string headSha, CancellationToken cancellationToken = default) => Task.FromResult<CommitComparison?>(null);
         public Task<string?> GetFirstParentAsync(Repository repository, string sha, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
         public Task<string?> GetFileContentAsync(Repository repository, string sha, string path, CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+        public Task<ForgePullRequest?> GetPullRequestAsync(Repository repository, int number, CancellationToken cancellationToken = default) => Task.FromResult<ForgePullRequest?>(null);
     }
 
     /// <summary>Supports comments, admits only to statuses.</summary>

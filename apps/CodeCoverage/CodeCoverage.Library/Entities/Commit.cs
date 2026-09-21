@@ -46,6 +46,33 @@ public class Commit
     /// </remarks>
     public string? PullRequestBaseSha { get; set; }
 
+    /// <summary>
+    /// True when this commit's coverage was contributed from a fork, by a caller holding no
+    /// credential for this repository.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Stored rather than inferred from the document id.</b> The id does carry a <c>pr/{n}/</c>
+    /// segment for these, but no consumer parses ids — every query filters on the
+    /// <see cref="Repository"/> field — so inferring would mean teaching each of them a string
+    /// shape, and any one that was missed would treat fork coverage as first-party. A field is a
+    /// thing a query can filter on and a reviewer can grep for.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>The default is the safe one by construction.</b> Every document written before this
+    /// field existed deserializes to false, which is correct: nothing could be fork-contributed
+    /// before there was a path to contribute it. No migration is needed, and an absent field never
+    /// reads as "unknown, assume fork" and hides existing coverage.
+    /// </para>
+    /// <para>
+    /// What it gates: <c>CommitAssembler.Promote</c> refuses to move repository-level coverage for
+    /// one of these, so a fork can never touch the headline badge, the account aggregate or the
+    /// default-branch history. It is not a display flag — the number itself is real, it was just
+    /// produced by someone the repository's owner has not vouched for.
+    /// </para>
+    /// </remarks>
+    public bool ContributedFromFork { get; set; }
+
     /// <summary>Sha of the git first parent, the reference for the delta-vs-parent.</summary>
     /// <remarks>See <see cref="ParentShaSource"/> for how much to trust it.</remarks>
     public string? ParentSha { get; set; }

@@ -345,16 +345,41 @@ public partial class CommitAssembler : ICommitAssembler
     }
 
     /// <summary>
-    /// Repo-level coverage tracks the default branch; a repo that never had data
-    /// accepts any branch rather than showing nothing. Never a partial assembly:
-    /// its total is a subset's, and the badge serves this number.
+    /// Repo-level coverage tracks the default branch. Never a partial assembly: its total is a
+    /// subset's, and the badge serves this number.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>This is the only writer of <see cref="Repository.LatestCoverage"/>,</b> and therefore
+    /// the single gate in front of the headline badge, the repository page and the account
+    /// aggregate. Everything that must not move those has to be refused here — the document id
+    /// shape does not help, because this method reads the <see cref="Repository"/> document and
+    /// never looks at an id.
+    /// </para>
+    /// <para>
+    /// <b>Two escapes were closed on 2026-09-21.</b> The guard used to be a three-way <c>&amp;&amp;</c>
+    /// that only engaged once the repository already had coverage <em>and</em> a known default
+    /// branch, so a repository missing either promoted <em>every</em> complete assembly on
+    /// <em>every</em> branch — and <c>commit.Branch</c> is uploader-supplied. On an OIDC-provisioned
+    /// repository, which never learns its default branch from any webhook, that was permanent: the
+    /// badge simply tracked the last complete upload. The <c>LatestCoverage is null</c> half is now
+    /// gone outright; an unknown default branch still promotes, deliberately, because refusing
+    /// would leave such a repository with no badge at all rather than an imperfect one — and the
+    /// upload path now backfills the default branch precisely so that case becomes rare.
+    /// </para>
+    /// </remarks>
     private static void Promote(Commit commit, Repository? repository, CommitAssembly assembly)
     {
         if (repository is null || assembly.Completeness != CommitAssembly.Complete)
             return;
-        if (repository.LatestCoverage is not null
-            && repository.DefaultBranch is not null
+
+        // Fork-contributed coverage never moves repository-level state. Structural, and first:
+        // the contributor holds no credential for this repository, so nothing they supplied —
+        // including the branch name the check below would read — is worth comparing.
+        if (commit.ContributedFromFork)
+            return;
+
+        if (repository.DefaultBranch is not null
             && !string.Equals(commit.Branch, repository.DefaultBranch, StringComparison.Ordinal))
             return;
 
@@ -409,7 +434,8 @@ public partial class CommitAssembler : ICommitAssembler
 
         var date = commit.Date.Value;
         var candidates = await session.Query<Commits_ByRepository.Result, Commits_ByRepository>()
-            .Where(r => r.Repository == repository.Id && r.Branch == repository.DefaultBranch && r.CompleteCoverage && r.AuthoredAt <= date)
+            .Where(r => r.Repository == repository.Id && r.Branch == repository.DefaultBranch
+                && r.CompleteCoverage && !r.ContributedFromFork && r.AuthoredAt <= date)
             .OrderByDescending(r => r.AuthoredAt)
             .OfType<Commit>()
             .Take(5)
@@ -437,7 +463,8 @@ public partial class CommitAssembler : ICommitAssembler
             child.CoverageDeltaVsParent = Delta(Percent(child.Coverage), percent);
         }
 
-        if (repository.DefaultBranch is null
+        if (commit.ContributedFromFork
+            || repository.DefaultBranch is null
             || !string.Equals(commit.Branch, repository.DefaultBranch, StringComparison.Ordinal)
             || commit.AssemblyCompleteness != CommitAssembly.Complete
             || commit.Date is null)
@@ -445,7 +472,7 @@ public partial class CommitAssembler : ICommitAssembler
 
         var date = commit.Date.Value;
         var later = await session.Query<Commits_ByRepository.Result, Commits_ByRepository>()
-            .Where(r => r.Repository == repository.Id && r.HasCoverage && r.AuthoredAt > date)
+            .Where(r => r.Repository == repository.Id && r.HasCoverage && !r.ContributedFromFork && r.AuthoredAt > date)
             .OrderBy(r => r.AuthoredAt)
             .OfType<Commit>()
             .Take(DependantLimit)
