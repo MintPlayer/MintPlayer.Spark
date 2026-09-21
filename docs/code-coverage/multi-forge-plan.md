@@ -825,9 +825,112 @@ id. The change is one line; the two above are what make it safe.
 
 ### Sub-milestones
 
-- **SP6 — rehearse.** Restore a copy of production, run the whole migration against it, and record
-  wall-clock, peak memory, and what a mid-run kill leaves behind. Gate M6 on this. *(This is the
-  step the user asked for; it is not optional.)*
+- **SP6 — rehearse. 🟨 STARTED 2026-09-21, and it has already overturned two plan assumptions.**
+
+  **Environment.** A verified production backup (228,059 docs / 708 attachments / 17 indexes)
+  imported into a local RavenDB as `CoverageRekeyRehearsal` — **28 seconds** to restore. The local
+  server is the developer's working instance with unrelated databases on it; the rehearsal database
+  is separately named and hard-deleted afterwards. Do not rehearse against the dev `Coverage`
+  database, which is a different, much smaller dataset.
+
+  #### ⚠️ Finding 1 — a patch CAN re-key a document. This section previously said it could not.
+
+  `PatchByQueryOperation` cannot *rename* in place, but a script can `put()` the new id and `del()`
+  the old, which is a re-key by any useful definition — server-side, no streaming to the client, and
+  naturally re-enterable because the script tests the target shape first:
+
+  ```js
+  from Commits as c update {
+    var oldId = id(c);
+    if (oldId.indexOf("Commits/github/") !== 0) {
+      put("Commits/github/" + oldId.substring("Commits/".length), c);
+      del(oldId);
+    }
+  }
+  ```
+
+  **Measured: 820 Commits re-keyed in ~6 seconds**, collection metadata and fields preserved. This
+  removes the put-new/delete-old-per-document client loop the milestone was shaped around, and with
+  it most of the argument that the re-key is too heavy for the startup path (D26).
+
+  #### ⚠️ Finding 2 — the re-key is the SMALLER half. Cross-references were not accounted for.
+
+  Re-keying `Commits` left every `Build.Commit` pointing at an id that no longer exists. The nesting
+  is cosmetic: `Builds`, `FileCoverages`, `BuildTreeSummaries` and `CommitAssemblies` are **separate
+  collections** whose ids merely *look* nested under a commit, so a patch over `Commits` does not
+  touch them, and nothing warns.
+
+  Every id-valued reference field has to be rewritten in the same migration:
+
+  | Field | Holds |
+  |---|---|
+  | `Build.Commit` | commit id |
+  | `FileCoverage.Build` | build id |
+  | `BuildTreeSummary.Build` | build id |
+  | `CommitAssembly.Commit`, `.Repository`, and its build reference | commit / repository / build id |
+  | `Commit.Repository`, `Commit.LatestBuildId` | repository / build id |
+  | `Repository.Account` | account id |
+  | `ApiToken.RepositoryIds` | list of repository ids |
+
+  These **are** field changes, so PRD §6.8's `PatchByQueryOperation` rule applies to them in full —
+  the exception the plan carved out for the re-key does not extend here.
+
+  ⚠️ **Ordering is now a correctness property, not a preference.** A reference rewrite that runs
+  before its target is re-keyed points at a document that does not exist yet; one that runs after a
+  source is deleted has nothing to derive the new value from. The safe shape is: **put the new
+  documents, rewrite every reference, verify, and only then delete the sources** — which also means
+  `del()` cannot stay inside the same script as `put()`, as it was in the probe above.
+
+  #### Measured cost — the startup path is comfortably viable
+
+  | Step | Documents | Wall-clock |
+  |---|---:|---:|
+  | Restore the production dump into a scratch database | 228,059 | **28 s** |
+  | Re-key `Commits` (put + del in one script) | 820 | **~6 s** |
+  | `FileCoverages` — put the new ids | 220,419 | **73 s** |
+  | `FileCoverages` — delete the legacy ids | 220,419 | **14 s** |
+  | Everything else (`Builds` 318, `BuildTreeSummaries` 514, `CommitAssemblies` 154, `PullRequestFeedbacks` 44, `Repositories` 172, `Accounts` 2) | 1,204 | seconds |
+
+  **≈2 minutes end to end on a developer machine.** The production VPS is a shared-vCPU Hetzner
+  box, so budget several times that and do not treat the local number as the answer.
+
+  ⚠️ **Raise `start_period` on the `coverage-app` healthcheck in the same commit.** It is 60 s
+  today, which this exceeds. The container would be working correctly and marked unhealthy.
+
+  #### The reference map the migration is written against
+
+  Collected by reading the entities, because the field names are not guessable — `FileCoverage`
+  holds **`BuildId`**, not `Build`, and a migration written against the wrong name would patch
+  nothing and report success.
+
+  | Entity | Field | Holds |
+  |---|---|---|
+  | `Build` | `Commit` | commit id |
+  | `Commit` | `Repository` | repository id |
+  | `Commit` | `LatestBuildId` | build id |
+  | `FileCoverage` | `BuildId` | build id |
+  | `BuildTreeSummary` | `BuildId` | build id |
+  | `CommitAssembly` | `Commit`, `Repository` | commit / repository id |
+  | `CommitAssemblyFile` | `BuildId` | build id |
+  | `Repository` | `Account` | account id |
+  | `ApiToken` | repository id list (⚠️ confirm the exact name before writing the patch) | repository ids |
+
+  **Each reference rewrite rides in the same script as its document's `put()`**, because the new
+  value is derivable from the old one by the same string operation. That halves the passes over
+  `FileCoverages`, the only collection where the cost is material. Only `ApiTokens` needs a pass of
+  its own, since the document itself is not re-keyed (D25).
+
+  #### Shape of the migration, in order
+
+  1. **Put** the new documents per collection, rewriting reference fields in the same script.
+  2. **Move attachments** for the 318 builds that have them. ⚠️ `put()` does **not** carry
+     attachments — they stay on the source document and die with it. This step must complete before
+     step 3 or 708 coverage reports are lost silently.
+  3. **Verify**: per-collection counts, zero documents left on a legacy id, zero attachments
+     orphaned (M6d).
+  4. **Delete** the legacy documents, last.
+
+  **Still to measure:** the attachment moves, and what a mid-run kill leaves behind.
 - **M6a — small collections** (~1,944 docs): `Repositories` 172, `Accounts` 2, `PullRequestFeedbacks`
   43, `Commits` 804, `Builds` 303, `BuildTreeSummaries` 482, `CommitAssemblies` 138. `Commits` roots
   the nested tree, so sequence by id depth and keep parents and children consistent within a run.
