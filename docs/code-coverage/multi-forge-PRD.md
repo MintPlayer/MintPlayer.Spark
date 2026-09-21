@@ -1431,8 +1431,20 @@ holding real production documents together.
    counted, reported outcome this entry asked for.
 
    `AccountLogin` itself is now `isReadOnly` in the model and re-derived from `AccountOwnerKey` on
-   every save, so it can no longer be posted. ❌ **Still to delete:** the `AccountClaim` emission in
-   `ApiTokenAuthenticationHandler` and the login-comparison arm in `UploadsController`.
+   every save, so it can no longer be posted.
+
+   ✅ **The fallback was QUALIFIED rather than deleted, and that is a decision, not a leftover.**
+   The `covt:account` claim now carries `AccountOwnerKey` (`github:acme`) and is compared against
+   `Repository.OwnerKey`, which is computed from the repository's own `Provider` — so a legacy token
+   for a GitLab group called `acme` no longer authorizes uploads to GitHub's `acme`. That forge
+   union was the real remaining defect; the escalation this entry grew out of was already closed by
+   making the field server-derived and read-only.
+
+   ⚠️ **Deleting the claim and the property was tried and backed out.** It touched ~19 files —
+   `--spark-synchronize-model` never deletes, so the model attribute had to come out by hand, and
+   ~12 fixtures seeded the property — and it would have invalidated every token the backfill could
+   not resolve. The deletion is still *available* as cleanup (M6g steps 5–6 in the plan), but it is
+   cleanup, and nothing security-relevant now waits on it.
 3. **`Commit.ParentSha` trust rules** (`Commit.cs:55`, `CommitAssembler.cs:371-387`) — "older action
    builds sent the PR base sha under this name", so only an `api`-sourced value is trusted for the
    Δ-vs-parent. ⚠️ **Not actually backward compatibility.** It is a data-quality guard against values

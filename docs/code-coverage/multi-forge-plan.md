@@ -1759,7 +1759,7 @@ read-only attribute), so "revoked" is terminal and the display login cannot be p
 
 ---
 
-## M8 tail + M11 tail — 📜 *(2026-09-21; everything but `DisconnectedReasons` shipped in #436)*
+## M8 tail + M11 tail — 📜 *(2026-09-21; ALL of it shipped in #436, DisconnectedReasons last)*
 
 ### ✅ Built
 
