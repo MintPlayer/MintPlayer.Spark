@@ -416,8 +416,74 @@ Manual redeploy: the workflow's `workflow_dispatch` button, or on the VPS
 (always pull-then-up; the compose file has no build block by design).
 
 RavenDB data lives in the `raven-data` named volume — it survives `pull`/`down`/`up`
-deploys; only `docker compose down -v` or a volume prune destroys it. There is no
-automated backup yet; back up the volume out-of-band if the data matters.
+deploys; only `docker compose down -v` or a volume prune destroys it.
+
+### Backing up the database
+
+⚠️ **There is still no *automated* backup.** The procedure below is manual, and was run and
+verified end to end on 2026-09-21; RavenDB reported `BackupInfo: null` before it, meaning the
+database had never been backed up at all. Run it before anything irreversible — a migration, a
+re-key, a bulk delete.
+
+```bash
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+DIR=/var/backups/coverage-raven && mkdir -p "$DIR"
+NET=code-coverage_coverage-internal
+
+# Stats first: this is what the restore gets checked against.
+docker run --rm --network $NET --user 0 -v "$DIR":/out curlimages/curl:8.11.1 \
+  -sS "http://coverage-raven:8080/databases/Coverage/stats" -o "/out/coverage-$STAMP.stats.json"
+
+docker run --rm --network $NET --user 0 -v "$DIR":/out curlimages/curl:8.11.1 \
+  -sS -f --max-time 3600 \
+  -X POST "http://coverage-raven:8080/databases/Coverage/smuggler/export" \
+  -H "Content-Type: application/json" \
+  --data '{"OperateOnTypes":"Documents,RevisionDocuments,Indexes,Identities,CompareExchange,Attachments,CounterGroups,Subscriptions,TimeSeries","IncludeExpired":true}' \
+  -o "/out/coverage-$STAMP.ravendbdump"
+```
+
+⚠️ `CompareExchange` is not optional. The Identity **email reservations** live in compare-exchange,
+not in any collection, so a dump without it restores a database in which every existing address can
+be registered again.
+
+⚠️ `--user 0` is needed because `curlimages/curl` runs unprivileged and cannot write into a
+root-owned bind mount. It fails as `curl: (23) client returned ERROR on write`, which names neither
+permissions nor the directory.
+
+**Three things about verifying it**, each of which produced a misleading answer first:
+
+1. The dump is **Zstandard**, not gzip — `gzip -t` reports "not in gzip format" on a perfectly good
+   file. Use `zstd -t`.
+2. Grepping the decompressed stream for attachment markers finds **nothing**, because attachments
+   are not a top-level section. That is not evidence of absence.
+3. The only check that settles it is a **restore**. Import into a scratch database and compare
+   `CountOfDocuments` and `CountOfAttachments` against the stats file captured above:
+
+```bash
+docker run --rm --network $NET --user 0 curlimages/curl:8.11.1 -sS \
+  -X PUT "http://coverage-raven:8080/admin/databases?name=CoverageRestoreTest&replicationFactor=1" \
+  -H 'Content-Type: application/json' --data '{"DatabaseName":"CoverageRestoreTest"}'
+
+docker run --rm --network $NET --user 0 -v "$DIR":/b curlimages/curl:8.11.1 -sS -f --max-time 3600 \
+  -X POST "http://coverage-raven:8080/databases/CoverageRestoreTest/smuggler/import" \
+  -F 'importOptions={"OperateOnTypes":"Documents,RevisionDocuments,Identities,CompareExchange,Attachments,CounterGroups,TimeSeries"}' \
+  -F "file=@/b/coverage-$STAMP.ravendbdump"
+
+# ... compare stats, then hard-delete the scratch database ...
+docker run --rm --network $NET --user 0 curlimages/curl:8.11.1 -sS \
+  -X DELETE "http://coverage-raven:8080/admin/databases?name=CoverageRestoreTest&hard-delete=true" \
+  -H 'Content-Type: application/json' \
+  --data '{"DatabaseNames":["CoverageRestoreTest"],"HardDelete":true}'
+```
+
+⚠️ Exclude `Subscriptions` and `Indexes` from the *restore test* import. The Community licence caps
+subscriptions cluster-wide, so importing the live database's could disturb production; and
+re-indexing 228k documents burns CPU on the production host for nothing, since the index
+*definitions* are confirmed present in the dump either way.
+
+Finally, **copy the dump off the server** and compare `sha256sum` at both ends. A backup on the
+same disk as the data protects against a bad migration, which is the common case, but not against
+losing the disk.
 
 ### RavenDB licence
 
