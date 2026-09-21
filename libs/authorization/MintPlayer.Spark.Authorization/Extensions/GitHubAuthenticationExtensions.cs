@@ -67,9 +67,14 @@ public static class GitHubAuthenticationExtensions
                 // R2-H11: GitHub's /user endpoint returns whatever email the user
                 // set as primary, even if unverified. To attest the email we hit
                 // /user/emails (requires the user:email scope) and emit
-                // urn:github:email_verified=true only when the primary entry is
-                // verified. The Spark callback consumes that claim before auto-
-                // provisioning a new TUser bound to the email.
+                // email_verified=true only when the primary entry is verified. The
+                // Spark callback consumes that claim before auto-provisioning a new
+                // TUser bound to the email.
+                //
+                // ⚠️ 4g: the *standard* claim name, not a `urn:github:` one. A per-provider term
+                // would mean a new vocabulary entry for every forge, and a forge whose entry
+                // nobody remembered to add would fail closed in a way that reads like a broken
+                // provider rather than like missing code.
                 using var emailsRequest = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/user/emails");
                 emailsRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                 emailsRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", context.AccessToken);
@@ -99,7 +104,7 @@ public static class GitHubAuthenticationExtensions
                         if (entry.TryGetProperty("primary", out var primary) && primary.GetBoolean()
                             && entry.TryGetProperty("verified", out var verified) && verified.GetBoolean())
                         {
-                            context.Identity?.AddClaim(new Claim("urn:github:email_verified", "true"));
+                            context.Identity?.AddClaim(new Claim("email_verified", "true"));
                             break;
                         }
                     }

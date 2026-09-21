@@ -106,9 +106,10 @@ internal static class SparkAuthenticationExtensions
         endpoints.MapSparkAuthEndpoints();
 
         // External login: initiate OAuth challenge
-        authGroup.MapGet("/external-login", (
+        authGroup.MapGet("/external-login", async (
             HttpContext context,
             SignInManager<TUser> signInManager,
+            IAuthenticationSchemeProvider schemes,
             string provider,
             string? returnUrl,
             string? popup) =>
@@ -127,6 +128,13 @@ internal static class SparkAuthenticationExtensions
             // the registered CallbackPath).
             if (popup is not null)
                 callbackUrl += "&popup=1";
+            // 4h: an unregistered scheme reaches Results.Challenge and throws, so an unknown
+            // ?provider= answered with a 500 and a stack trace in the log. It is a bad request —
+            // most often a client and a deployment disagreeing about which providers exist, which
+            // a 500 actively hides.
+            if (await schemes.GetSchemeAsync(provider) is null)
+                return Results.BadRequest(new { error = ExternalLoginErrors.UnknownProvider });
+
             var properties = signInManager.ConfigureExternalAuthenticationProperties(provider, callbackUrl);
             return Results.Challenge(properties, [provider]);
         });
@@ -160,21 +168,43 @@ internal static class SparkAuthenticationExtensions
             {
                 user = await userManager.FindByLoginAsync(info.LoginProvider, info.ProviderKey);
             }
+            else if (await userManager.FindByLoginAsync(info.LoginProvider, info.ProviderKey) is not null)
+            {
+                // ⚠️ 4h: the login IS attached, so this is a refusal — lockout, two-factor, or a
+                // confirmation requirement — not a first-time sign-in. Falling through to
+                // provisioning treated a locked-out user as a stranger, and the branch below would
+                // then answer about their email rather than about why they were refused. Worse, a
+                // lockout is a deliberate security response and silently routing around it into an
+                // account-creation path is the last thing that should happen to one.
+                var refusal = result.IsLockedOut ? ExternalLoginErrors.LockedOut
+                    : result.RequiresTwoFactor ? ExternalLoginErrors.RequiresTwoFactor
+                    : result.IsNotAllowed ? ExternalLoginErrors.NotAllowed
+                    : ExternalLoginErrors.SignInRefused;
+
+                return ExternalLoginOutcome(context, safeReturnUrl, refusal);
+            }
             else
             {
-                // R2-H11: only auto-provision when the issuer attested the email.
-                // GitHub: 'urn:github:email_verified' is set by GitHubAuthenticationExtensions
-                // when /user/emails reports primary && verified. Google/Microsoft/Apple:
-                // standard "email_verified" claim. Refuse to bind an unverified email
-                // to a fresh account — otherwise an attacker claiming any email at an
-                // external IdP can squat that identity locally.
+                // 4g/R2-H11: only provision when the issuer attested the email. An unverified
+                // address from a provider is a *claim*, not a proof — anyone who can assert your
+                // address at some IdP could otherwise squat your identity here.
+                //
+                // ⚠️ One claim, `email_verified`, for every provider. It used to accept a
+                // GitHub-specific `urn:github:` claim alongside it, which would have meant a new
+                // vocabulary term per forge — and a forge whose term nobody remembered to add would
+                // fail closed in a way that reads like a broken provider.
+                //
+                // ⚠️ And it is the *only* check there is. D23 dropped the account-confirmation
+                // mail for externally provisioned users, on the grounds that the SSO already proves
+                // the person controls the address — which is true exactly when the provider says
+                // the address is verified. So there is no longer a second chance to establish this
+                // later, and the gate must fail closed: a provider that does not say counts as not
+                // verified. A forge that cannot report it must not be trusted to assert identity by
+                // email at all.
                 var email = info.Principal.FindFirstValue(ClaimTypes.Email);
                 var emailVerified = string.Equals(
-                        info.Principal.FindFirstValue("email_verified"), "true",
-                        StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(
-                        info.Principal.FindFirstValue("urn:github:email_verified"), "true",
-                        StringComparison.OrdinalIgnoreCase);
+                    info.Principal.FindFirstValue("email_verified"), "true",
+                    StringComparison.OrdinalIgnoreCase);
 
                 if (string.IsNullOrEmpty(email) || !emailVerified)
                     return ExternalLoginOutcome(context, safeReturnUrl, ExternalLoginErrors.EmailNotVerified);
@@ -199,15 +229,32 @@ internal static class SparkAuthenticationExtensions
                 user = new TUser();
                 await userManager.SetUserNameAsync(user, userName);
                 await userManager.SetEmailAsync(user, email);
-                // Issuer attested the email — mark it confirmed so the local account
-                // is in the same state as a password-flow user who confirmed their address.
+
+                // 4f: set because the provider *said the address is verified* — a fact about the
+                // token, checked immediately above — and not by fiat. The distinction is the whole
+                // of 4g: writing `true` unconditionally would make the field mean nothing, and it
+                // is the field the next feature will trust.
+                //
+                // D23: no confirmation mail follows. The SSO already established what one would
+                // have, and mailing anyway is ceremony the user has no reason to complete.
                 user.EmailConfirmed = true;
 
                 var createResult = await userManager.CreateAsync(user);
                 if (!createResult.Succeeded)
                     return ExternalLoginOutcome(context, safeReturnUrl, ExternalLoginErrors.AccountCreationFailed);
 
-                await userManager.AddLoginAsync(user, info);
+                // ⚠️ 4h: both results were discarded. A failed AddLoginAsync leaves an account with
+                // no credential attached — unreachable by anyone, and holding the email reservation
+                // so the same person cannot even try again. The account exists only because of this
+                // request and has nothing in it, so the honest repair is to undo it rather than
+                // leave a tombstone that blocks the address forever.
+                var linkResult = await userManager.AddLoginAsync(user, info);
+                if (!linkResult.Succeeded)
+                {
+                    await userManager.DeleteAsync(user);
+                    return ExternalLoginOutcome(context, safeReturnUrl, ExternalLoginErrors.AccountCreationFailed);
+                }
+
                 await signInManager.SignInAsync(user, isPersistent: true);
             }
 
@@ -537,6 +584,29 @@ internal static class SparkAuthenticationExtensions
 
         /// <summary>The store refused to detach the login.</summary>
         public const string UnlinkFailed = "unlink_failed";
+
+        /// <summary>The requested provider is not a registered authentication scheme.</summary>
+        /// <remarks>
+        /// A bad request rather than a server error. It usually means a client and a deployment
+        /// disagree about which providers exist — which is precisely what a 500 hides.
+        /// </remarks>
+        public const string UnknownProvider = "unknown_provider";
+
+        /// <summary>The account is locked out.</summary>
+        /// <remarks>
+        /// ⚠️ Reported rather than routed around. A lockout is a deliberate security response, and
+        /// the branch that used to follow it led into account provisioning.
+        /// </remarks>
+        public const string LockedOut = "locked_out";
+
+        /// <summary>The account needs a second factor, which this flow does not collect.</summary>
+        public const string RequiresTwoFactor = "requires_two_factor";
+
+        /// <summary>Sign-in is not permitted — typically an unconfirmed account.</summary>
+        public const string NotAllowed = "not_allowed";
+
+        /// <summary>The login is attached, but Identity refused the sign-in for another reason.</summary>
+        public const string SignInRefused = "sign_in_refused";
     }
 
     /// <summary>

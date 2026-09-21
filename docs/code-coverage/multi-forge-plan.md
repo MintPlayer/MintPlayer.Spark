@@ -389,7 +389,7 @@ CodeCoverage (PRD §4.1). Nothing to build.
 
 ---
 
-## M4 — Spark: link confirmation, and the two linking modes 🟨 *(4a–4e, 4k built)*
+## M4 — Spark: link confirmation, and the two linking modes 🟨 *(everything but 4i)*
 
 D2 and D9. All of this is Spark-side; CodeCoverage only chooses.
 
@@ -666,10 +666,44 @@ and is advisory: the server refuses regardless.
 about a page that does not exist. The service methods are the part that has a caller the moment one
 does.
 
-**Still to build:** 4f/4g (now simplified by D23), 4h (two latent defects), 4i (the SMTP container —
-VPS infrastructure, and deliverability is the risk rather than wiring). ⚠️ **CodeCoverage implements
-no sender yet**, so `ConfirmByEmail` is not configurable there until 4i gives it something to send
-with.
+### As-built — 4f, 4g, 4h
+
+**4g — one claim, and it fails closed.** `urn:github:email_verified` is gone; `AddGitHub` emits the
+standard `email_verified`, and the gate reads that and nothing else. A per-provider term would have
+meant a new vocabulary entry for every forge, and a forge whose entry nobody remembered to add
+would fail closed in a way that reads like a broken provider rather than like missing code.
+
+⚠️ **D23 makes this the only check there is.** With no confirmation mail there is no second chance
+to establish that the address belongs to the person, so anything short of an explicit `"true"` —
+absent, `false`, empty, `1`, or the old provider-specific claim — refuses. All five are pinned.
+`docs/guide-authentication-schemes.md` updated to match.
+
+**4f — provisioning states why.** `EmailConfirmed = true` stays, but it is set *because the provider
+said the address is verified*, which the gate immediately above already enforced. That makes it a
+fact about the token rather than a fiat, and it is the field the next feature will trust. No mail
+follows (D23).
+
+**4h — the three places the callback carried on when it should have stopped.**
+
+| | Was | Now |
+|---|---|---|
+| A failed `ExternalLoginSignInAsync` for an **already-linked** account | fell through to provisioning | `locked_out` / `requires_two_factor` / `not_allowed` / `sign_in_refused` |
+| `AddLoginAsync` / `SignInAsync` results after `CreateAsync` | discarded | checked; a failed link deletes the account it just made |
+| An unregistered `?provider=` | reached `Results.Challenge` and threw → **500** | `400 unknown_provider` |
+
+⚠️ The first is the serious one. A lockout is a deliberate security response, and the old code
+routed around it into an account-creation path — after 4c it would at least have answered about the
+user's *email* rather than about why they were refused, which is still the wrong question.
+
+⚠️ The second creates and then **deletes**. An account created but not linked is unreachable by
+anyone and holds the email reservation, so the same person cannot even try again; it exists only
+because of this request and has nothing in it, so undoing it beats leaving a tombstone on the
+address. Pinned in both directions — a successful provision is not undone.
+
+**Still to build:** 4i (the SMTP container — VPS infrastructure, and deliverability is the risk
+rather than wiring). ⚠️ **CodeCoverage implements no sender yet**, so `ConfirmByEmail` is not
+configurable there until 4i gives it something to send with. The manage-logins UI component is
+deliberately not built (see 4d).
 
 ---
 

@@ -626,8 +626,15 @@ the server's deployment-time mode agree — that mismatch is otherwise invisible
 Spark refuses to create an account for an external identity unless the issuer **attested** the email
 address. GitHub's `/user` endpoint returns whatever the user set as primary, verified or not, so the
 attestation comes from `/user/emails` — which an OAuth App token cannot read without `user:email`.
-Without the scope there is no `urn:github:email_verified` claim, and first-time sign-in fails with
+Without the scope there is no `email_verified` claim, and first-time sign-in fails with
 `email_not_verified`.
+
+⚠️ **One standard claim for every provider.** GitHub used to emit a `urn:github:email_verified` of
+its own, which would have meant a new vocabulary term per forge — and a forge whose term nobody
+remembered to add would fail closed in a way that reads like a broken provider rather than like
+missing code. The gate now reads `email_verified` and nothing else, and it **fails closed**: a
+provider that does not say counts as not verified. Since externally provisioned users get no
+confirmation mail, this gate is the only check that the address belongs to the person.
 
 Two provider types, two different things to check:
 

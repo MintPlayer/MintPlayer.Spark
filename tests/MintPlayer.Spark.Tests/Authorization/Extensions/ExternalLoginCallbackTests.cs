@@ -189,8 +189,9 @@ public class ExternalLoginCallbackTests : SparkTestDriver
         {
             new Claim(ClaimTypes.Email, "noname@test.org"),
             new Claim(ClaimTypes.NameIdentifier, "github-handle"),
-            // R2-H11: required for auto-provisioning to proceed
-            new Claim("urn:github:email_verified", "true"),
+            // R2-H11: required for auto-provisioning to proceed. 4g: one standard claim for
+            // every provider, including GitHub, which used to emit a urn:github: one of its own.
+            new Claim("email_verified", "true"),
             // intentionally no ClaimTypes.Name
         }));
         var info = new ExternalLoginInfo(principal, "GitHub", "12345", "GitHub");
