@@ -64,4 +64,8 @@ public sealed record ForgeWebhookMessage<TEvent>(
     TEvent Event,
     string? RawJson = null,
     string? DeliveryId = null)
-    where TEvent : class;
+    // ⚠️ Constrained to the vocabulary, not to any class. The envelope is what makes a consumer
+    // forge-agnostic, so what may travel in it is the one thing that must not be open-ended — a
+    // forge-specific payload wrapped in a neutral envelope would look neutral to every reader and
+    // to every recipient signature, and be neutral to none of them.
+    where TEvent : class, IForgeEvent;

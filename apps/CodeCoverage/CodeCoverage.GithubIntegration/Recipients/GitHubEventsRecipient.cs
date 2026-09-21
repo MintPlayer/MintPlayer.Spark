@@ -104,7 +104,13 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                 account.InstallationId = null;
                 // The App can no longer see anything this account owns, so nothing it owns should
                 // still be advertised. The documents stay; only the advertising stops.
-                await DisconnectRepositoriesOfAsync(
+                //
+                // ⚠️ Enumerated here and raised one event per repository, rather than sent as a single
+                // account-level event. The neutral vocabulary is deliberately about REPOSITORIES
+                // becoming reachable or not — an installation is GitHub's mechanism, not the domain
+                // fact — so the fan-out belongs on the side that knows the mechanism. Bounded by the
+                // same per-account cap as every other sweep, and an uninstall is rare.
+                await RaiseConnectionLostForRepositoriesOfAsync(
                     account,
                     evt.Action == "suspend" ? DisconnectedReasons.AppSuspended : DisconnectedReasons.AppUninstalled,
                     ct);
@@ -136,33 +142,17 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             // organization reaches us. Deleting here — which is what this did before, in code that
             // had never once run — would destroy every commit, build and report for a repository
             // whose owner may re-add it a minute later.
-            var loaded = await session.LoadAsync<Repository>(removedIds, ct);
-            foreach (var existing in loaded.Values)
+            // One neutral event per repository, carrying the account that reported the loss. The
+            // stale-removal guard moved to the consumer with it: deciding whether a loss is current
+            // needs only the reporting owner and the stored one, so it is neutral logic and a second
+            // forge should not have to rediscover it.
+            foreach (var removedId in removedIds)
             {
-                if (existing is null) continue;
-
-                // Only the account that still owns the repository may disconnect it.
-                //
-                // When the App is installed on BOTH the source and the destination of a transfer,
-                // three events describe one move: `removed` from the old installation, and
-                // `transferred` + `added` from the new one. They are sent at the same instant and
-                // arrive in no guaranteed order, so an unguarded `removed` that lands after the
-                // others would disconnect a repository the App can plainly still see, and leave it
-                // that way until the nightly reconciler.
-                //
-                // Ownership settles that without needing an order: if the repository has already
-                // been re-parented, this removal is the old owner reporting a repository that is no
-                // longer theirs, and it is stale. If it has not, the removal is current and the
-                // repository really has left. Correct whichever way round the two arrive.
-                if (existing.Account is not null && existing.Account != account.Id)
-                {
-                    logger.LogInformation(
-                        "Ignoring a stale removal of {FullName} from {Login}: it now belongs to {Owner}",
-                        existing.FullName, account.Login, existing.Account);
-                    continue;
-                }
-
-                existing.MarkDisconnected(DisconnectedReasons.RemovedFromInstallation);
+                await RaiseAsync(new RepositoryConnectionChanged(
+                    removedId,
+                    Connected: false,
+                    Reason: DisconnectedReasons.RemovedFromInstallation,
+                    ReportedByAccountId: account.Id), ct);
             }
         }
 
@@ -187,9 +177,14 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             // is still ours and someone may still be reading a report through a link. It stops
             // being advertised; the owner decides whether the data goes, through the explicit
             // delete action.
-            var existing = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, ghRepo.Id), ct);
-            if (existing is not null)
-                existing.MarkDisconnected(DisconnectedReasons.DeletedOnGitHub);
+            // Raised rather than written: "we can no longer act on this repository" is a neutral
+            // fact, and the app owns what follows from it. No ReportedByAccountId — a deletion is
+            // about the repository itself, not about one owner's access to it, so there is no stale
+            // ownership case to settle.
+            await RaiseAsync(new RepositoryConnectionChanged(
+                Repository.DocumentId(EForgeProvider.GitHub, ghRepo.Id),
+                Connected: false,
+                Reason: DisconnectedReasons.DeletedOnGitHub), ct);
             return;
         }
 
@@ -201,15 +196,29 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         account.AvatarUrl = ghRepo.Owner.AvatarUrl;
         account.Type = ghRepo.Owner.Type.StringValue == "Organization" ? "Organization" : "User";
 
-        // Before the upsert overwrites it: the name we knew this repository by is the one that is
-        // baked into published badge URLs, and a rename or transfer is the moment to remember it.
+        // Read BEFORE the upsert overwrites it. The name we knew this repository by is baked into
+        // published badge URLs, and only the producer still knows it once the upsert has run — which
+        // is why it travels on the event rather than being looked up by the consumer.
         var previous = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, ghRepo.Id), ct);
-        if (evt.Action is "renamed" or "transferred")
-            previous?.RememberPreviousFullName(ghRepo.FullName);
+        var previousFullName = previous?.FullName;
 
         var repository = await UpsertRepository(ghRepo.Id, ghRepo.Name, ghRepo.FullName, ghRepo.Private, account, ct);
         repository.DefaultBranch = ghRepo.DefaultBranch;
         repository.Archived = ghRepo.Archived;
+
+        // The alias history is neutral work — every forge renames repositories and every one of them
+        // breaks published URLs by doing so — so it is raised rather than done here. The upsert above
+        // owns the CURRENT values because they come from this payload; the event owns what the
+        // repository used to be called, which is the part a second forge must not have to reinvent.
+        if (evt.Action is "renamed" or "transferred")
+        {
+            await RaiseAsync(new RepositoryRenamed(
+                repository.Id!,
+                NewName: ghRepo.Name,
+                NewFullName: ghRepo.FullName,
+                NewOwnerLogin: ghRepo.FullName.Split('/')[0],
+                PreviousFullName: previousFullName), ct);
+        }
 
         // Deliberately does NOT disconnect on `transferred`, which is the opposite of what the
         // event's name suggests. Measured against the real API on 2026-09-05 by transferring
@@ -431,10 +440,32 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         repository.MarkConnected();
     }
 
-    private async Task DisconnectRepositoriesOfAsync(Account account, string reason, CancellationToken ct)
+    /// <summary>
+    /// Publishes one neutral event, wrapped in the envelope that names this forge.
+    /// </summary>
+    /// <remarks>
+    /// A named helper rather than an inline <c>BroadcastAsync</c> at each site, so that every event
+    /// this normaliser raises is greppable in one place — which is what a reader checking "does
+    /// GitHub raise all of them" actually needs.
+    /// </remarks>
+    private Task RaiseAsync<TEvent>(TEvent evt, CancellationToken ct) where TEvent : class, IForgeEvent
+        => messageBus.BroadcastAsync(new ForgeWebhookMessage<TEvent>(EForgeProvider.GitHub, evt), ct);
+
+    /// <summary>
+    /// Raises one <see cref="RepositoryConnectionChanged"/> per repository this account owns.
+    /// </summary>
+    /// <remarks>
+    /// The account is passed as the reporter, so the consumer's stale-loss guard can tell this from
+    /// a removal reported by an owner the repository has already left.
+    /// </remarks>
+    private async Task RaiseConnectionLostForRepositoriesOfAsync(Account account, string reason, CancellationToken ct)
     {
         foreach (var repository in await LoadRepositoriesOfAsync(account, ct))
-            repository.MarkDisconnected(reason);
+        {
+            if (repository.Id is null) continue;
+            await RaiseAsync(new RepositoryConnectionChanged(
+                repository.Id, Connected: false, Reason: reason, ReportedByAccountId: account.Id), ct);
+        }
     }
 
     /// <summary>

@@ -162,11 +162,30 @@ public class Repository : IForgeConnectable
     /// </remarks>
     public void RememberPreviousFullName(string newFullName)
     {
-        var previous = FullName;
-        if (string.IsNullOrEmpty(previous) || previous == newFullName) return;
-        if (PreviousFullNames.Contains(previous, StringComparer.OrdinalIgnoreCase)) return;
+        if (FullName != newFullName)
+            RecordPreviousFullName(FullName);
+    }
 
-        PreviousFullNames.Add(previous);
+    /// <summary>
+    /// Records a name this repository was known by, given explicitly.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>For a caller that KNOWS the old name rather than one that can infer it.</b>
+    /// <see cref="RememberPreviousFullName"/> derives it from <see cref="FullName"/>, which only
+    /// works while the document still says the old thing — and the neutral rename handler runs
+    /// after a forge library has already upserted the new one from the same payload. Inferring
+    /// there would record the name the repository already has, which is not an alias.
+    /// <para>
+    /// Both entry points share this body, because two copies of a capped, de-duplicated list are
+    /// two chances to cap it differently.
+    /// </para>
+    /// </remarks>
+    public void RecordPreviousFullName(string? previousFullName)
+    {
+        if (string.IsNullOrEmpty(previousFullName)) return;
+        if (PreviousFullNames.Contains(previousFullName, StringComparer.OrdinalIgnoreCase)) return;
+
+        PreviousFullNames.Add(previousFullName);
         if (PreviousFullNames.Count > MaxPreviousFullNames)
             PreviousFullNames.RemoveAt(0);
     }

@@ -35,7 +35,9 @@ public partial class ForgeEventsRecipient :
     IRecipient<ForgeWebhookMessage<BranchCommitPushed>>,
     IRecipient<ForgeWebhookMessage<PullRequestUpdated>>,
     IRecipient<ForgeWebhookMessage<PullRequestMerged>>,
-    IRecipient<ForgeWebhookMessage<OwnerRenamed>>
+    IRecipient<ForgeWebhookMessage<OwnerRenamed>>,
+    IRecipient<ForgeWebhookMessage<RepositoryRenamed>>,
+    IRecipient<ForgeWebhookMessage<RepositoryConnectionChanged>>
 {
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly IMessageBus messageBus;
@@ -192,6 +194,97 @@ public partial class ForgeEventsRecipient :
         }
 
         logger.LogInformation("Account {Previous} renamed to {Current}", previousLogin, account.Login);
+    }
+
+    /// <summary>
+    /// A repository changed its name, or moved to a different owner.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The stored document keeps its id — a forge's numeric id survives a rename, which is exactly
+    /// why ids are keyed on it rather than on the name. What changes is every string a human reads,
+    /// and the old ones have to be remembered: badge URLs live in READMEs and report links live in
+    /// pull-request comments posted years ago, and a rename must not break them.
+    /// </para>
+    /// <para>
+    /// ⚠️ The previous name comes from the <b>event</b>, not from the document. A forge library that
+    /// upserts repository metadata from the same payload has already overwritten the stored one, so
+    /// reading it here would append the name the repository already has — an alias that aliases
+    /// nothing. Writing the new values again is harmless: they are the same values.
+    /// </para>
+    /// </remarks>
+    public async Task HandleAsync(ForgeWebhookMessage<RepositoryRenamed> message, CancellationToken cancellationToken = default)
+    {
+        var evt = message.Event;
+        var repository = await session.LoadAsync<Repository>(evt.RepositoryId, cancellationToken);
+        if (repository is null)
+        {
+            logger.LogDebug("Rename for unknown repository {RepositoryId}; ignored", evt.RepositoryId);
+            return;
+        }
+
+        // RecordPreviousFullName, not RememberPreviousFullName: the latter infers the old name from
+        // the stored FullName, and by the time this runs a forge library may have upserted the new
+        // one from the same payload. We do not have to infer — the event carries it.
+        if (evt.PreviousFullName != evt.NewFullName)
+            repository.RecordPreviousFullName(evt.PreviousFullName);
+
+        repository.Name = evt.NewName;
+        repository.FullName = evt.NewFullName;
+        repository.OwnerLogin = evt.NewOwnerLogin;
+
+        logger.LogInformation("Repository {Previous} is now {Current}",
+            evt.PreviousFullName ?? "(unknown)", evt.NewFullName);
+    }
+
+    /// <summary>
+    /// We gained or lost the ability to act on a repository.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Never deletes.</b> The coverage history stays, the badge keeps serving its last known
+    /// value and the report URLs keep resolving — the repository simply stops being advertised to
+    /// anyone but its owner. A forge revoking access is not the owner asking us to forget them, and
+    /// conflating the two would destroy data on a permission change.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>A lost-access event is checked against ownership before it is believed.</b> When a
+    /// repository moves between two owners we both see, the loss and the gain are sent at the same
+    /// instant and arrive in no guaranteed order. If the repository has already been re-parented,
+    /// this loss is the old owner reporting something that is no longer theirs — stale, and acting
+    /// on it would disconnect a repository we can plainly still see. Ownership settles that without
+    /// needing an order, which is the only way to settle it.
+    /// </para>
+    /// </remarks>
+    public async Task HandleAsync(ForgeWebhookMessage<RepositoryConnectionChanged> message, CancellationToken cancellationToken = default)
+    {
+        var evt = message.Event;
+        var repository = await session.LoadAsync<Repository>(evt.RepositoryId, cancellationToken);
+        if (repository is null)
+        {
+            logger.LogDebug("Connection change for unknown repository {RepositoryId}; ignored", evt.RepositoryId);
+            return;
+        }
+
+        if (evt.Connected)
+        {
+            repository.MarkConnected();
+            logger.LogInformation("{FullName} is reachable again", repository.FullName);
+            return;
+        }
+
+        if (evt.ReportedByAccountId is { Length: > 0 } reporter
+            && repository.Account is not null
+            && repository.Account != reporter)
+        {
+            logger.LogInformation(
+                "Ignoring a stale loss of {FullName} reported by {Reporter}: it now belongs to {Owner}",
+                repository.FullName, reporter, repository.Account);
+            return;
+        }
+
+        repository.MarkDisconnected(evt.Reason ?? DisconnectedReasons.RemovedFromInstallation);
+        logger.LogInformation("{FullName} is no longer reachable ({Reason})", repository.FullName, evt.Reason);
     }
 
     /// <summary>Bound on a per-account repository sweep; the session's request budget is 30.</summary>
