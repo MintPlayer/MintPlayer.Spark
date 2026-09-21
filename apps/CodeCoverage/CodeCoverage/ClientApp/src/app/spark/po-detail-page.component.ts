@@ -22,9 +22,10 @@ import { HomeExtrasComponent } from './home-extras.component';
  *
  * ⚠️ It no longer forwards anything. Until preview.67 this component pre-fetched the whole
  * PersistentObject on every navigation just to decide whether Account should redirect to a
- * hand-written `/a/{login}` page — a wasted round-trip on every detail view of every type.
- * The vanity URLs now point the other way, as guards in `vanity-redirects.ts`: `/a/{login}`,
- * `/r/{owner}/{name}` and the commit URL resolve their document id and forward INTO `/po/...`.
+ * hand-written `/{provider}/a/{login}` page — a wasted round-trip on every detail view of every type.
+ * The vanity URLs now point the other way, as guards in `vanity-redirects.ts`:
+ * `/{provider}/a/{login}`, `/{provider}/r/{owner}/{name}` and the commit URL resolve their
+ * document id and forward INTO `/po/...`.
  * People hold the readable URL, so that is the one that redirects.
  */
 @Component({

@@ -62,7 +62,7 @@ public class SparkAuthorizeEndToEndTests : IClassFixture<CoverageWebHostFixture>
     {
         using var client = CreateClient();
 
-        var response = await client.GetAsync("/badge/acme/does-not-exist.svg");
+        var response = await client.GetAsync("/badge/github/acme/does-not-exist.svg");
 
         // 404, or an "unknown" badge, are both fine. What must NOT happen is 401/403 — that would
         // mean authorization is being applied to a deliberately public endpoint.

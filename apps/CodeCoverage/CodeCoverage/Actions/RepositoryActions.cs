@@ -150,7 +150,7 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
 
         // The one place the two READ rules diverge. "Query" is the grid — a listing, which must stop
         // advertising a repository we have lost access to. "Read" is the detail page, which is
-        // where /r/{owner}/{name} lands, so it has to keep resolving for a disconnected repository
+        // where /{provider}/r/{owner}/{name} lands, so it has to keep resolving for a disconnected repository
         // or every shared report link and every README badge dies with the transfer.
         return action == "Query"
             ? RepositoryVisibility.ListingFilter(owners)

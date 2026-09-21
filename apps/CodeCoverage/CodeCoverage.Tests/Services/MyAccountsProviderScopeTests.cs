@@ -22,22 +22,40 @@ public class MyAccountsProviderScopeTests : CoverageRavenTest
     private const string Login = "mintplayer";
 
     /// <summary>
-    /// A resolver over several forges. <see cref="ScriptedDiffService"/> is GitHub-only and is its
-    /// own resolver, which is right for the tests that have one forge and wrong for this one.
+    /// A resolver over several forges. <see cref="ScriptedDiffService"/> is its own resolver, which
+    /// is right for the tests that have one forge and not enough for this one.
     /// </summary>
-    private sealed class MultiForgeResolver(params (EForgeProvider Provider, string[] Logins)[] forges)
-        : IForgeIntegrationResolver
+    /// <remarks>
+    /// ⚠ It resolves real <see cref="IForgeIntegration"/> instances rather than answering the
+    /// owner-set question itself. <c>GetAllowedOwnerKeysAsync</c> is an EXTENSION method on the
+    /// interface (<c>ForgeFanOut</c>), not a member of it, so a fake that declares a method of the
+    /// same name compiles, binds to nothing, and is silently never called — the extension runs
+    /// instead and answers from <c>For(provider)</c>. This shape makes the production fan-out the
+    /// thing under test, which is what a scoping test should be exercising anyway.
+    /// </remarks>
+    private sealed class MultiForgeResolver : IForgeIntegrationResolver
     {
-        public IForgeIntegration? For(EForgeProvider provider) => null;
-        public IForgeIntegration For(Repository repository) => throw new NotSupportedException();
-        public IReadOnlyList<IForgeIntegration> All => [];
+        private readonly Dictionary<EForgeProvider, ScriptedDiffService> forges = [];
+
+        public MultiForgeResolver(params (EForgeProvider Provider, string[] Logins)[] definitions)
+        {
+            foreach (var (provider, logins) in definitions)
+            {
+                var forge = new ScriptedDiffService { Provider = provider };
+                forge.Owners.AddRange(logins.Select(l => new ForgeOwner(provider, l)));
+                forges[provider] = forge;
+            }
+        }
+
+        public IForgeIntegration? For(EForgeProvider provider)
+            => forges.TryGetValue(provider, out var forge) ? forge : null;
+
+        public IForgeIntegration For(Repository repository) => forges[repository.Provider];
+
+        public IReadOnlyList<IForgeIntegration> All => [.. forges.Values];
 
         public Task<IReadOnlyList<EForgeProvider>> GetLinkedProvidersAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult<IReadOnlyList<EForgeProvider>>([.. forges.Select(f => f.Provider)]);
-
-        public Task<string[]> GetAllowedOwnerKeysAsync(CancellationToken cancellationToken = default)
-            => Task.FromResult<string[]>(
-                [.. forges.SelectMany(f => f.Logins.Select(l => new ForgeOwner(f.Provider, l).ToString()))]);
+            => Task.FromResult<IReadOnlyList<EForgeProvider>>([.. forges.Keys]);
     }
 
     private static Repository Repo(EForgeProvider provider, long id, string owner, string name) => new()

@@ -6,8 +6,8 @@ import { HOME_URL } from './home-route';
 /**
  * The account, repository and commit pages are the generic Spark detail pages
  * (`spark-po-detail` + a few app panels). These guards keep the readable,
- * shareable URLs working — README badge markdown links to /r/{owner}/{name},
- * and /a/{login} is what the accounts grid and the file page link to — by
+ * shareable URLs working — README badge markdown links to /{provider}/r/{owner}/{name},
+ * and /{provider}/a/{login} is what the accounts grid and the file page link to — by
  * resolving the document id and forwarding into the generic page.
  *
  * The direction matters: the vanity URL is the one people hold, so it forwards

@@ -49,7 +49,12 @@ public sealed class ScriptedDiffService(CommitComparison? comparison = null)
     /// <summary>Comments published against this forge, in order, for assertions.</summary>
     public List<(int PullRequestNumber, string Sha, string Body)> Comments { get; } = [];
 
-    public EForgeProvider Provider => EForgeProvider.GitHub;
+    /// <summary>
+    /// The forge this stands in for. Settable, and GitHub unless a test says otherwise: almost
+    /// every test has one forge and does not care which, but a test about the boundary BETWEEN
+    /// forges needs two of these and they must disagree.
+    /// </summary>
+    public EForgeProvider Provider { get; set; } = EForgeProvider.GitHub;
 
     public EForgeCapability[] Capabilities => [EForgeCapability.Statuses, EForgeCapability.Comments];
 

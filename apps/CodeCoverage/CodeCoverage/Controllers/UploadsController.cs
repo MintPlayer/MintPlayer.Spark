@@ -367,7 +367,7 @@ public partial class UploadsController : ControllerBase
             [.. build.Sessions.Select(s => new UploadStatusSession(
                 s.SessionId, s.JobName, s.Flags, s.ParseStatus, s.Error, s.FilesCount,
                 [.. s.Reports.Select(ToStatusReport)]))],
-            baseUrl is null ? null : $"{baseUrl}/r/{repo.FullName}/c/{commitSha}",
+            baseUrl is null ? null : $"{baseUrl}/{repo.Provider.ToCanonicalString()}/r/{repo.FullName}/c/{commitSha}",
             build.Partial,
             baselineScope,
             projection,

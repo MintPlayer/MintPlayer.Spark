@@ -68,6 +68,35 @@ public partial class M_202609210900_ForgeQualifiedDocumentIds : ISparkMigration
     /// </summary>
     private const string Segment = "github";
 
+    /// <summary>
+    /// How long the verify and delete phases may wait for the auto-index behind their queries to
+    /// catch up with the put phase.
+    /// </summary>
+    /// <remarks>
+    /// ⚠ <b>Not optional, and not merely a latency concern.</b> Both phases query by id prefix,
+    /// which RavenDB answers from an auto-index, and the put phase has just rewritten ~224,000
+    /// documents — so at that moment the index is guaranteed stale.
+    /// <list type="bullet">
+    /// <item><description>
+    /// <c>DeleteByQueryOperation</c> <b>refuses outright</b>: "Cannot perform bulk operation. Index
+    /// is stale." The migration throws, and because the applied-marker is written only after
+    /// <c>Up</c> returns, the container restarts and runs the whole thing again — forever.
+    /// </description></item>
+    /// <item><description>
+    /// The verify counts are worse, because they do <b>not</b> throw. A stale count reads low, and
+    /// the guard that is supposed to refuse a delete when the put phase did nothing would be
+    /// deciding on numbers that describe the database as it was before the migration started.
+    /// </description></item>
+    /// </list>
+    /// <para>
+    /// Generous rather than tight on purpose: indexing 224,000 documents is the expensive half of
+    /// this migration, this runs once, and the cost of timing out early is a restart loop while the
+    /// cost of waiting is a slower deploy. A timeout still surfaces as a throw, which leaves the
+    /// legacy documents in place — the recoverable state.
+    /// </para>
+    /// </remarks>
+    internal static TimeSpan IndexCatchUpBudget { get; set; } = TimeSpan.FromMinutes(10);
+
     [Inject] private readonly IDocumentStore store;
     [Inject] private readonly ILogger<M_202609210900_ForgeQualifiedDocumentIds> logger;
 
@@ -346,6 +375,11 @@ public partial class M_202609210900_ForgeQualifiedDocumentIds : ISparkMigration
             {
                 Query = $"from {collection} as d where startsWith(id(d), '{prefix}/') "
                       + $"and not startsWith(id(d), '{prefix}/{Segment}/')",
+
+                // See IndexCatchUpBudget. Waiting, never AllowStale: a stale index here would let
+                // the delete work from a picture of the database taken before the put phase ran.
+                WaitForNonStaleResults = true,
+                WaitForNonStaleResultsTimeout = IndexCatchUpBudget,
             }), token: cancellationToken);
             var result = await operation.WaitForCompletionAsync<BulkOperationResult>();
 
@@ -387,9 +421,22 @@ public partial class M_202609210900_ForgeQualifiedDocumentIds : ISparkMigration
         var query = session.Advanced
             .AsyncRawQuery<object>($"from {collection} as d where startsWith(id(d), $p) limit 0")
             .AddParameter("p", prefix)
+            // The guard above refuses to delete when this reads zero, so a stale count does not
+            // merely report the wrong number — it decides whether the only copy gets destroyed.
+            .WaitForNonStaleResults(IndexCatchUpBudget)
             .Statistics(out var statistics);
 
         await query.ToListAsync(cancellationToken);
+
+        if (statistics.IsStale)
+        {
+            throw new InvalidOperationException(
+                $"Counting '{collection}' documents under '{prefix}' timed out waiting for the index "
+                + $"to catch up ({IndexCatchUpBudget}). Refusing to continue on numbers that describe "
+                + "the database as it was before this migration started; the legacy documents are "
+                + "untouched, so re-running is safe.");
+        }
+
         return statistics.TotalResults;
     }
 }

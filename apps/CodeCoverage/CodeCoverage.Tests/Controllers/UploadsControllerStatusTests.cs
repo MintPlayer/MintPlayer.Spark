@@ -213,7 +213,7 @@ public class UploadsControllerStatusTests : CoverageRavenTest
         var inFlight = Body(await controller.Status(RepoName, Sha, runId: 7));
         inFlight.State.Should().Be("InFlight");
         inFlight.Coverage.Should().BeNull();
-        inFlight.CommitUrl.Should().Be($"https://coverage.example.com/r/{RepoName}/c/{Sha}");
+        inFlight.CommitUrl.Should().Be($"https://coverage.example.com/github/r/{RepoName}/c/{Sha}");
 
         var build = await session.LoadAsync<Build>(Build.DocumentId(EForgeProvider.GitHub, RepoId, Sha, 7, 1));
         build.Status = "Finalized";
