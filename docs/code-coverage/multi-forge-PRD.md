@@ -1250,6 +1250,15 @@ class LogIssueOpened : IRecipient<ForgeWebhookMessage<IssueOpened>>
 }
 ```
 
+#### → The reference lives in [`forge-webhooks.md`](forge-webhooks.md)
+
+**Read that first if you are writing a recipient or porting a forge.** It carries the minimal API,
+the six-event vocabulary with its GitHub/GitLab/Bitbucket mapping, and the per-event traps.
+
+Kept there rather than here because this document is a decision record — somebody porting Bitbucket
+in a year should not have to read a PRD to find out what to implement, and two copies of a table
+drift. What stays below is *why* the design is this shape.
+
 #### Why, in one line: it stops an M×N expansion
 
 *(The owner's framing, 2026-09-20: "Your proposal clearly prevents future M×N expansions.")*
