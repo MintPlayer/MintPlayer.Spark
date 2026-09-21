@@ -60,11 +60,7 @@ public class AbsentFieldPredicateTests
                 foreach (Match match in ForbiddenPredicate(field).Matches(text))
                 {
                     var line = text.Take(match.Index).Count(c => c == '\n') + 1;
-                    // A plain C# object is not a RavenDB query, and `!request.ContributedFromFork`
-                    // on one is correct. Only expression-tree contexts are unsafe, and those are
-                    // the ones inside a Where/selector — recognised here by the receiver being a
-                    // query lambda parameter rather than a named local.
-                    if (IsPlainObjectTest(text, match.Index)) continue;
+                    if (!IsQueryPredicate(text, match.Index)) continue;
                     offenders.Add($"{Path.GetFileName(file)}:{line}  {match.Value}");
                 }
             }
@@ -88,15 +84,49 @@ public class AbsentFieldPredicateTests
         => Assert.Equal(shouldMatch, ForbiddenPredicate("ContributedFromFork").IsMatch(snippet));
 
     /// <summary>
-    /// `!request.Field` / `!x.Field` where the receiver is a known non-query local. Narrow on
-    /// purpose: anything not explicitly listed is reported, so the default is to complain.
+    /// The lambda test, which is what separates a translated predicate from ordinary C#.
     /// </summary>
-    private static bool IsPlainObjectTest(string text, int index)
+    [Theory]
+    [InlineData(".Where(c => !c.ContributedFromFork)", true)]
+    [InlineData("if (!commit.ContributedFromFork)", false)]
+    [InlineData("if (!request.ContributedFromFork && commit.ParentSha is null)", false)]
+    public void Only_a_lambda_counts_as_a_query_predicate(string snippet, bool isQuery)
     {
-        var start = Math.Max(0, index);
-        var end = Math.Min(text.Length, index + 40);
-        var fragment = text[start..end];
-        return fragment.StartsWith("!request.", StringComparison.Ordinal);
+        var match = ForbiddenPredicate("ContributedFromFork").Match(snippet);
+        Assert.True(match.Success, "the fixture must contain the shape being classified");
+        Assert.Equal(isQuery, IsQueryPredicate(snippet, match.Index));
+    }
+
+    /// <summary>
+    /// Whether the match sits inside a lambda, which is what makes it a RavenDB query predicate.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>Only an expression tree is unsafe.</b> Negating a late-added bool on an already-loaded
+    /// document is ordinary C# and perfectly correct — deserialization really does fill a
+    /// non-nullable bool with <c>false</c>. It is only wrong when the predicate is translated to
+    /// RQL and evaluated against the index, where the term is simply missing.
+    /// </para>
+    /// <para>
+    /// The distinguishing feature is the lambda: <c>.Where(c =&gt; !c.Field)</c> is translated,
+    /// <c>if (!commit.Field)</c> is not. Checking the enclosing LINE for <c>=&gt;</c> is crude, but
+    /// it matches how every query in this app is written, and it errs toward reporting — a query
+    /// split across lines so that the arrow is not on the match's line would be flagged, which is
+    /// the harmless direction.
+    /// </para>
+    /// <para>
+    /// This started as an allow-list of receiver names and was wrong within the hour: it flagged a
+    /// genuine document test in <c>DeletePullRequestBuildsRecipient</c> because the local happened
+    /// to be called <c>commit</c>. Naming locals is not a security boundary.
+    /// </para>
+    /// </remarks>
+    private static bool IsQueryPredicate(string text, int index)
+    {
+        var lineStart = text.LastIndexOf('\n', Math.Max(0, index - 1)) + 1;
+        var lineEnd = text.IndexOf('\n', index);
+        if (lineEnd < 0) lineEnd = text.Length;
+
+        return text[lineStart..lineEnd].Contains("=>", StringComparison.Ordinal);
     }
 
     private static IEnumerable<string> SourceFiles()
