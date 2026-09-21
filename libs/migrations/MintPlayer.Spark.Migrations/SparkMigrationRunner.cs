@@ -19,7 +19,15 @@ internal static class SparkMigrationRunner
     public static void RunAtStartup(IServiceProvider services)
         => RunAsync(services, CancellationToken.None).GetAwaiter().GetResult();
 
-    public static async Task RunAsync(IServiceProvider services, CancellationToken cancellationToken)
+    /// <param name="lockWaitBudget">
+    /// How long to wait for a lock another instance holds before failing startup. Defaults to
+    /// <see cref="LockWaitBudget"/>; tests pass something short, because the default is
+    /// deliberately longer than the lock's own TTL and waiting it out is not a test.
+    /// </param>
+    public static async Task RunAsync(
+        IServiceProvider services,
+        CancellationToken cancellationToken,
+        TimeSpan? lockWaitBudget = null)
     {
         var registry = services.GetService<SparkMigrationRegistry>();
         var pending = registry?.Migrations ?? [];
@@ -29,13 +37,11 @@ internal static class SparkMigrationRunner
         var store = services.GetRequiredService<IDocumentStore>();
         var logger = services.GetService<ILoggerFactory>()?.CreateLogger("MintPlayer.Spark.Migrations");
 
-        // One node applies migrations; others skip and serve once it's done releasing the lock.
-        var lockIndex = await TryAcquireLockAsync(store, cancellationToken);
+        // One node applies migrations; the others WAIT for it rather than serving past it.
+        var lockIndex = await AcquireOrWaitAsync(
+            store, logger, pending, lockWaitBudget ?? LockWaitBudget, cancellationToken);
         if (lockIndex is null)
-        {
-            logger?.LogInformation("Spark migrations: another instance holds the migration lock; skipping on this node.");
-            return;
-        }
+            return; // everything pending was applied by whoever held the lock.
 
         try
         {
@@ -83,6 +89,103 @@ internal static class SparkMigrationRunner
     }
 
     internal static string MarkerId(long version) => $"SparkMigrationRecords/{version}";
+
+    /// <summary>
+    /// How long to keep waiting for a lock somebody else holds before giving up and failing
+    /// startup. Comfortably longer than <see cref="LockTtl"/>, so a lock left behind by a killed
+    /// process is always taken over rather than waited out.
+    /// </summary>
+    private static readonly TimeSpan LockWaitBudget = TimeSpan.FromMinutes(35);
+
+    private static readonly TimeSpan LockPollInterval = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// Acquires the lock, or waits until the holder has finished and every pending migration is
+    /// marked applied. Returns null when there is nothing left to do.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>This used to skip and serve, and that was a data-correctness bug.</b> A node that
+    /// cannot take the lock has, by definition, pending migrations that have not been applied
+    /// <em>yet</em> — so serving is serving un-migrated data. Measured 2026-09-21 by killing a
+    /// container in the middle of a 224,000-document re-key: the lock survives the process, and
+    /// every restart for the next <see cref="LockTtl"/> logged "another instance holds the
+    /// migration lock; skipping" and then served a <b>half-migrated database</b>. Nothing was
+    /// logged as wrong, because from the app's point of view nothing was.
+    /// </para>
+    /// <para>
+    /// A thrown migration releases the lock in its <c>finally</c> and retries on the next start,
+    /// which is what made this look safe. A <em>killed</em> process runs no <c>finally</c> —
+    /// OOM-killer, <c>docker kill</c>, a host reboot or a deploy timeout all take this path, and
+    /// those are exactly the conditions a long migration invites.
+    /// </para>
+    /// <para>
+    /// Waiting is correct for the legitimate case too: a second instance starting alongside the
+    /// migrating one should come up <em>after</em> the migration, not race it.
+    /// </para>
+    /// </remarks>
+    private static async Task<long?> AcquireOrWaitAsync(
+        IDocumentStore store,
+        ILogger? logger,
+        IReadOnlyCollection<SparkMigrationDescriptor> pending,
+        TimeSpan waitBudget,
+        CancellationToken cancellationToken)
+    {
+        var deadline = DateTime.UtcNow.Add(waitBudget);
+        var announced = false;
+
+        while (true)
+        {
+            var acquired = await TryAcquireLockAsync(store, cancellationToken);
+            if (acquired is not null)
+                return acquired;
+
+            // The holder may have finished everything while we were waiting, in which case there
+            // is nothing to migrate and serving is safe.
+            if (await AllAppliedAsync(store, pending, cancellationToken))
+            {
+                logger?.LogInformation(
+                    "Spark migrations: another instance applied them; continuing startup.");
+                return null;
+            }
+
+            if (DateTime.UtcNow >= deadline)
+            {
+                throw new InvalidOperationException(
+                    $"Spark migrations: the migration lock has been held by another instance for over "
+                    + $"{waitBudget.TotalMinutes:0.#} minutes and migrations are still pending. "
+                    + "Refusing to start, because serving now would serve un-migrated data. If no "
+                    + $"other instance is running, the lock is stale and clears itself {LockTtl.TotalMinutes:0} "
+                    + "minutes after the process that took it stopped.");
+            }
+
+            if (!announced)
+            {
+                logger?.LogWarning(
+                    "Spark migrations: another instance holds the migration lock and migrations are "
+                    + "pending. Waiting rather than serving un-migrated data.");
+                announced = true;
+            }
+
+            var poll = waitBudget < LockPollInterval ? waitBudget : LockPollInterval;
+            await Task.Delay(poll, cancellationToken);
+        }
+    }
+
+    private static async Task<bool> AllAppliedAsync(
+        IDocumentStore store,
+        IReadOnlyCollection<SparkMigrationDescriptor> pending,
+        CancellationToken cancellationToken)
+    {
+        using var session = store.OpenAsyncSession();
+        foreach (var migration in pending)
+        {
+            if (!await session.Advanced.ExistsAsync(MarkerId(migration.Version), cancellationToken))
+                return false;
+        }
+
+        return true;
+    }
 
     /// <summary>
     /// Takes the migration lock, returning the compare-exchange index our claim landed at, or null

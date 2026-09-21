@@ -973,9 +973,48 @@ id. The change is one line; the two above are what make it safe.
   shared-vCPU VPS. It is a *start* period rather than a timeout, so the generous value costs nothing
   on an ordinary deploy with no migration pending.
 
-  **Still to do:** a deliberate mid-run kill. The accidental one above covers the most valuable
-  case — a failure between put and delete — but killing during the `FileCoverages` put is the
-  scenario worth confirming on purpose.
+  #### ⚠️ The mid-run kill found a data-correctness bug in the Spark migration runner itself
+
+  Killed the container during the `FileCoverages` put — the worst moment — and the half-migrated
+  state was exactly as designed: 281,859 `FileCoverages` (220,419 legacy plus 61,440 new), earlier
+  collections doubled, **no deletions**, 708 attachments intact, and the applied-marker unwritten.
+
+  **Then the restart skipped the migration and served that database.**
+
+  ```
+  info: Spark migrations: another instance holds the migration lock; skipping on this node.
+  info: Now listening on: http://localhost:5201
+  ```
+
+  ⚠️ **The lock outlives the process.** A migration that *throws* releases it in a `finally` and
+  retries on the next start — which is what made D26's "a failure retries" reasoning look sound. A
+  migration whose process is **killed** runs no `finally`, and OOM-killer, `docker kill`, a host
+  reboot and a deploy timeout all take that path. Those are precisely the conditions a long
+  migration invites.
+
+  The lock has a 30-minute TTL, so it is not stuck forever — it is worse than that. For thirty
+  minutes every restart comes up **serving a half-migrated database**, and nothing is logged as
+  wrong, because from the application's point of view nothing is.
+
+  **Fixed in `SparkMigrationRunner`** (`libs/migrations`), not worked around in this migration: a
+  node that cannot take the lock now **waits** rather than serving, polling until either it takes
+  the lock or every pending migration is marked applied, and failing startup after a bounded
+  budget. Waiting is also the correct behaviour for the case the skip was written for — a second
+  instance starting alongside a migrating one should come up *after* the migration, not race it.
+
+  Verified: with the lock held the app logs a warning and **does not serve**; when the lock clears
+  it resumes and completes.
+
+  #### Recovery after kill + resume, against baseline
+
+  | | Baseline | After kill + resume |
+  |---|---:|---:|
+  | `FileCoverages` / `Commits` / `Builds` / `Repositories` | 220,419 / 820 / 318 / 172 | **identical** |
+  | Attachments | 708 | 708 |
+  | Legacy ids remaining | — | **0** |
+
+  Total documents are +17, fully accounted for: +1 migration marker and +16 `SparkMessages` the app
+  enqueued while running. No domain document was lost, duplicated or left behind.
 - **M6a — small collections** (~1,944 docs): `Repositories` 172, `Accounts` 2, `PullRequestFeedbacks`
   43, `Commits` 804, `Builds` 303, `BuildTreeSummaries` 482, `CommitAssemblies` 138. `Commits` roots
   the nested tree, so sequence by id depth and keep parents and children consistent within a run.
