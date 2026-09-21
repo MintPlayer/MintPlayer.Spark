@@ -1801,7 +1801,7 @@ the same operation.
 
 ---
 
-## M14 — Version bumps and PR 🟨 *(PR open; no version bump needed — see below)*
+## M14 — Version bumps and PR ✅ *(PR #434 squash-merged as `0a084191`, 2026-09-21)*
 
 - `libs/` version bump is a **CI-only gate** — a green `dotnet test` does not catch it.
 - **Majors do not move.** npm major = Angular major, NuGet major = .NET major. These are
@@ -1811,7 +1811,7 @@ the same operation.
 
 ---
 
-## M18 — The E2E rate limiter, because CI could not go green without it 🟨 *(unplanned; found by CI)*
+## M18 — The E2E rate limiter, because CI could not go green without it ✅ *(unplanned; found by CI)*
 
 **Not multi-forge work.** It is here because it blocks this PR's CI, and because the one-PR rule puts
 what you find in the same unit of work as what you were doing.
@@ -1893,7 +1893,89 @@ partitions via `X-Forwarded-For` work only because of this bug, and would make C
 
 ---
 
-## M17 — Deploy to the VPS, with the app still working 🟦 *(last; D22 does not relax this)*
+## M19 — The six links M7 missed and A11 could not see 🟨 *(fixed on `fix/forge-route-navigation`, not yet merged)*
+
+Found in production by the owner, minutes after the deploy. **Branch pushed, PR not yet opened.**
+
+### What was broken
+
+| Site | Link |
+|---|---|
+| `commit-files-panel.component.ts` | the file navigation — the reported symptom — **and** `openCommit` beside it |
+| `file.component.html` | the page's entire breadcrumb: owner, repo **and** sha |
+| `short-sha-renderer.component.ts` | the commit link in **every** grid |
+
+So it was not only the sunburst: every route into or out of the file page was dead, and the
+short-sha link was dead everywhere it appears.
+
+### ⚠ Why A11 reported clean — the part worth keeping
+
+A11 was *"grep that no source we control still emits the two-segment form"*. It grepped for the URL
+as a **string**. Angular's router-array form is not a string:
+
+```ts
+this.router.navigate(['/r', owner, name, 'c', sha, 'f'])   // invisible to a "/r/" grep
+```
+
+The check ran, returned nothing, and was believed — **the same failure shape as the bug it was
+meant to catch.** A verification that cannot fail is not evidence.
+
+### ⚠ Every one of these components already HAD the forge
+
+- `commit-files-panel` takes `provider` as a required input and used it for its API calls, not its
+  navigation.
+- `file.component` read `provider` from the route for its API call and never exposed it to the
+  template.
+- `short-sha-renderer` already declared `item` and read other row values through `valueFor`.
+
+**A half-migrated component compiles perfectly.** The data was present in all three; only the links
+were not updated. That is why nothing — compiler, tests, CI, or a browser survey — caught it.
+
+### The guard
+
+`CodeCoverage.Tests/Client/ForgeQualifiedRouteTests.cs` asserts a **property, not a spelling**: a
+route whose *first segment* is the literal `r` or `a` is wrong by construction. It covers both the
+array and the string form, and carries its own falsification cases — the exact shapes that shipped
+broken must match, the correct shape must not, and the walk must find files. A scan that silently
+matches nothing passes for the wrong reason, which is precisely how A11 gave a clean result.
+
+It lives in the .NET suite because the Angular runner bundles for the browser, where there is no
+filesystem to walk.
+
+### Outstanding
+
+- [ ] Open the PR and let CI run.
+- [ ] **Verify in a browser by clicking through**, not by loading pages: sunburst → file → breadcrumb
+      → back to commit, and a short-sha link from a grid. This bug is the reason that distinction is
+      now written down.
+
+---
+
+## M17 — Deploy to the VPS, with the app still working 🟨 *(deployed 2026-09-21; one regression found in production)*
+
+### As-deployed
+
+PR #434 squash-merged as `0a084191`, which triggered `code-coverage-deploy.yml`, which built the
+image and ran the re-key against production before the container served a request. The app came
+back up and serves.
+
+⚠ **But the acceptance criterion — "the app still working" — was not met on the first try.** The
+owner found it within minutes of the deploy: the **file page was unreachable**, from the sunburst,
+from the file list, and from its own breadcrumb.
+
+```
+NG04002: 'r/MintPlayer/MintPlayer.AI/c/16a31b920f994427d87e493d79821b39316f32bc/f'
+```
+
+Six client navigation sites still built the pre-forge two-segment route. Fixed on
+`fix/forge-route-navigation` — see **M19**.
+
+**What this says about the verification that preceded it.** Three separate checks passed and none
+could see it: CI was green, both .NET suites were green, and I had surveyed the app in a browser.
+The browser survey is the one that should have caught it, and did not, because I checked that
+**pages rendered** rather than that the **links between them worked**. A page that renders proves
+its own route; it proves nothing about the routes it points at.
+
 
 The owner's acceptance criterion, stated 2026-09-20: *"Just make sure I can deploy this to my vps, and
 have the app still working as best as possible."* D22 removed the obligation to old callers and wire
