@@ -48,8 +48,31 @@ public class ExternalLoginReturnUrlTests
             "callback should respond with a redirect, not embed the returnUrl in HTML");
 
         var location = response.Headers.Location?.ToString() ?? string.Empty;
-        location.Should().Be("/",
+
+        // ⚠️ Asserted on the PATH, not on the whole header, and that is a deliberate loosening —
+        // made once, with a reason. A refused sign-in now carries why it was refused
+        // (`?sparkExternalLogin=<code>`), so the location is "/?sparkExternalLogin=…" rather than
+        // bare "/". The security property was never "the header equals a slash"; it is "the
+        // destination is the sanitized default and nothing the caller supplied survives into it",
+        // and the two assertions below say exactly that instead of implying it.
+        PathOf(location).Should().Be("/",
             $"hostile returnUrl '{hostileReturnUrl}' must be substituted with the default");
+
+        foreach (var trace in new[] { "attacker.example", "javascript:", "\r", "\n" })
+        {
+            location.Should().NotContain(trace,
+                "nothing from the hostile returnUrl may survive into the Location header");
+        }
+    }
+
+    /// <summary>
+    /// The redirect target without its query string. The query now legitimately carries the
+    /// outcome code, which is not part of where the browser is being sent.
+    /// </summary>
+    private static string PathOf(string location)
+    {
+        var query = location.IndexOf('?');
+        return query < 0 ? location : location[..query];
     }
 
     [Fact]
@@ -61,8 +84,13 @@ public class ExternalLoginReturnUrlTests
         var response = await http.GetAsync($"/spark/auth/external-login-callback?returnUrl={encoded}");
 
         response.StatusCode.Should().BeOneOf(HttpStatusCode.Redirect, HttpStatusCode.Found);
-        response.Headers.Location?.ToString().Should().Be("/dashboard",
-            "in-app paths must be preserved");
+
+        // The half of this pair that actually guards against a regression: a safe path must still
+        // be honoured, not quietly replaced by the default. If the outcome code were ever appended
+        // to "/" instead of to the caller's path, the test above would still pass and this one
+        // would fail — which is why both exist.
+        var location = response.Headers.Location?.ToString() ?? string.Empty;
+        PathOf(location).Should().Be("/dashboard", "in-app paths must be preserved");
     }
 
     [Theory]
