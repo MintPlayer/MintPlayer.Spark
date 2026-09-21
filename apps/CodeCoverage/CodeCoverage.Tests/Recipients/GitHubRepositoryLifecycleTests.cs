@@ -285,7 +285,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         Assert.NotNull(repository);
         Assert.Equal(RepositoryConnection.Disconnected, repository.Connection);
-        Assert.Equal(DisconnectedReasons.DeletedOnGitHub, repository.DisconnectedReason);
+        Assert.Equal(DisconnectedReasons.DeletedOnForge, repository.DisconnectedReason);
 
         // The point of not deleting: the commit under it is still reachable, so a report link
         // someone shared still resolves.
@@ -609,7 +609,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         Assert.Equal(RepositoryConnection.Disconnected, repository!.Connection);
-        Assert.Equal(DisconnectedReasons.AppUninstalled, repository.DisconnectedReason);
+        Assert.Equal(DisconnectedReasons.IntegrationRemoved, repository.DisconnectedReason);
         Assert.NotNull(await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, RepoId, "abc")));
     }
 
@@ -651,7 +651,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
 
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         Assert.Equal(RepositoryConnection.Disconnected, repository!.Connection);
-        Assert.Equal(DisconnectedReasons.AppSuspended, repository.DisconnectedReason);
+        Assert.Equal(DisconnectedReasons.IntegrationSuspended, repository.DisconnectedReason);
         Assert.Null((await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, OldOwnerId)))!.InstallationId);
     }
 

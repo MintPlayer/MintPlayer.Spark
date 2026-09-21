@@ -113,7 +113,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                 // same per-account cap as every other sweep, and an uninstall is rare.
                 await RaiseConnectionLostForRepositoriesOfAsync(
                     account,
-                    evt.Action == "suspend" ? DisconnectedReasons.AppSuspended : DisconnectedReasons.AppUninstalled,
+                    evt.Action == "suspend" ? DisconnectedReasons.IntegrationSuspended : DisconnectedReasons.IntegrationRemoved,
                     ct);
                 break;
         }
@@ -186,7 +186,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             await RaiseAsync(new RepositoryConnectionChanged(
                 Repository.DocumentId(EForgeProvider.GitHub, ghRepo.Id),
                 Connected: false,
-                Reason: DisconnectedReasons.DeletedOnGitHub), ct);
+                Reason: DisconnectedReasons.DeletedOnForge), ct);
             return;
         }
 

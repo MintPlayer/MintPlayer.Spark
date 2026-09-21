@@ -42,7 +42,7 @@ public static class ForgeConnectionState
     /// </summary>
     /// <remarks>
     /// Clearing the reason is the point, not tidiness: the reason is what the owner is shown, and a
-    /// reconnected repository still carrying <c>AppUninstalled</c> tells them to reinstall an App
+    /// reconnected repository still carrying <c>IntegrationRemoved</c> tells them to reinstall an App
     /// that is already installed.
     /// </remarks>
     public static void MarkConnected(this IForgeConnectable connectable)

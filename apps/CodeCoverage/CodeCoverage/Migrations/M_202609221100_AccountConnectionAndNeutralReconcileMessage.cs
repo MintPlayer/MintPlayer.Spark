@@ -60,7 +60,7 @@ public partial class M_202609221100_AccountConnectionAndNeutralReconcileMessage 
                     if (d.Connection === undefined || d.Connection === null) {
                         d.Connection = d.InstallationId ? 'Connected' : 'Disconnected';
                         if (!d.InstallationId) {
-                            d.DisconnectedReason = 'AppUninstalled';
+                            d.DisconnectedReason = 'IntegrationRemoved';
                             d.DisconnectedAtUtc = new Date().toISOString();
                         }
                     }

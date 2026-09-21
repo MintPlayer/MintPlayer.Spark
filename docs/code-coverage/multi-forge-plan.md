@@ -1792,12 +1792,22 @@ read-only attribute), so "revoked" is terminal and the display login cannot be p
 - ~~The account-level `IsConnected` is derived from `account.InstallationId is not null`.~~
   `Account.Connection` is a stored neutral field and `Account` implements `IForgeConnectable`.
 
-### ❌ Still open — one
+### ✅ Closed in #436 — the last one
 
-- `DisconnectedReasons` still speaks GitHub (`AppUninstalled`, `DeletedOnGitHub`). ⚠️ These strings
-  are **stored on documents**, so renaming them is a migration, not a rename.
-- The account-level `IsConnected` is still derived from `account.InstallationId is not null` in the
-  neutral layer. It moves onto the forge seam with the repository-level half.
+- ~~`DisconnectedReasons` still speaks GitHub (`AppUninstalled`, `DeletedOnGitHub`).~~ Now
+  `IntegrationRemoved`, `IntegrationSuspended` and `DeletedOnForge`, migrated by
+  **`M_202609230900_DisconnectedReasonsStopNamingGitHub`** across `Repositories`, `Accounts` and
+  `GitHubProjects`.
+
+  ⚠️ **A rename alone would have compiled, passed, and been wrong for ever.** These are
+  `const string`s whose values are written into documents, and nothing branches on a reason — it is
+  only displayed. Renaming the constants changes what the code compares, never what the documents
+  hold, so production would have kept showing "AppUninstalled" with no failure anywhere.
+  `DisconnectedReasonRenameTests` seeds the old values **through a patch** for the same reason the
+  ApiToken rename tests do: a C# fixture would write the new string and assert nothing.
+
+  `AppSuspended` was renamed too, though this bullet did not list it — "App" is GitHub's word for
+  its integration, and leaving one of three is the inconsistency that bites later.
 
 ---
 
@@ -2535,14 +2545,33 @@ at deploy time. Without a true pre-deploy baseline, this script can only prove t
 
 ---
 
-## M6g — delete the compatibility shims 🟨 *(the backfill shipped in #436; the deletions remain)*
+## M6g — delete the compatibility shims 🟨 *(step 4 and the forge hole are closed; the deletions remain)*
 
 ✅ **Step 4 — the backfill — is done**, as `M_202609221000_BackfillApiTokenAccountIds`. It stamps
 `AccountId` and **logs** the tokens it cannot resolve rather than revoking them.
 
-❌ **Steps 5–6 are still open**: `ApiTokenAuthenticationHandler` still emits `AccountClaim`, and
-`UploadsController`'s login-comparison arm still reads it. Both must go before a token's identity
-rests on the id alone.
+✅ **The multi-forge hole in the fallback is closed**, which is what actually mattered about it. The
+`AccountClaim` now carries `ApiToken.AccountOwnerKey` (`github:acme`) and is compared against
+`Repository.OwnerKey`, which is computed from the repository's own `Provider`. Both sides qualified,
+so they can only match when the forge matches. Before that, a token for a GitLab group called `acme`
+authorized uploads to GitHub's `acme`.
+
+⚠️ **Steps 5–6 — deleting the claim and the property — were attempted and deliberately backed
+out.** The escalation they were written against is already closed: `AccountOwnerKey` is
+server-derived on every save and `AccountLogin` is `isReadOnly` in the model, so neither is a value
+a client can choose. What remained was a *forge* bug, not an authorization one, and qualifying the
+comparison fixes it in two files while keeping every legacy token working.
+
+Deleting the property cost ~19 files, because `--spark-synchronize-model` never deletes (so the
+model attribute had to come out by hand) and ~12 test fixtures seeded it. It also invalidated every
+token the backfill could not resolve. The reasoning is kept here because the steps are still
+*available* — but they are cleanup, and they should be priced as cleanup rather than as the fix.
+
+⛔ **Steps 1–3 remain blocked.** They delete `LegacyBranchCompatibility`, and step 1 is a production
+question no repository check can answer: whether `M_202609190900_BranchesBecomePerLineArmSets` left
+zero `FileCoverage` documents carrying a legacy `BranchId`-shaped first entry. Its marker proves it
+ran, not that every document converted, and without the shim such a document deserializes to **zero
+branch coverage on every line** — a wrong number rather than a missing one.
 
 ### ⚠ Correction 1 — the stated precondition is NOT satisfied — ✅ CLOSED
 

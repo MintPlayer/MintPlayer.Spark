@@ -47,16 +47,27 @@ public static class DisconnectedReasons
     /// <summary>Deselected from the installation's chosen repositories.</summary>
     public const string RemovedFromInstallation = "RemovedFromInstallation";
 
-    /// <summary>The App was uninstalled from the owning account.</summary>
-    public const string AppUninstalled = "AppUninstalled";
+    /// <summary>
+    /// The integration was removed from the owning account — a GitHub App uninstalled, a GitLab
+    /// token revoked, a Bitbucket app removed.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>Renamed from <c>AppUninstalled</c>, and these are STORED STRINGS</b>, so the rename is
+    /// a migration rather than a rename — <c>M_202609230900</c>. "App" is GitHub's word for its
+    /// integration; on GitLab and Bitbucket it names nothing, and a reason string is shown to an
+    /// owner, so a word that means nothing on their forge is worse than a vague one.
+    /// </remarks>
+    public const string IntegrationRemoved = "IntegrationRemoved";
 
     /// <summary>
-    /// The App was suspended on the owning account. Distinct from uninstalled because it is
-    /// explicitly temporary — the owner is expected to lift it, and an unsuspend restores every
+    /// The integration was suspended on the owning account. Distinct from removed because it is
+    /// explicitly temporary — the owner is expected to lift it, and lifting it restores every
     /// repository — so the page can say so rather than inviting someone to delete the data.
     /// </summary>
-    public const string AppSuspended = "AppSuspended";
+    /// <remarks>⚠️ Renamed from <c>AppSuspended</c>; see <see cref="IntegrationRemoved"/>.</remarks>
+    public const string IntegrationSuspended = "IntegrationSuspended";
 
-    /// <summary>Deleted on GitHub. The numeric id can never come back.</summary>
-    public const string DeletedOnGitHub = "DeletedOnGitHub";
+    /// <summary>Deleted on the forge. The numeric id can never come back.</summary>
+    /// <remarks>⚠️ Renamed from <c>DeletedOnGitHub</c>; see <see cref="IntegrationRemoved"/>.</remarks>
+    public const string DeletedOnForge = "DeletedOnForge";
 }
