@@ -1522,7 +1522,7 @@ what hides the missing registration today.
 
 ---
 
-## M15 — Three forge libraries 🟦 *(D14, D16; after M2a, M2b, M2c, M8)*
+## M15 — Three forge libraries ✅ *(Octokit out of the app; GitLab/Bitbucket stubbed)*
 
 Three projects as siblings of the app — `CodeCoverage.{Github,Gitlab,Bitbucket}Integration` — with
 `IsPackable=false` (D14: split now, publish only when a second forge ships and the entity
@@ -1550,7 +1550,67 @@ than one case, and so M2b's conformance test has something to iterate.
 - **Not** under `libs/` while unpublished: the PR version gate filters by path, not packability, so
   `libs/**` would demand a `<Version>` bump on every touch. ⚠️ Never name a directory `coverage`.
 
-**Exit:** `grep -rn "Octokit" apps/CodeCoverage/CodeCoverage/` returns nothing.
+**Exit:** `grep -rn "Octokit" apps/CodeCoverage/CodeCoverage/` returns nothing. ✅ **Met.**
+
+### As-built
+
+| | |
+|---|---|
+| `CodeCoverage.GithubIntegration` | 20 files, all the Octokit code, plus its own `AddGithubIntegration()` |
+| `CodeCoverage.{Gitlab,Bitbucket}Integration` | a no-op `AddXxxIntegration()` and the traps a port must know, in its doc comment |
+| Registered | GitHub only. The stubs are **referenced** by the app but not called |
+| Moved down to `CodeCoverage.Library` | `IForgeClient`, `IForgeAccessService`, `IForgeFeedbackPublisher`, `IRepositoryResolver`, `ISourceContentCache`, `ReconcileAccountMessage`, `CoverageQueues` |
+| Verified | 622 tests green; home, badge, `/health/ready` and the accounts list all serve from the moved code |
+
+**The stubs are referenced but not registered, deliberately.** A registered forge nobody can sign
+in to advertises itself through `IForgeIntegrationResolver` and leads to empty pages. Referencing
+them anyway means adding a forge is one line in `Program.cs` rather than that line *plus*
+discovering that three hand-maintained closures — the app csproj, the Dockerfile restore layer and
+`MintPlayer.Spark.slnx` — each need editing too.
+
+### ⚠ The renderer did not move, and the cascade is why
+
+`PullRequestCommentRenderer` looks like it belongs with the publisher. Moving it pulls
+`CheckVerdict`, then `GateEvaluator`, then `BuildComparer`, then `IBaseResolver` — ending with half
+the application in the library.
+
+The boundary runs the other way: **rendering is forge-neutral presentation and stays with the
+application; publishing is forge-specific transport and goes with the forge.** Only the comment
+marker is genuinely shared, so only the marker moved, as `CoverageCommentMarker` — and it is a
+**wire format**, not a constant: changing the string orphans every comment already posted, and the
+publisher starts adding a second comment to every pull request that already has one.
+
+### ⚠ Two source-generator behaviours that cost real time
+
+Both are now written into the csproj and the builder extension, where the next person meets them.
+
+**1. Generated registrations are per-compilation and `internal`.** `AddCodeCoverage()`,
+`spark.AddRecipients()`, `AddCronJobs()`, `AddCustomActions()` and `AddActions()` each cover the
+app assembly and nothing else. A moved type therefore drops off its registration **silently** — the
+app compiles, starts and serves pages; it just stops publishing pull-request comments and handling
+webhooks. The new assembly exposes `AddGithubIntegration()` which calls its own generated methods
+from inside itself, and `Program.cs` calls that explicitly.
+
+✅ This is what the `RegistrationInventoryTests` added just before the move exists to catch, and it
+is the only instrument that could: no compiler, controller test or browser can see the absence of a
+background effect.
+
+**2. `[GenerateIndex]` emits into `{RootNamespace}.Indexes` in every compilation that references
+the entities** — so the app, the library and the new project each generate their own copy.
+
+The first attempt pinned `RootNamespace` to `CodeCoverage` so the moved code compiled unchanged.
+That worked, and then broke `CodeCoverage.Tests` with **CS0433 on every index it touches**: a
+project referencing both the app and the new assembly has no "own" copy to prefer, so the duplicate
+is genuinely ambiguous there. The new assembly aliases `Indexes` to the **library's** copy instead
+(`<Using Include="CodeCoverage.Library.Indexes" Alias="Indexes" />`), which keeps the number of
+generated index sets at the two that already existed.
+
+⚠ Confirmed at runtime: index deployment still reports one assembly, `CodeCoverage`, exactly as
+before — the extra generated copies are never deployed.
+
+**Analyzer `ProjectReference`s are not transitive**, so all three projects carry their own. Without
+them `[Register]` and `[Inject]` are inert **with no diagnostic**, which is the same failure this
+milestone's registration guard exists to catch.
 
 ## M16 — Fork-PR uploads 🟦 *(D6f, D20; after M2c. M6a must reserve the id segment)*
 
