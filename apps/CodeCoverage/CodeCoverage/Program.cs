@@ -401,6 +401,36 @@ var app = builder.Build();
 CodeCoverage.Services.LegacyBranchCompatibility.Enable(
     app.Services.GetRequiredService<Raven.Client.Documents.IDocumentStore>());
 
+// M6d. Proves the forge-qualifying migration left the database in the shape it claims, and exits
+// without serving. Placed here on purpose: after Build() because it needs a store, after the
+// LegacyBranchCompatibility hook because it streams Build documents, and before UseSpark() because
+// that is where pending migrations run — a verifier must observe the database as the migrations
+// left it, not race them.
+//
+// ⚠️ Deliberately NOT named `--spark-verify-*`. Program.cs treats any `--spark-` argument as a build
+// command and skips registering the GitHub sign-in provider, including its missing-secret throw —
+// so a database verb in that namespace would let a production start come up with no auth provider
+// if the secret were absent. The prefix is load-bearing in a way its name does not suggest.
+if (args.Contains("--verify-forge-ids", StringComparer.Ordinal))
+{
+    var findings = await CodeCoverage.Services.ForgeQualifiedIdVerifier.VerifyAsync(
+        app.Services.GetRequiredService<Raven.Client.Documents.IDocumentStore>());
+
+    foreach (var finding in findings)
+        Console.WriteLine($"{(finding.Ok ? "ok  " : "FAIL")}  {finding.Check}: {finding.Detail}");
+
+    var failed = findings.Count(f => !f.Ok);
+    Console.WriteLine(failed == 0
+        ? $"All {findings.Count} checks passed."
+        : $"{failed} of {findings.Count} checks FAILED.");
+
+    // Non-zero on failure so this is usable from a deploy script without parsing the output.
+    // Set rather than returned: the other --spark-* verbs above exit with a bare `return`, and a
+    // returning entry point would force every one of them to produce a value.
+    Environment.ExitCode = failed == 0 ? 0 : 1;
+    return;
+}
+
 app.UseForwardedHeaders();
 
 app.UseHttpsRedirection();
