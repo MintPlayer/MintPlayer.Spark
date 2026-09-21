@@ -758,11 +758,35 @@ one forge the situation the modes exist for cannot arise. The infrastructure is 
 put-new + move-attachments + delete-old per document — **not** the `PatchByQueryOperation` style
 PRD §6.8 prescribes, and not trivially re-runnable.
 
-⚠️ **It must not run in the startup path.** `ISparkMigration.UpAsync` runs at startup and a throw
-aborts it — `M_202609190900` documents that failure taking the site down. A ~200k-document re-key
-with attachment moves cannot sit there. **Decide the mechanism before writing code:** an
-out-of-band admin command run against a stopped/quiesced app, or an accepted maintenance window with
-a resumable migration. Do not default to "it's a migration, so it goes in `Migrations/`".
+### D26 — it DOES run in the startup path. The earlier caution here was wrong.
+
+This section previously said the re-key must not be an ordinary migration, because a throw in
+`UpAsync` aborts startup and takes the site down. The owner pushed back on 2026-09-21 — *"shouldn't
+the migrations be run automatically when the new application/docker container is deployed?"* — and
+checking the runner rather than the note shows he is right:
+
+| Property | Verified in |
+|---|---|
+| `RunAtStartup` **blocks** before the app serves (`.GetAwaiter().GetResult()`) | `SparkMigrationRunner.cs:19-20` |
+| The applied-marker is written **only after `Up` succeeds**, so a failure leaves it pending and the next start retries | `SparkMigrationRunner.cs:63` |
+| A **distributed lock** means a multi-instance deploy applies it once | `SparkMigrationRunner.cs:33-38` |
+
+⚠️ **The argument inverts once you notice that startup blocks.** A failed re-key leaves the site
+*down*, which the old note treated as the risk — but the alternative it was protecting is a site
+that is *up and serving a half-migrated database*. Failing closed is the correct behaviour for an
+irreversible re-key, and `restart: unless-stopped` turns a transient failure into an automatic
+retry rather than an outage somebody has to notice.
+
+**Three conditions, all of which still stand:**
+
+1. **Intra-migration resumability is mandatory**, and for a sharper reason than before: a retry
+   restarts `UpAsync` *from the top*. Every step must skip when the target id already exists, and
+   must never delete a source until the target **and its attachments** are confirmed present.
+2. **Wall-clock must be measured before this ships** (SP6). The container healthcheck allows
+   `start_period: 60s`; if the re-key exceeds that, raise it in the same commit or the deploy marks
+   itself unhealthy while working correctly.
+3. **Traefik returns 502 for the duration** — the container is not listening yet. Acceptable for
+   minutes, not for an hour, which is what makes (2) the gate rather than a formality.
 
 **Resumability is a requirement, not a nicety.** A half-finished run leaves reports orphaned from
 their builds. Every step must be safe to re-enter: skip when the target id already exists, and never
