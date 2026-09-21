@@ -2,6 +2,8 @@ using MintPlayer.Spark.Abstractions.Authorization;
 using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Queries;
+using MintPlayer.Spark.Abstractions;
+using CodeCoverage.Forge;
 
 namespace CodeCoverage.Actions;
 
@@ -48,7 +50,35 @@ public partial class MyAccountRowActions : ISparkOwnsRowSecurity
     /// </remarks>
     public async Task<IQueryable<MyAccountRow>> MyAccounts(CustomQueryArgs args)
     {
-        var result = await myAccounts.GetAsync(CancellationToken.None);
+        var result = await myAccounts.GetAsync(CancellationToken.None, provider: ProviderOf(args.Parent));
         return result.Accounts.AsQueryable();
+    }
+
+    /// <summary>
+    /// The forge this grid is scoped to, or null for the merged Home page.
+    /// </summary>
+    /// <remarks>
+    /// The same query serves two pages: <c>Home</c>, which fans out across every linked forge, and
+    /// <c>ForgeAccounts</c>, which is one forge and says which in its <c>Provider</c> attribute.
+    /// Reading the scope off the parent is what keeps that ONE aggregation instead of two that
+    /// drift — the bug this service was extracted to prevent in the first place.
+    /// <para>
+    /// ⚠ An unparseable or absent value yields null, i.e. the merged list. That is safe because
+    /// the fan-out is already the caller's own visibility and nothing here widens it: a wrong answer
+    /// shows the viewer <em>more of their own accounts</em>, never anyone else's. The failure mode
+    /// worth engineering against is the opposite direction, and <c>ForgeAccountsActions</c> handles
+    /// it by 404ing an unknown forge before this is ever reached.
+    /// </para>
+    /// </remarks>
+    private static EForgeProvider? ProviderOf(PersistentObject? parent)
+    {
+        if (parent is null || !string.Equals(parent.Name, "ForgeAccounts", StringComparison.Ordinal))
+            return null;
+
+        // Attributes[] rather than the indexer: the indexer THROWS on a missing name, and a page
+        // that lost its Provider attribute should fall back to the merged list rather than 500.
+        var value = parent.Attributes
+            .FirstOrDefault(a => a.Name == "Provider")?.Value?.ToString();
+        return ForgeProviders.TryParse(value, out var provider) ? provider : null;
     }
 }

@@ -1,6 +1,6 @@
 # MintPlayer.Spark
 
-[![Coverage](https://coverage.mintplayer.com/badge/MintPlayer/MintPlayer.Spark.svg)](https://coverage.mintplayer.com/r/MintPlayer/MintPlayer.Spark)
+[![Coverage](https://coverage.mintplayer.com/badge/github/MintPlayer/MintPlayer.Spark.svg)](https://coverage.mintplayer.com/github/r/MintPlayer/MintPlayer.Spark)
 
 A low-code web application framework for .NET that eliminates boilerplate code. Inspired by [Vidyano](https://www.vidyano.com/), Spark uses a PersistentObject pattern to replace traditional DTOs, repositories, and controllers with a single generic middleware.
 

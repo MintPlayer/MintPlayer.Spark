@@ -48,6 +48,6 @@ On the next push to that repo:
 - the workflow resolves the action (a bad path fails fast with
   *"Can't find 'action.yml' … in 'MintPlayer/github-actions/coverage-upload'"*)
 - the upload step reports a build id, and the run appears at
-  `https://coverage.mintplayer.com/r/MintPlayer/mintplayer-ng-bootstrap`
+  `https://coverage.mintplayer.com/github/r/MintPlayer/mintplayer-ng-bootstrap`
 
 `grep -rn "MintPlayer/CodeCoverage" .github/` in that repo must return nothing.

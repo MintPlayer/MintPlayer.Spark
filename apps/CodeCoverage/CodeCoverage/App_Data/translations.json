@@ -89,6 +89,11 @@
       "en": "Re-query your connected accounts and repositories.",
       "fr": "Interroger à nouveau vos comptes et dépôts connectés.",
       "nl": "Je verbonden accounts en repositories opnieuw opvragen."
+    },
+    "forgeAccountsTitle": {
+      "en": "Your {0} accounts",
+      "fr": "Vos comptes {0}",
+      "nl": "Je {0}-accounts"
     }
   },
   "repository": {

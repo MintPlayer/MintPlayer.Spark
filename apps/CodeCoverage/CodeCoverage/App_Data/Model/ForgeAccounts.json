@@ -1,0 +1,107 @@
+{
+  "_comment": [
+    "HAND-AUTHORED and NOT generated. Like Home, this is a virtual page: no clrType, no documents,",
+    "no collection. ForgeAccountsActions.OnLoadAsync scaffolds it per request.",
+    "",
+    "This is D4 made navigable: ONE PAGE PER FORGE rather than one merged list. The forge arrives as",
+    "the program unit's objectId -- 'github', 'gitlab', 'bitbucket', the same canonical vocabulary",
+    "as document ids and routes -- and OnLoadAsync 404s on anything else rather than falling back to",
+    "a default, because a page that silently shows GitHub when asked for GitLab is worse than no",
+    "page. The accounts grid below is the SAME my-accounts query Home uses; MyAccountRowActions",
+    "narrows it from args.Parent, so there is one aggregation and one row shape, not two that drift.",
+    "",
+    "Why a forge gets its own page at all rather than a column on a merged one: each forge's 'who",
+    "may manage this org' rule is genuinely different, so a merged table would put three different",
+    "meanings in one column with no way for the reader to tell which is which. See PRD 5.4.",
+    "",
+    "Provider is isVisible:false -- the page is already about one forge and its breadcrumb says so,",
+    "so drawing the word again on the page body would be noise. It is present because the page",
+    "extras read it.",
+    "",
+    "Read/ForgeAccounts is granted to the AUTHENTICATED role only, unlike Read/Home which anonymous",
+    "visitors also hold. There is nothing to show a signed-out visitor here: the whole page is the",
+    "caller's own accounts on one forge."
+  ],
+  "persistentObject": {
+    "id": "2d6f4b10-9c27-4e83-b5a1-7f0c8e3d6a94",
+    "name": "ForgeAccounts",
+    "breadcrumb": "{Title}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "8a1e5c76-3b90-4d12-9e47-06f2a8b4c531",
+        "name": "Title",
+        "label": {
+          "en": "",
+          "fr": "",
+          "nl": ""
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": false,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "_comment": "Feeds the breadcrumb template only; never drawn as a row. The actions class sets Breadcrumb directly as well, so this is the fallback path rather than the primary one.",
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "b47d0f39-5e81-4a26-8c93-1d5e7a0b2f68",
+        "name": "Provider",
+        "label": {
+          "en": "Forge",
+          "fr": "Forge",
+          "nl": "Forge"
+        },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "_comment": "The canonical lowercase spelling. This is what MyAccountRowActions reads off args.Parent to scope the grid, so it is the page's entire reason for existing -- not decoration.",
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c95a2e84-7f13-4b60-a8d5-3e9c1f472b0a",
+        "name": "AccountCount",
+        "label": {
+          "en": "Accounts",
+          "fr": "Comptes",
+          "nl": "Accounts"
+        },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e6b3c157-2a48-4f95-b071-8d4a6e2c9f13",
+        "name": "RepoCount",
+        "label": {
+          "en": "Repositories",
+          "fr": "Dépôts",
+          "nl": "Repositories"
+        },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": [
+      "my-accounts"
+    ]
+  }
+}

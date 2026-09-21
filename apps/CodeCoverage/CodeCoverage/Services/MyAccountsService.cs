@@ -27,7 +27,10 @@ public partial class MyAccountsService : IMyAccountsService
     /// <summary>How long a non-stale read may wait before giving up and answering anyway.</summary>
     private static readonly TimeSpan NonStaleTimeout = TimeSpan.FromSeconds(5);
 
-    public async Task<MyAccountsResult> GetAsync(CancellationToken cancellationToken, bool waitForNonStaleResults = false)
+    public async Task<MyAccountsResult> GetAsync(
+        CancellationToken cancellationToken,
+        bool waitForNonStaleResults = false,
+        EForgeProvider? provider = null)
     {
         var appSlug = configuration[$"GitHub:{environment.EnvironmentName}:AppSlug"];
         if (string.IsNullOrEmpty(appSlug))
@@ -39,10 +42,23 @@ public partial class MyAccountsService : IMyAccountsService
         // banner asks the viewer to reconnect, and staying silent because one other forge is
         // healthy would leave rows missing with nothing explaining why.
         var owners = await forges.GetAllowedOwnerKeysAsync(cancellationToken);
-        var reauthRequired = false;
-        foreach (var provider in await forges.GetLinkedProvidersAsync(cancellationToken))
+        if (provider is { } scope)
         {
-            if (forges.For(provider) is not { } forge) continue;
+            // Filtered by PARSING each key rather than by prefix match: "github" is a prefix of
+            // nothing else today, but a StartsWith on a provider name is the kind of comparison
+            // that stops being true quietly when a forge is added.
+            owners = [.. owners.Where(o =>
+                ForgeOwner.TryParse(o, out var parsed) && parsed.Value.Provider == scope)];
+        }
+
+        var reauthRequired = false;
+        foreach (var linked in await forges.GetLinkedProvidersAsync(cancellationToken))
+        {
+            // ⚠ Scoped to the asked-for forge. Reporting GitLab's dead token on the GitHub page
+            // would show a "reconnect" banner above a list that is complete and correct, and the
+            // only action it offers reconnects the wrong forge.
+            if (provider is { } only && linked != only) continue;
+            if (forges.For(linked) is not { } forge) continue;
             var visibility = await forge.GetVisibilityAsync(cancellationToken);
             if (visibility.State == EForgeCredentialState.ReauthRequired) reauthRequired = true;
         }
@@ -77,12 +93,17 @@ public partial class MyAccountsService : IMyAccountsService
                 // ⚠️ `owner` is a provider:login KEY, which is what every lookup above is now
                 // keyed by. It must not reach the row: these fields are displayed, and a user whose
                 // account page called them "github:pieterjan" is the symptom a test caught here.
-                var displayLogin = ForgeOwner.TryParse(owner, out var parsed) ? parsed.Value.Login : owner;
+                var isOwnerKey = ForgeOwner.TryParse(owner, out var parsed);
+                var displayLogin = isOwnerKey ? parsed!.Value.Login : owner;
+                // The canonical provider spelling, for the row's link. A key that does not parse
+                // cannot be attributed to a forge, and an empty provider makes the renderer draw
+                // plain text rather than a link into the wrong forge's namespace.
+                var provider = isOwnerKey ? parsed!.Value.Provider.ToCanonicalString() : string.Empty;
 
                 return byKey.TryGetValue(owner, out var account)
-                    ? new MyAccountRow(account.Login, account.Login, account.Type, account.AvatarUrl,
+                    ? new MyAccountRow(owner, account.Login, provider, account.Type, account.AvatarUrl,
                         ownerRepos.Count, aggregate, account.InstallationId is not null)
-                    : new MyAccountRow(displayLogin, displayLogin, "User", null, ownerRepos.Count, aggregate, false);
+                    : new MyAccountRow(owner, displayLogin, provider, "User", null, ownerRepos.Count, aggregate, false);
             })
             .OrderBy(a => a.Login, StringComparer.OrdinalIgnoreCase)
             .ToArray();

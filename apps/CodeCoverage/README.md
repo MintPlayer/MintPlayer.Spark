@@ -1,6 +1,6 @@
 # Coverage
 
-[![Coverage](https://coverage.mintplayer.com/badge/MintPlayer/MintPlayer.Spark.svg)](https://coverage.mintplayer.com/r/MintPlayer/MintPlayer.Spark)
+[![Coverage](https://coverage.mintplayer.com/badge/github/MintPlayer/MintPlayer.Spark.svg)](https://coverage.mintplayer.com/github/r/MintPlayer/MintPlayer.Spark)
 [![CI](https://github.com/MintPlayer/MintPlayer.Spark/actions/workflows/pull-request.yml/badge.svg)](https://github.com/MintPlayer/MintPlayer.Spark/actions/workflows/pull-request.yml)
 [![Deploy](https://github.com/MintPlayer/MintPlayer.Spark/actions/workflows/code-coverage-deploy.yml/badge.svg)](https://github.com/MintPlayer/MintPlayer.Spark/actions/workflows/code-coverage-deploy.yml)
 
@@ -22,17 +22,17 @@ Built on [MintPlayer.Spark](https://github.com/MintPlayer/MintPlayer.Spark)
 
 ## Badges
 
-`GET /badge/{owner}/{name}.svg` — deliberately unauthenticated, rate-limited per IP, cached for
+`GET /badge/{provider}/{owner}/{name}.svg` — deliberately unauthenticated, rate-limited per IP, cached for
 300 s, and never a 404 (see below). Three variants:
 
 | URL | Shows |
 |---|---|
-| `…/badge/{owner}/{name}.svg` | The repository headline — the newest **complete** assembly on the default branch. |
+| `…/badge/{provider}/{owner}/{name}.svg` | The repository headline — the newest **complete** assembly on the default branch. |
 | `…?branch={ref}` | The newest covered commit of that branch. |
 | `…?pr={number}` | The newest covered commit of that pull request. |
 
 ```markdown
-[![Coverage](https://coverage.mintplayer.com/badge/MintPlayer/MintPlayer.Spark.svg?branch=feature/x)](https://coverage.mintplayer.com/r/MintPlayer/MintPlayer.Spark)
+[![Coverage](https://coverage.mintplayer.com/badge/github/MintPlayer/MintPlayer.Spark.svg?branch=feature/x)](https://coverage.mintplayer.com/github/r/MintPlayer/MintPlayer.Spark)
 ```
 
 The repository page's badge panel has a branch picker that writes these snippets for you.
@@ -227,7 +227,8 @@ repository deleted on GitHub. **None of them destroys anything.** The repository
 
 - it disappears from account pages, repository grids and the owner's repo count, for everyone except
   someone who manages the owner;
-- `/r/{owner}/{name}`, the report pages and `/badge/{owner}/{name}.svg` keep answering, with the
+- `/{provider}/r/{owner}/{name}`, the report pages and `/badge/{provider}/{owner}/{name}.svg` keep
+  answering, with the
   coverage frozen at its last known value — README badges and links already posted in pull-request
   comments do not die with a transfer;
 - a successful OIDC upload reconnects it, because a workflow that still runs is proof the repository

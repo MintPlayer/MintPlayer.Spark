@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using CodeCoverage.Entities;
+using CodeCoverage.Forge;
 
 namespace CodeCoverage.Feedback;
 
@@ -103,14 +104,15 @@ public static class PullRequestCommentRenderer
     {
         if (string.IsNullOrEmpty(baseUrl) || commit.PullRequestNumber is not { } pr) return null;
 
-        var url = $"{baseUrl.TrimEnd('/')}/badge/{repository.OwnerLogin}/{repository.Name}.svg?pr={pr}";
+        var provider = repository.Provider.ToCanonicalString();
+        var url = $"{baseUrl.TrimEnd('/')}/badge/{provider}/{repository.OwnerLogin}/{repository.Name}.svg?pr={pr}";
         if (repository.IsPrivate)
         {
             if (string.IsNullOrEmpty(badgeSignature)) return null;
             url += $"&sig={badgeSignature}";
         }
 
-        return $"[![Coverage]({url})]({baseUrl.TrimEnd('/')}/r/{repository.OwnerLogin}/{repository.Name})";
+        return $"[![Coverage]({url})]({baseUrl.TrimEnd('/')}/{provider}/r/{repository.OwnerLogin}/{repository.Name})";
     }
 
     private static string Cell(CheckVerdict verdict)
@@ -127,12 +129,24 @@ public static class PullRequestCommentRenderer
     private static void AppendFooter(StringBuilder body, Entities.Repository repository, string sha, string? baseUrl)
     {
         body.AppendLine();
-        var commitLink = $"https://github.com/{repository.OwnerLogin}/{repository.Name}/commit/{sha}";
+
+        // ⚠ The commit deep-link is still GitHub-shaped. Every forge spells it differently
+        // (GitLab interposes /-/, Bitbucket says /commits/) and a self-hosted GitLab is not even on
+        // gitlab.com, so this cannot be a pure function of owner/name/sha - it needs the
+        // integration, which this renderer does not have. Left as-is rather than guessed: the
+        // comment is posted INTO the forge, so a wrong host is worse than a plain sha. M15 gives
+        // IForgeIntegration a commit-URL builder and this becomes a lookup.
+        var commitLink = repository.Provider == EForgeProvider.GitHub
+            ? $"https://github.com/{repository.OwnerLogin}/{repository.Name}/commit/{sha}"
+            : null;
         var report = string.IsNullOrEmpty(baseUrl)
             ? null
-            : $"{baseUrl.TrimEnd('/')}/r/{repository.OwnerLogin}/{repository.Name}";
+            : $"{baseUrl.TrimEnd('/')}/{repository.Provider.ToCanonicalString()}/r/{repository.OwnerLogin}/{repository.Name}";
 
-        body.Append(CultureInfo.InvariantCulture, $"<sub>Head [`{Short(sha)}`]({commitLink})");
+        if (commitLink is null)
+            body.Append(CultureInfo.InvariantCulture, $"<sub>Head `{Short(sha)}`");
+        else
+            body.Append(CultureInfo.InvariantCulture, $"<sub>Head [`{Short(sha)}`]({commitLink})");
         if (report is not null) body.Append(CultureInfo.InvariantCulture, $" · [full report]({report})");
         body.AppendLine("</sub>");
     }
