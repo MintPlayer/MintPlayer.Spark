@@ -15,7 +15,7 @@ import { valueFor } from '@mintplayer/ng-spark/models';
   imports: [CommitFilesPanelComponent],
   template: `
     @if (target(); as t) {
-      <app-commit-files-panel [owner]="t.owner" [name]="t.name" [sha]="t.sha" />
+      <app-commit-files-panel [provider]="t.provider" [owner]="t.owner" [name]="t.name" [sha]="t.sha" />
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -25,7 +25,7 @@ export class CommitFilesExtrasComponent {
 
   po = input.required<PersistentObject>();
 
-  readonly target = signal<{ owner: string; name: string; sha: string } | null>(null);
+  readonly target = signal<{ provider: string; owner: string; name: string; sha: string } | null>(null);
 
   constructor() {
     effect(async () => {
@@ -40,7 +40,14 @@ export class CommitFilesExtrasComponent {
         const repo = await this.spark.get('Repository', repoId);
         const fullName = valueFor(repo, 'FullName')?.value;
         const [owner, name] = typeof fullName === 'string' ? fullName.split('/') : [];
-        this.target.set(owner && name ? { owner, name, sha } : null);
+
+        // The forge, from the repository we just loaded rather than from the URL: this panel is
+        // reached from a Commit page, and the commit's own id carries the forge only because the
+        // repository's does. OwnerKey is "github:MintPlayer"; its prefix is the URL spelling.
+        const ownerKey = valueFor(repo, 'OwnerKey')?.value;
+        const provider = typeof ownerKey === 'string' ? ownerKey.split(':')[0] : '';
+
+        this.target.set(owner && name && provider ? { provider, owner, name, sha } : null);
       } catch {
         this.target.set(null);
       }

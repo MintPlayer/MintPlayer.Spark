@@ -243,11 +243,26 @@ public partial class BrowseController : ControllerBase
     /// Public account reference (logins/avatars are public GitHub data). The
     /// document id feeds the generic Spark sub-queries as parentId.
     /// </summary>
+    /// <summary>
+    /// Resolves an account's document id, which is what the vanity route forwards into.
+    /// </summary>
+    /// <remarks>
+    /// ⚠ <b>Matched on the owner KEY, never on the login alone.</b> This took the provider from
+    /// the route and then ignored it, comparing <c>a.Login == login</c> — so
+    /// <c>/api/browse/accounts/gitlab/MintPlayer</c> answered 200 with
+    /// <c>Accounts/github/48772716</c>. A URL that names a forge and is then served another
+    /// forge's data is worse than one that never carried the segment: it looks authoritative.
+    /// An unrecognised forge is a 404 for the same reason.
+    /// </remarks>
     [HttpGet("accounts/{provider}/{login}")]
     public async Task<ActionResult<AccountRef>> GetAccount(string provider, string login, CancellationToken cancellationToken)
     {
+        var forge = TryForge(provider);
+        if (forge is null) return NotFound();
+
+        var ownerKey = new ForgeOwner(forge.Value, login).ToString();
         var account = await session.Query<Account, Indexes.Accounts_Overview>()
-            .Where(a => a.Login == login)
+            .Where(a => a.OwnerKey == ownerKey)
             .FirstOrDefaultAsync(cancellationToken);
         if (account is null) return NotFound();
         return Ok(new AccountRef(account.Id!, account.Login));
@@ -261,13 +276,13 @@ public partial class BrowseController : ControllerBase
         var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
         if (repository is null) return NotFound();
 
-        var commit = await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, sha), cancellationToken);
+        var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.Provider, repository.GitHubId, sha), cancellationToken);
         if (commit is null) return NotFound();
 
         var assembly = await session.LoadAsync<CommitAssembly>(CommitAssembly.DocumentId(commit.Id!), cancellationToken);
 
         var builds = new List<Build>();
-        var buildsPrefix = $"{Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, sha)}/builds/";
+        var buildsPrefix = $"{Commit.DocumentId(repository.Provider, repository.GitHubId, sha)}/builds/";
         await using (var stream = await session.Advanced.StreamAsync<Build>(
             startsWith: buildsPrefix, token: cancellationToken))
         {
@@ -332,7 +347,7 @@ public partial class BrowseController : ControllerBase
         var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
         if (repository is null) return NotFound();
 
-        var commit = await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, sha), cancellationToken);
+        var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.Provider, repository.GitHubId, sha), cancellationToken);
         if (commit?.LatestBuildId is null) return NotFound();
         var source = await CoverageSourceAsync(commit, cancellationToken);
 
@@ -412,7 +427,7 @@ public partial class BrowseController : ControllerBase
         var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
         if (repository is null) return NotFound();
 
-        var commit = await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, sha), cancellationToken);
+        var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.Provider, repository.GitHubId, sha), cancellationToken);
         if (commit?.LatestBuildId is null) return NotFound();
 
         var files = await LoadTreeSummaries(await CoverageSourceAsync(commit, cancellationToken), cancellationToken);
@@ -471,7 +486,7 @@ public partial class BrowseController : ControllerBase
         var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
         if (repository is null) return NotFound();
 
-        var commit = await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, sha), cancellationToken);
+        var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.Provider, repository.GitHubId, sha), cancellationToken);
         if (commit?.LatestBuildId is null) return NotFound();
 
         var fileCoverage = await session.LoadAsync<FileCoverage>(

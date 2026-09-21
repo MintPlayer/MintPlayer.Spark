@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal, effect } from '@angular/core';
-import type { QueryResultItem, SparkRow } from '@mintplayer/ng-spark/models';
+import type { SparkRow } from '@mintplayer/ng-spark/models';
 import { valueFor } from '@mintplayer/ng-spark/models';
 import type { SparkAttributeColumnRenderer, SparkAttributeDetailRenderer } from '@mintplayer/ng-spark/renderers';
 import { BsSparklineComponent } from '@mintplayer/ng-bootstrap/charts/sparkline';
@@ -37,8 +37,14 @@ export class CoverageSparklineRendererComponent implements SparkAttributeColumnR
   /**
    * The whole row (grid) or the whole persistent object (detail page). This is where the forge
    * comes from — see the effect below.
+   *
+   * ⚠ Deliberately `any`, like `value` above, and a union will NOT do. This component implements
+   * both renderer contracts, whose `item` differ - QueryResultItem for a column, PersistentObject
+   * for a detail page - and InputSignal is invariant in its type argument because of transformFn,
+   * so no single union satisfies both. `valueFor` accepts either shape, which is what SparkRow is,
+   * and the cast at the read site is where the type comes back.
    */
-  item = input<QueryResultItem | Record<string, any> | undefined>();
+  item = input<any>();
 
   readonly points = signal<number[] | null>(null);
 

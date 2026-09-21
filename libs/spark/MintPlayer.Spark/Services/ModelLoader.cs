@@ -114,11 +114,29 @@ internal partial class ModelLoader : IModelLoader
     public EntityTypeDefinition? GetEntityTypeByAlias(string alias)
         => Data.ByAlias.TryGetValue(alias, out var entityType) ? entityType : null;
 
+    /// <summary>
+    /// Resolves a type from whatever the wire happens to carry: its id, its alias, or its name.
+    /// </summary>
+    /// <remarks>
+    /// ⚠ <b>The name fallback is load-bearing, not politeness.</b> A sub-query request sends
+    /// <c>parentType</c>, and the client takes that from the parent persistent object's
+    /// <c>name</c> — while this used to resolve by alias only. That works for every type whose
+    /// alias is just its lowercased name, which is every generated type, and silently fails for
+    /// one that declares an alias of its own: the parent resolves to null and the endpoint answers
+    /// <c>404 "Parent not found"</c>, which reads as a missing document rather than as a name that
+    /// was never looked up.
+    /// <para>
+    /// Alias first, because that is what a URL carries and what a deliberate rename means. A name
+    /// collision with another type's alias would therefore resolve to the alias owner — correct,
+    /// since the alias is the addressable form.
+    /// </para>
+    /// </remarks>
     public EntityTypeDefinition? ResolveEntityType(string idOrAlias)
     {
         if (Guid.TryParse(idOrAlias, out var guid))
             return GetEntityType(guid);
-        return GetEntityTypeByAlias(idOrAlias);
+
+        return GetEntityTypeByAlias(idOrAlias) ?? GetEntityTypeByName(idOrAlias);
     }
 
     public IEnumerable<SparkQuery> GetQueries()
