@@ -167,7 +167,7 @@ export class CommitFilesPanelComponent {
 
   /** The base (or origin) commit a carried file came from, on the same repository. */
   openCommit(sha: string): void {
-    void this.router.navigate(['/r', this.owner(), this.name(), 'c', sha]);
+    void this.router.navigate(['/', this.provider(), 'r', this.owner(), this.name(), 'c', sha]);
   }
 
   async openFolder(path: string): Promise<void> {
@@ -198,7 +198,9 @@ export class CommitFilesPanelComponent {
   }
 
   openFile(path: string): void {
-    this.router.navigate(['/r', this.owner(), this.name(), 'c', this.sha(), 'f'], { queryParams: { path } });
+    this.router.navigate(
+      ['/', this.provider(), 'r', this.owner(), this.name(), 'c', this.sha(), 'f'],
+      { queryParams: { path } });
   }
 
   // Chart → drill-down sync. Zooming a folder re-roots the chart itself (via

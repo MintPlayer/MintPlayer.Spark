@@ -1,8 +1,8 @@
 <bs-card>
   <bs-card-header>
-    <a [routerLink]="['/a', owner()]">{{ owner() }}</a> /
-    <a [routerLink]="['/r', owner(), name()]">{{ name() }}</a> /
-    <a [routerLink]="['/r', owner(), name(), 'c', sha()]" class="font-monospace">{{ sha().substring(0, 7) }}</a> /
+    <a [routerLink]="['/', provider(), 'a', owner()]">{{ owner() }}</a> /
+    <a [routerLink]="['/', provider(), 'r', owner(), name()]">{{ name() }}</a> /
+    <a [routerLink]="['/', provider(), 'r', owner(), name(), 'c', sha()]" class="font-monospace">{{ sha().substring(0, 7) }}</a> /
     <strong>{{ path() }}</strong>
   </bs-card-header>
 
