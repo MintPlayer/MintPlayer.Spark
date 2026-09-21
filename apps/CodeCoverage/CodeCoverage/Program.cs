@@ -1,3 +1,4 @@
+using CodeCoverage.GithubIntegration.Extensions;
 using System.Text.RegularExpressions;
 using MintPlayer.Spark.Authorization.Configuration;
 using System.Threading.RateLimiting;
@@ -177,6 +178,16 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddCustomActions();
     spark.AddRecipients();
     spark.AddCronJobs();
+
+    // ⚠ The four calls above are source-generated over THIS assembly only, so they do not see
+    // anything in CodeCoverage.GithubIntegration. Its own entry point has to be called explicitly,
+    // or every GitHub service and recipient silently fails to register - the app would still start
+    // and still serve pages, it would just stop publishing pull-request comments and handling
+    // webhooks. RegistrationInventoryTests is what stops that shipping unnoticed.
+    //
+    // One line per forge. When GitLab and Bitbucket gain implementations, they are added here
+    // beside this, and nothing else in the composition root changes.
+    spark.AddGithubIntegration();
     // Pending ISparkMigration classes run inside UseSpark(), after indexes are
     // created and before the app serves — once per database, in Version order,
     // under a cluster-wide lock. Committed and replayed automatically, so a

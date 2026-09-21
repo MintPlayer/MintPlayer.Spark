@@ -21,7 +21,12 @@ public static class PullRequestCommentRenderer
     /// Identifies the comment as ours. An HTML comment, so it is invisible in
     /// the rendered body but present in the API's <c>body</c>.
     /// </summary>
-    public const string Marker = "<!-- coverage-bot:pr-summary -->";
+    /// <remarks>
+    /// The value lives in <see cref="CoverageCommentMarker"/>, in the library, because the
+    /// publisher needs it too and now sits in a different assembly. Kept here as an alias so every
+    /// call site in this file reads the same as before.
+    /// </remarks>
+    public const string Marker = CoverageCommentMarker.Value;
 
     /// <summary>
     /// What the comment says between the PR opening and CI finishing. Named

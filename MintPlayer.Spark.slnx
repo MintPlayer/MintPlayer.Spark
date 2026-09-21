@@ -6,6 +6,9 @@
   </Configurations>
   <Folder Name="/apps/" />
   <Folder Name="/apps/CodeCoverage/">
+    <Project Path="apps/CodeCoverage/CodeCoverage.BitbucketIntegration/CodeCoverage.BitbucketIntegration.csproj" />
+    <Project Path="apps/CodeCoverage/CodeCoverage.GithubIntegration/CodeCoverage.GithubIntegration.csproj" />
+    <Project Path="apps/CodeCoverage/CodeCoverage.GitlabIntegration/CodeCoverage.GitlabIntegration.csproj" />
     <Project Path="apps/CodeCoverage/CodeCoverage.Library/CodeCoverage.Library.csproj" />
     <Project Path="apps/CodeCoverage/CodeCoverage.Tests/CodeCoverage.Tests.csproj" />
     <Project Path="apps/CodeCoverage/CodeCoverage/CodeCoverage.csproj" />

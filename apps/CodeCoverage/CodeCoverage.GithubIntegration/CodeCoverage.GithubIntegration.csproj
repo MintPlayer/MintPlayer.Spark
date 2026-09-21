@@ -1,0 +1,88 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<!--
+		  D14: split now, publish later. The entity contracts these sit behind are still moving,
+		  and a published package would freeze them. It becomes packable when a second forge ships
+		  and the contracts have stopped changing.
+		-->
+		<IsPackable>false</IsPackable>
+
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!--
+		  The implicit usings Microsoft.NET.Sdk.Web gives the application, declared by hand because
+		  this is Microsoft.NET.Sdk, which implies only the System.* set. The code moved here was
+		  written against the web set, so without these every file needs the same six using lines
+		  and a future move back and forth churns all of them.
+		-->
+		<!--
+		  ⚠ "Indexes.Xxx" in the moved code must mean ONE set of index classes, and it must not be
+		  a set this assembly declares itself.
+		  [GenerateIndex] emits into {RootNamespace}.Indexes in EVERY compilation that references
+		  the entities, so the app, the library and this project each get their own copy. Pointing
+		  this assembly at the library's copy keeps the count at the two that already existed
+		  before this project did - and, more importantly, stops CodeCoverage.Tests (which
+		  references both the app and this project, and so has no "own" copy to prefer) failing
+		  with CS0433 on every index it touches. Pinning RootNamespace to CodeCoverage was the
+		  first attempt and caused exactly that.
+		-->
+		<Using Include="CodeCoverage.Library.Indexes" Alias="Indexes" />
+		<Using Include="Microsoft.AspNetCore.Hosting" />
+		<Using Include="Microsoft.AspNetCore.Http" />
+		<Using Include="Microsoft.Extensions.Configuration" />
+		<Using Include="Microsoft.Extensions.DependencyInjection" />
+		<Using Include="Microsoft.Extensions.Logging" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!--
+		  These services are ASP.NET-shaped - IHttpContextAccessor, IWebHostEnvironment, the
+		  options and logging abstractions - so the assembly needs the shared framework even
+		  though it hosts nothing itself. Microsoft.NET.Sdk does not bring it the way
+		  Microsoft.NET.Sdk.Web does for the application.
+		-->
+		<FrameworkReference Include="Microsoft.AspNetCore.App" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- The generated AddCodeCoverageGithubIntegrationServices() and AddRecipients() are
+		     internal to this assembly, so the tests that assert on them need to see it. -->
+		<InternalsVisibleTo Include="CodeCoverage.Tests" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!--
+		  Octokit lives here now, and that is the milestone's exit criterion: a grep for it in the
+		  application must find nothing. Moving the reference rather than adding one is what turns
+		  "the app should not call GitHub directly" from a review promise into a compile error.
+		-->
+		<PackageReference Include="Octokit.GraphQL" Version="0.4.0-beta" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.22.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.20.1" GeneratePathProperty="true" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\CodeCoverage.Library\CodeCoverage.Library.csproj" />
+		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\..\..\libs\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
+		<ProjectReference Include="..\..\..\libs\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+		<ProjectReference Include="..\..\..\libs\webhooks\MintPlayer.Spark.Webhooks.GitHub\MintPlayer.Spark.Webhooks.GitHub.csproj" />
+		<!--
+		  ⚠️ Analyzer ProjectReferences are NOT transitive, so referencing the app's or the
+		  library's does nothing for this compilation. Each assembly that carries [Register],
+		  [Inject] or [GenerateIndex] needs its own, or the attributes are inert and every service
+		  here silently fails to register.
+		-->
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+</Project>

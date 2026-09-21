@@ -162,7 +162,7 @@ public partial class PullRequestCommentPublisher : IPullRequestCommentPublisher
         var comments = await gateway.ListAsync(repository, installationId, pullRequestNumber, cancellationToken);
         foreach (var comment in comments)
         {
-            if (comment.AuthoredByApp && comment.Body.Contains(PullRequestCommentRenderer.Marker, StringComparison.Ordinal))
+            if (comment.AuthoredByApp && comment.Body.Contains(CoverageCommentMarker.Value, StringComparison.Ordinal))
                 return comment.Id;
         }
         return null;
