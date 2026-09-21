@@ -1731,7 +1731,7 @@ investigations had missed.
 - **`workflow_run` recipe** for private base repositories. ⚠️ It must never check out or execute fork
   code — the artifact is data.
 - **Fork provenance in the UI.** The flag exists; no view reads it.
-- **SP-R1**, the production forwarded-headers bypass — still needs the VPS proxy address.
+- ~~**SP-R1**, the production forwarded-headers bypass — still needs the VPS proxy address.~~ ✅ **FIXED** — it never needed the address; see below.
 - **`DisconnectedReasons` still speaks GitHub.** ⚠️ The values are *stored on documents*, so renaming
   them is a data migration. `TransferredAway` is now documented as never written and **unwritable on
   GitHub** — a transfer out arrives as `installation_repositories.removed`, byte-for-byte identical
@@ -2357,7 +2357,7 @@ So the budget fails on **bursts**, not volume. Raising it is therefore honest ra
 6. **`docs/guide-rate-limiting.md` is corrected.** It currently points at `RateLimitTests` as the
    pattern *"worth copying"*, which is how the flaw propagates.
 
-### ⚠ Found on the way, and NOT fixed here — a production rate-limiter bypass
+### ✅ Found on the way, and FIXED after all — a production rate-limiter bypass
 
 `apps/CodeCoverage/CodeCoverage/Program.cs:34-39` clears both `KnownNetworks` and `KnownProxies` while
 honouring `X-Forwarded-For`. ASP.NET only runs its known-proxy check when one of those lists is
@@ -2370,10 +2370,31 @@ production's limiters key on it:
 | `browse` (300/min) | `RemoteIpAddress` | yes |
 | `uploads` (60/min) | token hash, **else** `RemoteIpAddress` | yes, unauthenticated |
 
-Deliberately out of scope here: the fix needs the real proxy address in `KnownProxies`, which is
-deployment knowledge rather than a code change, and guessing it would break the limiter's ability to
-see real client IPs at all. **It is also why the tempting test fix was rejected** — per-test
-partitions via `X-Forwarded-For` work only because of this bug, and would make CI depend on it.
+⚠️ **The paragraph that used to sit here said this was out of scope because "the fix needs the real
+proxy address in `KnownProxies`, which is deployment knowledge rather than a code change". That was
+wrong, and it kept a production bypass open for weeks.**
+
+The deployment *is* described in this repository. `apps/CodeCoverage/docker-compose.yml` gives
+`coverage-app` no host ports and puts it on the external `web` network, where Traefik is the sole
+ingress. Every inbound request therefore arrives from a container address on a Docker bridge, so
+the proxy's address never had to be known — trusting the private ranges is exactly as tight as
+naming the container, because nothing on a public address can reach port 8080 at all.
+
+Fixed in the same PR as the API-token escalation: `KnownIPNetworks` holds the private ranges and
+`ForwardLimit = 1` is spelled out rather than defaulted. Traefik **appends** the real peer, so
+taking one entry from the right reads Traefik's value and never the caller's. All three limiters
+above are now keyed on a value the caller cannot choose.
+
+**The tempting test fix is still rejected**, for its original reason: the demo apps still clear
+both lists (deliberate, `ModuleCertificateForwarding.cs:28-32`), so per-test partitions via
+`X-Forwarded-For` still work there — and building CI on a misconfiguration is what was wrong with
+it, not whether the misconfiguration happens to persist.
+
+⚠️ **The lesson, which is bigger than the bug:** a finding parked on "we lack a deployment fact"
+deserves a check of whether the deployment is described in the repo before it is parked. Worse than
+the delay, a later fix (the fork-upload limiter's partition key) was built to *depend* on the
+spoofable value — so the bypass made a subsequent control read as protection while providing none.
+A reviewer caught that; nothing in the plan would have.
 
 ---
 
