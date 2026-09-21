@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -48,13 +49,13 @@ public class PublishFeedbackCronJobTests : CoverageRavenTest
         using var seed = store.OpenAsyncSession();
         await seed.StoreAsync(new PullRequestFeedback
         {
-            Repository = Entities.Repository.DocumentId(RepoId),
+            Repository = Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId),
             PullRequestNumber = pr,
             State = state,
             NextAttemptAtUtc = next,
             InstallationId = 555,
             PendingBody = "body",
-        }, PullRequestFeedback.DocumentId(RepoId, pr));
+        }, PullRequestFeedback.DocumentId(EForgeProvider.GitHub, RepoId, pr));
         await seed.SaveChangesAsync();
     }
 
@@ -76,7 +77,7 @@ public class PublishFeedbackCronJobTests : CoverageRavenTest
 
         bus.Broadcast.OfType<PublishPullRequestCommentMessage>().Should().ContainSingle();
         bus.Broadcast.OfType<PublishPullRequestCommentMessage>().First().FeedbackId
-            .Should().Be(PullRequestFeedback.DocumentId(RepoId, 79));
+            .Should().Be(PullRequestFeedback.DocumentId(EForgeProvider.GitHub, RepoId, 79));
     }
 
     [Fact]

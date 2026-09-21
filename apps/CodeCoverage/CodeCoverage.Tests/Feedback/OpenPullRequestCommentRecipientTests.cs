@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
 using Microsoft.Extensions.Configuration;
@@ -38,7 +39,7 @@ public class OpenPullRequestCommentRecipientTests : CoverageRavenTest
         using var seed = store.OpenAsyncSession();
 
         if (withInstallation)
-            await seed.StoreAsync(new Account { GitHubId = AccountId, Login = "MintPlayer", InstallationId = 555 }, Account.DocumentId(AccountId));
+            await seed.StoreAsync(new Account { GitHubId = AccountId, Login = "MintPlayer", InstallationId = 555 }, Account.DocumentId(EForgeProvider.GitHub, AccountId));
 
         await seed.StoreAsync(new Entities.Repository
         {
@@ -46,20 +47,20 @@ public class OpenPullRequestCommentRecipientTests : CoverageRavenTest
             Name = "MintPlayer.Spark",
             FullName = "MintPlayer/MintPlayer.Spark",
             OwnerLogin = "MintPlayer",
-            Account = withInstallation ? Account.DocumentId(AccountId) : null,
+            Account = withInstallation ? Account.DocumentId(EForgeProvider.GitHub, AccountId) : null,
             LatestCoverage = withRepositoryCoverage ? new CoverageSummary { LinesCovered = 80, LinesCoverable = 100 } : null,
-        }, Entities.Repository.DocumentId(RepoId));
+        }, Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId));
 
         if (withSideBranchCoverage)
         {
             await seed.StoreAsync(new Entities.Commit
             {
                 Sha = "aaa",
-                Repository = Entities.Repository.DocumentId(RepoId),
+                Repository = Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId),
                 Branch = "feature/x",
                 AuthoredAt = DateTimeOffset.UtcNow,
                 Coverage = new CoverageSummary { LinesCovered = 10, LinesCoverable = 100 },
-            }, Entities.Commit.DocumentId(RepoId, "aaa"));
+            }, Entities.Commit.DocumentId(EForgeProvider.GitHub, RepoId, "aaa"));
         }
 
         await seed.SaveChangesAsync();

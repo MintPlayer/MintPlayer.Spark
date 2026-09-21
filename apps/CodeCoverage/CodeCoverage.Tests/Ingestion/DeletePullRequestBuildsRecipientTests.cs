@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using CodeCoverage.Ingestion;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -18,18 +19,18 @@ public class DeletePullRequestBuildsRecipientTests : CoverageRavenTest
     private static async Task<string> SeedPrCommit(IDocumentStore store, string sha, string branch, int prNumber)
     {
         using var session = store.OpenAsyncSession();
-        var buildId = Build.DocumentId(RepoGitHubId, sha, 1, 1);
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, RepoGitHubId, sha, 1, 1);
         await session.StoreAsync(new Commit
         {
             Sha = sha,
-            Repository = Repository.DocumentId(RepoGitHubId),
+            Repository = Repository.DocumentId(EForgeProvider.GitHub, RepoGitHubId),
             Branch = branch,
             PullRequestNumber = prNumber,
             Coverage = new CoverageSummary { LinesCovered = 1, LinesCoverable = 2 },
             LatestBuildId = buildId,
             FirstSeenAtUtc = DateTimeOffset.UtcNow,
-        }, Commit.DocumentId(RepoGitHubId, sha));
-        await session.StoreAsync(new Build { Commit = Commit.DocumentId(RepoGitHubId, sha), CiRunId = 1, CiRunAttempt = 1 }, buildId);
+        }, Commit.DocumentId(EForgeProvider.GitHub, RepoGitHubId, sha));
+        await session.StoreAsync(new Build { Commit = Commit.DocumentId(EForgeProvider.GitHub, RepoGitHubId, sha), CiRunId = 1, CiRunAttempt = 1 }, buildId);
         await session.StoreAsync(new FileCoverage { Path = "libs/a/x.ts" }, FileCoverage.DocumentId(buildId, "libs/a/x.ts"));
         await session.StoreAsync(new BuildTreeSummary { BuildId = buildId }, BuildTreeSummary.DocumentId(buildId));
         await session.SaveChangesAsync();
@@ -46,7 +47,7 @@ public class DeletePullRequestBuildsRecipientTests : CoverageRavenTest
             {
                 GitHubId = RepoGitHubId, Name = "repo", FullName = "acme/repo",
                 OwnerLogin = "acme", DefaultBranch = "master",
-            }, Repository.DocumentId(RepoGitHubId));
+            }, Repository.DocumentId(EForgeProvider.GitHub, RepoGitHubId));
             await seed.SaveChangesAsync();
         }
         var prBuildId = await SeedPrCommit(store, "feat0000", "feature", prNumber: 5);
@@ -64,14 +65,14 @@ public class DeletePullRequestBuildsRecipientTests : CoverageRavenTest
         (await verify.LoadAsync<BuildTreeSummary>(BuildTreeSummary.DocumentId(prBuildId))).Should().BeNull();
         (await verify.LoadAsync<FileCoverage>(FileCoverage.DocumentId(prBuildId, "libs/a/x.ts"))).Should().BeNull();
 
-        var prCommit = await verify.LoadAsync<Commit>(Commit.DocumentId(RepoGitHubId, "feat0000"));
+        var prCommit = await verify.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, RepoGitHubId, "feat0000"));
         prCommit.Should().NotBeNull("the commit keeps its display summary");
         prCommit!.Coverage.Should().NotBeNull();
         prCommit.LatestBuildId.Should().BeNull("nothing may dangle");
 
         // The default-branch commit — the repository's history — is untouched.
         (await verify.LoadAsync<Build>(masterBuildId)).Should().NotBeNull();
-        var masterCommit = await verify.LoadAsync<Commit>(Commit.DocumentId(RepoGitHubId, "mast0000"));
+        var masterCommit = await verify.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, RepoGitHubId, "mast0000"));
         masterCommit!.LatestBuildId.Should().Be(masterBuildId);
     }
 
@@ -85,7 +86,7 @@ public class DeletePullRequestBuildsRecipientTests : CoverageRavenTest
             {
                 GitHubId = RepoGitHubId, Name = "repo", FullName = "acme/repo",
                 OwnerLogin = "acme", DefaultBranch = "master",
-            }, Repository.DocumentId(RepoGitHubId));
+            }, Repository.DocumentId(EForgeProvider.GitHub, RepoGitHubId));
             await seed.SaveChangesAsync();
         }
         var otherBuildId = await SeedPrCommit(store, "other000", "another-feature", prNumber: 6);

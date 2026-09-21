@@ -196,7 +196,7 @@ public partial class CommitAssembler : ICommitAssembler
             reasons.Add(CommitAssembly.ReasonNoFileList);
             return;
         }
-        var baseCommitId = Entities.Commit.DocumentId(repository.GitHubId, resolved.ResolvedSha);
+        var baseCommitId = Entities.Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, resolved.ResolvedSha);
         var baseHasAssembly = await session.Advanced.ExistsAsync(CommitAssembly.DocumentId(baseCommitId), cancellationToken);
         if (!baseHasAssembly && resolved.BaseBuildId is null)
         {
@@ -335,7 +335,7 @@ public partial class CommitAssembler : ICommitAssembler
         if (origins.Count == 1 || repository is null)
             return origins[0];
 
-        var ids = origins.Select(sha => Entities.Commit.DocumentId(repository.GitHubId, sha)).ToArray();
+        var ids = origins.Select(sha => Entities.Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, sha)).ToArray();
         var commits = await session.LoadAsync<Commit>(ids, cancellationToken);
         return commits.Values
             .Where(c => c is not null)
@@ -391,7 +391,7 @@ public partial class CommitAssembler : ICommitAssembler
         commit.CoverageDeltaVsParent = null;
         if (commit.ParentSha is not null && parentTrusted && percent is not null)
         {
-            var parent = await session.LoadAsync<Commit>(Entities.Commit.DocumentId(repository.GitHubId, commit.ParentSha), cancellationToken);
+            var parent = await session.LoadAsync<Commit>(Entities.Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, commit.ParentSha), cancellationToken);
             commit.CoverageDeltaVsParent = Delta(percent, Percent(parent?.Coverage));
         }
 

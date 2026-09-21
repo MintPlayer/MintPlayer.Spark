@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Badges;
 using CodeCoverage.Controllers;
 using CodeCoverage.Entities;
@@ -70,20 +71,20 @@ public class BadgeControllerTests : CoverageRavenTest
             BadgeToken = badgeToken,
             DefaultBranch = "main",
             LatestCoverage = latest,
-        }, Repository.DocumentId(repoId));
+        }, Repository.DocumentId(EForgeProvider.GitHub, repoId));
 
         foreach (var c in commits)
         {
             await seed.StoreAsync(new Commit
             {
                 Sha = c.Sha,
-                Repository = Repository.DocumentId(repoId),
+                Repository = Repository.DocumentId(EForgeProvider.GitHub, repoId),
                 Branch = c.Branch,
                 PullRequestNumber = c.Pr,
                 AuthoredAt = c.At,
                 AssemblyCompleteness = c.Completeness,
                 Coverage = new CoverageSummary { LinesCovered = c.Covered, LinesCoverable = c.Coverable },
-            }, Commit.DocumentId(repoId, c.Sha));
+            }, Commit.DocumentId(EForgeProvider.GitHub, repoId, c.Sha));
         }
 
         await seed.SaveChangesAsync();

@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using MintPlayer.Spark.Abstractions;
 
 namespace CodeCoverage.Entities;
@@ -144,8 +145,12 @@ public class Build
     /// </remarks>
     public GateSettings? GateSnapshot { get; set; }
 
-    public static string DocumentId(long repoGitHubId, string sha, long runId, int runAttempt)
-        => $"{Entities.Commit.DocumentId(repoGitHubId, sha)}/builds/{runId}-{runAttempt}";
+    /// <summary><c>{commitId}/builds/{runId}-{runAttempt}</c>.</summary>
+    /// <remarks>Inherits the forge segment from <see cref="Entities.Commit.DocumentId"/>.</remarks>
+    public static string DocumentId(
+        EForgeProvider provider, long repositoryId, string sha, long runId, int runAttempt,
+        int? pullRequestNumber = null)
+        => $"{Entities.Commit.DocumentId(provider, repositoryId, sha, pullRequestNumber)}/builds/{runId}-{runAttempt}";
 
     /// <summary>
     /// The one classification an API consumer is invited to branch on: is this

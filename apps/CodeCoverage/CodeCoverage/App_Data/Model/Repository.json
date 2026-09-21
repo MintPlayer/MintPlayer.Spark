@@ -415,6 +415,25 @@
         "isArray": true,
         "showedOn": "PersistentObject",
         "rules": []
+      },
+      {
+        "id": "bd6ed75d-4e58-4789-b96c-9c285cace2fa",
+        "name": "Provider",
+        "label": {
+          "en": "Provider"
+        },
+        "description": {
+          "en": "The forge that hosts this repository. Set on every document by the M6 re-key."
+        },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "inQueryType": false,
+        "showedOn": "PersistentObject",
+        "rules": []
       }
     ],
     "queries": [

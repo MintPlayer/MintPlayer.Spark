@@ -24,7 +24,7 @@ public partial class BaseResolver : IBaseResolver
 
         if (requested is not null && !string.Equals(requested, head.Sha, StringComparison.OrdinalIgnoreCase))
         {
-            var declared = await session.LoadAsync<Commit>(Entities.Commit.DocumentId(repository.GitHubId, requested), cancellationToken);
+            var declared = await session.LoadAsync<Commit>(Entities.Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, requested), cancellationToken);
             if (await UsableBuildIdAsync(declared, cancellationToken) is { } declaredBuildId)
                 return new ResolvedBase(requested, declared!.Sha, ResolvedBase.Exact, declaredBuildId, declared.Coverage, declared.Branch);
         }
@@ -40,7 +40,7 @@ public partial class BaseResolver : IBaseResolver
                 && !string.Equals(mergeBaseSha, head.Sha, StringComparison.OrdinalIgnoreCase)
                 && !string.Equals(mergeBaseSha, requested, StringComparison.OrdinalIgnoreCase))
             {
-                var mergeBase = await session.LoadAsync<Commit>(Entities.Commit.DocumentId(repository.GitHubId, mergeBaseSha), cancellationToken);
+                var mergeBase = await session.LoadAsync<Commit>(Entities.Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, mergeBaseSha), cancellationToken);
                 if (await UsableBuildIdAsync(mergeBase, cancellationToken) is { } mergeBuildId)
                     return new ResolvedBase(requested, mergeBase!.Sha, ResolvedBase.MergeBase, mergeBuildId, mergeBase.Coverage, mergeBase.Branch);
             }

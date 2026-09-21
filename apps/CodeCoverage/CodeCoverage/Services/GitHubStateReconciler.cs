@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.SourceGenerators.Attributes;
@@ -85,7 +86,7 @@ public partial class GitHubStateReconciler : IGitHubStateReconciler
             {
                 // Not necessarily new to us — it may belong to an account we have not associated it
                 // with yet, which is what a transfer INTO this installation looks like.
-                var id = Repository.DocumentId(ghRepo.GitHubId);
+                var id = Repository.DocumentId(EForgeProvider.GitHub, ghRepo.GitHubId);
                 repository = await session.LoadAsync<Repository>(id, cancellationToken);
                 if (repository is null)
                 {

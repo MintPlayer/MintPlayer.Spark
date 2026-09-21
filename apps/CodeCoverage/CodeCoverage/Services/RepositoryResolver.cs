@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using Microsoft.Extensions.Caching.Memory;
 using Raven.Client.Documents.Session;
@@ -77,7 +78,7 @@ public partial class RepositoryResolver : IRepositoryResolver
         if (gitHubId is null)
             return RepositoryResolution.None;
 
-        var resolved = await session.LoadAsync<Repository>(Repository.DocumentId(gitHubId.Value), cancellationToken);
+        var resolved = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, gitHubId.Value), cancellationToken);
         return resolved is null
             ? RepositoryResolution.None
             : new RepositoryResolution(resolved, Redirect: true);

@@ -334,7 +334,7 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
         """;
 
     private static async Task<Commit?> LoadCommit(IAsyncDocumentSession session, string sha)
-        => await session.LoadAsync<Commit>(Commit.DocumentId(RepoId, sha));
+        => await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, RepoId, sha));
 
     /// <summary>
     /// The publish-on-open trigger. Went to production untested on this side —
@@ -504,7 +504,7 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
                     Login = "acme",
                     DeleteBranchOnPrClose = accountDefault.Value,
                 },
-                Account.DocumentId(OwnerId));
+                Account.DocumentId(EForgeProvider.GitHub, OwnerId));
         }
 
         await session.StoreAsync(
@@ -513,10 +513,10 @@ public class GitHubEventsRecipientTests : CoverageRavenTest
                 GitHubId = RepoId,
                 Name = "widgets",
                 OwnerLogin = "acme",
-                Account = accountDefault is null ? null : Account.DocumentId(OwnerId),
+                Account = accountDefault is null ? null : Account.DocumentId(EForgeProvider.GitHub, OwnerId),
                 DeleteBranchOnPrClose = policy,
             },
-            Repository.DocumentId(RepoId));
+            Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         await session.SaveChangesAsync();
     }
 

@@ -160,7 +160,7 @@ public partial class UploadsController : ControllerBase
         if (int.TryParse(User.FindFirst(Oidc.RunAttemptClaim!)?.Value, out var claimRunAttempt))
             form.RunAttempt = claimRunAttempt;
 
-        var commitId = Entities.Commit.DocumentId(repository.GitHubId, form.CommitSha);
+        var commitId = Entities.Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, form.CommitSha);
         var commit = await session.LoadAsync<Commit>(commitId, cancellationToken);
         if (commit is null)
         {
@@ -179,7 +179,7 @@ public partial class UploadsController : ControllerBase
             commit.ParentShaSource = "upload";
         }
 
-        var buildId = Build.DocumentId(repository.GitHubId, form.CommitSha, form.RunId, form.RunAttempt);
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, repository.GitHubId, form.CommitSha, form.RunId, form.RunAttempt);
         var build = await session.LoadAsync<Build>(buildId, cancellationToken);
         if (build is null)
         {
@@ -258,7 +258,7 @@ public partial class UploadsController : ControllerBase
         if (repository is null)
             return NotFound();
 
-        var buildId = Build.DocumentId(repository.GitHubId, request.CommitSha, request.RunId, request.RunAttempt);
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, repository.GitHubId, request.CommitSha, request.RunId, request.RunAttempt);
         var build = await session.LoadAsync<Build>(buildId, cancellationToken);
         if (build is null)
             return NotFound();
@@ -332,7 +332,7 @@ public partial class UploadsController : ControllerBase
         if (repo is null)
             return NotFound();
 
-        var buildId = Build.DocumentId(repo.GitHubId, commitSha, runId, runAttempt);
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, repo.GitHubId, commitSha, runId, runAttempt);
         var build = await session.LoadAsync<Build>(buildId, cancellationToken);
         if (build is null)
         {
@@ -668,12 +668,12 @@ public partial class UploadsController : ControllerBase
         {
             "Account" when accountId is not null =>
                 long.TryParse(accountId, out var ownerId)
-                && repository.Account == Entities.Account.DocumentId(ownerId),
+                && repository.Account == Entities.Account.DocumentId(EForgeProvider.GitHub, ownerId),
             "Account" => string.Equals(account, repository.OwnerLogin, StringComparison.OrdinalIgnoreCase),
             // Membership, not equality — the claims carry document ids, one per repository the
             // token was scoped to.
             "Repository" => repoIds.Contains(
-                Entities.Repository.DocumentId(repository.GitHubId), StringComparer.Ordinal),
+                Entities.Repository.DocumentId(EForgeProvider.GitHub, repository.GitHubId), StringComparer.Ordinal),
             _ => false,
         };
 
@@ -691,7 +691,7 @@ public partial class UploadsController : ControllerBase
         if (!long.TryParse(User.FindFirst(Oidc.RepositoryIdClaim)?.Value, out var gitHubRepoId))
             return null;
 
-        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(gitHubRepoId), cancellationToken);
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, gitHubRepoId), cancellationToken);
         if (repository is not null)
         {
             // Gated on `provision`, which is true only on the upload itself. The status endpoint is
@@ -741,11 +741,11 @@ public partial class UploadsController : ControllerBase
         Account? account = null;
         if (long.TryParse(User.FindFirst(Oidc.OwnerIdClaim)?.Value, out var ownerId))
         {
-            account = await session.LoadAsync<Account>(Account.DocumentId(ownerId), cancellationToken);
+            account = await session.LoadAsync<Account>(Account.DocumentId(EForgeProvider.GitHub, ownerId), cancellationToken);
             if (account is null)
             {
                 account = new Account { GitHubId = ownerId, Login = ownerLogin };
-                await session.StoreAsync(account, Account.DocumentId(ownerId), cancellationToken);
+                await session.StoreAsync(account, Account.DocumentId(EForgeProvider.GitHub, ownerId), cancellationToken);
             }
         }
 
@@ -758,7 +758,7 @@ public partial class UploadsController : ControllerBase
             OwnerLogin = ownerLogin,
             IsPrivate = false,
         };
-        await session.StoreAsync(repository, Repository.DocumentId(gitHubRepoId), cancellationToken);
+        await session.StoreAsync(repository, Repository.DocumentId(EForgeProvider.GitHub, gitHubRepoId), cancellationToken);
         logger.LogInformation("Auto-provisioned public repository {FullName} from OIDC upload", fullName);
         return repository;
     }

@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -43,12 +44,12 @@ public class PublishPullRequestCommentRecipientTests : CoverageRavenTest
                 Name = "MintPlayer.Spark",
                 FullName = "MintPlayer/MintPlayer.Spark",
                 OwnerLogin = "MintPlayer",
-            }, Entities.Repository.DocumentId(RepoId));
+            }, Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         }
 
         var feedback = new PullRequestFeedback
         {
-            Repository = Entities.Repository.DocumentId(RepoId),
+            Repository = Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId),
             PullRequestNumber = Pr,
             State = "Retry",
             Attempts = 1,
@@ -58,13 +59,13 @@ public class PublishPullRequestCommentRecipientTests : CoverageRavenTest
         };
         configure(feedback);
 
-        await seed.StoreAsync(feedback, PullRequestFeedback.DocumentId(RepoId, Pr));
+        await seed.StoreAsync(feedback, PullRequestFeedback.DocumentId(EForgeProvider.GitHub, RepoId, Pr));
         await seed.SaveChangesAsync();
     }
 
     private static PublishPullRequestCommentMessage Message() => new()
     {
-        FeedbackId = PullRequestFeedback.DocumentId(RepoId, Pr),
+        FeedbackId = PullRequestFeedback.DocumentId(EForgeProvider.GitHub, RepoId, Pr),
     };
 
     [Fact]
@@ -135,7 +136,7 @@ public class PublishPullRequestCommentRecipientTests : CoverageRavenTest
 
         await Create(session, publisher).HandleAsync(new PublishPullRequestCommentMessage
         {
-            FeedbackId = PullRequestFeedback.DocumentId(999999, 1),
+            FeedbackId = PullRequestFeedback.DocumentId(EForgeProvider.GitHub, 999999, 1),
         });
 
         publisher.Comments.Should().BeEmpty();

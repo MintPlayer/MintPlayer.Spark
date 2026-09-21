@@ -53,24 +53,16 @@ public partial class ForgeIntegrationResolver : IForgeIntegrationResolver
     }
 
     /// <summary>
-    /// Which forge a repository belongs to.
+    /// The forge a repository is hosted on, read from the document.
     /// </summary>
     /// <remarks>
-    /// ⚠️ <b>Temporary, and deliberately not a default parameter.</b> No entity carries a forge
-    /// discriminator until M6 re-keys the documents (D5/D7) — until then every stored repository is
-    /// a GitHub one, and this says so in one place rather than letting a <c>FirstOrDefault</c>
-    /// arrive at GitHub by accident because it happens to be the only registration.
-    /// <para>
-    /// The difference matters. Written this way, registering a second forge before M6 lands makes
-    /// <see cref="For(Repository)"/> hand that forge's integration a GitHub repository — a loud,
-    /// immediate failure in testing. An implicit fallback would instead keep working, quietly, and
-    /// then start mis-routing the moment the second implementation was registered.
-    /// </para>
-    /// <para>
-    /// M6f replaces this body with a read of the stored value and deletes this remark.
-    /// </para>
+    /// Until M6 this returned <see cref="EForgeProvider.GitHub"/> unconditionally, as an explicit
+    /// placeholder: every stored repository was a GitHub one, and saying so in a single named
+    /// method was better than letting a <c>FirstOrDefault</c> arrive at GitHub by accident because
+    /// it happened to be the only registration. M6 gave <see cref="Repository.Provider"/> a real
+    /// value on every document, so the placeholder is gone.
     /// </remarks>
-    private static EForgeProvider ProviderOf(Repository repository) => EForgeProvider.GitHub;
+    private static EForgeProvider ProviderOf(Repository repository) => repository.Provider;
 
     public Task<IReadOnlyList<EForgeProvider>> GetLinkedProvidersAsync(CancellationToken cancellationToken = default)
         => linkedProviders ??= QueryLinkedProvidersAsync();

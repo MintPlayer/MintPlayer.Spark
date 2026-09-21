@@ -33,7 +33,7 @@ public partial class OpenPullRequestCommentRecipient : IRecipient<OpenPullReques
             return;
 
         var repository = await session.LoadAsync<Entities.Repository>(
-            Entities.Repository.DocumentId(message.RepositoryGitHubId), cancellationToken);
+            Entities.Repository.DocumentId(EForgeProvider.GitHub, message.RepositoryGitHubId), cancellationToken);
         if (repository is null) return;
 
         // Was a sixth verbatim copy of the installation lookup M2 set out to remove; it survived

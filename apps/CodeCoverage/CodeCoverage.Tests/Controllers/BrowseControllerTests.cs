@@ -51,7 +51,7 @@ public class BrowseControllerTests : CoverageRavenTest
         using var store = GetDocumentStore();
         const long repoId = 1;
         const string sha = "79bc284939350991803acc84ced894ade844b9f0";
-        var buildId = Build.DocumentId(repoId, sha, runId: 42, runAttempt: 1);
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, repoId, sha, runId: 42, runAttempt: 1);
 
         using (var seed = store.OpenAsyncSession())
         {
@@ -62,12 +62,12 @@ public class BrowseControllerTests : CoverageRavenTest
                 FullName = "owner/repo",
                 OwnerLogin = "owner",
                 IsPrivate = false,
-            }, Repository.DocumentId(repoId));
-            await seed.StoreAsync(new Commit { Sha = sha, Repository = Repository.DocumentId(repoId) },
-                Commit.DocumentId(repoId, sha));
+            }, Repository.DocumentId(EForgeProvider.GitHub, repoId));
+            await seed.StoreAsync(new Commit { Sha = sha, Repository = Repository.DocumentId(EForgeProvider.GitHub, repoId) },
+                Commit.DocumentId(EForgeProvider.GitHub, repoId, sha));
             await seed.StoreAsync(new Build
             {
-                Commit = Commit.DocumentId(repoId, sha),
+                Commit = Commit.DocumentId(EForgeProvider.GitHub, repoId, sha),
                 CiRunId = 42,
                 CiRunAttempt = 1,
                 Status = "Finalized",
@@ -113,7 +113,7 @@ public class BrowseControllerTests : CoverageRavenTest
         using var store = GetDocumentStore();
         const long repoId = 2;
         const string sha = "aa11284939350991803acc84ced894ade844b9f0";
-        var buildId = Build.DocumentId(repoId, sha, runId: 7, runAttempt: 1);
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, repoId, sha, runId: 7, runAttempt: 1);
 
         using (var seed = store.OpenAsyncSession())
         {
@@ -124,13 +124,13 @@ public class BrowseControllerTests : CoverageRavenTest
                 FullName = "owner/repo",
                 OwnerLogin = "owner",
                 IsPrivate = false,
-            }, Repository.DocumentId(repoId));
+            }, Repository.DocumentId(EForgeProvider.GitHub, repoId));
             await seed.StoreAsync(new Commit
             {
                 Sha = sha,
-                Repository = Repository.DocumentId(repoId),
+                Repository = Repository.DocumentId(EForgeProvider.GitHub, repoId),
                 LatestBuildId = buildId,
-            }, Commit.DocumentId(repoId, sha));
+            }, Commit.DocumentId(EForgeProvider.GitHub, repoId, sha));
 
             var files = new List<TreeFileSummary>
             {
@@ -181,7 +181,7 @@ public class BrowseControllerTests : CoverageRavenTest
                 OwnerLogin = "owner",
                 IsPrivate = false,
                 DefaultBranch = defaultBranch,
-            }, Repository.DocumentId(repoId));
+            }, Repository.DocumentId(EForgeProvider.GitHub, repoId));
 
             await StoreCoveredCommit(seed, repoId, "aaa", "master", 80, days: -2);
             await StoreCoveredCommit(seed, repoId, "bbb", "feature/x", 10, days: -1);
@@ -201,10 +201,10 @@ public class BrowseControllerTests : CoverageRavenTest
         {
             Sha = sha,
             Branch = branch,
-            Repository = Repository.DocumentId(repoId),
+            Repository = Repository.DocumentId(EForgeProvider.GitHub, repoId),
             AuthoredAt = DateTimeOffset.UtcNow.AddDays(days),
             Coverage = new CoverageSummary { LinesCovered = covered, LinesCoverable = 100, FilesCount = 1 },
-        }, Commit.DocumentId(repoId, sha));
+        }, Commit.DocumentId(EForgeProvider.GitHub, repoId, sha));
 
     /// <summary>
     /// #17: the chart ordered commits by time alone, so a feature branch's points
@@ -255,7 +255,7 @@ public class BrowseControllerTests : CoverageRavenTest
                     OwnerLogin = "sparks",
                     IsPrivate = false,
                     DefaultBranch = defaultBranch,
-                }, Repository.DocumentId(repoId));
+                }, Repository.DocumentId(EForgeProvider.GitHub, repoId));
                 await StoreCoveredCommit(seed, repoId, $"{repoId}a", "master", 80, days: -2);
                 await StoreCoveredCommit(seed, repoId, $"{repoId}b", "feature/x", 10, days: -1);
             }

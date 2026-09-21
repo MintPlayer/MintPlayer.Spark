@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text.Json;
@@ -263,11 +264,11 @@ public partial class GitHubAccessService : IGitHubAccessService
         try
         {
             var loaded = await session.LoadAsync<Account>(
-                active.Select(i => Account.DocumentId(i.AccountGitHubId)), cancellationToken);
+                active.Select(i => Account.DocumentId(EForgeProvider.GitHub, i.AccountGitHubId)), cancellationToken);
 
             foreach (var installation in active)
             {
-                var id = Account.DocumentId(installation.AccountGitHubId);
+                var id = Account.DocumentId(EForgeProvider.GitHub, installation.AccountGitHubId);
                 var account = loaded.GetValueOrDefault(id);
                 if (account is null)
                 {

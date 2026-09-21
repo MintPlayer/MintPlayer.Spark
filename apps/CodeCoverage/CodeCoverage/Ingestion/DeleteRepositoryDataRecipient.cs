@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using MintPlayer.Spark;
 using MintPlayer.SourceGenerators.Attributes;
@@ -62,7 +63,7 @@ public partial class DeleteRepositoryDataRecipient : IRecipient<DeleteRepository
     {
         using var requestScope = session.IgnoreMaxRequests(logger: logger);
 
-        var repositoryId = Repository.DocumentId(message.RepositoryGitHubId);
+        var repositoryId = Repository.DocumentId(EForgeProvider.GitHub, message.RepositoryGitHubId);
         var repository = await session.LoadAsync<Repository>(repositoryId, cancellationToken);
 
         // Re-checked here and not only at the button: the message may have been queued before the
@@ -85,9 +86,19 @@ public partial class DeleteRepositoryDataRecipient : IRecipient<DeleteRepository
         var budget = MaxDeletesPerMessage;
 
         // Commits and everything whose id descends from one, then pull-request feedback.
-        budget -= await SweepPrefixAsync($"Commits/{message.RepositoryGitHubId}/", budget, cancellationToken);
+        // ⚠️ Composed from the id helpers, never spelled literally. These were literal
+        // "Commits/{id}/" prefixes; with the forge segment they would match nothing, and deleting a
+        // repository would orphan every commit, build, file and tree document it owns — silently
+        // and permanently, since the owning Repository document is gone and nothing else
+        // references them. A prefix built from the helper cannot drift from the id it sweeps.
+        var provider = repository.Provider;
+        var commitPrefix = Commit.DocumentId(provider, message.RepositoryGitHubId, string.Empty);
+        var feedbackPrefix = PullRequestFeedback.DocumentId(provider, message.RepositoryGitHubId, 0);
+        feedbackPrefix = feedbackPrefix[..(feedbackPrefix.LastIndexOf('/') + 1)];
+
+        budget -= await SweepPrefixAsync(commitPrefix, budget, cancellationToken);
         if (budget > 0)
-            budget -= await SweepPrefixAsync($"PullRequestFeedbacks/{message.RepositoryGitHubId}/", budget, cancellationToken);
+            budget -= await SweepPrefixAsync(feedbackPrefix, budget, cancellationToken);
 
         if (budget <= 0)
         {

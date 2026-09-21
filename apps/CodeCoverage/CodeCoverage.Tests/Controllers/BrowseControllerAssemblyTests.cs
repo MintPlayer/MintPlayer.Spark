@@ -46,8 +46,8 @@ public class BrowseControllerAssemblyTests : CoverageRavenTest
     public async Task Tree_and_file_come_from_the_assembly_when_one_exists()
     {
         using var store = GetDocumentStore();
-        var commitId = Commit.DocumentId(RepoId, Sha);
-        var buildId = Build.DocumentId(RepoId, Sha, runId: 7, runAttempt: 1);
+        var commitId = Commit.DocumentId(EForgeProvider.GitHub, RepoId, Sha);
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, RepoId, Sha, runId: 7, runAttempt: 1);
         var assemblyId = CommitAssembly.DocumentId(commitId);
 
         using (var seed = store.OpenAsyncSession())
@@ -55,8 +55,8 @@ public class BrowseControllerAssemblyTests : CoverageRavenTest
             await seed.StoreAsync(new Repository
             {
                 GitHubId = RepoId, Name = "repo", FullName = "owner/repo", OwnerLogin = "owner", IsPrivate = false,
-            }, Repository.DocumentId(RepoId));
-            await seed.StoreAsync(new Commit { Sha = Sha, Repository = Repository.DocumentId(RepoId), LatestBuildId = buildId }, commitId);
+            }, Repository.DocumentId(EForgeProvider.GitHub, RepoId));
+            await seed.StoreAsync(new Commit { Sha = Sha, Repository = Repository.DocumentId(EForgeProvider.GitHub, RepoId), LatestBuildId = buildId }, commitId);
 
             // The build measured only a.cs …
             await seed.StoreAsync(new BuildTreeSummary
@@ -106,16 +106,16 @@ public class BrowseControllerAssemblyTests : CoverageRavenTest
     public async Task Without_an_assembly_the_latest_build_is_still_the_source()
     {
         using var store = GetDocumentStore();
-        var commitId = Commit.DocumentId(RepoId, Sha);
-        var buildId = Build.DocumentId(RepoId, Sha, runId: 7, runAttempt: 1);
+        var commitId = Commit.DocumentId(EForgeProvider.GitHub, RepoId, Sha);
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, RepoId, Sha, runId: 7, runAttempt: 1);
 
         using (var seed = store.OpenAsyncSession())
         {
             await seed.StoreAsync(new Repository
             {
                 GitHubId = RepoId, Name = "repo", FullName = "owner/repo", OwnerLogin = "owner", IsPrivate = false,
-            }, Repository.DocumentId(RepoId));
-            await seed.StoreAsync(new Commit { Sha = Sha, Repository = Repository.DocumentId(RepoId), LatestBuildId = buildId }, commitId);
+            }, Repository.DocumentId(EForgeProvider.GitHub, RepoId));
+            await seed.StoreAsync(new Commit { Sha = Sha, Repository = Repository.DocumentId(EForgeProvider.GitHub, RepoId), LatestBuildId = buildId }, commitId);
             await seed.StoreAsync(new BuildTreeSummary
             {
                 BuildId = buildId,

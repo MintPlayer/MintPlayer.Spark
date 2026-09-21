@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using CodeCoverage.Indexes;
 using CodeCoverage.Services;
@@ -45,7 +46,7 @@ public class RepositoryVisibilityParityTests : CoverageRavenTest
         var store = GetDocumentStore();
         using var session = store.OpenAsyncSession();
         foreach (var repository in Corpus)
-            await session.StoreAsync(repository, Repository.DocumentId(repository.GitHubId));
+            await session.StoreAsync(repository, Repository.DocumentId(EForgeProvider.GitHub, repository.GitHubId));
         await session.SaveChangesAsync();
         WaitForIndexing(store);
         return store;

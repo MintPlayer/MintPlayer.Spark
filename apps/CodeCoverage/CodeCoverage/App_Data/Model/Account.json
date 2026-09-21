@@ -168,6 +168,24 @@
         "group": "b2e84c07-9d13-4f56-8a2b-6c9e17f0a582"
       },
       {
+        "id": "cb7179a2-eb61-4290-ac91-66fd239e266a",
+        "name": "Provider",
+        "label": {
+          "en": "Provider"
+        },
+        "description": {
+          "en": "The forge that hosts this account. Set on every document by the M6 re-key."
+        },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
         "id": "47ee693b-379e-469b-ba29-22a472796297",
         "name": "Type",
         "label": {

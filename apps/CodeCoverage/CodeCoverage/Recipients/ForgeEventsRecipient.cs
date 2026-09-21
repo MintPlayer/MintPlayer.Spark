@@ -227,7 +227,7 @@ public partial class ForgeEventsRecipient :
         // string would be the id-parsing pattern that M6 is about to invalidate — a forge segment
         // shifts every positional index, and a parser that guesses wrong here would attach commits
         // to the wrong repository. One load is cheap and stays correct across the re-key.
-        var id = Commit.DocumentId(repository.GitHubId, sha);
+        var id = Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, sha);
         var commit = await session.LoadAsync<Commit>(id, cancellationToken);
         if (commit is null)
         {

@@ -20,7 +20,7 @@ public class BaseResolverTests : CoverageRavenTest
     private static Repository Repo(string? defaultBranch = "master") => new()
     {
         // A production Repository always arrives loaded from the session, id set.
-        Id = Repository.DocumentId(RepoGitHubId),
+        Id = Repository.DocumentId(EForgeProvider.GitHub, RepoGitHubId),
         GitHubId = RepoGitHubId,
         Name = "repo",
         FullName = "acme/repo",
@@ -32,17 +32,17 @@ public class BaseResolverTests : CoverageRavenTest
     private static async Task<Commit> SeedCovered(IDocumentStore store, string sha, string branch, DateTimeOffset authoredAt, bool treeDeleted = false)
     {
         using var session = store.OpenAsyncSession();
-        var buildId = Build.DocumentId(RepoGitHubId, sha, runId: 1, runAttempt: 1);
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, RepoGitHubId, sha, runId: 1, runAttempt: 1);
         var commit = new Commit
         {
             Sha = sha,
-            Repository = Repository.DocumentId(RepoGitHubId),
+            Repository = Repository.DocumentId(EForgeProvider.GitHub, RepoGitHubId),
             Branch = branch,
             AuthoredAt = authoredAt,
             Coverage = new CoverageSummary { LinesCovered = 5, LinesCoverable = 10 },
             LatestBuildId = buildId,
         };
-        await session.StoreAsync(commit, Commit.DocumentId(RepoGitHubId, sha));
+        await session.StoreAsync(commit, Commit.DocumentId(EForgeProvider.GitHub, RepoGitHubId, sha));
         if (!treeDeleted)
             await session.StoreAsync(new BuildTreeSummary { BuildId = buildId }, BuildTreeSummary.DocumentId(buildId));
         await session.SaveChangesAsync();
@@ -55,11 +55,11 @@ public class BaseResolverTests : CoverageRavenTest
         var commit = new Commit
         {
             Sha = sha,
-            Repository = Repository.DocumentId(RepoGitHubId),
+            Repository = Repository.DocumentId(EForgeProvider.GitHub, RepoGitHubId),
             Branch = branch,
             FirstSeenAtUtc = DateTimeOffset.UtcNow,
         };
-        await session.StoreAsync(commit, Commit.DocumentId(RepoGitHubId, sha));
+        await session.StoreAsync(commit, Commit.DocumentId(EForgeProvider.GitHub, RepoGitHubId, sha));
         await session.SaveChangesAsync();
         return commit;
     }

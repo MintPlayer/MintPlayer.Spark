@@ -97,20 +97,20 @@ public class UploadsControllerStatusTests : CoverageRavenTest
             OwnerLogin = "acme",
             IsPrivate = true,
             DefaultBranch = defaultBranch,
-        }, Repository.DocumentId(RepoId), default);
+        }, Repository.DocumentId(EForgeProvider.GitHub, RepoId), default);
     }
 
     private static async Task<Build> SeedBuild(
         IAsyncDocumentSession session, string sha, long runId, string buildStatus,
         string? finalizeReason, CoverageSummary? coverage, params string[] sessionStatuses)
     {
-        var commitId = Commit.DocumentId(RepoId, sha);
+        var commitId = Commit.DocumentId(EForgeProvider.GitHub, RepoId, sha);
         if (await session.LoadAsync<Commit>(commitId) is null)
         {
             await session.StoreAsync(new Commit
             {
                 Sha = sha,
-                Repository = Repository.DocumentId(RepoId),
+                Repository = Repository.DocumentId(EForgeProvider.GitHub, RepoId),
                 Branch = "master",
                 FirstSeenAtUtc = DateTimeOffset.UtcNow,
             }, commitId, default);
@@ -133,7 +133,7 @@ public class UploadsControllerStatusTests : CoverageRavenTest
                 FilesCount = status == "Parsed" ? 12 : 0,
             })],
         };
-        await session.StoreAsync(build, Build.DocumentId(RepoId, sha, runId, 1), default);
+        await session.StoreAsync(build, Build.DocumentId(EForgeProvider.GitHub, RepoId, sha, runId, 1), default);
         return build;
     }
 
@@ -215,7 +215,7 @@ public class UploadsControllerStatusTests : CoverageRavenTest
         inFlight.Coverage.Should().BeNull();
         inFlight.CommitUrl.Should().Be($"https://coverage.example.com/r/{RepoName}/c/{Sha}");
 
-        var build = await session.LoadAsync<Build>(Build.DocumentId(RepoId, Sha, 7, 1));
+        var build = await session.LoadAsync<Build>(Build.DocumentId(EForgeProvider.GitHub, RepoId, Sha, 7, 1));
         build.Status = "Finalized";
         build.FinalizeReason = "Explicit";
         build.Sessions[0].ParseStatus = "Parsed";
@@ -290,10 +290,10 @@ public class UploadsControllerStatusTests : CoverageRavenTest
         WaitForIndexing(store);
 
         // Both commits carry finalized coverage, as they would after finalize.
-        var older = await session.LoadAsync<Commit>(Commit.DocumentId(RepoId, BaselineSha));
+        var older = await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, RepoId, BaselineSha));
         older.Coverage = new CoverageSummary { LinesCovered = 70, LinesCoverable = 100 };
         older.AuthoredAt = DateTimeOffset.UtcNow.AddHours(-1);
-        var newer = await session.LoadAsync<Commit>(Commit.DocumentId(RepoId, Sha));
+        var newer = await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, RepoId, Sha));
         newer.Coverage = new CoverageSummary { LinesCovered = 90, LinesCoverable = 100 };
         newer.AuthoredAt = DateTimeOffset.UtcNow;
         await session.SaveChangesAsync();
@@ -384,7 +384,7 @@ public class UploadsControllerStatusTests : CoverageRavenTest
         result.Result.Should().BeOfType<NotFoundResult>();
 
         using var probe = store.OpenAsyncSession();
-        (await probe.LoadAsync<Repository>(Repository.DocumentId(999_000))).Should().BeNull();
+        (await probe.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, 999_000))).Should().BeNull();
     }
 
     [Fact]
@@ -414,8 +414,8 @@ public class UploadsControllerStatusTests : CoverageRavenTest
     {
         var build = await SeedBuild(session, BaselineSha, 1, "Finalized", "Explicit",
             new CoverageSummary { LinesCovered = files.Sum(f => f.Covered), LinesCoverable = files.Sum(f => f.Coverable) }, "Parsed");
-        var buildId = Build.DocumentId(RepoId, BaselineSha, 1, 1);
-        var commit = await session.LoadAsync<Commit>(Commit.DocumentId(RepoId, BaselineSha));
+        var buildId = Build.DocumentId(EForgeProvider.GitHub, RepoId, BaselineSha, 1, 1);
+        var commit = await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, RepoId, BaselineSha));
         commit!.Coverage = build.Coverage;
         commit.LatestBuildId = buildId;
         await SeedTree(session, buildId, files);
@@ -427,7 +427,7 @@ public class UploadsControllerStatusTests : CoverageRavenTest
             new CoverageSummary { LinesCovered = files.Sum(f => f.Covered), LinesCoverable = files.Sum(f => f.Coverable) }, "Parsed");
         build.Partial = true;
         build.DeclaredBaseSha = BaselineSha;
-        await SeedTree(session, Build.DocumentId(RepoId, Sha, 7, 1), files);
+        await SeedTree(session, Build.DocumentId(EForgeProvider.GitHub, RepoId, Sha, 7, 1), files);
         return build;
     }
 
@@ -552,7 +552,7 @@ public class UploadsControllerStatusTests : CoverageRavenTest
         Body(await controller.Status(RepoName, Sha, runId: 7)).FeedbackState.Should().BeNull(
             "the publish is broadcast after finalize — a poller can see Complete before any attempt");
 
-        var build = await session.LoadAsync<Build>(Build.DocumentId(RepoId, Sha, 7, 1));
+        var build = await session.LoadAsync<Build>(Build.DocumentId(EForgeProvider.GitHub, RepoId, Sha, 7, 1));
         build.FeedbackState = "Posted";
         await session.SaveChangesAsync();
 

@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using CodeCoverage.Services;
 using Microsoft.Extensions.Caching.Memory;
@@ -69,7 +70,7 @@ public class RepositoryResolverTests : CoverageRavenTest
         using (var session = store.OpenAsyncSession())
         {
             foreach (var repository in repositories)
-                await session.StoreAsync(repository, Repository.DocumentId(repository.GitHubId));
+                await session.StoreAsync(repository, Repository.DocumentId(EForgeProvider.GitHub, repository.GitHubId));
             await session.SaveChangesAsync();
         }
         WaitForIndexing(store);
@@ -197,8 +198,8 @@ public class RepositoryResolverTests : CoverageRavenTest
         var store = GetDocumentStore();
         using (var seed = store.OpenAsyncSession())
         {
-            await seed.StoreAsync(new Account { GitHubId = 5, Login = "acme" }, Account.DocumentId(5));
-            await seed.StoreAsync(Repo(1, "acme/widgets"), Repository.DocumentId(1));
+            await seed.StoreAsync(new Account { GitHubId = 5, Login = "acme" }, Account.DocumentId(EForgeProvider.GitHub, 5));
+            await seed.StoreAsync(Repo(1, "acme/widgets"), Repository.DocumentId(EForgeProvider.GitHub, 1));
             await seed.SaveChangesAsync();
         }
         WaitForIndexing(store);

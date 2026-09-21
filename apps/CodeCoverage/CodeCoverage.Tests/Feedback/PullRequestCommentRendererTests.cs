@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
 using Xunit;
@@ -28,7 +29,7 @@ public class PullRequestCommentRendererTests
     private static Entities.Commit Commit(int? pr = 79, string? baseRef = "master") => new()
     {
         Sha = "79bc284939350991803acc84ced894ade844b9f0",
-        Repository = Entities.Repository.DocumentId(204431316),
+        Repository = Entities.Repository.DocumentId(EForgeProvider.GitHub, 204431316),
         Branch = "feature/x",
         PullRequestNumber = pr,
         PullRequestBaseRef = baseRef,

@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using CodeCoverage.Feedback;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -70,7 +71,7 @@ public class PullRequestCommentPublisherTests : CoverageRavenTest
 
     private static Entities.Repository Repo() => new()
     {
-        Id = Entities.Repository.DocumentId(RepoId),
+        Id = Entities.Repository.DocumentId(EForgeProvider.GitHub, RepoId),
         GitHubId = RepoId,
         Name = "MintPlayer.Spark",
         FullName = "MintPlayer/MintPlayer.Spark",
@@ -85,7 +86,7 @@ public class PullRequestCommentPublisherTests : CoverageRavenTest
     private static async Task<PullRequestFeedback?> Load(IDocumentStore store)
     {
         using var read = store.OpenAsyncSession();
-        return await read.LoadAsync<PullRequestFeedback>(PullRequestFeedback.DocumentId(RepoId, Pr));
+        return await read.LoadAsync<PullRequestFeedback>(PullRequestFeedback.DocumentId(EForgeProvider.GitHub, RepoId, Pr));
     }
 
     [Fact]

@@ -53,7 +53,7 @@ public class PublishFeedbackRecipientGuardTests : CoverageRavenTest
         return services.BuildServiceProvider().GetRequiredService<PublishFeedbackRecipient>();
     }
 
-    private static string BuildId => Build.DocumentId(RepoId, Sha, 1, 1);
+    private static string BuildId => Build.DocumentId(EForgeProvider.GitHub, RepoId, Sha, 1, 1);
 
     /// <summary>
     /// Seeds a commit, its repository, and a build in the given status. <paramref name="account"/>
@@ -70,7 +70,7 @@ public class PublishFeedbackRecipientGuardTests : CoverageRavenTest
                 GitHubId = 55,
                 Login = "acme",
                 InstallationId = withInstallation ? 9001 : null,
-            }, Account.DocumentId(55));
+            }, Account.DocumentId(EForgeProvider.GitHub, 55));
         }
 
         await session.StoreAsync(new Repository
@@ -79,15 +79,15 @@ public class PublishFeedbackRecipientGuardTests : CoverageRavenTest
             Name = "widget",
             FullName = "acme/widget",
             OwnerLogin = "acme",
-            Account = withAccount ? Account.DocumentId(55) : null,
+            Account = withAccount ? Account.DocumentId(EForgeProvider.GitHub, 55) : null,
             DefaultBranch = "main",
-        }, Repository.DocumentId(RepoId));
+        }, Repository.DocumentId(EForgeProvider.GitHub, RepoId));
 
-        var commitId = Commit.DocumentId(RepoId, Sha);
+        var commitId = Commit.DocumentId(EForgeProvider.GitHub, RepoId, Sha);
         await session.StoreAsync(new Commit
         {
             Sha = Sha,
-            Repository = Repository.DocumentId(RepoId),
+            Repository = Repository.DocumentId(EForgeProvider.GitHub, RepoId),
             FirstSeenAtUtc = DateTimeOffset.UtcNow,
         }, commitId);
 
@@ -135,7 +135,7 @@ public class PublishFeedbackRecipientGuardTests : CoverageRavenTest
         // Must not throw: the build can be deleted between queueing and processing, and a recipient
         // that threw would retry until it dead-lettered.
         await CreateRecipient(session).HandleAsync(
-            new PublishFeedbackMessage { BuildId = Build.DocumentId(999999, Sha, 1, 1) });
+            new PublishFeedbackMessage { BuildId = Build.DocumentId(EForgeProvider.GitHub, 999999, Sha, 1, 1) });
     }
 
     /// <summary>

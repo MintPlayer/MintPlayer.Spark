@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using System.Text;
 using CodeCoverage.Entities;
 using CodeCoverage.Ingestion;
@@ -27,9 +28,9 @@ public class CrossRunAssemblyTests : CoverageRavenTest
 {
     private const long RepoId = 7;
     private const string Sha = "abc";
-    private static readonly string CommitId = Commit.DocumentId(RepoId, Sha);
-    private static readonly string Build1 = Build.DocumentId(RepoId, Sha, runId: 1, runAttempt: 1);
-    private static readonly string Build2 = Build.DocumentId(RepoId, Sha, runId: 2, runAttempt: 1);
+    private static readonly string CommitId = Commit.DocumentId(EForgeProvider.GitHub, RepoId, Sha);
+    private static readonly string Build1 = Build.DocumentId(EForgeProvider.GitHub, RepoId, Sha, runId: 1, runAttempt: 1);
+    private static readonly string Build2 = Build.DocumentId(EForgeProvider.GitHub, RepoId, Sha, runId: 2, runAttempt: 1);
 
     // Report A: src/a.cs, 3 coverable lines, 2 covered.
     private const string ReportA = "SF:/w/src/a.cs\nDA:1,1\nDA:2,1\nDA:3,0\nend_of_record\n";

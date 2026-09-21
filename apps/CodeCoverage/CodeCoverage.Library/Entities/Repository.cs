@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.LookupReferences;
 using MintPlayer.Spark.Abstractions;
 
@@ -20,6 +21,22 @@ public class Repository
     /// <summary>GitHub's numeric id for this repository.</summary>
     /// <remarks>Stable across renames and transfers.</remarks>
     public long GitHubId { get; set; }
+
+    /// <summary>
+    /// The forge that hosts this repository. Set on every document by the M6 re-key.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ This is what replaces <c>ForgeIntegrationResolver.ProviderOf</c>, which returned
+    /// <see cref="EForgeProvider.GitHub"/> unconditionally as an explicit placeholder until M6.
+    /// <para>
+    /// [IgnoreForIndex] because index membership is opt-out: without it this lands in VRepository
+    /// and synchronize adds a column to the /spark repository grid, which security.json grants to
+    /// Everyone. It is a routing discriminator, not something the grid is about — and a guard test
+    /// caught it appearing there, which is the guard working.
+    /// </para>
+    /// </remarks>
+    [IgnoreForIndex]
+    public EForgeProvider Provider { get; set; } = EForgeProvider.GitHub;
 
     /// <summary>The repository name without the owner, e.g. <c>MintPlayer.Spark</c>.</summary>
     public string Name { get; set; } = string.Empty;
@@ -188,5 +205,11 @@ public class Repository
     /// <remarks>From the newest finalized default-branch build.</remarks>
     public DateTime? LatestCoverageAtUtc { get; set; }
 
-    public static string DocumentId(long gitHubId) => $"Repositories/{gitHubId}";
+    /// <summary><c>Repositories/{provider}/{repositoryId}</c>.</summary>
+    /// <remarks>
+    /// The provider segment is required because a numeric repository id is only unique
+    /// <em>within</em> a forge (D25, and test A2 pins exactly this collision).
+    /// </remarks>
+    public static string DocumentId(EForgeProvider provider, long repositoryId)
+        => $"Repositories/{provider.ToCanonicalString()}/{repositoryId}";
 }

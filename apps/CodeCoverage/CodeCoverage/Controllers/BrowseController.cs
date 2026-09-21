@@ -255,13 +255,13 @@ public partial class BrowseController : ControllerBase
         var repository = await ResolveVisibleRepository(owner, name, cancellationToken);
         if (repository is null) return NotFound();
 
-        var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.GitHubId, sha), cancellationToken);
+        var commit = await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, sha), cancellationToken);
         if (commit is null) return NotFound();
 
         var assembly = await session.LoadAsync<CommitAssembly>(CommitAssembly.DocumentId(commit.Id!), cancellationToken);
 
         var builds = new List<Build>();
-        var buildsPrefix = $"{Commit.DocumentId(repository.GitHubId, sha)}/builds/";
+        var buildsPrefix = $"{Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, sha)}/builds/";
         await using (var stream = await session.Advanced.StreamAsync<Build>(
             startsWith: buildsPrefix, token: cancellationToken))
         {
@@ -326,7 +326,7 @@ public partial class BrowseController : ControllerBase
         var repository = await ResolveVisibleRepository(owner, name, cancellationToken);
         if (repository is null) return NotFound();
 
-        var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.GitHubId, sha), cancellationToken);
+        var commit = await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, sha), cancellationToken);
         if (commit?.LatestBuildId is null) return NotFound();
         var source = await CoverageSourceAsync(commit, cancellationToken);
 
@@ -406,7 +406,7 @@ public partial class BrowseController : ControllerBase
         var repository = await ResolveVisibleRepository(owner, name, cancellationToken);
         if (repository is null) return NotFound();
 
-        var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.GitHubId, sha), cancellationToken);
+        var commit = await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, sha), cancellationToken);
         if (commit?.LatestBuildId is null) return NotFound();
 
         var files = await LoadTreeSummaries(await CoverageSourceAsync(commit, cancellationToken), cancellationToken);
@@ -465,7 +465,7 @@ public partial class BrowseController : ControllerBase
         var repository = await ResolveVisibleRepository(owner, name, cancellationToken);
         if (repository is null) return NotFound();
 
-        var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.GitHubId, sha), cancellationToken);
+        var commit = await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, sha), cancellationToken);
         if (commit?.LatestBuildId is null) return NotFound();
 
         var fileCoverage = await session.LoadAsync<FileCoverage>(

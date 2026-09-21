@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
@@ -99,7 +100,7 @@ public static class ActionDogfoodHarness
             OwnerLogin = ownerLogin,
             IsPrivate = false,
             DefaultBranch = "master",
-        }, Repository.DocumentId(repoId));
+        }, Repository.DocumentId(EForgeProvider.GitHub, repoId));
 
         await session.StoreAsync(new ApiToken
         {

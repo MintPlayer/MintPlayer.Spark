@@ -56,7 +56,7 @@ public class RepoSettingsControllerTests : CoverageRavenTest
             Name = Name,
             FullName = $"{Owner}/{Name}",
             OwnerLogin = Owner,
-        }, Repository.DocumentId(RepoId));
+        }, Repository.DocumentId(EForgeProvider.GitHub, RepoId));
         await session.SaveChangesAsync();
     }
 
@@ -92,7 +92,7 @@ public class RepoSettingsControllerTests : CoverageRavenTest
             Assert.IsType<OkObjectResult>((await controller.RotateBadgeToken(Owner, Name, default)).Result);
 
             using var read = store.OpenAsyncSession();
-            first = (await read.LoadAsync<Repository>(Repository.DocumentId(RepoId)))!.BadgeToken;
+            first = (await read.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!.BadgeToken;
         }
 
         Assert.False(string.IsNullOrWhiteSpace(first));
@@ -103,7 +103,7 @@ public class RepoSettingsControllerTests : CoverageRavenTest
             await controller.RotateBadgeToken(Owner, Name, default);
 
             using var read = store.OpenAsyncSession();
-            second = (await read.LoadAsync<Repository>(Repository.DocumentId(RepoId)))!.BadgeToken;
+            second = (await read.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!.BadgeToken;
         }
 
         // Rotation must actually rotate: the previous badge URL has to stop working, which is the

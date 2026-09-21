@@ -127,7 +127,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             (evt.RepositoriesAdded ?? []).Select(r => (r.Id, r.Name, r.FullName, r.Private)), account, ct);
 
         var removedIds = (evt.RepositoriesRemoved ?? [])
-            .Select(r => Repository.DocumentId(r.Id))
+            .Select(r => Repository.DocumentId(EForgeProvider.GitHub, r.Id))
             .ToArray();
         if (removedIds.Length > 0)
         {
@@ -187,7 +187,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             // is still ours and someone may still be reading a report through a link. It stops
             // being advertised; the owner decides whether the data goes, through the explicit
             // delete action.
-            var existing = await session.LoadAsync<Repository>(Repository.DocumentId(ghRepo.Id), ct);
+            var existing = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, ghRepo.Id), ct);
             if (existing is not null)
                 Disconnect(existing, DisconnectedReasons.DeletedOnGitHub);
             return;
@@ -203,7 +203,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
 
         // Before the upsert overwrites it: the name we knew this repository by is the one that is
         // baked into published badge URLs, and a rename or transfer is the moment to remember it.
-        var previous = await session.LoadAsync<Repository>(Repository.DocumentId(ghRepo.Id), ct);
+        var previous = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, ghRepo.Id), ct);
         if (evt.Action is "renamed" or "transferred")
             previous?.RememberPreviousFullName(ghRepo.FullName);
 
@@ -277,7 +277,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         await messageBus.BroadcastAsync(new ForgeWebhookMessage<OwnerRenamed>(
             EForgeProvider.GitHub,
             new OwnerRenamed(
-                AccountId: account.Id ?? Account.DocumentId(accountId),
+                AccountId: account.Id ?? Account.DocumentId(EForgeProvider.GitHub, accountId),
                 NewLogin: login,
                 NewAvatarUrl: ghAccount.TryGetProperty("avatar_url", out var avatarElement)
                     ? avatarElement.GetString()
@@ -324,7 +324,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             // here would rewrite Repository.Account from the payload — which silently re-points a
             // repository at a different account and loses the delete-branch policy it was
             // inheriting. An unknown repository has nothing to retain and nothing to delete.
-            var mergedRepository = await session.LoadAsync<Repository>(Repository.DocumentId(evt.Repository.Id), ct);
+            var mergedRepository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, evt.Repository.Id), ct);
             if (mergedRepository is null) return;
 
             var head = evt.PullRequest.Head.Repo;
@@ -367,7 +367,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
 
     private async Task<Account> GetOrCreateAccount(long gitHubId, CancellationToken ct)
     {
-        var id = Account.DocumentId(gitHubId);
+        var id = Account.DocumentId(EForgeProvider.GitHub, gitHubId);
         var account = await session.LoadAsync<Account>(id, ct);
         if (account is null)
         {
@@ -379,7 +379,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
 
     private async Task<Repository> UpsertRepository(long gitHubId, string name, string fullName, bool isPrivate, Account account, CancellationToken ct)
     {
-        var id = Repository.DocumentId(gitHubId);
+        var id = Repository.DocumentId(EForgeProvider.GitHub, gitHubId);
         var repository = await session.LoadAsync<Repository>(id, ct);
         if (repository is null)
         {
@@ -402,11 +402,11 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         if (items.Count == 0) return;
 
         var loaded = await session.LoadAsync<Repository>(
-            items.Select(r => Repository.DocumentId(r.GitHubId)), ct);
+            items.Select(r => Repository.DocumentId(EForgeProvider.GitHub, r.GitHubId)), ct);
 
         foreach (var item in items)
         {
-            var id = Repository.DocumentId(item.GitHubId);
+            var id = Repository.DocumentId(EForgeProvider.GitHub, item.GitHubId);
             var repository = loaded.GetValueOrDefault(id);
             if (repository is null)
             {
@@ -482,11 +482,11 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
 
     private async Task<Commit> GetOrCreateCommit(long repoGitHubId, string sha, CancellationToken ct)
     {
-        var id = Commit.DocumentId(repoGitHubId, sha);
+        var id = Commit.DocumentId(EForgeProvider.GitHub, repoGitHubId, sha);
         var commit = await session.LoadAsync<Commit>(id, ct);
         if (commit is null)
         {
-            commit = new Commit { Sha = sha, Repository = Repository.DocumentId(repoGitHubId), FirstSeenAtUtc = DateTimeOffset.UtcNow };
+            commit = new Commit { Sha = sha, Repository = Repository.DocumentId(EForgeProvider.GitHub, repoGitHubId), FirstSeenAtUtc = DateTimeOffset.UtcNow };
             await session.StoreAsync(commit, id, ct);
         }
         return commit;

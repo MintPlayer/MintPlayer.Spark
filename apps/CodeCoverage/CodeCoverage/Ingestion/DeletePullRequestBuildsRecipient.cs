@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using CodeCoverage.Indexes;
 using MintPlayer.Spark;
@@ -28,8 +29,8 @@ public partial class DeletePullRequestBuildsRecipient : IRecipient<DeletePullReq
     {
         using var requestScope = session.IgnoreMaxRequests(logger: logger);
 
-        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(message.RepositoryGitHubId), cancellationToken);
-        var repositoryId = repository?.Id ?? Repository.DocumentId(message.RepositoryGitHubId);
+        var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, message.RepositoryGitHubId), cancellationToken);
+        var repositoryId = repository?.Id ?? Repository.DocumentId(EForgeProvider.GitHub, message.RepositoryGitHubId);
 
         var commits = await session.Query<Commits_ByRepository.Result, Commits_ByRepository>()
             .Where(r => r.Repository == repositoryId && r.PullRequestNumber == message.PullRequestNumber)
