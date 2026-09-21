@@ -110,7 +110,7 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
         {
             var worker = new MessageSubscriptionWorker(
                 queueName, documentStore, serviceProvider, options, loggerFactory);
-            perQueueWorkers.Add(worker);
+            lock (perQueueWorkers) perQueueWorkers.Add(worker);
             logger.LogInformation("Starting subscription worker for queue '{QueueName}'", queueName);
             await worker.StartAsync(leaseLifetime.Token);
         }
@@ -123,23 +123,36 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
     /// </summary>
     private async Task StopMessagingAsync(CancellationToken cancellationToken)
     {
+        // ⚠ This method has TWO callers that can run at the same time: the lease-lost branch of
+        // ExecuteAsync, and StopAsync when the host shuts down. Both used to test a field for null,
+        // AWAIT, and then dereference it - so whichever arrived second dereferenced what the first
+        // had already nulled, and host shutdown threw NullReferenceException out of the logging
+        // pipeline. Each field is therefore taken with Interlocked.Exchange: whoever wins owns the
+        // object and disposes it exactly once, and the loser sees null and skips.
+
         // 1. Stop feeding. Nothing new gets claimed from here on.
-        if (feeder is not null)
+        if (Interlocked.Exchange(ref feeder, null) is { } activeFeeder)
         {
-            try { await feeder.StopAsync(cancellationToken); }
-            catch (Exception ex) { logger.LogWarning(ex, "Error stopping the message feeder"); }
-            feeder.Dispose();
-            feeder = null;
             feederTask = null;
+            try { await activeFeeder.StopAsync(cancellationToken); }
+            catch (Exception ex) { logger.LogWarning(ex, "Error stopping the message feeder"); }
+            activeFeeder.Dispose();
         }
 
-        foreach (var worker in perQueueWorkers)
+        // Same hazard, and a List is not safe to enumerate while the other caller clears it.
+        MessageSubscriptionWorker[] workers;
+        lock (perQueueWorkers)
+        {
+            workers = [.. perQueueWorkers];
+            perQueueWorkers.Clear();
+        }
+
+        foreach (var worker in workers)
         {
             try { await worker.StopAsync(cancellationToken); }
             catch (Exception ex) { logger.LogWarning(ex, "Error stopping a per-queue subscription worker"); }
             worker.Dispose();
         }
-        perQueueWorkers.Clear();
 
         // 2. Drain in-flight messages. A message still running keeps its claim renewed, so if the
         //    drain times out it is reclaimed by the sweeper rather than lost.
@@ -149,11 +162,10 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
         try { await leaseManager.ReleaseAsync(CancellationToken.None); }
         catch (Exception ex) { logger.LogWarning(ex, "Error releasing the messaging lease"); }
 
-        if (leaseLifetime is not null)
+        if (Interlocked.Exchange(ref leaseLifetime, null) is { } lifetime)
         {
-            await leaseLifetime.CancelAsync();
-            leaseLifetime.Dispose();
-            leaseLifetime = null;
+            await lifetime.CancelAsync();
+            lifetime.Dispose();
         }
     }
 

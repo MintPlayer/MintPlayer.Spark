@@ -1696,13 +1696,48 @@ looks exactly like one.
 - The nine `bi` icon usages the owner flagged are **still broken** and are not covered by any test,
   because nothing asserts on rendered icons.
 
-### Version bump: none needed, and that is deliberate
+### Version bump: `10.0.0-preview.83` → `.84`, and it is required
 
-The CI gate (`pull-request.yml`) fires on changes under `libs/**`. This branch changes
-`apps/CodeCoverage`, `docs/code-coverage` and one file under `tests/` — **zero files under
-`libs/`** — so the gate does not fire and no package version moves. Bumping anyway would burn a
-preview version for a release that contains nothing, and per `CLAUDE.md` a burned version cannot be
-reused.
+⚠ **This section previously said "none needed, and that is deliberate", on the grounds that the
+branch touched zero files under `libs/`. That stopped being true and the note was not updated** —
+which matters, because it is the note somebody reads immediately before merging. The branch now
+changes ~20 files under `libs/`, including framework code every app consumes:
+
+| | |
+|---|---|
+| `libs/authorization/…` | the whole link-confirmation mechanism (M4) |
+| `libs/migrations/SparkMigrationRunner.cs` | the lock-wait budget |
+| `libs/spark/…/Services/ModelLoader.cs` | `ResolveEntityType` name fallback (M7a) |
+
+The `libs/**` CI gate therefore **does** fire, and the bump is already in place. The major digit
+stays at `10` because the targeted platform has not moved — per `CLAUDE.md`, an API change inside a
+.NET generation is never a reason to move it.
+
+⚠ **Merging publishes these packages.** CI publishes on push to `master`, so the moment this lands
+the framework changes above are public on nuget.org under `preview.84` and cannot be unpublished
+into reuse.
+
+### ⚠ Merging is deploying — and deploying is the irreversible step
+
+`code-coverage-deploy.yml` triggers on push to `master` under `apps/CodeCoverage/**`. So squashing
+this PR does not merely land code: it builds the image, ships it to the VPS, and the container runs
+`M_202609210900_ForgeQualifiedDocumentIds` against **production** before it serves a request. There
+is no manual gate between the merge button and the re-key of ~224,000 live documents, and D22 keeps
+no backward-compatible path.
+
+**Therefore, immediately before the merge, not the evening before:**
+
+| | |
+|---|---|
+| Fresh backup | the newest one in `~/Documents/coverage-raven-backups/` is from the morning of 2026-09-21; production has taken uploads since |
+| Watch the first container start | the migration blocks before serving, and its own failure mode is a restart loop, so "the site is slow to come back" and "the migration is failing" look identical from outside |
+| `start_period: 600s` | already raised in `docker-compose.yml`; the healthcheck must not mark the container unhealthy while it is doing exactly what it is supposed to |
+
+**One cross-repository item, which the one-PR rule would normally have carried along:**
+`MintPlayer/mintplayer-ng-bootstrap`'s README badge still uses the two-segment form
+(`/badge/MintPlayer/mintplayer-ng-bootstrap.svg`). D13 removes that route rather than aliasing it,
+so that badge breaks **at deploy**, not at merge. It must be updated in that repository as part of
+the same operation.
 
 ---
 
