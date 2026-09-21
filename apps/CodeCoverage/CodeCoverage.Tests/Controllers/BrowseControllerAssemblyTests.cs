@@ -90,7 +90,7 @@ public class BrowseControllerAssemblyTests : CoverageRavenTest
         var controller = CreateController(session);
 
         var tree = (BrowseController.TreeResponse)((OkObjectResult)
-            (await controller.GetTree("owner", "repo", Sha, path: "src", flag: null, CancellationToken.None)).Result!).Value!;
+            (await controller.GetTree("github", "owner", "repo", Sha, path: "src", flag: null, CancellationToken.None)).Result!).Value!;
         tree.BuildId.Should().Be(assemblyId);
         var entries = tree.Entries.ToDictionary(e => e.Name);
         entries.Should().HaveCount(2);
@@ -98,7 +98,7 @@ public class BrowseControllerAssemblyTests : CoverageRavenTest
         entries["b.cs"].Origin.Should().Be(FileOrigin.Carried);
         entries["b.cs"].CarriedFromSha.Should().Be("base");
 
-        var file = (await controller.GetFile("owner", "repo", Sha, "src/b.cs", CancellationToken.None)).Result;
+        var file = (await controller.GetFile("github", "owner", "repo", Sha, "src/b.cs", CancellationToken.None)).Result;
         file.Should().BeOfType<OkObjectResult>();
     }
 
@@ -127,7 +127,7 @@ public class BrowseControllerAssemblyTests : CoverageRavenTest
 
         using var session = store.OpenAsyncSession();
         var tree = (BrowseController.TreeResponse)((OkObjectResult)
-            (await CreateController(session).GetTree("owner", "repo", Sha, path: null, flag: null, CancellationToken.None)).Result!).Value!;
+            (await CreateController(session).GetTree("github", "owner", "repo", Sha, path: null, flag: null, CancellationToken.None)).Result!).Value!;
 
         tree.BuildId.Should().Be(buildId);
         tree.Entries.Single().Origin.Should().BeNull();

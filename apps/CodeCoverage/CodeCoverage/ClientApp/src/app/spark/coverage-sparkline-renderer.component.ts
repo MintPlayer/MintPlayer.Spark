@@ -41,14 +41,21 @@ export class CoverageSparklineRendererComponent implements SparkAttributeColumnR
     effect(async () => {
       const fullName = this.fullName();
       const owner = fullName.split('/')[0];
-      if (!owner) {
+      // An attribute renderer sees only its own value, so the forge has to be handed to it
+      // through the model's type hints. Absent, this renders nothing rather than assuming a
+      // forge: a missing sparkline is a visual gap, while guessing would show one owner's
+      // coverage against a same-named owner on another forge. ⚠️ M7 leaves this ungated
+      // because the repositories grid is not provider-scoped yet - that is D4's sidebar work.
+      const provider = this.options()?.['provider'];
+      if (!owner || typeof provider !== 'string' || !provider) {
         this.points.set(null);
         return;
       }
-      let batch = sparklinesByOwner.get(owner);
+      const cacheKey = provider + ':' + owner;
+      let batch = sparklinesByOwner.get(cacheKey);
       if (!batch) {
-        batch = this.browse.getSparklines(owner).catch(() => ({} as Record<string, number[]>));
-        sparklinesByOwner.set(owner, batch);
+        batch = this.browse.getSparklines(provider, owner).catch(() => ({} as Record<string, number[]>));
+        sparklinesByOwner.set(cacheKey, batch);
       }
       const lines = await batch;
       this.points.set(lines[fullName] ?? null);

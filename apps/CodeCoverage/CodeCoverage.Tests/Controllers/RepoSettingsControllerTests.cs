@@ -74,7 +74,7 @@ public class RepoSettingsControllerTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var controller = CreateController(session, new TestGitHubAccessService("someone-else"));
 
-        Assert.IsType<NotFoundResult>((await controller.RotateBadgeToken(Owner, Name, default)).Result);
+        Assert.IsType<NotFoundResult>((await controller.RotateBadgeToken("github", Owner, Name, default)).Result);
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public class RepoSettingsControllerTests : CoverageRavenTest
         using (var session = store.OpenAsyncSession())
         {
             var controller = CreateController(session, new TestGitHubAccessService(Owner));
-            Assert.IsType<OkObjectResult>((await controller.RotateBadgeToken(Owner, Name, default)).Result);
+            Assert.IsType<OkObjectResult>((await controller.RotateBadgeToken("github", Owner, Name, default)).Result);
 
             using var read = store.OpenAsyncSession();
             first = (await read.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!.BadgeToken;
@@ -100,7 +100,7 @@ public class RepoSettingsControllerTests : CoverageRavenTest
         using (var session = store.OpenAsyncSession())
         {
             var controller = CreateController(session, new TestGitHubAccessService(Owner));
-            await controller.RotateBadgeToken(Owner, Name, default);
+            await controller.RotateBadgeToken("github", Owner, Name, default);
 
             using var read = store.OpenAsyncSession();
             second = (await read.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId)))!.BadgeToken;

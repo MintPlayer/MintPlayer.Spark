@@ -29,19 +29,33 @@ export const routes: Routes = [
       // Disabled — so withLocalLogin()/withRegistration() would mount pages
       // posting to endpoints that aren't mapped.
       ...sparkAuthRoutes(withExternalLogin(githubProvider())),
-      // Accounts, repositories and commits ARE the generic Spark detail pages;
-      // these shareable URLs (README badge markdown links to /r/{owner}/{name},
-      // and /a/{login} is what the accounts grid links to) resolve the document
-      // id and forward there.
-      { path: 'a/:login', canActivate: [accountRedirectGuard], children: [] },
-      { path: 'r/:owner/:repo', canActivate: [repositoryRedirectGuard], children: [] },
-      { path: 'r/:owner/:repo/c/:sha', canActivate: [commitRedirectGuard], children: [] },
-      // The code viewer has no persistent object of its own, so it stays a page.
-      { path: 'r/:owner/:repo/c/:sha/f', loadComponent: () => import('./pages/file/file.component') },
       // poDetail override: the generic detail page plus the app panels that
       // can't be expressed as attribute renderers (badge, trend chart, CI
       // setup, the commit file tree).
-      ...sparkRoutes({ poDetail: () => import('./spark/po-detail-page.component') })
+      //
+      // ⚠️ DECLARED BEFORE the provider-scoped routes below, and the order is the whole
+      // collision story. Those routes start with a :provider parameter, which matches any
+      // first segment — including 'po'. Declared first, `/po/r/123/edit` would bind
+      // provider='po' and shadow the persistent-object editor. Declared here, every Spark
+      // route is tried first, and none of them can match a forge-scoped URL because each
+      // needs a literal first segment ('po', 'query', or an auth path). So the ambiguity
+      // resolves by construction rather than by a route constraint, a hardcoded forge list
+      // or a guard test — none of which would survive someone adding a forge and forgetting.
+      ...sparkRoutes({ poDetail: () => import('./spark/po-detail-page.component') }),
+      // Accounts, repositories and commits ARE the generic Spark detail pages; these
+      // shareable URLs resolve the document id and forward there. README badge markdown
+      // links to /{provider}/r/{owner}/{name}, and /{provider}/a/{login} is what the
+      // accounts grid links to.
+      //
+      // The forge is the outermost segment because that is how the URL reads — "on GitHub,
+      // this repository" — and it always precedes the owner (D27). :provider is a plain
+      // parameter: the canonical spellings live in EForgeProvider on the server, and
+      // repeating them here would mean a new forge needed routes added by hand.
+      { path: ':provider/a/:login', canActivate: [accountRedirectGuard], children: [] },
+      { path: ':provider/r/:owner/:repo', canActivate: [repositoryRedirectGuard], children: [] },
+      { path: ':provider/r/:owner/:repo/c/:sha', canActivate: [commitRedirectGuard], children: [] },
+      // The code viewer has no persistent object of its own, so it stays a page.
+      { path: ':provider/r/:owner/:repo/c/:sha/f', loadComponent: () => import('./pages/file/file.component') }
     ]
   }
 ];

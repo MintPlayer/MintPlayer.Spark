@@ -35,6 +35,8 @@ import { BrowseService, HistoryPoint } from '../../services/browse.service';
 export class RepoTrendPanelComponent {
   private readonly browse = inject(BrowseService);
 
+  /** Canonical forge spelling, e.g. "github". Sourced from the PO's OwnerKey. */
+  provider = input.required<string>();
   owner = input.required<string>();
   name = input.required<string>();
   /** '' = the repository's default branch, which the server resolves. */
@@ -63,7 +65,7 @@ export class RepoTrendPanelComponent {
       const name = this.name();
       const branch = this.branch();
       try {
-        this.history.set(await this.browse.getHistory(owner, name, branch || undefined));
+        this.history.set(await this.browse.getHistory(this.provider(), owner, name, branch || undefined));
       } catch {
         this.history.set([]);
       }

@@ -65,6 +65,8 @@ import { BrowseService, RepoInfo } from '../../services/browse.service';
 export class RepoBadgePanelComponent {
   private readonly browse = inject(BrowseService);
 
+  /** Canonical forge spelling, e.g. "github". Sourced from the PO's OwnerKey. */
+  provider = input.required<string>();
   owner = input.required<string>();
   name = input.required<string>();
 
@@ -95,15 +97,15 @@ export class RepoBadgePanelComponent {
   readonly badgeUrl = computed(() => {
     const r = this.repo();
     if (!r) return '';
-    return `/badge/${r.owner}/${r.name}.svg${this.badgeQuery(r)}`;
+    return `/badge/${this.provider()}/${r.owner}/${r.name}.svg${this.badgeQuery(r)}`;
   });
 
   readonly badgeMarkdown = computed(() => {
     const r = this.repo();
     if (!r) return '';
     const origin = r.baseUrl || location.origin;
-    const url = `${origin}/badge/${r.owner}/${r.name}.svg${this.badgeQuery(r)}`;
-    return `[![Coverage](${url})](${origin}/r/${r.owner}/${r.name})`;
+    const url = `${origin}/badge/${this.provider()}/${r.owner}/${r.name}.svg${this.badgeQuery(r)}`;
+    return `[![Coverage](${url})](${origin}/${this.provider()}/r/${r.owner}/${r.name})`;
   });
 
   constructor() {
@@ -111,7 +113,7 @@ export class RepoBadgePanelComponent {
       const owner = this.owner();
       const name = this.name();
       try {
-        this.repo.set(await this.browse.getRepo(owner, name));
+        this.repo.set(await this.browse.getRepo(this.provider(), owner, name));
       } catch {
         this.repo.set(null);
       }
@@ -119,7 +121,7 @@ export class RepoBadgePanelComponent {
       // Independent of the repo fetch: a failure here costs the picker, not
       // the badge, so it must not null out the panel.
       try {
-        this.branches.set(await this.browse.getBranches(owner, name));
+        this.branches.set(await this.browse.getBranches(this.provider(), owner, name));
       } catch {
         this.branches.set([]);
       }
@@ -137,7 +139,7 @@ export class RepoBadgePanelComponent {
   async rotateBadgeToken(): Promise<void> {
     const r = this.repo();
     if (!r) return;
-    const result = await this.browse.rotateBadgeToken(r.owner, r.name);
+    const result = await this.browse.rotateBadgeToken(this.provider(), r.owner, r.name);
     this.repo.set({ ...r, badgeToken: result.badgeToken });
   }
 }

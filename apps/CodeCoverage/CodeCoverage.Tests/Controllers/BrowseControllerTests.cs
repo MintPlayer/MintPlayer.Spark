@@ -92,7 +92,7 @@ public class BrowseControllerTests : CoverageRavenTest
         WaitForIndexing(store); // ResolveVisibleRepository queries by FullName
 
         using var session = store.OpenAsyncSession();
-        var result = await CreateController(session).GetCommit("owner", "repo", sha, CancellationToken.None);
+        var result = await CreateController(session).GetCommit("github", "owner", "repo", sha, CancellationToken.None);
 
         var payload = JsonDocument.Parse(JsonSerializer.Serialize(((OkObjectResult)result.Result!).Value));
         var builds = payload.RootElement.GetProperty("Builds").EnumerateArray().ToList();
@@ -151,14 +151,14 @@ public class BrowseControllerTests : CoverageRavenTest
         var controller = CreateController(session);
 
         var root = (BrowseController.TreeResponse)((OkObjectResult)
-            (await controller.GetTree("owner", "repo", sha, path: null, flag: null, CancellationToken.None)).Result!).Value!;
+            (await controller.GetTree("github", "owner", "repo", sha, path: null, flag: null, CancellationToken.None)).Result!).Value!;
         root.UnmatchedFiles.Should().HaveCount(50, "the sample stays capped");
         root.UnmatchedTotal.Should().Be(314, "the real count must be disclosed");
 
         // Subfolder responses carry no unmatched info at all today; the total
         // must agree with the (empty) sample rather than leak the root count.
         var sub = (BrowseController.TreeResponse)((OkObjectResult)
-            (await controller.GetTree("owner", "repo", sha, path: "src", flag: null, CancellationToken.None)).Result!).Value!;
+            (await controller.GetTree("github", "owner", "repo", sha, path: "src", flag: null, CancellationToken.None)).Result!).Value!;
         sub.UnmatchedFiles.Should().BeEmpty();
         sub.UnmatchedTotal.Should().Be(0);
     }
@@ -190,7 +190,7 @@ public class BrowseControllerTests : CoverageRavenTest
         WaitForIndexing(store);
 
         using var session = store.OpenAsyncSession();
-        var result = await CreateController(session).GetHistory($"owner", $"repo{repoId}", branch: null, take: 100, CancellationToken.None);
+        var result = await CreateController(session).GetHistory("github", $"owner", $"repo{repoId}", branch: null, take: 100, CancellationToken.None);
         return ((OkObjectResult)result.Result!).Value is IEnumerable<BrowseController.HistoryPoint> points
             ? points.ToList()
             : throw new InvalidOperationException("unexpected payload");
@@ -264,7 +264,7 @@ public class BrowseControllerTests : CoverageRavenTest
         WaitForIndexing(store);
 
         using var session = store.OpenAsyncSession();
-        var result = await CreateController(session).GetSparklines("sparks", CancellationToken.None);
+        var result = await CreateController(session).GetSparklines("github", "sparks", CancellationToken.None);
         var series = (Dictionary<string, double[]>)((OkObjectResult)result.Result!).Value!;
 
         series["sparks/repo81"].Should().Equal([80.0], "the feature branch is not part of this repo's trend");

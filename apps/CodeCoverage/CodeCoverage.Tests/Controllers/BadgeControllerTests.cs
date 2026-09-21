@@ -106,7 +106,7 @@ public class BadgeControllerTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var controller = CreateController(session);
 
-        var svg = await Svg(controller, controller.Get("nobody", "nothing", null, null, null, null, default));
+        var svg = await Svg(controller, controller.Get("github", "nobody", "nothing", null, null, null, null, default));
         svg.Should().Contain("unknown");
     }
 
@@ -119,7 +119,7 @@ public class BadgeControllerTests : CoverageRavenTest
 
         using var session = store.OpenAsyncSession();
         var controller = CreateController(session);
-        var svg = await Svg(controller, controller.Get("owner", "repo", null, null, null, null, default));
+        var svg = await Svg(controller, controller.Get("github", "owner", "repo", null, null, null, null, default));
         svg.Should().Contain("unknown");
         svg.Should().NotContain("80%");
     }
@@ -133,7 +133,7 @@ public class BadgeControllerTests : CoverageRavenTest
 
         using var session = store.OpenAsyncSession();
         var controller = CreateController(session);
-        var svg = await Svg(controller, controller.Get("owner", "repo", "deadbeef", null, null, null, default));
+        var svg = await Svg(controller, controller.Get("github", "owner", "repo", "deadbeef", null, null, null, default));
         svg.Should().Contain("unknown");
     }
 
@@ -146,7 +146,7 @@ public class BadgeControllerTests : CoverageRavenTest
 
         using var session = store.OpenAsyncSession();
         var controller = CreateController(session);
-        var svg = await Svg(controller, controller.Get("owner", "repo", "cafebabe", null, null, null, default));
+        var svg = await Svg(controller, controller.Get("github", "owner", "repo", "cafebabe", null, null, null, default));
         svg.Should().Contain("80%");
     }
 
@@ -165,9 +165,9 @@ public class BadgeControllerTests : CoverageRavenTest
         // silently served Repository.LatestCoverage — measured in production as
         // ?pr=79 returning the default branch's number, which is the worst way
         // for a badge to be wrong: confidently.
-        (await Svg(controller, controller.Get("owner", "repo", null, "no-such-branch", null, null, default)))
+        (await Svg(controller, controller.Get("github", "owner", "repo", null, "no-such-branch", null, null, default)))
             .Should().Contain("unknown");
-        (await Svg(controller, controller.Get("owner", "repo", null, null, 999999, null, default)))
+        (await Svg(controller, controller.Get("github", "owner", "repo", null, null, 999999, null, default)))
             .Should().Contain("unknown");
     }
 
@@ -194,15 +194,15 @@ public class BadgeControllerTests : CoverageRavenTest
             using var session = store.OpenAsyncSession();
 
             var anonymous = CreateController(session);
-            await anonymous.Get("owner", "repo", null, null, null, null, default);
+            await anonymous.Get("github", "owner", "repo", null, null, null, null, default);
             CacheControl(anonymous).Should().Be("public, max-age=300");
 
             var withToken = CreateController(session);
-            await withToken.Get("owner", "repo", "whatever", null, null, null, default);
+            await withToken.Get("github", "owner", "repo", "whatever", null, null, null, default);
             CacheControl(withToken).Should().Be("private, max-age=300");
 
             var withSig = CreateController(session);
-            await withSig.Get("owner", "repo", null, null, 7, "whatever", default);
+            await withSig.Get("github", "owner", "repo", null, null, 7, "whatever", default);
             CacheControl(withSig).Should().Be("private, max-age=300");
         }
     }
@@ -224,8 +224,8 @@ public class BadgeControllerTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
         var controller = CreateController(session);
 
-        var headline = await Svg(controller, controller.Get("owner", "repo", null, null, null, null, default));
-        var branch = await Svg(controller, controller.Get("owner", "repo", null, "main", null, null, default));
+        var headline = await Svg(controller, controller.Get("github", "owner", "repo", null, null, null, null, default));
+        var branch = await Svg(controller, controller.Get("github", "owner", "repo", null, "main", null, null, default));
         headline.Should().Contain("48.7%");
         branch.Should().Contain("48.7%");
     }
@@ -242,7 +242,7 @@ public class BadgeControllerTests : CoverageRavenTest
 
         using var session = store.OpenAsyncSession();
         var controller = CreateController(session);
-        (await Svg(controller, controller.Get("owner", "repo", null, "feature/x", null, null, default)))
+        (await Svg(controller, controller.Get("github", "owner", "repo", null, "feature/x", null, null, default)))
             .Should().Contain("90%");
     }
 
@@ -256,7 +256,7 @@ public class BadgeControllerTests : CoverageRavenTest
 
         using var session = store.OpenAsyncSession();
         var controller = CreateController(session);
-        (await Svg(controller, controller.Get("owner", "repo", null, null, 79, null, default)))
+        (await Svg(controller, controller.Get("github", "owner", "repo", null, null, 79, null, default)))
             .Should().Contain("71%");
     }
 
@@ -276,7 +276,7 @@ public class BadgeControllerTests : CoverageRavenTest
 
         using var session = store.OpenAsyncSession();
         var controller = CreateController(session);
-        (await Svg(controller, controller.Get("owner", "repo", null, "branch-a", 42, null, default)))
+        (await Svg(controller, controller.Get("github", "owner", "repo", null, "branch-a", 42, null, default)))
             .Should().Contain("90%");
     }
 
@@ -296,7 +296,7 @@ public class BadgeControllerTests : CoverageRavenTest
 
         using var session = store.OpenAsyncSession();
         var controller = CreateController(session);
-        var svg = await Svg(controller, controller.Get("owner", "repo", null, "main", null, null, default));
+        var svg = await Svg(controller, controller.Get("github", "owner", "repo", null, "main", null, null, default));
         svg.Should().Contain("80%");
         svg.Should().NotContain("partial");
     }
@@ -311,7 +311,7 @@ public class BadgeControllerTests : CoverageRavenTest
 
         using var session = store.OpenAsyncSession();
         var controller = CreateController(session);
-        var svg = await Svg(controller, controller.Get("owner", "repo", null, "feature/x", null, null, default));
+        var svg = await Svg(controller, controller.Get("github", "owner", "repo", null, "feature/x", null, null, default));
         svg.Should().Contain("12%");
         svg.Should().Contain("coverage (partial)");
     }
@@ -328,7 +328,7 @@ public class BadgeControllerTests : CoverageRavenTest
 
         using var session = store.OpenAsyncSession();
         var controller = CreateController(session);
-        (await Svg(controller, controller.Get("owner", "repo", null, null, null, null, default)))
+        (await Svg(controller, controller.Get("github", "owner", "repo", null, null, null, null, default)))
             .Should().Contain("unknown");
     }
 
@@ -354,7 +354,7 @@ public class BadgeControllerTests : CoverageRavenTest
                 new Dictionary<string, string?> { [BadgePrSignature.KeyConfigurationPath] = SigningKey }).Build(),
             gitHubId: 1, pullRequestNumber: 79);
 
-        (await Svg(controller, controller.Get("owner", "repo", null, null, 79, sig, default)))
+        (await Svg(controller, controller.Get("github", "owner", "repo", null, null, 79, sig, default)))
             .Should().Contain("71%");
     }
 
@@ -378,7 +378,7 @@ public class BadgeControllerTests : CoverageRavenTest
                 new Dictionary<string, string?> { [BadgePrSignature.KeyConfigurationPath] = SigningKey }).Build(),
             gitHubId: 1, pullRequestNumber: 79);
 
-        (await Svg(controller, controller.Get("owner", "repo", null, null, 80, sigFor79, default)))
+        (await Svg(controller, controller.Get("github", "owner", "repo", null, null, 80, sigFor79, default)))
             .Should().Contain("unknown");
     }
 
@@ -392,7 +392,7 @@ public class BadgeControllerTests : CoverageRavenTest
 
         using var session = store.OpenAsyncSession();
         var controller = CreateController(session, withSigningKey: false);
-        (await Svg(controller, controller.Get("owner", "repo", null, null, 79, "anything", default)))
+        (await Svg(controller, controller.Get("github", "owner", "repo", null, null, 79, "anything", default)))
             .Should().Contain("unknown");
     }
 
@@ -413,7 +413,7 @@ public class BadgeControllerTests : CoverageRavenTest
             gitHubId: 1, pullRequestNumber: 79);
 
         // No ?pr=, so there is nothing the signature is scoped to.
-        (await Svg(controller, controller.Get("owner", "repo", null, null, null, sig, default)))
+        (await Svg(controller, controller.Get("github", "owner", "repo", null, null, null, sig, default)))
             .Should().Contain("unknown");
     }
 
@@ -428,13 +428,13 @@ public class BadgeControllerTests : CoverageRavenTest
 
         using var session = store.OpenAsyncSession();
         var first = CreateController(session);
-        await first.Get("owner", "repo", null, null, null, null, default);
+        await first.Get("github", "owner", "repo", null, null, null, null, default);
         var etag = first.Response.Headers.ETag.ToString();
         etag.Should().StartWith("W/\"");
 
         var second = CreateController(session);
         second.Request.Headers.IfNoneMatch = etag;
-        var result = await second.Get("owner", "repo", null, null, null, null, default);
+        var result = await second.Get("github", "owner", "repo", null, null, null, null, default);
         result.Should().BeOfType<StatusCodeResult>().Which.StatusCode.Should().Be(StatusCodes.Status304NotModified);
     }
 
@@ -448,10 +448,10 @@ public class BadgeControllerTests : CoverageRavenTest
 
         using var session = store.OpenAsyncSession();
         var headline = CreateController(session);
-        await headline.Get("owner", "repo", null, null, null, null, default);
+        await headline.Get("github", "owner", "repo", null, null, null, null, default);
 
         var branch = CreateController(session);
-        await branch.Get("owner", "repo", null, "feature/x", null, null, default);
+        await branch.Get("github", "owner", "repo", null, "feature/x", null, null, default);
 
         branch.Response.Headers.ETag.ToString().Should().NotBe(headline.Response.Headers.ETag.ToString());
     }

@@ -165,69 +165,69 @@ export function coveragePercent(summary?: CoverageSummary | null): number | null
 export class BrowseService {
   private readonly http = inject(HttpClient);
 
-  getAccount(login: string): Promise<AccountRef> {
-    return firstValueFrom(this.http.get<AccountRef>(`/api/browse/accounts/${encodeURIComponent(login)}`));
+  getAccount(provider: string, login: string): Promise<AccountRef> {
+    return firstValueFrom(this.http.get<AccountRef>(`/api/browse/accounts/${encodeURIComponent(provider)}/${encodeURIComponent(login)}`));
   }
 
-  getAccountRepos(login: string): Promise<RepoInfo[]> {
-    return firstValueFrom(this.http.get<RepoInfo[]>(`/api/browse/accounts/${encodeURIComponent(login)}/repos`));
+  getAccountRepos(provider: string, login: string): Promise<RepoInfo[]> {
+    return firstValueFrom(this.http.get<RepoInfo[]>(`/api/browse/accounts/${encodeURIComponent(provider)}/${encodeURIComponent(login)}/repos`));
   }
 
-  getRepo(owner: string, name: string): Promise<RepoInfo> {
-    return firstValueFrom(this.http.get<RepoInfo>(`/api/browse/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`));
+  getRepo(provider: string, owner: string, name: string): Promise<RepoInfo> {
+    return firstValueFrom(this.http.get<RepoInfo>(`/api/browse/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`));
   }
 
-  getHistory(owner: string, name: string, branch?: string): Promise<HistoryPoint[]> {
+  getHistory(provider: string, owner: string, name: string, branch?: string): Promise<HistoryPoint[]> {
     let params = new HttpParams();
     if (branch) params = params.set('branch', branch);
     return firstValueFrom(this.http.get<HistoryPoint[]>(
-      `/api/browse/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/history`, { params }));
+      `/api/browse/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/history`, { params }));
   }
 
-  getSparklines(login: string): Promise<Record<string, number[]>> {
+  getSparklines(provider: string, login: string): Promise<Record<string, number[]>> {
     return firstValueFrom(this.http.get<Record<string, number[]>>(
-      `/api/browse/accounts/${encodeURIComponent(login)}/sparklines`));
+      `/api/browse/accounts/${encodeURIComponent(provider)}/${encodeURIComponent(login)}/sparklines`));
   }
 
-  getBranches(owner: string, name: string): Promise<string[]> {
+  getBranches(provider: string, owner: string, name: string): Promise<string[]> {
     return firstValueFrom(this.http.get<string[]>(
-      `/api/browse/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/branches`));
+      `/api/browse/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/branches`));
   }
 
-  getCommits(owner: string, name: string, branch?: string): Promise<CommitInfo[]> {
+  getCommits(provider: string, owner: string, name: string, branch?: string): Promise<CommitInfo[]> {
     let params = new HttpParams();
     if (branch) params = params.set('branch', branch);
     return firstValueFrom(this.http.get<CommitInfo[]>(
-      `/api/browse/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits`, { params }));
+      `/api/browse/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits`, { params }));
   }
 
-  getCommit(owner: string, name: string, sha: string): Promise<CommitDetail> {
+  getCommit(provider: string, owner: string, name: string, sha: string): Promise<CommitDetail> {
     return firstValueFrom(this.http.get<CommitDetail>(
-      `/api/browse/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits/${encodeURIComponent(sha)}`));
+      `/api/browse/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits/${encodeURIComponent(sha)}`));
   }
 
-  getTree(owner: string, name: string, sha: string, path?: string, flag?: string): Promise<TreeResponse> {
+  getTree(provider: string, owner: string, name: string, sha: string, path?: string, flag?: string): Promise<TreeResponse> {
     let params = new HttpParams();
     if (path) params = params.set('path', path);
     if (flag) params = params.set('flag', flag);
     return firstValueFrom(this.http.get<TreeResponse>(
-      `/api/browse/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits/${encodeURIComponent(sha)}/tree`, { params }));
+      `/api/browse/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits/${encodeURIComponent(sha)}/tree`, { params }));
   }
 
-  getHierarchy(owner: string, name: string, sha: string): Promise<CoverageHierarchyNode> {
+  getHierarchy(provider: string, owner: string, name: string, sha: string): Promise<CoverageHierarchyNode> {
     return firstValueFrom(this.http.get<CoverageHierarchyNode>(
-      `/api/browse/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits/${encodeURIComponent(sha)}/hierarchy`));
+      `/api/browse/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits/${encodeURIComponent(sha)}/hierarchy`));
   }
 
-  getFile(owner: string, name: string, sha: string, path: string): Promise<FileDetail> {
+  getFile(provider: string, owner: string, name: string, sha: string, path: string): Promise<FileDetail> {
     const params = new HttpParams().set('path', path);
     return firstValueFrom(this.http.get<FileDetail>(
-      `/api/browse/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits/${encodeURIComponent(sha)}/file`, { params }));
+      `/api/browse/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/commits/${encodeURIComponent(sha)}/file`, { params }));
   }
 
-  rotateBadgeToken(owner: string, name: string): Promise<{ badgeToken: string }> {
+  rotateBadgeToken(provider: string, owner: string, name: string): Promise<{ badgeToken: string }> {
     return firstValueFrom(this.http.post<{ badgeToken: string }>(
-      `/api/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/settings/badge-token`, {}));
+      `/api/repos/${encodeURIComponent(provider)}/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/settings/badge-token`, {}));
   }
 
 }

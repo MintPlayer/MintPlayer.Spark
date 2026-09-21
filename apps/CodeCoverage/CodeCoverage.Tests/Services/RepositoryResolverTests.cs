@@ -84,7 +84,7 @@ public class RepositoryResolverTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
 
         var (resolver, github) = CreateResolver(session);
-        var resolution = await resolver.ResolveAsync("acme", "widgets");
+        var resolution = await resolver.ResolveAsync(EForgeProvider.GitHub, "acme", "widgets");
 
         Assert.NotNull(resolution.Repository);
         Assert.Equal(1, resolution.Repository!.GitHubId);
@@ -99,7 +99,7 @@ public class RepositoryResolverTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
 
         var (resolver, _) = CreateResolver(session);
-        var resolution = await resolver.ResolveAsync("acme", "widgets");
+        var resolution = await resolver.ResolveAsync(EForgeProvider.GitHub, "acme", "widgets");
 
         Assert.NotNull(resolution.Repository);
         Assert.Equal(1, resolution.Repository!.GitHubId);
@@ -120,7 +120,7 @@ public class RepositoryResolverTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
 
         var (resolver, _) = CreateResolver(session);
-        var resolution = await resolver.ResolveAsync("acme", "widgets");
+        var resolution = await resolver.ResolveAsync(EForgeProvider.GitHub, "acme", "widgets");
 
         Assert.NotNull(resolution.Repository);
         Assert.Equal(2, resolution.Repository!.GitHubId);
@@ -141,7 +141,7 @@ public class RepositoryResolverTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
 
         var (resolver, _) = CreateResolver(session);
-        var resolution = await resolver.ResolveAsync("acme", "widgets");
+        var resolution = await resolver.ResolveAsync(EForgeProvider.GitHub, "acme", "widgets");
 
         Assert.Null(resolution.Repository);
     }
@@ -153,7 +153,7 @@ public class RepositoryResolverTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
 
         var (resolver, _) = CreateResolver(session);
-        var resolution = await resolver.ResolveAsync("nobody", "nothing");
+        var resolution = await resolver.ResolveAsync(EForgeProvider.GitHub, "nobody", "nothing");
 
         Assert.Null(resolution.Repository);
         Assert.False(resolution.Redirect);
@@ -181,7 +181,7 @@ public class RepositoryResolverTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
 
         var (resolver, github) = CreateResolver(session);
-        var resolution = await resolver.ResolveAsync("some-stranger", "anything");
+        var resolution = await resolver.ResolveAsync(EForgeProvider.GitHub, "some-stranger", "anything");
 
         Assert.Null(resolution.Repository);
         Assert.False(github.WasCalled);
@@ -207,7 +207,7 @@ public class RepositoryResolverTests : CoverageRavenTest
         using var session = store.OpenAsyncSession();
 
         var (resolver, github) = CreateResolver(session);
-        var resolution = await resolver.ResolveAsync("acme", "some-old-name");
+        var resolution = await resolver.ResolveAsync(EForgeProvider.GitHub, "acme", "some-old-name");
 
         Assert.Null(resolution.Repository);
         Assert.True(github.WasCalled, "a stale name under a known owner is exactly what step three is for");

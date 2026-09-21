@@ -62,11 +62,13 @@ public partial class BrowseController : ControllerBase
     // cap off as the total (#13 U3).
     private const int UnmatchedSampleSize = 50;
 
-    [HttpGet("accounts/{login}/repos")]
-    public async Task<ActionResult<IEnumerable<RepoInfo>>> GetAccountRepos(string login, CancellationToken cancellationToken)
+    [HttpGet("accounts/{provider}/{login}/repos")]
+    public async Task<ActionResult<IEnumerable<RepoInfo>>> GetAccountRepos(string provider, string login, CancellationToken cancellationToken)
     {
         var owners = await forges.GetAllowedOwnerKeysAsync(cancellationToken);
-        var ownerKey = ForgeOwner.KeyFromUnqualifiedLogin(login);
+        var forge = TryForge(provider);
+        if (forge is null) return NotFound();
+        var ownerKey = new ForgeOwner(forge.Value, login).ToString();
         var includePrivate = owners.Contains(ownerKey, StringComparer.OrdinalIgnoreCase);
 
         var repos = await session.Query<Repository, Indexes.Repositories_Overview>()
@@ -80,21 +82,21 @@ public partial class BrowseController : ControllerBase
             .Select(r => ToRepoInfo(r, includePrivate)));
     }
 
-    [HttpGet("repos/{owner}/{name}")]
-    public async Task<ActionResult<RepoInfo>> GetRepo(string owner, string name, CancellationToken cancellationToken)
+    [HttpGet("repos/{provider}/{owner}/{name}")]
+    public async Task<ActionResult<RepoInfo>> GetRepo(string provider, string owner, string name, CancellationToken cancellationToken)
     {
-        var repository = await ResolveVisibleRepository(owner, name, cancellationToken);
+        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
         if (repository is null) return NotFound();
         var canManage = await forges.CanManageAsync(repository, cancellationToken);
         return Ok(ToRepoInfo(repository, canManage));
     }
 
-    [HttpGet("repos/{owner}/{name}/commits")]
+    [HttpGet("repos/{provider}/{owner}/{name}/commits")]
     public async Task<ActionResult<IEnumerable<CommitInfo>>> GetCommits(
-        string owner, string name, [FromQuery] string? branch, [FromQuery] bool withCoverageOnly = false,
+        string provider, string owner, string name, [FromQuery] string? branch, [FromQuery] bool withCoverageOnly = false,
         [FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken cancellationToken = default)
     {
-        var repository = await ResolveVisibleRepository(owner, name, cancellationToken);
+        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
         if (repository is null) return NotFound();
 
         var query = session.Query<Indexes.Commits_ByRepository.Result, Indexes.Commits_ByRepository>()
@@ -126,11 +128,11 @@ public partial class BrowseController : ControllerBase
     /// known default branch fall back to every branch; see the body.
     /// </para>
     /// </summary>
-    [HttpGet("repos/{owner}/{name}/history")]
+    [HttpGet("repos/{provider}/{owner}/{name}/history")]
     public async Task<ActionResult<IEnumerable<HistoryPoint>>> GetHistory(
-        string owner, string name, [FromQuery] string? branch, [FromQuery] int take = 100, CancellationToken cancellationToken = default)
+        string provider, string owner, string name, [FromQuery] string? branch, [FromQuery] int take = 100, CancellationToken cancellationToken = default)
     {
-        var repository = await ResolveVisibleRepository(owner, name, cancellationToken);
+        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
         if (repository is null) return NotFound();
 
         // Commits are ordered by time alone, so without a branch filter a feature
@@ -178,11 +180,13 @@ public partial class BrowseController : ControllerBase
     /// acceptable for a sparkline, and better than a line that mixes branches.
     /// </para>
     /// </summary>
-    [HttpGet("accounts/{login}/sparklines")]
-    public async Task<ActionResult<Dictionary<string, double[]>>> GetSparklines(string login, CancellationToken cancellationToken)
+    [HttpGet("accounts/{provider}/{login}/sparklines")]
+    public async Task<ActionResult<Dictionary<string, double[]>>> GetSparklines(string provider, string login, CancellationToken cancellationToken)
     {
         var owners = await forges.GetAllowedOwnerKeysAsync(cancellationToken);
-        var ownerKey = ForgeOwner.KeyFromUnqualifiedLogin(login);
+        var forge = TryForge(provider);
+        if (forge is null) return NotFound();
+        var ownerKey = new ForgeOwner(forge.Value, login).ToString();
 
         var repos = await session.Query<Repository, Indexes.Repositories_Overview>()
             .Where(r => r.OwnerKey == ownerKey)
@@ -216,10 +220,10 @@ public partial class BrowseController : ControllerBase
     }
 
     /// <summary>Distinct branches that have commits with coverage, default branch first.</summary>
-    [HttpGet("repos/{owner}/{name}/branches")]
-    public async Task<ActionResult<IEnumerable<string>>> GetBranches(string owner, string name, CancellationToken cancellationToken)
+    [HttpGet("repos/{provider}/{owner}/{name}/branches")]
+    public async Task<ActionResult<IEnumerable<string>>> GetBranches(string provider, string owner, string name, CancellationToken cancellationToken)
     {
-        var repository = await ResolveVisibleRepository(owner, name, cancellationToken);
+        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
         if (repository is null) return NotFound();
 
         var branches = await session.Query<Indexes.Commits_ByRepository.Result, Indexes.Commits_ByRepository>()
@@ -239,8 +243,8 @@ public partial class BrowseController : ControllerBase
     /// Public account reference (logins/avatars are public GitHub data). The
     /// document id feeds the generic Spark sub-queries as parentId.
     /// </summary>
-    [HttpGet("accounts/{login}")]
-    public async Task<ActionResult<AccountRef>> GetAccount(string login, CancellationToken cancellationToken)
+    [HttpGet("accounts/{provider}/{login}")]
+    public async Task<ActionResult<AccountRef>> GetAccount(string provider, string login, CancellationToken cancellationToken)
     {
         var account = await session.Query<Account, Indexes.Accounts_Overview>()
             .Where(a => a.Login == login)
@@ -251,10 +255,10 @@ public partial class BrowseController : ControllerBase
 
     public sealed record AccountRef(string Id, string Login);
 
-    [HttpGet("repos/{owner}/{name}/commits/{sha}")]
-    public async Task<ActionResult<object>> GetCommit(string owner, string name, string sha, CancellationToken cancellationToken)
+    [HttpGet("repos/{provider}/{owner}/{name}/commits/{sha}")]
+    public async Task<ActionResult<object>> GetCommit(string provider, string owner, string name, string sha, CancellationToken cancellationToken)
     {
-        var repository = await ResolveVisibleRepository(owner, name, cancellationToken);
+        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
         if (repository is null) return NotFound();
 
         var commit = await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, sha), cancellationToken);
@@ -321,11 +325,11 @@ public partial class BrowseController : ControllerBase
     }
 
     /// <summary>One folder level of the commit's coverage tree (drill-down UI).</summary>
-    [HttpGet("repos/{owner}/{name}/commits/{sha}/tree")]
+    [HttpGet("repos/{provider}/{owner}/{name}/commits/{sha}/tree")]
     public async Task<ActionResult<TreeResponse>> GetTree(
-        string owner, string name, string sha, [FromQuery] string? path, [FromQuery] string? flag, CancellationToken cancellationToken)
+        string provider, string owner, string name, string sha, [FromQuery] string? path, [FromQuery] string? flag, CancellationToken cancellationToken)
     {
-        var repository = await ResolveVisibleRepository(owner, name, cancellationToken);
+        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
         if (repository is null) return NotFound();
 
         var commit = await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, sha), cancellationToken);
@@ -402,10 +406,10 @@ public partial class BrowseController : ControllerBase
     /// folders carry neither — the chart derives folder colors as
     /// value-weighted means and sizes arcs by summed leaf values.
     /// </summary>
-    [HttpGet("repos/{owner}/{name}/commits/{sha}/hierarchy")]
-    public async Task<ActionResult<HierarchyNodeDto>> GetHierarchy(string owner, string name, string sha, CancellationToken cancellationToken)
+    [HttpGet("repos/{provider}/{owner}/{name}/commits/{sha}/hierarchy")]
+    public async Task<ActionResult<HierarchyNodeDto>> GetHierarchy(string provider, string owner, string name, string sha, CancellationToken cancellationToken)
     {
-        var repository = await ResolveVisibleRepository(owner, name, cancellationToken);
+        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
         if (repository is null) return NotFound();
 
         var commit = await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, sha), cancellationToken);
@@ -460,11 +464,11 @@ public partial class BrowseController : ControllerBase
     /// GitHub live — never stored). Source may be null (uninstalled private
     /// repo, deleted history, binary); the UI then shows coverage-only rows.
     /// </summary>
-    [HttpGet("repos/{owner}/{name}/commits/{sha}/file")]
+    [HttpGet("repos/{provider}/{owner}/{name}/commits/{sha}/file")]
     public async Task<ActionResult<object>> GetFile(
-        string owner, string name, string sha, [FromQuery] string path, CancellationToken cancellationToken)
+        string provider, string owner, string name, string sha, [FromQuery] string path, CancellationToken cancellationToken)
     {
-        var repository = await ResolveVisibleRepository(owner, name, cancellationToken);
+        var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
         if (repository is null) return NotFound();
 
         var commit = await session.LoadAsync<Commit>(Commit.DocumentId(EForgeProvider.GitHub, repository.GitHubId, sha), cancellationToken);
@@ -530,9 +534,27 @@ public partial class BrowseController : ControllerBase
         return files;
     }
 
-    private async Task<Repository?> ResolveVisibleRepository(string owner, string name, CancellationToken cancellationToken)
+    /// <summary>The route's forge.</summary>
+    /// <remarks>
+    /// ⚠️ <b>404, never a default.</b> An unrecognised first segment means the URL is not one of
+    /// ours, and answering it with GitHub's data would be exactly the silent forge-defaulting this
+    /// milestone exists to remove. <see cref="ForgeProviders.TryParse"/> is the single list of
+    /// spellings — nothing here enumerates them, so a new forge needs no change in this file.
+    /// </remarks>
+    private static EForgeProvider? TryForge(string provider)
+        => ForgeProviders.TryParse(provider, out var parsed) ? parsed : null;
+
+    private async Task<Repository?> ResolveVisibleRepository(
+        string provider, string owner, string name, CancellationToken cancellationToken)
     {
-        var repository = (await repositories.ResolveAsync(owner, name, cancellationToken)).Repository;
+        // An unrecognised forge resolves to nothing rather than throwing: every caller already
+        // treats a null repository as 404, which is the right answer for a URL that names a forge
+        // this deployment does not have. Answering it with another forge's data would be exactly
+        // the silent defaulting this milestone removes.
+        if (TryForge(provider) is not { } forge)
+            return null;
+
+        var repository = (await repositories.ResolveAsync(forge, owner, name, cancellationToken)).Repository;
         if (repository is null) return null;
 
         // Same rule as the /spark surface, from the same place — the two must

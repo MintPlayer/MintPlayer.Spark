@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Entities;
 using CodeCoverage.Services;
 using Raven.Client.Documents;
@@ -18,7 +19,13 @@ namespace CodeCoverage.Tests;
 /// </summary>
 public sealed class TestRepositoryResolver(IAsyncDocumentSession? session) : IRepositoryResolver
 {
-    public async Task<RepositoryResolution> ResolveAsync(string owner, string name, CancellationToken cancellationToken = default)
+    /// <remarks>
+    /// The provider is accepted and ignored: this stub resolves by FullName against a seeded
+    /// session, and the seed is single-forge. Ignoring it here is safe precisely because the real
+    /// resolver does not - see RepositoryResolver, where it selects the document id.
+    /// </remarks>
+    public async Task<RepositoryResolution> ResolveAsync(
+        EForgeProvider provider, string owner, string name, CancellationToken cancellationToken = default)
     {
         if (session is null) return RepositoryResolution.None;
 

@@ -28,7 +28,8 @@ public partial class RepositoryResolver : IRepositoryResolver
     /// </summary>
     private static readonly TimeSpan LookupCacheDuration = TimeSpan.FromMinutes(10);
 
-    public async Task<RepositoryResolution> ResolveAsync(string owner, string name, CancellationToken cancellationToken = default)
+    public async Task<RepositoryResolution> ResolveAsync(
+        EForgeProvider provider, string owner, string name, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(name))
             return RepositoryResolution.None;
@@ -78,7 +79,7 @@ public partial class RepositoryResolver : IRepositoryResolver
         if (gitHubId is null)
             return RepositoryResolution.None;
 
-        var resolved = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, gitHubId.Value), cancellationToken);
+        var resolved = await session.LoadAsync<Repository>(Repository.DocumentId(provider, gitHubId.Value), cancellationToken);
         return resolved is null
             ? RepositoryResolution.None
             : new RepositoryResolution(resolved, Redirect: true);

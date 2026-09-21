@@ -116,7 +116,8 @@ public class SparkAuthorizeEndToEndTests : IClassFixture<CoverageWebHostFixture>
     /// </para>
     /// </remarks>
     [Theory]
-    [InlineData("/api/repos/acme/widget/settings/badge-token")]
+    // Provider-segmented since M7/D27: the forge precedes the owner.
+    [InlineData("/api/repos/github/acme/widget/settings/badge-token")]
     public async Task Management_endpoints_refuse_anonymous_callers(string path)
     {
         using var client = CreateClient();

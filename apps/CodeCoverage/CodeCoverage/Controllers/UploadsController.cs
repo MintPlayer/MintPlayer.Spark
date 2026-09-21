@@ -645,7 +645,13 @@ public partial class UploadsController : ControllerBase
         var nameParts = fullName.Split('/');
         if (nameParts.Length != 2)
             return null;
-        var repository = (await repositories.ResolveAsync(nameParts[0], nameParts[1], cancellationToken)).Repository;
+        // ⚠️ Explicit, not defaulted. Uploads arrive with a repository full name and a
+        // credential, and neither carries a forge today — GitHub is the only integration that can
+        // authenticate an upload at all. When a second one can, the forge must come from the
+        // credential rather than from here (M16), which is why this names GitHub out loud instead
+        // of letting a default decide.
+        var repository = (await repositories.ResolveAsync(
+            EForgeProvider.GitHub, nameParts[0], nameParts[1], cancellationToken)).Repository;
         if (repository is null)
             return null;
 
