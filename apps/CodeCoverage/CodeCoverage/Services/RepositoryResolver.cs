@@ -38,17 +38,33 @@ public partial class RepositoryResolver : IRepositoryResolver
         // 1. The live name. Always first, and this is what makes a name takeover safe: once a new
         //    repository occupies an old name, it is found here and the alias below is never
         //    consulted for it.
-        var live = await session.Query<Repository, Indexes.Repositories_Overview>()
+        //    ⚠ Narrowed to the asked-for forge. `FullName` is `owner/name`, which is unique only
+        //    WITHIN a forge - `MintPlayer/MintPlayer.Spark` on GitLab is a different repository
+        //    from the one on GitHub, and anyone may register the free one. Before this filter,
+        //    /gitlab/r/MintPlayer/MintPlayer.Spark answered 200 with the GitHub repository.
+        //    Filtered after the query rather than inside it: at most a couple of rows come back,
+        //    and this compares the enum rather than depending on which fields the generated index
+        //    happens to expose.
+        var live = (await session.Query<Repository, Indexes.Repositories_Overview>()
             .Where(r => r.FullName == fullName)
-            .FirstOrDefaultAsync(cancellationToken);
+            .Take(8)
+            .ToListAsync(cancellationToken))
+            .FirstOrDefault(r => r.Provider == provider);
         if (live is not null)
             return new RepositoryResolution(live, Redirect: false);
 
         // 2. A name we remember this repository leaving behind.
-        var aliased = await session.Query<Repository, Indexes.Repositories_Overview>()
+        //    Same narrowing, and for the same reason. Not filtered on the CURRENT OwnerKey, which
+        //    would look tidier: a repository transferred to another owner keeps its old full name
+        //    here while its owner key has already moved, so that would lose exactly the case this
+        //    step exists for.
+        var aliased = (await session.Query<Repository, Indexes.Repositories_Overview>()
             .Where(r => r.PreviousFullNames.Any(previous => previous == fullName))
+            .Take(8)
+            .ToListAsync(cancellationToken))
+            .Where(r => r.Provider == provider)
             .Take(2)
-            .ToListAsync(cancellationToken);
+            .ToList();
         if (aliased.Count == 1)
             return new RepositoryResolution(aliased[0], Redirect: true);
         if (aliased.Count > 1)
@@ -71,10 +87,16 @@ public partial class RepositoryResolver : IRepositoryResolver
         //
         // Gating on the account keeps the useful case (the owner is known; only the repository name
         // is stale) and costs an indexed lookup instead of a network call for everything else.
-        if (!await IsKnownAccountAsync(owner, cancellationToken))
+        if (!await IsKnownAccountAsync(provider, owner, cancellationToken))
             return RepositoryResolution.None;
 
-        var gitHubId = await LookupGitHubIdAsync(owner, name, cancellationToken);
+        // ⚠ Only GitHub can answer this, because only GitHub is implemented. Asking it about a
+        // name that arrived on a /gitlab/ URL would resolve a GitLab path against GitHub's
+        // namespace - the cross-forge confusion this milestone exists to remove, and here it would
+        // also spend the App's rate limit doing it. Each forge library brings its own lookup (M15).
+        var gitHubId = provider == EForgeProvider.GitHub
+            ? await LookupGitHubIdAsync(owner, name, cancellationToken)
+            : null;
         if (gitHubId is null)
             return RepositoryResolution.None;
 
@@ -88,14 +110,19 @@ public partial class RepositoryResolver : IRepositoryResolver
     /// Whether we already hold an account with this login. Cached alongside the name lookups,
     /// because the miss path is the one a crawler exercises.
     /// </summary>
-    private async Task<bool> IsKnownAccountAsync(string owner, CancellationToken cancellationToken)
+    private async Task<bool> IsKnownAccountAsync(
+        EForgeProvider provider, string owner, CancellationToken cancellationToken)
     {
-        var cacheKey = $"known-account/{owner}".ToLowerInvariant();
+        // ⚠ The owner KEY, in the query and in the cache key. On the bare login this said yes for
+        // a GitLab owner because a GitHub account of the same name existed, which then let an
+        // arbitrary name through to the forge lookup the gate is there to protect.
+        var ownerKey = new ForgeOwner(provider, owner).ToString();
+        var cacheKey = $"known-account/{ownerKey}".ToLowerInvariant();
         if (cache.TryGetValue<bool>(cacheKey, out var known))
             return known;
 
         known = await session.Query<Account, Indexes.Accounts_Overview>()
-            .AnyAsync(a => a.Login == owner, cancellationToken);
+            .AnyAsync(a => a.OwnerKey == ownerKey, cancellationToken);
 
         cache.Set(cacheKey, known, LookupCacheDuration);
         return known;
