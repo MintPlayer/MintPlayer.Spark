@@ -109,7 +109,7 @@ public class ApiToken
     /// server-side from the resolved account, so nobody should ever type it into a form.
     /// </para>
     /// <para>
-    /// Was <c>AccountGitHubId</c> until 2026-09-22. Renamed with <c>M_202609221200</c>, because a
+    /// Was <c>AccountGitHubId</c> until 2026-09-22. Renamed with <c>M_202609220950</c>, because a
     /// name is a contract when it is the name of a stored field.
     /// </para>
     /// </remarks>

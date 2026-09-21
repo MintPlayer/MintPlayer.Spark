@@ -178,6 +178,86 @@ public class ApiTokenOwnerBindingTests : CoverageRavenTest
         Assert.Equal(Mine, entity.AccountLogin);
     }
 
+    /// <summary>
+    /// ⚠️ The attack again, one save later. The first fix derived identity only when minting, so
+    /// a token could be created honestly and then EDITED to carry somebody else's login.
+    /// </summary>
+    /// <remarks>
+    /// The state that makes it bite is ordinary, not contrived: an owner key the caller genuinely
+    /// manages but for which no <c>Account</c> document exists yet leaves <c>AccountId</c> null, so
+    /// the authentication handler emits no id claim and <c>UploadsController</c> falls through to
+    /// its legacy login arm — which compares the posted login against every repository's owner.
+    /// </remarks>
+    [Fact]
+    public async Task An_edit_cannot_repoint_the_login_at_another_account()
+    {
+        using var store = GetDocumentStore();
+        await SeedVictimAccountAsync(store);
+
+        using var session = store.OpenAsyncSession();
+        var entity = new ApiToken { Description = "ci", AccountOwnerKey = KeyFor(Mine), AccountLogin = Mine };
+
+        var actions = CreateActions(session, KeyFor(Mine));
+        await actions.OnBeforeSaveAsync(Po(), entity);
+        Assert.False(string.IsNullOrEmpty(entity.Hash));   // it really is an edit from here on
+
+        // The edit: same key (honestly mine, so the row filter is satisfied), different login.
+        entity.AccountLogin = Victim;
+        await actions.OnBeforeSaveAsync(Po(), entity);
+
+        Assert.Equal(Mine, entity.AccountLogin);
+        Assert.NotEqual(999, entity.AccountId);
+    }
+
+    /// <summary>
+    /// An edit that moves the key must move the numeric id with it, or the token authorizes against
+    /// an account it is no longer filed under — and keeps doing so after that membership is revoked.
+    /// </summary>
+    [Fact]
+    public async Task An_edit_that_moves_the_key_rebinds_the_numeric_id()
+    {
+        const string Other = "other-org";
+        using var store = GetDocumentStore();
+        using (var seed = store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new Account { GitHubId = 1, Login = Mine, Provider = EForgeProvider.GitHub },
+                Account.DocumentId(EForgeProvider.GitHub, 1));
+            await seed.StoreAsync(new Account { GitHubId = 2, Login = Other, Provider = EForgeProvider.GitHub },
+                Account.DocumentId(EForgeProvider.GitHub, 2));
+            await seed.SaveChangesAsync();
+        }
+
+        using var session = store.OpenAsyncSession();
+        var entity = new ApiToken { Description = "ci", AccountOwnerKey = KeyFor(Other) };
+
+        var actions = CreateActions(session, KeyFor(Mine), KeyFor(Other));
+        await actions.OnBeforeSaveAsync(Po(), entity);
+        Assert.Equal(2, entity.AccountId);
+
+        entity.AccountOwnerKey = KeyFor(Mine);
+        await actions.OnBeforeSaveAsync(Po(), entity);
+
+        Assert.Equal(1, entity.AccountId);
+        Assert.Equal(Mine, entity.AccountLogin);
+    }
+
+    /// <summary>
+    /// The paired refusal: an edit cannot move the key to an owner the caller does not manage.
+    /// </summary>
+    [Fact]
+    public async Task An_edit_cannot_move_the_key_to_an_unmanaged_owner()
+    {
+        using var store = GetDocumentStore();
+        using var session = store.OpenAsyncSession();
+        var entity = new ApiToken { Description = "ci", AccountOwnerKey = KeyFor(Mine) };
+
+        var actions = CreateActions(session, KeyFor(Mine));
+        await actions.OnBeforeSaveAsync(Po(), entity);
+
+        entity.AccountOwnerKey = KeyFor(Victim);
+        await Assert.ThrowsAsync<SparkValidationException>(() => actions.OnBeforeSaveAsync(Po(), entity));
+    }
+
     [Fact]
     public async Task An_unparseable_owner_key_is_refused()
     {

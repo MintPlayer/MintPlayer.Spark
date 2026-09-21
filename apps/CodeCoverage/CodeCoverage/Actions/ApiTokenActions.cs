@@ -107,14 +107,13 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
     /// </remarks>
     public override async Task OnBeforeSaveAsync(PersistentObject obj, ApiToken entity)
     {
-        // ⚠️ Runs on EVERY save, create and edit alike. The early return below is only for the
-        // credential, which cannot be re-derived — the scope must be re-validated every time,
-        // because an edit can change which repositories a token covers.
+        // ⚠️ Runs on EVERY save, create and edit alike — as do the owner authorization and the
+        // identity derivation below it. The early return further down is ONLY for the credential,
+        // which cannot be re-derived. Everything a later request authorizes on has to be re-derived
+        // here, because an edit can change which repositories a token covers AND which account it
+        // claims to be.
         await ValidateRepositoryScopeAsync(entity);
         entity.Scope = entity.RepositoryIds.Count > 0 ? "Repository" : "Account";
-
-        if (!string.IsNullOrEmpty(entity.Hash))
-            return; // An edit; the credential is already minted and cannot be re-derived.
 
         // ⚠️ `CanManageOwnerAsync` takes an owner KEY (`github:acme`), which is what its parameter
         // name says and what `GetAllowedOwnersAsync` returns. Passing the bare login refused every
@@ -151,15 +150,28 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
         var account = await session.Query<Account>()
             .FirstOrDefaultAsync(a => a.Provider == provider && a.Login == ownerLogin);
 
-        plaintext = ApiTokenService.GenerateTokenValue();
-        entity.Hash = ApiTokenService.Hash(plaintext);
-
         // Overwritten, not read: `AccountLogin` is display-only by its own documentation, and a
         // posted value must never survive into a field anything authorizes on — the login fallback
         // in `UploadsController` still reads it.
+        //
+        // ⚠️⚠️ AND THIS RUNS ON EVERY SAVE, WHICH IS THE WHOLE POINT. The first fix derived
+        // these three fields only when minting, so one PUT after creation put the token straight
+        // back into the state the fix describes as the attack: `AccountLogin` is writable, the
+        // authentication handler emits it as the account claim, and `UploadsController`'s legacy
+        // arm authorizes every repository owned by that name. Re-deriving is safe because it reads
+        // nothing but `AccountOwnerKey`, which was authorized a few lines up — and it is what binds
+        // `AccountId` to the key when an EDIT moves the key to another account the caller also
+        // manages. Leave them create-only and the token keeps authorizing against the old account
+        // for ever, including after the caller's membership of that account is revoked.
         entity.AccountLogin = ownerLogin;
         entity.Provider = provider;
         entity.AccountId = account?.GitHubId;
+
+        if (!string.IsNullOrEmpty(entity.Hash))
+            return; // An edit; the credential is already minted and cannot be re-derived.
+
+        plaintext = ApiTokenService.GenerateTokenValue();
+        entity.Hash = ApiTokenService.Hash(plaintext);
 
         // Stamped, never trusted from the payload: the attribute is read-only in the model, so a
         // posted value is refused by IsWritableBySchema anyway, but the field was previously

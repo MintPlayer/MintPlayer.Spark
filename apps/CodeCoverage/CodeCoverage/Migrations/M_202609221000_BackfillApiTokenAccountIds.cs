@@ -68,7 +68,13 @@ public partial class M_202609221000_BackfillApiTokenAccountIds : ISparkMigration
         // this the migration THROWS on the 30th token, the version marker is never written, startup
         // aborts — and the next start fails at exactly the same place. A deterministic restart loop
         // in which the app never serves. The repo's own idiom, used in six other places.
-        using var requestScope = session.IgnoreMaxRequests(logger: logger);
+        // ⚠️ The second argument is an expectation, not a cap — the scope lifts the limit to
+        // int.MaxValue either way and only logs at dispose if the count exceeds it. Unset it falls
+        // back to the session's prior limit of 30, which every ordinary run exceeds, so the warning
+        // would be noise from the first deploy. 500 is loose enough never to cry wolf on a real
+        // instance's few dozen tokens and tight enough to report a regression that made this
+        // per-token-per-account.
+        using var requestScope = session.IgnoreMaxRequests(expectedMaximumRequests: 500, logger: logger);
 
         var stamped = 0;
         var unresolvable = new List<string>();

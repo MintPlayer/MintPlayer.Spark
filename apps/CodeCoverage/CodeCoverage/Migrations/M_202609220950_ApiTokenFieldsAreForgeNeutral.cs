@@ -39,14 +39,29 @@ namespace CodeCoverage.Migrations;
 /// and a partially-applied run completes.
 /// </para>
 /// <para>
-/// ⚠️ <b>Runs BEFORE the <c>AccountId</c> backfill, and the order is a correctness property.</b>
-/// The entity no longer declares <c>AccountGitHubId</c>, so until this has run every legacy token
-/// deserializes <c>AccountId</c> as <b>null</b>. A backfill running first would therefore find its
-/// "already stamped" guard dead on every production document, re-derive each id <em>from the
-/// login</em> — the resolution its own remarks forbid — and, because the RavenDB client re-serializes
-/// the entity on save, <b>delete the authoritative <c>AccountGitHubId</c> it was about to need</b>.
-/// Where a forge has since reassigned a login, that writes a different account's id over the real
-/// one, unrecoverably.
+/// ⚠️ <b>Runs BEFORE the <c>AccountId</c> backfill, and the order matters.</b> The entity no
+/// longer declares <c>AccountGitHubId</c>, so until this has run every legacy token deserializes
+/// <c>AccountId</c> as <b>null</b>. A backfill running first would therefore find its "already
+/// stamped" guard dead on every production document and re-derive each id <em>from the login</em> —
+/// the resolution its own remarks forbid. Where a forge has since reassigned a login, that stamps a
+/// different account's id.
+/// </para>
+/// <para>
+/// ⚠️ <b>Correction, because the first version of this comment got it wrong.</b> That damage is
+/// <em>not</em> permanent, and the reason given here previously — that the RavenDB client
+/// re-serializes the entity on save and would therefore have deleted <c>AccountGitHubId</c> — is
+/// false. <c>DocumentConventions.PreserveDocumentPropertiesNotFoundOnModel</c> defaults to
+/// <c>true</c> in RavenDB.Client 7.2.6 and this repository overrides it nowhere, so a load+save
+/// keeps fields the entity does not declare. <c>ApiTokenForgeNeutralRenameTests</c> demonstrates it
+/// incidentally: its setup loads a patched legacy token as an entity, saves it, and the rename below
+/// still finds <c>AccountGitHubId</c>.
+/// </para>
+/// <para>
+/// Under the wrong order the rename would in fact have repaired the backfill's damage in the same
+/// startup, because the assignment below is unconditional whenever the old field is present. This
+/// order is still the right one — it makes the guard live rather than relying on a repair, and
+/// avoids a window where <c>AccountId</c> is transiently wrong — but it is a robustness property,
+/// not the data-loss hazard it was first described as.
 /// </para>
 /// </remarks>
 public partial class M_202609220950_ApiTokenFieldsAreForgeNeutral : ISparkMigration

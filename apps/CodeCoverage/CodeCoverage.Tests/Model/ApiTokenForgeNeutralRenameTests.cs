@@ -71,6 +71,25 @@ public class ApiTokenForgeNeutralRenameTests : CoverageRavenTest
         return (token.AccountId, token.RepositoryIds, token.Provider);
     }
 
+    /// <summary>
+    /// ⚠️ The ordering itself, which every other test here only assumes.
+    /// </summary>
+    /// <remarks>
+    /// The tests below instantiate the migrations and call them in hand-written order, so they
+    /// would all still pass with the versions swapped back — the fix is one digit, and nothing else
+    /// guards it. <c>SparkMigrationRegistry</c> orders by <c>Version</c>, so this is the property
+    /// the runner actually uses.
+    /// </remarks>
+    [Fact]
+    public void The_rename_is_ordered_before_the_backfill()
+    {
+        Assert.True(
+            M_202609220950_ApiTokenFieldsAreForgeNeutral.Version
+                < M_202609221000_BackfillApiTokenAccountIds.Version,
+            "The rename must run first, or the backfill's \"already stamped\" guard is dead on every "
+            + "legacy token and it re-derives each id from the login instead.");
+    }
+
     [Fact]
     public async Task The_numeric_account_id_survives_the_rename()
     {

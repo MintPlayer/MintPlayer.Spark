@@ -202,12 +202,23 @@ public static class ForgeQualifiedIdVerifier
         using var session = store.OpenAsyncSession();
 
         // ⚠️ One session request per attachment, against a 30-request budget — production carries
-        // roughly 700, so without this the verifier throws before it can report anything.
+        // roughly 700, so without this the verifier throws before it can report anything. The scope
+        // lifts the limit to int.MaxValue; it takes no cap, only an optional expectation that it
+        // logs against, and this is a static class with no logger, so the 700 above is an estimate
+        // nothing verifies at runtime. Acceptable for a CLI verb — a regression shows up as a slow
+        // run, not a silent wrong answer.
         using var requestScope = session.IgnoreMaxRequests();
 
         // ⚠️ The prefix matches every document nested under a commit id, not just builds —
-        // ~220,000 FileCoverages among them, each deserialized as a Build and then skipped. Narrowed
-        // to the builds themselves; `exclude` is the same shape LoadContributingBuilds uses.
+        // ~220,000 FileCoverages among them, each deserialized as a Build and then skipped by the
+        // `Sessions` check below. That is correct rather than merely tolerable: the two types share
+        // no top-level property name, so a FileCoverage lands in an empty `Build`.
+        //
+        // It is NOT narrowed, whatever an earlier version of this comment said: the
+        // `StreamAsync(startsWith:)` overload has no exclude parameter at all — that is
+        // `LoadStartingWithAsync` — so the sentence described a change that was never made. The cost
+        // stands: this is an explicit CLI verb, not a startup path, so a slow one-off sweep is the
+        // right trade against adding an index for it.
         await using var stream = await session.Advanced.StreamAsync<Build>(
             startsWith: "Commits/github/", token: cancellationToken);
 
