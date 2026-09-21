@@ -28,6 +28,7 @@ public partial class GitHubForgeIntegration : IForgeIntegration
     [Inject] private readonly IForgeAccessService access;
     [Inject] private readonly IForgeClient client;
     [Inject] private readonly IForgeFeedbackPublisher feedback;
+    [Inject] private readonly IGitHubStateReconciler reconciler;
 
     public EForgeProvider Provider => EForgeProvider.GitHub;
 
@@ -71,6 +72,9 @@ public partial class GitHubForgeIntegration : IForgeIntegration
 
     public Task<ForgePullRequest?> GetPullRequestAsync(Repository repository, int number, CancellationToken cancellationToken = default)
         => client.GetPullRequestAsync(repository, number, cancellationToken);
+
+    public Task ReconcileAsync(Account account, CancellationToken cancellationToken = default)
+        => reconciler.ReconcileAsync(account, cancellationToken);
 
     public Task<long> PublishStatusAsync(Repository repository, string sha, string name, ForgeVerdict verdict, long? existingId, CancellationToken cancellationToken = default)
         => feedback.PublishStatusAsync(repository, sha, name, verdict, existingId, cancellationToken);

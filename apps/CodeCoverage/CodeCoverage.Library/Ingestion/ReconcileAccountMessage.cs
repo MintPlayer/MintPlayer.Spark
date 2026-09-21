@@ -1,10 +1,11 @@
+using CodeCoverage.Forge;
 using MintPlayer.Spark.Messaging.Abstractions;
 
 namespace CodeCoverage.Ingestion;
 
 /// <summary>
-/// Queued when a webhook says an installation's repository set changed; processed by
-/// <see cref="ReconcileAccountRecipient"/>, which asks GitHub what that set actually is now.
+/// Queued when a webhook says an account's repository set changed; processed by
+/// <see cref="ReconcileAccountRecipient"/>, which asks the forge what that set actually is now.
 /// <para>
 /// The webhook cannot be trusted to describe the change, only to announce that one happened.
 /// Measured 2026-09-05: narrowing an installation from "all repositories" to a single selected
@@ -28,5 +29,26 @@ namespace CodeCoverage.Ingestion;
 [MessageQueue(Feedback.CoverageQueues.Publishing)]
 public record ReconcileAccountMessage
 {
-    public required long AccountGitHubId { get; init; }
+    /// <summary>The forge that hosts the account.</summary>
+    /// <remarks>
+    /// ⚠️ <b>Required, because the recipient cannot otherwise know which forge to ask.</b> It
+    /// hard-coded GitHub until 2026-09-22 — so renaming the id field alone would have produced a
+    /// message that looked forge-neutral and still resolved every account against GitHub.
+    /// </remarks>
+    public required EForgeProvider Provider { get; init; }
+
+    /// <summary>The forge's numeric id for the account, which its document id is keyed on.</summary>
+    /// <remarks>
+    /// Named for the concept rather than the forge. It was <c>AccountGitHubId</c>, which a second
+    /// forge could not fill honestly — a contract name, not a variable name, since this type is
+    /// serialised into the message queue.
+    /// <para>
+    /// ⚠️ <b>A rename here is a persisted-payload change.</b> <c>SparkMessage</c> stores the JSON,
+    /// and Json.NET ignores a member it cannot bind — so an in-flight message written with the old
+    /// name would deserialize to <c>0</c>, load nothing, and return silently. Renamed only because
+    /// the queue was verified empty, and <c>M_202609221100</c> drops any stragglers rather than
+    /// leaving them to fail quietly.
+    /// </para>
+    /// </remarks>
+    public required long AccountId { get; init; }
 }

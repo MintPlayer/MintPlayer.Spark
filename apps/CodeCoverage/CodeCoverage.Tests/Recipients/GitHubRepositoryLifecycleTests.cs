@@ -624,7 +624,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
 
         Assert.Contains(
             bus.Messages.OfType<CodeCoverage.Ingestion.ReconcileAccountMessage>(),
-            m => m.AccountGitHubId == OldOwnerId);
+            m => m.AccountId == OldOwnerId && m.Provider == EForgeProvider.GitHub);
     }
 
     [Fact]
@@ -667,7 +667,7 @@ public class GitHubRepositoryLifecycleTests : CoverageRavenTest
         Assert.NotNull(account!.InstallationId);
 
         var reconcile = bus.Messages.OfType<CodeCoverage.Ingestion.ReconcileAccountMessage>().ToList();
-        Assert.Contains(reconcile, m => m.AccountGitHubId == OldOwnerId);
+        Assert.Contains(reconcile, m => m.AccountId == OldOwnerId && m.Provider == EForgeProvider.GitHub);
     }
 
     /// <summary>

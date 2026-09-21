@@ -96,7 +96,8 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                     (evt.Repositories ?? []).Select(r => (r.Id, r.Name, r.FullName, r.Private)), account, ct);
                 await messageBus.BroadcastAsync(new Ingestion.ReconcileAccountMessage
                 {
-                    AccountGitHubId = ghAccount.Id,
+                    Provider = EForgeProvider.GitHub,
+                    AccountId = ghAccount.Id,
                 }, ct);
                 break;
             case "deleted":
@@ -162,7 +163,8 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         // So apply the payload for the timely case, and ask GitHub for the truth.
         await messageBus.BroadcastAsync(new Ingestion.ReconcileAccountMessage
         {
-            AccountGitHubId = ghAccount.Id,
+            Provider = EForgeProvider.GitHub,
+            AccountId = ghAccount.Id,
         }, ct);
     }
 

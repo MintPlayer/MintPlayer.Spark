@@ -56,6 +56,15 @@ public sealed class ScriptedDiffService(CommitComparison? comparison = null)
     public Task<ForgePullRequest?> GetPullRequestAsync(Repository repository, int number, CancellationToken cancellationToken = default)
         => Task.FromResult(PullRequests.TryGetValue(number, out var pull) ? pull : null);
 
+    /// <summary>Accounts this scripted forge was asked to reconcile, in order, for assertions.</summary>
+    public List<string> Reconciled { get; } = [];
+
+    public Task ReconcileAsync(Account account, CancellationToken cancellationToken = default)
+    {
+        Reconciled.Add(account.Id ?? account.OwnerKey);
+        return Task.CompletedTask;
+    }
+
     /// <summary>Statuses published against this forge, in order, for assertions.</summary>
     public List<(string Sha, string Name, ForgeVerdict Verdict)> Statuses { get; } = [];
 

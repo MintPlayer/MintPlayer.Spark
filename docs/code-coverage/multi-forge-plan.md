@@ -1612,6 +1612,133 @@ before — the extra generated copies are never deployed.
 them `[Register]` and `[Inject]` are inert **with no diagnostic**, which is the same failure this
 milestone's registration guard exists to catch.
 
+## ✅ M6d, M6g, M8 tail and the storage quota — built 2026-09-22
+
+Everything below shipped in one unit of work, with the five authorization bugs that were found on
+the way. Four investigations fed it; **two of their recommendations were wrong and are not
+followed**, which is recorded here because the reasoning matters more than the conclusion.
+
+### ✅ M6d — the verification script, and three references it would have caught
+
+`--verify-forge-ids` (deliberately **not** `--spark-verify-*`: that prefix makes `Program.cs` skip
+the sign-in provider registration *including its missing-secret throw*, so a database verb there
+could let production boot with no auth provider).
+
+⚠️ **Three reference fields shipped dangling to production** and are repaired by
+`M_202609220900`:
+
+| Field | Why the first pass missed it |
+|---|---|
+| `PullRequestFeedback.Repository` | its script re-keys `id(d)` and nothing else |
+| `FileCoverage.Origin.FromBuildId` | its script rewrites `d.BuildId` only — and `Origin` is on every carried-forward file, so this is the widest |
+| `GitHubProject.Account` | `GitHubProjects` is in **no phase**; its ids are node-id-derived and correctly do not move, but the reference still had to follow |
+
+None failed loudly: a dangling reference is not an error in RavenDB, `LoadAsync` returns null. Each
+surfaces as a *different, smaller-looking* bug — an empty panel, a missing avatar, a comment that
+re-posts instead of editing.
+
+The migration's own guard could never have caught them: it refuses to delete only on **total**
+failure (`legacy > 0 && qualified == 0`), so one re-keyed document out of 220,000 satisfies it, and
+it counts ids and nothing else. The verifier asserts zero legacy survivors, zero double-qualified
+ids, all eleven reference fields, and — the one independent ground truth — that every attachment
+named by `Build.Sessions[].RawFileNames` exists.
+
+### ✅ M6g — the backfill, and an investigation recommendation refused
+
+⚠️ **The investigation advised deleting `ApiToken.AccountGitHubId` and standing on
+`AccountOwnerKey`. That would have been a security regression.** `AccountOwnerKey` is
+`provider:login` — *login-derived*, so it carries exactly the weakness the numeric id exists to
+avoid. `UploadsController` compares `repository.Account == Accounts/github/{id}` precisely because a
+login comparison is wrong **in both directions** once a repository is transferred.
+
+The two fields do different jobs: the key answers **visibility** (which token rows you may see,
+where unioning forges was the bug), the numeric id answers **authorization** (which repositories a
+token may upload to, where surviving a transfer is the point).
+
+So M6g's real target is the weak login **fallback arm**, and `M_202609221000` is the backfill it
+needed. ⚠️ It cannot resolve every token — and that is the point of running it, because the
+unresolvable ones *are* the population the fallback protects. It logs them at warning with their ids
+rather than leaving a silent null, and does **not** revoke them.
+
+### ✅ The storage quota — the app's first accumulating limit
+
+Nothing accumulated before this. `Repository.ForkUploads`: 200/day, checked after the repository
+loads and **before** the forge round trip.
+
+- **A budget separate from anything the owner spends.** The anonymous endpoint has no caller
+  identity to charge, so the only thing a quota can attach to is the target repository — and sharing
+  it with the owner's own uploads would turn a storage problem into an **availability** one.
+- **Documents are metered, not bytes.** Attachments are bounded by the 7-day reaper; the documents
+  they expand into are permanent. ⚠️ **Nothing reaps a fork pull request closed unmerged or left
+  open** — only a merge triggers cleanup.
+- ⚠️ `Flags` was an **unvalidated document multiplier**: the parser writes one `FileCoverage` per
+  file *per flag*, so `N × (1 + F)` with F caller-chosen and free. Now de-duplicated and capped — 32
+  first-party, 4 for forks.
+
+### ✅ M8 tail — the neutral event contract is complete in both directions
+
+⚠️ `RepositoryRenamed` and `RepositoryConnectionChanged` were declared, documented, and had **zero
+producers and zero consumers** from the day they were written; the facts were handled inline in the
+GitHub library. The contract *looked* complete, and a second forge would have raised two of its six
+events and found them silently dropped.
+
+Both are now wired, and the reconciliation seam with them:
+
+| | Before | Now |
+|---|---|---|
+| Repository rename / transfer | inline in GitHub | `RepositoryRenamed` |
+| Repository deleted / removed / app uninstalled | inline in GitHub | `RepositoryConnectionChanged` |
+| Reconciliation entry point | `IGitHubStateReconciler`, named by **three app classes** | `IForgeIntegration.ReconcileAsync`; the app names no forge |
+| Account connection | `account.InstallationId is not null` in the neutral layer | `Account.Connection`, a stored neutral field |
+| `ReconcileAccountMessage` | `AccountGitHubId`, provider hard-coded to GitHub in the recipient | `AccountId` + `Provider` |
+
+`Account` implements `IForgeConnectable` because two of the three callers ask "is this account
+connected" **inside RQL** — an interface method cannot be pushed down, so a stored field was the only
+shape that worked. It is a *reachability flag, not a credential*: a neutral layer must never hold
+one.
+
+⚠️ The message rename is a **persisted-payload** change — `SparkMessage` stores JSON and Json.NET
+ignores a member it cannot bind, so an in-flight message would deserialize with `AccountId = 0` and
+silently no-op. Done only because the owner confirmed the queue was empty; `M_202609221100` drops
+stragglers rather than leaving them to fail quietly.
+
+**Enforced:** `IForgeEvent` marks the vocabulary, `ForgeWebhookMessage<T>` is constrained to it, and
+`ForgeEventContractTests` asserts every event has a producer *and* a consumer and that no consumer
+names a forge. Documented in [`forge-webhooks.md`](forge-webhooks.md), which
+`ForgeWebhookDocsTests` keeps in step with the code.
+
+### ⚠️ Five authorization bugs found on the way — all live, all fail-closed
+
+`SparkVisibility.CanManageOwnerAsync` takes an owner **key**; five call sites passed a bare login.
+Token creation, repository-scoped token saves, token revocation, delete-data and **every project
+board** were refused for every user.
+
+The root cause was a **comment**: `QueryAllowedOwnersAsync`'s remark still described the
+pre-migration behaviour, and five call sites were written against it.
+
+⚠️ **The tests agreed with the bugs.** `ApiTokenRepositoryScopeTests` fed its `ISparkVisibility`
+double bare logins while the real service returns keys — *a test double more permissive than the
+real service does not test the code, it tests the double*. All seven doubles were audited; the two
+that were immune are immune because they return `ForgeOwner[]`, where the mistake is a compile error.
+
+`OwnerKeyComparisonTests` sweeps for the shape and **found the fifth site**, which three
+investigations had missed.
+
+### ❌ Still not done
+
+- **GitLab / Bitbucket implementations.** Stage 2 and 3. The stubs are *documentation, not
+  scaffolding*: zero lines of implementation, and the app references neither project.
+- **`workflow_run` recipe** for private base repositories. ⚠️ It must never check out or execute fork
+  code — the artifact is data.
+- **Fork provenance in the UI.** The flag exists; no view reads it.
+- **SP-R1**, the production forwarded-headers bypass — still needs the VPS proxy address.
+- **`DisconnectedReasons` still speaks GitHub.** ⚠️ The values are *stored on documents*, so renaming
+  them is a data migration. `TransferredAway` is now documented as never written and **unwritable on
+  GitHub** — a transfer out arrives as `installation_repositories.removed`, byte-for-byte identical
+  to a deselection.
+
+---
+
 ## M8 tail + M11 tail — partly built 🟨 *(2026-09-21)*
 
 ### ✅ Built

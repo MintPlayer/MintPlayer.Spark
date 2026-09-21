@@ -40,6 +40,7 @@ public class RepoSettingsControllerTests : CoverageRavenTest
         services.AddScoped<CodeCoverage.Services.IForgeAccessService, CodeCoverage.Services.GitHubForgeAccessService>();
         services.AddSingleton(Substitute.For<CodeCoverage.Services.IForgeClient>());
         services.AddSingleton(Substitute.For<CodeCoverage.Feedback.IForgeFeedbackPublisher>());
+        services.AddSingleton(Substitute.For<CodeCoverage.Services.IGitHubStateReconciler>());
         services.AddScoped<IForgeIntegration, CodeCoverage.Services.GitHubForgeIntegration>();
         services.AddScoped<IForgeIntegrationResolver>(sp => new SingleForgeResolver(sp.GetRequiredService<IForgeIntegration>()));
         services.AddScoped<RepoSettingsController>();

@@ -35,7 +35,6 @@ public partial class ResyncAction : SparkCustomAction
 {
     [Inject] private readonly IForgeIntegrationResolver forges;
     [Inject] private readonly IMyAccountsService myAccounts;
-    [Inject] private readonly IGitHubStateReconciler reconciler;
     [Inject] private readonly IAsyncDocumentSession session;
     [Inject] private readonly ILogger<ResyncAction> logger;
     [Inject] private readonly IManager manager;
@@ -53,14 +52,14 @@ public partial class ResyncAction : SparkCustomAction
         if (owners.Length > 0)
         {
             var accounts = await session.Query<Account, Indexes.Accounts_Overview>()
-                .Where(a => a.OwnerKey.In(owners) && a.InstallationId != null)
+                .Where(a => a.OwnerKey.In(owners) && a.Connection != RepositoryConnection.Disconnected)
                 .ToListAsync(cancellationToken);
 
             foreach (var account in accounts)
             {
                 try
                 {
-                    await reconciler.ReconcileAsync(account, cancellationToken);
+                    await forges.For(account.Provider).ReconcileAsync(account, cancellationToken);
                 }
                 catch (Exception ex)
                 {
