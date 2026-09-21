@@ -57,6 +57,11 @@ public class Account
     /// </remarks>
     public EForgeProvider Provider { get; set; } = EForgeProvider.GitHub;
 
+    /// <summary><see cref="Provider"/> and <c>Login</c> as one comparable value, <c>github:acme</c>.</summary>
+    /// <remarks>See <see cref="Repository.OwnerKey"/> for why this is a field of its own.</remarks>
+    /// <remarks>Derived — see <see cref="Repository.OwnerKey"/> for why it is not settable.</remarks>
+    public string OwnerKey => new Forge.ForgeOwner(Provider, Login ?? string.Empty).ToString();
+
     /// <summary><c>Accounts/{provider}/{accountId}</c>.</summary>
     /// <remarks>
     /// The provider segment is required because a numeric account id is only unique <em>within</em>

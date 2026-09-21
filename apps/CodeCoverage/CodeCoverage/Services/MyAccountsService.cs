@@ -38,7 +38,7 @@ public partial class MyAccountsService : IMyAccountsService
         // theirs rather than one forge's. Reauth is reported if ANY forge needs it: the
         // banner asks the viewer to reconnect, and staying silent because one other forge is
         // healthy would leave rows missing with nothing explaining why.
-        var owners = await forges.GetAllowedOwnerLoginsAsync(cancellationToken);
+        var owners = await forges.GetAllowedOwnerKeysAsync(cancellationToken);
         var reauthRequired = false;
         foreach (var provider in await forges.GetLinkedProvidersAsync(cancellationToken))
         {
@@ -51,7 +51,7 @@ public partial class MyAccountsService : IMyAccountsService
 
         var known = await session.Query<Account, Indexes.Accounts_Overview>()
             .Customize(q => { if (waitForNonStaleResults) q.WaitForNonStaleResults(NonStaleTimeout); })
-            .Where(a => a.Login.In(owners))
+            .Where(a => a.OwnerKey.In(owners))
             .ToListAsync(cancellationToken);
 
         // Every owner here is one the caller manages, so ListingFilter would admit all of them;
@@ -60,12 +60,12 @@ public partial class MyAccountsService : IMyAccountsService
         // makes those numbers quietly wrong.
         var repos = await session.Query<Repository, Indexes.Repositories_Overview>()
             .Customize(q => { if (waitForNonStaleResults) q.WaitForNonStaleResults(NonStaleTimeout); })
-            .Where(r => r.OwnerLogin.In(owners) && r.Connection != RepositoryConnection.Disconnected)
+            .Where(r => r.OwnerKey.In(owners) && r.Connection != RepositoryConnection.Disconnected)
             .Take(MaxRepositories)
             .ToListAsync(cancellationToken);
-        var reposByOwner = repos.ToLookup(r => r.OwnerLogin, StringComparer.OrdinalIgnoreCase);
+        var reposByOwner = repos.ToLookup(r => r.OwnerKey, StringComparer.OrdinalIgnoreCase);
 
-        var byLogin = known.ToDictionary(a => a.Login, StringComparer.OrdinalIgnoreCase);
+        var byKey = known.ToDictionary(a => a.OwnerKey, StringComparer.OrdinalIgnoreCase);
 
         var rows = owners
             .Select(owner =>
@@ -74,10 +74,15 @@ public partial class MyAccountsService : IMyAccountsService
                 var covered = ownerRepos.Sum(r => r.LatestCoverage?.LinesCovered ?? 0);
                 var coverable = ownerRepos.Sum(r => r.LatestCoverage?.LinesCoverable ?? 0);
                 var aggregate = coverable > 0 ? Math.Round(covered * 100.0 / coverable, 1) : (double?)null;
-                return byLogin.TryGetValue(owner, out var account)
+                // ⚠️ `owner` is a provider:login KEY, which is what every lookup above is now
+                // keyed by. It must not reach the row: these fields are displayed, and a user whose
+                // account page called them "github:pieterjan" is the symptom a test caught here.
+                var displayLogin = ForgeOwner.TryParse(owner, out var parsed) ? parsed.Value.Login : owner;
+
+                return byKey.TryGetValue(owner, out var account)
                     ? new MyAccountRow(account.Login, account.Login, account.Type, account.AvatarUrl,
                         ownerRepos.Count, aggregate, account.InstallationId is not null)
-                    : new MyAccountRow(owner, owner, "User", null, ownerRepos.Count, aggregate, false);
+                    : new MyAccountRow(displayLogin, displayLogin, "User", null, ownerRepos.Count, aggregate, false);
             })
             .OrderBy(a => a.Login, StringComparer.OrdinalIgnoreCase)
             .ToArray();

@@ -38,6 +38,45 @@ public class Repository
     [IgnoreForIndex]
     public EForgeProvider Provider { get; set; } = EForgeProvider.GitHub;
 
+    /// <summary>
+    /// <see cref="Provider"/> and <see cref="OwnerLogin"/> as one comparable value,
+    /// <c>github:mintplayer</c> — the form authorization filters on.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>A separate field rather than a rewrite of <see cref="OwnerLogin"/>, which is what the
+    /// plan originally called for.</b> Two reasons, and the second is the deciding one.
+    /// </para>
+    /// <para>
+    /// First, <c>OwnerLogin</c> is what URLs are built from — <c>/api/repos/{owner}/{repo}</c> — and
+    /// several lookups compare it against a route segment. Qualifying it in place would break every
+    /// one of those the moment the migration ran, and they cannot be fixed until routes carry the
+    /// provider (M7). Adding a field keeps the two concerns independent: the login stays the
+    /// human-readable, URL-shaped thing it always was, and the key is what decides access.
+    /// </para>
+    /// <para>
+    /// Second, an owner set flattened to bare logins <b>silently unions forges</b>: a GitLab user
+    /// named <c>mintplayer</c> would inherit the GitHub <c>mintplayer</c>'s repositories. That is
+    /// the bug this field exists to make unrepresentable, and it is a query-shaped problem — the
+    /// row filters are <c>IN</c> clauses — so the answer has to be a single stored comparable value
+    /// rather than a pair of fields compared in application code.
+    /// </para>
+    /// <para>
+    /// A colon, not a slash: GitLab namespaces nest and are themselves slash-delimited, so a slash
+    /// could not be split back apart. See <see cref="Forge.ForgeOwner"/>. This deliberately differs
+    /// from the spelling used in document ids and must not be "tidied" to match.
+    /// </para>
+    /// </remarks>
+    /// <remarks>
+    /// ⚠️ <b>Derived, not settable.</b> A settable field is one every write path can forget, and
+    /// forgetting it here does not fail — it produces a repository that no owner filter matches,
+    /// which reads as "the grid is empty" rather than as a bug. Computing it from the two fields it
+    /// summarises makes the two impossible to disagree. RavenDB serialises the getter, so it is
+    /// stored and indexed exactly as a field would be; the migration still backfills documents
+    /// written before it existed, because their stored JSON has no such property.
+    /// </remarks>
+    public string OwnerKey => new Forge.ForgeOwner(Provider, OwnerLogin).ToString();
+
     /// <summary>The repository name without the owner, e.g. <c>MintPlayer.Spark</c>.</summary>
     public string Name { get; set; } = string.Empty;
 

@@ -168,6 +168,24 @@
         "group": "b2e84c07-9d13-4f56-8a2b-6c9e17f0a582"
       },
       {
+        "id": "7e09b4a3-5b0c-4725-93d1-1b37bd44902a",
+        "name": "OwnerKey",
+        "label": {
+          "en": "Owner Key"
+        },
+        "description": {
+          "en": "Provider and Login as one comparable value, github:acme."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "cb7179a2-eb61-4290-ac91-66fd239e266a",
         "name": "Provider",
         "label": {

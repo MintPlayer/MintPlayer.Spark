@@ -39,6 +39,22 @@ public readonly record struct ForgeOwner(EForgeProvider Provider, string Login)
     /// <summary>Separates the provider from the login. See the type remarks for why it is not a slash.</summary>
     public const char Separator = ':';
 
+    /// <summary>
+    /// The key for an owner login that arrived without a provider — from a URL path segment.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>Interim, and deliberately explicit rather than a silent default.</b> Routes are
+    /// <c>/api/repos/{owner}/{repo}</c> and carry no forge, so a login taken from one has to be
+    /// qualified with something; today GitHub is the only implemented forge, so it is the only
+    /// answer that can be right. M7 gives routes a provider segment and this method goes with it.
+    /// <para>
+    /// A named method rather than an inline concatenation so every such site is greppable, and so
+    /// the assumption is written down once instead of being re-made silently at each call.
+    /// </para>
+    /// </remarks>
+    public static string KeyFromUnqualifiedLogin(string login)
+        => new ForgeOwner(EForgeProvider.GitHub, login).ToString();
+
     /// <summary>The stored and compared form, <c>provider:login</c>.</summary>
     public override string ToString() => $"{Provider.ToCanonicalString()}{Separator}{Login}";
 

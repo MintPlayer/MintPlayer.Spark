@@ -146,7 +146,7 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
         // reading of "signed in, manages nothing". `.In()` rather than Contains -- see
         // ApiTokenActions for what a non-translatable predicate costs.
         if (action is not ("Query" or "Read"))
-            return repository => repository.OwnerLogin.In(owners);
+            return repository => repository.OwnerKey.In(owners);
 
         // The one place the two READ rules diverge. "Query" is the grid — a listing, which must stop
         // advertising a repository we have lost access to. "Read" is the detail page, which is
@@ -178,12 +178,12 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     {
         var owners = await visibility.GetAllowedOwnersAsync();
         return session.Query<Repository, Indexes.Repositories_Overview>()
-            .Where(r => r.OwnerLogin.In(owners));
+            .Where(r => r.OwnerKey.In(owners));
     }
 
     /// <summary>BadgeToken grants badge access on private repos — managers only.</summary>
     public override async Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(string action, Repository entity)
-        => await visibility.CanManageOwnerAsync(entity.OwnerLogin)
+        => await visibility.CanManageOwnerAsync(entity.OwnerKey)
             ? null
             : [nameof(Repository.BadgeToken)];
 

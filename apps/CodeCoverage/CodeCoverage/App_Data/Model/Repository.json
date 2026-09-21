@@ -373,6 +373,24 @@
         "renderer": "repo-name"
       },
       {
+        "id": "b25a2fcd-b781-4b8e-959a-09c444cbaf87",
+        "name": "OwnerKey",
+        "label": {
+          "en": "Owner Key"
+        },
+        "description": {
+          "en": "Provider and OwnerLogin as one comparable value, github:mintplayer — the form authorization filters on."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "28457041-7915-454c-9186-f6bc79f788ce",
         "name": "OwnerLogin",
         "label": {

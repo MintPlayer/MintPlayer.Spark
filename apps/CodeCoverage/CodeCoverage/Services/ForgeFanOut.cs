@@ -45,10 +45,21 @@ public static class ForgeFanOut
     /// rather than re-derived at each site.
     /// </para>
     /// </remarks>
-    public static async Task<string[]> GetAllowedOwnerLoginsAsync(
+    /// <summary>
+    /// Every owner the viewer may see, as <c>provider:login</c> keys ready to compare against
+    /// <see cref="Entities.Repository.OwnerKey"/>.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ This used to return bare logins, which <b>silently unions forges</b>: a GitLab user named
+    /// <c>mintplayer</c> would have matched every repository owned by the GitHub <c>mintplayer</c>,
+    /// because the filter is an <c>IN</c> over strings and the strings were equal. Nothing about
+    /// that failure is visible — it grants access rather than denying it, so it produces no error,
+    /// no empty page and no log line.
+    /// </remarks>
+    public static async Task<string[]> GetAllowedOwnerKeysAsync(
         this IForgeIntegrationResolver forges, CancellationToken cancellationToken = default)
         => [.. (await forges.GetAllowedOwnersAsync(cancellationToken))
-            .Select(owner => owner.Login)
+            .Select(owner => owner.ToString())
             .Distinct(StringComparer.OrdinalIgnoreCase)];
 
     /// <summary>

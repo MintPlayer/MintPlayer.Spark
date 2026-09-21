@@ -36,9 +36,14 @@ public class WriteRowFilterTests : CoverageRavenTest
     private static ISparkVisibility VisibilityFor(params string[] owners)
     {
         var visibility = Substitute.For<ISparkVisibility>();
-        visibility.GetAllowedOwnersAsync().Returns(Task.FromResult(owners));
+        // Bare logins in, provider-qualified keys out - the shape the production flattening
+        // produces, and the shape the row filters compare.
+        visibility.GetAllowedOwnersAsync().Returns(Task.FromResult(
+            owners.Select(ForgeOwner.KeyFromUnqualifiedLogin).ToArray()));
         visibility.CanManageOwnerAsync(Arg.Any<string>())
-            .Returns(call => Task.FromResult(owners.Contains(call.Arg<string>(), StringComparer.OrdinalIgnoreCase)));
+            .Returns(call => Task.FromResult(owners
+                .Select(ForgeOwner.KeyFromUnqualifiedLogin)
+                .Contains(call.Arg<string>(), StringComparer.OrdinalIgnoreCase)));
         return visibility;
     }
 

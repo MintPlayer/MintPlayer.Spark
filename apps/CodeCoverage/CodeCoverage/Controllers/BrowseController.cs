@@ -65,11 +65,12 @@ public partial class BrowseController : ControllerBase
     [HttpGet("accounts/{login}/repos")]
     public async Task<ActionResult<IEnumerable<RepoInfo>>> GetAccountRepos(string login, CancellationToken cancellationToken)
     {
-        var owners = await forges.GetAllowedOwnerLoginsAsync(cancellationToken);
-        var includePrivate = owners.Contains(login, StringComparer.OrdinalIgnoreCase);
+        var owners = await forges.GetAllowedOwnerKeysAsync(cancellationToken);
+        var ownerKey = ForgeOwner.KeyFromUnqualifiedLogin(login);
+        var includePrivate = owners.Contains(ownerKey, StringComparer.OrdinalIgnoreCase);
 
         var repos = await session.Query<Repository, Indexes.Repositories_Overview>()
-            .Where(r => r.OwnerLogin == login)
+            .Where(r => r.OwnerKey == ownerKey)
             .Take(1024)
             .ToListAsync(cancellationToken);
 
@@ -180,10 +181,11 @@ public partial class BrowseController : ControllerBase
     [HttpGet("accounts/{login}/sparklines")]
     public async Task<ActionResult<Dictionary<string, double[]>>> GetSparklines(string login, CancellationToken cancellationToken)
     {
-        var owners = await forges.GetAllowedOwnerLoginsAsync(cancellationToken);
+        var owners = await forges.GetAllowedOwnerKeysAsync(cancellationToken);
+        var ownerKey = ForgeOwner.KeyFromUnqualifiedLogin(login);
 
         var repos = await session.Query<Repository, Indexes.Repositories_Overview>()
-            .Where(r => r.OwnerLogin == login)
+            .Where(r => r.OwnerKey == ownerKey)
             .Take(1024)
             .ToListAsync(cancellationToken);
         var visible = repos.Where(r => RepositoryVisibility.IsListed(r, owners)).ToDictionary(r => r.Id!, r => r);
@@ -537,7 +539,7 @@ public partial class BrowseController : ControllerBase
         // agree forever, and a shared doc-comment was the only thing binding
         // them. The owner list is only fetched when it can matter.
         if (!repository.IsPrivate) return repository;
-        var owners = await forges.GetAllowedOwnerLoginsAsync(cancellationToken);
+        var owners = await forges.GetAllowedOwnerKeysAsync(cancellationToken);
         return RepositoryVisibility.IsVisible(repository, owners) ? repository : null;
     }
 

@@ -45,7 +45,11 @@ public partial class SparkVisibility : ISparkVisibility
                 continue;
 
             var forgeOwners = await service.GetAllowedOwnersAsync();
-            all.AddRange(forgeOwners.Select(owner => owner.Login));
+            // ⚠️ The key, not the bare login. This is the row-filter path: a bare login here
+            // unions forges, so a GitLab owner named the same as a GitHub one would inherit its
+            // private repositories — and because the filter grants rather than denies, the failure
+            // produces no error and no empty page.
+            all.AddRange(forgeOwners.Select(owner => owner.ToString()));
         }
 
         return [.. all.Distinct(StringComparer.OrdinalIgnoreCase)];
@@ -54,8 +58,9 @@ public partial class SparkVisibility : ISparkVisibility
     public Task<string[]> GetVisibleRepositoryIdsAsync()
         => visibleRepositoryIds ??= QueryVisibleRepositoryIdsAsync();
 
-    public async Task<bool> CanManageOwnerAsync(string ownerLogin)
-        => (await GetAllowedOwnersAsync()).Contains(ownerLogin, StringComparer.OrdinalIgnoreCase);
+    /// <param name="ownerKey">A <c>provider:login</c> key — <see cref="Entities.Repository.OwnerKey"/>.</param>
+    public async Task<bool> CanManageOwnerAsync(string ownerKey)
+        => (await GetAllowedOwnersAsync()).Contains(ownerKey, StringComparer.OrdinalIgnoreCase);
 
     private async Task<string[]> QueryVisibleRepositoryIdsAsync()
     {

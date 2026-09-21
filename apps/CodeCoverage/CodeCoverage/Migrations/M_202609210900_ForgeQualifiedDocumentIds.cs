@@ -10,7 +10,8 @@ namespace CodeCoverage.Migrations;
 
 /// <summary>
 /// Gives every document id the forge that hosts it: <c>Repositories/1234</c> becomes
-/// <c>Repositories/github/1234</c>, and the eight shapes nested under a commit id follow.
+/// <c>Repositories/github/1234</c>, and the eight shapes nested under a commit id follow. Also
+/// backfills the <c>OwnerKey</c> fields the authorization filters compare.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -95,6 +96,7 @@ public partial class M_202609210900_ForgeQualifiedDocumentIds : ISparkMigration
                 if (newId !== id(d)) {
                     d.Account = qualify(d.Account, 'Accounts');
                     d.Provider = 'GitHub';
+                    d.OwnerKey = 'github:' + (d.OwnerLogin || '');
                     put(newId, d);
                 }
             }
@@ -106,6 +108,7 @@ public partial class M_202609210900_ForgeQualifiedDocumentIds : ISparkMigration
                 var newId = qualify(id(d), 'Accounts');
                 if (newId !== id(d)) {
                     d.Provider = 'GitHub';
+                    d.OwnerKey = 'github:' + (d.Login || '');
                     put(newId, d);
                 }
             }
@@ -194,6 +197,10 @@ public partial class M_202609210900_ForgeQualifiedDocumentIds : ISparkMigration
                         var q = qualify(d.GithubRepositories[i], 'Repositories');
                         if (q !== d.GithubRepositories[i]) { d.GithubRepositories[i] = q; changed = true; }
                     }
+                }
+                if (d.AccountLogin && !d.AccountOwnerKey) {
+                    d.AccountOwnerKey = 'github:' + d.AccountLogin;
+                    changed = true;
                 }
                 if (changed) { put(id(d), d); }
             }

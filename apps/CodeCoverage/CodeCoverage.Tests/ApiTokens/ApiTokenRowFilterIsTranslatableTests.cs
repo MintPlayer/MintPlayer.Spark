@@ -1,3 +1,4 @@
+using CodeCoverage.Forge;
 using CodeCoverage.Actions;
 using CodeCoverage.Entities;
 using CodeCoverage.Services;
@@ -42,10 +43,15 @@ public class ApiTokenRowFilterIsTranslatableTests : CoverageRavenTest
     /// Builds the real actions class with substituted dependencies, resolving the generated
     /// constructor by parameter type so that adding an <c>[Inject]</c> field does not break this.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="owners"/> is given as bare logins for readability and qualified here, which
+    /// is what the production flattening now produces.
+    /// </remarks>
     private static async Task<Expression<Func<ApiToken, bool>>> RowFilterAsync(string[] owners, string action = "Query")
     {
         var visibility = Substitute.For<ISparkVisibility>();
-        visibility.GetAllowedOwnersAsync().Returns(Task.FromResult(owners));
+        visibility.GetAllowedOwnersAsync().Returns(Task.FromResult(
+            owners.Select(ForgeOwner.KeyFromUnqualifiedLogin).ToArray()));
 
         var ctor = typeof(ApiTokenActions).GetConstructors()
             .OrderByDescending(c => c.GetParameters().Length)
@@ -81,6 +87,8 @@ public class ApiTokenRowFilterIsTranslatableTests : CoverageRavenTest
             {
                 Scope = "Account",
                 AccountLogin = login,
+                // The row filter compares the provider-qualified key, not the bare login.
+                AccountOwnerKey = login is null ? null : ForgeOwner.KeyFromUnqualifiedLogin(login),
                 Description = description,
                 CreatedAtUtc = DateTime.UtcNow,
             });

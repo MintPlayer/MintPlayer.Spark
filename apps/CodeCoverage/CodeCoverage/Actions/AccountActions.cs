@@ -44,11 +44,11 @@ public partial class AccountActions : DefaultPersistentObjectActions<Account>, I
         // `.In()` rather than Contains: this predicate is pushed into RQL, where Contains is
         // untranslatable — see ApiTokenActions for the production outage that taught us.
         var owners = await visibility.GetAllowedOwnersAsync();
-        return account => account.Login.In(owners);
+        return account => account.OwnerKey.In(owners);
     }
 
     public override async Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(string action, Account entity)
-        => await visibility.CanManageOwnerAsync(entity.Login)
+        => await visibility.CanManageOwnerAsync(entity.OwnerKey)
             ? null
             : [nameof(Account.InstallationId)];
 }
