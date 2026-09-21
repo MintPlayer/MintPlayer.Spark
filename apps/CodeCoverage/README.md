@@ -275,6 +275,82 @@ signed-in human's GitHub access — so no CI credential can read a private repos
 and they answer `404` identically for "no data yet" and "not allowed". Building a gate on them will
 work right up until it doesn't.
 
+## Outgoing mail
+
+The app sends exactly one kind of message: the "do you want this login attached to your
+account?" confirmation, and only when `Spark__Auth__ExternalLoginLinking=ConfirmByEmail`.
+It is **off by default** — there is no second forge worth linking to yet — so a deployment
+that leaves `MAIL_FROM_ADDRESS` unset registers no mail transport at all, which is a
+supported state.
+
+**The app never talks to the internet.** It hands the message to the `coverage-smtp`
+container on the internal network and returns; that container queues it and does the
+delivering. This is not tidiness: the send happens *inside the external-login callback*,
+while somebody is waiting on an HTTP response, and a handoff one hop away takes
+milliseconds whether or not the receiving mail server is reachable.
+
+⚠️ **Delivery is the hard part, not the wiring.** All of the following was measured
+against this VPS on 2026-09-21, and every step of it was necessary:
+
+| | |
+|---|---|
+| Hetzner blocks outbound **25 and 465** on all Cloud Servers | Request an unblock from the Hetzner console (Limits page). 587 is open by default, so relaying through a provider needs no request. |
+| Reverse DNS must match the HELO name | Set the PTR to `coverage.mintplayer.com` in the Hetzner console. It forward-resolves to the server, which is what receivers check. |
+| `mintplayer.com` publishes DMARC **`sp=reject`** | Every subdomain inherits it. Mail that fails alignment is **rejected**, not junked — measured: `550 5.7.509 ... does not pass DMARC verification and has a DMARC policy of reject`. |
+
+Two DNS records make it pass, both on `mintplayer.com`'s zone:
+
+```
+coverage                    TXT   v=spf1 ip4:188.245.190.60 ip6:2a01:4f8:c0c:f87c:: -all
+mail._domainkey.coverage    TXT   v=DKIM1;k=rsa;p=<public key>
+```
+
+⚠️ The SPF record lists **both** address families. `coverage.mintplayer.com` has an AAAA,
+so Postfix would otherwise be free to send over IPv6 and fail SPF there. The compose file
+additionally pins `smtp_address_preference=ipv4`, because the large receivers hold IPv6
+senders to a stricter standard — chiefly a valid PTR for the v6 address, which Hetzner
+sets per address and which is not configured here.
+
+Generating the DKIM key, on the VPS:
+
+```bash
+cd /var/www/code-coverage
+mkdir -p mail-dkim && cd mail-dkim
+docker run --rm -v "$PWD":/out alpine:3.20 sh -c \
+  'apk add --no-cache opendkim-utils && opendkim-genkey -b 2048 \
+     -d coverage.mintplayer.com -s mail -D /out'
+mv coverage.mintplayer.com/mail.private coverage.mintplayer.com.private   # see below
+chown -R 101:104 . && chmod 600 *.private                                 # see below
+```
+
+⚠️ **Two layout traps, each of which cost a deploy cycle:**
+
+1. **The key must be flat** — `mail-dkim/<domain>.private`. `opendkim-genkey` writes
+   `<domain>/<selector>.private`, and with that layout the image logs `Skipping DKIM` and
+   delivers the message **unsigned**. It still arrives, because SPF passes on its own, so
+   the failure is invisible unless you read the container log or the message headers.
+2. **The key must be owned by opendkim on the host** (`101:104` in `boky/postfix:v4.3.0`).
+   The image tries to `chown` a key it cannot read, the read-only mount refuses, and the
+   container exits — which at least fails loudly, unlike the first trap.
+
+Verify the key against what is published, which is the check that actually proves it:
+
+```bash
+docker run --rm -v /var/www/code-coverage/mail-dkim:/keys:ro alpine:3.20 sh -c \
+  'apk add --no-cache opendkim-utils bind-tools >/dev/null &&
+   opendkim-testkey -d coverage.mintplayer.com -s mail \
+     -k /keys/coverage.mintplayer.com.private -vvv'
+```
+
+`key OK` means the private key and the DNS record agree. Anything else means the record
+was pasted wrong — most often line-wrapping inside the base64.
+
+**If deliverability ever degrades**, set `MAIL_RELAY_HOST` (plus username and password)
+to a provider's submission host. Postfix then relays instead of delivering directly, the
+port 25 unblock stops mattering, and the provider's reputation replaces this IP's.
+
+---
+
 ## Deployment
 
 `docker-compose.yml` runs the app plus a pinned RavenDB on an internal network behind
@@ -294,7 +370,11 @@ One-time VPS setup:
    Mind the `.env`'s line endings: it must be LF, a CRLF file poisons every value with
    an invisible `\r`. Optionally add `RAVENDB_LICENSE` here — see
    [RavenDB licence](#ravendb-licence) below.
-2. Place the **production** GitHub App's private key at `/var/www/code-coverage/github-app.pem`,
+2. Optional, for mail: create `/var/www/code-coverage/mail-dkim` and follow
+   [Outgoing mail](#outgoing-mail) above. Skipping this leaves the app unable to send,
+   which is fine unless `ExternalLoginLinking` is `ConfirmByEmail` — Spark refuses to
+   start in that combination rather than discarding confirmations silently.
+3. Place the **production** GitHub App's private key at `/var/www/code-coverage/github-app.pem`,
    readable by the container's `app` user (UID 1654) — e.g. `chmod 644` or `chown 1654`.
    Beware: if the file is missing at first `up`, Docker silently creates a *directory*
    at that path and App auth fails at runtime.
@@ -318,17 +398,17 @@ One-time VPS setup:
    **After fixing a bad key:** check-run publishing gives up per build after 5 attempts
    and never revisits it (`FeedbackState: Failed` is terminal) — a **new build** is
    required; existing failed builds will not retroactively get their check-runs.
-3. `docker network create web` if it doesn't exist; Traefik must be attached to it, with
+4. `docker network create web` if it doesn't exist; Traefik must be attached to it, with
    an entrypoint named `websecure` and an ACME resolver named `letsencrypt` (the compose
    labels assume those exact names).
-4. DNS A/AAAA record for the subdomain → the VPS, *before* the first deploy (Let's
+5. DNS A/AAAA record for the subdomain → the VPS, *before* the first deploy (Let's
    Encrypt won't issue without it).
-5. GitHub side: repository secrets `VPS_HOST`, `VPS_USERNAME`, `VPS_SSH_KEY`
+6. GitHub side: repository secrets `VPS_HOST`, `VPS_USERNAME`, `VPS_SSH_KEY`
    (dedicated ed25519 deploy key in the VPS user's `authorized_keys`), optional
    `VPS_PORT` / `VPS_SSH_KEY_PASSPHRASE`. Verify the ghcr package is **public** after
    the first publish (the workflow's visibility PATCH is best-effort), or
    `docker login ghcr.io` on the VPS with a `read:packages` PAT.
-6. Production GitHub App: callback URL `https://<host>/signin-github`, webhook URL
+7. Production GitHub App: callback URL `https://<host>/signin-github`, webhook URL
    `https://<host>/api/github/webhooks`, same permissions as the dev App.
 
 Manual redeploy: the workflow's `workflow_dispatch` button, or on the VPS

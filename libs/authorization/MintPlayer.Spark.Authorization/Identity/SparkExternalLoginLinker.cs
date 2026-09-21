@@ -104,7 +104,11 @@ public partial class SparkExternalLoginLinker<TUser> where TUser : SparkUser, ne
     /// attaches a credential. If the request was <em>not</em> theirs, an expired link costs them
     /// nothing: no link is made either way.
     /// </remarks>
-    internal static readonly TimeSpan ConfirmationWindow = TimeSpan.FromHours(1);
+    /// <remarks>
+    /// Public because the mail has to state it, and a sender that hard-coded "1 hour" beside a
+    /// window it does not control would eventually lie to the reader.
+    /// </remarks>
+    public static readonly TimeSpan ConfirmationWindow = TimeSpan.FromHours(1);
 
     private const string IdPrefix = "SparkPendingExternalLogins/";
 

@@ -389,7 +389,7 @@ CodeCoverage (PRD §4.1). Nothing to build.
 
 ---
 
-## M4 — Spark: link confirmation, and the two linking modes 🟨 *(everything but 4i)*
+## M4 — Spark: link confirmation, and the two linking modes ✅ *(4a–4k built; mail verified end to end)*
 
 D2 and D9. All of this is Spark-side; CodeCoverage only chooses.
 
@@ -700,10 +700,51 @@ anyone and holds the email reservation, so the same person cannot even try again
 because of this request and has nothing in it, so undoing it beats leaving a tombstone on the
 address. Pinned in both directions — a successful provision is not undone.
 
-**Still to build:** 4i (the SMTP container — VPS infrastructure, and deliverability is the risk
-rather than wiring). ⚠️ **CodeCoverage implements no sender yet**, so `ConfirmByEmail` is not
-configurable there until 4i gives it something to send with. The manage-logins UI component is
-deliberately not built (see 4d).
+### As-built — 4i
+
+**Built, deployed as DNS + a key on the VPS, and verified against a real external mailbox.** Full
+write-up in [`docs/guide-outgoing-mail.md`](../guide-outgoing-mail.md); the CodeCoverage-specific
+half is in that app's README under "Outgoing mail".
+
+`coverage-smtp` (`boky/postfix`) on the internal network, no published ports. The app hands the
+message over and returns — **the send happens inside the external-login callback**, while somebody
+is waiting on an HTTP response, so a local handoff that takes milliseconds regardless of whether
+the receiving server is reachable is the whole point. A named queue volume keeps messages across a
+redeploy.
+
+⚠️ **The plan said deliverability, not wiring, was the risk. That was right, and understated.**
+Measured 2026-09-21, in order:
+
+| | |
+|---|---|
+| Outbound 25 **and 465 blocked** by Hetzner on every Cloud Server; 587 open | unblocked on request |
+| First probe | `550 5.7.509 ... does not pass DMARC verification and has a DMARC policy of reject` |
+| Cause | `_dmarc.mintplayer.com` publishes **`sp=reject`** — inherited by every subdomain, so failure is *rejection*, not junking |
+| Fix | SPF + DKIM TXT records for `coverage.mintplayer.com`, **both address families** in SPF because the host has an AAAA |
+| Second probe | `status=sent` — but the log said `Skipping DKIM`: delivered **unsigned**, passing on SPF alone |
+| Third probe | signed; `opendkim-testkey` reports `key OK` / `key secure`; **inbox, not junk** |
+
+⚠️ **The second probe is the one worth remembering: it looked like success.** SPF alone delivers,
+so a misfiled DKIM key is invisible unless you read the container log or the received headers — and
+SPF is the half that breaks the moment a recipient forwards the message. Two layout traps caused
+it, both now documented in the compose file and the guide: the key must be **flat**
+(`<domain>.private`, not `<domain>/<selector>.private`) and **owned by opendkim on the host**
+(`101:104`), because it cannot chown through a read-only mount.
+
+⚠️ Also pinned `smtp_address_preference=ipv4`. `coverage.mintplayer.com` has an AAAA, and the large
+receivers hold IPv6 senders to a stricter standard — chiefly a valid PTR for the v6 address, which
+Hetzner sets per address and which is not configured.
+
+**Application side:** `CoverageMailOptions` + `SmtpLinkConfirmationSender`, registered **only when
+`Host` and `FromAddress` are both set**. That conditional is what keeps Spark's "no default
+transport" design honest: an unregistered sender is how a deployment says it cannot send, and it is
+what makes the `ConfirmByEmail` startup guard a null check rather than a guess.
+
+**Not switched on.** `MAIL_FROM_ADDRESS` is unset and `ExternalLoginLinking` stays `Disabled`: with
+one forge the situation the modes exist for cannot arise. The infrastructure is proven and waiting.
+
+**Not built:** the manage-logins UI component (see 4d), and the PTR is still Hetzner's generic name
+— measured as *not* required by Outlook here, so it is hardening rather than a blocker.
 
 ---
 
