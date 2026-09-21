@@ -244,6 +244,35 @@ public class Repository : IForgeConnectable
     /// <remarks>From the newest finalized default-branch build.</remarks>
     public DateTime? LatestCoverageAtUtc { get; set; }
 
+    /// <summary>
+    /// How many fork-contributed uploads this repository has accepted in the current window.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>A budget of its own, deliberately separate from anything the owner spends.</b> The
+    /// anonymous fork endpoint has no caller identity to charge — that is what makes it anonymous —
+    /// so the only thing a quota can be attached to is the target repository. Charging fork uploads
+    /// to the <em>same</em> budget as the repository's own would convert a storage problem into an
+    /// availability one: a stranger opening pull requests could exhaust a repository's allowance and
+    /// get its owner's CI refused. <see cref="Commit.ContributedFromFork"/> already separates the
+    /// two populations, so the budget can too.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>Documents are what is metered, not bytes.</b> Report attachments are already bounded —
+    /// the reaper deletes them after <c>Coverage:Retention:ReportAttachmentDays</c> — but the
+    /// documents they expand into are permanent: one <c>FileCoverage</c> per file, plus one per file
+    /// <em>per flag</em>, plus an assembled copy. And <b>nothing reaps a fork pull request that is
+    /// closed without merging, or simply left open</b>; only a merge triggers
+    /// <c>DeletePullRequestBuildsRecipient</c>. So the recoverable half is bounded and the permanent
+    /// half was not.
+    /// </para>
+    /// <para>
+    /// Null on every repository that has never taken one, which is almost all of them — the field
+    /// costs nothing until it is used.
+    /// </para>
+    /// </remarks>
+    public ForkUploadBudget? ForkUploads { get; set; }
+
     /// <summary><c>Repositories/{provider}/{repositoryId}</c>.</summary>
     /// <remarks>
     /// The provider segment is required because a numeric repository id is only unique
