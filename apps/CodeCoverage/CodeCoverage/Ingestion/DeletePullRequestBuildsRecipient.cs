@@ -43,7 +43,15 @@ public partial class DeletePullRequestBuildsRecipient : IRecipient<DeletePullReq
         {
             if (commit.Id is null)
                 continue;
-            if (repository?.DefaultBranch is not null
+            // ⚠️ The default-branch exemption must not apply to fork-contributed coverage. A fork's
+            // head branch is very often literally `main`, because contributors fork and commit on
+            // their own default branch — so on a repository whose default branch is also `main`,
+            // this comparison matches a branch in somebody ELSE's repository and retains the data
+            // forever. Nothing else would ever clean it up: there is no quota and no timer, and the
+            // exemption exists to protect THIS repository's own history, which a fork commit is
+            // never part of.
+            if (!commit.ContributedFromFork
+                && repository?.DefaultBranch is not null
                 && string.Equals(commit.Branch, repository.DefaultBranch, StringComparison.Ordinal))
                 continue;
 

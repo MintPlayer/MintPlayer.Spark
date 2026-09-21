@@ -160,19 +160,52 @@ public class ForkContributionTests : CoverageRavenTest
         Assert.Equal(sha, repository.LatestCoverageSha);
     }
 
+    /// <summary>
+    /// A repository that has never had coverage still takes its first number from any branch.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>This is deliberate, not a hole.</b> Somebody who has just wired up coverage sees a
+    /// number rather than a blank badge, and the next default-branch build corrects it. It was
+    /// briefly removed on 2026-09-21 as part of "fixing the promote bug" and restored the same day:
+    /// the actual defect was the <c>DefaultBranch is null</c> arm, which on an OIDC-provisioned
+    /// repository is permanent rather than first-time-only, and that is fixed by backfilling the
+    /// default branch instead.
+    /// <para>
+    /// Removing it would also have bought nothing: <c>ContributedFromFork</c> is tested first and
+    /// structurally, so an untrusted upload never reaches this comparison.
+    /// </para>
+    /// </remarks>
     [Fact]
-    public async Task A_never_covered_repository_no_longer_promotes_a_non_default_branch()
+    public async Task A_never_covered_repository_takes_its_first_coverage_from_any_branch()
     {
         using var store = GetDocumentStore();
-        // LatestCoverage null AND a known default branch: the escape that used to let any branch
-        // through, and the one an anonymous fork upload would have reached first.
         await SeedRepository(store, defaultBranch: "master", latest: null);
 
         var commitId = await SeedCoveredCommit(store, new string('b', 40), "feature/x", fromFork: false);
         await Assemble(store, commitId);
 
         var repository = await LoadRepository(store);
-        Assert.Null(repository.LatestCoverage);
+        Assert.NotNull(repository.LatestCoverage);
+    }
+
+    /// <summary>
+    /// Once it HAS coverage, a non-default branch no longer moves it. The courtesy is first-time
+    /// only — this is the pair that proves it is a one-shot and not a permanently open door.
+    /// </summary>
+    [Fact]
+    public async Task Once_covered_a_non_default_branch_no_longer_moves_the_headline()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepository(store, defaultBranch: "master",
+            latest: new CoverageSummary { LinesCovered = 10, LinesCoverable = 10 });
+
+        var commitId = await SeedCoveredCommit(store, new string('b', 40), "feature/x", fromFork: false);
+        await Assemble(store, commitId);
+
+        var repository = await LoadRepository(store);
+        // Untouched: still the seeded 10/10, not the feature branch's 1/2.
+        Assert.Equal(10, repository.LatestCoverage!.LinesCovered);
+        Assert.Null(repository.LatestCoverageSha);
     }
 
     [Fact]

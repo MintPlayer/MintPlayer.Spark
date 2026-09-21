@@ -357,15 +357,26 @@ public partial class CommitAssembler : ICommitAssembler
     /// never looks at an id.
     /// </para>
     /// <para>
-    /// <b>Two escapes were closed on 2026-09-21.</b> The guard used to be a three-way <c>&amp;&amp;</c>
-    /// that only engaged once the repository already had coverage <em>and</em> a known default
-    /// branch, so a repository missing either promoted <em>every</em> complete assembly on
-    /// <em>every</em> branch — and <c>commit.Branch</c> is uploader-supplied. On an OIDC-provisioned
-    /// repository, which never learns its default branch from any webhook, that was permanent: the
-    /// badge simply tracked the last complete upload. The <c>LatestCoverage is null</c> half is now
-    /// gone outright; an unknown default branch still promotes, deliberately, because refusing
-    /// would leave such a repository with no badge at all rather than an imperfect one — and the
-    /// upload path now backfills the default branch precisely so that case becomes rare.
+    /// <b>The two null escapes are not the same thing, and only one of them was ever a bug.</b>
+    /// </para>
+    /// <para>
+    /// <c>LatestCoverage is null</c> is <b>deliberate and stays</b>: a repository that has never had
+    /// coverage accepts any branch, so somebody who has just wired this up sees a number rather than
+    /// a blank badge, until the default branch reports one. It is a first-upload courtesy that
+    /// corrects itself on the next default-branch build.
+    /// </para>
+    /// <para>
+    /// ⚠️ <c>DefaultBranch is null</c> was the defect. On an OIDC-provisioned repository that field
+    /// is <em>permanently</em> null — nothing but a webhook or the installation reconciler ever
+    /// writes it, and such a repository has neither — so the guard never engaged at all and the
+    /// badge tracked the last complete upload on <em>any</em> branch, forever, with
+    /// <c>commit.Branch</c> uploader-supplied. Fixed at the cause rather than here: the upload path
+    /// now backfills the default branch from the forge. Promotion still proceeds when it is somehow
+    /// still unknown, because refusing would leave the repository with no badge at all.
+    /// </para>
+    /// <para>
+    /// Removing the first escape would buy nothing anyway: <see cref="Commit.ContributedFromFork"/>
+    /// is tested first and structurally, so an untrusted upload never reaches either comparison.
     /// </para>
     /// </remarks>
     private static void Promote(Commit commit, Repository? repository, CommitAssembly assembly)
@@ -379,7 +390,8 @@ public partial class CommitAssembler : ICommitAssembler
         if (commit.ContributedFromFork)
             return;
 
-        if (repository.DefaultBranch is not null
+        if (repository.LatestCoverage is not null
+            && repository.DefaultBranch is not null
             && !string.Equals(commit.Branch, repository.DefaultBranch, StringComparison.Ordinal))
             return;
 
