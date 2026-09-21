@@ -20,7 +20,7 @@ import { CoverageDeltaRendererComponent } from './spark/coverage-delta-renderer.
 import { AccountAvatarRendererComponent } from './spark/account-avatar-renderer.component';
 import { AccountLinkRendererComponent } from './spark/account-link-renderer.component';
 import { AccountCoverageRendererComponent } from './spark/account-coverage-renderer.component';
-import { AppInstalledRendererComponent } from './spark/app-installed-renderer.component';
+import { ConnectedRendererComponent } from './spark/connected-renderer.component';
 import { HOME_URL } from './spark/home-route';
 
 export const appConfig: ApplicationConfig = {
@@ -86,8 +86,8 @@ export const appConfig: ApplicationConfig = {
         columnComponent: AccountCoverageRendererComponent,
       },
       {
-        name: 'app-installed',
-        columnComponent: AppInstalledRendererComponent,
+        name: 'connected',
+        columnComponent: ConnectedRendererComponent,
       },
     ]),
     // The Resync custom action's refreshQuery operation is dispatched here; without

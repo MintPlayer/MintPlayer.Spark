@@ -25,36 +25,6 @@
       "fr": "Se connecter",
       "nl": "Aanmelden"
     },
-    "home": {
-      "en": "Home",
-      "fr": "Accueil",
-      "nl": "Start"
-    },
-    "yourAccounts": {
-      "en": "Your accounts",
-      "fr": "Vos comptes",
-      "nl": "Je accounts"
-    },
-    "loadingAccounts": {
-      "en": "Loading accounts...",
-      "fr": "Chargement des comptes...",
-      "nl": "Accounts laden..."
-    },
-    "noAccounts": {
-      "en": "No accounts found.",
-      "fr": "Aucun compte trouvé.",
-      "nl": "Geen accounts gevonden."
-    },
-    "appInstalled": {
-      "en": "App installed",
-      "fr": "Application installée",
-      "nl": "App geïnstalleerd"
-    },
-    "appNotInstalled": {
-      "en": "App not installed",
-      "fr": "Application non installée",
-      "nl": "App niet geïnstalleerd"
-    },
     "installAppHintBefore": {
       "en": "To start collecting coverage, install",
       "fr": "Pour commencer à collecter la couverture, installez",
@@ -80,20 +50,20 @@
       "fr": "Reconnecter",
       "nl": "Opnieuw verbinden"
     },
-    "resync": {
-      "en": "Resync",
-      "fr": "Resynchroniser",
-      "nl": "Hersynchroniseren"
-    },
-    "resyncTooltip": {
-      "en": "Re-query your connected accounts and repositories.",
-      "fr": "Interroger à nouveau vos comptes et dépôts connectés.",
-      "nl": "Je verbonden accounts en repositories opnieuw opvragen."
-    },
     "forgeAccountsTitle": {
       "en": "Your {0} accounts",
       "fr": "Vos comptes {0}",
       "nl": "Je {0}-accounts"
+    },
+    "connected": {
+      "en": "Connected",
+      "fr": "Connecte",
+      "nl": "Verbonden"
+    },
+    "notConnected": {
+      "en": "Not connected",
+      "fr": "Non connecte",
+      "nl": "Niet verbonden"
     }
   },
   "repository": {

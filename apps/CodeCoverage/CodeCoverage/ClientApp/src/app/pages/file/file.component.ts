@@ -83,6 +83,11 @@ export default class FileComponent {
   private readonly router = inject(Router);
   private readonly browse = inject(BrowseService);
 
+  /**
+   * The forge, from the route. It was already read here for the API call and simply never reached
+   * the template, so every breadcrumb link on this page pointed at the pre-forge URL shape.
+   */
+  readonly provider = signal('');
   readonly owner = signal('');
   readonly name = signal('');
   readonly sha = signal('');
@@ -159,6 +164,7 @@ export default class FileComponent {
           return;
         }
 
+        this.provider.set(provider);
         this.owner.set(owner);
         this.name.set(name);
         this.sha.set(sha);

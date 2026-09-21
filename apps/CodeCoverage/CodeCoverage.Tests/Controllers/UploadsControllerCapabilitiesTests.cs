@@ -58,6 +58,7 @@ public class UploadsControllerCapabilitiesTests
         services.AddScoped<IBaseResolver, BaseResolver>();
         services.AddScoped<CodeCoverage.Services.IRepositoryResolver>(sp =>
             new TestRepositoryResolver(sp.GetService<Raven.Client.Documents.Session.IAsyncDocumentSession>()));
+        services.AddScoped<CodeCoverage.Ingestion.IUploadIngestor, CodeCoverage.Ingestion.UploadIngestor>();
         services.AddScoped<UploadsController>();
 
         var controller = services.BuildServiceProvider().GetRequiredService<UploadsController>();

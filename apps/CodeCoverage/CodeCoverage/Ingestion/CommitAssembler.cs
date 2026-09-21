@@ -345,14 +345,51 @@ public partial class CommitAssembler : ICommitAssembler
     }
 
     /// <summary>
-    /// Repo-level coverage tracks the default branch; a repo that never had data
-    /// accepts any branch rather than showing nothing. Never a partial assembly:
-    /// its total is a subset's, and the badge serves this number.
+    /// Repo-level coverage tracks the default branch. Never a partial assembly: its total is a
+    /// subset's, and the badge serves this number.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>This is the only writer of <see cref="Repository.LatestCoverage"/>,</b> and therefore
+    /// the single gate in front of the headline badge, the repository page and the account
+    /// aggregate. Everything that must not move those has to be refused here — the document id
+    /// shape does not help, because this method reads the <see cref="Repository"/> document and
+    /// never looks at an id.
+    /// </para>
+    /// <para>
+    /// <b>The two null escapes are not the same thing, and only one of them was ever a bug.</b>
+    /// </para>
+    /// <para>
+    /// <c>LatestCoverage is null</c> is <b>deliberate and stays</b>: a repository that has never had
+    /// coverage accepts any branch, so somebody who has just wired this up sees a number rather than
+    /// a blank badge, until the default branch reports one. It is a first-upload courtesy that
+    /// corrects itself on the next default-branch build.
+    /// </para>
+    /// <para>
+    /// ⚠️ <c>DefaultBranch is null</c> was the defect. On an OIDC-provisioned repository that field
+    /// is <em>permanently</em> null — nothing but a webhook or the installation reconciler ever
+    /// writes it, and such a repository has neither — so the guard never engaged at all and the
+    /// badge tracked the last complete upload on <em>any</em> branch, forever, with
+    /// <c>commit.Branch</c> uploader-supplied. Fixed at the cause rather than here: the upload path
+    /// now backfills the default branch from the forge. Promotion still proceeds when it is somehow
+    /// still unknown, because refusing would leave the repository with no badge at all.
+    /// </para>
+    /// <para>
+    /// Removing the first escape would buy nothing anyway: <see cref="Commit.ContributedFromFork"/>
+    /// is tested first and structurally, so an untrusted upload never reaches either comparison.
+    /// </para>
+    /// </remarks>
     private static void Promote(Commit commit, Repository? repository, CommitAssembly assembly)
     {
         if (repository is null || assembly.Completeness != CommitAssembly.Complete)
             return;
+
+        // Fork-contributed coverage never moves repository-level state. Structural, and first:
+        // the contributor holds no credential for this repository, so nothing they supplied —
+        // including the branch name the check below would read — is worth comparing.
+        if (commit.ContributedFromFork)
+            return;
+
         if (repository.LatestCoverage is not null
             && repository.DefaultBranch is not null
             && !string.Equals(commit.Branch, repository.DefaultBranch, StringComparison.Ordinal))
@@ -409,7 +446,8 @@ public partial class CommitAssembler : ICommitAssembler
 
         var date = commit.Date.Value;
         var candidates = await session.Query<Commits_ByRepository.Result, Commits_ByRepository>()
-            .Where(r => r.Repository == repository.Id && r.Branch == repository.DefaultBranch && r.CompleteCoverage && r.AuthoredAt <= date)
+            .Where(r => r.Repository == repository.Id && r.Branch == repository.DefaultBranch
+                && r.CompleteCoverage && r.ContributedFromFork != true && r.AuthoredAt <= date)
             .OrderByDescending(r => r.AuthoredAt)
             .OfType<Commit>()
             .Take(5)
@@ -437,7 +475,8 @@ public partial class CommitAssembler : ICommitAssembler
             child.CoverageDeltaVsParent = Delta(Percent(child.Coverage), percent);
         }
 
-        if (repository.DefaultBranch is null
+        if (commit.ContributedFromFork
+            || repository.DefaultBranch is null
             || !string.Equals(commit.Branch, repository.DefaultBranch, StringComparison.Ordinal)
             || commit.AssemblyCompleteness != CommitAssembly.Complete
             || commit.Date is null)
@@ -445,7 +484,7 @@ public partial class CommitAssembler : ICommitAssembler
 
         var date = commit.Date.Value;
         var later = await session.Query<Commits_ByRepository.Result, Commits_ByRepository>()
-            .Where(r => r.Repository == repository.Id && r.HasCoverage && r.AuthoredAt > date)
+            .Where(r => r.Repository == repository.Id && r.HasCoverage && r.ContributedFromFork != true && r.AuthoredAt > date)
             .OrderBy(r => r.AuthoredAt)
             .OfType<Commit>()
             .Take(DependantLimit)

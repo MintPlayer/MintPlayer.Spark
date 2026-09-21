@@ -14,6 +14,37 @@ export interface Credential {
   get(): Promise<string>;
   /** Forces the next `get()` to re-mint. No-op for credentials that don't expire. */
   invalidate(): void;
+  /**
+   * True when there is no credential at all and requests must carry NO
+   * `Authorization` header.
+   *
+   * WARNING this exists so that "no credential" is a state callers must handle
+   * rather than an empty string they can interpolate. A fork run genuinely has
+   * nothing to send, and `Authorization: Bearer undefined` is not an absent
+   * header — it is a malformed one, which the server rejects differently and
+   * which would make the fork path look broken rather than anonymous.
+   */
+  readonly anonymous?: boolean;
+}
+
+/**
+ * No credential at all, for coverage contributed from a fork's pull request.
+ *
+ * GitHub withholds both halves of the usual answer from a fork run — secrets
+ * are not exposed and `id-token: write` is downgraded to read — so there is
+ * nothing to authenticate with and nothing to wait for. The server accepts
+ * these against the pull request itself: it reads the PR back from GitHub and
+ * requires the uploaded sha to equal its current head, which only the person
+ * who opened it can arrange.
+ */
+export function anonymousCredential(): Credential {
+  return {
+    get: async () => {
+      throw new Error('An anonymous credential has no token; check `credential.anonymous` before reading one.');
+    },
+    invalidate: () => {},
+    anonymous: true,
+  };
 }
 
 /** An upload token (`covt_…`). Never expires, so there is nothing to refresh. */
@@ -60,4 +91,16 @@ function expiryOf(jwt: string): number | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The `Authorization` header for a credential, or no header at all.
+ *
+ * WARNING an anonymous credential must produce an ABSENT header, never an empty
+ * or malformed one. All three request sites go through this so the distinction
+ * cannot be re-lost in one of them.
+ */
+export async function authHeaders(credential: Credential): Promise<Record<string, string>> {
+  if (credential.anonymous) return {};
+  return { Authorization: `Bearer ${await credential.get()}` };
 }

@@ -51,6 +51,7 @@ public class UploadsControllerInputBoundsTests
         services.AddScoped<IBaseResolver, BaseResolver>();
         services.AddScoped<IRepositoryResolver>(sp =>
             new TestRepositoryResolver(sp.GetService<IAsyncDocumentSession>()));
+        services.AddScoped<CodeCoverage.Ingestion.IUploadIngestor, CodeCoverage.Ingestion.UploadIngestor>();
         services.AddScoped<UploadsController>();
 
         var controller = services.BuildServiceProvider().GetRequiredService<UploadsController>();

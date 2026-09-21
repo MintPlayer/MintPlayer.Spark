@@ -121,6 +121,12 @@ public interface IForgeIntegration
     /// <summary>Source of one file at an exact commit, or null when unavailable. Never stored.</summary>
     Task<string?> GetFileContentAsync(Repository repository, string sha, string path, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Reads one pull request on <paramref name="repository"/>, or null when it cannot be read.
+    /// See <see cref="IForgeClient.GetPullRequestAsync"/> — null is a refusal, never an absence.
+    /// </summary>
+    Task<ForgePullRequest?> GetPullRequestAsync(Repository repository, int number, CancellationToken cancellationToken = default);
+
     // ── Writes ───────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>

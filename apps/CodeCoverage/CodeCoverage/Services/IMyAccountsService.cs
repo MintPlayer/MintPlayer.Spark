@@ -79,4 +79,4 @@ public sealed record MyAccountRow(
     string? AvatarUrl,
     int RepoCount,
     double? AggregateCoverage,
-    bool IsAppInstalled);
+    bool IsConnected);

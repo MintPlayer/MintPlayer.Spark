@@ -162,7 +162,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
                     continue;
                 }
 
-                Disconnect(existing, DisconnectedReasons.RemovedFromInstallation);
+                existing.MarkDisconnected(DisconnectedReasons.RemovedFromInstallation);
             }
         }
 
@@ -189,7 +189,7 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
             // delete action.
             var existing = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, ghRepo.Id), ct);
             if (existing is not null)
-                Disconnect(existing, DisconnectedReasons.DeletedOnGitHub);
+                existing.MarkDisconnected(DisconnectedReasons.DeletedOnGitHub);
             return;
         }
 
@@ -428,33 +428,13 @@ public partial class GitHubEventsRecipient : IRecipient<GitHubWebhookMessage>
         // Every caller of this reached us through an installation the App still holds, which is
         // itself the proof that the repository is reachable. The one exception — a transfer, where
         // the payload proves the opposite — disconnects again after upserting, deliberately.
-        Connect(repository);
-    }
-
-    /// <summary>Marks a repository reachable again, clearing any record of why it was not.</summary>
-    private static void Connect(Repository repository)
-    {
-        repository.Connection = RepositoryConnection.Connected;
-        repository.DisconnectedReason = null;
-        repository.DisconnectedAtUtc = null;
-    }
-
-    /// <summary>
-    /// Marks a repository unreachable. Never deletes: the coverage history stays, the badge keeps
-    /// serving its last known value, and the report URLs keep resolving — the repository simply
-    /// stops being advertised to anyone but its owner.
-    /// </summary>
-    private static void Disconnect(Repository repository, string reason)
-    {
-        repository.Connection = RepositoryConnection.Disconnected;
-        repository.DisconnectedReason = reason;
-        repository.DisconnectedAtUtc = DateTime.UtcNow;
+        repository.MarkConnected();
     }
 
     private async Task DisconnectRepositoriesOfAsync(Account account, string reason, CancellationToken ct)
     {
         foreach (var repository in await LoadRepositoriesOfAsync(account, ct))
-            Disconnect(repository, reason);
+            repository.MarkDisconnected(reason);
     }
 
     /// <summary>

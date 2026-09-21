@@ -69,6 +69,9 @@ public partial class GitHubForgeIntegration : IForgeIntegration
     public Task<string?> GetFileContentAsync(Repository repository, string sha, string path, CancellationToken cancellationToken = default)
         => client.GetFileContentAsync(repository, sha, path, cancellationToken);
 
+    public Task<ForgePullRequest?> GetPullRequestAsync(Repository repository, int number, CancellationToken cancellationToken = default)
+        => client.GetPullRequestAsync(repository, number, cancellationToken);
+
     public Task<long> PublishStatusAsync(Repository repository, string sha, string name, ForgeVerdict verdict, long? existingId, CancellationToken cancellationToken = default)
         => feedback.PublishStatusAsync(repository, sha, name, verdict, existingId, cancellationToken);
 

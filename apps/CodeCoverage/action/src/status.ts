@@ -1,5 +1,5 @@
 import * as core from '@actions/core';
-import { Credential } from './credential';
+import { authHeaders, Credential } from './credential';
 
 export interface CoverageSummary {
   linesCovered: number;
@@ -127,7 +127,7 @@ export async function waitForFinalize(credential: Credential, options: WaitOptio
 
   for (;;) {
     const response = await fetch(endpoint, {
-      headers: { Authorization: `Bearer ${await credential.get()}` },
+      headers: await authHeaders(credential),
     });
 
     if (response.ok) {

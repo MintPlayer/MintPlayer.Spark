@@ -87,7 +87,16 @@ public static class RepositoryVisibility
     /// reason — a document that arrived without the field materialises as the enum's default, and
     /// the two forms must not disagree about it.
     /// </summary>
-    public static bool IsListed(Repository repository, string[] allowedOwners)
+    /// <remarks>
+    /// ⚠️ Compares <see cref="Repository.OwnerKey"/>, for the reason spelled out on
+    /// <see cref="IsVisible"/>. It compared <c>OwnerLogin</c> until 2026-09-21, which could never
+    /// match: <paramref name="allowedOwnerKeys"/> holds <c>github:mintplayer</c> and
+    /// <c>OwnerLogin</c> holds <c>MintPlayer</c>. That failed <em>closed</em> — an owner stopped
+    /// seeing their own private and disconnected repositories through every imperative caller —
+    /// which is why no security test caught it and why the parity test beside it now compares the
+    /// two forms on the same input instead of checking each alone.
+    /// </remarks>
+    public static bool IsListed(Repository repository, string[] allowedOwnerKeys)
         => (repository.Connection != RepositoryConnection.Disconnected && !repository.IsPrivate)
-            || allowedOwners.Contains(repository.OwnerLogin, StringComparer.OrdinalIgnoreCase);
+            || allowedOwnerKeys.Contains(repository.OwnerKey, StringComparer.OrdinalIgnoreCase);
 }

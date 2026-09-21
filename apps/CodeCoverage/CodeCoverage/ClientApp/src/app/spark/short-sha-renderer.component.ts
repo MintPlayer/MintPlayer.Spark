@@ -46,6 +46,14 @@ export class ShortShaRendererComponent implements SparkAttributeColumnRenderer, 
     const fullName = valueFor(this.item(), 'FullName')?.value;
     if (typeof sha !== 'string' || typeof fullName !== 'string') return null;
     const [owner, name] = fullName.split('/');
-    return owner && name ? ['/r', owner, name, 'c', sha] : null;
+
+    // The forge comes off the row, like every other link in this app: OwnerKey is
+    // "github:MintPlayer" and its prefix is the URL spelling. No forge means plain text rather
+    // than a link into a guessed namespace — a same-named owner on another forge is a different
+    // account, which is the whole reason routes carry the provider.
+    const ownerKey = valueFor(this.item(), 'OwnerKey')?.value;
+    const provider = typeof ownerKey === 'string' ? ownerKey.split(':')[0] : '';
+
+    return owner && name && provider ? ['/', provider, 'r', owner, name, 'c', sha] : null;
   });
 }

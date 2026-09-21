@@ -47,7 +47,7 @@ public partial class MeController : ControllerBase
         return Ok(new AccountsResponse(
             result.ConnectUrl,
             [.. result.Accounts.Select(a => new AccountInfo(
-                a.Login, a.Type, a.AvatarUrl, a.IsAppInstalled, a.RepoCount, a.AggregateCoverage))],
+                a.Login, a.Type, a.AvatarUrl, a.IsConnected, a.RepoCount, a.AggregateCoverage))],
             result.ReauthRequired));
     }
 
