@@ -215,7 +215,17 @@ services:
       interval: 15s
       timeout: 5s
       retries: 8
-      start_period: 60s
+      # ⚠️ Raised from 60s for the M6 re-key, which runs at startup and blocks before the app
+      # listens. Measured on a restored production copy: ~80s to write the new ids across 224k
+      # documents, ~20s to delete the legacy ones, plus 708 attachment moves. This VPS is a
+      # shared-vCPU box, so the budget is deliberately several times the measured figure — the
+      # failure this prevents is a container marked unhealthy while doing precisely what the
+      # deploy asked of it, which reads as a broken release.
+      #
+      # It is a *start* period, not a timeout: a healthy app is marked healthy at the first
+      # successful check, so an over-generous value costs nothing on an ordinary deploy where no
+      # migration is pending.
+      start_period: 600s
     networks:
       - web
       - coverage-internal

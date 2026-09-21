@@ -930,7 +930,52 @@ id. The change is one line; the two above are what make it safe.
      orphaned (M6d).
   4. **Delete** the legacy documents, last.
 
-  **Still to measure:** the attachment moves, and what a mid-run kill leaves behind.
+  #### ✅ Rehearsed end to end, against a restored production copy
+
+  The migration was run as the application runs it — `dotnet run` against the restored database, so
+  the startup path, the runner, the lock and the marker are all the real ones.
+
+  | | Baseline | After |
+  |---|---:|---:|
+  | Documents | 228,059 | 228,060 |
+  | Attachments | 708 | 708 |
+  | `FileCoverages` / `Commits` / `Builds` / `Repositories` | 220,419 / 820 / 318 / 172 | identical |
+
+  **Nothing was lost.** The one extra document is this migration's own applied-marker.
+
+  The whole reference chain resolves, which is the check that matters more than the counts:
+
+  ```
+  Commits/github/402741072/67262d58…/builds/31694883768-2/files/5f46…
+    → BuildId   → Commits/github/402741072/67262d58…/builds/31694883768-2   ✔ resolves
+    → Commit    → Commits/github/402741072/67262d58…                        ✔ resolves
+    → Repository→ Repositories/github/402741072  (Provider: GitHub)         ✔ resolves
+    → Account   → Accounts/github/48772716                                  ✔ resolves
+  ```
+
+  #### Three defects the rehearsal caught, none of which a test would have
+
+  1. **`put()` cannot take the stream `GetAttachmentOperation` returns** — the client requires a
+     seekable stream so it can rewind on failover. It threw *after* every put phase had succeeded.
+     ⚠️ Note where it failed: before the delete phase, so the legacy documents were still present
+     and the marker unwritten. The re-entrancy design was demonstrated rather than asserted.
+  2. **`select count()` is not valid RQL** outside a group-by — the verification query, i.e. the one
+     guarding the deletes, was the last thing to run and the last thing to fail.
+  3. **`result.Total` counts documents *scanned*, not changed.** A second run legitimately reports
+     roughly double the collection size, because the script skips already-qualified documents but
+     the operation still matched them. Read as work done, a correct idempotent re-run looks like a
+     duplication bug. The log now says "scanned".
+
+  #### Consequence carried into the deployment
+
+  ⚠️ `start_period` on the `coverage-app` healthcheck is raised **60s → 600s**. The migration blocks
+  before the app listens, and the measured ~100s of work will be several times that on a
+  shared-vCPU VPS. It is a *start* period rather than a timeout, so the generous value costs nothing
+  on an ordinary deploy with no migration pending.
+
+  **Still to do:** a deliberate mid-run kill. The accidental one above covers the most valuable
+  case — a failure between put and delete — but killing during the `FileCoverages` put is the
+  scenario worth confirming on purpose.
 - **M6a — small collections** (~1,944 docs): `Repositories` 172, `Accounts` 2, `PullRequestFeedbacks`
   43, `Commits` 804, `Builds` 303, `BuildTreeSummaries` 482, `CommitAssemblies` 138. `Commits` roots
   the nested tree, so sequence by id depth and keep parents and children consistent within a run.
