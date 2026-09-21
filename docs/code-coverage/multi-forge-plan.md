@@ -1113,7 +1113,45 @@ second provider to fill it. `App_Data/programUnits.json` grows a unit per provid
 what the subsystem actually supports before designing the unit.
 
 
-- Routes become `/{provider}/{owner}/{name}` using full provider names (D11).
+### D27 — the forge is the outermost scope; the provider always precedes the owner
+
+D11 said `/{provider}/{owner}/{name}`. Taken literally that is ambiguous against the top-level
+namespace — `home`, `query/:queryId`, `po/:type/…`, the auth routes — because a three-segment
+`/{provider}/{owner}/{name}` and a three-segment `/po/:type/:id` differ only by what the first
+segment happens to contain. Keeping the `r`/`a` discriminator in **second** position removes the
+ambiguity while leaving the forge outermost, which is how people read it ("on GitHub, this repo").
+
+| | Before | After |
+|---|---|---|
+| Account | `/a/{login}` | `/{provider}/a/{login}` |
+| Repository | `/r/{owner}/{name}` | `/{provider}/r/{owner}/{name}` |
+| Commit | `/r/{owner}/{name}/c/{sha}` | `/{provider}/r/{owner}/{name}/c/{sha}` |
+| File | `/r/{owner}/{name}/c/{sha}/f` | `/{provider}/r/{owner}/{name}/c/{sha}/f` |
+| Badge | `/badge/{owner}/{name}.svg` | `/badge/{provider}/{owner}/{name}.svg` |
+| Browse API | `/api/browse/repos/{owner}/{name}` | `/api/browse/repos/{provider}/{owner}/{name}` |
+| Accounts API | `/api/browse/accounts/{login}` | `/api/browse/accounts/{provider}/{login}` |
+| Settings API | `/api/repos/{owner}/{name}/settings` | `/api/repos/{provider}/{owner}/{name}/settings` |
+
+**One rule, stated so the next surface does not have to be argued about: the provider precedes the
+owner, everywhere.** On the client it is also the first segment, because there the forge reads as
+the scope rather than as a qualifier.
+
+⚠️ **Checked before adopting, not after.** The only collisions this shape admits are a persistent
+object literally named `r` or `a`, or a forge named `home`, `query` or `po`. Both are inside our
+control, and the provider routes are declared before `sparkRoutes(...)`, which fixes match order.
+
+⚠️ Badge URLs are published into READMEs and pull-request comments, so this is effectively
+permanent — which is why it was decided rather than assumed.
+
+**One funnel.** Every repository read goes through `BrowseController.ResolveVisibleRepository` →
+`RepositoryResolver.ResolveAsync`, so the provider threads through two signatures rather than
+eleven. `RepositoryResolver` hard-codes `EForgeProvider.GitHub` at its GitHub-lookup fallback
+(`:80`); that becomes the parameter.
+
+**Retires** `ForgeOwner.KeyFromUnqualifiedLogin`, which exists only because routes carry no
+provider. When M7 is done a grep for it should find no callers.
+
+- Routes become provider-segmented using full provider names (D11, shaped by D27).
   Touches `app.routes.ts:36-40`, `vanity-redirects.ts`, and every
   `fullName.split('/') → [owner, name]` site: `po-detail-page.component.ts:56-61`,
   `commit-files-extras.component.ts:42`, `short-sha-renderer.component.ts:48`.
