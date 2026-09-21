@@ -104,7 +104,7 @@ public partial class BrowseController : ControllerBase
         // the fork chose. They remain reachable through their pull request, which is the only
         // context in which they mean anything.
         var query = session.Query<Indexes.Commits_ByRepository.Result, Indexes.Commits_ByRepository>()
-            .Where(c => c.Repository == repository.Id && !c.ContributedFromFork);
+            .Where(c => c.Repository == repository.Id && c.ContributedFromFork != true);
         if (!string.IsNullOrEmpty(branch))
             query = query.Where(c => c.Branch == branch);
         if (withCoverageOnly)
@@ -157,7 +157,7 @@ public partial class BrowseController : ControllerBase
         // repository's history — and that is exactly the population (no installation, no webhook)
         // whose default branch is unknown.
         var query = session.Query<Indexes.Commits_ByRepository.Result, Indexes.Commits_ByRepository>()
-            .Where(c => c.Repository == repository.Id && c.HasCoverage && !c.ContributedFromFork);
+            .Where(c => c.Repository == repository.Id && c.HasCoverage && c.ContributedFromFork != true);
         if (!string.IsNullOrEmpty(effectiveBranch))
             query = query.Where(c => c.Branch == effectiveBranch);
 
@@ -207,7 +207,7 @@ public partial class BrowseController : ControllerBase
         var commits = await session.Query<Indexes.Commits_ByRepository.Result, Indexes.Commits_ByRepository>()
             // The in-memory filter below admits every branch when DefaultBranch is null, so the
             // exclusion has to happen in the query rather than relying on that pass.
-            .Where(c => c.Repository.In(repoIds) && c.HasCoverage && !c.ContributedFromFork)
+            .Where(c => c.Repository.In(repoIds) && c.HasCoverage && c.ContributedFromFork != true)
             .OrderByDescending(c => c.AuthoredAt)
             .Take(1000)
             .OfType<Commit>()
@@ -239,7 +239,7 @@ public partial class BrowseController : ControllerBase
         // A fork's head branch must not appear in this repository's branch list: it is a branch
         // name from somebody else's repository, and picking it would render an empty badge.
         var branches = await session.Query<Indexes.Commits_ByRepository.Result, Indexes.Commits_ByRepository>()
-            .Where(c => c.Repository == repository.Id && c.HasCoverage && !c.ContributedFromFork)
+            .Where(c => c.Repository == repository.Id && c.HasCoverage && c.ContributedFromFork != true)
             .Select(c => c.Branch)
             .Distinct()
             .Take(200)

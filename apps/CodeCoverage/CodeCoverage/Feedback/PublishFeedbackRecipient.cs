@@ -76,9 +76,11 @@ public partial class PublishFeedbackRecipient : IRecipient<PublishFeedbackMessag
         try
         {
             feedback.ProjectCheckRunId = await forge.PublishStatusAsync(
-                repository, commit.Sha, "coverage/project", ToVerdict(project), feedback.ProjectCheckRunId, cancellationToken);
+                repository, commit.Sha, "coverage/project",
+                ToVerdict(project, commit.ContributedFromFork), feedback.ProjectCheckRunId, cancellationToken);
             feedback.PatchCheckRunId = await forge.PublishStatusAsync(
-                repository, commit.Sha, "coverage/patch", ToVerdict(patch), feedback.PatchCheckRunId, cancellationToken);
+                repository, commit.Sha, "coverage/patch",
+                ToVerdict(patch, commit.ContributedFromFork), feedback.PatchCheckRunId, cancellationToken);
 
             feedback.State = "Posted";
             feedback.Error = ymlError;
@@ -119,6 +121,11 @@ public partial class PublishFeedbackRecipient : IRecipient<PublishFeedbackMessag
         // not throw; it records its own outbox state.
         if (commit.PullRequestNumber is { } pullRequestNumber)
         {
+            // ⚠️ The signature is for a PRIVATE repository's badge, and a fork upload can only ever
+            // target a public one — so this stays keyed on IsPrivate and needs no fork arm. If fork
+            // uploads ever reach private repositories, this is a place that must be revisited:
+            // minting a badge signature on an anonymous contributor's behalf would publish a
+            // capability for a repository they cannot otherwise see.
             var body = PullRequestCommentRenderer.Render(
                 repository, commit, project, patch, assembly,
                 configuration["Coverage:BaseUrl"],
@@ -146,13 +153,45 @@ public partial class PublishFeedbackRecipient : IRecipient<PublishFeedbackMessag
     /// <see cref="EForgeOutcome.Neutral"/>. That default is deliberate and must not become
     /// <see cref="EForgeOutcome.Success"/>: a gate that could not evaluate has not passed.
     /// </remarks>
-    private static ForgeVerdict ToVerdict(CheckVerdict verdict) => new(
-        verdict.Conclusion switch
-        {
-            "success" => EForgeOutcome.Success,
-            "failure" => EForgeOutcome.Failure,
-            _ => EForgeOutcome.Neutral,
-        },
-        verdict.Title,
-        verdict.Summary);
+    /// <summary>
+    /// Maps a gate conclusion onto the forge's vocabulary.
+    /// </summary>
+    /// <param name="contributedFromFork">
+    /// When true the outcome is forced to <see cref="EForgeOutcome.Neutral"/> (D20).
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>Fork coverage never fails a check.</b> The number was produced by a workflow the base
+    /// repository's maintainers do not control, on a runner they do not own, from code under
+    /// review. Letting it turn a check red would let any contributor mark a pull request as failing
+    /// — and letting it turn green would be a claim we cannot stand behind either. Neutral says what
+    /// is actually true: here is a measurement, it is not a judgement.
+    /// </para>
+    /// <para>
+    /// The title carries the provenance too, because a check-run list shows titles and not bodies,
+    /// and a reviewer skimming it should not have to know that neutral means "from a fork".
+    /// </para>
+    /// </remarks>
+    internal static ForgeVerdict ToVerdict(CheckVerdict verdict, bool contributedFromFork) => new(
+        contributedFromFork
+            ? EForgeOutcome.Neutral
+            : verdict.Conclusion switch
+            {
+                "success" => EForgeOutcome.Success,
+                "failure" => EForgeOutcome.Failure,
+                _ => EForgeOutcome.Neutral,
+            },
+        contributedFromFork ? $"{verdict.Title} (from a fork)" : verdict.Title,
+        contributedFromFork
+            ? verdict.Summary + ForkSummarySuffix
+            : verdict.Summary);
+
+    /// <summary>
+    /// Appended to a fork build's check-run summary, so the neutral conclusion is explained where
+    /// it is read rather than only in documentation.
+    /// </summary>
+    private const string ForkSummarySuffix =
+        "\n\n---\n⚠️ This coverage was contributed from a fork, by a workflow this repository does "
+        + "not control. It is reported for information and never gates the pull request, and it does "
+        + "not affect the repository's own coverage or its badge.";
 }

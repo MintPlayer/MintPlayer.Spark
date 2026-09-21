@@ -68,7 +68,7 @@ public partial class BadgeController : ControllerBase
             if (pr is not null)
                 (summary, partial) = await LoadSelectorCoverage(repository, c => c.PullRequestNumber == pr, cancellationToken);
             else if (!string.IsNullOrEmpty(branch))
-                (summary, partial) = await LoadSelectorCoverage(repository, c => c.Branch == branch && !c.ContributedFromFork, cancellationToken);
+                (summary, partial) = await LoadSelectorCoverage(repository, c => c.Branch == branch && c.ContributedFromFork != true, cancellationToken);
             else
                 summary = repository.LatestCoverage;
 

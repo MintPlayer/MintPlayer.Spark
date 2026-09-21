@@ -67,6 +67,18 @@ public static class PullRequestCommentRenderer
         body.AppendLine("### Coverage");
         body.AppendLine();
 
+        // ⚠️ Stated before the numbers, not after them. A reader who takes the table at face value
+        // and stops has still been told the one thing that changes how to read it — that this
+        // measurement came from a workflow the maintainers do not control, on code under review.
+        // Put below the table, it would be a footnote on a claim already made.
+        if (commit.ContributedFromFork)
+        {
+            body.AppendLine("> **Contributed from a fork.** These numbers were produced by a workflow in the "
+                          + "contributor's repository, so they are reported for information only: they never "
+                          + "gate this pull request, and they do not affect this repository's coverage or badge.");
+            body.AppendLine();
+        }
+
         var badge = BadgeMarkdown(repository, commit, baseUrl, badgeSignature);
         if (badge is not null)
         {

@@ -33,9 +33,18 @@ public class Commits_ByRepository : AbstractIndexCreationTask<Commit>
         /// query. The pull-request-keyed reads deliberately do <b>not</b> exclude them — a fork's
         /// coverage appearing on its own pull request is the entire feature.
         /// <para>
-        /// Mapped as <c>!= true</c> rather than <c>== false</c> would be, had it been nullable:
-        /// the field is a non-nullable bool, so a document written before it existed indexes as
-        /// false, which is the correct answer for every one of them.
+        /// ⚠️ <b>Every consumer must test <c>!= true</c>, never <c>!x</c> or <c>== false</c>.</b>
+        /// The C# property is a non-nullable bool, which makes it tempting to assume an old document
+        /// reads as false — but the index map runs over the stored JSON, and every commit written
+        /// before this field existed simply has no such property. An absent field does not satisfy
+        /// an equality in RavenDB, so <c>!ContributedFromFork</c> matches <b>none</b> of them.
+        /// </para>
+        /// <para>
+        /// This was shipped wrong and caught in a browser, not by a test: the commit list, history
+        /// chart, sparklines, branch list and branch badge all went empty for every pre-existing
+        /// repository, while the whole .NET suite stayed green — because every fixture writes the
+        /// field. Same class of bug as the <c>!= Disconnected</c> note on
+        /// <c>RepositoryVisibility.ListingFilter</c>, which is where the warning already existed.
         /// </para>
         /// </remarks>
         public bool ContributedFromFork { get; set; }

@@ -2,6 +2,7 @@ using System.Text;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using CodeCoverage.Ingestion;
+using CodeCoverage.Indexes;
 using CodeCoverage.Ingestion.Parsing;
 using CodeCoverage.Services;
 using CodeCoverage.Tests.Services;
@@ -9,6 +10,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Linq;
 using Xunit;
 
 namespace CodeCoverage.Tests.Ingestion;
@@ -236,6 +238,71 @@ public class ForkContributionTests : CoverageRavenTest
         var resolved = await resolver.ResolveAsync(await LoadRepository(store), head, declaredBaseSha: null, CancellationToken.None);
 
         Assert.Equal(baseSha, resolved.ResolvedSha);
+    }
+
+    // ── The absent field ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// A commit stored before <c>ContributedFromFork</c> existed is still listed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>This is the test that was missing, and its absence shipped a bug.</b> The exclusions
+    /// were written as <c>!c.ContributedFromFork</c>, which reads as obviously correct for a
+    /// non-nullable bool — but the index map runs over stored JSON, every existing commit document
+    /// has no such property, and an absent field does not satisfy an equality in RavenDB. So the
+    /// predicate matched <b>none</b> of them and blanked the commit list, history chart, sparklines,
+    /// branch list and branch badge for every pre-existing repository.
+    /// </para>
+    /// <para>
+    /// Every other test here passed throughout, because a fixture that constructs a
+    /// <c>Commit</c> always writes the field. The only way to catch it is to store a document that
+    /// genuinely lacks it, which is what the patch below does — seeding <c>false</c> would
+    /// reproduce nothing.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task A_commit_written_before_the_field_existed_is_still_listed()
+    {
+        using var store = GetDocumentStore();
+        await SeedRepository(store, defaultBranch: "master");
+
+        var sha = new string('7', 40);
+        var commitId = Commit.DocumentId(EForgeProvider.GitHub, RepoId, sha);
+        using (var seed = store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new Commit
+            {
+                Repository = RepositoryId,
+                Sha = sha,
+                Branch = "master",
+                AuthoredAt = DateTimeOffset.UtcNow,
+                Coverage = new CoverageSummary { LinesCovered = 1, LinesCoverable = 2 },
+            }, commitId);
+            await seed.SaveChangesAsync();
+        }
+
+        // Make it an OLD document: remove the property entirely, as every commit
+        // written before this field existed has it removed by never having had it.
+        var patch = store.Operations.Send(new Raven.Client.Documents.Operations.PatchByQueryOperation(
+            new Raven.Client.Documents.Queries.IndexQuery
+            {
+                Query = "from Commits update { delete this.ContributedFromFork; }",
+            }));
+        // Proves the patch actually removed something: without this the test could pass
+        // vacuously against a document that still carries the field.
+        var patched = patch.WaitForCompletion<Raven.Client.Documents.Operations.BulkOperationResult>(
+            TimeSpan.FromSeconds(30));
+        Assert.Equal(1, patched.Total);
+        WaitForIndexing(store);
+
+        using var session = store.OpenAsyncSession();
+        var listed = await session.Query<CodeCoverage.Indexes.Commits_ByRepository.Result, CodeCoverage.Indexes.Commits_ByRepository>()
+            .Where(c => c.Repository == RepositoryId && c.ContributedFromFork != true)
+            .OfType<Commit>()
+            .ToListAsync();
+
+        Assert.Contains(listed, c => c.Sha == sha);
     }
 
     // ── Provenance ──────────────────────────────────────────────────────────────────────────────

@@ -435,7 +435,7 @@ public partial class CommitAssembler : ICommitAssembler
         var date = commit.Date.Value;
         var candidates = await session.Query<Commits_ByRepository.Result, Commits_ByRepository>()
             .Where(r => r.Repository == repository.Id && r.Branch == repository.DefaultBranch
-                && r.CompleteCoverage && !r.ContributedFromFork && r.AuthoredAt <= date)
+                && r.CompleteCoverage && r.ContributedFromFork != true && r.AuthoredAt <= date)
             .OrderByDescending(r => r.AuthoredAt)
             .OfType<Commit>()
             .Take(5)
@@ -472,7 +472,7 @@ public partial class CommitAssembler : ICommitAssembler
 
         var date = commit.Date.Value;
         var later = await session.Query<Commits_ByRepository.Result, Commits_ByRepository>()
-            .Where(r => r.Repository == repository.Id && r.HasCoverage && !r.ContributedFromFork && r.AuthoredAt > date)
+            .Where(r => r.Repository == repository.Id && r.HasCoverage && r.ContributedFromFork != true && r.AuthoredAt > date)
             .OrderBy(r => r.AuthoredAt)
             .OfType<Commit>()
             .Take(DependantLimit)
