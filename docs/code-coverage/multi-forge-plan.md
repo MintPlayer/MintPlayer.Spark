@@ -1104,7 +1104,7 @@ before/after, **against production**).
 
 ---
 
-## M7 — Provider-segmented routes, sidebar units and badges 🟦 *(D4, D11, D13 decided)*
+## M7 — Provider-segmented routes, sidebar units and badges 🟨 *(routes built; sidebar + published badge URLs outstanding)*
 
 **One sidebar program unit per provider** (D4), each owning its own account list — not a unioned
 list. GitHub is the only populated unit in stage 1, so this milestone proves the shape without a
@@ -1136,9 +1136,33 @@ ambiguity while leaving the forge outermost, which is how people read it ("on Gi
 owner, everywhere.** On the client it is also the first segment, because there the forge reads as
 the scope rather than as a qualifier.
 
-⚠️ **Checked before adopting, not after.** The only collisions this shape admits are a persistent
-object literally named `r` or `a`, or a forge named `home`, `query` or `po`. Both are inside our
-control, and the provider routes are declared before `sparkRoutes(...)`, which fixes match order.
+### ⚠️ The ordering rule — this paragraph said the opposite, and was wrong
+
+An earlier version of this section claimed the provider routes are "declared before
+`sparkRoutes(...)`, which fixes match order". **Being first is exactly what would have broken it.**
+
+The invariant, stated by the owner and worth keeping because it generalises past this milestone:
+
+> **Every route `sparkRoutes` contributes begins with a literal first segment — `po` or `query`. So
+> an application route whose first segment is not one of those can never be shadowed by a Spark
+> route.**
+
+The consequence runs the other way, and that is the part that is easy to get backwards. Our routes
+begin with a **parameterised** first segment, `:provider`, which matches *anything* — including
+`po`. Declared first, `/po/r/123/edit` would bind `provider='po'` and shadow the persistent-object
+editor. Declared **after** `sparkRoutes`, every Spark route is tried first, none of them can match
+a forge-scoped URL, and the ambiguity disappears.
+
+So the rule for this codebase is:
+
+| The route's first segment is… | Where it must be declared |
+|---|---|
+| a literal that is not `po`/`query` | anywhere; it cannot collide |
+| **a parameter** (`:provider`, `:anything`) | **after `sparkRoutes(...)`**, always |
+
+That is the whole mechanism. No route constraint, no per-forge literal paths and no guard test —
+each of which was tried and rejected, because each would have required remembering something when a
+forge is added.
 
 ⚠️ Badge URLs are published into READMEs and pull-request comments, so this is effectively
 permanent — which is why it was decided rather than assumed.
@@ -1162,6 +1186,36 @@ provider. When M7 is done a grep for it should find no callers.
   (`repo-badge-panel.component.ts:98,105-106`), and the PR-comment renderer.
 - Accept knowingly: badges in **existing PR comments** will 404 on old PRs, and GitHub's image proxy
   may serve a cached copy until it expires.
+
+### As-built — the routes
+
+| | |
+|---|---|
+| Client | `:provider/a/:login`, `:provider/r/:owner/:repo[/c/:sha[/f]]`, declared **after** `sparkRoutes` |
+| Server | all 11 `BrowseController` routes, `BadgeController`, `RepoSettingsController` |
+| Funnel | the provider threads through **two** signatures — `ResolveVisibleRepository` and `RepositoryResolver.ResolveAsync` — not eleven |
+| Unknown forge | resolves to `null`, which every caller already answers as 404 |
+
+⚠️ **The badge endpoint is the deliberate exception.** An unrecognised forge takes the same path as
+an unknown repository and still renders a badge. Its never-404 rule exists so a badge URL cannot be
+used to probe which repositories exist; 404ing on the forge segment would have rebuilt that oracle
+one level up.
+
+⚠️ **Two places name GitHub out loud rather than defaulting to it**, which is the distinction this
+milestone is about:
+
+- `UploadsController` resolves from a repository full name and a credential, and neither carries a
+  forge yet. When one can, it comes from the **credential** (M16) — not from a fallback here.
+- The coverage-sparkline renderer only ever sees its own attribute value, so it now renders
+  **nothing** unless the forge arrives through the model's type hints. A missing sparkline is a
+  visual gap; guessing would show one owner's coverage against a same-named owner on another forge.
+
+**The client sources the provider from `OwnerKey`** (`github:MintPlayer`), not from the `Provider`
+enum. That serialises as `"GitHub"`, and lowercasing it to reach the URL spelling would work only by
+coincidence of how these three happen to be spelled.
+
+**Still outstanding in M7:** the per-provider sidebar program units (D4); the badge URLs we publish
+in our own READMEs; the PR-comment renderer's badge links; and A11 itself.
 
 **Verify:** A11 — grep that no source we control still emits the two-segment form.
 
