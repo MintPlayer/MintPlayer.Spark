@@ -748,7 +748,7 @@ one forge the situation the modes exist for cannot arise. The infrastructure is 
 
 ---
 
-## M6 — Provider-qualified document ids + migration 🟨 *(built and rehearsed; M6d outstanding)*
+## M6 — Provider-qualified document ids + migration 🟨 *(built, rehearsed, tested and applied to dev; M6d outstanding)*
 
 **D7 re-confirmed 2026-09-19 against the measured number: full re-key, rehearsed first.**
 
@@ -953,6 +953,51 @@ id. The change is one line; the two above are what make it safe.
     → Account   → Accounts/github/48772716                                  ✔ resolves
   ```
 
+  #### ⚠ A fourth defect the rehearsal did NOT catch, and it was fatal
+
+  On 2026-09-21 the app was started against the ordinary dev database — **238 documents** — and the
+  migration threw:
+
+  ```
+  Cannot perform bulk operation. Index is stale.
+  ```
+
+  The delete phase filters by id prefix, which RavenDB answers from an auto-index, and the put phase
+  immediately before it has just rewritten every document. The index is therefore **guaranteed**
+  stale at that moment, and `DeleteByQueryOperation` refuses outright rather than waiting. Since the
+  applied-marker is written only after `Up` returns, the container restarts and fails identically.
+  **Forever.** Production would have been left half-migrated behind a crash loop.
+
+  The verify counts had the same defect and were the more dangerous half, because they do not throw.
+  They feed the guard that refuses to delete when the put phase produced nothing — so a stale count
+  would have had that guard deciding on a picture of the database taken *before* the migration
+  started, which is precisely the case it exists to catch.
+
+  **Why the rehearsal missed it, stated precisely rather than shrugged at:** a rehearsal exercises
+  the phases with whatever timing it happens to have; the failure needs the delete to arrive while
+  indexing is still behind. That is exactly what a container start does and exactly what a
+  hand-driven rehearsal does not. It reproduced on the **first** ordinary run, on a database 1/1000
+  the size.
+
+  Both now wait (10 minutes, named and settable), and the count throws rather than returning a
+  number it knows is stale. Never `AllowStale`: the point is to act on the database as it is, not to
+  be permitted to proceed.
+
+  **The migration now has tests**, which it did not despite being the riskiest thing in this PR.
+  They run the phases back to back with no indexing pause — that pause is what would make them pass
+  against the broken version — and cover the re-key, the reference rewrites, the OwnerKey/Provider
+  backfill, re-entrancy (a second pass must not produce `Repositories/github/github/…`), and the
+  timeout path.
+
+  Writing the timeout test corrected a claim made in a comment here: **a throw does NOT leave the
+  database untouched.** Phases run per collection, so an earlier collection is already fully
+  migrated when a later one fails. What actually holds is that nothing is *destroyed* — every delete
+  is preceded by its own collection's put — and re-running finishes the job.
+
+  ✅ **Applied to the dev database, and re-entrancy demonstrated a second time:** the failed run left
+  it half-migrated, the restart completed it (`12 kept, 12 legacy removed`), and the app then served
+  every page against the migrated data.
+
   #### Three defects the rehearsal caught, none of which a test would have
 
   1. **`put()` cannot take the stream `GetAttachmentOperation` returns** — the client requires a
@@ -1104,7 +1149,7 @@ before/after, **against production**).
 
 ---
 
-## M7 — Provider-segmented routes, sidebar units and badges 🟨 *(routes built; sidebar + published badge URLs outstanding)*
+## M7 — Provider-segmented routes, sidebar units and badges ✅ *(routes, D4 sidebar, badges, A11; browser-verified)*
 
 **One sidebar program unit per provider** (D4), each owning its own account list — not a unioned
 list. GitHub is the only populated unit in stage 1, so this milestone proves the shape without a
@@ -1196,6 +1241,41 @@ provider. When M7 is done a grep for it should find no callers.
 | Funnel | the provider threads through **two** signatures — `ResolveVisibleRepository` and `RepositoryResolver.ResolveAsync` — not eleven |
 | Unknown forge | resolves to `null`, which every caller already answers as 404 |
 
+### ⚠ The funnel took the provider and ignored it — found in the browser, not by a test
+
+This table claimed the milestone was done. It was not. `ResolveAsync` accepted the parameter and
+never used it, matching on `FullName`, which is unique only **within** a forge:
+
+```
+GET /api/browse/repos/gitlab/MintPlayer/MintPlayer.Spark
+200 {"id":"Repositories/github/1006469943", ...}
+```
+
+That is the defect the whole issue exists to remove, still live in the main read path after the
+milestone that was supposed to close it — and it fails in the **permissive** direction, because
+anyone can register the free name on the other forge. Three more steps in the same method were
+equally blind: the remembered-name lookup matched aliases across forges; the known-account gate
+asked "do we know this login?" without a forge, which admitted a `/gitlab/` URL to the step that
+asks **GitHub** what `owner/name` resolves to; and `BrowseController.GetAccount` compared
+`a.Login == login`, so `/accounts/gitlab/MintPlayer` returned `Accounts/github/48772716`.
+
+**The lesson, which generalises past this milestone:** *threading a parameter through a signature is
+not the same as honouring it.* A grep for the parameter name finds the first and says the job is
+done. Five cross-forge tests now exist because none did — the old seeder could not even express the
+case, since it keyed every document as GitHub.
+
+### ⚠ The client did not compile for three commits, and nothing said so
+
+`CommitFilesPanelComponent` gained a required `provider` input; its only caller was not updated.
+NG8008, whole bundle failing, dev server serving the last good build. The C# suite was green
+throughout. **A green .NET suite says nothing about the SPA** — the only signal is the host's own
+dev-server output, which has to be read rather than assumed.
+
+Also recorded, because it cost two wrong attempts: a component implementing **both** renderer
+contracts cannot give `item` a union type. `InputSignal<T>` is invariant in `T` (its `transformFn`),
+the column contract offers a `QueryResultItem` and the detail contract a `PersistentObject`, so the
+input must be `any` — like `value` beside it.
+
 ⚠️ **The badge endpoint is the deliberate exception.** An unrecognised forge takes the same path as
 an unknown repository and still renders a badge. Its never-404 rule exists so a badge URL cannot be
 used to probe which repositories exist; 404ing on the forge segment would have rebuilt that oracle
@@ -1206,18 +1286,63 @@ milestone is about:
 
 - `UploadsController` resolves from a repository full name and a credential, and neither carries a
   forge yet. When one can, it comes from the **credential** (M16) — not from a fallback here.
-- The coverage-sparkline renderer only ever sees its own attribute value, so it now renders
-  **nothing** unless the forge arrives through the model's type hints. A missing sparkline is a
-  visual gap; guessing would show one owner's coverage against a same-named owner on another forge.
+- ~~The coverage-sparkline renderer only ever sees its own attribute value, so it now renders
+  **nothing** unless the forge arrives through the model's type hints.~~ ⚠ **This premise was
+  false, and it made the column blank on every row.** A column renderer receives the whole row when
+  it declares the `item` input — `spark-grid-renderers` passes it and `withDeclaredInputs` filters
+  it back out for renderers that do not want it. Both this renderer and `account-link` now read the
+  forge off the row, and `Repository.OwnerKey` ships on query rows to carry it (`isVisible: false`:
+  **ShowedOn alone decides what ships, IsVisible only decides what is drawn**). Neither guesses when
+  the row has no forge — a missing sparkline is a visual gap, a wrong one is a lie.
 
 **The client sources the provider from `OwnerKey`** (`github:MintPlayer`), not from the `Provider`
 enum. That serialises as `"GitHub"`, and lowercasing it to reach the URL spelling would work only by
 coincidence of how these three happen to be spelled.
 
-**Still outstanding in M7:** the per-provider sidebar program units (D4); the badge URLs we publish
-in our own READMEs; the PR-comment renderer's badge links; and A11 itself.
+### As-built — D4, the per-forge page
 
-**Verify:** A11 — grep that no source we control still emits the two-segment form.
+`ForgeAccounts` is a JSON-only virtual PO whose **objectId is the forge** (`github`), reusing the
+`my-accounts` query, which `MyAccountRowActions` narrows from `args.Parent`. One aggregation and one
+row shape rather than two that drift. An unrecognised forge returns `null` — 404 — rather than
+falling back to the only implemented forge, which would render GitHub's accounts under a GitLab
+heading.
+
+**Only the GitHub unit is declared.** A unit for a forge nobody can sign in to is an empty page in
+the sidebar, and the unit is where the per-forge name and icon live, so M15 adds the other two
+beside their libraries.
+
+Three things this turned up that are worth keeping:
+
+| | |
+|---|---|
+| `MyAccountRow.Id` | was the **login**, unique only per forge. With a second forge the projector's duplicate-row-id check throws and the home page fails to render. It is the owner key now; the displayed `Login` stays unqualified. |
+| Type alias | a PO with an alias that is not simply its lowercased name could not have sub-queries at all — a Spark bug, fixed in `ModelLoader.ResolveEntityType`. See M7a below. |
+| `--spark-synchronize-model` | **drops `_comment` from a generated model file** while preserving the `showedOn`/`isVisible` edits beside it. Rationale for a hand-edit there has to live elsewhere. |
+
+### M7a — a Spark bug this milestone exposed
+
+`ModelLoader.ResolveEntityType` resolved by id or **alias**. A sub-query request carries
+`parentType`, which the client takes from the parent object's **name**. Those agree for every
+generated type, where the alias is just the lowercased name, so nothing ever noticed — until
+`ForgeAccounts` declared `forge-accounts` and its grid answered `404 "Parent not found"`. That
+message reads as a missing document rather than as a name nobody looked up, which is what made it
+slow to find. Resolution now falls back to the name; the alias still wins a collision, since it is
+the addressable form. Two regression tests in `ModelLoaderTests`.
+
+**Verified in the browser** against the migrated dev database, signed in (2026-09-21):
+
+| | |
+|---|---|
+| Home, per-forge page, repository, commit | all render, **0 console errors** |
+| Account links | `/github/a/MintPlayer` |
+| Badge panel snippet | `/badge/github/{owner}/{name}.svg` |
+| `repos/gitlab/…`, `accounts/gitlab/…`, `…/notaforge/…` | 404 |
+| `/badge/{owner}/{name}.svg` (two-segment) | 404, as D13 intends |
+
+**Verify:** A11 — grep that no source we control still emits the two-segment form. ✅ Done; it found
+`PullRequestCommentRenderer` (the least recoverable surface — the comment is posted **into** the
+forge and stays in the pull request forever) and `UploadsController`'s `CommitUrl`, which the CI
+action prints into the job log.
 
 ---
 

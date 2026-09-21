@@ -1583,6 +1583,25 @@ mail would silently revert to the no-op if that ever stopped holding.
 - **Un-deferring #299** makes Spark a mail-sending framework for the first time: a new dependency
   surface, templates, localization. D9 keeps the transport out of Spark, which limits it.
 
+### ⚠ 9.1 The failure mode this work actually keeps producing
+
+Six defects in this PR were found by opening the app in a browser, after the milestone that
+introduced them had been marked done and with the .NET suite green. They are worth naming as a
+class, because they are not six unrelated mistakes:
+
+| | |
+|---|---|
+| **A threaded parameter is not an honoured one** | `ResolveAsync(provider, owner, name)` took the forge and never used it. A grep for the parameter name finds the signature and reports success. Four steps inside one method were blind this way. |
+| **A green .NET suite says nothing about the SPA** | the client failed to compile for three commits (NG8008) while every C# test passed. The only signal is the dev server's own output. |
+| **A rehearsal is not a test** | the re-key passed a hand-driven rehearsal against a production copy and then failed on the first ordinary container start, on 238 documents, because the timing differs. |
+| **Silent-by-design defaults hide the break** | the sparkline rendering nothing, the account link pointing at a dead route, and the badge oracle all fail *quietly*. Nothing errors; a column is simply blank and a link simply 404s. |
+
+The common root is that **every one of them fails in a direction that produces no error** — a wrong
+document, a blank cell, a stale bundle, a crash loop that looks like a slow start. The standing
+mitigation is therefore not "add more tests" in the abstract but: *for each surface this issue
+touches, open it and look at it*, and write the test from what the browser showed rather than from
+what the code appears to do.
+
 ---
 
 ## 10. Later stages
