@@ -165,8 +165,21 @@ honours `GetRowFilterAsync`, `IsAllowedAsync` **and** `RedactAsync` by construct
 only mechanism that can produce breadcrumb text at all, because `attribute.Breadcrumb` is already
 sitting on the mapped row. Its ceiling is the ceiling the grid already has.
 
-**Facets are the right answer only once server-side paging exists.** Until then they are both less
-safe and less capable. This is recorded as a non-goal (§9), not an oversight.
+**4d. Paging pushdown is in scope, and it does not change the answer.** §4c is a defect in its own
+right — every grid in every app pays O(result set) — and this work makes it worse by adding a second
+full pass. It is fixed here rather than deferred (§5.10).
+
+That removes one of the two arguments for in-memory distincts, and it is worth being explicit about
+which one survives. The *performance* argument ("facets buy little while paging is not pushed down")
+dies with the fix. The **security** argument does not: `ComposeRowFilterAsync` still refuses to push
+the row filter into a projection query, so a facet still aggregates over rows the caller cannot see,
+and breadcrumb text is still not an index term. **D5 stands on §4a and §4b alone.**
+
+What does change is the cost model. Once the grid pages in the database, the distinct endpoint can no
+longer ride on a materialization the request already paid for — it pays its own. That is acceptable
+and bounded: it is one capped pass, on panel-open only, debounced, and it is the price of a distinct
+list that is correct under row security. It is also why the 100-item cap and honest `hasMore` stop
+being politeness and become load-bearing (§5.5).
 
 ## 5. Design
 
@@ -422,7 +435,38 @@ subtree at all.
 registry. This feature must not invent a second, incompatible filter expression shape; where the two
 meet, reuse its vocabulary.
 
-### 5.9 Scope across grid kinds
+### 5.9 Server-side `Skip` / `Take` pushdown
+
+`QueryExecutor.cs:741` materializes the entire secured result set and pages it in memory at
+`:157-162`, with `TotalItems = allResults.Count`. Every grid already pays O(result set); this feature
+adds a second full pass for distincts. Fixing it is part of this work.
+
+It is not a free change, and the reason it was never done is visible in the code:
+
+- **The row-security post-filter runs after materialization.** `RowSecurity.FilterAsync` reloads base
+  documents in batches and drops rows the caller may not read, so the number of rows the database
+  returns is not the number the caller sees. A naive `Skip(n).Take(m)` in the database yields short
+  and misaligned pages the moment any row is filtered out.
+- **`TotalItems` has the same problem, and it is already a recorded refusal.** `QueryExecutor.cs:97-119`
+  rejected an author-supplied total because it *"became a cardinality oracle for rows the caller may
+  not see … It cannot be repaired by counting."*
+
+So pushdown is only correct where the row filter genuinely pushed down — that is, where
+`ComposeRowFilterAsync` composed a real `Where` rather than bailing at a projection, a constant
+predicate or a system context. That gives a clean rule:
+
+> **Push `Skip`/`Take` into RavenDB when, and only when, the row filter was pushed down and no
+> post-materialization gate can remove rows.** Otherwise materialize and page in memory, exactly as
+> today.
+
+The decision is per request and already computable — `ComposeRowFilterAsync` knows which branch it
+took. What it must not become is a silent two-mode system: the chosen mode belongs in the diagnostics
+so a slow grid can be explained rather than guessed at.
+
+Composed types in `RowSecurityMode.DelegatedToActions` never push down. `IsAllowedAsync`-only types
+never push down. Both keep today's behaviour.
+
+### 5.10 Scope across grid kinds
 
 | Surface | Component | In scope |
 |---|---|---|
@@ -508,8 +552,9 @@ Open, to be settled by a spike before M1:
 
 ## 9. Non-goals
 
-- **RavenDB facets.** Revisit only after `Skip`/`Take` are pushed down; until then facets are less safe
-  and less capable (§4). Recorded so it is not re-litigated.
+- **RavenDB facets.** Not deferred pending paging — **ruled out on security grounds** (§4a, §4b): a
+  facet cannot honour a row filter that did not push down, and cannot produce breadcrumb text at all.
+  Paging pushdown (§5.9) does not revive them. Recorded so it is not re-litigated.
 - **Per-value counts.** Cardinality oracle (D9).
 - **Named/saved filter presets.** Vidyano has them as a separate server-stored feature; not this work.
 - **Filter persistence across reload or navigation.** Transient, matching Vidyano.

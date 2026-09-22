@@ -1,10 +1,10 @@
 # Plan — Per-column sort and filter capabilities on query grids (#431)
 
 PRD: [`query_column_filter_PRD.md`](query_column_filter_PRD.md). Issue:
-[#431](https://github.com/MintPlayer/MintPlayer.Spark/issues/431) — **body is empty; fill it from the
-PRD before starting.**
+[#431](https://github.com/MintPlayer/MintPlayer.Spark/issues/431) — body filled from §1 of the
+PRD.
 
-Status: **not started.** Spikes SP1–SP4 run before M1.
+Status: **not started.** M1 shipped upstream; SP1, SP3, SP4 and SP5 run before the remaining milestones.
 
 ## Shape of the work
 
@@ -14,18 +14,18 @@ row, the document-root overlay portal and `FilterContext` in `22.19.0` / web-com
 What remains is `C:\Repos\MintPlayer.Spark` alone — model, server, endpoint, both clients, the panel
 component, docs. Minor bumps on both a `libs/**` `.csproj` `<Version>` and `ng-spark`'s
 `package.json`, or the CI version-bump gate at `.github/workflows/pull-request.yml:162-207` fails.
-Bump the `@mintplayer/ng-bootstrap` dependency to `22.19.0`.
+Dependencies already bumped: ng-bootstrap `^22.19.0`, web-components `^2.16.0` (one deduped copy).
 
 Backward compatibility is not required (preview), which is what makes M2's `IsSortable` removal
 possible.
 
 ---
 
-## Spikes — run before M1
+## Spikes — run before the remaining milestones
 
-Each is the smallest experiment that settles one open question. SP1 and SP2 gate the design; SP3 and
-SP4 gate a milestone each. All live in `tests/MintPlayer.Spark.Tests` against `RavenTestDriver`
-(known CPU-starvation flakes — never clean `RavenDBServer`) except SP2, which is a browser check.
+Each is the smallest experiment that settles one open question. SP1 gates the design; SP3, SP4 and SP5
+gate a milestone each. All live in `tests/MintPlayer.Spark.Tests` against `RavenTestDriver`
+(known CPU-starvation flakes — never clean `RavenDBServer`); SP2 is moot.
 
 ### SP1 — Cost of the in-memory distinct pass *(gates the whole design; O1)*
 
@@ -43,7 +43,7 @@ collecting new values while still counting `hasMore`).
 
 **Fails the design if:** the pass is not small relative to the materialization the request already
 paid for. It should be, because the rows are already in memory — if it is not, the finding is that
-server-side paging must land first, which is the larger fix anyway.
+M13/M14 must land first and the distinct pass must pay its own bounded cost (PRD §4d).
 
 ### ~~SP2~~ — Does a filter popup escape the datatable's scroll container? **MOOT — do not run**
 
@@ -51,7 +51,7 @@ Answered by ng-bootstrap#415: the panel is portalled to a document-root `<mp-ove
 a nested consumer panel mounts inside that pane, so Spark's own panel is covered too. O2 struck.
 
 The evidence is a deleted spike harness rather than a regression test, and that repo's unit tests run
-under jsdom (no layout), so the one browser check in M12 stays.
+under jsdom (no layout), so the one browser check in M15 stays.
 
 ### SP3 — Is the breadcrumb present when the distinct pass runs? *(gates M8; O3)*
 
@@ -76,20 +76,35 @@ plain string field, (c) the `{Name}Sort` companion. Print what matches.
 does for sorting, and whether a companion must be generated for every filterable column — which would
 make M6 an index-shape change rather than a query change.
 
+### SP5 — How often can the row filter actually push down? *(gates M13/M14)*
+
+M14 is only worth building if the pushdown path is reached in practice. `ComposeRowFilterAsync` bails
+on a projection element type, a `ConstantExpression` body and a system context — and the projection
+case is the default for every `[GenerateIndex]` query, which is most grids.
+
+Instrument `ComposeRowFilterAsync` and run the existing test suites plus the four apps' own queries,
+counting which branch each query takes. No behaviour change; counting only.
+
+**Decides:** whether M14 is a broad win or a narrow one, and therefore how much of the two-mode
+complexity is justified. If almost everything bails at the projection branch, the honest answer may be
+that the real fix is making the row filter composable into projections — a different and larger piece
+of work, which this spike would then be the evidence for.
+
 ### Not spiked, deliberately
 
 RavenDB facet behaviour (licence gating, auto-index support, Corax parity, `PageSize = int.MaxValue`
-blow-up, term tokenization) is **not** spiked, because facets are a non-goal (PRD §9). If server-side
-paging ever lands and facets come back on the table, those questions are recorded in the feasibility
-findings and must be answered then — starting with the one that matters: attach `AggregateBy` to a
-projection query with a row filter and assert the terms against a user who may see 2 of 10 rows.
-Expect it to leak.
+blow-up, term tokenization) is **not** spiked, because facets are ruled out on **security** grounds,
+not performance ones (PRD §4a, §4b, §9). Paging pushdown landing in this same work does **not** revive
+them: a facet still cannot honour a row filter that did not push down, and still cannot produce
+breadcrumb text. The questions are recorded in the feasibility findings should that ever change —
+starting with the one that matters: attach `AggregateBy` to a projection query with a row filter and
+assert the terms against a user who may see 2 of 10 rows. Expect it to leak.
 
 ---
 
 ## Milestones
 
-Ordered so that each is independently reviewable and the cross-repo dependency lands first.
+Ordered so that each is independently reviewable. The cross-repo dependency (M1) already landed.
 
 ### ~~M1~~ — ng-bootstrap: filter row in `mp-datatable` — **DONE upstream**
 
@@ -112,21 +127,6 @@ Consume the published package; nothing here is Spark's to build.
 Shipped as `*bsDatatableFilterPanel` nested inside the column, rather than a sibling keyed by name.
 </details>
 
-- `libs/mintplayer-web-components/datatable/src/types/column-def.ts` — `filterRenderer?` and
-  `filterable?` on `DatatableColumnDef`.
-- `libs/mintplayer-web-components/datatable/src/components/mp-datatable.ts:850-867` — a second `<tr>`
-  in `<thead>`, rendered only when any column is filterable; `renderFilterRow()` beside
-  `renderHeader()` (`:906`); sticky/z-index handling for virtual mode.
-- `libs/mintplayer-web-components/datatable/src/styles/datatable.styles.ts` — filter-row styling.
-- `libs/mintplayer-ng-bootstrap/datatable/…` — a `*bsDatatableFilter` directive bridging the Angular
-  template as an `EmbeddedView`, mirroring the `headerRenderer` bridge at
-  `datatable.component.ts:181-202`, registered for destruction alongside `headerViews` (`:205-215`).
-- a11y + keyboard specs alongside the existing `mp-datatable.aria.spec.ts` / `.keyboard.spec.ts`.
-
-**Do not** put the filter control inside the existing `<th>`: sortable header content is rendered
-inside `<button class="header-sort">` (PRD §5.8).
-
-**Exit:** published to npm, minor bump. Everything after this consumes the published package.
 
 ### M2 — Untangle `IsSortable`
 
@@ -269,7 +269,38 @@ A `queries[].columns[]` entry naming an attribute not on that query's surface is
 Does **not** flag `canSort: false` on a column in that query's `sortColumns`; that is a deliberate
 shape (PRD §5.3).
 
-### M12 — Demo, tests, docs, version bumps
+### M13 — Decide the paging mode, and expose it — *needs SP5*
+
+`RowSecurity.ComposeRowFilterAsync` already knows whether it composed a real `Where` or bailed
+(projection element type, `ConstantExpression` body, system context). Surface that decision as an
+explicit result rather than leaving it implicit in the returned `IQueryable`, and thread it to
+`QueryExecutor`.
+
+Add the chosen mode to the query diagnostics (`docs/diagnostics.md`). A grid that silently picks
+between two very different cost profiles is unexplainable in production otherwise.
+
+Types in `RowSecurityMode.DelegatedToActions` and `IsAllowedAsync`-only types report "cannot push
+down" unconditionally.
+
+### M14 — Push `Skip` / `Take` down where it is safe
+
+When M13 reports a genuine pushdown **and** no post-materialization gate can remove rows, issue
+`Skip`/`Take` to RavenDB and take `TotalItems` from the database count. Otherwise keep today's
+materialize-then-page path unchanged.
+
+Two things not to get wrong:
+
+- **`TotalItems` is the cardinality oracle** `QueryExecutor.cs:97-119` already refused once. It may
+  come from the database **only** on the pushdown path, where the database count and the caller's
+  visible count are the same number by construction. On the in-memory path it stays `allResults.Count`.
+- **Redaction never removes rows**, only nulls attributes, so it does not block pushdown. `IsAllowedAsync`
+  does. Check the distinction rather than assuming.
+
+Tests: same query, same data, same user, asserted identical results and `TotalItems` under both modes
+— a row-scoped type that pushes down, and one that cannot. The two paths must be indistinguishable to
+a caller, or this becomes a correctness bug rather than a performance fix.
+
+### M15 — Demo, tests, docs, version bumps (runs last)
 
 - Author the flags in a demo app so the feature is visible: Fleet is the natural home.
 - Full test sweep per PRD §10 — this is the **single batched run**, not per milestone.
@@ -309,7 +340,7 @@ shape (PRD §5.3).
 - **M5 and M6 can land before M7.** Sorting and filtering are useful with a free-text filter cell even
   before the distinct list exists — and that is exactly the degraded mode `canListDistincts: false`
   produces, so it must work anyway.
-- **Test runs batch to M12.** Verify intermediate milestones by reading and type-checking.
+- **Test runs batch to M15.** Verify intermediate milestones by reading and type-checking.
 
 ## Risks
 
@@ -328,7 +359,7 @@ shape (PRD §5.3).
    warning is right for security and confusing for authors. Mitigate in the docs, and make
    `--spark-verify-model` the place authors find mistakes.
 6. **The two CI-only gates** (model sync, version bump) are not reproducible locally and will fail the
-   PR if forgotten. Both are in M12's checklist.
+   PR if forgotten. Both are in M15's checklist.
 7. **E2E rate limit** — one shared bucket, 150/10s on 127.0.0.1. Assert a fixed set of filter
    applications, never per-keystroke.
 8. **`DateTimeOffset` columns.** The offset is stripped in index projections and there is a live bug
@@ -346,5 +377,8 @@ Genuinely not being done — not deferred work parked to keep the diff small (PR
 - AsDetail embedded grids; streaming queries.
 - Type-specific filter controls (date range pickers, numeric min/max).
 - A property-level `[SparkAuthorize]`.
-- Server-side `Skip`/`Take` pushdown. It is the real fix behind several findings here and deserves its
-  own issue — **file it**, but do not let it absorb this work.
+
+Server-side `Skip`/`Take` pushdown **was** listed here and has been moved **into** scope as M13/M14
+(PRD §5.9). It is the real fix behind several findings, this feature makes the underlying problem
+worse, and parking it as a follow-up would have been deferring work to keep a diff small rather than
+genuinely declining it.
