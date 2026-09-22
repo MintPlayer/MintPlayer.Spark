@@ -34,6 +34,12 @@ export class SparkGridRenderers {
     return this.registry.find(r => r.name === column.renderer)?.columnComponent ?? null;
   }
 
+  /** The registered filter-label function for a column, or null to use the server-computed text. */
+  filterLabelFor(column: SparkCellColumn): ((value: unknown) => string) | null {
+    if (!column.renderer) return null;
+    return this.registry.find(r => r.name === column.renderer)?.filterLabel ?? null;
+  }
+
   /**
    * Inputs for a query-grid cell renderer, filtered to what the component actually declares —
    * `NgComponentOutlet` throws on an input the target does not have, which is what lets every

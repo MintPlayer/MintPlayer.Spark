@@ -1,38 +1,41 @@
-<div class="spark-filter-panel">
-  <!--
-    Clear sits first and is disabled when there is nothing to clear, matching the panel this
-    follows. It is a real <button> so it is reachable by keyboard inside the datatable's focus trap.
-  -->
-  <button type="button" class="spark-filter-clear" [disabled]="!hasSelection()" (click)="clear()">
-    <spark-icon name="funnel" />
-    <span>Clear filter</span>
-  </button>
+<!--
+  ⚠️ DOM ORDER IS THE FOCUS ORDER. The overlay resolves initial focus by querying
+  `.filter-search, .filter-operand` and falls back to the first tabbable element, so the search box
+  is first AND carries that class deliberately. The built-in panel aims focus past its own Clear
+  button for the same reason: opening onto a disabled-or-destructive control is the wrong place to
+  land, and Clear is disabled exactly when the panel is freshly opened.
 
+  No role="dialog" and no aria-label here: the overlay's own `.filter-panel` wrapper already carries
+  both, and a second dialog role nested inside the first is worse than none.
+-->
+<div class="spark-filter-panel">
   @if (listsDistincts()) {
     <div class="spark-filter-search">
       <spark-icon name="search" />
       <input
-        type="text"
+        class="filter-search"
+        type="search"
         [attr.aria-label]="'Search values'"
         (input)="onSearch($any($event.target).value)" />
     </div>
 
     <div class="spark-filter-body">
       <!--
-        The inverse toggle is a pressed-state button rather than a checkbox: it does not select a
-        value, it changes what the selection means. aria-pressed is written for both states so a
-        screen reader announces the off state too.
+        Not a checkbox: it does not select a value, it changes what the selection means.
+        aria-pressed is written for both states so the off state is announced too.
       -->
       <button
         type="button"
         class="spark-filter-inverse"
         [class.is-on]="inverse()"
         [attr.aria-pressed]="inverse()"
+        [attr.aria-label]="'Exclude the selected values'"
         (click)="toggleInverse()">
         ≠
       </button>
 
-      <div class="spark-filter-values" role="group" [attr.aria-label]="'Values'">
+      <div class="spark-filter-values" role="group" [attr.aria-label]="'Values of ' + column().name">
+        <!-- `values()` is already narrowed by the search term; re-filtering here would double-apply it. -->
         @for (value of matching(); track value.value) {
           <label class="spark-filter-value">
             <input
@@ -46,8 +49,7 @@
         <!--
           Values that were present when the filter was first applied but are not any more. Dimmed
           and still selectable, so a selection can be widened without clearing it first. The
-          datatable derives this bucket itself by diffing its snapshot; the server always sends it
-          empty.
+          datatable derives this bucket by diffing its own snapshot; the server always sends it empty.
         -->
         @for (value of remaining(); track value.value) {
           <label class="spark-filter-value is-remaining">
@@ -59,28 +61,32 @@
           </label>
         }
 
-        @if (!matching().length && !remaining().length) {
-          <p class="spark-filter-empty">No values</p>
+        @if (isEmpty()) {
+          <!--
+            One message for three states: nothing loaded yet, nothing matches, and the distinct
+            request failed. The last is deliberately indistinguishable — a rejected promise surfaces
+            as a null list with no error, and the server already refuses to say whether an empty
+            answer means "no values" or "you may not list them".
+          -->
+          <p class="spark-filter-empty">No values available</p>
         }
       </div>
     </div>
 
     @if (hasMore()) {
-      <!--
-        Text, not an icon: a truncated list is a fact the reader needs in words, and it is the only
-        signal that typing will fetch more.
-      -->
-      <p class="spark-filter-more">Showing the first values only — type to narrow.</p>
+      <!-- Words, not an icon: it is the only signal that typing will fetch different values. -->
+      <p class="spark-filter-more">More values exist — refine the search to see them.</p>
     }
   } @else {
     <!--
       A column whose values may not be enumerated. Free text instead of a list, applied through the
-      same `apply` so the grid has one event shape to translate.
+      same `apply` so the grid has exactly one event shape to translate.
     -->
     <div class="spark-filter-search">
       <spark-icon name="search" />
       <input
-        type="text"
+        class="filter-search"
+        type="search"
         [value]="freeText()"
         [attr.aria-label]="'Filter value'"
         (input)="freeText.set($any($event.target).value)"
@@ -88,4 +94,10 @@
     </div>
     <button type="button" class="spark-filter-apply" (click)="applyFreeText()">Apply</button>
   }
+
+  <!-- Last, so it is never the landing spot. Kept in the tab order when disabled. -->
+  <button type="button" class="spark-filter-clear" [disabled]="!hasSelection()" (click)="clear()">
+    <spark-icon name="funnel" />
+    <span>Clear the filter on {{ column().name }}</span>
+  </button>
 </div>

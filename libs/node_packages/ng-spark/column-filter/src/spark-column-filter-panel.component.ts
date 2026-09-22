@@ -67,6 +67,16 @@ export class SparkColumnFilterPanelComponent {
   protected readonly remaining = computed(() => this.values()?.remaining ?? []);
   protected readonly hasMore = computed(() => this.values()?.hasMore === true);
 
+  /**
+   * Whether to show the empty state.
+   *
+   * Covers three states on purpose: nothing loaded yet, nothing matched, and the distinct request
+   * failed. The datatable swallows a rejected promise into a null list with no error, so the third
+   * is not distinguishable here - and the server already refuses to distinguish "no values" from
+   * "you may not list them".
+   */
+  protected readonly isEmpty = computed(() => !this.matching().length && !this.remaining().length);
+
   protected labelFor(value: DistinctValue): string {
     const relabel = this.filterLabel();
     return relabel ? relabel(value.value) : value.label;

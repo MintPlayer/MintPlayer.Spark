@@ -9,6 +9,19 @@ export interface SparkAttributeRendererRegistration {
   columnComponent?: Type<any> | null;
   /** Optional component for create/edit forms. Must implement SparkAttributeEditRenderer. When omitted, the default input is used. */
   editComponent?: Type<any>;
+  /**
+   * Relabels this column's values in a filter panel (#431).
+   *
+   * A renderer is a component that paints arbitrary DOM, and a distinct value has no row, so it
+   * cannot be instantiated to produce text for a filter list. The label therefore defaults to the
+   * server-computed cell text: a status rendered as a coloured pill lists `Active`, a rating
+   * rendered as stars lists `3`. This is the escape for when that is too raw — a value stored as
+   * `2` whose cell reads "High priority".
+   *
+   * ⚠️ A **pure function**: no DOM, no component instantiation, no row context. There is no row to
+   * give it, which is the whole reason the renderer itself cannot be used here.
+   */
+  filterLabel?: (value: unknown) => string;
 }
 
 export const SPARK_ATTRIBUTE_RENDERERS = new InjectionToken<SparkAttributeRendererRegistration[]>(

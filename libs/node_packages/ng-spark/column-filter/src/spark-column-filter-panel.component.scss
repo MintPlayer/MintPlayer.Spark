@@ -58,6 +58,9 @@
     background: transparent;
     color: inherit;
     font: inherit;
+    // Both, and not by accident: the `font` shorthand resets line-height, so an input and a button
+    // beside it end up different heights without this.
+    line-height: 1.5;
   }
 }
 
