@@ -1,0 +1,293 @@
+# Plan — Per-column sort and filter capabilities on query grids (#431)
+
+PRD: [`query_column_filter_PRD.md`](query_column_filter_PRD.md). Issue:
+[#431](https://github.com/MintPlayer/MintPlayer.Spark/issues/431) — **body is empty; fill it from the
+PRD before starting.**
+
+Status: **not started.** Spikes SP1–SP4 run before M1.
+
+## Shape of the work
+
+Two repositories, one unit of work (one-PR rule):
+
+1. `C:\Repos\mintplayer-ng-bootstrap` — the datatable gains a filter row. **Publishes first**, minor
+   bump (npm major stays pinned to the Angular major).
+2. `C:\Repos\MintPlayer.Spark` — model, server, endpoint, both clients, docs. Minor bumps on both a
+   `libs/**` `.csproj` `<Version>` and `ng-spark`'s `package.json`, or the CI version-bump gate at
+   `.github/workflows/pull-request.yml:162-207` fails.
+
+Backward compatibility is not required (preview), which is what makes M2's `IsSortable` removal
+possible.
+
+---
+
+## Spikes — run before M1
+
+Each is the smallest experiment that settles one open question. SP1 and SP2 gate the design; SP3 and
+SP4 gate a milestone each. All live in `tests/MintPlayer.Spark.Tests` against `RavenTestDriver`
+(known CPU-starvation flakes — never clean `RavenDBServer`) except SP2, which is a browser check.
+
+### SP1 — Cost of the in-memory distinct pass *(gates the whole design; O1)*
+
+The PRD chose in-memory distinct over facets for correctness (PRD §4). This measures whether it is
+affordable.
+
+Seed a collection at a realistic size (use CodeCoverage's ~200k-document `FileCoverages` shape as the
+upper bound), run a query through the full pipeline to the point where `QueryExecutor.cs:741` has
+materialized `allResults`, and time one extra distinct pass over a high-cardinality string column and
+a low-cardinality boolean one.
+
+**Decides:** whether the 100-item cap is enough of a guardrail on its own, or whether the distinct
+pass needs an early-exit once the cap is hit (it can: the buckets are capped, so the pass may stop
+collecting new values while still counting `hasMore`).
+
+**Fails the design if:** the pass is not small relative to the materialization the request already
+paid for. It should be, because the rows are already in memory — if it is not, the finding is that
+server-side paging must land first, which is the larger fix anyway.
+
+### SP2 — Does a filter popup escape the datatable's scroll container? *(gates M9; O2)*
+
+`.datatable-scroll { overflow: auto }` (`datatable.styles.ts:31-34`) and, in virtual mode, sticky
+`thead th { z-index: 1 }` (`:36-44`). An in-flow dropdown opened from a header cell is expected to be
+clipped and possibly occluded.
+
+Drive a real browser via the **`playwright_node` MCP** (never the `dcg:playwright` skill) against a
+scratch page using `mp-datatable` with a `bs-dropdown` in a header cell, in both paged and virtual
+mode. Confirm whether a portalled/floating panel is required, and whether the existing `has-overlay`
+primitive is sufficient.
+
+**Decides:** the popup mechanism in M9, before any Spark code depends on it.
+
+### SP3 — Is the breadcrumb present when the distinct pass runs? *(gates M8; O3)*
+
+`EntityTypeDefinition.BreadcrumbProjectionSatisfiable` exists precisely because a projection often
+cannot render its own breadcrumb. Assert, for a reference column: at the point after the row-security
+gate where the distinct pass would run, is `attribute.Breadcrumb` populated — including when
+`BreadcrumbProjectionSatisfiable` is false, and when the referenced document is denied (expect
+`RedactedPlaceholder`, which M8 must **drop** rather than display).
+
+**Decides:** whether M8 can read labels straight off the mapped row or must trigger resolution itself.
+
+### SP4 — Equality against an analyzed field *(gates M6)*
+
+A per-column equality filter against a `[Search]`-analyzed field behaves as a full-text match, not
+equality: `Volkswagen Golf GTI` is indexed as three terms (`QueryExecutor.cs:1444-1452`), and a plain
+default-indexed string is stored as one **lower-cased** term.
+
+Store a multi-word value, then filter for it by exact value against (a) the `[Search]` field, (b) a
+plain string field, (c) the `{Name}Sort` companion. Print what matches.
+
+**Decides:** whether M6's filter predicate must redirect to `{Name}Sort` the way `ResolveSortProperty`
+does for sorting, and whether a companion must be generated for every filterable column — which would
+make M6 an index-shape change rather than a query change.
+
+### Not spiked, deliberately
+
+RavenDB facet behaviour (licence gating, auto-index support, Corax parity, `PageSize = int.MaxValue`
+blow-up, term tokenization) is **not** spiked, because facets are a non-goal (PRD §9). If server-side
+paging ever lands and facets come back on the table, those questions are recorded in the feasibility
+findings and must be answered then — starting with the one that matters: attach `AggregateBy` to a
+projection query with a row filter and assert the terms against a user who may see 2 of 10 rows.
+Expect it to leak.
+
+---
+
+## Milestones
+
+Ordered so that each is independently reviewable and the cross-repo dependency lands first.
+
+### M1 — ng-bootstrap: filter row in `mp-datatable`
+
+`C:\Repos\mintplayer-ng-bootstrap`.
+
+- `libs/mintplayer-web-components/datatable/src/types/column-def.ts` — `filterRenderer?` and
+  `filterable?` on `DatatableColumnDef`.
+- `libs/mintplayer-web-components/datatable/src/components/mp-datatable.ts:850-867` — a second `<tr>`
+  in `<thead>`, rendered only when any column is filterable; `renderFilterRow()` beside
+  `renderHeader()` (`:906`); sticky/z-index handling for virtual mode.
+- `libs/mintplayer-web-components/datatable/src/styles/datatable.styles.ts` — filter-row styling.
+- `libs/mintplayer-ng-bootstrap/datatable/…` — a `*bsDatatableFilter` directive bridging the Angular
+  template as an `EmbeddedView`, mirroring the `headerRenderer` bridge at
+  `datatable.component.ts:181-202`, registered for destruction alongside `headerViews` (`:205-215`).
+- a11y + keyboard specs alongside the existing `mp-datatable.aria.spec.ts` / `.keyboard.spec.ts`.
+
+**Do not** put the filter control inside the existing `<th>`: sortable header content is rendered
+inside `<button class="header-sort">` (PRD §5.8).
+
+**Exit:** published to npm, minor bump. Everything after this consumes the published package.
+
+### M2 — Untangle `IsSortable`
+
+`libs/spark/MintPlayer.Spark.Abstractions/QueryResult.cs` — remove `QueryColumn.IsSortable`. It is fed
+the AsDetail drag-reorder flag (`QueryResultProjector.cs:56`), is `false` for every scalar column, and
+the client ignores it. `EntityAttributeDefinition.IsSortable` **stays** — it is the drag-reorder flag
+and is correct.
+
+Fix `apps/DemoApp/DemoApp/App_Data/Model/StartPage.json:77,91`, which sets `isSortable: true` on
+non-AsDetail scalar query columns as though it meant column sorting. That is the misuse the new
+`canSort` replaces.
+
+Wire break, permitted (preview). Verify by reading; no test run yet.
+
+### M3 — The three flags on the model
+
+- `EntityAttributeDefinition` — `bool? CanSort`, `CanFilter`, `CanListDistincts`. **`bool?`, never
+  `bool`.**
+- `SparkQuery` — a sparse `Columns` list of `{ name, canSort?, canFilter?, canListDistincts? }`.
+- `ModelSynchronizer` — **no assignment.** These are hand-authored, not CLR-derived, so the update
+  branch (`:783-853`) must not touch them; update the carried-over comment at `:910-912` to say so.
+- `ModelFileShape.StructuralAttributeFields:168-173` — add all three (they gate a write; PRD §5.4).
+
+### M4 — Resolution and projection
+
+`QueryResultProjector.BuildColumns` (`:28-63`) resolves query override → attribute → `true` and writes
+the result onto the per-request `QueryColumn`.
+
+**Never onto `EntityAttributeDefinition`** — it is handed out by reference from a singleton
+`ModelLoader` and `ShallowCopy()` shares `Attributes`. This is the live bug already fixed at
+`Endpoints/EntityTypes/List.cs:140-150`.
+
+### M5 — Enforce `canSort`
+
+`QueryExecutor.IsSortableAttribute` (`:1670-1676`) gains `&& resolved.CanSort != false`, keeping the
+**silent** refusal (console warning, index order) — a distinguishable refusal is an oracle.
+
+A column named in the query's own `sortColumns` is exempt (PRD §5.3). `Execute.cs:71-110` already
+unions those into its allow-list, so only the executor changes.
+
+### M6 — The filter predicate — *needs SP4*
+
+- `QueryRequests.cs` — `columns[] { name, includes[], excludes[] }` on `ExecuteQueryRequest`.
+- `Execute.cs` — validate **after** authorization (`Execute.cs:43-55` records why the order is
+  load-bearing).
+- `QueryExecutor` — `IsFilterableAttribute` gating on `CanFilter != false`, silent refusal; build the
+  predicate; redirect to `{Name}Sort` if SP4 says so.
+
+**Clause order is fixed and load-bearing:** row-security filter → **column filters** → search →
+`restrictToIds` → sort → page. The column filters go *after* the row-security predicate
+(`QueryExecutor.cs:709`) and **must not pass `SearchOptions`** — measured on RavenDB 7.2.5, an
+explicit `SearchOptions.Or` leaks onto the adjacent clause, and the adjacent clause is the row-security
+predicate, silently turning a security filter into an alternative (`QueryExecutor.cs:1599-1608`).
+
+Columns AND; values within a column OR; `excludes` inverts.
+
+### M7 — `POST /spark/queries/distinct-values` — *needs SP1*
+
+New `Endpoints/Queries/DistinctValues.cs`, literal route, `IPostEndpoint, IMemberOf<QueriesGroup>`.
+
+Body: `queryId`, `column`, optional `search`, the other columns' filters, optional
+`parentId`/`parentType` (required for sub-queries — the measured Vidyano protocol passes the owning
+object, and the distinct computation needs it).
+
+Order: authorize (404, never 403) → resolve column, check `canListDistincts` → run the secured
+pipeline → distinct over the secured, mapped rows. Cap 100 per bucket + `hasMore`. **No counts**
+(cardinality oracle, PRD D9).
+
+Also: add the right to `RowPolicyDeclarationValidator.RowReturningActions:33` if a new right name is
+introduced, or the startup gate silently stops covering it.
+
+### M8 — Labels, breadcrumbs and renderers — *needs SP3*
+
+- Emit `{ value, label }` per distinct; `null` value for the null distinct.
+- Reference columns: `value` = raw id, `label` = breadcrumb. A denied target is **dropped**, never
+  shown as `RedactedPlaceholder`.
+- Client: optional `filterLabel(value): string` on the renderer registration, pure, no row context.
+  Absent → server text (PRD §5.7).
+
+### M9 — Client: flags, filter cell, popup — *needs SP2, M1*
+
+- `models/src/query-result.ts` — `canSort?`, `canFilter?`, `canListDistincts?` on `QueryColumn`;
+  a `QueryColumnFilter` shape. Wire casing needs no mapper: ASP.NET's web defaults emit camelCase and
+  the client parses straight into the interface.
+- `spark-query-grid.component.html:42` — replace the hard-coded `sortable: true` with the resolved
+  flag; add the filter template.
+- `spark-query-grid.component.ts` — a `filters` signal; `onFilterChanged()` modelled exactly on
+  `onSearchChanged():320-330` — **reset to page 1 and construct a fresh fetch identity**, or the
+  datatable dedupes by `(page, perPage, sort)` and silently does not refetch (`:296-298`).
+- `services/src/spark.service.ts:116-138` — pass `columns` in the execute body; add the distinct call.
+- Possibly a new secondary entry point `ng-spark/column-filter/` (13+ exist; routine).
+- `spark-query-list` — decide how the filter row relates to the existing search box; may need
+  `<bs-form>` around the grid for `.form-control` styling to reach it.
+- Icons via `<spark-icon>`, never a global `bootstrap-icons.css`.
+
+### M10 — `MintPlayer.Spark.Client` + the route table
+
+- `SparkClient.cs:363` — `columns` on execute; a `GetDistinctValuesAsync`; retire the
+  `ParseSortColumns` string shim (`:387-405`), whose own comment says the typed overload *"belongs with
+  the column-filtering work that motivated the move"*.
+- Update all the hand-maintained enumerations: `README.md:90-107`, `docs/Spark-API-Specification.md`
+  (+ the antiforgery exemption list at `:11`), `DenyAllEndpointMirrorTests.cs:113-122`,
+  `EndpointCoverageTests.cs`.
+- **Add the missing route-table completeness test** — none exists, which is why a new endpoint can
+  silently stay absent from all of the above.
+
+### M11 — `--spark-verify-model` check
+
+A `queries[].columns[]` entry naming an attribute not on that query's surface is an error. It rides
+`--spark-verify-model` beside the existing checks (`SparkDevelopmentExtensions.cs:184-193`, modelled on
+`VerifyRefreshTriggersAreImplemented`), **not** a Roslyn analyzer — the flag lives in
+`App_Data/Model/*.json`, which is not part of the compilation (`:254-268`).
+
+Does **not** flag `canSort: false` on a column in that query's `sortColumns`; that is a deliberate
+shape (PRD §5.3).
+
+### M12 — Demo, tests, docs, version bumps
+
+- Author the flags in a demo app so the feature is visible: Fleet is the natural home.
+- Full test sweep per PRD §10 — this is the **single batched run**, not per milestone.
+- Docs per PRD §11.
+- Re-synchronize all four apps; the diff should be empty where no flag is authored.
+- Minor bumps: a `libs/**` `.csproj` `<Version>` **and** `ng-spark`'s `package.json`.
+
+---
+
+## Sequencing notes
+
+- **SP1 and SP2 before anything.** SP1 can invalidate the in-memory design (sending the feature behind
+  server-side paging); SP2 decides the popup mechanism M9 depends on.
+- **M1 publishes before M9 can be finished**, but M2–M8 (server-side) are independent of it and can
+  proceed in parallel.
+- **M2 before M3.** Removing the misused `IsSortable` first keeps the new flags from landing beside a
+  field that means something else.
+- **M5 and M6 can land before M7.** Sorting and filtering are useful with a free-text filter cell even
+  before the distinct list exists — and that is exactly the degraded mode `canListDistincts: false`
+  produces, so it must work anyway.
+- **Test runs batch to M12.** Verify intermediate milestones by reading and type-checking.
+
+## Risks
+
+1. **SP1 invalidates the approach.** Mitigation: it is the first thing run, and the fallback (land
+   server-side paging first) is a fix worth having regardless.
+2. **The cross-repo publish stalls the work.** ng-bootstrap must publish before M9 completes. Mitigate
+   by doing M1 first and the server half in parallel.
+3. **A new disclosure oracle.** This is the same class of bug as `?sortColumns=` (#294-#296) and the
+   distinct list is a *stronger* leak than ordering. Mitigated by computing distincts over
+   already-secured rows (PRD §4), by `canListDistincts`, and by the row-security matrix test. **The
+   anonymous-grant case on CodeCoverage is the one to get right.**
+4. **`ISparkOwnsRowSecurity` types** run in `DelegatedToActions` mode with no framework filtering or
+   redaction at all. The distinct pass must not assume the gate filtered anything. Cover it in the
+   matrix test.
+5. **Silent refusals are hard to debug.** `canSort: false` producing index order with only a console
+   warning is right for security and confusing for authors. Mitigate in the docs, and make
+   `--spark-verify-model` the place authors find mistakes.
+6. **The two CI-only gates** (model sync, version bump) are not reproducible locally and will fail the
+   PR if forgotten. Both are in M12's checklist.
+7. **E2E rate limit** — one shared bucket, 150/10s on 127.0.0.1. Assert a fixed set of filter
+   applications, never per-keystroke.
+8. **`DateTimeOffset` columns.** The offset is stripped in index projections and there is a live bug
+   where writes are silently dropped. Vidyano lists dates as formatted values with no range control,
+   so the value list is the shipped behaviour — but do not let a filter round-trip a `DateTimeOffset`
+   through a write path in this work.
+
+## Out of scope
+
+Genuinely not being done — not deferred work parked to keep the diff small (PRD §9 has the reasoning):
+
+- RavenDB facets, and per-value counts.
+- Named/saved filter presets; filter persistence across reload or navigation.
+- `canGroupBy` and grouping.
+- AsDetail embedded grids; streaming queries.
+- Type-specific filter controls (date range pickers, numeric min/max).
+- A property-level `[SparkAuthorize]`.
+- Server-side `Skip`/`Take` pushdown. It is the real fix behind several findings here and deserves its
+  own issue — **file it**, but do not let it absorb this work.
