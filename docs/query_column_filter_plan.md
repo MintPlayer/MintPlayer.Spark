@@ -8,13 +8,13 @@ Status: **not started.** Spikes SP1–SP4 run before M1.
 
 ## Shape of the work
 
-Two repositories, one unit of work (one-PR rule):
+Originally two repositories. The ng-bootstrap half is **done**: ng-bootstrap#415 shipped the filter
+row, the document-root overlay portal and `FilterContext` in `22.19.0` / web-components `2.16.0`.
 
-1. `C:\Repos\mintplayer-ng-bootstrap` — the datatable gains a filter row. **Publishes first**, minor
-   bump (npm major stays pinned to the Angular major).
-2. `C:\Repos\MintPlayer.Spark` — model, server, endpoint, both clients, docs. Minor bumps on both a
-   `libs/**` `.csproj` `<Version>` and `ng-spark`'s `package.json`, or the CI version-bump gate at
-   `.github/workflows/pull-request.yml:162-207` fails.
+What remains is `C:\Repos\MintPlayer.Spark` alone — model, server, endpoint, both clients, the panel
+component, docs. Minor bumps on both a `libs/**` `.csproj` `<Version>` and `ng-spark`'s
+`package.json`, or the CI version-bump gate at `.github/workflows/pull-request.yml:162-207` fails.
+Bump the `@mintplayer/ng-bootstrap` dependency to `22.19.0`.
 
 Backward compatibility is not required (preview), which is what makes M2's `IsSortable` removal
 possible.
@@ -45,18 +45,13 @@ collecting new values while still counting `hasMore`).
 paid for. It should be, because the rows are already in memory — if it is not, the finding is that
 server-side paging must land first, which is the larger fix anyway.
 
-### SP2 — Does a filter popup escape the datatable's scroll container? *(gates M9; O2)*
+### ~~SP2~~ — Does a filter popup escape the datatable's scroll container? **MOOT — do not run**
 
-`.datatable-scroll { overflow: auto }` (`datatable.styles.ts:31-34`) and, in virtual mode, sticky
-`thead th { z-index: 1 }` (`:36-44`). An in-flow dropdown opened from a header cell is expected to be
-clipped and possibly occluded.
+Answered by ng-bootstrap#415: the panel is portalled to a document-root `<mp-overlay-container>`, and
+a nested consumer panel mounts inside that pane, so Spark's own panel is covered too. O2 struck.
 
-Drive a real browser via the **`playwright_node` MCP** (never the `dcg:playwright` skill) against a
-scratch page using `mp-datatable` with a `bs-dropdown` in a header cell, in both paged and virtual
-mode. Confirm whether a portalled/floating panel is required, and whether the existing `has-overlay`
-primitive is sufficient.
-
-**Decides:** the popup mechanism in M9, before any Spark code depends on it.
+The evidence is a deleted spike harness rather than a regression test, and that repo's unit tests run
+under jsdom (no layout), so the one browser check in M12 stays.
 
 ### SP3 — Is the breadcrumb present when the distinct pass runs? *(gates M8; O3)*
 
@@ -96,10 +91,26 @@ Expect it to leak.
 
 Ordered so that each is independently reviewable and the cross-repo dependency lands first.
 
-### M1 — ng-bootstrap: filter row in `mp-datatable`
+### ~~M1~~ — ng-bootstrap: filter row in `mp-datatable` — **DONE upstream**
 
-`C:\Repos\mintplayer-ng-bootstrap`. Tracked as
-[mintplayer-ng-bootstrap#414](https://github.com/MintPlayer/mintplayer-ng-bootstrap/issues/414).
+Shipped by [mintplayer-ng-bootstrap#415](https://github.com/MintPlayer/mintplayer-ng-bootstrap/pull/415)
+(closes [#414](https://github.com/MintPlayer/mintplayer-ng-bootstrap/issues/414)), `22.19.0` /
+web-components `2.16.0`, minor bumps with majors pinned. It delivered more than was asked: the row and
+the document-root overlay portal, plus a built-in distinct-value panel and a comparison mode.
+
+Spark uses the row, the portal and `FilterContext`, but **not** the built-in panel — see PRD §5.8.
+Consume the published package; nothing here is Spark's to build.
+
+<details>
+<summary>Original scope, kept for the record</summary>
+
+- `column-def.ts` — `filterRenderer?` / `filterable?` on `DatatableColumnDef`.
+- `mp-datatable.ts` — a second `<tr>` in `<thead>`, `renderFilterRow()` beside `renderHeader()`.
+- `datatable.styles.ts` — filter-row styling.
+- A `*bsDatatableFilter` directive bridging an Angular template as an `EmbeddedView`.
+
+Shipped as `*bsDatatableFilterPanel` nested inside the column, rather than a sibling keyed by name.
+</details>
 
 - `libs/mintplayer-web-components/datatable/src/types/column-def.ts` — `filterRenderer?` and
   `filterable?` on `DatatableColumnDef`.
@@ -184,6 +195,12 @@ Order: authorize (404, never 403) → resolve column, check `canListDistincts` �
 pipeline → distinct over the secured, mapped rows. Cap 100 per bucket + `hasMore`. **No counts**
 (cardinality oracle, PRD D9).
 
+**The response is two buckets, not a flat list**: `{ matching, remaining, hasMore }` (PRD §5.5).
+`remaining` must be computed server-side — the component's local fallback cannot produce it for a
+`[fetch]`-bound grid, so without it the greyed-but-selectable behaviour silently never appears.
+`hasMore` must be honest at the cap: the component re-queries only when `hasMore` is set or the search
+term is widened.
+
 Also: add the right to `RowPolicyDeclarationValidator.RowReturningActions:33` if a new right name is
 introduced, or the startup gate silently stops covering it.
 
@@ -195,21 +212,40 @@ introduced, or the startup gate silently stops covering it.
 - Client: optional `filterLabel(value): string` on the renderer registration, pure, no row context.
   Absent → server text (PRD §5.7).
 
-### M9 — Client: flags, filter cell, popup — *needs SP2, M1*
+### M9 — Client: flags, filter cell, panel *(M1 shipped upstream; SP2 moot)*
+
+Much smaller than originally scoped — the row, the portal and the distinct machinery are the library's.
 
 - `models/src/query-result.ts` — `canSort?`, `canFilter?`, `canListDistincts?` on `QueryColumn`;
   a `QueryColumnFilter` shape. Wire casing needs no mapper: ASP.NET's web defaults emit camelCase and
   the client parses straight into the interface.
-- `spark-query-grid.component.html:42` — replace the hard-coded `sortable: true` with the resolved
-  flag; add the filter template.
-- `spark-query-grid.component.ts` — a `filters` signal; `onFilterChanged()` modelled exactly on
-  `onSearchChanged():320-330` — **reset to page 1 and construct a fresh fetch identity**, or the
-  datatable dedupes by `(page, perPage, sort)` and silently does not refetch (`:296-298`).
+- `spark-query-grid.component.html:42` — replace the hard-coded `sortable: true` with
+  `col.canSort !== false`; add `filterable`, `filterActive`, `filterSummary` to the microsyntax; nest
+  `*bsDatatableFilterPanel` (PRD §5.8).
+- **A new `spark-column-filter-panel`**, likely its own secondary entry point
+  `ng-spark/column-filter/` (13+ exist; routine). Renders `values()` from `FilterContext`, the
+  `matching`/`remaining` split, the null distinct as `< none >`, a search box wired to `ctx.search()`,
+  the inverse toggle, and clear via `ctx.clear()`. Selection goes back through
+  `ctx.apply(values, inverse)`. **Carries its own styles** — Bootstrap does not reach the document-root
+  overlay. Icons via `<spark-icon>`, never a global `bootstrap-icons.css`.
+- `spark-query-grid.component.ts` — a `filters` signal; `[distincts]` as a closure over the other
+  columns' filters plus `parentId`/`parentType`, **re-created whenever another column's filter
+  changes** or an in-flight request carries stale context (`DistinctsRequest` itself is only
+  `{ column, search, signal }`); `onFilterChanged()` modelled exactly on `onSearchChanged():320-330` —
+  **reset to page 1 and construct a fresh fetch identity**, or the datatable dedupes by
+  `(page, perPage, sort)` and silently does not refetch (`:296-298`).
+- **One event shape.** `ctx.apply()` always emits `ValuesFilterChangeDetail`, and Spark never uses
+  `'comparison'` mode, so no discriminated-union switch is needed. A free-text column
+  (`canListDistincts: false`) calls `apply([{ value: typed, label: typed }], false)`.
 - `services/src/spark.service.ts:116-138` — pass `columns` in the execute body; add the distinct call.
-- Possibly a new secondary entry point `ng-spark/column-filter/` (13+ exist; routine).
-- `spark-query-list` — decide how the filter row relates to the existing search box; may need
-  `<bs-form>` around the grid for `.form-control` styling to reach it.
-- Icons via `<spark-icon>`, never a global `bootstrap-icons.css`.
+- `[labels]` — bind the panel strings for i18n. New surface the original plan did not budget for; the
+  Angular input is `Partial<DatatableLabels>`, so it is additive.
+- Pin the new `set fetch(null)` reset behaviour with a spec: `spark-query-grid.component.ts:388` calls
+  it on every query load, and the library now clears `_totalRecords`, page caches and in-flight
+  responses. Strictly better for Spark, and plausibly fixes a latent stale-`totalRecords` bug when
+  switching queries — so it should be locked down.
+- `spark-query-list` — decide how the filter row relates to the existing search box. The old
+  `<bs-form>` concern is gone: the panel is portalled out of the grid's subtree entirely.
 
 ### M10 — `MintPlayer.Spark.Client` + the route table
 
@@ -236,6 +272,12 @@ shape (PRD §5.3).
 
 - Author the flags in a demo app so the feature is visible: Fleet is the natural home.
 - Full test sweep per PRD §10 — this is the **single batched run**, not per milestone.
+- **One browser check of the panel**, via the `playwright_node` MCP (never the `dcg:playwright`
+  skill): that it is not clipped in paged *or* virtual mode, that it is keyboard-reachable, that focus
+  is trapped and returns to the trigger on Escape, and that a click in the filter row never sorts.
+  ng-bootstrap does not guard any of this — its suite is jsdom-only (no layout), no keyboard spec
+  exercises the panel through `mp-datatable`, and the sort-suppression test is structural only.
+  Mind the shared E2E rate-limit bucket: one pass, not per-keystroke.
 - Docs per PRD §11.
 - Re-synchronize all four apps; the diff should be empty where no flag is authored.
 - Minor bumps: a `libs/**` `.csproj` `<Version>` **and** `ng-spark`'s `package.json`.
@@ -244,10 +286,10 @@ shape (PRD §5.3).
 
 ## Sequencing notes
 
-- **SP1 and SP2 before anything.** SP1 can invalidate the in-memory design (sending the feature behind
-  server-side paging); SP2 decides the popup mechanism M9 depends on.
-- **M1 publishes before M9 can be finished**, but M2–M8 (server-side) are independent of it and can
-  proceed in parallel.
+- **SP1 before anything.** It can invalidate the in-memory design and send the feature behind
+  server-side paging. SP2 is moot; SP3 and SP4 gate M8 and M6 respectively.
+- **M1 is done upstream**, so the cross-repo sequencing constraint is gone. M2–M8 (server) and M9
+  (client) can now proceed in parallel.
 - **M2 before M3.** Removing the misused `IsSortable` first keeps the new flags from landing beside a
   field that means something else.
 - **M5 and M6 can land before M7.** Sorting and filtering are useful with a free-text filter cell even

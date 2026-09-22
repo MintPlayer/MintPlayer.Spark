@@ -185,6 +185,15 @@ having no business listing every account number in the system. Vidyano separates
 reason. `canListDistincts: false` with `canFilter: true` yields a free-text filter cell rather than a
 checkbox list.
 
+**How the degraded mode is rendered — and why every column renders the same way.** `mp-datatable`'s
+built-in `FilterMode` is `'values' | 'comparison'` only; there is no free-text mode, and
+`FilterOperator` has no `contains`, so comparison mode cannot express a substring search. A
+`canListDistincts: false` column therefore has no built-in panel that fits.
+
+The answer is not to ask for a third mode. **Spark always supplies its own panel**, via
+`*bsDatatableFilterPanel` nested inside `*bsDatatableColumn`, for every filterable column — value
+list and free text alike. See §5.8.
+
 `canGroupBy` exists in Vidyano and is `false` everywhere we sampled. It is out of scope (§9).
 
 **Defaults are absent → capable**, matching Vidyano (whose flags appear only where `false` — three
@@ -290,8 +299,23 @@ distinct. Authorization first, because `Execute.cs:43-55` records that an unreso
 404 while an existing-but-denied one fell to 403, letting an unauthorized caller enumerate attribute
 names by watching 400-vs-403.
 
+**Response shape.** Two buckets and a truncation flag, matching what `mp-datatable` consumes:
+
+```json
+{ "matching":  [ { "value": "AlfaRomeo", "label": "Alfa Romeo" } ],
+  "remaining": [ { "value": "Audi",      "label": "Audi" } ],
+  "hasMore": true }
+```
+
+`matching` satisfies the current context (other columns' filters + the search term); `remaining` is
+the column's other values, rendered dimmed but still selectable. **The server must compute and return
+`remaining`** — the component's local fallback cannot, because our grid is `[fetch]`-bound, so without
+it the greyed-but-selectable behaviour silently never appears.
+
 **Caps.** Hard cap of 100 per bucket, matching Vidyano, with a `hasMore` flag. Narrowing is by the
-`search` parameter, which round-trips. No paging.
+`search` parameter, which round-trips. No paging. `hasMore` must be **honest at the cap**: the
+component re-queries only when `hasMore` is set or the term is widened, so a dishonest `false` leaves
+a user typing past a truncated list with stale results.
 
 **No counts.** The response carries values, never per-value counts. `QueryExecutor.cs:97-119` records
 that an author-supplied total combined with row security *"became a cardinality oracle for rows the
@@ -345,25 +369,51 @@ identity.
 **Accepted consequence:** the popup can visibly disagree with the cell. That is the cost of the only
 design that stays correct, and it is documented rather than hidden.
 
-### 5.8 The filter row cannot be built in Spark alone
+### 5.8 How the filter row is consumed
 
-The `<thead>` is rendered by the Lit web component `mp-datatable`, one `<th>` per column, with no
-second row and no filter slot. The obvious shortcut is a dead end: when a column is sortable its
-header content is rendered *inside* `<button class="header-sort">` (`mp-datatable.ts:931-939`), so a
-filter control placed there would be an interactive element nested in a button — invalid HTML, an
-a11y failure, and every filter click would also toggle the sort.
+The filter row itself is **not** Spark's to build. It shipped in
+[mintplayer-ng-bootstrap#415](https://github.com/MintPlayer/mintplayer-ng-bootstrap/pull/415)
+(`22.19.0` / web-components `2.16.0`): a second `<tr>` in `<thead>`, a per-column trigger, and a panel
+portalled to a document-root `<mp-overlay-container>`.
 
-The correct design adds a `filterRenderer` to `DatatableColumnDef` and a second `<tr>` in `<thead>` in
-`mintplayer-web-components`, plus a bridging directive in `mintplayer-ng-bootstrap` alongside the
-existing `headerRenderer` bridge (`datatable.component.ts:181-202`). Per the one-PR rule both repos
-are **one unit of work**, with the ng-bootstrap publish sequenced first.
+**Spark always nests its own panel**, for every filterable column, rather than using the built-in
+one. The decision is deliberate:
 
-Two constraints on the popup: `mp-datatable` renders into the **light DOM** on purpose
-(`mp-datatable.ts:103-114`), so Bootstrap CSS reaches a control in a header cell *provided the grid is
-inside `<bs-form>`* — which `spark-query-list` currently is not (only its search box is). And
-`.datatable-scroll { overflow: auto }` plus sticky `thead th { z-index: 1 }` in virtual mode means an
-in-flow dropdown panel **will be clipped**. The popup must be portalled/floating, and this needs a
-real browser check before the design is fixed (SP2).
+- A `canListDistincts: false` column has no built-in mode that fits (§5.1), so *some* columns must
+  nest regardless. Mixing the two would put two visually different panels in one grid.
+- Panel markup is where the value/label split, the null distinct and `filterLabel` (§5.6, §5.7) are
+  rendered. Owning it keeps that logic in one place.
+- Nesting costs almost nothing, because `FilterContext` hands a consumer panel the same machinery the
+  built-in one uses.
+
+```html
+<div *bsDatatableColumn="col.name;
+      sortable: col.canSort !== false;
+      filterable: col.canFilter !== false;
+      filterActive: isFiltered(col.name);
+      filterSummary: filterSummary(col.name)">
+  {{ col.label | resolveTranslation }}
+  <ng-container *bsDatatableFilterPanel="let values; ctx as ctx">
+    <spark-column-filter-panel [column]="col" [values]="values()" [ctx]="ctx" />
+  </ng-container>
+</div>
+```
+
+**What the component keeps owning**, so Spark does not reimplement it: the async `[distincts]` source,
+its 250 ms debounce and `AbortSignal` cancellation, the `matching`/`remaining` rebucketing, the
+`filterChange` event, the overlay portal, the focus trap and Escape-restores-focus. `FilterContext`
+exposes `values()`, `loading()`, `search(term)`, `apply(values, inverse)`, `clear()` and `onChange()`.
+
+**What Spark owns:** the panel's markup and its styles. Bootstrap CSS does **not** reach the
+document-root overlay — `.form-control` is only styled inside `bs-*` components — so the panel is
+styled explicitly and held visually close to the library's own.
+
+**A simplification that follows.** `apply(values, inverse)` always emits a `ValuesFilterChangeDetail`,
+and Spark never uses `'comparison'` mode. So there is exactly one event shape, no discriminated-union
+switch, and a free-text column simply calls `apply([{ value: typed, label: typed }], false)`.
+
+The old worry about needing `<bs-form>` around the grid dissolves — the panel is not in the grid's
+subtree at all.
 
 `bs-query-builder` already exists in ng-bootstrap with a full `Expression` / operator / per-type editor
 registry. This feature must not invent a second, incompatible filter expression shape; where the two
@@ -403,8 +453,12 @@ Open, to be settled by a spike before M1:
 
 - **O1.** Does an in-memory distinct pass over a realistically large secured result set stay within
   the latency the grid already pays? *(SP1.)*
-- **O2.** Does a floating filter popup escape the datatable's scroll container and sticky header?
-  *(SP2.)*
+- ~~**O2.** Does a floating filter popup escape the datatable's scroll container and sticky header?~~
+  **Struck.** ng-bootstrap#415 portals the panel to a document-root `<mp-overlay-container>`, and a
+  nested consumer panel mounts *inside* that pane, so it is covered too. **SP2 is moot — do not run
+  it.** Caveat: the three-engine measurement backing the fix lives in a spike harness that was deleted
+  after the write-up, and all of that repo's unit tests run under jsdom, which has no layout. No
+  regression test guards it on either side, which is why PRD §10 keeps one Spark-side browser check.
 - **O3.** For a reference column, is the breadcrumb always present on the mapped row at the point the
   distinct pass runs, including when `BreadcrumbProjectionSatisfiable` is false? *(SP3.)*
 
