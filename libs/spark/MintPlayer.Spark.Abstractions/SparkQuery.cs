@@ -90,8 +90,30 @@ public sealed class SparkQuery
     {
         var copy = (SparkQuery)MemberwiseClone();
         copy.SortColumns = sortColumns;
+        copy.SortColumnsAreCallerSupplied = true;
         return copy;
     }
+
+    /// <summary>
+    /// Whether <see cref="SortColumns"/> came from the request rather than the model.
+    /// </summary>
+    /// <remarks>
+    /// The <c>canSort</c> gate (#431) exempts a column the query itself declares its default order
+    /// by — the server chose that ordering, the caller did not, so <c>canSort: false</c> on such a
+    /// column means "the grid arrives sorted this way and you may not re-sort by it", which is a
+    /// coherent and useful shape.
+    /// <para>
+    /// Without this flag the distinction is unrecoverable at the point it is needed:
+    /// <see cref="WithSortColumns"/> <em>replaces</em> the declared columns, so by the time the
+    /// executor sees them a caller-supplied sort is indistinguishable from a model-declared one.
+    /// </para>
+    /// <para>
+    /// <see cref="JsonIgnoreAttribute"/> because it is request state, not model state: it must never
+    /// be written to a model file nor accepted from one.
+    /// </para>
+    /// </remarks>
+    [JsonIgnore]
+    public bool SortColumnsAreCallerSupplied { get; private set; }
 }
 
 /// <summary>

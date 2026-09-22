@@ -735,7 +735,7 @@ internal partial class QueryExecutor : IQueryExecutor
 
         if (query.SortColumns.Length > 0)
         {
-            queryable = ApplySorting(queryable, sortType, query.SortColumns, entityTypeDefinition);
+            queryable = ApplySorting(queryable, sortType, query.SortColumns, entityTypeDefinition, query);
         }
 
         var materialized = (await ExecuteQueryableAsync(queryable, resultType, cancellationToken)).ToList();
@@ -982,7 +982,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // Apply sorting if the result is IQueryable
         if (isQueryable && query.SortColumns.Length > 0)
         {
-            result = ApplySorting(result, methodInfo.ResultElementType, query.SortColumns, entityTypeDefinition);
+            result = ApplySorting(result, methodInfo.ResultElementType, query.SortColumns, entityTypeDefinition, query);
         }
 
         // Materialize results
@@ -1077,7 +1077,7 @@ internal partial class QueryExecutor : IQueryExecutor
             Action = "Query",
             DedupeById = isRavenQueryable,
             OrderRows = needsInMemorySort
-                ? rows => SortMappedRows(rows, query.SortColumns, entityTypeDefinition)
+                ? rows => SortMappedRows(rows, query.SortColumns, entityTypeDefinition, query)
                 : null,
             CancellationToken = cancellationToken,
         });
@@ -1101,13 +1101,14 @@ internal partial class QueryExecutor : IQueryExecutor
     /// </para>
     /// </remarks>
     private static IEnumerable<PersistentObject> SortMappedRows(
-        IEnumerable<PersistentObject> rows, SortColumn[] sortColumns, EntityTypeDefinition definition)
+        IEnumerable<PersistentObject> rows, SortColumn[] sortColumns, EntityTypeDefinition definition,
+        SparkQuery? query)
     {
         IOrderedEnumerable<PersistentObject>? ordered = null;
 
         foreach (var col in sortColumns)
         {
-            if (!IsSortableAttribute(definition, col.Property))
+            if (!IsSortableAttribute(definition, query, col.Property))
             {
                 Console.WriteLine(
                     $"Warning: sort column '{col.Property}' is not an attribute of {definition.Name}'s query " +
@@ -1459,7 +1460,7 @@ internal partial class QueryExecutor : IQueryExecutor
     /// </para>
     /// </summary>
     private object ApplySorting(object queryable, Type entityType, SortColumn[] sortColumns,
-        EntityTypeDefinition definition)
+        EntityTypeDefinition definition, SparkQuery? query)
     {
         for (int i = 0; i < sortColumns.Length; i++)
         {
@@ -1480,7 +1481,7 @@ internal partial class QueryExecutor : IQueryExecutor
             // Checked against the DECLARED name, before ResolveSortProperty redirects: a sort
             // companion is only ever used when it IsIgnoredForSparkModel, so it is never a model
             // attribute and would fail this check itself.
-            if (!IsSortableAttribute(definition, col.Property))
+            if (!IsSortableAttribute(definition, query, col.Property))
             {
                 Console.WriteLine(
                     $"Warning: sort column '{col.Property}' is not an attribute of {definition.Name}'s query " +
@@ -1665,14 +1666,33 @@ internal partial class QueryExecutor : IQueryExecutor
     /// </summary>
     /// <summary>
     /// Whether <paramref name="requested"/> names an attribute the caller may order by: it must exist
-    /// in the model and be part of the query surface.
+    /// in the model, be part of the query surface, and — when the sort is caller-supplied — resolve
+    /// <c>canSort</c> to true.
     /// </summary>
-    private static bool IsSortableAttribute(EntityTypeDefinition definition, string requested)
+    /// <remarks>
+    /// Two gates, and they are not the same kind of thing.
+    /// <para>
+    /// <c>ShowedOn.Query</c> is the authorization boundary and always applies: ordering by a field is
+    /// a comparison oracle regardless of who asked.
+    /// </para>
+    /// <para>
+    /// <c>canSort</c> (#431) is a capability the model author declares, and it gates the
+    /// <b>caller</b>, not the model. A column the query declares its own default order by is exempt:
+    /// the server chose that ordering. So <c>canSort: false</c> on a declared sort column yields a
+    /// grid that arrives ordered by it and cannot be re-ordered by it — deliberate, and checked by
+    /// <see cref="SparkQuery.SortColumnsAreCallerSupplied"/> rather than by comparing name lists,
+    /// because <see cref="SparkQuery.WithSortColumns"/> has already replaced them by this point.
+    /// </para>
+    /// </remarks>
+    private static bool IsSortableAttribute(EntityTypeDefinition definition, SparkQuery? query, string requested)
     {
-        var attribute = definition.Attributes
-            .FirstOrDefault(a => string.Equals(a.Name, requested, StringComparison.OrdinalIgnoreCase));
+        var attribute = ColumnCapabilities.FindQuerySurfaceAttribute(definition, requested);
+        if (attribute is null) return false;
 
-        return attribute is not null && attribute.ShowedOn.HasFlag(EShowedOn.Query);
+        // Model-declared order: the caller did not ask for this one.
+        if (query is { SortColumnsAreCallerSupplied: false }) return true;
+
+        return ColumnCapabilities.CanSort(attribute, query);
     }
 
     private static string ResolveSortProperty(Type sortType, string requested)

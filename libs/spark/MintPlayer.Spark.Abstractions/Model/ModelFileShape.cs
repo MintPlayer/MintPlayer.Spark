@@ -135,6 +135,8 @@ public static class ModelFileShape
                     builder.Append("  query");
                     foreach (var field in StructuralQueryFields)
                         AppendInline(builder, field, query);
+
+                    AppendQueryColumns(builder, query);
                     builder.Append('\n');
                 }
             }
@@ -194,6 +196,43 @@ public static class ModelFileShape
     [
         "name", "source", "entityType", "indexName", "alias", "isStreamingQuery",
     ];
+
+    /// <summary>
+    /// A query's sparse per-column capability overrides (#431), canonicalised into the hash.
+    /// </summary>
+    /// <remarks>
+    /// Structural by the rule this file states: an override gates a read. Flipping
+    /// <c>canListDistincts</c> to <c>true</c> on a deployed model opens value enumeration on a column
+    /// the author closed, which is the disclosure class the sort-oracle hardening (#294-#296) exists
+    /// for — and unlike the attribute-level flags, an override is easy to add to a model file without
+    /// touching anything else.
+    /// <para>
+    /// Canonicalised rather than rendered, for the reason <see cref="AppendRules"/> records:
+    /// <c>GetRawText()</c> on an array returns the original bytes including indentation and line
+    /// endings, so a CRLF-to-LF rewrite between the machine that writes the file and the container
+    /// that verifies it would change the hash and refuse to start.
+    /// </para>
+    /// <para>
+    /// ⚠️ <c>sortColumns</c> is deliberately <b>not</b> structural, though the <c>canSort</c> exemption
+    /// (#431 §5.3) gives it a new gating role: a column the query declares its default order by skips
+    /// the <c>canSort</c> check. The exposure is bounded and accepted — the exemption cannot reach a
+    /// column that is off the query surface, because <c>ShowedOn.Query</c> is checked first and
+    /// remains the authorization boundary. Bypassing <c>canSort</c> returns that column to its
+    /// pre-#431 behaviour, which was already acceptable. Making <c>sortColumns</c> structural would
+    /// churn the hash of nearly every model file to close a hole that is not one.
+    /// </para>
+    /// </remarks>
+    private static void AppendQueryColumns(StringBuilder builder, JsonElement query)
+    {
+        if (!query.TryGetProperty("columns", out var columns) || columns.ValueKind != JsonValueKind.Array)
+            return;
+
+        var rendered = columns.EnumerateArray()
+            .Select(Canonicalize)
+            .OrderBy(c => c, StringComparer.Ordinal);
+
+        builder.Append("\tcolumns=[").Append(string.Join(",", rendered)).Append(']');
+    }
 
     private static void AppendRules(StringBuilder builder, JsonElement attribute)
     {
