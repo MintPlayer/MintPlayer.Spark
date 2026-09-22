@@ -850,7 +850,8 @@ internal partial class QueryExecutor : IQueryExecutor
         // Push the row filter into the Raven query where shapes allow (no projection in play);
         // otherwise this no-ops and FilterAsync below stays the gate. Composing before
         // materialization is what keeps a row-scoped type from reading its whole collection.
-        queryable = await rowSecurity.ComposeRowFilterAsync(queryable, entityType, resultType, "Query", cancellationToken);
+        var rowFilter = await rowSecurity.ComposeRowFilterAsync(queryable, entityType, resultType, "Query", cancellationToken);
+        queryable = rowFilter.Queryable;
 
         var sortType = (indexType != null && resultType != entityType) ? resultType : entityType;
 
@@ -1109,7 +1110,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // from, not which of them this caller may see. No-op when the method yields projections.
         if (isQueryable && entityType is not null)
         {
-            result = await rowSecurity.ComposeRowFilterAsync(result, entityType, methodInfo.ResultElementType, "Query", cancellationToken);
+            result = (await rowSecurity.ComposeRowFilterAsync(result, entityType, methodInfo.ResultElementType, "Query", cancellationToken)).Queryable;
         }
 
         // Narrow to a selection before anything else touches the shape. Paging is deliberately not

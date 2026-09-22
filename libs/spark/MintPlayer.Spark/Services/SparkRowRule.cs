@@ -38,8 +38,8 @@ internal sealed class SparkRowRule<T>(
         // Pushdown first, so a scoped type reads its own rows rather than the whole collection. It
         // is an optimization only — ComposeRowFilterAsync declines silently for a projection or a
         // constant predicate, and FilterAsync below is what actually enforces the rule.
-        var composed = (IQueryable<TResult>)await rowSecurity
-            .ComposeRowFilterAsync(query, typeof(T), typeof(TResult), action);
+        var composed = (IQueryable<TResult>)(await rowSecurity
+            .ComposeRowFilterAsync(query, typeof(T), typeof(TResult), action)).Queryable;
 
         var rows = await MaterializeAsync(composed, cancellationToken);
 
