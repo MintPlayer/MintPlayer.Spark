@@ -273,11 +273,20 @@ shape (PRD §5.3).
 
 - Author the flags in a demo app so the feature is visible: Fleet is the natural home.
 - Full test sweep per PRD §10 — this is the **single batched run**, not per milestone.
-- **One browser check of the panel**, via the `playwright_node` MCP (never the `dcg:playwright`
-  skill): that it is not clipped in paged *or* virtual mode, that it is keyboard-reachable, that focus
-  is trapped and returns to the trigger on Escape, and that a click in the filter row never sorts.
-  ng-bootstrap does not guard any of this — its suite is jsdom-only (no layout), no keyboard spec
-  exercises the panel through `mp-datatable`, and the sort-suppression test is structural only.
+- **One browser check of our own panel**, via the `playwright_node` MCP (never the `dcg:playwright`
+  skill). Narrower than first scoped: ng-bootstrap#415 now ships
+  `apps/ng-bootstrap-demo-e2e/e2e/datatable-filter.spec.ts` covering panel placement, non-clipping,
+  light-tier styling across the portal, Tab-trapping with Escape restoring focus, and that a click in
+  the filter row never sorts — on chromium and firefox.
+
+  Two reasons ours does not disappear entirely:
+  - **Their spec exercises the built-in panel; we nest our own** (PRD §5.8). The portal and focus-trap
+    machinery is shared, so the risk is low — but our markup is not theirs.
+  - **Their spec never leaves `/enterprise/datatables`, so virtual mode is untested** — and that is the
+    mode `spark-query-grid` uses for `renderMode: 'VirtualScrolling'`, and the one where `thead th` is
+    sticky with `z-index: 1`, so the panel can be occluded rather than merely clipped. Raised upstream;
+    until it is covered there, cover it here.
+
   Mind the shared E2E rate-limit bucket: one pass, not per-keystroke.
 - Docs per PRD §11.
 - Re-synchronize all four apps; the diff should be empty where no flag is authored.
