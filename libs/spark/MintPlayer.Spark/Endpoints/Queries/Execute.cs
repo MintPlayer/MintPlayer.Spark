@@ -109,6 +109,39 @@ internal sealed partial class ExecuteQuery : IPostEndpoint, IMemberOf<QueriesGro
                 }
             }
 
+            // Column filters (#431) are validated the same way and for the same reason: an unknown
+            // name is a 400 here, while a known name the caller may not filter on is refused
+            // silently in the executor. The split is deliberate and mirrors sorting — this layer
+            // answers "is that a column at all", which the caller already knows from the query
+            // definition it was served, and the capability answer stays where it cannot be probed.
+            var columnFilters = request.Columns is { Length: > 0 }
+                ? request.Columns.Where(c => !c.IsEmpty).ToArray()
+                : null;
+            if (columnFilters is { Length: > 0 })
+            {
+                var filterable = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                if (query.EntityType is not null)
+                {
+                    var entityType = modelLoader.ResolveEntityType(query.EntityType);
+                    if (entityType is not null)
+                    {
+                        foreach (var attr in entityType.Attributes)
+                            filterable.Add(attr.Name);
+                    }
+                }
+
+                var unknown = columnFilters
+                    .Where(c => !filterable.Contains(c.Name))
+                    .Select(c => c.Name)
+                    .ToArray();
+                if (unknown.Length > 0)
+                {
+                    return Results.Json(
+                        new { error = $"Unknown filter column(s): {string.Join(", ", unknown)}" },
+                        statusCode: 400);
+                }
+            }
+
             // Read pagination parameters. R2-M2: clamp `take` so an authenticated
             // attacker can't request `?take=2147483647` and have us materialize
             // entire collections into memory before paging. 1000 is well above
@@ -140,7 +173,8 @@ internal sealed partial class ExecuteQuery : IPostEndpoint, IMemberOf<QueriesGro
             // Copy only when the request overrides the sort; the cached definition is shared.
             var effectiveQuery = sortOverrides is null ? query : query.WithSortColumns(sortOverrides);
 
-            var results = await queryExecutor.ExecuteQueryAsync(effectiveQuery, parent, skip, take, search, cancellationToken: httpContext.RequestAborted);
+            var results = await queryExecutor.ExecuteQueryAsync(effectiveQuery, parent, skip, take, search,
+                columnFilters: columnFilters, cancellationToken: httpContext.RequestAborted);
             return Results.Json(results);
         }
         catch (SparkAccessDeniedException)

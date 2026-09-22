@@ -8,6 +8,7 @@ using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Text.Json;
 
 using static MintPlayer.Spark.Services.SparkHookInvocation;
 
@@ -21,7 +22,7 @@ public interface IQueryExecutor
     /// re-runs the query the rows came from, so they arrive with the query's own projection
     /// (index-computed columns included) rather than being re-derived from documents.
     /// </param>
-    Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, IReadOnlyCollection<string>? restrictToIds = null, CancellationToken cancellationToken = default);
+    Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, IReadOnlyCollection<string>? restrictToIds = null, IReadOnlyList<QueryColumnFilter>? columnFilters = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Whether this query's method returns its own page (<see cref="SparkQueryPage{T}"/>) and
@@ -50,7 +51,7 @@ internal partial class QueryExecutor : IQueryExecutor
     [Inject] private readonly IRowSecurity rowSecurity;
     [Inject] private readonly IRowSecurityGate gate;
 
-    public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, IReadOnlyCollection<string>? restrictToIds = null, CancellationToken cancellationToken = default)
+    public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, IReadOnlyCollection<string>? restrictToIds = null, IReadOnlyList<QueryColumnFilter>? columnFilters = null, CancellationToken cancellationToken = default)
     {
         var (isCustom, name) = ResolveSource(query);
 
@@ -84,7 +85,7 @@ internal partial class QueryExecutor : IQueryExecutor
         }
         else
         {
-            source = await ExecuteDatabaseQueryAsync(query, name, parent, searchTerm, restrictToIds, cancellationToken)
+            source = await ExecuteDatabaseQueryAsync(query, name, parent, searchTerm, restrictToIds, columnFilters, cancellationToken)
                 with { DisabledActions = queryContext.DisabledActions };
         }
 
@@ -537,7 +538,8 @@ internal partial class QueryExecutor : IQueryExecutor
 
     private async Task<QuerySourceResult> ExecuteDatabaseQueryAsync(
         SparkQuery query, string propertyName, PersistentObject? parent, string? searchTerm,
-        IReadOnlyCollection<string>? restrictToIds, CancellationToken cancellationToken)
+        IReadOnlyCollection<string>? restrictToIds, IReadOnlyList<QueryColumnFilter>? columnFilters,
+        CancellationToken cancellationToken)
     {
         // Authorization comes FIRST, from the query's declared entity type (F1). Everything below
         // is resolution work — reflecting over the context, reading a property, matching a CLR type
@@ -709,6 +711,15 @@ internal partial class QueryExecutor : IQueryExecutor
         queryable = await rowSecurity.ComposeRowFilterAsync(queryable, entityType, resultType, "Query", cancellationToken);
 
         var sortType = (indexType != null && resultType != entityType) ? resultType : entityType;
+
+        // Column filters sit between the row filter and the search group (#431). Not merely "before
+        // search": they are plain Equal comparisons, so they cannot be swept into RavenDB's
+        // consecutive-Search grouping, and keeping them here leaves the security predicate and the
+        // search group adjacent exactly as the comment below requires.
+        if (columnFilters is { Count: > 0 })
+        {
+            queryable = ApplyColumnFilters(queryable, sortType, columnFilters, entityTypeDefinition, query);
+        }
 
         // After the row filter and before sorting. The position matters for one reason: RavenDB
         // groups consecutive Search clauses and ANDs that group with its neighbours, so keeping the
@@ -1664,6 +1675,150 @@ internal partial class QueryExecutor : IQueryExecutor
     /// <para>If a per-attribute override is ever needed, an optional model field can be added later without
     /// breaking anything: absent would continue to mean "use the convention".</para>
     /// </summary>
+    /// <summary>
+    /// Narrows <paramref name="queryable"/> by the caller's per-column value filters (#431).
+    /// </summary>
+    /// <remarks>
+    /// <b>Position is load-bearing.</b> This composes after the row-security predicate and before the
+    /// search group, for the same reason the search group sits where it does: an added clause must
+    /// never end up adjacent to the security filter in a way that lets an operator leak onto it. And
+    /// it deliberately builds plain <c>Equal</c> comparisons rather than going through
+    /// <c>LinqExtensions.Search</c> — no <c>SearchOptions</c> is constructed here at all, because a
+    /// measured RavenDB behaviour lets an explicit one leak forward onto the adjacent clause, and the
+    /// adjacent clause is the row filter.
+    /// <para>
+    /// <b>Refusals are silent</b>, matching the sort gate: a column that is off the query surface or
+    /// resolves <c>canFilter: false</c> is skipped with a console warning and the rows come back
+    /// unnarrowed. A distinguishable refusal would answer "does this column exist" for a caller who
+    /// may not see it.
+    /// </para>
+    /// <para>
+    /// <b>The property is resolved through the sort companion</b>, exactly as ordering is. A
+    /// <c>[Search]</c>-analyzed field is indexed as separate lower-cased terms — <c>Volkswagen Golf
+    /// GTI</c> becomes three — so an equality comparison against the display field matches nothing
+    /// for any multi-word value, silently. <c>{Name}Sort</c> carries the un-analyzed single term and
+    /// is what equality must target.
+    /// </para>
+    /// </remarks>
+    private object ApplyColumnFilters(object queryable, Type sortType,
+        IReadOnlyList<QueryColumnFilter> filters, EntityTypeDefinition definition, SparkQuery? query)
+    {
+        foreach (var filter in filters)
+        {
+            if (filter.IsEmpty) continue;
+
+            var attribute = ColumnCapabilities.FindQuerySurfaceAttribute(definition, filter.Name);
+            if (attribute is null || !ColumnCapabilities.CanFilter(attribute, query))
+            {
+                Console.WriteLine(
+                    $"Warning: filter column '{filter.Name}' is not a filterable attribute of " +
+                    $"{definition.Name}'s query surface; the filter is refused and the rows are not narrowed.");
+                continue;
+            }
+
+            var property = sortType.GetCachedProperty(ResolveSortProperty(sortType, attribute.Name));
+            if (property is null)
+            {
+                // Same shape as the sort path: a model attribute can legitimately be absent from a
+                // narrower projection, and dropping it silently reads as a broken filter.
+                Console.WriteLine(
+                    $"Warning: filter column '{filter.Name}' has no property on {sortType.Name}; " +
+                    $"the filter is skipped.");
+                continue;
+            }
+
+            var parameter = Expression.Parameter(sortType, "x");
+            var member = Expression.Property(parameter, property);
+
+            Expression? predicate = null;
+
+            if (filter.Includes is { Length: > 0 } includes)
+                predicate = AnyEquals(member, includes, property.PropertyType);
+
+            if (filter.Excludes is { Length: > 0 } excludes)
+            {
+                var none = Expression.Not(AnyEquals(member, excludes, property.PropertyType));
+                predicate = predicate is null ? none : Expression.AndAlso(predicate, none);
+            }
+
+            if (predicate is null) continue;
+
+            var lambda = Expression.Lambda(predicate, parameter);
+            queryable = QueryableWhere(sortType).Invoke(null, [queryable, lambda])!;
+        }
+
+        return queryable;
+    }
+
+    /// <summary>An OR-chain of equality comparisons — the "one of these values" half of a filter.</summary>
+    private static Expression AnyEquals(MemberExpression member, object?[] values, Type propertyType)
+    {
+        Expression? any = null;
+
+        foreach (var raw in values)
+        {
+            var constant = Expression.Constant(ConvertFilterValue(raw, propertyType), propertyType);
+            var equals = Expression.Equal(member, constant);
+            any = any is null ? equals : Expression.OrElse(any, equals);
+        }
+
+        // Unreachable for a non-empty array, but an empty OR-chain must not become "match nothing".
+        return any ?? Expression.Constant(true);
+    }
+
+    /// <summary>
+    /// Coerces one wire value onto the property's CLR type.
+    /// </summary>
+    /// <remarks>
+    /// The body arrives through <c>System.Text.Json</c> as <see cref="JsonElement"/>, so every value
+    /// needs converting before it can be compared. <see langword="null"/> is preserved rather than
+    /// coerced — it is a real, selectable distinct meaning "no value", not an absent filter.
+    /// <para>
+    /// An unconvertible value yields <see langword="null"/> rather than throwing: a filter is caller
+    /// input, and a malformed one should narrow to nothing rather than 500. It cannot be used to
+    /// probe types, because the refusal is indistinguishable from a value that simply matches no row.
+    /// </para>
+    /// </remarks>
+    private static object? ConvertFilterValue(object? raw, Type propertyType)
+    {
+        var target = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+
+        if (raw is null) return null;
+
+        try
+        {
+            if (raw is JsonElement element)
+            {
+                if (element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return null;
+                if (target == typeof(string)) return element.ToString();
+                if (target == typeof(Guid)) return element.TryGetGuid(out var g) ? g : null;
+                if (target.IsEnum) return Enum.Parse(target, element.ToString(), ignoreCase: true);
+
+                return JsonSerializer.Deserialize(element.GetRawText(), target);
+            }
+
+            if (target.IsInstanceOfType(raw)) return raw;
+            if (target.IsEnum) return Enum.Parse(target, raw.ToString() ?? "", ignoreCase: true);
+
+            return Convert.ChangeType(raw, target);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The open <c>Queryable.Where(source, predicate)</c> overload, closed over <paramref name="entityType"/>.</summary>
+    private static MethodInfo QueryableWhere(Type entityType)
+        => ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo>(
+            ("QueryExecutor.QueryableWhere", entityType),
+            static k => typeof(Queryable).GetMethods()
+                .First(m => m.Name == nameof(Queryable.Where)
+                    && m.GetParameters().Length == 2
+                    // Expression<Func<T,bool>>, not the indexed Expression<Func<T,int,bool>> overload.
+                    && m.GetParameters()[1].ParameterType.GetGenericArguments()[0].GetGenericArguments().Length == 2)
+                .MakeGenericMethod(k.Entity));
+
     /// <summary>
     /// Whether <paramref name="requested"/> names an attribute the caller may order by: it must exist
     /// in the model, be part of the query surface, and — when the sort is caller-supplied — resolve

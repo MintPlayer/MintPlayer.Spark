@@ -38,6 +38,15 @@ internal sealed class ExecuteQueryRequest : IRetryableRequest
 
     public string? Search { get; set; }
 
+    /// <summary>
+    /// Per-column value filters (#431). Columns AND together; values within a column OR together.
+    /// </summary>
+    /// <remarks>
+    /// This is the shape that could not be expressed as a query string, and the reason the reads
+    /// moved to POST — see the class remarks.
+    /// </remarks>
+    public QueryColumnFilter[]? Columns { get; set; }
+
     /// <summary>The object whose detail page a sub-query was rendered on, by id and type.</summary>
     public string? ParentId { get; set; }
 
