@@ -382,3 +382,84 @@ Server-side `Skip`/`Take` pushdown **was** listed here and has been moved **into
 (PRD §5.9). It is the real fix behind several findings, this feature makes the underlying problem
 worse, and parking it as a follow-up would have been deferring work to keep a diff small rather than
 genuinely declining it.
+
+---
+
+## Found along the way
+
+Issues discovered **while implementing**, not predicted by the investigation. They land in **this**
+pull request (one-PR rule) once the milestones are done — an investigator pass is planned to work
+through them. Kept here rather than filed separately so nothing is deferred by being written down.
+
+### F1 — Free-text search matches columns that are off the query surface ⚠️ pre-existing, security
+
+Measured, from the RQL a test captured:
+
+```
+from 'Crates' where (Region = $p0) and (search(Label, $p1, and) or search(Region, $p2, and) or search(Classified, $p3, and))
+```
+
+`Classified` is `showedOn: PersistentObject` — deliberately kept off the grid — and the search box
+matches against it anyway. `ResolveSearchableProperties` takes every readable `string` property of the
+sort type except `Id` and `[IgnoreProperty]`, and its comment records that not scoping to `[Search]`
+is deliberate.
+
+**Why it matters:** this is the comparison-oracle class #295 closed for *sorting*, reopened for
+searching. A caller can bisect a hidden column's contents by observing which search terms return
+rows — no ordering needed, and the hit/miss signal is cleaner than sort position.
+
+**Why it is not fixed in-flight:** narrowing search to the query surface changes behaviour for every
+existing app, and the current breadth is documented as intentional. It needs a decision, not a patch.
+The candidates are: scope to `ShowedOn.Query` (consistent with sort and filter, and what this feature
+assumes), or keep the breadth and document it as accepted.
+
+### F2 — `docs/diagnostics.md` cannot host M13's paging mode
+
+That document is **Spark compiler diagnostics**: a `SPARK001`–`SPARK017` table for Roslyn analyzers
+and generators, with a `Id | Severity | Title | Raised by | Code fix` shape. A runtime paging decision
+is not a compiler diagnostic and does not fit the table, and **no runtime-diagnostics document exists
+at all**. M13's plan text pointed here and was wrong.
+
+**Resolution:** a new "Runtime query diagnostics" document, or a section in
+`docs/guide-queries-and-sorting.md`. Decide in M15 rather than wedging it into the analyzer table.
+
+### F3 — `QueryResultProjector.ToValue` matches attribute names case-sensitively
+
+`ToValue` uses `StringComparison.Ordinal` while `IsSortableAttribute`, `ColumnCapabilities`, the
+endpoint allow-lists and the distinct pass all use `OrdinalIgnoreCase`. A model whose attribute name
+differs from the column name only by case therefore renders an empty cell rather than a value —
+silently, because a missing attribute is a legitimate state (projection-only, or redacted).
+
+Not introduced here, but this feature widens the blast radius: a filter can now narrow on a column
+whose cell renders blank.
+
+### F4 — Row-filter composition has five branches; the PRD named three
+
+`ComposeRowFilterAsync` bails for a system context, **a type with no row rule at all**, a constant
+predicate, and a projection element type — then pushes down, with or without an `IsAllowedAsync`
+refinement. PRD §5.9 named three. The missing one, "no rule", is the common case *and* the cheapest
+safe case for paging.
+
+**Already addressed** in M13's `RowFilterMode`; recorded so the PRD text gets corrected in M15.
+
+### F5 — Two silent test-infrastructure traps, both cost a debugging cycle
+
+- **RavenDB keys indexes by class name.** A fixture index named `Vaults_Overview` in one test class
+  collides with an identically-named one in another and throws at catalog registration — failing
+  **every test in the assembly**, not just the two involved. The error message is good; the surprise
+  is the blast radius.
+- **`RqlRecorder.Attach` must precede the executor's resolution.** Raven copies the handler list when
+  a session is constructed, so a recorder attached afterwards records nothing — and an assertion
+  against an empty collection reads as a *passing* test rather than a broken one.
+
+Both deserve a line in the testing guide. The second is the dangerous one: it fails open.
+
+### F6 — `IQueryExecutor.ExecuteQueryAsync` now takes eight parameters
+
+`RowSecurityContext`'s own doc states the house precedent — *"One object, so a new dimension is added
+in one place rather than as a seventh positional argument at four call sites."* This feature added the
+eighth. It was left as a parameter deliberately: only two production call sites exist and every
+parameter is optional, so an options-object refactor would have churned ~15 test call sites to move a
+precedent that is not load-bearing here.
+
+Worth doing once, now that the parameters have stopped accumulating.
