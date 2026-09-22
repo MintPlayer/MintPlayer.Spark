@@ -1,7 +1,7 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { CustomActionDefinition, EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, QueryResult, SparkQuery, RetryActionPayload, RetryActionResult } from '@mintplayer/ng-spark/models';
+import { CustomActionDefinition, DistinctValuesResult, EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, QueryColumnFilter, QueryResult, SparkQuery, RetryActionPayload, RetryActionResult } from '@mintplayer/ng-spark/models';
 import { ClientOperationEnvelope, RetryOperation, SparkClientOperationDispatcher } from '@mintplayer/ng-spark/client-operations';
 import { SortColumn } from '@mintplayer/pagination';
 import { RetryActionService } from './retry-action.service';
@@ -113,14 +113,7 @@ export class SparkService {
     return queries.find(q => q.name === name);
   }
 
-  async executeQuery(queryId: string, options?: {
-    sortColumns?: SortColumn[];
-    parentId?: string;
-    parentType?: string;
-    skip?: number;
-    take?: number;
-    search?: string;
-  }): Promise<QueryResult> {
+  async executeQuery(queryId: string, options?: ExecuteQueryOptions): Promise<QueryResult> {
     // A POST with a typed body, not a GET with a query string. `sortColumns` used to be encoded as
     // `prop:asc,other:desc` — an encoding invented because a query string has no arrays. Column
     // filtering (several columns, several selected values each) would need a second such encoding,
@@ -135,6 +128,35 @@ export class SparkService {
       skip: options?.skip,
       take: options?.take,
       search: options?.search,
+      // Per-column value filters (#431). The shape that could not be expressed as a query string,
+      // and the reason these reads are a POST at all.
+      columns: options?.columns?.length ? options.columns : undefined,
+    });
+  }
+
+  /**
+   * The distinct values behind one column's filter panel (#431).
+   *
+   * `columns` carries the OTHER columns' current filters, so the values returned are the ones still
+   * reachable — offering a value that empties the grid the moment it is picked is worse than
+   * omitting it.
+   *
+   * An empty result means either "nothing matches" or "you may not enumerate this column". The two
+   * are deliberately indistinguishable, so there is nothing for a caller to branch on.
+   */
+  async getDistinctValues(queryId: string, column: string, options?: {
+    search?: string;
+    columns?: QueryColumnFilter[];
+    parentId?: string;
+    parentType?: string;
+  }): Promise<DistinctValuesResult> {
+    return this.sendRead<DistinctValuesResult>(`${this.baseUrl}/queries/distinct-values`, {
+      queryId,
+      column,
+      search: options?.search || undefined,
+      columns: options?.columns?.length ? options.columns : undefined,
+      parentId: options?.parentId,
+      parentType: options?.parentType,
     });
   }
 
@@ -146,14 +168,7 @@ export class SparkService {
    * that the list was cut. A picker that omits the option you are looking for, and says nothing, is
    * worse than one that fails.
    */
-  async executeQueryByName(queryName: string, options?: {
-    parentId?: string;
-    parentType?: string;
-    skip?: number;
-    take?: number;
-    search?: string;
-    sortColumns?: SortColumn[];
-  }): Promise<QueryResult> {
+  async executeQueryByName(queryName: string, options?: ExecuteQueryOptions): Promise<QueryResult> {
     const query = await this.getQueryByName(queryName);
     if (!query) return { columns: [], items: [], totalItems: 0, skip: 0, take: options?.take ?? 50 };
     return this.executeQuery(query.id, options);
@@ -402,4 +417,22 @@ export class SparkService {
     body.retryResults = [...(body.retryResults || []), result];
     return retryFn();
   }
+}
+
+/**
+ * The options every query execution takes.
+ *
+ * Extracted because `executeQueryByName` forwards to `executeQuery`, and while both spelled their
+ * options as separate inline literals a field added to one silently failed to forward from the
+ * other — which is how skip/take/search were once dropped for every reference picker.
+ */
+export interface ExecuteQueryOptions {
+  sortColumns?: SortColumn[];
+  parentId?: string;
+  parentType?: string;
+  skip?: number;
+  take?: number;
+  search?: string;
+  /** Per-column value filters (#431). Columns AND together; values within a column OR. */
+  columns?: QueryColumnFilter[];
 }

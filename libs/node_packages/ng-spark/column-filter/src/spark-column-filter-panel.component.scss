@@ -1,0 +1,128 @@
+// ⚠️ Every rule here is explicit, and that is not verbosity.
+//
+// The panel is portalled into a document-root overlay container, outside the grid's subtree.
+// Angular's emulated encapsulation still reaches it (the styles are a document-level sheet with an
+// attribute scope, and these nodes come from this component's own template) — but Bootstrap does
+// not: `.form-control` and `.btn` are only styled inside `bs-*` components in this workspace, so
+// borrowing them here yields an unstyled input next to a styled one.
+//
+// Colours come from Bootstrap's CSS custom properties, which ARE global and do reach the overlay.
+
+.spark-filter-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 14rem;
+  max-width: 22rem;
+  padding: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.spark-filter-clear {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.375rem;
+  border: 0;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--bs-body-color);
+  text-align: left;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--bs-secondary-bg);
+  }
+
+  &:disabled {
+    // Kept in the tab order and visibly inert. A control that vanishes when it becomes unusable
+    // moves everything below it, which is worse than one that dims.
+    color: var(--bs-secondary-color);
+    cursor: default;
+  }
+}
+
+.spark-filter-search {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.25rem;
+
+  input {
+    flex: 1 1 auto;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+  }
+}
+
+.spark-filter-body {
+  display: flex;
+  gap: 0.375rem;
+}
+
+.spark-filter-inverse {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.25rem;
+  background: transparent;
+  color: var(--bs-body-color);
+  cursor: pointer;
+
+  &.is-on {
+    background: var(--bs-primary);
+    border-color: var(--bs-primary);
+    color: var(--bs-light);
+  }
+}
+
+.spark-filter-values {
+  flex: 1 1 auto;
+  // Capped at 100 entries per bucket server-side, so this scrolls rather than virtualises.
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.spark-filter-value {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.125rem 0;
+  cursor: pointer;
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  // Values that have left the current result set. `--bs-secondary-color` rather than opacity or a
+  // hard-coded grey: both of those fail WCAG 1.4.3 at the sizes this renders at.
+  &.is-remaining span {
+    color: var(--bs-secondary-color);
+  }
+}
+
+.spark-filter-empty,
+.spark-filter-more {
+  margin: 0;
+  color: var(--bs-secondary-color);
+}
+
+.spark-filter-apply {
+  align-self: flex-start;
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--bs-primary);
+  border-radius: 0.25rem;
+  background: var(--bs-primary);
+  color: var(--bs-light);
+  cursor: pointer;
+}

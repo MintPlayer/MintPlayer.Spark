@@ -201,3 +201,49 @@ export function isPersistentObject(row: SparkRow | null | undefined): row is Per
   const attributes = (row as PersistentObject | undefined)?.attributes;
   return Array.isArray(attributes) && (attributes.length === 0 || typeof attributes[0]?.name === 'string');
 }
+
+/**
+ * One column's value filter (#431): the values a caller picked, or the values they excluded.
+ *
+ * **Values, never labels.** Each entry is the raw stored value — the same `value` the distinct
+ * endpoint returned, never the `label` beside it. A reference column's values are document ids while
+ * its labels are resolved breadcrumb text, and two rows can legitimately render the same text, so
+ * matching on labels would be both wrong and ambiguous.
+ *
+ * `includes` and `excludes` are the two halves of the inverse toggle rather than a flag: the panel
+ * moves values between them. `null` is a real, selectable value meaning "no value"; an empty or
+ * absent array is the absent filter.
+ */
+export interface QueryColumnFilter {
+  name: string;
+  includes?: unknown[];
+  excludes?: unknown[];
+}
+
+/**
+ * One selectable entry in a column's filter panel.
+ *
+ * Structurally identical to the datatable's own `DistinctValue`, deliberately — it is what lets the
+ * HTTP response be handed straight to `[distincts]` with no mapper in between.
+ */
+export interface DistinctValue {
+  /** The raw stored value. `null` is a real entry meaning "no value", not an absent one. */
+  value: unknown;
+  /** What the user reads. Never matched on. */
+  label: string;
+}
+
+/**
+ * A column's distinct values.
+ *
+ * `remaining` is always empty from this server: the datatable snapshots the list when a selection is
+ * first made and derives both buckets itself by diffing. The server answers "what matches now".
+ *
+ * `hasMore` reports that the cap truncated the list, and the panel re-queries only when it is set or
+ * the search term widens — so a dishonest `false` strands a user typing past the cap.
+ */
+export interface DistinctValuesResult {
+  matching: DistinctValue[];
+  remaining: DistinctValue[];
+  hasMore: boolean;
+}
