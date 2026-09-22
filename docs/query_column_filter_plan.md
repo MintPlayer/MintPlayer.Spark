@@ -98,7 +98,8 @@ Ordered so that each is independently reviewable and the cross-repo dependency l
 
 ### M1 — ng-bootstrap: filter row in `mp-datatable`
 
-`C:\Repos\mintplayer-ng-bootstrap`.
+`C:\Repos\mintplayer-ng-bootstrap`. Tracked as
+[mintplayer-ng-bootstrap#414](https://github.com/MintPlayer/mintplayer-ng-bootstrap/issues/414).
 
 - `libs/mintplayer-web-components/datatable/src/types/column-def.ts` — `filterRenderer?` and
   `filterable?` on `DatatableColumnDef`.
