@@ -195,11 +195,12 @@ Order: authorize (404, never 403) → resolve column, check `canListDistincts` �
 pipeline → distinct over the secured, mapped rows. Cap 100 per bucket + `hasMore`. **No counts**
 (cardinality oracle, PRD D9).
 
-**The response is two buckets, not a flat list**: `{ matching, remaining, hasMore }` (PRD §5.5).
-`remaining` must be computed server-side — the component's local fallback cannot produce it for a
-`[fetch]`-bound grid, so without it the greyed-but-selectable behaviour silently never appears.
-`hasMore` must be honest at the cap: the component re-queries only when `hasMore` is set or the search
-term is widened.
+**The response shape is `{ matching, remaining, hasMore }`** (PRD §5.5), but `remaining` is returned
+empty: the component snapshots the list client-side on first selection and derives both buckets
+itself. The server answers "what matches now" and nothing more.
+
+`hasMore` must be **honest at the cap** — the component re-queries only when `hasMore` is set or the
+search term is widened, so a dishonest `false` strands a user typing past a truncated list.
 
 Also: add the right to `RowPolicyDeclarationValidator.RowReturningActions:33` if a new right name is
 introduced, or the startup gate silently stops covering it.

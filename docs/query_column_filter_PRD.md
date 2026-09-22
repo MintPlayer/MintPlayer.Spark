@@ -307,10 +307,13 @@ names by watching 400-vs-403.
   "hasMore": true }
 ```
 
-`matching` satisfies the current context (other columns' filters + the search term); `remaining` is
-the column's other values, rendered dimmed but still selectable. **The server must compute and return
-`remaining`** — the component's local fallback cannot, because our grid is `[fetch]`-bound, so without
-it the greyed-but-selectable behaviour silently never appears.
+`matching` carries the values satisfying the current context (other columns' filters + the search
+term). **`remaining` may be empty and usually is.** The greyed-but-selectable behaviour is the
+component's, not the server's: `mp-datatable` snapshots the value list client-side the first time a
+selection becomes non-empty (`mp-datatable.ts:1235-1238`) and then derives both buckets by diffing
+that snapshot against each freshly loaded list — the snapshot is the universe, the loaded list only
+decides which bucket each value falls into (`rebucket`, `:1450-1472`). The server's job is to answer
+"what matches now", not to remember what used to match.
 
 **Caps.** Hard cap of 100 per bucket, matching Vidyano, with a `hasMore` flag. Narrowing is by the
 `search` parameter, which round-trips. No paging. `hasMore` must be **honest at the cap**: the
