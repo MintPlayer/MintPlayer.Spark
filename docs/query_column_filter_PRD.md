@@ -4,12 +4,13 @@ Issue: [#431 — Per-column filter on query page](https://github.com/MintPlayer/
 
 ## 1. Verification summary — what the request got right, and what it got wrong
 
-**Issue #431 has no body.** The requirement comes from the requesting conversation: *"On queries and
+**Issue #431 was opened with a title and no body.** The requirement came from the requesting
+conversation: *"On queries and
 subqueries, Vidyano displays a per-column filter under the grid headers, containing all values
 (breadcrumb texts) for that column … I want to support the same in the Spark framework directly. The
 Spark queries in the json files should contain a `CanSort`, `CanFilter` property that determines if
 the sort arrows/functionality and filter row is shown in the respective query grid."* The issue body
-should be filled from this PRD.
+has since been filled from this section.
 
 Four investigations ran against the real system before this was written: a live survey of the Vidyano
 Fleet app (`https://localhost:5001`, client `4.0.0-pre.65`) including its wire protocol, a map of the
@@ -167,7 +168,7 @@ sitting on the mapped row. Its ceiling is the ceiling the grid already has.
 
 **4d. Paging pushdown is in scope, and it does not change the answer.** §4c is a defect in its own
 right — every grid in every app pays O(result set) — and this work makes it worse by adding a second
-full pass. It is fixed here rather than deferred (§5.10).
+full pass. It is fixed here rather than deferred (§5.9).
 
 That removes one of the two arguments for in-memory distincts, and it is worth being explicit about
 which one survives. The *performance* argument ("facets buy little while paging is not pushed down")
@@ -519,6 +520,12 @@ Open, to be settled by a spike before M1:
 - **Two repositories**, one unit of work, ng-bootstrap publishing first.
 - **`QueryColumn.IsSortable` removal** is a wire break for `ng-spark`. Permitted (preview), minor bump.
 - **No data migration.** Nothing is stored.
+- **⚠️ Paging pushdown (§5.9) is the widest-reaching change here.** It alters how *every* query in
+  *every* app executes, not just filtered ones — including production CodeCoverage. Two grids that
+  look identical will take different code paths depending on whether their row filter composed, so a
+  regression can appear on one entity type and not its neighbour. This is why M14 is conditional, why
+  the chosen mode is surfaced in diagnostics (M13), and why the parity test asserts both modes are
+  indistinguishable to a caller rather than merely that each works.
 - **CodeCoverage is production.** It grants `anonymous` on some surfaces, where — per
   `docs/guide-row-security.md` — the row filter is the only thing between the public internet and the
   collection. A distinct-value list over an anonymous query is the highest-risk surface in the repo and
@@ -549,6 +556,15 @@ Open, to be settled by a spike before M1:
 11. A query's declared `sortColumns` still orders the grid when that column is `canSort: false`.
 12. The filter row and its popup are keyboard-navigable and screen-reader-labelled, and the popup is
     not clipped by the datatable's scroll container in either paged or virtual mode.
+13. **Paging parity.** The same query, data and caller return identical rows *and* identical
+    `TotalItems` whether the request took the pushdown path or the materialize-then-page path. The two
+    modes are indistinguishable to a caller; only the cost differs.
+14. **`TotalItems` never becomes a cardinality oracle.** It comes from the database count **only**
+    where the row filter genuinely pushed down and no post-materialization gate can remove rows.
+    Asserted for a row-scoped type that pushes down, one that cannot, an `IsAllowedAsync`-only type,
+    and a type in `RowSecurityMode.DelegatedToActions`.
+15. **The paging mode a request took is visible in diagnostics**, so a slow grid can be explained
+    rather than guessed at.
 
 ## 9. Non-goals
 
@@ -581,6 +597,9 @@ Open, to be settled by a spike before M1:
   **anonymous** grant.
 - **Denial parity**: the new endpoint added to `DenyAllEndpointMirrorTests.cs:113-122` and
   `EndpointCoverageTests.cs`.
+- **Paging parity**, per §8.13/§8.14: the same query asserted identical under both modes, and
+  `TotalItems` asserted to come from the database only on the pushdown path. This is the test that
+  stops M14 from being a correctness bug wearing a performance fix's clothes.
 - **A route-table completeness test.** None exists today, so a new endpoint silently stays absent from
   both clients, the README, the API spec and the deny-all mirror. Add it here.
 - **Client**: `spark.service.spec.ts:52-85` pins the execute body shape and must gain `columns`;
@@ -593,4 +612,5 @@ Open, to be settled by a spike before M1:
 `docs/guide-queries-and-sorting.md`, `docs/guide-search.md` (the clause-order section at :128-149 gains
 the filter clause), `docs/guide-row-security.md` (distincts as a security surface),
 `docs/Spark-API-Specification.md` (the new endpoint and, if it is a read endpoint, the antiforgery
-exemption list at :11), and `libs/client/MintPlayer.Spark.Client/README.md:90-107`.
+exemption list at :11), `docs/diagnostics.md` (the paging mode a request took, per §5.9/M13), and
+`libs/client/MintPlayer.Spark.Client/README.md:90-107`.
