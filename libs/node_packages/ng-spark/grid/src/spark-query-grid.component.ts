@@ -553,6 +553,9 @@ export class SparkQueryGridComponent {
       skip: (req.page - 1) * req.perPage,
       take: req.perPage,
       search: this.search() || undefined,
+      // Read inside the closure, exactly as `search` is: what forces a refetch is the fetch
+      // identity `reload()` creates, not the value captured when this closure was built.
+      columns: this.filters(),
       parentId, parentType,
     }).then(r => {
       this.errorMessage.set(null);

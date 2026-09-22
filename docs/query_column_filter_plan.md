@@ -463,3 +463,39 @@ parameter is optional, so an options-object refactor would have churned ~15 test
 precedent that is not load-bearing here.
 
 Worth doing once, now that the parameters have stopped accumulating.
+
+### F7 — Binding `filterActive` freezes an open filter panel ⚠️ upstream, unverified
+
+Any `*bsDatatableColumn` input change recomputes `effectiveColumns`, which retires the live filter
+view and drops its `onChange` subscription — while the web component's mount-once guard
+(`_mountedFilterColumn === column.name && body.firstChild`) leaves the panel's nodes in the pane and
+never re-invokes `filterRenderer`. Net effect: **binding `filterActive`/`filterSummary` to state the
+nested panel itself mutates makes the panel go inert the instant a value is ticked** — frozen
+`values()`, dead bindings — until the user closes and reopens it.
+
+`spark-query-grid` therefore does **not** bind either, so a filtered column currently carries no
+visual marker. That is a real loss and a deliberate one: a missing badge is worth far less than a
+panel that dies on first use.
+
+Three things to settle:
+
+1. **Verify it in a browser.** This is read from the code, not from a failing test — upstream has no
+   spec for "a column input changes while the panel is open".
+2. **If confirmed, it is an upstream bug**, and ng-bootstrap's own demo hits the same path
+   (`filterActive: activeOnly()` toggled from inside the panel). Worth reporting rather than only
+   working around.
+3. **The local workaround** if upstream does not change: derive `filterActive`/`filterSummary` from
+   state committed on `mp-datatable-filter-close` rather than on every `apply`.
+
+Related: we are the **first consumer anywhere of `ctx.apply` from a nested panel**. The upstream demo
+and spec both only read `values()`, so that path has no existing coverage on either side.
+
+### F8 — The filter panel's strings are not translated
+
+`spark-column-filter-panel` hardcodes English ("Search values", "No values available", "Clear the
+filter on X", "Apply"). Every other user-facing string in `ng-spark` routes through
+`SparkLanguageService` / `TranslateKeyPipe`.
+
+`[labels]` on the datatable does not help: those label the **built-in** panel, and Spark nests its
+own. The strings are ours, so the translation is ours. Deliberately deferred rather than
+half-applied — wiring one of four strings is worse than wiring none.

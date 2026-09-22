@@ -67,7 +67,13 @@ public sealed class SparkQuery
     /// <c>--spark-verify-model</c> error rather than a silent no-op.
     /// </para>
     /// </remarks>
-    public SparkQueryColumn[] Columns { get; set; } = [];
+    /// <remarks>
+    /// ⚠️ <b>Nullable, not an empty array.</b> The synchronizer writes with
+    /// <c>JsonIgnoreCondition.WhenWritingNull</c>, which skips <see langword="null"/> but <b>not</b> an
+    /// empty collection — so a non-nullable default stamps <c>"columns": []</c> onto every query in
+    /// every model file. Measured: it did, across all four apps, before this was made nullable.
+    /// </remarks>
+    public SparkQueryColumn[]? Columns { get; set; }
 
     /// <summary>
     /// When true, this query supports WebSocket streaming.

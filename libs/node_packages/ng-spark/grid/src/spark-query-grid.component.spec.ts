@@ -6,6 +6,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
+import { DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
 import { SparkQueryGridComponent } from './spark-query-grid.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
@@ -79,6 +80,7 @@ function makeService(overrides: Partial<Record<string, unknown>> = {}) {
     executeQuery: vi.fn().mockResolvedValue(samplePage),
     executeCustomAction: vi.fn().mockResolvedValue(undefined),
     getLookupReference: vi.fn().mockResolvedValue({ values: [] }),
+    getDistinctValues: vi.fn().mockResolvedValue({ matching: [], remaining: [], hasMore: false }),
     ...overrides,
   } as any;
 }
@@ -587,6 +589,102 @@ describe('SparkQueryGridComponent', () => {
       const { c } = await setup({ executeQuery: vi.fn().mockResolvedValue(page) });
 
       expect(c.visibleColumns().map(col => col.description?.['en'])).toEqual(['Given name.', undefined]);
+    });
+  });
+
+  describe('column filters (#431)', () => {
+    const filterPage = {
+      columns: [
+        { name: 'FirstName', dataType: 'string', order: 1 } as any,
+        { name: 'Secret', dataType: 'string', order: 2, canFilter: false, canSort: false } as any,
+      ],
+      items: [],
+      totalItems: 0,
+    };
+
+    it('carries the resolved capability flags through to the columns it draws', async () => {
+      const { c } = await setup({ executeQuery: vi.fn().mockResolvedValue(filterPage) });
+
+      // Asserted on component state, not on the header cells: mp-datatable is a Lit element and
+      // does not upgrade under jsdom, so nothing it renders is observable here.
+      expect(c.visibleColumns().map((col: any) => col.canFilter)).toEqual([undefined, false]);
+      expect(c.visibleColumns().map((col: any) => col.canSort)).toEqual([undefined, false]);
+    });
+
+    it('translates a values change into includes and refetches from page one', async () => {
+      const executeQuery = vi.fn().mockResolvedValue(filterPage);
+      const { c, fixture } = await setup({ executeQuery });
+
+      const before = c.fetchFn();
+      c.settings.set(new DatatableSettings({
+        perPage: { values: [10, 25, 50], selected: 10 },
+        page: { values: [1, 2, 3], selected: 3 },
+        sortColumns: [],
+      }));
+
+      c.onFilterChange({
+        mode: 'values',
+        column: 'FirstName',
+        selected: [{ value: 'Alice', label: 'Alice' }],
+        inverse: false,
+      } as any);
+      await settle(fixture);
+
+      // Page 1, because the old page number means nothing against a different result set.
+      expect(c.settings().page.selected).toBe(1);
+      // A NEW fetch identity. The datatable dedupes reloads by (page, perPage, sort) — none of
+      // which a filter changes — so without this the request is silently never made.
+      expect(c.fetchFn()).not.toBe(before);
+    });
+
+    it('sends excludes rather than a flag when the selection is inversed', async () => {
+      const executeQuery = vi.fn().mockResolvedValue(filterPage);
+      const { c, fixture } = await setup({ executeQuery });
+
+      c.onFilterChange({
+        mode: 'values',
+        column: 'FirstName',
+        selected: [{ value: 'Alice', label: 'Alice' }],
+        inverse: true,
+      } as any);
+      await settle(fixture);
+
+      await c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
+
+      const body = executeQuery.mock.calls.at(-1)![1];
+      expect(body.columns).toEqual([{ name: 'FirstName', excludes: ['Alice'] }]);
+    });
+
+    it('drops a column from the filter set when its selection is emptied', async () => {
+      const executeQuery = vi.fn().mockResolvedValue(filterPage);
+      const { c, fixture } = await setup({ executeQuery });
+
+      c.onFilterChange({ mode: 'values', column: 'FirstName', selected: [{ value: 'Alice', label: 'Alice' }], inverse: false } as any);
+      c.onFilterChange({ mode: 'values', column: 'FirstName', selected: [], inverse: false } as any);
+      await settle(fixture);
+
+      await c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
+
+      // An empty selection is the absent filter, not a filter matching nothing.
+      const body = executeQuery.mock.calls.at(-1)![1];
+      expect(body.columns).toEqual([]);
+    });
+
+    it('asks the server only for the OTHER columns\' filters when listing values', async () => {
+      const getDistinctValues = vi.fn().mockResolvedValue({ matching: [], remaining: [], hasMore: false });
+      const { c, fixture } = await setup({
+        executeQuery: vi.fn().mockResolvedValue(filterPage),
+        getDistinctValues,
+      });
+
+      c.onFilterChange({ mode: 'values', column: 'FirstName', selected: [{ value: 'Alice', label: 'Alice' }], inverse: false } as any);
+      await settle(fixture);
+
+      await c.distinctsFn()({ column: 'FirstName', search: '', signal: new AbortController().signal });
+
+      // Its own filter is excluded: a panel must offer the values you could still pick, not only
+      // the ones you already picked.
+      expect(getDistinctValues).toHaveBeenCalledWith('q-all', 'FirstName', expect.objectContaining({ columns: [] }));
     });
   });
 
