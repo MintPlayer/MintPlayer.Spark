@@ -282,10 +282,14 @@ shape (PRD §5.3).
   Two reasons ours does not disappear entirely:
   - **Their spec exercises the built-in panel; we nest our own** (PRD §5.8). The portal and focus-trap
     machinery is shared, so the risk is low — but our markup is not theirs.
-  - **Their spec never leaves `/enterprise/datatables`, so virtual mode is untested** — and that is the
-    mode `spark-query-grid` uses for `renderMode: 'VirtualScrolling'`, and the one where `thead th` is
-    sticky with `z-index: 1`, so the panel can be occluded rather than merely clipped. Raised upstream;
-    until it is covered there, cover it here.
+  - **Occlusion is untested, as distinct from clipping.** Their spec does run in virtual mode (the
+    filter table is `[virtualScroll]="true"` at `datatables.component.html:248-249`) and asserts the
+    panel is not cut off by `.datatable-scroll { overflow: auto }`. It does not assert that the sticky
+    `thead th { z-index: 1 }` fails to paint *over* it — a different failure, which a bounding-box
+    check passes straight through. The portal should win at `z-index: 2000`, but `position: fixed`
+    "should" have been there too and shipped missing. Assert it by hit test —
+    `document.elementFromPoint` at the overlap resolving inside the panel, not to a `th`. Raised
+    upstream; until it is covered there, cover it here.
 
   Mind the shared E2E rate-limit bucket: one pass, not per-keystroke.
 - Docs per PRD §11.
