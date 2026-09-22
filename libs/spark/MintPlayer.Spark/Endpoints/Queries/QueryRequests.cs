@@ -56,3 +56,31 @@ internal sealed class ExecuteQueryRequest : IRetryableRequest
     /// <inheritdoc />
     public RetryResult[]? RetryResults { get; set; }
 }
+
+/// <summary>The body of <c>POST /spark/queries/distinct-values</c> (#431).</summary>
+internal sealed class DistinctValuesRequest
+{
+    /// <summary>The query, by id or alias.</summary>
+    public string? QueryId { get; set; }
+
+    /// <summary>The column whose values are being listed.</summary>
+    public string? Column { get; set; }
+
+    /// <summary>Narrows the returned values. Round-trips, because the list is capped server-side.</summary>
+    public string? Search { get; set; }
+
+    /// <summary>
+    /// The other columns' current filters, so the values returned are the ones still reachable.
+    /// </summary>
+    /// <remarks>
+    /// Without this the panel would offer values that yield an empty grid the moment they are picked,
+    /// because another column has already excluded every row carrying them.
+    /// </remarks>
+    public QueryColumnFilter[]? Columns { get; set; }
+
+    /// <summary>The object whose detail page a sub-query was rendered on, by id and type.</summary>
+    public string? ParentId { get; set; }
+
+    /// <inheritdoc cref="ParentId" />
+    public string? ParentType { get; set; }
+}

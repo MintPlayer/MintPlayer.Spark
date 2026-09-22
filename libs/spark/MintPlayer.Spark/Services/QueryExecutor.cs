@@ -33,6 +33,15 @@ public interface IQueryExecutor
     /// work with an author-paged query — re-materializing a selection, which has no way to ask for
     /// "the page containing these ids" — can branch rather than try and fail.
     /// </remarks>
+    /// <summary>
+    /// The distinct values of one column, for a filter panel (#431). Empty when the column may not
+    /// be enumerated -- indistinguishable from "nothing to list", on purpose.
+    /// </summary>
+    Task<DistinctValuesResult> GetDistinctValuesAsync(SparkQuery query, string column,
+        PersistentObject? parent = null, string? search = null,
+        IReadOnlyList<QueryColumnFilter>? columnFilters = null,
+        CancellationToken cancellationToken = default);
+
     bool OwnsItsOwnPaging(SparkQuery query);
 }
 
@@ -50,6 +59,139 @@ internal partial class QueryExecutor : IQueryExecutor
     [Inject] private readonly Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
     [Inject] private readonly IRowSecurity rowSecurity;
     [Inject] private readonly IRowSecurityGate gate;
+
+    /// <summary>
+    /// Nullable so the distinct pass (#431) can recognise the breadcrumb redaction placeholder
+    /// without making options mandatory for every other path through this class.
+    /// </summary>
+    [Inject] private readonly Microsoft.Extensions.Options.IOptions<Configuration.SparkOptions>? breadcrumbOptions = null;
+
+    /// <summary>
+    /// The distinct values of one column, for a filter panel (#431).
+    /// </summary>
+    /// <remarks>
+    /// <b>Computed in memory, over rows the pipeline has already secured</b> — not by a RavenDB
+    /// facet. A facet aggregates in the database, where the row filter frequently is not: it refuses
+    /// to compose into a projection query, which is the default shape for an indexed query, and the
+    /// gate that actually filters those runs after materialization. A facet on such a query would
+    /// publish values drawn from rows the caller may not read — the same oracle class as the sort
+    /// hardening, but returning the values instead of leaking their order.
+    /// <para>
+    /// Running here also makes reference columns possible at all: breadcrumb text is resolved after
+    /// materialization and is not an index term, so there is nothing for a facet to aggregate.
+    /// </para>
+    /// <para>
+    /// The cost is one extra pass over rows the request has already materialized, bounded by the cap.
+    /// </para>
+    /// </remarks>
+    public async Task<DistinctValuesResult> GetDistinctValuesAsync(SparkQuery query, string column,
+        PersistentObject? parent = null, string? search = null,
+        IReadOnlyList<QueryColumnFilter>? columnFilters = null,
+        CancellationToken cancellationToken = default)
+    {
+        // The whole result set, not a page: a distinct list describes the query, not the page the
+        // grid happens to be on. Paging is applied to rows, never to this.
+        var rows = await LoadSecuredRowsAsync(query, parent, columnFilters, cancellationToken);
+        if (rows.Definition is null) return DistinctValuesResult.Empty;
+
+        var attribute = ColumnCapabilities.FindQuerySurfaceAttribute(rows.Definition, column);
+
+        // Indistinguishable from "nothing to list", deliberately — see DistinctValuesResult.Empty.
+        if (attribute is null || !ColumnCapabilities.CanListDistincts(attribute, query))
+            return DistinctValuesResult.Empty;
+
+        return ProjectDistincts(rows.Rows, attribute.Name, search);
+    }
+
+    /// <summary>The cap on a distinct bucket. Matches the protocol this follows.</summary>
+    private const int MaxDistinctValues = 100;
+
+    /// <summary>
+    /// One pass over secured rows, collecting <c>{ value, label }</c> pairs.
+    /// </summary>
+    /// <remarks>
+    /// Identity is the <b>value</b>, never the label: two rows may legitimately render the same text,
+    /// and collapsing on text would drop a genuinely selectable value. Ordering is by label, because
+    /// that is what the reader scans.
+    /// <para>
+    /// A reference the caller may not read arrives carrying the redaction placeholder rather than a
+    /// name, and is <b>dropped</b> — offering it would confirm the row exists while showing a value
+    /// that cannot be chosen meaningfully, and a list of placeholders is worse than a short list.
+    /// </para>
+    /// </remarks>
+    private DistinctValuesResult ProjectDistincts(
+        IReadOnlyList<PersistentObject> rows, string attributeName, string? search)
+    {
+        var placeholder = breadcrumbOptions?.Value.Breadcrumb.RedactedPlaceholder;
+        var term = search?.Trim();
+        var seen = new HashSet<object?>();
+        var values = new List<DistinctValue>();
+        var hasMore = false;
+
+        foreach (var row in rows)
+        {
+            var attribute = row.Attributes
+                .FirstOrDefault(a => string.Equals(a.Name, attributeName, StringComparison.OrdinalIgnoreCase));
+            if (attribute is null) continue;
+
+            var value = attribute.Value;
+            var label = attribute.Breadcrumb ?? value?.ToString() ?? NullDistinctLabel;
+
+            if (placeholder is not null && string.Equals(label, placeholder, StringComparison.Ordinal))
+                continue;
+
+            if (term is { Length: > 0 }
+                && label.IndexOf(term, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                continue;
+            }
+
+            if (!seen.Add(value)) continue;
+
+            // Counted, not collected, once the cap is reached: the caller needs to know the list is
+            // truncated or its search box silently stops fetching.
+            if (values.Count >= MaxDistinctValues)
+            {
+                hasMore = true;
+                break;
+            }
+
+            values.Add(new DistinctValue { Value = value, Label = label });
+        }
+
+        values.Sort(static (a, b) => string.Compare(a.Label, b.Label, StringComparison.CurrentCulture));
+
+        return new DistinctValuesResult { Matching = values, HasMore = hasMore };
+    }
+
+    /// <summary>What a row with no value for the column is listed as.</summary>
+    private const string NullDistinctLabel = "< none >";
+
+    /// <summary>
+    /// Runs the query as far as the row-security gate and hands back the secured rows.
+    /// </summary>
+    /// <remarks>
+    /// The same two branches <see cref="ExecuteQueryAsync"/> takes, stopping before paging: a
+    /// distinct list describes the whole result set, not the page the grid is showing.
+    /// <para>
+    /// The query hook still runs, because it is the presentation funnel every execution passes
+    /// through and skipping it here would let a distinct request see a query the hook reshaped for
+    /// everyone else.
+    /// </para>
+    /// </remarks>
+    private async Task<(IReadOnlyList<PersistentObject> Rows, EntityTypeDefinition? Definition)> LoadSecuredRowsAsync(
+        SparkQuery query, PersistentObject? parent, IReadOnlyList<QueryColumnFilter>? columnFilters,
+        CancellationToken cancellationToken)
+    {
+        var (isCustom, name) = ResolveSource(query);
+        await InvokeQueryHookAsync(query, parent);
+
+        var source = isCustom
+            ? await ExecuteCustomQueryAsync(query, name, parent, null, 0, int.MaxValue, null, null, cancellationToken)
+            : await ExecuteDatabaseQueryAsync(query, name, parent, null, null, columnFilters, cancellationToken);
+
+        return (source.Rows.Rows, source.Definition);
+    }
 
     public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, IReadOnlyCollection<string>? restrictToIds = null, IReadOnlyList<QueryColumnFilter>? columnFilters = null, CancellationToken cancellationToken = default)
     {
