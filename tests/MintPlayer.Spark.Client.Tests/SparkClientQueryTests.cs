@@ -117,7 +117,7 @@ public class SparkClientQueryTests
         handler.Enqueue(EmptyQueryResult());
         using (client)
         {
-            await client.ExecuteQueryAsync(Guid.NewGuid(), sortColumns: "Name:asc,RegisteredAt:desc");
+            await client.ExecuteQueryAsync(Guid.NewGuid(), sortColumns: [new SortColumn { Property = "Name", Direction = "asc" }, new SortColumn { Property = "RegisteredAt", Direction = "desc" }]);
         }
 
         var columns = (handler.LastBody())
