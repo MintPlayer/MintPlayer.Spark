@@ -164,12 +164,21 @@ public static class ModelFileShape
     /// <c>isReadOnly</c> already carries, for the same reason, and it is the price of the gate
     /// rather than an oversight.
     /// </para>
+    /// <para>
+    /// <c>canSort</c>, <c>canFilter</c> and <c>canListDistincts</c> (#431) are here by the same rule.
+    /// They read as presentation and are not: the executor refuses a sort, a filter or a distinct
+    /// listing on a column whose flag is <c>false</c>, so flipping one to <c>true</c> in a deployed
+    /// model opens a read path — which is the sort-oracle class (#294-#296) the gate exists for.
+    /// Adding names here churns no existing hash, because a field is only appended when the JSON
+    /// property is present and no model file carries these yet.
+    /// </para>
     /// </remarks>
     private static readonly string[] StructuralAttributeFields =
     [
         "name", "dataType", "isRequired", "isReadOnly", "isVisible", "isArray",
         "referenceType", "asDetailType", "lookupReferenceType", "isSortable",
         "inCollectionType", "inQueryType", "query",
+        "canSort", "canFilter", "canListDistincts",
     ];
 
     /// <summary>

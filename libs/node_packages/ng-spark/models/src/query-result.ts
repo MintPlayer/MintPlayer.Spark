@@ -56,7 +56,26 @@ export interface SparkCellColumn {
 /** One column of a query result, sent once rather than repeated on every row. */
 export interface QueryColumn extends SparkCellColumn {
   order: number;
-  isSortable?: boolean;
+  /**
+   * Whether the grid offers a sort affordance for this column. Resolved server-side from the query's
+   * override then the attribute, so it arrives already decided.
+   *
+   * This replaced an `isSortable` that carried the server's AsDetail *drag-reorder* flag — a
+   * different concept that was `false` for every scalar column while the grid hard-coded every
+   * header sortable anyway. Neither side read it. The attribute-level `isSortable` on `EntityType`
+   * is the drag-reorder flag and stays.
+   *
+   * Absent means sortable, matching `isVisible`: a server predating the field still draws arrows.
+   */
+  canSort?: boolean;
+  /** Whether the grid draws a filter cell for this column. Absent means filterable. */
+  canFilter?: boolean;
+  /**
+   * Whether this column's distinct values may be listed. When `false` and `canFilter` is true the
+   * panel offers a free-text filter instead of a value list — listing a column's values is a much
+   * stronger disclosure than filtering by one already known.
+   */
+  canListDistincts?: boolean;
   /**
    * Whether the grid draws this column. `false` means the row carries the value but no column is
    * rendered — for a renderer that needs a sibling value (a lock glyph beside a name) without

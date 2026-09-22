@@ -71,7 +71,31 @@ public sealed class QueryColumn
     public string DataType { get; init; } = "string";
     public int Order { get; init; }
     public bool IsArray { get; init; }
-    public bool IsSortable { get; init; }
+
+    /// <summary>
+    /// Whether the grid draws a sort affordance for this column. Resolved per request from the
+    /// query's override then the attribute, defaulting to <see langword="true"/>.
+    /// </summary>
+    /// <remarks>
+    /// This replaced an <c>IsSortable</c> that carried <see cref="EntityAttributeDefinition.IsSortable"/>
+    /// — the AsDetail drag-reorder flag — and was therefore <see langword="false"/> for every scalar
+    /// column while the grid hard-coded every column sortable anyway. Nothing on either side read it.
+    /// <para>
+    /// Resolved onto the column rather than written back onto the attribute: attributes are handed
+    /// out by reference from a singleton model loader, and a per-caller answer written there leaks
+    /// process-wide — a bug this repo has already shipped once.
+    /// </para>
+    /// </remarks>
+    public bool CanSort { get; init; } = true;
+
+    /// <summary>Whether the grid draws a filter cell for this column. Resolved as <see cref="CanSort"/> is.</summary>
+    public bool CanFilter { get; init; } = true;
+
+    /// <summary>
+    /// Whether this column's distinct values may be listed. When <see langword="false"/> and
+    /// <see cref="CanFilter"/> is true, the grid offers a free-text filter instead of a value list.
+    /// </summary>
+    public bool CanListDistincts { get; init; } = true;
 
     /// <summary>The query backing a Reference column, by name — the client's option source.</summary>
     public string? Query { get; init; }

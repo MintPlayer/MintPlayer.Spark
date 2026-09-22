@@ -118,7 +118,7 @@ internal partial class QueryExecutor : IQueryExecutor
                     $"the rows inside the query method itself.");
             }
 
-            var authorColumns = definition is not null ? QueryResultProjector.BuildColumns(definition) : [];
+            var authorColumns = definition is not null ? QueryResultProjector.BuildColumns(definition, query) : [];
             return new QueryResult
             {
                 Columns = authorColumns,
@@ -166,7 +166,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // answer rather than a guess reconstructed from whichever attributes the first row happens
         // to carry.
         var columns = definition is not null
-            ? QueryResultProjector.BuildColumns(definition)
+            ? QueryResultProjector.BuildColumns(definition, query)
             : [];
 
         return new QueryResult

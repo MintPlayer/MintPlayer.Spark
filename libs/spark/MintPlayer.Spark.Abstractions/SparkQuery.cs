@@ -54,6 +54,22 @@ public sealed class SparkQuery
     public string? EntityType { get; set; }
 
     /// <summary>
+    /// Per-column capability overrides for this query only — a <b>sparse</b> list, never a column
+    /// enumeration.
+    /// </summary>
+    /// <remarks>
+    /// A column not named here inherits the attribute's own <c>canSort</c>/<c>canFilter</c>/
+    /// <c>canListDistincts</c>; an absent or empty list overrides nothing. Sparseness is what keeps
+    /// this from becoming a second place that decides which columns exist and in what order — that
+    /// remains <c>showedOn</c> plus <c>order</c> on the attributes.
+    /// <para>
+    /// An entry naming an attribute that is not on this query's surface is a
+    /// <c>--spark-verify-model</c> error rather than a silent no-op.
+    /// </para>
+    /// </remarks>
+    public SparkQueryColumn[] Columns { get; set; } = [];
+
+    /// <summary>
     /// When true, this query supports WebSocket streaming.
     /// The frontend opens a WebSocket to /spark/queries/{id}/stream
     /// and receives snapshot + patch messages instead of a single HTTP response.
@@ -76,4 +92,27 @@ public sealed class SparkQuery
         copy.SortColumns = sortColumns;
         return copy;
     }
+}
+
+/// <summary>
+/// One entry in a query's sparse <see cref="SparkQuery.Columns"/> override list.
+/// </summary>
+/// <remarks>
+/// Every flag is nullable and null means "inherit from the attribute" — which is why this cannot be
+/// collapsed into <c>bool</c>s with defaults: "not stated here" and "stated false here" are
+/// different answers, and only the first defers to the attribute.
+/// </remarks>
+public sealed class SparkQueryColumn
+{
+    /// <summary>The attribute name this entry overrides. Must be on the query's surface.</summary>
+    public required string Name { get; set; }
+
+    /// <inheritdoc cref="EntityAttributeDefinition.CanSort"/>
+    public bool? CanSort { get; set; }
+
+    /// <inheritdoc cref="EntityAttributeDefinition.CanFilter"/>
+    public bool? CanFilter { get; set; }
+
+    /// <inheritdoc cref="EntityAttributeDefinition.CanListDistincts"/>
+    public bool? CanListDistincts { get; set; }
 }
