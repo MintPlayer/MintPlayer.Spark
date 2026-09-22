@@ -845,7 +845,7 @@ public class ExecuteCustomActionTests
         _queryExecutor.OwnsItsOwnPaging(CarsQuery).Returns(false);
         _queryExecutor.ExecuteQueryAsync(
                 CarsQuery, Arg.Any<Abstractions.PersistentObject?>(), Arg.Any<int>(), Arg.Any<int>(),
-                Arg.Any<string?>(), Arg.Any<IReadOnlyCollection<string>?>(), Arg.Any<CancellationToken>())
+                Arg.Any<string?>(), Arg.Any<IReadOnlyCollection<string>?>(), Arg.Any<IReadOnlyList<QueryColumnFilter>?>(), Arg.Any<CancellationToken>())
             .Returns(new QueryResult
             {
                 Columns = [], Items = rows, TotalItems = rows.Length, Skip = 0, Take = rows.Length,
@@ -895,6 +895,7 @@ public class ExecuteCustomActionTests
             CarsQuery, Arg.Any<Abstractions.PersistentObject?>(), Arg.Any<int>(), Arg.Any<int>(),
             Arg.Any<string?>(),
             Arg.Is<IReadOnlyCollection<string>?>(ids => ids != null && ids.Count == 1 && ids.Contains("cars/2")),
+            Arg.Any<IReadOnlyList<QueryColumnFilter>?>(),
             Arg.Any<CancellationToken>());
     }
 
@@ -932,7 +933,7 @@ public class ExecuteCustomActionTests
             CarsQuery,
             Arg.Is<Abstractions.PersistentObject?>(p => p != null && p.Id == "companies/1"),
             Arg.Any<int>(), Arg.Any<int>(), Arg.Any<string?>(),
-            Arg.Any<IReadOnlyCollection<string>?>(), Arg.Any<CancellationToken>());
+            Arg.Any<IReadOnlyCollection<string>?>(), Arg.Any<IReadOnlyList<QueryColumnFilter>?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -952,7 +953,7 @@ public class ExecuteCustomActionTests
         await _queryExecutor.Received(1).ExecuteQueryAsync(
             CarsQuery, Arg.Is<Abstractions.PersistentObject?>(p => p == null),
             Arg.Any<int>(), Arg.Any<int>(), Arg.Any<string?>(),
-            Arg.Any<IReadOnlyCollection<string>?>(), Arg.Any<CancellationToken>());
+            Arg.Any<IReadOnlyCollection<string>?>(), Arg.Any<IReadOnlyList<QueryColumnFilter>?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
@@ -980,7 +981,7 @@ public class ExecuteCustomActionTests
         await action.DidNotReceive().ExecuteAsync(Arg.Any<CustomActionArgs>(), Arg.Any<CancellationToken>());
         await _queryExecutor.DidNotReceive().ExecuteQueryAsync(
             Arg.Any<SparkQuery>(), Arg.Any<Abstractions.PersistentObject?>(), Arg.Any<int>(), Arg.Any<int>(),
-            Arg.Any<string?>(), Arg.Any<IReadOnlyCollection<string>?>(), Arg.Any<CancellationToken>());
+            Arg.Any<string?>(), Arg.Any<IReadOnlyCollection<string>?>(), Arg.Any<IReadOnlyList<QueryColumnFilter>?>(), Arg.Any<CancellationToken>());
         (await ExecuteStatusAsync(result, context)).Should().Be(HttpStatusCode.NotFound);
     }
 
@@ -1034,7 +1035,7 @@ public class ExecuteCustomActionTests
             CarType.Id, Arg.Any<IReadOnlyList<string>>());
         await _queryExecutor.DidNotReceive().ExecuteQueryAsync(
             Arg.Any<SparkQuery>(), Arg.Any<Abstractions.PersistentObject?>(), Arg.Any<int>(), Arg.Any<int>(),
-            Arg.Any<string?>(), Arg.Any<IReadOnlyCollection<string>?>(), Arg.Any<CancellationToken>());
+            Arg.Any<string?>(), Arg.Any<IReadOnlyCollection<string>?>(), Arg.Any<IReadOnlyList<QueryColumnFilter>?>(), Arg.Any<CancellationToken>());
         await action.Received(1).ExecuteAsync(
             Arg.Is<CustomActionArgs>(a => a.SelectedItems.Length == 1 && a.SelectedItems[0].Id == "cars/1"),
             Arg.Any<CancellationToken>());
