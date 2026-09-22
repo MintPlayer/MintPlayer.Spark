@@ -199,7 +199,9 @@ public class ColumnFilterDisclosureTests : SparkTestDriver
         await executor.ExecuteQueryAsync(Query(), search: "one",
             columnFilters: [new QueryColumnFilter { Name = nameof(Crate.Region), Includes = ["eu"] }]);
 
-        var emitted = rql.Should().ContainSingle().Which;
+        // More than one statement may be emitted: paging pushdown (#431 M14) issues a count before
+        // the page. The filtering statement is the one carrying the where clause.
+        var emitted = rql.Should().Contain(q => q.Contains("where")).Which;
 
         // The shape that matters: the filter is its OWN conjunct, ANDed with the search group —
         //   where (Region = $p0) and (search(...) or search(...) or search(...))

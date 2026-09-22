@@ -188,7 +188,9 @@ internal partial class QueryExecutor : IQueryExecutor
 
         var source = isCustom
             ? await ExecuteCustomQueryAsync(query, name, parent, null, 0, int.MaxValue, null, null, cancellationToken)
-            : await ExecuteDatabaseQueryAsync(query, name, parent, null, null, columnFilters, cancellationToken);
+            : await ExecuteDatabaseQueryAsync(query, name, parent, null, null, columnFilters,
+                // Skip/take of zero/max: a distinct list describes the whole result set, never a page.
+                skip: 0, take: int.MaxValue, cancellationToken);
 
         return (source.Rows.Rows, source.Definition);
     }
@@ -227,11 +229,11 @@ internal partial class QueryExecutor : IQueryExecutor
         }
         else
         {
-            source = await ExecuteDatabaseQueryAsync(query, name, parent, searchTerm, restrictToIds, columnFilters, cancellationToken)
+            source = await ExecuteDatabaseQueryAsync(query, name, parent, searchTerm, restrictToIds, columnFilters, skip, take, cancellationToken)
                 with { DisabledActions = queryContext.DisabledActions };
         }
 
-        var (allResults, definition, searchPushedDown, authorTotalItems, _) = source;
+        var (allResults, definition, searchPushedDown, authorTotalItems, _, _) = source;
 
         // The author's page is returned as it stands. Search, sort, count and paging were all
         // transferred with it (the binary authority rule on SparkQueryPage), so applying any of
@@ -296,11 +298,15 @@ internal partial class QueryExecutor : IQueryExecutor
 
         // Counted after filtering and before paging, either way — which is what keeps
         // TotalItems search-aware now that the filter may have run in the database.
-        var totalItems = allResults.Count;
+        //
+        // On the pushdown path (#431 M14) the rows in hand ARE the page, so counting them would
+        // report the page size as the total. The database's count stands in, and it is only ever
+        // taken from a path where nothing removes rows after the query answers.
+        var totalItems = source.Page?.TotalItems ?? allResults.Count;
 
         // A restricted run returns exactly the rows asked for. Paging it would serve "the first
         // `take` of the selection", which is how a bulk action silently acts on a subset.
-        var paged = restrictToIds is { Count: > 0 }
+        var paged = restrictToIds is { Count: > 0 } || source.Page is not null
             ? allResults
             : allResults.Narrow(rows => rows.Skip(skip).Take(take));
 
@@ -450,8 +456,21 @@ internal partial class QueryExecutor : IQueryExecutor
         /// here because the source is produced in one method and the QueryResult is assembled in
         /// another — the alternative was a field, which would leak across concurrent executions.
         /// </summary>
-        IReadOnlyList<string>? DisabledActions = null)
+        IReadOnlyList<string>? DisabledActions = null,
+
+        /// <summary>
+        /// Set when the database applied <c>Skip</c>/<c>Take</c> and counted the matches, so the rows
+        /// already ARE the page and must not be paged again in memory (#431 M14).
+        /// </summary>
+        DatabasePage? Page = null)
 ;
+
+/// <summary>The page the database produced, when paging was safe to push down (#431 M14).</summary>
+/// <param name="TotalItems">
+/// The database's count of matching rows. Trustworthy only on this path, where nothing removes rows
+/// after the query answers — which is exactly what makes it not a cardinality oracle.
+/// </param>
+internal sealed record DatabasePage(int TotalItems);
 
     /// <summary>
     /// Narrows a query source to a set of row ids, for a custom action re-materializing a selection.
@@ -681,7 +700,7 @@ internal partial class QueryExecutor : IQueryExecutor
     private async Task<QuerySourceResult> ExecuteDatabaseQueryAsync(
         SparkQuery query, string propertyName, PersistentObject? parent, string? searchTerm,
         IReadOnlyCollection<string>? restrictToIds, IReadOnlyList<QueryColumnFilter>? columnFilters,
-        CancellationToken cancellationToken)
+        int skip, int take, CancellationToken cancellationToken)
     {
         // Authorization comes FIRST, from the query's declared entity type (F1). Everything below
         // is resolution work — reflecting over the context, reading a property, matching a CLR type
@@ -892,6 +911,34 @@ internal partial class QueryExecutor : IQueryExecutor
             queryable = ApplySorting(queryable, sortType, query.SortColumns, entityTypeDefinition, query);
         }
 
+        // Paging pushdown (#431 M14). Four conditions, and every one of them is about the same
+        // question: can anything still remove rows after the database answers? If something can, the
+        // database's page and the caller's page are different sets — pages come back short, offsets
+        // drift, and the count describes rows the caller may not see.
+        //
+        //   1. The row filter left nothing to remove (see RowFilterComposition.CanPageInDatabase).
+        //   2. No restrictToIds — that path returns exactly the rows asked for and ignores paging.
+        //   3. No in-memory search fallback, which narrows AFTER materialization.
+        //   4. resultType == entityType, i.e. no index projection.
+        //
+        // The fourth is the subtle one and it is NOT about the row filter. The gate dedupes by id,
+        // and an index may fan out — one document producing several entries. Skip(n) then skips n
+        // ENTRIES while the caller is counting documents, so offsets drift by however many entries
+        // the skipped documents happened to produce. Restricting to the non-projecting shape keeps
+        // one document to one row, which is the only case where the two agree.
+        var mayPageInDatabase = rowFilter.CanPageInDatabase
+            && restrictToIds is not { Count: > 0 }
+            && (searchTerm is null || searchPushedDown)
+            && resultType == entityType;
+
+        DatabasePage? databasePage = null;
+        if (mayPageInDatabase)
+        {
+            var total = await CountQueryableAsync(queryable, resultType, cancellationToken);
+            databasePage = new DatabasePage(total);
+            queryable = ApplyPaging(queryable, resultType, skip, take);
+        }
+
         var materialized = (await ExecuteQueryableAsync(queryable, resultType, cancellationToken)).ToList();
 
         // Row-level authorization. The type-level check above answers "may this principal query
@@ -939,7 +986,7 @@ internal partial class QueryExecutor : IQueryExecutor
         //
         // It now travels as DedupeById on the context above rather than as a call here, so the
         // decision is made where the difference between the two paths is visible.
-        return new QuerySourceResult(secured, entityTypeDefinition, searchPushedDown);
+        return new QuerySourceResult(secured, entityTypeDefinition, searchPushedDown, Page: databasePage);
     }
 
     #endregion
@@ -1949,6 +1996,58 @@ internal partial class QueryExecutor : IQueryExecutor
         {
             return null;
         }
+    }
+
+    /// <summary>Applies <c>Skip</c>/<c>Take</c> to an untyped queryable (#431 M14).</summary>
+    private static object ApplyPaging(object queryable, Type elementType, int skip, int take)
+    {
+        if (skip > 0)
+            queryable = InvokeQueryableInt(nameof(Queryable.Skip), queryable, elementType, skip);
+
+        return InvokeQueryableInt(nameof(Queryable.Take), queryable, elementType, take);
+    }
+
+    /// <summary>The <c>Skip</c>/<c>Take</c> shape: one source, one int.</summary>
+    private static object InvokeQueryableInt(string name, object queryable, Type elementType, int value)
+    {
+        var method = ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo>(
+            ($"QueryExecutor.Queryable{name}", elementType),
+            k => typeof(Queryable).GetMethods()
+                .First(m => m.Name == name
+                    && m.GetParameters().Length == 2
+                    && m.GetParameters()[1].ParameterType == typeof(int))
+                .MakeGenericMethod(k.Entity));
+
+        return method.Invoke(null, [queryable, value])!;
+    }
+
+    /// <summary>
+    /// The database's count of matching rows, for the paging-pushdown path only.
+    /// </summary>
+    /// <remarks>
+    /// A second round trip, deliberately. The alternative is RavenDB's query statistics, which would
+    /// avoid it — but the statistics out-parameter has to be threaded through the same reflection that
+    /// builds this queryable, and the win here is not the round trip: it is not materializing the
+    /// whole collection to hand back fifty rows.
+    /// <para>
+    /// Counting <b>before</b> paging and only where nothing can remove rows afterwards is what keeps
+    /// this from becoming the cardinality oracle an author-supplied total already was.
+    /// </para>
+    /// </remarks>
+    private static async Task<int> CountQueryableAsync(object queryable, Type elementType, CancellationToken cancellationToken)
+    {
+        var method = ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo?>(
+            ("QueryExecutor.LinqCountAsync", elementType),
+            static k => typeof(LinqExtensions).GetMethods()
+                .FirstOrDefault(m => m.Name == nameof(LinqExtensions.CountAsync)
+                    && m.GetParameters().Length == 2)
+                ?.MakeGenericMethod(k.Entity));
+
+        if (method is null)
+            throw new InvalidOperationException("RavenDB's CountAsync could not be resolved.");
+
+        var task = (Task<int>)method.Invoke(null, [queryable, cancellationToken])!;
+        return await task;
     }
 
     /// <summary>The open <c>Queryable.Where(source, predicate)</c> overload, closed over <paramref name="entityType"/>.</summary>
