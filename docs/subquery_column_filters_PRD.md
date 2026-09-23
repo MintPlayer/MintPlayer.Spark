@@ -312,8 +312,15 @@ That is the actual defect behind the proposal.
 |---|---|---|---|
 | `where f == v` | ✅ correct rows | ⚠️ **0 rows, no error** | ❌ `ArgumentException` |
 | `order by f` | ✅ correct | ⚠️ **silent no-op** (ASC == DESC) | ❌ same |
-| `search(f, …)` | ✅ works | ❌ throws (no analyzer) | ❌ same |
+| `search(f, …)` | ⚠️ **0 rows, no error** | ❌ throws (no analyzer) | ❌ same |
 | projection | ✅ (needs `StoreAllFields` for index-only computed fields) | ✅ value intact | ❌ |
+
+⛳ **Corrected 2026-09-23.** The `search(f, …)` cell in column 1 previously read "✅ works". It does not:
+`search()` over a field with no analyzer returns **0 rows with HTTP 200**, silently. Only
+`FieldIndexing.No` throws. Measured by `ExactVersusSearchSemanticsTests`, and the successor PRD had the
+cell right while this one did not. The error mattered: that single cell was the only documented
+statement implying a `[Search]` field works without its `Index(..., Search)` call, which would have
+made `SPARK018` and the whole index-agreement thesis pointless.
 
 Consequences that change the design:
 
