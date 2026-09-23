@@ -75,4 +75,25 @@ public sealed class CustomQueryArgs
 
     /// <inheritdoc cref="Skip"/>
     public string? Search { get; set; }
+
+    /// <summary>
+    /// The request's per-column value filters (#431), or <see langword="null"/> when none were sent.
+    /// </summary>
+    /// <remarks>
+    /// Here for the same reason <see cref="Search"/> is, and with the same authority rule. A method
+    /// returning a bare sequence may ignore this: the framework composes the filters onto whatever
+    /// it gets back, into RQL when the result is Raven-backed and in process otherwise.
+    /// <para>
+    /// A method returning <see cref="SparkQueryPage{T}"/> has taken over filtering along with
+    /// paging and counting, so the framework does <b>not</b> apply these — it cannot, without
+    /// narrowing a page whose total it did not compute, which is the half-delegated failure the
+    /// binary authority rule exists to prevent. Such a method must honour them itself, and this is
+    /// where it reads them.
+    /// </para>
+    /// <para>
+    /// Columns AND together; the values within one column OR together — the same shape the wire
+    /// uses, so an author implementing it by hand matches what the framework would have done.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<QueryColumnFilter>? Columns { get; set; }
 }

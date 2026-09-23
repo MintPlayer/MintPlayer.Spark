@@ -95,6 +95,23 @@ public class CustomQueryColumnFilterTests : SparkTestDriver
         /// </summary>
         public async Task<IEnumerable<Parcel>> MaterializedParcels(CustomQueryArgs _)
             => await _session.Query<Parcel>().ToListAsync();
+
+        /// <summary>
+        /// The author takes over all of filtering, searching, sorting, counting and paging. Returns a
+        /// deliberately un-narrowed page so that any framework narrowing is visible as a row count.
+        /// </summary>
+        public SparkQueryPage<Parcel> PagedParcels(CustomQueryArgs args)
+        {
+            SeenColumns = args.Columns;
+            return new SparkQueryPage<Parcel>(
+            [
+                new Parcel { Id = "paged/1", Label = "paged-one", Region = "eu", Depot = "depots/4" },
+                new Parcel { Id = "paged/2", Label = "paged-two", Region = "us", Depot = "depots/4" },
+            ], TotalItems: 2);
+        }
+
+        /// <summary>What the last author-paged call was handed, so the test can assert it arrived.</summary>
+        internal static IReadOnlyList<QueryColumnFilter>? SeenColumns { get; private set; }
     }
 
     /// <summary>Row rule as a pushdown-capable filter, so the RQL carries a real security predicate.</summary>
@@ -352,6 +369,27 @@ public class CustomQueryColumnFilterTests : SparkTestDriver
         rql.Should().OnlyContain(q => q.Contains("Region = "),
             "every statement issued for a Raven-backed query must carry the filter, including the "
             + "count — a count that skipped it would report more rows than the grid can show");
+    }
+
+    [Fact]
+    public async Task An_author_paged_query_keeps_its_own_page_and_receives_the_filters()
+    {
+        var executor = Executor();
+
+        var result = await executor.ExecuteQueryAsync(CustomQuery("PagedParcels"),
+            columnFilters: [new QueryColumnFilter { Name = nameof(Parcel.Region), Includes = ["eu"] }]);
+
+        // SparkQueryPage<T> IS an IEnumerable<T>, so the in-memory branch would happily narrow it —
+        // and then the grid would show one row while TotalItems still said two. The framework
+        // filtering a page whose total it did not compute is the half-delegated failure the binary
+        // authority rule exists to prevent, and it fails invisibly.
+        result.TotalItems.Should().Be(2, "the author owns the count");
+        result.Items.Count().Should().Be(2, "the author owns the page; the framework must not trim it");
+
+        // Exempt is not the same as ignored: the author is handed the filters and is responsible for
+        // honouring them, exactly as they already are for Search.
+        ParcelActions.SeenColumns.Should().ContainSingle()
+            .Which.Name.Should().Be(nameof(Parcel.Region));
     }
 
     // --- Distincts (the other half of the same omission) -------------------

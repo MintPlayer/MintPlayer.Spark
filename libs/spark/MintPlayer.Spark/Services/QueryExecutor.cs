@@ -1122,6 +1122,7 @@ internal sealed record DatabasePage(int TotalItems);
             Skip = skip,
             Take = take,
             Search = search,
+            Columns = columnFilters,
         };
 
         object? result;
@@ -1210,7 +1211,14 @@ internal sealed record DatabasePage(int TotalItems);
         //
         // What must never happen is the filter quietly disappearing, which is exactly what this
         // whole branch did before: every other refinement was wired here and this one was not.
-        if (columnFilters is { Count: > 0 })
+        // An author's page is exempt, and it must be checked before the IEnumerable branch below:
+        // SparkQueryPage<T> IS an IEnumerable<T>, so without this it would be narrowed in memory
+        // while TotalItems stayed the author's — the framework filtering a page whose total it did
+        // not compute. That is precisely the half-delegated failure the binary authority rule on
+        // SparkQueryPage exists to prevent, and it fails invisibly: the grid shows fewer rows than
+        // the pager claims and nothing says why. The author receives the filters through
+        // CustomQueryArgs.Columns and honours them, exactly as they already do for Search.
+        if (columnFilters is { Count: > 0 } && authorPage is null)
         {
             if (isQueryable)
             {
