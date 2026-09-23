@@ -787,24 +787,18 @@ public static class SparkExtensions
         }
     }
 
-    private static bool IsAbstractIndexCreationTask(Type type)
-    {
-        var current = type;
-        while (current != null && current != typeof(object))
-        {
-            if (current.IsGenericType)
-            {
-                var genericDef = current.GetGenericTypeDefinition();
-                if (genericDef == typeof(AbstractIndexCreationTask<>) ||
-                    genericDef == typeof(AbstractMultiMapIndexCreationTask<>))
-                {
-                    return true;
-                }
-            }
-            current = current.BaseType;
-        }
-        return false;
-    }
+    /// <summary>
+    /// Whether RavenDB will deploy this type as an index — the gate on Spark's own discovery.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ This used to be an open-generic identity test against <c>AbstractIndexCreationTask&lt;&gt;</c>
+    /// and <c>AbstractMultiMapIndexCreationTask&lt;&gt;</c>, which silently excluded a two-argument
+    /// map-reduce index. Because this gates discovery, such an index was never even registered — so
+    /// not even <c>IndexCatalog</c>'s "could not determine collection type" warning appeared — while
+    /// <c>IndexCreation.CreateIndexes</c> below deployed it using RavenDB's own criterion. Spark and
+    /// RavenDB have to agree on what an index is, so both now ask the same question.
+    /// </remarks>
+    private static bool IsAbstractIndexCreationTask(Type type) => RavenIndexHierarchy.IsIndex(type);
 
 }
 

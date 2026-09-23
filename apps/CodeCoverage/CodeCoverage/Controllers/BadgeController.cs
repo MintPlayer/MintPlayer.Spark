@@ -110,7 +110,7 @@ public partial class BadgeController : ControllerBase
     /// </summary>
     private async Task<(CoverageSummary? Summary, bool Partial)> LoadSelectorCoverage(
         Repository repository,
-        System.Linq.Expressions.Expression<Func<Indexes.Commits_ByRepository.Result, bool>> selector,
+        System.Linq.Expressions.Expression<Func<Indexes.VCommit, bool>> selector,
         CancellationToken cancellationToken)
     {
         var complete = await QueryNewest(repository, selector, c => c.CompleteCoverage, cancellationToken);
@@ -122,14 +122,14 @@ public partial class BadgeController : ControllerBase
 
     private async Task<Commit?> QueryNewest(
         Repository repository,
-        System.Linq.Expressions.Expression<Func<Indexes.Commits_ByRepository.Result, bool>> selector,
-        System.Linq.Expressions.Expression<Func<Indexes.Commits_ByRepository.Result, bool>> coverage,
+        System.Linq.Expressions.Expression<Func<Indexes.VCommit, bool>> selector,
+        System.Linq.Expressions.Expression<Func<Indexes.VCommit, bool>> coverage,
         CancellationToken cancellationToken)
-        => await session.Query<Indexes.Commits_ByRepository.Result, Indexes.Commits_ByRepository>()
+        => await session.Query<Indexes.VCommit, Indexes.Commits_ByRepository>()
             .Where(c => c.Repository == repository.Id)
             .Where(selector)
             .Where(coverage)
-            .OrderByDescending(c => c.AuthoredAt)
+            .OrderByDescending(c => c.Date)
             .OfType<Commit>()
             .FirstOrDefaultAsync(cancellationToken);
 

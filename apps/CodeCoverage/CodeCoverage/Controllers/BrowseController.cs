@@ -103,7 +103,7 @@ public partial class BrowseController : ControllerBase
         // this repository's id, so without this they read as its own history, under a branch name
         // the fork chose. They remain reachable through their pull request, which is the only
         // context in which they mean anything.
-        var query = session.Query<Indexes.Commits_ByRepository.Result, Indexes.Commits_ByRepository>()
+        var query = session.Query<Indexes.VCommit, Indexes.Commits_ByRepository>()
             .Where(c => c.Repository == repository.Id && c.ContributedFromFork != true);
         if (!string.IsNullOrEmpty(branch))
             query = query.Where(c => c.Branch == branch);
@@ -111,7 +111,7 @@ public partial class BrowseController : ControllerBase
             query = query.Where(c => c.HasCoverage);
 
         var commits = await query
-            .OrderByDescending(c => c.AuthoredAt)
+            .OrderByDescending(c => c.Date)
             .Skip(skip)
             .Take(Math.Min(take, 200))
             .OfType<Commit>()
@@ -156,13 +156,13 @@ public partial class BrowseController : ControllerBase
         // the branch filter below is dropped entirely, so every branch's points are drawn as the
         // repository's history — and that is exactly the population (no installation, no webhook)
         // whose default branch is unknown.
-        var query = session.Query<Indexes.Commits_ByRepository.Result, Indexes.Commits_ByRepository>()
+        var query = session.Query<Indexes.VCommit, Indexes.Commits_ByRepository>()
             .Where(c => c.Repository == repository.Id && c.HasCoverage && c.ContributedFromFork != true);
         if (!string.IsNullOrEmpty(effectiveBranch))
             query = query.Where(c => c.Branch == effectiveBranch);
 
         var commits = await query
-            .OrderByDescending(c => c.AuthoredAt)
+            .OrderByDescending(c => c.Date)
             .Take(Math.Clamp(take, 1, 500))
             .OfType<Commit>()
             .ToListAsync(cancellationToken);
@@ -204,11 +204,11 @@ public partial class BrowseController : ControllerBase
         if (visible.Count == 0) return Ok(new Dictionary<string, double[]>());
 
         var repoIds = visible.Keys.ToArray();
-        var commits = await session.Query<Indexes.Commits_ByRepository.Result, Indexes.Commits_ByRepository>()
+        var commits = await session.Query<Indexes.VCommit, Indexes.Commits_ByRepository>()
             // The in-memory filter below admits every branch when DefaultBranch is null, so the
             // exclusion has to happen in the query rather than relying on that pass.
             .Where(c => c.Repository.In(repoIds) && c.HasCoverage && c.ContributedFromFork != true)
-            .OrderByDescending(c => c.AuthoredAt)
+            .OrderByDescending(c => c.Date)
             .Take(1000)
             .OfType<Commit>()
             .ToListAsync(cancellationToken);
@@ -238,7 +238,7 @@ public partial class BrowseController : ControllerBase
 
         // A fork's head branch must not appear in this repository's branch list: it is a branch
         // name from somebody else's repository, and picking it would render an empty badge.
-        var branches = await session.Query<Indexes.Commits_ByRepository.Result, Indexes.Commits_ByRepository>()
+        var branches = await session.Query<Indexes.VCommit, Indexes.Commits_ByRepository>()
             .Where(c => c.Repository == repository.Id && c.HasCoverage && c.ContributedFromFork != true)
             .Select(c => c.Branch)
             .Distinct()

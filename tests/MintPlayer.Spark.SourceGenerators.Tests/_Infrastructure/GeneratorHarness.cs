@@ -110,6 +110,86 @@ internal static class GeneratorHarness
         return diagnostics.Where(d => analyzerIds.Contains(d.Id)).ToList();
     }
 
+    /// <summary>
+    /// Runs a source generator and then attaches analyzers to the <em>post-generator</em> compilation —
+    /// the shape <c>csc</c> actually hands the analyzer driver, and the one <see cref="RunAnalyzerAsync"/>
+    /// deliberately does not build.
+    /// </summary>
+    /// <remarks>
+    /// Every other analyzer fixture here attaches the analyzer to the hand-written compilation only, so
+    /// nothing in this project ever demonstrated that an analyzer observes a generated symbol. That claim
+    /// is load-bearing for <c>SortCompanionAnalyzer</c> (its class comment rests on it) and is what
+    /// <c>AnalyzerSeesGeneratedCodeTests</c> measures through this entry point.
+    /// <para>
+    /// Sources are passed as (path, text) pairs because the answer depends on the path: Roslyn decides
+    /// whether a tree is "generated code" from the file name (<c>.g.cs</c>, <c>.designer.cs</c>, …) and
+    /// from a leading <c>&lt;auto-generated&gt;</c> comment, and <see cref="AnalysisContext.ConfigureGeneratedCodeAnalysis"/>
+    /// keys off that decision.
+    /// </para>
+    /// </remarks>
+    /// <param name="generatorTypeName">The generator to run first, or <see langword="null"/> to skip generation.</param>
+    /// <param name="analyzers">Analyzer instances — instances, not type names, so a test can construct a probe
+    /// with a chosen <see cref="GeneratedCodeAnalysisFlags"/> value.</param>
+    public static async Task<GeneratorThenAnalyzerResult> RunGeneratorThenAnalyzersAsync(
+        string? generatorTypeName,
+        IEnumerable<DiagnosticAnalyzer> analyzers,
+        IEnumerable<(string Path, string Text)> sourceFiles,
+        IEnumerable<Type>? referenceTypes = null,
+        string? rootNamespace = null,
+        IEnumerable<(string Path, string Text)>? additionalTexts = null,
+        IEnumerable<MetadataReference>? additionalReferences = null,
+        string? generatorAssemblyName = null)
+    {
+        var trees = sourceFiles
+            .Select(f => CSharpSyntaxTree.ParseText(f.Text, path: f.Path))
+            .ToList();
+
+        var references = new HashSet<MetadataReference>(BuildReferences(referenceTypes ?? Array.Empty<Type>()));
+        if (additionalReferences is not null)
+            foreach (var r in additionalReferences)
+                references.Add(r);
+
+        Compilation compilation = CSharpCompilation.Create(
+            assemblyName: "TestInput",
+            syntaxTrees: trees,
+            references: references,
+            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var additionalTextArray = System.Collections.Immutable.ImmutableArray.CreateRange(
+            (additionalTexts ?? Array.Empty<(string, string)>())
+                .Select(t => (AdditionalText)new InMemoryAdditionalText(t.Path, t.Text)));
+
+        var generatedHintNames = new List<string>();
+
+        if (generatorTypeName is not null)
+        {
+            var generator = InstantiateGenerator(generatorTypeName, generatorAssemblyName);
+
+            GeneratorDriver driver = CSharpGeneratorDriver.Create(
+                generators: [generator.AsSourceGenerator()],
+                additionalTexts: additionalTextArray.IsEmpty ? null : additionalTextArray,
+                parseOptions: (CSharpParseOptions)trees[0].Options,
+                optionsProvider: new StubAnalyzerConfigOptionsProvider(rootNamespace));
+
+            driver.RunGeneratorsAndUpdateCompilation(compilation, out var updated, out _);
+            compilation = updated;
+
+            generatedHintNames.AddRange(
+                compilation.SyntaxTrees.Except(trees).Select(t => t.FilePath));
+        }
+
+        var withAnalyzers = compilation.WithAnalyzers(
+            System.Collections.Immutable.ImmutableArray.CreateRange(analyzers),
+            new AnalyzerOptions(additionalTextArray));
+
+        var diagnostics = await withAnalyzers.GetAnalyzerDiagnosticsAsync(default);
+
+        return new GeneratorThenAnalyzerResult(compilation, diagnostics, generatedHintNames);
+    }
+
+    /// <summary>Instantiates one of the repo's analyzers by type name, for callers that build the run themselves.</summary>
+    internal static DiagnosticAnalyzer CreateAnalyzer(string typeName) => InstantiateAnalyzer(typeName);
+
     private static Microsoft.CodeAnalysis.Diagnostics.DiagnosticAnalyzer InstantiateAnalyzer(string typeName)
     {
         var asm = _generatorAssembly.Value;
@@ -292,6 +372,16 @@ internal sealed class InMemoryAdditionalText : AdditionalText
     public override string Path { get; }
     public override Microsoft.CodeAnalysis.Text.SourceText GetText(CancellationToken cancellationToken = default) => _text;
 }
+
+/// <summary>
+/// The outcome of <see cref="GeneratorHarness.RunGeneratorThenAnalyzersAsync"/>: the compilation the
+/// analyzers actually saw (generated trees included), every diagnostic they produced, and the file
+/// paths of the trees the generator contributed.
+/// </summary>
+internal sealed record GeneratorThenAnalyzerResult(
+    Compilation Compilation,
+    IEnumerable<Diagnostic> Diagnostics,
+    IReadOnlyList<string> GeneratedTreePaths);
 
 internal sealed record GeneratorRunResult(
     IEnumerable<Diagnostic> GeneratorDiagnostics,

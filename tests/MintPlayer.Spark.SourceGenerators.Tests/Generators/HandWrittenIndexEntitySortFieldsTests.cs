@@ -67,7 +67,7 @@ public class HandWrittenIndexEntitySortFieldsTests
         file.Source.Should().Contain("namespace TestApp.Data");
         file.Source.Should().Contain("public partial class VCar");
         file.Source.Should().Contain("[global::MintPlayer.Spark.Abstractions.IgnorePropertyAttribute]");
-        file.Source.Should().Contain("public string? ModelSort { get; set; }");
+        file.Source.Should().Contain("public string? ModelSearch { get; set; }");
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public class HandWrittenIndexEntitySortFieldsTests
             public partial class VCar
             {
                 [Search] public string? Model { get; set; }
-                [IgnoreProperty] public string? ModelSort { get; set; }
+                [IgnoreProperty] public string? ModelSearch { get; set; }
             }
             """) + IndexStub);
 
@@ -138,7 +138,7 @@ public class HandWrittenIndexEntitySortFieldsTests
             }
             """) + IndexStub).GeneratedSources[0].Source;
 
-        generated.Should().Contain("ModelSort");
+        generated.Should().Contain("ModelSearch");
         // The developer owns these; re-declaring them would be a duplicate-member error.
         generated.Should().NotContain("public int Year");
         generated.Should().NotContain("FromIndex");
@@ -163,7 +163,7 @@ public class HandWrittenIndexEntitySortFieldsTests
             }
             """);
 
-        // Only the generated pair; no separate sort-fields file contributing a second ModelSort.
+        // Only the generated pair; no separate sort-fields file contributing a second ModelSearch.
         result.GeneratedSources.Should().ContainSingle();
         result.GeneratedSources[0].HintName.Should().Be("SparkGeneratedIndexes.g.cs");
     }
@@ -215,7 +215,7 @@ public class HandWrittenIndexEntitySortFieldsTests
         generated.Should().Contain("namespace TestApp.Data");
         generated.Should().Contain("partial class Views");
         generated.Should().Contain("public partial class VCar");
-        generated.Should().Contain("ModelSort");
+        generated.Should().Contain("ModelSearch");
     }
 
     // --- generated Index(...) calls -----------------------------------------------------------
@@ -243,7 +243,7 @@ public class HandWrittenIndexEntitySortFieldsTests
 
         generated.Should().Contain("private void IndexSearchFields()");
         generated.Should().Contain(
-            "Index(nameof(global::TestApp.Indexes.VCar.Model), global::Raven.Client.Documents.Indexes.FieldIndexing.Search);");
+            "Index(nameof(global::TestApp.Indexes.VCar.ModelSearch), global::Raven.Client.Documents.Indexes.FieldIndexing.Search);");
     }
 
     /// <summary>
@@ -267,8 +267,8 @@ public class HandWrittenIndexEntitySortFieldsTests
             }
             """, IndexStub).GeneratedSources[0].Source;
 
-        generated.Should().Contain("nameof(global::TestApp.Data.VCar.Model)");
-        generated.Should().NotContain("nameof(VCar.Model)");
+        generated.Should().Contain("nameof(global::TestApp.Data.VCar.ModelSearch)");
+        generated.Should().NotContain("nameof(VCar.ModelSearch)");
     }
 
     [Fact]
@@ -293,7 +293,7 @@ public class HandWrittenIndexEntitySortFieldsTests
         generated.Should().Contain(
             "Index(nameof(global::TestApp.Indexes.VCar.CreatedOnRaw), global::Raven.Client.Documents.Indexes.FieldIndexing.No);");
         generated.Should().Contain("CreatedOnRaw");
-        generated.Should().NotContain("CreatedOnSort");
+        generated.Should().NotContain("CreatedOnSearch");
     }
 
     /// <summary>

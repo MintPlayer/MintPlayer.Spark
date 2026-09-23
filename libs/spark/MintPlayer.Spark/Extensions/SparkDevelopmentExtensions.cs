@@ -191,6 +191,10 @@ public static class SparkDevelopmentExtensions
         VerifySubQueriesCanBeParentScoped(contentRoot);
         VerifyProgramUnitTargetsResolve(contentRoot);
         VerifyQueryColumnOverridesResolve(contentRoot);
+        VerifyQuerySortColumnsResolve(contentRoot);
+        VerifyIndexDefinitionsCompile(indexCatalog);
+        VerifyBoundIndexHasAProjection(indexCatalog, contentRoot);
+        VerifyCollectionColumnsDoNotClaimSortability(contentRoot);
         var descriptionDrift = VerifyAttributeDescriptionsAreCurrent(contextType, contentRoot);
 
         if (expected is not null && string.Equals(expected.ModelHash, actual.ModelHash, StringComparison.Ordinal))
@@ -258,10 +262,15 @@ public static class SparkDevelopmentExtensions
     /// because the declaration and the implementation live in different files and different
     /// languages.
     /// <para>
-    /// ⚠️ This cannot be a Roslyn analyzer, which is the obvious place to look for it. The flag
-    /// lives in <c>App_Data/Model/*.json</c>, which is not part of the compilation unless it is
-    /// added as an <c>AdditionalFile</c>; an analyzer would have nothing to read. It rides
-    /// <c>--spark-verify-model</c> instead, which already runs in CI and already exits non-zero.
+    /// ⚠️ This rides <c>--spark-verify-model</c> rather than a Roslyn analyzer, but <b>not</b> because
+    /// an analyzer could not read the file — it could. <c>spark.targets</c> already passes
+    /// <c>App_Data\Model\*.json</c> to the compiler as <c>AdditionalFiles</c>, and
+    /// <c>SecurityConfigurationAnalyzer</c> reads exactly those files today. The real reason is
+    /// <b>staleness</b>: the model files are an <em>output</em> of synchronize, so during a build that
+    /// is about to rewrite them they can be one generation behind the C#, and an analyzer reading
+    /// them would report on a model that no longer exists. <c>security.json</c> is analyzed precisely
+    /// because it is hand-authored and never has that problem. The verify gate runs after
+    /// synchronize, already runs in CI, and already exits non-zero.
     /// </para>
     /// <para>
     /// Reads the files directly and resolves the actions type by the same convention
@@ -352,14 +361,319 @@ public static class SparkDevelopmentExtensions
     /// direction that matters, since the usual reason to write an override is to <em>restrict</em> a
     /// column.
     /// <para>
-    /// It rides <c>--spark-verify-model</c> rather than a Roslyn analyzer because the flag lives in
-    /// <c>App_Data/Model/*.json</c>, which is not part of the compilation.
+    /// It rides <c>--spark-verify-model</c> rather than a Roslyn analyzer because the model files are
+    /// a synchronize <em>output</em> and can lag the C# mid-build — not because they are unreadable
+    /// from an analyzer, which they are not: <c>spark.targets</c> supplies them as
+    /// <c>AdditionalFiles</c> and <c>SecurityConfigurationAnalyzer</c> reads them.
     /// </para>
     /// <para>
     /// A column that exists but is off the query surface is an offender too: the override cannot
     /// apply to it, so stating one is the same mistake wearing a real attribute name.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// An attribute may not claim <c>canSort: true</c> when its shape cannot be ordered.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Ordering by a collection does not produce an arbitrary order — it <b>drops the rows whose
+    /// collection is empty</b>, and returns identical output for ascending and descending. Measured on
+    /// 7.2.6 against nullable-scalar controls that behaved correctly in the same run, so it is a
+    /// property of collection-ness rather than of a missing term.
+    /// <para>
+    /// <c>ColumnCapabilities</c> already refuses this at runtime, so nothing is broken by an author
+    /// writing it. This exists because an <b>explicit</b> <c>true</c> is a statement the framework will
+    /// never honour, and silently ignoring it is how someone spends an afternoon wondering why their
+    /// grid will not sort. The refusal deliberately does not extend to <c>canFilter</c>: filtering a
+    /// collection works, since it emits <c>Any(e =&gt; e == v)</c> over multi-valued terms.
+    /// </para>
+    /// </remarks>
+    private static void VerifyCollectionColumnsDoNotClaimSortability(string contentRootPath)
+    {
+        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        if (!Directory.Exists(modelPath))
+            return;
+
+        var offenders = new List<string>();
+
+        foreach (var file in Directory.EnumerateFiles(modelPath, "*.json"))
+        {
+            EntityTypeFile? model;
+            try
+            {
+                model = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
+                    File.ReadAllText(file),
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                continue;
+            }
+
+            var definition = model?.PersistentObject;
+            if (definition is null) continue;
+
+            foreach (var attribute in definition.Attributes)
+            {
+                if (attribute.IsArray && attribute.CanSort == true)
+                    offenders.Add($"{definition.Name}.{attribute.Name}: canSort on a collection");
+            }
+
+            foreach (var query in model?.Queries ?? [])
+            {
+                foreach (var column in query.Columns ?? [])
+                {
+                    if (column.CanSort != true) continue;
+
+                    var attribute = definition.Attributes
+                        .FirstOrDefault(a => string.Equals(a.Name, column.Name, StringComparison.OrdinalIgnoreCase));
+
+                    if (attribute is { IsArray: true })
+                        offenders.Add($"{definition.Name}.{query.Name}.{column.Name}: canSort override on a collection");
+                }
+            }
+        }
+
+        if (offenders.Count == 0)
+            return;
+
+        Console.Error.WriteLine("Spark model claims a collection column can be sorted:");
+        foreach (var offender in offenders)
+            Console.Error.WriteLine("  " + offender);
+        Console.Error.WriteLine();
+        Console.Error.WriteLine(
+            "Ordering by a collection field DROPS the rows whose collection is empty and ignores the "
+            + "direction entirely, so the framework refuses it whatever the model says. Remove the flag "
+            + "rather than leaving a claim that is silently ignored. Filtering a collection does work, "
+            + "so canFilter is unaffected.");
+
+        Environment.ExitCode = ExitDrift;
+    }
+
+    /// <summary>
+    /// A query may not bind an index that has no <c>[FromIndex]</c> projection.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>Binding an unprojected index makes Spark validate sorts and filters against a superset of
+    /// what the index can serve.</b> <c>QueryExecutor</c> computes the row shape as the projection when
+    /// there is one and <em>the entity</em> when there is not — and the entity carries every property,
+    /// while the Map carries only what it selected. So a column the entity has and the Map does not
+    /// reads as sortable, and ordering by a field absent from the Map is an <c>ArgumentException</c>,
+    /// i.e. HTTP 500 for the whole grid.
+    /// <para>
+    /// This is the general form of a defect found on <c>Commit.GetCommits</c>: it sorted by <c>Sha</c>
+    /// while <c>Commits_ByRepository</c> emitted no <c>Sha</c>, so the "obvious" repair of stamping
+    /// <c>indexName</c> on it would have turned a slow query into a broken one. The real repair was to
+    /// give the index a projection, which is what this rule asks for.
+    /// </para>
+    /// <para>
+    /// Not a substitute for checking the Map itself — a projection can still declare a property the Map
+    /// never assigns. It removes the case where Spark has no description of the index at all.
+    /// </para>
+    /// </remarks>
+    private static void VerifyBoundIndexHasAProjection(IIndexCatalog indexCatalog, string contentRootPath)
+    {
+        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        if (!Directory.Exists(modelPath))
+            return;
+
+        var offenders = new List<string>();
+
+        foreach (var file in Directory.EnumerateFiles(modelPath, "*.json"))
+        {
+            EntityTypeFile? model;
+            try
+            {
+                model = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
+                    File.ReadAllText(file),
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                continue;
+            }
+
+            var definition = model?.PersistentObject;
+            if (definition is null || model?.Queries is null)
+                continue;
+
+            foreach (var query in model.Queries)
+            {
+                // An empty binding on the query inherits the entity's, and an empty one there queries
+                // the raw collection, which has no index to be wrong about.
+                var indexName = string.IsNullOrWhiteSpace(query.IndexName) ? definition.IndexName : query.IndexName;
+                if (string.IsNullOrWhiteSpace(indexName)) continue;
+
+                var entry = indexCatalog.GetByIndexName(indexName);
+
+                // A name that resolves to nothing is the synchronizer's business — it retargets a dead
+                // binding rather than failing, so reporting it here would duplicate that.
+                if (entry is null || entry.ProjectionType is not null) continue;
+
+                offenders.Add($"{definition.Name}.{query.Name}: bound to '{indexName}', which has no [FromIndex] projection");
+            }
+        }
+
+        if (offenders.Count == 0)
+            return;
+
+        Console.Error.WriteLine("Spark queries bound to an index Spark cannot describe:");
+        foreach (var offender in offenders)
+            Console.Error.WriteLine("  " + offender);
+        Console.Error.WriteLine();
+        Console.Error.WriteLine(
+            "Without a projection the row shape falls back to the ENTITY, which carries every property "
+            + "while the index map carries only what it selected. Spark then reports columns as "
+            + "sortable that the index cannot serve, and ordering by one of them is a 500 for the whole "
+            + "grid. Give the index a [FromIndex] projection covering the query surface.");
+
+        Environment.ExitCode = ExitDrift;
+    }
+
+    /// <summary>
+    /// Every index in the catalog must be able to build its own definition.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>This is not a heuristic — it performs the exact operation the application performs at
+    /// startup</b>, so it has no false positives by construction and needs no knowledge of what can go
+    /// wrong. That matters because the failures it catches are varied and all fatal: an index that
+    /// cannot build its definition takes the whole host down on boot, after a build that was green.
+    /// <para>
+    /// The known one is a duplicate field declaration. <c>Index(string, …)</c> and
+    /// <c>Store(string, …)</c> are <c>Dictionary.Add</c> calls, not indexer assignments, so declaring
+    /// a field twice throws rather than overwriting — and the lambda-keyed
+    /// <c>Indexes.Add(x =&gt; x.Field, …)</c> form is invisible to the string-keyed guard the generator
+    /// emits, so mixing the two surfaces as an <c>IndexCompilationException</c>. Measured: both throw
+    /// client-side from <c>CreateIndexDefinition()</c> in ~47 ms, with no server involved, which is
+    /// why this belongs in a build gate rather than being discovered on deploy.
+    /// </para>
+    /// <para>
+    /// Constructs a fresh instance per index, because the declaration dictionaries live on the
+    /// instance and a reused one would throw on the second build for the wrong reason.
+    /// </para>
+    /// </remarks>
+    private static void VerifyIndexDefinitionsCompile(IIndexCatalog indexCatalog)
+    {
+        var offenders = new List<string>();
+
+        foreach (var entry in indexCatalog.GetAllEntries())
+        {
+            try
+            {
+                var instance = Activator.CreateInstance(entry.IndexType);
+                (instance as Raven.Client.Documents.Indexes.AbstractIndexCreationTask)?.CreateIndexDefinition();
+            }
+            catch (Exception ex)
+            {
+                var inner = ex is TargetInvocationException { InnerException: { } target } ? target : ex;
+                offenders.Add($"{entry.IndexName}: {inner.GetType().Name}: {inner.Message}");
+            }
+        }
+
+        if (offenders.Count == 0)
+            return;
+
+        Console.Error.WriteLine("Spark indexes that cannot build their own definition:");
+        foreach (var offender in offenders)
+            Console.Error.WriteLine("  " + offender);
+        Console.Error.WriteLine();
+        Console.Error.WriteLine(
+            "The application performs exactly this at startup, so each of these would take the host "
+            + "down on boot. A duplicate field is the usual cause: Index(...) and Store(...) are "
+            + "dictionary adds, and the lambda-keyed Indexes.Add(x => x.Field, ...) form cannot be "
+            + "seen by the string-keyed guard the generator emits. Declare fields by nameof(...).");
+
+        Environment.ExitCode = ExitDrift;
+    }
+
+    /// <summary>
+    /// Every query's declared <c>sortColumns</c> must name an attribute that is on that query's
+    /// surface, or the grid silently ships unsorted.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>This is not hypothetical — it shipped in two apps at once.</b> Both DemoApp and HR
+    /// declared <c>GetPeople</c> sorting by <c>LastName</c> while <c>LastName</c> was
+    /// <c>showedOn: PersistentObject</c>. <c>FindQuerySurfaceAttribute</c> returns null,
+    /// <c>ApplySorting</c> logs a warning and continues, and the grid renders in index order. The only
+    /// signal was a log line, and the model files looked entirely reasonable.
+    /// <para>
+    /// Rides <c>--spark-verify-model</c> rather than an analyzer for the reason the other model checks
+    /// do: these files are a synchronize <em>output</em> and can lag the C# mid-build, so an analyzer
+    /// would judge a model that is about to be overwritten. (Not because they are invisible to an
+    /// analyzer — <c>spark.targets</c> supplies them as <c>AdditionalFiles</c>.)
+    /// </para>
+    /// <para>
+    /// Deliberately checks the <em>model</em> only. Whether the bound index's Map actually emits the
+    /// field is a second question that needs the index catalog, and it is the one an unprojected
+    /// binding makes unanswerable — see the plan's A3.
+    /// </para>
+    /// </remarks>
+    private static void VerifyQuerySortColumnsResolve(string contentRootPath)
+    {
+        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        if (!Directory.Exists(modelPath))
+            return;
+
+        var offenders = new List<string>();
+
+        foreach (var file in Directory.EnumerateFiles(modelPath, "*.json"))
+        {
+            EntityTypeFile? model;
+            try
+            {
+                model = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
+                    File.ReadAllText(file),
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                continue;
+            }
+
+            var definition = model?.PersistentObject;
+            if (definition is null || model?.Queries is null)
+                continue;
+
+            var surface = definition.Attributes
+                .Where(a => a.ShowedOn.HasFlag(EShowedOn.Query))
+                .Select(a => a.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var query in model.Queries)
+            {
+                if (query.SortColumns is not { Length: > 0 }) continue;
+
+                foreach (var column in query.SortColumns)
+                {
+                    if (string.IsNullOrWhiteSpace(column.Property)) continue;
+                    if (surface.Contains(column.Property)) continue;
+
+                    var attribute = definition.Attributes
+                        .FirstOrDefault(a => string.Equals(a.Name, column.Property, StringComparison.OrdinalIgnoreCase));
+
+                    offenders.Add($"{definition.Name}.{query.Name}: sorts by '{column.Property}', which "
+                        + (attribute is null
+                            ? "is not an attribute of this type"
+                            : $"is showedOn '{attribute.ShowedOn}' and so is not on the query surface"));
+                }
+            }
+        }
+
+        if (offenders.Count == 0)
+            return;
+
+        Console.Error.WriteLine("Spark model has queries whose declared sort column is not sortable:");
+        foreach (var offender in offenders)
+            Console.Error.WriteLine("  " + offender);
+        Console.Error.WriteLine();
+        Console.Error.WriteLine(
+            "The sort gate checks the same showedOn flag the wire does, so such a column is refused and "
+            + "the grid ships in index order. Either widen the attribute to the query surface (it must "
+            + "also exist on the projection, or the widening is intersected away on the next "
+            + "synchronize), or sort by a column that is on it.");
+
+        Environment.ExitCode = ExitDrift;
+    }
+
     private static void VerifyQueryColumnOverridesResolve(string contentRootPath)
     {
         var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
@@ -515,8 +829,10 @@ public static class SparkDevelopmentExtensions
     /// collection, or returns rows into a type that shows nothing on a query.
     /// </summary>
     /// <remarks>
-    /// Rides <c>--spark-verify-model</c> for the same reasons the alias check does: the rules are
-    /// about hand-authored JSON that no analyzer can see, and both failures otherwise surface only
+    /// Rides <c>--spark-verify-model</c> for the same reason the alias check does: the rules are about
+    /// JSON that a build may be in the middle of regenerating, so an analyzer would judge a stale
+    /// model rather than the one that ships. (It is not that the files are invisible to an analyzer —
+    /// they are <c>AdditionalFiles</c>.) Both failures otherwise surface only
     /// by opening the page — one as a websocket that closes with <c>Stream failed</c>, the other as
     /// a grid with rows and no columns. Neither says which query, and neither is visible in review.
     /// <para>

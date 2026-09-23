@@ -381,6 +381,15 @@ export class SparkQueryGridComponent {
    * The asked-for column's own filter is excluded: a panel must offer the values you could still
    * pick, not only the ones you already picked.
    */
+  /**
+   * The last complete distinct list seen per column, for translating a `< none >` selection.
+   *
+   * ⚠️ Only stored when the server reported the list was NOT truncated (`hasMore === false`). The
+   * translation below is the complement of what is listed, so a partial list would exclude the wrong
+   * set — and silently, which is the failure mode this whole feature exists to remove.
+   */
+  private readonly completeDistincts = new Map<string, unknown[]>();
+
   protected readonly distinctsFn: DatatableDistincts = async request => {
     const queryId = this.query()?.id;
     if (!queryId) return null;
@@ -389,12 +398,20 @@ export class SparkQueryGridComponent {
     const others = this.filters().filter(f => f.name !== request.column);
 
     // The server's shape IS the datatable's shape, so there is nothing to map.
-    return this.sparkService.getDistinctValues(queryId, request.column, {
+    const result = await this.sparkService.getDistinctValues(queryId, request.column, {
       search: request.search,
       columns: others,
       parentId: this.parentId(),
       parentType: this.parentType(),
     });
+
+    // A searched list is a subset by construction, so it is never a basis for a complement.
+    if (result && !result.hasMore && !request.search)
+      this.completeDistincts.set(request.column, result.matching.map(v => v.value));
+    else
+      this.completeDistincts.delete(request.column);
+
+    return result;
   };
 
   /**
@@ -411,9 +428,31 @@ export class SparkQueryGridComponent {
     const next = this.filters().filter(f => f.name !== detail.column);
 
     if (values.length > 0) {
-      next.push(detail.inverse
-        ? { name: detail.column, excludes: values }
-        : { name: detail.column, includes: values });
+      // ⚠️ `< none >` cannot be asked for directly. The server compares against the index term, and
+      // RavenDB gives a field the document never wrote NO term at all — so `Col == null` matches a
+      // field written as JSON null but NOT one that is absent, while `Col != null` puts the absent row
+      // with the rows that HAVE a value. Both rows render blank, the panel offers one entry for the
+      // pair, and no predicate selects that pair. Measured in AbsentVersusNullFieldTests.
+      //
+      // The complement is expressible, though: "none of the real values" catches absent and null
+      // alike. So a selection containing the null entry is sent as an exclusion of everything NOT
+      // selected, which is exactly the same set and needs no server change.
+      const complete = this.completeDistincts.get(detail.column);
+      const selectsNone = values.some(v => v === null || v === undefined);
+
+      if (selectsNone && !detail.inverse && complete) {
+        const unselected = complete.filter(v =>
+          v !== null && v !== undefined && !values.some(s => s === v));
+
+        // Everything is selected, so the filter narrows nothing — drop it rather than sending an
+        // empty exclusion, which would read as "exclude nothing" only by accident.
+        if (unselected.length > 0)
+          next.push({ name: detail.column, excludes: unselected });
+      } else {
+        next.push(detail.inverse
+          ? { name: detail.column, excludes: values }
+          : { name: detail.column, includes: values });
+      }
     }
 
     this.filters.set(next);

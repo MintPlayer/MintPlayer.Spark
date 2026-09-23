@@ -59,7 +59,27 @@ internal static class IndexNaming
             : Pluralize(indexEntityName);
 
     /// <summary>The sort-companion name for a field. Suffix is <c>Sort</c>, with no separator.</summary>
+    /// <remarks>
+    /// ⚠️ Used for a <c>[Breadcrumb]</c> companion only. A <c>[Search]</c> field no longer gets one —
+    /// see <see cref="SearchCompanion"/> for why the roles were swapped.
+    /// </remarks>
     public static string SortCompanion(string propertyName) => $"{propertyName}Sort";
+
+    /// <summary>The search-companion name for a field. Suffix is <c>Search</c>, with no separator.</summary>
+    /// <remarks>
+    /// ⚠️ <b>This is the field that carries <c>FieldIndexing.Search</c>, not the base field.</b> The
+    /// two used to be the other way round, and it put the abnormality on the field everyone names:
+    /// analyzing a field destroys equality and ordering on it, so <c>x.FullName == value</c> matched
+    /// nothing and the usable value was exiled to <c>FullNameSort</c>. Every filter and sort had to be
+    /// silently redirected there, and anything that did not go through the redirect — a hand-written
+    /// row filter, a custom query building rows by hand — got the broken field.
+    /// <para>
+    /// The <c>DateTimeOffset</c> mechanism already worked the right way round (plain base field,
+    /// abnormality on the <c>{Name}Raw</c> companion), so this makes the two agree. The base field is
+    /// now a normal indexed field and only <c>ApplySearch</c> knows the companion exists.
+    /// </para>
+    /// </remarks>
+    public static string SearchCompanion(string propertyName) => $"{propertyName}Search";
 
     /// <summary>
     /// The wrapper-companion name for a field. Suffix is <c>Raw</c>, with no separator.

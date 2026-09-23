@@ -1,6 +1,8 @@
+using Microsoft.Extensions.Logging;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Queries;
 using Raven.Client.Documents;
@@ -99,6 +101,17 @@ internal partial class QueryExecutor : IQueryExecutor
         IReadOnlyList<QueryColumnFilter>? columnFilters = null,
         CancellationToken cancellationToken = default)
     {
+        // Refused before anything loads. A streaming query's rows arrive over a socket from an
+        // IAsyncEnumerable method, and resolving it the ordinary way throws — ResolveCustomQueryMethod
+        // accepts zero parameters or one CustomQueryArgs, never a streaming method's
+        // (StreamingQueryArgs, CancellationToken) — which escaped this endpoint as a 500 for any
+        // caller who got past authorization. The CanListDistincts check below cannot save it: it
+        // happens after the rows load, which is where the throw was.
+        //
+        // Empty rather than an error, matching every other refusal here: indistinguishable from a
+        // column that simply has nothing to list.
+        if (query.IsStreamingQuery) return DistinctValuesResult.Empty;
+
         // The whole result set, not a page: a distinct list describes the query, not the page the
         // grid happens to be on. Paging is applied to rows, never to this.
         var rows = await LoadSecuredRowsAsync(query, parent, columnFilters, cancellationToken);
@@ -115,6 +128,23 @@ internal partial class QueryExecutor : IQueryExecutor
 
     /// <summary>The cap on a distinct bucket. Matches the protocol this follows.</summary>
     private const int MaxDistinctValues = 100;
+
+    /// <summary>
+    /// How many secured rows a distinct list may materialize before it stops and says so.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ This used to be <see cref="int.MaxValue"/>, so <em>opening a filter panel</em> materialized
+    /// the entire result set — every row, through the row-security gate, with breadcrumbs resolved.
+    /// The endpoint's own <c>MaxTake</c> clamp does not apply here; it guards <c>/execute</c> only. On
+    /// a production collection that is an unbounded amount of work triggered by one click, and the
+    /// caller is whoever got past authorization.
+    /// <para>
+    /// A cap changes the answer, so it must be visible: hitting it sets <c>HasMore</c>, which is the
+    /// same signal the value cap already uses and which the panel already understands. A short honest
+    /// list beats a complete list nobody can afford.
+    /// </para>
+    /// </remarks>
+    private const int MaxDistinctScanRows = 5_000;
 
     /// <summary>
     /// One pass over secured rows, collecting <c>{ value, label }</c> pairs.
@@ -158,20 +188,45 @@ internal partial class QueryExecutor : IQueryExecutor
 
             if (!seen.Add(value)) continue;
 
-            // Counted, not collected, once the cap is reached: the caller needs to know the list is
-            // truncated or its search box silently stops fetching.
-            if (values.Count >= MaxDistinctValues)
-            {
-                hasMore = true;
-                break;
-            }
-
             values.Add(new DistinctValue { Value = value, Label = label });
         }
 
-        values.Sort(static (a, b) => string.Compare(a.Label, b.Label, StringComparison.CurrentCulture));
+        // ⚠️ Sort BEFORE capping. Capping first took the first hundred in row order and then sorted
+        // those, so the panel showed an arbitrary hundred that merely looked ordered — and which
+        // hundred depended on the index's physical order, which is not something a user can reason
+        // about. Sorting first means the cap keeps the first hundred a reader would actually expect.
+        // The set is bounded by the scan cap, so this cannot grow without limit.
+        values.Sort(CompareDistinct);
+
+        if (values.Count > MaxDistinctValues)
+        {
+            values.RemoveRange(MaxDistinctValues, values.Count - MaxDistinctValues);
+            hasMore = true;
+        }
 
         return new DistinctValuesResult { Matching = values, HasMore = hasMore };
+    }
+
+    /// <summary>
+    /// Orders distinct entries by their <em>value</em> where the values are comparable, and by label
+    /// otherwise.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Comparing labels alone sorted numbers as text: an <c>EmployeeCount</c> column listed
+    /// <c>1, 120, 20, 40</c>, which reads as a bug to anyone scanning it. Dates had the same problem
+    /// wherever their rendered form is not lexicographically ordered. Falling back to the label keeps
+    /// reference cells — whose value is an id and whose label is a breadcrumb — ordered by the text
+    /// the reader actually sees.
+    /// </remarks>
+    private static int CompareDistinct(DistinctValue a, DistinctValue b)
+    {
+        if (a.Value is null) return b.Value is null ? 0 : -1;
+        if (b.Value is null) return 1;
+
+        if (a.Value.GetType() == b.Value.GetType() && a.Value is IComparable comparable)
+            return comparable.CompareTo(b.Value);
+
+        return string.Compare(a.Label, b.Label, StringComparison.CurrentCulture);
     }
 
     /// <summary>What a row with no value for the column is listed as.</summary>
@@ -196,17 +251,32 @@ internal partial class QueryExecutor : IQueryExecutor
         var (isCustom, name) = ResolveSource(query);
         await InvokeQueryHookAsync(query, parent);
 
+        // Bounded, not paged: a distinct list still describes the whole result set rather than the page
+        // the grid is on, but it stops at MaxDistinctScanRows and reports the truncation instead of
+        // materializing an entire production collection because someone opened a filter panel.
         var source = isCustom
-            ? await ExecuteCustomQueryAsync(query, name, parent, null, 0, int.MaxValue, null, null, cancellationToken)
+            ? await ExecuteCustomQueryAsync(query, name, parent, null, 0, MaxDistinctScanRows, null, null, columnFilters, cancellationToken)
             : await ExecuteDatabaseQueryAsync(query, name, parent, null, null, columnFilters,
-                // Skip/take of zero/max: a distinct list describes the whole result set, never a page.
-                skip: 0, take: int.MaxValue, cancellationToken);
+                skip: 0, take: MaxDistinctScanRows, cancellationToken);
 
         return (source.Rows.Rows, source.Definition);
     }
 
     public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, IReadOnlyCollection<string>? restrictToIds = null, IReadOnlyList<QueryColumnFilter>? columnFilters = null, CancellationToken cancellationToken = default)
     {
+        // ⚠️ A streaming query has no shape this endpoint can execute, and saying so here is the
+        // difference between an empty grid and a 500 with a stack trace in Development.
+        // `ExecuteStreamingQueryAsync` takes `(StreamingQueryArgs, CancellationToken)`, which
+        // `ResolveCustomQueryMethod` accepts neither of — it takes zero parameters or one
+        // `CustomQueryArgs` — so resolution returns null and the executor throws. Measured on
+        // DemoApp's `StreamStocks` through `/spark/queries/execute`.
+        //
+        // Empty rather than an error, matching `GetDistinctValuesAsync` above and every other refusal
+        // here: a caller who reached this endpoint for a streaming query has the wrong transport, not
+        // the wrong rights, and the rows arrive over the socket instead.
+        if (query.IsStreamingQuery)
+            return new QueryResult { Columns = [], Items = [], TotalItems = 0, Skip = skip, Take = take };
+
         var (isCustom, name) = ResolveSource(query);
 
         // Null/whitespace collapses to null here, so every path below tests one thing.
@@ -226,7 +296,7 @@ internal partial class QueryExecutor : IQueryExecutor
         QuerySourceResult source;
         if (isCustom)
         {
-            source = await ExecuteCustomQueryAsync(query, name, parent, searchTerm, skip, take, search, restrictToIds, cancellationToken);
+            source = await ExecuteCustomQueryAsync(query, name, parent, searchTerm, skip, take, search, restrictToIds, columnFilters, cancellationToken);
 
             // UNION, not last-writer-wins. Both mechanisms are legitimate and a query may use both:
             // the hook is the only channel a Database.* query has, and the custom method is the only
@@ -243,7 +313,7 @@ internal partial class QueryExecutor : IQueryExecutor
                 with { DisabledActions = queryContext.DisabledActions };
         }
 
-        var (allResults, definition, searchPushedDown, authorTotalItems, _, _) = source;
+        var (allResults, definition, searchPushedDown, authorTotalItems, _, _, _, _) = source;
 
         // The author's page is returned as it stands. Search, sort, count and paging were all
         // transferred with it (the binary authority rule on SparkQueryPage), so applying any of
@@ -273,7 +343,16 @@ internal partial class QueryExecutor : IQueryExecutor
                     $"the rows inside the query method itself.");
             }
 
-            var authorColumns = definition is not null ? QueryResultProjector.BuildColumns(definition, query) : [];
+            // ⚠️ sortType matters here for the same reason it matters on the ordinary path below, and
+            // leaving it out was worse on this one. An author-paged query already skips the
+            // framework's own column filtering (the filters are handed to the author instead), so if
+            // the column metadata ALSO claims every column is sortable and filterable, the grid draws
+            // a sort arrow and a filter cell on columns the author's row shape does not carry — and
+            // nothing downstream refuses them. Passing it lets IsBackedByShape narrow the claim to
+            // what the returned rows can actually answer.
+            var authorColumns = definition is not null
+                ? QueryResultProjector.BuildColumns(definition, query, source.SortType, source.IndexedFields)
+                : [];
             return new QueryResult
             {
                 Columns = authorColumns,
@@ -325,7 +404,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // answer rather than a guess reconstructed from whichever attributes the first row happens
         // to carry.
         var columns = definition is not null
-            ? QueryResultProjector.BuildColumns(definition, query)
+            ? QueryResultProjector.BuildColumns(definition, query, source.SortType, source.IndexedFields)
             : [];
 
         return new QueryResult
@@ -472,7 +551,16 @@ internal partial class QueryExecutor : IQueryExecutor
         /// Set when the database applied <c>Skip</c>/<c>Take</c> and counted the matches, so the rows
         /// already ARE the page and must not be paged again in memory (#431 M14).
         /// </summary>
-        DatabasePage? Page = null)
+        DatabasePage? Page = null,
+
+        /// <summary>
+        /// The type the query's rows were shaped by — an index's <c>[FromIndex]</c> projection when one
+        /// is bound, otherwise null. Carried so the columns sent to the client can say what this
+        /// query can actually do (#431 M7b), which is a per-query fact and therefore cannot live on
+        /// the model's per-attribute flags.
+        /// </summary>
+        Type? SortType = null,
+        IReadOnlySet<string>? IndexedFields = null)
 ;
 
 /// <summary>The page the database produced, when paging was safe to push down (#431 M14).</summary>
@@ -900,7 +988,7 @@ internal sealed record DatabasePage(int TotalItems);
         var searchPushedDown = false;
         if (searchTerm != null)
         {
-            (queryable, searchPushedDown) = ApplySearch(queryable, sortType, searchTerm);
+            (queryable, searchPushedDown) = ApplySearch(queryable, sortType, searchTerm, ResolveIndexedSearchFields(queryable));
         }
 
         if (restrictToIds is { Count: > 0 })
@@ -929,17 +1017,26 @@ internal sealed record DatabasePage(int TotalItems);
         //   1. The row filter left nothing to remove (see RowFilterComposition.CanPageInDatabase).
         //   2. No restrictToIds — that path returns exactly the rows asked for and ignores paging.
         //   3. No in-memory search fallback, which narrows AFTER materialization.
-        //   4. resultType == entityType, i.e. no index projection.
+        //   4. No static index is bound at all.
         //
         // The fourth is the subtle one and it is NOT about the row filter. The gate dedupes by id,
         // and an index may fan out — one document producing several entries. Skip(n) then skips n
         // ENTRIES while the caller is counting documents, so offsets drift by however many entries
-        // the skipped documents happened to produce. Restricting to the non-projecting shape keeps
-        // one document to one row, which is the only case where the two agree.
+        // the skipped documents happened to produce, and pages come back short.
+        //
+        // ⚠️ This used to read `resultType == entityType`, meaning "no index PROJECTION". That is a
+        // proxy for the real question and it does not fit: an index bound with no [FromIndex]
+        // projection also satisfies it, because the rows come back as the entity — and such an index
+        // can fan out just as freely. The condition now asks what it means. Whether a given Map fans
+        // out is not knowable (the Map exists only as a rendered string; see SortCompanionAnalyzer's
+        // refusal to parse it), so "any static index" is the only sound line to draw. It costs
+        // nothing measurable: a projection-bearing index already refused pushdown under the old test,
+        // and the unprojected-but-bound shape is one `VerifyBoundIndexHasAProjection` now fails the
+        // build over. Correctness here does not depend on that gate having run.
         var mayPageInDatabase = rowFilter.CanPageInDatabase
             && restrictToIds is not { Count: > 0 }
             && (searchTerm is null || searchPushedDown)
-            && resultType == entityType;
+            && indexType is null;
 
         // Two very different cost profiles behind one query, chosen per request. Reported once per
         // (query, outcome) so a slow grid can be explained rather than guessed at — and so the
@@ -1011,7 +1108,7 @@ internal sealed record DatabasePage(int TotalItems);
         //
         // It now travels as DedupeById on the context above rather than as a call here, so the
         // decision is made where the difference between the two paths is visible.
-        return new QuerySourceResult(secured, entityTypeDefinition, searchPushedDown, Page: databasePage);
+        return new QuerySourceResult(secured, entityTypeDefinition, searchPushedDown, Page: databasePage, SortType: sortType, IndexedFields: ResolveIndexedSearchFields(queryable));
     }
 
     #endregion
@@ -1021,6 +1118,7 @@ internal sealed record DatabasePage(int TotalItems);
     private async Task<QuerySourceResult> ExecuteCustomQueryAsync(
         SparkQuery query, string methodName, PersistentObject? parent, string? searchTerm,
         int skip, int take, string? search, IReadOnlyCollection<string>? restrictToIds,
+        IReadOnlyList<QueryColumnFilter>? columnFilters,
         CancellationToken cancellationToken)
     {
         // Resolve the entity type for this query
@@ -1110,6 +1208,7 @@ internal sealed record DatabasePage(int TotalItems);
             Skip = skip,
             Take = take,
             Search = search,
+            Columns = columnFilters,
         };
 
         object? result;
@@ -1185,6 +1284,50 @@ internal sealed record DatabasePage(int TotalItems);
             result = (await rowSecurity.ComposeRowFilterAsync(result, entityType, methodInfo.ResultElementType, "Query", cancellationToken)).Queryable;
         }
 
+        // Column filters (#431) compose immediately after the row filter, exactly as on the database
+        // branch and for the same reason: position is load-bearing, because an added clause must
+        // never end up adjacent to the security predicate in a way that lets an operator leak onto
+        // it. See the remarks on ApplyColumnFilters.
+        //
+        // Where it runs depends on what the author returned, and BOTH answers are correct. A Raven
+        // queryable pushes the filter into RQL. A custom query that returns a fixed set — a computed
+        // dashboard, a constant list, an API response — has no database to push into, so the same
+        // predicate runs in process. That is not a degraded pushdown; it is the only thing filtering
+        // a fixed set can mean, and refusing it would punish a legitimate, supported shape.
+        //
+        // What must never happen is the filter quietly disappearing, which is exactly what this
+        // whole branch did before: every other refinement was wired here and this one was not.
+        // An author's page is exempt, and it must be checked before the IEnumerable branch below:
+        // SparkQueryPage<T> IS an IEnumerable<T>, so without this it would be narrowed in memory
+        // while TotalItems stayed the author's — the framework filtering a page whose total it did
+        // not compute. That is precisely the half-delegated failure the binary authority rule on
+        // SparkQueryPage exists to prevent, and it fails invisibly: the grid shows fewer rows than
+        // the pager claims and nothing says why. The author receives the filters through
+        // CustomQueryArgs.Columns and honours them, exactly as they already do for Search.
+        if (columnFilters is { Count: > 0 } && authorPage is null)
+        {
+            if (isQueryable)
+            {
+                result = ApplyColumnFilters(
+                    result, methodInfo.ResultElementType, columnFilters, entityTypeDefinition, query);
+            }
+            else if (result is System.Collections.IEnumerable sequence)
+            {
+                // AsQueryable so the SAME expression evaluates over a fixed set as over a Raven
+                // queryable. A second, hand-written in-memory implementation could disagree with the
+                // first about what a value equals — comparing rendered text where the other compares
+                // the raw property, say — and then the same filter would narrow differently depending
+                // on a shape the caller cannot see. One predicate, one semantic, every shape.
+                result = ApplyColumnFilters(
+                    AsQueryable(sequence, methodInfo.ResultElementType), methodInfo.ResultElementType,
+                    columnFilters, entityTypeDefinition, query);
+
+                // isQueryable stays false on purpose. EnumerableQuery<T> is also IEnumerable, so
+                // materialization still takes the sequence branch, and sorting keeps behaving as it
+                // did for this shape. Filtering is the only thing that changes here.
+            }
+        }
+
         // Narrow to a selection before anything else touches the shape. Paging is deliberately not
         // applied when this is set — the caller asked for these rows, not for a page of them.
         if (restrictToIds is { Count: > 0 })
@@ -1197,12 +1340,22 @@ internal sealed record DatabasePage(int TotalItems);
                 .IsInstanceOfType(result);
         }
 
+        // ⚠️ Resolved BEFORE anything composes onto the queryable, and kept for the column metadata.
+        //
+        // A custom query commonly returns IRavenQueryable<TEntity> over a static index — OfType<T>()
+        // back to the documents is the idiomatic shape — so its row type is the ENTITY, which carries
+        // every property while the index map carries only what it selected. Without this the column
+        // metadata reports a field the index never emits as sortable, and ordering by it is an
+        // ArgumentException: a 500 for the whole grid. Null for an in-memory or dynamic-index query,
+        // where there is nothing to restrict.
+        var indexedFields = ResolveIndexedSearchFields(result);
+
         // Only a RavenDB-backed queryable can push the search into the database; an in-memory
         // IQueryable has no Search, and the caller's own filtering may already have materialized.
         var searchPushedDown = false;
         if (searchTerm != null && isRavenQueryable)
         {
-            (result, searchPushedDown) = ApplySearch(result, methodInfo.ResultElementType, searchTerm);
+            (result, searchPushedDown) = ApplySearch(result, methodInfo.ResultElementType, searchTerm, indexedFields);
         }
 
         // Apply sorting if the result is IQueryable
@@ -1309,7 +1462,7 @@ internal sealed record DatabasePage(int TotalItems);
         });
 
         return new QuerySourceResult(
-            secured, entityTypeDefinition, searchPushedDown, authorPage?.TotalItems, args.DisabledActions);
+            secured, entityTypeDefinition, searchPushedDown, authorPage?.TotalItems, args.DisabledActions, SortType: methodInfo.ResultElementType, IndexedFields: indexedFields);
     }
 
     /// <summary>
@@ -1326,7 +1479,7 @@ internal sealed record DatabasePage(int TotalItems);
     /// a sort column is a comparison oracle over a value the caller may never read.
     /// </para>
     /// </remarks>
-    private static IEnumerable<PersistentObject> SortMappedRows(
+    private IEnumerable<PersistentObject> SortMappedRows(
         IEnumerable<PersistentObject> rows, SortColumn[] sortColumns, EntityTypeDefinition definition,
         SparkQuery? query)
     {
@@ -1336,7 +1489,7 @@ internal sealed record DatabasePage(int TotalItems);
         {
             if (!IsSortableAttribute(definition, query, col.Property))
             {
-                Console.WriteLine(
+                logger?.LogWarning(
                     $"Warning: sort column '{col.Property}' is not an attribute of {definition.Name}'s query " +
                     $"surface; the column is refused and rows keep their index order.");
                 continue;
@@ -1709,7 +1862,7 @@ internal sealed record DatabasePage(int TotalItems);
             // attribute and would fail this check itself.
             if (!IsSortableAttribute(definition, query, col.Property))
             {
-                Console.WriteLine(
+                logger?.LogWarning(
                     $"Warning: sort column '{col.Property}' is not an attribute of {definition.Name}'s query " +
                     $"surface; the column is refused and rows keep their index order.");
                 continue;
@@ -1720,7 +1873,7 @@ internal sealed record DatabasePage(int TotalItems);
             {
                 // Not an error: a model attribute can legitimately be absent from a narrower
                 // projection. But dropping the column silently reads as broken ordering (#279).
-                Console.WriteLine(
+                logger?.LogWarning(
                     $"Warning: sort column '{col.Property}' has no matching property on {entityType.Name}; " +
                     $"the column is skipped and rows keep their index order.");
                 continue;
@@ -1810,16 +1963,84 @@ internal sealed record DatabasePage(int TotalItems);
     /// hand-written index.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Which field names a search may name on <paramref name="queryable"/>, or <see langword="null"/>
+    /// when there is nothing to restrict to.
+    /// </summary>
+    /// <remarks>
+    /// Three answers, and the difference between the last two is the whole point:
+    /// <list type="bullet">
+    /// <item><b>null</b> — no static index is bound. A dynamic query's auto-index is derived from the
+    /// query's own shape (RavenDB creates <c>Auto/X/ByNote</c> and <c>Auto/X/BySearch(Note)</c>
+    /// separately), so it cannot name a field it does not index. Search unrestricted.</item>
+    /// <item><b>a set of names</b> — a static index is bound and declares a <c>[FromIndex]</c>
+    /// projection, whose properties are its field set. Search those, keep the pushdown.</item>
+    /// <item><b>empty</b> — a static index is bound with no projection to describe it. The emitted
+    /// field set then exists only inside the Map expression, as a rendered string, so it is genuinely
+    /// unknowable here. Pushing down would be a guess that 500s when wrong; the empty set makes
+    /// <see cref="ApplySearch"/> decline and the in-memory fallback take over. Six of the ten
+    /// hand-written indexes in this repository are in this shape.</item>
+    /// </list>
+    /// <para>
+    /// Read off the queryable rather than threaded from the caller so that both branches ask the same
+    /// question of the same object — the custom branch has no index binding of its own, only whatever
+    /// the author's method happened to return.
+    /// </para>
+    /// </remarks>
+    private IReadOnlySet<string>? ResolveIndexedSearchFields(object queryable)
+    {
+        if (queryable is not IRavenQueryInspector inspector) return null;
+
+        var indexName = inspector.IndexName;
+        if (string.IsNullOrEmpty(indexName)) return null;
+
+        // An auto-index is RavenDB's own, built per query shape; it is never in our catalog and never
+        // rejects a field the query names.
+        if (indexName.StartsWith("Auto/", StringComparison.Ordinal)) return null;
+
+        // The catalog keys on the CLR class name while RavenDB reports the deployed name, which
+        // replaces '_' with '/'. Unambiguous to reverse: a CLR type name cannot contain '/'.
+        var entry = indexCatalog.GetByIndexName(indexName.Replace('/', '_'));
+        if (entry?.ProjectionType is null) return EmptyFieldSet;
+
+        return ReflectionCache.GetOrAdd<(string Op, Type Projection), IReadOnlySet<string>>(
+            ("QueryExecutor.IndexedSearchFields", entry.ProjectionType),
+            static k => k.Projection.GetCachedProperties()
+                .Select(p => p.Name)
+                .ToHashSet(StringComparer.Ordinal));
+    }
+
+    private static readonly IReadOnlySet<string> EmptyFieldSet = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <remarks>
+    /// ⚠️ Substitutes the <c>{Name}Search</c> companion wherever one exists. That companion is the
+    /// field declared <c>FieldIndexing.Search</c>; the base field is a plain indexed field so that
+    /// equality and ordering keep working on the name every other path uses — including a hand-written
+    /// row filter, which goes through no redirect at all. <c>search()</c> over a non-analyzed field
+    /// returns <b>0 rows with HTTP 200</b>, so getting this substitution wrong loses full-text search
+    /// silently rather than loudly.
+    /// </remarks>
     private static PropertyInfo[] ResolveSearchableProperties(Type sortType)
         => ReflectionCache.GetOrAdd<(string Op, Type Type), PropertyInfo[]>(
             ("QueryExecutor.SearchableProperties", sortType),
-            static k => k.Type.GetCachedProperties()
-                .Where(static p => p.PropertyType == typeof(string)
-                    && p.CanRead
-                    && p.GetIndexParameters().Length == 0
-                    && !string.Equals(p.Name, "Id", StringComparison.Ordinal)
-                    && !p.IsIgnoredForSparkModel())
-                .ToArray());
+            static k =>
+            {
+                var all = k.Type.GetCachedProperties();
+
+                return all
+                    .Where(static p => p.PropertyType == typeof(string)
+                        && p.CanRead
+                        && p.GetIndexParameters().Length == 0
+                        && !string.Equals(p.Name, "Id", StringComparison.Ordinal)
+                        && !p.IsIgnoredForSparkModel())
+                    .Select(p => Array.Find(all, c =>
+                        string.Equals(c.Name, p.Name + SearchCompanionSuffix, StringComparison.Ordinal)
+                        && c.PropertyType == typeof(string)) ?? p)
+                    .ToArray();
+            });
+
+    /// <summary>Kept in lockstep with <c>IndexNaming.SearchCompanion</c>.</summary>
+    private const string SearchCompanionSuffix = "Search";
 
     /// <summary>
     /// Adds one <c>Search</c> clause per searchable field, and reports whether anything was added.
@@ -1834,9 +2055,25 @@ internal sealed record DatabasePage(int TotalItems);
     /// <para>Every argument is passed explicitly because <see cref="MethodInfo.Invoke"/> does not apply
     /// optional parameter defaults.</para>
     /// </summary>
-    private static (object Queryable, bool Applied) ApplySearch(object queryable, Type elementType, string term)
+    private static (object Queryable, bool Applied) ApplySearch(
+        object queryable, Type elementType, string term, IReadOnlySet<string>? indexedFields)
     {
         var properties = ResolveSearchableProperties(elementType);
+
+        // Restricted to what the bound index actually declares. RavenDB rejects a query naming a
+        // field a static index does not emit — "The field 'X' is not indexed in 'Idx', cannot
+        // query/sort on fields that are not indexed" — and it rejects the WHOLE query, so one
+        // unmapped field among ten takes the other nine down with it. That was a live 500 on every
+        // search over an indexed query (#431 SP4).
+        //
+        // Null means there is nothing to restrict to: a dynamic query's auto-index is built from the
+        // query's own shape, so it cannot name a field it does not index. An EMPTY set means a static
+        // index is bound but its field list is unknowable, and the intersection below then empties
+        // the property list, which reports Applied: false and hands the search to the in-memory
+        // fallback. Slower, never wrong.
+        if (indexedFields is not null)
+            properties = [.. properties.Where(p => indexedFields.Contains(p.Name))];
+
         if (properties.Length == 0)
         {
             return (queryable, false);
@@ -1908,6 +2145,25 @@ internal sealed record DatabasePage(int TotalItems);
     /// may not see it.
     /// </para>
     /// <para>
+    /// <b>⚠️ A filter compares the stored value, which redaction does not hide.</b>
+    /// <see cref="IRowSecurity.RedactAsync"/> nulls a protected attribute in the <em>response</em>;
+    /// this comparison runs against the value in the database. So filtering
+    /// <c>Salary Includes [100000]</c> returns the row with <c>Salary: null</c>, and its presence —
+    /// and <c>TotalItems</c> — confirms the value. An equality oracle on something the caller may
+    /// never read.
+    /// <para>
+    /// It is gated on <c>ShowedOn</c> and <c>canFilter</c> rather than on the redaction hook, for the
+    /// reason the sort path already states: <c>GetProtectedAttributesAsync</c> takes an entity and may
+    /// answer differently per row, so it cannot decide a query-level operation — by the time rows
+    /// exist the filtering has already happened. The mitigation is therefore static while the hazard
+    /// is dynamic, and that asymmetry cannot be closed here.
+    /// </para>
+    /// <para>
+    /// <b>An app that protects an attribute per-row must also set <c>canFilter: false</c> on it</b>
+    /// (and <c>canListDistincts: false</c>, which is a stronger disclosure again). Both default to
+    /// <see langword="true"/>, so this is an obligation, not a default. See
+    /// <c>docs/guide-authorization.md</c>.
+    /// </para>
     /// <b>The property is resolved through the sort companion</b>, exactly as ordering is. A
     /// <c>[Search]</c>-analyzed field is indexed as separate lower-cased terms — <c>Volkswagen Golf
     /// GTI</c> becomes three — so an equality comparison against the display field matches nothing
@@ -1925,7 +2181,7 @@ internal sealed record DatabasePage(int TotalItems);
             var attribute = ColumnCapabilities.FindQuerySurfaceAttribute(definition, filter.Name);
             if (attribute is null || !ColumnCapabilities.CanFilter(attribute, query))
             {
-                Console.WriteLine(
+                logger?.LogWarning(
                     $"Warning: filter column '{filter.Name}' is not a filterable attribute of " +
                     $"{definition.Name}'s query surface; the filter is refused and the rows are not narrowed.");
                 continue;
@@ -1936,7 +2192,7 @@ internal sealed record DatabasePage(int TotalItems);
             {
                 // Same shape as the sort path: a model attribute can legitimately be absent from a
                 // narrower projection, and dropping it silently reads as a broken filter.
-                Console.WriteLine(
+                logger?.LogWarning(
                     $"Warning: filter column '{filter.Name}' has no property on {sortType.Name}; " +
                     $"the filter is skipped.");
                 continue;
@@ -1946,15 +2202,30 @@ internal sealed record DatabasePage(int TotalItems);
             var member = Expression.Property(parameter, property);
 
             Expression? predicate = null;
+            var matchesNothing = false;
 
             if (filter.Includes is { Length: > 0 } includes)
+            {
                 predicate = AnyEquals(member, includes, property.PropertyType);
 
-            if (filter.Excludes is { Length: > 0 } excludes)
-            {
-                var none = Expression.Not(AnyEquals(member, excludes, property.PropertyType));
-                predicate = predicate is null ? none : Expression.AndAlso(predicate, none);
+                // Not one requested value is representable on this column, so no stored value can
+                // equal any of them. That is an empty result, NOT an absent filter — treating it as
+                // absent is what returned the whole unnarrowed set for a nonsense value.
+                matchesNothing = predicate is null;
             }
+
+            if (!matchesNothing && filter.Excludes is { Length: > 0 } excludes)
+            {
+                // The mirror image: a value that cannot exist on this column excludes nothing, so an
+                // empty chain here means "exclude nothing" rather than "exclude everything".
+                if (AnyEquals(member, excludes, property.PropertyType) is { } any)
+                {
+                    var none = Expression.Not(any);
+                    predicate = predicate is null ? none : Expression.AndAlso(predicate, none);
+                }
+            }
+
+            if (matchesNothing) predicate = Impossible(member, property.PropertyType);
 
             if (predicate is null) continue;
 
@@ -1965,61 +2236,182 @@ internal sealed record DatabasePage(int TotalItems);
         return queryable;
     }
 
-    /// <summary>An OR-chain of equality comparisons — the "one of these values" half of a filter.</summary>
-    private static Expression AnyEquals(MemberExpression member, object?[] values, Type propertyType)
+    /// <summary>
+    /// A predicate on <paramref name="member"/> that no row can satisfy, for the case where not one
+    /// requested value is representable on the column.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ It has to be a real comparison. RavenDB rejects a constant predicate outright ("Constants
+    /// expressions such as Where(x => true) are not allowed in the RavenDB queries"), and capping the
+    /// queryable instead does not work either: <c>Take(0)</c> bounds the page but <b>not</b>
+    /// <c>Count()</c>, so the rows vanish while <c>TotalItems</c> keeps reporting the unfiltered
+    /// total. Measured — that is how this method came to exist.
+    /// <para>
+    /// A non-nullable column holds no nulls, so lifting it and comparing to null is already
+    /// impossible. Anything that can hold a null needs the contradiction, because <c>== null</c> is a
+    /// legitimate match there — which was the original defect.
+    /// </para>
+    /// </remarks>
+    private static Expression Impossible(MemberExpression member, Type propertyType)
     {
+        if (propertyType.IsValueType && Nullable.GetUnderlyingType(propertyType) is null)
+        {
+            var lifted = typeof(Nullable<>).MakeGenericType(propertyType);
+            return Expression.Equal(
+                Expression.Convert(member, lifted), Expression.Constant(null, lifted));
+        }
+
+        var isNull = Expression.Equal(member, Expression.Constant(null, propertyType));
+        var isNotNull = Expression.NotEqual(member, Expression.Constant(null, propertyType));
+        return Expression.AndAlso(isNull, isNotNull);
+    }
+
+    /// <summary>
+    /// An OR-chain of equality comparisons — the "one of these values" half of a filter, or
+    /// <see langword="null"/> when not one requested value can be represented on this column.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ A <see langword="null"/> return means <b>"no row can match"</b>, not "no filter". The caller
+    /// must narrow the result to nothing for an <c>includes</c> chain, and ignore it for an
+    /// <c>excludes</c> chain. Conflating the two is what made an unconvertible value on a nullable
+    /// column return the rows with <em>no</em> value — the exact complement of the request.
+    /// </remarks>
+    private static Expression? AnyEquals(MemberExpression member, object?[] values, Type propertyType)
+    {
+        // A collection column holds SEVERAL values per row, so "one of these values" has to mean the
+        // collection CONTAINS one of them — never that the collection EQUALS one of them. RavenDB
+        // indexes such a field as multi-valued terms, so Any(e => e == v) is meaningful and renders
+        // as `Field = 'v'` in RQL.
+        //
+        // Comparing the collection itself is what shipped, and it failed silently: a scalar wire value
+        // cannot be coerced onto string[], so the conversion answered null and the comparison became
+        // `x.Flags == null` — matching nothing on a non-nullable column and, worse, exactly the rows
+        // with NO value on a nullable one.
+        if (SparkModelShape.GetCollectionElementType(propertyType) is { } elementType)
+            return AnyContains(member, values, elementType);
+
         Expression? any = null;
 
         foreach (var raw in values)
         {
-            var constant = Expression.Constant(ConvertFilterValue(raw, propertyType), propertyType);
-            var equals = Expression.Equal(member, constant);
+            // ⚠️ "Did not convert" and "the caller asked for null" are DIFFERENT, and collapsing them
+            // was a disclosure oracle as well as a correctness bug. Measured on DemoApp's ECarStatus?
+            // column, anonymously: a valid-but-absent member returned 0 rows while a non-member
+            // returned 3 — the rows whose Status is null. So an unauthenticated caller could
+            // enumerate a server-side enum by watching 0-vs-N, and every one of those 3 rows was
+            // wrong besides. A value that does not convert is simply dropped here; the caller turns
+            // an empty chain into an empty result.
+            if (!TryConvertFilterValue(raw, propertyType, out var value))
+                continue;
+
+            var equals = Expression.Equal(member, Expression.Constant(value, propertyType));
             any = any is null ? equals : Expression.OrElse(any, equals);
         }
 
-        // Unreachable for a non-empty array, but an empty OR-chain must not become "match nothing".
-        return any ?? Expression.Constant(true);
+        return any;
     }
 
     /// <summary>
-    /// Coerces one wire value onto the property's CLR type.
+    /// The collection form of <see cref="AnyEquals"/>: the row matches when the collection holds any
+    /// of the values. Values are coerced to the <paramref name="elementType"/>, not to the collection
+    /// type — coercing to the collection is what produced <c>x.Flags == null</c>.
+    /// </summary>
+    private static Expression? AnyContains(MemberExpression member, object?[] values, Type elementType)
+    {
+        var element = Expression.Parameter(elementType, "e");
+        Expression? any = null;
+
+        foreach (var raw in values)
+        {
+            // Same rule as AnyEquals: an element value that does not convert is dropped, and an empty
+            // chain means "no row can match" rather than "no filter".
+            if (!TryConvertFilterValue(raw, elementType, out var value))
+                continue;
+
+            var equals = Expression.Equal(element, Expression.Constant(value, elementType));
+
+            any = any is null ? equals : Expression.OrElse(any, equals);
+        }
+
+        if (any is null) return null;
+
+        var contains = Expression.Call(
+            typeof(Enumerable), nameof(Enumerable.Any), [elementType],
+            member, Expression.Lambda(any, element));
+
+        // A document that never wrote the field projects as a null collection, and Enumerable.Any
+        // throws on it. That is not hypothetical here: a custom query is allowed to materialize with
+        // ToList() and return the set, in which case this expression runs in-process over objects
+        // rather than in RavenDB. The guard costs nothing on the database side, where an absent field
+        // simply matches no term.
+        return Expression.AndAlso(
+            Expression.NotEqual(member, Expression.Constant(null, member.Type)), contains);
+    }
+
+    /// <summary>
+    /// Coerces one wire value onto the property's CLR type, reporting whether it is representable
+    /// there at all.
     /// </summary>
     /// <remarks>
     /// The body arrives through <c>System.Text.Json</c> as <see cref="JsonElement"/>, so every value
-    /// needs converting before it can be compared. <see langword="null"/> is preserved rather than
-    /// coerced — it is a real, selectable distinct meaning "no value", not an absent filter.
+    /// needs converting before it can be compared.
     /// <para>
-    /// An unconvertible value yields <see langword="null"/> rather than throwing: a filter is caller
-    /// input, and a malformed one should narrow to nothing rather than 500. It cannot be used to
-    /// probe types, because the refusal is indistinguishable from a value that simply matches no row.
+    /// ⚠️ <b>The boolean is the whole point of this method.</b> It returns <see langword="false"/> for
+    /// a value that cannot exist on this column, and <see langword="true"/> with a
+    /// <see langword="null"/> <paramref name="value"/> when the caller genuinely asked for "no value"
+    /// — a real, selectable distinct. The previous signature returned <see langword="null"/> for both,
+    /// and every caller then emitted <c>column == null</c>, so an unparseable value silently selected
+    /// the rows with no value: the exact complement of the request on a nullable column, and an enum
+    /// oracle on any column (a valid-but-absent member returns nothing, a non-member returns the
+    /// nulls). A filter is caller input, so a malformed one must narrow to nothing rather than 500 —
+    /// but "narrow to nothing" has to mean nothing, not "match the nulls".
+    /// </para>
+    /// <para>
+    /// A <see langword="null"/> request is representable only where the column can hold one: a
+    /// reference type or a <see cref="Nullable{T}"/>. Asking for null on a non-nullable value type is
+    /// unrepresentable, so it returns <see langword="false"/> and the row set narrows to nothing,
+    /// which is also what such a column would honestly answer.
     /// </para>
     /// </remarks>
-    private static object? ConvertFilterValue(object? raw, Type propertyType)
+    private static bool TryConvertFilterValue(object? raw, Type propertyType, out object? value)
     {
+        value = null;
         var target = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+        var nullable = !propertyType.IsValueType || Nullable.GetUnderlyingType(propertyType) is not null;
 
-        if (raw is null) return null;
+        if (raw is null) return nullable;
 
         try
         {
             if (raw is JsonElement element)
             {
-                if (element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return null;
-                if (target == typeof(string)) return element.ToString();
-                if (target == typeof(Guid)) return element.TryGetGuid(out var g) ? g : null;
-                if (target.IsEnum) return Enum.Parse(target, element.ToString(), ignoreCase: true);
+                if (element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return nullable;
+                if (target == typeof(string)) { value = element.ToString(); return true; }
+                if (target == typeof(Guid))
+                {
+                    if (!element.TryGetGuid(out var g)) return false;
+                    value = g;
+                    return true;
+                }
+                if (target.IsEnum) { value = Enum.Parse(target, element.ToString(), ignoreCase: true); return true; }
 
-                return JsonSerializer.Deserialize(element.GetRawText(), target);
+                value = JsonSerializer.Deserialize(element.GetRawText(), target);
+
+                // Deserialize answers null for a JSON literal that is well-formed but not a member of
+                // the target type. That is a failure, not a request for null.
+                return value is not null;
             }
 
-            if (target.IsInstanceOfType(raw)) return raw;
-            if (target.IsEnum) return Enum.Parse(target, raw.ToString() ?? "", ignoreCase: true);
+            if (target.IsInstanceOfType(raw)) { value = raw; return true; }
+            if (target.IsEnum) { value = Enum.Parse(target, raw.ToString() ?? "", ignoreCase: true); return true; }
 
-            return Convert.ChangeType(raw, target);
+            value = Convert.ChangeType(raw, target);
+            return value is not null;
         }
         catch
         {
-            return null;
+            value = null;
+            return false;
         }
     }
 
@@ -2076,6 +2468,34 @@ internal sealed record DatabasePage(int TotalItems);
     }
 
     /// <summary>The open <c>Queryable.Where(source, predicate)</c> overload, closed over <paramref name="entityType"/>.</summary>
+    /// <summary>
+    /// Lifts a sequence to <see cref="IQueryable"/> so one expression can serve every shape.
+    /// </summary>
+    /// <remarks>
+    /// Goes through <see cref="Enumerable.Cast{TResult}"/> first because a method may legitimately
+    /// declare a non-generic <see cref="System.Collections.IEnumerable"/>, which
+    /// <see cref="Queryable.AsQueryable{TElement}"/> cannot accept. Both steps are lazy, so nothing
+    /// is materialized here — the filter still composes before enumeration.
+    /// </remarks>
+    private static object AsQueryable(System.Collections.IEnumerable sequence, Type elementType)
+    {
+        var cast = ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo>(
+            ("QueryExecutor.EnumerableCast", elementType),
+            static k => typeof(Enumerable).GetMethods()
+                .First(m => m.Name == nameof(Enumerable.Cast) && m.IsGenericMethod)
+                .MakeGenericMethod(k.Entity));
+
+        var asQueryable = ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo>(
+            ("QueryExecutor.AsQueryable", elementType),
+            static k => typeof(Queryable).GetMethods()
+                .First(m => m.Name == nameof(Queryable.AsQueryable)
+                    && m.IsGenericMethod
+                    && m.GetParameters().Length == 1)
+                .MakeGenericMethod(k.Entity));
+
+        return asQueryable.Invoke(null, [cast.Invoke(null, [sequence])!])!;
+    }
+
     private static MethodInfo QueryableWhere(Type entityType)
         => ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo>(
             ("QueryExecutor.QueryableWhere", entityType),
@@ -2111,13 +2531,20 @@ internal sealed record DatabasePage(int TotalItems);
         var attribute = ColumnCapabilities.FindQuerySurfaceAttribute(definition, requested);
         if (attribute is null) return false;
 
+        // ⚠️ Structural refusals come BEFORE the model-declared exemption. The exemption exists so an
+        // author's own sortColumns is not second-guessed by a disclosure rule the author already
+        // answered — but ordering by a collection is not a disclosure question, it silently DROPS the
+        // rows whose collection is empty. An author cannot consent to a result set that changes size,
+        // so this one is not theirs to waive.
+        if (attribute.IsArray) return false;
+
         // Model-declared order: the caller did not ask for this one.
         if (query is { SortColumnsAreCallerSupplied: false }) return true;
 
         return ColumnCapabilities.CanSort(attribute, query);
     }
 
-    private static string ResolveSortProperty(Type sortType, string requested)
+    internal static string ResolveSortProperty(Type sortType, string requested)
     {
         var companion = sortType.GetCachedProperty(requested + "Sort");
         if (companion is null) return requested;

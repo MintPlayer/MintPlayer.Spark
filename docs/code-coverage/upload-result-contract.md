@@ -278,9 +278,9 @@ compare the build against itself and every ratchet would pass. The self-exclusio
 the query, not after it. So:
 
 ```
-Query<Commits_ByRepository.Result, Commits_ByRepository>()
+Query<VCommit, Commits_ByRepository>()
   .Where(r => r.Repository == repository.Id && r.Branch == baselineBranch && r.HasCoverage)
-  .OrderByDescending(r => r.AuthoredAt)
+  .OrderByDescending(r => r.Date)
   .OfType<Commit>().Take(2)          // 2, so the current commit can be skipped
 ```
 

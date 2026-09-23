@@ -433,10 +433,16 @@ Two things worth knowing:
   `EMPTY_STRING` and orders on those literals, which on a lower-cased companion land before every real value.
   If a UI wants them last, that has to be arranged explicitly.
 
-You never name the companion when sorting. `sortBy`, the `?sortBy=` override and any caller all keep naming the
-display attribute; the query executor redirects to `{Name}Sort` when the projection has one and it is
-`[IgnoreProperty]`. That `[IgnoreProperty]` is required — it is what distinguishes a real companion from an
-ordinary property that happens to be named `FooSort`.
+You never name the companion when sorting **or filtering**. `sortBy`, the `?sortBy=` override, a caller and a
+column filter all keep naming the display attribute; the query executor redirects to `{Name}Sort` when the
+projection has one and it is `[IgnoreProperty]`. Filtering goes through the same resolver, and has to —
+`FieldIndexing.Search` destroys equality on the base field as well as ordering.
+
+⚠️ **The `[IgnoreProperty]` is required, but it does not identify the companion the way this guide used to
+claim.** The resolver asks only "does `{requested}Sort` exist and is it ignored?" — it never checks that the
+property is a companion *of that field*. So an unrelated `[IgnoreProperty] public string FooSort` on a
+projection silently becomes the sort **and filter** target for `Foo`. Do not name an ignored property
+`{Something}Sort` unless you mean it.
 
 ### A sort column must be on the query surface
 
@@ -529,7 +535,7 @@ public partial class VPerson
     // FullNameSort is generated.
 }
 
-public partial class People_Overview : AbstractIndexCreationTask<Person>
+public partial class People_Overview : SparkIndexCreationTask<Person>
 {
     public People_Overview()
     {
@@ -540,16 +546,55 @@ public partial class People_Overview : AbstractIndexCreationTask<Person>
                             FullNameSort = person.FirstName + " " + person.LastName,
                         };
 
-        IndexSearchFields();                 // generated from the [Search] attributes
         StoreAllFields(FieldStorage.Yes);
     }
 }
 ```
 
-`IndexSearchFields()` carries one `Index(...)` call per `[Search]` property and `Exact` per `DateTimeOffset`
-property. **You must call it** — a generator can add members to a partial class but cannot add statements to a
-constructor you wrote. For the same reason the **map assignments stay yours**; `SPARK006` flags a companion the
-map never assigns.
+Note the base class: **derive from `SparkIndexCreationTask<T>`, not `AbstractIndexCreationTask<T>`.** It
+overrides `CreateIndexDefinition()` to call a generated `ConfigureSparkFields()`, which carries one
+`Index(...)` call per `[Search]` property and the `FieldIndexing.No` wrapper each `DateTimeOffset`
+property needs. Nothing to remember, and nothing to forget.
+
+<details>
+<summary>The older form, and why it is still supported</summary>
+
+Before the base class existed, the generator emitted the same calls into a `private void
+IndexSearchFields()` that your constructor had to invoke:
+
+```csharp
+public partial class People_Overview : AbstractIndexCreationTask<Person>
+{
+    public People_Overview()
+    {
+        Map = /* … */;
+        IndexSearchFields();     // ⚠️ nothing checks this line exists
+        StoreAllFields(FieldStorage.Yes);
+    }
+}
+```
+
+That works and is **not deprecated** — it is the only mechanism for an index the base class cannot
+cover: a multi-map, a two-argument map-reduce, a JavaScript index. But it is easy to get wrong, and the
+failure is invisible: the index deploys, reports healthy and returns correct row counts while full-text
+search matches nothing. For a `DateTimeOffset` field it is worse — Corax parks the whole index at
+`state=Error, entries=0`. **`SPARK018` now flags an index that never calls it**, and an index on
+`SparkIndexCreationTask<T>` is exempt because the base class supplies the call.
+
+If you write your own `ConfigureSparkFields()`, guard each declaration:
+
+```csharp
+if (!IndexesStrings.ContainsKey(nameof(VPerson.FullName)))
+    Index(nameof(VPerson.FullName), FieldIndexing.Search);
+```
+
+`Index(string, FieldIndexing)` is a `Dictionary.Add`, so declaring a field twice throws at deploy rather
+than overwriting. The generator emits that guard for you.
+
+</details>
+
+A generator can add members to a partial class but cannot add statements to a constructor you wrote, so
+the **map assignments stay yours**; `SPARK006` flags a companion the map never assigns.
 
 Both classes must be `partial`: `SPARK_INDEX_001` if the index entity is not, `SPARK_INDEX_009` if the index is
 not.

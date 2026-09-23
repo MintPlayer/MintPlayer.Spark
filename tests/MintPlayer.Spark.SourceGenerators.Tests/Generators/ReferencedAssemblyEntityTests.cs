@@ -63,8 +63,8 @@ public class ReferencedAssemblyEntityTests
         var generated = RunWithLibrary("namespace Fleet; public class Program { }")
             .GeneratedSources[0].Source;
 
-        generated.Should().Contain("Index(nameof(VCar.Model), global::Raven.Client.Documents.Indexes.FieldIndexing.Search);");
-        generated.Should().Contain("ModelSort = car.Model,");
+        generated.Should().Contain("Index(nameof(VCar.ModelSearch), global::Raven.Client.Documents.Indexes.FieldIndexing.Search);");
+        generated.Should().Contain("ModelSearch = car.Model,");
     }
 
     /// <summary>

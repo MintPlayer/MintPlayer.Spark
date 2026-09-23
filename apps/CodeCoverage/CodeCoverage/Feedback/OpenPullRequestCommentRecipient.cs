@@ -72,7 +72,7 @@ public partial class OpenPullRequestCommentRecipient : IRecipient<OpenPullReques
     {
         if (repository.LatestCoverage is not null) return true;
 
-        return await session.Query<Indexes.Commits_ByRepository.Result, Indexes.Commits_ByRepository>()
+        return await session.Query<Indexes.VCommit, Indexes.Commits_ByRepository>()
             .Where(c => c.Repository == repository.Id && c.HasCoverage)
             .AnyAsync(cancellationToken);
     }

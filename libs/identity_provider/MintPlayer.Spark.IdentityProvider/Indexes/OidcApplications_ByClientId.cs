@@ -22,6 +22,10 @@ public class OidcApplications_ByClientId : AbstractIndexCreationTask<OidcApplica
         // to the query alone made it worse, not better: the query then compared a verbatim input
         // against lowercased terms, so the *correctly* cased id stopped matching while the
         // lowercased one still did. The index side has to change with the query side.
-        Indexes.Add(x => x.ClientId, FieldIndexing.Exact);
+        // Declared by name, not by lambda: the lambda-keyed dictionary is invisible to the
+        // string-keyed guard the generator emits, so the two forms collide as an
+        // IndexCompilationException at startup the moment this index gains a projection. The string
+        // overload is also the only one that can name a computed or companion field.
+        Index(nameof(OidcApplication.ClientId), FieldIndexing.Exact);
     }
 }

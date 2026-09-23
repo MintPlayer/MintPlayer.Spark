@@ -160,8 +160,60 @@ public class HandWrittenSortFieldsProducer : Producer, IDiagnosticReporter
                 foreach (var field in indexEntity.IndexedFields)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    writer.WriteLine(
-                        $"Index(nameof({indexEntity.FullName}.{field.Name}), {RavenIndexes}.FieldIndexing.{field.FieldIndexing});");
+
+                    // Guarded because Index(string, FieldIndexing) is a Dictionary.Add, not an
+                    // indexer assignment: declaring the same field twice throws ArgumentException
+                    // out of CreateIndexDefinition(), i.e. the application fails to start. That is
+                    // not a theoretical shape — it is what a half-migrated index looks like while a
+                    // constructor call and a base-class call site both exist, and it is what happens
+                    // if an author hand-writes an Index(...) for a field the generator also emits.
+                    // Skipping a field that is already declared makes the hand-written declaration
+                    // win, which is the right precedence: the generator only ever supplies defaults.
+                    using (writer.OpenBlock(
+                        $"if (!IndexesStrings.ContainsKey(nameof({indexEntity.FullName}.{field.Name})))"))
+                    {
+                        writer.WriteLine(
+                            $"Index(nameof({indexEntity.FullName}.{field.Name}), {RavenIndexes}.FieldIndexing.{field.FieldIndexing});");
+                    }
+
+                    // ⚠️ A field that is neither indexed nor stored is REJECTED by Corax, and it
+                    // rejects it at map time: the deploy succeeds, then the index sits at
+                    // state=Error, entries=0 and every query against it 500s. Measured —
+                    // "A field 'DateRaw' that is neither indexed nor stored is useless".
+                    //
+                    // So FieldIndexing.No obliges us to store the field. This was previously correct
+                    // only by accident, because every index carrying a DateTimeOffset also happened to
+                    // call StoreAllFields; one that does not simply fails to build. Storing the
+                    // WRAPPER is also what makes the offset survive, which is why the base field stays
+                    // unstored and is read back from the document.
+                    //
+                    // Guarded on StoresStrings SEPARATELY from the Index guard above: the two
+                    // dictionaries are independent, and an author who hand-wrote only the Store (or
+                    // only the Index) would otherwise collide on the other one. Store(string, ...) is
+                    // a Dictionary.Add too, so a collision is a startup crash, not a last-write-wins.
+                    if (field.FieldIndexing == "No")
+                    {
+                        using (writer.OpenBlock(
+                            $"if (!StoresStrings.ContainsKey(nameof({indexEntity.FullName}.{field.Name})))"))
+                        {
+                            writer.WriteLine(
+                                $"Store(nameof({indexEntity.FullName}.{field.Name}), {RavenIndexes}.FieldStorage.Yes);");
+                        }
+                    }
+                }
+            }
+
+            // Only for an index that actually has the base class: `protected override` against a base
+            // that declares no such method is a hard CS0115, and an index deriving straight from
+            // AbstractIndexCreationTask<T> is still perfectly valid — it just has to keep calling the
+            // method from its constructor.
+            if (indexEntity.IsSparkIndex)
+            {
+                writer.WriteLine();
+                writer.WriteLine("/// <summary>Called by <c>SparkIndexCreationTask</c> when the index definition is built, so the constructor does not have to remember.</summary>");
+                using (writer.OpenBlock("protected override void ConfigureSparkFields()"))
+                {
+                    writer.WriteLine($"{IndexSearchFieldsMethod}();");
                 }
             }
         }

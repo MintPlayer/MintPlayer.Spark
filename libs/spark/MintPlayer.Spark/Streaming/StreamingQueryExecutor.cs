@@ -58,6 +58,9 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
 
         // Resolved once: a stream is one result whose rows arrive over time, so its shape is fixed
         // when it opens.
+        // Filtering is refused for a streaming query inside ColumnCapabilities, so these columns
+        // arrive with CanFilter/CanListDistincts already false and the grid renders no filter
+        // affordance. Nothing to do here.
         var columns = Services.QueryResultProjector.BuildColumns(entityTypeDef, query);
 
         // Resolve CLR type and Actions class. Both failures are refused at --spark-verify-model and

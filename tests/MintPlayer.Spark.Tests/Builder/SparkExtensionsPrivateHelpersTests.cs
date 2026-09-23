@@ -32,9 +32,10 @@ public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
     [Theory]
     [InlineData(typeof(SimpleProbeIndex), true)]
     [InlineData(typeof(MultiMapProbeIndex), true)]
+    [InlineData(typeof(MapReduceProbeIndex), true)]
     [InlineData(typeof(string), false)]
     [InlineData(typeof(SparkExtensionsPrivateHelpersTests), false)]
-    public void IsAbstractIndexCreationTask_walks_basetype_chain_and_matches_only_AbstractIndexCreationTask_generics(Type type, bool expected)
+    public void IsAbstractIndexCreationTask_agrees_with_what_RavenDB_will_actually_deploy(Type type, bool expected)
     {
         var method = PrivateMethod("IsAbstractIndexCreationTask");
 
@@ -110,9 +111,13 @@ public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
 
         PrivateMethod("CreateSparkIndexes").Invoke(null, [app, (IReadOnlyList<Assembly>)[thisAssembly]]);
 
-        // The fixture-local SimpleProbeIndex and MultiMapProbeIndex must have been registered.
+        // Every fixture-local index must have been registered, including the two whose collection type
+        // is not derivable. Registering them is the point: a multi-map or map-reduce index that is not
+        // in the catalog cannot be resolved by an explicit "indexName" binding, even though RavenDB
+        // has deployed it.
         indexCatalog.Received().RegisterIndex(typeof(SimpleProbeIndex));
         indexCatalog.Received().RegisterIndex(typeof(MultiMapProbeIndex));
+        indexCatalog.Received().RegisterIndex(typeof(MapReduceProbeIndex));
     }
 
     [Fact]
@@ -183,6 +188,34 @@ public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
         public MultiMapProbeIndex()
         {
             AddMap<ProbeEntity>(entities => from e in entities select new { e.Name });
+        }
+    }
+
+    /// <summary>
+    /// A real two-argument map-reduce index — the shape that used to be invisible.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <c>AbstractIndexCreationTask&lt;TDocument, TReduceResult&gt;</c> derives from
+    /// <c>AbstractGenericIndexCreationTask&lt;TReduceResult&gt;</c>, <b>not</b> from the one-argument
+    /// form. Discovery used to test open-generic identity against the one-argument form only, so an
+    /// index like this failed that test, was never discovered, and so was never registered — while
+    /// <c>IndexCreation.CreateIndexes</c> deployed it anyway using RavenDB's own criterion. A query
+    /// naming it then failed with "no deployed index has that name", which was false.
+    /// </remarks>
+    public class MapReduceProbeIndex : AbstractIndexCreationTask<ProbeEntity, MapReduceProbeIndex.Result>
+    {
+        public class Result
+        {
+            public string? Name { get; set; }
+            public int Count { get; set; }
+        }
+
+        public MapReduceProbeIndex()
+        {
+            Map = entities => from e in entities select new Result { Name = e.Name, Count = 1 };
+            Reduce = results => from r in results
+                                group r by r.Name into g
+                                select new Result { Name = g.Key, Count = g.Sum(x => x.Count) };
         }
     }
 

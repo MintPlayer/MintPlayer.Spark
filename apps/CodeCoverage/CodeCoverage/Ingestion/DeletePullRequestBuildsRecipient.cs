@@ -32,7 +32,7 @@ public partial class DeletePullRequestBuildsRecipient : IRecipient<DeletePullReq
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, message.RepositoryGitHubId), cancellationToken);
         var repositoryId = repository?.Id ?? Repository.DocumentId(EForgeProvider.GitHub, message.RepositoryGitHubId);
 
-        var commits = await session.Query<Commits_ByRepository.Result, Commits_ByRepository>()
+        var commits = await session.Query<VCommit, Commits_ByRepository>()
             .Where(r => r.Repository == repositoryId && r.PullRequestNumber == message.PullRequestNumber)
             .OfType<Commit>()
             .Take(256)

@@ -82,12 +82,12 @@ public class TranslatedStringFanOutTests
     {
         var generated = Run(TranslatedCar).GeneratedSources[0].Source;
 
-        generated.Should().Contain("Index(nameof(VCar.Description_nl), global::Raven.Client.Documents.Indexes.FieldIndexing.Search);");
-        generated.Should().Contain("public string? Description_nlSort { get; set; }");
-        generated.Should().Contain("Description_nlSort = car.Description!.Translations[\"nl\"],");
+        generated.Should().Contain("Index(nameof(VCar.Description_nlSearch), global::Raven.Client.Documents.Indexes.FieldIndexing.Search);");
+        generated.Should().Contain("public string? Description_nlSearch { get; set; }");
+        generated.Should().Contain("Description_nlSearch = car.Description!.Translations[\"nl\"],");
     }
 
-    /// <summary>Matches the shape issue #210 asks for: <c>Name_nl</c> visible, <c>Name_nlSort</c> ignored.</summary>
+    /// <summary>Matches the shape issue #210 asks for: <c>Name_nl</c> visible, <c>Name_nlSearch</c> ignored.</summary>
     [Fact]
     public void Language_fields_stay_in_the_model_and_only_companions_are_ignored()
     {
@@ -97,7 +97,7 @@ public class TranslatedStringFanOutTests
         var languageLine = Array.FindIndex(lines, l => l.Contains("public string? Description_nl {"));
         lines[languageLine - 1].Should().NotContain("IgnoreProperty");
 
-        var companionLine = Array.FindIndex(lines, l => l.Contains("public string? Description_nlSort {"));
+        var companionLine = Array.FindIndex(lines, l => l.Contains("public string? Description_nlSearch {"));
         lines[companionLine - 1].Should().Contain("IgnorePropertyAttribute");
     }
 
@@ -130,7 +130,7 @@ public class TranslatedStringFanOutTests
             """).GeneratedSources[0].Source;
 
         generated.Should().Contain("Description_nl");
-        generated.Should().NotContain("Description_nlSort");
+        generated.Should().NotContain("Description_nlSearch");
         generated.Should().NotContain("nameof(VCar.Description_nl)");
     }
 

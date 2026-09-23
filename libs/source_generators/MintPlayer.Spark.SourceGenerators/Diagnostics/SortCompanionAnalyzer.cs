@@ -2,6 +2,8 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
+using MintPlayer.Spark.SourceGenerators.Models;
+using MintPlayer.Spark.SourceGenerators.Naming;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -29,8 +31,13 @@ public sealed partial class SortCompanionAnalyzer : DiagnosticAnalyzer
     private const string FromIndexAttributeFullName = "MintPlayer.Spark.Abstractions.FromIndexAttribute";
     private const string IgnorePropertyAttributeFullName = "MintPlayer.Spark.Abstractions.IgnorePropertyAttribute";
 
+    /// <summary>Kept in step with <c>GenerateIndexGenerator.HandWrittenProducer.IndexSearchFieldsMethod</c>.</summary>
+    private const string IndexSearchFieldsMethodName = "IndexSearchFields";
+    private const string SparkIndexCreationTaskFullName = "MintPlayer.Spark.SparkIndexCreationTask<TDocument>";
+    private const string SparkMultiMapIndexCreationTaskFullName = "MintPlayer.Spark.SparkMultiMapIndexCreationTask<TReduceResult>";
+
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
-        [MissingSortCompanionRule, UnassignedSortCompanionRule];
+        [MissingSortCompanionRule, UnassignedSortCompanionRule, UncalledIndexSearchFieldsRule];
 
     public override void Initialize(AnalysisContext context)
     {
@@ -53,6 +60,8 @@ public sealed partial class SortCompanionAnalyzer : DiagnosticAnalyzer
         if (fromIndex.ConstructorArguments.Length == 0) return;
         if (fromIndex.ConstructorArguments[0].Value is not INamedTypeSymbol indexType) return;
 
+        ReportUncalledIndexSearchFields(context, indexEntity, indexType);
+
         var constructor = IndexConstructor(indexType, context.CancellationToken);
         if (constructor is null) return;
 
@@ -71,7 +80,12 @@ public sealed partial class SortCompanionAnalyzer : DiagnosticAnalyzer
         {
             context.CancellationToken.ThrowIfCancellationRequested();
 
-            var companionName = field + "Sort";
+            // ⚠️ "Search", not "Sort". The analyzed copy now lives on {Name}Search and the base field
+            // is left plain; the roles were swapped so that equality and ordering work on the name
+            // every path uses. SPARK005/006 still ask the same question — is there a companion, and is
+            // it assigned — because a hand-written index that declares a field Search without giving
+            // it a separate companion still destroys equality on the field it declared.
+            var companionName = field + "Search";
 
             if (!propertyNames.Contains(companionName))
             {
@@ -103,16 +117,82 @@ public sealed partial class SortCompanionAnalyzer : DiagnosticAnalyzer
         }
     }
 
-    /// <summary>The hand-written constructor of the index, or <c>null</c> if it has none in source.</summary>
-    private static ConstructorDeclarationSyntax? IndexConstructor(
+    /// <summary>
+    /// SPARK018: the index has generated field options but no constructor applies them.
+    /// </summary>
+    /// <remarks>
+    /// Reports at the <em>index</em>'s location rather than the projection's, because that is where the
+    /// missing call belongs. Both are application-owned — the index class, its constructor, the
+    /// <c>[FromIndex]</c> projection and its <c>[Search]</c> attributes all live together — so this
+    /// never has to point across a project boundary, where <c>ReportDiagnostic</c> throws and takes the
+    /// whole symbol action with it.
+    /// </remarks>
+    private static void ReportUncalledIndexSearchFields(
+        SymbolAnalysisContext context,
+        INamedTypeSymbol indexEntity,
+        INamedTypeSymbol indexType)
+    {
+        // Deriving from SparkIndexCreationTask<T> means the call site is supplied by the base class.
+        // Exempt, not flagged: there is no constructor call to look for, and demanding one would be
+        // demanding the very duplication that throws at deploy.
+        if (RavenIndexHierarchy.DerivesFrom(indexType, SparkIndexCreationTaskFullName)
+            || RavenIndexHierarchy.DerivesFrom(indexType, SparkMultiMapIndexCreationTaskFullName))
+            return;
+
+        // Nothing is generated for an index class that is not partial; SPARK_INDEX_001 covers that.
+        var declarations = indexType.DeclaringSyntaxReferences
+            .Select(r => r.GetSyntax(context.CancellationToken))
+            .OfType<ClassDeclarationSyntax>()
+            .ToList();
+        if (declarations.Count == 0) return;
+        if (!declarations.Any(d => d.Modifiers.Any(SyntaxKind.PartialKeyword))) return;
+
+        var trigger = indexEntity.GetMembers().OfType<IPropertySymbol>()
+            .FirstOrDefault(p => !p.GetAttributes().Any(IsIgnoreProperty)
+                && p.NeedsGeneratedIndexFieldOptions());
+        if (trigger is null) return;
+
+        // "Does EVERY constructor call it" — one that does and one that does not is exactly the hole,
+        // and an index with no constructor at all has certainly not called it.
+        var constructors = IndexConstructors(indexType, context.CancellationToken);
+        if (constructors.Count > 0 && constructors.All(c => Mentioned(c).Contains(IndexSearchFieldsMethodName)))
+            return;
+
+        var location = declarations
+            .Select(d => d.Identifier.GetLocation())
+            .FirstOrDefault(l => l.IsInSource);
+        if (location is null) return;
+
+        context.ReportDiagnostic(Diagnostic.Create(
+            UncalledIndexSearchFieldsRule, location,
+            indexType.Name, IndexSearchFieldsMethodName, indexEntity.Name));
+    }
+
+    /// <summary>Every hand-written constructor of the index, in source.</summary>
+    /// <remarks>
+    /// ⚠️ A generated partial declares no constructor, so this only ever sees hand-written ones —
+    /// which is what makes <see cref="UncalledIndexSearchFieldsRule"/> safe. Widening the scan from
+    /// the constructors to the whole class would always match, because the generated half declares
+    /// the method itself, and the rule would silently never fire.
+    /// </remarks>
+    private static List<ConstructorDeclarationSyntax> IndexConstructors(
         INamedTypeSymbol indexType,
         System.Threading.CancellationToken cancellationToken)
-        => indexType.DeclaringSyntaxReferences
+        => [.. indexType.DeclaringSyntaxReferences
             .Select(r => r.GetSyntax(cancellationToken))
             .OfType<ClassDeclarationSyntax>()
             .SelectMany(c => c.Members)
-            .OfType<ConstructorDeclarationSyntax>()
-            .FirstOrDefault();
+            .OfType<ConstructorDeclarationSyntax>()];
+
+    /// <summary>
+    /// The first hand-written constructor, for the two rules that only need to read declarations out
+    /// of one. Deliberately <c>FirstOrDefault</c>: SPARK005/006 ask "what does this index declare",
+    /// which any constructor answers, whereas SPARK018 asks "does <em>every</em> constructor call it".
+    /// </summary>
+    private static ConstructorDeclarationSyntax? IndexConstructor(
+        INamedTypeSymbol indexType,
+        System.Threading.CancellationToken cancellationToken)
+        => IndexConstructors(indexType, cancellationToken).FirstOrDefault();
 
     /// <summary>
     /// Field names the index declares as analyzed or exact — the ones whose ordering needs a companion.

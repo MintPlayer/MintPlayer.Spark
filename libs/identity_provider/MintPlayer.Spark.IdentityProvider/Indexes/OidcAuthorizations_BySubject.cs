@@ -32,6 +32,7 @@ public class OidcAuthorizations_BySubject : AbstractIndexCreationTask<OidcAuthor
                 auth.Subject,
             };
 
-        Indexes.Add(x => x.Subject, FieldIndexing.Exact);
+        // Declared by name — see the note in OidcApplications_ByClientId.
+        Index(nameof(OidcAuthorization.Subject), FieldIndexing.Exact);
     }
 }

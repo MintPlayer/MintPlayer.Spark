@@ -83,6 +83,43 @@ internal static class SparkModelSymbols
         => type.UnwrapNullable().ToDisplayString() == "System.DateTimeOffset";
 
     /// <summary>
+    /// Whether <c>[Search]</c> on this type means "analyze it as text" — a <c>string</c>, or a
+    /// collection of them, which RavenDB analyzes element-wise into the same field.
+    /// </summary>
+    /// <remarks>
+    /// A <c>TranslatedString</c> deliberately does not match: it fans out into one field per language
+    /// and is handled separately.
+    /// </remarks>
+    public static bool IsSearchableText(this ITypeSymbol type)
+    {
+        if (type.IsTranslatedString()) return false;
+        if (type.SpecialType == SpecialType.System_String) return true;
+
+        if (type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_String })
+            return true;
+
+        return type is INamedTypeSymbol { IsGenericType: true } named
+            && named.AllInterfaces.Concat([named]).Any(i =>
+                i.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T
+                && i.TypeArguments.Length == 1
+                && i.TypeArguments[0].SpecialType == SpecialType.System_String);
+    }
+
+    /// <summary>
+    /// Whether this property is why the generator emits an <c>Index(...)</c> call into
+    /// <c>IndexSearchFields()</c> — and therefore why a hand-written index has to apply it.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ The <c>DateTimeOffset</c> half is easy to overlook because it has nothing to do with search.
+    /// Its wrapper companion must be declared <c>FieldIndexing.No</c>, or Corax parks the whole index
+    /// at <c>state=Error, entries=0</c> after a clean deploy — a harder failure than the lost search
+    /// the <c>[Search]</c> half causes.
+    /// </remarks>
+    public static bool NeedsGeneratedIndexFieldOptions(this IPropertySymbol property)
+        => (property.IsSearchable() && property.Type.IsSearchableText())
+        || property.Type.IsDateTimeOffset();
+
+    /// <summary>
     /// The underlying type of a <c>Nullable&lt;T&gt;</c>, or the type itself. Reference-type nullability is
     /// an annotation rather than a wrapper, so this only affects value types.
     /// </summary>

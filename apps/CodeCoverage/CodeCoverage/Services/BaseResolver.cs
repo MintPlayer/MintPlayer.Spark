@@ -49,13 +49,13 @@ public partial class BaseResolver : IBaseResolver
         // Same branch fallback as ResolveBaseline: OIDC-provisioned repos never
         // learn their default branch, so the head's own branch beats nothing.
         var branch = repository.DefaultBranch ?? head.Branch;
-        var query = session.Query<Commits_ByRepository.Result, Commits_ByRepository>()
+        var query = session.Query<VCommit, Commits_ByRepository>()
             .Where(r => r.Repository == repository.Id && r.HasCoverage);
         if (branch is not null)
             query = query.Where(r => r.Branch == branch);
 
         var candidates = await query
-            .OrderByDescending(r => r.AuthoredAt)
+            .OrderByDescending(r => r.Date)
             .OfType<Commit>()
             .Take(WalkLimit)
             .ToListAsync(cancellationToken);

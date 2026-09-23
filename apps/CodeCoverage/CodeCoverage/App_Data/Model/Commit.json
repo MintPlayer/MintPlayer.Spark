@@ -3,6 +3,8 @@
     "id": "ec83c3f7-45d7-44e8-928a-2daf9a4b3ffe",
     "name": "Commit",
     "clrType": "CodeCoverage.Entities.Commit",
+    "queryType": "CodeCoverage.Indexes.VCommit",
+    "indexName": "Commits_ByRepository",
     "breadcrumb": "{Sha}",
     "tabs": [],
     "groups": [],
@@ -26,6 +28,7 @@
         "isReadOnly": false,
         "order": 16,
         "isArray": false,
+        "inQueryType": false,
         "showedOn": "PersistentObject",
         "rules": []
       },
@@ -48,6 +51,7 @@
         "isReadOnly": false,
         "order": 8,
         "isArray": false,
+        "inQueryType": false,
         "showedOn": "PersistentObject",
         "rules": []
       },
@@ -169,6 +173,9 @@
           "fr": "Date",
           "nl": "Datum"
         },
+        "description": {
+          "en": "AuthoredAt coalesced with FirstSeenAtUtc, so an upload-only commit — which never gets a webhook timestamp — still sorts chronologically instead of clustering at one end."
+        },
         "dataType": "datetime",
         "isRequired": false,
         "isVisible": true,
@@ -198,6 +205,7 @@
         "isReadOnly": false,
         "order": 12,
         "isArray": false,
+        "inQueryType": false,
         "showedOn": "PersistentObject",
         "rules": []
       },
@@ -221,6 +229,7 @@
         "order": 13,
         "query": "GetBuilds",
         "isArray": false,
+        "inQueryType": false,
         "showedOn": "PersistentObject",
         "rules": []
       },
@@ -243,6 +252,7 @@
         "isReadOnly": false,
         "order": 11,
         "isArray": false,
+        "inQueryType": false,
         "showedOn": "PersistentObject",
         "rules": []
       },
@@ -265,6 +275,7 @@
         "isReadOnly": false,
         "order": 15,
         "isArray": false,
+        "inQueryType": false,
         "showedOn": "PersistentObject",
         "rules": []
       },
@@ -309,6 +320,7 @@
         "isReadOnly": false,
         "order": 14,
         "isArray": false,
+        "inQueryType": false,
         "showedOn": "PersistentObject",
         "rules": []
       },
@@ -445,6 +457,7 @@
         }
       ],
       "renderMode": "Pagination",
+      "indexName": "Commits_ByRepository",
       "entityType": "Commit",
       "isStreamingQuery": false
     },

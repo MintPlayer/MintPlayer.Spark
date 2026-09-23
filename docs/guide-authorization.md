@@ -209,6 +209,41 @@ is what makes it reviewable.
 
 ---
 
+## ⚠️ Redacting an attribute is not enough: also set `canFilter: false`
+
+`GetProtectedAttributesAsync` nulls an attribute's **value in the response**. It does not change what
+the attribute is worth **filtering on**, and per-column filters (#431) compare the value stored in
+the database.
+
+So if `Salary` is redacted per-row but remains filterable, a caller sends
+`{"name":"Salary","includes":[100000]}` and gets the row back with `"salary": null`. The row's
+presence — and `totalItems` — confirms the value. That is an equality oracle on something the caller
+may never read, and with a handful of requests it reads the number outright.
+
+```jsonc
+// on any attribute your row security may protect
+{
+  "name": "Salary",
+  "canFilter": false,
+  "canListDistincts": false   // stronger again: this one enumerates the values
+}
+```
+
+**Both default to `true`, so this is an obligation rather than a default.**
+
+It cannot be closed by the framework, and the reason is worth knowing because it applies to sorting
+too. `GetProtectedAttributesAsync` takes an *entity* and may answer differently for every row, so it
+cannot decide a *query-level* operation — by the time rows exist to ask about, the filtering and the
+ordering have already happened. Filtering and sorting are therefore gated on the static signals
+(`showedOn`, `canSort`, `canFilter`, `canListDistincts`), and matching them to a dynamic redaction
+rule is the application's job.
+
+A related consequence, in the other direction: a refused filter is **silent** — the rows come back
+unnarrowed and nothing says so — because a distinguishable refusal would answer "does this column
+exist?" for a caller who may not see it.
+
+---
+
 ## In tests
 
 ```csharp

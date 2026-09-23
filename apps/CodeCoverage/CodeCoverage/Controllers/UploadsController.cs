@@ -398,14 +398,14 @@ public partial class UploadsController : ControllerBase
 
         // Never ratchet against fork-contributed coverage — same reasoning as BaseResolver's
         // chokepoint, and this baseline is computed independently of it.
-        var query = session.Query<Commits_ByRepository.Result, Commits_ByRepository>()
+        var query = session.Query<VCommit, Commits_ByRepository>()
             .Where(r => r.Repository == repo.Id && r.HasCoverage && r.ContributedFromFork != true);
         if (branch is not null)
             query = query.Where(r => r.Branch == branch);
 
         // Take 2: the newest may be the commit being polled.
         var candidates = await query
-            .OrderByDescending(r => r.AuthoredAt)
+            .OrderByDescending(r => r.Date)
             .OfType<Commit>()
             .Take(2)
             .ToListAsync(cancellationToken);

@@ -73,27 +73,28 @@ public class GenerateIndexProducer : Producer, IDiagnosticReporter
                     TypeDisplay = "string?",
                     NeedsDefaultInitializer = false,
                     MapExpression = $"{info.ItemVariable}.{property.Name}!.Translations[{Quote(language)}]",
-                    FieldIndexing = property.IsSearchable ? "Search" : null,
+                    // Plain, like every other base field: the analyzed copy is the companion below.
+                    FieldIndexing = null,
                     Attributes = property.Attributes,
                 };
                 yield return languageField;
 
                 if (property.IsSearchable)
-                    yield return SortCompanionOf(languageField);
+                    yield return SearchCompanionOf(languageField);
             }
         }
     }
 
     /// <summary>
     /// The companion for a per-language field. Same shape as the entity-side companion: identical map
-    /// expression, no <c>FieldIndexing</c>, and <c>[IgnoreProperty]</c> so it stays out of the model.
+    /// expression, the analyzed <c>FieldIndexing</c>, and <c>[IgnoreProperty]</c> so it stays out of the model.
     /// </summary>
-    private static IndexPropertyInfo SortCompanionOf(IndexPropertyInfo field) => new()
+    private static IndexPropertyInfo SearchCompanionOf(IndexPropertyInfo field) => new()
     {
-        Name = IndexNaming.SortCompanion(field.Name),
+        Name = IndexNaming.SearchCompanion(field.Name),
         TypeDisplay = field.TypeDisplay,
         MapExpression = field.MapExpression,
-        FieldIndexing = null,
+        FieldIndexing = "Search",
         IsSortCompanion = true,
     };
 

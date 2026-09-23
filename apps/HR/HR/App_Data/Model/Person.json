@@ -267,11 +267,11 @@
         },
         "dataType": "string",
         "isRequired": true,
-        "isVisible": true,
+        "isVisible": false,
         "isReadOnly": false,
         "order": 2,
         "isArray": false,
-        "showedOn": "PersistentObject",
+        "showedOn": "Query, PersistentObject",
         "rules": [
           {
             "type": "minLength",
