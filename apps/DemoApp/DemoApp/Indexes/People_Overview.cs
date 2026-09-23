@@ -1,5 +1,6 @@
 using DemoApp.Library.Entities;
 using Raven.Client.Documents.Indexes;
+using MintPlayer.Spark;
 
 namespace DemoApp.Indexes;
 
@@ -7,7 +8,7 @@ namespace DemoApp.Indexes;
 /// RavenDB index that projects Person documents to VPerson view models.
 /// Computes the FullName property from FirstName and LastName.
 /// </summary>
-public partial class People_Overview : AbstractIndexCreationTask<Person> // , VPerson
+public partial class People_Overview : SparkIndexCreationTask<Person> // , VPerson
 {
     public People_Overview()
     {
@@ -24,8 +25,6 @@ public partial class People_Overview : AbstractIndexCreationTask<Person> // , VP
                         };
 
         // Enable full-text search on common fields
-        // Applies the indexing declared by [Search]; generated from the attributes.
-        IndexSearchFields();
 
         // Store all fields for projection
         StoreAllFields(FieldStorage.Yes);

@@ -1,9 +1,10 @@
 using DemoApp.Library.Entities;
 using Raven.Client.Documents.Indexes;
+using MintPlayer.Spark;
 
 namespace DemoApp.Indexes;
 
-public partial class Companies_Overview : AbstractIndexCreationTask<Company>
+public partial class Companies_Overview : SparkIndexCreationTask<Company>
 {
     public Companies_Overview()
     {
@@ -17,8 +18,6 @@ public partial class Companies_Overview : AbstractIndexCreationTask<Company>
                                EmployeeCount = company.EmployeeCount
                            };
 
-        // Applies the indexing declared by [Search]; generated from the attributes.
-        IndexSearchFields();
         StoreAllFields(FieldStorage.Yes);
     }
 }

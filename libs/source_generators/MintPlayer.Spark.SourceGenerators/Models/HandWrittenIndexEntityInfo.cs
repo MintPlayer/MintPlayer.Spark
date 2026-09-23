@@ -70,6 +70,18 @@ public partial class HandWrittenIndexEntityInfo
     /// </summary>
     public bool IsIndexPartial { get; set; }
 
+    /// <summary>
+    /// Whether the index derives from <c>SparkIndexCreationTask&lt;T&gt;</c>, and can therefore be
+    /// given a <c>ConfigureSparkFields()</c> override that is called for it automatically.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ This gate is not optional. <c>protected override</c> against a base class that declares no
+    /// such method is a hard <c>CS0115</c>, and every hand-written index in this repository derives
+    /// straight from <c>AbstractIndexCreationTask&lt;T&gt;</c> — so emitting the override
+    /// unconditionally would fail every one of them to compile.
+    /// </remarks>
+    public bool IsSparkIndex { get; set; }
+
     public LocationKey? IndexLocation { get; set; }
 
     public LocationKey? Location { get; set; }

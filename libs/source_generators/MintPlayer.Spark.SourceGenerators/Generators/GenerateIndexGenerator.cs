@@ -33,6 +33,10 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
     private const string FromIndexAttributeFullName = "MintPlayer.Spark.Abstractions.FromIndexAttribute";
 
+    /// <summary>The Spark index base classes, which supply the call site for the generated override.</summary>
+    private const string SparkIndexCreationTaskFullName = "MintPlayer.Spark.SparkIndexCreationTask<TDocument>";
+    private const string SparkMultiMapIndexCreationTaskFullName = "MintPlayer.Spark.SparkMultiMapIndexCreationTask<TReduceResult>";
+
     /// <summary>
     /// Includes nullable reference annotations, so a <c>string?</c> entity property is declared
     /// <c>string?</c> on the index entity rather than silently widening to <c>string</c>.
@@ -623,6 +627,8 @@ public class GenerateIndexGenerator : IncrementalGenerator
             IndexClassName = indexType?.Name ?? string.Empty,
             IndexPathSpec = indexType?.GetPathSpec(ct),
             IsIndexPartial = indexType is not null && IsDeclaredPartial(indexType, ct),
+            IsSparkIndex = RavenIndexHierarchy.DerivesFrom(indexType, SparkIndexCreationTaskFullName)
+                || RavenIndexHierarchy.DerivesFrom(indexType, SparkMultiMapIndexCreationTaskFullName),
             IndexLocation = indexType?.Locations.FirstOrDefault(l => l.IsInSource).AsKey(),
             IndexedFields = indexedFields,
             Namespace = indexEntity.ContainingNamespace.IsGlobalNamespace

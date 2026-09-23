@@ -1,6 +1,7 @@
 using DemoApp.Library.Entities;
 using MintPlayer.Spark.Abstractions;
 using Raven.Client.Documents.Indexes;
+using MintPlayer.Spark;
 
 namespace DemoApp.Indexes;
 
@@ -11,7 +12,7 @@ namespace DemoApp.Indexes;
 /// build error, not a coin toss.
 /// </summary>
 [DefaultIndex]
-public partial class Cars_Overview : AbstractIndexCreationTask<Car>
+public partial class Cars_Overview : SparkIndexCreationTask<Car>
 {
     public Cars_Overview()
     {
@@ -29,8 +30,6 @@ public partial class Cars_Overview : AbstractIndexCreationTask<Car>
                           Status = car.Status
                       };
 
-        // Applies the indexing declared by [Search]; generated from the attributes.
-        IndexSearchFields();
         StoreAllFields(FieldStorage.Yes);
     }
 }

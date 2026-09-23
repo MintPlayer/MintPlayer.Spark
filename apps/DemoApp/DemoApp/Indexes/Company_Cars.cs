@@ -1,5 +1,6 @@
 using DemoApp.Library.Entities;
 using Raven.Client.Documents.Indexes;
+using MintPlayer.Spark;
 
 namespace DemoApp.Indexes;
 
@@ -20,7 +21,7 @@ namespace DemoApp.Indexes;
 /// <c>indexName</c> falls back to. This one is reached only by the query that names it.
 /// </para>
 /// </remarks>
-public partial class Company_Cars : AbstractIndexCreationTask<Car>
+public partial class Company_Cars : SparkIndexCreationTask<Car>
 {
     public Company_Cars()
     {

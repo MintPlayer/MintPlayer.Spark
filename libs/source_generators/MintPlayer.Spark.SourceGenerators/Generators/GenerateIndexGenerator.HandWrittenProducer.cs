@@ -177,6 +177,20 @@ public class HandWrittenSortFieldsProducer : Producer, IDiagnosticReporter
                     }
                 }
             }
+
+            // Only for an index that actually has the base class: `protected override` against a base
+            // that declares no such method is a hard CS0115, and an index deriving straight from
+            // AbstractIndexCreationTask<T> is still perfectly valid — it just has to keep calling the
+            // method from its constructor.
+            if (indexEntity.IsSparkIndex)
+            {
+                writer.WriteLine();
+                writer.WriteLine("/// <summary>Called by <c>SparkIndexCreationTask</c> when the index definition is built, so the constructor does not have to remember.</summary>");
+                using (writer.OpenBlock("protected override void ConfigureSparkFields()"))
+                {
+                    writer.WriteLine($"{IndexSearchFieldsMethod}();");
+                }
+            }
         }
     }
 
