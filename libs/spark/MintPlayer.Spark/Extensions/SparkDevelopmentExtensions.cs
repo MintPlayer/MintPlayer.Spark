@@ -191,6 +191,7 @@ public static class SparkDevelopmentExtensions
         VerifySubQueriesCanBeParentScoped(contentRoot);
         VerifyProgramUnitTargetsResolve(contentRoot);
         VerifyQueryColumnOverridesResolve(contentRoot);
+        VerifyQuerySortColumnsResolve(contentRoot);
         var descriptionDrift = VerifyAttributeDescriptionsAreCurrent(contextType, contentRoot);
 
         if (expected is not null && string.Equals(expected.ModelHash, actual.ModelHash, StringComparison.Ordinal))
@@ -367,6 +368,95 @@ public static class SparkDevelopmentExtensions
     /// apply to it, so stating one is the same mistake wearing a real attribute name.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Every query's declared <c>sortColumns</c> must name an attribute that is on that query's
+    /// surface, or the grid silently ships unsorted.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>This is not hypothetical — it shipped in two apps at once.</b> Both DemoApp and HR
+    /// declared <c>GetPeople</c> sorting by <c>LastName</c> while <c>LastName</c> was
+    /// <c>showedOn: PersistentObject</c>. <c>FindQuerySurfaceAttribute</c> returns null,
+    /// <c>ApplySorting</c> logs a warning and continues, and the grid renders in index order. The only
+    /// signal was a log line, and the model files looked entirely reasonable.
+    /// <para>
+    /// Rides <c>--spark-verify-model</c> rather than an analyzer for the reason the other model checks
+    /// do: these files are a synchronize <em>output</em> and can lag the C# mid-build, so an analyzer
+    /// would judge a model that is about to be overwritten. (Not because they are invisible to an
+    /// analyzer — <c>spark.targets</c> supplies them as <c>AdditionalFiles</c>.)
+    /// </para>
+    /// <para>
+    /// Deliberately checks the <em>model</em> only. Whether the bound index's Map actually emits the
+    /// field is a second question that needs the index catalog, and it is the one an unprojected
+    /// binding makes unanswerable — see the plan's A3.
+    /// </para>
+    /// </remarks>
+    private static void VerifyQuerySortColumnsResolve(string contentRootPath)
+    {
+        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        if (!Directory.Exists(modelPath))
+            return;
+
+        var offenders = new List<string>();
+
+        foreach (var file in Directory.EnumerateFiles(modelPath, "*.json"))
+        {
+            EntityTypeFile? model;
+            try
+            {
+                model = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
+                    File.ReadAllText(file),
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                continue;
+            }
+
+            var definition = model?.PersistentObject;
+            if (definition is null || model?.Queries is null)
+                continue;
+
+            var surface = definition.Attributes
+                .Where(a => a.ShowedOn.HasFlag(EShowedOn.Query))
+                .Select(a => a.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var query in model.Queries)
+            {
+                if (query.SortColumns is not { Length: > 0 }) continue;
+
+                foreach (var column in query.SortColumns)
+                {
+                    if (string.IsNullOrWhiteSpace(column.Property)) continue;
+                    if (surface.Contains(column.Property)) continue;
+
+                    var attribute = definition.Attributes
+                        .FirstOrDefault(a => string.Equals(a.Name, column.Property, StringComparison.OrdinalIgnoreCase));
+
+                    offenders.Add($"{definition.Name}.{query.Name}: sorts by '{column.Property}', which "
+                        + (attribute is null
+                            ? "is not an attribute of this type"
+                            : $"is showedOn '{attribute.ShowedOn}' and so is not on the query surface"));
+                }
+            }
+        }
+
+        if (offenders.Count == 0)
+            return;
+
+        Console.Error.WriteLine("Spark model has queries whose declared sort column is not sortable:");
+        foreach (var offender in offenders)
+            Console.Error.WriteLine("  " + offender);
+        Console.Error.WriteLine();
+        Console.Error.WriteLine(
+            "The sort gate checks the same showedOn flag the wire does, so such a column is refused and "
+            + "the grid ships in index order. Either widen the attribute to the query surface (it must "
+            + "also exist on the projection, or the widening is intersected away on the next "
+            + "synchronize), or sort by a column that is on it.");
+
+        Environment.ExitCode = ExitDrift;
+    }
+
     private static void VerifyQueryColumnOverridesResolve(string contentRootPath)
     {
         var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
