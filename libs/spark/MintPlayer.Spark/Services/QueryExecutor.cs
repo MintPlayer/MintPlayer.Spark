@@ -255,7 +255,7 @@ internal partial class QueryExecutor : IQueryExecutor
                 with { DisabledActions = queryContext.DisabledActions };
         }
 
-        var (allResults, definition, searchPushedDown, authorTotalItems, _, _) = source;
+        var (allResults, definition, searchPushedDown, authorTotalItems, _, _, _) = source;
 
         // The author's page is returned as it stands. Search, sort, count and paging were all
         // transferred with it (the binary authority rule on SparkQueryPage), so applying any of
@@ -337,7 +337,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // answer rather than a guess reconstructed from whichever attributes the first row happens
         // to carry.
         var columns = definition is not null
-            ? QueryResultProjector.BuildColumns(definition, query)
+            ? QueryResultProjector.BuildColumns(definition, query, source.SortType)
             : [];
 
         return new QueryResult
@@ -484,7 +484,15 @@ internal partial class QueryExecutor : IQueryExecutor
         /// Set when the database applied <c>Skip</c>/<c>Take</c> and counted the matches, so the rows
         /// already ARE the page and must not be paged again in memory (#431 M14).
         /// </summary>
-        DatabasePage? Page = null)
+        DatabasePage? Page = null,
+
+        /// <summary>
+        /// The type the query's rows were shaped by — an index's <c>[FromIndex]</c> projection when one
+        /// is bound, otherwise null. Carried so the columns sent to the client can say what this
+        /// query can actually do (#431 M7b), which is a per-query fact and therefore cannot live on
+        /// the model's per-attribute flags.
+        /// </summary>
+        Type? SortType = null)
 ;
 
 /// <summary>The page the database produced, when paging was safe to push down (#431 M14).</summary>
@@ -1023,7 +1031,7 @@ internal sealed record DatabasePage(int TotalItems);
         //
         // It now travels as DedupeById on the context above rather than as a call here, so the
         // decision is made where the difference between the two paths is visible.
-        return new QuerySourceResult(secured, entityTypeDefinition, searchPushedDown, Page: databasePage);
+        return new QuerySourceResult(secured, entityTypeDefinition, searchPushedDown, Page: databasePage, SortType: sortType);
     }
 
     #endregion
@@ -1367,7 +1375,7 @@ internal sealed record DatabasePage(int TotalItems);
         });
 
         return new QuerySourceResult(
-            secured, entityTypeDefinition, searchPushedDown, authorPage?.TotalItems, args.DisabledActions);
+            secured, entityTypeDefinition, searchPushedDown, authorPage?.TotalItems, args.DisabledActions, SortType: methodInfo.ResultElementType);
     }
 
     /// <summary>
@@ -2314,7 +2322,7 @@ internal sealed record DatabasePage(int TotalItems);
         return ColumnCapabilities.CanSort(attribute, query);
     }
 
-    private static string ResolveSortProperty(Type sortType, string requested)
+    internal static string ResolveSortProperty(Type sortType, string requested)
     {
         var companion = sortType.GetCachedProperty(requested + "Sort");
         if (companion is null) return requested;

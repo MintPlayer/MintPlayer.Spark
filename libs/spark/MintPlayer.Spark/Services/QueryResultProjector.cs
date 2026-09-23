@@ -1,4 +1,5 @@
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Reflection;
 
 namespace MintPlayer.Spark.Services;
 
@@ -29,7 +30,26 @@ internal static class QueryResultProjector
     /// The query being executed, for its sparse per-column capability overrides (#431). Null resolves
     /// every capability from the attribute alone, which is what a caller with no query in hand wants.
     /// </param>
-    public static IReadOnlyList<QueryColumn> BuildColumns(EntityTypeDefinition definition, SparkQuery? query = null)
+    /// <param name="sortType">
+    /// The type the query's rows are shaped by — an index's projection when one is bound, otherwise
+    /// the entity. When supplied, a column with no property on it is reported as non-sortable,
+    /// non-filterable and non-listable (#431 M7b).
+    /// <para>
+    /// This closes a gap between what the client is told and what the server will do. The executor
+    /// already skips a sort or a filter on a column absent from the projection — with a warning, and
+    /// correctly, since a projection may legitimately be narrower than the model — but the column
+    /// metadata did not say so, so the grid drew a sort arrow and a filter cell that silently did
+    /// nothing. The capability is a per-<em>query</em> fact, which is exactly why it cannot live on
+    /// the model's per-attribute flags: one attribute can be backed by two indexes with different
+    /// field sets, and this repository already has that case.
+    /// </para>
+    /// <para>
+    /// Only ever narrows. An absent <paramref name="sortType"/>, or a column that resolves, leaves
+    /// the model's answer untouched.
+    /// </para>
+    /// </param>
+    public static IReadOnlyList<QueryColumn> BuildColumns(
+        EntityTypeDefinition definition, SparkQuery? query = null, Type? sortType = null)
         => [.. definition.Attributes
             // ⚠️ ShowedOn ALONE decides what ships; IsVisible only decides what is drawn, and is
             // carried to the client rather than applied here.
@@ -57,9 +77,9 @@ internal static class QueryResultProjector
                 DataType = a.DataType,
                 Order = a.Order,
                 IsArray = a.IsArray,
-                CanSort = ColumnCapabilities.CanSort(a, query),
-                CanFilter = ColumnCapabilities.CanFilter(a, query),
-                CanListDistincts = ColumnCapabilities.CanListDistincts(a, query),
+                CanSort = ColumnCapabilities.CanSort(a, query) && IsBackedByShape(a, sortType),
+                CanFilter = ColumnCapabilities.CanFilter(a, query) && IsBackedByShape(a, sortType),
+                CanListDistincts = ColumnCapabilities.CanListDistincts(a, query) && IsBackedByShape(a, sortType),
                 Query = a.Query,
                 ReferenceType = a.ReferenceType,
                 LookupReferenceType = a.LookupReferenceType,
@@ -67,6 +87,26 @@ internal static class QueryResultProjector
                 Renderer = a.Renderer,
                 RendererOptions = a.RendererOptions,
             })];
+
+    /// <summary>
+    /// Whether the query's row shape actually carries this attribute, resolved exactly as the sort
+    /// and filter paths resolve it — through the <c>{Name}Sort</c> companion when one exists.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately the same lookup the enforcement sites use, rather than a second implementation of
+    /// "is this column usable". Two implementations would be free to disagree, and the failure that
+    /// causes is the one this is here to remove: the client being told one thing and the server doing
+    /// another, silently.
+    /// <para>
+    /// True whenever there is no shape to check against, so this can only ever narrow.
+    /// </para>
+    /// </remarks>
+    private static bool IsBackedByShape(EntityAttributeDefinition attribute, Type? sortType)
+    {
+        if (sortType is null) return true;
+
+        return sortType.GetCachedProperty(QueryExecutor.ResolveSortProperty(sortType, attribute.Name)) is not null;
+    }
 
     /// <summary>
     /// Projects mapped rows onto <paramref name="columns"/>, in order.
