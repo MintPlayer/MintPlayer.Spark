@@ -138,7 +138,59 @@ with what `execute` will return.
 400 when a `SparkQueryPage` short-circuit (`:252-285`) meets a non-empty `columnFilters`. Explicit,
 not silent.
 
-### M7 — Fix the search 500 *(gated by SP4)*
+### M7 — Fix the search 500 *(gated by SP4 — confirmed, verbatim exception captured)*
+
+```
+System.ArgumentException: The field 'SecretToken' is not indexed in 'Sp4Gadgets/Overview',
+cannot query/sort on fields that are not indexed in query: from index 'Sp4Gadgets/Overview'
+where (Owner = $p0) and (search(Label, $p1, and) or search(Owner, $p2, and) or search(SecretToken, $p3, and))
+```
+
+Scope is wider than the production symptom: **not custom-only.**
+
+| shape | search over a static index |
+|---|---|
+| `Database.*` + index **with** a `[FromIndex]` projection | safe — *by accident*: `sortType` becomes the V-type, whose properties are the index's fields |
+| `Database.*` + index **without** a projection | **broken** |
+| **every** `Custom.*` + any static index | **broken** — `ApplySearch` gets the author's element type, never the projection |
+
+Fix: restrict the searchable set to fields the bound index actually emits.
+
+1. Resolve the bound index. Already in hand on `Database.*`; on `Custom.*` cast the queryable to
+   `Raven.Client.Documents.Session.IRavenQueryInspector` and read `IndexName` — verified to return
+   the deployed name for a static index and **null for dynamic/auto**, which is an exact,
+   non-heuristic discriminator.
+2. `IndexName` null → dynamic → keep today's behaviour. An auto-index indexes whatever the query
+   names, so it cannot throw (measured: `Auto/X/ByNote` and `Auto/X/BySearch(Note)` are created
+   separately, per query shape).
+3. Index has a `ProjectionType` → intersect the entity's string properties with the projection's
+   property names. Fixes production with pushdown retained.
+4. Static index with **no** `ProjectionType` → the field set is genuinely unknowable (it exists only
+   as a rendered string in `IndexDefinition.Maps`) → **do not push down**; return `Applied: false`
+   and let the existing in-memory fallback handle it. Slower, never wrong, and already tested.
+   This is not a rare branch: **7 of the 10 production hand-written indexes have no projection.**
+
+⚠️ Implementation trap: `IndexCatalog` keys on `indexType.Name` (`Sp4Gadgets_Overview`) while
+`IRavenQueryInspector.IndexName` returns the deployed name (`Sp4Gadgets/Overview`). Normalise `/`→`_`
+(unambiguous — a CLR type name cannot contain `/`) or key both forms in `RegisterIndex`.
+
+Rejected: catch-and-retry on the RavenDB exception. It must match on the exception *message*
+(the type is a generic `RavenException` wrapping `ArgumentException`), covers two statements (count
+and page), pays a wasted round trip forever rather than once, and writes a real error into the
+RavenDB log on an ordinary user action.
+
+### M7b — Column metadata must reflect what the index can actually do
+The enforcement sites already skip a column absent from the projection, with a warning
+(`QueryExecutor.cs:1767-1775` for sort, `:1983-1991` for filter). What is missing is that the column
+metadata **sent to the client** does not reflect it, so the grid draws a sort arrow and a filter cell
+the server then silently ignores. Thread the resolved projection type through `QuerySourceResult`
+and AND an index-derived term into `ColumnCapabilities`, exactly as the streaming refusal added
+earlier in this PR already does. Per-query, no model-file churn, never touches an author's field.
+
+### M7c — Pin the silent degradation
+No test anywhere pins that `FieldIndexing.No` makes a filter return **zero rows** and a sort a
+**no-op**, both with a 200 and no diagnostic. That is worse than the loud failure and is currently
+asserted only by documentation. Measured during SP4; needs a test before anything derives from it.
 
 ### M8 — Streaming queries *(gated by SP5)* — **✅ done**
 `ColumnCapabilities.CanFilter`/`CanListDistincts` return false for a streaming query, so the server
@@ -205,6 +257,38 @@ Appended as discovered, so a later investigator fixes them in **this** PR.
 - **G4** — `Execute.cs:117-143` validates filter column names against `query.EntityType`'s
   attributes and 400s on unknown. Confirm this is reached identically for custom sources, so the
   fix does not turn a previously-400 request into a silently-unfiltered one.
+
+## Proposed as their own work (investigated here, deliberately not smuggled in)
+
+Recorded so the investigation is not lost. These are new capability, not this bug's fix, and one
+carries an unmeasured production cost — see PRD §3.9.
+
+- **P1 — `SparkIndexCreationTask<T>` supplying the call site.** The generator already emits the
+  `Index(...)` body; what it cannot do is add a statement to a hand-written constructor. A base class
+  overriding `CreateIndexDefinition()` can, turning "you must call `IndexSearchFields()`" from
+  documentation into structure. Needs a new package (`Abstractions` has no `RavenDB.Client` by
+  design), must not carry `StoreAllFields` (`CommitIndexShapeGuardTests` forbids it on
+  `Commits_ByRepository`), must not clobber a hand-written `Index(...)` from `OnInitialize()`, and
+  **must have the reindex cost of a `Fields`-only definition change measured first** — CodeCoverage's
+  `Commits` index backs the commit list, history chart, sparklines and badges, which return partial
+  results during a rebuild.
+- **P2 — An analyzer for the uncalled `IndexSearchFields()`.** ~30 lines, reusing helpers already in
+  `SortCompanionAnalyzer`. Cheapest item here and closes a latent trap regardless of whether P1
+  happens. Currently *latent, not live*: every index with `[Search]` fields either calls the method
+  or is fully generated.
+- **P3 — A test pinning that synchronize never writes the capability flags.** The invariant is
+  protected only by the comment at `ModelSynchronizer.cs:830-837`; the #431 PRD listed this test and
+  it was never written.
+- **P4 — Fix the multi-map collection-type derivation** before any multi-map variant ships.
+  `IndexCatalog.cs:223-231`, `SparkMiddleware.cs:795-803` and `DefaultIndexAnalyzer.cs:143-150` all
+  read `AbstractMultiMapIndexCreationTask<T>`'s `T` as the *collection* type, but it is the
+  **reduce result**. Masked today because the repo's only multi-map is a test whose reduce result
+  happens to be the entity.
+
+**Explicitly rejected — do not re-litigate:** synchronize writing `canSort`/`canFilter`/
+`canListDistincts` into the model JSON. One attribute, many queries, different indexes (PRD §3.9.1),
+plus no field-level visibility offline, no provenance signal, and reversal of the deliberate `bool?`
+design. Derive at runtime instead (M7b).
 
 ## Carried over from #431 (not resolved here)
 

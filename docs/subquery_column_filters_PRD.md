@@ -242,6 +242,164 @@ column filter on the grid path.** The behaviour is correct by construction, but 
   Not a disclosure — the duplicates are rows the caller may already see — but the invariant stated
   at `:934-938` is false.
 
+## 3.9 Making the index and the model agree (investigated; design settled)
+
+The SP4 500 and the `IndexSearchFields()` trap are the same defect from opposite directions: **what
+Spark believes about an index and what the index actually declares have drifted apart.**
+
+- SP4 — a field that is *not in the index* gets a `search()` clause anyway → RavenDB rejects the
+  whole query, loudly, in production.
+- `IndexSearchFields()` — a field that *should* be analyzed never gets configured → search silently
+  returns nothing. Generated `private` (`HandWrittenProducer.cs:158`) with nothing verifying the
+  constructor calls it, and an unused private *method* raises no warning. Currently a latent trap
+  rather than a live bug: every index with `[Search]` fields either calls it or is fully generated.
+
+A proposal was investigated to close the class: a `SparkIndexCreationTask<T>` base with generated
+`Index(...)` calls, and `synchronize` writing the capability flags to match. Findings below.
+
+### 3.9.1 ⛔ Synchronize must NOT write the flags — a structural blocker, not a cost
+
+**The capability is per-query, not per-attribute, and the repo already has a counter-example.**
+`apps/DemoApp/DemoApp/App_Data/Model/Car.json` declares two queries over one attribute set bound to
+two different indexes — `Company_Cars` (`:265`) and `Cars_Overview` (`:285`) — which differ at field
+level: `VCar` carries `[Search]` and generated `{Name}Sort` companions, `VCompanyCar` carries
+neither. One `canSort` field in `attributes[]` cannot be correct for both.
+
+Three further blockers, any one of which would be sufficient:
+
+- **Synchronize cannot see field-level configuration.** `IndexCatalogEntry` holds four names and two
+  `Type` handles — no field data. Field indexing is set in the index *constructor body*, which is IL
+  at synchronize time. Reading it means instantiating index types offline, which breaks the
+  "pure reflection — no database, no host, no DI" contract (`SparkMiddleware.cs:476`) that lets
+  `--spark-verify-model` run in a CI merge queue with no RavenDB.
+- **No provenance signal.** The repo has twice made re-derivation safe by keeping a way to tell a
+  machine-written value from an authored one — `#279` uses stored == derived, `#275` uses "did it
+  carry `[Reference]`?". Capability flags have no analogue, so a machine `true` and an author's
+  `true` are byte-identical. `ModelSynchronizer.cs:830-837` already records this decision and it is
+  still correct.
+- **It reverses a deliberate #431 choice.** The flags are `bool?` specifically so absent = no byte
+  change; writing explicit values adds ~880 lines across 41 model files, moves every file hash and
+  every `modelHashes.json`, and forces a lockstep `App_Data` redeploy for production CodeCoverage.
+
+If a JSON-writing variant is ever revisited, the only defensible policy is `#274`'s
+**intersect-never-widen** (`derived && authored`): a derived `false` may close a column, an authored
+`false` is never re-opened. The restricting direction is the only one that matters anyway — the sole
+reason to author one of these flags is to restrict.
+
+### 3.9.2 ✅ Derive at runtime instead — the pattern is already in this PR
+
+`ColumnCapabilities.CanFilter` already ANDs a runtime, query-shape-derived term with the model's
+answer, added earlier in this PR for streaming. An index-derived term is the same idea with a
+different predicate:
+
+```csharp
+=> query is not { IsStreamingQuery: true }
+&& (FindOverride(query, attribute.Name)?.CanFilter ?? attribute.CanFilter ?? true);
+```
+
+This is correct per query (the executor already resolves `sortType` per query), changes no bytes in
+any model file, never touches an author's field, and needs no offline index instantiation — the
+projection `Type` is already in hand. The enforcement sites already skip a column absent from the
+projection, with a warning; what is missing is that the **column metadata sent to the client does
+not reflect it**, so the grid draws a sort arrow and a filter cell the server then silently ignores.
+That is the actual defect behind the proposal.
+
+### 3.9.0 Measured ground truth (RavenDB 7.2.6, Corax, against a real server)
+
+**The Map projection is the gate. `Index(...)` and `Store(...)` are not.**
+
+| operation | emitted by Map, no `Index(...)` | emitted by Map, `FieldIndexing.No` | **not in the Map** |
+|---|---|---|---|
+| `where f == v` | ✅ correct rows | ⚠️ **0 rows, no error** | ❌ `ArgumentException` |
+| `order by f` | ✅ correct | ⚠️ **silent no-op** (ASC == DESC) | ❌ same |
+| `search(f, …)` | ✅ works | ❌ throws (no analyzer) | ❌ same |
+| projection | ✅ (needs `StoreAllFields` for index-only computed fields) | ✅ value intact | ❌ |
+
+Consequences that change the design:
+
+- **A field emitted by the Map is queryable and sortable with no `Index(...)` call at all.** `Index(...)`
+  only ever *changes* a default (`Search` analyzes, `Exact` is case-sensitive, `No` drops from the
+  index); it never enables. So **generating `Index(...)` calls would not have prevented the SP4 500** —
+  that error depends solely on whether the Map emits the field.
+- **`FieldIndexing.No` degrades silently rather than erroring**: a filter returns zero rows and a sort
+  does nothing, with a 200 and no diagnostic. Worse than the loud failure, and **no test pins it**.
+- **`IndexDefinition.Fields` is an override table, not an inventory** — measured: an index with two
+  fully queryable fields and nothing declared has `Fields.Count == 0`. "Absent" means *capable*, so
+  capabilities cannot be enumerated from it.
+- **The emitted field set exists only as a rendered C# string** in `IndexDefinition.Maps`. The only
+  structured surrogate is the `[FromIndex]` projection type's property list — and **7 of the 10
+  production hand-written indexes have no `[FromIndex]` projection at all** (`Commits_ByRepository`
+  plus all five `libs/` indexes).
+- **Capability is per-(index, field), not per-attribute** — proven in-repo: `Car.LicensePlate` is
+  analyzed and needs a `{Name}Sort` companion under `Cars_Overview`, and is a plain default field
+  under `Company_Cars`. Same model attribute, opposite capabilities. This is the same conclusion
+  §3.9.1 reaches from the model side, arrived at independently.
+- **A dynamic query has no index to derive from and is always capable** — RavenDB builds the
+  auto-index from the query shape, creating `Auto/X/ByNote` and `Auto/X/BySearch(Note)` separately.
+  Any derivation must be conditional on a bound index or it will falsely disable columns on every
+  collection query.
+
+### 3.9.3 The base class is worth building — for the call site, and NOT for SP4
+
+The generator **already emits** the `Index(nameof(V*.X), FieldIndexing.Y)` body
+(`HandWrittenProducer.cs:148-168`). What a generator cannot do is add a statement to a hand-written
+constructor — stated at `:143-145` — which is exactly why the author must remember the call.
+`CreateIndexDefinition()` is `public virtual`, so a base class can supply the call site:
+
+```csharp
+public abstract class SparkIndexCreationTask<T> : AbstractIndexCreationTask<T>
+{
+    public override IndexDefinition CreateIndexDefinition()
+    {
+        ConfigureSparkFields();          // Map is assigned by now: the derived ctor has run
+        return base.CreateIndexDefinition();
+    }
+    protected virtual void ConfigureSparkFields() { }
+}
+```
+
+with the generator emitting `protected override void ConfigureSparkFields()` instead of a private
+method. Same body, two keywords, and "never forgotten" becomes structural.
+
+**What this does and does not buy, now that §3.9.0 is measured.** It fixes the *silent* half — a
+`[Search]` field that never gets analyzed, so search quietly returns nothing. It does **nothing** for
+SP4, because that failure is about a field the Map never emitted, and no `Index(...)` call can add a
+field to a Map. Those are separate defects that happen to share a cause ("the index and Spark's
+belief about it disagree"), and only one of them is fixed by configuring fields.
+
+**Constraints that shape it, all measured:**
+
+- **`Index(x => x.Field, …)` is type-wrong.** `AbstractIndexCreationTask<T>` is
+  `AbstractIndexCreationTask<T,T>`, so the lambda binds against the *entity*, never the projection —
+  it cannot name a computed field, a `{Name}Sort` companion or a `{Name}Raw` wrapper. The `nameof`
+  string overload is required, which is what the generator already uses. Declaring
+  `AbstractIndexCreationTask<Car, VCar>` fixes the typing and makes the index **invisible to Spark's
+  catalog**, which matches arity-1 only.
+- **Nothing can derive the emitted field set from the `Map`** — statically or at runtime.
+  `LoadDocument`, `let`, coalesce, `CreateField` and anonymous projections defeat it, and the repo's
+  own analyzer refuses to try and says why (`SortCompanionAnalyzer.cs:65-67`). The field list keeps
+  coming from declared attributes on the projection type.
+- **`StoreAllFields` must not be in the base class.** `CommitIndexShapeGuardTests` exists to fail the
+  build if it reaches `Commits_ByRepository`, because it flattens `DateTimeOffset`s through
+  projection silently.
+- **It needs a new package.** `Abstractions` deliberately has no `RavenDB.Client`; adding one pushes
+  RavenDB onto every entity library.
+- **Ordering hazard.** Generated indexes call `OnInitialize()` last; a base-class
+  `ConfigureSparkFields()` invoked from `CreateIndexDefinition()` runs *after* it, so a hand-written
+  `Index(...)` would be silently overwritten (last-write-wins on a dictionary). Must skip a field
+  already present in `IndexesStrings`.
+- **Unmeasured:** whether a `Fields`-only `IndexDefinition` change forces a full reindex on RavenDB
+  7.2.6. That decides the migration cost, and CodeCoverage's `Commits` index backs the commit list,
+  history chart, sparklines and badges, which return partial results during a rebuild. Measure on a
+  scratch database with production-shaped data before touching production.
+
+**Scope call for this PR:** 3.9.2 (runtime derivation) is in scope — it is what fixes SP4 properly
+and it is a small change to a pattern already added here. The base class and the analyzer are
+separable and larger; they are recorded here and proposed as their own milestones rather than
+smuggled in under a bug fix. The one-PR rule says everything that *needs fixing* lands together; a
+new generated base class across `libs/` with an unmeasured reindex cost on production is new
+capability, not the fix.
+
 ## 4. Design decisions
 
 **D0 — A filter is never silently dropped, and never silently relocated.** Where a database query
