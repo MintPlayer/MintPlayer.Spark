@@ -55,17 +55,30 @@ public class SparkIndexCreationTaskTests
         }
     }
 
-    /// <summary>An unguarded override, kept to pin what the guard is protecting against.</summary>
-    private class UnguardedWidgets : SparkIndexCreationTask<Widget>
+    /// <summary>
+    /// Declares the same field twice only when asked, to pin what the guard protects against.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>The misbehaviour is opt-in at runtime, not baked into the type, and it has to stay that
+    /// way.</b> <c>RavenIndexHelper</c> scans this whole assembly and deploys every index it finds, so
+    /// a type that always threw from <c>CreateIndexDefinition()</c> would break every unrelated test
+    /// that deploys indexes assembly-wide — which is exactly what happened when it did. Discovery
+    /// constructs it with <see cref="Duplicate"/> false and gets a perfectly valid index.
+    /// </remarks>
+    private class OptionallyUnguardedWidgets : SparkIndexCreationTask<Widget>
     {
-        public UnguardedWidgets()
+        public bool Duplicate { get; set; }
+
+        public OptionallyUnguardedWidgets()
         {
             Map = widgets => from w in widgets select new { w.Name };
             Index(nameof(Widget.Name), FieldIndexing.Search);
         }
 
         protected override void ConfigureSparkFields()
-            => Index(nameof(Widget.Name), FieldIndexing.Search);
+        {
+            if (Duplicate) Index(nameof(Widget.Name), FieldIndexing.Search);
+        }
     }
 
     [Fact]
@@ -108,7 +121,7 @@ public class SparkIndexCreationTaskTests
     [Fact]
     public void An_unguarded_duplicate_declaration_throws_rather_than_overwriting()
     {
-        var index = new UnguardedWidgets();
+        var index = new OptionallyUnguardedWidgets { Duplicate = true };
 
         // Pinned because the design assumed the opposite. Index(string, FieldIndexing) is a
         // Dictionary.Add, not an indexer assignment, so this is a startup crash rather than silent
