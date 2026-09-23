@@ -3,6 +3,13 @@
 Companion to [`subquery_column_filters_PRD.md`](subquery_column_filters_PRD.md).
 Branch: `fix/subquery-column-filters`. One PR, everything in it.
 
+> ### ➡️ The PR outgrew its title. Start at [§ Query-page correctness campaign](#query-page-correctness-campaign).
+>
+> The sub-query fix (M1–M12) is done. A four-workstream audit then found that **filtering and sorting
+> were broken in fourteen further ways**, several live in production and one an anonymous disclosure
+> oracle. The goal this PR now serves is *filtering and sorting on query pages work correctly*, and the
+> campaign section below is the authoritative list. Everything still lands here — one PR.
+
 ## Status
 
 | | |
@@ -390,3 +397,135 @@ carries an unmeasured production cost — see PRD §3.9.
 `docs/query_column_filter_plan.md` still lists F1–F8. **F1** — free-text search matching
 off-surface columns — remains open and needs the user's decision. F7 (filterActive freeze) was never
 proven either way. These are not in scope for this PR unless the user says otherwise.
+
+---
+
+# Query-page correctness campaign
+
+**Goal: filtering and sorting on Spark query pages work correctly.** Four workstreams audited the
+whole path (root `Database.*`, custom, sub-query) in 2026-09-23. This is the authoritative list.
+
+## New measured ground truth (none of it was in either PRD)
+
+| # | measurement |
+|---|---|
+| **G-a** | **`Exact` is not a milder `Search`.** `search()` over a non-analyzed field returns **0 rows, HTTP 200** — it does not throw; only `FieldIndexing.No` throws. `Exact` differs from no `Index()` call in exactly one respect: **case sensitivity**. Pinned by `ExactVersusSearchSemanticsTests` |
+| **G-b** | **Ordering by a collection DROPS ROWS.** 4 docs, one with an empty collection → `OrderBy` returns 3, `OrderByDescending` returns **the same 3 in the same order**. Nullable-scalar controls returned 4 and reversed exactly, so it is collection-ness, not a missing term |
+| **G-c** | **A projection resolves PER FIELD.** Stored fields come from the index, unstored ones from the **document**. This is the lever that removes the `DateTimeOffset` hazard instead of managing it — see M8.2 |
+| **G-d** | **The lambda/string field collision throws CLIENT-SIDE**, from `CreateIndexDefinition()`, in ~47 ms with no server. The PRD said "at deploy". So the guard is a construction test, not an analyzer heuristic |
+| **G-e** | **`Take(0)` bounds the page but NOT `Count()`.** Rows vanish while `TotalItems` reports the unfiltered total. Narrowing to nothing must be a predicate |
+| **G-f** | **A field that is neither indexed nor stored is rejected by Corax at map time** — deploy succeeds, then `state=Error, entries=0` and every query 500s. So `FieldIndexing.No` *obliges* a `Store` |
+
+## The defect table
+
+| # | symptom | live where | status |
+|---|---|---|---|
+| **D1** | Unconvertible filter value on a **nullable** column returned the rows with **no** value — the complement of the request — and leaked enum membership to an **anonymous** caller (0-vs-3) | **LIVE DemoApp** | ✅ `22ae9732` |
+| **D2** | `< none >` distinct round-trips as `Col == null`, which matches present-and-null but **not absent** — wrong rows in both directions, on a value the panel itself offered | **LIVE DemoApp**, root + sub-query | ⏳ |
+| **D3** | Every AsDetail column's filter panel collapses to a single `< none >` (`EntityMapper` sets `attr.Value = null`) | **LIVE production CodeCoverage** ×6 | ✅ capability refusal |
+| **D4** | Filtering a **singular complex** column returned the complement — the same construction the collection fix removed | **LIVE production CodeCoverage** ×3 | ✅ `22ae9732` |
+| **D5** | Complex-collection filter emitted `Any(e => e == null)` → no rows | **LIVE production CodeCoverage** ×3 | ✅ `22ae9732` |
+| **D6** | Complex columns draw a sort arrow that orders nothing (`FieldIndexing.No` degrades silently) | **LIVE production CodeCoverage** ×6 | ✅ capability refusal |
+| **D7** | Opening any filter panel materializes the **whole** result set (`take: int.MaxValue`); the endpoint's `MaxTake = 1000` applies only to `/execute` | **LIVE production CodeCoverage** | ⏳ |
+| **D8** | `sortType` for a `Custom.*` query is the **entity**, wider than the Map → `canSort/canFilter` true for fields the Map never assigns → **HTTP 500** | latent, one refactor away | ⏳ |
+| **D9** | A streaming query hit through `/queries/execute` 500s — no `IsStreamingQuery` guard, unlike `GetDistinctValuesAsync` | measured DemoApp | ⏳ |
+| **D10** | Distinct panel sorts numbers as text (`['1','120','20','40']`) and caps at an arbitrary first 100 | **LIVE DemoApp** | ⏳ |
+| **D11** | A filter naming a non-query-surface attribute is accepted then ignored (200, unnarrowed) | API-only | ⏳ |
+| **D12** | Distinct panel would collapse to the ticked values | latent — client omits the self column | ⚪ verified not live |
+| **D13** | Page offsets drift on a non-projecting fan-out index | latent | ⏳ |
+| **D14** | `DateTimeOffset` filter may match nothing (panel offers `+02:00`, index term is UTC) | **UNMEASURED** | ⏳ needs one test |
+| **D15** | **Two people grids ship unsorted** — `GetPeople` sorts by `LastName`, which is `showedOn: PersistentObject` in both apps | **LIVE DemoApp + HR** | ✅ `ec258892` |
+| **D16** | Author-paged queries build column metadata without `sortType`, so they skip `IsBackedByShape` on the one path that also hands filtering to the author | latent | ✅ `22ae9732` |
+| **D17** | Generated `{Name}Raw` wrapper gets `Index(…, No)` but no `Store` → index **fails to build** unless the author happens to call `StoreAllFields` | latent (all current indexes call it) | ✅ generator fix |
+
+⚠️ **D12 is the one to leave alone.** The client correctly omits the listed column from its own
+`distinct-values` request; cascading narrowing works end to end, verified in the network trace.
+
+## Remaining work, in order
+
+### R1 — D2, the `< none >` round-trip *(wrong rows, live)*
+An absent JSON field does not satisfy `== null` in RavenDB, but the distinct list builds `< none >`
+from *mapped* rows where absent and null are indistinguishable. Either the predicate must express
+"absent or null", or the distinct list must stop offering `< none >` on a field whose absence it
+cannot round-trip. ⚠️ Same family as the repo's own `!= true` rule — see
+`Commits_ByRepository.Result.ContributedFromFork`, where this exact confusion emptied every grid for
+pre-existing repositories while the suite stayed green.
+
+### R2 — D7, unbounded materialization on a production filter panel
+`GetDistinctValuesAsync` → `LoadSecuredRowsAsync(take: int.MaxValue)`. Needs the same clamp
+`/execute` has, or a cap with an honest "list truncated" signal.
+
+### R3 — D8/A3, an index bound with no projection
+`sortType` falls back to the entity, which is a **superset** of the Map, so Spark validates a sort
+against fields the index cannot serve. General form of the `Commit.GetCommits` → `Sha` hazard.
+Repair is a `[FromIndex]` projection; the verify rule below makes it impossible to reintroduce.
+
+### R4 — the `{Name}Search` inversion
+Today the base field carries `Index(Search)`, which **destroys equality on it**, and the plain value
+is exiled to `{Name}Sort`. Invert: base field plain, companion `{Name}Search` carries `Search`.
+
+⛳ **The decisive argument is that the repo already does it correctly for `DateTimeOffset`** — base
+field plain, abnormality on the `{Name}Raw` companion (`GenerateIndexGenerator.cs:387`). The two
+companion mechanisms are mirror images and only one is right.
+
+Hazard it closes: anything that does **not** go through `ResolveSortProperty` and names the base field
+gets broken equality silently. Latent today only because `RowSecurity.cs:309-321` refuses pushdown
+whenever `elementType != entityType`, i.e. for every projection-bearing index. ⚠️ Also closes a second
+one nobody had named: the companion is on the **hot path**, so a custom query that hand-builds rows
+and forgets to populate `{Name}Sort` silently matches nothing on both filter and sort.
+
+Cost: **zero** production reindex (CodeCoverage has no `[Search]` at all), zero snapshot churn, zero
+model/hash churn, 3 DemoApp files. ~32–36 files total, concentrated in 3.
+
+### R5 — M8.2 / `Commits_ByRepository` gets a real projection ⚠️ production
+**GO**, with **per-field `Store`, never `StoreAllFields`** (G-c). Measured: `+02:00`, `-05:00`,
+`+05:30` all exact; computed fields correct; a document predating `Commit.Date` recovered through the
+stored `DateRaw`. Store only `DateRaw`, `HasCoverage`, `ParentLookupDone`, `CompleteCoverage`.
+⚠️ `Coverage` must **not** be in the Map — a complex field there forces `No` + storage or Corax fails
+the index (G-f); unmapped, it is read from the document anyway.
+⚠️ `Commit.json` needs hand-authored `canSort/canFilter/canListDistincts: false` on `Coverage`:
+`IsBackedByShape` checks the **CLR shape**, which is a superset of the Map, so it cannot catch this.
+⚠️ `[Reference(typeof(Repository))]` on the projection is **mandatory** — SPARK002 is a build error.
+The guard test is widened **deliberately** to "no scalar `DateTimeOffset` is stored, and each carries a
+stored `{Name}Raw`", plus an allow-list — not deleted.
+
+### R6 — the verify-model rules
+Placement rule: **a check belongs in `--spark-verify-model` when it needs the index catalog, the
+rendered `IndexDefinition.Maps`, or a judgement about a model file's *content*; it belongs in an
+analyzer only when its whole subject is hand-written C#.** (Not "because analyzers cannot see the
+model files" — they can, `spark.targets:159`; it is staleness plus the two capabilities.)
+
+| rule | severity | note |
+|---|---|---|
+| **A1** `VerifyQuerySortColumnsResolve` | error | would have caught D15 in both apps. Ship first |
+| **A2** `VerifyQuerySurfaceIsBackedByIndexShape` | error | 0 hits; ⚠️ scope to the **default** binding — `Company_Cars` narrows legitimately |
+| **A3** `VerifyBoundIndexHasAProjection` | error | closes D8 by construction |
+| **B1** explicit `canSort: true` on an array | error | 0 hits; the runtime refusal does the real work |
+| **B3** `VerifyBoundIndexEmitsSortColumns` | warning | word-boundary probe over `Maps`; one-sided |
+| **C1** `VerifyIndexDefinitionsCompile` | error | ~45 lines, **zero false positives by construction** — it performs the real operation |
+| **C2** `SparkIndexCreationTask.IsFieldDeclared` | — | makes the emitted guard total by also walking `Indexes.Keys` |
+| **SPARK019** | error | forbid the lambda form; rewrite the two OIDC indexes in this PR |
+
+⚠️ **Every model-driven rule is silent in `libs/` structurally, not by care**: verify never runs there
+(no `App_Data/Model`, `IsUsableContextType` returns early). SPARK019 is the only one that reaches
+`libs/`, deliberately.
+
+### R7 — B2 `canSort` on a `TranslatedString`: **drop the rule**
+Measured: exactly one `TranslatedString` repo-wide, and **zero** on any query surface. Three guards
+already stand in front. A rule with no reachable subject is maintenance with no payoff.
+
+### R8 — docs
+~35 defects found across the two PRD/plan pairs. The load-bearing ones:
+- ✅ `subquery_column_filters_PRD.md:315` claimed `search()` "works" with no `Index()` call. **Fixed** —
+  that single cell was the only documented statement making today's shape look safe.
+- `spark_index_agreement_PRD.md:6` says "not implemented" while its plan and the code say otherwise;
+  ~8 stale present-tense claims trace to that one line.
+- D5/D7 in `subquery_column_filters_PRD.md` describe behaviour the PR **deliberately reversed** (no
+  400 for author-paged filters; `CustomQueryArgs.Columns` now exists). A future reader could "restore"
+  them.
+- "6 of 10 hand-written indexes have no projection" becomes **5 of 10** after R5 — also in
+  `QueryExecutor.cs:1904`.
+- ⚠️ **~28 drifted `QueryExecutor.cs` citations** — the file grew ~460 lines this PR. Three are
+  actively misleading, including "`ExecuteCustomQueryAsync` has no `columnFilters` parameter".
+- `SearchAttribute`'s own doc references a `SortExpression` member **that does not exist**.
+- `OidcCorsOrigins.cs:95-98` states a mechanism refuted by G-c.
