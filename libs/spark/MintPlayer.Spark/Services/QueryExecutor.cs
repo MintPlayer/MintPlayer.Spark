@@ -197,7 +197,7 @@ internal partial class QueryExecutor : IQueryExecutor
         await InvokeQueryHookAsync(query, parent);
 
         var source = isCustom
-            ? await ExecuteCustomQueryAsync(query, name, parent, null, 0, int.MaxValue, null, null, cancellationToken)
+            ? await ExecuteCustomQueryAsync(query, name, parent, null, 0, int.MaxValue, null, null, columnFilters, cancellationToken)
             : await ExecuteDatabaseQueryAsync(query, name, parent, null, null, columnFilters,
                 // Skip/take of zero/max: a distinct list describes the whole result set, never a page.
                 skip: 0, take: int.MaxValue, cancellationToken);
@@ -226,7 +226,7 @@ internal partial class QueryExecutor : IQueryExecutor
         QuerySourceResult source;
         if (isCustom)
         {
-            source = await ExecuteCustomQueryAsync(query, name, parent, searchTerm, skip, take, search, restrictToIds, cancellationToken);
+            source = await ExecuteCustomQueryAsync(query, name, parent, searchTerm, skip, take, search, restrictToIds, columnFilters, cancellationToken);
 
             // UNION, not last-writer-wins. Both mechanisms are legitimate and a query may use both:
             // the hook is the only channel a Database.* query has, and the custom method is the only
@@ -1021,6 +1021,7 @@ internal sealed record DatabasePage(int TotalItems);
     private async Task<QuerySourceResult> ExecuteCustomQueryAsync(
         SparkQuery query, string methodName, PersistentObject? parent, string? searchTerm,
         int skip, int take, string? search, IReadOnlyCollection<string>? restrictToIds,
+        IReadOnlyList<QueryColumnFilter>? columnFilters,
         CancellationToken cancellationToken)
     {
         // Resolve the entity type for this query
@@ -1183,6 +1184,41 @@ internal sealed record DatabasePage(int TotalItems);
         if (isQueryable && entityType is not null)
         {
             result = (await rowSecurity.ComposeRowFilterAsync(result, entityType, methodInfo.ResultElementType, "Query", cancellationToken)).Queryable;
+        }
+
+        // Column filters (#431) compose immediately after the row filter, exactly as on the database
+        // branch and for the same reason: position is load-bearing, because an added clause must
+        // never end up adjacent to the security predicate in a way that lets an operator leak onto
+        // it. See the remarks on ApplyColumnFilters.
+        //
+        // Guarded on isRavenQueryable rather than isQueryable, and that distinction is the whole
+        // point. Queryable.Where dispatches on the queryable's PROVIDER: handed an EnumerableQuery —
+        // what `list.AsQueryable()` returns — it composes without complaint and then filters in
+        // process. Identical rows, no exception, no warning, nothing in a log. So a guard on
+        // isQueryable would not be a weaker version of this one; it would silently relocate
+        // filtering from the database into C#, which is the thing that must not happen.
+        if (columnFilters is { Count: > 0 })
+        {
+            if (!isRavenQueryable)
+            {
+                // Refused loudly, unlike a filter on a non-filterable column, which stays silent
+                // because a distinguishable refusal there is an enumeration oracle. This refusal
+                // discloses nothing about data: it is a fact about the shape the application's own
+                // method returned. Serving unfiltered rows instead is precisely how this feature
+                // shipped broken for a release, so the failure is made impossible to miss.
+                throw new InvalidOperationException(
+                    $"Query '{query.Name}' has source 'Custom.{methodName}' and was executed with column "
+                    + $"filters, but the method returned {result.GetType().Name}, which is not backed by "
+                    + "RavenDB. Column filters are translated into the database query and cannot be "
+                    + "applied to a materialized or in-memory result without filtering in memory, which "
+                    + "would make TotalItems and paging disagree with the rows. Either return "
+                    + $"IRavenQueryable<{methodInfo.ResultElementType.Name}> from the method, or set "
+                    + "\"canFilter\": false on the attributes of "
+                    + $"'{entityTypeDefinition.Name}' so the grid does not offer filtering.");
+            }
+
+            result = ApplyColumnFilters(
+                result, methodInfo.ResultElementType, columnFilters, entityTypeDefinition, query);
         }
 
         // Narrow to a selection before anything else touches the shape. Paging is deliberately not

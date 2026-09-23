@@ -277,19 +277,24 @@ public class CustomQueryColumnFilterTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task A_non_raven_queryable_is_not_filtered_in_process()
+    public async Task A_non_raven_queryable_refuses_the_filter_loudly()
     {
         var executor = Executor();
 
-        var result = await executor.ExecuteQueryAsync(CustomQuery("InMemoryParcels"),
+        var act = () => executor.ExecuteQueryAsync(CustomQuery("InMemoryParcels"),
             columnFilters: [new QueryColumnFilter { Name = nameof(Parcel.Region), Includes = ["eu"] }]);
 
         // D0/D2: column filtering reaches the database or it does not happen. An EnumerableQuery
         // accepts Queryable.Where and filters in process with no error and no warning, so narrowing
-        // here would look exactly like success while violating the decision.
-        result.TotalItems.Should().Be(2,
-            "an in-memory queryable cannot push the filter down, so the filter is refused rather than "
-            + "silently applied in C#");
+        // here would look exactly like success while violating the decision — and returning the rows
+        // unfiltered instead is how this feature shipped broken for a release.
+        //
+        // Loud, unlike the canFilter refusal, which stays silent because a distinguishable refusal
+        // there is an enumeration oracle. This one discloses nothing about data: it is a fact about
+        // the shape the application's own method returned.
+        var ex = await act.Should().ThrowAsync<InvalidOperationException>();
+        ex.Which.Message.Should().Contain("canFilter",
+            "the message must name the way out, not just the problem");
     }
 
     // --- Distincts (the other half of the same omission) -------------------
