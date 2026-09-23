@@ -25,7 +25,11 @@ internal static class QueryResultProjector
     /// only payload: <c>ShowedOn.Query</c> is what the sort-column allow-list is checked against, so
     /// server and client now derive the query surface from the same place.
     /// </remarks>
-    public static IReadOnlyList<QueryColumn> BuildColumns(EntityTypeDefinition definition)
+    /// <param name="query">
+    /// The query being executed, for its sparse per-column capability overrides (#431). Null resolves
+    /// every capability from the attribute alone, which is what a caller with no query in hand wants.
+    /// </param>
+    public static IReadOnlyList<QueryColumn> BuildColumns(EntityTypeDefinition definition, SparkQuery? query = null)
         => [.. definition.Attributes
             // ⚠️ ShowedOn ALONE decides what ships; IsVisible only decides what is drawn, and is
             // carried to the client rather than applied here.
@@ -53,7 +57,9 @@ internal static class QueryResultProjector
                 DataType = a.DataType,
                 Order = a.Order,
                 IsArray = a.IsArray,
-                IsSortable = a.IsSortable ?? false,
+                CanSort = ColumnCapabilities.CanSort(a, query),
+                CanFilter = ColumnCapabilities.CanFilter(a, query),
+                CanListDistincts = ColumnCapabilities.CanListDistincts(a, query),
                 Query = a.Query,
                 ReferenceType = a.ReferenceType,
                 LookupReferenceType = a.LookupReferenceType,

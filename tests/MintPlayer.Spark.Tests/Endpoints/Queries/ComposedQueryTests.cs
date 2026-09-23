@@ -71,7 +71,7 @@ public class ComposedQueryTests : SparkTestDriver
 
     private static async Task<QueryResult> ExecuteAsync(
         SparkEndpointFactory factory, Guid queryId, int skip = 0, int take = 50,
-        string? search = null, string? sortColumns = null)
+        string? search = null, SortColumn[]? sortColumns = null)
     {
         using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
         return await client.ExecuteQueryAsync(queryId, skip, take, search, sortColumns: sortColumns);
@@ -235,7 +235,7 @@ public class ComposedQueryTests : SparkTestDriver
     {
         await using var factory = new SparkEndpointFactory(Store, [DashboardModel()]);
 
-        var result = await ExecuteAsync(factory, DashboardQueryId, sortColumns: "Amount:desc");
+        var result = await ExecuteAsync(factory, DashboardQueryId, sortColumns: [new SortColumn { Property = "Amount", Direction = "desc" }]);
 
         result.Items.Select(i => i.Id).Should().ContainInOrder("row/2", "row/3", "row/1");
     }
@@ -278,7 +278,7 @@ public class ComposedQueryTests : SparkTestDriver
         // pages wrong, and nothing about the result saying so.
         await using var factory = new SparkEndpointFactory(Store, [DashboardModel(source: "Custom.GetPagedRows")]);
 
-        var result = await ExecuteAsync(factory, DashboardQueryId, skip: 0, take: 3, sortColumns: "Amount:desc");
+        var result = await ExecuteAsync(factory, DashboardQueryId, skip: 0, take: 3, sortColumns: [new SortColumn { Property = "Amount", Direction = "desc" }]);
 
         result.Items.Select(i => i.Id).Should().ContainInOrder("page/0", "page/1", "page/2");
     }

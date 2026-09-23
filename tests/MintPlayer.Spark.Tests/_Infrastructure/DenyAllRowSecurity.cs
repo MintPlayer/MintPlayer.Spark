@@ -47,8 +47,14 @@ internal sealed class DenyAllRowSecurity : IRowSecurity
     /// — so composing here would let a test pass because of the fast path rather than the gate, and
     /// hide the very bypass this double exists to catch.
     /// </summary>
-    public Task<object> ComposeRowFilterAsync(object queryable, Type entityType, Type elementType, string action, CancellationToken cancellationToken = default)
-        => Task.FromResult(queryable);
+    /// <remarks>
+    /// Reports <see cref="RowFilterMode.ConstantPredicate"/>: this double enforces entirely in memory,
+    /// which is exactly the real branch for a caller whose rule is a constant. It also means
+    /// <c>CanPageInDatabase</c> is false here, so a paging test using this double exercises the
+    /// materialize-then-page path rather than silently the other one.
+    /// </remarks>
+    public Task<RowFilterComposition> ComposeRowFilterAsync(object queryable, Type entityType, Type elementType, string action, CancellationToken cancellationToken = default)
+        => Task.FromResult(new RowFilterComposition(queryable, RowFilterMode.ConstantPredicate, HasPerRowRefinement: true));
 
     public void ResetRequestFilterCache() { }
 

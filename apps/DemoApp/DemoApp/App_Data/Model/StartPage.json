@@ -74,7 +74,6 @@
         "order": 5,
         "isArray": false,
         "showedOn": "Query",
-        "isSortable": true,
         "rules": []
       },
       {
@@ -88,7 +87,6 @@
         "order": 6,
         "isArray": false,
         "showedOn": "Query",
-        "isSortable": true,
         "rules": []
       }
     ]

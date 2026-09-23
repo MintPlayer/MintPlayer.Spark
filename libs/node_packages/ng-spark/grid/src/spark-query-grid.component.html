@@ -38,11 +38,36 @@
       [isResponsive]="isVirtualScrolling()"
       [data]="data()"
       [fetch]="fetchFn()"
+      [distincts]="distinctsFn"
+      (filterChange)="onFilterChange($event)"
       [(settings)]="settings">
     @for (col of visibleColumns(); track col.name) {
-      <div *bsDatatableColumn="col.name; sortable: true">
+      <!--
+        `canSort`/`canFilter` arrive already resolved by the server (query override → attribute →
+        true), so this only spells the polarity. `!== false` is needed for BOTH, for opposite
+        reasons: absent means capable on our wire, while the datatable's own `filterable` defaults
+        to false, unlike `sortable`.
+
+        ⚠️ `filterActive` and `filterSummary` are deliberately NOT bound. Any *bsDatatableColumn
+        input change recomputes the column set, which retires the live filter view — while the web
+        component's mount-once guard leaves the panel's nodes in place and never re-renders them.
+        Binding them to state our own panel mutates would freeze the panel the instant a value is
+        ticked, until it is closed and reopened. The cost is that a filtered column carries no
+        visual marker yet, which is worth far less than a panel that dies on first use. See #431 F7.
+      -->
+      <div *bsDatatableColumn="col.name; sortable: col.canSort !== false; filterable: col.canFilter !== false">
         {{ (col.label | resolveTranslation) || col.name }}
         <spark-attribute-description [description]="col.description" />
+
+        @if (col.canFilter !== false) {
+          <ng-container *bsDatatableFilterPanel="let values; let ctx = ctx">
+            <spark-column-filter-panel
+              [column]="col"
+              [values]="values()"
+              [ctx]="ctx"
+              [filterLabel]="filterLabelFor(col)" />
+          </ng-container>
+        }
       </div>
     }
 

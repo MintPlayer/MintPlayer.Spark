@@ -83,6 +83,63 @@ describe('SparkService', () => {
     await expect(promise).resolves.toMatchObject({ skip: 25, take: 10 });
   });
 
+  it('executeQuery sends per-column filters as includes and excludes', async () => {
+    const promise = service.executeQuery('q/1', {
+      columns: [
+        { name: 'Region', includes: ['eu', 'us'] },
+        { name: 'Status', excludes: ['archived'] },
+      ],
+    });
+
+    const req = httpTesting.expectOne(r => r.url === '/spark/queries/execute');
+    // Values, never labels: a reference column's values are document ids while its labels are
+    // resolved breadcrumb text, and two rows may legitimately render the same text.
+    expect(req.request.body.columns).toEqual([
+      { name: 'Region', includes: ['eu', 'us'] },
+      { name: 'Status', excludes: ['archived'] },
+    ]);
+
+    req.flush({ data: [], totalRecords: 0, skip: 0, take: 50 });
+    await promise;
+  });
+
+  it('executeQuery omits columns entirely when no filter is applied', async () => {
+    const promise = service.executeQuery('q/1', { columns: [] });
+
+    const req = httpTesting.expectOne(r => r.url === '/spark/queries/execute');
+    // An empty array is the absent filter, and sending one would make every unfiltered grid carry a
+    // meaningless key. `undefined` is dropped from the JSON body entirely.
+    expect(req.request.body.columns).toBeUndefined();
+
+    req.flush({ data: [], totalRecords: 0, skip: 0, take: 50 });
+    await promise;
+  });
+
+  it('getDistinctValues posts the column, the search term and the other columns\' filters', async () => {
+    const promise = service.getDistinctValues('q/1', 'Manufacturer', {
+      search: 'alf',
+      columns: [{ name: 'Region', includes: ['eu'] }],
+      parentId: 'cars/1',
+      parentType: 'Car',
+    });
+
+    const req = httpTesting.expectOne(r => r.url === '/spark/queries/distinct-values');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({
+      queryId: 'q/1',
+      column: 'Manufacturer',
+      search: 'alf',
+      // The OTHER columns' filters: a panel must offer the values still reachable, not the ones
+      // another column has already excluded every row for.
+      columns: [{ name: 'Region', includes: ['eu'] }],
+      parentId: 'cars/1',
+      parentType: 'Car',
+    });
+
+    req.flush({ matching: [{ value: 'AlfaRomeo', label: 'Alfa Romeo' }], remaining: [], hasMore: false });
+    await expect(promise).resolves.toMatchObject({ hasMore: false });
+  });
+
   it('executeQueryByName resolves the query via /queries then executes it', async () => {
     const promise = service.executeQueryByName('AllPeople', { parentId: 'p/1' });
 

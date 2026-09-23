@@ -91,7 +91,8 @@ anti-forgery gate and no useful message.
 | `CreatePersistentObjectAsync(obj)` | `POST /spark/po/create` |
 | `UpdatePersistentObjectAsync(obj)` | `POST /spark/po/update` |
 | `DeletePersistentObjectAsync(type, id)` | `POST /spark/po/delete` |
-| `ExecuteQueryAsync(query, skip, take, search, parentId, parentType, sortColumns)` | `POST /spark/queries/execute` |
+| `ExecuteQueryAsync(query, skip, take, search, parentId, parentType, sortColumns, columns)` | `POST /spark/queries/execute` |
+| `GetDistinctValuesAsync(query, column, search, columns, parentId, parentType)` | `POST /spark/queries/distinct-values` |
 | `GetQueryAsync(query)` / `ListQueriesAsync()` | `POST /spark/queries/get`, `GET /spark/queries` |
 | `ExecuteActionAsync(type, name, parent, selectedItemIds, parentId, parentType, queryId, …)` | `POST /spark/actions/execute` |
 | `ContinueAsync(result, option, persistentObject)` | the same endpoint, one answer further |
@@ -102,9 +103,9 @@ anti-forgery gate and no useful message.
 | `ListAliasesAsync()` | `GET /spark/aliases` |
 | `ListCustomActionsAsync(type)` | `POST /spark/actions/list` |
 | `ListLookupReferencesAsync()` / `GetLookupReferenceAsync(name)` | `GET /spark/lookupref/`, `GET /spark/lookupref/{name}` |
-| `AddLookupReferenceValueAsync` / `UpdateLookupReferenceValueAsync` / `DeleteLookupReferenceValueAsync` | `POST`, `PUT`, `DELETE` on `/spark/lookupref/{name}[/{key}]` |
-| `GetProgramUnitsAsync()` / `GetCultureAsync()` / `GetTranslationsAsync()` | `GET /spark/program-units`, `/culture`, `/translations` |
-| `GetPermissionsAsync(type)` | `GET /spark/permissions/{type}` |
+| `AddLookupReferenceValueAsync` / `UpdateLookupReferenceValueAsync` / `DeleteLookupReferenceValueAsync` | `POST /spark/lookupref/{name}`, `PUT /spark/lookupref/{name}/{key}`, `DELETE /spark/lookupref/{name}/{key}` |
+| `GetProgramUnitsAsync()` / `GetCultureAsync()` / `GetTranslationsAsync()` | `GET /spark/program-units`, `GET /spark/culture`, `GET /spark/translations` |
+| `GetPermissionsAsync(type)` | `GET /spark/permissions/{entityTypeId}` |
 | `SendAsync(method, url, content, requiresAntiforgery)` | anything not yet typed |
 
 ⚠️ **Only `create`, `update`, `delete`, `refresh`, `new`, `delete-row` and `actions/execute` are

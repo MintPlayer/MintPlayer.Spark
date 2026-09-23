@@ -334,11 +334,12 @@ public partial class SparkClient : IDisposable
         string? search = null,
         string? parentId = null,
         string? parentType = null,
-        string? sortColumns = null,
+        SortColumn[]? sortColumns = null,
+        QueryColumnFilter[]? columns = null,
         CancellationToken cancellationToken = default,
         SparkRetryHandler? onRetry = null,
         SparkOperationHandler? onOperation = null)
-        => ExecuteQueryCoreAsync(queryId.ToString(), skip, take, search, parentId, parentType, sortColumns, onRetry, onOperation, cancellationToken);
+        => ExecuteQueryCoreAsync(queryId.ToString(), skip, take, search, parentId, parentType, sortColumns, columns, onRetry, onOperation, cancellationToken);
 
     /// <summary>Executes a query by its alias (e.g. <c>"allpeople"</c>) instead of by Guid.</summary>
     public Task<QueryResult> ExecuteQueryAsync(
@@ -348,14 +349,16 @@ public partial class SparkClient : IDisposable
         string? search = null,
         string? parentId = null,
         string? parentType = null,
-        string? sortColumns = null,
+        SortColumn[]? sortColumns = null,
+        QueryColumnFilter[]? columns = null,
         CancellationToken cancellationToken = default,
         SparkRetryHandler? onRetry = null,
         SparkOperationHandler? onOperation = null)
-        => ExecuteQueryCoreAsync(queryAlias, skip, take, search, parentId, parentType, sortColumns, onRetry, onOperation, cancellationToken);
+        => ExecuteQueryCoreAsync(queryAlias, skip, take, search, parentId, parentType, sortColumns, columns, onRetry, onOperation, cancellationToken);
 
     private Task<QueryResult> ExecuteQueryCoreAsync(
-        string queryId, int skip, int take, string? search, string? parentId, string? parentType, string? sortColumns,
+        string queryId, int skip, int take, string? search, string? parentId, string? parentType,
+        SortColumn[]? sortColumns, QueryColumnFilter[]? columns,
         SparkRetryHandler? onRetry, SparkOperationHandler? onOperation, CancellationToken cancellationToken)
         // OnQueryAsync can prompt, so a list is a conversation too. ⚠️ Like OnLoadAsync, a prompt here
         // fires on every execution of the query — including the ones a grid issues while paging.
@@ -369,7 +372,8 @@ public partial class SparkClient : IDisposable
                 ["search"] = search,
                 ["parentId"] = parentId,
                 ["parentType"] = parentType,
-                ["sortColumns"] = ParseSortColumns(sortColumns),
+                ["sortColumns"] = sortColumns,
+                ["columns"] = columns,
             },
             requiresAntiforgery: false,
             async (response, ct) =>
@@ -383,23 +387,53 @@ public partial class SparkClient : IDisposable
             cancellationToken);
 
     /// <summary>
-    /// Splits the legacy <c>prop:asc,other:desc</c> string into the array the endpoint now takes.
+    /// The distinct values of one column, for a filter panel (#431).
     /// </summary>
     /// <remarks>
-    /// ⚠️ The parameter keeps its string shape here, and only here, because it is <b>published API</b>
-    /// on a shipped package — changing its type is a separate decision from moving the route. The
-    /// encoding itself is gone from the wire: the server takes an array, and this is the one place
-    /// that still knows the old format. A typed overload belongs with the column-filtering work that
-    /// motivated the move, where there will be a second thing to express.
+    /// <paramref name="columns"/> carries the OTHER columns' current filters, so the values returned
+    /// are the ones still reachable — offering a value that empties the grid the moment it is picked
+    /// is worse than omitting it.
+    /// <para>
+    /// An empty result means either "nothing matches" or "you may not enumerate this column", and the
+    /// two are deliberately indistinguishable.
+    /// </para>
     /// </remarks>
-    private static object[]? ParseSortColumns(string? sortColumns)
-        => string.IsNullOrEmpty(sortColumns)
-            ? null
-            : [.. sortColumns.Split(',', StringSplitOptions.RemoveEmptyEntries).Select(part =>
-            {
-                var segments = part.Split(':');
-                return (object)new { property = segments[0], direction = segments.Length > 1 ? segments[1] : "asc" };
-            })];
+    public Task<DistinctValuesResult> GetDistinctValuesAsync(
+        Guid queryId,
+        string column,
+        string? search = null,
+        QueryColumnFilter[]? columns = null,
+        string? parentId = null,
+        string? parentType = null,
+        CancellationToken cancellationToken = default)
+        => GetDistinctValuesCoreAsync(queryId.ToString(), column, search, columns, parentId, parentType, cancellationToken);
+
+    /// <summary>Alias-based overload for <see cref="GetDistinctValuesAsync(Guid,string,string?,QueryColumnFilter[]?,string?,string?,CancellationToken)"/>.</summary>
+    public Task<DistinctValuesResult> GetDistinctValuesAsync(
+        string queryAlias,
+        string column,
+        string? search = null,
+        QueryColumnFilter[]? columns = null,
+        string? parentId = null,
+        string? parentType = null,
+        CancellationToken cancellationToken = default)
+        => GetDistinctValuesCoreAsync(queryAlias, column, search, columns, parentId, parentType, cancellationToken);
+
+    private async Task<DistinctValuesResult> GetDistinctValuesCoreAsync(
+        string queryId, string column, string? search, QueryColumnFilter[]? columns,
+        string? parentId, string? parentType, CancellationToken cancellationToken)
+    {
+        var content = JsonContent.Create(
+            new { queryId, column, search, columns, parentId, parentType }, options: JsonOptions);
+
+        using var response = await SendAsync(
+            HttpMethod.Post, "/spark/queries/distinct-values", content, cancellationToken: cancellationToken);
+
+        await SparkClientException.ThrowIfNotSuccessAsync(response, cancellationToken);
+
+        return await response.Content.ReadFromJsonAsync<DistinctValuesResult>(JsonOptions, cancellationToken)
+            ?? throw new SparkClientException(response.StatusCode, responseBody: null, "Empty distinct-values response body.");
+    }
 
     /// <summary>
     /// Returns the full definition of a single query (name, source, sort columns, etc.), or

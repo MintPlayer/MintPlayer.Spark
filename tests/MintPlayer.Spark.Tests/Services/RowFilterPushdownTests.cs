@@ -187,7 +187,9 @@ public class RowFilterPushdownTests : SparkTestDriver
         var rowSecurity = CreateRowSecurity(em => new ScopedNoteActions(em));
         using var session = Store.OpenAsyncSession();
 
-        var composed = await rowSecurity.ComposeRowFilterAsync(session.Query<Note>(), typeof(Note), typeof(Note), "Query");
+        var composition = await rowSecurity.ComposeRowFilterAsync(session.Query<Note>(), typeof(Note), typeof(Note), "Query");
+        composition.Mode.Should().Be(RowFilterMode.PushedDown, "the expression composed into the query");
+        var composed = composition.Queryable;
 
         composed.ToString().Should().Contain("Owner",
             "the predicate must land in the RQL itself — that is what keeps a row-scoped type "
@@ -241,8 +243,11 @@ public class RowFilterPushdownTests : SparkTestDriver
 
         // The constant predicate must not be pushed into RQL (the provider may not translate it) …
         var queryable = session.Query<Note>();
-        (await rowSecurity.ComposeRowFilterAsync(queryable, typeof(Note), typeof(Note), "Query"))
-            .Should().BeSameAs(queryable);
+        var constant = await rowSecurity.ComposeRowFilterAsync(queryable, typeof(Note), typeof(Note), "Query");
+        constant.Queryable.Should().BeSameAs(queryable);
+        constant.Mode.Should().Be(RowFilterMode.ConstantPredicate);
+        constant.CanPageInDatabase.Should().BeFalse(
+            "an in-memory post-filter removes rows, so the database page and the caller page differ");
 
         // … and the in-memory evaluation still drops every row.
         var notes = (await session.Query<Note>().ToListAsync()).Cast<object>().ToList();
@@ -290,8 +295,11 @@ public class RowFilterPushdownTests : SparkTestDriver
 
         // The filter cannot compose into a projection query …
         var queryable = filterSession.Query<Note>();
-        (await rowSecurity.ComposeRowFilterAsync(queryable, typeof(Note), typeof(VNote), "Query"))
-            .Should().BeSameAs(queryable);
+        var projected = await rowSecurity.ComposeRowFilterAsync(queryable, typeof(Note), typeof(VNote), "Query");
+        projected.Queryable.Should().BeSameAs(queryable);
+        projected.Mode.Should().Be(RowFilterMode.ProjectionFallback);
+        projected.CanPageInDatabase.Should().BeFalse(
+            "the post-materialization gate is the filter here, so paging cannot be pushed down");
 
         // … so FilterAsync loads the base documents (one batch) and judges those.
         var projections = new List<object>

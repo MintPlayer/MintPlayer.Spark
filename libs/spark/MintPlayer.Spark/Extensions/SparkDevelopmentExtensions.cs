@@ -190,6 +190,7 @@ public static class SparkDevelopmentExtensions
         VerifyCustomQueryMethodsExist(contextType, contentRoot);
         VerifySubQueriesCanBeParentScoped(contentRoot);
         VerifyProgramUnitTargetsResolve(contentRoot);
+        VerifyQueryColumnOverridesResolve(contentRoot);
         var descriptionDrift = VerifyAttributeDescriptionsAreCurrent(contextType, contentRoot);
 
         if (expected is not null && string.Equals(expected.ModelHash, actual.ModelHash, StringComparison.Ordinal))
@@ -337,6 +338,87 @@ public static class SparkDevelopmentExtensions
             Console.Error.WriteLine("  " + offender);
         Console.Error.WriteLine();
         Console.Error.WriteLine("Override OnRefreshAsync on the entity's actions class, or remove \"triggersRefresh\" from the model.");
+
+        Environment.ExitCode = ExitDrift;
+    }
+
+    /// <summary>
+    /// A query's per-column capability override must name an attribute on that query's surface (#431).
+    /// </summary>
+    /// <remarks>
+    /// The override list is sparse by design — an omitted column inherits — which means a typo has no
+    /// natural symptom: the entry simply never matches, the column keeps the attribute's answer, and
+    /// the author believes they closed something they did not. That failure is silent in exactly the
+    /// direction that matters, since the usual reason to write an override is to <em>restrict</em> a
+    /// column.
+    /// <para>
+    /// It rides <c>--spark-verify-model</c> rather than a Roslyn analyzer because the flag lives in
+    /// <c>App_Data/Model/*.json</c>, which is not part of the compilation.
+    /// </para>
+    /// <para>
+    /// A column that exists but is off the query surface is an offender too: the override cannot
+    /// apply to it, so stating one is the same mistake wearing a real attribute name.
+    /// </para>
+    /// </remarks>
+    private static void VerifyQueryColumnOverridesResolve(string contentRootPath)
+    {
+        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        if (!Directory.Exists(modelPath))
+            return;
+
+        var offenders = new List<string>();
+
+        foreach (var file in Directory.EnumerateFiles(modelPath, "*.json"))
+        {
+            EntityTypeFile? model;
+            try
+            {
+                model = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
+                    File.ReadAllText(file),
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                // Malformed model files are the hash check's business, not this one's.
+                continue;
+            }
+
+            var definition = model?.PersistentObject;
+            if (definition is null || model?.Queries is null)
+                continue;
+
+            var surface = definition.Attributes
+                .Where(a => a.ShowedOn.HasFlag(EShowedOn.Query))
+                .Select(a => a.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var query in model.Queries)
+            {
+                if (query.Columns is not { Length: > 0 }) continue;
+
+                foreach (var column in query.Columns)
+                {
+                    if (surface.Contains(column.Name)) continue;
+
+                    var known = definition.Attributes
+                        .Any(a => string.Equals(a.Name, column.Name, StringComparison.OrdinalIgnoreCase));
+
+                    offenders.Add($"{definition.Name}.{query.Name}: '{column.Name}' "
+                        + (known ? "is not on the query surface (showedOn)" : "is not an attribute"));
+                }
+            }
+        }
+
+        if (offenders.Count == 0)
+            return;
+
+        Console.Error.WriteLine("Spark model has query column overrides that resolve to nothing:");
+        foreach (var offender in offenders)
+            Console.Error.WriteLine("  " + offender);
+        Console.Error.WriteLine();
+        Console.Error.WriteLine(
+            "An override entry is sparse — it only overrides a column it names. One that names nothing "
+            + "is silently ignored, so a restriction the author believed they applied is not applied.");
 
         Environment.ExitCode = ExitDrift;
     }

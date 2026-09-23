@@ -207,8 +207,14 @@ public class QueryExecutorIntegrationTests : SparkTestDriver
         recorder.Should().NotBeEmpty("the query must have gone to the server");
         // The term itself is parameterized ($p0), so the shape is what there is to assert: one clause per
         // searchable field, OR-ed inside a group, with SearchOperator.And applied within each clause.
-        recorder.Should().ContainSingle().Which.Should().Be(
-            "from 'People' where (search(FirstName, $p0, and) or search(LastName, $p1, and))");
+        // Paging pushdown (#431 M14) issues a count before the page, so a query that can push
+        // down emits two statements rather than one. They are identical in shape here, which
+        // is why asserting on all of them is as strong as asserting on the one.
+        // Asserted as a substring rather than the whole statement: the paging suffix
+        // (`limit $p2, $p3`) is not what this test is about, and pinning it here would make every
+        // future change to paging fail a search test.
+        recorder.Should().NotBeEmpty().And.OnlyContain(q =>
+            q.Contains("from 'People' where (search(FirstName, $p0, and) or search(LastName, $p1, and))"));
     }
 
     /// <summary>

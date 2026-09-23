@@ -56,7 +56,26 @@ export interface SparkCellColumn {
 /** One column of a query result, sent once rather than repeated on every row. */
 export interface QueryColumn extends SparkCellColumn {
   order: number;
-  isSortable?: boolean;
+  /**
+   * Whether the grid offers a sort affordance for this column. Resolved server-side from the query's
+   * override then the attribute, so it arrives already decided.
+   *
+   * This replaced an `isSortable` that carried the server's AsDetail *drag-reorder* flag — a
+   * different concept that was `false` for every scalar column while the grid hard-coded every
+   * header sortable anyway. Neither side read it. The attribute-level `isSortable` on `EntityType`
+   * is the drag-reorder flag and stays.
+   *
+   * Absent means sortable, matching `isVisible`: a server predating the field still draws arrows.
+   */
+  canSort?: boolean;
+  /** Whether the grid draws a filter cell for this column. Absent means filterable. */
+  canFilter?: boolean;
+  /**
+   * Whether this column's distinct values may be listed. When `false` and `canFilter` is true the
+   * panel offers a free-text filter instead of a value list — listing a column's values is a much
+   * stronger disclosure than filtering by one already known.
+   */
+  canListDistincts?: boolean;
   /**
    * Whether the grid draws this column. `false` means the row carries the value but no column is
    * rendered — for a renderer that needs a sibling value (a lock glyph beside a name) without
@@ -181,4 +200,50 @@ export function isQueryRow(row: SparkRow | null | undefined): row is QueryResult
 export function isPersistentObject(row: SparkRow | null | undefined): row is PersistentObject {
   const attributes = (row as PersistentObject | undefined)?.attributes;
   return Array.isArray(attributes) && (attributes.length === 0 || typeof attributes[0]?.name === 'string');
+}
+
+/**
+ * One column's value filter (#431): the values a caller picked, or the values they excluded.
+ *
+ * **Values, never labels.** Each entry is the raw stored value — the same `value` the distinct
+ * endpoint returned, never the `label` beside it. A reference column's values are document ids while
+ * its labels are resolved breadcrumb text, and two rows can legitimately render the same text, so
+ * matching on labels would be both wrong and ambiguous.
+ *
+ * `includes` and `excludes` are the two halves of the inverse toggle rather than a flag: the panel
+ * moves values between them. `null` is a real, selectable value meaning "no value"; an empty or
+ * absent array is the absent filter.
+ */
+export interface QueryColumnFilter {
+  name: string;
+  includes?: unknown[];
+  excludes?: unknown[];
+}
+
+/**
+ * One selectable entry in a column's filter panel.
+ *
+ * Structurally identical to the datatable's own `DistinctValue`, deliberately — it is what lets the
+ * HTTP response be handed straight to `[distincts]` with no mapper in between.
+ */
+export interface DistinctValue {
+  /** The raw stored value. `null` is a real entry meaning "no value", not an absent one. */
+  value: unknown;
+  /** What the user reads. Never matched on. */
+  label: string;
+}
+
+/**
+ * A column's distinct values.
+ *
+ * `remaining` is always empty from this server: the datatable snapshots the list when a selection is
+ * first made and derives both buckets itself by diffing. The server answers "what matches now".
+ *
+ * `hasMore` reports that the cap truncated the list, and the panel re-queries only when it is set or
+ * the search term widens — so a dishonest `false` strands a user typing past the cap.
+ */
+export interface DistinctValuesResult {
+  matching: DistinctValue[];
+  remaining: DistinctValue[];
+  hasMore: boolean;
 }

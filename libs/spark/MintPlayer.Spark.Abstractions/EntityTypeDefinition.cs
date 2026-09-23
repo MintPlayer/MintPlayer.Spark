@@ -218,6 +218,44 @@ public sealed class EntityAttributeDefinition
     /// </summary>
     public bool? IsSortable { get; set; }
     /// <summary>
+    /// Whether a query grid offers to sort by this column, and whether the server accepts a
+    /// caller-supplied sort on it. Absent means capable.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="IsSortable"/>, which is the AsDetail drag-reorder flag and has
+    /// nothing to do with column sorting — the two were conflated in hand-authored model files
+    /// before this existed (#431).
+    /// <para>
+    /// This is <b>enforcement</b>, not decoration: <c>QueryExecutor</c> refuses a sort on a column
+    /// whose resolved value is <see langword="false"/>, silently, because a distinguishable refusal
+    /// is itself an oracle. A column named in the query's own <c>sortColumns</c> is exempt — the
+    /// server chose that ordering, the caller did not.
+    /// </para>
+    /// <para>
+    /// Hand-set in the model JSON and never written by the synchronizer. <b>Nullable on purpose</b>:
+    /// a non-nullable <c>bool</c> would serialize <c>false</c> onto every attribute of every model
+    /// file and break the synchronize fixed point.
+    /// </para>
+    /// </remarks>
+    public bool? CanSort { get; set; }
+    /// <summary>
+    /// Whether a query grid draws a filter cell for this column, and whether the server accepts
+    /// <c>includes</c>/<c>excludes</c> for it. Absent means capable. Enforced, and silently, for the
+    /// same reason as <see cref="CanSort"/>.
+    /// </summary>
+    public bool? CanFilter { get; set; }
+    /// <summary>
+    /// Whether this column's distinct values may be enumerated. Absent means capable.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="CanFilter"/> because listing a column's values is a far stronger
+    /// disclosure than filtering by a value the caller already holds: someone who knows an account
+    /// number may legitimately filter by it while having no business reading every account number in
+    /// the system. <c>false</c> with <see cref="CanFilter"/> true yields a free-text filter cell
+    /// instead of a value list.
+    /// </remarks>
+    public bool? CanListDistincts { get; set; }
+    /// <summary>
     /// When true, changing this attribute's value asks the server to reshape the object: the client
     /// posts the in-progress object to <c>/spark/po/{objectTypeId}/refresh</c> and the entity's
     /// actions class receives <c>OnRefreshAsync</c>, which may toggle <see cref="IsRequired"/>,

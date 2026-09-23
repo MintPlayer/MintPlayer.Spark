@@ -105,7 +105,7 @@ internal interface IRowSecurity
     /// <see cref="FilterAsync"/> remains the enforcement point (batched reload) — the pushdown is
     /// an optimization, never the only gate.
     /// </summary>
-    Task<object> ComposeRowFilterAsync(object queryable, Type entityType, Type elementType, string action, CancellationToken cancellationToken = default);
+    Task<RowFilterComposition> ComposeRowFilterAsync(object queryable, Type entityType, Type elementType, string action, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Drops the per-request filter memo (#239 M3). Called on a streaming connection's periodic
@@ -286,21 +286,25 @@ internal partial class RowSecurity : IRowSecurity
         return visible;
     }
 
-    public async Task<object> ComposeRowFilterAsync(object queryable, Type entityType, Type elementType, string action, CancellationToken cancellationToken = default)
+    public async Task<RowFilterComposition> ComposeRowFilterAsync(object queryable, Type entityType, Type elementType, string action, CancellationToken cancellationToken = default)
     {
+        // Whether IsAllowedAsync refines per row AFTER materialization. Carried on every branch
+        // because it decides paging safety independently of whether the expression composed (#431).
+        var refined = IsOverridden(ResolveHook(entityType));
+
         // Same exemption as ResolveEffectiveRuleAsync: the system is not a viewer to scope rows for.
         if (Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
-            return queryable;
+            return new RowFilterComposition(queryable, RowFilterMode.SystemContext, refined);
 
         var filter = await InvokeGetRowFilterAsync(entityType, action);
         if (filter is null)
-            return queryable;
+            return new RowFilterComposition(queryable, RowFilterMode.NoRule, refined);
 
         // A constant predicate ("x => false" for a caller who may see nothing) needs no query
         // translation — and RavenDB's provider may not survive one. The compiled post-filter in
         // FilterAsync evaluates it in memory instead.
         if (filter.Body is ConstantExpression)
-            return queryable;
+            return new RowFilterComposition(queryable, RowFilterMode.ConstantPredicate, refined);
 
         if (elementType != entityType)
         {
@@ -314,7 +318,7 @@ internal partial class RowSecurity : IRowSecurity
                     + "falling back to post-materialization filtering with a batched reload.",
                     entityType.Name, elementType.Name);
             }
-            return queryable;
+            return new RowFilterComposition(queryable, RowFilterMode.ProjectionFallback, refined);
         }
 
         if (announced.TryAdd((entityType, "pushdown"), true))
@@ -322,7 +326,7 @@ internal partial class RowSecurity : IRowSecurity
             logger?.LogInformation(
                 "Row security for {EntityType}: filter expression composes into the database query{Refinement}.",
                 entityType.Name,
-                IsOverridden(ResolveHook(entityType)) ? " with IsAllowedAsync as per-row refinement" : "");
+                refined ? " with IsAllowedAsync as per-row refinement" : "");
         }
 
         var whereMethod = ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo>(
@@ -334,7 +338,8 @@ internal partial class RowSecurity : IRowSecurity
                     && m.GetParameters()[1].ParameterType.GetGenericArguments()[0].GetGenericArguments().Length == 2)
                 .MakeGenericMethod(k.Entity));
 
-        return whereMethod.Invoke(null, [queryable, filter])!;
+        return new RowFilterComposition(
+            whereMethod.Invoke(null, [queryable, filter])!, RowFilterMode.PushedDown, refined);
     }
 
     public async Task RedactAsync(

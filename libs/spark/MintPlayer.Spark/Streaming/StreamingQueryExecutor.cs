@@ -58,7 +58,7 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
 
         // Resolved once: a stream is one result whose rows arrive over time, so its shape is fixed
         // when it opens.
-        var columns = Services.QueryResultProjector.BuildColumns(entityTypeDef);
+        var columns = Services.QueryResultProjector.BuildColumns(entityTypeDef, query);
 
         // Resolve CLR type and Actions class. Both failures are refused at --spark-verify-model and
         // at query-load time (SparkComposedQueries); reaching either here means the model changed

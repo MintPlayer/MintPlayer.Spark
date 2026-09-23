@@ -827,6 +827,15 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                 existingAttr.IsArray = isArray;
                 existingAttr.IsSortable = isSortable;
 
+                // ⚠️ IsSortable is derived (from [Sortable] on an AsDetail array) and so is assigned
+                // above. CanSort/CanFilter/CanListDistincts (#431) are NOT, and must never be: they
+                // are hand-authored capability flags with no CLR counterpart to derive from, and
+                // assigning them here — including to null — would erase an author's intent on every
+                // synchronize. They are absent from this branch on purpose, not by omission.
+                //
+                // The names are adjacent and the policies are opposite, which is the whole reason
+                // this comment exists.
+
                 existingAttr.AsDetailType = dataType == "AsDetail" ? asDetailType : null;
                 existingAttr.LookupReferenceType = lookupRefAttr != null ? lookupReferenceType : null;
 
@@ -907,9 +916,15 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             if (rebuiltNames.Contains(carriedOver.Name) || ignoredPropertyNames.Contains(carriedOver.Name))
                 continue;
 
-            // Added as-is, by reference: Id, Label, Rules, Renderer, RendererOptions, Group and
-            // EditMode all ride along untouched. The Id matters most — clients key on it, so
-            // regenerating one silently rewrites identity.
+            // Added as-is, by reference: **everything** rides along untouched, because nothing here
+            // re-derives anything — this is the carry-over path for attributes with no CLR property
+            // left to derive from. The Id matters most: clients key on it, so regenerating one
+            // silently rewrites identity.
+            //
+            // This used to enumerate the fields that ride along (Id, Label, Rules, Renderer,
+            // RendererOptions, Group, EditMode). The list went stale twice — it never gained
+            // TriggersRefresh, ReferenceDisplayType or Description — so it is stated as a rule
+            // instead. A new hand-authored field needs no edit here, which is the point.
             newAttributes.Add(carriedOver);
 
             Console.WriteLine(

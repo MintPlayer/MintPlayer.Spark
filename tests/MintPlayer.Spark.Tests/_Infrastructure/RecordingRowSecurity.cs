@@ -78,10 +78,10 @@ internal sealed class RecordingRowSecurity : IRowSecurity
         return Task.FromResult(entities);
     }
 
-    public Task<object> ComposeRowFilterAsync(object queryable, Type entityType, Type elementType, string action, CancellationToken cancellationToken = default)
+    public Task<RowFilterComposition> ComposeRowFilterAsync(object queryable, Type entityType, Type elementType, string action, CancellationToken cancellationToken = default)
     {
         calls.Add(new Call(nameof(ComposeRowFilterAsync), entityType, elementType, action, 0));
-        return Task.FromResult(queryable);
+        return Task.FromResult(new RowFilterComposition(queryable, RowFilterMode.NoRule, HasPerRowRefinement: false));
     }
 
     public void ResetRequestFilterCache()

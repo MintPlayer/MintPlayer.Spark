@@ -54,6 +54,28 @@ public sealed class SparkQuery
     public string? EntityType { get; set; }
 
     /// <summary>
+    /// Per-column capability overrides for this query only — a <b>sparse</b> list, never a column
+    /// enumeration.
+    /// </summary>
+    /// <remarks>
+    /// A column not named here inherits the attribute's own <c>canSort</c>/<c>canFilter</c>/
+    /// <c>canListDistincts</c>; an absent or empty list overrides nothing. Sparseness is what keeps
+    /// this from becoming a second place that decides which columns exist and in what order — that
+    /// remains <c>showedOn</c> plus <c>order</c> on the attributes.
+    /// <para>
+    /// An entry naming an attribute that is not on this query's surface is a
+    /// <c>--spark-verify-model</c> error rather than a silent no-op.
+    /// </para>
+    /// </remarks>
+    /// <remarks>
+    /// ⚠️ <b>Nullable, not an empty array.</b> The synchronizer writes with
+    /// <c>JsonIgnoreCondition.WhenWritingNull</c>, which skips <see langword="null"/> but <b>not</b> an
+    /// empty collection — so a non-nullable default stamps <c>"columns": []</c> onto every query in
+    /// every model file. Measured: it did, across all four apps, before this was made nullable.
+    /// </remarks>
+    public SparkQueryColumn[]? Columns { get; set; }
+
+    /// <summary>
     /// When true, this query supports WebSocket streaming.
     /// The frontend opens a WebSocket to /spark/queries/{id}/stream
     /// and receives snapshot + patch messages instead of a single HTTP response.
@@ -74,6 +96,51 @@ public sealed class SparkQuery
     {
         var copy = (SparkQuery)MemberwiseClone();
         copy.SortColumns = sortColumns;
+        copy.SortColumnsAreCallerSupplied = true;
         return copy;
     }
+
+    /// <summary>
+    /// Whether <see cref="SortColumns"/> came from the request rather than the model.
+    /// </summary>
+    /// <remarks>
+    /// The <c>canSort</c> gate (#431) exempts a column the query itself declares its default order
+    /// by — the server chose that ordering, the caller did not, so <c>canSort: false</c> on such a
+    /// column means "the grid arrives sorted this way and you may not re-sort by it", which is a
+    /// coherent and useful shape.
+    /// <para>
+    /// Without this flag the distinction is unrecoverable at the point it is needed:
+    /// <see cref="WithSortColumns"/> <em>replaces</em> the declared columns, so by the time the
+    /// executor sees them a caller-supplied sort is indistinguishable from a model-declared one.
+    /// </para>
+    /// <para>
+    /// <see cref="JsonIgnoreAttribute"/> because it is request state, not model state: it must never
+    /// be written to a model file nor accepted from one.
+    /// </para>
+    /// </remarks>
+    [JsonIgnore]
+    public bool SortColumnsAreCallerSupplied { get; private set; }
+}
+
+/// <summary>
+/// One entry in a query's sparse <see cref="SparkQuery.Columns"/> override list.
+/// </summary>
+/// <remarks>
+/// Every flag is nullable and null means "inherit from the attribute" — which is why this cannot be
+/// collapsed into <c>bool</c>s with defaults: "not stated here" and "stated false here" are
+/// different answers, and only the first defers to the attribute.
+/// </remarks>
+public sealed class SparkQueryColumn
+{
+    /// <summary>The attribute name this entry overrides. Must be on the query's surface.</summary>
+    public required string Name { get; set; }
+
+    /// <inheritdoc cref="EntityAttributeDefinition.CanSort"/>
+    public bool? CanSort { get; set; }
+
+    /// <inheritdoc cref="EntityAttributeDefinition.CanFilter"/>
+    public bool? CanFilter { get; set; }
+
+    /// <inheritdoc cref="EntityAttributeDefinition.CanListDistincts"/>
+    public bool? CanListDistincts { get; set; }
 }

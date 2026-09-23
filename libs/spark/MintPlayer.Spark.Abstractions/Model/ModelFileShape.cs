@@ -135,6 +135,8 @@ public static class ModelFileShape
                     builder.Append("  query");
                     foreach (var field in StructuralQueryFields)
                         AppendInline(builder, field, query);
+
+                    AppendQueryColumns(builder, query);
                     builder.Append('\n');
                 }
             }
@@ -164,12 +166,21 @@ public static class ModelFileShape
     /// <c>isReadOnly</c> already carries, for the same reason, and it is the price of the gate
     /// rather than an oversight.
     /// </para>
+    /// <para>
+    /// <c>canSort</c>, <c>canFilter</c> and <c>canListDistincts</c> (#431) are here by the same rule.
+    /// They read as presentation and are not: the executor refuses a sort, a filter or a distinct
+    /// listing on a column whose flag is <c>false</c>, so flipping one to <c>true</c> in a deployed
+    /// model opens a read path — which is the sort-oracle class (#294-#296) the gate exists for.
+    /// Adding names here churns no existing hash, because a field is only appended when the JSON
+    /// property is present and no model file carries these yet.
+    /// </para>
     /// </remarks>
     private static readonly string[] StructuralAttributeFields =
     [
         "name", "dataType", "isRequired", "isReadOnly", "isVisible", "isArray",
         "referenceType", "asDetailType", "lookupReferenceType", "isSortable",
         "inCollectionType", "inQueryType", "query",
+        "canSort", "canFilter", "canListDistincts",
     ];
 
     /// <summary>
@@ -185,6 +196,43 @@ public static class ModelFileShape
     [
         "name", "source", "entityType", "indexName", "alias", "isStreamingQuery",
     ];
+
+    /// <summary>
+    /// A query's sparse per-column capability overrides (#431), canonicalised into the hash.
+    /// </summary>
+    /// <remarks>
+    /// Structural by the rule this file states: an override gates a read. Flipping
+    /// <c>canListDistincts</c> to <c>true</c> on a deployed model opens value enumeration on a column
+    /// the author closed, which is the disclosure class the sort-oracle hardening (#294-#296) exists
+    /// for — and unlike the attribute-level flags, an override is easy to add to a model file without
+    /// touching anything else.
+    /// <para>
+    /// Canonicalised rather than rendered, for the reason <see cref="AppendRules"/> records:
+    /// <c>GetRawText()</c> on an array returns the original bytes including indentation and line
+    /// endings, so a CRLF-to-LF rewrite between the machine that writes the file and the container
+    /// that verifies it would change the hash and refuse to start.
+    /// </para>
+    /// <para>
+    /// ⚠️ <c>sortColumns</c> is deliberately <b>not</b> structural, though the <c>canSort</c> exemption
+    /// (#431 §5.3) gives it a new gating role: a column the query declares its default order by skips
+    /// the <c>canSort</c> check. The exposure is bounded and accepted — the exemption cannot reach a
+    /// column that is off the query surface, because <c>ShowedOn.Query</c> is checked first and
+    /// remains the authorization boundary. Bypassing <c>canSort</c> returns that column to its
+    /// pre-#431 behaviour, which was already acceptable. Making <c>sortColumns</c> structural would
+    /// churn the hash of nearly every model file to close a hole that is not one.
+    /// </para>
+    /// </remarks>
+    private static void AppendQueryColumns(StringBuilder builder, JsonElement query)
+    {
+        if (!query.TryGetProperty("columns", out var columns) || columns.ValueKind != JsonValueKind.Array)
+            return;
+
+        var rendered = columns.EnumerateArray()
+            .Select(Canonicalize)
+            .OrderBy(c => c, StringComparer.Ordinal);
+
+        builder.Append("\tcolumns=[").Append(string.Join(",", rendered)).Append(']');
+    }
 
     private static void AppendRules(StringBuilder builder, JsonElement attribute)
     {

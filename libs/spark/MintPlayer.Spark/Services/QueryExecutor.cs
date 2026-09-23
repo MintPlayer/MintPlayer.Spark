@@ -8,6 +8,7 @@ using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Text.Json;
 
 using static MintPlayer.Spark.Services.SparkHookInvocation;
 
@@ -21,7 +22,7 @@ public interface IQueryExecutor
     /// re-runs the query the rows came from, so they arrive with the query's own projection
     /// (index-computed columns included) rather than being re-derived from documents.
     /// </param>
-    Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, IReadOnlyCollection<string>? restrictToIds = null, CancellationToken cancellationToken = default);
+    Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, IReadOnlyCollection<string>? restrictToIds = null, IReadOnlyList<QueryColumnFilter>? columnFilters = null, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Whether this query's method returns its own page (<see cref="SparkQueryPage{T}"/>) and
@@ -32,6 +33,15 @@ public interface IQueryExecutor
     /// work with an author-paged query — re-materializing a selection, which has no way to ask for
     /// "the page containing these ids" — can branch rather than try and fail.
     /// </remarks>
+    /// <summary>
+    /// The distinct values of one column, for a filter panel (#431). Empty when the column may not
+    /// be enumerated -- indistinguishable from "nothing to list", on purpose.
+    /// </summary>
+    Task<DistinctValuesResult> GetDistinctValuesAsync(SparkQuery query, string column,
+        PersistentObject? parent = null, string? search = null,
+        IReadOnlyList<QueryColumnFilter>? columnFilters = null,
+        CancellationToken cancellationToken = default);
+
     bool OwnsItsOwnPaging(SparkQuery query);
 }
 
@@ -50,7 +60,152 @@ internal partial class QueryExecutor : IQueryExecutor
     [Inject] private readonly IRowSecurity rowSecurity;
     [Inject] private readonly IRowSecurityGate gate;
 
-    public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, IReadOnlyCollection<string>? restrictToIds = null, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Nullable so the distinct pass (#431) can recognise the breadcrumb redaction placeholder
+    /// without making options mandatory for every other path through this class.
+    /// </summary>
+    [Inject] private readonly Microsoft.Extensions.Options.IOptions<Configuration.SparkOptions>? breadcrumbOptions = null;
+
+    /// <summary>Optional, so no existing construction path is forced to supply one.</summary>
+    [Inject] private readonly Microsoft.Extensions.Logging.ILogger<QueryExecutor>? logger = null;
+
+    /// <summary>
+    /// Queries whose paging decision has been reported, so the log states it once rather than per
+    /// request. Same shape as RowSecurity's announcement dictionary, and for the same reason: this is
+    /// a fact about a query's shape, not an event.
+    /// </summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(string Query, bool Pushed), bool> pagingAnnounced = new();
+
+    /// <summary>
+    /// The distinct values of one column, for a filter panel (#431).
+    /// </summary>
+    /// <remarks>
+    /// <b>Computed in memory, over rows the pipeline has already secured</b> — not by a RavenDB
+    /// facet. A facet aggregates in the database, where the row filter frequently is not: it refuses
+    /// to compose into a projection query, which is the default shape for an indexed query, and the
+    /// gate that actually filters those runs after materialization. A facet on such a query would
+    /// publish values drawn from rows the caller may not read — the same oracle class as the sort
+    /// hardening, but returning the values instead of leaking their order.
+    /// <para>
+    /// Running here also makes reference columns possible at all: breadcrumb text is resolved after
+    /// materialization and is not an index term, so there is nothing for a facet to aggregate.
+    /// </para>
+    /// <para>
+    /// The cost is one extra pass over rows the request has already materialized, bounded by the cap.
+    /// </para>
+    /// </remarks>
+    public async Task<DistinctValuesResult> GetDistinctValuesAsync(SparkQuery query, string column,
+        PersistentObject? parent = null, string? search = null,
+        IReadOnlyList<QueryColumnFilter>? columnFilters = null,
+        CancellationToken cancellationToken = default)
+    {
+        // The whole result set, not a page: a distinct list describes the query, not the page the
+        // grid happens to be on. Paging is applied to rows, never to this.
+        var rows = await LoadSecuredRowsAsync(query, parent, columnFilters, cancellationToken);
+        if (rows.Definition is null) return DistinctValuesResult.Empty;
+
+        var attribute = ColumnCapabilities.FindQuerySurfaceAttribute(rows.Definition, column);
+
+        // Indistinguishable from "nothing to list", deliberately — see DistinctValuesResult.Empty.
+        if (attribute is null || !ColumnCapabilities.CanListDistincts(attribute, query))
+            return DistinctValuesResult.Empty;
+
+        return ProjectDistincts(rows.Rows, attribute.Name, search);
+    }
+
+    /// <summary>The cap on a distinct bucket. Matches the protocol this follows.</summary>
+    private const int MaxDistinctValues = 100;
+
+    /// <summary>
+    /// One pass over secured rows, collecting <c>{ value, label }</c> pairs.
+    /// </summary>
+    /// <remarks>
+    /// Identity is the <b>value</b>, never the label: two rows may legitimately render the same text,
+    /// and collapsing on text would drop a genuinely selectable value. Ordering is by label, because
+    /// that is what the reader scans.
+    /// <para>
+    /// A reference the caller may not read arrives carrying the redaction placeholder rather than a
+    /// name, and is <b>dropped</b> — offering it would confirm the row exists while showing a value
+    /// that cannot be chosen meaningfully, and a list of placeholders is worse than a short list.
+    /// </para>
+    /// </remarks>
+    private DistinctValuesResult ProjectDistincts(
+        IReadOnlyList<PersistentObject> rows, string attributeName, string? search)
+    {
+        var placeholder = breadcrumbOptions?.Value.Breadcrumb.RedactedPlaceholder;
+        var term = search?.Trim();
+        var seen = new HashSet<object?>();
+        var values = new List<DistinctValue>();
+        var hasMore = false;
+
+        foreach (var row in rows)
+        {
+            var attribute = row.Attributes
+                .FirstOrDefault(a => string.Equals(a.Name, attributeName, StringComparison.OrdinalIgnoreCase));
+            if (attribute is null) continue;
+
+            var value = attribute.Value;
+            var label = attribute.Breadcrumb ?? value?.ToString() ?? NullDistinctLabel;
+
+            if (placeholder is not null && string.Equals(label, placeholder, StringComparison.Ordinal))
+                continue;
+
+            if (term is { Length: > 0 }
+                && label.IndexOf(term, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                continue;
+            }
+
+            if (!seen.Add(value)) continue;
+
+            // Counted, not collected, once the cap is reached: the caller needs to know the list is
+            // truncated or its search box silently stops fetching.
+            if (values.Count >= MaxDistinctValues)
+            {
+                hasMore = true;
+                break;
+            }
+
+            values.Add(new DistinctValue { Value = value, Label = label });
+        }
+
+        values.Sort(static (a, b) => string.Compare(a.Label, b.Label, StringComparison.CurrentCulture));
+
+        return new DistinctValuesResult { Matching = values, HasMore = hasMore };
+    }
+
+    /// <summary>What a row with no value for the column is listed as.</summary>
+    private const string NullDistinctLabel = "< none >";
+
+    /// <summary>
+    /// Runs the query as far as the row-security gate and hands back the secured rows.
+    /// </summary>
+    /// <remarks>
+    /// The same two branches <see cref="ExecuteQueryAsync"/> takes, stopping before paging: a
+    /// distinct list describes the whole result set, not the page the grid is showing.
+    /// <para>
+    /// The query hook still runs, because it is the presentation funnel every execution passes
+    /// through and skipping it here would let a distinct request see a query the hook reshaped for
+    /// everyone else.
+    /// </para>
+    /// </remarks>
+    private async Task<(IReadOnlyList<PersistentObject> Rows, EntityTypeDefinition? Definition)> LoadSecuredRowsAsync(
+        SparkQuery query, PersistentObject? parent, IReadOnlyList<QueryColumnFilter>? columnFilters,
+        CancellationToken cancellationToken)
+    {
+        var (isCustom, name) = ResolveSource(query);
+        await InvokeQueryHookAsync(query, parent);
+
+        var source = isCustom
+            ? await ExecuteCustomQueryAsync(query, name, parent, null, 0, int.MaxValue, null, null, cancellationToken)
+            : await ExecuteDatabaseQueryAsync(query, name, parent, null, null, columnFilters,
+                // Skip/take of zero/max: a distinct list describes the whole result set, never a page.
+                skip: 0, take: int.MaxValue, cancellationToken);
+
+        return (source.Rows.Rows, source.Definition);
+    }
+
+    public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, IReadOnlyCollection<string>? restrictToIds = null, IReadOnlyList<QueryColumnFilter>? columnFilters = null, CancellationToken cancellationToken = default)
     {
         var (isCustom, name) = ResolveSource(query);
 
@@ -84,11 +239,11 @@ internal partial class QueryExecutor : IQueryExecutor
         }
         else
         {
-            source = await ExecuteDatabaseQueryAsync(query, name, parent, searchTerm, restrictToIds, cancellationToken)
+            source = await ExecuteDatabaseQueryAsync(query, name, parent, searchTerm, restrictToIds, columnFilters, skip, take, cancellationToken)
                 with { DisabledActions = queryContext.DisabledActions };
         }
 
-        var (allResults, definition, searchPushedDown, authorTotalItems, _) = source;
+        var (allResults, definition, searchPushedDown, authorTotalItems, _, _) = source;
 
         // The author's page is returned as it stands. Search, sort, count and paging were all
         // transferred with it (the binary authority rule on SparkQueryPage), so applying any of
@@ -118,7 +273,7 @@ internal partial class QueryExecutor : IQueryExecutor
                     $"the rows inside the query method itself.");
             }
 
-            var authorColumns = definition is not null ? QueryResultProjector.BuildColumns(definition) : [];
+            var authorColumns = definition is not null ? QueryResultProjector.BuildColumns(definition, query) : [];
             return new QueryResult
             {
                 Columns = authorColumns,
@@ -153,11 +308,15 @@ internal partial class QueryExecutor : IQueryExecutor
 
         // Counted after filtering and before paging, either way — which is what keeps
         // TotalItems search-aware now that the filter may have run in the database.
-        var totalItems = allResults.Count;
+        //
+        // On the pushdown path (#431 M14) the rows in hand ARE the page, so counting them would
+        // report the page size as the total. The database's count stands in, and it is only ever
+        // taken from a path where nothing removes rows after the query answers.
+        var totalItems = source.Page?.TotalItems ?? allResults.Count;
 
         // A restricted run returns exactly the rows asked for. Paging it would serve "the first
         // `take` of the selection", which is how a bulk action silently acts on a subset.
-        var paged = restrictToIds is { Count: > 0 }
+        var paged = restrictToIds is { Count: > 0 } || source.Page is not null
             ? allResults
             : allResults.Narrow(rows => rows.Skip(skip).Take(take));
 
@@ -166,7 +325,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // answer rather than a guess reconstructed from whichever attributes the first row happens
         // to carry.
         var columns = definition is not null
-            ? QueryResultProjector.BuildColumns(definition)
+            ? QueryResultProjector.BuildColumns(definition, query)
             : [];
 
         return new QueryResult
@@ -307,8 +466,21 @@ internal partial class QueryExecutor : IQueryExecutor
         /// here because the source is produced in one method and the QueryResult is assembled in
         /// another — the alternative was a field, which would leak across concurrent executions.
         /// </summary>
-        IReadOnlyList<string>? DisabledActions = null)
+        IReadOnlyList<string>? DisabledActions = null,
+
+        /// <summary>
+        /// Set when the database applied <c>Skip</c>/<c>Take</c> and counted the matches, so the rows
+        /// already ARE the page and must not be paged again in memory (#431 M14).
+        /// </summary>
+        DatabasePage? Page = null)
 ;
+
+/// <summary>The page the database produced, when paging was safe to push down (#431 M14).</summary>
+/// <param name="TotalItems">
+/// The database's count of matching rows. Trustworthy only on this path, where nothing removes rows
+/// after the query answers — which is exactly what makes it not a cardinality oracle.
+/// </param>
+internal sealed record DatabasePage(int TotalItems);
 
     /// <summary>
     /// Narrows a query source to a set of row ids, for a custom action re-materializing a selection.
@@ -537,7 +709,8 @@ internal partial class QueryExecutor : IQueryExecutor
 
     private async Task<QuerySourceResult> ExecuteDatabaseQueryAsync(
         SparkQuery query, string propertyName, PersistentObject? parent, string? searchTerm,
-        IReadOnlyCollection<string>? restrictToIds, CancellationToken cancellationToken)
+        IReadOnlyCollection<string>? restrictToIds, IReadOnlyList<QueryColumnFilter>? columnFilters,
+        int skip, int take, CancellationToken cancellationToken)
     {
         // Authorization comes FIRST, from the query's declared entity type (F1). Everything below
         // is resolution work — reflecting over the context, reading a property, matching a CLR type
@@ -706,9 +879,19 @@ internal partial class QueryExecutor : IQueryExecutor
         // Push the row filter into the Raven query where shapes allow (no projection in play);
         // otherwise this no-ops and FilterAsync below stays the gate. Composing before
         // materialization is what keeps a row-scoped type from reading its whole collection.
-        queryable = await rowSecurity.ComposeRowFilterAsync(queryable, entityType, resultType, "Query", cancellationToken);
+        var rowFilter = await rowSecurity.ComposeRowFilterAsync(queryable, entityType, resultType, "Query", cancellationToken);
+        queryable = rowFilter.Queryable;
 
         var sortType = (indexType != null && resultType != entityType) ? resultType : entityType;
+
+        // Column filters sit between the row filter and the search group (#431). Not merely "before
+        // search": they are plain Equal comparisons, so they cannot be swept into RavenDB's
+        // consecutive-Search grouping, and keeping them here leaves the security predicate and the
+        // search group adjacent exactly as the comment below requires.
+        if (columnFilters is { Count: > 0 })
+        {
+            queryable = ApplyColumnFilters(queryable, sortType, columnFilters, entityTypeDefinition, query);
+        }
 
         // After the row filter and before sorting. The position matters for one reason: RavenDB
         // groups consecutive Search clauses and ANDs that group with its neighbours, so keeping the
@@ -735,7 +918,50 @@ internal partial class QueryExecutor : IQueryExecutor
 
         if (query.SortColumns.Length > 0)
         {
-            queryable = ApplySorting(queryable, sortType, query.SortColumns, entityTypeDefinition);
+            queryable = ApplySorting(queryable, sortType, query.SortColumns, entityTypeDefinition, query);
+        }
+
+        // Paging pushdown (#431 M14). Four conditions, and every one of them is about the same
+        // question: can anything still remove rows after the database answers? If something can, the
+        // database's page and the caller's page are different sets — pages come back short, offsets
+        // drift, and the count describes rows the caller may not see.
+        //
+        //   1. The row filter left nothing to remove (see RowFilterComposition.CanPageInDatabase).
+        //   2. No restrictToIds — that path returns exactly the rows asked for and ignores paging.
+        //   3. No in-memory search fallback, which narrows AFTER materialization.
+        //   4. resultType == entityType, i.e. no index projection.
+        //
+        // The fourth is the subtle one and it is NOT about the row filter. The gate dedupes by id,
+        // and an index may fan out — one document producing several entries. Skip(n) then skips n
+        // ENTRIES while the caller is counting documents, so offsets drift by however many entries
+        // the skipped documents happened to produce. Restricting to the non-projecting shape keeps
+        // one document to one row, which is the only case where the two agree.
+        var mayPageInDatabase = rowFilter.CanPageInDatabase
+            && restrictToIds is not { Count: > 0 }
+            && (searchTerm is null || searchPushedDown)
+            && resultType == entityType;
+
+        // Two very different cost profiles behind one query, chosen per request. Reported once per
+        // (query, outcome) so a slow grid can be explained rather than guessed at — and so the
+        // ANSWER is visible, not just the fact that a choice exists.
+        if (pagingAnnounced.TryAdd((query.Name, mayPageInDatabase), true))
+        {
+            logger?.LogInformation(
+                "Query {Query}: paging {Outcome}. Row filter: {RowFilterMode}{Refinement}.",
+                query.Name,
+                mayPageInDatabase
+                    ? "is pushed into the database"
+                    : "runs in memory over the whole secured result set",
+                rowFilter.Mode,
+                rowFilter.HasPerRowRefinement ? ", refined per row by IsAllowedAsync" : "");
+        }
+
+        DatabasePage? databasePage = null;
+        if (mayPageInDatabase)
+        {
+            var total = await CountQueryableAsync(queryable, resultType, cancellationToken);
+            databasePage = new DatabasePage(total);
+            queryable = ApplyPaging(queryable, resultType, skip, take);
         }
 
         var materialized = (await ExecuteQueryableAsync(queryable, resultType, cancellationToken)).ToList();
@@ -785,7 +1011,7 @@ internal partial class QueryExecutor : IQueryExecutor
         //
         // It now travels as DedupeById on the context above rather than as a call here, so the
         // decision is made where the difference between the two paths is visible.
-        return new QuerySourceResult(secured, entityTypeDefinition, searchPushedDown);
+        return new QuerySourceResult(secured, entityTypeDefinition, searchPushedDown, Page: databasePage);
     }
 
     #endregion
@@ -956,7 +1182,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // from, not which of them this caller may see. No-op when the method yields projections.
         if (isQueryable && entityType is not null)
         {
-            result = await rowSecurity.ComposeRowFilterAsync(result, entityType, methodInfo.ResultElementType, "Query", cancellationToken);
+            result = (await rowSecurity.ComposeRowFilterAsync(result, entityType, methodInfo.ResultElementType, "Query", cancellationToken)).Queryable;
         }
 
         // Narrow to a selection before anything else touches the shape. Paging is deliberately not
@@ -982,7 +1208,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // Apply sorting if the result is IQueryable
         if (isQueryable && query.SortColumns.Length > 0)
         {
-            result = ApplySorting(result, methodInfo.ResultElementType, query.SortColumns, entityTypeDefinition);
+            result = ApplySorting(result, methodInfo.ResultElementType, query.SortColumns, entityTypeDefinition, query);
         }
 
         // Materialize results
@@ -1077,7 +1303,7 @@ internal partial class QueryExecutor : IQueryExecutor
             Action = "Query",
             DedupeById = isRavenQueryable,
             OrderRows = needsInMemorySort
-                ? rows => SortMappedRows(rows, query.SortColumns, entityTypeDefinition)
+                ? rows => SortMappedRows(rows, query.SortColumns, entityTypeDefinition, query)
                 : null,
             CancellationToken = cancellationToken,
         });
@@ -1101,13 +1327,14 @@ internal partial class QueryExecutor : IQueryExecutor
     /// </para>
     /// </remarks>
     private static IEnumerable<PersistentObject> SortMappedRows(
-        IEnumerable<PersistentObject> rows, SortColumn[] sortColumns, EntityTypeDefinition definition)
+        IEnumerable<PersistentObject> rows, SortColumn[] sortColumns, EntityTypeDefinition definition,
+        SparkQuery? query)
     {
         IOrderedEnumerable<PersistentObject>? ordered = null;
 
         foreach (var col in sortColumns)
         {
-            if (!IsSortableAttribute(definition, col.Property))
+            if (!IsSortableAttribute(definition, query, col.Property))
             {
                 Console.WriteLine(
                     $"Warning: sort column '{col.Property}' is not an attribute of {definition.Name}'s query " +
@@ -1459,7 +1686,7 @@ internal partial class QueryExecutor : IQueryExecutor
     /// </para>
     /// </summary>
     private object ApplySorting(object queryable, Type entityType, SortColumn[] sortColumns,
-        EntityTypeDefinition definition)
+        EntityTypeDefinition definition, SparkQuery? query)
     {
         for (int i = 0; i < sortColumns.Length; i++)
         {
@@ -1480,7 +1707,7 @@ internal partial class QueryExecutor : IQueryExecutor
             // Checked against the DECLARED name, before ResolveSortProperty redirects: a sort
             // companion is only ever used when it IsIgnoredForSparkModel, so it is never a model
             // attribute and would fail this check itself.
-            if (!IsSortableAttribute(definition, col.Property))
+            if (!IsSortableAttribute(definition, query, col.Property))
             {
                 Console.WriteLine(
                     $"Warning: sort column '{col.Property}' is not an attribute of {definition.Name}'s query " +
@@ -1664,15 +1891,230 @@ internal partial class QueryExecutor : IQueryExecutor
     /// breaking anything: absent would continue to mean "use the convention".</para>
     /// </summary>
     /// <summary>
-    /// Whether <paramref name="requested"/> names an attribute the caller may order by: it must exist
-    /// in the model and be part of the query surface.
+    /// Narrows <paramref name="queryable"/> by the caller's per-column value filters (#431).
     /// </summary>
-    private static bool IsSortableAttribute(EntityTypeDefinition definition, string requested)
+    /// <remarks>
+    /// <b>Position is load-bearing.</b> This composes after the row-security predicate and before the
+    /// search group, for the same reason the search group sits where it does: an added clause must
+    /// never end up adjacent to the security filter in a way that lets an operator leak onto it. And
+    /// it deliberately builds plain <c>Equal</c> comparisons rather than going through
+    /// <c>LinqExtensions.Search</c> — no <c>SearchOptions</c> is constructed here at all, because a
+    /// measured RavenDB behaviour lets an explicit one leak forward onto the adjacent clause, and the
+    /// adjacent clause is the row filter.
+    /// <para>
+    /// <b>Refusals are silent</b>, matching the sort gate: a column that is off the query surface or
+    /// resolves <c>canFilter: false</c> is skipped with a console warning and the rows come back
+    /// unnarrowed. A distinguishable refusal would answer "does this column exist" for a caller who
+    /// may not see it.
+    /// </para>
+    /// <para>
+    /// <b>The property is resolved through the sort companion</b>, exactly as ordering is. A
+    /// <c>[Search]</c>-analyzed field is indexed as separate lower-cased terms — <c>Volkswagen Golf
+    /// GTI</c> becomes three — so an equality comparison against the display field matches nothing
+    /// for any multi-word value, silently. <c>{Name}Sort</c> carries the un-analyzed single term and
+    /// is what equality must target.
+    /// </para>
+    /// </remarks>
+    private object ApplyColumnFilters(object queryable, Type sortType,
+        IReadOnlyList<QueryColumnFilter> filters, EntityTypeDefinition definition, SparkQuery? query)
     {
-        var attribute = definition.Attributes
-            .FirstOrDefault(a => string.Equals(a.Name, requested, StringComparison.OrdinalIgnoreCase));
+        foreach (var filter in filters)
+        {
+            if (filter.IsEmpty) continue;
 
-        return attribute is not null && attribute.ShowedOn.HasFlag(EShowedOn.Query);
+            var attribute = ColumnCapabilities.FindQuerySurfaceAttribute(definition, filter.Name);
+            if (attribute is null || !ColumnCapabilities.CanFilter(attribute, query))
+            {
+                Console.WriteLine(
+                    $"Warning: filter column '{filter.Name}' is not a filterable attribute of " +
+                    $"{definition.Name}'s query surface; the filter is refused and the rows are not narrowed.");
+                continue;
+            }
+
+            var property = sortType.GetCachedProperty(ResolveSortProperty(sortType, attribute.Name));
+            if (property is null)
+            {
+                // Same shape as the sort path: a model attribute can legitimately be absent from a
+                // narrower projection, and dropping it silently reads as a broken filter.
+                Console.WriteLine(
+                    $"Warning: filter column '{filter.Name}' has no property on {sortType.Name}; " +
+                    $"the filter is skipped.");
+                continue;
+            }
+
+            var parameter = Expression.Parameter(sortType, "x");
+            var member = Expression.Property(parameter, property);
+
+            Expression? predicate = null;
+
+            if (filter.Includes is { Length: > 0 } includes)
+                predicate = AnyEquals(member, includes, property.PropertyType);
+
+            if (filter.Excludes is { Length: > 0 } excludes)
+            {
+                var none = Expression.Not(AnyEquals(member, excludes, property.PropertyType));
+                predicate = predicate is null ? none : Expression.AndAlso(predicate, none);
+            }
+
+            if (predicate is null) continue;
+
+            var lambda = Expression.Lambda(predicate, parameter);
+            queryable = QueryableWhere(sortType).Invoke(null, [queryable, lambda])!;
+        }
+
+        return queryable;
+    }
+
+    /// <summary>An OR-chain of equality comparisons — the "one of these values" half of a filter.</summary>
+    private static Expression AnyEquals(MemberExpression member, object?[] values, Type propertyType)
+    {
+        Expression? any = null;
+
+        foreach (var raw in values)
+        {
+            var constant = Expression.Constant(ConvertFilterValue(raw, propertyType), propertyType);
+            var equals = Expression.Equal(member, constant);
+            any = any is null ? equals : Expression.OrElse(any, equals);
+        }
+
+        // Unreachable for a non-empty array, but an empty OR-chain must not become "match nothing".
+        return any ?? Expression.Constant(true);
+    }
+
+    /// <summary>
+    /// Coerces one wire value onto the property's CLR type.
+    /// </summary>
+    /// <remarks>
+    /// The body arrives through <c>System.Text.Json</c> as <see cref="JsonElement"/>, so every value
+    /// needs converting before it can be compared. <see langword="null"/> is preserved rather than
+    /// coerced — it is a real, selectable distinct meaning "no value", not an absent filter.
+    /// <para>
+    /// An unconvertible value yields <see langword="null"/> rather than throwing: a filter is caller
+    /// input, and a malformed one should narrow to nothing rather than 500. It cannot be used to
+    /// probe types, because the refusal is indistinguishable from a value that simply matches no row.
+    /// </para>
+    /// </remarks>
+    private static object? ConvertFilterValue(object? raw, Type propertyType)
+    {
+        var target = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+
+        if (raw is null) return null;
+
+        try
+        {
+            if (raw is JsonElement element)
+            {
+                if (element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return null;
+                if (target == typeof(string)) return element.ToString();
+                if (target == typeof(Guid)) return element.TryGetGuid(out var g) ? g : null;
+                if (target.IsEnum) return Enum.Parse(target, element.ToString(), ignoreCase: true);
+
+                return JsonSerializer.Deserialize(element.GetRawText(), target);
+            }
+
+            if (target.IsInstanceOfType(raw)) return raw;
+            if (target.IsEnum) return Enum.Parse(target, raw.ToString() ?? "", ignoreCase: true);
+
+            return Convert.ChangeType(raw, target);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Applies <c>Skip</c>/<c>Take</c> to an untyped queryable (#431 M14).</summary>
+    private static object ApplyPaging(object queryable, Type elementType, int skip, int take)
+    {
+        if (skip > 0)
+            queryable = InvokeQueryableInt(nameof(Queryable.Skip), queryable, elementType, skip);
+
+        return InvokeQueryableInt(nameof(Queryable.Take), queryable, elementType, take);
+    }
+
+    /// <summary>The <c>Skip</c>/<c>Take</c> shape: one source, one int.</summary>
+    private static object InvokeQueryableInt(string name, object queryable, Type elementType, int value)
+    {
+        var method = ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo>(
+            ($"QueryExecutor.Queryable{name}", elementType),
+            k => typeof(Queryable).GetMethods()
+                .First(m => m.Name == name
+                    && m.GetParameters().Length == 2
+                    && m.GetParameters()[1].ParameterType == typeof(int))
+                .MakeGenericMethod(k.Entity));
+
+        return method.Invoke(null, [queryable, value])!;
+    }
+
+    /// <summary>
+    /// The database's count of matching rows, for the paging-pushdown path only.
+    /// </summary>
+    /// <remarks>
+    /// A second round trip, deliberately. The alternative is RavenDB's query statistics, which would
+    /// avoid it — but the statistics out-parameter has to be threaded through the same reflection that
+    /// builds this queryable, and the win here is not the round trip: it is not materializing the
+    /// whole collection to hand back fifty rows.
+    /// <para>
+    /// Counting <b>before</b> paging and only where nothing can remove rows afterwards is what keeps
+    /// this from becoming the cardinality oracle an author-supplied total already was.
+    /// </para>
+    /// </remarks>
+    private static async Task<int> CountQueryableAsync(object queryable, Type elementType, CancellationToken cancellationToken)
+    {
+        var method = ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo?>(
+            ("QueryExecutor.LinqCountAsync", elementType),
+            static k => typeof(LinqExtensions).GetMethods()
+                .FirstOrDefault(m => m.Name == nameof(LinqExtensions.CountAsync)
+                    && m.GetParameters().Length == 2)
+                ?.MakeGenericMethod(k.Entity));
+
+        if (method is null)
+            throw new InvalidOperationException("RavenDB's CountAsync could not be resolved.");
+
+        var task = (Task<int>)method.Invoke(null, [queryable, cancellationToken])!;
+        return await task;
+    }
+
+    /// <summary>The open <c>Queryable.Where(source, predicate)</c> overload, closed over <paramref name="entityType"/>.</summary>
+    private static MethodInfo QueryableWhere(Type entityType)
+        => ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo>(
+            ("QueryExecutor.QueryableWhere", entityType),
+            static k => typeof(Queryable).GetMethods()
+                .First(m => m.Name == nameof(Queryable.Where)
+                    && m.GetParameters().Length == 2
+                    // Expression<Func<T,bool>>, not the indexed Expression<Func<T,int,bool>> overload.
+                    && m.GetParameters()[1].ParameterType.GetGenericArguments()[0].GetGenericArguments().Length == 2)
+                .MakeGenericMethod(k.Entity));
+
+    /// <summary>
+    /// Whether <paramref name="requested"/> names an attribute the caller may order by: it must exist
+    /// in the model, be part of the query surface, and — when the sort is caller-supplied — resolve
+    /// <c>canSort</c> to true.
+    /// </summary>
+    /// <remarks>
+    /// Two gates, and they are not the same kind of thing.
+    /// <para>
+    /// <c>ShowedOn.Query</c> is the authorization boundary and always applies: ordering by a field is
+    /// a comparison oracle regardless of who asked.
+    /// </para>
+    /// <para>
+    /// <c>canSort</c> (#431) is a capability the model author declares, and it gates the
+    /// <b>caller</b>, not the model. A column the query declares its own default order by is exempt:
+    /// the server chose that ordering. So <c>canSort: false</c> on a declared sort column yields a
+    /// grid that arrives ordered by it and cannot be re-ordered by it — deliberate, and checked by
+    /// <see cref="SparkQuery.SortColumnsAreCallerSupplied"/> rather than by comparing name lists,
+    /// because <see cref="SparkQuery.WithSortColumns"/> has already replaced them by this point.
+    /// </para>
+    /// </remarks>
+    private static bool IsSortableAttribute(EntityTypeDefinition definition, SparkQuery? query, string requested)
+    {
+        var attribute = ColumnCapabilities.FindQuerySurfaceAttribute(definition, requested);
+        if (attribute is null) return false;
+
+        // Model-declared order: the caller did not ask for this one.
+        if (query is { SortColumnsAreCallerSupplied: false }) return true;
+
+        return ColumnCapabilities.CanSort(attribute, query);
     }
 
     private static string ResolveSortProperty(Type sortType, string requested)

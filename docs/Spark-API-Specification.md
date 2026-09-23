@@ -209,6 +209,42 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
 
 #### Stream Query (WebSocket)
 
+**`POST /spark/queries/distinct-values`** — `Endpoints/Queries/DistinctValues.cs`
+
+The value list behind one column's filter panel (#431).
+
+```json
+{
+  "queryId": "<guid or alias>",
+  "column": "Manufacturer",
+  "search": "alf",
+  "columns": [ { "name": "Region", "includes": ["eu"], "excludes": [] } ],
+  "parentId": null,
+  "parentType": null
+}
+```
+
+Responds with two buckets and a truncation flag:
+
+```json
+{
+  "matching":  [ { "value": "AlfaRomeo", "label": "Alfa Romeo" } ],
+  "remaining": [],
+  "hasMore": false
+}
+```
+
+`value` is the raw stored value and is the only thing that travels back in a filter's `includes` /
+`excludes`; `label` is presentation only, and for a reference column it is the resolved breadcrumb
+while the value is the document id. A `null` value is a real, selectable entry meaning "no value".
+
+`remaining` is always empty from this server: the client component snapshots the list when a
+selection is first made and derives both buckets itself.
+
+⚠️ **An empty result means either "nothing matches" or "you may not enumerate this column"**, and the
+two are deliberately indistinguishable — the difference is a fact about the caller's rights.
+`hasMore` must be honoured: the panel re-queries only when it is set or the search term widens.
+
 **`GET /spark/queries/{id}/stream`** — `Endpoints/Queries/StreamExecuteQuery.cs`
 
 - **Route params**: `{id}` — Guid or alias. ⚠️ **The only route variable left in Spark**, and the only one that cannot be removed: a WebSocket handshake has no body to move an id into. It collides with nothing — its siblings are the single-segment literals `/get` and `/execute`, and this route needs the `/stream` suffix to match at all.

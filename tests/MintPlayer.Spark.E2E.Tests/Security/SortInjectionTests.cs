@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Net;
 using MintPlayer.Spark.Client;
 using MintPlayer.Spark.E2E.Tests._Infrastructure;
@@ -24,7 +25,7 @@ public class SortInjectionTests
         using var client = await SparkClientFactory.ForFleetAsAdminAsync(_fixture.Host);
 
         var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => client.ExecuteQueryAsync(CarsQueryId, sortColumns: "NoSuchProperty:asc"));
+            () => client.ExecuteQueryAsync(CarsQueryId, sortColumns: [new SortColumn { Property = "NoSuchProperty", Direction = "asc" }]));
 
         ((int)ex.StatusCode).Should().BeOneOf(new[] { 400, 422 },
             "sorting by a property not in the query's schema must be rejected, not silently ignored");
@@ -38,7 +39,7 @@ public class SortInjectionTests
         // The VCar projection is a C# class; any public property on it is reflectable.
         // "Id" is reflectable-but-not-declared on the query — it must be rejected.
         var ex = await Assert.ThrowsAsync<SparkClientException>(
-            () => client.ExecuteQueryAsync(CarsQueryId, sortColumns: "Id:asc"));
+            () => client.ExecuteQueryAsync(CarsQueryId, sortColumns: [new SortColumn { Property = "Id", Direction = "asc" }]));
 
         ((int)ex.StatusCode).Should().BeOneOf(new[] { 400, 422 },
             "sorting by a reflectable-but-undeclared property (Id) must be rejected");
@@ -53,7 +54,7 @@ public class SortInjectionTests
         // the test's point is that it must never be a 500.
         try
         {
-            await client.ExecuteQueryAsync(CarsQueryId, sortColumns: "LicensePlate:not-a-direction");
+            await client.ExecuteQueryAsync(CarsQueryId, sortColumns: [new SortColumn { Property = "LicensePlate", Direction = "not-a-direction" }]);
         }
         catch (SparkClientException ex)
         {

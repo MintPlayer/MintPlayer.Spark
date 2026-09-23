@@ -34,8 +34,9 @@ internal sealed class PermissiveRowSecurity : IRowSecurity
         string action,
         CancellationToken cancellationToken = default) => Task.FromResult(entities);
 
-    public Task<object> ComposeRowFilterAsync(object queryable, Type entityType, Type elementType, string action, CancellationToken cancellationToken = default)
-        => Task.FromResult(queryable);
+    /// <summary>No rule to compose, and nothing refines per row -- the shape that permits database paging.</summary>
+    public Task<RowFilterComposition> ComposeRowFilterAsync(object queryable, Type entityType, Type elementType, string action, CancellationToken cancellationToken = default)
+        => Task.FromResult(new RowFilterComposition(queryable, RowFilterMode.NoRule, HasPerRowRefinement: false));
 
     public void ResetRequestFilterCache() { }
 

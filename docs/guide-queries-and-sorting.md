@@ -1012,3 +1012,55 @@ See also:
 - `Demo/DemoApp/DemoApp/Indexes/Cars_Overview.cs` -- index with cross-document `LoadDocument`
 - `Demo/DemoApp/DemoApp/Data/VCar.cs` -- projection with `[LookupReference]`
 - `MintPlayer.Spark/Services/QueryExecutor.cs` -- query execution with sorting and projection
+
+## Per-column sort and filter capabilities (#431)
+
+Three flags decide what a grid offers for a column. All three are **hand-authored** — the synchronizer
+never writes them — and all three default to **capable when absent**.
+
+```jsonc
+// App_Data/Model/Person.json — on the attribute, the default for every query over this entity
+{ "name": "Salary", "dataType": "number", "showedOn": "Query",
+  "canSort": true, "canFilter": true, "canListDistincts": false }
+```
+
+| Flag | Controls | Absent means |
+|---|---|---|
+| `canSort` | the sort affordance, and whether the server accepts a caller-supplied sort | sortable |
+| `canFilter` | whether a filter cell is drawn, and whether `includes`/`excludes` are accepted | filterable |
+| `canListDistincts` | whether the column's values may be enumerated | listable |
+
+### Why `canListDistincts` is separate
+
+Listing a column's values is a far stronger disclosure than filtering by a value the caller already
+holds. Someone who knows an account number may legitimately filter by it while having no business
+reading every account number in the system. `canFilter: true` with `canListDistincts: false` gives a
+free-text filter cell instead of a value list.
+
+### A query may override a column
+
+```jsonc
+{ "name": "PublicPeople", "source": "Database.People",
+  "columns": [ { "name": "Salary", "canFilter": false } ] }
+```
+
+The list is **sparse**: a column not named here inherits the attribute's answer, and an absent
+`columns` node overrides nothing. An entry naming an attribute that is not on that query's surface is
+a `--spark-verify-model` error, because a typo would otherwise be silently ignored — and the usual
+reason to write an override is to *restrict* a column.
+
+### These are enforced, not decorative
+
+The executor refuses a sort, a filter or a distinct listing on a column whose flag resolves to
+`false`, so a caller bypassing the grid gains nothing. The refusal is **silent** — the rows come back
+unnarrowed, or the value list comes back empty — because a distinguishable refusal answers "does this
+column exist?" for a caller who may not see it.
+
+⚠️ `showedOn` remains the authorization boundary. A column that must never be sorted, filtered or
+enumerated belongs **off the query surface**, not merely flagged.
+
+### The declared sort is exempt
+
+A column named in the query's own `sortColumns` is exempt from `canSort`: the server chose that
+ordering, the caller did not. So `canSort: false` on a declared sort column is legal and useful — the
+grid arrives ordered by it and the user cannot re-order by it.

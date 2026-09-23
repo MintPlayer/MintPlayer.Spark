@@ -4,19 +4,21 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { RouterModule } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
-import { BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, DatatableSettings, type BsDatatableFetch } from '@mintplayer/ng-bootstrap/datatable';
+import { BsDatatableComponent, BsDatatableColumnDirective, BsDatatableFilterPanelDirective, BsRowTemplateDirective, DatatableSettings, type BsDatatableFetch, type DatatableDistincts, type FilterChangeDetail } from '@mintplayer/ng-bootstrap/datatable';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import { cellValue } from '@mintplayer/ng-spark/renderers';
 import { QueryCellValuePipe, QueryReferenceChipsPipe, ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
 import { SparkLanguageService, SparkService } from '@mintplayer/ng-spark/services';
+import { SparkColumnFilterPanelComponent } from '@mintplayer/ng-spark/column-filter';
 import {
   CustomActionDefinition,
   EntityAttributeDefinition,
   EntityType,
   LookupReference,
   QueryColumn,
+  QueryColumnFilter,
   QueryResultItem,
   SparkQuery,
   filterQueryActions,
@@ -59,7 +61,7 @@ import { SparkGridCellComponent } from './spark-grid-cell.component';
  */
 @Component({
   selector: 'spark-query-grid',
-  imports: [CommonModule, RouterModule, BsAlertComponent, BsDatatableComponent, BsDatatableColumnDirective, BsRowTemplateDirective, BsSpinnerComponent, SparkGridCellComponent, ResolveTranslationPipe, QueryCellValuePipe, QueryReferenceChipsPipe, TranslateKeyPipe, SparkAttributeDescriptionComponent],
+  imports: [CommonModule, RouterModule, BsAlertComponent, BsDatatableComponent, BsDatatableColumnDirective, BsDatatableFilterPanelDirective, BsRowTemplateDirective, BsSpinnerComponent, SparkGridCellComponent, ResolveTranslationPipe, QueryCellValuePipe, QueryReferenceChipsPipe, TranslateKeyPipe, SparkAttributeDescriptionComponent, SparkColumnFilterPanelComponent],
   templateUrl: './spark-query-grid.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -329,6 +331,113 @@ export class SparkQueryGridComponent {
     this.reload();
   }
 
+  /**
+   * Replaces the fetched columns only when they actually differ.
+   *
+   * Columns ship **once per result**, so every page fetch returns an identical set. Assigning it
+   * unconditionally wrote a new array of new objects into the signal each time, re-rendering every
+   * header and re-evaluating every `*bsDatatableColumn` input for no change in content.
+   *
+   * Compared by serialized value rather than by reference: the objects are freshly deserialized from
+   * JSON on every response, so reference equality is always false and would defeat the check. A
+   * dozen small objects per fetch is nothing beside the request that produced them.
+   *
+   * ⚠️ This was written believing it fixed a panel-teardown bug (#431 F7). Measured in a browser: it
+   * does not. The columns were already identical on every fetch, so the guard hits every time and the
+   * teardown had another cause entirely. Kept because avoiding a pointless re-render of every header
+   * on every page is worth having on its own — but it is an optimization, not a fix, and the F7
+   * question remains open.
+   */
+  private setFetchedColumns(columns: QueryColumn[]): void {
+    const current = this.fetchedColumns();
+    if (current.length === columns.length && JSON.stringify(current) === JSON.stringify(columns)) return;
+
+    this.fetchedColumns.set(columns);
+  }
+
+  /**
+   * The per-column filters currently applied (#431).
+   *
+   * Read inside `makeFetch`'s closure, like `search`, so a change refetches by producing a new fetch
+   * identity rather than by being captured.
+   */
+  private readonly filters = signal<QueryColumnFilter[]>([]);
+
+  /**
+   * The value source behind every column's panel.
+   *
+   * ⚠️ **Referentially stable, and that is the whole point.** It reads `filters()` when the datatable
+   * *calls* it, not when it is built — so it always sees the current filters while never changing
+   * identity.
+   *
+   * This was a `computed` first, on the reasoning that it had to close over the current filters
+   * because `DistinctsRequest` carries only `{ column, search, signal }`. That was wrong, and the way
+   * it was wrong is worth keeping: a new identity reassigns `[distincts]` on the element, and the
+   * component aborts the in-flight request and bumps a generation counter — so a response already on
+   * its way is discarded as stale and the list renders empty over a perfectly good answer.
+   *
+   * Reading the signal at call time removes the race entirely and is simpler besides.
+   *
+   * The asked-for column's own filter is excluded: a panel must offer the values you could still
+   * pick, not only the ones you already picked.
+   */
+  protected readonly distinctsFn: DatatableDistincts = async request => {
+    const queryId = this.query()?.id;
+    if (!queryId) return null;
+
+    // Read at call time — never captured.
+    const others = this.filters().filter(f => f.name !== request.column);
+
+    // The server's shape IS the datatable's shape, so there is nothing to map.
+    return this.sparkService.getDistinctValues(queryId, request.column, {
+      search: request.search,
+      columns: others,
+      parentId: this.parentId(),
+      parentType: this.parentType(),
+    });
+  };
+
+  /**
+   * Translates one filter change into the wire shape and refetches.
+   *
+   * The event always arrives as the `'values'` shape because the panel only ever calls
+   * `ctx.apply(...)`; comparison mode is never declared. `inverse` is a flag on the event and two
+   * arrays on the wire — the translation is this method's whole job.
+   */
+  protected onFilterChange(detail: FilterChangeDetail): void {
+    if (detail.mode !== 'values') return;
+
+    const values = detail.selected.map(v => v.value);
+    const next = this.filters().filter(f => f.name !== detail.column);
+
+    if (values.length > 0) {
+      next.push(detail.inverse
+        ? { name: detail.column, excludes: values }
+        : { name: detail.column, includes: values });
+    }
+
+    this.filters.set(next);
+    this.onFilterChanged();
+  }
+
+  /**
+   * Back to page 1 and a fresh fetch identity, exactly as a new search term does.
+   *
+   * Both halves matter: the old page number means nothing against a different result set, and the
+   * datatable dedupes reloads by `(page, perPage, sort)` — none of which a filter changes — so
+   * without a new fetch identity the request is silently never made.
+   */
+  private onFilterChanged(): void {
+    if (this.hasExternalData()) return;
+    const s = this.settings();
+    this.settings.set(new DatatableSettings({
+      perPage: { values: s.perPage.values, selected: s.perPage.selected },
+      page: { values: [1], selected: 1 },
+      sortColumns: s.sortColumns,
+    }));
+    this.reload();
+  }
+
   async onCustomAction(action: CustomActionDefinition): Promise<void> {
     if (action.confirmationMessageKey) {
       const message = this.lang.t(action.confirmationMessageKey) || 'Are you sure?';
@@ -398,6 +507,9 @@ export class SparkQueryGridComponent {
     // Ids from the previous query are meaningless against the next one, and would be POSTed as
     // though they belonged to it.
     this.selection.set([]);
+    // A filter belongs to the query it was applied to. Surviving a query switch would POST it
+    // against the next query, where the column may not exist or may mean something else entirely.
+    this.filters.set([]);
     try {
       const [resolvedQuery, entityTypes] = await Promise.all([
         this.sparkService.getQuery(queryId),
@@ -468,6 +580,9 @@ export class SparkQueryGridComponent {
       skip: (req.page - 1) * req.perPage,
       take: req.perPage,
       search: this.search() || undefined,
+      // Read inside the closure, exactly as `search` is: what forces a refetch is the fetch
+      // identity `reload()` creates, not the value captured when this closure was built.
+      columns: this.filters(),
       parentId, parentType,
     }).then(r => {
       this.errorMessage.set(null);
@@ -476,7 +591,7 @@ export class SparkQueryGridComponent {
       // surface (ShowedOn.Query) and is the same place the sort-column allow-list is checked.
       // ?? [] because a malformed or older response must render an empty grid, not throw inside a
       // computed — where the stack points at the column filter and not at the response that lacked them.
-      this.fetchedColumns.set(r.columns ?? []);
+      this.setFetchedColumns(r.columns ?? []);
       // Per-result, so it is re-read on every page rather than latched from the first.
       this.disabledActions.set(r.disabledActions ?? []);
       return {
@@ -514,6 +629,11 @@ export class SparkQueryGridComponent {
 
   getColumnRendererComponent(column: QueryColumn): Type<any> | null {
     return this.gridRenderers.columnComponentFor(column);
+  }
+
+  /** The renderer's optional filter-label override for this column, or null for the server text. */
+  filterLabelFor(column: QueryColumn): ((value: unknown) => string) | null {
+    return this.gridRenderers.filterLabelFor(column);
   }
 
   getColumnRendererInputs(component: Type<any>, item: QueryResultItem, column: QueryColumn): Record<string, any> {

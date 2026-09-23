@@ -118,6 +118,7 @@ public class DenyAllEndpointMirrorTests(DenyAllHost host)
         { "POST", "/spark/po/delete", Wire.Typed(DocTypeId, id: "docs/1") },
         { "POST", "/spark/queries/get", Wire.Query(AllDocsQueryId) },
         { "POST", "/spark/queries/execute", Wire.Query(AllDocsQueryId) },
+        { "POST", "/spark/queries/distinct-values", Wire.Query(AllDocsQueryId) },
         { "POST", "/spark/actions/execute", Wire.Action(DocTypeId, "Archive") },
         { "GET", "/spark/lookupref/Colour", null },
     };
