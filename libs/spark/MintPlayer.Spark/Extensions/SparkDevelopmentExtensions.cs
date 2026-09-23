@@ -194,6 +194,7 @@ public static class SparkDevelopmentExtensions
         VerifyQuerySortColumnsResolve(contentRoot);
         VerifyIndexDefinitionsCompile(indexCatalog);
         VerifyBoundIndexHasAProjection(indexCatalog, contentRoot);
+        VerifyCollectionColumnsDoNotClaimSortability(contentRoot);
         var descriptionDrift = VerifyAttributeDescriptionsAreCurrent(contextType, contentRoot);
 
         if (expected is not null && string.Equals(expected.ModelHash, actual.ModelHash, StringComparison.Ordinal))
@@ -370,6 +371,84 @@ public static class SparkDevelopmentExtensions
     /// apply to it, so stating one is the same mistake wearing a real attribute name.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// An attribute may not claim <c>canSort: true</c> when its shape cannot be ordered.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Ordering by a collection does not produce an arbitrary order — it <b>drops the rows whose
+    /// collection is empty</b>, and returns identical output for ascending and descending. Measured on
+    /// 7.2.6 against nullable-scalar controls that behaved correctly in the same run, so it is a
+    /// property of collection-ness rather than of a missing term.
+    /// <para>
+    /// <c>ColumnCapabilities</c> already refuses this at runtime, so nothing is broken by an author
+    /// writing it. This exists because an <b>explicit</b> <c>true</c> is a statement the framework will
+    /// never honour, and silently ignoring it is how someone spends an afternoon wondering why their
+    /// grid will not sort. The refusal deliberately does not extend to <c>canFilter</c>: filtering a
+    /// collection works, since it emits <c>Any(e =&gt; e == v)</c> over multi-valued terms.
+    /// </para>
+    /// </remarks>
+    private static void VerifyCollectionColumnsDoNotClaimSortability(string contentRootPath)
+    {
+        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        if (!Directory.Exists(modelPath))
+            return;
+
+        var offenders = new List<string>();
+
+        foreach (var file in Directory.EnumerateFiles(modelPath, "*.json"))
+        {
+            EntityTypeFile? model;
+            try
+            {
+                model = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
+                    File.ReadAllText(file),
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                continue;
+            }
+
+            var definition = model?.PersistentObject;
+            if (definition is null) continue;
+
+            foreach (var attribute in definition.Attributes)
+            {
+                if (attribute.IsArray && attribute.CanSort == true)
+                    offenders.Add($"{definition.Name}.{attribute.Name}: canSort on a collection");
+            }
+
+            foreach (var query in model?.Queries ?? [])
+            {
+                foreach (var column in query.Columns ?? [])
+                {
+                    if (column.CanSort != true) continue;
+
+                    var attribute = definition.Attributes
+                        .FirstOrDefault(a => string.Equals(a.Name, column.Name, StringComparison.OrdinalIgnoreCase));
+
+                    if (attribute is { IsArray: true })
+                        offenders.Add($"{definition.Name}.{query.Name}.{column.Name}: canSort override on a collection");
+                }
+            }
+        }
+
+        if (offenders.Count == 0)
+            return;
+
+        Console.Error.WriteLine("Spark model claims a collection column can be sorted:");
+        foreach (var offender in offenders)
+            Console.Error.WriteLine("  " + offender);
+        Console.Error.WriteLine();
+        Console.Error.WriteLine(
+            "Ordering by a collection field DROPS the rows whose collection is empty and ignores the "
+            + "direction entirely, so the framework refuses it whatever the model says. Remove the flag "
+            + "rather than leaving a claim that is silently ignored. Filtering a collection does work, "
+            + "so canFilter is unaffected.");
+
+        Environment.ExitCode = ExitDrift;
+    }
+
     /// <summary>
     /// A query may not bind an index that has no <c>[FromIndex]</c> projection.
     /// </summary>
