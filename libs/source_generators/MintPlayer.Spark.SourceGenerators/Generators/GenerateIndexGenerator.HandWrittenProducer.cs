@@ -160,8 +160,21 @@ public class HandWrittenSortFieldsProducer : Producer, IDiagnosticReporter
                 foreach (var field in indexEntity.IndexedFields)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    writer.WriteLine(
-                        $"Index(nameof({indexEntity.FullName}.{field.Name}), {RavenIndexes}.FieldIndexing.{field.FieldIndexing});");
+
+                    // Guarded because Index(string, FieldIndexing) is a Dictionary.Add, not an
+                    // indexer assignment: declaring the same field twice throws ArgumentException
+                    // out of CreateIndexDefinition(), i.e. the application fails to start. That is
+                    // not a theoretical shape — it is what a half-migrated index looks like while a
+                    // constructor call and a base-class call site both exist, and it is what happens
+                    // if an author hand-writes an Index(...) for a field the generator also emits.
+                    // Skipping a field that is already declared makes the hand-written declaration
+                    // win, which is the right precedence: the generator only ever supplies defaults.
+                    using (writer.OpenBlock(
+                        $"if (!IndexesStrings.ContainsKey(nameof({indexEntity.FullName}.{field.Name})))"))
+                    {
+                        writer.WriteLine(
+                            $"Index(nameof({indexEntity.FullName}.{field.Name}), {RavenIndexes}.FieldIndexing.{field.FieldIndexing});");
+                    }
                 }
             }
         }
