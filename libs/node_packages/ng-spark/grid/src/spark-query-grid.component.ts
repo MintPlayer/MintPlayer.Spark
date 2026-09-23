@@ -332,6 +332,30 @@ export class SparkQueryGridComponent {
   }
 
   /**
+   * Replaces the fetched columns only when they actually differ.
+   *
+   * Columns ship **once per result**, so every page fetch returns an identical set. Assigning it
+   * unconditionally wrote a new array of new objects into the signal each time, re-rendering every
+   * header and re-evaluating every `*bsDatatableColumn` input for no change in content.
+   *
+   * Compared by serialized value rather than by reference: the objects are freshly deserialized from
+   * JSON on every response, so reference equality is always false and would defeat the check. A
+   * dozen small objects per fetch is nothing beside the request that produced them.
+   *
+   * ⚠️ This was written believing it fixed a panel-teardown bug (#431 F7). Measured in a browser: it
+   * does not. The columns were already identical on every fetch, so the guard hits every time and the
+   * teardown had another cause entirely. Kept because avoiding a pointless re-render of every header
+   * on every page is worth having on its own — but it is an optimization, not a fix, and the F7
+   * question remains open.
+   */
+  private setFetchedColumns(columns: QueryColumn[]): void {
+    const current = this.fetchedColumns();
+    if (current.length === columns.length && JSON.stringify(current) === JSON.stringify(columns)) return;
+
+    this.fetchedColumns.set(columns);
+  }
+
+  /**
    * The per-column filters currently applied (#431).
    *
    * Read inside `makeFetch`'s closure, like `search`, so a change refetches by producing a new fetch
@@ -342,33 +366,36 @@ export class SparkQueryGridComponent {
   /**
    * The value source behind every column's panel.
    *
-   * A `computed`, not a method: it must be a NEW function whenever another column's filter changes,
-   * because `DistinctsRequest` carries only `{ column, search, signal }` — the rest of the context
-   * has to be closed over. A stable function would keep answering with the filters it was built with.
+   * ⚠️ **Referentially stable, and that is the whole point.** It reads `filters()` when the datatable
+   * *calls* it, not when it is built — so it always sees the current filters while never changing
+   * identity.
+   *
+   * This was a `computed` first, on the reasoning that it had to close over the current filters
+   * because `DistinctsRequest` carries only `{ column, search, signal }`. That was wrong, and the way
+   * it was wrong is worth keeping: a new identity reassigns `[distincts]` on the element, and the
+   * component aborts the in-flight request and bumps a generation counter — so a response already on
+   * its way is discarded as stale and the list renders empty over a perfectly good answer.
+   *
+   * Reading the signal at call time removes the race entirely and is simpler besides.
    *
    * The asked-for column's own filter is excluded: a panel must offer the values you could still
    * pick, not only the ones you already picked.
    */
-  protected readonly distinctsFn = computed<DatatableDistincts>(() => {
-    const others = this.filters();
-    const parentId = this.parentId();
-    const parentType = this.parentType();
+  protected readonly distinctsFn: DatatableDistincts = async request => {
     const queryId = this.query()?.id;
+    if (!queryId) return null;
 
-    return async request => {
-      if (!queryId) return null;
+    // Read at call time — never captured.
+    const others = this.filters().filter(f => f.name !== request.column);
 
-      const result = await this.sparkService.getDistinctValues(queryId, request.column, {
-        search: request.search,
-        columns: others.filter(f => f.name !== request.column),
-        parentId,
-        parentType,
-      });
-
-      // The server's shape IS the datatable's shape, so there is nothing to map.
-      return result;
-    };
-  });
+    // The server's shape IS the datatable's shape, so there is nothing to map.
+    return this.sparkService.getDistinctValues(queryId, request.column, {
+      search: request.search,
+      columns: others,
+      parentId: this.parentId(),
+      parentType: this.parentType(),
+    });
+  };
 
   /**
    * Translates one filter change into the wire shape and refetches.
@@ -564,7 +591,7 @@ export class SparkQueryGridComponent {
       // surface (ShowedOn.Query) and is the same place the sort-column allow-list is checked.
       // ?? [] because a malformed or older response must render an empty grid, not throw inside a
       // computed — where the stack points at the column filter and not at the response that lacked them.
-      this.fetchedColumns.set(r.columns ?? []);
+      this.setFetchedColumns(r.columns ?? []);
       // Per-result, so it is re-read on every page rather than latched from the first.
       this.disabledActions.set(r.disabledActions ?? []);
       return {

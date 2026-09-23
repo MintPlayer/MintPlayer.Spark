@@ -38,7 +38,7 @@
       [isResponsive]="isVirtualScrolling()"
       [data]="data()"
       [fetch]="fetchFn()"
-      [distincts]="distinctsFn()"
+      [distincts]="distinctsFn"
       (filterChange)="onFilterChange($event)"
       [(settings)]="settings">
     @for (col of visibleColumns(); track col.name) {

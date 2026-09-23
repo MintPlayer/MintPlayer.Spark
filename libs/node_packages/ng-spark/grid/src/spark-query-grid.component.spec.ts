@@ -680,7 +680,9 @@ describe('SparkQueryGridComponent', () => {
       c.onFilterChange({ mode: 'values', column: 'FirstName', selected: [{ value: 'Alice', label: 'Alice' }], inverse: false } as any);
       await settle(fixture);
 
-      await c.distinctsFn()({ column: 'FirstName', search: '', signal: new AbortController().signal });
+      // A stable function, not a signal: it reads the filters when CALLED, which is what removes the
+      // reassign-and-abort race that a per-change identity introduced.
+      await c.distinctsFn({ column: 'FirstName', search: '', signal: new AbortController().signal });
 
       // Its own filter is excluded: a panel must offer the values you could still pick, not only
       // the ones you already picked.
