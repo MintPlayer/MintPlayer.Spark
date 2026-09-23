@@ -80,7 +80,12 @@ public sealed partial class SortCompanionAnalyzer : DiagnosticAnalyzer
         {
             context.CancellationToken.ThrowIfCancellationRequested();
 
-            var companionName = field + "Sort";
+            // ⚠️ "Search", not "Sort". The analyzed copy now lives on {Name}Search and the base field
+            // is left plain; the roles were swapped so that equality and ordering work on the name
+            // every path uses. SPARK005/006 still ask the same question — is there a companion, and is
+            // it assigned — because a hand-written index that declares a field Search without giving
+            // it a separate companion still destroys equality on the field it declared.
+            var companionName = field + "Search";
 
             if (!propertyNames.Contains(companionName))
             {

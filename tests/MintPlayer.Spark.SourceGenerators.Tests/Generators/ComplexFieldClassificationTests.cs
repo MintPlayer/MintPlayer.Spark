@@ -103,7 +103,7 @@ public class ComplexFieldClassificationTests
             }
             """).GeneratedSources[0].Source;
 
-        generated.Should().Contain("Index(nameof(VPerson.Nicknames), global::Raven.Client.Documents.Indexes.FieldIndexing.Search);");
+        generated.Should().Contain("Index(nameof(VPerson.NicknamesSearch), global::Raven.Client.Documents.Indexes.FieldIndexing.Search);");
         generated.Should().NotContain("FieldIndexing.No");
     }
 

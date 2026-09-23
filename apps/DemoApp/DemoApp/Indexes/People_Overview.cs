@@ -17,9 +17,9 @@ public partial class People_Overview : SparkIndexCreationTask<Person> // , VPers
                         {
                             Id = person.Id,
                             FullName = person.FirstName + " " + person.LastName,
-                            FullNameSort = person.FirstName + " " + person.LastName,
+                            FullNameSearch = person.FirstName + " " + person.LastName,
                             Email = person.Email,
-                            EmailSort = person.Email,
+                            EmailSearch = person.Email,
                             IsActive = person.IsActive,
                             Company = person.Company,
                         };

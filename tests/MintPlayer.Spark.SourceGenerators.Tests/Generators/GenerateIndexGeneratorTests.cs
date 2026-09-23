@@ -458,7 +458,7 @@ public class GenerateIndexGeneratorTests
     {
         var generated = Run(SearchableCar).GeneratedSources[0].Source;
 
-        generated.Should().Contain("Index(nameof(VCar.Model), global::Raven.Client.Documents.Indexes.FieldIndexing.Search);");
+        generated.Should().Contain("Index(nameof(VCar.ModelSearch), global::Raven.Client.Documents.Indexes.FieldIndexing.Search);");
     }
 
     [Fact]
@@ -466,8 +466,8 @@ public class GenerateIndexGeneratorTests
     {
         var generated = Run(SearchableCar).GeneratedSources[0].Source;
 
-        generated.Should().Contain("public string ModelSort { get; set; } = default!;");
-        generated.Should().NotContain("Model_Sort");
+        generated.Should().Contain("public string ModelSearch { get; set; } = default!;");
+        generated.Should().NotContain("Model_Search");
     }
 
     /// <summary>
@@ -476,12 +476,21 @@ public class GenerateIndexGeneratorTests
     /// ordering (case-sensitive ordinal) and equality (a case-mismatched == matches nothing).
     /// </summary>
     [Fact]
-    public void The_sort_companion_is_never_declared_with_an_indexing_mode()
+    /// <summary>
+    /// ⛳ Inverted. This used to assert the companion carried no indexing mode and the base field did;
+    /// the two swapped, because putting the analyzed declaration on the field everyone names destroyed
+    /// equality and ordering on it.
+    /// </summary>
+    public void The_base_field_is_plain_and_the_companion_carries_the_analyzed_declaration()
     {
         var generated = Run(SearchableCar).GeneratedSources[0].Source;
 
-        generated.Should().NotContain("nameof(VCar.ModelSort)");
-        generated.Should().NotContain("FieldIndexing.Exact");
+        generated.Should().Contain("nameof(VCar.ModelSearch), global::Raven.Client.Documents.Indexes.FieldIndexing.Search)",
+            "the companion is the analyzed copy");
+        generated.Should().NotContain("nameof(VCar.Model), global::Raven.Client.Documents.Indexes.FieldIndexing.Search)",
+            "the base field stays plain so equality, ordering, `in` and range keep working on it");
+        generated.Should().NotContain("FieldIndexing.Exact",
+            "Exact differs from no declaration only in case sensitivity, and nothing here wants that");
     }
 
     [Fact]
@@ -502,7 +511,7 @@ public class GenerateIndexGeneratorTests
         var generated = Run(SearchableCar).GeneratedSources[0].Source;
 
         generated.Should().Contain("Model = car.Model,");
-        generated.Should().Contain("ModelSort = car.Model,");
+        generated.Should().Contain("ModelSearch = car.Model,");
     }
 
     [Fact]
@@ -510,7 +519,7 @@ public class GenerateIndexGeneratorTests
     {
         var generated = Run(SearchableCar).GeneratedSources[0].Source;
 
-        generated.Should().NotContain("YearSort");
+        generated.Should().NotContain("YearSearch");
         generated.Should().NotContain("nameof(VCar.Year)");
     }
 
@@ -531,9 +540,9 @@ public class GenerateIndexGeneratorTests
             }
             """).GeneratedSources[0].Source;
 
-        generated.Should().Contain("HistoricNamesSort");
-        generated.Should().Contain("ClustersSort");
-        generated.Should().Contain("Index(nameof(VCompany.HistoricNames), global::Raven.Client.Documents.Indexes.FieldIndexing.Search);");
+        generated.Should().Contain("HistoricNamesSearch");
+        generated.Should().Contain("ClustersSearch");
+        generated.Should().Contain("Index(nameof(VCompany.HistoricNamesSearch), global::Raven.Client.Documents.Indexes.FieldIndexing.Search);");
     }
 
     /// <summary>
@@ -601,7 +610,7 @@ public class GenerateIndexGeneratorTests
             }
             """).GeneratedSources[0].Source;
 
-        generated.Should().NotContain("YearSort");
+        generated.Should().NotContain("YearSearch");
         generated.Should().NotContain("nameof(VCar.Year)");
     }
 
@@ -649,8 +658,8 @@ public class GenerateIndexGeneratorTests
     {
         var generated = Run(DatedCar).GeneratedSources[0].Source;
 
-        generated.Should().NotContain("CreatedOnSort");
-        generated.Should().NotContain("ArchivedOnSort");
+        generated.Should().NotContain("CreatedOnSearch");
+        generated.Should().NotContain("ArchivedOnSearch");
 
         generated.Should().Contain(
             "CreatedOnRaw = new global::MintPlayer.Spark.Abstractions.SparkIndexValue<global::System.DateTimeOffset> { V = car.CreatedOn },");
@@ -910,7 +919,7 @@ public class GenerateIndexGeneratorTests
         // One Reference (field only), two Audited (field + companion).
         CountOccurrences(generated, "Abstractions.ReferenceAttribute(typeof").Should().Be(1);
         CountOccurrences(generated, "AuditedAttribute]").Should().Be(2);
-        generated.Should().Contain("OwnerSort");
+        generated.Should().Contain("OwnerSearch");
     }
 
     private static int CountOccurrences(string haystack, string needle)

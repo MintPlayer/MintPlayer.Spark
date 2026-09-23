@@ -45,14 +45,14 @@ public class UncalledIndexSearchFieldsTests
             public class VCar
             {
                 [Search] public string? Model { get; set; }
-                public string? ModelSort { get; set; }
+                public string? ModelSearch { get; set; }
             }
 
             public partial class Cars_Overview : AbstractIndexCreationTask<Car>
             {
                 public Cars_Overview()
                 {
-                    Map = cars => from c in cars select new VCar { Model = c.Model, ModelSort = c.Model };
+                    Map = cars => from c in cars select new VCar { Model = c.Model, ModelSearch = c.Model };
                 }
             }
             """);
@@ -69,14 +69,14 @@ public class UncalledIndexSearchFieldsTests
             public class VCar
             {
                 [Search] public string? Model { get; set; }
-                public string? ModelSort { get; set; }
+                public string? ModelSearch { get; set; }
             }
 
             public partial class Cars_Overview : AbstractIndexCreationTask<Car>
             {
                 public Cars_Overview()
                 {
-                    Map = cars => from c in cars select new VCar { Model = c.Model, ModelSort = c.Model };
+                    Map = cars => from c in cars select new VCar { Model = c.Model, ModelSearch = c.Model };
                     IndexSearchFields();
                 }
 
@@ -101,14 +101,14 @@ public class UncalledIndexSearchFieldsTests
             public class VCar
             {
                 [Search] public string? Model { get; set; }
-                public string? ModelSort { get; set; }
+                public string? ModelSearch { get; set; }
             }
 
             public partial class Cars_Overview : AbstractIndexCreationTask<Car>
             {
                 public Cars_Overview()
                 {
-                    Map = cars => from c in cars select new VCar { Model = c.Model, ModelSort = c.Model };
+                    Map = cars => from c in cars select new VCar { Model = c.Model, ModelSearch = c.Model };
                 }
 
                 private void IndexSearchFields() { }
@@ -129,20 +129,20 @@ public class UncalledIndexSearchFieldsTests
             public class VCar
             {
                 [Search] public string? Model { get; set; }
-                public string? ModelSort { get; set; }
+                public string? ModelSearch { get; set; }
             }
 
             public partial class Cars_Overview : AbstractIndexCreationTask<Car>
             {
                 public Cars_Overview()
                 {
-                    Map = cars => from c in cars select new VCar { Model = c.Model, ModelSort = c.Model };
+                    Map = cars => from c in cars select new VCar { Model = c.Model, ModelSearch = c.Model };
                     IndexSearchFields();
                 }
 
                 public Cars_Overview(bool variant)
                 {
-                    Map = cars => from c in cars select new VCar { Model = c.Model, ModelSort = c.Model };
+                    Map = cars => from c in cars select new VCar { Model = c.Model, ModelSearch = c.Model };
                 }
 
                 private void IndexSearchFields() { }
@@ -213,14 +213,14 @@ public class UncalledIndexSearchFieldsTests
             public class VCar
             {
                 [Search] public string? Model { get; set; }
-                public string? ModelSort { get; set; }
+                public string? ModelSearch { get; set; }
             }
 
             public partial class Cars_Overview : SparkIndexCreationTask<Car>
             {
                 public Cars_Overview()
                 {
-                    Map = cars => from c in cars select new VCar { Model = c.Model, ModelSort = c.Model };
+                    Map = cars => from c in cars select new VCar { Model = c.Model, ModelSearch = c.Model };
                 }
             }
             """);
@@ -240,14 +240,14 @@ public class UncalledIndexSearchFieldsTests
             public class VCar
             {
                 [Search] public string? Model { get; set; }
-                public string? ModelSort { get; set; }
+                public string? ModelSearch { get; set; }
             }
 
             public class Cars_Overview : AbstractIndexCreationTask<Car>
             {
                 public Cars_Overview()
                 {
-                    Map = cars => from c in cars select new VCar { Model = c.Model, ModelSort = c.Model };
+                    Map = cars => from c in cars select new VCar { Model = c.Model, ModelSearch = c.Model };
                 }
             }
             """);

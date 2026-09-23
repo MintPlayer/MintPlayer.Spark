@@ -56,10 +56,10 @@ public class AnalyzerSeesGeneratedCodeTests
     /// <summary>
     /// A hand-written index pair of exactly the shape the corpus uses: a <c>partial</c> index entity
     /// carrying <c>[Search]</c>, and a <c>partial</c> index whose constructor declares the indexing and
-    /// maps the <em>generated</em> <c>ModelSort</c> companion.
+    /// maps the <em>generated</em> <c>ModelSearch</c> companion.
     /// </summary>
     /// <remarks>
-    /// The map assigns <c>ModelSort</c>, a member that exists only when the generator has run — so
+    /// The map assigns <c>ModelSearch</c>, a member that exists only when the generator has run — so
     /// without generation this fixture does not even compile, which is the coupling under test.
     /// Analyzers run regardless of compile errors, so both halves are measurable.
     /// </remarks>
@@ -82,7 +82,7 @@ public class AnalyzerSeesGeneratedCodeTests
             public Cars_Overview()
             {
                 Map = cars => from car in cars
-                              select new VCar { Model = car.Model, ModelSort = car.Model };
+                              select new VCar { Model = car.Model, ModelSearch = car.Model };
 
                 Index(nameof(VCar.Model), FieldIndexing.Search);
             }
@@ -116,7 +116,7 @@ public class AnalyzerSeesGeneratedCodeTests
     // ---------------------------------------------------------------------------------------------
 
     /// <summary>
-    /// The control. Without the generator, <c>VCar</c> has no <c>ModelSort</c> and SPARK005 fires —
+    /// The control. Without the generator, <c>VCar</c> has no <c>ModelSearch</c> and SPARK005 fires —
     /// which is what every other fixture in this project measures.
     /// </summary>
     [Fact]
@@ -134,7 +134,7 @@ public class AnalyzerSeesGeneratedCodeTests
 
     /// <summary>
     /// ⚠️ <b>The measurement.</b> The same sources, with <c>GenerateIndexGenerator</c> run first, go
-    /// quiet: the analyzer found <c>VCar.ModelSort</c>, a property that exists nowhere in the
+    /// quiet: the analyzer found <c>VCar.ModelSearch</c>, a property that exists nowhere in the
     /// hand-written trees. <b>An analyzer does see generator output.</b>
     /// </summary>
     [Fact]
@@ -147,10 +147,10 @@ public class AnalyzerSeesGeneratedCodeTests
 
         result.GeneratedTreePaths.Should().ContainSingle(p => p.EndsWith("SparkIndexEntitySortFields.g.cs"));
 
-        // The generated member really is the only source of ModelSort.
+        // The generated member really is the only source of ModelSearch.
         var vcar = result.Compilation.GetTypeByMetadataName("TestApp.Data.VCar");
         vcar.Should().NotBeNull();
-        vcar!.GetMembers("ModelSort").Should().ContainSingle();
+        vcar!.GetMembers("ModelSearch").Should().ContainSingle();
 
         result.Diagnostics.Where(d => d.Id is "SPARK005" or "SPARK006").Should().BeEmpty(
             "SortCompanionAnalyzer resolves the companion from the generated partial half");
@@ -173,7 +173,7 @@ public class AnalyzerSeesGeneratedCodeTests
     public async Task A_generated_type_is_resolvable_from_the_compilation_under_every_flag(
         GeneratedCodeAnalysisFlags flags)
     {
-        var probe = new CompilationProbeAnalyzer(flags, "TestApp.Data.VCar", "ModelSort");
+        var probe = new CompilationProbeAnalyzer(flags, "TestApp.Data.VCar", "ModelSearch");
 
         await RunAsync(GeneratorName, [probe], ("Pair.cs", HandWrittenPair));
 
@@ -184,7 +184,7 @@ public class AnalyzerSeesGeneratedCodeTests
     /// <summary>
     /// ⚠️ <b>The part that does depend on the flags.</b> A generated declaration is visited by a
     /// symbol or syntax-node action only when the analyzer asks for <c>Analyze</c>. With the default
-    /// (<c>None</c>) the generated partial declaration of <c>VCar</c> and its <c>ModelSort</c>
+    /// (<c>None</c>) the generated partial declaration of <c>VCar</c> and its <c>ModelSearch</c>
     /// property are never handed to the action at all.
     /// </summary>
     /// <remarks>
@@ -212,8 +212,8 @@ public class AnalyzerSeesGeneratedCodeTests
 
         // The symbol action is the same story, measured on the member that exists only in the
         // generated half: a member declared only in the generated tree is not visited under None.
-        withNone.SymbolMembers.Should().NotContain("ModelSort");
-        withAnalyze.SymbolMembers.Should().Contain("ModelSort");
+        withNone.SymbolMembers.Should().NotContain("ModelSearch");
+        withAnalyze.SymbolMembers.Should().Contain("ModelSearch");
     }
 
     /// <summary>
@@ -576,14 +576,14 @@ public class AnalyzerSeesGeneratedCodeTests
             {
                 var companion = c.Compilation
                     .GetTypeByMetadataName("TestApp.Data.VCar")?
-                    .GetMembers("ModelSort")
+                    .GetMembers("ModelSearch")
                     .FirstOrDefault();
 
                 var location = companion?.Locations.FirstOrDefault(l => l.IsInSource);
                 if (location is null) return;
 
                 Reported = true;
-                c.ReportDiagnostic(Diagnostic.Create(Rule, location, "ModelSort"));
+                c.ReportDiagnostic(Diagnostic.Create(Rule, location, "ModelSearch"));
             });
         }
     }

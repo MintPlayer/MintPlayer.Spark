@@ -1979,16 +1979,35 @@ internal sealed record DatabasePage(int TotalItems);
 
     private static readonly IReadOnlySet<string> EmptyFieldSet = new HashSet<string>(StringComparer.Ordinal);
 
+    /// <remarks>
+    /// ⚠️ Substitutes the <c>{Name}Search</c> companion wherever one exists. That companion is the
+    /// field declared <c>FieldIndexing.Search</c>; the base field is a plain indexed field so that
+    /// equality and ordering keep working on the name every other path uses — including a hand-written
+    /// row filter, which goes through no redirect at all. <c>search()</c> over a non-analyzed field
+    /// returns <b>0 rows with HTTP 200</b>, so getting this substitution wrong loses full-text search
+    /// silently rather than loudly.
+    /// </remarks>
     private static PropertyInfo[] ResolveSearchableProperties(Type sortType)
         => ReflectionCache.GetOrAdd<(string Op, Type Type), PropertyInfo[]>(
             ("QueryExecutor.SearchableProperties", sortType),
-            static k => k.Type.GetCachedProperties()
-                .Where(static p => p.PropertyType == typeof(string)
-                    && p.CanRead
-                    && p.GetIndexParameters().Length == 0
-                    && !string.Equals(p.Name, "Id", StringComparison.Ordinal)
-                    && !p.IsIgnoredForSparkModel())
-                .ToArray());
+            static k =>
+            {
+                var all = k.Type.GetCachedProperties();
+
+                return all
+                    .Where(static p => p.PropertyType == typeof(string)
+                        && p.CanRead
+                        && p.GetIndexParameters().Length == 0
+                        && !string.Equals(p.Name, "Id", StringComparison.Ordinal)
+                        && !p.IsIgnoredForSparkModel())
+                    .Select(p => Array.Find(all, c =>
+                        string.Equals(c.Name, p.Name + SearchCompanionSuffix, StringComparison.Ordinal)
+                        && c.PropertyType == typeof(string)) ?? p)
+                    .ToArray();
+            });
+
+    /// <summary>Kept in lockstep with <c>IndexNaming.SearchCompanion</c>.</summary>
+    private const string SearchCompanionSuffix = "Search";
 
     /// <summary>
     /// Adds one <c>Search</c> clause per searchable field, and reports whether anything was added.

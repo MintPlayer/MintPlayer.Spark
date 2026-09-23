@@ -22,11 +22,11 @@ public partial class Cars_Overview : SparkIndexCreationTask<Car>
                       {
                           Id = car.Id,
                           LicensePlate = car.LicensePlate,
-                          LicensePlateSort = car.LicensePlate,
+                          LicensePlateSearch = car.LicensePlate,
                           Model = car.Model,
                           Year = car.Year,
                           OwnerFullName = owner != null ? owner.Name : null,
-                          OwnerFullNameSort = owner != null ? owner.Name : null,
+                          OwnerFullNameSearch = owner != null ? owner.Name : null,
                           Status = car.Status
                       };
 

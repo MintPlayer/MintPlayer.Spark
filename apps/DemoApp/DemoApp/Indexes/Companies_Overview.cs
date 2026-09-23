@@ -13,7 +13,7 @@ public partial class Companies_Overview : SparkIndexCreationTask<Company>
                            {
                                Id = company.Id,
                                Name = company.Name,
-                               NameSort = company.Name,
+                               NameSearch = company.Name,
                                Website = company.Website,
                                EmployeeCount = company.EmployeeCount
                            };

@@ -384,17 +384,23 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 // Exact and default produce byte-identical index terms and identical equality, `in`,
                 // range and ordering behaviour. RavenDB reduces the value to a canonical UTC instant
                 // before any analyzer would see it, so Exact has nothing to act on.
-                FieldIndexing = isComplex ? "No" : isSearchableText ? "Search" : null,
+                //
+                // ⚠️ And no Search arm either, deliberately. A [Search] field's base property stays a
+                // PLAIN indexed field so equality and ordering work on it everywhere — including from
+                // a hand-written row filter, which does not go through any redirect. The analyzed copy
+                // lives on the {Name}Search companion below. See IndexNaming.SearchCompanion.
+                FieldIndexing = isComplex ? "No" : null,
                 Attributes = fieldAttributes,
                 IsTranslated = isTranslated,
                 IsSearchable = searchable,
             };
             properties.Add(field);
 
-            // A searchable text field always gets its companion: analyzing the field is what destroys its
-            // sortability, so the two are one decision. The companion is left undeclared on purpose.
+            // A searchable text field always gets its companion: analyzing a field is what destroys
+            // equality and ordering on it, so the analyzed copy has to be a separate field. The
+            // companion is the one declared Search; the base field above is left plain.
             if (isSearchableText)
-                properties.Add(SortCompanionFor(field, AttributeRenderer.ForSortCompanion(property)));
+                properties.Add(SearchCompanionFor(field, AttributeRenderer.ForSortCompanion(property)));
 
             // A DateTimeOffset gets a wrapper instead of a sort companion. It never needed one -- a
             // same-typed companion produces a byte-identical ordering AND is flattened identically, so
@@ -576,26 +582,21 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
             var typeDisplay = property.Type.ToDisplayString(TypeFormat);
 
-            // The declared indexing for the base field, generated so the constructor does not restate it.
-            // A DateTimeOffset base field needs nothing declared -- see DateTimeOffset_is_not_indexed_Exact.
-            // Its WRAPPER, however, must be FieldIndexing.No or Corax parks the whole index at
+            // ⚠️ Neither base field is declared. A DateTimeOffset base field needs nothing -- see
+            // DateTimeOffset_is_not_indexed_Exact -- and a [Search] base field is deliberately left
+            // plain so equality and ordering keep working on the name everyone uses. The COMPANION
+            // carries the declaration in both cases: Search for a text field, and No for the
+            // DateTimeOffset wrapper, which Corax requires or it parks the whole index at
             // state=Error, entries=0 after a clean deploy.
-            if (searchable)
-            {
-                indexedFields.Add(new IndexPropertyInfo { Name = property.Name, FieldIndexing = "Search" });
-            }
-            else
-            {
-                indexedFields.Add(new IndexPropertyInfo
-                {
-                    Name = IndexNaming.WrapperCompanion(property.Name),
-                    FieldIndexing = "No",
-                });
-            }
-
             var companionName = searchable
-                ? IndexNaming.SortCompanion(property.Name)
+                ? IndexNaming.SearchCompanion(property.Name)
                 : IndexNaming.WrapperCompanion(property.Name);
+
+            indexedFields.Add(new IndexPropertyInfo
+            {
+                Name = companionName,
+                FieldIndexing = searchable ? "Search" : "No",
+            });
 
             // Already written by hand — contributing it again would be a duplicate member.
             if (existingNames.Contains(companionName)) continue;
@@ -753,6 +754,26 @@ public class GenerateIndexGenerator : IncrementalGenerator
         NeedsDefaultInitializer = field.NeedsDefaultInitializer,
         MapExpression = field.MapExpression,
         FieldIndexing = null,
+        IsSortCompanion = true,
+        Attributes = attributes,
+    };
+
+    /// <summary>
+    /// The analyzed copy of a <c>[Search]</c> field. Same value, same type, same map expression — the
+    /// only difference is that <em>this</em> one is declared <c>FieldIndexing.Search</c>.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ It carries the analyzed declaration so the base field does not have to. Only
+    /// <c>ApplySearch</c> ever names it; every other path keeps naming the base field, which is now an
+    /// ordinary field that equality, ordering, <c>in</c> and range all work on.
+    /// </remarks>
+    private static IndexPropertyInfo SearchCompanionFor(IndexPropertyInfo field, List<string> attributes) => new()
+    {
+        Name = IndexNaming.SearchCompanion(field.Name),
+        TypeDisplay = field.TypeDisplay,
+        NeedsDefaultInitializer = field.NeedsDefaultInitializer,
+        MapExpression = field.MapExpression,
+        FieldIndexing = "Search",
         IsSortCompanion = true,
         Attributes = attributes,
     };

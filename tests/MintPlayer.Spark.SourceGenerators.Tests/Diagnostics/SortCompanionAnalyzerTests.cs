@@ -78,7 +78,7 @@ public class SortCompanionAnalyzerTests
             {
                 public Cars_Overview()
                 {
-                    Map = new VCar { Model = null, ModelSort = null };
+                    Map = new VCar { Model = null, ModelSearch = null };
                     Index(nameof(VCar.Model), FieldIndexing.Search);
                     StoreAllFields(FieldStorage.Yes);
                 }
@@ -88,7 +88,7 @@ public class SortCompanionAnalyzerTests
             public class VCar
             {
                 public string? Model { get; set; }
-                [IgnoreProperty] public string? ModelSort { get; set; }
+                [IgnoreProperty] public string? ModelSearch { get; set; }
             }
             """);
 
@@ -124,7 +124,7 @@ public class SortCompanionAnalyzerTests
             public class VCar
             {
                 public string? Model { get; set; }
-                [IgnoreProperty] public string? ModelSort { get; set; }
+                [IgnoreProperty] public string? ModelSearch { get; set; }
             }
             """);
 
