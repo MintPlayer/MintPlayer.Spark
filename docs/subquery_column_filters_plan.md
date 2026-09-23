@@ -6,9 +6,14 @@ Branch: `fix/subquery-column-filters`. One PR, everything in it.
 > ### ➡️ The PR outgrew its title. Start at [§ Query-page correctness campaign](#query-page-correctness-campaign).
 >
 > The sub-query fix (M1–M12) is done. A four-workstream audit then found that **filtering and sorting
-> were broken in fourteen further ways**, several live in production and one an anonymous disclosure
+> were broken in eighteen further ways**, several live in production and one an anonymous disclosure
 > oracle. The goal this PR now serves is *filtering and sorting on query pages work correctly*, and the
 > campaign section below is the authoritative list. Everything still lands here — one PR.
+>
+> **Final state: 16 of 18 closed, plus 4 build gates.** The two that are not closed are not deferred
+> work — one is a measured impossibility needing a product decision (R1), the other announces itself
+> loudly rather than failing silently (D18). Two further items were deliberately **not** built, with
+> reasons, under "Not done, and why" at the end.
 
 ## Status
 
@@ -484,7 +489,7 @@ only those), and orders by the underlying value rather than the rendered label.
 against fields the index cannot serve. General form of the `Commit.GetCommits` → `Sha` hazard.
 Repair is a `[FromIndex]` projection; the verify rule below makes it impossible to reintroduce.
 
-### R4 — the `{Name}Search` inversion
+### ~~R4 — the `{Name}Search` inversion~~ ✅ done
 Today the base field carries `Index(Search)`, which **destroys equality on it**, and the plain value
 is exiled to `{Name}Sort`. Invert: base field plain, companion `{Name}Search` carries `Search`.
 
@@ -501,7 +506,7 @@ and forgets to populate `{Name}Sort` silently matches nothing on both filter and
 Cost: **zero** production reindex (CodeCoverage has no `[Search]` at all), zero snapshot churn, zero
 model/hash churn, 3 DemoApp files. ~32–36 files total, concentrated in 3.
 
-### R5 — M8.2 / `Commits_ByRepository` gets a real projection ⚠️ production
+### ~~R5 — `Commits_ByRepository` gets a real projection~~ ✅ done ⚠️ production
 **GO**, with **per-field `Store`, never `StoreAllFields`** (G-c). Measured: `+02:00`, `-05:00`,
 `+05:30` all exact; computed fields correct; a document predating `Commit.Date` recovered through the
 stored `DateRaw`. Store only `DateRaw`, `HasCoverage`, `ParentLookupDone`, `CompleteCoverage`.
@@ -553,3 +558,66 @@ already stand in front. A rule with no reachable subject is maintenance with no 
   actively misleading, including "`ExecuteCustomQueryAsync` has no `columnFilters` parameter".
 - `SearchAttribute`'s own doc references a `SortExpression` member **that does not exist**.
 - `OidcCorsOrigins.cs:95-98` states a mechanism refuted by G-c.
+
+---
+
+## Final state
+
+### The four build gates
+
+All are in `--spark-verify-model`, all exit 3, and **all four were verified by breaking them
+deliberately** — a gate that does not fire is worse than no gate.
+
+| gate | catches | proved by |
+|---|---|---|
+| `VerifyQuerySortColumnsResolve` | a declared `sortColumns` entry that is not on the query surface | restoring DemoApp's `LastName` sort → exit 3 |
+| `VerifyIndexDefinitionsCompile` | any index that cannot build its own definition — a **startup crash** after a green build | a lambda-keyed `Indexes.Add` on `Cars_Overview` → `IndexCompilationException` |
+| `VerifyBoundIndexHasAProjection` | a query bound to an index Spark cannot describe, so it validates sorts against a superset of the Map | an unprojected probe index bound to `GetCars` → exit 3 |
+| `VerifyCollectionColumnsDoNotClaimSortability` | an explicit `canSort` on a collection — a claim the runtime will never honour | `canSort` on `ApiToken.RepositoryIds` → exit 3 |
+
+⚠️ **Two of the three falsification attempts for `VerifyBoundIndexHasAProjection` passed for the wrong
+reason** — one hit a build error before reaching the gate, one wrote a duplicate JSON key that
+`System.Text.Json` resolves to the *last* value. "The falsification passed" was a reason to
+investigate, not to conclude.
+
+### Not done, and why
+
+**C2 — teach the generated guard to see lambda-keyed declarations.** Redundant. The guard is emitted
+into a partial that may derive from `AbstractIndexCreationTask<T>` rather than the Spark base class,
+so a helper on the base class is not reachable from it, and walking `Indexes.Keys` inline would mean
+emitting an expression-tree walker into every index. `VerifyIndexDefinitionsCompile` already catches
+the *consequence* at build time with zero false positives, and both offenders in the repo are
+rewritten to the `nameof` form.
+
+**SPARK019 — an analyzer forbidding the lambda form.** Same reason, plus reach: of the three `libs/`
+assemblies that declare indexes, only `IdentityProvider` references a Spark analyzer at all, and its
+two offenders are the ones already rewritten. It would guard against reintroduction in one library, at
+~220 lines, for a failure the construction gate already reports. Revisit if a third form appears.
+
+### Still open
+
+**R1 — the `< none >` filter.** A product decision, not an implementation. Measured: no LINQ shape
+selects "absent or null", so the panel offers a value no query can honour. Three options are listed
+above; all three change user-visible behaviour, and the npm major rule makes option 2 a release
+decision.
+
+**D18 — `x.Foo.HasValue` against a static index.** Translated as the field name `Foo_HasValue`, which
+no Map emits, so the whole query 500s. Left open deliberately: unlike every other defect here it
+**announces itself** rather than returning wrong rows quietly, and an analyzer cannot resolve whether
+a given expression will run against a static index — the binding is a runtime decision read from model
+JSON, which is the same wall `SortCompanionAnalyzer` documents for reading the Map. Recorded in
+`AbsentVersusNullFieldTests` and in the framework memory.
+
+### What the campaign changed, in one line each
+
+- A filter on a collection compared the collection; now it asks whether it contains the value.
+- A nonsense filter value returned the rows with **no** value and leaked enum membership anonymously.
+- Embedded and collection columns stopped advertising operations their shape cannot perform.
+- Two people grids in two apps shipped unsorted.
+- Author-paged grids skipped column-shape narrowing entirely.
+- A generated `DateTimeOffset` wrapper could fail an entire index to build.
+- Opening a filter panel materialized the whole collection; the value list was capped in index order
+  and sorted as text.
+- `Commits_ByRepository` gained a projection, so the production commit grid can be queried at all.
+- The analyzed copy moved off the field everyone names and onto a companion, so equality and ordering
+  work everywhere — including from a hand-written row filter, which goes through no redirect.
