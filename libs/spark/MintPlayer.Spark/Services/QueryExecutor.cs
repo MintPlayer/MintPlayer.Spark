@@ -99,6 +99,17 @@ internal partial class QueryExecutor : IQueryExecutor
         IReadOnlyList<QueryColumnFilter>? columnFilters = null,
         CancellationToken cancellationToken = default)
     {
+        // Refused before anything loads. A streaming query's rows arrive over a socket from an
+        // IAsyncEnumerable method, and resolving it the ordinary way throws — ResolveCustomQueryMethod
+        // accepts zero parameters or one CustomQueryArgs, never a streaming method's
+        // (StreamingQueryArgs, CancellationToken) — which escaped this endpoint as a 500 for any
+        // caller who got past authorization. The CanListDistincts check below cannot save it: it
+        // happens after the rows load, which is where the throw was.
+        //
+        // Empty rather than an error, matching every other refusal here: indistinguishable from a
+        // column that simply has nothing to list.
+        if (query.IsStreamingQuery) return DistinctValuesResult.Empty;
+
         // The whole result set, not a page: a distinct list describes the query, not the page the
         // grid happens to be on. Paging is applied to rows, never to this.
         var rows = await LoadSecuredRowsAsync(query, parent, columnFilters, cancellationToken);
@@ -2010,13 +2021,40 @@ internal sealed record DatabasePage(int TotalItems);
 
         foreach (var raw in values)
         {
-            var constant = Expression.Constant(ConvertFilterValue(raw, propertyType), propertyType);
-            var equals = Expression.Equal(member, constant);
+            var value = ConvertFilterValue(raw, propertyType);
+
+            // A null on a non-nullable value type cannot be a constant of that type —
+            // Expression.Constant(null, typeof(int)) throws — and ConvertFilterValue answers null for
+            // anything it could not convert. So a malformed value on an int column used to 500,
+            // the exact opposite of what that method documents ("a malformed one should narrow to
+            // nothing rather than 500"), and it made the refusal a type oracle besides: a 500 and a
+            // 200-with-no-rows are trivially distinguishable, which is what the silence exists to
+            // prevent.
+            //
+            // Expressed by lifting the member to its nullable form and comparing against null, rather
+            // than by dropping the value. Dropping it can empty the whole OR-chain, and the only
+            // thing left to emit then is a constant predicate — which RavenDB rejects outright
+            // ("Constants expressions such as Where(x => true) are not allowed"). This is a real
+            // comparison the provider can translate, and it means precisely what is wanted: a
+            // non-nullable column holds no nulls, so no row matches.
+            Expression equals;
+            if (value is null && propertyType.IsValueType && Nullable.GetUnderlyingType(propertyType) is null)
+            {
+                var nullable = typeof(Nullable<>).MakeGenericType(propertyType);
+                equals = Expression.Equal(
+                    Expression.Convert(member, nullable), Expression.Constant(null, nullable));
+            }
+            else
+            {
+                equals = Expression.Equal(member, Expression.Constant(value, propertyType));
+            }
+
             any = any is null ? equals : Expression.OrElse(any, equals);
         }
 
-        // Unreachable for a non-empty array, but an empty OR-chain must not become "match nothing".
-        return any ?? Expression.Constant(true);
+        // Unreachable: the caller only passes non-empty arrays, and every value now yields a
+        // comparison rather than being dropped. Kept as a total function rather than a bang.
+        return any ?? Expression.Constant(false);
     }
 
     /// <summary>

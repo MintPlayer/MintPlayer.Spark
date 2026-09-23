@@ -12,8 +12,8 @@ Branch: `fix/subquery-column-filters`. One PR, everything in it.
 | Client | **Cleared** — audited, sends `columns` + `parentId` + `parentType` correctly, no client-side narrowing |
 | Row security | **Audited, sound** — filters compose after the row filter, gate is unconditional, `Where` is monotone, no widening possible (PRD §3.5). One real hole: the redaction oracle (§3.6) |
 | Pushdown | **Audited** — RQL on `Database.*`, dropped on every `Custom.*`. No C#-side column filtering exists today, and none may be added (D0/D2) |
-| Spikes run | none yet |
-| Milestones done | none yet |
+| Spikes run | SP1 ✅ safe · SP2 ✅ settled (then re-settled, see D2) · SP3 ✅ no work needed · SP5 ✅ answered · SP4 in progress |
+| Milestones done | M1 ✅ · M2 ✅ · M3 ✅ · M4 ✅ (free) · M5 ✅ · M8 ✅ · M9b ✅ · M9d partial |
 
 ---
 
@@ -69,12 +69,39 @@ analyzes, so `search()` is emitted against non-analyzed fields and RavenDB throw
 
 Capture the actual exception before fixing. Independent of #431 and a live production 500.
 
-### SP5 — Streaming queries and filters
+### SP5 — Streaming queries and filters — **ANSWERED**
 
-`onFilterChanged()` returns early on `hasExternalData()`. Decide: narrow the streaming snapshot
-client-side (it already narrows by search and sort at `spark-query-list.component.ts:288-310`), or
-hide the filter row for streaming queries. Silently accepting a click that does nothing is not an
-option.
+**The defect is the affordance, and it is worse than "inert".** Nothing in
+`spark-query-grid.component.html:58-69` consults `isStreamingQuery`, and the capability defaults are
+`true`, so a streaming grid renders a filter button on every column. Opening the panel calls
+`distinctsFn` → `/spark/queries/distinct-values` → `LoadSecuredRowsAsync` → `ExecuteCustomQueryAsync`
+→ `ResolveCustomQueryMethod`, which accepts only zero parameters or one `CustomQueryArgs`. A
+streaming method is `(StreamingQueryArgs, CancellationToken)`, so resolution returns null and the
+executor throws; `DistinctValues.HandleAsync` catches only `SparkAccessDeniedException`, so **the
+panel 500s**. If a value could be ticked, `onFilterChange` stores it and `onFilterChanged` returns
+early at `:431` — no rows change, no error.
+
+`ExecuteStreamingQueryAsync(SparkQuery, CancellationToken)` takes no filters, and there is nowhere to
+put them: the socket handshake has no body.
+
+**Decision: (b) — declare streaming columns non-filterable on the server**, where
+`StreamingQueryExecutor.cs:58` builds its columns. The server states the truth once, the existing
+`!== false` template polarity does the rest, and the sub-query card grid is fixed for free with no
+client special-case.
+
+Rejected (a) client-side narrowing: three changes, not one — a filter pass, a client-derived distincts
+source to replace the 500-ing endpoint, and a semantic divergence, since a server filter covers the
+whole result set while a streaming filter would cover *whatever has arrived so far* and silently
+re-widen as patches land. A filter that quietly stops meaning what it said is the failure class this
+PR exists to remove.
+
+**Nobody is using this**: `isStreamingQuery: true` appears exactly twice, both demos
+(`DemoApp/Stock.json:162`, `Fleet/Company.json:145`). CodeCoverage — the only production app — has it
+false everywhere.
+
+**Do alongside, whichever option:** `GetDistinctValuesAsync` must refuse a streaming query explicitly
+rather than 500. Note `CanListDistincts` is checked *after* rows load (`:110`), so
+`canListDistincts: false` would not have saved it.
 
 ---
 
@@ -97,8 +124,11 @@ filtering**. The trap this closes: `Queryable.Where` over an `EnumerableQuery` p
 executes in C# with no error and no warning, so "it returned the right rows" is not evidence of
 pushdown. Assert on emitted RQL, not on row counts.
 
-### M4 — Filtered `TotalItems` and paging *(gated by SP3)*
-Count after narrowing on every path; page over the filtered set.
+### M4 — Filtered `TotalItems` and paging *(gated by SP3)* — **✅ no work needed**
+SP3 answered it: the filter composes into the queryable *before* materialization, and the custom
+branch derives `totalItems` from `allResults.Count` over the materialized set, so the count is
+post-filter automatically and in-memory paging slices already-filtered rows. Pinned by an assertion
+in `Filter_narrows_a_custom_query` rather than left implicit.
 
 ### M5 — Distincts on the custom branch
 `LoadSecuredRowsAsync:200` — pass `columnFilters` instead of `null`. Makes the panel's values agree
@@ -110,7 +140,13 @@ not silent.
 
 ### M7 — Fix the search 500 *(gated by SP4)*
 
-### M8 — Streaming queries *(gated by SP5)*
+### M8 — Streaming queries *(gated by SP5)* — **✅ done**
+`ColumnCapabilities.CanFilter`/`CanListDistincts` return false for a streaming query, so the server
+states once that a stream cannot be filtered and no client renders the affordance — the routed grid,
+the sub-query card and any future client at once. Sorting is untouched; the client sorts the
+accumulated snapshot itself. `GetDistinctValuesAsync` refuses a streaming query up front as well, so
+an older client or a hand-made request gets `DistinctValuesResult.Empty` instead of a stack trace;
+the existing `CanListDistincts` check could not cover it, because it runs *after* the load that threw.
 
 ### M9 — Test the paths, not just the case
 - Column filters over `Custom.*`: includes, excludes, multi-column AND, queryable and materialized.

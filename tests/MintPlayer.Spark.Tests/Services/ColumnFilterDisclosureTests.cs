@@ -33,13 +33,19 @@ public class ColumnFilterDisclosureTests : SparkTestDriver
         public string Label { get; set; } = string.Empty;
         public string Region { get; set; } = string.Empty;
         public string Classified { get; set; } = string.Empty;
+
+        /// <summary>
+        /// A non-nullable value type, which is a different case from every other column here: a value
+        /// the wire could not convert becomes null, and null is not a legal constant of this type.
+        /// </summary>
+        public int Weight { get; set; }
     }
 
     public class Crates_Overview : AbstractIndexCreationTask<Crate>
     {
         public Crates_Overview()
         {
-            Map = crates => from c in crates select new { c.Label, c.Region, c.Classified };
+            Map = crates => from c in crates select new { c.Label, c.Region, c.Classified, c.Weight };
             StoreAllFields(FieldStorage.Yes);
         }
     }
@@ -70,6 +76,7 @@ public class ColumnFilterDisclosureTests : SparkTestDriver
                     Id = Guid.NewGuid(), Name = nameof(Crate.Classified), DataType = "string",
                     ShowedOn = EShowedOn.PersistentObject,
                 },
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = nameof(Crate.Weight), DataType = "int" },
             ],
         },
     };
@@ -83,9 +90,9 @@ public class ColumnFilterDisclosureTests : SparkTestDriver
 
         await SeedAsync(async session =>
         {
-            await session.StoreAsync(new Crate { Label = "one", Region = "eu", Classified = "red" });
-            await session.StoreAsync(new Crate { Label = "two", Region = "us", Classified = "red" });
-            await session.StoreAsync(new Crate { Label = "three", Region = "ap", Classified = "blue" });
+            await session.StoreAsync(new Crate { Label = "one", Region = "eu", Classified = "red", Weight = 10 });
+            await session.StoreAsync(new Crate { Label = "two", Region = "us", Classified = "red", Weight = 20 });
+            await session.StoreAsync(new Crate { Label = "three", Region = "ap", Classified = "blue", Weight = 30 });
         });
         await Store.WaitForIndexingAsync();
     }
@@ -185,6 +192,35 @@ public class ColumnFilterDisclosureTests : SparkTestDriver
         result.TotalItems.Should().Be(0,
             "a filter is caller input: a malformed value matches nothing rather than 500ing, and the "
             + "outcome is indistinguishable from a value that simply matches no row");
+    }
+
+    [Fact]
+    public async Task An_unconvertible_value_on_a_value_type_column_narrows_to_nothing_rather_than_throwing()
+    {
+        var executor = Executor();
+
+        var result = await executor.ExecuteQueryAsync(Query(),
+            columnFilters: [new QueryColumnFilter { Name = nameof(Crate.Weight), Includes = ["not-a-number"] }]);
+
+        // The sibling test above uses a string column, where a failed conversion yields null and
+        // Expression.Constant(null, typeof(string)) is perfectly legal — so it never exercised this.
+        // On a non-nullable value type that same null is not a constructible constant and the request
+        // used to 500, which also made the refusal a type oracle: a 500 and a 200-with-no-rows are
+        // trivially distinguishable, which is exactly what the silence is supposed to prevent.
+        result.TotalItems.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task A_filter_mixing_a_valid_and_an_unconvertible_value_keeps_the_valid_one()
+    {
+        var executor = Executor();
+
+        var result = await executor.ExecuteQueryAsync(Query(),
+            columnFilters: [new QueryColumnFilter { Name = nameof(Crate.Weight), Includes = [20, "not-a-number"] }]);
+
+        // Skipping the unholdable value must not take the rest of the chain with it, and must not
+        // widen it either — the answer is the rows matching what could be understood.
+        result.TotalItems.Should().Be(1);
     }
 
     [Fact]

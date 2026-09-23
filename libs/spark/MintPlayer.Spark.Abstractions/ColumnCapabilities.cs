@@ -42,12 +42,29 @@ public static class ColumnCapabilities
         => FindOverride(query, attribute.Name)?.CanSort ?? attribute.CanSort ?? true;
 
     /// <inheritdoc cref="EntityAttributeDefinition.CanFilter"/>
+    /// <remarks>
+    /// A streaming query can never be filtered, whatever the model says, and the refusal belongs here
+    /// rather than in a grid template so that the server states it once for every client.
+    /// <para>
+    /// <c>ExecuteStreamingQueryAsync</c> takes no filters and has nowhere to receive them — the socket
+    /// handshake carries no body — while these flags default to <see langword="true"/>. The result was
+    /// a filter button on every column of every streaming grid, whose panel 500ed (the distincts
+    /// endpoint re-executes the query, and a streaming method's signature is one
+    /// <c>ResolveCustomQueryMethod</c> cannot accept) and whose ticked value did nothing at all.
+    /// </para>
+    /// <para>
+    /// Sorting is deliberately not refused here: the client sorts the accumulated snapshot itself.
+    /// </para>
+    /// </remarks>
     public static bool CanFilter(EntityAttributeDefinition attribute, SparkQuery? query)
-        => FindOverride(query, attribute.Name)?.CanFilter ?? attribute.CanFilter ?? true;
+        => query is not { IsStreamingQuery: true }
+        && (FindOverride(query, attribute.Name)?.CanFilter ?? attribute.CanFilter ?? true);
 
     /// <inheritdoc cref="EntityAttributeDefinition.CanListDistincts"/>
+    /// <remarks>Refused for a streaming query for the reasons on <see cref="CanFilter"/>.</remarks>
     public static bool CanListDistincts(EntityAttributeDefinition attribute, SparkQuery? query)
-        => FindOverride(query, attribute.Name)?.CanListDistincts ?? attribute.CanListDistincts ?? true;
+        => query is not { IsStreamingQuery: true }
+        && (FindOverride(query, attribute.Name)?.CanListDistincts ?? attribute.CanListDistincts ?? true);
 
     /// <summary>
     /// The attribute named <paramref name="attributeName"/> on the query surface, or null when it is
