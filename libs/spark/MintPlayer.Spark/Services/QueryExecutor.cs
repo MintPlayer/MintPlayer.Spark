@@ -130,6 +130,23 @@ internal partial class QueryExecutor : IQueryExecutor
     private const int MaxDistinctValues = 100;
 
     /// <summary>
+    /// How many secured rows a distinct list may materialize before it stops and says so.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ This used to be <see cref="int.MaxValue"/>, so <em>opening a filter panel</em> materialized
+    /// the entire result set — every row, through the row-security gate, with breadcrumbs resolved.
+    /// The endpoint's own <c>MaxTake</c> clamp does not apply here; it guards <c>/execute</c> only. On
+    /// a production collection that is an unbounded amount of work triggered by one click, and the
+    /// caller is whoever got past authorization.
+    /// <para>
+    /// A cap changes the answer, so it must be visible: hitting it sets <c>HasMore</c>, which is the
+    /// same signal the value cap already uses and which the panel already understands. A short honest
+    /// list beats a complete list nobody can afford.
+    /// </para>
+    /// </remarks>
+    private const int MaxDistinctScanRows = 5_000;
+
+    /// <summary>
     /// One pass over secured rows, collecting <c>{ value, label }</c> pairs.
     /// </summary>
     /// <remarks>
@@ -171,20 +188,45 @@ internal partial class QueryExecutor : IQueryExecutor
 
             if (!seen.Add(value)) continue;
 
-            // Counted, not collected, once the cap is reached: the caller needs to know the list is
-            // truncated or its search box silently stops fetching.
-            if (values.Count >= MaxDistinctValues)
-            {
-                hasMore = true;
-                break;
-            }
-
             values.Add(new DistinctValue { Value = value, Label = label });
         }
 
-        values.Sort(static (a, b) => string.Compare(a.Label, b.Label, StringComparison.CurrentCulture));
+        // ⚠️ Sort BEFORE capping. Capping first took the first hundred in row order and then sorted
+        // those, so the panel showed an arbitrary hundred that merely looked ordered — and which
+        // hundred depended on the index's physical order, which is not something a user can reason
+        // about. Sorting first means the cap keeps the first hundred a reader would actually expect.
+        // The set is bounded by the scan cap, so this cannot grow without limit.
+        values.Sort(CompareDistinct);
+
+        if (values.Count > MaxDistinctValues)
+        {
+            values.RemoveRange(MaxDistinctValues, values.Count - MaxDistinctValues);
+            hasMore = true;
+        }
 
         return new DistinctValuesResult { Matching = values, HasMore = hasMore };
+    }
+
+    /// <summary>
+    /// Orders distinct entries by their <em>value</em> where the values are comparable, and by label
+    /// otherwise.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Comparing labels alone sorted numbers as text: an <c>EmployeeCount</c> column listed
+    /// <c>1, 120, 20, 40</c>, which reads as a bug to anyone scanning it. Dates had the same problem
+    /// wherever their rendered form is not lexicographically ordered. Falling back to the label keeps
+    /// reference cells — whose value is an id and whose label is a breadcrumb — ordered by the text
+    /// the reader actually sees.
+    /// </remarks>
+    private static int CompareDistinct(DistinctValue a, DistinctValue b)
+    {
+        if (a.Value is null) return b.Value is null ? 0 : -1;
+        if (b.Value is null) return 1;
+
+        if (a.Value.GetType() == b.Value.GetType() && a.Value is IComparable comparable)
+            return comparable.CompareTo(b.Value);
+
+        return string.Compare(a.Label, b.Label, StringComparison.CurrentCulture);
     }
 
     /// <summary>What a row with no value for the column is listed as.</summary>
@@ -209,11 +251,13 @@ internal partial class QueryExecutor : IQueryExecutor
         var (isCustom, name) = ResolveSource(query);
         await InvokeQueryHookAsync(query, parent);
 
+        // Bounded, not paged: a distinct list still describes the whole result set rather than the page
+        // the grid is on, but it stops at MaxDistinctScanRows and reports the truncation instead of
+        // materializing an entire production collection because someone opened a filter panel.
         var source = isCustom
-            ? await ExecuteCustomQueryAsync(query, name, parent, null, 0, int.MaxValue, null, null, columnFilters, cancellationToken)
+            ? await ExecuteCustomQueryAsync(query, name, parent, null, 0, MaxDistinctScanRows, null, null, columnFilters, cancellationToken)
             : await ExecuteDatabaseQueryAsync(query, name, parent, null, null, columnFilters,
-                // Skip/take of zero/max: a distinct list describes the whole result set, never a page.
-                skip: 0, take: int.MaxValue, cancellationToken);
+                skip: 0, take: MaxDistinctScanRows, cancellationToken);
 
         return (source.Rows.Rows, source.Definition);
     }
