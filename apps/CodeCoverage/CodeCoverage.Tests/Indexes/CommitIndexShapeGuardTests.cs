@@ -45,16 +45,78 @@ public class CommitIndexShapeGuardTests
                 "DateTimeOffset on Commit the moment it is projected");
     }
 
+    /// <summary>
+    /// ⚠️ <b>Widened, deliberately, from "stores nothing" to "stores nothing that would lose an
+    /// offset".</b>
+    /// </summary>
+    /// <remarks>
+    /// The old assertion was "no field has <c>FieldStorage.Yes</c>", which was a proxy for the real
+    /// invariant and stopped being true the moment this index gained a <c>[FromIndex]</c> projection:
+    /// the three fields computed in the map (<c>HasCoverage</c>, <c>ParentLookupDone</c>,
+    /// <c>CompleteCoverage</c>) exist nowhere on the document, so without storing them they project as
+    /// null.
+    /// <para>
+    /// The invariant that actually protects the data is narrower and measured: <b>a projection
+    /// resolves per field</b> — stored fields come from the index, unstored ones from the document —
+    /// so what must never be stored is a <em>scalar</em> <c>DateTimeOffset</c>. Unstored gives back
+    /// <c>+02:00</c>, <c>-05:00</c> and <c>+05:30</c> exactly; stored gives back <c>…Z</c>.
+    /// </para>
+    /// <para>
+    /// The allow-list is the point: it is what stops a future <c>StoreAllFields</c> from quietly
+    /// putting <c>Date</c> back. If you are here because this test failed, do not widen the list
+    /// without checking what the new field is.
+    /// </para>
+    /// </remarks>
     [Fact]
-    public void Commits_ByRepository_stores_no_fields()
+    public void Commits_ByRepository_stores_only_what_the_document_cannot_answer_for()
     {
         var definition = new Commits_ByRepository().CreateIndexDefinition();
 
-        definition.Fields.Values
-            .Any(f => f.Storage == FieldStorage.Yes)
-            .Should().BeFalse(
-                "storing a field makes a projection read from the index rather than the document, " +
-                "which is exactly what destroys a DateTimeOffset's offset");
+        var stored = definition.Fields
+            .Where(f => f.Value.Storage == FieldStorage.Yes)
+            .Select(f => f.Key)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToArray();
+
+        string.Join(",", stored).Should().Be(
+            $"{nameof(VCommit.CompleteCoverage)},{nameof(VCommit.DateRaw)}," +
+            $"{nameof(VCommit.HasCoverage)},{nameof(VCommit.ParentLookupDone)}",
+            "only map-computed fields and the offset-preserving wrapper may be stored; everything " +
+            "else is read back from the document, which is what keeps Date's offset");
+    }
+
+    /// <summary>
+    /// No scalar <see cref="DateTimeOffset"/> on the projection is stored, and each one has a stored
+    /// wrapper to recover it from.
+    /// </summary>
+    /// <remarks>
+    /// Stated structurally rather than as a list of names, so it keeps holding when someone adds a
+    /// second date to the projection — which is exactly the change that would otherwise reintroduce
+    /// the defect.
+    /// </remarks>
+    [Fact]
+    public void No_scalar_DateTimeOffset_is_stored_and_each_one_has_a_stored_wrapper()
+    {
+        var definition = new Commits_ByRepository().CreateIndexDefinition();
+
+        var dates = typeof(VCommit).GetProperties()
+            .Where(p => (Nullable.GetUnderlyingType(p.PropertyType) ?? p.PropertyType) == typeof(DateTimeOffset))
+            .Select(p => p.Name)
+            .ToArray();
+
+        dates.Should().NotBeEmpty("otherwise this test passes vacuously and guards nothing");
+
+        foreach (var date in dates)
+        {
+            definition.Fields.TryGetValue(date, out var field);
+            (field?.Storage == FieldStorage.Yes).Should().BeFalse(
+                $"storing '{date}' as a scalar flattens it to UTC and destroys the offset");
+
+            definition.Fields.TryGetValue(date + "Raw", out var wrapper);
+            (wrapper?.Storage == FieldStorage.Yes).Should().BeTrue(
+                $"'{date}' needs its stored {date}Raw wrapper, or a document written before the " +
+                "field existed has nothing to recover the value from");
+        }
     }
 
     /// <summary>

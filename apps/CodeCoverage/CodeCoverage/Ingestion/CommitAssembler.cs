@@ -445,10 +445,10 @@ public partial class CommitAssembler : ICommitAssembler
             return null;
 
         var date = commit.Date.Value;
-        var candidates = await session.Query<Commits_ByRepository.Result, Commits_ByRepository>()
+        var candidates = await session.Query<VCommit, Commits_ByRepository>()
             .Where(r => r.Repository == repository.Id && r.Branch == repository.DefaultBranch
-                && r.CompleteCoverage && r.ContributedFromFork != true && r.AuthoredAt <= date)
-            .OrderByDescending(r => r.AuthoredAt)
+                && r.CompleteCoverage && r.ContributedFromFork != true && r.Date <= date)
+            .OrderByDescending(r => r.Date)
             .OfType<Commit>()
             .Take(5)
             .ToListAsync(cancellationToken);
@@ -463,7 +463,7 @@ public partial class CommitAssembler : ICommitAssembler
     /// </summary>
     private async Task RestampDependants(Commit commit, Repository repository, double? percent, CancellationToken cancellationToken)
     {
-        var children = await session.Query<Commits_ByRepository.Result, Commits_ByRepository>()
+        var children = await session.Query<VCommit, Commits_ByRepository>()
             .Where(r => r.Repository == repository.Id && r.ParentSha == commit.Sha && r.HasCoverage)
             .OfType<Commit>()
             .Take(DependantLimit)
@@ -483,9 +483,9 @@ public partial class CommitAssembler : ICommitAssembler
             return;
 
         var date = commit.Date.Value;
-        var later = await session.Query<Commits_ByRepository.Result, Commits_ByRepository>()
-            .Where(r => r.Repository == repository.Id && r.HasCoverage && r.ContributedFromFork != true && r.AuthoredAt > date)
-            .OrderBy(r => r.AuthoredAt)
+        var later = await session.Query<VCommit, Commits_ByRepository>()
+            .Where(r => r.Repository == repository.Id && r.HasCoverage && r.ContributedFromFork != true && r.Date > date)
+            .OrderBy(r => r.Date)
             .OfType<Commit>()
             .Take(DependantLimit)
             .ToListAsync(cancellationToken);

@@ -429,7 +429,7 @@ public class CommitAssemblerTests : CoverageRavenTest
             await job.RunAsync(CancellationToken.None);
             WaitForIndexing(store);
             using var count = store.OpenAsyncSession();
-            return await count.Query<CodeCoverage.Indexes.Commits_ByRepository.Result, CodeCoverage.Indexes.Commits_ByRepository>()
+            return await count.Query<CodeCoverage.Indexes.VCommit, CodeCoverage.Indexes.Commits_ByRepository>()
                 .Where(r => r.HasCoverage && !r.ParentLookupDone)
                 .CountAsync();
         }

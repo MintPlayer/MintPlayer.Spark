@@ -330,7 +330,7 @@ public class ForkContributionTests : CoverageRavenTest
         WaitForIndexing(store);
 
         using var session = store.OpenAsyncSession();
-        var listed = await session.Query<CodeCoverage.Indexes.Commits_ByRepository.Result, CodeCoverage.Indexes.Commits_ByRepository>()
+        var listed = await session.Query<CodeCoverage.Indexes.VCommit, CodeCoverage.Indexes.Commits_ByRepository>()
             .Where(c => c.Repository == RepositoryId && c.ContributedFromFork != true)
             .OfType<Commit>()
             .ToListAsync();

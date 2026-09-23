@@ -174,19 +174,27 @@ public class HandWrittenSortFieldsProducer : Producer, IDiagnosticReporter
                     {
                         writer.WriteLine(
                             $"Index(nameof({indexEntity.FullName}.{field.Name}), {RavenIndexes}.FieldIndexing.{field.FieldIndexing});");
+                    }
 
-                        // ⚠️ A field that is neither indexed nor stored is REJECTED by Corax, and it
-                        // rejects it at map time: the deploy succeeds, then the index sits at
-                        // state=Error, entries=0 and every query against it 500s. Measured —
-                        // "A field 'DateRaw' that is neither indexed nor stored is useless".
-                        //
-                        // So FieldIndexing.No obliges us to store the field. This was previously
-                        // correct only by accident, because every index carrying a DateTimeOffset also
-                        // happened to call StoreAllFields; one that does not simply fails to build.
-                        // Storing the WRAPPER is also what makes it work: the wrapper is the thing
-                        // that survives projection with its offset intact, which is why the base field
-                        // must stay unstored and be read from the document.
-                        if (field.FieldIndexing == "No")
+                    // ⚠️ A field that is neither indexed nor stored is REJECTED by Corax, and it
+                    // rejects it at map time: the deploy succeeds, then the index sits at
+                    // state=Error, entries=0 and every query against it 500s. Measured —
+                    // "A field 'DateRaw' that is neither indexed nor stored is useless".
+                    //
+                    // So FieldIndexing.No obliges us to store the field. This was previously correct
+                    // only by accident, because every index carrying a DateTimeOffset also happened to
+                    // call StoreAllFields; one that does not simply fails to build. Storing the
+                    // WRAPPER is also what makes the offset survive, which is why the base field stays
+                    // unstored and is read back from the document.
+                    //
+                    // Guarded on StoresStrings SEPARATELY from the Index guard above: the two
+                    // dictionaries are independent, and an author who hand-wrote only the Store (or
+                    // only the Index) would otherwise collide on the other one. Store(string, ...) is
+                    // a Dictionary.Add too, so a collision is a startup crash, not a last-write-wins.
+                    if (field.FieldIndexing == "No")
+                    {
+                        using (writer.OpenBlock(
+                            $"if (!StoresStrings.ContainsKey(nameof({indexEntity.FullName}.{field.Name})))"))
                         {
                             writer.WriteLine(
                                 $"Store(nameof({indexEntity.FullName}.{field.Name}), {RavenIndexes}.FieldStorage.Yes);");

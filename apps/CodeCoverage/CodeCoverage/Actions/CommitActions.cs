@@ -42,10 +42,10 @@ public partial class CommitActions : DefaultPersistentObjectActions<Commit>
         // Ordered through the index, whose AuthoredAt field is coalesced with
         // FirstSeenAtUtc — upload-only commits (no webhook timestamp) land in
         // chronological place instead of clustering at one end.
-        var commits = await session.Query<Commits_ByRepository.Result, Commits_ByRepository>()
+        var commits = await session.Query<VCommit, Commits_ByRepository>()
             .Customize(x => x.NoTracking())
             .Where(r => r.Repository == args.Parent!.Id)
-            .OrderByDescending(r => r.AuthoredAt)
+            .OrderByDescending(r => r.Date)
             .OfType<Commit>()
             .ToListAsync();
 
