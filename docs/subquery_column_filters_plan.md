@@ -421,15 +421,16 @@ whole path (root `Database.*`, custom, sub-query) in 2026-09-23. This is the aut
 | # | symptom | live where | status |
 |---|---|---|---|
 | **D1** | Unconvertible filter value on a **nullable** column returned the rows with **no** value — the complement of the request — and leaked enum membership to an **anonymous** caller (0-vs-3) | **LIVE DemoApp** | ✅ `22ae9732` |
-| **D2** | `< none >` distinct round-trips as `Col == null`, which matches present-and-null but **not absent** — wrong rows in both directions, on a value the panel itself offered | **LIVE DemoApp**, root + sub-query | ⏳ |
+| **D2** | `< none >` distinct round-trips as `Col == null`, which matches present-and-null but **not absent** — wrong rows in both directions, on a value the panel itself offered | **LIVE DemoApp**, root + sub-query | ⛔ **not fixable in the predicate** — see R1 |
 | **D3** | Every AsDetail column's filter panel collapses to a single `< none >` (`EntityMapper` sets `attr.Value = null`) | **LIVE production CodeCoverage** ×6 | ✅ capability refusal |
 | **D4** | Filtering a **singular complex** column returned the complement — the same construction the collection fix removed | **LIVE production CodeCoverage** ×3 | ✅ `22ae9732` |
 | **D5** | Complex-collection filter emitted `Any(e => e == null)` → no rows | **LIVE production CodeCoverage** ×3 | ✅ `22ae9732` |
 | **D6** | Complex columns draw a sort arrow that orders nothing (`FieldIndexing.No` degrades silently) | **LIVE production CodeCoverage** ×6 | ✅ capability refusal |
-| **D7** | Opening any filter panel materializes the **whole** result set (`take: int.MaxValue`); the endpoint's `MaxTake = 1000` applies only to `/execute` | **LIVE production CodeCoverage** | ⏳ |
+| **D7** | Opening any filter panel materializes the **whole** result set (`take: int.MaxValue`); the endpoint's `MaxTake = 1000` applies only to `/execute` | **LIVE production CodeCoverage** | ✅ `7e7bdf1b` |
 | **D8** | `sortType` for a `Custom.*` query is the **entity**, wider than the Map → `canSort/canFilter` true for fields the Map never assigns → **HTTP 500** | latent, one refactor away | ⏳ |
 | **D9** | A streaming query hit through `/queries/execute` 500s — no `IsStreamingQuery` guard, unlike `GetDistinctValuesAsync` | measured DemoApp | ⏳ |
-| **D10** | Distinct panel sorts numbers as text (`['1','120','20','40']`) and caps at an arbitrary first 100 | **LIVE DemoApp** | ⏳ |
+| **D10** | Distinct panel sorts numbers as text (`['1','120','20','40']`) and caps at an arbitrary first 100 | **LIVE DemoApp** | ✅ `7e7bdf1b` |
+| **D18** | ⛳ **NEW.** `x.Foo.HasValue == false` against a static index is translated as the **field name** `Foo_HasValue`, which no Map emits → **HTTP 500** for the whole query. Any hand-written row filter or custom query using it fails this way, with no warning | latent, framework-wide | ⏳ analyzer candidate |
 | **D11** | A filter naming a non-query-surface attribute is accepted then ignored (200, unnarrowed) | API-only | ⏳ |
 | **D12** | Distinct panel would collapse to the ticked values | latent — client omits the self column | ⚪ verified not live |
 | **D13** | Page offsets drift on a non-projecting fan-out index | latent | ⏳ |
@@ -443,17 +444,40 @@ whole path (root `Database.*`, custom, sub-query) in 2026-09-23. This is the aut
 
 ## Remaining work, in order
 
-### R1 — D2, the `< none >` round-trip *(wrong rows, live)*
-An absent JSON field does not satisfy `== null` in RavenDB, but the distinct list builds `< none >`
-from *mapped* rows where absent and null are indistinguishable. Either the predicate must express
-"absent or null", or the distinct list must stop offering `< none >` on a field whose absence it
-cannot round-trip. ⚠️ Same family as the repo's own `!= true` rule — see
-`Commits_ByRepository.Result.ContributedFromFork`, where this exact confusion emptied every grid for
-pre-existing repositories while the suite stayed green.
+### R1 — D2, the `< none >` round-trip ⛔ **measured: no predicate can express it**
 
-### R2 — D7, unbounded materialization on a production filter panel
-`GetDistinctValuesAsync` → `LoadSecuredRowsAsync(take: int.MaxValue)`. Needs the same clamp
-`/execute` has, or a cap with an honest "list truncated" signal.
+Pinned by `AbsentVersusNullFieldTests`, against a document whose property was patched away — the shape
+a real collection acquires when a property is added to an entity after documents already exist:
+
+| shape | rows matched |
+|---|---|
+| `Rating == null` | **`explicit` only** — the absent row is not matched |
+| `Rating != null` | **`absent, rated`** — the absent row lands with the rows that *have* a value |
+| `!Rating.HasValue` | `explicit` only — `== null` by another name |
+| `Rating.HasValue == false` | ❌ **throws** (see D18) |
+
+So the grid draws two rows blank, the panel offers one `< none >` for the pair, and **no query can
+select that pair**. Ticking it drops a row drawn as blank; excluding it keeps one. This is not a
+predicate bug and cannot be fixed in `ApplyColumnFilters`.
+
+**Three options, none free — a decision, not an implementation:**
+
+1. **Stop offering `< none >`.** Honest, loses a working case (explicit nulls round-trip fine).
+2. **Express it client-side as the negation of the other distinct values.** Correct *and* complete
+   whenever the list is not truncated, and the client already holds the list and knows whether it was
+   capped. Costs client work plus an npm bump.
+3. **Treat it as data.** Spark's own writes always emit the field (the Raven client serialises
+   `int? = null` as `"Rating": null` — measured), so absence only arises from schema evolution. That
+   is the same class as `ContributedFromFork`, which was fixed by backfilling and by writing the
+   predicate as `!= true`, not by changing the framework.
+
+⚠️ Do not "fix" this by making `!= null` the include predicate — it puts the absent row on the side
+that *has* values, which is how the exclude direction is already wrong.
+
+### ~~R2 — D7, unbounded materialization~~ ✅ done `7e7bdf1b`
+Capped at 5,000 scanned rows, truncation reported through the existing `HasMore`. D10 went with it:
+the value list now sorts **before** capping (it kept an arbitrary hundred in index order and sorted
+only those), and orders by the underlying value rather than the rendered label.
 
 ### R3 — D8/A3, an index bound with no projection
 `sortType` falls back to the entity, which is a **superset** of the Map, so Spark validates a sort
