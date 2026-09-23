@@ -47,13 +47,20 @@ public class ColumnFilterDisclosureTests : SparkTestDriver
         /// the field projects as null, and that is the case which throws in an in-memory custom query.
         /// </summary>
         public string[]? Tags { get; set; }
+
+        /// <summary>
+        /// A NULLABLE value type — the case the non-nullable <see cref="Weight"/> does not cover, and
+        /// the one that was actually wrong. An unconvertible value used to become <c>Rating == null</c>,
+        /// which on this column is a real match, so a nonsense filter returned the rows with no rating.
+        /// </summary>
+        public int? Rating { get; set; }
     }
 
     public class Crates_Overview : AbstractIndexCreationTask<Crate>
     {
         public Crates_Overview()
         {
-            Map = crates => from c in crates select new { c.Label, c.Region, c.Classified, c.Weight, c.Tags };
+            Map = crates => from c in crates select new { c.Label, c.Region, c.Classified, c.Weight, c.Tags, c.Rating };
             StoreAllFields(FieldStorage.Yes);
         }
     }
@@ -85,6 +92,7 @@ public class ColumnFilterDisclosureTests : SparkTestDriver
                     ShowedOn = EShowedOn.PersistentObject,
                 },
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = nameof(Crate.Weight), DataType = "int" },
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = nameof(Crate.Rating), DataType = "int" },
                 new EntityAttributeDefinition
                 {
                     Id = Guid.NewGuid(), Name = nameof(Crate.Tags), DataType = "string", IsArray = true,
@@ -102,12 +110,12 @@ public class ColumnFilterDisclosureTests : SparkTestDriver
 
         await SeedAsync(async session =>
         {
-            await session.StoreAsync(new Crate { Label = "one", Region = "eu", Classified = "red", Weight = 10, Tags = ["fragile", "urgent"] });
-            await session.StoreAsync(new Crate { Label = "two", Region = "us", Classified = "red", Weight = 20, Tags = ["urgent"] });
+            await session.StoreAsync(new Crate { Label = "one", Region = "eu", Classified = "red", Weight = 10, Tags = ["fragile", "urgent"], Rating = 5 });
+            await session.StoreAsync(new Crate { Label = "two", Region = "us", Classified = "red", Weight = 20, Tags = ["urgent"], Rating = 7 });
 
             // No tags at all: the field is absent from the document, so it projects as null. Every
             // collection filter has to survive this row without throwing and without matching it.
-            await session.StoreAsync(new Crate { Label = "three", Region = "ap", Classified = "blue", Weight = 30, Tags = null });
+            await session.StoreAsync(new Crate { Label = "three", Region = "ap", Classified = "blue", Weight = 30, Tags = null, Rating = null });
         });
         await Store.WaitForIndexingAsync();
     }
@@ -133,6 +141,57 @@ public class ColumnFilterDisclosureTests : SparkTestDriver
         Name = "Crates",
         Source = "Database.Crates",
     };
+
+    /// <summary>
+    /// ⚠️ The disclosure oracle, closed. Measured live on DemoApp before the fix, anonymously: a valid
+    /// enum member with no matching data returned 0 rows, while a value that is not a member at all
+    /// returned every row whose column is null. Watching 0-vs-N therefore enumerated a server-side
+    /// enum's exact member set — and each of those rows was a wrong answer besides.
+    /// </summary>
+    [Fact]
+    public async Task An_unconvertible_value_on_a_NULLABLE_column_does_not_select_the_rows_with_no_value()
+    {
+        var executor = Executor();
+
+        var result = await executor.ExecuteQueryAsync(Query(),
+            columnFilters: [new QueryColumnFilter { Name = nameof(Crate.Rating), Includes = ["not-a-number"] }]);
+
+        // The old code coerced this to null and emitted `Rating == null`, which on a nullable column
+        // is a real match — so this returned the unrated crate. Nothing can equal a value the column
+        // cannot hold.
+        result.TotalItems.Should().Be(0,
+            "no stored rating can equal a value that is not a rating; the unrated row is not a match");
+    }
+
+    [Fact]
+    public async Task Excluding_an_unconvertible_value_from_a_NULLABLE_column_drops_no_rows()
+    {
+        var executor = Executor();
+
+        var result = await executor.ExecuteQueryAsync(Query(),
+            columnFilters: [new QueryColumnFilter { Name = nameof(Crate.Rating), Excludes = ["not-a-number"] }]);
+
+        // The mirror image, and the direction that silently deleted rows: excluding a value nothing
+        // holds must remove nothing. The old code excluded `Rating == null` and dropped the unrated
+        // crate instead.
+        result.TotalItems.Should().Be(3,
+            "excluding a value the column cannot hold excludes nothing at all");
+    }
+
+    [Fact]
+    public async Task A_deliberate_null_filter_still_selects_exactly_the_rows_with_no_value()
+    {
+        var executor = Executor();
+
+        var result = await executor.ExecuteQueryAsync(Query(),
+            columnFilters: [new QueryColumnFilter { Name = nameof(Crate.Rating), Includes = [null] }]);
+
+        // The other half of the distinction: "no value" is a real, selectable distinct that the panel
+        // offers as `< none >`, and it must keep working. If this ever returns 0, the fix went too far
+        // and collapsed "asked for null" into "did not convert" from the other side.
+        result.TotalItems.Should().Be(1, "exactly one crate has no rating");
+        result.Items.Single().Values.Single(v => v.Key == nameof(Crate.Label)).Value.Should().Be("three");
+    }
 
     [Fact]
     public async Task Includes_keep_only_the_named_values()

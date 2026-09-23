@@ -286,7 +286,16 @@ internal partial class QueryExecutor : IQueryExecutor
                     $"the rows inside the query method itself.");
             }
 
-            var authorColumns = definition is not null ? QueryResultProjector.BuildColumns(definition, query) : [];
+            // ⚠️ sortType matters here for the same reason it matters on the ordinary path below, and
+            // leaving it out was worse on this one. An author-paged query already skips the
+            // framework's own column filtering (the filters are handed to the author instead), so if
+            // the column metadata ALSO claims every column is sortable and filterable, the grid draws
+            // a sort arrow and a filter cell on columns the author's row shape does not carry — and
+            // nothing downstream refuses them. Passing it lets IsBackedByShape narrow the claim to
+            // what the returned rows can actually answer.
+            var authorColumns = definition is not null
+                ? QueryResultProjector.BuildColumns(definition, query, source.SortType)
+                : [];
             return new QueryResult
             {
                 Columns = authorColumns,
@@ -2097,15 +2106,30 @@ internal sealed record DatabasePage(int TotalItems);
             var member = Expression.Property(parameter, property);
 
             Expression? predicate = null;
+            var matchesNothing = false;
 
             if (filter.Includes is { Length: > 0 } includes)
+            {
                 predicate = AnyEquals(member, includes, property.PropertyType);
 
-            if (filter.Excludes is { Length: > 0 } excludes)
-            {
-                var none = Expression.Not(AnyEquals(member, excludes, property.PropertyType));
-                predicate = predicate is null ? none : Expression.AndAlso(predicate, none);
+                // Not one requested value is representable on this column, so no stored value can
+                // equal any of them. That is an empty result, NOT an absent filter — treating it as
+                // absent is what returned the whole unnarrowed set for a nonsense value.
+                matchesNothing = predicate is null;
             }
+
+            if (!matchesNothing && filter.Excludes is { Length: > 0 } excludes)
+            {
+                // The mirror image: a value that cannot exist on this column excludes nothing, so an
+                // empty chain here means "exclude nothing" rather than "exclude everything".
+                if (AnyEquals(member, excludes, property.PropertyType) is { } any)
+                {
+                    var none = Expression.Not(any);
+                    predicate = predicate is null ? none : Expression.AndAlso(predicate, none);
+                }
+            }
+
+            if (matchesNothing) predicate = Impossible(member, property.PropertyType);
 
             if (predicate is null) continue;
 
@@ -2116,20 +2140,57 @@ internal sealed record DatabasePage(int TotalItems);
         return queryable;
     }
 
-    /// <summary>An OR-chain of equality comparisons — the "one of these values" half of a filter.</summary>
-    private static Expression AnyEquals(MemberExpression member, object?[] values, Type propertyType)
+    /// <summary>
+    /// A predicate on <paramref name="member"/> that no row can satisfy, for the case where not one
+    /// requested value is representable on the column.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ It has to be a real comparison. RavenDB rejects a constant predicate outright ("Constants
+    /// expressions such as Where(x => true) are not allowed in the RavenDB queries"), and capping the
+    /// queryable instead does not work either: <c>Take(0)</c> bounds the page but <b>not</b>
+    /// <c>Count()</c>, so the rows vanish while <c>TotalItems</c> keeps reporting the unfiltered
+    /// total. Measured — that is how this method came to exist.
+    /// <para>
+    /// A non-nullable column holds no nulls, so lifting it and comparing to null is already
+    /// impossible. Anything that can hold a null needs the contradiction, because <c>== null</c> is a
+    /// legitimate match there — which was the original defect.
+    /// </para>
+    /// </remarks>
+    private static Expression Impossible(MemberExpression member, Type propertyType)
+    {
+        if (propertyType.IsValueType && Nullable.GetUnderlyingType(propertyType) is null)
+        {
+            var lifted = typeof(Nullable<>).MakeGenericType(propertyType);
+            return Expression.Equal(
+                Expression.Convert(member, lifted), Expression.Constant(null, lifted));
+        }
+
+        var isNull = Expression.Equal(member, Expression.Constant(null, propertyType));
+        var isNotNull = Expression.NotEqual(member, Expression.Constant(null, propertyType));
+        return Expression.AndAlso(isNull, isNotNull);
+    }
+
+    /// <summary>
+    /// An OR-chain of equality comparisons — the "one of these values" half of a filter, or
+    /// <see langword="null"/> when not one requested value can be represented on this column.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ A <see langword="null"/> return means <b>"no row can match"</b>, not "no filter". The caller
+    /// must narrow the result to nothing for an <c>includes</c> chain, and ignore it for an
+    /// <c>excludes</c> chain. Conflating the two is what made an unconvertible value on a nullable
+    /// column return the rows with <em>no</em> value — the exact complement of the request.
+    /// </remarks>
+    private static Expression? AnyEquals(MemberExpression member, object?[] values, Type propertyType)
     {
         // A collection column holds SEVERAL values per row, so "one of these values" has to mean the
         // collection CONTAINS one of them — never that the collection EQUALS one of them. RavenDB
         // indexes such a field as multi-valued terms, so Any(e => e == v) is meaningful and renders
         // as `Field = 'v'` in RQL.
         //
-        // Comparing the collection itself is what shipped, and it fails silently: ConvertFilterValue
-        // cannot coerce a scalar wire value onto string[], answers null, and the null-on-value-type
-        // branch below then emits `x.Flags == null`. That matches nothing on a non-nullable column
-        // and — worse — matches exactly the rows with NO value on a nullable one, i.e. the precise
-        // complement of what the caller asked for. 16 array attributes sit on a query surface today
-        // with no canFilter authored, so they all resolve to true and all filter this way.
+        // Comparing the collection itself is what shipped, and it failed silently: a scalar wire value
+        // cannot be coerced onto string[], so the conversion answered null and the comparison became
+        // `x.Flags == null` — matching nothing on a non-nullable column and, worse, exactly the rows
+        // with NO value on a nullable one.
         if (SparkModelShape.GetCollectionElementType(propertyType) is { } elementType)
             return AnyContains(member, values, elementType);
 
@@ -2137,40 +2198,21 @@ internal sealed record DatabasePage(int TotalItems);
 
         foreach (var raw in values)
         {
-            var value = ConvertFilterValue(raw, propertyType);
+            // ⚠️ "Did not convert" and "the caller asked for null" are DIFFERENT, and collapsing them
+            // was a disclosure oracle as well as a correctness bug. Measured on DemoApp's ECarStatus?
+            // column, anonymously: a valid-but-absent member returned 0 rows while a non-member
+            // returned 3 — the rows whose Status is null. So an unauthenticated caller could
+            // enumerate a server-side enum by watching 0-vs-N, and every one of those 3 rows was
+            // wrong besides. A value that does not convert is simply dropped here; the caller turns
+            // an empty chain into an empty result.
+            if (!TryConvertFilterValue(raw, propertyType, out var value))
+                continue;
 
-            // A null on a non-nullable value type cannot be a constant of that type —
-            // Expression.Constant(null, typeof(int)) throws — and ConvertFilterValue answers null for
-            // anything it could not convert. So a malformed value on an int column used to 500,
-            // the exact opposite of what that method documents ("a malformed one should narrow to
-            // nothing rather than 500"), and it made the refusal a type oracle besides: a 500 and a
-            // 200-with-no-rows are trivially distinguishable, which is what the silence exists to
-            // prevent.
-            //
-            // Expressed by lifting the member to its nullable form and comparing against null, rather
-            // than by dropping the value. Dropping it can empty the whole OR-chain, and the only
-            // thing left to emit then is a constant predicate — which RavenDB rejects outright
-            // ("Constants expressions such as Where(x => true) are not allowed"). This is a real
-            // comparison the provider can translate, and it means precisely what is wanted: a
-            // non-nullable column holds no nulls, so no row matches.
-            Expression equals;
-            if (value is null && propertyType.IsValueType && Nullable.GetUnderlyingType(propertyType) is null)
-            {
-                var nullable = typeof(Nullable<>).MakeGenericType(propertyType);
-                equals = Expression.Equal(
-                    Expression.Convert(member, nullable), Expression.Constant(null, nullable));
-            }
-            else
-            {
-                equals = Expression.Equal(member, Expression.Constant(value, propertyType));
-            }
-
+            var equals = Expression.Equal(member, Expression.Constant(value, propertyType));
             any = any is null ? equals : Expression.OrElse(any, equals);
         }
 
-        // Unreachable: the caller only passes non-empty arrays, and every value now yields a
-        // comparison rather than being dropped. Kept as a total function rather than a bang.
-        return any ?? Expression.Constant(false);
+        return any;
     }
 
     /// <summary>
@@ -2178,36 +2220,28 @@ internal sealed record DatabasePage(int TotalItems);
     /// of the values. Values are coerced to the <paramref name="elementType"/>, not to the collection
     /// type — coercing to the collection is what produced <c>x.Flags == null</c>.
     /// </summary>
-    private static Expression AnyContains(MemberExpression member, object?[] values, Type elementType)
+    private static Expression? AnyContains(MemberExpression member, object?[] values, Type elementType)
     {
         var element = Expression.Parameter(elementType, "e");
         Expression? any = null;
 
         foreach (var raw in values)
         {
-            var value = ConvertFilterValue(raw, elementType);
+            // Same rule as AnyEquals: an element value that does not convert is dropped, and an empty
+            // chain means "no row can match" rather than "no filter".
+            if (!TryConvertFilterValue(raw, elementType, out var value))
+                continue;
 
-            // Same reasoning as AnyEquals: an unconvertible value still has to yield a comparison the
-            // provider can translate, because dropping it can empty the chain and leave nothing but a
-            // constant predicate, which RavenDB rejects outright.
-            Expression equals;
-            if (value is null && elementType.IsValueType && Nullable.GetUnderlyingType(elementType) is null)
-            {
-                var nullable = typeof(Nullable<>).MakeGenericType(elementType);
-                equals = Expression.Equal(
-                    Expression.Convert(element, nullable), Expression.Constant(null, nullable));
-            }
-            else
-            {
-                equals = Expression.Equal(element, Expression.Constant(value, elementType));
-            }
+            var equals = Expression.Equal(element, Expression.Constant(value, elementType));
 
             any = any is null ? equals : Expression.OrElse(any, equals);
         }
 
+        if (any is null) return null;
+
         var contains = Expression.Call(
             typeof(Enumerable), nameof(Enumerable.Any), [elementType],
-            member, Expression.Lambda(any!, element));
+            member, Expression.Lambda(any, element));
 
         // A document that never wrote the field projects as a null collection, and Enumerable.Any
         // throws on it. That is not hypothetical here: a custom query is allowed to materialize with
@@ -2219,44 +2253,69 @@ internal sealed record DatabasePage(int TotalItems);
     }
 
     /// <summary>
-    /// Coerces one wire value onto the property's CLR type.
+    /// Coerces one wire value onto the property's CLR type, reporting whether it is representable
+    /// there at all.
     /// </summary>
     /// <remarks>
     /// The body arrives through <c>System.Text.Json</c> as <see cref="JsonElement"/>, so every value
-    /// needs converting before it can be compared. <see langword="null"/> is preserved rather than
-    /// coerced — it is a real, selectable distinct meaning "no value", not an absent filter.
+    /// needs converting before it can be compared.
     /// <para>
-    /// An unconvertible value yields <see langword="null"/> rather than throwing: a filter is caller
-    /// input, and a malformed one should narrow to nothing rather than 500. It cannot be used to
-    /// probe types, because the refusal is indistinguishable from a value that simply matches no row.
+    /// ⚠️ <b>The boolean is the whole point of this method.</b> It returns <see langword="false"/> for
+    /// a value that cannot exist on this column, and <see langword="true"/> with a
+    /// <see langword="null"/> <paramref name="value"/> when the caller genuinely asked for "no value"
+    /// — a real, selectable distinct. The previous signature returned <see langword="null"/> for both,
+    /// and every caller then emitted <c>column == null</c>, so an unparseable value silently selected
+    /// the rows with no value: the exact complement of the request on a nullable column, and an enum
+    /// oracle on any column (a valid-but-absent member returns nothing, a non-member returns the
+    /// nulls). A filter is caller input, so a malformed one must narrow to nothing rather than 500 —
+    /// but "narrow to nothing" has to mean nothing, not "match the nulls".
+    /// </para>
+    /// <para>
+    /// A <see langword="null"/> request is representable only where the column can hold one: a
+    /// reference type or a <see cref="Nullable{T}"/>. Asking for null on a non-nullable value type is
+    /// unrepresentable, so it returns <see langword="false"/> and the row set narrows to nothing,
+    /// which is also what such a column would honestly answer.
     /// </para>
     /// </remarks>
-    private static object? ConvertFilterValue(object? raw, Type propertyType)
+    private static bool TryConvertFilterValue(object? raw, Type propertyType, out object? value)
     {
+        value = null;
         var target = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+        var nullable = !propertyType.IsValueType || Nullable.GetUnderlyingType(propertyType) is not null;
 
-        if (raw is null) return null;
+        if (raw is null) return nullable;
 
         try
         {
             if (raw is JsonElement element)
             {
-                if (element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return null;
-                if (target == typeof(string)) return element.ToString();
-                if (target == typeof(Guid)) return element.TryGetGuid(out var g) ? g : null;
-                if (target.IsEnum) return Enum.Parse(target, element.ToString(), ignoreCase: true);
+                if (element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined) return nullable;
+                if (target == typeof(string)) { value = element.ToString(); return true; }
+                if (target == typeof(Guid))
+                {
+                    if (!element.TryGetGuid(out var g)) return false;
+                    value = g;
+                    return true;
+                }
+                if (target.IsEnum) { value = Enum.Parse(target, element.ToString(), ignoreCase: true); return true; }
 
-                return JsonSerializer.Deserialize(element.GetRawText(), target);
+                value = JsonSerializer.Deserialize(element.GetRawText(), target);
+
+                // Deserialize answers null for a JSON literal that is well-formed but not a member of
+                // the target type. That is a failure, not a request for null.
+                return value is not null;
             }
 
-            if (target.IsInstanceOfType(raw)) return raw;
-            if (target.IsEnum) return Enum.Parse(target, raw.ToString() ?? "", ignoreCase: true);
+            if (target.IsInstanceOfType(raw)) { value = raw; return true; }
+            if (target.IsEnum) { value = Enum.Parse(target, raw.ToString() ?? "", ignoreCase: true); return true; }
 
-            return Convert.ChangeType(raw, target);
+            value = Convert.ChangeType(raw, target);
+            return value is not null;
         }
         catch
         {
-            return null;
+            value = null;
+            return false;
         }
     }
 
