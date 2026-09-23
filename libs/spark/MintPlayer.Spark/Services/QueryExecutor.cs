@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
@@ -1383,7 +1384,7 @@ internal sealed record DatabasePage(int TotalItems);
     /// a sort column is a comparison oracle over a value the caller may never read.
     /// </para>
     /// </remarks>
-    private static IEnumerable<PersistentObject> SortMappedRows(
+    private IEnumerable<PersistentObject> SortMappedRows(
         IEnumerable<PersistentObject> rows, SortColumn[] sortColumns, EntityTypeDefinition definition,
         SparkQuery? query)
     {
@@ -1393,7 +1394,7 @@ internal sealed record DatabasePage(int TotalItems);
         {
             if (!IsSortableAttribute(definition, query, col.Property))
             {
-                Console.WriteLine(
+                logger?.LogWarning(
                     $"Warning: sort column '{col.Property}' is not an attribute of {definition.Name}'s query " +
                     $"surface; the column is refused and rows keep their index order.");
                 continue;
@@ -1766,7 +1767,7 @@ internal sealed record DatabasePage(int TotalItems);
             // attribute and would fail this check itself.
             if (!IsSortableAttribute(definition, query, col.Property))
             {
-                Console.WriteLine(
+                logger?.LogWarning(
                     $"Warning: sort column '{col.Property}' is not an attribute of {definition.Name}'s query " +
                     $"surface; the column is refused and rows keep their index order.");
                 continue;
@@ -1777,7 +1778,7 @@ internal sealed record DatabasePage(int TotalItems);
             {
                 // Not an error: a model attribute can legitimately be absent from a narrower
                 // projection. But dropping the column silently reads as broken ordering (#279).
-                Console.WriteLine(
+                logger?.LogWarning(
                     $"Warning: sort column '{col.Property}' has no matching property on {entityType.Name}; " +
                     $"the column is skipped and rows keep their index order.");
                 continue;
@@ -2030,6 +2031,25 @@ internal sealed record DatabasePage(int TotalItems);
     /// may not see it.
     /// </para>
     /// <para>
+    /// <b>⚠️ A filter compares the stored value, which redaction does not hide.</b>
+    /// <see cref="IRowSecurity.RedactAsync"/> nulls a protected attribute in the <em>response</em>;
+    /// this comparison runs against the value in the database. So filtering
+    /// <c>Salary Includes [100000]</c> returns the row with <c>Salary: null</c>, and its presence —
+    /// and <c>TotalItems</c> — confirms the value. An equality oracle on something the caller may
+    /// never read.
+    /// <para>
+    /// It is gated on <c>ShowedOn</c> and <c>canFilter</c> rather than on the redaction hook, for the
+    /// reason the sort path already states: <c>GetProtectedAttributesAsync</c> takes an entity and may
+    /// answer differently per row, so it cannot decide a query-level operation — by the time rows
+    /// exist the filtering has already happened. The mitigation is therefore static while the hazard
+    /// is dynamic, and that asymmetry cannot be closed here.
+    /// </para>
+    /// <para>
+    /// <b>An app that protects an attribute per-row must also set <c>canFilter: false</c> on it</b>
+    /// (and <c>canListDistincts: false</c>, which is a stronger disclosure again). Both default to
+    /// <see langword="true"/>, so this is an obligation, not a default. See
+    /// <c>docs/guide-authorization.md</c>.
+    /// </para>
     /// <b>The property is resolved through the sort companion</b>, exactly as ordering is. A
     /// <c>[Search]</c>-analyzed field is indexed as separate lower-cased terms — <c>Volkswagen Golf
     /// GTI</c> becomes three — so an equality comparison against the display field matches nothing
@@ -2047,7 +2067,7 @@ internal sealed record DatabasePage(int TotalItems);
             var attribute = ColumnCapabilities.FindQuerySurfaceAttribute(definition, filter.Name);
             if (attribute is null || !ColumnCapabilities.CanFilter(attribute, query))
             {
-                Console.WriteLine(
+                logger?.LogWarning(
                     $"Warning: filter column '{filter.Name}' is not a filterable attribute of " +
                     $"{definition.Name}'s query surface; the filter is refused and the rows are not narrowed.");
                 continue;
@@ -2058,7 +2078,7 @@ internal sealed record DatabasePage(int TotalItems);
             {
                 // Same shape as the sort path: a model attribute can legitimately be absent from a
                 // narrower projection, and dropping it silently reads as a broken filter.
-                Console.WriteLine(
+                logger?.LogWarning(
                     $"Warning: filter column '{filter.Name}' has no property on {sortType.Name}; " +
                     $"the filter is skipped.");
                 continue;
