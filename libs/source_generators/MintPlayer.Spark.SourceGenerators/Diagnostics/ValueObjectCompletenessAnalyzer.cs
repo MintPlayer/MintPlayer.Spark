@@ -135,12 +135,20 @@ public sealed partial class ValueObjectCompletenessAnalyzer : DiagnosticAnalyzer
     /// </summary>
     /// <remarks>
     /// ⚠️ <b>Reporting at the type's own location across a project boundary loses the diagnostic
-    /// entirely, and this was measured, not assumed.</b> Roslyn's analyzer driver discards any
-    /// diagnostic whose location lives in a syntax tree the analyzed compilation does not contain.
-    /// A referenced project in a loaded IDE solution is a <c>CompilationReference</c>, so the
-    /// offending type *does* have a source location — one belonging to the other project's tree —
-    /// and the driver dropped it: a two-project fixture reported <b>zero</b> diagnostics where the
-    /// identical single-project fixture reported one.
+    /// entirely, and this was measured, not assumed.</b> A referenced project in a loaded IDE
+    /// solution is a <c>CompilationReference</c>, so the offending type *does* have a source
+    /// location — one belonging to the other project's tree — and reporting there fails: a
+    /// two-project fixture reported <b>zero</b> diagnostics where the identical single-project
+    /// fixture reported one.
+    /// <para>
+    /// ⚠️ The mechanism is worse than a discard, and the distinction matters when reasoning about any
+    /// new rule. <see cref="SymbolAnalysisContext.ReportDiagnostic"/> <b>throws</b>
+    /// <see cref="ArgumentException"/> ("… is not part of the compilation being analyzed"). So the
+    /// whole symbol action dies on the first such report, taking with it every other diagnostic it
+    /// would have produced for that symbol, and what remains is an <c>AD0001</c> — informational and
+    /// routinely invisible. "Discarded" would imply the surrounding analysis still ran; it does not.
+    /// Re-measured 2026-09-23 by <c>AnalyzerSeesGeneratedCodeTests</c>.
+    /// </para>
     /// <para>
     /// The effect on shipped behaviour was that a missing <c>[ValueObject]</c> on a type in an
     /// entity library was reported by <c>dotnet build</c> (where the type is metadata, the location

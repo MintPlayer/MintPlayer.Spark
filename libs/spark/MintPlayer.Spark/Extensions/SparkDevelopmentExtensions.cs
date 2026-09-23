@@ -258,10 +258,15 @@ public static class SparkDevelopmentExtensions
     /// because the declaration and the implementation live in different files and different
     /// languages.
     /// <para>
-    /// ⚠️ This cannot be a Roslyn analyzer, which is the obvious place to look for it. The flag
-    /// lives in <c>App_Data/Model/*.json</c>, which is not part of the compilation unless it is
-    /// added as an <c>AdditionalFile</c>; an analyzer would have nothing to read. It rides
-    /// <c>--spark-verify-model</c> instead, which already runs in CI and already exits non-zero.
+    /// ⚠️ This rides <c>--spark-verify-model</c> rather than a Roslyn analyzer, but <b>not</b> because
+    /// an analyzer could not read the file — it could. <c>spark.targets</c> already passes
+    /// <c>App_Data\Model\*.json</c> to the compiler as <c>AdditionalFiles</c>, and
+    /// <c>SecurityConfigurationAnalyzer</c> reads exactly those files today. The real reason is
+    /// <b>staleness</b>: the model files are an <em>output</em> of synchronize, so during a build that
+    /// is about to rewrite them they can be one generation behind the C#, and an analyzer reading
+    /// them would report on a model that no longer exists. <c>security.json</c> is analyzed precisely
+    /// because it is hand-authored and never has that problem. The verify gate runs after
+    /// synchronize, already runs in CI, and already exits non-zero.
     /// </para>
     /// <para>
     /// Reads the files directly and resolves the actions type by the same convention
@@ -352,8 +357,10 @@ public static class SparkDevelopmentExtensions
     /// direction that matters, since the usual reason to write an override is to <em>restrict</em> a
     /// column.
     /// <para>
-    /// It rides <c>--spark-verify-model</c> rather than a Roslyn analyzer because the flag lives in
-    /// <c>App_Data/Model/*.json</c>, which is not part of the compilation.
+    /// It rides <c>--spark-verify-model</c> rather than a Roslyn analyzer because the model files are
+    /// a synchronize <em>output</em> and can lag the C# mid-build — not because they are unreadable
+    /// from an analyzer, which they are not: <c>spark.targets</c> supplies them as
+    /// <c>AdditionalFiles</c> and <c>SecurityConfigurationAnalyzer</c> reads them.
     /// </para>
     /// <para>
     /// A column that exists but is off the query surface is an offender too: the override cannot
@@ -515,8 +522,10 @@ public static class SparkDevelopmentExtensions
     /// collection, or returns rows into a type that shows nothing on a query.
     /// </summary>
     /// <remarks>
-    /// Rides <c>--spark-verify-model</c> for the same reasons the alias check does: the rules are
-    /// about hand-authored JSON that no analyzer can see, and both failures otherwise surface only
+    /// Rides <c>--spark-verify-model</c> for the same reason the alias check does: the rules are about
+    /// JSON that a build may be in the middle of regenerating, so an analyzer would judge a stale
+    /// model rather than the one that ships. (It is not that the files are invisible to an analyzer —
+    /// they are <c>AdditionalFiles</c>.) Both failures otherwise surface only
     /// by opening the page — one as a websocket that closes with <c>Stream failed</c>, the other as
     /// a grid with rows and no columns. Neither says which query, and neither is visible in review.
     /// <para>

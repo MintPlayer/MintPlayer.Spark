@@ -234,9 +234,16 @@ public class DatabaseAccessIntegrationTests : SparkTestDriver
     }
 
 
-    /// <summary>Map index that drives DatabaseAccess.QueryEntitiesWithIncludesAsync's
-    /// reflective ApplyIndex / ApplyProjection / ApplyToListAsync paths through the
-    /// entity file's declared queryType/indexName binding (#279).</summary>
+    /// <summary>Map index that drives the reflective ApplyIndex / ApplyProjection / ApplyToListAsync
+    /// paths through the entity file's declared queryType/indexName binding (#279).</summary>
+    /// <remarks>
+    /// This used to name <c>DatabaseAccess.QueryEntitiesWithIncludesAsync</c>, which was deleted: it
+    /// had no callers and carried a second, divergent reading of <c>indexName</c> — it called
+    /// <c>ProjectInto&lt;TEntity&gt;()</c> whenever an index was named, where <c>QueryExecutor</c>
+    /// projects only when the index has a <c>[FromIndex]</c> projection type. Revived, it would have
+    /// projected <c>Commit</c> through a non-storing index, which is the exact
+    /// <c>DateTimeOffset</c>-flattening hazard <c>CommitIndexShapeGuardTests</c> exists to prevent.
+    /// </remarks>
     public class GuardedDocs_ByName : AbstractIndexCreationTask<GuardedDoc>
     {
         public GuardedDocs_ByName()
