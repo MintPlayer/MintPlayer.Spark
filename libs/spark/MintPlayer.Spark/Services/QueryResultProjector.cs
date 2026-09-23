@@ -49,7 +49,8 @@ internal static class QueryResultProjector
     /// </para>
     /// </param>
     public static IReadOnlyList<QueryColumn> BuildColumns(
-        EntityTypeDefinition definition, SparkQuery? query = null, Type? sortType = null)
+        EntityTypeDefinition definition, SparkQuery? query = null, Type? sortType = null,
+        IReadOnlySet<string>? indexedFields = null)
         => [.. definition.Attributes
             // ⚠️ ShowedOn ALONE decides what ships; IsVisible only decides what is drawn, and is
             // carried to the client rather than applied here.
@@ -77,9 +78,9 @@ internal static class QueryResultProjector
                 DataType = a.DataType,
                 Order = a.Order,
                 IsArray = a.IsArray,
-                CanSort = ColumnCapabilities.CanSort(a, query) && IsBackedByShape(a, sortType),
-                CanFilter = ColumnCapabilities.CanFilter(a, query) && IsBackedByShape(a, sortType),
-                CanListDistincts = ColumnCapabilities.CanListDistincts(a, query) && IsBackedByShape(a, sortType),
+                CanSort = ColumnCapabilities.CanSort(a, query) && IsBackedByShape(a, sortType, indexedFields),
+                CanFilter = ColumnCapabilities.CanFilter(a, query) && IsBackedByShape(a, sortType, indexedFields),
+                CanListDistincts = ColumnCapabilities.CanListDistincts(a, query) && IsBackedByShape(a, sortType, indexedFields),
                 Query = a.Query,
                 ReferenceType = a.ReferenceType,
                 LookupReferenceType = a.LookupReferenceType,
@@ -101,11 +102,27 @@ internal static class QueryResultProjector
     /// True whenever there is no shape to check against, so this can only ever narrow.
     /// </para>
     /// </remarks>
-    private static bool IsBackedByShape(EntityAttributeDefinition attribute, Type? sortType)
+    /// <remarks>
+    /// ⚠️ <paramref name="indexedFields"/> is the half the CLR shape cannot answer. A custom query may
+    /// return <c>IRavenQueryable&lt;Commit&gt;</c> over a static index — <c>OfType&lt;T&gt;()</c> back
+    /// to the documents is the idiomatic shape — and then the row type is the <b>entity</b>, which
+    /// carries every property, while the index map carries only what it selected. The CLR check passes
+    /// for a field the index never emits, the column ships sortable, and ordering by it is an
+    /// <c>ArgumentException</c>: HTTP 500 for the whole grid.
+    /// <para>
+    /// Null means "no static index is in play, so nothing to restrict" — a dynamic index is built per
+    /// query shape and can never reject a field the query names.
+    /// </para>
+    /// </remarks>
+    private static bool IsBackedByShape(
+        EntityAttributeDefinition attribute, Type? sortType, IReadOnlySet<string>? indexedFields)
     {
         if (sortType is null) return true;
 
-        return sortType.GetCachedProperty(QueryExecutor.ResolveSortProperty(sortType, attribute.Name)) is not null;
+        var resolved = QueryExecutor.ResolveSortProperty(sortType, attribute.Name);
+        if (sortType.GetCachedProperty(resolved) is null) return false;
+
+        return indexedFields is null || indexedFields.Contains(resolved);
     }
 
     /// <summary>

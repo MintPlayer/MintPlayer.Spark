@@ -313,7 +313,7 @@ internal partial class QueryExecutor : IQueryExecutor
                 with { DisabledActions = queryContext.DisabledActions };
         }
 
-        var (allResults, definition, searchPushedDown, authorTotalItems, _, _, _) = source;
+        var (allResults, definition, searchPushedDown, authorTotalItems, _, _, _, _) = source;
 
         // The author's page is returned as it stands. Search, sort, count and paging were all
         // transferred with it (the binary authority rule on SparkQueryPage), so applying any of
@@ -351,7 +351,7 @@ internal partial class QueryExecutor : IQueryExecutor
             // nothing downstream refuses them. Passing it lets IsBackedByShape narrow the claim to
             // what the returned rows can actually answer.
             var authorColumns = definition is not null
-                ? QueryResultProjector.BuildColumns(definition, query, source.SortType)
+                ? QueryResultProjector.BuildColumns(definition, query, source.SortType, source.IndexedFields)
                 : [];
             return new QueryResult
             {
@@ -404,7 +404,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // answer rather than a guess reconstructed from whichever attributes the first row happens
         // to carry.
         var columns = definition is not null
-            ? QueryResultProjector.BuildColumns(definition, query, source.SortType)
+            ? QueryResultProjector.BuildColumns(definition, query, source.SortType, source.IndexedFields)
             : [];
 
         return new QueryResult
@@ -559,7 +559,8 @@ internal partial class QueryExecutor : IQueryExecutor
         /// query can actually do (#431 M7b), which is a per-query fact and therefore cannot live on
         /// the model's per-attribute flags.
         /// </summary>
-        Type? SortType = null)
+        Type? SortType = null,
+        IReadOnlySet<string>? IndexedFields = null)
 ;
 
 /// <summary>The page the database produced, when paging was safe to push down (#431 M14).</summary>
@@ -1016,17 +1017,26 @@ internal sealed record DatabasePage(int TotalItems);
         //   1. The row filter left nothing to remove (see RowFilterComposition.CanPageInDatabase).
         //   2. No restrictToIds — that path returns exactly the rows asked for and ignores paging.
         //   3. No in-memory search fallback, which narrows AFTER materialization.
-        //   4. resultType == entityType, i.e. no index projection.
+        //   4. No static index is bound at all.
         //
         // The fourth is the subtle one and it is NOT about the row filter. The gate dedupes by id,
         // and an index may fan out — one document producing several entries. Skip(n) then skips n
         // ENTRIES while the caller is counting documents, so offsets drift by however many entries
-        // the skipped documents happened to produce. Restricting to the non-projecting shape keeps
-        // one document to one row, which is the only case where the two agree.
+        // the skipped documents happened to produce, and pages come back short.
+        //
+        // ⚠️ This used to read `resultType == entityType`, meaning "no index PROJECTION". That is a
+        // proxy for the real question and it does not fit: an index bound with no [FromIndex]
+        // projection also satisfies it, because the rows come back as the entity — and such an index
+        // can fan out just as freely. The condition now asks what it means. Whether a given Map fans
+        // out is not knowable (the Map exists only as a rendered string; see SortCompanionAnalyzer's
+        // refusal to parse it), so "any static index" is the only sound line to draw. It costs
+        // nothing measurable: a projection-bearing index already refused pushdown under the old test,
+        // and the unprojected-but-bound shape is one `VerifyBoundIndexHasAProjection` now fails the
+        // build over. Correctness here does not depend on that gate having run.
         var mayPageInDatabase = rowFilter.CanPageInDatabase
             && restrictToIds is not { Count: > 0 }
             && (searchTerm is null || searchPushedDown)
-            && resultType == entityType;
+            && indexType is null;
 
         // Two very different cost profiles behind one query, chosen per request. Reported once per
         // (query, outcome) so a slow grid can be explained rather than guessed at — and so the
@@ -1098,7 +1108,7 @@ internal sealed record DatabasePage(int TotalItems);
         //
         // It now travels as DedupeById on the context above rather than as a call here, so the
         // decision is made where the difference between the two paths is visible.
-        return new QuerySourceResult(secured, entityTypeDefinition, searchPushedDown, Page: databasePage, SortType: sortType);
+        return new QuerySourceResult(secured, entityTypeDefinition, searchPushedDown, Page: databasePage, SortType: sortType, IndexedFields: ResolveIndexedSearchFields(queryable));
     }
 
     #endregion
@@ -1330,12 +1340,22 @@ internal sealed record DatabasePage(int TotalItems);
                 .IsInstanceOfType(result);
         }
 
+        // ⚠️ Resolved BEFORE anything composes onto the queryable, and kept for the column metadata.
+        //
+        // A custom query commonly returns IRavenQueryable<TEntity> over a static index — OfType<T>()
+        // back to the documents is the idiomatic shape — so its row type is the ENTITY, which carries
+        // every property while the index map carries only what it selected. Without this the column
+        // metadata reports a field the index never emits as sortable, and ordering by it is an
+        // ArgumentException: a 500 for the whole grid. Null for an in-memory or dynamic-index query,
+        // where there is nothing to restrict.
+        var indexedFields = ResolveIndexedSearchFields(result);
+
         // Only a RavenDB-backed queryable can push the search into the database; an in-memory
         // IQueryable has no Search, and the caller's own filtering may already have materialized.
         var searchPushedDown = false;
         if (searchTerm != null && isRavenQueryable)
         {
-            (result, searchPushedDown) = ApplySearch(result, methodInfo.ResultElementType, searchTerm, ResolveIndexedSearchFields(result));
+            (result, searchPushedDown) = ApplySearch(result, methodInfo.ResultElementType, searchTerm, indexedFields);
         }
 
         // Apply sorting if the result is IQueryable
@@ -1442,7 +1462,7 @@ internal sealed record DatabasePage(int TotalItems);
         });
 
         return new QuerySourceResult(
-            secured, entityTypeDefinition, searchPushedDown, authorPage?.TotalItems, args.DisabledActions, SortType: methodInfo.ResultElementType);
+            secured, entityTypeDefinition, searchPushedDown, authorPage?.TotalItems, args.DisabledActions, SortType: methodInfo.ResultElementType, IndexedFields: indexedFields);
     }
 
     /// <summary>

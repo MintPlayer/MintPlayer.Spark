@@ -10,10 +10,10 @@ Branch: `fix/subquery-column-filters`. One PR, everything in it.
 > oracle. The goal this PR now serves is *filtering and sorting on query pages work correctly*, and the
 > campaign section below is the authoritative list. Everything still lands here — one PR.
 >
-> **Final state: 16 of 18 closed, plus 4 build gates.** The two that are not closed are not deferred
-> work — one is a measured impossibility needing a product decision (R1), the other announces itself
-> loudly rather than failing silently (D18). Two further items were deliberately **not** built, with
-> reasons, under "Not done, and why" at the end.
+> **Final state: all 18 addressed, plus 4 build gates and 2 analyzers.** Sixteen were fixed; **D11 and
+> D14 turned out not to be defects** — D11 is a deliberate disclosure decision, and D14 was measured
+> and found sound after being carried as an unproven suspicion for most of the campaign. Two items
+> were deliberately **not** built, with reasons, under "Not done, and why" at the end.
 
 ## Status
 
@@ -426,20 +426,20 @@ whole path (root `Database.*`, custom, sub-query) in 2026-09-23. This is the aut
 | # | symptom | live where | status |
 |---|---|---|---|
 | **D1** | Unconvertible filter value on a **nullable** column returned the rows with **no** value — the complement of the request — and leaked enum membership to an **anonymous** caller (0-vs-3) | **LIVE DemoApp** | ✅ `22ae9732` |
-| **D2** | `< none >` distinct round-trips as `Col == null`, which matches present-and-null but **not absent** — wrong rows in both directions, on a value the panel itself offered | **LIVE DemoApp**, root + sub-query | ⛔ **not fixable in the predicate** — see R1 |
+| **D2** | `< none >` distinct round-trips as `Col == null`, which matches present-and-null but **not absent** — wrong rows in both directions, on a value the panel itself offered | **LIVE DemoApp**, root + sub-query | ✅ `d711b82b` — the client sends the complement |
 | **D3** | Every AsDetail column's filter panel collapses to a single `< none >` (`EntityMapper` sets `attr.Value = null`) | **LIVE production CodeCoverage** ×6 | ✅ capability refusal |
 | **D4** | Filtering a **singular complex** column returned the complement — the same construction the collection fix removed | **LIVE production CodeCoverage** ×3 | ✅ `22ae9732` |
 | **D5** | Complex-collection filter emitted `Any(e => e == null)` → no rows | **LIVE production CodeCoverage** ×3 | ✅ `22ae9732` |
 | **D6** | Complex columns draw a sort arrow that orders nothing (`FieldIndexing.No` degrades silently) | **LIVE production CodeCoverage** ×6 | ✅ capability refusal |
 | **D7** | Opening any filter panel materializes the **whole** result set (`take: int.MaxValue`); the endpoint's `MaxTake = 1000` applies only to `/execute` | **LIVE production CodeCoverage** | ✅ `7e7bdf1b` |
-| **D8** | `sortType` for a `Custom.*` query is the **entity**, wider than the Map → `canSort/canFilter` true for fields the Map never assigns → **HTTP 500** | latent, one refactor away | ⏳ |
-| **D9** | A streaming query hit through `/queries/execute` 500s — no `IsStreamingQuery` guard, unlike `GetDistinctValuesAsync` | measured DemoApp | ⏳ |
+| **D8** | `sortType` for a `Custom.*` query is the **entity**, wider than the Map → `canSort/canFilter` true for fields the Map never assigns → **HTTP 500** | latent, one refactor away | ✅ the index field set now narrows the columns |
+| **D9** | A streaming query hit through `/queries/execute` 500s — no `IsStreamingQuery` guard, unlike `GetDistinctValuesAsync` | measured DemoApp | ✅ `3728d522` |
 | **D10** | Distinct panel sorts numbers as text (`['1','120','20','40']`) and caps at an arbitrary first 100 | **LIVE DemoApp** | ✅ `7e7bdf1b` |
-| **D18** | ⛳ **NEW.** `x.Foo.HasValue == false` against a static index is translated as the **field name** `Foo_HasValue`, which no Map emits → **HTTP 500** for the whole query. Any hand-written row filter or custom query using it fails this way, with no warning | latent, framework-wide | ⏳ analyzer candidate |
-| **D11** | A filter naming a non-query-surface attribute is accepted then ignored (200, unnarrowed) | API-only | ⏳ |
+| **D18** | ⛳ **NEW.** `x.Foo.HasValue == false` against a static index is translated as the **field name** `Foo_HasValue`, which no Map emits → **HTTP 500** for the whole query. Any hand-written row filter or custom query using it fails this way, with no warning | latent, framework-wide | ✅ SPARK019 |
+| **D11** | A filter naming a non-query-surface attribute is accepted then ignored (200, unnarrowed) | API-only | ⚪ **by design** — a 400 on capability would be a finer oracle (`Execute.cs:112-117`) |
 | **D12** | Distinct panel would collapse to the ticked values | latent — client omits the self column | ⚪ verified not live |
-| **D13** | Page offsets drift on a non-projecting fan-out index | latent | ⏳ |
-| **D14** | `DateTimeOffset` filter may match nothing (panel offers `+02:00`, index term is UTC) | **UNMEASURED** | ⏳ needs one test |
+| **D13** | Page offsets drift on a non-projecting fan-out index | latent | ✅ pushdown now requires that no static index is bound |
+| **D14** | `DateTimeOffset` filter may match nothing (panel offers `+02:00`, index term is UTC) | **UNMEASURED** | ⚪ **measured — not a defect** |
 | **D15** | **Two people grids ship unsorted** — `GetPeople` sorts by `LastName`, which is `showedOn: PersistentObject` in both apps | **LIVE DemoApp + HR** | ✅ `ec258892` |
 | **D16** | Author-paged queries build column metadata without `sortType`, so they skip `IsBackedByShape` on the one path that also hands filtering to the author | latent | ✅ `22ae9732` |
 | **D17** | Generated `{Name}Raw` wrapper gets `Index(…, No)` but no `Store` → index **fails to build** unless the author happens to call `StoreAllFields` | latent (all current indexes call it) | ✅ generator fix |
@@ -621,3 +621,36 @@ JSON, which is the same wall `SortCompanionAnalyzer` documents for reading the M
 - `Commits_ByRepository` gained a projection, so the production commit grid can be queried at all.
 - The analyzed copy moved off the field everyone names and onto a companion, so equality and ordering
   work everywhere — including from a hand-written row filter, which goes through no redirect.
+
+### Corrections to this document's own earlier claims
+
+Recorded because each was stated confidently here before being measured, and a reader deciding what to
+trust deserves to know which way the corrections ran.
+
+1. **"16 of 18 closed" was a running tally, not an audit.** When the table was actually read, five were
+   still open. Both R1 and D18 had been written up as closed in prose while the table said otherwise —
+   the same staleness this document criticises elsewhere.
+2. **R1 was called "not fixable in the predicate", and that was half right.** No *LINQ* shape selects
+   "absent or null", but RQL does (`Rating = null or (true and not exists(Rating))` → the pair). The
+   LINQ provider simply exposes no way to reach it. The repair turned out to need no server change at
+   all: "no value" is "none of the real values", and that is an ordinary exclusion the client can send.
+3. **D18 was called un-analysable** because a rule cannot know which index an expression will run
+   against. True and irrelevant: `!= null` is equivalent and translates correctly everywhere, so the
+   advice is safe without that knowledge. SPARK019 is the result.
+4. **D13 was described as "page offsets drift / short pages".** Measured by reverting the fix, it also
+   **repeats a document across pages** and reports **`TotalItems` = 12 for 4 documents** — the fan-out
+   leaking entry counts to the caller as a row total.
+5. **D14 was carried as a suspected defect and is not one.** A value the distinct panel offers selects
+   exactly its row, and the same instant written with a different offset is the same index term.
+6. **D11 is by design, not a defect.** `Execute.cs:112-117` answers only "is that a column at all";
+   moving the capability answer into a 400 would make it a finer disclosure oracle.
+
+### The pattern worth keeping
+
+Every one of those corrections came from **testing the thing rather than reasoning about it again** —
+and in three cases the test itself was wrong first. Two falsification probes for
+`VerifyBoundIndexHasAProjection` passed for the wrong reason (a build error before the gate; a
+duplicate JSON key that `System.Text.Json` resolves to the last value), and the fan-out fixture failed
+on an entity-name collision with another test's actions class before it ever reached the assertion.
+
+**A test that passes is not evidence until you have seen it fail for the right reason.**
