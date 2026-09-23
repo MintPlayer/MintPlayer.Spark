@@ -16,7 +16,7 @@
 		<!-- Pinned to the version MintPlayer.Spark.Authorization pins, rather than the floating
 		     10.0.* it carried out-of-tree: in-repo the two must not disagree. -->
 		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.11" />
-		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="10.5.0" />
+		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="10.7.1" />
 		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.22.0">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
