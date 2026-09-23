@@ -105,6 +105,29 @@ public class AbsentVersusNullFieldTests : SparkTestDriver
     }
 
     /// <summary>
+    /// ⛳ The complement <b>is</b> expressible — which is what the client's repair rests on.
+    /// </summary>
+    /// <remarks>
+    /// "No value" cannot be asked for directly, but it is exactly "none of the real values", and that
+    /// is an ordinary exclusion. So the filter panel sends a <c>&lt; none &gt;</c> selection as an
+    /// <c>excludes</c> of everything it did not select, which needs no server change at all.
+    /// <para>
+    /// ⚠️ Only sound when the distinct list is complete. The client keeps the list solely when the
+    /// server reported <c>hasMore == false</c> and no search term narrowed it, because a complement of
+    /// a partial list excludes the wrong set — silently.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task Excluding_every_real_value_selects_the_absent_and_the_null_rows_together()
+    {
+        var matched = await LabelsAsync(q => q.Where(x => x.Rating != 5));
+
+        matched.Should().Be("absent,explicit",
+            "the complement of the real values is the pair the grid draws blank — the set `< none >` " +
+            "means, reached without ever naming null");
+    }
+
+    /// <summary>
     /// ⚠️ <c>HasValue</c> is not a way out, and it is a live 500 hazard in its own right.
     /// </summary>
     /// <remarks>
