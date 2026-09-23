@@ -37,21 +37,38 @@ public class RateLimitTests
         var saw429 = false;
         try
         {
-            for (var i = 0; i < burst && !saw429; i++)
+            // ⚠️ CONCURRENT, and that is the whole point: the limiter is a FIXED WINDOW, so this test
+            // races the very window it is testing. Sent one at a time, 1050 round-trips had to finish
+            // inside 10 seconds — about 9.5ms each including connection and deserialization — and a
+            // shared CI runner simply cannot. The window then rolls over, the count resets, and no 429
+            // ever appears: the test failed in CI while passing locally, and the failure looked like a
+            // broken limiter rather than a slow one.
+            //
+            // The old comment called `+ 50` a margin. It is a margin in REQUESTS, and the binding
+            // constraint is TIME — which is why widening it would not have helped.
+            const int batchSize = 50;
+
+            for (var sent = 0; sent < burst && !saw429; sent += batchSize)
             {
-                try
+                var inFlight = Math.Min(batchSize, burst - sent);
+
+                await Task.WhenAll(Enumerable.Range(0, inFlight).Select(async _ =>
                 {
-                    await client.GetCurrentUserAsync();
-                }
-                catch (SparkClientException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
-                {
-                    saw429 = true;
-                }
+                    try
+                    {
+                        await client.GetCurrentUserAsync();
+                    }
+                    catch (SparkClientException ex) when (ex.StatusCode == HttpStatusCode.TooManyRequests)
+                    {
+                        // Benign race: several tasks may write it, all writing the same value.
+                        saw429 = true;
+                    }
+                }));
             }
 
             saw429.Should().BeTrue(
                 $"a rapid burst of {burst} anonymous requests to /spark/auth/me should cross the "
-                + $"configured limit of {FleetTestHost.RateLimitPermits}");
+                + $"configured limit of {FleetTestHost.RateLimitPermits} within the limiter's window");
         }
         finally
         {
