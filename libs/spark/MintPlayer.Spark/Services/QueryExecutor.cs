@@ -264,6 +264,19 @@ internal partial class QueryExecutor : IQueryExecutor
 
     public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, IReadOnlyCollection<string>? restrictToIds = null, IReadOnlyList<QueryColumnFilter>? columnFilters = null, CancellationToken cancellationToken = default)
     {
+        // ⚠️ A streaming query has no shape this endpoint can execute, and saying so here is the
+        // difference between an empty grid and a 500 with a stack trace in Development.
+        // `ExecuteStreamingQueryAsync` takes `(StreamingQueryArgs, CancellationToken)`, which
+        // `ResolveCustomQueryMethod` accepts neither of — it takes zero parameters or one
+        // `CustomQueryArgs` — so resolution returns null and the executor throws. Measured on
+        // DemoApp's `StreamStocks` through `/spark/queries/execute`.
+        //
+        // Empty rather than an error, matching `GetDistinctValuesAsync` above and every other refusal
+        // here: a caller who reached this endpoint for a streaming query has the wrong transport, not
+        // the wrong rights, and the rows arrive over the socket instead.
+        if (query.IsStreamingQuery)
+            return new QueryResult { Columns = [], Items = [], TotalItems = 0, Skip = skip, Take = take };
+
         var (isCustom, name) = ResolveSource(query);
 
         // Null/whitespace collapses to null here, so every path below tests one thing.

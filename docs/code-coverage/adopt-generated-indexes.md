@@ -185,10 +185,19 @@ have none, so `App_Data/culture.json` and its `AdditionalFiles` line are not nee
    possible and is still the wrong move: it buys an index none of our existing call sites can use
    (see 2), doubles indexing work on the heaviest write path, and leaves `Database.Commits` bound to
    whichever index reflection happened to reach last.
-2. **Three of its four indexed fields are not projections.** `AuthoredAt` is a coalesce
+2. **Several of its indexed fields are not projections.** The date is a coalesce
    (`commit.AuthoredAt ?? commit.FirstSeenAtUtc`), `HasCoverage` is a null test
-   (`commit.Coverage != null`), and only `Repository` and `Branch` are straight copies
-   (`Commits_ByRepository.cs:26-32`). A generator that maps `entity.Property` cannot express either.
+   (`commit.Coverage != null`), `CompleteCoverage` is a compound condition, and only `Repository`,
+   `Branch`, `Sha` and friends are straight copies. A generator that maps `entity.Property` cannot
+   express any of them.
+
+⛳ **Update.** `Commits_ByRepository` has since gained a **hand-written** `[FromIndex]` projection,
+`VCommit` — which is what let the commit grid be sorted and filtered at all, and renamed the coalesced
+field from `AuthoredAt` to `Date` to match the entity. **The conclusion above is unchanged**: this is a
+hand-written projection on a hand-written index, not a generated one, and `Commit` still carries no
+`[GenerateIndex]` for exactly the reasons given. ⚠️ The projection stores only the map-computed fields
+and the `DateRaw` wrapper — never `StoreAllFields`, which would flatten the offsets this document's
+§"the coalesce" is about. See `CommitIndexShapeGuardTests`.
 
 The coalesce is the one to be loudest about, because losing it is a **correctness** regression that
 is silent. Upload-only commits never receive a push webhook and therefore have `AuthoredAt` null;

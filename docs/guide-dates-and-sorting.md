@@ -100,13 +100,23 @@ public partial class Commits_ByRepository : AbstractIndexCreationTask<Commit>
                              AuthoredAt    = commit.AuthoredAt ?? commit.FirstSeenAtUtc,
                              AuthoredAtRaw = new SparkIndexValue<DateTimeOffset?> { V = commit.AuthoredAt ?? commit.FirstSeenAtUtc },
                          };
-        IndexSearchFields();   // generated; carries the FieldIndexing.No call
     }
 }
 ```
 
-**Why this line can't be generated away:** a source generator can add members to a partial *class*, but
-not to an *object initializer* — and only you know what the value should be (here, a coalesce). A build
+⛳ **Derive from `SparkIndexCreationTask<T>` and the call disappears.** This example used to end with
+`IndexSearchFields();` and a note that you must not forget it. The base class overrides
+`CreateIndexDefinition()` to call a generated `ConfigureSparkFields()`, so the `FieldIndexing.No`
+declaration the wrapper needs is applied without a line to forget — and **`SPARK019`'s sibling
+`SPARK018` flags an index that still needs the call and does not make it.**
+
+⚠️ The generator also emits the matching `Store(...)`, which is not optional: a field that is neither
+indexed nor stored is rejected by Corax **at map time**, so the deploy succeeds and then the index sits
+at `state=Error, entries=0` with every query returning 500.
+
+**What still cannot be generated away** is the map assignment itself: a source generator can add members
+to a partial *class*, but not to an *object initializer* — and only you know what the value should be
+(here, a coalesce). A build
 **error** makes it non-optional, and the IDE code fix writes it for you.
 
 <details>
