@@ -192,6 +192,7 @@ public static class SparkDevelopmentExtensions
         VerifyProgramUnitTargetsResolve(contentRoot);
         VerifyQueryColumnOverridesResolve(contentRoot);
         VerifyQuerySortColumnsResolve(contentRoot);
+        VerifyIndexDefinitionsCompile(indexCatalog);
         var descriptionDrift = VerifyAttributeDescriptionsAreCurrent(contextType, contentRoot);
 
         if (expected is not null && string.Equals(expected.ModelHash, actual.ModelHash, StringComparison.Ordinal))
@@ -368,6 +369,62 @@ public static class SparkDevelopmentExtensions
     /// apply to it, so stating one is the same mistake wearing a real attribute name.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Every index in the catalog must be able to build its own definition.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>This is not a heuristic — it performs the exact operation the application performs at
+    /// startup</b>, so it has no false positives by construction and needs no knowledge of what can go
+    /// wrong. That matters because the failures it catches are varied and all fatal: an index that
+    /// cannot build its definition takes the whole host down on boot, after a build that was green.
+    /// <para>
+    /// The known one is a duplicate field declaration. <c>Index(string, …)</c> and
+    /// <c>Store(string, …)</c> are <c>Dictionary.Add</c> calls, not indexer assignments, so declaring
+    /// a field twice throws rather than overwriting — and the lambda-keyed
+    /// <c>Indexes.Add(x =&gt; x.Field, …)</c> form is invisible to the string-keyed guard the generator
+    /// emits, so mixing the two surfaces as an <c>IndexCompilationException</c>. Measured: both throw
+    /// client-side from <c>CreateIndexDefinition()</c> in ~47 ms, with no server involved, which is
+    /// why this belongs in a build gate rather than being discovered on deploy.
+    /// </para>
+    /// <para>
+    /// Constructs a fresh instance per index, because the declaration dictionaries live on the
+    /// instance and a reused one would throw on the second build for the wrong reason.
+    /// </para>
+    /// </remarks>
+    private static void VerifyIndexDefinitionsCompile(IIndexCatalog indexCatalog)
+    {
+        var offenders = new List<string>();
+
+        foreach (var entry in indexCatalog.GetAllEntries())
+        {
+            try
+            {
+                var instance = Activator.CreateInstance(entry.IndexType);
+                (instance as Raven.Client.Documents.Indexes.AbstractIndexCreationTask)?.CreateIndexDefinition();
+            }
+            catch (Exception ex)
+            {
+                var inner = ex is TargetInvocationException { InnerException: { } target } ? target : ex;
+                offenders.Add($"{entry.IndexName}: {inner.GetType().Name}: {inner.Message}");
+            }
+        }
+
+        if (offenders.Count == 0)
+            return;
+
+        Console.Error.WriteLine("Spark indexes that cannot build their own definition:");
+        foreach (var offender in offenders)
+            Console.Error.WriteLine("  " + offender);
+        Console.Error.WriteLine();
+        Console.Error.WriteLine(
+            "The application performs exactly this at startup, so each of these would take the host "
+            + "down on boot. A duplicate field is the usual cause: Index(...) and Store(...) are "
+            + "dictionary adds, and the lambda-keyed Indexes.Add(x => x.Field, ...) form cannot be "
+            + "seen by the string-keyed guard the generator emits. Declare fields by nameof(...).");
+
+        Environment.ExitCode = ExitDrift;
+    }
+
     /// <summary>
     /// Every query's declared <c>sortColumns</c> must name an attribute that is on that query's
     /// surface, or the grid silently ships unsorted.
