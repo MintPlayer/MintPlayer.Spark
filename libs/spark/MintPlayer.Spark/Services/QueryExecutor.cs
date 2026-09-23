@@ -2435,6 +2435,13 @@ internal sealed record DatabasePage(int TotalItems);
         var attribute = ColumnCapabilities.FindQuerySurfaceAttribute(definition, requested);
         if (attribute is null) return false;
 
+        // ⚠️ Structural refusals come BEFORE the model-declared exemption. The exemption exists so an
+        // author's own sortColumns is not second-guessed by a disclosure rule the author already
+        // answered — but ordering by a collection is not a disclosure question, it silently DROPS the
+        // rows whose collection is empty. An author cannot consent to a result set that changes size,
+        // so this one is not theirs to waive.
+        if (attribute.IsArray) return false;
+
         // Model-declared order: the caller did not ask for this one.
         if (query is { SortColumnsAreCallerSupplied: false }) return true;
 
