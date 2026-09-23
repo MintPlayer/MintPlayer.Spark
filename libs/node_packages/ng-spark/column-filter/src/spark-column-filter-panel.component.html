@@ -37,13 +37,12 @@
       <div class="spark-filter-values" role="group" [attr.aria-label]="'Values of ' + column().name">
         <!-- `values()` is already narrowed by the search term; re-filtering here would double-apply it. -->
         @for (value of matching(); track value.value) {
-          <label class="spark-filter-value">
-            <input
-              type="checkbox"
-              [checked]="isChecked(value)"
-              (change)="toggle(value, $any($event.target).checked)" />
-            <span>{{ labelFor(value) }}</span>
-          </label>
+          <bs-checkbox
+            class="spark-filter-value"
+            [isToggled]="isChecked(value)"
+            (isToggledChange)="toggle(value, $event === true)">
+            {{ labelFor(value) }}
+          </bs-checkbox>
         }
 
         <!--
@@ -52,13 +51,12 @@
           datatable derives this bucket by diffing its own snapshot; the server always sends it empty.
         -->
         @for (value of remaining(); track value.value) {
-          <label class="spark-filter-value is-remaining">
-            <input
-              type="checkbox"
-              [checked]="isChecked(value)"
-              (change)="toggle(value, $any($event.target).checked)" />
-            <span>{{ labelFor(value) }}</span>
-          </label>
+          <bs-checkbox
+            class="spark-filter-value is-remaining"
+            [isToggled]="isChecked(value)"
+            (isToggledChange)="toggle(value, $event === true)">
+            {{ labelFor(value) }}
+          </bs-checkbox>
         }
 
         @if (isEmpty()) {

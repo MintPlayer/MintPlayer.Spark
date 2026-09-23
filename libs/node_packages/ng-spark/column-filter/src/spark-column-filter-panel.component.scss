@@ -8,12 +8,21 @@
 //
 // Colours come from Bootstrap's CSS custom properties, which ARE global and do reach the overlay.
 
+// The panel owns its own height and never lets the overlay scroll.
+//
+// The overlay's `.filter-panel-body` caps at `min(20rem, 60vh)` and scrolls. Left alone that gives
+// two scrollbars, one inside the other — and worse, the search box, the invert toggle and Clear all
+// scroll away with the list, so the controls leave the screen exactly when a long list needs them.
+//
+// Capping here at the same height means the body never has anything to scroll: the panel fits, and
+// the ONE scroller is the value list in the middle. Everything else stays put.
 .spark-filter-panel {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   min-width: 14rem;
   max-width: 22rem;
+  max-height: min(20rem, 60vh);
   padding: 0.5rem;
   font-size: 0.875rem;
 }
@@ -64,8 +73,13 @@
   }
 }
 
+// The one part that may grow and shrink. `min-height: 0` is load-bearing: a flex item defaults to
+// `min-height: auto`, which refuses to shrink below its content — so without it the list cannot
+// scroll and pushes the panel past its cap instead.
 .spark-filter-body {
   display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
   gap: 0.375rem;
 }
 
@@ -89,27 +103,27 @@
 
 .spark-filter-values {
   flex: 1 1 auto;
-  // Capped at 100 entries per bucket server-side, so this scrolls rather than virtualises.
-  max-height: 16rem;
+  // THE scroller. Everything above and below it stays fixed, including the invert toggle beside it,
+  // which is why that button holds its position while a hundred values move past.
+  min-height: 0;
   overflow-y: auto;
+  // A flex COLUMN, not block children. `bs-checkbox` carries Bootstrap's `d-inline-block`, whose
+  // `display` is `!important` and therefore unbeatable by an ordinary rule — so a hundred of them
+  // flow inline and wrap into a blob. Making this a flex container blockifies its items regardless
+  // of what their own `display` says, which stacks them without an `!important` arms race.
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
+// One row per value. Stacking is the parent flex column's doing, not this rule's.
 .spark-filter-value {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
   padding: 0.125rem 0;
-  cursor: pointer;
-
-  span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
 
   // Values that have left the current result set. `--bs-secondary-color` rather than opacity or a
-  // hard-coded grey: both of those fail WCAG 1.4.3 at the sizes this renders at.
-  &.is-remaining span {
+  // hard-coded grey: both of those fail WCAG 1.4.3 at the sizes this renders at. Set on the host so
+  // it inherits into the checkbox's own label rather than needing a selector into its internals.
+  &.is-remaining {
     color: var(--bs-secondary-color);
   }
 }

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 import { DistinctValue, DistinctValues, FilterContext } from '@mintplayer/ng-bootstrap/datatable';
 import { QueryColumn } from '@mintplayer/ng-spark/models';
+import { BsCheckboxComponent } from '@mintplayer/ng-bootstrap/checkbox';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 
 /**
@@ -28,7 +29,7 @@ import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 @Component({
   selector: 'spark-column-filter-panel',
   standalone: true,
-  imports: [SparkIconComponent],
+  imports: [BsCheckboxComponent, SparkIconComponent],
   templateUrl: './spark-column-filter-panel.component.html',
   styleUrl: './spark-column-filter-panel.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
