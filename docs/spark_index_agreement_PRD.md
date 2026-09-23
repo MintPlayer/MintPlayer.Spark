@@ -46,12 +46,24 @@ the `DateTimeOffset` case is *more* severe than lost search, not less. Any guard
 
 **The Map projection is the gate. `Index(...)` and `Store(...)` are not.**
 
-| operation | in Map, no `Index(...)` | in Map, `FieldIndexing.No` | not in Map |
-|---|---|---|---|
-| `where f == v` | ✅ correct | ⚠️ **0 rows, no error** | ❌ `ArgumentException` |
-| `order by f` | ✅ correct | ⚠️ **silent no-op** (asc == desc) | ❌ same |
-| `search(f, …)` | ✅ | ❌ throws (no analyzer) | ❌ same |
-| projection | ✅ (`StoreAllFields` needed for index-only computed fields) | ✅ value intact | ❌ |
+| operation | no `Index(...)` | `Exact` | `Search` | `FieldIndexing.No` | not in Map |
+|---|---|---|---|---|---|
+| `where f == v` | ✅ case-**insensitive** | ✅ case-**sensitive** | ⚠️ **0 rows** | ⚠️ **0 rows, no error** | ❌ `ArgumentException` |
+| `order by f` | ✅ correct | ✅ correct | ⚠️ no-op | ⚠️ **silent no-op** (asc == desc) | ❌ same |
+| `search(f, …)` | ⚠️ **0 rows** | ⚠️ **0 rows** | ✅ matches a term | ❌ throws (no analyzer) | ❌ same |
+| projection | ✅ (`StoreAllFields` needed for index-only computed fields) | ✅ | ✅ | ✅ value intact | ❌ |
+
+⛳ **`Exact` is not a milder `Search`; it is the opposite half of the question**, and the rows above are
+measured by `ExactVersusSearchSemanticsTests`. Two consequences that keep being assumed the other way:
+
+- **`search()` over a non-analyzed field returns 0 rows with HTTP 200** — it does not throw. Only
+  `FieldIndexing.No` throws. So a field that *should* have been declared `Search` and was not loses
+  full-text search with no signal whatsoever, which is the entire reason `SPARK018` exists.
+- **`Exact` differs from no call at all in exactly one respect: case sensitivity.** A map-emitted field
+  is already equal-matchable and sortable. That is why `Exact` is right for an OIDC client id
+  (`OidcApplications_ByClientId.cs:25`) and **wrong for a generated sort companion** — it would silently
+  order `"Zebra"` before `"apple"` and make a filter for `"alpha bravo"` match nothing. The repo tried
+  `Exact` + companion once and dropped it; see the historical note on `SparkModelSymbols.IsDateTimeOffset`.
 
 Consequences that constrain every design below:
 
