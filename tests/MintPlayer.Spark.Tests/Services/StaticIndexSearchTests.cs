@@ -12,8 +12,25 @@ using Raven.Client.Documents.Session;
 namespace MintPlayer.Spark.Tests.Services;
 
 /// <summary>
-/// SP4: free-text search over a custom query that goes through a STATIC index.
+/// SP4: free-text search over a query that runs through a STATIC index.
 /// </summary>
+/// <remarks>
+/// <c>ResolveSearchableProperties</c> picks every readable <see cref="string"/> CLR property of the
+/// element type and <c>ApplySearch</c> emits one <c>search()</c> clause per property. A static index
+/// only knows the fields its map emits, and RavenDB refuses a query naming any other field outright —
+/// so a single unmapped string property turns every search on that query into an HTTP 500.
+/// <para>
+/// Measured on RavenDB 7.2.6:
+/// <c>System.ArgumentException: The field 'SecretToken' is not indexed in 'Sp4Gadgets/Overview',
+/// cannot query/sort on fields that are not indexed in query: from index 'Sp4Gadgets/Overview'
+/// where (Owner = $p0) and (search(Label, $p1, and) or search(Owner, $p2, and) or search(SecretToken, $p3, and))</c>
+/// </para>
+/// <para>
+/// The unmapped property is not exotic: <c>[IgnoreForIndex]</c> exists precisely to keep a field out
+/// of the index, and the production repro — the Repositories sub-query on a CodeCoverage Account —
+/// hits it through <c>Repository.BadgeToken</c>.
+/// </para>
+/// </remarks>
 public class StaticIndexSearchTests : SparkTestDriver
 {
     private static readonly Guid GadgetTypeId = Guid.Parse("cccc4444-cccc-cccc-cccc-cccc44444444");
@@ -24,11 +41,14 @@ public class StaticIndexSearchTests : SparkTestDriver
         public string Label { get; set; } = string.Empty;
         public string Owner { get; set; } = string.Empty;
 
-        /// <summary>Deliberately NOT mapped by the index below — the [IgnoreForIndex] shape.</summary>
+        /// <summary>Deliberately NOT mapped by the index below — the <c>[IgnoreForIndex]</c> shape.</summary>
         public string? SecretToken { get; set; }
     }
 
-    /// <summary>Distinctive prefix: index class names must be unique across the whole assembly.</summary>
+    /// <summary>
+    /// Distinctive prefix on purpose: an index class name colliding with another in this assembly
+    /// silently redefines the deployed index and breaks unrelated tests.
+    /// </summary>
     public class Sp4Gadgets_Overview : AbstractIndexCreationTask<Sp4Gadget>
     {
         public Sp4Gadgets_Overview()
@@ -44,11 +64,11 @@ public class StaticIndexSearchTests : SparkTestDriver
         public Sp4GadgetActions(IEntityMapper entityMapper, IAsyncDocumentSession session) : base(entityMapper)
             => _session = session;
 
-        /// <summary>The production shape: parent-scoped custom query THROUGH a static index.</summary>
+        /// <summary>The production shape: a parent-scoped sub-query through a static index.</summary>
         public IRavenQueryable<Sp4Gadget> GadgetsOfOwner(CustomQueryArgs args)
             => _session.Query<Sp4Gadget, Sp4Gadgets_Overview>().Where(g => g.Owner == args.Parent!.Id);
 
-        /// <summary>Control: the same query with NO static index (auto-index).</summary>
+        /// <summary>Control: the same rows with no static index, which is why it searches fine today.</summary>
         public IRavenQueryable<Sp4Gadget> GadgetsOfOwnerNoIndex(CustomQueryArgs args)
             => _session.Query<Sp4Gadget>().Where(g => g.Owner == args.Parent!.Id);
     }
@@ -106,26 +126,6 @@ public class StaticIndexSearchTests : SparkTestDriver
         return _factory.GetService<IQueryExecutor>();
     }
 
-    /// <summary>Database.* bound to the SAME projection-less index — does it fail the same way?</summary>
-    [Fact]
-    public async Task Search_on_a_database_query_bound_to_a_projectionless_index()
-    {
-        var executor = Executor(bindIndex: true);
-
-        var q = new SparkQuery
-        {
-            Id = Guid.NewGuid(),
-            Name = "GadgetsDb",
-            Source = "Database.Gadgets",
-            IndexName = "Sp4Gadgets_Overview",
-        };
-
-        var ex = await Record.ExceptionAsync(async () => await executor.ExecuteQueryAsync(q, search: "alpha"));
-
-        File.WriteAllText(@"C:\Users\piete\AppData\Local\Temp\claude\C--Repos-MintPlayer-Spark\3d266f03-c5a4-4658-9cae-b2be0a7b6c3a\scratchpad\sp4-database.txt",
-            (ex?.GetType().FullName ?? "<none>") + "\n\n" + (ex?.Message ?? "<no exception thrown>"));
-    }
-
     private static SparkQuery CustomQuery(string method) => new()
     {
         Id = Guid.NewGuid(),
@@ -137,45 +137,42 @@ public class StaticIndexSearchTests : SparkTestDriver
     private static PersistentObject Parent() =>
         new() { Id = "owners/1", Name = "Owner", ObjectTypeId = Guid.NewGuid() };
 
+    /// <summary>The reported bug: any search term at all, deterministic 500.</summary>
     [Fact]
-    public async Task Search_through_a_static_index_reproduces_the_production_failure()
+    public async Task Search_narrows_a_custom_query_that_runs_through_a_static_index()
     {
         var executor = Executor();
 
-        var act = async () => await executor.ExecuteQueryAsync(
+        var result = await executor.ExecuteQueryAsync(
             CustomQuery("GadgetsOfOwner"), Parent(), search: "alpha");
 
-        var ex = await Record.ExceptionAsync(act);
-
-        // Print everything, verbatim, for the report.
-        File.WriteAllText(@"C:\Users\piete\AppData\Local\Temp\claude\C--Repos-MintPlayer-Spark\3d266f03-c5a4-4658-9cae-b2be0a7b6c3a\scratchpad\sp4-exception.txt",
-            (ex?.GetType().FullName ?? "<none>") + "\n\n" + (ex?.ToString() ?? "<no exception thrown>"));
-
-        ex.Should().NotBeNull("SP4 reports a deterministic 500 for any search term");
+        result.TotalItems.Should().Be(1,
+            "owners/1 holds two gadgets and only one is an 'alpha' — today this throws instead, "
+            + "because the search clause names SecretToken, which the index does not map");
     }
 
+    /// <summary>
+    /// The same failure on a <c>Database.*</c> query, so this is not a custom-query defect. It bites
+    /// whenever the search fields come from the ENTITY type rather than from an index projection —
+    /// which is every custom query, and every database query bound to a projection-less index.
+    /// </summary>
     [Fact]
-    public void Probe_what_the_executor_can_learn_about_a_custom_queryables_index()
+    public async Task Search_narrows_a_database_query_bound_to_a_projectionless_index()
     {
-        using var session = Store.OpenAsyncSession();
-        object q = session.Query<Sp4Gadget, Sp4Gadgets_Overview>().Where(g => g.Owner == "owners/1");
+        var executor = Executor(bindIndex: true);
 
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine("runtime type: " + q.GetType().FullName);
-        foreach (var i in q.GetType().GetInterfaces()) sb.AppendLine("  iface: " + i.FullName);
-        foreach (var m in q.GetType().GetMembers())
-            if (m.Name.Contains("Index", StringComparison.OrdinalIgnoreCase)) sb.AppendLine("  member: " + m);
+        var result = await executor.ExecuteQueryAsync(new SparkQuery
+        {
+            Id = Guid.NewGuid(),
+            Name = "GadgetsDb",
+            Source = "Database.Gadgets",
+            IndexName = "Sp4Gadgets_Overview",
+        }, search: "alpha");
 
-        // Does a public API hand back the index name?
-        var inspector = q.GetType().GetInterfaces()
-            .FirstOrDefault(i => i.Name.Contains("Inspector", StringComparison.Ordinal));
-        sb.AppendLine("inspector iface: " + (inspector?.FullName ?? "<none>"));
-        if (inspector is not null)
-            foreach (var m in inspector.GetMembers()) sb.AppendLine("  inspector member: " + m);
-
-        File.WriteAllText(@"C:\Users\piete\AppData\Local\Temp\claude\C--Repos-MintPlayer-Spark\3d266f03-c5a4-4658-9cae-b2be0a7b6c3a\scratchpad\sp4-probe.txt", sb.ToString());
+        result.TotalItems.Should().Be(1);
     }
 
+    /// <summary>The control that proves the index is the variable: no index, search works.</summary>
     [Fact]
     public async Task Search_without_a_static_index_narrows_correctly()
     {
@@ -184,7 +181,6 @@ public class StaticIndexSearchTests : SparkTestDriver
         var result = await executor.ExecuteQueryAsync(
             CustomQuery("GadgetsOfOwnerNoIndex"), Parent(), search: "alpha");
 
-        Console.WriteLine($"=== SP4 CONTROL: {result.TotalItems} rows ===");
         result.TotalItems.Should().Be(1);
     }
 }
