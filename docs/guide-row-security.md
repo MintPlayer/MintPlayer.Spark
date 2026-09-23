@@ -156,3 +156,27 @@ public override IReadOnlyCollection<string>? GetDefaultIncludes() => ["Company",
 - Applied on detail, list, and query. On a **stream** the framework can't apply them (your `StreamItems` builds its own query) — include what you need in that query yourself.
 - A path whose first segment isn't a property of the type logs a one-time warning and includes nothing.
 - Overriding `OnLoadAsync` without calling the base takes over the whole detail read pipeline — the includes, but also the collection guard, the row-level Read gate, redaction, the per-row `can` block and the etag all live in the default `OnLoadAsync` (#324). The typical override calls `await base.OnLoadAsync(id, parent)` and decorates the result.
+
+## Distinct-value lists are a security surface (#431)
+
+`POST /spark/queries/distinct-values` returns the values behind a column's filter panel. It is the
+strongest read surface in the query pipeline, and it is built accordingly.
+
+**Values are computed in memory, over rows the gate has already secured** — never by a RavenDB facet.
+A facet aggregates in the database, where the row filter frequently is not: `ComposeRowFilterAsync`
+refuses to compose into a projection query, which is the default shape for an indexed query, and the
+gate that filters those runs after materialization. A facet on such a query would publish values drawn
+from rows the caller cannot read — the same oracle class as the `?sortColumns=` hardening, except
+returning the values rather than leaking their order.
+
+It is also the only place reference columns can work at all: breadcrumb text is resolved after
+materialization and is not an index term, so a facet has nothing to aggregate.
+
+Three rules the implementation keeps, and a reviewer should check:
+
+1. **Refused and empty are the same answer.** A column the caller may not enumerate and a column with
+   nothing to list return the same object. The difference is a fact about their rights.
+2. **A denied reference is dropped, not shown.** It arrives carrying the redaction placeholder rather
+   than a name; listing it would confirm the row exists.
+3. **No per-value counts, ever.** A count is a cardinality oracle for rows the caller may not see —
+   the same refusal already recorded for an author-supplied `TotalItems`.

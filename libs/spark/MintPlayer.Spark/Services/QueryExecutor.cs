@@ -66,6 +66,16 @@ internal partial class QueryExecutor : IQueryExecutor
     /// </summary>
     [Inject] private readonly Microsoft.Extensions.Options.IOptions<Configuration.SparkOptions>? breadcrumbOptions = null;
 
+    /// <summary>Optional, so no existing construction path is forced to supply one.</summary>
+    [Inject] private readonly Microsoft.Extensions.Logging.ILogger<QueryExecutor>? logger = null;
+
+    /// <summary>
+    /// Queries whose paging decision has been reported, so the log states it once rather than per
+    /// request. Same shape as RowSecurity's announcement dictionary, and for the same reason: this is
+    /// a fact about a query's shape, not an event.
+    /// </summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(string Query, bool Pushed), bool> pagingAnnounced = new();
+
     /// <summary>
     /// The distinct values of one column, for a filter panel (#431).
     /// </summary>
@@ -930,6 +940,21 @@ internal sealed record DatabasePage(int TotalItems);
             && restrictToIds is not { Count: > 0 }
             && (searchTerm is null || searchPushedDown)
             && resultType == entityType;
+
+        // Two very different cost profiles behind one query, chosen per request. Reported once per
+        // (query, outcome) so a slow grid can be explained rather than guessed at — and so the
+        // ANSWER is visible, not just the fact that a choice exists.
+        if (pagingAnnounced.TryAdd((query.Name, mayPageInDatabase), true))
+        {
+            logger?.LogInformation(
+                "Query {Query}: paging {Outcome}. Row filter: {RowFilterMode}{Refinement}.",
+                query.Name,
+                mayPageInDatabase
+                    ? "is pushed into the database"
+                    : "runs in memory over the whole secured result set",
+                rowFilter.Mode,
+                rowFilter.HasPerRowRefinement ? ", refined per row by IsAllowedAsync" : "");
+        }
 
         DatabasePage? databasePage = null;
         if (mayPageInDatabase)

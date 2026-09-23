@@ -75,3 +75,52 @@ carries the type's metadata name in the `SparkOffendingType` diagnostic property
 resolve the declaration through the solution.
 
 See `docs/prd/PRD-Analyzer-Code-Fixes.md` for the full design and the measurements behind it.
+
+---
+
+# Runtime query diagnostics
+
+Everything above is a **compile-time** diagnostic: a `SPARK*` code raised by an analyzer or a
+generator, fixable before the app runs. This section is different in kind — these are facts a running
+query reports about its own execution, and they exist because the alternative is guessing.
+
+They are logged **once per distinct outcome**, not per request. A query's shape does not change
+between requests, so repeating it would be noise that buries the one line that matters.
+
+## Paging mode (#431)
+
+```
+Query GetCars: paging is pushed into the database. Row filter: NoRule.
+Query GetPeople: paging runs in memory over the whole secured result set. Row filter: ProjectionFallback.
+```
+
+A query pages in one of two ways, and the difference is large: the second materializes the entire
+secured result set to return one page.
+
+Paging is pushed down only when **nothing can remove rows after the database answers**. Four
+conditions, all of which must hold:
+
+| Condition | Why |
+|---|---|
+| The row filter left nothing to remove | otherwise the database's page and the caller's page are different sets |
+| No `restrictToIds` | that path returns exactly the rows asked for and ignores paging |
+| No in-memory search fallback | it narrows *after* materialization |
+| No index projection | the gate dedupes by id, and a fan-out index makes `Skip(n)` skip *entries*, not documents |
+
+The `Row filter:` half names which branch composition took:
+
+| Mode | Meaning | Pages in database |
+|---|---|---|
+| `SystemContext` | not a viewer to scope rows for | yes |
+| `NoRule` | the type declares no row rule — the common case | yes, unless refined |
+| `ConstantPredicate` | "all" or "none", evaluated in memory | no |
+| `ProjectionFallback` | typed on the entity, query returns a projection | no |
+| `PushedDown` | composed into the query as a `Where` | yes, unless refined |
+
+`, refined per row by IsAllowedAsync` means the type also refines per row **after** materialization.
+That still removes rows, so it refuses pushdown even on the `PushedDown` branch — the expression
+composed, but it was not the only gate.
+
+⚠️ **`ProjectionFallback` is the default for an indexed query, not an edge case.** A grid reporting it
+is behaving normally; it is simply paying O(result set). If that matters, the fix is making the row
+filter composable into projections, which is a larger piece of work than this line suggests.

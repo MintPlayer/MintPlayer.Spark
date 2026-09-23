@@ -191,3 +191,24 @@ affects hand-written indexes that deliberately declare `Exact` on text.
 - [Row-level security](guide-row-security.md) — how the security predicate is composed
 - [TranslatedString & i18n](guide-translated-strings.md) — per-language fields
 - [Reference Attributes](guide-reference-attributes.md) — references and breadcrumbs
+
+## Where a column filter sits in the clause order (#431)
+
+The composition order is fixed, and the position of the column filters is load-bearing:
+
+```
+row-security filter → column filters → search → restrictToIds → sort → page
+```
+
+Column filters compose as plain `Equal` comparisons, never through `Search`. That is not a style
+preference: RavenDB groups consecutive `Search` clauses, and an explicit `SearchOptions` leaks onto
+the **adjacent** clause — which here is the row-security predicate. Turning a security filter into an
+alternative returns plausible rows and nothing reports it.
+
+Equality resolves through the `{Name}Sort` companion, exactly as ordering does. A `[Search]`-analyzed
+field is indexed as separate lower-cased terms, so an equality comparison against the display field
+matches **nothing** for any multi-word value — silently.
+
+⚠️ Free-text `search` still matches every readable string property, including columns that are off
+the query surface. Column filters do not: they are gated on `ShowedOn.Query` like sorting. The
+difference is deliberate for now and tracked as F1 in the #431 plan.
