@@ -258,6 +258,38 @@ Appended as discovered, so a later investigator fixes them in **this** PR.
   attributes and 400s on unknown. Confirm this is reached identically for custom sources, so the
   fix does not turn a previously-400 request into a silently-unfiltered one.
 
+## Spikes for the index/model agreement route (PRD §3.10)
+
+### SP6 — Unify the two index descriptors *(gates P1 and the analyzer rules)*
+`GeneratedIndexInfo` carries collection/index/projection/isDefault; `HandWrittenIndexEntityInfo`
+carries neither the collection type nor `[DefaultIndex]`, though `DescribeHandWritten` already holds
+the index `INamedTypeSymbol` two lines from both. Add the two fields, then put one shared shape over
+both records so the full 17-row graph exists inside a single generator.
+
+Kill criterion: if the two pools cannot share a shape without disturbing the `generatedNames`
+subtraction at `GenerateIndexGenerator.cs:170-181`, keep them separate and pass the graph alongside.
+
+⚠️ **Do not copy the base-type walk verbatim** — all three existing copies mishandle multi-map and
+2-arg map-reduce (PRD §3.10.6). Fix it once in the shared helper.
+
+### SP7 — Prove an analyzer reads generator output *(gates every analyzer rule)*
+The repo asserts it in prose twice and **no test demonstrates it**: the harness attaches analyzers
+without running generators, and `DefaultIndexAnalyzerTests.cs:190-191` says so. Before writing a rule
+that depends on seeing a generated `VAccount`, write a fixture that runs the generator *and* the
+analyzer and proves the symbol is visible.
+
+Kill criterion: if generated trees are not reliably analyzed (host settings can skip them), every
+rule must re-derive from `[GenerateIndex]` the way `DefaultIndexAnalyzer` deliberately does, and
+degrade rather than go silent. Also confirm the cross-project diagnostic drop measured at
+`ValueObjectCompletenessAnalyzer.cs:136-150` — entity library + app-owned index is exactly that
+topology.
+
+### SP8 — Measure the reindex cost of a `Fields`-only definition change
+Still unmeasured, and it gates any migration. Deploy a changed definition against a scratch database
+with production-shaped data and observe whether the index resets. CodeCoverage's `Commits` index
+backs the commit list, history chart, sparklines and badges, which return partial results during a
+rebuild. **Do not quote a number without running this.**
+
 ## Proposed as their own work (investigated here, deliberately not smuggled in)
 
 Recorded so the investigation is not lost. These are new capability, not this bug's fix, and one
@@ -285,10 +317,28 @@ carries an unmeasured production cost — see PRD §3.9.
   **reduce result**. Masked today because the repo's only multi-map is a test whose reduce result
   happens to be the entity.
 
-**Explicitly rejected — do not re-litigate:** synchronize writing `canSort`/`canFilter`/
-`canListDistincts` into the model JSON. One attribute, many queries, different indexes (PRD §3.9.1),
-plus no field-level visibility offline, no provenance signal, and reversal of the deliberate `bool?`
-design. Derive at runtime instead (M7b).
+- **P5 — Fix the multi-map / 2-arg base-type walk** in all three copies, and the test stub that
+  encodes the wrong hierarchy (`DefaultIndexAnalyzerTests.cs:22-24`). Latent today — no index in the
+  repo is multi-map or 2-arg — but a real 2-arg map-reduce index silently never registers.
+- **P6 — Two analyzer rules for claims that cannot be honoured:** `canSort`/`canFilter: true` on a
+  collection attribute, and `canSort: true` on a `TranslatedString` (the flag resolves to a
+  projection property that does not exist, because `ResolveSortProperty` never appends a language).
+- **P7 — `PullRequestFeedback` has a generated index and projection but no model file**; `Commit` has
+  no `queryType`/`indexName`, so a `Database.*` query over it reads the raw collection rather than
+  `Commits_ByRepository`. Both are pre-existing and unrelated to this bug.
+
+**Explicitly rejected — do not re-litigate:**
+
+1. **Synchronize writing the flags into the model JSON.** One attribute, many queries, different
+   indexes (PRD §3.9.1), no field-level visibility offline, no provenance signal, and it reverses the
+   deliberate `bool?` design. Derive at runtime instead (M7b).
+2. **The capability flags driving index configuration** (PRD §3.10.3). The emission list is empty —
+   everything a `true` could require is already emitted unconditionally — and `false → FieldIndexing.No`
+   is actively dangerous: it degrades silently, applies to every query through the index, makes
+   `search()` throw, and defeats the `SortColumnsAreCallerSupplied` exemption at
+   `QueryExecutor.cs:2219`. The three flags authored anywhere in this repo are presentation and
+   disclosure judgements, none of which describes anything an index could be configured for.
+   *The mechanism is fine; the input is wrong.*
 
 ## Carried over from #431 (not resolved here)
 

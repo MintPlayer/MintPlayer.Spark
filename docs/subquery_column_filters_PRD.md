@@ -327,9 +327,9 @@ Consequences that change the design:
   fully queryable fields and nothing declared has `Fields.Count == 0`. "Absent" means *capable*, so
   capabilities cannot be enumerated from it.
 - **The emitted field set exists only as a rendered C# string** in `IndexDefinition.Maps`. The only
-  structured surrogate is the `[FromIndex]` projection type's property list — and **7 of the 10
+  structured surrogate is the `[FromIndex]` projection type's property list — and **6 of the 10
   production hand-written indexes have no `[FromIndex]` projection at all** (`Commits_ByRepository`
-  plus all five `libs/` indexes).
+  plus all five `libs/` indexes). Counted: the four that do are all in DemoApp.
 - **Capability is per-(index, field), not per-attribute** — proven in-repo: `Car.LicensePlate` is
   analyzed and needs a `{Name}Sort` companion under `Cars_Overview`, and is a plain default field
   under `Company_Cars`. Same model attribute, opposite capabilities. This is the same conclusion
@@ -399,6 +399,119 @@ separable and larger; they are recorded here and proposed as their own milestone
 smuggled in under a bug fix. The one-PR rule says everything that *needs fixing* lands together; a
 new generated base class across `libs/` with an unmeasured reindex cost on production is new
 capability, not the fix.
+
+## 3.10 The JSON-driven generator route — investigated in full
+
+Proposal: two base classes (`AbstractIndexCreationTask` / `AbstractMultiMapIndexCreationTask`), a
+generator that reads the model JSON's capability flags and emits the matching `Index(...)` /
+`StoreAllFields(...)` calls into one method, and that method called automatically from the base
+classes. Generators partitioned by `[GenerateIndex]`: the existing one keeps everything it owns, the
+new one covers only classes without it.
+
+**The mechanism is sound and mostly already built. The proposed input is the wrong one.**
+
+### 3.10.1 ✅ The risks I flagged are not real
+
+- **No build-order cycle.** Proven three ways: the flags are hand-authored input and
+  `ModelSynchronizer.cs:830-837` forbids writing them; the generator's output changes the Raven index
+  definition but no property, name or type synchronize reads; and `ModelShapeDiscovery` hashes only
+  the projection type's name and the index name, so **the index definition is not hashed at all**.
+  A fresh clone bootstraps (all 41 model files are tracked) and `--spark-verify-model` cannot
+  oscillate, because nothing is written and nothing is hashed.
+- **No MSBuild work.** `spark.targets:157-159` already ships
+  `<AdditionalFiles Include="$(SparkAppDataDir)\Model\*.json" />`, flowed transitively, with a
+  wildcard so an absent folder is a safe no-op rather than a build break.
+- **Same compilation.** Entities live in class libraries but indexes are generated **into the app**,
+  which is where the JSON is.
+- **Analyzers can see generated types** — `SortCompanionAnalyzer.cs:20-23` rests its whole
+  correctness argument on it, and `DefaultIndexAnalyzer` is the one analyzer that opts in with
+  `GeneratedCodeAnalysisFlags.Analyze`.
+
+### 3.10.2 ✅ The relationship walk is ~80% already implemented
+
+`GeneratedIndexInfo` already carries all four edges per entity — `EntityFullName` (collection),
+`IndexName`, `IndexEntityName` (projection), `IsDefault` — because for a generated pair the generator
+*is* the authority and derives them once through `IndexNaming` rather than reading them back. The
+pool is already joined across source and referenced metadata (`allEntitiesProvider`,
+`GenerateIndexGenerator.cs:110-117`) and already fanned out to three producers, so a fourth is an
+established pattern rather than new plumbing.
+
+The hand-written side already resolves `[FromIndex] → index symbol` (`:615-626`) and **holds the
+`INamedTypeSymbol` two lines away from** both the collection type (`baseType.TypeArguments[0]`) and
+`[DefaultIndex]` — neither is taken today. `HandWrittenIndexEntityInfo` lacks both fields; adding
+them reaches parity, after which one shared shape over both records gives the whole 17-row graph
+inside a single generator.
+
+The two pools are currently joined only by a *subtraction* on projection class name (`:170-181`).
+
+### 3.10.3 ⛔ But the capability flags cannot drive index configuration
+
+Working every (capability × data type) pair against §3.9.0: **there is no case where `canSort: true`
+/ `canFilter: true` / `canListDistincts: true` requires emitting anything the generator does not
+already emit unconditionally, and no case where a `false` can be safely translated at all.**
+
+- A Map-emitted field is already filterable and sortable with no `Index(...)` call.
+- The `{Name}Sort` companion is already unconditional for every `[Search]` text field — *"analyzing
+  the field is what destroys its sortability, so the two are one decision"*.
+- `StoreAllFields` is already unconditional on the generated path — and **build-forbidden** on
+  `Commits_ByRepository`.
+- **`canListDistincts` touches the index in no way whatsoever.** Distincts are computed over
+  materialized `PersistentObject` attributes, never an index term.
+
+**And `canSort: false` → `FieldIndexing.No` would be actively dangerous.** Four independent reasons:
+it degrades silently (0 rows / no-op / 200); it applies to every query through that index while the
+flag is per-(attribute, query); `No` drops the field entirely so `search()` on it then throws — a
+flag meaning "don't show a sort arrow" would start 500ing free-text search; and it defeats the
+exemption at `QueryExecutor.cs:2219`, `if (query is { SortColumnsAreCallerSupplied: false }) return
+true;` — a sort the query itself declares is deliberately exempt. Fleet's `Car.json:182` sets
+`canSort: false` on `color` while that file declares `sortColumns` on four queries.
+
+The decisive evidence is the repo's own authored flags — the only three that exist anywhere:
+`canSort: false` on a `color` column with a `color-swatch` renderer; `canListDistincts: false` on a
+high-cardinality `LicensePlate`; `canFilter: false` on a video URL with a `video-player` renderer.
+**Not one describes something an index could be configured differently for.** They are presentation
+and disclosure judgements. Capability flags ask *may this caller do this*; index configuration asks
+*can the engine do this*. Two vocabularies sharing three verbs.
+
+### 3.10.4 Corpus reach
+
+**10 hand-written indexes; 4 have a `[FromIndex]` projection** (all DemoApp), 6 do not
+(`Commits_ByRepository`, which is not even `partial`, plus all five `libs/` indexes, which have no
+`App_Data` and never will — one maps an *anonymous type*, so there is no named symbol at all).
+For those 6 a capability→config translation achieves nothing: no emission, no diagnostic, no runtime
+derivation. They must fall back to "capable", as must every dynamic-index query.
+
+### 3.10.5 What survives, and what it should be driven by
+
+The generator's job here is **diagnostics, not emission** — a materially smaller feature:
+
+- **Runtime AND term** (M7b) — the enforcement that actually fixes the affordance.
+- **Analyzer rules** cross-checking a JSON claim against the index, feasible where a projection
+  exists. Two unsatisfiable cases nothing detects today: `canSort`/`canFilter: true` on a
+  **collection** attribute, and `canSort: true` on a **`TranslatedString`** — the generator replaces
+  the field with `{Name}_{lang}` per language while `ResolveSortProperty` only ever tries
+  `requested + "Sort"`, so the flag resolves to a property that does not exist.
+- **The base class for the call site** (P1), which remains the one genuine structural improvement.
+
+### 3.10.6 Defects found during this investigation
+
+- **The multi-map / 2-arg base-type walk is wrong in three places.**
+  `AbstractMultiMapIndexCreationTask<T>`'s argument is the **reduce result**, not a collection type,
+  and `AbstractIndexCreationTask<TDocument, TReduceResult>` does **not** derive from
+  `AbstractIndexCreationTask<TDocument>` — it derives from `AbstractGenericIndexCreationTask<TReduceResult>`.
+  So a real 2-arg map-reduce index resolves to a null collection type and is never registered.
+  Three near-duplicate copies of the walk exist with *different* acceptance rules
+  (`IndexCatalog.cs:214`, `DefaultIndexAnalyzer.cs:140`, `ProjectionPropertyAnalyzer.cs:140`).
+- **A test stub encodes the wrong hierarchy.** `DefaultIndexAnalyzerTests.cs:22-24` declares
+  `AbstractIndexCreationTask<TDocument, TReduceResult> : AbstractIndexCreationTask<TDocument>`,
+  which is not the real shape, so its map-reduce test proves nothing.
+- **No test anywhere proves an analyzer reads generator output** — the harness attaches analyzers
+  without running generators, and `DefaultIndexAnalyzerTests.cs:190-191` says so outright.
+- **`PullRequestFeedback` has a generated index and projection but no model file at all.**
+- **`Commit` has no `queryType`/`indexName`**, so a `Database.*` query over it reads the raw
+  collection rather than `Commits_ByRepository`.
+- **Filtering a collection column silently becomes `== null`** — `ConvertFilterValue` returns null on
+  conversion failure and `AnyEquals` compares the collection member to it. 200, no warning.
 
 ## 4. Design decisions
 
