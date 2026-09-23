@@ -529,7 +529,7 @@ public partial class VPerson
     // FullNameSort is generated.
 }
 
-public partial class People_Overview : AbstractIndexCreationTask<Person>
+public partial class People_Overview : SparkIndexCreationTask<Person>
 {
     public People_Overview()
     {
@@ -540,16 +540,55 @@ public partial class People_Overview : AbstractIndexCreationTask<Person>
                             FullNameSort = person.FirstName + " " + person.LastName,
                         };
 
-        IndexSearchFields();                 // generated from the [Search] attributes
         StoreAllFields(FieldStorage.Yes);
     }
 }
 ```
 
-`IndexSearchFields()` carries one `Index(...)` call per `[Search]` property and `Exact` per `DateTimeOffset`
-property. **You must call it** — a generator can add members to a partial class but cannot add statements to a
-constructor you wrote. For the same reason the **map assignments stay yours**; `SPARK006` flags a companion the
-map never assigns.
+Note the base class: **derive from `SparkIndexCreationTask<T>`, not `AbstractIndexCreationTask<T>`.** It
+overrides `CreateIndexDefinition()` to call a generated `ConfigureSparkFields()`, which carries one
+`Index(...)` call per `[Search]` property and the `FieldIndexing.No` wrapper each `DateTimeOffset`
+property needs. Nothing to remember, and nothing to forget.
+
+<details>
+<summary>The older form, and why it is still supported</summary>
+
+Before the base class existed, the generator emitted the same calls into a `private void
+IndexSearchFields()` that your constructor had to invoke:
+
+```csharp
+public partial class People_Overview : AbstractIndexCreationTask<Person>
+{
+    public People_Overview()
+    {
+        Map = /* … */;
+        IndexSearchFields();     // ⚠️ nothing checks this line exists
+        StoreAllFields(FieldStorage.Yes);
+    }
+}
+```
+
+That works and is **not deprecated** — it is the only mechanism for an index the base class cannot
+cover: a multi-map, a two-argument map-reduce, a JavaScript index. But it is easy to get wrong, and the
+failure is invisible: the index deploys, reports healthy and returns correct row counts while full-text
+search matches nothing. For a `DateTimeOffset` field it is worse — Corax parks the whole index at
+`state=Error, entries=0`. **`SPARK018` now flags an index that never calls it**, and an index on
+`SparkIndexCreationTask<T>` is exempt because the base class supplies the call.
+
+If you write your own `ConfigureSparkFields()`, guard each declaration:
+
+```csharp
+if (!IndexesStrings.ContainsKey(nameof(VPerson.FullName)))
+    Index(nameof(VPerson.FullName), FieldIndexing.Search);
+```
+
+`Index(string, FieldIndexing)` is a `Dictionary.Add`, so declaring a field twice throws at deploy rather
+than overwriting. The generator emits that guard for you.
+
+</details>
+
+A generator can add members to a partial class but cannot add statements to a constructor you wrote, so
+the **map assignments stay yours**; `SPARK006` flags a companion the map never assigns.
 
 Both classes must be `partial`: `SPARK_INDEX_001` if the index entity is not, `SPARK_INDEX_009` if the index is
 not.

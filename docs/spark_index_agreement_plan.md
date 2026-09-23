@@ -1,7 +1,26 @@
 # Index/model agreement — implementation plan
 
 Companion to [`spark_index_agreement_PRD.md`](spark_index_agreement_PRD.md).
-**Status: all three spikes run. No implementation yet.** Successor to PR #441.
+**Status: all three spikes run; M1, M2, M2a, M3, M5, M6, M9, M10 implemented. M4 dropped, M7 a no-op,
+M8.1 deleted, M8.2 left as a decision.** Shipped in PR #441 alongside the sub-query filter fix.
+
+| item | state |
+|---|---|
+| SP1 reindex cost | ✅ measured — side-by-side, no partial results |
+| SP2 descriptors / base class / packaging | ✅ measured — no new package; the hazard throws |
+| SP3 analyzers vs generated code | ✅ measured — pinned by `AnalyzerSeesGeneratedCodeTests` |
+| M2a guard every generated `Index(...)` | ✅ done, first |
+| M6 base-type walk (four copies) | ✅ done, shared helper + real RavenDB types in tests |
+| M1 `SparkIndexCreationTask<T>` (+ multi-map) | ✅ done, in `MintPlayer.Spark` |
+| M2 generator emits the gated override | ✅ done |
+| M3 four DemoApp indexes migrated | ✅ done |
+| M4 `libs/` indexes | ⛔ dropped — a base class emits nothing for them |
+| M5 SPARK018 | ✅ done |
+| M7 CodeCoverage | ⚪ no-op — no projection, so nothing to emit |
+| M8.1 `PullRequestFeedback` | ⛔ deleted — correct by design, not a gap |
+| M8.2 `Commit` binding | ⏳ **decision needed** — the recommended option was refuted |
+| M9 false comments | ✅ done |
+| M10 dead `QueryEntitiesWithIncludesAsync` | ✅ deleted |
 
 ## What the spikes changed
 
@@ -423,11 +442,28 @@ CompleteCoverage, ContributedFromFork` — **no `Sha`** (only `ParentSha`), and 
 `Sha`. Per PRD §2, ordering by a field not in the Map is `ArgumentException`, i.e. HTTP 500 for the
 whole query.
 
+⛳ **The preferred option does not exist. Measured 2026-09-23, and it refutes the recommendation above.**
+Binding the index constrains sorting to fields the Map emits. Intersecting the two sets:
+
+| set | members |
+|---|---|
+| `Commit` attributes with `showedOn` containing `Query` | `Branch`, `ContributedFromFork`, `Coverage`, `CoverageDeltaVsDefaultBranch`, `CoverageDeltaVsParent`, `Date`, `PullRequestBaseRef`, `PullRequestBaseSha`, `Sha` |
+| fields `Commits_ByRepository` emits | `Repository`, `Branch`, `AuthoredAt`, `HasCoverage`, `PullRequestNumber`, `ParentSha`, `ParentLookupDone`, `CompleteCoverage`, `ContributedFromFork` |
+| **intersection** | **`Branch`, `ContributedFromFork`** |
+
+`AuthoredAt` is `showedOn: PersistentObject`, so `FindQuerySurfaceAttribute` refuses it before
+`ResolveSortProperty` ever runs — the sort would be silently dropped, not applied. `Date` is on the
+query surface but is **not in the Map**, so sorting by it through the index is a 500. And neither
+`Branch` nor `ContributedFromFork` is a defensible ordering for a commit picker.
+
 | option | risk |
 |---|---|
-| **Do nothing** | lowest; the grids already use the index, this is a picker on a read-only entity |
-| **Bind the index *and* move the sort to `AuthoredAt`** ← preferred if anything | model-file-only, no redeploy, no reindex; `modelHashes.json` must be regenerated; picker ordering becomes chronological (arguably better). Survives the fixed point — `ModelSynchronizer.cs:151` preserves an authored `indexName` |
-| Add `Sha` to the Map | redeploys a production index; `CommitIndexShapeGuardTests` would still pass but that index is the one place `DateTimeOffset` data survives |
+| **Do nothing** ← the only one with no production index change | the grids already use the index; this is a picker on an effectively read-only entity. Cost is one stray `Auto/Commits/BySha` and a scan of 804 documents |
+| Bind the index and drop `sortColumns` | no 500, no reindex, but a picker in arbitrary order — worse than the current cost it removes |
+| Bind the index and add `Sha` to the Map | ⛳ SP1 removed the *reindex* objection (side-by-side, 804 docs), and the `DateTimeOffset` objection does not apply to adding a `string`. `CommitIndexShapeGuardTests` still passes — it forbids `FieldStorage.Yes`, not new Map fields. This is now the only *correct* fix, and it is a deliberate production index change |
+
+**Left undone pending a decision.** Not skipped for size: every variant either changes production index
+shape or degrades the picker, and the measurement above only became available while implementing M6.
 
 ⚠️ **Synchronize will never repair this.** `ModelSynchronizer.cs:643` stamps `IndexName` only when the
 index has a `[FromIndex]` projection, so `Commit` — and all six projection-less indexes — are outside
