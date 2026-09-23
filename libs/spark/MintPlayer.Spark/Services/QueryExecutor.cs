@@ -911,7 +911,7 @@ internal sealed record DatabasePage(int TotalItems);
         var searchPushedDown = false;
         if (searchTerm != null)
         {
-            (queryable, searchPushedDown) = ApplySearch(queryable, sortType, searchTerm);
+            (queryable, searchPushedDown) = ApplySearch(queryable, sortType, searchTerm, ResolveIndexedSearchFields(queryable));
         }
 
         if (restrictToIds is { Count: > 0 })
@@ -1259,7 +1259,7 @@ internal sealed record DatabasePage(int TotalItems);
         var searchPushedDown = false;
         if (searchTerm != null && isRavenQueryable)
         {
-            (result, searchPushedDown) = ApplySearch(result, methodInfo.ResultElementType, searchTerm);
+            (result, searchPushedDown) = ApplySearch(result, methodInfo.ResultElementType, searchTerm, ResolveIndexedSearchFields(result));
         }
 
         // Apply sorting if the result is IQueryable
@@ -1867,6 +1867,55 @@ internal sealed record DatabasePage(int TotalItems);
     /// hand-written index.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Which field names a search may name on <paramref name="queryable"/>, or <see langword="null"/>
+    /// when there is nothing to restrict to.
+    /// </summary>
+    /// <remarks>
+    /// Three answers, and the difference between the last two is the whole point:
+    /// <list type="bullet">
+    /// <item><b>null</b> — no static index is bound. A dynamic query's auto-index is derived from the
+    /// query's own shape (RavenDB creates <c>Auto/X/ByNote</c> and <c>Auto/X/BySearch(Note)</c>
+    /// separately), so it cannot name a field it does not index. Search unrestricted.</item>
+    /// <item><b>a set of names</b> — a static index is bound and declares a <c>[FromIndex]</c>
+    /// projection, whose properties are its field set. Search those, keep the pushdown.</item>
+    /// <item><b>empty</b> — a static index is bound with no projection to describe it. The emitted
+    /// field set then exists only inside the Map expression, as a rendered string, so it is genuinely
+    /// unknowable here. Pushing down would be a guess that 500s when wrong; the empty set makes
+    /// <see cref="ApplySearch"/> decline and the in-memory fallback take over. Six of the ten
+    /// hand-written indexes in this repository are in this shape.</item>
+    /// </list>
+    /// <para>
+    /// Read off the queryable rather than threaded from the caller so that both branches ask the same
+    /// question of the same object — the custom branch has no index binding of its own, only whatever
+    /// the author's method happened to return.
+    /// </para>
+    /// </remarks>
+    private IReadOnlySet<string>? ResolveIndexedSearchFields(object queryable)
+    {
+        if (queryable is not IRavenQueryInspector inspector) return null;
+
+        var indexName = inspector.IndexName;
+        if (string.IsNullOrEmpty(indexName)) return null;
+
+        // An auto-index is RavenDB's own, built per query shape; it is never in our catalog and never
+        // rejects a field the query names.
+        if (indexName.StartsWith("Auto/", StringComparison.Ordinal)) return null;
+
+        // The catalog keys on the CLR class name while RavenDB reports the deployed name, which
+        // replaces '_' with '/'. Unambiguous to reverse: a CLR type name cannot contain '/'.
+        var entry = indexCatalog.GetByIndexName(indexName.Replace('/', '_'));
+        if (entry?.ProjectionType is null) return EmptyFieldSet;
+
+        return ReflectionCache.GetOrAdd<(string Op, Type Projection), IReadOnlySet<string>>(
+            ("QueryExecutor.IndexedSearchFields", entry.ProjectionType),
+            static k => k.Projection.GetCachedProperties()
+                .Select(p => p.Name)
+                .ToHashSet(StringComparer.Ordinal));
+    }
+
+    private static readonly IReadOnlySet<string> EmptyFieldSet = new HashSet<string>(StringComparer.Ordinal);
+
     private static PropertyInfo[] ResolveSearchableProperties(Type sortType)
         => ReflectionCache.GetOrAdd<(string Op, Type Type), PropertyInfo[]>(
             ("QueryExecutor.SearchableProperties", sortType),
@@ -1891,9 +1940,25 @@ internal sealed record DatabasePage(int TotalItems);
     /// <para>Every argument is passed explicitly because <see cref="MethodInfo.Invoke"/> does not apply
     /// optional parameter defaults.</para>
     /// </summary>
-    private static (object Queryable, bool Applied) ApplySearch(object queryable, Type elementType, string term)
+    private static (object Queryable, bool Applied) ApplySearch(
+        object queryable, Type elementType, string term, IReadOnlySet<string>? indexedFields)
     {
         var properties = ResolveSearchableProperties(elementType);
+
+        // Restricted to what the bound index actually declares. RavenDB rejects a query naming a
+        // field a static index does not emit — "The field 'X' is not indexed in 'Idx', cannot
+        // query/sort on fields that are not indexed" — and it rejects the WHOLE query, so one
+        // unmapped field among ten takes the other nine down with it. That was a live 500 on every
+        // search over an indexed query (#431 SP4).
+        //
+        // Null means there is nothing to restrict to: a dynamic query's auto-index is built from the
+        // query's own shape, so it cannot name a field it does not index. An EMPTY set means a static
+        // index is bound but its field list is unknowable, and the intersection below then empties
+        // the property list, which reports Applied: false and hands the search to the in-memory
+        // fallback. Slower, never wrong.
+        if (indexedFields is not null)
+            properties = [.. properties.Where(p => indexedFields.Contains(p.Name))];
+
         if (properties.Length == 0)
         {
             return (queryable, false);
