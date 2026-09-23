@@ -329,6 +329,12 @@ with production-shaped data and observe whether the index resets. CodeCoverage's
 backs the commit list, history chart, sparklines and badges, which return partial results during a
 rebuild. **Do not quote a number without running this.**
 
+## ➡️ Successor: [`spark_index_agreement_PRD.md`](spark_index_agreement_PRD.md) + [plan](spark_index_agreement_plan.md)
+
+P1–P7 and SP6–SP8 below were the raw notes; they are now written up properly as their own PRD and
+plan, including the measured RavenDB ground truth and the safe migration order. **Start there**, not
+here. The list below is kept only so the provenance of each item is traceable.
+
 ## Proposed as their own work (investigated here, deliberately not smuggled in)
 
 Recorded so the investigation is not lost. These are new capability, not this bug's fix, and one
