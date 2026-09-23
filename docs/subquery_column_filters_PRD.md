@@ -334,9 +334,11 @@ Consequences that change the design:
   fully queryable fields and nothing declared has `Fields.Count == 0`. "Absent" means *capable*, so
   capabilities cannot be enumerated from it.
 - **The emitted field set exists only as a rendered C# string** in `IndexDefinition.Maps`. The only
-  structured surrogate is the `[FromIndex]` projection type's property list — and **6 of the 10
-  production hand-written indexes have no `[FromIndex]` projection at all** (`Commits_ByRepository`
-  plus all five `libs/` indexes). Counted: the four that do are all in DemoApp.
+  structured surrogate is the `[FromIndex]` projection type's property list — and **5 of the 10
+  production hand-written indexes have no `[FromIndex]` projection at all** (the five `libs/` ones).
+  ⛳ Was 6: `Commits_ByRepository` gained a `VCommit` projection later in this PR, which is what let
+  the commit grid be sorted and filtered at all. The five that remain are library-internal, queried
+  only from C#, and on no query page — recorded as needing none.
 - **Capability is per-(index, field), not per-attribute** — proven in-repo: `Car.LicensePlate` is
   analyzed and needs a `{Name}Sort` companion under `Cars_Overview`, and is a plain default field
   under `Company_Cars`. Same model attribute, opposite capabilities. This is the same conclusion
@@ -585,10 +587,14 @@ must agree about what the filtered set is, or the panel offers dead values.
 this right by composing before `CountQueryableAsync`. The custom branch must not report the
 pre-filter count, or the pager claims 15 while showing 2.
 
-**D5 — An author-paged (`SparkQueryPage`) query rejects column filters with a 400.** The author owns
-paging and counting there, and the framework cannot narrow a page it did not compute without making
-`TotalItems` a lie. A silent no-op is what this whole PRD is about, so the refusal is explicit.
-This is a deliberate reversal of the #431 convention that a refused filter is silent — see D6.
+**D5 — ⛳ REVERSED IN THE SHIPPED CODE. An author-paged query hands the filters to the author.**
+As drafted this said the framework *rejects* them with a 400, because it cannot narrow a page it did
+not compute without making `TotalItems` a lie. The second half is still true and still the reason the
+framework does not filter. What changed is the remedy: no 400 exists. `QueryExecutor.cs` skips
+framework filtering when an author page is present and passes the filters through
+`CustomQueryArgs.Columns` (see D7), so the author can apply them to the query *and* the count, which
+is the only place both can stay consistent. Pinned by `CustomQueryColumnFilterTests`.
+⚠️ Recorded because a future reader could otherwise "restore" the 400 as a missing feature.
 
 **D6 — Keep the silent refusal for an unauthorized column; make "nothing applied it" loud.** #431
 made `ApplyColumnFilters` warn to the console and return rows unnarrowed
@@ -609,9 +615,12 @@ security, search and sorting.
 1. On the production repro, `columns: [{name:"Name", includes:["Dagucar","mintplayer-ng-bootstrap"]}]`
    returns `totalItems: 2` and those two rows.
 2. A nonsense filter value on any sub-query returns `totalItems: 0`.
-3. A filter on a custom query returning a non-Raven `IQueryable` or a materialized collection is
-   **refused, not narrowed in C#** — and a test proves no in-process filtering occurred (assert on
-   emitted RQL or on the provider, not on the row count, which looks identical either way).
+3. ⛳ **REVERSED.** A filter on a custom query returning a non-Raven `IQueryable` or a materialized
+   collection is **narrowed in process**, not refused. SP2 re-settled this twice and the final answer
+   is in the plan: returning a fixed set is a legitimate, supported shape, and "filtering a fixed set"
+   can only mean doing it in memory. The guarantee that survives is narrower — where a database query
+   *exists*, the filter must be in it, asserted on emitted RQL because row counts cannot tell a
+   pushdown from in-process filtering. Pinned by `CustomQueryColumnFilterTests`.
 4. A distinct list on a sub-query reflects other columns' active filters.
 5. `TotalItems` equals the filtered count on every path, and paging is over the filtered set.
 6. RQL on the custom branch places filter clauses where the database branch places them — asserted,

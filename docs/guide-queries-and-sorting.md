@@ -433,10 +433,16 @@ Two things worth knowing:
   `EMPTY_STRING` and orders on those literals, which on a lower-cased companion land before every real value.
   If a UI wants them last, that has to be arranged explicitly.
 
-You never name the companion when sorting. `sortBy`, the `?sortBy=` override and any caller all keep naming the
-display attribute; the query executor redirects to `{Name}Sort` when the projection has one and it is
-`[IgnoreProperty]`. That `[IgnoreProperty]` is required — it is what distinguishes a real companion from an
-ordinary property that happens to be named `FooSort`.
+You never name the companion when sorting **or filtering**. `sortBy`, the `?sortBy=` override, a caller and a
+column filter all keep naming the display attribute; the query executor redirects to `{Name}Sort` when the
+projection has one and it is `[IgnoreProperty]`. Filtering goes through the same resolver, and has to —
+`FieldIndexing.Search` destroys equality on the base field as well as ordering.
+
+⚠️ **The `[IgnoreProperty]` is required, but it does not identify the companion the way this guide used to
+claim.** The resolver asks only "does `{requested}Sort` exist and is it ignored?" — it never checks that the
+property is a companion *of that field*. So an unrelated `[IgnoreProperty] public string FooSort` on a
+projection silently becomes the sort **and filter** target for `Foo`. Do not name an ignored property
+`{Something}Sort` unless you mean it.
 
 ### A sort column must be on the query surface
 

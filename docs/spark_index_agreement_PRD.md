@@ -3,7 +3,15 @@
 Successor to the investigation in [`subquery_column_filters_PRD.md`](subquery_column_filters_PRD.md)
 §3.9–§3.10 (PR #441). That PR fixed the symptoms; this is the class.
 
-**Status: investigated, not implemented.** SP1, SP2 and SP3 have all run and are reported in
+**Status: SHIPPED in PR #441.** `SparkIndexCreationTask<T>` (+ the multi-map variant), the guarded
+`Index(...)`/`Store(...)` emission, the base-type-gated `ConfigureSparkFields()` override, SPARK018,
+the consolidated base-type walk, and the DemoApp migration are all in. `Commits_ByRepository` gained a
+`[FromIndex]` projection, so the corpus is now **5 of 10** hand-written indexes without one, not 6.
+⚠️ Statements below written in the future or conditional tense pre-date that and should be read as
+design rationale rather than as outstanding work; the live status table is in
+[`subquery_column_filters_plan.md`](subquery_column_filters_plan.md).
+
+SP1, SP2 and SP3 have all run and are reported in
 [`spark_index_agreement_plan.md`](spark_index_agreement_plan.md). They changed the design in four
 material ways, marked ⛳ below. Everything here is measured unless it says otherwise.
 

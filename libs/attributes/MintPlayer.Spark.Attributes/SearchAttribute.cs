@@ -21,9 +21,17 @@ namespace MintPlayer.Spark.Abstractions;
 /// <c>x.Model == value</c> and <c>x.ModelSort.StartsWith(value)</c> are both available in LINQ.
 /// </para>
 /// <para>
-/// Sorting is redirected automatically: callers, query JSON and the <c>?sortBy=</c> override all keep
-/// naming the display property, and the framework orders by the companion via the attribute's
-/// <c>SortExpression</c>. Nothing needs to know the companion exists.
+/// Sorting <em>and filtering</em> are redirected automatically: callers, query JSON and the
+/// <c>?sortBy=</c> override all keep naming the display property, and the framework resolves it to the
+/// companion in <c>QueryExecutor.ResolveSortProperty</c> — which appends <c>"Sort"</c> to the
+/// requested name and accepts the result when it is an <c>[IgnoreProperty]</c> property. Nothing needs
+/// to know the companion exists.
+/// <para>
+/// ⚠️ This paragraph used to attribute the redirect to "the attribute's <c>SortExpression</c>". There
+/// is no such member — this attribute has none at all, and the name appears nowhere else in the
+/// repository. It also said only sorting was redirected; filtering goes through the same resolver, and
+/// has to, because <c>FieldIndexing.Search</c> destroys equality on the base field as well as ordering.
+/// </para>
 /// </para>
 /// <para>
 /// Valid on <c>string</c>, <c>string[]</c> / <c>IEnumerable&lt;string&gt;</c> and
