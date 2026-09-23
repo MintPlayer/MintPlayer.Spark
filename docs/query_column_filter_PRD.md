@@ -49,10 +49,18 @@ Spark server model, a map of the `ng-spark` client, and a RavenDB feasibility sp
    `false` for every ordinary scalar column, and the client ignores it entirely — the grid hard-codes
    `sortable: true` for every column (`spark-query-grid.component.html:42`). **Untangle, do not layer.**
 
-3. **Vidyano has no per-query override.** `Company.json:381-383` puts `CanSort`/`CanFilter`/
-   `CanListDistincts` on the *attribute*; `Queries[].Columns[]` is only an ordered selection of
-   attributes by `$ref` (`{ "Id": …, "Attribute": { "$ref": … } }`), carrying no flags, with
-   `"Columns": []` meaning "all". The per-query override in §5.2 is ours, not inherited.
+3. **Vidyano puts the flags on the attribute, and has no per-query *capability* override.** Measured
+   across its whole Fleet model rather than inferred from one file: **108** attributes carry one of
+   the three flags, and of **13 628** query columns, **none** do.
+
+   `Queries[].Columns[]` is not empty of meaning, though — an earlier draft of this PRD said it was.
+   Every key seen on a query column across that model: `Attribute` (the `$ref`), `Id`, `Offset`,
+   `Label`, `Width`, `IsHidden`, `DataTypeHints`. So a query column **does** override its attribute,
+   just on *presentation* — a different label, a different width, hidden here but not there.
+
+   That makes §5.2 a closer fit than "ours, not inherited" suggested: we put capability overrides in
+   exactly the node Vidyano already uses for per-query overrides. What is genuinely ours is extending
+   that node from presentation to capability.
 
 4. **The protocol groundwork is already done, deliberately, for this feature.** `?sortColumns=` as a
    query-string parameter no longer exists; reads are `POST /spark/queries/execute` with a typed body.
@@ -466,6 +474,18 @@ so a slow grid can be explained rather than guessed at.
 
 Composed types in `RowSecurityMode.DelegatedToActions` never push down. `IsAllowedAsync`-only types
 never push down. Both keep today's behaviour.
+
+**A fourth condition, found while building it and not anticipated here.** The row filter is not the
+only thing that removes rows: the security gate also **de-duplicates by id**, and an index may fan out
+— one document producing several entries. `Skip(n)` then skips *n entries* while the caller is
+counting documents, so offsets drift by however many entries the skipped documents happened to
+produce.
+
+Pushdown is therefore restricted to `resultType == entityType` — no index projection — which is the
+only shape where one document is reliably one row. That is **narrower than this section implies**:
+projections are the common shape for an indexed query, so pushdown applies to fewer queries than the
+paging discussion above suggests. A fan-out `Map` index on a *non-projecting* query remains
+theoretically affected; that is a stated limit, not a covered case.
 
 ### 5.10 Scope across grid kinds
 

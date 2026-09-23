@@ -4,7 +4,22 @@ PRD: [`query_column_filter_PRD.md`](query_column_filter_PRD.md). Issue:
 [#431](https://github.com/MintPlayer/MintPlayer.Spark/issues/431) — body filled from §1 of the
 PRD.
 
-Status: **not started.** M1 shipped upstream; SP1, SP3, SP4 and SP5 run before the remaining milestones.
+Status: **implemented.** Every milestone (M1–M15) is done and the suites are green — 2385 server,
+91 protocol client, 278 generators, 515 `ng-spark`. All four apps synchronize and verify, and the
+feature was exercised in a browser against Fleet.
+
+⚠️ **Two of the four spikes were never run**, and that is a real gap rather than a formality:
+
+| Spike | What happened |
+|---|---|
+| **SP1** — cost of the in-memory distinct pass | **Not run.** M7 was built assuming it is affordable. Never measured at the 200k-document scale the spike specified, so the ceiling of the whole design is still unquantified. |
+| ~~SP2~~ — popup clipping | Moot, and confirmed moot in a browser. |
+| **SP3** — breadcrumb present at the distinct pass | **Answered by construction, not measured.** The pass consumes `SecuredRows.Rows`, which the gate produces *after* breadcrumb resolution and redaction. The reasoning is sound and the redaction placeholder is dropped, but the `BreadcrumbProjectionSatisfiable` edge was never exercised. |
+| **SP4** — equality against an analyzed field | **Answered from the repository's own measurements**, not re-measured. `QueryExecutor.cs:1444-1452` already documents that a `[Search]` field indexes as separate lower-cased terms, and the filter path redirects through `{Name}Sort` exactly as sorting does. |
+| **SP5** — how often the row filter can push down | **Not run.** M14 shipped anyway, and then turned out to be narrower than planned (non-projecting queries only), so the question SP5 existed to answer — *is M14 worth building?* — is still open, and now matters more. |
+
+The honest reading: the milestones are complete, the gates on them were not all closed first. SP1 and
+SP5 are the two worth running before this is called finished.
 
 ## Shape of the work
 

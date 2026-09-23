@@ -179,6 +179,7 @@
         "isReadOnly": false,
         "order": 5,
         "isArray": false,
+        "canSort": false,
         "showedOn": "Query, PersistentObject",
         "rules": [],
         "renderer": "color-swatch"
@@ -202,6 +203,7 @@
         "isReadOnly": false,
         "order": 1,
         "isArray": false,
+        "canListDistincts": false,
         "showedOn": "Query, PersistentObject",
         "rules": [
           {
@@ -331,6 +333,7 @@
         "isReadOnly": false,
         "order": 8,
         "isArray": false,
+        "canFilter": false,
         "showedOn": "Query, PersistentObject",
         "rules": [],
         "renderer": "video-player",
