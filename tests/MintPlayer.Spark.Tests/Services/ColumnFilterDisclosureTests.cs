@@ -39,13 +39,21 @@ public class ColumnFilterDisclosureTests : SparkTestDriver
         /// the wire could not convert becomes null, and null is not a legal constant of this type.
         /// </summary>
         public int Weight { get; set; }
+
+        /// <summary>
+        /// A collection column. RavenDB indexes it as multi-valued terms, so a filter on it must ask
+        /// whether the collection CONTAINS the value — comparing the collection itself coerces to
+        /// null and silently matches the wrong rows. Nullable on purpose: a document that never wrote
+        /// the field projects as null, and that is the case which throws in an in-memory custom query.
+        /// </summary>
+        public string[]? Tags { get; set; }
     }
 
     public class Crates_Overview : AbstractIndexCreationTask<Crate>
     {
         public Crates_Overview()
         {
-            Map = crates => from c in crates select new { c.Label, c.Region, c.Classified, c.Weight };
+            Map = crates => from c in crates select new { c.Label, c.Region, c.Classified, c.Weight, c.Tags };
             StoreAllFields(FieldStorage.Yes);
         }
     }
@@ -77,6 +85,10 @@ public class ColumnFilterDisclosureTests : SparkTestDriver
                     ShowedOn = EShowedOn.PersistentObject,
                 },
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = nameof(Crate.Weight), DataType = "int" },
+                new EntityAttributeDefinition
+                {
+                    Id = Guid.NewGuid(), Name = nameof(Crate.Tags), DataType = "string", IsArray = true,
+                },
             ],
         },
     };
@@ -90,9 +102,12 @@ public class ColumnFilterDisclosureTests : SparkTestDriver
 
         await SeedAsync(async session =>
         {
-            await session.StoreAsync(new Crate { Label = "one", Region = "eu", Classified = "red", Weight = 10 });
-            await session.StoreAsync(new Crate { Label = "two", Region = "us", Classified = "red", Weight = 20 });
-            await session.StoreAsync(new Crate { Label = "three", Region = "ap", Classified = "blue", Weight = 30 });
+            await session.StoreAsync(new Crate { Label = "one", Region = "eu", Classified = "red", Weight = 10, Tags = ["fragile", "urgent"] });
+            await session.StoreAsync(new Crate { Label = "two", Region = "us", Classified = "red", Weight = 20, Tags = ["urgent"] });
+
+            // No tags at all: the field is absent from the document, so it projects as null. Every
+            // collection filter has to survive this row without throwing and without matching it.
+            await session.StoreAsync(new Crate { Label = "three", Region = "ap", Classified = "blue", Weight = 30, Tags = null });
         });
         await Store.WaitForIndexingAsync();
     }
@@ -128,6 +143,50 @@ public class ColumnFilterDisclosureTests : SparkTestDriver
             columnFilters: [new QueryColumnFilter { Name = nameof(Crate.Region), Includes = ["eu", "us"] }]);
 
         result.TotalItems.Should().Be(2, "two of three rows carry one of the included values");
+    }
+
+    [Fact]
+    public async Task A_filter_on_a_collection_column_asks_whether_it_contains_the_value()
+    {
+        var executor = Executor();
+
+        var result = await executor.ExecuteQueryAsync(Query(),
+            columnFilters: [new QueryColumnFilter { Name = nameof(Crate.Tags), Includes = ["fragile"] }]);
+
+        // Exactly one crate carries "fragile". Before the fix this compared the collection itself:
+        // ConvertFilterValue could not coerce "fragile" onto string[], answered null, and the filter
+        // became `x.Tags == null` — which selects the untagged crate, the one row the caller did not
+        // ask for. A count of 1 is therefore not enough on its own; the identity below is the point.
+        result.TotalItems.Should().Be(1, "one crate is tagged fragile");
+        result.Items.Single().Values.Single(v => v.Key == nameof(Crate.Label)).Value.Should().Be("one",
+            "the matching row must be the tagged crate, not the untagged one a null comparison selects");
+    }
+
+    [Fact]
+    public async Task A_collection_filter_ORs_its_values_and_skips_rows_with_no_collection()
+    {
+        var executor = Executor();
+
+        var result = await executor.ExecuteQueryAsync(Query(),
+            columnFilters: [new QueryColumnFilter { Name = nameof(Crate.Tags), Includes = ["fragile", "urgent"] }]);
+
+        // Both tagged crates match, and the crate whose Tags field is absent is not swept in. That
+        // row also proves the expression survives a null collection rather than throwing.
+        result.TotalItems.Should().Be(2, "two crates carry one of the two tags; the untagged one carries neither");
+    }
+
+    [Fact]
+    public async Task Excluding_a_tag_does_not_hide_the_rows_that_have_no_tags()
+    {
+        var executor = Executor();
+
+        var result = await executor.ExecuteQueryAsync(Query(),
+            columnFilters: [new QueryColumnFilter { Name = nameof(Crate.Tags), Excludes = ["fragile"] }]);
+
+        // "Not tagged fragile" has to include the untagged crate: it is not fragile. An exclusion is
+        // the negation of the containment test, so this is the case that catches a null guard placed
+        // inside the negation instead of around the containment.
+        result.TotalItems.Should().Be(2, "the urgent-only crate and the untagged one are both not fragile");
     }
 
     [Fact]

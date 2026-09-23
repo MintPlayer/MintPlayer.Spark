@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Queries;
 using Raven.Client.Documents;
@@ -2118,6 +2119,20 @@ internal sealed record DatabasePage(int TotalItems);
     /// <summary>An OR-chain of equality comparisons — the "one of these values" half of a filter.</summary>
     private static Expression AnyEquals(MemberExpression member, object?[] values, Type propertyType)
     {
+        // A collection column holds SEVERAL values per row, so "one of these values" has to mean the
+        // collection CONTAINS one of them — never that the collection EQUALS one of them. RavenDB
+        // indexes such a field as multi-valued terms, so Any(e => e == v) is meaningful and renders
+        // as `Field = 'v'` in RQL.
+        //
+        // Comparing the collection itself is what shipped, and it fails silently: ConvertFilterValue
+        // cannot coerce a scalar wire value onto string[], answers null, and the null-on-value-type
+        // branch below then emits `x.Flags == null`. That matches nothing on a non-nullable column
+        // and — worse — matches exactly the rows with NO value on a nullable one, i.e. the precise
+        // complement of what the caller asked for. 16 array attributes sit on a query surface today
+        // with no canFilter authored, so they all resolve to true and all filter this way.
+        if (SparkModelShape.GetCollectionElementType(propertyType) is { } elementType)
+            return AnyContains(member, values, elementType);
+
         Expression? any = null;
 
         foreach (var raw in values)
@@ -2156,6 +2171,51 @@ internal sealed record DatabasePage(int TotalItems);
         // Unreachable: the caller only passes non-empty arrays, and every value now yields a
         // comparison rather than being dropped. Kept as a total function rather than a bang.
         return any ?? Expression.Constant(false);
+    }
+
+    /// <summary>
+    /// The collection form of <see cref="AnyEquals"/>: the row matches when the collection holds any
+    /// of the values. Values are coerced to the <paramref name="elementType"/>, not to the collection
+    /// type — coercing to the collection is what produced <c>x.Flags == null</c>.
+    /// </summary>
+    private static Expression AnyContains(MemberExpression member, object?[] values, Type elementType)
+    {
+        var element = Expression.Parameter(elementType, "e");
+        Expression? any = null;
+
+        foreach (var raw in values)
+        {
+            var value = ConvertFilterValue(raw, elementType);
+
+            // Same reasoning as AnyEquals: an unconvertible value still has to yield a comparison the
+            // provider can translate, because dropping it can empty the chain and leave nothing but a
+            // constant predicate, which RavenDB rejects outright.
+            Expression equals;
+            if (value is null && elementType.IsValueType && Nullable.GetUnderlyingType(elementType) is null)
+            {
+                var nullable = typeof(Nullable<>).MakeGenericType(elementType);
+                equals = Expression.Equal(
+                    Expression.Convert(element, nullable), Expression.Constant(null, nullable));
+            }
+            else
+            {
+                equals = Expression.Equal(element, Expression.Constant(value, elementType));
+            }
+
+            any = any is null ? equals : Expression.OrElse(any, equals);
+        }
+
+        var contains = Expression.Call(
+            typeof(Enumerable), nameof(Enumerable.Any), [elementType],
+            member, Expression.Lambda(any!, element));
+
+        // A document that never wrote the field projects as a null collection, and Enumerable.Any
+        // throws on it. That is not hypothetical here: a custom query is allowed to materialize with
+        // ToList() and return the set, in which case this expression runs in-process over objects
+        // rather than in RavenDB. The guard costs nothing on the database side, where an absent field
+        // simply matches no term.
+        return Expression.AndAlso(
+            Expression.NotEqual(member, Expression.Constant(null, member.Type)), contains);
     }
 
     /// <summary>
