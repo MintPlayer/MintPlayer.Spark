@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using System.Net;
 using MintPlayer.Spark.Client;
 using MintPlayer.Spark.E2E.Tests._Infrastructure;
