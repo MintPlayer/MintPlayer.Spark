@@ -1191,34 +1191,36 @@ internal sealed record DatabasePage(int TotalItems);
         // never end up adjacent to the security predicate in a way that lets an operator leak onto
         // it. See the remarks on ApplyColumnFilters.
         //
-        // Guarded on isRavenQueryable rather than isQueryable, and that distinction is the whole
-        // point. Queryable.Where dispatches on the queryable's PROVIDER: handed an EnumerableQuery —
-        // what `list.AsQueryable()` returns — it composes without complaint and then filters in
-        // process. Identical rows, no exception, no warning, nothing in a log. So a guard on
-        // isQueryable would not be a weaker version of this one; it would silently relocate
-        // filtering from the database into C#, which is the thing that must not happen.
+        // Where it runs depends on what the author returned, and BOTH answers are correct. A Raven
+        // queryable pushes the filter into RQL. A custom query that returns a fixed set — a computed
+        // dashboard, a constant list, an API response — has no database to push into, so the same
+        // predicate runs in process. That is not a degraded pushdown; it is the only thing filtering
+        // a fixed set can mean, and refusing it would punish a legitimate, supported shape.
+        //
+        // What must never happen is the filter quietly disappearing, which is exactly what this
+        // whole branch did before: every other refinement was wired here and this one was not.
         if (columnFilters is { Count: > 0 })
         {
-            if (!isRavenQueryable)
+            if (isQueryable)
             {
-                // Refused loudly, unlike a filter on a non-filterable column, which stays silent
-                // because a distinguishable refusal there is an enumeration oracle. This refusal
-                // discloses nothing about data: it is a fact about the shape the application's own
-                // method returned. Serving unfiltered rows instead is precisely how this feature
-                // shipped broken for a release, so the failure is made impossible to miss.
-                throw new InvalidOperationException(
-                    $"Query '{query.Name}' has source 'Custom.{methodName}' and was executed with column "
-                    + $"filters, but the method returned {result.GetType().Name}, which is not backed by "
-                    + "RavenDB. Column filters are translated into the database query and cannot be "
-                    + "applied to a materialized or in-memory result without filtering in memory, which "
-                    + "would make TotalItems and paging disagree with the rows. Either return "
-                    + $"IRavenQueryable<{methodInfo.ResultElementType.Name}> from the method, or set "
-                    + "\"canFilter\": false on the attributes of "
-                    + $"'{entityTypeDefinition.Name}' so the grid does not offer filtering.");
+                result = ApplyColumnFilters(
+                    result, methodInfo.ResultElementType, columnFilters, entityTypeDefinition, query);
             }
+            else if (result is System.Collections.IEnumerable sequence)
+            {
+                // AsQueryable so the SAME expression evaluates over a fixed set as over a Raven
+                // queryable. A second, hand-written in-memory implementation could disagree with the
+                // first about what a value equals — comparing rendered text where the other compares
+                // the raw property, say — and then the same filter would narrow differently depending
+                // on a shape the caller cannot see. One predicate, one semantic, every shape.
+                result = ApplyColumnFilters(
+                    AsQueryable(sequence, methodInfo.ResultElementType), methodInfo.ResultElementType,
+                    columnFilters, entityTypeDefinition, query);
 
-            result = ApplyColumnFilters(
-                result, methodInfo.ResultElementType, columnFilters, entityTypeDefinition, query);
+                // isQueryable stays false on purpose. EnumerableQuery<T> is also IEnumerable, so
+                // materialization still takes the sequence branch, and sorting keeps behaving as it
+                // did for this shape. Filtering is the only thing that changes here.
+            }
         }
 
         // Narrow to a selection before anything else touches the shape. Paging is deliberately not
@@ -2112,6 +2114,34 @@ internal sealed record DatabasePage(int TotalItems);
     }
 
     /// <summary>The open <c>Queryable.Where(source, predicate)</c> overload, closed over <paramref name="entityType"/>.</summary>
+    /// <summary>
+    /// Lifts a sequence to <see cref="IQueryable"/> so one expression can serve every shape.
+    /// </summary>
+    /// <remarks>
+    /// Goes through <see cref="Enumerable.Cast{TResult}"/> first because a method may legitimately
+    /// declare a non-generic <see cref="System.Collections.IEnumerable"/>, which
+    /// <see cref="Queryable.AsQueryable{TElement}"/> cannot accept. Both steps are lazy, so nothing
+    /// is materialized here — the filter still composes before enumeration.
+    /// </remarks>
+    private static object AsQueryable(System.Collections.IEnumerable sequence, Type elementType)
+    {
+        var cast = ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo>(
+            ("QueryExecutor.EnumerableCast", elementType),
+            static k => typeof(Enumerable).GetMethods()
+                .First(m => m.Name == nameof(Enumerable.Cast) && m.IsGenericMethod)
+                .MakeGenericMethod(k.Entity));
+
+        var asQueryable = ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo>(
+            ("QueryExecutor.AsQueryable", elementType),
+            static k => typeof(Queryable).GetMethods()
+                .First(m => m.Name == nameof(Queryable.AsQueryable)
+                    && m.IsGenericMethod
+                    && m.GetParameters().Length == 1)
+                .MakeGenericMethod(k.Entity));
+
+        return asQueryable.Invoke(null, [cast.Invoke(null, [sequence])!])!;
+    }
+
     private static MethodInfo QueryableWhere(Type entityType)
         => ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo>(
             ("QueryExecutor.QueryableWhere", entityType),

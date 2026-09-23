@@ -244,10 +244,11 @@ column filter on the grid path.** The behaviour is correct by construction, but 
 
 ## 4. Design decisions
 
-**D0 — Column filtering reaches the database or it does not happen.** No C#-side narrowing is added
-on any path. Today this holds by accident rather than by design: filters are pushed into RQL on
-`Database.*` and *dropped entirely* on every `Custom.*` shape, so there is no in-memory column
-filtering anywhere — and the fix must not introduce any. See D2.
+**D0 — A filter is never silently dropped, and never silently relocated.** Where a database query
+exists the filter belongs in it; where one does not, the filter still applies. What is forbidden is
+the invisible outcome: a filter that vanishes (this bug), or a filter that quietly moves from the
+database into C# while looking identical from the outside. See D2 for the shape rule and for the RQL
+assertion that enforces the second half.
 
 Measured position today:
 
@@ -269,23 +270,35 @@ database branch for a documented security reason (`:1900-1917`): a filter clause
 adjacent to the row-security predicate where a `SearchOptions` could leak onto it. The custom branch
 composes the same clauses against the same provider and inherits the same requirement.
 
-**D2 — No in-memory column filtering. A shape that cannot push down REFUSES the filter.**
-*(Revised — the original D2 proposed an in-memory fallback mirroring search's `SecuredRows.Narrow`.
-Rejected: filtering must reach the database, per §4.1.)*
+**D2 — The filter follows the shape: RQL where there is a database, in process where there is not.
+It is never dropped.** *(Settled after two reversals; both are recorded because the reasoning matters
+more than the conclusion.)*
 
-`ApplyColumnFilters` must be applied **only when the queryable is Raven-backed**, branching on the
-`isRavenQueryable` flag `ExecuteCustomQueryAsync` already computes at `:1158` for the search path.
-A `Custom.*` query returning a non-Raven `IQueryable`, an `IEnumerable<T>` or a `List<T>` refuses
-the filter rather than narrowing it in process.
+- **Raven-backed queryable** → composed into RQL. Asserted on emitted RQL, never on row counts.
+- **Non-Raven `IQueryable`** (`EnumerableQuery`) → the predicate runs in process.
+- **`IEnumerable<T>` / `List<T>`**, including a set materialized from the database with
+  `ToListAsync()` → lifted through `AsQueryable` and narrowed by the **same expression**.
 
-This is not a nicety. `Queryable.Where` dispatches on `queryable.Provider`, and `ApplyColumnFilters`
-inspects the provider nowhere. Handed an `IQueryable` backed by `EnumerableQuery`, it composes
-without error and enumeration then compiles the lambda and filters **in process — no exception, no
-warning, no log line**. Wiring the filter onto the custom branch without this guard would silently
-manufacture exactly the C#-side filtering this decision forbids, and nothing would report it.
+A custom query that returns a fixed set — a computed dashboard, a constant list, an API response, or
+a developer deciding the set is small enough to hand over whole — is a legitimate, supported shape.
+Filtering it in memory is not a degraded pushdown; it is the only thing filtering a fixed set can
+mean. Refusing it would punish an author who did nothing wrong.
 
-Precedent for refusing rather than degrading: `:756-767` throws outright for a `Database.*`
-sub-query rather than quietly serving it unscoped.
+**The first draft proposed an in-memory fallback modelled on search's `SecuredRows.Narrow`.** That
+was rejected, then reinstated in this form. The distinction: the rejected version was a *second
+implementation* that narrowed materialized `PersistentObject`s by their rendered attribute text,
+while the queryable path compares the raw CLR property. Two implementations can disagree about what
+a value equals, and then the same filter narrows differently depending on a shape the caller cannot
+see. Lifting through `AsQueryable` keeps **one predicate and one comparison semantic for every
+shape**, which is what makes the in-memory path safe rather than merely convenient.
+
+**The guarantee that still needs enforcing** is the one the shape rule does not give for free: where
+a database query *exists*, the filter must be in it. `Queryable.Where` dispatches on the provider and
+`ApplyColumnFilters` inspects it nowhere, so a Raven queryable that had silently become an
+`EnumerableQuery` would filter in process, return identical rows and report nothing. Row counts
+cannot see that; only the emitted RQL can. Hence a test asserting every statement issued for a
+Raven-backed query carries the filter — including the count, since a count that skipped it would
+report more rows than the grid can show.
 
 **D3 — Fix `LoadSecuredRowsAsync` to pass `columnFilters` on both branches.** Distincts and execute
 must agree about what the filtered set is, or the panel offers dead values.

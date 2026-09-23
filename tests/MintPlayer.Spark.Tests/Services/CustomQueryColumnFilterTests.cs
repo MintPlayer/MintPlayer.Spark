@@ -76,6 +76,25 @@ public class CustomQueryColumnFilterTests : SparkTestDriver
             new Parcel { Id = "memory/1", Label = "mem-one", Region = "eu", Depot = "depots/1" },
             new Parcel { Id = "memory/2", Label = "mem-two", Region = "us", Depot = "depots/1" },
         }.AsQueryable();
+
+        /// <summary>
+        /// A fixed set that is not an <see cref="IQueryable"/> at all — a computed dashboard, a
+        /// constant list, an API response. There is no provider to compose onto, so the filter is
+        /// lifted through <c>AsQueryable</c> rather than reimplemented.
+        /// </summary>
+        public IEnumerable<Parcel> ListParcels(CustomQueryArgs _) =>
+        [
+            new Parcel { Id = "list/1", Label = "list-one", Region = "eu", Depot = "depots/3" },
+            new Parcel { Id = "list/2", Label = "list-two", Region = "us", Depot = "depots/3" },
+        ];
+
+        /// <summary>
+        /// Goes to the database and then materializes — a developer deciding the set is small enough
+        /// to hand over whole. Legitimate and common, and the filter must still narrow it even though
+        /// there is no longer a queryable to push into.
+        /// </summary>
+        public async Task<IEnumerable<Parcel>> MaterializedParcels(CustomQueryArgs _)
+            => await _session.Query<Parcel>().ToListAsync();
     }
 
     /// <summary>Row rule as a pushdown-capable filter, so the RQL carries a real security predicate.</summary>
@@ -277,24 +296,62 @@ public class CustomQueryColumnFilterTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task A_non_raven_queryable_refuses_the_filter_loudly()
+    public async Task Filter_narrows_an_in_memory_queryable()
     {
         var executor = Executor();
 
-        var act = () => executor.ExecuteQueryAsync(CustomQuery("InMemoryParcels"),
+        var result = await executor.ExecuteQueryAsync(CustomQuery("InMemoryParcels"),
             columnFilters: [new QueryColumnFilter { Name = nameof(Parcel.Region), Includes = ["eu"] }]);
 
-        // D0/D2: column filtering reaches the database or it does not happen. An EnumerableQuery
-        // accepts Queryable.Where and filters in process with no error and no warning, so narrowing
-        // here would look exactly like success while violating the decision — and returning the rows
-        // unfiltered instead is how this feature shipped broken for a release.
-        //
-        // Loud, unlike the canFilter refusal, which stays silent because a distinguishable refusal
-        // there is an enumeration oracle. This one discloses nothing about data: it is a fact about
-        // the shape the application's own method returned.
-        var ex = await act.Should().ThrowAsync<InvalidOperationException>();
-        ex.Which.Message.Should().Contain("canFilter",
-            "the message must name the way out, not just the problem");
+        // A custom query that returns a fixed set has no database to push into, so the predicate runs
+        // in process. That is the only thing filtering a fixed set can mean — not a degraded
+        // pushdown — and refusing it would punish a legitimate, supported shape.
+        result.TotalItems.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Filter_narrows_a_plain_enumerable()
+    {
+        var executor = Executor();
+
+        var result = await executor.ExecuteQueryAsync(CustomQuery("ListParcels"),
+            columnFilters: [new QueryColumnFilter { Name = nameof(Parcel.Region), Includes = ["eu"] }]);
+
+        // Not an IQueryable at all, so there is no provider to compose onto. It is lifted through
+        // AsQueryable so the SAME expression runs: one comparison semantic across every shape,
+        // rather than a second implementation that could disagree about what a value equals.
+        result.TotalItems.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Filter_narrows_a_result_materialized_from_the_database()
+    {
+        var executor = Executor();
+
+        var result = await executor.ExecuteQueryAsync(CustomQuery("MaterializedParcels"),
+            columnFilters: [new QueryColumnFilter { Name = nameof(Parcel.Region), Includes = ["eu"] }]);
+
+        // The shape a developer reaches for when the set is small enough to hand over whole:
+        // session.Query<T>().ToListAsync(). The queryable is gone by the time the framework sees the
+        // result, so the filter runs in memory — and it must still narrow.
+        result.TotalItems.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task A_raven_backed_query_never_falls_back_to_filtering_in_process()
+    {
+        using var rql = RqlRecorder.Attach(Store);
+        var executor = Executor();
+
+        await executor.ExecuteQueryAsync(CustomQuery(),
+            columnFilters: [new QueryColumnFilter { Name = nameof(Parcel.Region), Includes = ["eu"] }]);
+
+        // The guarantee that in-memory filtering must not weaken: where a database query EXISTS, the
+        // filter belongs in it. Row counts cannot see the difference — filtering the same rows in C#
+        // returns the same rows — so this can only be asserted on the emitted RQL.
+        rql.Should().OnlyContain(q => q.Contains("Region = "),
+            "every statement issued for a Raven-backed query must carry the filter, including the "
+            + "count — a count that skipped it would report more rows than the grid can show");
     }
 
     // --- Distincts (the other half of the same omission) -------------------
