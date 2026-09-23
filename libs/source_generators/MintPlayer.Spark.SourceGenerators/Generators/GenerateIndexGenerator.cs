@@ -790,23 +790,15 @@ public class GenerateIndexGenerator : IncrementalGenerator
         Translated,
     }
 
+    /// <remarks>
+    /// The text test lives on <c>SparkModelSymbols</c> so <c>SortCompanionAnalyzer</c> can ask the
+    /// same question — SPARK018 has to know exactly which properties made this generator emit an
+    /// <c>Index(...)</c> call, and a second copy of the rule would be a second answer.
+    /// </remarks>
     private static SearchKind SearchKindOf(ITypeSymbol type)
     {
         if (type.IsTranslatedString()) return SearchKind.Translated;
-        if (type.SpecialType == SpecialType.System_String) return SearchKind.Text;
-
-        // string[] / IEnumerable<string> and friends: RavenDB analyzes each element into the same field.
-        if (type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_String })
-            return SearchKind.Text;
-
-        if (type is INamedTypeSymbol { IsGenericType: true } named
-            && named.AllInterfaces.Concat([named]).Any(i =>
-                i.OriginalDefinition.SpecialType == SpecialType.System_Collections_Generic_IEnumerable_T
-                && i.TypeArguments.Length == 1
-                && i.TypeArguments[0].SpecialType == SpecialType.System_String))
-            return SearchKind.Text;
-
-        return SearchKind.Unsupported;
+        return type.IsSearchableText() ? SearchKind.Text : SearchKind.Unsupported;
     }
 
     private static string? GetNamedArgument(AttributeData attribute, string name)

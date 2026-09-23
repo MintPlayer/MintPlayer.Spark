@@ -39,6 +39,7 @@ the diagnostic guarding the generated row key — reached no external consumer a
 | SPARK015 | — | **Unallocated.** Never used; do not reuse without checking release notes | — | — |
 | SPARK016 | Error | Value object must be partial | `ValueObjectKeyReporter` (a *generator*, not an analyzer) | ✅ Declare the value object 'partial' |
 | SPARK017 | Error | Embedded type is missing `[ValueObject]` | `ValueObjectCompletenessAnalyzer` | ✅ Make this a value object |
+| SPARK018 | Warning | Generated index field configuration is never applied | `SortCompanionAnalyzer` | — |
 
 Two further id namespaces are generator-only and not analyzer diagnostics: `SPARK_INDEX_001…012`
 (`GenerateIndexDiagnostics.cs`, note `004` is absent) and `SPARK_TRANS_001…`
