@@ -55,7 +55,19 @@ public sealed class IndexCatalogEntry
 {
     public required string IndexName { get; init; }
     public required Type IndexType { get; init; }
-    public required Type CollectionType { get; init; }
+
+    /// <summary>
+    /// The mapped collection, or <see langword="null"/> when the index names none — a multi-map (which
+    /// maps several and names none in its type arguments) or an otherwise opaque index.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Nullable on purpose. While this was <c>required Type</c>, an index with no derivable
+    /// collection could not be entered in the catalog at all and was dropped, so an explicit
+    /// <c>indexName</c> binding to it could never resolve. It is now registered and reachable by name;
+    /// only <see cref="IIndexCatalog.GetDefaultForCollectionType"/> — a question that genuinely has no
+    /// answer for a multi-map — skips it.
+    /// </remarks>
+    public required Type? CollectionType { get; init; }
     public Type? ProjectionType { get; internal set; }
 
     /// <summary>Whether this entry's projection shapes its collection type's model file. Computed at freeze.</summary>
@@ -72,12 +84,10 @@ internal partial class IndexCatalog : IIndexCatalog
 
     public void RegisterIndex(Type indexType)
     {
-        var collectionType = GetCollectionTypeFromIndex(indexType);
-        if (collectionType == null)
-        {
-            Console.WriteLine($"Warning: Could not determine collection type for index {indexType.Name}");
-            return;
-        }
+        // A multi-map or otherwise opaque index still gets an entry, with a null collection. Dropping
+        // it here is what made an explicit "indexName" binding to such an index unresolvable while
+        // RavenDB had deployed it perfectly happily.
+        var collectionType = RavenIndexHierarchy.MappedCollection(indexType);
 
         lock (_lock)
         {
@@ -128,7 +138,12 @@ internal partial class IndexCatalog : IIndexCatalog
         {
             if (_frozen) return;
 
-            foreach (var group in _byIndexName.Values.GroupBy(e => e.CollectionType))
+            // Entries with no collection are skipped rather than grouped: a null key would throw on
+            // _defaultByCollectionType, and "which index shapes this collection's model file" is not a
+            // question a multi-map can answer. They stay reachable through GetByIndexName.
+            foreach (var group in _byIndexName.Values
+                         .Where(e => e.CollectionType is not null)
+                         .GroupBy(e => e.CollectionType!))
             {
                 var @default = ResolveDefault(group.Key, [.. group]);
                 if (@default is not null) @default.IsDefault = true;
@@ -211,27 +226,4 @@ internal partial class IndexCatalog : IIndexCatalog
             throw new InvalidOperationException("The index catalog is frozen; registration is a startup-time concern.");
     }
 
-    private static Type? GetCollectionTypeFromIndex(Type indexType)
-    {
-        return ReflectionCache.GetOrAdd<(string Op, Type Type), Type?>(
-            ("IndexCatalog.IndexCollectionType", indexType),
-            static k =>
-            {
-                var current = k.Type;
-                while (current != null && current != typeof(object))
-                {
-                    if (current.IsGenericType)
-                    {
-                        var genericDef = current.GetGenericTypeDefinition();
-                        if (genericDef == typeof(AbstractIndexCreationTask<>) ||
-                            genericDef == typeof(AbstractMultiMapIndexCreationTask<>))
-                        {
-                            return current.GetGenericArguments()[0];
-                        }
-                    }
-                    current = current.BaseType;
-                }
-                return null;
-            });
-    }
 }

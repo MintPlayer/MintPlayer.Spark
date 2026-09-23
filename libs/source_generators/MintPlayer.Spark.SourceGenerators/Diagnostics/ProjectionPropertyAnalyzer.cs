@@ -1,6 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 using MintPlayer.Spark.SourceGenerators.Models;
+using MintPlayer.Spark.SourceGenerators.Naming;
 using System.Collections.Immutable;
 
 namespace MintPlayer.Spark.SourceGenerators.Diagnostics;
@@ -137,20 +138,13 @@ public sealed partial class ProjectionPropertyAnalyzer : DiagnosticAnalyzer
         }
     }
 
+    /// <summary>The entity the index maps, or <see langword="null"/> when it maps none.</summary>
+    /// <remarks>
+    /// ⚠️ This used to match on the type <em>name</em> alone, with no namespace check and an arity of
+    /// "one or more". That accidentally handled the two-argument form correctly — the one thing the
+    /// other three copies of this walk got wrong — while accepting any type anywhere called
+    /// <c>AbstractIndexCreationTask</c> and silently skipping every check for a multi-map.
+    /// </remarks>
     private static INamedTypeSymbol? GetEntityTypeFromIndex(INamedTypeSymbol indexType)
-    {
-        var current = indexType.BaseType;
-        while (current is not null)
-        {
-            if (current.IsGenericType &&
-                current.OriginalDefinition.Name == "AbstractIndexCreationTask" &&
-                current.TypeArguments.Length >= 1 &&
-                current.TypeArguments[0] is INamedTypeSymbol entityType)
-            {
-                return entityType;
-            }
-            current = current.BaseType;
-        }
-        return null;
-    }
+        => RavenIndexHierarchy.MappedCollection(indexType);
 }

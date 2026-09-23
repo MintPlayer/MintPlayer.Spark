@@ -131,28 +131,19 @@ public sealed class DefaultIndexAnalyzer : DiagnosticAnalyzer
             ?? IndexNaming.IndexName(entity.Name);
 
     /// <summary>
-    /// The collection type the index maps, mirroring the runtime's base-type walk: the single generic
-    /// argument of <c>AbstractIndexCreationTask&lt;T&gt;</c> or
-    /// <c>AbstractMultiMapIndexCreationTask&lt;T&gt;</c>. The two-argument
-    /// <c>AbstractIndexCreationTask&lt;TDocument, TReduceResult&gt;</c> derives from the one-argument
-    /// form, so the walk covers it without a separate case.
+    /// The collection type the index maps, or <see langword="null"/> when it maps none.
     /// </summary>
+    /// <remarks>
+    /// ⚠️ The comment that used to stand here claimed the two-argument
+    /// <c>AbstractIndexCreationTask&lt;TDocument, TReduceResult&gt;</c> derives from the one-argument
+    /// form "so the walk covers it without a separate case". <b>That is false</b> — it derives from
+    /// <c>AbstractGenericIndexCreationTask&lt;TReduceResult&gt;</c> — and the claim had propagated into
+    /// a test stub that encoded the fictional hierarchy, so the map-reduce test passed for the wrong
+    /// reason. It equally claimed a multi-map's single argument is a collection; it is the reduce
+    /// result. Both are now handled in one place, shared with the runtime.
+    /// </remarks>
     private static INamedTypeSymbol? CollectionTypeOf(INamedTypeSymbol indexType)
-    {
-        for (var baseType = indexType.BaseType; baseType is not null; baseType = baseType.BaseType)
-        {
-            if (baseType.IsGenericType
-                && baseType.TypeArguments.Length == 1
-                && baseType.OriginalDefinition.Name is AbstractIndexCreationTaskName or AbstractMultiMapIndexCreationTaskName
-                && baseType.OriginalDefinition.ContainingNamespace?.ToDisplayString() == RavenIndexesNamespace
-                && baseType.TypeArguments[0] is INamedTypeSymbol collection)
-            {
-                return collection;
-            }
-        }
-
-        return null;
-    }
+        => RavenIndexHierarchy.MappedCollection(indexType);
 
     /// <summary>
     /// A location safe to report at: in source and not in a generated file. Never <c>Location.None</c>

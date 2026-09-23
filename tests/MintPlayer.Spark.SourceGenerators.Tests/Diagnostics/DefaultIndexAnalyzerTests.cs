@@ -1,5 +1,6 @@
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.SourceGenerators.Tests._Infrastructure;
+using Raven.Client.Documents.Indexes;
 
 namespace MintPlayer.Spark.SourceGenerators.Tests.Diagnostics;
 
@@ -11,28 +12,28 @@ public class DefaultIndexAnalyzerTests
 {
     private const string AnalyzerName = "DefaultIndexAnalyzer";
 
-    /// <summary>Stand-in for the RavenDB base classes so fixtures compile without referencing RavenDB.</summary>
-    private const string RavenStub = """
-        namespace Raven.Client.Documents.Indexes;
-
-        public abstract class AbstractIndexCreationTask<T>
-        {
-        }
-
-        public abstract class AbstractIndexCreationTask<TDocument, TReduceResult> : AbstractIndexCreationTask<TDocument>
-        {
-        }
-
-        public abstract class AbstractMultiMapIndexCreationTask<T>
-        {
-        }
-        """;
-
+    /// <summary>
+    /// The real RavenDB types, not a stand-in.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ A hand-written stub used to stand in here, and it declared
+    /// <c>AbstractIndexCreationTask&lt;TDocument, TReduceResult&gt; : AbstractIndexCreationTask&lt;TDocument&gt;</c>
+    /// — <b>a hierarchy RavenDB does not have</b>. The real two-argument form derives from
+    /// <c>AbstractGenericIndexCreationTask&lt;TReduceResult&gt;</c>, and the one-argument form derives
+    /// <em>from the two-argument one</em>. So the map-reduce test below passed only because the fixture
+    /// agreed with the analyzer's mistake rather than with RavenDB, and proved nothing.
+    /// <para>
+    /// The test project already references <c>MintPlayer.Spark</c> and therefore RavenDB.Client, and
+    /// the sibling <c>ProjectionPropertyAnalyzerTests</c> already passes the real
+    /// <c>typeof(AbstractIndexCreationTask&lt;&gt;)</c>. Using the real types removes the whole class of
+    /// "our stub disagrees with reality" defect instead of re-spelling the stub correctly.
+    /// </para>
+    /// </remarks>
     private static Task<IReadOnlyList<Microsoft.CodeAnalysis.Diagnostic>> RunAsync(string source)
         => GeneratorHarness.RunAnalyzerAsync(
             AnalyzerName,
-            [source, RavenStub],
-            referenceTypes: [typeof(DefaultIndexAttribute)]);
+            [source],
+            referenceTypes: [typeof(DefaultIndexAttribute), typeof(AbstractIndexCreationTask<>)]);
 
     [Fact]
     public async Task Two_marked_indexes_over_one_collection_are_flagged_on_both()
@@ -135,8 +136,19 @@ public class DefaultIndexAnalyzerTests
         diagnostics.Where(d => d.Id == "SPARK009").Should().HaveCount(2);
     }
 
+    /// <summary>
+    /// A multi-map index claims no collection, so it cannot contend for one collection's default.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ This test used to assert the opposite — two SPARK009 diagnostics — and its fixture spelled
+    /// out why: <c>Cars_MultiMap : AbstractMultiMapIndexCreationTask&lt;Car&gt;</c>, read as "a
+    /// multi-map over Car". That reading is wrong. The single type argument of
+    /// <c>AbstractMultiMapIndexCreationTask&lt;T&gt;</c> is the <b>reduce result</b>; a multi-map maps
+    /// several collections and names none of them. So the premise of the old test did not hold and it
+    /// could only ever have passed against the fictional stub.
+    /// </remarks>
     [Fact]
-    public async Task A_marked_multi_map_index_clashes_with_a_marked_plain_index()
+    public async Task A_marked_multi_map_index_does_not_contend_for_a_collection_default()
     {
         var diagnostics = await RunAsync("""
             using MintPlayer.Spark.Abstractions;
@@ -145,6 +157,7 @@ public class DefaultIndexAnalyzerTests
             namespace TestApp;
 
             public class Car { public string? Model { get; set; } }
+            public class CarCount { public int Count { get; set; } }
 
             [DefaultIndex]
             public class Cars_Overview : AbstractIndexCreationTask<Car>
@@ -152,12 +165,13 @@ public class DefaultIndexAnalyzerTests
             }
 
             [DefaultIndex]
-            public class Cars_MultiMap : AbstractMultiMapIndexCreationTask<Car>
+            public class Cars_MultiMap : AbstractMultiMapIndexCreationTask<CarCount>
             {
             }
             """);
 
-        diagnostics.Where(d => d.Id == "SPARK009").Should().HaveCount(2);
+        diagnostics.Where(d => d.Id == "SPARK009").Should().BeEmpty(
+            "a multi-map names no collection, so it cannot be a second default for Car");
     }
 
     [Fact]
