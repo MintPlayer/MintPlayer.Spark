@@ -12,8 +12,8 @@ Branch: `fix/subquery-column-filters`. One PR, everything in it.
 | Client | **Cleared** — audited, sends `columns` + `parentId` + `parentType` correctly, no client-side narrowing |
 | Row security | **Audited, sound** — filters compose after the row filter, gate is unconditional, `Where` is monotone, no widening possible (PRD §3.5). One real hole: the redaction oracle (§3.6) |
 | Pushdown | **Audited** — RQL on `Database.*`, dropped on every `Custom.*`. No C#-side column filtering exists today, and none may be added (D0/D2) |
-| Spikes run | SP1 ✅ safe · SP2 ✅ settled (then re-settled, see D2) · SP3 ✅ no work needed · SP5 ✅ answered · SP4 in progress |
-| Milestones done | M1 ✅ · M2 ✅ · M3 ✅ · M4 ✅ (free) · M5 ✅ · M8 ✅ · M9b ✅ · M9d partial |
+| Spikes run | SP1 ✅ · SP2 ✅ (re-settled, see D2) · SP3 ✅ no work needed · SP4 ✅ confirmed + fixed · SP5 ✅ · SP6–SP8 not run (own work) |
+| Milestones done | M1 ✅ · M2 ✅ · M3 ✅ · M4 ✅ (free) · M5 ✅ · M6 ✅ · M7 ✅ · M8 ✅ · M9b ✅ · M9c ✅ (documented) · M9d ✅ · M10 ✅ · M7b, M7c, M11, M12 open |
 
 ---
 
@@ -214,12 +214,16 @@ group, not a security predicate. Add a fixture with a real `IRowSecurity` and as
 clause position against an actual security `Where`, and (b) that `DenyAllRowSecurity` returns zero
 rows under an active filter. Correct by construction today — but nothing would catch a regression.
 
-### M9c — The redaction oracle (PRD §3.6)
-`canFilter` defaults to `true`, so an app using `GetProtectedAttributesAsync` gets an equality oracle
-on protected values by default. Either gate filtering the way sorting is gated (`ShowedOn`, static,
-per `:1702-1707`) or document the `canFilter: false` obligation where an app author will actually
-see it — `docs/guide-authorization.md` and the `ColumnCapabilities` XML docs. Decide which; do not
-leave it as it is.
+### M9c — The redaction oracle (PRD §3.6) — **✅ documented, not closed**
+Decided: document the obligation rather than gate on the hook. The framework *cannot* close it —
+`GetProtectedAttributesAsync` takes an entity and may answer per row, so it cannot decide a
+query-level operation; by the time rows exist the filtering has already happened. That is the same
+reasoning the sort path already carries at `:1702-1707`, and it applies unchanged.
+
+So the mitigation stays static (`canFilter: false`, `canListDistincts: false`) while the hazard is
+dynamic, and the asymmetry is now stated where an author will meet it: a section in
+`docs/guide-authorization.md` and remarks on `ApplyColumnFilters`. Both flags default to `true`, so
+this is an obligation, not a default — which is exactly why leaving it undocumented was the problem.
 
 ### M9d — The smaller correctness defects (PRD §3.8)
 - Filter on a column absent from the projection: report rather than silently skip.
