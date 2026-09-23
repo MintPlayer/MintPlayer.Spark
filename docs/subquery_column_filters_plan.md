@@ -13,7 +13,7 @@ Branch: `fix/subquery-column-filters`. One PR, everything in it.
 | Row security | **Audited, sound** — filters compose after the row filter, gate is unconditional, `Where` is monotone, no widening possible (PRD §3.5). One real hole: the redaction oracle (§3.6) |
 | Pushdown | **Audited** — RQL on `Database.*`, dropped on every `Custom.*`. No C#-side column filtering exists today, and none may be added (D0/D2) |
 | Spikes run | SP1 ✅ · SP2 ✅ (re-settled, see D2) · SP3 ✅ no work needed · SP4 ✅ confirmed + fixed · SP5 ✅ · SP6–SP8 not run (own work) |
-| Milestones done | M1 ✅ · M2 ✅ · M3 ✅ · M4 ✅ (free) · M5 ✅ · M6 ✅ · M7 ✅ · M8 ✅ · M9b ✅ · M9c ✅ (documented) · M9d ✅ · M10 ✅ · M7b, M7c, M11, M12 open |
+| Milestones done | **all of M1–M12** ✅ · SP6–SP8 and P1–P7 deliberately out of scope (own work) |
 
 ---
 
@@ -35,21 +35,26 @@ is constructed**, or it records nothing and the assertion passes over an empty c
 Kill criterion: if the clause lands adjacent to the security predicate differently, D1's position
 is not sufficient on this branch and the composition order must change.
 
-### SP2 — How does a refusal reach the caller? *(replaces the in-memory-fallback spike)*
+### SP2 — What happens to a shape that cannot push down? — **ANSWERED, after two reversals**
 
-D2 settled that a non-pushdownable shape **refuses** rather than filtering in C#. This spike is about
-the refusal's shape, which is a disclosure decision, not a plumbing one.
+Final answer: **it is filtered in process, not refused.** A custom query returning a fixed set — a
+constant list, a computed dashboard, or `session.Query<T>().ToListAsync()` because the set is small
+enough to hand over whole — is a legitimate, supported shape. Refusing it punishes an author who did
+nothing wrong, and "filtering a fixed set" can only mean doing it in memory.
 
-`ApplyColumnFilters` today refuses silently for an unauthorized column, deliberately: a
-distinguishable refusal is an enumeration oracle. But "this shape cannot push down" is a property of
-the *author's code*, not of the caller's permissions, and leaks nothing about data.
+The route there is worth keeping, because both wrong answers were plausible:
 
-Answer: does the shape refusal 400 (like D5's author-paged case), or warn-and-return-unfiltered
-(like the capability refusal)? They must not share a code path, or the security-motivated silence
-will keep hiding plumbing bugs — which is the whole reason this PR exists.
+1. *Draft:* an in-memory fallback narrowing materialized `PersistentObject`s by their rendered text,
+   modelled on the search fallback. **Rejected** — that is a second implementation, free to disagree
+   with the queryable path about what a value equals, so the same filter would narrow differently
+   depending on a shape the caller cannot see.
+2. *Then:* refuse loudly. **Rejected** — see above.
+3. *Shipped:* lift the sequence through `AsQueryable` and run the **same expression**. One predicate,
+   one comparison semantic, every shape.
 
-Kill criterion: if the two cannot be separated cleanly, the shape refusal must be the loud one, and
-the capability refusal keeps the silence.
+What survives from the strict version is the guarantee the shape rule does not give for free: where a
+database query *exists*, the filter must be in it. Asserted on emitted RQL, because row counts cannot
+tell a pushdown from in-process filtering.
 
 ### SP3 — Where does paging happen on the custom branch? (gates M4)
 
@@ -117,12 +122,15 @@ Add the parameter to `ExecuteCustomQueryAsync` (`:1021-1024`), pass it at the ca
 and apply after `ComposeRowFilterAsync` (`:1185-1188`) and before `ApplySearch` (`:1203`), guarded
 by `isQueryable` the way search is guarded by `isRavenQueryable`.
 
-### M3 — Refuse non-pushdownable shapes *(gated by SP2)*
-Branch on the `isRavenQueryable` flag already computed at `:1158`. A non-Raven `IQueryable`, an
-`IEnumerable<T>` or a `List<T>` refuses the filter — **no `SecuredRows.Narrow`, no in-process
-filtering**. The trap this closes: `Queryable.Where` over an `EnumerableQuery` provider composes and
-executes in C# with no error and no warning, so "it returned the right rows" is not evidence of
-pushdown. Assert on emitted RQL, not on row counts.
+### M3 — Every shape filters, by the same predicate *(gated by SP2)* — **✅ done**
+A Raven queryable composes into RQL. A non-Raven `IQueryable` filters through its own provider. An
+`IEnumerable<T>`/`List<T>` is lifted through `AsQueryable` and filtered by the **same expression**,
+rather than by a second hand-written implementation that could disagree about what a value equals.
+
+The trap this leaves open, and why one test asserts RQL rather than rows: `Queryable.Where` over an
+`EnumerableQuery` provider composes and executes in C# with no error and no warning, so "it returned
+the right rows" is not evidence of pushdown. A Raven-backed query that had silently become an
+in-memory one would look identical from the outside.
 
 ### M4 — Filtered `TotalItems` and paging *(gated by SP3)* — **✅ no work needed**
 SP3 answered it: the filter composes into the queryable *before* materialization, and the custom
@@ -244,8 +252,35 @@ browser check actually visits. **Fleet declares no sub-queries** — this is why
 verification passed while production was broken. Verifying against an app without the shape under
 test is the process failure worth fixing, not just the code.
 
-### M12 — Verify on production repro
-Re-run the measured table in PRD §1 and confirm all ten acceptance criteria.
+### M11 + M12 — Verified in a browser, against an app that has the shape — **✅ done**
+
+Run against **DemoApp**, not Fleet. Fleet declares no sub-queries at all, which is why #440's browser
+check passed while production was broken; verifying there again would have proved nothing. DemoApp's
+`Company` PO has `company-people` and `company-cars`.
+
+Measured on `companies/1-A` (4 cars — 3 Volkswagen Transporter, 1 Mercedes Sprinter):
+
+| case | result |
+|---|---|
+| unfiltered | 4 |
+| `Model includes [Mercedes Sprinter]` | **1** — the Sprinter |
+| `Model includes [Volkswagen Transporter]` | **3** |
+| both values | 4 (values OR within a column) |
+| `Model excludes [Mercedes Sprinter]` | **3** |
+| nonsense value | **0** |
+| `search=Mercedes` | **1**, no 500 |
+| distincts `LicensePlate`, unfiltered | 3 values |
+| distincts `LicensePlate` under the Sprinter filter | **1** — cross-filtering works |
+
+The positive cases are the load-bearing ones: "everything returns 0" is equally consistent with
+over-filtering, so a nonsense value alone would not have distinguished a fix from a new bug.
+
+Note `Volkswagen Transporter` — a multi-word value matched exactly on a `[Search]`-analyzed field,
+which only works because equality resolves through the `{Name}Sort` companion.
+
+**Through the UI**, not just the endpoint: opened the Model panel on the cars grid (values listed),
+ticked *Mercedes Sprinter*, and the grid went from 4 rows to exactly
+`2-DEF-222 Mercedes Sprinter 2022 Contoso Logistics`.
 
 ---
 
