@@ -181,14 +181,27 @@ jobs:
 
         fail=0
 
-        # NuGet: every packable csproj under libs/ carries its own <Version> and `dotnet pack` is
-        # solution-wide, so they move together. Any libs/ source change requires the bump.
-        if echo "$changed" | grep -qv '^libs/node_packages/'; then
-          if ! git diff "$base"...HEAD -- 'libs/**/*.csproj' | grep -q '^+.*<Version>'; then
-            echo "::error::A libs/ .NET source file changed but no <Version> was bumped. dotnet pack is solution-wide and dotnet nuget push --skip-duplicate silently skips an existing version, so this would merge and publish nothing."
+        # NuGet: each packable csproj under libs/ carries its OWN <Version>, and
+        # `dotnet nuget push --skip-duplicate` silently skips a version that already exists on
+        # nuget.org. So a project whose source changed without its own <Version> moving merges and
+        # publishes nothing — precisely the failure this gate exists to catch.
+        #
+        # This used to ask only whether SOME csproj under libs/ had bumped, which is not the same
+        # question and let exactly that through: MintPlayer.Spark and .Abstractions were bumped while
+        # MintPlayer.Spark.SourceGenerators changed in the same PR and stayed behind, so consumers
+        # would have got the new runtime with the old analyzer.
+        for proj in $(echo "$changed" | grep -v '^libs/node_packages/' | sed -E 's|^(libs/[^/]+/[^/]+)/.*|\1|' | sort -u); do
+          csproj="$(ls "$proj"/*.csproj 2>/dev/null | head -1)"
+          [ -z "$csproj" ] && continue
+
+          # No <Version> of its own: not independently packable, nothing to bump.
+          grep -q '<Version>' "$csproj" || continue
+
+          if ! git diff "$base"...HEAD -- "$csproj" | grep -q '^+.*<Version>'; then
+            echo "::error::$proj changed but its own <Version> was not bumped. dotnet nuget push --skip-duplicate silently skips an existing version, so this would merge and publish nothing."
             fail=1
           fi
-        fi
+        done
 
         # npm: each package's version is its own; only the ones that changed need bumping.
         for pkg in ng-spark ng-spark-auth; do
