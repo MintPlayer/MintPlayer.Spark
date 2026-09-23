@@ -10,6 +10,8 @@ Branch: `fix/subquery-column-filters`. One PR, everything in it.
 | Root cause | **Confirmed** — `ExecuteCustomQueryAsync` has no `columnFilters` parameter (`QueryExecutor.cs:1021-1024`) |
 | Reproduced | **Yes**, on production, three sub-queries measured |
 | Client | **Cleared** — audited, sends `columns` + `parentId` + `parentType` correctly, no client-side narrowing |
+| Row security | **Audited, sound** — filters compose after the row filter, gate is unconditional, `Where` is monotone, no widening possible (PRD §3.5). One real hole: the redaction oracle (§3.6) |
+| Pushdown | **Audited** — RQL on `Database.*`, dropped on every `Custom.*`. No C#-side column filtering exists today, and none may be added (D0/D2) |
 | Spikes run | none yet |
 | Milestones done | none yet |
 
@@ -33,20 +35,21 @@ is constructed**, or it records nothing and the assertion passes over an empty c
 Kill criterion: if the clause lands adjacent to the security predicate differently, D1's position
 is not sufficient on this branch and the composition order must change.
 
-### SP2 — What does the in-memory path filter on? (gates M3)
+### SP2 — How does a refusal reach the caller? *(replaces the in-memory-fallback spike)*
 
-The search fallback (`:296-307`) narrows over *materialized POs*, matching `po.Name`,
-`po.Breadcrumb` and each `attr.Breadcrumb ?? attr.Value?.ToString()`. Column filters carry the
-`{value, label}` wire shape from #431, where `value` is the raw value and `label` is the rendered
-text.
+D2 settled that a non-pushdownable shape **refuses** rather than filtering in C#. This spike is about
+the refusal's shape, which is a disclosure decision, not a plumbing one.
 
-Answer: when narrowing in memory, do we compare against the raw attribute `Value` or the
-`Breadcrumb`? They differ for references and custom renderers, and the queryable path compares the
-raw property. **The two paths must agree** or the same filter narrows differently depending on
-whether the author returned a queryable — which would be a worse bug than the one being fixed.
+`ApplyColumnFilters` today refuses silently for an unauthorized column, deliberately: a
+distinguishable refusal is an enumeration oracle. But "this shape cannot push down" is a property of
+the *author's code*, not of the caller's permissions, and leaks nothing about data.
 
-Kill criterion: if they cannot be made to agree, the in-memory path must refuse rather than
-narrow wrongly.
+Answer: does the shape refusal 400 (like D5's author-paged case), or warn-and-return-unfiltered
+(like the capability refusal)? They must not share a code path, or the security-motivated silence
+will keep hiding plumbing bugs — which is the whole reason this PR exists.
+
+Kill criterion: if the two cannot be separated cleanly, the shape refusal must be the loud one, and
+the capability refusal keeps the silence.
 
 ### SP3 — Where does paging happen on the custom branch? (gates M4)
 
@@ -87,9 +90,12 @@ Add the parameter to `ExecuteCustomQueryAsync` (`:1021-1024`), pass it at the ca
 and apply after `ComposeRowFilterAsync` (`:1185-1188`) and before `ApplySearch` (`:1203`), guarded
 by `isQueryable` the way search is guarded by `isRavenQueryable`.
 
-### M3 — In-memory fallback for non-queryable custom results *(gated by SP2)*
-Narrow via `SecuredRows.Narrow`, mirroring the search fallback. Applies when the author returned a
-materialized collection.
+### M3 — Refuse non-pushdownable shapes *(gated by SP2)*
+Branch on the `isRavenQueryable` flag already computed at `:1158`. A non-Raven `IQueryable`, an
+`IEnumerable<T>` or a `List<T>` refuses the filter — **no `SecuredRows.Narrow`, no in-process
+filtering**. The trap this closes: `Queryable.Where` over an `EnumerableQuery` provider composes and
+executes in C# with no error and no warning, so "it returned the right rows" is not evidence of
+pushdown. Assert on emitted RQL, not on row counts.
 
 ### M4 — Filtered `TotalItems` and paging *(gated by SP3)*
 Count after narrowing on every path; page over the filtered set.
@@ -112,6 +118,28 @@ not silent.
 - RQL position assertion on the custom branch (mirrors the database-branch assertion).
 - `canFilter: false` on a custom query — still silently refused, behaviour unchanged.
 - A `DenyAllRowSecurity` case on the filtered custom path: zero rows reach the wire.
+
+### M9b — Pin the row-security guarantee that is currently unpinned
+`ColumnFilterDisclosureTests` has **no row rule in its fixture**, so the test named
+`The_filter_clause_does_not_displace_the_row_security_predicate` asserts adjacency against the search
+group, not a security predicate. Add a fixture with a real `IRowSecurity` and assert (a) the RQL
+clause position against an actual security `Where`, and (b) that `DenyAllRowSecurity` returns zero
+rows under an active filter. Correct by construction today — but nothing would catch a regression.
+
+### M9c — The redaction oracle (PRD §3.6)
+`canFilter` defaults to `true`, so an app using `GetProtectedAttributesAsync` gets an equality oracle
+on protected values by default. Either gate filtering the way sorting is gated (`ShowedOn`, static,
+per `:1702-1707`) or document the `canFilter: false` obligation where an app author will actually
+see it — `docs/guide-authorization.md` and the `ColumnCapabilities` XML docs. Decide which; do not
+leave it as it is.
+
+### M9d — The smaller correctness defects (PRD §3.8)
+- Filter on a column absent from the projection: report rather than silently skip.
+- `Expression.Constant(null, propertyType)` 500 on a non-nullable value-type column — pass the
+  underlying type, or skip the value.
+- Route the warnings to the injected `ILogger` instead of `Console.WriteLine`.
+- Enforce `IRavenQueryable<T>` at `:794-796` instead of only naming it in the error message.
+- `mayPageInDatabase` condition 4 vs a non-projecting fan-out index (inflated `TotalItems`).
 
 ### M10 — Guard against the next disjoint-suite gap
 A test that fails if a refinement is wired into one branch and not the other. The specific shape of
