@@ -193,6 +193,7 @@ public static class SparkDevelopmentExtensions
         VerifyQueryColumnOverridesResolve(contentRoot);
         VerifyQuerySortColumnsResolve(contentRoot);
         VerifyIndexDefinitionsCompile(indexCatalog);
+        VerifyBoundIndexHasAProjection(indexCatalog, contentRoot);
         var descriptionDrift = VerifyAttributeDescriptionsAreCurrent(contextType, contentRoot);
 
         if (expected is not null && string.Equals(expected.ModelHash, actual.ModelHash, StringComparison.Ordinal))
@@ -369,6 +370,86 @@ public static class SparkDevelopmentExtensions
     /// apply to it, so stating one is the same mistake wearing a real attribute name.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// A query may not bind an index that has no <c>[FromIndex]</c> projection.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>Binding an unprojected index makes Spark validate sorts and filters against a superset of
+    /// what the index can serve.</b> <c>QueryExecutor</c> computes the row shape as the projection when
+    /// there is one and <em>the entity</em> when there is not — and the entity carries every property,
+    /// while the Map carries only what it selected. So a column the entity has and the Map does not
+    /// reads as sortable, and ordering by a field absent from the Map is an <c>ArgumentException</c>,
+    /// i.e. HTTP 500 for the whole grid.
+    /// <para>
+    /// This is the general form of a defect found on <c>Commit.GetCommits</c>: it sorted by <c>Sha</c>
+    /// while <c>Commits_ByRepository</c> emitted no <c>Sha</c>, so the "obvious" repair of stamping
+    /// <c>indexName</c> on it would have turned a slow query into a broken one. The real repair was to
+    /// give the index a projection, which is what this rule asks for.
+    /// </para>
+    /// <para>
+    /// Not a substitute for checking the Map itself — a projection can still declare a property the Map
+    /// never assigns. It removes the case where Spark has no description of the index at all.
+    /// </para>
+    /// </remarks>
+    private static void VerifyBoundIndexHasAProjection(IIndexCatalog indexCatalog, string contentRootPath)
+    {
+        var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
+        if (!Directory.Exists(modelPath))
+            return;
+
+        var offenders = new List<string>();
+
+        foreach (var file in Directory.EnumerateFiles(modelPath, "*.json"))
+        {
+            EntityTypeFile? model;
+            try
+            {
+                model = System.Text.Json.JsonSerializer.Deserialize<EntityTypeFile>(
+                    File.ReadAllText(file),
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                continue;
+            }
+
+            var definition = model?.PersistentObject;
+            if (definition is null || model?.Queries is null)
+                continue;
+
+            foreach (var query in model.Queries)
+            {
+                // An empty binding on the query inherits the entity's, and an empty one there queries
+                // the raw collection, which has no index to be wrong about.
+                var indexName = string.IsNullOrWhiteSpace(query.IndexName) ? definition.IndexName : query.IndexName;
+                if (string.IsNullOrWhiteSpace(indexName)) continue;
+
+                var entry = indexCatalog.GetByIndexName(indexName);
+
+                // A name that resolves to nothing is the synchronizer's business — it retargets a dead
+                // binding rather than failing, so reporting it here would duplicate that.
+                if (entry is null || entry.ProjectionType is not null) continue;
+
+                offenders.Add($"{definition.Name}.{query.Name}: bound to '{indexName}', which has no [FromIndex] projection");
+            }
+        }
+
+        if (offenders.Count == 0)
+            return;
+
+        Console.Error.WriteLine("Spark queries bound to an index Spark cannot describe:");
+        foreach (var offender in offenders)
+            Console.Error.WriteLine("  " + offender);
+        Console.Error.WriteLine();
+        Console.Error.WriteLine(
+            "Without a projection the row shape falls back to the ENTITY, which carries every property "
+            + "while the index map carries only what it selected. Spark then reports columns as "
+            + "sortable that the index cannot serve, and ordering by one of them is a 500 for the whole "
+            + "grid. Give the index a [FromIndex] projection covering the query surface.");
+
+        Environment.ExitCode = ExitDrift;
+    }
+
     /// <summary>
     /// Every index in the catalog must be able to build its own definition.
     /// </summary>
