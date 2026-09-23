@@ -185,7 +185,7 @@ jobs:
         # solution-wide, so they move together. Any libs/ source change requires the bump.
         if echo "$changed" | grep -qv '^libs/node_packages/'; then
           if ! git diff "$base"...HEAD -- 'libs/**/*.csproj' | grep -q '^+.*<Version>'; then
-            echo "::error::A libs/ .NET source file changed but no <Version> was bumped. dotnet pack is solution-wide and `nuget push --skip-duplicate` silently skips an existing version, so this would merge and publish nothing."
+            echo "::error::A libs/ .NET source file changed but no <Version> was bumped. dotnet pack is solution-wide and dotnet nuget push --skip-duplicate silently skips an existing version, so this would merge and publish nothing."
             fail=1
           fi
         fi
