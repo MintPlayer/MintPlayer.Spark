@@ -1,8 +1,9 @@
 # Spark 11.0.0-preview.87 — CSRF protection stops being opt-in
 
-**Packages:** `MintPlayer.Spark` → `11.0.0-preview.87`, `MintPlayer.Spark.Authorization` →
-`11.0.0-preview.86`, `MintPlayer.Spark.Client.Authorization` → `11.0.0-preview.85`,
-`MintPlayer.Spark.Webhooks.GitHub` → `11.0.0-preview.85`. No npm package changes.
+**Packages:** `MintPlayer.Spark` → `11.0.0-preview.87`; `MintPlayer.Spark.Authorization` and
+`MintPlayer.Spark.Client` → `11.0.0-preview.86`; `MintPlayer.Spark.Client.Authorization`,
+`MintPlayer.Spark.Replication`, `MintPlayer.Spark.Testing` and `MintPlayer.Spark.Webhooks.GitHub` →
+`11.0.0-preview.85`. No npm package changes.
 
 One theme: **Spark's antiforgery gate protected the endpoints that asked for it and nothing else,
 and the switch that was supposed to cover everything else had never been turned on.**
@@ -77,6 +78,27 @@ no gate could ever cover.
 ---
 
 ## Fixed
+
+### ⚠️ The replication endpoints no longer demand a token — and never should have
+
+`/spark/sync/apply` and `/spark/etl/deploy` briefly carried `RequireAntiforgeryTokenAttribute(true)`
+as defence in depth. **If you are running a build from that window, cross-module replication is
+broken** and this release fixes it.
+
+Explicit antiforgery metadata is enforced *before* authentication and applies to anonymous callers,
+so every caller that had not presented its module client certificate stopped getting the `401`/`403`
+that says what was wrong and got a bare `400` instead — the antiforgery gate answering on behalf of a
+check that had not run yet. Modules call these server-to-server with a certificate and no browser
+session, so they hold no `XSRF-TOKEN` cookie and there is nothing they can do to obtain one.
+
+The stamps are gone, and they were unnecessary once `RequireAntiforgery` defaults to `true`: a caller
+arriving with an **ambient** credential is checked by the default branch anyway, and a module
+presenting its certificate is non-ambient and exempt either way.
+
+Pinned from both sides so it cannot come back —
+`Replication_endpoints_do_not_require_an_antiforgery_token` asserts the metadata (and asserts the two
+routes exist, so it cannot pass vacuously), and `ReplicationEndpointAuthTests`' exact-status
+assertions fail on a 400.
 
 ### `POST /spark/auth/csrf-refresh` is now explicitly exempt
 

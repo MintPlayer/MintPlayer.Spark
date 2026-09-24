@@ -21,14 +21,19 @@ The work that came out of measuring rather than assuming. Detail in PRD §2–§
 | `RequireAntiforgery` now defaults to `true` — the documented "next major" flip, and the only thing that protects endpoints an *application* maps | `libs/spark/MintPlayer.Spark/Extensions/SparkAntiforgeryOptions.cs` |
 | ⚠️ `POST /spark/auth/login` gated — login CSRF; it is anonymous, so only explicit metadata can ever reach it | `libs/authorization/.../Extensions/LocalCredentialEndpointFilter.cs` |
 | ⚠️ `POST /spark/auth/csrf-refresh` explicitly exempt — mandatory, see below | `libs/authorization/.../Endpoints/CsrfRefresh.cs` |
-| `SparkClient.LoginAsync` primes and sends a token | `libs/client/MintPlayer.Spark.Client.Authorization/SparkClientAuthExtensions.cs` |
+| ⚠️ Replication stamps **removed** — they fired before authentication, so an anonymous caller got a bare 400 instead of 401/403, breaking cross-module replication (PRD §3.3) | `libs/replication/.../Endpoints/{SyncApply,EtlDeploy}.cs` |
+| `SparkClient` primes and sends a token on login and on the two reads that are POSTs only because they need a body | `libs/client/MintPlayer.Spark.Client{,.Authorization}/` |
 | `/spark/github/dev-ws` constrained to GET — a bare `Map()` matched every mutating verb | `libs/webhooks/.../Extensions/SparkBuilderExtensions.cs` |
 | CodeCoverage's three CI uploads explicitly exempt | `apps/CodeCoverage/CodeCoverage/Controllers/{Uploads,ForkUploads}Controller.cs` |
-| Two false comments corrected in place | `SparkMiddleware.cs`, `SparkAntiforgeryMiddleware.cs`, `SparkAntiforgeryOptions.cs` |
+| Three false comments corrected in place | `SparkMiddleware.cs`, `SparkAntiforgeryMiddleware.cs`, `SparkAntiforgeryOptions.cs` |
+| E2E sign-in helpers prime a token (five call sites) | `tests/MintPlayer.Spark.E2E.Tests/**` |
 
 Tests added: `XsrfSurfaceTests` (metadata inventory of every mutating framework endpoint, exact
 sets), `XsrfEnforcementTests` (behavioural, real HTTPS, control beside every case),
-`CsrfSurfaceTests` reworked to three positions.
+`Replication_endpoints_do_not_require_an_antiforgery_token`, and `CsrfSurfaceTests` reworked to three
+positions.
+
+**Verified:** unit 2491/2491, CodeCoverage 773/773, E2E 105/105. Shipped as PR #451.
 
 ⚠️ **The one thing not to "tidy up" later.** `csrf-refresh` must never require a token. A token is
 bound to a principal; a client whose identity just changed holds a stale one by definition; demanding
@@ -75,16 +80,23 @@ MCP: sign out, F5, sign in, then call a protected endpoint immediately and confi
 network log. HR is the easiest target (local credentials, no GitHub secrets); Fleet is what the E2E
 harness drives.
 
-### M5 — Docs and versions
+⚠️ This was recorded as "blocked on the MCP server" — it is **not blocked any more**, the server
+connects. What stands in for it today is `XsrfEnforcementTests`, which drives the same sequence over
+real HTTPS with a real cookie jar. The browser run is still worth doing for M1, because the thing M1
+changes (*when* the cookie is written relative to the response) is exactly what a `fetch` from a real
+page exercises and an `HttpClient` does not.
 
-`docs/Spark-API-Specification.md:427` describes the cookie correctly; its **"Affected endpoints"**
-line is now stale — it predates the passkey, external-login and `/connect` surfaces and does not
-mention `login`. Rewrite it to point at `XsrfSurfaceTests` rather than re-listing routes that will
-drift again.
+### M5 — Docs and versions ✅ (for M0; redo for M1-M3)
 
-Version bumps: `MintPlayer.Spark` `11.0.0-preview.86` → `.87` (CI gate on `libs/**`).
-`MintPlayer.Spark.Authorization` and `MintPlayer.Spark.Client.Authorization` change too.
-`ng-spark-auth` only if M3 lands.
+Done in PR #451: `docs/Spark-API-Specification.md`'s **"Affected endpoints"** line no longer lists
+routes — it had drifted past the passkey, external-login and `/connect` surfaces and omitted `login`
+— and now points at `XsrfSurfaceTests`, which cannot drift because it is executable.
+`docs/release-notes-preview-87.md` covers the breaking default flip, the gated `/login`, the
+replication fix and the test-driver change.
+
+Seven packages moved (CI gates each one separately, and it caught a miss): `MintPlayer.Spark`
+→ `.87`; `.Authorization` and `.Client` → `.86`; `.Client.Authorization`, `.Replication`, `.Testing`
+and `.Webhooks.GitHub` → `.85`. ⚠️ `ng-spark-auth` only if M3 lands.
 
 ---
 
