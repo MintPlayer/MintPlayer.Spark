@@ -7,6 +7,9 @@ the PRD.
 Status: **implemented.** Every milestone M1–M11 is done, including M7b. SP1 and SP3 were run and
 answered; **SP2 and SP4 were not run** — see the spike table and *What is not done* below.
 
+Suites green: **2478 server** (7m06s), **118 `ng-spark-auth`**, 16 entry points built. All four apps
+pass `--spark-verify-model` and `--spark-verify-security`.
+
 | Spike | Result |
 |---|---|
 | **SP1** — `SignInManager` state under Spark's wiring | ✅ **Passes. D1 stands.** `MakePasskeyCreationOptionsAsync` emits `Identity.TwoFactorUserId=CfDJ8…` (the `CfDJ8` prefix is DataProtection's magic header) and the state round-trips: without the cookie attestation reports "no passkey attestation is underway", with it the failure reason changes. Spark writes no cryptographic code. |
