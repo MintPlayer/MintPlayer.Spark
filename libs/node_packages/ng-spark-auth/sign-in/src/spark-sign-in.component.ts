@@ -13,6 +13,7 @@ import {
   SparkExternalProviderPresentation,
   SPARK_AUTH_CONFIG,
   isSafeReturnUrl,
+  passkeysSupported,
 } from '@mintplayer/ng-spark-auth/models';
 import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark-auth/pipes';
@@ -101,6 +102,15 @@ export class SparkSignInComponent {
   readonly failed = signal(false);
 
   /**
+   * Two conditions, and both are necessary. The server must have mounted the sign-in endpoint, and
+   * this browser must be able to run the ceremony — offering the button on either half alone
+   * produces a control that fails the moment it is clicked.
+   */
+  readonly passkeysAvailable = signal(false);
+  readonly passkeyBusy = signal(false);
+  readonly passkeyError = signal('');
+
+  /**
    * The server's list, decorated and ordered by whatever the application declared. Declared-but-not-
    * reported schemes are dropped and reported-but-not-declared ones keep a default button, so
    * neither side can produce a provider the other does not have.
@@ -138,6 +148,7 @@ export class SparkSignInComponent {
       const capabilities = await this.authService.capabilities();
       this.reported.set(capabilities.externalProviders);
       this.localCredentialsAvailable.set(capabilities.localCredentials !== 'Disabled');
+      this.passkeysAvailable.set(capabilities.passkeys === true && passkeysSupported());
       this.warnOnMismatch(capabilities);
     } catch {
       // A sign-in page that renders nothing looks identical to one whose providers all failed to
@@ -184,6 +195,36 @@ export class SparkSignInComponent {
     const returnUrl = this.effectiveReturnUrl() ?? this.config.defaultRedirectUrl;
     const result = await this.authService.loginWithProvider(provider.scheme, { returnUrl });
     if (result.success) await this.router.navigateByUrl(returnUrl);
+  }
+
+  /**
+   * Signs in with a passkey, then navigates — same shape as {@link signInWith}, and the navigation
+   * matters for the same reason.
+   *
+   * No username is collected, and none should be: the server's request-options endpoint refuses to
+   * accept an identity so that its answer cannot reveal whether an account exists. The browser
+   * offers whatever discoverable credential it holds.
+   */
+  async signInWithPasskey(): Promise<void> {
+    this.passkeyError.set('');
+    this.passkeyBusy.set(true);
+    try {
+      const returnUrl = this.effectiveReturnUrl() ?? this.config.defaultRedirectUrl;
+      const result = await this.authService.signInWithPasskey();
+
+      if (result.success) {
+        await this.router.navigateByUrl(returnUrl);
+        return;
+      }
+
+      // Dismissing the authenticator prompt is "not now", not a failure — the same reasoning that
+      // leaves popup_closed alone above.
+      if (result.error === 'cancelled') return;
+
+      this.passkeyError.set(result.error === 'locked_out' ? 'auth.lockedOut' : 'auth.passkeyFailed');
+    } finally {
+      this.passkeyBusy.set(false);
+    }
   }
 }
 

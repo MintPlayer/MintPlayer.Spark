@@ -1,0 +1,49 @@
+<div class="d-flex justify-content-center">
+  <bs-card style="width: 100%; max-width: 640px;">
+    <bs-card-header>
+      <h3 class="mb-0">{{ 'auth.passkeysTitle' | t }}</h3>
+    </bs-card-header>
+    <div class="p-4">
+      @if (errorKey()) {
+        <bs-alert [type]="colors.danger" class="mb-3">{{ errorKey() | t }}</bs-alert>
+      }
+
+      @if (!supported()) {
+        <!-- Shown instead of the enroll button, never alongside it: offering a ceremony this
+             browser cannot start would fail at the moment of the click. -->
+        <bs-alert [type]="colors.warning">{{ 'auth.passkeyUnsupported' | t }}</bs-alert>
+      } @else {
+        <p class="text-muted">{{ 'auth.passkeysDescription' | t }}</p>
+
+        @if (loading()) {
+          <bs-spinner></bs-spinner>
+        } @else {
+          @for (passkey of passkeys(); track passkey.id) {
+            <div class="d-flex align-items-center justify-content-between border-bottom py-2">
+              <div>
+                <div>{{ passkey.name || ('auth.passkeyUnnamed' | t) }}</div>
+                <small class="text-muted">
+                  {{ 'auth.passkeyAdded' | t }} {{ passkey.createdAt }}
+                  @if (passkey.isBackedUp) {
+                    · {{ 'auth.passkeySynced' | t }}
+                  }
+                </small>
+              </div>
+              <button type="button" class="btn btn-outline-danger btn-sm"
+                      [disabled]="busy()" (click)="remove(passkey)">
+                {{ 'auth.passkeyRemove' | t }}
+              </button>
+            </div>
+          } @empty {
+            <bs-alert [type]="colors.info">{{ 'auth.passkeysNone' | t }}</bs-alert>
+          }
+
+          <button type="button" class="btn btn-primary mt-3"
+                  [disabled]="busy()" (click)="register()">
+            {{ 'auth.passkeyAdd' | t }}
+          </button>
+        }
+      }
+    </div>
+  </bs-card>
+</div>

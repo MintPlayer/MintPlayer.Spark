@@ -185,6 +185,30 @@ function isProvider(
  * they exist so the common case does not require knowing the scheme string, not because the library
  * has an opinion about which providers exist.
  */
+/**
+ * Mounts the passkey management page.
+ *
+ * Independent of every other feature here, and of the server's `SparkLocalCredentials`: a passkey is
+ * a passwordless credential, so the applications most likely to want this page are exactly the ones
+ * that mount no password pages at all. It pairs with `SparkPasskeys.Enabled` on the server.
+ *
+ * ⚠️ The page assumes a signed-in user — enrollment adds a credential to an existing account, it
+ * cannot create one. Mount it inside the application's authenticated area, or behind
+ * `sparkAuthGuard`; mounting it on the public sign-in path shows an empty list to a visitor who
+ * cannot act on it.
+ */
+export function withPasskeys(entry?: SparkAuthRouteEntry): SparkAuthRoutesFeature {
+  const passkeys = entryPath(entry, 'passkeys');
+
+  return {
+    paths: { passkeys: '/' + passkeys },
+    children: [
+      child(entry, passkeys,
+        () => import('@mintplayer/ng-spark-auth/passkeys').then(m => m.SparkPasskeysComponent)),
+    ],
+  };
+}
+
 export function externalProvider(
   scheme: string,
   presentation?: Omit<SparkExternalProviderPresentation, 'scheme'>,

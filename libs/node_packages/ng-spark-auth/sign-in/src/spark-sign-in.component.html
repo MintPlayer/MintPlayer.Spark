@@ -21,7 +21,22 @@
             </button>
           }
         } @empty {
-          <bs-alert [type]="colors.warning" class="mb-0">{{ 'auth.noSignInMethods' | t }}</bs-alert>
+          @if (!passkeysAvailable()) {
+            <bs-alert [type]="colors.warning" class="mb-0">{{ 'auth.noSignInMethods' | t }}</bs-alert>
+          }
+        }
+
+        <!-- Guarded on the server's capability *and* browser support, both resolved into
+             passkeysAvailable(). A passkey needs no provider button and no username field: the
+             browser offers whatever discoverable credential it holds for this site. -->
+        @if (passkeysAvailable()) {
+          @if (passkeyError()) {
+            <bs-alert [type]="colors.danger" class="mb-2">{{ passkeyError() | t }}</bs-alert>
+          }
+          <button type="button" class="btn btn-outline-secondary w-100 mb-2"
+                  [disabled]="passkeyBusy()" (click)="signInWithPasskey()">
+            <i class="bi bi-fingerprint me-2"></i>{{ 'auth.signInWithPasskey' | t }}
+          </button>
         }
 
         <!-- Two conditions, not one. The server may still accept passwords while this app chose not
