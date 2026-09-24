@@ -199,15 +199,13 @@ public class PasskeyCeremonyStateTests : SparkTestDriver
     }
 
     /// <summary>
-    /// SP3, measured 2026-09-24. The handler resolves the user and then asks for their existing
-    /// passkeys, to populate <c>excludeCredentials</c> so the same authenticator cannot enroll
-    /// twice. Spark's <c>UserStore</c> does not implement <c>IUserPasskeyStore</c> yet, so that
-    /// surfaces as <c>NotSupportedException</c> — which is the proof the store sits on the
-    /// enrollment path, not an incidental failure. Note the contrast with the tests above, which
-    /// pass a user id that does not resolve and therefore never reach the store.
-    ///
-    /// ⚠️ M2 flips this test: once the store implements the interface, assert the options JSON
-    /// carries <c>excludeCredentials</c> instead. It failing is the signal to rewrite it.
+    /// SP3, measured 2026-09-24 and rewritten by M2 as planned. The handler resolves the user and
+    /// then asks for their existing passkeys, to populate <c>excludeCredentials</c> so the same
+    /// authenticator cannot enroll twice. Before M2 this threw
+    /// <c>NotSupportedException: Store does not implement IUserPasskeyStore&lt;TUser&gt;</c>, which
+    /// is what established that the store sits on the enrollment path rather than behind it. Note
+    /// the contrast with the tests above, which pass a user id that does not resolve and therefore
+    /// never reach the store at all.
     /// </summary>
     [Fact]
     public async Task Creation_options_for_a_real_user_consult_the_passkey_store()
@@ -226,7 +224,8 @@ public class PasskeyCeremonyStateTests : SparkTestDriver
 
         // If the handler consults the store, this throws NotSupportedException today, and the
         // assertion message carries the answer either way. M2 depends on knowing which.
-        body.Should().Contain("Store does not implement IUserPasskeyStore",
-            "the handler asks for the user's existing passkeys, so the store is on the enrollment path");
+        body.Should().NotStartWith("THREW", $"the store now implements IUserPasskeyStore — got: {body}");
+        body.Should().Contain("excludeCredentials",
+            "the handler asks the store for the user's existing passkeys, so the store is on the enrollment path");
     }
 }
