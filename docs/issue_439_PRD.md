@@ -3,10 +3,13 @@
 Issue: [#439](https://github.com/MintPlayer/MintPlayer.Spark/issues/439) — "passkeys - already
 supported?". The issue body is empty; §1 below is what it should say.
 
-**Status: implemented.** See [`issue_439_plan.md`](issue_439_plan.md) for milestone-by-milestone
-state, what was deliberately left undone (SP2, SP4, F1), and the one deviation from this document
-(no `Manage/Passkeys` right — it would have enforced nothing). User-facing documentation is
+**Status: implemented, every spike closed.** See [`issue_439_plan.md`](issue_439_plan.md) for
+milestone-by-milestone state, the one thing still deferred (F1), and the one deviation from this
+document (no `Manage/Passkeys` right — it would have enforced nothing). User-facing documentation is
 [`guide-passkeys.md`](guide-passkeys.md).
+
+⚠️ Two claims in this document were corrected after the fact, both marked inline: §5.1's reason for
+the compare/exchange reservation, and §5.10's `security.json` right.
 
 ---
 
@@ -284,11 +287,21 @@ public List<SparkUserPasskey> Passkeys { get; set; } = [];
 grow the `Users` document.
 
 **`FindByPasskeyIdAsync(byte[] credentialId)` is the hard part**, because it is a *global* lookup
-across all users, from a value embedded in a child collection. Three options:
+across all users, from a value embedded in a child collection.
+
+⚠️ **Corrected after reading the framework source:** this is called on the **enrollment** path, not on
+sign-in. `PasskeyHandler` step 26 uses it to refuse a credential id already registered to anybody; the
+assertion path resolves the user from the user handle via `FindByIdAsync` instead, so sign-in never
+queries by credential id. The conclusion below is unchanged — it just rests on uniqueness rather than
+on sign-in latency, and that distinction matters: "it's only for sign-in" would make replacing the
+reservation with an index look safe, and the resulting failure would be a duplicate registration
+nobody sees.
+
+Three options:
 
 | Option | Why not |
 |---|---|
-| `Query<TUser>().Where(u => u.Passkeys.Any(p => p.CredentialId == id))` | Relies on a RavenDB auto-index over an embedded byte array; the store already documents (`UserStore.cs:370`, `:525`) that Raven cannot auto-index `.Any()` over multiple fields, and this is an **index read on the sign-in hot path** — stale results mean a valid passkey is rejected. |
+| `Query<TUser>().Where(u => u.Passkeys.Any(p => p.CredentialId == id))` | Relies on a RavenDB auto-index over an embedded byte array; the store already documents (`UserStore.cs:370`, `:525`) that Raven cannot auto-index `.Any()` over multiple fields — and a stale result here is a **silent duplicate registration**, not a visible error. |
 | A `SparkIndexCreationTask` over the collection | Correct, but still eventually consistent, and `libs/authorization/` deliberately contains no index classes today. |
 | **Compare/exchange reservation** | **Chosen.** Strongly consistent, cluster-safe, and *the same idiom the store already uses for email* (`UserStore.cs:33`, `:614-615`, `:246-262` — which explicitly reads the reservation and then `LoadAsync`es, to avoid a stale-index read). It buys global uniqueness for free. |
 

@@ -5,7 +5,8 @@ PRD: [`issue_439_PRD.md`](issue_439_PRD.md). Issue:
 the PRD.
 
 Status: **implemented.** Every milestone M1–M11 is done, including M7b. SP1 and SP3 were run and
-answered; **SP2 and SP4 were not run** — see the spike table and *What is not done* below.
+answered, SP2 was resolved from the framework source without running it, and **SP4 is built** — the
+passkey ceremony now runs in a real browser against a virtual authenticator.
 
 Suites green: **2478 server** (7m06s), **118 `ng-spark-auth`**, 16 entry points built. All four apps
 pass `--spark-verify-model` and `--spark-verify-security`.
@@ -15,7 +16,7 @@ pass `--spark-verify-model` and `--spark-verify-security`.
 | **SP1** — `SignInManager` state under Spark's wiring | ✅ **Passes. D1 stands.** `MakePasskeyCreationOptionsAsync` emits `Identity.TwoFactorUserId=CfDJ8…` (the `CfDJ8` prefix is DataProtection's magic header) and the state round-trips: without the cookie attestation reports "no passkey attestation is underway", with it the failure reason changes. Spark writes no cryptographic code. |
 | **SP2** — sign-count regression | ✅ **Answered from the framework source, no authenticator needed.** `PasskeyHandler` fails the assertion when the incoming count is `<=` the stored one, and skips the check when both are zero — exactly the rule the PRD specified. The advanced value is persisted through `SignInManager` → `UserManager.AddOrUpdatePasskeyAsync` → our store → `UpdateUserAsync`. Spark needs no check of its own. |
 | **SP3** — which store methods the handler calls | ✅ **Answered: the store is on the enrollment path.** For a user id that does not resolve, no store call happens. For a **real** user the handler asks for existing passkeys to populate `excludeCredentials` and throws `NotSupportedException: Store does not implement IUserPasskeyStore<TUser>.` **M2 is therefore a hard prerequisite for M4, not merely a sequencing preference.** |
-| **SP4** — Playwright virtual authenticator | ⏳ **Not run**, and it stayed not-run. See *What is not done*. |
+| **SP4** — Playwright virtual authenticator | ✅ **Built, and it works.** `VirtualAuthenticator` attaches one over CDP; `PasskeyCeremonyTests` enrolls a passkey and signs in with it, no username and no password. The credential is asserted **on the device** via `WebAuthn.getCredentials`, not just in our database. Fleet gained passkeys to host it. |
 | **R5** — ceremony cookie attributes | ✅ **Satisfied by the framework.** Over HTTPS the cookie carries `HttpOnly`, `Secure` and `SameSite`. ⚠️ Over plain HTTP `Secure` is absent — that is `SameAsRequest` behaving correctly, and asserting it on an http request pins the wrong contract. The test requests over HTTPS deliberately. |
 
 Tests: `tests/MintPlayer.Spark.Tests/Authorization/Extensions/PasskeyCeremonyStateTests.cs`. The SP3
@@ -52,13 +53,6 @@ counter. `UserStorePasskeyTests.Updating_a_passkey_advances_the_mutable_fields_o
 
 **Spark adds no sign-count check of its own, deliberately.** Duplicating the framework's would risk
 diverging from it.
-
-### SP4 / the E2E test
-
-**Not run.** Playwright's CDP virtual-authenticator domain is available in the bundled typings, but
-wiring it up is a piece of work in its own right, and the integration tests cover every server-side
-branch that does not require a real authenticator. AC4 (end-to-end sign-in without GitHub) therefore
-rests on the unit and integration coverage rather than on a browser.
 
 ### F1 — CodeCoverage's antiforgery is still `WarnOnly`
 
@@ -174,19 +168,40 @@ between them is the finding:
 **Consequence: M2 is a hard prerequisite for M4**, not a sequencing preference. No passkey endpoint
 returns anything useful until `UserStore` implements the interface.
 
-⏳ **Still open:** whether `PerformAssertionAsync` resolves the user through `FindByPasskeyIdAsync`.
-That cannot be measured without a real assertion, so it rides with SP2/SP4. PRD §5.1 assumes it does,
-and that assumption is *why* the design pays for compare/exchange instead of an index — if it turns
-out false, the reservation is only a uniqueness guard and a cheaper shape may do.
+✅ **Answered, and it corrects PRD §5.1.** `PerformAssertionAsync` does **not** resolve the user
+through `FindByPasskeyIdAsync`. For a discoverable credential it requires the user handle and calls
+`FindByIdAsync(userHandle)` — a direct load by document id. `FindByPasskeyIdAsync` is called on the
+**attestation** path instead, at step 26, to verify the credential id is not already registered to
+anyone.
 
-### SP4 — Is a Playwright CDP virtual authenticator usable here? *(gates the E2E in M11)*
+So the PRD's stated reason for compare/exchange — "a stale index on the sign-in path would reject a
+valid passkey" — is wrong; sign-in never queries by credential id. ⚠️ **The design is still right, for
+a different reason:** step 26 is a global uniqueness check that runs on every enrollment, and a stale
+index *there* would let the same credential be registered to two accounts. Compare/exchange is
+strongly consistent, so it cannot.
 
-`WebAuthn.addVirtualAuthenticator` is present in the bundled CDP typings. Confirm the bundled Chromium
-exposes the domain and that a scripted enroll-then-sign-in round trip is achievable.
+Worth recording because the wrong rationale invites the wrong optimisation: someone reading "it's
+only for sign-in" might replace the reservation with an index, and the failure would be a silent
+duplicate registration rather than a visible error.
 
-**Decides:** whether AC4 gets an end-to-end proof or only integration coverage.
+### SP4 — Is a Playwright CDP virtual authenticator usable here? *(gates the E2E in M11)* — ✅ yes
 
-⚠️ E2E shares **one** rate-limit bucket (150/10s on 127.0.0.1) — budget the ceremony's requests.
+`WebAuthn.addVirtualAuthenticator` works against the bundled Chromium, and the scripted
+enroll-then-sign-in round trip runs. AC4 has an end-to-end proof rather than integration coverage
+alone. Shipped as `_Infrastructure/VirtualAuthenticator.cs` + `PasskeyCeremonyTests.cs`, with Fleet
+enabling passkeys to host it.
+
+⚠️ The authenticator's CDP options must agree with the `IdentityPasskeyOptions` Spark pins, or every
+ceremony fails for reasons that look like product bugs: `hasResidentKey` (sign-in is
+discoverable-only and sends no username), `hasUserVerification` + `isUserVerified` (the server asks
+for `userVerification: "required"`), `automaticPresenceSimulation` (a consent prompt blocks forever
+in CI).
+
+⚠️ E2E shares **one** rate-limit bucket (150/10s on 127.0.0.1) — which is why this is three tests and
+does its setup through the API rather than by clicking.
+
+**Found while writing it:** `/spark/auth/logout` really is antiforgery-enforced — a bare
+`page.APIRequest.PostAsync` with no `X-XSRF-TOKEN` is refused. The test clears cookies instead.
 
 ### Not spiked, deliberately
 
@@ -330,11 +345,12 @@ pass. Strings come from `GET /spark/translations`, not client constants.
 ### M11 — Tests, docs, demo, version bumps (runs last)
 
 The single batched suite sweep: server tests, `ng-spark` vitest, generators, protocol client, plus
-`--spark-verify-model` and `--spark-verify-security` on all four apps. Test inventory is PRD §10; E2E
-depends on SP4.
+`--spark-verify-model` and `--spark-verify-security` on all four apps. Test inventory is PRD §10; the
+E2E ceremony landed with SP4.
 
-Enable passkeys on one demo app (HR or Fleet — they already mount `withLocalLogin()`) so the feature
-has a non-production exercise path.
+Passkeys are enabled on **both** demo apps, and for different reasons: HR exercises them alongside
+passwords (`LocalCredentials.Full`), which neither production app does, and Fleet hosts the E2E
+because it is what the Playwright harness drives.
 
 Docs per PRD §11. Version bumps per *Shape of the work*.
 

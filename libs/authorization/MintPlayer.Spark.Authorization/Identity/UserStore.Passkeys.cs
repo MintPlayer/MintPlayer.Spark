@@ -89,9 +89,14 @@ public partial class UserStore<TUser>
     /// <summary>
     /// Resolves a credential id to its owner.
     /// <para>
-    /// This is the sign-in path for a discoverable credential, so it reads the compare/exchange
-    /// value and then loads by id — strongly consistent — rather than querying an index. The same
-    /// reasoning as <c>FindByEmailAsync</c>: a stale index here rejects a valid passkey.
+    /// ⚠️ Called on the <b>enrollment</b> path, not on sign-in. <c>PasskeyHandler</c> uses it to
+    /// refuse a credential id that is already registered to anybody; an assertion resolves the user
+    /// from the user handle via <c>FindByIdAsync</c> and never queries by credential id.
+    /// </para>
+    /// <para>
+    /// That is why it reads the compare/exchange value and then loads by id — strongly consistent —
+    /// rather than querying an index. A stale index here would not slow a sign-in down, it would let
+    /// the same credential be registered to two accounts, silently.
     /// </para>
     /// </summary>
     public async Task<TUser?> FindByPasskeyIdAsync(byte[] credentialId, CancellationToken cancellationToken)
