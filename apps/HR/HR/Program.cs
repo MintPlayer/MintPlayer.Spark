@@ -35,8 +35,15 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 
     // Explicit since preview.60: the default is now Disabled, matching the client's opt-in
     // routes. HR mounts the full password family, so it says so.
+    // Passkeys alongside passwords — the other shape worth exercising. CodeCoverage runs them with
+    // LocalCredentials Disabled, HR runs them with Full; the two options are independent and both
+    // combinations have to work.
     spark.AddAuthentication<SparkUser>(
-        configure: auth => auth.LocalCredentials = SparkLocalCredentials.Full);
+        configure: auth =>
+        {
+            auth.LocalCredentials = SparkLocalCredentials.Full;
+            auth.Passkeys = SparkPasskeys.Enabled;
+        });
 
     // HR doubles as the identity provider: it serves /connect/* and administers its own clients
     // and scopes through the PersistentObject screens (see HRContext). Issuer is pinned rather

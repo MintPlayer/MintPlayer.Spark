@@ -27,6 +27,7 @@ public partial class UserStore<TUser> :
     IUserLoginStore<TUser>,
     IUserAuthenticationTokenStore<TUser>,
     IUserPhoneNumberStore<TUser>,
+    IUserPasskeyStore<TUser>,
     IQueryableUserStore<TUser>
     where TUser : SparkUser
 {
@@ -162,6 +163,10 @@ public partial class UserStore<TUser> :
         {
             await DeleteEmailReservationAsync(user.NormalizedEmail, cancellationToken);
         }
+
+        // Passkeys hold reservations of their own. Skipping this would burn every one of the user's
+        // credential ids permanently and leave them pointing at a deleted document.
+        await DeleteAllPasskeyReservationsAsync(user, cancellationToken);
 
         Session.Delete(user);
         await Session.SaveChangesAsync(cancellationToken);

@@ -15,4 +15,16 @@ export interface SparkExternalProvider {
 export interface SparkAuthCapabilities {
   localCredentials: 'Full' | 'SignInOnly' | 'Disabled';
   externalProviders: SparkExternalProvider[];
+
+  /**
+   * Whether an anonymous visitor can sign in with a passkey — i.e. whether the server mounted the
+   * passkey sign-in endpoint.
+   *
+   * Necessary but not sufficient for showing the button: the browser must also support the
+   * ceremony. Check `passkeysSupported()` too, or the page offers a flow that cannot start.
+   *
+   * Optional because a server older than this client omits the field entirely, and an absent
+   * capability must read as "no" rather than as `undefined` leaking into a template.
+   */
+  passkeys?: boolean;
 }

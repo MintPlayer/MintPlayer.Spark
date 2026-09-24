@@ -50,4 +50,15 @@ public class SparkUser
     /// </summary>
     public List<string> TwoFactorRecoveryCodes { get; set; } = [];
     public List<SparkUserToken> Tokens { get; set; } = [];
+
+    /// <summary>
+    /// WebAuthn credentials (passkeys) the user has enrolled.
+    /// <para>
+    /// Unlike the other collections here, membership is mirrored outside the document: each entry
+    /// holds a cluster-wide compare/exchange reservation keyed on a hash of its credential id, so
+    /// that a credential can be resolved to its owner without an index read and cannot be claimed by
+    /// two users. Mutating this list directly bypasses that — go through the store.
+    /// </para>
+    /// </summary>
+    public List<SparkUserPasskey> Passkeys { get; set; } = [];
 }

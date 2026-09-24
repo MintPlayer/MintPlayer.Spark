@@ -4,4 +4,5 @@ export * from './auth-capabilities';
 export * from './auth-route-config';
 export * from './return-url';
 export * from './external-login';
+export * from './passkey';
 export * from './sign-in-redirect';

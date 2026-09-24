@@ -1,14 +1,18 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<TargetFramework>net10.0</TargetFramework>
+		<TargetFramework>net11.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 	</PropertyGroup>
 
 	<PropertyGroup>
 		<IsPackable>true</IsPackable>
-		<Version>10.0.1</Version>
+		<!-- 11.0.1, not 11.0.0: that version was published and hard-deleted from nuget.org, and a
+		     deleted version number is reserved forever, so the stable release on .NET 11 has to be
+		     11.0.1. The preview counter is shared with the Spark packages, as it was through the
+		     10.0.0-preview.21..80 train. -->
+		<Version>11.0.1-preview.86</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Extension methods for WebSocket (ReadMessage, WriteMessage, ReadObject, WriteObject)</Description>

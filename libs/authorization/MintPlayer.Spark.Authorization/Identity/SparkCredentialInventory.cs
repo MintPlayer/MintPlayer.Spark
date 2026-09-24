@@ -40,10 +40,49 @@ internal static class SparkCredentialInventory
     internal static bool WouldRemoveLastCredential(
         int externalLoginCount,
         bool hasPassword,
-        SparkLocalCredentials localCredentials)
+        SparkLocalCredentials localCredentials,
+        int passkeyCount = 0,
+        SparkPasskeys passkeys = SparkPasskeys.Disabled)
     {
-        var passwordIsUsable = hasPassword && localCredentials != SparkLocalCredentials.Disabled;
-        var remaining = Math.Max(externalLoginCount - 1, 0) + (passwordIsUsable ? 1 : 0);
+        var remaining = Math.Max(externalLoginCount - 1, 0)
+            + (IsPasswordUsable(hasPassword, localCredentials) ? 1 : 0)
+            + UsablePasskeys(passkeyCount, passkeys);
+
         return remaining == 0;
     }
+
+    /// <summary>
+    /// Whether removing one passkey would leave the account with no way to sign in.
+    /// </summary>
+    /// <remarks>
+    /// The mirror of <see cref="WouldRemoveLastCredential"/>, and it exists for the same reason: an
+    /// account whose only credential is a passkey is exactly the account this guard protects, and
+    /// that shape is reachable as soon as an application offers passkeys without passwords.
+    /// </remarks>
+    internal static bool WouldRemoveLastPasskey(
+        int passkeyCount,
+        int externalLoginCount,
+        bool hasPassword,
+        SparkLocalCredentials localCredentials,
+        SparkPasskeys passkeys)
+    {
+        var remaining = externalLoginCount
+            + (IsPasswordUsable(hasPassword, localCredentials) ? 1 : 0)
+            + Math.Max(UsablePasskeys(passkeyCount, passkeys) - 1, 0);
+
+        return remaining == 0;
+    }
+
+    private static bool IsPasswordUsable(bool hasPassword, SparkLocalCredentials localCredentials)
+        => hasPassword && localCredentials != SparkLocalCredentials.Disabled;
+
+    /// <summary>
+    /// ⚠️ Passkeys count only while the application still mounts the passkey sign-in route, for the
+    /// same reason a password stops counting under <see cref="SparkLocalCredentials.Disabled"/>: an
+    /// enrolled credential with no endpoint to present it to is an artefact, not a way in. Turning
+    /// <see cref="SparkPasskeys"/> off would otherwise let this guard wave through the very lockout
+    /// it exists to prevent.
+    /// </summary>
+    private static int UsablePasskeys(int passkeyCount, SparkPasskeys passkeys)
+        => passkeys == SparkPasskeys.Enabled ? Math.Max(passkeyCount, 0) : 0;
 }

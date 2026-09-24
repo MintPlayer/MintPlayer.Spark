@@ -11,6 +11,13 @@ export interface SparkAuthRouteEntries {
   register?: SparkAuthRouteEntry;
   forgotPassword?: SparkAuthRouteEntry;
   resetPassword?: SparkAuthRouteEntry;
+  /**
+   * Passkey management, mounted by `withPasskeys()`.
+   *
+   * Unlike its siblings this page is for a user who is already signed in, so it belongs behind
+   * whatever guard the application uses for its account area rather than on the public sign-in path.
+   */
+  passkeys?: SparkAuthRouteEntry;
 }
 
 /**

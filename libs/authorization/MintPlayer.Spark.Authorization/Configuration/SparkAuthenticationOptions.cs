@@ -59,4 +59,38 @@ public class SparkAuthenticationOptions
     /// </para>
     /// </remarks>
     public SparkExternalLoginLinking ExternalLoginLinking { get; set; } = SparkExternalLoginLinking.Disabled;
+
+    /// <summary>
+    /// Whether the passkey (WebAuthn) surface is mounted. Defaults to
+    /// <see cref="SparkPasskeys.Disabled"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Independent of <see cref="LocalCredentials"/> on purpose — see <see cref="SparkPasskeys"/>.
+    /// An application with no passwords can still offer passkeys, and that is the common case.
+    /// </para>
+    /// <para>
+    /// ⚠️ Enrollment requires an authenticated session, so enabling this does not give anyone a way
+    /// <em>into</em> an account they could not already reach. A passkey is added to an account that
+    /// already exists; the first credential is still an external login.
+    /// </para>
+    /// </remarks>
+    public SparkPasskeys Passkeys { get; set; } = SparkPasskeys.Disabled;
+
+    /// <summary>
+    /// The relying-party id passkeys are bound to — normally the site's registrable domain.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Leave this null and the RP id is derived from the request <c>Host</c>, which is correct
+    /// until a proxy gets it wrong. A passkey is bound to its RP id <em>for life</em> and there is no
+    /// migration: credentials enrolled under a wrong value are unusable forever, and so are
+    /// correctly-enrolled ones once the value changes. Pinning it converts a silent, permanent
+    /// misconfiguration into a value that can be asserted at startup, which is worth one line of
+    /// configuration.
+    /// <para>
+    /// Dev and production differ legitimately (<c>localhost</c> versus the real domain); a passkey
+    /// enrolled against one is not meant to work against the other.
+    /// </para>
+    /// </remarks>
+    public string? PasskeyServerDomain { get; set; }
 }

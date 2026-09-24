@@ -47,6 +47,17 @@
         </form>
       </bs-form>
 
+      <!-- Passkeys are independent of withLocalLogin()/withExternalLogin(), so the button has to be
+           reachable from whichever sign-in page the app mounted. Without it here, an app using only
+           local login could enroll a passkey and never be able to use it. -->
+      @if (passkeysAvailable()) {
+        <div class="text-center text-muted my-2">{{ 'auth.or' | t }}</div>
+        <button type="button" class="btn btn-outline-secondary w-100"
+                [disabled]="passkeyBusy()" (click)="signInWithPasskey()">
+          <i class="bi bi-fingerprint me-2"></i>{{ 'auth.signInWithPasskey' | t }}
+        </button>
+      }
+
       <!-- Registration is a separate opt-in feature (withRegistration()), so it may not be mounted
            even though this page is. A [routerLink] bound to undefined navigates to the current
            route instead of failing, which reads as a dead link. -->

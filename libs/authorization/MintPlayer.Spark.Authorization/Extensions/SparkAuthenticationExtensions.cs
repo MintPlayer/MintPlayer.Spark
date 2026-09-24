@@ -105,6 +105,11 @@ internal static class SparkAuthenticationExtensions
         // Map Spark auth endpoints (source-generated)
         endpoints.MapSparkAuthEndpoints();
 
+        // Hand-mapped, because the whole group is gated on SparkPasskeys and the generated mapper is
+        // unconditional. MapIdentityApi contributes nothing here — measured, it maps no passkey
+        // route at all.
+        PasskeyEndpoints.MapPasskeyApi<TUser>(endpoints, authGroup);
+
         // External login: initiate OAuth challenge
         authGroup.MapGet("/external-login", async (
             HttpContext context,
@@ -354,6 +359,13 @@ internal static class SparkAuthenticationExtensions
             .GetService<IOptions<SparkAuthenticationOptions>>()?.Value.ExternalLoginLinking
             ?? SparkExternalLoginLinking.Disabled;
 
+        // A passkey is a credential too, so it counts toward "is this the last way in". Without
+        // this, an account holding a working passkey would be refused permission to unlink its only
+        // external login — the guard failing closed, but wrongly.
+        var passkeys = endpoints.ServiceProvider
+            .GetService<IOptions<SparkAuthenticationOptions>>()?.Value.Passkeys
+            ?? SparkPasskeys.Disabled;
+
         if (linking == SparkExternalLoginLinking.Disabled)
             return;
 
@@ -373,7 +385,8 @@ internal static class SparkAuthenticationExtensions
             // "can I remove *this* one" — and it is served to the client so the UI can disable the
             // button instead of offering an action that will be refused.
             var canUnlink = !SparkCredentialInventory.WouldRemoveLastCredential(
-                logins.Count, hasPassword, localCredentials);
+                logins.Count, hasPassword, localCredentials,
+                (await userManager.GetPasskeysAsync(user)).Count, passkeys);
 
             var external = await schemes.GetAllSchemesAsync();
             var linked = logins.Select(l => l.LoginProvider).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -416,7 +429,8 @@ internal static class SparkAuthenticationExtensions
             // provider left to prove ownership, and no self-service route back. Identity will
             // happily do it.
             if (SparkCredentialInventory.WouldRemoveLastCredential(
-                    logins.Count, await userManager.HasPasswordAsync(user), localCredentials))
+                    logins.Count, await userManager.HasPasswordAsync(user), localCredentials,
+                    (await userManager.GetPasskeysAsync(user)).Count, passkeys))
             {
                 return Results.BadRequest(new { error = ExternalLoginErrors.LastCredential });
             }

@@ -1,14 +1,14 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <OutputType>Library</OutputType>
 
     <!-- NuGet Package Metadata -->
     <PackageId>MintPlayer.Spark.Client</PackageId>
-    <Version>10.0.0-preview.85</Version>
+    <Version>11.0.0-preview.85</Version>
     <Authors>MintPlayer</Authors>
     <Company>MintPlayer</Company>
     <Description>Typed C# client for consuming MintPlayer.Spark backend APIs.</Description>

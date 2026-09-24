@@ -114,7 +114,7 @@ that swap would fail the suite rather than pass quietly.
 | `Identity.Application` | `AddIdentityApiEndpoints` via `spark.AddAuthentication<TUser>()` | Session cookie | **Yes** | Yes |
 | `Identity.Bearer` | same | `Bearer` access token | No | Yes |
 | `Identity.External` | same | Transient cookie during an OAuth round trip | — | No |
-| `Identity.TwoFactorUserId` | same | Cookie holding a **partially** authenticated user between password and second factor | — | **No** |
+| `Identity.TwoFactorUserId` | same | Cookie holding a **partially** authenticated user between password and second factor — and, since passkeys, the in-flight WebAuthn ceremony state (see [passkeys](guide-passkeys.md)) | — | **No** |
 | `Identity.TwoFactorRememberMe` | same | "Don't ask again on this device" cookie | — | No |
 | External providers (GitHub, Google, Microsoft, Apple) | `configureProviders` on `spark.AddAuthentication<TUser>()`; GitHub via `GitHubAuthenticationExtensions.cs` | OAuth round trip; signs into `Identity.External` (`GitHubAuthenticationExtensions.cs:32`) | — | No — challenge-only; never authenticates an incoming Spark request |
 
@@ -125,6 +125,17 @@ kind of caller:
 |---|---|---|---|---|
 | `Spark:ModuleCertificate` | `spark.AddModuleCertificateAuthentication()` (Replication) | Client certificate, identity from `CN`, pinned per module | No | Yes |
 | `Spark:JwtBearer` | `spark.AddJwtBearerCredential(...)` (Authorization) | OAuth2/OIDC access token from a configured authority | No | Yes |
+
+### Passkeys are a credential, not a scheme
+
+A passkey does not add a scheme. `POST /spark/auth/passkeys/sign-in` verifies the assertion and then
+signs the user into `Identity.Application` exactly as a password or an external login would, so
+everything downstream — ambience, the composite handler, `security.json` — is unchanged.
+
+⚠️ What *is* worth knowing: passkeys are gated by their own `SparkPasskeys` option and **not** by
+`SparkLocalCredentials`. That option means email and password; a passkey is passwordless, and the
+applications most likely to want one are exactly those running `LocalCredentials = Disabled`. See
+[passkeys](guide-passkeys.md).
 
 ### Why those two are non-ambient — and why that is not a general rule
 

@@ -40,11 +40,18 @@ internal sealed class GetAuthCapabilities : IGetEndpoint, IMemberOf<SparkAuthGro
             : !mapped.Contains("/spark/auth/register") ? SparkLocalCredentials.SignInOnly
             : SparkLocalCredentials.Full;
 
+        // Derived, for the same reason as the mode above: the sign-in page renders a passkey button
+        // from this flag, and a page offering a ceremony whose endpoint was never mapped is a dead
+        // button. Keyed on the sign-in route rather than the enrollment one — this answers "can an
+        // anonymous visitor sign in with a passkey", which is the question the sign-in page asks.
+        var passkeys = mapped.Contains("/spark/auth/passkeys/sign-in");
+
         var providers = await ExternalAuthenticationSchemes.GetInteractiveAsync(services);
 
         return Results.Ok(new
         {
             localCredentials = localCredentials.ToString(),
+            passkeys,
             externalProviders = providers
                 .Select(scheme => new { scheme = scheme.Name, displayName = scheme.DisplayName })
                 .ToArray(),

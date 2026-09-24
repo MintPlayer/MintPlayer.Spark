@@ -72,6 +72,8 @@ internal static class LocalCredentialEndpointFilter
         var throwaway = new UnpublishedEndpointRouteBuilder(endpoints.ServiceProvider);
         StampAntiforgery(throwaway.MapGroup("/spark/auth").MapIdentityApi<TUser>());
 
+        GuardAgainstUnrecognizedIdentityRoutes(throwaway);
+
         // Materializing here runs the group conventions, including the antiforgery stamping above,
         // so the metadata is already on the endpoints being copied across.
         var kept = throwaway.DataSources
@@ -80,6 +82,64 @@ internal static class LocalCredentialEndpointFilter
             .ToArray();
 
         endpoints.DataSources.Add(new FixedEndpointDataSource(kept));
+    }
+
+    /// <summary>
+    /// The complete set of routes <c>MapIdentityApi</c> contributed when this filter was written,
+    /// measured against <c>Microsoft.AspNetCore.App</c> 10.0.12 by enumerating a live
+    /// <c>EndpointDataSource</c>.
+    /// </summary>
+    private static readonly string[] KnownIdentityApiRoutes =
+    [
+        "/spark/auth/register",
+        "/spark/auth/login",
+        "/spark/auth/refresh",
+        "/spark/auth/confirmEmail",
+        "/spark/auth/resendConfirmationEmail",
+        "/spark/auth/forgotPassword",
+        "/spark/auth/resetPassword",
+        "/spark/auth/manage/2fa",
+        "/spark/auth/manage/info",
+    ];
+
+    /// <summary>
+    /// Fails loudly when <c>MapIdentityApi</c> contributes a route this filter does not recognise.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <see cref="IsAllowed"/> classifies by suffix and ends in <c>return true</c>, so anything
+    /// Microsoft adds in a servicing update is published in <em>every</em> mode, including
+    /// <see cref="SparkLocalCredentials.Disabled"/>. Today that exposes nothing — 10.0.12 maps no
+    /// passkey route, and the list above is the whole surface — but it is exactly the mechanism by
+    /// which a future release could reintroduce a credential surface an application switched off,
+    /// silently and on a patch upgrade.
+    /// </para>
+    /// <para>
+    /// Deliberately a guard rather than an inversion of the filter to deny-by-default. Denying
+    /// unknown routes would silently <em>drop</em> a route Spark ought to carry, trading a loud
+    /// failure for a quiet one — and a quiet one in the authentication surface is the worse of the
+    /// two. This way the upgrade breaks at startup, in one place, with the route named.
+    /// </para>
+    /// </remarks>
+    private static void GuardAgainstUnrecognizedIdentityRoutes(UnpublishedEndpointRouteBuilder throwaway)
+    {
+        var unknown = throwaway.DataSources
+            .SelectMany(source => source.Endpoints)
+            .OfType<RouteEndpoint>()
+            .Select(endpoint => endpoint.RoutePattern.RawText)
+            .Where(raw => raw is not null)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(raw => !KnownIdentityApiRoutes.Contains(raw!, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+
+        if (unknown.Length == 0)
+            return;
+
+        throw new InvalidOperationException(
+            $"MapIdentityApi mapped {unknown.Length} route(s) Spark does not recognise: {string.Join(", ", unknown)}. " +
+            "Spark filters that surface by name, and unrecognised routes are published in every SparkLocalCredentials " +
+            "mode — including Disabled. Classify each one in LocalCredentialEndpointFilter.IsAllowed and add it to " +
+            "KnownIdentityApiRoutes.");
     }
 
     /// <summary>

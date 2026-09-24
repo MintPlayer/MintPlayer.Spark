@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>true</IsPackable>
@@ -15,7 +15,7 @@
 
     <!-- NuGet Package Metadata -->
     <PackageId>MintPlayer.Spark.Testing</PackageId>
-    <Version>10.0.0-preview.84</Version>
+    <Version>11.0.0-preview.84</Version>
     <Authors>MintPlayer</Authors>
     <Company>MintPlayer</Company>
     <Description>Test harness for writing integration tests against MintPlayer.Spark apps: an embedded RavenDB driver (SparkTestDriver), an in-memory Spark host factory (SparkEndpointFactory), an antiforgery-aware HTTP client, JSON fixture seeding, index helpers, and Verify snapshot defaults.</Description>
@@ -42,7 +42,7 @@
   <ItemGroup>
     <!-- TestServer / GetTestClient (SparkEndpointFactory). The harness boots a host directly via
          IHost + TestServer, so it needs TestHost but not the heavier Mvc.Testing/WebApplicationFactory. -->
-    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="10.0.11" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" Version="11.0.0-rc.1.26425.128" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="RavenDB.TestDriver" Version="7.2.6" />
     <PackageReference Include="Verify.Xunit" Version="31.12.5" />

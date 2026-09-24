@@ -19,6 +19,9 @@
     }
     @if (authService.user()?.isAuthenticated) {
       <span class="text-light">{{ authService.user()?.userName }}</span>
+      <!-- Not a programUnits.json entry: the sidebar is deliberately two units, and a credential
+           page is account plumbing rather than a program unit. -->
+      <a class="btn btn-outline-light btn-sm" routerLink="/passkeys">{{ 'auth.passkeysTitle' | t }}</a>
       <button class="btn btn-outline-light btn-sm" (click)="logout()">{{ 'auth.logout' | t }}</button>
     } @else {
       <a class="btn btn-outline-light btn-sm" routerLink="/sign-in">

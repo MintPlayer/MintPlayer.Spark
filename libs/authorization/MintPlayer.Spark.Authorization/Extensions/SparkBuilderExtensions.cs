@@ -52,6 +52,28 @@ public static class SparkBuilderAuthorizationExtensions
         var identityBuilder = builder.Services.AddSparkAuthentication<TUser>(configureIdentity);
         configureProviders?.Invoke(identityBuilder);
 
+        // Pinned explicitly, including where the value equals today's framework default.
+        //
+        // UserVerification is the one that matters: under "preferred" an authenticator may skip the
+        // PIN or biometric and the assertion still verifies, which quietly turns a passkey into a
+        // possession-only credential — anyone holding the unlocked device signs in. "required" is
+        // the current default, and writing it down means a future default change cannot make that
+        // trade on our behalf.
+        //
+        // ResidentKey stays "preferred" because sign-in is discoverable-only: a non-discoverable
+        // credential simply will not be offered, and the user falls back to an external login.
+        builder.Services.Configure<IdentityPasskeyOptions>(passkeyOptions =>
+        {
+            passkeyOptions.UserVerificationRequirement = "required";
+            passkeyOptions.ResidentKeyRequirement = "preferred";
+
+            // Null means "derive the relying-party id from the request Host", which is right until a
+            // proxy is misconfigured — and a wrong RP id is permanent, because a passkey is bound to
+            // it for life. Set it and the value is reviewable in one place.
+            if (!string.IsNullOrWhiteSpace(options.PasskeyServerDomain))
+                passkeyOptions.ServerDomain = options.PasskeyServerDomain;
+        });
+
         // Identity's own two schemes, declared separately rather than as the combined
         // BearerAndApplication scheme. The combination would authenticate a request without saying
         // which half did it, and the antiforgery gate needs exactly that: the cookie is ambient and

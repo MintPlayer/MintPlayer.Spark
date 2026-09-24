@@ -59,7 +59,14 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
     // Explicit since preview.60: LocalCredentials now defaults to Disabled, matching the client's
     // opt-in routes. Fleet's E2E smoke test signs in with a password, so it says Full out loud
     // rather than relying on a default that has moved.
-    options.Authentication = auth => auth.LocalCredentials = SparkLocalCredentials.Full;
+    // Passkeys are on so the E2E suite can drive a real WebAuthn ceremony against a virtual
+    // authenticator. Independent of LocalCredentials above — the two options are unrelated, and Fleet
+    // exercises the both-on combination that neither production app does.
+    options.Authentication = auth =>
+    {
+        auth.LocalCredentials = SparkLocalCredentials.Full;
+        auth.Passkeys = SparkPasskeys.Enabled;
+    };
 
     options.Configure = spark =>
     {

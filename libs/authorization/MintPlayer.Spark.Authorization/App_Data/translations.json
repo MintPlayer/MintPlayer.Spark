@@ -194,6 +194,86 @@
       "en": "No sign-in methods are configured for this application.",
       "fr": "Aucune méthode de connexion n'est configurée pour cette application.",
       "nl": "Er zijn geen aanmeldmethoden geconfigureerd voor deze toepassing."
+    },
+    "or": {
+      "en": "or",
+      "fr": "ou",
+      "nl": "of"
+    },
+    "signInWithPasskey": {
+      "en": "Sign in with a passkey",
+      "fr": "Se connecter avec une clé d'accès",
+      "nl": "Aanmelden met een passkey"
+    },
+    "passkeysTitle": {
+      "en": "Passkeys",
+      "fr": "Clés d'accès",
+      "nl": "Passkeys"
+    },
+    "passkeysDescription": {
+      "en": "A passkey lets you sign in with your device instead of a password. It cannot be phished, and it never leaves your device.",
+      "fr": "Une clé d'accès vous permet de vous connecter avec votre appareil plutôt qu'avec un mot de passe. Elle ne peut pas être hameçonnée et ne quitte jamais votre appareil.",
+      "nl": "Met een passkey meld je je aan met je apparaat in plaats van met een wachtwoord. Hij is niet te phishen en verlaat je apparaat nooit."
+    },
+    "passkeysNone": {
+      "en": "You have not added any passkeys yet.",
+      "fr": "Vous n'avez pas encore ajouté de clé d'accès.",
+      "nl": "Je hebt nog geen passkeys toegevoegd."
+    },
+    "passkeyAdd": {
+      "en": "Add a passkey",
+      "fr": "Ajouter une clé d'accès",
+      "nl": "Passkey toevoegen"
+    },
+    "passkeyRemove": {
+      "en": "Remove",
+      "fr": "Supprimer",
+      "nl": "Verwijderen"
+    },
+    "passkeyUnnamed": {
+      "en": "Unnamed passkey",
+      "fr": "Clé d'accès sans nom",
+      "nl": "Naamloze passkey"
+    },
+    "passkeyAdded": {
+      "en": "Added",
+      "fr": "Ajoutée le",
+      "nl": "Toegevoegd"
+    },
+    "passkeySynced": {
+      "en": "synced across your devices",
+      "fr": "synchronisée entre vos appareils",
+      "nl": "gesynchroniseerd tussen je apparaten"
+    },
+    "passkeyUnsupported": {
+      "en": "This browser cannot use passkeys. Try another sign-in method, or update your browser.",
+      "fr": "Ce navigateur ne prend pas en charge les clés d'accès. Essayez une autre méthode de connexion ou mettez à jour votre navigateur.",
+      "nl": "Deze browser ondersteunt geen passkeys. Probeer een andere aanmeldmethode of werk je browser bij."
+    },
+    "passkeyNoCredential": {
+      "en": "No passkey was provided by your device.",
+      "fr": "Aucune clé d'accès n'a été fournie par votre appareil.",
+      "nl": "Je apparaat heeft geen passkey aangeleverd."
+    },
+    "passkeyLastCredential": {
+      "en": "This is the only way you can sign in, so it cannot be removed. Add another sign-in method first.",
+      "fr": "C'est votre seul moyen de connexion : il ne peut pas être supprimé. Ajoutez d'abord une autre méthode.",
+      "nl": "Dit is je enige manier om aan te melden, dus hij kan niet worden verwijderd. Voeg eerst een andere aanmeldmethode toe."
+    },
+    "passkeyListFailed": {
+      "en": "Your passkeys could not be loaded. Please try again.",
+      "fr": "Vos clés d'accès n'ont pas pu être chargées. Veuillez réessayer.",
+      "nl": "Je passkeys konden niet worden geladen. Probeer het opnieuw."
+    },
+    "passkeyFailed": {
+      "en": "That did not work. Please try again.",
+      "fr": "Cela n'a pas fonctionné. Veuillez réessayer.",
+      "nl": "Dat is niet gelukt. Probeer het opnieuw."
+    },
+    "lockedOut": {
+      "en": "This account is temporarily locked. Please try again later.",
+      "fr": "Ce compte est temporairement verrouillé. Veuillez réessayer plus tard.",
+      "nl": "Dit account is tijdelijk vergrendeld. Probeer het later opnieuw."
     }
   }
 }
