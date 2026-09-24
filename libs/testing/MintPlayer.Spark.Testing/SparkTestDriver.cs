@@ -3,6 +3,8 @@ using MintPlayer.Spark;
 using MintPlayer.Spark.Abstractions;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
+using Raven.Client.Exceptions.Database;
+using Raven.Client.ServerWide.Operations;
 using Raven.Embedded;
 using Raven.TestDriver;
 
@@ -133,15 +135,101 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
             expectedIndexes: _deployedIndexNames,
             cancellationToken: cancellationToken);
 
-    public virtual Task DisposeAsync()
+    /// <summary>
+    /// Drops the test database without waiting for confirmation, then disposes the store.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>This exists to stop teardown failing the suite under load.</b> Without it a full local
+    /// run loses 20-35 tests out of ~2,500 to
+    /// <c>RavenException : TimeoutException: Waited for 00:00:15 for task with index N to complete.
+    /// Last commit index is: M</c> — always in teardown, never the same tests twice, and never the
+    /// tests that were actually changed.
+    /// </para>
+    /// <para>
+    /// <b>The cause is CPU starvation</b>, established by reproducing it on demand rather than by
+    /// reasoning. It needs exactly three ingredients together, and removing any one stops it
+    /// reproducing: a saturated machine, concurrent teardowns (four workers, matching
+    /// <c>maxParallelThreads: 0.5x</c> on eight cores), and — the one that eluded several attempts —
+    /// <b>each database carrying an index, documents and a query</b>. An idle database deletes in
+    /// 0.1 s even on a fully starved machine; one with an index takes <b>21.8 s</b>. Deleting is
+    /// cheap; deleting something the server is still working on is not.
+    /// </para>
+    /// <para>
+    /// ⚠️ That third ingredient is why this is so easy to "disprove" with a microbenchmark. Creating
+    /// and hard-deleting 200 <em>empty</em> databases back to back measures 19 ms at p50 with no
+    /// degradation — which says nothing, because it is missing the ingredient that makes deletion
+    /// expensive.
+    /// </para>
+    /// <para>
+    /// <c>RavenTestDriver</c>'s own <c>AfterDispose</c> handler sends
+    /// <c>DeleteDatabasesOperation(name, hardDelete: true)</c> with no
+    /// <c>timeToWaitForConfirmation</c>, and server-side
+    /// <c>AdminDatabasesHandler.WaitForDeletionToComplete</c> resolves that to a <b>hard-coded</b>
+    /// <c>TimeSpan.FromSeconds(15)</c> — it does <em>not</em> consult
+    /// <c>Cluster.OperationTimeoutInSec</c>, so no server configuration can change it. Sending the
+    /// operation ourselves first is the only way to set it. The driver's delete then runs anyway and
+    /// throws <see cref="DatabaseDoesNotExistException"/>, which its handler explicitly swallows.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>Approaches already measured and rejected — do not re-propose:</b> skipping the delete
+    /// entirely (17% slower overall; the undeleted databases cost more than the deletes saved);
+    /// backgrounding <c>Dispose()</c> in a <c>Task.Run</c> (breaks the suite on an idle machine, 89-147
+    /// unrelated failures varying per run, because <c>Dispose</c> does more than delete and racing it
+    /// against fixture disposal is not safe); serialising deletes behind a <c>SemaphoreSlim</c>
+    /// (teardown 16-19 s → 35-47 s; a client-side queue cannot speed up the server's single apply
+    /// loop); and catching the timeout rather than preventing it.
+    /// </para>
+    /// </remarks>
+    public virtual async Task DisposeAsync()
     {
         // Null-guarded because InitializeAsync can fail before assigning Store — a missing licence,
         // or GetDocumentStore timing out when the shared embedded server is under load. Without
         // the guard this throws a NullReferenceException that REPLACES the real failure in the
         // test output, which is what made those CI timeouts so hard to read.
-        Store?.Dispose();
-        return Task.CompletedTask;
+        if (Store is null)
+            return;
+
+        try
+        {
+            await Store.Maintenance.Server.SendAsync(
+                new DeleteDatabasesOperation(
+                    Store.Database,
+                    hardDelete: true,
+                    fromNode: null,
+                    timeToWaitForConfirmation: DatabaseDeletionBudget));
+        }
+        catch (DatabaseDoesNotExistException)
+        {
+            // Already gone — nothing to wait for.
+        }
+        catch (Exception)
+        {
+            // ⚠️ Never fail a test in teardown over cleanup. The database is in a temp directory on
+            // a server that dies with the process, so the worst case of swallowing this is disk we
+            // were going to reclaim anyway — whereas throwing here REPLACES the real result of the
+            // test that just ran, which is exactly the failure mode this whole change exists to fix.
+        }
+
+        Store.Dispose();
     }
+
+    /// <summary>
+    /// ⚠️ <b>Zero, and it has to be zero</b> — this is not a short timeout, it is an instruction to
+    /// skip the confirmation wait entirely.
+    /// <para>
+    /// Server-side, <c>WaitForDeletionToComplete</c> computes <c>remaining = timeout - elapsed</c>;
+    /// with zero that is already negative, so <c>WaitForIndexNotification</c> is never entered. The
+    /// raft command is still submitted and the database is still deleted — only the acknowledgement
+    /// is skipped, and the exception is never raised rather than caught.
+    /// </para>
+    /// <para>
+    /// ⚠️ Do not "improve" this into a generous timeout. A longer budget does not make the deletion
+    /// faster; it makes teardown <em>block</em> for that long under load instead of failing at 15 s,
+    /// which trades a visible failure for an invisible stall. Waiting is the cost being removed.
+    /// </para>
+    /// </summary>
+    private static readonly TimeSpan DatabaseDeletionBudget = TimeSpan.Zero;
 
     /// <summary>
     /// Writes documents and returns only once RavenDB has indexed them — the deterministic way to
@@ -220,11 +308,50 @@ internal static class LicenseHelper
     private const string EnvVar = "RAVENDB_LICENSE";
     private const string LocalFileName = "raven-license.log";
 
+    /// <summary>
+    /// Resolves the licence from <c>RAVENDB_LICENSE</c> — accepting <b>either</b> the JSON itself or
+    /// a path to a file containing it — and falls back to a repo-root <c>raven-license.log</c>.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ The path form exists because setting the variable to a path is the obvious thing to do and
+    /// used to fail in the worst possible way: the path string was handed to RavenDB *as the
+    /// licence*, and a present-but-invalid licence makes the embedded server refuse to start. Every
+    /// RavenDB test then failed at once, with an error about licensing rather than about the
+    /// variable — so the cause looked like an expired licence rather than a mis-set path.
+    /// <para>
+    /// CI passes the JSON content directly (a GitHub secret cannot be a file on disk), so both forms
+    /// have to work. They are told apart by asking the filesystem, not by parsing: a licence JSON is
+    /// never a path that exists.
+    /// </para>
+    /// </remarks>
     public static string? LoadOrNull()
     {
         var fromEnv = Environment.GetEnvironmentVariable(EnvVar);
         if (!string.IsNullOrWhiteSpace(fromEnv))
+        {
+            var trimmed = fromEnv.Trim();
+
+            // Guard the File.Exists call: a JSON licence contains characters that are illegal in a
+            // path on Windows, and File.Exists is documented to return false rather than throw for
+            // those — but only after a length check, so a long licence would still be fine. Keeping
+            // this explicit means a future change cannot turn "looks like JSON" into an exception.
+            if (!trimmed.StartsWith('{') && trimmed.Length <= 4096)
+            {
+                try
+                {
+                    if (File.Exists(trimmed))
+                        return File.ReadAllText(trimmed);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+                {
+                    // Fall through to treating the value as licence content — which will fail with
+                    // RavenDB's own licence error, and that is the right error to surface for a
+                    // value that is neither readable JSON nor a readable file.
+                }
+            }
+
             return fromEnv;
+        }
 
         var fromFile = TryReadRepoRootLicense();
         return fromFile;

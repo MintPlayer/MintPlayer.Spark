@@ -13,10 +13,11 @@ builder.Services.AddSpark(spark =>
     spark.AddControllers();
     spark.UseControllers();
 
+    // Since 11.0.0 the antiforgery gate is on by default; all this names is which
+    // paths are yours. Assigning REPLACES the defaults (/spark and /connect).
     spark.AddAntiforgeryProtection(a =>
     {
         a.PathPrefixes = ["/spark", "/connect", "/api"];
-        a.RequireAntiforgery = true;
     });
 });
 

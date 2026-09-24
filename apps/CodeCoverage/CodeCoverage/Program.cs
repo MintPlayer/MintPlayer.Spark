@@ -108,14 +108,27 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     spark.AddControllers();
     spark.UseControllers();
 
-    // WarnOnly first: the CI uploader and the badge endpoints are non-browser
-    // callers that carry no antiforgery token, and turning the gate on hard would
-    // break them silently at deploy rather than loudly here. The credential
-    // schemes (covt_, GitHubOidc) are non-ambient and so already exempt; this
-    // logs what a strict gate would have rejected, and the flag flips once the
-    // logs are clean. /connect is named for the same reason it is named in the
-    // rate limiter: the app has no Identity endpoints, but the omission should
-    // not become a surprise if one is ever added.
+    // ⚠️ THIS BLOCK CURRENTLY DOES NOTHING, and the comment that used to live here said otherwise.
+    //
+    // WarnOnly is documented as "ignored when RequireAntiforgery is off", and RequireAntiforgery is
+    // never set — not here, not anywhere outside the tests. So the path-prefix gate protects no
+    // endpoint, and it logs nothing either: the warning lives inside a branch that only runs once
+    // RequireAntiforgery is on. Anyone waiting for "the logs are clean" before flipping the flag
+    // would wait forever, because the logs cannot be anything else.
+    //
+    // Endpoints that matter are therefore protected explicitly instead, by RequireAntiforgeryToken
+    // metadata, which the middleware enforces regardless of this configuration.
+    //
+    // ⚠️ Before turning RequireAntiforgery on, settle the GitHubOidc question. The previous comment
+    // claimed "the credential schemes (covt_, GitHubOidc) are non-ambient and so already exempt",
+    // which is false and contradicted a few hundred lines below: only ApiToken is registered as a
+    // credential scheme, and GitHubOidc is "deliberately NOT" one. A request authenticated by a
+    // workflow JWT records no scheme feature, and HasAmbientCredential treats "nothing recorded" as
+    // ambient — so flipping the flag would very likely start rejecting CI uploads. That is exactly
+    // the breakage WarnOnly was meant to surface, and exactly what it never surfaced.
+    //
+    // /connect is named for the same reason it is named in the rate limiter: the app has no Identity
+    // endpoints, but the omission should not become a surprise if one is ever added.
     spark.AddAntiforgeryProtection(antiforgery =>
     {
         antiforgery.PathPrefixes = ["/spark", "/connect", "/api"];

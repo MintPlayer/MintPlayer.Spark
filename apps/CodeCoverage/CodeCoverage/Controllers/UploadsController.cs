@@ -1,4 +1,5 @@
 using CodeCoverage.ApiTokens;
+using Microsoft.AspNetCore.Antiforgery;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using CodeCoverage.Indexes;
@@ -126,6 +127,15 @@ public partial class UploadsController : ControllerBase
     /// <param name="Features">Names from <see cref="SupportedFeatures"/>.</param>
     public sealed record CapabilitiesResponse(int Contract, string[] Features);
 
+    // ⚠️ Explicitly exempt, not merely unannotated. Spark's gate requires an antiforgery token for
+    // any mutating request under a configured prefix that carries an ambient credential, and this
+    // app names /api as a prefix. The callers here are CI runners presenting a covt_ API token or a
+    // GitHub Actions workflow JWT — neither is a browser, neither has an XSRF-TOKEN cookie to echo,
+    // and neither can be made to POST by a third-party page. The covt_ scheme is registered
+    // non-ambient and would be exempted on that basis anyway; GitHubOidc deliberately is NOT a
+    // credential scheme, so it records nothing and the gate would read it as ambient and reject it.
+    // Stating the exemption removes the dependence on that distinction entirely.
+    [RequireAntiforgeryToken(false)]
     [HttpPost]
     [RequestSizeLimit(MaxReportBytes)]
     public async Task<ActionResult<UploadResponse>> Upload([FromForm] UploadForm form, CancellationToken cancellationToken)
@@ -190,6 +200,8 @@ public partial class UploadsController : ControllerBase
     }
 
     /// <summary>Explicitly closes the run's build instead of waiting for the debounce.</summary>
+    /// <remarks>Exempt for the same reason as <see cref="Upload"/> — a CI caller, never a browser.</remarks>
+    [RequireAntiforgeryToken(false)]
     [HttpPost("finish")]
     public async Task<IActionResult> Finish([FromBody] FinishRequest request, CancellationToken cancellationToken)
     {

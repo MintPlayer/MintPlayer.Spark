@@ -56,11 +56,23 @@ public class ServerSideRowLifecycleTests
         return Uri.UnescapeDataString(value);
     }
 
-    private async Task SignInAsync(HttpClient http)
+    /// <summary>
+    /// ⚠️ Signs in <em>with</em> an antiforgery token. <c>/spark/auth/login</c> is gated since 11.0.0
+    /// (login CSRF), and a browser satisfies that for free because it already holds the cookie from
+    /// loading the app. A raw <see cref="HttpClient"/> has to ask for one first.
+    /// </summary>
+    private async Task SignInAsync(HttpClient http, CookieContainer cookies)
     {
-        var login = await http.PostAsJsonAsync(
-            "/spark/auth/login?useCookies=true",
-            new { email = _fixture.Host.AdminEmailAddress, password = _fixture.Host.AdminPass });
+        var token = await PrimeXsrfAsync(http, cookies);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/spark/auth/login?useCookies=true")
+        {
+            Content = JsonContent.Create(
+                new { email = _fixture.Host.AdminEmailAddress, password = _fixture.Host.AdminPass }),
+        };
+        request.Headers.Add("X-XSRF-TOKEN", token);
+
+        var login = await http.SendAsync(request);
 
         login.StatusCode.Should().Be(HttpStatusCode.OK,
             $"login should succeed. Body: {await login.Content.ReadAsStringAsync()}");
@@ -187,7 +199,7 @@ public class ServerSideRowLifecycleTests
     {
         var (http, cookies) = CreateClient();
         using var _ = http;
-        await SignInAsync(http);
+        await SignInAsync(http, cookies);
         var xsrf = await PrimeXsrfAsync(http, cookies);
 
         var entryTypeId = await ServiceEntryTypeIdAsync(http);
@@ -216,7 +228,7 @@ public class ServerSideRowLifecycleTests
     {
         var (http, cookies) = CreateClient();
         using var _ = http;
-        await SignInAsync(http);
+        await SignInAsync(http, cookies);
         var xsrf = await PrimeXsrfAsync(http, cookies);
 
         var entryTypeId = await ServiceEntryTypeIdAsync(http);
@@ -243,7 +255,7 @@ public class ServerSideRowLifecycleTests
     {
         var (http, cookies) = CreateClient();
         using var _ = http;
-        await SignInAsync(http);
+        await SignInAsync(http, cookies);
         var xsrf = await PrimeXsrfAsync(http, cookies);
 
         var entryTypeId = await ServiceEntryTypeIdAsync(http);
@@ -266,12 +278,12 @@ public class ServerSideRowLifecycleTests
     {
         var (http, cookies) = CreateClient();
         using var _ = http;
-        await SignInAsync(http);
+        await SignInAsync(http, cookies);
         var xsrf = await PrimeXsrfAsync(http, cookies);
 
         var entryTypeId = await ServiceEntryTypeIdAsync(http);
         var carId = await CreateCarWithEntriesAsync(http, xsrf, entryTypeId);
-        var invoicedKey = await RowKeyAsync(http, carId, "Timing belt");
+        var invoicedKey = await RowKeyAsync(http, xsrf, carId, "Timing belt");
 
         var (status, body) = await PostAsync(http, xsrf, "/spark/po/delete-row", Wire.Typed(entryTypeId, new
         {
@@ -294,12 +306,12 @@ public class ServerSideRowLifecycleTests
     {
         var (http, cookies) = CreateClient();
         using var _ = http;
-        await SignInAsync(http);
+        await SignInAsync(http, cookies);
         var xsrf = await PrimeXsrfAsync(http, cookies);
 
         var entryTypeId = await ServiceEntryTypeIdAsync(http);
         var carId = await CreateCarWithEntriesAsync(http, xsrf, entryTypeId);
-        var openKey = await RowKeyAsync(http, carId, "Oil change");
+        var openKey = await RowKeyAsync(http, xsrf, carId, "Oil change");
 
         var (status, _) = await PostAsync(http, xsrf, "/spark/po/delete-row", Wire.Typed(entryTypeId, new
         {
@@ -317,7 +329,7 @@ public class ServerSideRowLifecycleTests
     {
         var (http, cookies) = CreateClient();
         using var _ = http;
-        await SignInAsync(http);
+        await SignInAsync(http, cookies);
         var xsrf = await PrimeXsrfAsync(http, cookies);
 
         var entryTypeId = await ServiceEntryTypeIdAsync(http);
@@ -341,7 +353,7 @@ public class ServerSideRowLifecycleTests
     {
         var (http, cookies) = CreateClient();
         using var _ = http;
-        await SignInAsync(http);
+        await SignInAsync(http, cookies);
         var xsrf = await PrimeXsrfAsync(http, cookies);
         var entryTypeId = await ServiceEntryTypeIdAsync(http);
         var carId = await CreateCarWithEntriesAsync(http, xsrf, entryTypeId);
@@ -365,7 +377,7 @@ public class ServerSideRowLifecycleTests
     {
         var (adminHttp, adminCookies) = CreateClient();
         using var _ = adminHttp;
-        await SignInAsync(adminHttp);
+        await SignInAsync(adminHttp, adminCookies);
         var adminXsrf = await PrimeXsrfAsync(adminHttp, adminCookies);
         var entryTypeId = await ServiceEntryTypeIdAsync(adminHttp);
         var carId = await CreateCarWithEntriesAsync(adminHttp, adminXsrf, entryTypeId);
@@ -392,11 +404,26 @@ public class ServerSideRowLifecycleTests
     }
 
     /// <summary>The stored row key of the entry whose description matches.</summary>
-    private async Task<string> RowKeyAsync(HttpClient http, string carId, string description)
+    /// <remarks>
+    /// ⚠️ Sends an antiforgery token even though this is a <em>read</em>. <c>/spark/po/load</c> carries
+    /// no antiforgery metadata — forging a read gains an attacker nothing, since the same-origin
+    /// policy stops their page seeing the response — but since 11.0.0 Spark checks any mutating-verb
+    /// request under <c>/spark</c> that carries an ambient credential, and this caller is signed in.
+    /// A load is a POST only because it needs a request body, which is what puts it on the wrong side
+    /// of a method-based gate. Without the token the response is an empty-bodied 400 and the failure
+    /// surfaces as <c>JsonException: The input does not contain any JSON tokens</c>, naming neither
+    /// antiforgery nor this method.
+    /// </remarks>
+    private async Task<string> RowKeyAsync(HttpClient http, string xsrf, string carId, string description)
     {
         // A load is a POST with a body now, so this cannot be GetFromJsonAsync any more.
-        using var loadResponse = await http.PostAsJsonAsync(
-            "/spark/po/load", Wire.Typed(CarFixture.TypeId, id: carId));
+        using var loadRequest = new HttpRequestMessage(HttpMethod.Post, "/spark/po/load")
+        {
+            Content = JsonContent.Create(Wire.Typed(CarFixture.TypeId, id: carId)),
+        };
+        loadRequest.Headers.Add("X-XSRF-TOKEN", xsrf);
+
+        using var loadResponse = await http.SendAsync(loadRequest);
         var car = await loadResponse.Content.ReadFromJsonAsync<JsonElement>();
 
         var entries = car.GetProperty("attributes").EnumerateArray()

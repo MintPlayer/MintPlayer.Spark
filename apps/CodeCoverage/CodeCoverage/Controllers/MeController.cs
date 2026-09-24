@@ -1,6 +1,7 @@
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using CodeCoverage.Services;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using MintPlayer.Spark.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -55,7 +56,14 @@ public partial class MeController : ControllerBase
     /// Drops the cached owner set on every forge the signed-in user is linked to and returns the
     /// freshly queried account list (manual counterpart of the 5-min TTL).
     /// </summary>
+    // Method-level, not type-level: the GET above must stay reachable without a token. See the note
+    // on RepoSettingsController.RotateBadgeToken for why this is RequireAntiforgeryToken rather than
+    // MVC's [ValidateAntiForgeryToken], and why it is explicit rather than left to the prefix default.
+    //
+    // Its Spark-custom-action twin, CustomActions/ResyncAction.cs, is already gated this way; the two
+    // routes to the same work should not disagree about who may trigger it.
     [HttpPost("accounts/resync")]
+    [RequireAntiforgeryToken]
     public async Task<ActionResult<AccountsResponse>> Resync(CancellationToken cancellationToken)
     {
         await forges.InvalidateAllAsync(cancellationToken);

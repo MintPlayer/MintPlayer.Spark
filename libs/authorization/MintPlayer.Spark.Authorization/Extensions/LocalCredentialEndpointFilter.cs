@@ -40,11 +40,30 @@ internal static class LocalCredentialEndpointFilter
 
     /// <summary>
     /// Mutating Identity endpoints that Spark defends with double-submit CSRF. Microsoft's defaults
-    /// attach no <see cref="IAntiforgeryMetadata"/>, so Spark stamps it on. <c>/login</c> is excluded
-    /// deliberately: there is no session yet, so there is no XSRF-TOKEN cookie to validate.
+    /// attach no <see cref="IAntiforgeryMetadata"/>, so Spark stamps it on.
+    /// <para>
+    /// ⚠️ <c>/login</c> is on this list, and the reason it is worth spelling out is that it used to
+    /// be excluded — on the stated grounds that "there is no session yet, so there is no XSRF-TOKEN
+    /// cookie to validate". That premise was false. <c>UseSpark()</c> mints an <c>XSRF-TOKEN</c>
+    /// cookie on <em>every</em> response including anonymous ones, so a visitor who has loaded the
+    /// SPA at all is holding an anonymous-bound token, and the login POST carries it.
+    /// </para>
+    /// <para>
+    /// What the exclusion left open is <b>login CSRF</b>: an attacker page POSTs <c>/login</c> with
+    /// the attacker's own credentials, the victim's browser silently acquires a session belonging to
+    /// the attacker, and everything the victim does next — uploading coverage, linking a repository,
+    /// saving a setting — lands in an account the attacker can log into and read. It is the one CSRF
+    /// that is worth mounting against an endpoint nobody is signed in to yet, which is exactly why
+    /// "anonymous" was the wrong reason to skip it.
+    /// </para>
+    /// <para>
+    /// The gate is reachable here because explicit metadata wins over the ambient-credential test —
+    /// see <c>SparkAntiforgeryMiddleware</c>. The anonymous caller has no ambient credential, so
+    /// nothing but this stamp would ever check it.
+    /// </para>
     /// </summary>
     private static readonly string[] AntiforgeryGatedRoutes =
-        ["/manage/2fa", "/manage/info", "/resetPassword", "/forgotPassword", "/logout"];
+        ["/login", "/manage/2fa", "/manage/info", "/resetPassword", "/forgotPassword", "/logout"];
 
     internal static void MapLocalCredentialApi<TUser>(
         this IEndpointRouteBuilder endpoints,

@@ -1,4 +1,5 @@
 using CodeCoverage.Entities;
+using Microsoft.AspNetCore.Antiforgery;
 using CodeCoverage.Forge;
 using CodeCoverage.Ingestion;
 using CodeCoverage.Services;
@@ -77,6 +78,12 @@ public partial class ForkUploadsController : ControllerBase
     /// them apart would turn this into an oracle for which private repositories exist and which
     /// public ones have the app installed — and the caller is anonymous by construction.
     /// </remarks>
+    // ⚠️ Explicitly exempt. This endpoint is anonymous by construction — a fork PR's workflow has no
+    // secrets and no token to present — so there is no ambient credential for a forgery to ride in
+    // the first place, and Spark's gate would not fire on it today. Saying so out loud keeps that
+    // true if the endpoint ever gains authentication: the exemption would then be a decision on the
+    // record rather than an accident of what the gate happens to check.
+    [RequireAntiforgeryToken(false)]
     [HttpPost("{provider}/{owner}/{name}/pull/{number:int}")]
     [RequestSizeLimit(MaxReportBytes)]
     public async Task<IActionResult> UploadFromFork(

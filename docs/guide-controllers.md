@@ -51,17 +51,20 @@ same decision was made by not knowing.
 ## CSRF
 
 Spark's antiforgery gate fires on endpoints carrying `IAntiforgeryMetadata`. `AddControllers()`
-attaches none — and MVC's own `[ValidateAntiForgeryToken]` implements a *different* interface
-(`IAntiforgeryPolicy`, from `Mvc.ViewFeatures`), which this gate never sees. So the obviously-correct
-annotation compiles, reads as protection, and does nothing.
+attaches none, and MVC's own `[ValidateAntiForgeryToken]` does not either — it implements
+`IFilterFactory, IOrderedFilter`, and the filter it resolves from DI carries an
+`IAntiforgeryPolicy` marker that exists only for MVC's own filter resolution. Routing never sees any
+of it. So the obviously-correct annotation compiles, reads as protection, and historically did
+nothing.
 
-Name the paths to protect:
+Since 11.0.0 the gate also fires by default on any mutating request inside `PathPrefixes` that
+carries an ambient credential, so the only thing most applications need to configure is which paths
+count as theirs — the default is Spark's own surfaces, `/spark` and `/connect`:
 
 ```csharp
 spark.AddAntiforgeryProtection(a =>
 {
-    a.PathPrefixes = ["/spark", "/connect", "/api"];
-    a.RequireAntiforgery = true;
+    a.PathPrefixes = ["/spark", "/connect", "/api"];   // assigning REPLACES the defaults
 });
 ```
 
@@ -75,17 +78,25 @@ with no per-endpoint annotation.
 | Anonymous `POST` | no — there is no authority to ride |
 | Anything with explicit metadata | whatever the metadata says, in both directions |
 
-`RequireAntiforgery` defaults to **false** this preview and becomes true at the next major. Find out
-what would break first:
+⚠️ **`RequireAntiforgery` defaults to `true` as of 11.0.0.** It was `false` through the 10.x line, so
+on upgrade a mutating request you map yourself inside those prefixes starts being checked. If that
+breaks something, see what would be rejected before you decide:
 
 ```csharp
-a.RequireAntiforgery = true;
 a.WarnOnly = true;   // logs what would have been rejected, and lets it through
 ```
 
+⚠️ `WarnOnly` only does anything while `RequireAntiforgery` is on — it lives inside that branch. For
+the whole 10.x line it therefore logged nothing at all, so "the log is clean" was never evidence.
+
 Per endpoint, the framework's own `[RequireAntiforgeryToken]` / `[RequireAntiforgeryToken(false)]`
-work in both directions and always win over the default. `[IgnoreAntiforgeryToken]` does **not** —
-wrong interface.
+work in both directions and always win over the default.
+
+⚠️ **`[IgnoreAntiforgeryToken]` works on .NET 11 and did not before.** `AntiforgeryApplicationModelProvider`
+now maps it onto `AntiforgeryMetadata.ValidationNotRequired`, so on a controller it is equivalent to
+`[RequireAntiforgeryToken(false)]`. Prefer the framework attribute anyway, for one concrete reason:
+applying `[ValidateAntiForgeryToken]` and `[RequireAntiforgeryToken]` to the same action **throws at
+startup** on .NET 11, and keeping to one vocabulary is how you avoid meeting that.
 
 This inverts a default rather than stamping metadata because no MVC convention reaches a minimal-API
 `MapPost` you wrote. A metadata-based design would cover controllers and leave the rest silently

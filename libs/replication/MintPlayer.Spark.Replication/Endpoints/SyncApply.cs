@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
@@ -10,6 +11,22 @@ namespace MintPlayer.Spark.Replication.Endpoints;
 internal sealed partial class SyncApply : IPostEndpoint, IMemberOf<SparkSyncGroup>
 {
     public static string Path => "/apply";
+
+    // ⚠️ Deliberately NO RequireAntiforgeryTokenAttribute, and this endpoint briefly carried one.
+    //
+    // The intent was defence in depth: this endpoint lets the caller mutate or delete any document in
+    // any collection, and the only thing standing between a browser and that was one `if` inside the
+    // handler. But explicit metadata is enforced BEFORE authentication, and it applies to anonymous
+    // callers too — so stamping it turned "you presented no module certificate" (401/403) into a bare
+    // 400 for every unauthenticated caller, masking the real reason and breaking the tests that pin
+    // it (CrossModuleSyncTests, ReplicationEndpointAuthTests).
+    //
+    // It is unnecessary as of 11.0.0 regardless. SparkAntiforgeryOptions.RequireAntiforgery now
+    // defaults to true, so a caller who reaches here carrying an AMBIENT credential — the browser
+    // this was worried about — is checked by the default branch without any annotation. A module
+    // presenting its client certificate is non-ambient and exempt either way, and a caller presenting
+    // nothing has no authority to forge and should be told so by the auth check rather than by the
+    // antiforgery gate.
 
     [Inject] private readonly ILoggerFactory loggerFactory;
     [Inject] private readonly IModuleCertificateValidator certificateValidator;

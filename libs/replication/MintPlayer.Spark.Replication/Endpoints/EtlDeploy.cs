@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
@@ -10,6 +11,17 @@ namespace MintPlayer.Spark.Replication.Endpoints;
 internal sealed partial class EtlDeploy : IPostEndpoint, IMemberOf<SparkEtlGroup>
 {
     public static string Path => "/deploy";
+
+    // ⚠️ Deliberately NO RequireAntiforgeryTokenAttribute — same reasoning as SyncApply, and this is
+    // the endpoint where it was most tempting to keep one: it deploys RavenDB ETL tasks from a
+    // caller-supplied JavaScript transform and target URL, which is arbitrary code against the
+    // database pointed anywhere.
+    //
+    // It is still the right call. Explicit metadata is enforced before authentication and applies to
+    // anonymous callers, so it converted "no module certificate" into a bare 400 and hid the actual
+    // refusal. And since 11.0.0 RequireAntiforgery defaults to true, so an ambient-credentialed
+    // caller — the browser this was protecting against — is checked by the default branch anyway,
+    // without depending on the hosting application naming a path prefix.
 
     [Inject] private readonly ILogger<EtlTaskManager> logger;
     [Inject] private readonly EtlTaskManager etlTaskManager;

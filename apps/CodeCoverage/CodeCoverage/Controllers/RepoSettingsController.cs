@@ -2,6 +2,7 @@ using CodeCoverage.Forge;
 using System.Security.Cryptography;
 using CodeCoverage.Entities;
 using CodeCoverage.Services;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MintPlayer.Spark.Services;
@@ -27,7 +28,16 @@ public partial class RepoSettingsController : ControllerBase
     /// (Re)generates the badge token. Rotation invalidates the previous badge
     /// URL immediately; upload tokens are untouched.
     /// </summary>
+    // ⚠️ RequireAntiforgeryToken, not MVC's [ValidateAntiForgeryToken]. Spark's gate reads
+    // IAntiforgeryMetadata; MVC's attribute implements a different interface the gate never sees, so
+    // it compiles, reads as protection, and does nothing (#300).
+    //
+    // Explicit rather than relying on the path-prefix default: that default is inert here, because
+    // the app sets PathPrefixes and WarnOnly but never RequireAntiforgery. Until it does, an
+    // unstamped cookie-authenticated POST is checked by nothing — and this one rotates a token that
+    // breaks every published badge URL, which is worth more than a configuration flag's reach.
     [HttpPost("badge-token")]
+    [RequireAntiforgeryToken]
     public async Task<ActionResult<object>> RotateBadgeToken(string provider, string owner, string name, CancellationToken cancellationToken)
     {
         var repository = await ResolveOwnedRepository(provider, owner, name, cancellationToken);

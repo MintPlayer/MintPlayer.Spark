@@ -256,6 +256,10 @@ public partial class SparkClient : IDisposable
         => PostConversationAsync<PersistentObject?>(
             "/spark/po/load",
             new Dictionary<string, object?> { ["objectTypeId"] = objectTypeId, ["id"] = id },
+            // A read needs no antiforgery token, and /spark/po/load carries an explicit exemption
+            // saying so — which is what keeps this false now that the framework default gates
+            // ambient-credentialed POSTs. Warming up here would cost every reading client a round
+            // trip for a property it does not gain.
             requiresAntiforgery: false,
             async (response, ct) =>
             {
@@ -375,6 +379,7 @@ public partial class SparkClient : IDisposable
                 ["sortColumns"] = sortColumns,
                 ["columns"] = columns,
             },
+            // false for the same reason as /spark/po/load above: a read, explicitly exempt.
             requiresAntiforgery: false,
             async (response, ct) =>
             {

@@ -79,11 +79,10 @@ public class ErrorLeakageTests
         await using var pages = new PageFactory(_fixture);
         var page = await pages.NewPageAsync();
 
-        var login = await page.APIRequest.PostAsync($"{_fixture.Host.FleetUrl}/spark/auth/login?useCookies=true", new()
-        {
-            DataObject = new { email = _fixture.Host.AdminEmailAddress, password = _fixture.Host.AdminPass },
-        });
-        login.Status.Should().Be(200);
+        // Through the shared helper rather than a raw POST: /spark/auth/login is antiforgery-gated
+        // since 11.0.0, so signing in now takes a primed token, and BrowserSignIn is where that lives.
+        await BrowserSignIn.SignInAsync(
+            page, _fixture.Host.FleetUrl, _fixture.Host.AdminEmailAddress, _fixture.Host.AdminPass);
 
         var response = await page.APIRequest.DeleteAsync(
             $"{_fixture.Host.FleetUrl}/spark/lookupref/NoSuchCollection/NoSuchKey");

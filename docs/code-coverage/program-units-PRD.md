@@ -66,6 +66,7 @@ of which carry breaking changes that will only get more expensive to absorb.
   dark sidebar / `#f8f9fa` main and stop there.
 - **Not** rewriting the account or file pages. Only `/home` becomes a composed PO page this round.
 - **Not** adopting `triggersRefresh` (preview.64). Additive, no forms need it.
+- ⚠️ **STALE as of 11.0.0** — `RequireAntiforgery` now defaults to **true**, so the "not turning it on" below is no longer a choice this app makes. CodeCoverage keeps `WarnOnly = true`, which means an *unannotated* `/api` endpoint is logged rather than rejected; all five of its mutating actions are annotated explicitly, so the flag decides nothing for it. See `docs/release-notes-preview-87.md`. Original text follows.
 - **Not** turning on `RequireAntiforgery`. It defaults off this preview and becomes true at the next major;
   we dry-run with `WarnOnly` and record the finding (D6).
 
