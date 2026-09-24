@@ -4,8 +4,20 @@ PRD: [`issue_439_PRD.md`](issue_439_PRD.md). Issue:
 [#439](https://github.com/MintPlayer/MintPlayer.Spark/issues/439) — body is empty; fill it from §1 of
 the PRD.
 
-Status: **not started.** Investigation is complete and the API surface is measured (PRD §3); nothing
-has been implemented.
+Status: **spikes started.** Investigation is complete and the API surface is measured (PRD §3).
+**SP1 and SP3 are done and green**; SP2 and SP4 remain. No feature code is implemented.
+
+| Spike | Result |
+|---|---|
+| **SP1** — `SignInManager` state under Spark's wiring | ✅ **Passes. D1 stands.** `MakePasskeyCreationOptionsAsync` emits `Identity.TwoFactorUserId=CfDJ8…` (the `CfDJ8` prefix is DataProtection's magic header) and the state round-trips: without the cookie attestation reports "no passkey attestation is underway", with it the failure reason changes. Spark writes no cryptographic code. |
+| **SP2** — sign-count regression | ⏳ Not run. Gates M5 / AC8. |
+| **SP3** — which store methods the handler calls | ✅ **Answered: the store is on the enrollment path.** For a user id that does not resolve, no store call happens. For a **real** user the handler asks for existing passkeys to populate `excludeCredentials` and throws `NotSupportedException: Store does not implement IUserPasskeyStore<TUser>.` **M2 is therefore a hard prerequisite for M4, not merely a sequencing preference.** |
+| **SP4** — Playwright virtual authenticator | ⏳ Not run. Gates the E2E in M11. |
+| **R5** — ceremony cookie attributes | ✅ **Satisfied by the framework.** Over HTTPS the cookie carries `HttpOnly`, `Secure` and `SameSite`. ⚠️ Over plain HTTP `Secure` is absent — that is `SameAsRequest` behaving correctly, and asserting it on an http request pins the wrong contract. The test requests over HTTPS deliberately. |
+
+Tests: `tests/MintPlayer.Spark.Tests/Authorization/Extensions/PasskeyCeremonyStateTests.cs` (5 tests,
+green). ⚠️ The SP3 test asserts today's `NotSupportedException` **on purpose** — M2 must flip it to
+assert `excludeCredentials` instead, and its failure is the signal to do so.
 
 ---
 
@@ -55,17 +67,23 @@ Spin a Spark test host with the real auth wiring, call `MakePasskeyCreationOptio
 `Set-Cookie` for `Identity.TwoFactorUserId` is emitted and that
 `PerformPasskeyAttestationAsync` can retrieve it on a second request carrying the cookie.
 
-**Decides:** D1 stands, or the design falls back to option B (own `IDataProtector` wrapper), which adds
-a security-critical unit and its own adversarial tests.
+✅ **RUN 2026-09-24 — passes. D1 stands.** Measured against Spark's real wiring
+(`AddSparkAuthentication<SparkUser>` + `MapSparkIdentityApi`, composite handler and all):
 
-**While you have the `Set-Cookie` in hand, capture its attributes** and settle R5 in the same spike:
-`HttpOnly`, `Secure`, `SameSite` and lifetime. If D1 stands, this cookie is Identity's own, so the
-outcome is either "already correct, assert it" or "needs configuring in Spark's wiring" — and knowing
-which costs nothing extra here.
+- `MakePasskeyCreationOptionsAsync` returns the options JSON and emits
+  `Identity.TwoFactorUserId=CfDJ8…` — DataProtection-protected, as required.
+- Without the cookie, attestation reports *"no passkey attestation is underway"*.
+- With the cookie replayed, that reason disappears and the failure becomes a verification failure —
+  proving the state round-tripped server-side and never through the client.
 
-**Prior evidence:** the investigation observed exactly this `Set-Cookie` under `AddIdentityApiEndpoints`
-in a probe host. That is encouraging, not sufficient — the probe was not Spark's wiring, which layers a
-composite authentication handler (`SparkCompositeAuthenticationHandler`) over the Identity schemes.
+So the fallback to option B (own `IDataProtector` wrapper) is **not needed**, and the security-critical
+unit it would have introduced does not have to exist.
+
+**R5 settled in the same spike.** Over HTTPS the cookie carries `HttpOnly`, `Secure` and `SameSite`, so
+this is Identity's own cookie already configured correctly — assert it, do not configure it. ⚠️ Over
+plain HTTP `Secure` is absent; that is `SameAsRequest` working as intended, and a first pass that
+asserted it on an http request produced a false failure. The test issues an HTTPS request for this
+reason.
 
 ### SP2 — Does `PasskeyHandler` enforce sign-count regression? *(gates M5, AC8)*
 
@@ -86,12 +104,22 @@ Instrument a store stub and run both ceremonies. Establish whether `MakeCreation
 same authenticator twice), and whether `PerformAssertionAsync` resolves the user through
 `FindByPasskeyIdAsync`.
 
-**Decides:** the store's hot-path call pattern, and therefore whether `FindByPasskeyIdAsync` is on the
-sign-in critical path (PRD §5.1 assumes it is — that assumption is *why* the design pays for
-compare/exchange instead of an index).
+✅ **RUN 2026-09-24 — the store is on the enrollment path.** Two measurements, and the contrast
+between them is the finding:
 
-**Fails the design if:** `FindByPasskeyIdAsync` turns out never to be called, in which case the
-reservation is only a uniqueness guard and a cheaper shape may do.
+- A user id that **does not resolve** → no store call, options returned normally. So the handler
+  resolves the user first.
+- A **real** user → `NotSupportedException: Store does not implement IUserPasskeyStore<TUser>.`, i.e.
+  the handler asks for the user's existing passkeys to populate `excludeCredentials`, which is what
+  stops one authenticator enrolling twice.
+
+**Consequence: M2 is a hard prerequisite for M4**, not a sequencing preference. No passkey endpoint
+returns anything useful until `UserStore` implements the interface.
+
+⏳ **Still open:** whether `PerformAssertionAsync` resolves the user through `FindByPasskeyIdAsync`.
+That cannot be measured without a real assertion, so it rides with SP2/SP4. PRD §5.1 assumes it does,
+and that assumption is *why* the design pays for compare/exchange instead of an index — if it turns
+out false, the reservation is only a uniqueness guard and a cheaper shape may do.
 
 ### SP4 — Is a Playwright CDP virtual authenticator usable here? *(gates the E2E in M11)*
 
@@ -126,7 +154,7 @@ back-pointer, and belongs to `Microsoft.Extensions.Identity.Stores`.
 comment explains why: `SparkUser` has no actions class, so no row rule applies and anything declared
 there is readable by anyone who can read a referencing token.
 
-### M2 — `IUserPasskeyStore<TUser>` on `UserStore<TUser>` — *needs SP3*
+### M2 — `IUserPasskeyStore<TUser>` on `UserStore<TUser>` — ✅ *SP3 done; this now blocks M4/M5*
 
 Add the interface at `UserStore.cs:16-30` and implement the five methods.
 
@@ -151,7 +179,7 @@ Add the interface at `UserStore.cs:16-30` and implement the five methods.
   like `localCredentials` already is (`:32-41`), never read from the options object.
 - Mirror the flag on the client type `models/src/auth-capabilities.ts`.
 
-### M4 — Enrollment and management endpoints — *needs SP1*
+### M4 — Enrollment and management endpoints — *needs M2 (measured, SP3); SP1 ✅ done*
 
 Five authenticated routes (PRD §5.3) in `libs/authorization/.../Endpoints/`, source-generated into the
 `/spark/auth` group beside `capabilities` / `me` / `logout` / `csrf-refresh`.
@@ -168,7 +196,7 @@ review: clear the ceremony state in a **`finally`** (R1), map malformed input an
 to a generic `400` with no exception text (R3), and keep every sign-in failure mode
 indistinguishable (R4).
 
-### M5 — Sign-in endpoints — *needs SP1, SP2*
+### M5 — Sign-in endpoints — *needs M2 and SP2; SP1 ✅ done*
 
 `request-options` (anonymous) and `sign-in` (anonymous). `MakePasskeyRequestOptionsAsync(null)`
 **always** — no username parameter, no body-supplied identity (D10), so there is no user-existence
@@ -256,9 +284,10 @@ Docs per PRD §11. Version bumps per *Shape of the work*.
 
 ## Sequencing notes
 
-- **SP1 first, alone.** It gates D1, and D1 is the difference between "Spark writes no crypto" and
-  "Spark writes a data-protection wrapper and has to prove it correct". Do not start M4 before it lands.
-- M1 → M2 → M3 are a straight line; M4/M5 both depend on M3's gating and on SP1.
+- ~~SP1 first, alone.~~ ✅ **Done and passed** — D1 stands, so no data-protection wrapper is needed.
+- **M1 → M2 first, and they are now blocking.** SP3 measured that the handler consults the store for a
+  real user, so **no endpoint works until M2 lands**. M3's gating can proceed in parallel.
+- M4/M5 depend on M2 and on M3's gating. M5 additionally needs SP2.
 - M6 and M7 are independent of the client work and can slot anywhere after M4.
 - **M7b's F1 half runs after M4/M5**, not before — flipping antiforgery to enforcing is worth doing
   once the new endpoints exist, so the verification pass covers them too. Its F2 half (`global.json`)

@@ -238,13 +238,24 @@ argument: the correct amount of bespoke crypto in this feature is zero. Option B
 for one scenario only — a future token-only/cross-origin client where no cookie is available — and if
 we ever take it, the wrapper is the security-critical unit and gets its own adversarial tests.
 
-⚠️ Option A has one sharp edge, and it is a spike (SP1): `SignInManager` stores the state under
-`IdentityConstants.TwoFactorUserIdScheme`. Spark registers Identity through
-`AddIdentityApiEndpoints<TUser>()`, **not** `AddIdentity<TUser,TRole>()`, and the two register
-different scheme sets. If that scheme is absent, the first call throws at runtime rather than at
-startup. Investigation observed a successful `Set-Cookie` under `AddIdentityApiEndpoints`, so the
-expectation is that it works — but "observed once in a probe" is not "asserted by a test", and this
-gates the whole design.
+✅ **SP1 has been run, and option A works.** The sharp edge was that `SignInManager` stores the state
+under `IdentityConstants.TwoFactorUserIdScheme`, while Spark registers Identity through
+`AddIdentityApiEndpoints<TUser>()` rather than `AddIdentity<TUser,TRole>()` — different scheme sets,
+and an absent scheme throws at runtime rather than startup. Measured against Spark's real wiring
+(`tests/…/Authorization/Extensions/PasskeyCeremonyStateTests.cs`):
+
+- `MakePasskeyCreationOptionsAsync` emits `Identity.TwoFactorUserId=CfDJ8…` — the `CfDJ8` prefix is
+  DataProtection's magic header, so the state is protected.
+- Without the cookie, attestation reports *"no passkey attestation is underway"*; with it replayed,
+  that reason disappears. The state round-trips **server-side**, never through the client.
+- Over HTTPS the cookie carries `HttpOnly`, `Secure` and `SameSite` (R5). ⚠️ Over plain HTTP `Secure`
+  is absent — `SameAsRequest` behaving correctly, not a gap.
+
+**Why this is safe here specifically:** CodeCoverage's SPA and its ASP.NET Core host run on the *same
+origin, same port, same URL* (`UseAngularCliServer` proxies the dev server; production serves both
+from one host). A cookie-bound ceremony is therefore same-site by construction, needs no CORS
+allowance, and leaves `ValidateOrigin` at its default. Option B exists only for a hypothetical
+cross-origin or token-only client, which this is not.
 
 ---
 
@@ -293,7 +304,14 @@ credential is new (an update of an existing credential must **not** re-reserve),
 only the email reservation (`UserStore.cs:156-165`); leaving passkey reservations behind would make a
 credential ID permanently unusable and leak a deleted user's document id.
 
-### 5.2 The store
+### 5.2 The store — and it is a hard prerequisite, not a layer
+
+⚠️ **Measured (SP3): no passkey endpoint works until the store implements the interface.** Passing a
+user id that does not resolve produces options normally, but for a *real* user
+`MakePasskeyCreationOptionsAsync` throws `NotSupportedException: Store does not implement
+IUserPasskeyStore<TUser>.` — the handler asks for the user's existing passkeys to populate
+`excludeCredentials`, which is what prevents one authenticator enrolling twice. The store is on the
+enrollment path, not merely behind it.
 
 `UserStore<TUser>` adds `IUserPasskeyStore<TUser>` to its interface list (`UserStore.cs:16-30`) and
 the five methods. `AddOrUpdatePasskeyAsync` is the only non-trivial one — it is an upsert keyed on
@@ -508,11 +526,12 @@ improving on. Each becomes a requirement here rather than a review comment later
   verification and sign-count regression all return the same status and the same body. Distinguishing
   them re-introduces the oracle that D10 removes.
 
-- **R5 — The ceremony cookie is `HttpOnly`, `Secure` and `SameSite=Lax` or stricter, with a lifetime
-  no longer than the ceremony.** `AuthenticatorTimeout` is five minutes (§3.3); the cookie should not
-  outlive it meaningfully. ⚠️ `SecurePolicy` is one of those settings whose framework default is
-  permissive, so this is an assertion to write a test for, not a box to assume is ticked. If SP1 lands
-  D1, this cookie is Identity's own and the audit is of Identity's configuration rather than ours.
+- **R5 — The ceremony cookie is `HttpOnly`, `Secure` and `SameSite=Lax` or stricter.** ✅ **Measured and
+  already satisfied** — with D1 confirmed this is Identity's own cookie, correctly configured, so the
+  job is to *assert* it rather than configure it. ⚠️ Assert it **over HTTPS**: on a plain-HTTP request
+  `Secure` is absent, which is `SameAsRequest` working as intended. A first pass that asserted it on
+  an http request produced a false failure — the kind of thing that gets "fixed" by weakening a real
+  control.
 
 - **R6 — Enrollment refuses a credential ID already bound to any user, without disclosing to whom.**
   Covered by the compare/exchange reservation (§5.1), which fails the write rather than reporting a
@@ -524,7 +543,7 @@ improving on. Each becomes a requirement here rather than a review comment later
 
 | # | Decision | Rationale |
 |---|---|---|
-| **D1** | Drive the ceremony through **`SignInManager`**, not `IPasskeyHandler` directly | §4. The framework's state is plaintext; `SignInManager` binds it to a DataProtection cookie. Spark writes zero crypto. |
+| **D1** | Drive the ceremony through **`SignInManager`**, not `IPasskeyHandler` directly | §4. The framework's state is plaintext; `SignInManager` binds it to a DataProtection cookie. Spark writes zero crypto. ✅ **Confirmed by SP1** against Spark's real wiring. |
 | **D2** | State is **never** round-tripped through the client | §4. Both attacks reduce to "the client chose the challenge". |
 | **D3** | `SparkPasskeys` has **two** modes (`Disabled`/`Enabled`), not three | A "SignInOnly" mode that blocks new enrollment is a real but rare operator need; YAGNI until asked. Adding a third value later is source-compatible. |
 | **D4** | Passkeys are **not** gated by `SparkLocalCredentials` | §5.5. They are a passwordless credential; the app that most wants them has passwords off. |
