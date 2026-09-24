@@ -195,6 +195,11 @@
       "fr": "Aucune méthode de connexion n'est configurée pour cette application.",
       "nl": "Er zijn geen aanmeldmethoden geconfigureerd voor deze toepassing."
     },
+    "or": {
+      "en": "or",
+      "fr": "ou",
+      "nl": "of"
+    },
     "signInWithPasskey": {
       "en": "Sign in with a passkey",
       "fr": "Se connecter avec une clé d'accès",

@@ -8,7 +8,7 @@ import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsCheckboxComponent } from '@mintplayer/ng-bootstrap/checkbox';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
-import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS, sanitizeReturnUrl } from '@mintplayer/ng-spark-auth/models';
+import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS, sanitizeReturnUrl, passkeysSupported } from '@mintplayer/ng-spark-auth/models';
 import { SparkAuthService, SparkAuthTranslationService } from '@mintplayer/ng-spark-auth/core';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark-auth/pipes';
 
@@ -31,6 +31,55 @@ export class SparkLoginComponent {
   colors = Color;
   readonly loading = signal(false);
   readonly errorMessage = signal('');
+
+  /**
+   * The passkey button belongs here as well as on the sign-in landing page.
+   *
+   * ⚠️ Without it an application using `withLocalLogin()` can *enroll* a passkey and then have no way
+   * to use it, because the landing page it would otherwise appear on is only mounted by
+   * `withExternalLogin()`. Passkeys are independent of both features, so the button has to be
+   * reachable from whichever sign-in page the application actually mounted.
+   */
+  readonly passkeysAvailable = signal(false);
+  readonly passkeyBusy = signal(false);
+
+  constructor() {
+    void this.loadCapabilities();
+  }
+
+  private async loadCapabilities(): Promise<void> {
+    try {
+      const capabilities = await this.authService.capabilities();
+      this.passkeysAvailable.set(capabilities.passkeys === true && passkeysSupported());
+    } catch {
+      // A capability lookup that fails must not break password sign-in, which is this page's job.
+      this.passkeysAvailable.set(false);
+    }
+  }
+
+  /** Same shape as {@link onSubmit}'s success path — sign in, then leave the page. */
+  async signInWithPasskey(): Promise<void> {
+    this.errorMessage.set('');
+    this.passkeyBusy.set(true);
+    try {
+      const returnUrl = sanitizeReturnUrl(
+        this.route.snapshot.queryParamMap.get('returnUrl'), this.config.defaultRedirectUrl);
+      const result = await this.authService.signInWithPasskey();
+
+      if (result.success) {
+        await this.router.navigateByUrl(returnUrl);
+        return;
+      }
+
+      // Dismissing the prompt is "not now", not a failure.
+      if (result.error === 'cancelled') return;
+
+      this.errorMessage.set(this.translation.t(
+        result.error === 'locked_out' ? 'auth.lockedOut' : 'auth.passkeyFailed'));
+    } finally {
+      this.passkeyBusy.set(false);
+    }
+  }
 
   readonly form = this.fb.group({
     email: ['', Validators.required],
