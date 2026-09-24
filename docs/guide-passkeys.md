@@ -5,7 +5,8 @@ authenticator, the browser binds it to your domain, and there is no shared secre
 a database dump discloses nothing usable, and a phishing page on a lookalike domain cannot make the
 authenticator sign anything.
 
-Spark implements passkeys on **ASP.NET Core Identity's own support**, which is GA in .NET 10. There
+Spark implements passkeys on **ASP.NET Core Identity's own support**, which has shipped since .NET 10
+and is what the solution's `net11.0` target builds against. There
 is no third-party WebAuthn package, and Spark writes no cryptographic code.
 
 ## Turning them on
@@ -138,12 +139,23 @@ reject a *valid* passkey — and it makes a credential id unique across all user
 
 ⚠️ Mutating `SparkUser.Passkeys` directly bypasses the reservation. Go through the store.
 
-### Sign counts
+### Sign counts and clone detection
 
-`SignCount` is a clone-detection signal and is re-persisted on every successful assertion. The rule is
-**reject a decrease from a non-zero baseline**, never *require an increase*: synced passkeys (iCloud
-Keychain and similar) report a permanently-zero counter, and requiring an increase locks those users
-out entirely.
+`SignCount` is a clone-detection signal, and the whole loop is handled for you — **Spark adds no check
+of its own**, because the framework already enforces one correctly:
+
+1. `PasskeyHandler` fails the assertion when the incoming count is **less than or equal to** the
+   stored one — a counter that fails to advance means two authenticators hold the same credential.
+2. That check is skipped when the incoming count **and** the stored count are both zero. Synced
+   passkeys (iCloud Keychain and similar) report a permanently-zero counter, so requiring an increase
+   would have locked those users out entirely.
+3. On success the handler advances the stored count, `SignInManager` calls
+   `UserManager.AddOrUpdatePasskeyAsync`, and that calls the store *and then* `UpdateUserAsync` — so
+   the new value reaches RavenDB.
+
+Step 3 is the one worth knowing about when writing a store: the counter is only a defence if it is
+persisted, and Spark's `UpdateAsync` runs with optimistic concurrency so two concurrent assertions
+cannot both write it.
 
 ## Removing the last credential
 

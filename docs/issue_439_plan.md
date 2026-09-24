@@ -13,7 +13,7 @@ pass `--spark-verify-model` and `--spark-verify-security`.
 | Spike | Result |
 |---|---|
 | **SP1** — `SignInManager` state under Spark's wiring | ✅ **Passes. D1 stands.** `MakePasskeyCreationOptionsAsync` emits `Identity.TwoFactorUserId=CfDJ8…` (the `CfDJ8` prefix is DataProtection's magic header) and the state round-trips: without the cookie attestation reports "no passkey attestation is underway", with it the failure reason changes. Spark writes no cryptographic code. |
-| **SP2** — sign-count regression | ⏳ **Not run**, and it stayed not-run. Needs a real or virtual authenticator. See *What is not done*. |
+| **SP2** — sign-count regression | ✅ **Answered from the framework source, no authenticator needed.** `PasskeyHandler` fails the assertion when the incoming count is `<=` the stored one, and skips the check when both are zero — exactly the rule the PRD specified. The advanced value is persisted through `SignInManager` → `UserManager.AddOrUpdatePasskeyAsync` → our store → `UpdateUserAsync`. Spark needs no check of its own. |
 | **SP3** — which store methods the handler calls | ✅ **Answered: the store is on the enrollment path.** For a user id that does not resolve, no store call happens. For a **real** user the handler asks for existing passkeys to populate `excludeCredentials` and throws `NotSupportedException: Store does not implement IUserPasskeyStore<TUser>.` **M2 is therefore a hard prerequisite for M4, not merely a sequencing preference.** |
 | **SP4** — Playwright virtual authenticator | ⏳ **Not run**, and it stayed not-run. See *What is not done*. |
 | **R5** — ceremony cookie attributes | ✅ **Satisfied by the framework.** Over HTTPS the cookie carries `HttpOnly`, `Secure` and `SameSite`. ⚠️ Over plain HTTP `Secure` is absent — that is `SameAsRequest` behaving correctly, and asserting it on an http request pins the wrong contract. The test requests over HTTPS deliberately. |
@@ -27,16 +27,31 @@ test was flipped by M2 as planned and now asserts `excludeCredentials`.
 
 Two items, both deliberate rather than overlooked.
 
-### SP2 — sign-count regression (gates AC8)
+### ~~SP2~~ — sign-count regression ✅ **RESOLVED without running it**
 
-**Not run.** It needs a full assertion driven twice with a counter that goes backwards, which means a
-real or virtual authenticator — the same dependency as SP4. The store persists the advanced counter
-on every successful assertion (`AddOrUpdatePasskeyAsync`), so the *data* half is in place and tested;
-what is unverified is whether `PasskeyHandler` rejects the regression itself or expects the endpoint
-to. ⚠️ If it does not, clone detection is currently absent rather than merely unproven.
+The spike existed to answer one question — does `PasskeyHandler` reject a regression, or does it
+expect the endpoint to? — and that question is settled by reading the shipping source rather than by
+building an authenticator. `PasskeyHandler.PerformAssertionCoreAsync`, step 22:
 
-⚠️ Whoever runs it: assert a **decrease from a non-zero baseline**, never *require an increase*.
-Synced passkeys report a permanently-zero counter and an increase requirement locks those users out.
+```csharp
+if (authenticatorData.SignCount != 0 || storedPasskey.SignCount != 0)
+{
+    if (authenticatorData.SignCount <= storedPasskey.SignCount)
+        throw PasskeyException.SignCountLessThanOrEqualToStoredSignCount();
+}
+```
+
+That is precisely the rule the PRD asked for: a decrease *from a non-zero baseline* fails, while a
+permanently-zero counter — synced passkeys — is exempt rather than locked out.
+
+The persistence half closes too: step 24 advances `storedPasskey.SignCount`,
+`SignInManager.PasskeySignInCoreAsync` then calls `UserManager.AddOrUpdatePasskeyAsync`, and
+`AddOrUpdatePasskeyCoreAsync` calls the store **and then `UpdateUserAsync`** — which is Spark's
+`UpdateAsync`, running under optimistic concurrency so two concurrent assertions cannot both write the
+counter. `UserStorePasskeyTests.Updating_a_passkey_advances_the_mutable_fields_only` covers our end.
+
+**Spark adds no sign-count check of its own, deliberately.** Duplicating the framework's would risk
+diverging from it.
 
 ### SP4 / the E2E test
 
@@ -129,17 +144,16 @@ plain HTTP `Secure` is absent; that is `SameAsRequest` working as intended, and 
 asserted it on an http request produced a false failure. The test issues an HTTPS request for this
 reason.
 
-### SP2 — Does `PasskeyHandler` enforce sign-count regression? *(gates M5, AC8)*
+### SP2 — Does `PasskeyHandler` enforce sign-count regression? *(gates M5, AC8)* — ✅ answered, see below
 
 `PasskeyHandler<TUser>` is sealed and its verification core is private, so this cannot be read off the
-API. Drive a full assertion twice with a counter that goes *backwards* and observe whether
-`PerformAssertionAsync` fails or succeeds.
+compiled API. The spike as written was to drive a full assertion twice with a counter that goes
+*backwards* and observe the outcome — which needs a virtual authenticator.
 
-**Decides:** whether clone detection is free or must be enforced in the endpoint. Either way the store
-persists the advanced counter.
-
-⚠️ Assert the *decrease* rule, not an *increase* rule — synced passkeys (iCloud Keychain and similar)
-report a permanently-zero sign count, and requiring an increase would lock those users out entirely.
+⚠️ **It never needed one.** The type is sealed, not closed-source: `dotnet/aspnetcore` publishes
+`src/Identity/Core/src/PasskeyHandler.cs`, and reading it answers the question outright. That is worth
+remembering the next time a spike is scoped around a sealed framework type — the API surface being
+private does not make the behaviour unobservable. See the resolution in the status table above.
 
 ### SP3 — Which store methods does the handler actually call, and when? *(gates M2)*
 
