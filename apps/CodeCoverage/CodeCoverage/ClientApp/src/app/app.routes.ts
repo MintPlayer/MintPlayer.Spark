@@ -1,6 +1,6 @@
 import { Routes } from '@angular/router';
 import { sparkRoutes } from '@mintplayer/ng-spark/routes';
-import { sparkAuthRoutes, withExternalLogin, githubProvider } from '@mintplayer/ng-spark-auth/routes';
+import { sparkAuthRoutes, withExternalLogin, githubProvider, withPasskeys } from '@mintplayer/ng-spark-auth/routes';
 import { ShellComponent } from './shell/shell.component';
 import { accountRedirectGuard, commitRedirectGuard, repositoryRedirectGuard } from './spark/vanity-redirects';
 import { HOME_URL } from './spark/home-route';
@@ -28,7 +28,11 @@ export const routes: Routes = [
       // all. GitHub is the only provider — the server's LocalCredentials are
       // Disabled — so withLocalLogin()/withRegistration() would mount pages
       // posting to endpoints that aren't mapped.
-      ...sparkAuthRoutes(withExternalLogin(githubProvider())),
+      // withPasskeys() adds a credential page for an already signed-in user, which is why it sits
+      // alongside withExternalLogin() rather than replacing it: GitHub remains the way a new account
+      // is created, and a passkey is added to it afterwards. It is the app's only forge-independent
+      // credential — the server has LocalCredentials Disabled and always will.
+      ...sparkAuthRoutes(withExternalLogin(githubProvider()), withPasskeys()),
       // poDetail override: the generic detail page plus the app panels that
       // can't be expressed as attribute renderers (badge, trend chart, CI
       // setup, the commit file tree).

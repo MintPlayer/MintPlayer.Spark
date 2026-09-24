@@ -138,6 +138,25 @@ builder.Services.AddSpark(builder.Configuration, spark =>
         {
             auth.ExternalLoginLinking = linking;
         }
+
+        // Passkeys are on, and deliberately not tied to LocalCredentials — which stays Disabled.
+        // A passkey is a passwordless credential, so "this app has no passwords" is the reason to
+        // want one, not a reason to withhold it. It also gives the app its first forge-independent
+        // way in: today a user who loses their GitHub account loses this one too.
+        //
+        // Enrollment still needs an existing session, so this adds no new way to *reach* an account
+        // that GitHub did not already open.
+        auth.Passkeys = SparkPasskeys.Enabled;
+
+        // ⚠️ Pinned rather than derived from the request Host. A passkey binds to its relying-party
+        // id for life and there is no migration: if a proxy ever presented a different host, every
+        // credential enrolled under it would be permanently unusable, and so would the correct ones
+        // once the value moved back. Coverage:BaseUrl is the same value the GitHubOidc audience
+        // already trusts, so the two cannot drift apart.
+        if (Uri.TryCreate(builder.Configuration["Coverage:BaseUrl"], UriKind.Absolute, out var baseUrl))
+        {
+            auth.PasskeyServerDomain = baseUrl.Host;
+        }
     },
     configureProviders: identity =>
     {
