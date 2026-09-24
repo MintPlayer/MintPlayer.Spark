@@ -19,11 +19,20 @@ public static class SparkClientAuthExtensions
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     /// <summary>
-    /// Signs in via <c>POST /spark/auth/login?useCookies=true</c>. The identity API endpoint
-    /// is outside Spark's antiforgery surface, so no CSRF header is sent. After login, the
-    /// client's pre-auth XSRF token is invalidated and re-primed via
-    /// <see cref="GetCurrentUserAsync"/> — the token is bound to the authenticated principal
-    /// and the anonymous one is no longer valid for mutating calls.
+    /// Signs in via <c>POST /spark/auth/login?useCookies=true</c>.
+    /// <para>
+    /// ⚠️ This primes and sends an antiforgery token, which it did not always do. <c>/login</c> is
+    /// gated since 11.0.0 — login CSRF is the one forgery worth mounting against an endpoint nobody
+    /// is signed in to yet, because it plants a session the <em>attacker</em> owns in the victim's
+    /// browser. A browser gets the anonymous-bound token for free from any earlier response; a
+    /// programmatic client has to ask for one, which is what <c>requiresAntiforgery: true</c> does
+    /// here (a warmup <c>GET /spark</c>, cached for the client's lifetime).
+    /// </para>
+    /// <para>
+    /// After login the pre-auth token is invalidated and re-primed via
+    /// <see cref="GetCurrentUserAsync"/> — the token is bound to the authenticated principal and the
+    /// anonymous one is no longer valid for mutating calls.
+    /// </para>
     /// </summary>
     public static async Task LoginAsync(
         this SparkClient client,
@@ -38,7 +47,7 @@ public static class SparkClientAuthExtensions
             HttpMethod.Post,
             "/spark/auth/login?useCookies=true",
             content,
-            requiresAntiforgery: false,
+            requiresAntiforgery: true,
             cancellationToken);
         await SparkClientException.ThrowIfNotSuccessAsync(response, cancellationToken);
 

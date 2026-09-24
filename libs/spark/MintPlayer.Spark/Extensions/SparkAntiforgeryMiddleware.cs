@@ -14,9 +14,21 @@ namespace MintPlayer.Spark.Extensions;
 /// It runs <em>before</em> the built-in <c>UseAntiforgery()</c> so it can call
 /// <see cref="IAntiforgery.ValidateRequestAsync"/> before <c>FormFeature</c>'s "unvalidated" guard is
 /// set, and it records the outcome in <see cref="IAntiforgeryValidationFeature"/> so the built-in
-/// middleware and <c>EndpointMiddleware</c> both treat the request as already checked. The built-in
-/// middleware was narrowed in 8.0.1 to validate form-content bodies only, so a JSON API is not
-/// protected by it at all — closing that gap is why this exists.
+/// middleware and <c>EndpointMiddleware</c> both treat the request as already checked.
+/// </para>
+/// <para>
+/// ⚠️ Why a gate of our own, stated accurately: the built-in middleware
+/// (<c>AntiforgeryMiddleware.InvokeAwaited</c>) <b>validates but never rejects</b> — it records the
+/// verdict on <see cref="IAntiforgeryValidationFeature"/> and calls the next delegate regardless,
+/// leaving rejection to whatever binds the form. An endpoint that binds no form has no such
+/// consumer, so a failed check is recorded and then ignored. It also skips <c>DELETE</c> entirely.
+/// This gate covers POST/PUT/PATCH/DELETE and answers 400 itself.
+/// </para>
+/// <para>
+/// An earlier version of this remark claimed the built-in middleware "was narrowed in 8.0.1 to
+/// validate form-content bodies only". There was no such 8.0.1 change and it has never keyed on
+/// content type — it filters by HTTP method. A JSON <c>POST</c> <em>is</em> validated by it; it just
+/// is not rejected by it.
 /// </para>
 /// </summary>
 internal static class SparkAntiforgeryMiddleware

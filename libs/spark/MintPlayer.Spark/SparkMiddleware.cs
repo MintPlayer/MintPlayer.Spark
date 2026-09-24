@@ -294,10 +294,20 @@ public static class SparkExtensions
         // as already checked and (b) EndpointMiddleware doesn't throw
         // "contains anti-forgery metadata, but a middleware was not found".
         //
-        // The built-in UseAntiforgery() was narrowed in 8.0.1 to validate ONLY form-content
-        // bodies — Spark's JSON API is not protected by it alone. This middleware closes
-        // that gap for any mutating HTTP method (POST/PUT/PATCH/DELETE) whose endpoint has
-        // IAntiforgeryMetadata.RequiresValidation = true.
+        // ⚠️ The comment that used to sit here said the built-in UseAntiforgery() "was narrowed in
+        // 8.0.1 to validate ONLY form-content bodies". That was wrong on both counts, and it was
+        // wrong in a way that flattered the design: there was no 8.0.1 change, and the middleware
+        // has never keyed on content type. It skips by HTTP METHOD — Shared/HttpExtensions.cs
+        // IsValidHttpMethodForForm is POST/PUT/PATCH — so a JSON POST is validated by it.
+        //
+        // The real reasons Spark ships its own gate, both measured against release/11.0:
+        //   1. AntiforgeryMiddleware.InvokeAwaited VALIDATES BUT NEVER REJECTS. It records the
+        //      verdict on IAntiforgeryValidationFeature and calls _next either way. Rejection is
+        //      delegated to whoever consumes the form — RequestDelegateFactory for a minimal API
+        //      that binds one, an MVC filter for a controller. An endpoint that binds no form has
+        //      no such consumer, so a failed check is recorded and then ignored.
+        //   2. It never runs for DELETE at all, which the method filter above excludes.
+        // Spark's gate covers POST/PUT/PATCH/DELETE and short-circuits with a 400 itself.
         app.UseSparkAntiforgery();
 
         // Keep the built-in middleware registered — EndpointMiddleware uses its presence as a

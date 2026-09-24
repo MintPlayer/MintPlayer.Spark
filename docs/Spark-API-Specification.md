@@ -427,10 +427,14 @@ Double-submit token pattern.
 - **Token generation** — every response emits an `XSRF-TOKEN` cookie (`HttpOnly=false`, `SameSite=Strict`, `Secure` when HTTPS).
 - **Token validation** — on mutating requests (POST/PUT/PATCH/DELETE), the client must send the token in the `X-XSRF-TOKEN` header; the server checks that header value matches the cookie value.
 - **Configuration** — `services.AddAntiforgery(opt => opt.HeaderName = "X-XSRF-TOKEN")`.
-- **JSON-body support** — a custom middleware runs before ASP.NET Core's built-in anti-forgery middleware so XSRF checks work on JSON bodies (built-in only validates form-encoded bodies).
-- **Enforcement** — endpoints opt in via `RequireAntiforgeryTokenAttribute(true)` on their `Configure(builder)` method.
+- **Why a custom middleware** — ASP.NET Core's built-in anti-forgery middleware *validates* but never *rejects*: it records the outcome on `IAntiforgeryValidationFeature` and calls the next delegate either way, leaving rejection to whatever binds the form. An endpoint that binds no form has no such consumer. It also skips `DELETE` entirely. Spark's gate covers POST/PUT/PATCH/DELETE and answers 400 itself. (It does **not** skip JSON bodies — the built-in middleware filters by HTTP method, not content type.)
+- **Enforcement** — two ways, and explicit metadata always wins:
+  - `RequireAntiforgeryTokenAttribute(true)` on an endpoint's `Configure(builder)` method, or `[RequireAntiforgeryToken]` on a controller action.
+  - Since 11.0.0, by default, for any mutating request inside `SparkAntiforgeryOptions.PathPrefixes` that carries an **ambient** credential. A caller authenticated by a non-ambient scheme (bearer token, API key, client certificate) is exempt — it cannot be made to send that credential by a third-party page.
+- **Opting out** — `RequireAntiforgeryTokenAttribute(false)` or `DisableAntiforgery()`.
 - **Failure mode** — `400 Bad Request` when the token is missing or invalid.
-- **Affected endpoints** — Create/Update/Delete on PersistentObject; Execute on CustomAction; Add/Update/Delete on LookupReference values.
+- **Affected endpoints** — deliberately not listed here; the list drifted and this document went stale for three releases. The authoritative, executable inventory is `tests/MintPlayer.Spark.Tests/Extensions/XsrfSurfaceTests.cs`, which enumerates the live route table and asserts the exact membership of *required*, *explicitly exempt* and *unstated*.
+- ⚠️ **`/spark/auth/csrf-refresh` is exempt and must stay exempt.** A token is bound to a principal, so a client that has just signed in or out holds a stale one; the endpoint that replaces it cannot demand a valid one first.
 
 ### Retry Action Protocol (449 Status Code)
 

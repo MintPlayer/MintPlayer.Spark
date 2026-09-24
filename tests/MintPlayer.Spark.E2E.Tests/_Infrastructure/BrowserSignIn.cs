@@ -24,7 +24,14 @@ public static class BrowserSignIn
     {
         var response = await page.APIRequest.PostAsync(
             $"{fleetUrl}/spark/auth/login?useCookies=true",
-            new APIRequestContextOptions { DataObject = new { email, password } });
+            new APIRequestContextOptions
+            {
+                DataObject = new { email, password },
+                Headers = new Dictionary<string, string>
+                {
+                    ["X-XSRF-TOKEN"] = await PrimeXsrfAsync(page, fleetUrl),
+                },
+            });
 
         if (!response.Ok)
             throw new InvalidOperationException(
@@ -34,6 +41,33 @@ public static class BrowserSignIn
         // or the first page load races it and renders anonymous.
         if (!await WaitForAuthenticatedAsync(page, fleetUrl, TimeSpan.FromSeconds(10)))
             throw new InvalidOperationException($"Signed in as {email} but /spark/auth/me never reported authenticated.");
+    }
+
+    /// <summary>
+    /// Fetches any page so the server mints an anonymous <c>XSRF-TOKEN</c>, then returns it.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <c>/spark/auth/login</c> requires an antiforgery token since 11.0.0, because login CSRF —
+    /// an attacker page signing the victim's browser into the <em>attacker's</em> account — is the
+    /// one forgery worth mounting against an endpoint nobody is signed in to yet. A real browser
+    /// never has to do this explicitly: it has the cookie already from having loaded the app. A test
+    /// that posts straight to the API has not, so it asks for one first.
+    /// <para>
+    /// <c>page.APIRequest</c> shares the browser context's cookie jar, so the token minted here is
+    /// the one the login POST will present.
+    /// </para>
+    /// </remarks>
+    private static async Task<string> PrimeXsrfAsync(IPage page, string fleetUrl)
+    {
+        await page.APIRequest.GetAsync($"{fleetUrl}/spark/auth/me");
+
+        var cookies = await page.Context.CookiesAsync([fleetUrl]);
+        var token = cookies.FirstOrDefault(c => c.Name == "XSRF-TOKEN")?.Value
+            ?? throw new InvalidOperationException(
+                "No XSRF-TOKEN cookie was issued. UseSpark() mints one on every response, so its "
+                + "absence means the mint moved or the request never reached Spark.");
+
+        return Uri.UnescapeDataString(token);
     }
 
     /// <summary>Polls <c>/spark/auth/me</c> until it reports an authenticated session.</summary>

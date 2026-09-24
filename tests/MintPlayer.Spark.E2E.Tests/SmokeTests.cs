@@ -52,12 +52,11 @@ public class SmokeTests
         await using var pages = new PageFactory(_fixture);
         var page = await pages.NewPageAsync();
 
-        // POST /spark/auth/login — the IdentityApi endpoint accepts JSON with either 'email' or 'username'.
-        var loginResponse = await page.APIRequest.PostAsync($"{_fixture.Host.FleetUrl}/spark/auth/login?useCookies=true", new()
-        {
-            DataObject = new { email = _fixture.Host.AdminEmailAddress, password = _fixture.Host.AdminPass },
-        });
-        loginResponse.Status.Should().Be(200, $"login should succeed. Body: {await loginResponse.TextAsync()}");
+        // Through the shared helper rather than a raw POST: /spark/auth/login is antiforgery-gated
+        // since 11.0.0 (login CSRF), so signing in takes a primed token and BrowserSignIn owns that.
+        // It throws on a non-OK status, so the assertion it replaces is not lost.
+        await BrowserSignIn.SignInAsync(
+            page, _fixture.Host.FleetUrl, _fixture.Host.AdminEmailAddress, _fixture.Host.AdminPass);
 
         // Subsequent /me call on the same context (cookie-backed) should now report authenticated.
         var meResponse = await page.APIRequest.GetAsync($"{_fixture.Host.FleetUrl}/spark/auth/me");

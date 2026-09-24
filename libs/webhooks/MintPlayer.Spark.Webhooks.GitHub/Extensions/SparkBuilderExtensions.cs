@@ -63,7 +63,13 @@ public static class SparkBuilderExtensions
 
     private static void MapDevWebSocketEndpoint(IEndpointRouteBuilder endpoints, GitHubWebhooksOptions options)
     {
-        endpoints.Map(options.DevWebSocketPath, async (HttpContext context) =>
+        // ⚠️ MapGet, not Map. A bare Map() constrains no HTTP method, so this endpoint used to match
+        // POST/PUT/PATCH/DELETE as well — a mutating verb under the /spark prefix carrying no
+        // antiforgery metadata. Nothing was exploitable through it (the handler 400s anything that
+        // is not a WebSocket upgrade) but it was the one hole in the /spark surface that no gate
+        // could ever close, and a WebSocket handshake is a GET by definition, so constraining it
+        // costs nothing and removes the endpoint from the mutating surface entirely.
+        endpoints.MapGet(options.DevWebSocketPath, async (HttpContext context) =>
         {
             if (!context.WebSockets.IsWebSocketRequest)
             {

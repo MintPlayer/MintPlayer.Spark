@@ -12,20 +12,16 @@ internal sealed partial class EtlDeploy : IPostEndpoint, IMemberOf<SparkEtlGroup
 {
     public static string Path => "/deploy";
 
-    /// <summary>
-    /// Defence in depth, for the same reason as <c>SyncApply</c>: the in-handler certificate check is
-    /// the real gate, and the module scheme is non-ambient so genuine callers are exempt.
-    /// </summary>
-    /// <remarks>
-    /// ⚠️ This endpoint deploys RavenDB ETL tasks from a caller-supplied JavaScript transform and
-    /// target URL — arbitrary code against the database, pointed anywhere. It is the single most
-    /// dangerous thing Spark maps, and it should not rely on one <c>if</c> plus the hosting
-    /// application having named the right path prefixes.
-    /// </remarks>
-    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
-    {
-        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
-    }
+    // ⚠️ Deliberately NO RequireAntiforgeryTokenAttribute — same reasoning as SyncApply, and this is
+    // the endpoint where it was most tempting to keep one: it deploys RavenDB ETL tasks from a
+    // caller-supplied JavaScript transform and target URL, which is arbitrary code against the
+    // database pointed anywhere.
+    //
+    // It is still the right call. Explicit metadata is enforced before authentication and applies to
+    // anonymous callers, so it converted "no module certificate" into a bare 400 and hid the actual
+    // refusal. And since 11.0.0 RequireAntiforgery defaults to true, so an ambient-credentialed
+    // caller — the browser this was protecting against — is checked by the default branch anyway,
+    // without depending on the hosting application naming a path prefix.
 
     [Inject] private readonly ILogger<EtlTaskManager> logger;
     [Inject] private readonly EtlTaskManager etlTaskManager;

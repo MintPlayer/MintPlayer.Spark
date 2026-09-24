@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
@@ -165,6 +166,66 @@ public class SparkBuilderReplicationExtensionsTests
         var act = () => builder.Registry.MapEndpoints(endpoints);
         act.Should().NotThrow();
         endpoints.Touched.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// ⚠️ <b>The replication endpoints must never require an antiforgery token, and this is the test
+    /// that says so.</b>
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>/spark/sync/apply</c> and <c>/spark/etl/deploy</c> are machine endpoints authenticated by a
+    /// pinned module client certificate over mTLS. They briefly carried
+    /// <c>RequireAntiforgeryTokenAttribute(true)</c> as defence in depth, and that broke the feature:
+    /// explicit antiforgery metadata is enforced <em>before</em> authentication and applies to
+    /// anonymous callers too, so every caller that had not presented a certificate got a bare
+    /// <c>400</c> instead of the <c>401</c>/<c>403</c> that says what was actually wrong.
+    /// </para>
+    /// <para>
+    /// It is also unnecessary. Since 11.0.0 <c>SparkAntiforgeryOptions.RequireAntiforgery</c> defaults
+    /// to <see langword="true"/>, so a caller arriving with an <em>ambient</em> credential — the
+    /// browser the stamp was guarding against — is checked by the default branch with no annotation
+    /// at all. A module presenting its certificate is non-ambient and exempt either way.
+    /// </para>
+    /// <para>
+    /// ⚠️ <b>If this test fails, do not delete it.</b> It failing means cross-module replication has
+    /// stopped working for every module in every application — the callers are servers, they hold no
+    /// <c>XSRF-TOKEN</c> cookie, and there is nothing they can do to obtain one. The behavioural half
+    /// of this guard is <c>ReplicationEndpointAuthTests</c>, whose exact-status assertions (401/403,
+    /// never 400) fail for the same reason from the other direction.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void Replication_endpoints_do_not_require_an_antiforgery_token()
+    {
+        var builder = NewBuilder();
+        builder.AddReplication(o => o.ModuleName = "Mod");
+
+        using var endpoints = new MinimalEndpointRouteBuilder();
+        builder.Registry.MapEndpoints(endpoints);
+
+        var routes = endpoints.DataSources
+            .SelectMany(source => source.Endpoints)
+            .OfType<RouteEndpoint>()
+            .ToArray();
+
+        // Guard against a vacuous pass: if the mapping ever stops producing these, "no endpoint
+        // requires a token" would be trivially true and this test would protect nothing.
+        var patterns = routes.Select(r => r.RoutePattern.RawText).ToArray();
+        patterns.Should().Contain("/spark/sync/apply",
+            "this test is only meaningful while it is actually inspecting that endpoint");
+        patterns.Should().Contain("/spark/etl/deploy",
+            "this test is only meaningful while it is actually inspecting that endpoint");
+
+        var gated = routes
+            .Where(r => r.Metadata.GetMetadata<IAntiforgeryMetadata>() is { RequiresValidation: true })
+            .Select(r => r.RoutePattern.RawText)
+            .ToArray();
+
+        gated.Should().BeEmpty(
+            "a module calls these server-to-server with a client certificate and no browser session, "
+            + "so it has no XSRF-TOKEN cookie to echo; requiring one refuses every genuine caller and "
+            + "turns an authentication failure into an unexplained 400");
     }
 
     /// <summary>

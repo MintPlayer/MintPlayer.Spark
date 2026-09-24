@@ -64,11 +64,23 @@ public class TriggersRefreshTests
         return Uri.UnescapeDataString(value);
     }
 
-    private async Task SignInAsync(HttpClient http)
+    /// <summary>
+    /// ⚠️ Signs in <em>with</em> an antiforgery token. <c>/spark/auth/login</c> is gated since 11.0.0
+    /// (login CSRF), and a browser satisfies that for free because it already holds the cookie from
+    /// loading the app. A raw <see cref="HttpClient"/> has to ask for one first.
+    /// </summary>
+    private async Task SignInAsync(HttpClient http, CookieContainer cookies)
     {
-        var login = await http.PostAsJsonAsync(
-            "/spark/auth/login?useCookies=true",
-            new { email = _fixture.Host.AdminEmailAddress, password = _fixture.Host.AdminPass });
+        var token = await PrimeXsrfAsync(http, cookies);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/spark/auth/login?useCookies=true")
+        {
+            Content = JsonContent.Create(
+                new { email = _fixture.Host.AdminEmailAddress, password = _fixture.Host.AdminPass }),
+        };
+        request.Headers.Add("X-XSRF-TOKEN", token);
+
+        var login = await http.SendAsync(request);
 
         login.StatusCode.Should().Be(HttpStatusCode.OK,
             $"login should succeed. Body: {await login.Content.ReadAsStringAsync()}");
@@ -95,7 +107,7 @@ public class TriggersRefreshTests
     {
         var (http, cookies) = CreateClient();
         using var _ = http;
-        if (signIn) await SignInAsync(http);
+        if (signIn) await SignInAsync(http, cookies);
         var xsrfToken = await PrimeXsrfAsync(http, cookies);
 
         var request = new HttpRequestMessage(HttpMethod.Post, "/spark/po/refresh")
@@ -152,9 +164,9 @@ public class TriggersRefreshTests
     [Fact]
     public async Task Refresh_without_an_antiforgery_token_is_rejected()
     {
-        var (http, _) = CreateClient();
+        var (http, cookies) = CreateClient();
         using var owned = http;
-        await SignInAsync(http);
+        await SignInAsync(http, cookies);
 
         var response = await http.PostAsJsonAsync("/spark/po/refresh", Wire.Typed(CarTypeId, CarPayload("Stolen")));
 
