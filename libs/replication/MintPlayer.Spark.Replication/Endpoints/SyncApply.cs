@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
@@ -10,6 +11,23 @@ namespace MintPlayer.Spark.Replication.Endpoints;
 internal sealed partial class SyncApply : IPostEndpoint, IMemberOf<SparkSyncGroup>
 {
     public static string Path => "/apply";
+
+    /// <summary>
+    /// Defence in depth. The handler already refuses a caller without a pinned module certificate,
+    /// and the module scheme is registered non-ambient, so a genuine module caller is exempt here and
+    /// pays nothing.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ The point is what happens if that in-handler check is ever moved, refactored or made
+    /// conditional: this endpoint lets the caller mutate or delete any document in any collection, and
+    /// until now the only thing standing between a browser and that was one <c>if</c> inside the
+    /// method. Metadata is enforced by the middleware before the handler runs, and — unlike the
+    /// path-prefix default — it does not depend on the hosting application configuring anything.
+    /// </remarks>
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    {
+        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+    }
 
     [Inject] private readonly ILoggerFactory loggerFactory;
     [Inject] private readonly IModuleCertificateValidator certificateValidator;

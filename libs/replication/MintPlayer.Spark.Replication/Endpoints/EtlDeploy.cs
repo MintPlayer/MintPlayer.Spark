@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions.Authorization;
@@ -10,6 +11,21 @@ namespace MintPlayer.Spark.Replication.Endpoints;
 internal sealed partial class EtlDeploy : IPostEndpoint, IMemberOf<SparkEtlGroup>
 {
     public static string Path => "/deploy";
+
+    /// <summary>
+    /// Defence in depth, for the same reason as <c>SyncApply</c>: the in-handler certificate check is
+    /// the real gate, and the module scheme is non-ambient so genuine callers are exempt.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ This endpoint deploys RavenDB ETL tasks from a caller-supplied JavaScript transform and
+    /// target URL — arbitrary code against the database, pointed anywhere. It is the single most
+    /// dangerous thing Spark maps, and it should not rely on one <c>if</c> plus the hosting
+    /// application having named the right path prefixes.
+    /// </remarks>
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    {
+        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+    }
 
     [Inject] private readonly ILogger<EtlTaskManager> logger;
     [Inject] private readonly EtlTaskManager etlTaskManager;
