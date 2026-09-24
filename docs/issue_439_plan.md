@@ -4,20 +4,61 @@ PRD: [`issue_439_PRD.md`](issue_439_PRD.md). Issue:
 [#439](https://github.com/MintPlayer/MintPlayer.Spark/issues/439) — body is empty; fill it from §1 of
 the PRD.
 
-Status: **spikes started.** Investigation is complete and the API surface is measured (PRD §3).
-**SP1 and SP3 are done and green**; SP2 and SP4 remain. No feature code is implemented.
+Status: **implemented.** Every milestone M1–M11 is done, including M7b. SP1 and SP3 were run and
+answered; **SP2 and SP4 were not run** — see the spike table and *What is not done* below.
 
 | Spike | Result |
 |---|---|
 | **SP1** — `SignInManager` state under Spark's wiring | ✅ **Passes. D1 stands.** `MakePasskeyCreationOptionsAsync` emits `Identity.TwoFactorUserId=CfDJ8…` (the `CfDJ8` prefix is DataProtection's magic header) and the state round-trips: without the cookie attestation reports "no passkey attestation is underway", with it the failure reason changes. Spark writes no cryptographic code. |
-| **SP2** — sign-count regression | ⏳ Not run. Gates M5 / AC8. |
+| **SP2** — sign-count regression | ⏳ **Not run**, and it stayed not-run. Needs a real or virtual authenticator. See *What is not done*. |
 | **SP3** — which store methods the handler calls | ✅ **Answered: the store is on the enrollment path.** For a user id that does not resolve, no store call happens. For a **real** user the handler asks for existing passkeys to populate `excludeCredentials` and throws `NotSupportedException: Store does not implement IUserPasskeyStore<TUser>.` **M2 is therefore a hard prerequisite for M4, not merely a sequencing preference.** |
-| **SP4** — Playwright virtual authenticator | ⏳ Not run. Gates the E2E in M11. |
+| **SP4** — Playwright virtual authenticator | ⏳ **Not run**, and it stayed not-run. See *What is not done*. |
 | **R5** — ceremony cookie attributes | ✅ **Satisfied by the framework.** Over HTTPS the cookie carries `HttpOnly`, `Secure` and `SameSite`. ⚠️ Over plain HTTP `Secure` is absent — that is `SameAsRequest` behaving correctly, and asserting it on an http request pins the wrong contract. The test requests over HTTPS deliberately. |
 
-Tests: `tests/MintPlayer.Spark.Tests/Authorization/Extensions/PasskeyCeremonyStateTests.cs` (5 tests,
-green). ⚠️ The SP3 test asserts today's `NotSupportedException` **on purpose** — M2 must flip it to
-assert `excludeCredentials` instead, and its failure is the signal to do so.
+Tests: `tests/MintPlayer.Spark.Tests/Authorization/Extensions/PasskeyCeremonyStateTests.cs`. The SP3
+test was flipped by M2 as planned and now asserts `excludeCredentials`.
+
+---
+
+## What is not done, and why
+
+Two items, both deliberate rather than overlooked.
+
+### SP2 — sign-count regression (gates AC8)
+
+**Not run.** It needs a full assertion driven twice with a counter that goes backwards, which means a
+real or virtual authenticator — the same dependency as SP4. The store persists the advanced counter
+on every successful assertion (`AddOrUpdatePasskeyAsync`), so the *data* half is in place and tested;
+what is unverified is whether `PasskeyHandler` rejects the regression itself or expects the endpoint
+to. ⚠️ If it does not, clone detection is currently absent rather than merely unproven.
+
+⚠️ Whoever runs it: assert a **decrease from a non-zero baseline**, never *require an increase*.
+Synced passkeys report a permanently-zero counter and an increase requirement locks those users out.
+
+### SP4 / the E2E test
+
+**Not run.** Playwright's CDP virtual-authenticator domain is available in the bundled typings, but
+wiring it up is a piece of work in its own right, and the integration tests cover every server-side
+branch that does not require a real authenticator. AC4 (end-to-end sign-in without GitHub) therefore
+rests on the unit and integration coverage rather than on a browser.
+
+### F1 — CodeCoverage's antiforgery is still `WarnOnly`
+
+`Program.cs:119-123` is unchanged. Flipping it to enforcing is a behaviour change on a production app
+whose own gate — confirm the warning log is silent across sign-in, sign-out, token management and an
+upload — cannot be satisfied from a test suite; it needs a real GitHub OAuth round trip against the
+running app. The comment there already says the flag flips once the logs are clean, and nobody has
+yet produced clean logs. The new passkey endpoints carry the antiforgery metadata regardless, so
+flipping it later is a config change rather than a code change.
+
+### A deviation from the PRD: no `Manage/Passkeys` right
+
+PRD §5.10 called for one in CodeCoverage's `security.json`. It was added, then removed: nothing would
+consume it. The endpoints gate on `RequireAuthorization()`, and framework endpoints do not consult an
+app's `security.json` by design. `--spark-verify-security` passes either way, so the right would have
+sat there looking like an access control while enforcing nothing — worse than its absence. It comes
+back together with the check that reads it, if passkey management ever needs restricting to a subset
+of signed-in users.
 
 ---
 
@@ -357,6 +398,26 @@ introduces.
 It is present at `10.0.0-preview.86` with a full `/connect/*` OAuth surface (authorize, login,
 two-factor, consent, token, userinfo, introspect, revoke, JWKS, discovery). Any note saying the
 identity provider is branch-only should be corrected.
+
+### F6 — A missing ceremony threw `InvalidOperationException`, and it reached the client as a 500
+
+Found writing M5's tests. `SignInManager.PasskeySignInAsync` signals "no ceremony is underway" with
+an **`InvalidOperationException`**, not a `PasskeyException` — so the obvious catch filter misses it,
+and the commonest hostile request (a bare POST to the anonymous sign-in route, with no prior
+options call) answered `500` with a stack trace. Both an availability problem and an information leak
+on an unauthenticated endpoint.
+
+Worth recording because the omission is invisible on reading: the exception type has nothing to do
+with passkeys, and only its message says otherwise. Fixed, with the type named explicitly and a
+comment saying why it belongs there.
+
+### F7 — A partial class documented twice fails the build with CS0579
+
+Giving `UserStore.Passkeys.cs` an XML `<summary>` on its `partial` declaration made
+`DescriptionSourceGenerator` emit two `[Description]` attributes for the same symbol:
+`error CS0579: Duplicate 'Description' attribute`. A partial type carries its docs on one declaration
+only. The error names a generated file and not the cause, so it is worth knowing before splitting any
+other documented type across files.
 
 ### F5 — Investigation hazard: `strings` is not installed in this environment
 

@@ -3,6 +3,11 @@
 Issue: [#439](https://github.com/MintPlayer/MintPlayer.Spark/issues/439) — "passkeys - already
 supported?". The issue body is empty; §1 below is what it should say.
 
+**Status: implemented.** See [`issue_439_plan.md`](issue_439_plan.md) for milestone-by-milestone
+state, what was deliberately left undone (SP2, SP4, F1), and the one deviation from this document
+(no `Manage/Passkeys` right — it would have enforced nothing). User-facing documentation is
+[`guide-passkeys.md`](guide-passkeys.md).
+
 ---
 
 ## 1. Verification summary — the question, answered
