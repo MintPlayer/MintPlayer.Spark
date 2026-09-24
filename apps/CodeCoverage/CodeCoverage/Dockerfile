@@ -1,11 +1,11 @@
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS base
+FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS base
 USER app
 WORKDIR /app
 # 8080 only, deliberately. Traefik's port detection picks the single exposed port; exposing 8081 as
 # well makes it ambiguous and the router can end up pointing at the wrong one.
 EXPOSE 8080
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:11.0 AS build
 # Node.js for the Angular build
 RUN apt-get update && \
     apt-get -y install curl && \

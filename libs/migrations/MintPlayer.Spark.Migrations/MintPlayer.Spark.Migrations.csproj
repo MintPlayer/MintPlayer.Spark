@@ -1,14 +1,14 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<TargetFramework>net10.0</TargetFramework>
+		<TargetFramework>net11.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<OutputType>Library</OutputType>
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Migrations</PackageId>
-		<Version>10.0.0-preview.84</Version>
+		<Version>11.0.0-preview.84</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Database migrations for MintPlayer.Spark. Define migrations by implementing ISparkMigration with a static abstract Version; they run once, in version order, at startup. Multi-node safe via RavenDB compare-exchange locking, idempotent via per-version marker documents.</Description>
@@ -30,8 +30,6 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
 		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.20.1" GeneratePathProperty="true" />
-		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11" />
-		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
 		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
 	</ItemGroup>
 

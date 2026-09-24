@@ -4,7 +4,7 @@
 	<Import Project="..\..\..\libs\authorization\MintPlayer.Spark.Authorization\Targets\spark-authorization.props" />
 
 	<PropertyGroup>
-		<TargetFramework>net10.0</TargetFramework>
+		<TargetFramework>net11.0</TargetFramework>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<IsPackable>false</IsPackable>

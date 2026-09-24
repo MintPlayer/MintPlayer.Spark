@@ -59,8 +59,8 @@ Angular upgrade itself.
 
 The major version **must equal the major .NET version the package targets**.
 
-- `net10.0` → `10.x.x` (currently `10.0.0-preview.*`)
-- `net11.0` → `11.x.x`
+- `net10.0` → `10.x.x`
+- `net11.0` → `11.x.x` (current — the solution targets `net11.0`, packages are `11.0.0-preview.*`)
 
 Same rule as above: an API break inside a .NET generation is a minor bump, never a
 major one.

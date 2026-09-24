@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
@@ -61,7 +61,7 @@
     <!--
     Reference the generator projects with ReferenceOutputAssembly="false" so their netstandard2.0
     surface (and the polyfilled types in MintPlayer.SourceGenerators.Tools, e.g. ModuleInitializerAttribute)
-    don't enter this net10.0 project's compile-time graph. The DLLs are copied into the test bin
+    don't enter this net11.0 project's compile-time graph. The DLLs are copied into the test bin
     root below so coverlet's collector picks them up for instrumentation, and so the harness can
     Assembly.Load them at test time via the default probing path.
     -->
