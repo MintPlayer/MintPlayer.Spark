@@ -44,6 +44,12 @@ internal static class SparkEmbeddedServer
         var license = LicenseHelper.LoadOrNull();
         RavenTestDriver.ConfigureServer(new TestServerOptions
         {
+            // ⚠️ Do not add --Cluster.OperationTimeoutInSec here hoping to fix the teardown timeout.
+            // It reads as the obvious knob because its default is also 15 s, but it governs database
+            // CREATION; AdminDatabasesHandler.WaitForDeletionToComplete resolves the DELETION budget
+            // from `parameters.TimeToWaitForConfirmation ?? TimeSpan.FromSeconds(15)`, a hard-coded
+            // fallback that never consults server configuration. The deletion side is handled
+            // client-side in SparkTestDriver.DisposeAsync, which explains the mechanism.
             // The server is no longer copied into bin/ — it would be a 623 MB build output and
             // Nx caches bin/Debug. It is provisioned once into a temp directory instead; null
             // leaves RavenDB's default (AppContext.BaseDirectory) in place. See RavenServerLocator.

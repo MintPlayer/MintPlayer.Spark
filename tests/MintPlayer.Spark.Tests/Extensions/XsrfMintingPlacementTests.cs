@@ -171,11 +171,30 @@ public class XsrfMintingPlacementTests : SparkTestDriver
         return response;
     }
 
+    /// <summary>
+    /// Seeds the probe user and — the part that is not optional — waits until a query can see it.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <c>UserManager.FindByNameAsync</c> resolves through a query, so the document being written
+    /// is not the same thing as the document being findable. Without the wait this races: the store
+    /// write returns, the host starts, the sign-in endpoint looks the user up against a still-stale
+    /// index, gets <see langword="null"/>, and <c>SignInWithClaimsAsync</c> throws
+    /// <c>ArgumentNullException (Parameter 'user')</c> from deep inside Identity — a stack that
+    /// names neither this method nor indexing and reads like an Identity bug.
+    /// <para>
+    /// It failed exactly once in ~2,500 tests, which is the worst frequency to leave alone: often
+    /// enough to erode trust in a red run, rare enough to be dismissed as noise every time.
+    /// </para>
+    /// </remarks>
     private async Task SeedUserAsync()
     {
         using var store = new UserStore<SparkUser>(Store);
         var existing = await store.FindByNameAsync("PROBE@EXAMPLE.COM", CancellationToken.None);
-        if (existing is not null) return;
+        if (existing is not null)
+        {
+            await WaitForIndexesAsync();
+            return;
+        }
 
         var user = new SparkUser
         {
@@ -188,6 +207,7 @@ public class XsrfMintingPlacementTests : SparkTestDriver
             SecurityStamp = Guid.NewGuid().ToString(),
         };
         (await store.CreateAsync(user, CancellationToken.None)).Succeeded.Should().BeTrue();
+        await WaitForIndexesAsync();
     }
 
     /// <summary>
