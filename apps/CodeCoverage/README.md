@@ -199,10 +199,10 @@ dotnet run --project Coverage --launch-profile https
 The host spawns the Angular dev server itself (SPA proxy middleware) — do **not** run
 `ng serve` separately. App: https://localhost:5200.
 
-⚠️ **Passkeys need the `https` profile**, and not only because GitHub sign-in does. WebAuthn is
-unavailable on an insecure origin, so on the plain `http` profile the passkey UI is not rendered at
-all — feature detection reports the browser cannot run the ceremony, which is correct but looks like
-the feature is missing.
+⚠️ **Use the `https` profile for passkeys too** — because GitHub sign-in is the only way to get the
+session that passkey enrollment requires, not because of WebAuthn itself. `http://localhost` *is* a
+secure context by the Secure Contexts spec, so the passkey UI does render on the `http` profile; you
+simply have no way to sign in first.
 
 A passkey enrolled in development binds to `localhost` and **will never work against production**.
 That is by design: a passkey is bound to its relying-party id for life, and `PasskeyServerDomain` is
