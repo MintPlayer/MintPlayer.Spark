@@ -34,43 +34,65 @@ public class SparkClientAuthExtensionsTests
 
     #region LoginAsync
 
+    /// <summary>
+    /// ⚠️ This test used to be named <c>..._without_antiforgery</c> and asserted the opposite.
+    /// <c>/spark/auth/login</c> is antiforgery-gated as of 11.0.0 because <b>login CSRF</b> is real:
+    /// an attacker's page posts the attacker's own credentials, the victim's browser quietly acquires
+    /// a session belonging to the attacker, and everything the victim does next lands in an account
+    /// the attacker can read. A browser satisfies the gate for free — it holds the cookie from having
+    /// loaded the app — but a programmatic client has to ask for one, so login now warms up first.
+    /// </summary>
     [Fact]
-    public async Task LoginAsync_posts_email_and_password_to_login_endpoint_without_antiforgery()
+    public async Task LoginAsync_warms_up_and_sends_an_antiforgery_token()
     {
         var handler = new ScriptedHttpHandler()
-            .Enqueue(new HttpResponseMessage(HttpStatusCode.OK))   // login
-            .Enqueue(MeResponse());                                // /me
+            .EnqueueWithCookies(                                    // warmup GET /spark
+                ".AspNetCore.Antiforgery.abc=validation-cookie-value; Path=/",
+                "XSRF-TOKEN=fake-xsrf-token; Path=/")
+            .Enqueue(new HttpResponseMessage(HttpStatusCode.OK))    // login
+            .Enqueue(MeResponse());                                 // /me
         using var client = NewClient(handler);
 
         await client.LoginAsync("alice@example.com", "p@ss");
 
-        handler.Requests.Should().HaveCount(2);
+        handler.Requests.Should().HaveCount(3);
 
-        var login = handler.Requests[0];
+        handler.Requests[0].Method.Should().Be(HttpMethod.Get, "the warmup mints the token");
+
+        var login = handler.Requests[1];
         login.Method.Should().Be(HttpMethod.Post);
         login.RequestUri!.PathAndQuery.Should().Be("/spark/auth/login?useCookies=true");
-        // The login endpoint sits outside Spark's antiforgery surface — no warmup, no header.
-        login.Headers.Contains("X-XSRF-TOKEN").Should().BeFalse();
+        login.Headers.Contains("X-XSRF-TOKEN").Should().BeTrue(
+            "login is gated, so a programmatic client must present the token a browser would already hold");
     }
 
     [Fact]
     public async Task LoginAsync_calls_me_after_successful_login_to_re_prime_antiforgery()
     {
         var handler = new ScriptedHttpHandler()
+            .EnqueueWithCookies(
+                ".AspNetCore.Antiforgery.abc=validation-cookie-value; Path=/",
+                "XSRF-TOKEN=fake-xsrf-token; Path=/")
             .Enqueue(new HttpResponseMessage(HttpStatusCode.OK))
             .Enqueue(MeResponse());
         using var client = NewClient(handler);
 
         await client.LoginAsync("alice@example.com", "p@ss");
 
-        handler.Requests[1].Method.Should().Be(HttpMethod.Get);
-        handler.Requests[1].RequestUri!.AbsolutePath.Should().Be("/spark/auth/me");
+        // ⚠️ Index 2, not 1 — the warmup is now the first request. The /me call is what re-primes the
+        // token after sign-in, because the one minted on the login response is bound to the ANONYMOUS
+        // principal: Spark mints before the handler runs, and the handler is what signs the user in.
+        handler.Requests[2].Method.Should().Be(HttpMethod.Get);
+        handler.Requests[2].RequestUri!.AbsolutePath.Should().Be("/spark/auth/me");
     }
 
     [Fact]
     public async Task LoginAsync_throws_SparkClientException_when_server_returns_non_success()
     {
         var handler = new ScriptedHttpHandler()
+            .EnqueueWithCookies(                                    // warmup precedes the login now
+                ".AspNetCore.Antiforgery.abc=validation-cookie-value; Path=/",
+                "XSRF-TOKEN=fake-xsrf-token; Path=/")
             .Enqueue(new HttpResponseMessage(HttpStatusCode.Unauthorized));
         using var client = NewClient(handler);
 

@@ -256,14 +256,11 @@ public partial class SparkClient : IDisposable
         => PostConversationAsync<PersistentObject?>(
             "/spark/po/load",
             new Dictionary<string, object?> { ["objectTypeId"] = objectTypeId, ["id"] = id },
-            // ⚠️ true even though this is a read. The endpoint carries no antiforgery metadata —
-            // forging a read gains an attacker nothing, since the same-origin policy stops their
-            // page from seeing the response — but since 11.0.0 Spark checks any mutating-verb
-            // request under /spark that carries an ambient credential, and a cookie-authenticated
-            // client is exactly that. Reads are POSTs here only because they need a body, which is
-            // what puts them on the wrong side of a method-based gate. Priming is free after the
-            // first call: the token is cached for the client's lifetime.
-            requiresAntiforgery: true,
+            // A read needs no antiforgery token, and /spark/po/load carries an explicit exemption
+            // saying so — which is what keeps this false now that the framework default gates
+            // ambient-credentialed POSTs. Warming up here would cost every reading client a round
+            // trip for a property it does not gain.
+            requiresAntiforgery: false,
             async (response, ct) =>
             {
                 if (response.StatusCode == HttpStatusCode.NotFound) return null;
@@ -382,9 +379,8 @@ public partial class SparkClient : IDisposable
                 ["sortColumns"] = sortColumns,
                 ["columns"] = columns,
             },
-            // true for the same reason as /spark/po/load above: a read, but a POST, and the gate is
-            // method-based.
-            requiresAntiforgery: true,
+            // false for the same reason as /spark/po/load above: a read, explicitly exempt.
+            requiresAntiforgery: false,
             async (response, ct) =>
             {
                 await SparkClientException.ThrowIfNotSuccessAsync(response, ct);

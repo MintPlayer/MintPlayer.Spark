@@ -65,19 +65,26 @@ public class XsrfSurfaceTests : SparkTestDriver
     ];
 
     /// <summary>
-    /// Core endpoints that state nothing. Every one of these is a <b>read</b> that is a POST only
-    /// because it needs a request body; none of them changes state.
+    /// Core endpoints that are <b>explicitly exempt</b>. Every one is a <b>read</b> that is a POST
+    /// only because it needs a request body; none changes state.
     /// <para>
     /// CSRF is not a meaningful threat to a read: the same-origin policy stops the attacker's page
-    /// from seeing the response, so forging one achieves nothing the attacker could not achieve by
-    /// fetching the endpoint themselves. They are still <em>covered</em> in practice, because since
-    /// 11.0.0 an ambient-credentialed POST under <c>/spark</c> is checked by default — but an
-    /// anonymous read stays reachable, which is the behaviour the public-data apps rely on.
+    /// seeing the response, so forging one achieves nothing they could not achieve by fetching the
+    /// endpoint themselves. Requiring a token would instead break every caller that legitimately
+    /// reads without a session, for no property gained.
     /// </para>
-    /// ⚠️ If any of these ever gains a side effect it needs <c>RequireAntiforgeryTokenAttribute</c>
+    /// <para>
+    /// ⚠️ They are <em>explicitly</em> exempt rather than simply unannotated, and that changed in
+    /// 11.0.0. Being unannotated used to be enough; once
+    /// <c>SparkAntiforgeryOptions.RequireAntiforgery</c> began defaulting to <see langword="true"/>,
+    /// silence started meaning "checked when the caller has an ambient credential" — which swept
+    /// these in against the decision recorded on each of them. An explicit position is what makes a
+    /// deliberate exemption survive a change of default.
+    /// </para>
+    /// ⚠️ If any of these ever gains a side effect it needs <c>RequireAntiforgeryTokenAttribute(true)</c>
     /// in the same commit, and this list is where that gets noticed.
     /// </summary>
-    private static readonly string[] CoreUnprotected =
+    private static readonly string[] CoreExempt =
     [
         "POST /spark/actions/list",
         "POST /spark/po/load",
@@ -146,8 +153,8 @@ public class XsrfSurfaceTests : SparkTestDriver
         var (required, exempt, unstated) = Classify(factory.GetService<EndpointDataSource>());
 
         Assert.Equal(Sorted(CoreRequired), required);
-        Assert.Equal(Sorted([]), exempt);
-        Assert.Equal(Sorted(CoreUnprotected), unstated);
+        Assert.Equal(Sorted(CoreExempt), exempt);
+        Assert.Equal(Sorted([]), unstated);
     }
 
     [Fact]

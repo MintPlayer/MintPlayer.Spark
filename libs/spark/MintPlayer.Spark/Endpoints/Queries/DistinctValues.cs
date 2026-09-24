@@ -1,3 +1,4 @@
+﻿using Microsoft.AspNetCore.Antiforgery;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
@@ -24,6 +25,17 @@ namespace MintPlayer.Spark.Endpoints.Queries;
 internal sealed partial class DistinctValues : IPostEndpoint, IMemberOf<QueriesGroup>
 {
     public static string Path => "/distinct-values";
+
+    // ⚠️ EXPLICITLY exempt, not merely unannotated. This is a read; a forged one changes nothing and
+    // the attacker cannot see the response. It was exempt by absence until 11.0.0, when
+    // SparkAntiforgeryOptions.RequireAntiforgery began defaulting to true and started gating any
+    // mutating-verb request under /spark that carries an ambient credential — which swept these in
+    // against the decision recorded above. Saying it out loud restores that decision and makes it
+    // survive the next default change.
+    static void IEndpointBase.Configure(RouteHandlerBuilder builder)
+    {
+        builder.WithMetadata(new RequireAntiforgeryTokenAttribute(false));
+    }
 
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IQueryExecutor queryExecutor;
