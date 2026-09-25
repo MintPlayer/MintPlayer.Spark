@@ -32,21 +32,49 @@ added to.
 
 ## ⚠️ Two blockers, both real, both found by reading the generator rather than guessing
 
-### B1 — Generic endpoints
+### B1 — Generic endpoints ⚠️ ANSWERED 2026-09-25, and the answer is the bad one
 
-The generator emits `ActivatorUtilities.CreateFactory<T>(Type.EmptyTypes)` per endpoint, which needs
-a **closed** type. The auth surface is generic over `TUser` (`MapSparkIdentityApi<TUser>`,
-`SignInManager<TUser>`, `UserManager<TUser>`), and the generator has no way to know what `TUser` is.
+**An open-generic endpoint class is not skipped — it breaks the build of the whole assembly.**
+Measured against `11.1.0-rc.0` with a two-class repro; filed as
+[MintPlayer.AspNetCore.Tools#34](https://github.com/MintPlayer/MintPlayer.AspNetCore.Tools/issues/34).
 
-Note how the four auth endpoints that *did* migrate avoid this: `Logout` calls
+The generator writes the declaring type's own type parameter into two generated files, where nothing
+can bind it:
+
+```csharp
+// EndpointMapping.g.cs
+ObjectFactory<global::Echo<TPayload>> _f0 = ActivatorUtilities.CreateFactory<global::Echo<TPayload>>(Type.EmptyTypes);
+// EndpointContracts.g.cs
+[assembly: EndpointContractAttribute(typeof(global::Echo<TPayload>), "Echo", "/api/echo", …)]
+```
+
+→ `error CS0246: The type or namespace name 'TPayload' could not be found`.
+
+⚠️ **This is worse than "unsupported".** Discovery is not opt-in, so one generic endpoint class fails
+the build for every *other* endpoint in the assembly, with an error naming a generated file the
+consumer cannot edit. It also closes the manual door: `MapEndpoint<T>()` would be the natural way to
+register it with a closed argument, but you cannot reach that call site because the assembly does not
+compile.
+
+**A closed derived type works**, and inherits membership — measured in the same spike:
+
+```csharp
+public class EchoString : Echo<string> { public new static string Path => "/echo-string"; }
+// → mapped at /api/echo-string, [MemberOf<ApiGroup>] inherited from the base
+```
+
+That is a fine answer for an **application**, which knows its closed types. It is no answer for a
+**library**: Spark's `TUser` is chosen by the consuming application, so the framework assembly has no
+closed type to declare, and making every app declare one per endpoint would be worse than the
+`MapPost` calls it replaces.
+
+**What unblocks it:** the generator skipping open generics with an info diagnostic. Then generic
+endpoint classes coexist, and `MapEndpoint<Passkeys<TUser>>()` registers them where `TUser` is closed.
+
+Note how the four auth endpoints that *did* migrate avoid the problem entirely: `Logout` calls
 `httpContext.SignOutAsync(IdentityConstants.ApplicationScheme)` rather than taking
 `SignInManager<TUser>`. That works for logout and does not generalise — passkey enrolment genuinely
 needs the typed managers.
-
-⚠️ **Unknown, and the thing to settle first:** does the generator *skip* an open generic implementing
-`IEndpointBase`, or does it emit uncompilable code for it? The README documents no behaviour either
-way (MPEP001-006 do not mention generics). This decides whether generic endpoint classes can even
-coexist with the generator in the same assembly.
 
 ### B2 — Conditional registration
 
@@ -102,11 +130,40 @@ Not tidiness. Three concrete things, all from #451:
     is about Spark's own mint, not about taking the package.
 - Changing what any endpoint *does*. This is a migration of how endpoints are declared.
 
-## First steps when this unblocks
+## ⚠️ This is now an upgrade *and* a migration
 
-1. Settle B1 empirically: add one open-generic endpoint class to `MintPlayer.Spark.Authorization` and
-   build. Skipped, or broken codegen?
-2. Pick the smallest real target — `MintPlayer.Spark.Webhooks.GitHub`, 2 routes, non-generic, one of
-   which (`/api/github/webhooks`) already carries `DisableAntiforgery()` and so exercises `Configure`.
-3. Then `IdentityProvider` (non-generic, but conditional), then the auth surface (generic **and**
-   conditional) last.
+`c04ffac` in `MintPlayer.AspNetCore.Tools` is a **redesign**, published as `11.1.0-rc.0`:
+
+- group membership moves from the `IMemberOf<T>` **interface** to a `[MemberOf<T>]` **attribute**,
+  which now **inherits** from a base class
+- route/query values bind to properties on the endpoint class (`[RouteParam]`)
+- the generator captures the route literal, enabling build-time route diagnostics, typed links, a
+  contract snapshot and a generated client
+- diagnostics grew from MPEP001-006 to **MPEP001-024**; MPEP003/004 are retired in favour of `CS0579`
+- the interfaces and attributes split into `MintPlayer.AspNetCore.Endpoints.Abstractions`
+
+⚠️ **Spark is on `10.0.0`.** So adopting this is two jobs, not one: an upgrade that touches all **32
+existing** endpoint classes (`IMemberOf<T>` → `[MemberOf<T>]`, plus whatever `11.0.0` changed), and
+then the migration of the ~37 hand-mapped routes. They should be separate commits — a mechanical
+upgrade with no behaviour change is reviewable; mixed with a migration it is not.
+
+## Sequencing
+
+1. ✅ **B1 settled** — see above. Open generics break the build; Tools#34 filed.
+2. **Upgrade 10.0.0 → 11.1.0-rc.0** on the three opted-in assemblies, mechanically, no new endpoints.
+   Verify against all **five** test projects — the route table is asserted by `XsrfSurfaceTests`, so a
+   membership or prefix regression shows up as an exact-set failure rather than silently.
+3. **Migrate `MintPlayer.Spark.Webhooks.GitHub`** — 2 routes, non-generic, and
+   `/api/github/webhooks` already carries `DisableAntiforgery()`, so it exercises `Configure`
+   metadata. Smallest real target.
+4. **Migrate `MintPlayer.Spark.IdentityProvider`** — ~12 routes, non-generic but **conditional**
+   (B2). This is where `MapEndpoint<T>()` gets proven on a real surface.
+5. **The auth surface last** — 14 routes, generic **and** conditional. ⚠️ Blocked on Tools#34.
+
+## Related, not part of this
+
+`MintPlayer.AspNetCore.SpaServices.Xsrf` **`11.0.0-rc.2` is published** (PR #86 merged, closing the
+issue Spark filed). The swap and its checklist are tracked in MintPlayer.Spark#452 — including
+whether Spark's own Traefik deployment is emitting a non-`Secure` cookie today, which is worth
+checking independently of the swap. Still not a reason to take the package's middleware in place of
+Spark's mint; see *Out of scope*.
