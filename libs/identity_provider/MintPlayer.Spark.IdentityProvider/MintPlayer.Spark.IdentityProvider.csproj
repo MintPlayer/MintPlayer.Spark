@@ -35,6 +35,11 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.22.0" />
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.2.0-rc.0" />
+		<!-- Global usings required by the MintPlayer.AspNetCore.Endpoints source generator output -->
+		<Using Include="Microsoft.AspNetCore.Builder" />
+		<Using Include="Microsoft.AspNetCore.Http" />
+		<Using Include="Microsoft.AspNetCore.Routing" />
 		<PackageReference Include="MintPlayer.SourceGenerators" Version="12.1.0">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

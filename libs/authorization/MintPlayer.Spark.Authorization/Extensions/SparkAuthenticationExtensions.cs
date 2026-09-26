@@ -118,8 +118,7 @@ internal static class SparkAuthenticationExtensions
         // [MemberOf<SparkAuthGroup>] and mapping onto the group too would compose it twice.
         endpoints.MapEndpoint<ExternalLoginChallenge<TUser>>();
 
-        // External login: handle OAuth callback — mapped on root endpoints (not authGroup)
-        // to avoid any group-level auth configuration from MapIdentityApi
+        // External login: handle the OAuth callback.
         endpoints.MapEndpoint<ExternalLoginCallback<TUser>>();
 
         // 4e: the other half of ConfirmByEmail. Reached from a link in a mailbox, so it is a plain

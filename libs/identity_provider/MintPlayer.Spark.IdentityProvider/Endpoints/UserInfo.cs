@@ -61,7 +61,18 @@ internal static class UserInfo
 
         // Load user
         var registry = context.RequestServices.GetRequiredService<SparkModuleRegistry>();
-        var userType = registry.IdentityUserType ?? typeof(SparkUser);
+
+        // ⚠️ No `?? typeof(SparkUser)` fallback — see Token.LoadUserAsync. Defaulting resolves
+        // UserManager<SparkUser> from a container holding UserManager<AppUser>, which throws at the
+        // first request for any application with a derived user type. Same refusal shape as Login,
+        // Logout and TwoFactor.
+        var userType = registry.IdentityUserType;
+        if (userType == null)
+        {
+            context.Response.StatusCode = 500;
+            await context.Response.WriteAsync("Identity not configured.");
+            return;
+        }
         var userManagerType = typeof(UserManager<>).MakeGenericType(userType);
         var userManager = context.RequestServices.GetRequiredService(userManagerType);
 

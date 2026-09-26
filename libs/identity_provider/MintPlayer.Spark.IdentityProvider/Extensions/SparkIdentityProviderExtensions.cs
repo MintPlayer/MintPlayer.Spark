@@ -23,7 +23,7 @@ public static class SparkIdentityProviderExtensions
     /// identity provider is used without <c>AddAuthentication</c> — in which case nothing has
     /// expressed an opinion and the provider keeps its own login page.
     /// </summary>
-    private static SparkLocalCredentials LocalCredentialsOf(IServiceProvider services) =>
+    internal static SparkLocalCredentials LocalCredentialsOf(IServiceProvider services) =>
         (services.GetService(typeof(SparkAuthenticationOptions)) as SparkAuthenticationOptions)
             ?.LocalCredentials ?? SparkLocalCredentials.Full;
 
@@ -84,7 +84,7 @@ public static class SparkIdentityProviderExtensions
         }
 
         // Register OIDC endpoints
-        builder.Registry.AddEndpoints(endpoints => endpoints.MapIdentityProviderEndpoints(options));
+        builder.Registry.AddEndpoints(endpoints => endpoints.MapSparkIdentityProviderEndpoints());
 
         // Register middleware to deploy indexes
         builder.Registry.AddMiddleware(app =>
@@ -160,82 +160,6 @@ public static class SparkIdentityProviderExtensions
     /// ⚠️ <c>/introspect</c> is deliberately left out: it is a resource-server-to-provider call
     /// authenticated by client credentials, so a browser has no business making it.
     /// </remarks>
-    private const string CorsPolicy = "SparkOidcCors";
+    internal const string CorsPolicy = "SparkOidcCors";
 
-    /// <summary>
-    /// Opts one endpoint into <see cref="CorsPolicy"/> — but only when the application enabled it.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// ⚠️ <b>The condition is not tidiness; without it the endpoint throws on every request.</b> The
-    /// named policy is registered only when the option is on, and the CORS middleware throws when an
-    /// endpoint asks for a policy that does not exist. Since <c>EnableDynamicCors</c> is off by
-    /// default, applying <c>RequireCors</c> unconditionally would make <c>/connect/token</c> — the
-    /// PKCE code exchange, the endpoint the whole provider exists to serve — fail in the default
-    /// configuration. Caught by
-    /// <c>OidcCorsScopeTests.By_default_the_identity_provider_grants_no_cross_origin_access</c>.
-    /// </para>
-    /// <para>
-    /// ⚠️ It first threw for a <i>different</i> reason — <i>"contains CORS metadata, but a middleware
-    /// was not found that supports CORS"</i> — because this module registered the CORS middleware only
-    /// when its own flag was set. <c>UseSpark</c> now registers it unconditionally, the way it does
-    /// antiforgery, so that failure mode is gone for every module. This condition guards the one that
-    /// remains, which is about the policy rather than the pipeline.
-    /// </para>
-    /// </remarks>
-    private static TBuilder WithOidcCors<TBuilder>(
-        this TBuilder builder, SparkIdentityProviderOptions options)
-        where TBuilder : IEndpointConventionBuilder
-        => options.EnableDynamicCors ? builder.RequireCors(CorsPolicy) : builder;
-
-    private static IEndpointRouteBuilder MapIdentityProviderEndpoints(this IEndpointRouteBuilder endpoints, SparkIdentityProviderOptions options)
-    {
-        // Discovery endpoints (well-known paths)
-        endpoints.MapGet("/.well-known/openid-configuration", Discovery.Handle).WithOidcCors(options);
-        endpoints.MapGet("/.well-known/jwks", Jwks.Handle).WithOidcCors(options);
-
-        // OIDC protocol endpoints
-        var connectGroup = endpoints.MapGroup("/connect");
-        connectGroup.MapGet("/authorize", (Delegate)Authorize.Handle);
-
-        // The provider's own password form. It honours the application's SparkLocalCredentials mode
-        // for the same reason /spark/auth/login does — and because it would otherwise be a way to
-        // keep a password surface alive in an application that had turned local credentials off.
-        // The protocol endpoints below are untouched: an identity provider that federates to an
-        // upstream provider still needs every one of them.
-        if (LocalCredentialsOf(endpoints.ServiceProvider) != SparkLocalCredentials.Disabled)
-        {
-            connectGroup.MapGet("/login", (Delegate)Login.HandleGet);
-            connectGroup.MapPost("/login", (Delegate)Login.HandlePost).RequireAntiforgery();
-            connectGroup.MapGet("/two-factor", (Delegate)TwoFactor.HandleGet);
-            connectGroup.MapPost("/two-factor", (Delegate)TwoFactor.HandlePost).RequireAntiforgery();
-        }
-
-        connectGroup.MapGet("/consent", (Delegate)Consent.HandleGet);
-        connectGroup.MapPost("/consent", (Delegate)Consent.HandlePost).RequireAntiforgery();
-        connectGroup.MapGet("/applications", (Delegate)ConnectedApplications.HandleGet);
-        connectGroup.MapPost("/applications/revoke", (Delegate)ConnectedApplications.HandleRevoke).RequireAntiforgery();
-
-        // Deliberately NOT antiforgery-protected: these are machine endpoints authenticated by
-        // client credentials, never by an ambient cookie, so there is no ambient authority for
-        // a cross-site request to borrow — and a token that has to be presented cannot be
-        // supplied by the browser on the caller's behalf. Requiring a token here would simply
-        // break every conforming OAuth client.
-        connectGroup.MapPost("/token", (Delegate)Token.Handle).WithOidcCors(options);
-        connectGroup.MapGet("/userinfo", (Delegate)UserInfo.Handle).WithOidcCors(options);
-        connectGroup.MapGet("/logout", (Delegate)Logout.Handle);
-        connectGroup.MapPost("/introspect", (Delegate)Introspection.Handle);
-        connectGroup.MapPost("/revoke", (Delegate)Revocation.Handle).WithOidcCors(options);
-
-        return endpoints;
-    }
-
-    /// <summary>
-    /// Marks a route for antiforgery validation. Spark's middleware validates any endpoint
-    /// carrying <c>IAntiforgeryMetadata</c> (<c>SparkMiddleware</c>); these handlers read the
-    /// body with <c>ReadFormAsync</c> rather than <c>[FromForm]</c>, so minimal APIs never
-    /// inferred the metadata for them and the pages went unprotected.
-    /// </summary>
-    private static RouteHandlerBuilder RequireAntiforgery(this RouteHandlerBuilder builder)
-        => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 }
