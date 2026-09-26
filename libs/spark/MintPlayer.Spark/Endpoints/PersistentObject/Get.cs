@@ -9,7 +9,8 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
-internal sealed partial class GetPersistentObject : IPostEndpoint, IMemberOf<PersistentObjectGroup>
+[MemberOf<PersistentObjectGroup>]
+internal sealed partial class GetPersistentObject : IPostEndpoint
 {
     public static string Path => "/load";
 

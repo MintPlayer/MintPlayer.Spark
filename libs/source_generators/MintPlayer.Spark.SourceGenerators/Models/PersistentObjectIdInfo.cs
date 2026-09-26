@@ -8,7 +8,7 @@ namespace MintPlayer.Spark.SourceGenerators.Models;
 /// output — nested-by-schema <c>const string</c> Guids that user code can pass to
 /// <c>IManager.GetPersistentObject(Guid)</c>.
 /// </summary>
-[AutoValueComparer]
+[GenerateEquality]
 public partial class PersistentObjectIdInfo
 {
     /// <summary>

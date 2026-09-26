@@ -22,7 +22,8 @@ namespace MintPlayer.Spark.Endpoints.PersistentObject;
 /// why it never loads more than it must.
 /// </para>
 /// </summary>
-internal sealed partial class RefreshPersistentObject : IPostEndpoint, IMemberOf<PersistentObjectGroup>
+[MemberOf<PersistentObjectGroup>]
+internal sealed partial class RefreshPersistentObject : IPostEndpoint
 {
     public static string Path => "/refresh";
 

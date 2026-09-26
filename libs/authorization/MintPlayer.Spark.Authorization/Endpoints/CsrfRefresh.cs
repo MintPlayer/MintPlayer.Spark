@@ -32,7 +32,8 @@ namespace MintPlayer.Spark.Authorization.Endpoints;
 /// fresh cookie it was entitled to anyway.
 /// </para>
 /// </remarks>
-internal sealed class CsrfRefresh : IPostEndpoint, IMemberOf<SparkAuthGroup>, IEndpointBase
+[MemberOf<SparkAuthGroup>]
+internal sealed class CsrfRefresh : IPostEndpoint, IEndpointBase
 {
     public static string Path => "/csrf-refresh";
 

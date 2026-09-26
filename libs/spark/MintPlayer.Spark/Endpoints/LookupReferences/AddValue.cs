@@ -7,7 +7,8 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.LookupReferences;
 
-internal sealed partial class AddLookupReferenceValue : IPostEndpoint, IMemberOf<LookupReferencesGroup>
+[MemberOf<LookupReferencesGroup>]
+internal sealed partial class AddLookupReferenceValue : IPostEndpoint
 {
     public static string Path => "/{name}";
 

@@ -13,7 +13,8 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Actions;
 
-internal sealed partial class ExecuteCustomAction : IPostEndpoint, IMemberOf<ActionsGroup>
+[MemberOf<ActionsGroup>]
+internal sealed partial class ExecuteCustomAction : IPostEndpoint
 {
     public static string Path => "/execute";
 

@@ -3,7 +3,6 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MintPlayer.Spark.SourceGenerators.Models;
 using MintPlayer.SourceGenerators.Tools;
-using MintPlayer.SourceGenerators.Tools.ValueComparers;
 
 namespace MintPlayer.Spark.SourceGenerators.Generators;
 
@@ -33,8 +32,7 @@ public class AttributeDescriptionsGenerator : IncrementalGenerator
 
     public override void Initialize(
         IncrementalGeneratorInitializationContext context,
-        IncrementalValueProvider<Settings> settingsProvider,
-        IncrementalValueProvider<ICompilationCache> cacheProvider)
+        IncrementalValueProvider<Settings> settingsProvider)
     {
         var descriptionsProvider = context.SyntaxProvider
             .CreateSyntaxProvider(
@@ -75,7 +73,6 @@ public class AttributeDescriptionsGenerator : IncrementalGenerator
                     };
                 })
             .Where(static x => x != null)
-            .WithNullableComparer()
             .Collect();
 
         var knowsSparkProvider = context.CompilationProvider

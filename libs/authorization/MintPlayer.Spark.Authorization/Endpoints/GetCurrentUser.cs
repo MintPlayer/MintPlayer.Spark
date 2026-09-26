@@ -3,7 +3,8 @@ using System.Security.Claims;
 
 namespace MintPlayer.Spark.Authorization.Endpoints;
 
-internal sealed class GetCurrentUser : IGetEndpoint, IMemberOf<SparkAuthGroup>
+[MemberOf<SparkAuthGroup>]
+internal sealed class GetCurrentUser : IGetEndpoint
 {
     public static string Path => "/me";
 

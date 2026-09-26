@@ -20,7 +20,8 @@ namespace MintPlayer.Spark.Endpoints.PersistentObject;
 /// owns the save, and the row reaches the database only when the parent is saved.
 /// </para>
 /// </summary>
-internal sealed partial class NewPersistentObject : IPostEndpoint, IMemberOf<PersistentObjectGroup>
+[MemberOf<PersistentObjectGroup>]
+internal sealed partial class NewPersistentObject : IPostEndpoint
 {
     public static string Path => "/new";
 

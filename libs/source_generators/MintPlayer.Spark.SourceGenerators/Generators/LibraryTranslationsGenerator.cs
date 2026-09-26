@@ -3,7 +3,6 @@ using MintPlayer.Spark.SourceGenerators.Diagnostics;
 using MintPlayer.Spark.SourceGenerators.Json;
 using MintPlayer.Spark.SourceGenerators.Models;
 using MintPlayer.SourceGenerators.Tools;
-using MintPlayer.SourceGenerators.Tools.ValueComparers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -17,8 +16,7 @@ public class LibraryTranslationsGenerator : IncrementalGenerator
 
     public override void Initialize(
         IncrementalGeneratorInitializationContext context,
-        IncrementalValueProvider<Settings> settingsProvider,
-        IncrementalValueProvider<ICompilationCache> cacheProvider)
+        IncrementalValueProvider<Settings> settingsProvider)
     {
         var translationsProvider = context.AdditionalTextsProvider
             .Where(static t => string.Equals(Path.GetFileName(t.Path), "translations.json", System.StringComparison.OrdinalIgnoreCase))
@@ -54,7 +52,6 @@ public class LibraryTranslationsGenerator : IncrementalGenerator
                 info.Chunks = ChunkSerialized(entries);
                 return info;
             })
-            .WithComparer(ComparerRegistry.For<TranslationsLibraryInfo>())
             .Collect();
 
         // Report diagnostics

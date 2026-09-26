@@ -22,7 +22,8 @@ namespace MintPlayer.Spark.Endpoints.Queries;
 /// has already filtered rather than aggregated in the database.
 /// </para>
 /// </remarks>
-internal sealed partial class DistinctValues : IPostEndpoint, IMemberOf<QueriesGroup>
+[MemberOf<QueriesGroup>]
+internal sealed partial class DistinctValues : IPostEndpoint
 {
     public static string Path => "/distinct-values";
 

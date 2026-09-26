@@ -11,7 +11,7 @@
 
         <!-- NuGet Package Metadata -->
         <PackageId>MintPlayer.Spark.SourceGenerators</PackageId>
-		<Version>11.0.0-preview.86</Version>
+		<Version>11.0.0-preview.88</Version>
 		<Authors>MintPlayer</Authors>
         <Company>MintPlayer</Company>
         <Description>Source generators for MintPlayer.Spark low-code framework. Auto-generates DI registration for Actions classes.</Description>
@@ -23,14 +23,14 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="10.21.0" PrivateAssets="all" GeneratePathProperty="true" />
-        <PackageReference Include="MintPlayer.ValueComparerGenerator" Version="10.20.2" PrivateAssets="all" GeneratePathProperty="true" />
-        <PackageReference Include="MintPlayer.ValueComparerGenerator.Attributes" Version="10.20.1" PrivateAssets="all" GeneratePathProperty="true" />
+        <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="12.1.0" PrivateAssets="all" GeneratePathProperty="true" />
+        <PackageReference Include="MintPlayer.ValueComparerGenerator" Version="12.1.0" PrivateAssets="all" GeneratePathProperty="true" />
+        <PackageReference Include="MintPlayer.ValueComparerGenerator.Attributes" Version="12.1.0" PrivateAssets="all" GeneratePathProperty="true" />
     </ItemGroup>
 
     <ItemGroup>
       <PackageReference Update="Microsoft.CodeAnalysis" Version="5.0.0" />
-      <PackageReference Update="Microsoft.CodeAnalysis.Analyzers" Version="5.3.0" />
-      <PackageReference Update="Microsoft.CodeAnalysis.CSharp" Version="5.3.0" />
+      <PackageReference Update="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0" />
+      <PackageReference Update="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
     </ItemGroup>
 </Project>

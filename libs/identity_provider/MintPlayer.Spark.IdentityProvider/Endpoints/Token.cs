@@ -676,7 +676,18 @@ internal static class Token
     internal static async Task<SparkUser?> LoadUserAsync(IServiceProvider serviceProvider, string userId, CancellationToken ct)
     {
         var registry = serviceProvider.GetRequiredService<SparkModuleRegistry>();
-        var userType = registry.IdentityUserType ?? typeof(SparkUser);
+
+        // ⚠️ No `?? typeof(SparkUser)` fallback, deliberately. Defaulting here resolves
+        // UserManager<SparkUser> from a container in which AddIdentityApiEndpoints<TUser> registered
+        // UserManager<AppUser>, so an application with a derived user type would fail at the first
+        // request instead of at startup — and fail inside a token endpoint, where the cause is least
+        // visible. Login, Logout and TwoFactor already fail closed on this; Token and UserInfo did
+        // not, and the inconsistency was only unreachable because no application derives a user type
+        // yet, which is precisely the extensibility this surface exists to allow.
+        var userType = registry.IdentityUserType
+            ?? throw new InvalidOperationException(
+                "Identity is not configured: SparkModuleRegistry.IdentityUserType is null. "
+                + "Call AddSparkAuthentication<TUser>() during startup.");
 
         var userManagerType = typeof(UserManager<>).MakeGenericType(userType);
         var userManager = serviceProvider.GetRequiredService(userManagerType);

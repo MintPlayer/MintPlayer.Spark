@@ -4,7 +4,6 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MintPlayer.Spark.LibraryGenerators.Models;
 using System.Collections.Immutable;
 using MintPlayer.SourceGenerators.Tools;
-using MintPlayer.SourceGenerators.Tools.ValueComparers;
 
 namespace MintPlayer.Spark.LibraryGenerators.Generators;
 
@@ -36,8 +35,7 @@ public class ValueObjectKeyGenerator : IncrementalGenerator
 
     public override void Initialize(
         IncrementalGeneratorInitializationContext context,
-        IncrementalValueProvider<Settings> settingsProvider,
-        IncrementalValueProvider<ICompilationCache> cacheProvider)
+        IncrementalValueProvider<Settings> settingsProvider)
     {
         var valueObjectsProvider = context.SyntaxProvider
             .ForAttributeWithMetadataName(
@@ -46,10 +44,9 @@ public class ValueObjectKeyGenerator : IncrementalGenerator
                 transform: static (ctx, ct) => Describe(ctx, ct))
             .Where(static x => x is not null)
             .Select(static (x, ct) => x!)
-            .WithComparer(ComparerRegistry.For<ValueObjectInfo>())
             .Collect()
             .Select(static (found, ct) => Distinct(found))
-            .WithComparer(ComparerRegistry.For<ImmutableArray<ValueObjectInfo>>());
+            ;
 
         var sourceProvider = valueObjectsProvider
             .Join(settingsProvider)

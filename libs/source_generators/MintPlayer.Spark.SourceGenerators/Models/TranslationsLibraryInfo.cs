@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace MintPlayer.Spark.SourceGenerators.Models;
 
-[AutoValueComparer]
+[GenerateEquality]
 public partial class TranslationsLibraryInfo
 {
     public string FilePath { get; set; } = string.Empty;
@@ -13,7 +13,7 @@ public partial class TranslationsLibraryInfo
     public List<TranslationsIssueInfo> Issues { get; set; } = new();
 }
 
-[AutoValueComparer]
+[GenerateEquality]
 public partial class TranslationsIssueInfo
 {
     public string Kind { get; set; } = string.Empty;

@@ -7,27 +7,32 @@ internal class SparkGroup : IEndpointGroup
     public static string Prefix => "/spark";
 }
 
-internal class EntityTypesGroup : IEndpointGroup, IMemberOf<SparkGroup>
+[MemberOf<SparkGroup>]
+internal class EntityTypesGroup : IEndpointGroup
 {
     public static string Prefix => "/types";
 }
 
-internal class QueriesGroup : IEndpointGroup, IMemberOf<SparkGroup>
+[MemberOf<SparkGroup>]
+internal class QueriesGroup : IEndpointGroup
 {
     public static string Prefix => "/queries";
 }
 
-internal class PersistentObjectGroup : IEndpointGroup, IMemberOf<SparkGroup>
+[MemberOf<SparkGroup>]
+internal class PersistentObjectGroup : IEndpointGroup
 {
     public static string Prefix => "/po";
 }
 
-internal class ActionsGroup : IEndpointGroup, IMemberOf<SparkGroup>
+[MemberOf<SparkGroup>]
+internal class ActionsGroup : IEndpointGroup
 {
     public static string Prefix => "/actions";
 }
 
-internal class LookupReferencesGroup : IEndpointGroup, IMemberOf<SparkGroup>
+[MemberOf<SparkGroup>]
+internal class LookupReferencesGroup : IEndpointGroup
 {
     public static string Prefix => "/lookupref";
 }

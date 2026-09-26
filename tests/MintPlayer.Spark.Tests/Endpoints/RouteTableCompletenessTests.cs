@@ -7,7 +7,7 @@ namespace MintPlayer.Spark.Tests.Endpoints;
 /// Every endpoint Spark serves must appear in the places that are maintained by hand (#431 M10).
 /// </summary>
 /// <remarks>
-/// Endpoint registration is source-generated from the <c>IMemberOf&lt;TGroup&gt;</c> marker, so adding
+/// Endpoint registration is source-generated from the <c>[MemberOf&lt;TGroup&gt;]</c> marker, so adding
 /// an endpoint needs no central <c>Map*</c> edit — which is the right design and also why nothing
 /// notices when the hand-maintained companions are not updated with it. A new endpoint can ship
 /// absent from the protocol client, the README's route table, the API specification and the deny-all
@@ -92,11 +92,19 @@ public class RouteTableCompletenessTests
         return routes;
     }
 
-    /// <summary>Walks the <c>IMemberOf&lt;TGroup&gt;</c> chain, concatenating each group's prefix.</summary>
+    /// <summary>Walks the <c>[MemberOf&lt;TGroup&gt;]</c> chain, concatenating each group's prefix.</summary>
+    /// <remarks>
+    /// ⚠️ Membership is an <b>attribute</b> since Endpoints 11.1.0-rc.0, not the deleted
+    /// <c>IMemberOf&lt;TGroup&gt;</c> interface, and it is <b>inherited</b> — so the lookup honours
+    /// <c>inherit: true</c>, which is what the generator does. A class that still declared the old
+    /// interface would not fail to compile against 11.x; it would silently map at the root with no
+    /// prefix, which is precisely what this test exists to catch.
+    /// </remarks>
     private static string ResolvePrefix(Type type)
     {
-        var memberOf = type.GetInterfaces()
-            .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IMemberOf<>));
+        var memberOf = type.GetCustomAttributes(inherit: true)
+            .Select(attribute => attribute.GetType())
+            .FirstOrDefault(t => t.IsGenericType && t.GetGenericTypeDefinition() == typeof(MemberOfAttribute<>));
 
         if (memberOf is null) return string.Empty;
 

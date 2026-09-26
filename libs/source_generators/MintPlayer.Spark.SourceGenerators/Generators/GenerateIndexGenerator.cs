@@ -5,7 +5,6 @@ using MintPlayer.Spark.SourceGenerators.Json;
 using MintPlayer.Spark.SourceGenerators.Models;
 using MintPlayer.Spark.SourceGenerators.Naming;
 using MintPlayer.SourceGenerators.Tools;
-using MintPlayer.SourceGenerators.Tools.ValueComparers;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
@@ -46,8 +45,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
 
     public override void Initialize(
         IncrementalGeneratorInitializationContext context,
-        IncrementalValueProvider<Settings> settingsProvider,
-        IncrementalValueProvider<ICompilationCache> valueComparerCacheProvider)
+        IncrementalValueProvider<Settings> settingsProvider)
     {
         var entitiesProvider = context.SyntaxProvider
             .CreateSyntaxProvider(
@@ -66,7 +64,6 @@ public class GenerateIndexGenerator : IncrementalGenerator
                     return Describe(entity, ct);
                 })
             .Where(static x => x != null)
-            .WithNullableComparer()
             .Collect();
 
         // Entities declared in a REFERENCED assembly. [GenerateIndex] lives on the entity, which routinely
@@ -80,7 +77,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
         // MintPlayer.Spark.Abstractions at all.
         var referencedEntitiesProvider = context.CompilationProvider
             .Select(static (compilation, ct) => DescribeReferenced(compilation, ct))
-            .WithComparer(ComparerRegistry.For<ImmutableArray<GeneratedIndexInfo>>());
+            ;
 
         // The supported language set, for fanning a TranslatedString out into one field per language. A
         // generator has no DI, so CultureLoader -- the singleton that reads this file at runtime -- is out of
@@ -118,7 +115,7 @@ public class GenerateIndexGenerator : IncrementalGenerator
                 .Cast<GeneratedIndexInfo>()
                 .Concat(providers.Right)
                 .ToImmutableArray())
-            .WithComparer(ComparerRegistry.For<ImmutableArray<GeneratedIndexInfo>>());
+            ;
 
         var sourceProvider = allEntitiesProvider
             .Combine(knowsSparkProvider)
@@ -157,7 +154,6 @@ public class GenerateIndexGenerator : IncrementalGenerator
                     return DescribeHandWritten(indexEntity, ct);
                 })
             .Where(static x => x != null)
-            .WithNullableComparer()
             .Collect();
 
         var handWrittenSourceProvider = handWrittenProvider
@@ -203,7 +199,6 @@ public class GenerateIndexGenerator : IncrementalGenerator
                     return DescribeContext(contextType, ct);
                 })
             .Where(static x => x != null)
-            .WithNullableComparer()
             .Collect();
 
         var contextSourceProvider = contextsProvider

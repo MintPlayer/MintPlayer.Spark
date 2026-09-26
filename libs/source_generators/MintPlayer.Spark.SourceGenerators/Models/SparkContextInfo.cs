@@ -9,7 +9,7 @@ namespace MintPlayer.Spark.SourceGenerators.Models;
 /// <c>IRavenQueryable&lt;VCar&gt; VCars =&gt; Session.Query&lt;VCar, Cars_Overview&gt;()</c> members that Fleet
 /// and HR write by hand today.
 /// </summary>
-[AutoValueComparer]
+[GenerateEquality]
 public partial class SparkContextInfo
 {
     public string ClassName { get; set; } = string.Empty;

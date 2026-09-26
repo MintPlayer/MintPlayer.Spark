@@ -2,7 +2,7 @@ using MintPlayer.ValueComparerGenerator.Attributes;
 
 namespace MintPlayer.Spark.SourceGenerators.Models;
 
-[AutoValueComparer]
+[GenerateEquality]
 public partial class SubscriptionWorkerClassInfo
 {
     public string WorkerTypeName { get; set; } = string.Empty;

@@ -17,17 +17,17 @@
         </bs-select>
       }
     }
-    @if (authService.user()?.isAuthenticated) {
-      <span class="text-light">{{ authService.user()?.userName }}</span>
-      <!-- Not a programUnits.json entry: the sidebar is deliberately two units, and a credential
-           page is account plumbing rather than a program unit. -->
-      <a class="btn btn-outline-light btn-sm" routerLink="/passkeys">{{ 'auth.passkeysTitle' | t }}</a>
-      <button class="btn btn-outline-light btn-sm" (click)="logout()">{{ 'auth.logout' | t }}</button>
-    } @else {
-      <a class="btn btn-outline-light btn-sm" routerLink="/sign-in">
-        {{ 'app.signIn' | t }}
-      </a>
-    }
+    <!--
+      The library bar, not a hand-written copy of it. It renders the user, the passkey link and
+      logout when signed in, and the sign-in link otherwise — and it decides whether to offer
+      passkeys from the SERVER's capabilities plus browser support, which this app could not do
+      from a routerLink. Its sign-in target resolves to loginUrl, which app.config.ts sets to
+      '/sign-in', so the destination is unchanged.
+
+      The passkey page is deliberately not a programUnits.json entry: the sidebar is two units, and
+      a credential page is account plumbing rather than a program unit.
+    -->
+    <spark-auth-bar />
   </div>
 
   <ng-container *sparkShellMainHeader>

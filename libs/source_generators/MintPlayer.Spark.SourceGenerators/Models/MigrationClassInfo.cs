@@ -2,7 +2,7 @@ using MintPlayer.ValueComparerGenerator.Attributes;
 
 namespace MintPlayer.Spark.SourceGenerators.Models;
 
-[AutoValueComparer]
+[GenerateEquality]
 public partial class MigrationClassInfo
 {
     public string MigrationTypeName { get; set; } = string.Empty;

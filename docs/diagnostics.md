@@ -46,6 +46,27 @@ Two further id namespaces are generator-only and not analyzer diagnostics: `SPAR
 (`GenerateIndexDiagnostics.cs`, note `004` is absent) and `SPARK_TRANS_001…`
 (`TranslationsDiagnostics.cs`).
 
+## `MPEP*` — not ours, but they appear in our builds
+
+`MPEP001…MPEP033` come from **`MintPlayer.AspNetCore.Endpoints`**, not from this repository, so they
+are not in the table above and this list is not maintained here — the upstream README is the
+authority. They are recorded only because four assemblies now reference that analyzer and therefore
+surface them: `MintPlayer.Spark`, `.Authorization`, `.Replication` and `.IdentityProvider`.
+
+Three are worth knowing without looking them up, because each is *expected* here rather than a
+problem to fix:
+
+| Id | Severity | Why it fires in this repository |
+|---|---|---|
+| MPEP025 | Info | An open-generic endpoint is not mapped by its declaring assembly's generated method. **Expected** for the 14 generic auth endpoints — they are mapped by `MapEndpoint<T<TUser>>()` from `MapSparkIdentityApi<TUser>`, where `TUser` is concrete. Closing them in the library instead would pin every consumer to `SparkUser`. |
+| MPEP010 | Warning | An endpoint's `Path` repeats its group's prefix. Fires if a `Path` is written absolute (`/spark/auth/x`) instead of relative (`/x`) — the route then lands at `/spark/auth/spark/auth/x`. |
+| MPEP011 | Info | `Path` is not a literal, so build-time route analysis (MPEP007–MPEP010) is skipped. Mapping still works — `Path` is read at map time. |
+
+⚠️ **The generator ships only in `analyzers/dotnet/roslyn5.9/cs`.** On an SDK older than 10.0.400 it
+is skipped *silently* and the build fails with an unexplained `CS1061` on `Map…Endpoints`. `global.json`
+and both CI workflows pin `11.0.100-rc.1.26425.128`, so this is satisfied — but it is the first thing
+to check if that error ever appears.
+
 ## Code fixes
 
 Both fixes live in `MintPlayer.Spark.LibraryGenerators`, alongside the generator that raises

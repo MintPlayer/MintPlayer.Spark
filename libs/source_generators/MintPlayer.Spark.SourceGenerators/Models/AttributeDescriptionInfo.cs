@@ -3,7 +3,7 @@ using MintPlayer.ValueComparerGenerator.Attributes;
 namespace MintPlayer.Spark.SourceGenerators.Models;
 
 /// <summary>One documented property: what <c>SparkAttributeDescriptions.g.cs</c> emits a line for (#348).</summary>
-[AutoValueComparer]
+[GenerateEquality]
 public partial class AttributeDescriptionInfo
 {
     /// <summary>The <c>typeof(...)</c> operand, fully qualified; unbound (<c>Box&lt;&gt;</c>) for generic types.</summary>

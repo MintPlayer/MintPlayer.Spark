@@ -6,7 +6,8 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.LookupReferences;
 
-internal sealed partial class DeleteLookupReferenceValue : IDeleteEndpoint, IMemberOf<LookupReferencesGroup>
+[MemberOf<LookupReferencesGroup>]
+internal sealed partial class DeleteLookupReferenceValue : IDeleteEndpoint
 {
     public static string Path => "/{name}/{key}";
 

@@ -3,7 +3,6 @@ using MintPlayer.Spark.SourceGenerators.Diagnostics;
 using MintPlayer.Spark.SourceGenerators.Json;
 using MintPlayer.Spark.SourceGenerators.Models;
 using MintPlayer.SourceGenerators.Tools;
-using MintPlayer.SourceGenerators.Tools.ValueComparers;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -17,8 +16,7 @@ public class HostTranslationsAggregatorGenerator : IncrementalGenerator
 
     public override void Initialize(
         IncrementalGeneratorInitializationContext context,
-        IncrementalValueProvider<Settings> settingsProvider,
-        IncrementalValueProvider<ICompilationCache> cacheProvider)
+        IncrementalValueProvider<Settings> settingsProvider)
     {
         // Referenced assemblies' translation attribute payloads, projected to POCOs immediately.
         var referencedProvider = context.CompilationProvider
@@ -67,7 +65,7 @@ public class HostTranslationsAggregatorGenerator : IncrementalGenerator
                     OwnAssemblyName = compilation.AssemblyName ?? "",
                 };
             })
-            .WithComparer(ComparerRegistry.For<TranslationsAggregateInfo>());
+            ;
 
         // Host's OWN translations.json, flattened (the aggregator can't see its own
         // compilation's generator-emitted attributes, so we re-flatten here).
@@ -101,7 +99,7 @@ public class HostTranslationsAggregatorGenerator : IncrementalGenerator
                     all.Chunks.AddRange(item.Chunks);
                 return all;
             })
-            .WithComparer(ComparerRegistry.For<TranslationsAssemblyInfo>());
+            ;
 
         var combined = referencedProvider
             .Combine(ownProvider)

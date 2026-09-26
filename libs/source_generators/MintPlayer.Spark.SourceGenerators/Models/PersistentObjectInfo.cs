@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace MintPlayer.Spark.SourceGenerators.Models;
 
-[AutoValueComparer]
+[GenerateEquality]
 public partial class PersistentObjectInfo
 {
     public string EntityName { get; set; } = string.Empty;

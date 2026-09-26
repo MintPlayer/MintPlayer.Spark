@@ -9,7 +9,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.Controllers</PackageId>
-		<Version>11.0.0-preview.85</Version>
+		<Version>11.0.0-preview.88</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>MVC controller support for MintPlayer.Spark. Mounts an application's own controllers inside Spark's pipeline so they share its authentication, authorization and antiforgery rules, and ships the SPARK010 analyzer that reports a bare MapControllers() call.</Description>
@@ -30,11 +30,11 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="MintPlayer.SourceGenerators" Version="10.22.0">
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="12.1.0">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>
-		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="10.20.1" GeneratePathProperty="true" />
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="12.1.0" GeneratePathProperty="true" />
 	</ItemGroup>
 
 	<ItemGroup>

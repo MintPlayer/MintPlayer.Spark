@@ -5,7 +5,8 @@ using MintPlayer.AspNetCore.Endpoints;
 
 namespace MintPlayer.Spark.Authorization.Endpoints;
 
-internal sealed class Logout : IPostEndpoint, IMemberOf<SparkAuthGroup>
+[MemberOf<SparkAuthGroup>]
+internal sealed class Logout : IPostEndpoint
 {
     public static string Path => "/logout";
 

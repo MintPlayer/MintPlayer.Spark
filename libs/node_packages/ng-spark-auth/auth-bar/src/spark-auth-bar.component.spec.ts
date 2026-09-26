@@ -18,6 +18,10 @@ async function setup() {
     logout: vi.fn().mockResolvedValue(undefined),
     isAuthenticated: () => true,
     user: () => ({ isAuthenticated: true, userName: 'jane', email: 'jane@example.com', roles: [] }),
+    // The bar asks the server whether passkeys are offered, so the double has to answer. Passkeys
+    // off by default here: these tests are about the user/logout branch, and a double that silently
+    // enabled an unrelated feature would make them assert more than they name.
+    capabilities: vi.fn().mockResolvedValue({ localCredentials: 'Full', externalProviders: [] }),
   };
   TestBed.configureTestingModule({
     providers: [
@@ -61,4 +65,27 @@ describe('SparkAuthBarComponent', () => {
 
     expect(TestBed.inject(Router).url).toBe('/');
   });
+
+  it('does not offer passkeys when the server does not report them', async () => {
+    const { harness, auth } = await setup();
+    const c = await harness.navigateByUrl('/somewhere', SparkAuthBarComponent);
+    await auth.capabilities.mock.results[0]?.value;
+
+    expect(c.showPasskeys()).toBe(false);
+  });
+
+  it('does not offer passkeys when the capabilities call fails', async () => {
+    // A refused or unreachable capabilities endpoint must leave the link hidden rather than
+    // guessed: offering a credential page the server will not serve is worse than omitting it.
+    const { harness, auth } = await setup();
+    auth.capabilities = vi.fn().mockRejectedValue(new Error('offline'));
+    const c = await harness.navigateByUrl('/somewhere', SparkAuthBarComponent);
+
+    expect(c.showPasskeys()).toBe(false);
+  });
+
+  // ⚠️ The *positive* case is deliberately not asserted here. showPasskeys() also requires
+  // passkeysSupported(), which needs a secure context and the real PublicKeyCredential JSON helpers
+  // — jsdom has none of them, so a passing test would have to fake the browser API it is meant to be
+  // checking. That path is covered against a real browser instead.
 });

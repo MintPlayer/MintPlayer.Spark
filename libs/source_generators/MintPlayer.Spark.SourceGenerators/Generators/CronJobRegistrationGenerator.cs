@@ -2,7 +2,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MintPlayer.Spark.SourceGenerators.Models;
 using MintPlayer.SourceGenerators.Tools;
-using MintPlayer.SourceGenerators.Tools.ValueComparers;
 
 namespace MintPlayer.Spark.SourceGenerators.Generators;
 
@@ -11,8 +10,7 @@ public class CronJobRegistrationGenerator : IncrementalGenerator
 {
     public override void Initialize(
         IncrementalGeneratorInitializationContext context,
-        IncrementalValueProvider<Settings> settingsProvider,
-        IncrementalValueProvider<ICompilationCache> cacheProvider)
+        IncrementalValueProvider<Settings> settingsProvider)
     {
         // Find all non-abstract classes that implement MintPlayer.Spark.Cron.ISparkCronJob
         var jobClassesProvider = context.SyntaxProvider
@@ -44,7 +42,6 @@ public class CronJobRegistrationGenerator : IncrementalGenerator
                     return default;
                 })
             .Where(static x => x != null)
-            .WithNullableComparer()
             .Collect();
 
         // Only emit when the project actually references MintPlayer.Spark.Cron

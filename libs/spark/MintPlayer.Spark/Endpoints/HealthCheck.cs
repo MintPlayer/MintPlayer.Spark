@@ -2,7 +2,8 @@ using MintPlayer.AspNetCore.Endpoints;
 
 namespace MintPlayer.Spark.Endpoints;
 
-internal sealed class SparkHealthCheck : IGetEndpoint, IMemberOf<SparkGroup>
+[MemberOf<SparkGroup>]
+internal sealed class SparkHealthCheck : IGetEndpoint
 {
     public static string Path => "/";
 
