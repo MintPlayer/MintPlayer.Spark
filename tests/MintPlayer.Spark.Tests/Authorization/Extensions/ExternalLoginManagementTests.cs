@@ -78,7 +78,16 @@ public class ExternalLoginManagementTests : SparkTestDriver
                     services.AddSingleton<IDocumentStore>(Store);
                     services.AddSparkAuthentication<SparkUser>();
                     services.AddRouting();
-                    services.Configure<SparkAuthenticationOptions>(o => o.ExternalLoginLinking = linking);
+                    // ⚠️ LocalCredentials is configured here, not only passed to MapSparkIdentityApi.
+                    // The last-credential guard now lives in an endpoint class, which cannot see a
+                    // value closed over from a mapping method's parameter — it reads IOptions<>. The
+                    // two could previously disagree, and a test that set one while the guard read
+                    // the other was asserting against a configuration no deployment can produce.
+                    services.Configure<SparkAuthenticationOptions>(o =>
+                    {
+                        o.ExternalLoginLinking = linking;
+                        o.LocalCredentials = localCredentials;
+                    });
                     services.AddAuthentication(TestScheme)
                         .AddScheme<AuthenticationSchemeOptions, AlwaysSignedInHandler>(TestScheme, _ => { })
                         // A named external provider, because LocalCredentials.Disabled refuses to

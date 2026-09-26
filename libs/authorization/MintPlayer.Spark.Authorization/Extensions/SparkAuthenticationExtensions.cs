@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.WebUtilities;
 using MintPlayer.Spark.Authorization.Configuration;
+using MintPlayer.Spark.Authorization.Endpoints.ExternalLogin;
 using MintPlayer.Spark.Authorization.Identity;
 using System.Security.Claims;
 
@@ -111,214 +112,20 @@ internal static class SparkAuthenticationExtensions
         PasskeyEndpoints.MapPasskeyApi<TUser>(endpoints, authGroup);
 
         // External login: initiate OAuth challenge
-        authGroup.MapGet("/external-login", async (
-            HttpContext context,
-            SignInManager<TUser> signInManager,
-            IAuthenticationSchemeProvider schemes,
-            string provider,
-            string? returnUrl,
-            string? popup) =>
-        {
-            // R2-M3: validate returnUrl at the entry point. Even if R2-C4's
-            // callback fix were bypassed, accepting an absolute attacker URL here
-            // round-trips through OAuth state and reflects back to the callback
-            // unchanged. Substitute the default for anything non-local.
-            var safeReturnUrl = SanitizeReturnUrl(returnUrl);
-            var callbackUrl = $"/spark/auth/external-login-callback?returnUrl={Uri.EscapeDataString(safeReturnUrl)}";
-            // The callback is a fresh top-level navigation, so the only thing that survives
-            // this hop is the URL — carrying the popup flag forward here is what makes the
-            // callback's postMessage branch reachable at all. Plain query string, not OAuth
-            // `state`: this URL never reaches the provider (ASP.NET encrypts it into `state`
-            // itself as AuthenticationProperties.RedirectUri, and the provider only ever sees
-            // the registered CallbackPath).
-            if (popup is not null)
-                callbackUrl += "&popup=1";
-            // 4h: an unregistered scheme reaches Results.Challenge and throws, so an unknown
-            // ?provider= answered with a 500 and a stack trace in the log. It is a bad request —
-            // most often a client and a deployment disagreeing about which providers exist, which
-            // a 500 actively hides.
-            if (await schemes.GetSchemeAsync(provider) is null)
-                return Results.BadRequest(new { error = ExternalLoginErrors.UnknownProvider });
-
-            var properties = signInManager.ConfigureExternalAuthenticationProperties(provider, callbackUrl);
-            return Results.Challenge(properties, [provider]);
-        });
+        // The external-login surface. These are open generics, so this assembly's generated
+        // MapSparkAuthEndpoints() skips them (MPEP025, Info) and they are mapped here, where
+        // TUser is concrete. On `endpoints`, not `authGroup`: the /spark/auth prefix comes from
+        // [MemberOf<SparkAuthGroup>] and mapping onto the group too would compose it twice.
+        endpoints.MapEndpoint<ExternalLoginChallenge<TUser>>();
 
         // External login: handle OAuth callback — mapped on root endpoints (not authGroup)
         // to avoid any group-level auth configuration from MapIdentityApi
-        endpoints.MapGet("/spark/auth/external-login-callback", async (
-            HttpContext context,
-            SignInManager<TUser> signInManager,
-            UserManager<TUser> userManager,
-            SparkExternalLoginLinker<TUser> linker,
-            IOptions<SparkAuthenticationOptions> options,
-            IAntiforgery antiforgery,
-            string? returnUrl) =>
-        {
-            // R2-C4: returnUrl is interpolated into the HTML/JS response body below,
-            // so anything other than a relative in-app path is a vector for XSS
-            // (and at minimum open-redirect after successful OAuth). Sanitize first.
-            var safeReturnUrl = SanitizeReturnUrl(returnUrl);
-
-            var info = await signInManager.GetExternalLoginInfoAsync();
-            if (info is null)
-                return ExternalLoginOutcome(context, safeReturnUrl, ExternalLoginErrors.NoLoginInfo);
-
-            // Try signing in with existing external login
-            var result = await signInManager.ExternalLoginSignInAsync(
-                info.LoginProvider, info.ProviderKey, isPersistent: true);
-
-            TUser? user;
-            if (result.Succeeded)
-            {
-                user = await userManager.FindByLoginAsync(info.LoginProvider, info.ProviderKey);
-            }
-            else if (await userManager.FindByLoginAsync(info.LoginProvider, info.ProviderKey) is not null)
-            {
-                // ⚠️ 4h: the login IS attached, so this is a refusal — lockout, two-factor, or a
-                // confirmation requirement — not a first-time sign-in. Falling through to
-                // provisioning treated a locked-out user as a stranger, and the branch below would
-                // then answer about their email rather than about why they were refused. Worse, a
-                // lockout is a deliberate security response and silently routing around it into an
-                // account-creation path is the last thing that should happen to one.
-                var refusal = result.IsLockedOut ? ExternalLoginErrors.LockedOut
-                    : result.RequiresTwoFactor ? ExternalLoginErrors.RequiresTwoFactor
-                    : result.IsNotAllowed ? ExternalLoginErrors.NotAllowed
-                    : ExternalLoginErrors.SignInRefused;
-
-                return ExternalLoginOutcome(context, safeReturnUrl, refusal);
-            }
-            else
-            {
-                // 4g/R2-H11: only provision when the issuer attested the email. An unverified
-                // address from a provider is a *claim*, not a proof — anyone who can assert your
-                // address at some IdP could otherwise squat your identity here.
-                //
-                // ⚠️ One claim, `email_verified`, for every provider. It used to accept a
-                // GitHub-specific `urn:github:` claim alongside it, which would have meant a new
-                // vocabulary term per forge — and a forge whose term nobody remembered to add would
-                // fail closed in a way that reads like a broken provider.
-                //
-                // ⚠️ And it is the *only* check there is. D23 dropped the account-confirmation
-                // mail for externally provisioned users, on the grounds that the SSO already proves
-                // the person controls the address — which is true exactly when the provider says
-                // the address is verified. So there is no longer a second chance to establish this
-                // later, and the gate must fail closed: a provider that does not say counts as not
-                // verified. A forge that cannot report it must not be trusted to assert identity by
-                // email at all.
-                var email = info.Principal.FindFirstValue(ClaimTypes.Email);
-                var emailVerified = string.Equals(
-                    info.Principal.FindFirstValue("email_verified"), "true",
-                    StringComparison.OrdinalIgnoreCase);
-
-                if (string.IsNullOrEmpty(email) || !emailVerified)
-                    return ExternalLoginOutcome(context, safeReturnUrl, ExternalLoginErrors.EmailNotVerified);
-
-                var userName = info.Principal.FindFirstValue(ClaimTypes.Name)
-                    ?? info.Principal.FindFirstValue(ClaimTypes.NameIdentifier);
-
-                // 4c: the address may already belong to somebody. Asked *before* provisioning
-                // rather than inferred from a failed CreateAsync, because the store's DuplicateEmail
-                // arrives with no user attached and is indistinguishable from a validation failure —
-                // which is how this case used to surface as "account_creation_failed", a message
-                // that reads as "this application is broken" rather than "you already have an
-                // account".
-                var existing = await userManager.FindByEmailAsync(email);
-                if (existing is not null)
-                {
-                    return await LinkOrRefuseAsync(
-                        context, signInManager, userManager, linker, options, antiforgery,
-                        existing, info, userName, safeReturnUrl);
-                }
-
-                user = new TUser();
-                await userManager.SetUserNameAsync(user, userName);
-                await userManager.SetEmailAsync(user, email);
-
-                // 4f: set because the provider *said the address is verified* — a fact about the
-                // token, checked immediately above — and not by fiat. The distinction is the whole
-                // of 4g: writing `true` unconditionally would make the field mean nothing, and it
-                // is the field the next feature will trust.
-                //
-                // D23: no confirmation mail follows. The SSO already established what one would
-                // have, and mailing anyway is ceremony the user has no reason to complete.
-                user.EmailConfirmed = true;
-
-                var createResult = await userManager.CreateAsync(user);
-                if (!createResult.Succeeded)
-                    return ExternalLoginOutcome(context, safeReturnUrl, ExternalLoginErrors.AccountCreationFailed);
-
-                // ⚠️ 4h: both results were discarded. A failed AddLoginAsync leaves an account with
-                // no credential attached — unreachable by anyone, and holding the email reservation
-                // so the same person cannot even try again. The account exists only because of this
-                // request and has nothing in it, so the honest repair is to undo it rather than
-                // leave a tombstone that blocks the address forever.
-                var linkResult = await userManager.AddLoginAsync(user, info);
-                if (!linkResult.Succeeded)
-                {
-                    await userManager.DeleteAsync(user);
-                    return ExternalLoginOutcome(context, safeReturnUrl, ExternalLoginErrors.AccountCreationFailed);
-                }
-
-                await signInManager.SignInAsync(user, isPersistent: true);
-            }
-
-            // Store OAuth tokens for later API use
-            if (user is not null && info.AuthenticationTokens is not null)
-            {
-                foreach (var token in info.AuthenticationTokens)
-                {
-                    await userManager.SetAuthenticationTokenAsync(
-                        user, info.LoginProvider, token.Name, token.Value);
-                }
-            }
-
-            // Ensure antiforgery cookie is set before redirect
-            antiforgery.GetAndStoreTokens(context);
-
-            // R2-C4: Server-side redirect instead of HTML interpolation. The previous
-            // implementation built an HTML page with returnUrl as a raw JS string
-            // literal — even after SanitizeReturnUrl removes the worst-case XSS
-            // payloads, the popup branch (window.opener.postMessage) is unaffected
-            // (no caller-data interpolation), and the non-popup branch is now a
-            // standard server redirect that the framework HTML-encodes for us.
-            return ExternalLoginOutcome(context, safeReturnUrl, error: null);
-        }).AllowAnonymous();
+        endpoints.MapEndpoint<ExternalLoginCallback<TUser>>();
 
         // 4e: the other half of ConfirmByEmail. Reached from a link in a mailbox, so it is a plain
         // top-level GET — there is no popup to post back to and no session to carry an antiforgery
         // token. The single-use token *is* the credential; that is what a confirmation link is.
-        endpoints.MapGet("/spark/auth/confirm-external-link", async (
-            HttpContext context,
-            SignInManager<TUser> signInManager,
-            UserManager<TUser> userManager,
-            SparkExternalLoginLinker<TUser> linker,
-            string? token,
-            string? returnUrl) =>
-        {
-            var safeReturnUrl = SanitizeReturnUrl(returnUrl);
-
-            // Usually absent: the reader is in their mailbox, not mid-OAuth. When it *is* present
-            // and names a different identity than the confirmation was issued for, that is the
-            // substitution the whole design is built against, and the linker refuses it.
-            var ambient = await signInManager.GetExternalLoginInfoAsync();
-            var result = await linker.ConfirmAsync(token, ambient?.ProviderKey, context.RequestAborted);
-
-            if (result.Outcome != SparkLinkConfirmationOutcome.Linked)
-            {
-                return Results.Redirect(QueryHelpers.AddQueryString(
-                    safeReturnUrl, "sparkLinkConfirmation", ConfirmationCode(result.Outcome)));
-            }
-
-            // Signing in here is the point: the person proved control of the account's mailbox, and
-            // sending them back to a sign-in page after that would ask them to prove it twice.
-            var user = await userManager.FindByIdAsync(result.UserId!);
-            if (user is not null)
-                await signInManager.SignInAsync(user, isPersistent: true);
-
-            return Results.Redirect(QueryHelpers.AddQueryString(
-                safeReturnUrl, "sparkLinkConfirmation", "linked"));
-        }).AllowAnonymous();
+        endpoints.MapEndpoint<ConfirmExternalLink<TUser>>();
 
         MapExternalLoginManagement<TUser>(endpoints, authGroup, localCredentials);
 
@@ -369,144 +176,16 @@ internal static class SparkAuthenticationExtensions
         if (linking == SparkExternalLoginLinking.Disabled)
             return;
 
-        authGroup.MapGet("/external-logins", async (
-            HttpContext context,
-            UserManager<TUser> userManager,
-            IAuthenticationSchemeProvider schemes) =>
-        {
-            var user = await userManager.GetUserAsync(context.User);
-            if (user is null)
-                return Results.Unauthorized();
+        endpoints.MapEndpoint<ListExternalLogins<TUser>>();
 
-            var logins = await userManager.GetLoginsAsync(user);
-            var hasPassword = await userManager.HasPasswordAsync(user);
-
-            // Computed per login rather than once for the account, because it is the answer to
-            // "can I remove *this* one" — and it is served to the client so the UI can disable the
-            // button instead of offering an action that will be refused.
-            var canUnlink = !SparkCredentialInventory.WouldRemoveLastCredential(
-                logins.Count, hasPassword, localCredentials,
-                (await userManager.GetPasskeysAsync(user)).Count, passkeys);
-
-            var external = await schemes.GetAllSchemesAsync();
-            var linked = logins.Select(l => l.LoginProvider).ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-            return Results.Ok(new
-            {
-                linked = logins.Select(l => new
-                {
-                    provider = l.LoginProvider,
-                    providerKey = l.ProviderKey,
-                    displayName = l.ProviderDisplayName ?? l.LoginProvider,
-                    canUnlink,
-                }),
-                available = external
-                    .Where(scheme => scheme.DisplayName is not null && !linked.Contains(scheme.Name))
-                    .Select(scheme => new { provider = scheme.Name, displayName = scheme.DisplayName }),
-            });
-        }).RequireAuthorization();
-
-        authGroup.MapPost("/external-logins/unlink", async (
-            HttpContext context,
-            UserManager<TUser> userManager,
-            SignInManager<TUser> signInManager,
-            string provider,
-            string providerKey) =>
-        {
-            var user = await userManager.GetUserAsync(context.User);
-            if (user is null)
-                return Results.Unauthorized();
-
-            var logins = await userManager.GetLoginsAsync(user);
-            if (!logins.Any(l =>
-                    string.Equals(l.LoginProvider, provider, StringComparison.Ordinal)
-                    && string.Equals(l.ProviderKey, providerKey, StringComparison.Ordinal)))
-            {
-                return Results.BadRequest(new { error = ExternalLoginErrors.LoginNotFound });
-            }
-
-            // ⚠️ The guard. Removing the last way in is permanent: no password to fall back on, no
-            // provider left to prove ownership, and no self-service route back. Identity will
-            // happily do it.
-            if (SparkCredentialInventory.WouldRemoveLastCredential(
-                    logins.Count, await userManager.HasPasswordAsync(user), localCredentials,
-                    (await userManager.GetPasskeysAsync(user)).Count, passkeys))
-            {
-                return Results.BadRequest(new { error = ExternalLoginErrors.LastCredential });
-            }
-
-            var result = await userManager.RemoveLoginAsync(user, provider, providerKey);
-            if (!result.Succeeded)
-                return Results.BadRequest(new { error = ExternalLoginErrors.UnlinkFailed });
-
-            // The security stamp carries into the cookie, so refreshing it is what makes the
-            // removal take effect on sessions other than this one.
-            await signInManager.RefreshSignInAsync(user);
-            return Results.Ok(new { unlinked = true });
-        })
-            .RequireAuthorization()
-            .WithMetadata(new RequireAntiforgeryTokenAttribute(true));
+        endpoints.MapEndpoint<UnlinkExternalLogin<TUser>>();
 
         if (linking != SparkExternalLoginLinking.WhenSignedIn)
             return;
 
-        authGroup.MapGet("/external-logins/link", (
-            HttpContext context,
-            SignInManager<TUser> signInManager,
-            string provider,
-            string? returnUrl,
-            string? popup) =>
-        {
-            var safeReturnUrl = SanitizeReturnUrl(returnUrl);
-            var callbackUrl = $"/spark/auth/link-external-login-callback?returnUrl={Uri.EscapeDataString(safeReturnUrl)}";
-            if (popup is not null)
-                callbackUrl += "&popup=1";
+        endpoints.MapEndpoint<LinkExternalLoginChallenge<TUser>>();
 
-            // ⚠️ Keyed on the signed-in user so that the identity coming back is attached to the
-            // session that asked, not to whoever the callback happens to find signed in. Identity
-            // uses it to reject a callback that lands in a different session.
-            var properties = signInManager.ConfigureExternalAuthenticationProperties(
-                provider, callbackUrl, userId: context.User.FindFirstValue(ClaimTypes.NameIdentifier));
-            return Results.Challenge(properties, [provider]);
-        }).RequireAuthorization();
-
-        endpoints.MapGet("/spark/auth/link-external-login-callback", async (
-            HttpContext context,
-            SignInManager<TUser> signInManager,
-            UserManager<TUser> userManager,
-            IAntiforgery antiforgery,
-            string? returnUrl) =>
-        {
-            var safeReturnUrl = SanitizeReturnUrl(returnUrl);
-
-            var user = await userManager.GetUserAsync(context.User);
-            if (user is null)
-                return ExternalLoginOutcome(context, safeReturnUrl, ExternalLoginErrors.SignInToLink);
-
-            var info = await signInManager.GetExternalLoginInfoAsync(
-                await userManager.GetUserIdAsync(user));
-            if (info is null)
-                return ExternalLoginOutcome(context, safeReturnUrl, ExternalLoginErrors.NoLoginInfo);
-
-            var result = await userManager.AddLoginAsync(user, info);
-            if (!result.Succeeded)
-            {
-                // Told apart deliberately. "Already attached somewhere" is a fact about the world
-                // the user can act on — sign in with it, or detach it there first — while a store
-                // failure is not, and reporting them the same way sends people looking for the
-                // wrong problem.
-                var error = result.Errors.Any(e => e.Code == "LoginAlreadyAssociated")
-                    ? ExternalLoginErrors.LoginAlreadyAssociated
-                    : ExternalLoginErrors.LinkFailed;
-                return ExternalLoginOutcome(context, safeReturnUrl, error);
-            }
-
-            // Nothing about the session changed except which credentials reach it, and the external
-            // cookie is spent; refreshing keeps this consistent with the unlink path.
-            await signInManager.RefreshSignInAsync(user);
-            antiforgery.GetAndStoreTokens(context);
-            return ExternalLoginOutcome(context, safeReturnUrl, error: null);
-        }).RequireAuthorization();
+        endpoints.MapEndpoint<LinkExternalLoginCallback<TUser>>();
     }
 
     /// <summary>
@@ -516,7 +195,7 @@ internal static class SparkAuthenticationExtensions
     /// Kept as a mapping rather than serialising the enum name, so that renaming a member cannot
     /// silently change a value that browser code and mail templates depend on.
     /// </remarks>
-    private static string ConfirmationCode(SparkLinkConfirmationOutcome outcome) => outcome switch
+    internal static string ConfirmationCode(SparkLinkConfirmationOutcome outcome) => outcome switch
     {
         SparkLinkConfirmationOutcome.Linked => "linked",
         SparkLinkConfirmationOutcome.AlreadyUsed => "already_used",
@@ -631,7 +310,7 @@ internal static class SparkAuthenticationExtensions
     /// The three modes differ in <b>who proves what</b>, not in convenience, so each gets its own
     /// answer rather than a shared "failed" — see <see cref="SparkExternalLoginLinking"/>.
     /// </remarks>
-    private static async Task<IResult> LinkOrRefuseAsync<TUser>(
+    internal static async Task<IResult> LinkOrRefuseAsync<TUser>(
         HttpContext context,
         SignInManager<TUser> signInManager,
         UserManager<TUser> userManager,
@@ -687,7 +366,7 @@ internal static class SparkAuthenticationExtensions
     /// It is interpolated into a JS object literal below, which is safe only while it stays a
     /// compile-time constant — never pass caller-supplied text.
     /// </param>
-    private static IResult ExternalLoginOutcome(HttpContext context, string safeReturnUrl, string? error)
+    internal static IResult ExternalLoginOutcome(HttpContext context, string safeReturnUrl, string? error)
     {
         if (!context.Request.Query.ContainsKey("popup"))
         {
