@@ -9,7 +9,7 @@ namespace MintPlayer.Spark.SourceGenerators.Models;
 /// <c>[GenerateIndex]</c> entity. Deliberately a flat data model of strings and bools: the pipeline
 /// compares these for incrementality, so it must hold no Roslyn symbols.
 /// </summary>
-[AutoValueComparer]
+[GenerateEquality]
 public partial class GeneratedIndexInfo
 {
     /// <summary>Fully-qualified entity type, <c>global::</c>-prefixed, for the index's base type.</summary>
@@ -95,7 +95,7 @@ public partial class GeneratedIndexInfo
 }
 
 /// <summary>A <c>[Search]</c> on a type that cannot carry it.</summary>
-[AutoValueComparer]
+[GenerateEquality]
 public partial class InvalidSearchInfo
 {
     public string PropertyName { get; set; } = string.Empty;
@@ -108,7 +108,7 @@ public partial class InvalidSearchInfo
 /// <summary>
 /// One mapped property: how it is declared on the index entity and how it is fed from the document.
 /// </summary>
-[AutoValueComparer]
+[GenerateEquality]
 public partial class IndexPropertyInfo
 {
     public string Name { get; set; } = string.Empty;

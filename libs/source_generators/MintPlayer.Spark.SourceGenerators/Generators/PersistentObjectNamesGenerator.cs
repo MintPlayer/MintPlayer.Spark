@@ -3,7 +3,6 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MintPlayer.Spark.SourceGenerators.Json;
 using MintPlayer.Spark.SourceGenerators.Models;
 using MintPlayer.SourceGenerators.Tools;
-using MintPlayer.SourceGenerators.Tools.ValueComparers;
 using System.IO;
 
 namespace MintPlayer.Spark.SourceGenerators.Generators;
@@ -13,8 +12,7 @@ public class PersistentObjectNamesGenerator : IncrementalGenerator
 {
     public override void Initialize(
         IncrementalGeneratorInitializationContext context,
-        IncrementalValueProvider<Settings> settingsProvider,
-        IncrementalValueProvider<ICompilationCache> cacheProvider)
+        IncrementalValueProvider<Settings> settingsProvider)
     {
         // Find all classes that inherit from DefaultPersistentObjectActions<T> and extract the
         // entity type + its public read/write instance properties (minus "Id").
@@ -83,7 +81,6 @@ public class PersistentObjectNamesGenerator : IncrementalGenerator
                     return default;
                 })
             .Where(static x => x != null)
-            .WithNullableComparer()
             .Collect();
 
         // Only emit when the project actually references MintPlayer.Spark.
@@ -144,7 +141,6 @@ public class PersistentObjectNamesGenerator : IncrementalGenerator
                     : null;
             })
             .Where(static info => info != null)
-            .WithNullableComparer()
             .Collect();
 
         var idsSourceProvider = idsProvider

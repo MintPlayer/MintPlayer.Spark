@@ -2,7 +2,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MintPlayer.Spark.SourceGenerators.Models;
 using MintPlayer.SourceGenerators.Tools;
-using MintPlayer.SourceGenerators.Tools.ValueComparers;
 
 namespace MintPlayer.Spark.SourceGenerators.Generators;
 
@@ -11,8 +10,7 @@ public class RecipientRegistrationGenerator : IncrementalGenerator
 {
     public override void Initialize(
         IncrementalGeneratorInitializationContext context,
-        IncrementalValueProvider<Settings> settingsProvider,
-        IncrementalValueProvider<ICompilationCache> cacheProvider)
+        IncrementalValueProvider<Settings> settingsProvider)
     {
         // Find all classes that implement IRecipient<TMessage>
         var recipientClassesProvider = context.SyntaxProvider
@@ -70,7 +68,6 @@ public class RecipientRegistrationGenerator : IncrementalGenerator
                 })
             .Where(static x => x != null)
             .SelectMany(static (x, ct) => x!)
-            .WithComparer()
             .Collect();
 
         // Check if project references MintPlayer.Spark.Messaging.Abstractions

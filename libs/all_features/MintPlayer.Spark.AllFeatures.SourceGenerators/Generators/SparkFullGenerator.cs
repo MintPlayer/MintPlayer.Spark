@@ -2,7 +2,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MintPlayer.Spark.AllFeatures.SourceGenerators.Models;
 using MintPlayer.SourceGenerators.Tools;
-using MintPlayer.SourceGenerators.Tools.ValueComparers;
 
 namespace MintPlayer.Spark.AllFeatures.SourceGenerators.Generators;
 
@@ -11,8 +10,7 @@ public class SparkFullGenerator : IncrementalGenerator
 {
     public override void Initialize(
         IncrementalGeneratorInitializationContext context,
-        IncrementalValueProvider<Settings> settingsProvider,
-        IncrementalValueProvider<ICompilationCache> cacheProvider)
+        IncrementalValueProvider<Settings> settingsProvider)
     {
         // Discover SparkContext subclasses, SparkUser subclasses, and existence of
         // Actions / CustomAction / Recipient classes in user source code.
@@ -110,7 +108,6 @@ public class SparkFullGenerator : IncrementalGenerator
                     return default;
                 })
             .Where(static x => x != null)
-            .WithNullableComparer()
             .Collect();
 
         // Check which Spark packages are referenced (compilation-level checks)

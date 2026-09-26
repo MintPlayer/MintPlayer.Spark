@@ -18,7 +18,7 @@ namespace MintPlayer.Spark.SourceGenerators.Models;
 /// until the developer adds the assignment — which is why the missing-assignment case is a diagnostic rather
 /// than a note in a guide.</para>
 /// </summary>
-[AutoValueComparer]
+[GenerateEquality]
 public partial class HandWrittenIndexEntityInfo
 {
     public string Namespace { get; set; } = string.Empty;

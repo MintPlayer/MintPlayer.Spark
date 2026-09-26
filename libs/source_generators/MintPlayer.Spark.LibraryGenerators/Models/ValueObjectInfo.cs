@@ -10,7 +10,7 @@ namespace MintPlayer.Spark.LibraryGenerators.Models;
 /// Everything here is a string, bool or <see cref="Tools.PathSpec"/> — no <c>ISymbol</c> — so the
 /// value stays comparable and the incremental pipeline keeps caching.
 /// </remarks>
-[AutoValueComparer]
+[GenerateEquality]
 public partial class ValueObjectInfo
 {
     /// <summary>Fully qualified name, used to distinct the set and to key the hint name.</summary>

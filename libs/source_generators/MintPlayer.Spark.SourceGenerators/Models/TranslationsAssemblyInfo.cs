@@ -3,14 +3,14 @@ using System.Collections.Generic;
 
 namespace MintPlayer.Spark.SourceGenerators.Models;
 
-[AutoValueComparer]
+[GenerateEquality]
 public partial class TranslationsAssemblyInfo
 {
     public string AssemblyName { get; set; } = string.Empty;
     public List<TranslationsChunkInfo> Chunks { get; set; } = new();
 }
 
-[AutoValueComparer]
+[GenerateEquality]
 public partial class TranslationsChunkInfo
 {
     public int ChunkIndex { get; set; }
@@ -18,21 +18,21 @@ public partial class TranslationsChunkInfo
     public string Json { get; set; } = string.Empty;
 }
 
-[AutoValueComparer]
+[GenerateEquality]
 public partial class TranslationsHostEntry
 {
     public string Key { get; set; } = string.Empty;
     public List<TranslationsLanguageEntry> Languages { get; set; } = new();
 }
 
-[AutoValueComparer]
+[GenerateEquality]
 public partial class TranslationsLanguageEntry
 {
     public string Language { get; set; } = string.Empty;
     public string Value { get; set; } = string.Empty;
 }
 
-[AutoValueComparer]
+[GenerateEquality]
 public partial class TranslationsAggregateInfo
 {
     public bool ShouldEmit { get; set; }
@@ -41,7 +41,7 @@ public partial class TranslationsAggregateInfo
     public string OwnAssemblyName { get; set; } = string.Empty;
 }
 
-[AutoValueComparer]
+[GenerateEquality]
 public partial class TranslationsConflict
 {
     public string Key { get; set; } = string.Empty;

@@ -2,7 +2,7 @@ using MintPlayer.ValueComparerGenerator.Attributes;
 
 namespace MintPlayer.Spark.AllFeatures.SourceGenerators.Models;
 
-[AutoValueComparer]
+[GenerateEquality]
 public partial class SparkFullDiscoveredType
 {
     /// <summary>

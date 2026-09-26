@@ -2,7 +2,6 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using MintPlayer.Spark.SourceGenerators.Models;
 using MintPlayer.SourceGenerators.Tools;
-using MintPlayer.SourceGenerators.Tools.ValueComparers;
 
 namespace MintPlayer.Spark.SourceGenerators.Generators;
 
@@ -11,8 +10,7 @@ public class CustomActionsRegistrationGenerator : IncrementalGenerator
 {
     public override void Initialize(
         IncrementalGeneratorInitializationContext context,
-        IncrementalValueProvider<Settings> settingsProvider,
-        IncrementalValueProvider<ICompilationCache> cacheProvider)
+        IncrementalValueProvider<Settings> settingsProvider)
     {
         // Find all classes that implement ICustomAction (directly or via SparkCustomAction)
         var customActionClassesProvider = context.SyntaxProvider
@@ -47,7 +45,6 @@ public class CustomActionsRegistrationGenerator : IncrementalGenerator
                     };
                 })
             .Where(static x => x != null)
-            .WithNullableComparer()
             .Collect();
 
         // Check if project references MintPlayer.Spark.Abstractions (where ICustomAction lives)
