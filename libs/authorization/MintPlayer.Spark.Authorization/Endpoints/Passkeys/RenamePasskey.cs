@@ -39,7 +39,18 @@ internal sealed partial class RenamePasskey<TUser> : IPostEndpoint
         if (passkey is null)
             return Results.NotFound();
 
-        var request = await httpContext.Request.ReadFromJsonAsync<PasskeyRenameRequest>();
+        // Read inside the guard — an uncaught JsonException from a missing or malformed body would
+        // answer 500 rather than the uniform refusal this surface promises. See PasskeySignIn.
+        PasskeyRenameRequest? request;
+        try
+        {
+            request = await httpContext.Request.ReadFromJsonAsync<PasskeyRenameRequest>();
+        }
+        catch (Exception ex) when (PasskeyEndpoints.IsCeremonyInputFailure(ex))
+        {
+            return PasskeyEndpoints.BadCeremonyInput();
+        }
+
         if (request is null)
             return PasskeyEndpoints.BadCeremonyInput();
 

@@ -32,7 +32,18 @@ internal sealed partial class RegisterPasskey<TUser> : IPostEndpoint
         if (user is null)
             return Results.Unauthorized();
 
-        var request = await httpContext.Request.ReadFromJsonAsync<PasskeyRegistrationRequest>();
+        // Read inside the guard — an uncaught JsonException from a missing or malformed body would
+        // answer 500 rather than the uniform refusal this surface promises. See PasskeySignIn.
+        PasskeyRegistrationRequest? request;
+        try
+        {
+            request = await httpContext.Request.ReadFromJsonAsync<PasskeyRegistrationRequest>();
+        }
+        catch (Exception ex) when (PasskeyEndpoints.IsCeremonyInputFailure(ex))
+        {
+            return PasskeyEndpoints.BadCeremonyInput();
+        }
+
         if (request is null || string.IsNullOrWhiteSpace(request.CredentialJson))
             return PasskeyEndpoints.BadCeremonyInput();
 

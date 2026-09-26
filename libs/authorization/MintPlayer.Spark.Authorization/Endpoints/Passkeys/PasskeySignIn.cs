@@ -30,7 +30,21 @@ internal sealed partial class PasskeySignIn<TUser> : IPostEndpoint
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
-        var request = await httpContext.Request.ReadFromJsonAsync<PasskeyRegistrationRequest>();
+        // ⚠️ The body read is inside the guard, not before it. Minimal-API binding used to turn a
+        // missing or malformed body into a framework 400; reading it by hand throws instead, and an
+        // uncaught JsonException here answers 500 with a stack trace — which is precisely the
+        // failure IsCeremonyInputFailure was written to prevent, on precisely the route its remarks
+        // name: a bare POST to the anonymous sign-in endpoint.
+        PasskeyRegistrationRequest? request;
+        try
+        {
+            request = await httpContext.Request.ReadFromJsonAsync<PasskeyRegistrationRequest>();
+        }
+        catch (Exception ex) when (PasskeyEndpoints.IsCeremonyInputFailure(ex))
+        {
+            return PasskeyEndpoints.SignInFailed();
+        }
+
         if (request is null || string.IsNullOrWhiteSpace(request.CredentialJson))
             return PasskeyEndpoints.SignInFailed();
 
