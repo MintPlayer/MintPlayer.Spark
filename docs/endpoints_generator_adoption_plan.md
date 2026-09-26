@@ -5,10 +5,14 @@ Branch: `feat/upgrade-generators-and-endpoints`. **One pull request**, per the r
 three package migrations and the endpoint adoption land together, because Endpoints 11.2.0-rc.0 is
 built on SourceGenerators.Tools 12.1.0 and they cannot be separated.
 
-**Status:** M0-M3, M5, M6 and M7 done — **the solution builds green, 0 errors**, and no MPEP / MINT / MPA /
-SPARK diagnostic fires. Design settled: the 14 generic auth routes are mapped with
-`MapEndpoint<T<TUser>>()` from inside `MapSparkIdentityApi<TUser>` (PRD D1) — **no application
-changes of any kind**. Next: M0's snapshot (still takeable from a master worktree), then M4.
+**Status:** M0–M8 done. ⚠️ **M9 is incomplete — the five-project sweep did not finish**; see M9 for
+what ran and what is still owed before merge.
+
+The solution builds green from clean, 0 errors, and no MPEP / MINT / MPA / SPARK diagnostic fires.
+Every hand-mapped route is now a generator endpoint class except the two documented webhook
+exceptions. Design settled: the 14 generic auth routes are mapped with `MapEndpoint<T<TUser>>()`
+from inside `MapSparkIdentityApi<TUser>` (PRD D1) — **no application changes of any kind**, because
+`AddAuthentication<TUser>` already states the user type and remains the single source of truth.
 
 ---
 
@@ -165,7 +169,7 @@ Then the four groups, 16 classes (GET and POST on one route are two classes), an
 through an explicit interface implementation; it works but is unsanctioned by the Endpoints library.
 File the upstream ask for `Configure(RouteGroupBuilder, IServiceProvider)` alongside.
 
-### M8 — `MintPlayer.Spark.Webhooks.GitHub`: record the exception
+### ✅ M8 — `MintPlayer.Spark.Webhooks.GitHub`: record the exception *(done — docs/endpoints_generator_webhooks_exception.md)*
 
 Per PRD D4 — **not a migration**. Both routes stay hand-mapped and the assembly takes no
 `PackageReference`. Document why in `docs/`, and file the upstream ask for a provider-aware or
@@ -175,7 +179,37 @@ instance `Path`.
 verb" hole was already fixed (`SparkBuilderExtensions.cs:72` is `MapGet`, recorded in
 `docs/release-notes-preview-87.md:71`). Do not re-open it on that basis.
 
-### M9 — Docs, snapshot diff, and the full sweep
+### ⚠️ M9 — Docs done; the sweep is INCOMPLETE
+
+**Docs done:** `docs/diagnostics.md` gained an `MPEP*` section (deliberately separate from the
+`SPARK*` table — those are ours, these come from a referenced package), and M8's exception doc is
+written.
+
+**Version gate done:** all **14** packable `libs/` projects changed on this branch moved to
+`11.0.0-preview.88`. The gate checks each project individually, not "did something bump".
+
+⚠️ **The five-project sweep did NOT finish.** Three of five completed before it was stopped for time:
+
+| Project | Result |
+|---|---|
+| `MintPlayer.Spark.Client.Tests` | ✅ 91 passed |
+| `MintPlayer.Spark.SourceGenerators.Tests` | ✅ 302 passed |
+| `MintPlayer.Spark.E2E.Tests` | ⚠️ 104 passed, **1 failed** |
+| `MintPlayer.Spark.Tests` | **not run in this sweep** (2491 passed earlier, before M6/M7) |
+| `CodeCoverage.Tests` | **not run** |
+
+The one E2E failure is `CrossModuleSyncTests.Etl_deployment_is_accepted_for_a_granted_collection`,
+and it is **environmental, not a regression**:
+`LicenseLimitException: Your current license doesn't include the RavenDB ETL feature`. The request
+routed correctly, passed module-certificate validation and reached `EtlTaskManager` — which is itself
+evidence that `EtlDeploy`'s migration works. Community licence has no ETL; Developer does. Likely
+fallout from deleting the provisioned RavenDB server directory during this session.
+
+**Still outstanding before merge:**
+- re-run all five projects on a Developer licence, from a clean provision
+- re-run `MintPlayer.Spark.Tests` and `CodeCoverage.Tests`, which have not been run since M6/M7
+- SP4: triage any vacuity-guard findings (none seen in 2491 + 302 + 91 so far)
+- check CI, not just the local suites
 
 - re-dump the route table and diff against M0's fixture; every difference named and justified
 - update `docs/diagnostics.md` with the MPEP025–MPEP033 range
