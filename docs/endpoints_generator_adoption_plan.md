@@ -5,8 +5,8 @@ Branch: `feat/upgrade-generators-and-endpoints`. **One pull request**, per the r
 three package migrations and the endpoint adoption land together, because Endpoints 11.2.0-rc.0 is
 built on SourceGenerators.Tools 12.1.0 and they cannot be separated.
 
-**Status:** M0–M8 done. ⚠️ **M9 is incomplete — the five-project sweep did not finish**; see M9 for
-what ran and what is still owed before merge.
+**Status:** M0–M9 done; CI green. See M0 for the one substitution made along the way, and
+*Follow-ups* for what is deliberately left.
 
 The solution builds green from clean, 0 errors, and no MPEP / MINT / MPA / SPARK diagnostic fires.
 Every hand-mapped route is now a generator endpoint class except the two documented webhook
@@ -24,16 +24,31 @@ deletes the interface it reflects over, so it is rewritten by the change it poli
 "rewritten first and proven green on the old package": `MemberOfAttribute<>` does not exist in
 10.0.0.
 
-So:
-
-1. On **master**, before any change, build a host and dump the full `EndpointDataSource` — every
-   route pattern, verb, endpoint name and attached metadata type — to a committed fixture.
-2. Migrate.
-3. Re-dump and diff. Empty except for deliberate, named changes.
-
 ⚠️ This matters more under D1 than it would have otherwise: 11.2.0-rc.0 resolves membership from
 `[MemberOf<T>]` only, so a **stale `IMemberOf` does not fail the build — it silently maps at the root
-with no prefix.** The snapshot is the only thing that catches that.
+with no prefix.** Something has to catch that.
+
+### ⚠️ What was actually done — the fixture was NOT created
+
+The plan called for dumping `EndpointDataSource` to a committed fixture on master and diffing after.
+**That fixture does not exist.** `RouteTableCompletenessTests` was used instead, and the reasoning is
+recorded here rather than left as a silent substitution:
+
+- it already derives every route the way registration does, so a second mechanism would duplicate it;
+- it asserts each route against **four** hand-maintained companions — the protocol client, the
+  README route table, the API specification and the deny-all mirror — which is a stronger claim than
+  "the set did not change";
+- it carries `The_discovery_itself_finds_endpoints`, a guard against exactly the failure feared here:
+  the day the marker changes shape, the suite fails loudly instead of vacuously passing on an empty
+  set.
+
+It ran green after the membership flip (49 tests), and again in CI. So the risk is covered — but by a
+different instrument than the one planned, and a reviewer looking for a fixture will not find one.
+
+**Not covered by that substitution:** metadata. The completeness test compares route *patterns*, not
+the antiforgery and authorization metadata attached to them. That was verified instead by driving a
+real browser — an authenticated POST without an `X-XSRF-TOKEN` still answers 400 — and by the
+existing `XsrfSurfaceTests`.
 
 ---
 
@@ -179,7 +194,7 @@ instance `Path`.
 verb" hole was already fixed (`SparkBuilderExtensions.cs:72` is `MapGet`, recorded in
 `docs/release-notes-preview-87.md:71`). Do not re-open it on that basis.
 
-### ⚠️ M9 — Docs done; the sweep is INCOMPLETE
+### ✅ M9 — Docs, version gate, and the full sweep
 
 **Docs done:** `docs/diagnostics.md` gained an `MPEP*` section (deliberately separate from the
 `SPARK*` table — those are ours, these come from a referenced package), and M8's exception doc is
@@ -188,33 +203,32 @@ written.
 **Version gate done:** all **14** packable `libs/` projects changed on this branch moved to
 `11.0.0-preview.88`. The gate checks each project individually, not "did something bump".
 
-⚠️ **The five-project sweep did NOT finish.** Three of five completed before it was stopped for time:
+✅ **The sweep is green on CI.** Every local failure turned out to be environmental, and the runner
+proves it — which is the point of "check CI, not just the local suites".
 
-| Project | Result |
-|---|---|
-| `MintPlayer.Spark.Client.Tests` | ✅ 91 passed |
-| `MintPlayer.Spark.SourceGenerators.Tests` | ✅ 302 passed |
-| `MintPlayer.Spark.E2E.Tests` | ⚠️ 104 passed, **1 failed** |
-| `MintPlayer.Spark.Tests` | **not run in this sweep** (2491 passed earlier, before M6/M7) |
-| `CodeCoverage.Tests` | **not run** |
+| Project | Local | CI |
+|---|---|---|
+| `MintPlayer.Spark.Tests` | 2490 ✅ / 1 ✗ | **2491 ✅** |
+| `CodeCoverage.Tests` | 383 ✅ / 390 ✗ | **773 ✅** |
+| `MintPlayer.Spark.E2E.Tests` | 104 ✅ / 1 ✗ | **105 ✅** |
+| `MintPlayer.Spark.SourceGenerators.Tests` | 302 ✅ | **302 ✅** |
+| `MintPlayer.Spark.Client.Tests` | 91 ✅ | **91 ✅** |
 
-The one E2E failure is `CrossModuleSyncTests.Etl_deployment_is_accepted_for_a_granted_collection`,
-and it is **environmental, not a regression**:
-`LicenseLimitException: Your current license doesn't include the RavenDB ETL feature`. The request
-routed correctly, passed module-certificate validation and reached `EtlTaskManager` — which is itself
-evidence that `EtlDeploy`'s migration works. Community licence has no ETL; Developer does. Likely
-fallout from deleting the provisioned RavenDB server directory during this session.
+The three local failures, all environmental, all confirmed by the runner passing:
 
-**Still outstanding before merge:**
-- re-run all five projects on a Developer licence, from a clean provision
-- re-run `MintPlayer.Spark.Tests` and `CodeCoverage.Tests`, which have not been run since M6/M7
-- SP4: triage any vacuity-guard findings (none seen in 2491 + 302 + 91 so far)
-- check CI, not just the local suites
+- **ETL deployment** — `LicenseLimitException`; Community has no ETL, Developer does. The request
+  routed, passed module-certificate validation and reached `EtlTaskManager`, which is itself evidence
+  `EtlDeploy`'s migration works.
+- **CodeCoverage ×390** — `ServerDirectory` null; the `7.2.1` provisioned server directory was
+  deleted mid-session and had not re-provisioned.
+- **Corax complex-map** — expects indexing errors and got none; unrelated to endpoints.
 
-- re-dump the route table and diff against M0's fixture; every difference named and justified
-- update `docs/diagnostics.md` with the MPEP025–MPEP033 range
-- run **all five** test projects against the `.slnx`, output redirected to a file, once
-- check CI, not just the local suites
+⚠️ **CI also caught one thing local runs did not:** the auth-bar change broke its own spec, because
+the component's constructor now calls a service method the test double predated. Fixed, with the gate
+itself covered.
+
+**SP4 — no vacuity findings.** The Assertions guard fired on nothing across 2491 + 773 + 105 + 302 +
+91 tests.
 
 ---
 
@@ -237,6 +251,29 @@ fallout from deleting the provisioned RavenDB server directory during this sessi
 - **CI-only gates**: model/description sync and the `libs/` version bump. This PR touches `libs/`, so
   the version bump is mandatory — and per `CLAUDE.md`, Spark's majors track **net11.0** and do **not**
   move because a dependency's major did.
+
+## Follow-ups — not blockers, but real
+
+Two upstream asks, neither filed yet, both recorded where the workaround lives:
+
+1. **`IEndpointGroup.Configure(RouteGroupBuilder, IServiceProvider)`.** `IsEnabled` receives the
+   provider and its sibling does not, so option-dependent *metadata* has to reach it by casting
+   through `IEndpointRouteBuilder`, whose members `RouteGroupBuilder` implements explicitly. The
+   higher-value half is a **doc fix**: the README's answer for "options-dependent" is `IsEnabled`,
+   which for metadata is wrong in a dangerous direction — following it makes `/connect/token`
+   disappear when CORS is off, rather than merely losing a header.
+2. **A provider-aware or instance `Path`**, which is the single thing blocking the dev-WebSocket
+   route in `docs/endpoints_generator_webhooks_exception.md`.
+
+One limitation inside this repository, documented in `SparkAuthBarComponent`:
+`SPARK_AUTH_ROUTE_PATHS` is provided on the `sparkAuthRoutes()` subtree, but the auth bar lives in
+the application shell, outside it. The bar therefore gates on the server's capability and falls back
+to `withPasskeys()`'s default path — so an application that gives the passkey page a **custom** path
+*and* renders the library bar gets the wrong link. Fixing it means exposing mounted paths at root
+rather than per-route, which changes a published API.
+
+Not re-measured: passkey coverage after the 20 new tests. It was 30.4% on the commit that prompted
+them.
 
 ## Out of scope
 
