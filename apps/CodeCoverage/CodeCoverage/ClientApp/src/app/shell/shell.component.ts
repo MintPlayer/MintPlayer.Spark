@@ -8,7 +8,7 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { SparkShellComponent, SparkShellTopbarEndDirective, SparkShellMainHeaderDirective } from '@mintplayer/ng-spark/shell';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
-import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
+import { SparkAuthBarComponent } from '@mintplayer/ng-spark-auth/auth-bar';
 
 /**
  * The application frame. All responsive behaviour — breakpoints, the overlay drawer,
@@ -33,21 +33,17 @@ import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
     SparkShellComponent, SparkShellTopbarEndDirective, SparkShellMainHeaderDirective,
     BsAlertComponent, BsAlertCloseComponent, BsSelectComponent, BsSelectOption,
     ResolveTranslationPipe, TranslateKeyPipe,
+    SparkAuthBarComponent,
   ],
   templateUrl: './shell.component.html',
   styleUrl: './shell.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
 export class ShellComponent {
-  readonly authService = inject(SparkAuthService);
   readonly lang = inject(SparkLanguageService);
 
   loginError = signal<string | null>(null);
   readonly dangerColor = Color.danger;
-
-  async logout(): Promise<void> {
-    await this.authService.logout();
-  }
 
   // bs-alert-close only hides the alert (isVisible model); clear the error so
   // the @if removes it and a later failure starts from a fresh, visible alert.
