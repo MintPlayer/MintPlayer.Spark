@@ -5,7 +5,7 @@ Branch: `feat/upgrade-generators-and-endpoints`. **One pull request**, per the r
 three package migrations and the endpoint adoption land together, because Endpoints 11.2.0-rc.0 is
 built on SourceGenerators.Tools 12.1.0 and they cannot be separated.
 
-**Status:** M0, M1, M2, M3 and M5 done — **the solution builds green, 0 errors**, and no MPEP / MINT / MPA /
+**Status:** M0-M3, M5, M6 and M7 done — **the solution builds green, 0 errors**, and no MPEP / MINT / MPA /
 SPARK diagnostic fires. Design settled: the 14 generic auth routes are mapped with
 `MapEndpoint<T<TUser>>()` from inside `MapSparkIdentityApi<TUser>` (PRD D1) — **no application
 changes of any kind**. Next: M0's snapshot (still takeable from a master worktree), then M4.
@@ -135,7 +135,7 @@ Per PRD D1 and D2. Entirely inside `MintPlayer.Spark.Authorization`; **no app ch
 `GetAuthCapabilities` keeps working — it reads the runtime `EndpointDataSource`
 (`GetAuthCapabilities.cs:32`), which includes manually mapped routes.
 
-### M6 — DF1 and DF2
+### ✅ M6 — DF1 and DF2 *(done)*
 
 `IdentityUserType`'s inconsistent null handling: make `Token.cs:679` and `UserInfo.cs:64` fail closed
 like `Login.cs:84`, `Logout.cs:26`, `TwoFactor.cs:60`, instead of `?? typeof(SparkUser)` — which
@@ -143,7 +143,7 @@ resolves `UserManager<SparkUser>` from a container holding `UserManager<AppUser>
 request time for any app with a derived user type. Delete the stale root-mapping comment at
 `SparkAuthenticationExtensions.cs:147-148`.
 
-### M7 — `MintPlayer.Spark.IdentityProvider`, 16 routes → 16 classes
+### ✅ M7 — `MintPlayer.Spark.IdentityProvider`, 16 routes → 16 classes *(done)*
 
 Per PRD D3. No closing machinery — every handler is non-generic.
 
