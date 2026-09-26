@@ -10,7 +10,8 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Queries;
 
-internal sealed partial class ExecuteQuery : IPostEndpoint, IMemberOf<QueriesGroup>
+[MemberOf<QueriesGroup>]
+internal sealed partial class ExecuteQuery : IPostEndpoint
 {
     public static string Path => "/execute";
 

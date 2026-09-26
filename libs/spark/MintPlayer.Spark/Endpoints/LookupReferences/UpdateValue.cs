@@ -7,7 +7,8 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.LookupReferences;
 
-internal sealed partial class UpdateLookupReferenceValue : IPutEndpoint, IMemberOf<LookupReferencesGroup>
+[MemberOf<LookupReferencesGroup>]
+internal sealed partial class UpdateLookupReferenceValue : IPutEndpoint
 {
     public static string Path => "/{name}/{key}";
 

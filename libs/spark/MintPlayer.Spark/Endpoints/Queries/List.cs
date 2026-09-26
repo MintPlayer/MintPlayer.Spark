@@ -5,7 +5,8 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Queries;
 
-internal sealed partial class ListQueries : IGetEndpoint, IMemberOf<QueriesGroup>
+[MemberOf<QueriesGroup>]
+internal sealed partial class ListQueries : IGetEndpoint
 {
     public static string Path => "/";
 

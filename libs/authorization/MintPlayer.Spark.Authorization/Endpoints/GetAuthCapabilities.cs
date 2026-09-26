@@ -22,7 +22,8 @@ namespace MintPlayer.Spark.Authorization.Endpoints;
 /// is true by construction, and stays true if the mapping is ever reached by some other path.
 /// </para>
 /// </remarks>
-internal sealed class GetAuthCapabilities : IGetEndpoint, IMemberOf<SparkAuthGroup>
+[MemberOf<SparkAuthGroup>]
+internal sealed class GetAuthCapabilities : IGetEndpoint
 {
     public static string Path => "/capabilities";
 

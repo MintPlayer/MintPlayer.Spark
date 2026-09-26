@@ -8,7 +8,8 @@ using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Endpoints.ProgramUnits;
 
-internal sealed partial class GetProgramUnits : IGetEndpoint, IMemberOf<SparkGroup>
+[MemberOf<SparkGroup>]
+internal sealed partial class GetProgramUnits : IGetEndpoint
 {
     public static string Path => "/program-units";
 

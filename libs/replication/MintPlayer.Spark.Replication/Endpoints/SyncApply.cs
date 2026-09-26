@@ -8,7 +8,8 @@ using MintPlayer.Spark.Replication.Services;
 
 namespace MintPlayer.Spark.Replication.Endpoints;
 
-internal sealed partial class SyncApply : IPostEndpoint, IMemberOf<SparkSyncGroup>
+[MemberOf<SparkSyncGroup>]
+internal sealed partial class SyncApply : IPostEndpoint
 {
     public static string Path => "/apply";
 

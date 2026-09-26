@@ -5,7 +5,8 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.EntityTypes;
 
-internal sealed partial class GetEntityType : IGetEndpoint, IMemberOf<EntityTypesGroup>
+[MemberOf<EntityTypesGroup>]
+internal sealed partial class GetEntityType : IGetEndpoint
 {
     public static string Path => "/{id}";
 

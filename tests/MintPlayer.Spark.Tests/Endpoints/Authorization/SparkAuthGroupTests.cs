@@ -1,3 +1,4 @@
+using System.Reflection;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.Spark.Authorization.Endpoints;
 
@@ -14,9 +15,11 @@ public class SparkAuthGroupTests
     [Fact]
     public void All_auth_endpoints_are_members_of_SparkAuthGroup()
     {
-        typeof(GetCurrentUser).Should().BeAssignableTo<IMemberOf<SparkAuthGroup>>();
-        typeof(Logout).Should().BeAssignableTo<IMemberOf<SparkAuthGroup>>();
-        typeof(CsrfRefresh).Should().BeAssignableTo<IMemberOf<SparkAuthGroup>>();
+        // Membership is an attribute since Endpoints 11.1.0-rc.0, not an interface, and it is
+        // inherited - so this asks the same question the generator does.
+        typeof(GetCurrentUser).GetCustomAttribute<MemberOfAttribute<SparkAuthGroup>>(inherit: true).Should().NotBeNull();
+        typeof(Logout).GetCustomAttribute<MemberOfAttribute<SparkAuthGroup>>(inherit: true).Should().NotBeNull();
+        typeof(CsrfRefresh).GetCustomAttribute<MemberOfAttribute<SparkAuthGroup>>(inherit: true).Should().NotBeNull();
     }
 
     [Fact]

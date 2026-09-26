@@ -37,7 +37,8 @@ namespace MintPlayer.Spark.Endpoints.PersistentObject;
 /// being switched off.
 /// </para>
 /// </remarks>
-internal sealed partial class DeleteRowPersistentObject : IPostEndpoint, IMemberOf<PersistentObjectGroup>
+[MemberOf<PersistentObjectGroup>]
+internal sealed partial class DeleteRowPersistentObject : IPostEndpoint
 {
     public static string Path => "/delete-row";
 

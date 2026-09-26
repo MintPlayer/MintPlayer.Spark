@@ -4,7 +4,8 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Translations;
 
-internal sealed partial class GetTranslations : IGetEndpoint, IMemberOf<SparkGroup>
+[MemberOf<SparkGroup>]
+internal sealed partial class GetTranslations : IGetEndpoint
 {
     public static string Path => "/translations";
 

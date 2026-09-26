@@ -5,7 +5,8 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Permissions;
 
-internal sealed partial class GetPermissions : IGetEndpoint, IMemberOf<SparkGroup>
+[MemberOf<SparkGroup>]
+internal sealed partial class GetPermissions : IGetEndpoint
 {
     public static string Path => "/permissions/{entityTypeId}";
 

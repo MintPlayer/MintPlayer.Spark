@@ -8,7 +8,8 @@ using MintPlayer.Spark.Replication.Services;
 
 namespace MintPlayer.Spark.Replication.Endpoints;
 
-internal sealed partial class EtlDeploy : IPostEndpoint, IMemberOf<SparkEtlGroup>
+[MemberOf<SparkEtlGroup>]
+internal sealed partial class EtlDeploy : IPostEndpoint
 {
     public static string Path => "/deploy";
 

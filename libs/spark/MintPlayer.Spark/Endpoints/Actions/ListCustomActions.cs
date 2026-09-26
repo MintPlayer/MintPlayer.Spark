@@ -6,7 +6,8 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Actions;
 
-internal sealed partial class ListCustomActions : IPostEndpoint, IMemberOf<ActionsGroup>
+[MemberOf<ActionsGroup>]
+internal sealed partial class ListCustomActions : IPostEndpoint
 {
     public static string Path => "/list";
 

@@ -6,7 +6,8 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Queries;
 
-internal sealed partial class GetQuery : IPostEndpoint, IMemberOf<QueriesGroup>
+[MemberOf<QueriesGroup>]
+internal sealed partial class GetQuery : IPostEndpoint
 {
     public static string Path => "/get";
 

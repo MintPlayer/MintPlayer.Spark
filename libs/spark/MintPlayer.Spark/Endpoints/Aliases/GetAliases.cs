@@ -5,7 +5,8 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Aliases;
 
-internal sealed partial class GetAliases : IGetEndpoint, IMemberOf<SparkGroup>
+[MemberOf<SparkGroup>]
+internal sealed partial class GetAliases : IGetEndpoint
 {
     public static string Path => "/aliases";
 

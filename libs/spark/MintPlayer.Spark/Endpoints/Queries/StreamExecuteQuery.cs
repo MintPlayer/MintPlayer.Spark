@@ -9,7 +9,8 @@ using System.Text.Json;
 
 namespace MintPlayer.Spark.Endpoints.Queries;
 
-internal sealed partial class StreamExecuteQuery : IEndpoint, IMemberOf<QueriesGroup>
+[MemberOf<QueriesGroup>]
+internal sealed partial class StreamExecuteQuery : IEndpoint
 {
     // ⚠️ The one route variable left in Spark, and the one place it cannot be removed. Every other
     // endpoint moved its parameters into a JSON body so the route table could be fully literal; a

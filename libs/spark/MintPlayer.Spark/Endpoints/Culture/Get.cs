@@ -4,7 +4,8 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.Culture;
 
-internal sealed partial class GetCulture : IGetEndpoint, IMemberOf<SparkGroup>
+[MemberOf<SparkGroup>]
+internal sealed partial class GetCulture : IGetEndpoint
 {
     public static string Path => "/culture";
 

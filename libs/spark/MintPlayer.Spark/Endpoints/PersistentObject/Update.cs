@@ -10,7 +10,8 @@ using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Endpoints.PersistentObject;
 
-internal sealed partial class UpdatePersistentObject : IPostEndpoint, IMemberOf<PersistentObjectGroup>
+[MemberOf<PersistentObjectGroup>]
+internal sealed partial class UpdatePersistentObject : IPostEndpoint
 {
     public static string Path => "/update";
 
