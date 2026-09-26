@@ -5,7 +5,9 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.Antiforgery;
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.Spark.Authorization.Configuration;
+using MintPlayer.Spark.Authorization.Endpoints.Passkeys;
 using MintPlayer.Spark.Authorization.Identity;
 using System.Text.Json;
 
@@ -73,6 +75,13 @@ internal static class PasskeyEndpoints
 
         if (passkeys == SparkPasskeys.Disabled)
             return;
+
+        // Generator endpoint classes. They are open generics, so this assembly's generated
+        // MapSparkAuthEndpoints() deliberately skips them (MPEP025, Info) and they are mapped here,
+        // where TUser is concrete. Mapped on `endpoints`, not `authGroup`: the /spark/auth prefix
+        // comes from [MemberOf<SparkAuthGroup>], and mapping onto the group as well would compose
+        // it twice.
+        endpoints.MapEndpoint<ListPasskeys<TUser>>();
 
         MapEnrollment<TUser>(authGroup);
         MapManagement<TUser>(authGroup);
@@ -166,22 +175,6 @@ internal static class PasskeyEndpoints
     private static void MapManagement<TUser>(RouteGroupBuilder authGroup)
         where TUser : SparkUser, new()
     {
-        authGroup.MapGet("/passkeys", async (
-            UserManager<TUser> userManager,
-            HttpContext context) =>
-        {
-            var user = await userManager.GetUserAsync(context.User);
-            if (user is null)
-                return Results.Unauthorized();
-
-            var passkeys = await userManager.GetPasskeysAsync(user);
-            // Metadata only. The public key, attestation object and client data JSON never leave the
-            // server: nothing in the UI needs them, and shipping them widens the blast radius of any
-            // future leak on this route for no benefit.
-            return Results.Ok(passkeys.Select(ToSummary).ToArray());
-        })
-            .RequireAuthorization();
-
         authGroup.MapPost("/passkeys/{id}/name", async (
             UserManager<TUser> userManager,
             HttpContext context,
@@ -342,7 +335,7 @@ internal static class PasskeyEndpoints
         return cleaned.Length == 0 ? null : cleaned[..Math.Min(cleaned.Length, 64)];
     }
 
-    private static object ToSummary(UserPasskeyInfo passkey) => new
+    internal static object ToSummary(UserPasskeyInfo passkey) => new
     {
         id = EncodeCredentialId(passkey.CredentialId),
         name = passkey.Name,
