@@ -5,7 +5,7 @@ Branch: `feat/upgrade-generators-and-endpoints`. **One pull request**, per the r
 three package migrations and the endpoint adoption land together, because Endpoints 11.2.0-rc.0 is
 built on SourceGenerators.Tools 12.1.0 and they cannot be separated.
 
-**Status:** M1, M2 and M3 done — **the solution builds green, 0 errors**, and no MPEP / MINT / MPA /
+**Status:** M0, M1, M2, M3 and M5 done — **the solution builds green, 0 errors**, and no MPEP / MINT / MPA /
 SPARK diagnostic fires. Design settled: the 14 generic auth routes are mapped with
 `MapEndpoint<T<TUser>>()` from inside `MapSparkIdentityApi<TUser>` (PRD D1) — **no application
 changes of any kind**. Next: M0's snapshot (still takeable from a master worktree), then M4.
@@ -47,9 +47,15 @@ with no prefix.** The snapshot is the only thing that catches that.
   `((IEndpointRouteBuilder)group).ServiceProvider` reproduces it exactly (PRD D3).
 - **SP4 — how many of the 156 `BeEquivalentTo` sites are vacuous?** Each one the guard throws on is a
   test that was asserting nothing. Triage as **findings**. Run inside M4.
-- **SP5 — `localCredentials` is a method parameter, not an option.** Three test files pass it
-  independently of `IOptions<>`. Endpoint classes must read options, so those tests can diverge.
-  Resolve inside M5.
+- **SP5 ✅ RESOLVED in M5.** `localCredentials` was a closed-over method parameter; endpoint classes
+  read `IOptions<>` instead. Production already passed `options.Value.LocalCredentials` into that
+  parameter, so the value is unchanged — but `ExternalLoginManagementTests` configured the option to
+  one thing and passed the parameter another, and the last-credential guard then read whichever the
+  test was not asserting about. Exactly one test failed (2490 passed, 1 failed), and the fix was to
+  configure the option: a test asserting against a split between parameter and configuration was
+  asserting against a state no deployment can produce.
+- **SP4 note:** the Assertions vacuity guard fired on **nothing** across the 2491 tests in
+  `MintPlayer.Spark.Tests`. The remaining four test projects are still to run at M9.
 
 ---
 
@@ -104,7 +110,7 @@ Then run **SP1**. Nothing else in the 11.x break list applies — Spark is raw a
 
 Build first: **MPA0001 is severity `Error`** and can fail it. Then run the suites and work SP4.
 
-### M5 — The 14 auth routes become generic endpoint classes
+### ✅ M5 — The 14 auth routes become generic endpoint classes *(done)*
 
 Per PRD D1 and D2. Entirely inside `MintPlayer.Spark.Authorization`; **no app changes**.
 
