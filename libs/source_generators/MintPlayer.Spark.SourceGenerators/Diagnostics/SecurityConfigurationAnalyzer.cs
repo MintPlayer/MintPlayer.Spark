@@ -272,14 +272,35 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
         }
     }
 
+    /// <summary>
+    /// The keys of the root object. Found by tracking nesting depth rather than indentation, so a
+    /// tab-indented, four-space or minified file reads the same as the two-space one the old
+    /// <c>^\s{2}"</c> pattern assumed — under which every custom right read as unknown.
+    /// </summary>
     private static IEnumerable<string> TopLevelKeys(string json)
     {
-        foreach (System.Text.RegularExpressions.Match m in
-                 System.Text.RegularExpressions.Regex.Matches(
-                     json, @"^\s{2}""(?<v>[A-Za-z_][A-Za-z0-9_]*)""\s*:",
-                     System.Text.RegularExpressions.RegexOptions.Multiline))
+        var depth = 0;
+        for (var i = 0; i < json.Length; i++)
         {
-            yield return m.Groups["v"].Value;
+            var c = json[i];
+            if (c == '{' || c == '[') { depth++; continue; }
+            if (c == '}' || c == ']') { depth--; continue; }
+            if (c != '"') continue;
+
+            var start = i + 1;
+            for (i = start; i < json.Length && json[i] != '"'; i++)
+            {
+                if (json[i] == '\\') i++;
+            }
+            if (depth != 1 || i >= json.Length) continue;
+
+            var key = json.Substring(start, i - start);
+            var next = i + 1;
+            while (next < json.Length && char.IsWhiteSpace(json[next])) next++;
+
+            if (next < json.Length && json[next] == ':'
+                && System.Text.RegularExpressions.Regex.IsMatch(key, "^[A-Za-z_][A-Za-z0-9_]*$"))
+                yield return key;
         }
     }
 }
