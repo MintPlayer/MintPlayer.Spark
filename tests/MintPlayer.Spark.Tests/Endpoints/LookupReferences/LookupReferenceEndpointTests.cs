@@ -98,17 +98,18 @@ public class LookupReferenceEndpointTests : SparkTestDriver
 
     // --- get through a readable type (#453) ------------------------------
 
-    /// <summary>A Person whose <c>Brand</c> attribute is bound to the CarBrand lookup.</summary>
-    private static EntityTypeFile PersonBindingCarBrand() => new()
+    /// <summary>
+    /// A type whose <c>Brand</c> attribute is bound to the CarBrand lookup. No CLR type, so no actions
+    /// class, so granting it to anonymous needs no row rule (startup verifies one for a real entity).
+    /// </summary>
+    private static EntityTypeFile ProbeBindingCarBrand() => new()
     {
         PersistentObject = new EntityTypeDefinition
         {
-            Id = PersonTypeId,
-            Name = "Person",
-            ClrType = typeof(Person).FullName!,
+            Id = Guid.Parse("aaaaaaaa-4530-4530-4530-aaaaaaaaaaaa"),
+            Name = "LookupProbe",
             Attributes =
             [
-                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "LastName", DataType = "string" },
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Brand", DataType = "string", LookupReferenceType = "CarBrand" },
             ],
         },
@@ -116,7 +117,7 @@ public class LookupReferenceEndpointTests : SparkTestDriver
 
     private SparkEndpointFactory CreateFactory(ILookupReferenceService stub, SparkTestSecurity security) => new(
         Store,
-        [PersonBindingCarBrand()],
+        [ProbeBindingCarBrand()],
         services =>
         {
             services.RemoveAll<ILookupReferenceService>();
@@ -140,19 +141,19 @@ public class LookupReferenceEndpointTests : SparkTestDriver
     [Fact]
     public async Task Get_is_allowed_for_a_lookup_bound_by_a_type_the_caller_may_read()
     {
-        await using var factory = CreateFactory(CarBrandAndColorStub(), SparkTestSecurity.Empty.Granting("Read/Person"));
+        await using var factory = CreateFactory(CarBrandAndColorStub(), SparkTestSecurity.Empty.Granting("Read/LookupProbe"));
         using var client = factory.CreateClient();
 
         var response = await client.GetAsync("/spark/lookupref/CarBrand");
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK, "Person binds CarBrand and the caller may Read Person");
+        response.StatusCode.Should().Be(HttpStatusCode.OK, "LookupProbe binds CarBrand and the caller may Read it");
     }
 
     [Fact]
     public async Task Get_is_refused_for_a_lookup_no_readable_type_binds()
     {
         // Not a wholesale opening: ColorScheme is bound by nothing the caller may read.
-        await using var factory = CreateFactory(CarBrandAndColorStub(), SparkTestSecurity.Empty.Granting("Read/Person"));
+        await using var factory = CreateFactory(CarBrandAndColorStub(), SparkTestSecurity.Empty.Granting("Read/LookupProbe"));
         using var client = factory.CreateClient();
 
         var response = await client.GetAsync("/spark/lookupref/ColorScheme");
@@ -163,12 +164,12 @@ public class LookupReferenceEndpointTests : SparkTestDriver
     [Fact]
     public async Task Get_is_refused_for_a_bound_lookup_when_the_binding_type_is_not_readable()
     {
-        await using var factory = CreateFactory(CarBrandAndColorStub(), SparkTestSecurity.Empty.Granting("Query/Person"));
+        await using var factory = CreateFactory(CarBrandAndColorStub(), SparkTestSecurity.Empty.Granting("Query/LookupProbe"));
         using var client = factory.CreateClient();
 
         var response = await client.GetAsync("/spark/lookupref/CarBrand");
 
-        response.StatusCode.Should().NotBe(HttpStatusCode.OK, "Query/Person is not Read/Person");
+        response.StatusCode.Should().NotBe(HttpStatusCode.OK, "Query/LookupProbe is not Read/LookupProbe");
     }
 
     // --- add (POST) -----------------------------------------------------

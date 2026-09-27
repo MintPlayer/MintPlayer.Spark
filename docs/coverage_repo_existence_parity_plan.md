@@ -5,7 +5,7 @@
 **Branch:** `fix/issue453-repo-existence-parity` · **Base:** `master` @ `736dd141` ·
 **Release:** server deploy of CodeCoverage; `libs/` changes → all NuGet packages bump their preview number
 (major stays 11), npm packages bump patch/minor within 22. ·
-**Status:** M1–M6 in progress
+**Status:** M1–M6 implemented on the branch; full test sweep run (see PR)
 
 One pull request, per `CLAUDE.md`. Tests run once, after M6.
 
@@ -57,6 +57,28 @@ One pull request, per `CLAUDE.md`. Tests run once, after M6.
   npm packages touched → patch/minor within 22.
 - `--spark-verify-model` for CodeCoverage (any doc-comment change on a modelled entity).
 - Run all test projects of `MintPlayer.Spark.slnx` plus CodeCoverage.Tests, once.
+
+## As built — where it differs from the plan
+- **M1.** The policy is registered through a public `SparkAuthorizeAttribute.AddPolicy(AuthorizationOptions)`,
+  called by `AddSpark`. A host that wires authorization by hand (the attribute's own unit tests do) must
+  call it too, or the first request throws "policy not found". Audit: Browse opens to anonymous as
+  security.json intends; MeController stays closed by its separate `[Authorize]`; RepoSettings and
+  Uploads hold no anonymous grant (Uploads also keeps its scheme `[Authorize]`).
+- **M3.** No "all visible" argument exists — every caller's check moved *into* the resolver call:
+  Uploads passes the token's scope check (a token holder probing another org's private names had the
+  same oracle), ForkUploads (anonymous) passes public-only, RepoSettings passes membership of the
+  viewer's owner set (fetched before resolving; equivalent to the `IsOwnerAllowedAsync` it replaces).
+  M3 and M4 share a commit because both rewrite `BrowseController`'s refusal path.
+- **M4.** On the account endpoints only the unknown-forge arm switched to `SparkDenial`; a missing
+  account stays 404, because accounts are anonymously listable anyway (PRD §4).
+- **M5.** The anonymous end-to-end cases live in `SparkAuthorizeEndToEndTests`, not a new class: a second
+  `CoverageWebHostFixture` class would boot a second host concurrently, which Spark's process-wide state
+  does not survive. The authenticated-non-member half is controller-level against the real resolver
+  (`RepositoryExistenceParityTests`) — the test host has no GitHub sign-in. The Fleet
+  `ErrorLeakageTests` suite does not cover Browse, so it was not extended.
+- **M6.** NuGet: the 23 `MintPlayer.Spark*` packages → `11.0.0-preview.89` (SocketExtensions is its own
+  line, untouched). npm: `@mintplayer/ng-spark` `22.21.0` → `22.22.0`, a minor like the previous bumps.
+  `--spark-verify-model`: in sync, no model change.
 
 ## Notes
 - The owner's uncommitted edit to `spark-auth.interceptor.ts` (redirect commented out) must never be
