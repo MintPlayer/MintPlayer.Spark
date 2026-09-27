@@ -65,8 +65,8 @@ export const EXPECTED_REPORTS = [
     glob: 'tests/MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml',
     exclude: E2E_HOST_REPORT,
   },
-  // The Fleet/HR hosts the E2E tests start as subprocesses, measured by dotnet-coverage
-  // (workstream F): one report per host session, no <source>, absolute workspace paths.
+  // The Fleet hosts the E2E tests start as subprocesses, measured by dotnet-coverage
+  // (FleetTestHost): one report per host session, no <source>, absolute workspace paths.
   // Required only when CI switches host coverage on; a local E2E run does not produce it.
   {
     name: 'E2E host subprocess coverage',
