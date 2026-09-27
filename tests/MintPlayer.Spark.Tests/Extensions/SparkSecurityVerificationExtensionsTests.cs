@@ -17,6 +17,7 @@ namespace MintPlayer.Spark.Tests.Extensions;
 /// exit code rather than only the file contents.
 /// </para>
 /// </summary>
+[Collection(MintPlayer.Spark.Tests.Builder.ProcessExitCodeCollection.Name)]
 public class SparkSecurityVerificationExtensionsTests : IDisposable
 {
     private readonly string root = Path.Combine(Path.GetTempPath(), "spark-posture-" + Guid.NewGuid().ToString("N"));

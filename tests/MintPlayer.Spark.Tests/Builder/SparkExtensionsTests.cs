@@ -21,6 +21,7 @@ namespace MintPlayer.Spark.Tests.Builder;
 /// These are thin wrappers but each one is a discrete public API surface — a regression
 /// breaks Demo apps that compose them in unique combinations.
 /// </summary>
+[Collection(ProcessExitCodeCollection.Name)]
 public class SparkExtensionsTests
 {
     // --- AddSpark(IConfiguration) overload ------------------------------
@@ -369,38 +370,15 @@ public class SparkExtensionsTests
     /// exits 3 for a reason that has nothing to do with aliases -- which is exactly how these tests
     /// first failed.
     /// </remarks>
-    private static string Synchronized(ScratchContentRoot scratch)
+    internal static string Synchronized(ScratchContentRoot scratch)
     {
-        var builder = scratch.CreateBuilder();
-        builder.Services.AddScoped<SparkContext, OneEntityTestSparkContext>();
-        builder.SynchronizeSparkModelsIfRequested(["--spark-synchronize-model"]);
+        scratch.Synchronize<OneEntityTestSparkContext>();
         return scratch.Path;
     }
 
-    /// <remarks>
-    /// Returns the reported text as well as the code, because the code alone is a weak assertion:
-    /// several checks and the hash comparison all exit 3, so "it failed" does not establish that it
-    /// failed for the reason under test.
-    /// </remarks>
-    private static (int ExitCode, string Reported) Verify(ScratchContentRoot scratch)
-    {
-        Environment.ExitCode = 0;
-        var captured = new StringWriter();
-        var previous = Console.Error;
-        Console.SetError(captured);
-        try
-        {
-            var verifyBuilder = scratch.CreateBuilder();
-            verifyBuilder.Services.AddScoped<SparkContext, OneEntityTestSparkContext>();
-            verifyBuilder.SynchronizeSparkModelsIfRequested(["--spark-verify-model"]);
-        }
-        finally
-        {
-            Console.SetError(previous);
-        }
-
-        return (Environment.ExitCode, captured.ToString());
-    }
+    /// <inheritdoc cref="ScratchContentRoot.Verify{TContext}"/>
+    internal static (int ExitCode, string Reported) Verify(ScratchContentRoot scratch)
+        => scratch.Verify<OneEntityTestSparkContext>();
 
     private static int VerifyExitCode(ScratchContentRoot scratch) => Verify(scratch).ExitCode;
 
@@ -594,25 +572,6 @@ public class SparkExtensionsTests
         Synchronized(scratch);
 
         VerifyExitCode(scratch).Should().Be(0);
-    }
-
-    private sealed class ScratchContentRoot : IDisposable
-    {
-        private readonly int _previousExitCode = Environment.ExitCode;
-
-        public string Path { get; } = System.IO.Path.Combine(
-            System.IO.Path.GetTempPath(), "spark-sync-tests-" + Guid.NewGuid().ToString("N"));
-
-        public ScratchContentRoot() => Directory.CreateDirectory(Path);
-
-        public WebApplicationBuilder CreateBuilder() =>
-            WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = Path });
-
-        public void Dispose()
-        {
-            Environment.ExitCode = _previousExitCode;
-            try { Directory.Delete(Path, recursive: true); } catch (IOException) { }
-        }
     }
 
     public sealed class Person
