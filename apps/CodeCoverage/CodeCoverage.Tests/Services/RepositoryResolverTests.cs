@@ -25,27 +25,11 @@ namespace CodeCoverage.Tests.Services;
 /// </summary>
 public class RepositoryResolverTests : CoverageRavenTest
 {
-    /// <summary>Never consulted in these tests; resolution must not reach GitHub when we already know.</summary>
-    private sealed class ThrowingInstallationService : IGitHubInstallationService
+    private static (RepositoryResolver Resolver, StubGitHub GitHub) CreateResolver(IAsyncDocumentSession session)
     {
-        public bool WasCalled { get; private set; }
-
-        public Task<IGitHubClient> CreateAppClientAsync()
-        {
-            WasCalled = true;
-            throw new InvalidOperationException("resolution reached GitHub when it should not have");
-        }
-
-        public Task<IGitHubClient> CreateInstallationClientAsync(long installationId)
-            => throw new NotSupportedException();
-
-        public Task<Octokit.GraphQL.Connection> CreateGraphQLConnectionAsync(long installationId, EClientType clientType)
-            => throw new NotSupportedException();
-    }
-
-    private static (RepositoryResolver Resolver, ThrowingInstallationService GitHub) CreateResolver(IAsyncDocumentSession session)
-    {
-        var github = new ThrowingInstallationService();
+        // Never consulted in these tests: resolution must not reach GitHub when we already know,
+        // so reaching it at all throws, and AppClients records that it was tried.
+        var github = new StubGitHub { Throws = new InvalidOperationException("resolution reached GitHub when it should not have") };
         var services = new ServiceCollection();
         services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.None));
         services.AddMemoryCache();
@@ -115,7 +99,7 @@ public class RepositoryResolverTests : CoverageRavenTest
         Assert.NotNull(resolution.Repository);
         Assert.Equal(1, resolution.Repository!.GitHubId);
         Assert.False(resolution.Redirect);
-        Assert.False(github.WasCalled);
+        Assert.False(github.AppClients > 0);
     }
 
     [Fact]
@@ -210,7 +194,7 @@ public class RepositoryResolverTests : CoverageRavenTest
         var resolution = await resolver.ResolveAsync(EForgeProvider.GitHub, "some-stranger", "anything", _ => true);
 
         Assert.Null(resolution.Repository);
-        Assert.False(github.WasCalled);
+        Assert.False(github.AppClients > 0);
     }
 
     /// <summary>
@@ -236,7 +220,7 @@ public class RepositoryResolverTests : CoverageRavenTest
         var resolution = await resolver.ResolveAsync(EForgeProvider.GitHub, "acme", "some-old-name", _ => true);
 
         Assert.Null(resolution.Repository);
-        Assert.True(github.WasCalled, "a stale name under a known owner is exactly what step three is for");
+        Assert.True(github.AppClients > 0, "a stale name under a known owner is exactly what step three is for");
     }
 
     /// <summary>
@@ -267,7 +251,7 @@ public class RepositoryResolverTests : CoverageRavenTest
         Assert.NotNull(resolution.Repository);
         Assert.Equal(expected, resolution.Repository!.GitHubId);
         Assert.Equal(provider, resolution.Repository.Provider);
-        Assert.False(github.WasCalled);
+        Assert.False(github.AppClients > 0);
     }
 
     /// <summary>
@@ -308,7 +292,7 @@ public class RepositoryResolverTests : CoverageRavenTest
     /// It asked "do we know an account with this login?" across every forge, so a GitHub account
     /// named <c>acme</c> admitted a <c>/gitlab/</c> URL to the step that asks GITHUB what
     /// <c>acme/unknown</c> resolves to. That would answer a GitLab path from GitHub's namespace and
-    /// spend the App's rate limit doing it. <see cref="ThrowingInstallationService"/> makes the
+    /// spend the App's rate limit doing it. <see cref="StubGitHub"/>, told to throw, makes the
     /// call observable: reaching GitHub at all throws.
     /// </remarks>
     [Fact]
@@ -322,6 +306,6 @@ public class RepositoryResolverTests : CoverageRavenTest
         var resolution = await resolver.ResolveAsync(EForgeProvider.GitLab, "acme", "unknown", _ => true);
 
         Assert.Null(resolution.Repository);
-        Assert.False(github.WasCalled);
+        Assert.False(github.AppClients > 0);
     }
 }
