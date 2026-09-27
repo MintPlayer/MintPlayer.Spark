@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as core from '@actions/core';
+
+// @actions/core 3 is native ESM: its namespace is frozen, so spyOn needs a spied automock.
+vi.mock('@actions/core', { spy: true });
 import { describeRejections, reportRejectedReports, setResultOutputs } from './main';
 import { UploadStatus } from './status';
 

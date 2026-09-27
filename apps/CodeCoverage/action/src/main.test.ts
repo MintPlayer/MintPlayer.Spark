@@ -44,9 +44,9 @@ vi.mock('@actions/exec', () => ({
 // Same reasoning as context.test.ts: the `context` singleton is built at import time,
 // so it becomes a getter to let each case set its own environment.
 vi.mock('@actions/github', async () => {
-  const { Context } = await vi.importActual<typeof import('@actions/github/lib/context')>(
-    '@actions/github/lib/context',
-  );
+  // v7+ no longer exports lib/context; the class is reachable through the singleton.
+  const actual = await vi.importActual<typeof import('@actions/github')>('@actions/github');
+  const Context = actual.context.constructor as new () => typeof actual.context;
   return {
     get context() {
       return new Context();

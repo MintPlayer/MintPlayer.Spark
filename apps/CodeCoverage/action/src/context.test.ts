@@ -9,9 +9,9 @@ import { toPosixPath } from './paths';
 // getter that constructs a fresh Context per access, which is what makes
 // per-case environments possible at all.
 vi.mock('@actions/github', async () => {
-  const { Context } = await vi.importActual<typeof import('@actions/github/lib/context')>(
-    '@actions/github/lib/context',
-  );
+  // v7+ no longer exports lib/context; the class is reachable through the singleton.
+  const actual = await vi.importActual<typeof import('@actions/github')>('@actions/github');
+  const Context = actual.context.constructor as new () => typeof actual.context;
   return {
     get context() {
       return new Context();
