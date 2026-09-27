@@ -3,13 +3,14 @@ import { Router, provideRouter, Routes } from '@angular/router';
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- see the provider below
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { SparkSignInComponent } from './spark-sign-in.component';
 import { SparkAuthService, SparkAuthTranslationService } from '@mintplayer/ng-spark-auth/core';
 import {
   SPARK_AUTH_CONFIG,
   SPARK_AUTH_ROUTE_PATHS,
+  SPARK_EXTERNAL_PROVIDERS,
   SparkAuthCapabilities,
   defaultSparkAuthConfig,
 } from '@mintplayer/ng-spark-auth/models';
@@ -41,10 +42,15 @@ function capabilities(overrides: Partial<SparkAuthCapabilities> = {}): SparkAuth
  * `capabilities` is a promise the component awaits in its constructor, so a test that wants to
  * observe the *loading* state must hand over a promise it controls rather than a resolved one.
  */
-async function setup(capabilitiesImpl: () => Promise<SparkAuthCapabilities>) {
+async function setup(
+  capabilitiesImpl: () => Promise<SparkAuthCapabilities>,
+  authOverrides: Record<string, unknown> = {},
+  url = '/sign-in',
+) {
   const auth: any = {
     capabilities: vi.fn(capabilitiesImpl),
     loginWithProvider: vi.fn().mockResolvedValue({ success: false, error: 'popup_closed' }),
+    ...authOverrides,
   };
 
   TestBed.configureTestingModule({
@@ -68,7 +74,7 @@ async function setup(capabilitiesImpl: () => Promise<SparkAuthCapabilities>) {
   });
 
   const harness = await RouterTestingHarness.create();
-  const component = await harness.navigateByUrl('/sign-in', SparkSignInComponent);
+  const component = await harness.navigateByUrl(url, SparkSignInComponent);
   harness.detectChanges();
   return { harness, component, auth };
 }
@@ -180,5 +186,151 @@ describe('SparkSignInComponent', () => {
 
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('localCredentials = Full'));
     warn.mockRestore();
+  });
+
+  it('signs in with the safe returnUrl from the query string', async () => {
+    const { harness, auth } = await setup(
+      async () => capabilities({ externalProviders: [google] }), {}, '/sign-in?returnUrl=%2Fprojects');
+    auth.loginWithProvider.mockResolvedValue({ success: true });
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+
+    buttons(harness)[0].click();
+    await harness.fixture.whenStable();
+
+    expect(auth.loginWithProvider).toHaveBeenCalledWith('Google', { returnUrl: '/projects' });
+    expect(navigate).toHaveBeenCalledWith('/projects');
+  });
+
+  it('drops an off-site returnUrl from the query string rather than following it', async () => {
+    const { harness, auth } = await setup(
+      async () => capabilities({ externalProviders: [google] }), {}, '/sign-in?returnUrl=%2F%2Fevil.example');
+
+    buttons(harness)[0].click();
+
+    expect(auth.loginWithProvider).toHaveBeenCalledWith('Google', { returnUrl: '/' });
+  });
+
+  it('puts the declared icon on the provider button', async () => {
+    TestBed.overrideProvider(SPARK_EXTERNAL_PROVIDERS, { useValue: [{ scheme: 'github', iconClass: 'bi bi-github' }] });
+    const { harness } = await setup(async () => capabilities({ externalProviders: [github] }));
+
+    expect(harness.routeNativeElement!.querySelector('button i.bi-github')).not.toBeNull();
+  });
+});
+
+/**
+ * jsdom implements none of WebAuthn; `passkeysAvailable` needs browser support as well as the
+ * server's capability, so the browser half is faked for the button to appear at all.
+ */
+function installWebAuthn() {
+  (globalThis as Record<string, unknown>)['PublicKeyCredential'] = Object.assign(function () { }, {
+    parseCreationOptionsFromJSON: vi.fn(),
+    parseRequestOptionsFromJSON: vi.fn(),
+  });
+  Object.defineProperty(globalThis.navigator, 'credentials', {
+    value: { create: vi.fn(), get: vi.fn() },
+    configurable: true,
+  });
+  Object.defineProperty(globalThis.window, 'isSecureContext', { value: true, configurable: true });
+}
+
+function removeWebAuthn() {
+  delete (globalThis as Record<string, unknown>)['PublicKeyCredential'];
+  Object.defineProperty(globalThis.navigator, 'credentials', { value: undefined, configurable: true });
+  Object.defineProperty(globalThis.window, 'isSecureContext', { value: false, configurable: true });
+}
+
+describe('SparkSignInComponent passkeys', () => {
+  afterEach(() => removeWebAuthn());
+
+  const passkeyButton = (harness: RouterTestingHarness) =>
+    buttons(harness).find((b) => b.textContent!.includes('auth.signInWithPasskey'));
+
+  async function open(auth: Record<string, unknown> = {}, url = '/sign-in', externalProviders = [github]) {
+    installWebAuthn();
+    return setup(
+      async () => capabilities({ passkeys: true, externalProviders } as Partial<SparkAuthCapabilities>),
+      { signInWithPasskey: vi.fn().mockResolvedValue({ success: true }), ...auth },
+      url,
+    );
+  }
+
+  it('offers the passkey button, and does not claim there are no sign-in methods without providers', async () => {
+    // A passkey is a sign-in method: with it available, an empty provider list is not "nothing".
+    const { harness, component } = await open({}, '/sign-in', []);
+
+    expect(component.passkeysAvailable()).toBe(true);
+    expect(passkeyButton(harness)).toBeDefined();
+    expect(text(harness)).not.toContain('auth.noSignInMethods');
+  });
+
+  it('offers no passkey button when the browser cannot run the ceremony', async () => {
+    const { harness, component } = await setup(
+      async () => capabilities({ passkeys: true } as Partial<SparkAuthCapabilities>));
+
+    expect(component.passkeysAvailable()).toBe(false);
+    expect(passkeyButton(harness)).toBeUndefined();
+  });
+
+  it('signs in with a passkey and navigates to the returnUrl from the query string', async () => {
+    const { harness, auth } = await open({}, '/sign-in?returnUrl=%2Fprojects');
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+
+    passkeyButton(harness)!.click();
+    await harness.fixture.whenStable();
+
+    expect(auth.signInWithPasskey).toHaveBeenCalledTimes(1);
+    expect(navigate).toHaveBeenCalledWith('/projects');
+  });
+
+  it('treats a dismissed passkey prompt as "not now": no error, no navigation', async () => {
+    const { harness, component } = await open({
+      signInWithPasskey: vi.fn().mockResolvedValue({ success: false, error: 'cancelled' }),
+    });
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl');
+
+    await component.signInWithPasskey();
+    harness.detectChanges();
+
+    expect(component.passkeyError()).toBe('');
+    expect(navigate).not.toHaveBeenCalled();
+    expect(passkeyButton(harness)!.disabled).toBe(false);
+  });
+
+  it.each([
+    ['locked_out', 'auth.lockedOut'],
+    ['failed', 'auth.passkeyFailed'],
+    ['no_credential', 'auth.passkeyFailed'],
+  ])('renders a %s passkey failure as %s and stays on the page', async (error, key) => {
+    const { harness, component } = await open({
+      signInWithPasskey: vi.fn().mockResolvedValue({ success: false, error }),
+    });
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl');
+
+    await component.signInWithPasskey();
+    harness.detectChanges();
+
+    expect(component.passkeyError()).toBe(key);
+    expect(text(harness)).toContain(key);
+    expect(navigate).not.toHaveBeenCalled();
+    expect(component.passkeyBusy()).toBe(false);
+  });
+
+  it('disables the passkey button while the ceremony runs, and clears the previous error', async () => {
+    let resolve!: (value: unknown) => void;
+    const { harness, component } = await open({
+      signInWithPasskey: vi.fn(() => new Promise((r) => (resolve = r))),
+    });
+    component.passkeyError.set('auth.passkeyFailed');
+
+    const running = component.signInWithPasskey();
+    harness.detectChanges();
+
+    expect(component.passkeyError()).toBe('');
+    expect(passkeyButton(harness)!.disabled).toBe(true);
+    resolve({ success: false, error: 'cancelled' });
+    await running;
+    harness.detectChanges();
+    expect(passkeyButton(harness)!.disabled).toBe(false);
   });
 });
