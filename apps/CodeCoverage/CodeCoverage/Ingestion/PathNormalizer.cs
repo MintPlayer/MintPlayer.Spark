@@ -67,10 +67,14 @@ public sealed class PathNormalizer
         }
 
         var path = Unify(rawPath);
+        var stripped = false;
 
         // 1. Strip the workspace root (absolute CI paths).
         if (rootDir is not null && path.StartsWith(rootDir, StringComparison.OrdinalIgnoreCase))
+        {
             path = path[rootDir.Length..];
+            stripped = true;
+        }
 
         // 2. Strip a report-declared source root, absolute or relative.
         foreach (var root in sourceRoots)
@@ -78,6 +82,7 @@ public sealed class PathNormalizer
             if (path.StartsWith(root, StringComparison.OrdinalIgnoreCase))
             {
                 path = path[root.Length..];
+                stripped = true;
                 break;
             }
         }
@@ -89,13 +94,22 @@ public sealed class PathNormalizer
         if (fileList.Count == 0)
             return (path, Matched: !stillAbsolute);
 
-        if (fileList.Contains(path))
-            return (path, true);
+        // 3a. A relative filename is relative to the report's <source> — that is what
+        //     Cobertura means by it. Joining the two is the only way to tell apart two
+        //     packages that share a tail (`pipes/src/translate-key.pipe.ts` exists in
+        //     both ng-spark and ng-spark-auth), which the suffix match below must, and
+        //     does, refuse as ambiguous. Tried before the bare path: a source-relative
+        //     `src/x.ts` names `<source>/src/x.ts`, even when a root `src/x.ts` exists.
+        if (!stripped && !stillAbsolute)
+        {
+            var joined = ResolveAgainstSourceRoots(path);
+            if (joined is not null)
+                return (joined, true);
+        }
 
-        // Case-insensitive exact (Windows-built reports vs POSIX tree).
-        var ciMatch = fileList.FirstOrDefault(f => string.Equals(f, path, StringComparison.OrdinalIgnoreCase));
-        if (ciMatch is not null)
-            return (ciMatch, true);
+        var exact = FindExact(path);
+        if (exact is not null)
+            return (exact, true);
 
         // 4. Longest-suffix match: unique repo file whose path ends with the
         //    report path's tail (handles unstated source roots like src/main/java).
@@ -107,6 +121,40 @@ public sealed class PathNormalizer
             return (candidates[0], true);
 
         return (path, false);
+    }
+
+    /// <summary>Exact, then case-insensitive exact (Windows-built reports vs POSIX tree).</summary>
+    private string? FindExact(string path)
+        => fileList.Contains(path)
+            ? path
+            : fileList.FirstOrDefault(f => string.Equals(f, path, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// The tracked file <c>&lt;source&gt;/path</c> names, when exactly one declared source
+    /// root yields one. A source root is usable only once it is repo-relative — the
+    /// workspace root stripped from an absolute CI path, or relative to begin with; an
+    /// absolute root outside the workspace cannot name a tracked file. Two roots naming
+    /// two different files is an ambiguity this pass does not settle.
+    /// </summary>
+    private string? ResolveAgainstSourceRoots(string path)
+    {
+        string? hit = null;
+        foreach (var root in sourceRoots)
+        {
+            var relativeRoot = root;
+            if (rootDir is not null && relativeRoot.StartsWith(rootDir, StringComparison.OrdinalIgnoreCase))
+                relativeRoot = relativeRoot[rootDir.Length..];
+            if (LooksAbsolute(relativeRoot))
+                continue;
+
+            var candidate = FindExact(relativeRoot.TrimStart('/') + path);
+            if (candidate is null)
+                continue;
+            if (hit is not null && !string.Equals(hit, candidate, StringComparison.Ordinal))
+                return null;
+            hit = candidate;
+        }
+        return hit;
     }
 
     private static bool EndsWithPath(string full, string tail)
