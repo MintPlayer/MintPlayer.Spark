@@ -11,7 +11,7 @@ import { SparkQueryListComponent } from './spark-query-list.component';
 import { SparkService, SparkStreamingService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import { EntityType, ShowedOn, SparkQuery } from '@mintplayer/ng-spark/models';
-import { StubComponent } from '../../src/test-utils';
+import { StubComponent, settle } from '../../src/test-utils';
 
 /**
  * What remains page-shaped after the grid moved out: route resolution, and streaming.
@@ -54,15 +54,6 @@ const routes: Routes = [
 
 const langStub = { t: (k: string) => k, resolve: (v: any) => (typeof v === 'string' ? v : v?.en ?? '') };
 
-async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
-  for (let i = 0; i < 6; i++) {
-    await fixture.whenStable();
-    await Promise.resolve();
-    fixture.detectChanges();
-  }
-  await fixture.whenStable();
-}
-
 async function setup(serviceOverrides: Record<string, unknown> = {}) {
   const service: any = {
     getEntityTypes: vi.fn().mockResolvedValue([personType]),
@@ -95,7 +86,7 @@ async function setup(serviceOverrides: Record<string, unknown> = {}) {
 
 async function navigate(harness: RouterTestingHarness, url: string) {
   const c = await harness.navigateByUrl(url, SparkQueryListComponent);
-  await settle(harness.fixture);
+  await settle(harness.fixture, { rounds: 6 });
   return c as any;
 }
 
@@ -179,11 +170,11 @@ describe('SparkQueryListComponent', () => {
           { id: 'people/2', breadcrumb: 'Bob', values: [{ key: 'FirstName', value: 'Bob' }] },
         ],
       });
-      await settle(harness.fixture);
+      await settle(harness.fixture, { rounds: 6 });
       expect(c.gridData()).toHaveLength(2);
 
       streamSubject.next({ type: 'patch', updated: [{ id: 'people/1', values: { FirstName: 'Alicia' } }] });
-      await settle(harness.fixture);
+      await settle(harness.fixture, { rounds: 6 });
 
       const alice = c.gridData()!.find((i: any) => i.id === 'people/1')!;
       expect(alice.values.find((v: any) => v.key === 'FirstName')?.value).toBe('Alicia');
@@ -199,10 +190,10 @@ describe('SparkQueryListComponent', () => {
           { id: 'people/2', values: [{ key: 'FirstName', value: 'Bob' }] },
         ],
       });
-      await settle(harness.fixture);
+      await settle(harness.fixture, { rounds: 6 });
 
       c.searchTerm.set('bob');
-      await settle(harness.fixture);
+      await settle(harness.fixture, { rounds: 6 });
 
       expect(c.gridData()).toHaveLength(1);
       expect(c.gridData()![0].id).toBe('people/2');
@@ -212,7 +203,7 @@ describe('SparkQueryListComponent', () => {
       const { c, harness, streamSubject } = await live();
 
       streamSubject.error(new Error('socket died'));
-      await settle(harness.fixture);
+      await settle(harness.fixture, { rounds: 6 });
 
       expect(c.isStreaming()).toBe(false);
       expect(c.errorMessage()).toContain('socket died');

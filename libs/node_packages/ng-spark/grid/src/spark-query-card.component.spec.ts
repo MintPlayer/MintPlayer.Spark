@@ -15,6 +15,7 @@ import {
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import { EntityType, ShowedOn } from '@mintplayer/ng-spark/models';
+import { settle } from '../../src/test-utils';
 
 /**
  * The card's contract in one sentence: a slot the host does not supply renders the default.
@@ -50,15 +51,6 @@ const exportAction = {
 } as any;
 
 const langStub = { t: (k: string) => k, resolve: (v: any) => (typeof v === 'string' ? v : v?.en ?? '') };
-
-async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
-  for (let i = 0; i < 5; i++) {
-    await fixture.whenStable();
-    await Promise.resolve();
-    fixture.detectChanges();
-  }
-  await fixture.whenStable();
-}
 
 function configure(actions: unknown[] = []) {
   const service: any = {

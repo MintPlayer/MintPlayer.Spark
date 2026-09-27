@@ -16,34 +16,13 @@ import {
   SparkShellTopbarStartDirective,
 } from './spark-shell-slots';
 import { SparkService } from '@mintplayer/ng-spark/services';
+import { settle } from '../../src/test-utils';
 
 /**
  * The shell's slot contract, same doctrine as spark-query-card: an omitted slot renders its
  * default (toggler, language selector, title heading), a supplied one replaces exactly that
  * region and nothing else. The menu is not a slot and always renders.
  */
-
-/**
- * Settles the fixture, INCLUDING a macrotask turn.
- *
- * `bs-shell` registers its `<mp-shell>` custom element from an `afterNextRender`, which lands on
- * a later task than `whenStable()` resolves on. Ending the test without that turn tears the
- * fixture down with the registration still in flight; it then upgrades an element whose parent
- * is already gone and jsdom throws `Cannot read properties of null (reading '_namespaceURI')`
- * inside a promise — an unhandled rejection that fails the vitest run while every assertion
- * still passes. It reproduced only on CI's slower runner, so the fix is to keep the async work
- * inside the fixture's lifetime rather than to chase the timing.
- */
-async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
-  for (let i = 0; i < 5; i++) {
-    await fixture.whenStable();
-    await Promise.resolve();
-    fixture.detectChanges();
-  }
-  await new Promise(resolve => setTimeout(resolve, 0));
-  await fixture.whenStable();
-  fixture.detectChanges();
-}
 
 describe('SparkShellComponent', () => {
   const getProgramUnits = vi.fn(async () => ({ programUnitGroups: [] }));
@@ -86,7 +65,7 @@ describe('SparkShellComponent', () => {
     const fixture = TestBed.createComponent(Host);
     fixtures.push(fixture);
     fixture.detectChanges();
-    await settle(fixture);
+    await settle(fixture, { macrotask: true });
     return fixture;
   }
 

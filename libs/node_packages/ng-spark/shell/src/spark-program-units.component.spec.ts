@@ -7,6 +7,7 @@ import { SparkProgramUnitsComponent } from './spark-program-units.component';
 import { SPARK_AUTH_STATE } from '@mintplayer/ng-spark';
 import { SparkService } from '@mintplayer/ng-spark/services';
 import { ProgramUnitsConfiguration } from '@mintplayer/ng-spark/models';
+import { settle } from '../../src/test-utils';
 
 /**
  * The menu's contract: everything rendered comes from the server response (consumers write no
@@ -32,19 +33,6 @@ const config: ProgramUnitsConfiguration = {
   ],
 };
 
-/** Includes a macrotask turn so the accordion's custom-element registration lands while the
- *  fixture is still alive — see the note on the same helper in spark-shell.component.spec.ts. */
-async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
-  for (let i = 0; i < 5; i++) {
-    await fixture.whenStable();
-    await Promise.resolve();
-    fixture.detectChanges();
-  }
-  await new Promise(resolve => setTimeout(resolve, 0));
-  await fixture.whenStable();
-  fixture.detectChanges();
-}
-
 describe('SparkProgramUnitsComponent', () => {
   const getProgramUnits = vi.fn(async () => config);
 
@@ -62,7 +50,7 @@ describe('SparkProgramUnitsComponent', () => {
   it('renders groups and units sorted by order, links sourced from the response', async () => {
     const fixture = TestBed.createComponent(SparkProgramUnitsComponent);
     fixture.detectChanges();
-    await settle(fixture);
+    await settle(fixture, { macrotask: true });
 
     const el: HTMLElement = fixture.nativeElement;
     const anchors = Array.from(el.querySelectorAll('a'));
@@ -76,7 +64,7 @@ describe('SparkProgramUnitsComponent', () => {
   it('renders a url unit as an external anchor, not a router link', async () => {
     const fixture = TestBed.createComponent(SparkProgramUnitsComponent);
     fixture.detectChanges();
-    await settle(fixture);
+    await settle(fixture, { macrotask: true });
 
     const external = Array.from(fixture.nativeElement.querySelectorAll('a'))
       .find((a: any) => a.getAttribute('href') === 'https://status.example.com') as HTMLAnchorElement;
@@ -103,7 +91,7 @@ describe('SparkProgramUnitsComponent', () => {
 
     const fixture = TestBed.createComponent(Host);
     fixture.detectChanges();
-    await settle(fixture);
+    await settle(fixture, { macrotask: true });
 
     const el: HTMLElement = fixture.nativeElement;
     const accordions = el.querySelectorAll('bs-accordion');
@@ -121,11 +109,11 @@ describe('SparkProgramUnitsComponent', () => {
 
     const fixture = TestBed.createComponent(SparkProgramUnitsComponent);
     fixture.detectChanges();
-    await settle(fixture);
+    await settle(fixture, { macrotask: true });
     expect(getProgramUnits).toHaveBeenCalledTimes(1);
 
     authState.set({ userName: 'alice' });
-    await settle(fixture);
+    await settle(fixture, { macrotask: true });
     expect(getProgramUnits).toHaveBeenCalledTimes(2);
   });
 
@@ -141,11 +129,11 @@ describe('SparkProgramUnitsComponent', () => {
 
     const fixture = TestBed.createComponent(Host);
     fixture.detectChanges();
-    await settle(fixture);
+    await settle(fixture, { macrotask: true });
     expect(getProgramUnits).toHaveBeenCalledTimes(1);
 
     fixture.componentInstance.token.set(1);
-    await settle(fixture);
+    await settle(fixture, { macrotask: true });
     expect(getProgramUnits).toHaveBeenCalledTimes(2);
   });
 });

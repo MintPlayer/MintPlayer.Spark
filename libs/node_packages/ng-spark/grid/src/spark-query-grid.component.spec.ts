@@ -11,6 +11,7 @@ import { SparkQueryGridComponent } from './spark-query-grid.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import { EntityType, QueryResultItem, ShowedOn, SparkQuery } from '@mintplayer/ng-spark/models';
+import { settle } from '../../src/test-utils';
 
 /**
  * These carry over from the two components this one replaces. They are not fresh coverage: each
@@ -83,23 +84,6 @@ function makeService(overrides: Partial<Record<string, unknown>> = {}) {
     getDistinctValues: vi.fn().mockResolvedValue({ matching: [], remaining: [], hasMore: false }),
     ...overrides,
   } as any;
-}
-
-/**
- * Settle the component, not just the fixture.
- *
- * `loadData` awaits twice — the query and the entity types, and only then the permissions and the
- * custom actions. A single `whenStable()` flushes the first level and returns while the second is
- * still pending, so permissions, actions and the fetch all appear to be missing. Draining until
- * the queue is quiet is the honest wait.
- */
-async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
-  for (let i = 0; i < 5; i++) {
-    await fixture.whenStable();
-    await Promise.resolve();
-    fixture.detectChanges();
-  }
-  await fixture.whenStable();
 }
 
 async function setup(overrides: Partial<Record<string, unknown>> = {}, inputs: Record<string, unknown> = {}) {
