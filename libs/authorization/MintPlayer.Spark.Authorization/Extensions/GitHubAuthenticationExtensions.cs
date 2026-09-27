@@ -75,7 +75,11 @@ public static class GitHubAuthenticationExtensions
                 // would mean a new vocabulary entry for every forge, and a forge whose entry
                 // nobody remembered to add would fail closed in a way that reads like a broken
                 // provider rather than like missing code.
-                using var emailsRequest = new HttpRequestMessage(HttpMethod.Get, "https://api.github.com/user/emails");
+                //
+                // Derived from the configured user endpoint rather than hard-coded, so a GitHub
+                // Enterprise host (https://ghe.example/api/v3/user) asks its own server — a fixed
+                // api.github.com would send the GHE token to public GitHub and never attest.
+                using var emailsRequest = new HttpRequestMessage(HttpMethod.Get, EmailsEndpointFor(context.Options.UserInformationEndpoint));
                 emailsRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                 emailsRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", context.AccessToken);
                 emailsRequest.Headers.UserAgent.Add(new ProductInfoHeaderValue("SparkAuth", "1.0"));
@@ -98,11 +102,16 @@ public static class GitHubAuthenticationExtensions
                 }
                 else
                 {
+                    // Shape-tolerant: an unexpected body means "not attested", not a failed sign-in.
                     using var emails = JsonDocument.Parse(await emailsResponse.Content.ReadAsStringAsync());
-                    foreach (var entry in emails.RootElement.EnumerateArray())
+                    var entries = emails.RootElement.ValueKind == JsonValueKind.Array
+                        ? emails.RootElement.EnumerateArray().ToArray()
+                        : [];
+                    foreach (var entry in entries)
                     {
-                        if (entry.TryGetProperty("primary", out var primary) && primary.GetBoolean()
-                            && entry.TryGetProperty("verified", out var verified) && verified.GetBoolean())
+                        if (entry.ValueKind == JsonValueKind.Object
+                            && entry.TryGetProperty("primary", out var primary) && primary.ValueKind == JsonValueKind.True
+                            && entry.TryGetProperty("verified", out var verified) && verified.ValueKind == JsonValueKind.True)
                         {
                             context.Identity?.AddClaim(new Claim("email_verified", "true"));
                             break;
@@ -119,5 +128,13 @@ public static class GitHubAuthenticationExtensions
         });
 
         return builder;
+    }
+
+    /// <summary><c>{user endpoint}/emails</c>: GitHub serves both from the same API root.</summary>
+    private static Uri EmailsEndpointFor(string userInformationEndpoint)
+    {
+        var emails = new UriBuilder(userInformationEndpoint);
+        emails.Path = emails.Path.TrimEnd('/') + "/emails";
+        return emails.Uri;
     }
 }
