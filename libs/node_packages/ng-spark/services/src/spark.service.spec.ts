@@ -9,6 +9,7 @@ import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { SparkService } from './spark.service';
 import { RetryActionService } from './retry-action.service';
 import { SparkClientOperationDispatcher } from '@mintplayer/ng-spark/client-operations';
+import { SPARK_CONFIG } from '@mintplayer/ng-spark';
 
 /**
  * HTTP-shape tests for SparkService. The service is a thin client over a fixed
@@ -311,5 +312,255 @@ describe('SparkService', () => {
 
     await expect(promise).rejects.toMatchObject({ status: 500 });
     expect(retryService.show).not.toHaveBeenCalled();
+  });
+
+  // --- thin wrappers: verb + url + body --------------------------------
+
+  it('getEntityTypes GETs the type list', async () => {
+    const promise = service.getEntityTypes();
+    const req = httpTesting.expectOne('/spark/types');
+    expect(req.request.method).toBe('GET');
+    req.flush([{ id: 't1' }]);
+    await expect(promise).resolves.toEqual([{ id: 't1' }]);
+  });
+
+  it('getEntityTypeByClrType finds the type by its CLR name, or undefined', async () => {
+    const types = [{ id: 't1', clrType: 'App.Car' }, { id: 't2', clrType: 'App.Person' }];
+
+    const found = service.getEntityTypeByClrType('App.Person');
+    httpTesting.expectOne('/spark/types').flush(types);
+    await expect(found).resolves.toMatchObject({ id: 't2' });
+
+    const missing = service.getEntityTypeByClrType('App.Nope');
+    httpTesting.expectOne('/spark/types').flush(types);
+    await expect(missing).resolves.toBeUndefined();
+  });
+
+  it('getPermissions GETs with the type id encoded', async () => {
+    const promise = service.getPermissions('a/b c');
+    const req = httpTesting.expectOne('/spark/permissions/a%2Fb%20c');
+    expect(req.request.method).toBe('GET');
+    req.flush({ canRead: true });
+    await expect(promise).resolves.toEqual({ canRead: true });
+  });
+
+  it('getQuery POSTs the id in the body, unescaped', async () => {
+    const promise = service.getQuery('q/1');
+    const req = httpTesting.expectOne('/spark/queries/get');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ queryId: 'q/1' });
+    req.flush({ id: 'q/1' });
+    await expect(promise).resolves.toEqual({ id: 'q/1' });
+  });
+
+  it('getQueryByName fetches the catalogue once, however many names are resolved', async () => {
+    const first = service.getQueryByName('A');
+    const second = service.getQueryByName('B');
+    httpTesting.expectOne('/spark/queries').flush([{ id: 'q/a', name: 'A' }, { id: 'q/b', name: 'B' }]);
+
+    await expect(first).resolves.toMatchObject({ id: 'q/a' });
+    await expect(second).resolves.toMatchObject({ id: 'q/b' });
+    await expect(service.getQueryByName('C')).resolves.toBeUndefined();
+    // afterEach's verify() fails on any further /spark/queries request.
+  });
+
+  it('getDistinctValues drops an empty search and empty column list', async () => {
+    const promise = service.getDistinctValues('q/1', 'Color', { search: '', columns: [] });
+    const req = httpTesting.expectOne('/spark/queries/distinct-values');
+    expect(req.request.body).toEqual({
+      queryId: 'q/1', column: 'Color', search: undefined, columns: undefined, parentId: undefined, parentType: undefined,
+    });
+    req.flush({ values: [] });
+    await promise;
+  });
+
+  it('getProgramUnits GETs the program units', async () => {
+    const promise = service.getProgramUnits();
+    const req = httpTesting.expectOne('/spark/program-units');
+    expect(req.request.method).toBe('GET');
+    req.flush({ programUnitGroups: [] });
+    await expect(promise).resolves.toEqual({ programUnitGroups: [] });
+  });
+
+  it('get POSTs the load request and returns the bare object (no envelope)', async () => {
+    const promise = service.get('Car', 'cars/1');
+    const req = httpTesting.expectOne('/spark/po/load');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ objectTypeId: 'Car', id: 'cars/1' });
+    req.flush({ id: 'cars/1', attributes: [] });
+    await expect(promise).resolves.toEqual({ id: 'cars/1', attributes: [] });
+    expect(dispatcher.dispatch).not.toHaveBeenCalled();
+  });
+
+  it('refresh posts the object and the triggering attribute, and unwraps the envelope', async () => {
+    const data = { attributes: [] } as any;
+    const promise = service.refresh('Car', data, 'Jobs[2].ProfessionId');
+    const req = httpTesting.expectOne('/spark/po/refresh');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ objectTypeId: 'Car', persistentObject: data, triggeredBy: 'Jobs[2].ProfessionId' });
+    req.flush({ result: { id: 'x' }, operations: [] });
+    await expect(promise).resolves.toEqual({ id: 'x' });
+    // An empty operations list is not dispatched.
+    expect(dispatcher.dispatch).not.toHaveBeenCalled();
+  });
+
+  it('newObject spreads its options into the body', async () => {
+    const promise = service.newObject('Job', { parentType: 'Person' } as any);
+    const req = httpTesting.expectOne('/spark/po/new');
+    expect(req.request.body).toEqual({ objectTypeId: 'Job', parentType: 'Person' });
+    req.flush({ result: { id: 'job-1' }, operations: [] });
+    await expect(promise).resolves.toEqual({ id: 'job-1' });
+  });
+
+  it('newObject without options sends only the type', async () => {
+    const promise = service.newObject('Job');
+    const req = httpTesting.expectOne('/spark/po/new');
+    expect(req.request.body).toEqual({ objectTypeId: 'Job' });
+    req.flush({ result: null, operations: [] });
+    await expect(promise).resolves.toBeNull();
+  });
+
+  it('deleteRow posts the row identity and resolves to nothing', async () => {
+    const promise = service.deleteRow('Job', { rowKey: 'r1' } as any);
+    const req = httpTesting.expectOne('/spark/po/delete-row');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ objectTypeId: 'Job', rowKey: 'r1' });
+    req.flush({ result: { removed: true }, operations: [] });
+    await expect(promise).resolves.toBeUndefined();
+  });
+
+  it('getCustomActions POSTs the type id', async () => {
+    const promise = service.getCustomActions('Car');
+    const req = httpTesting.expectOne('/spark/actions/list');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ objectTypeId: 'Car' });
+    req.flush([{ name: 'Wash' }]);
+    await expect(promise).resolves.toEqual([{ name: 'Wash' }]);
+  });
+
+  it('executeCustomAction sends the selection and names the query parent as id + type', async () => {
+    const parent = { id: 'cars/1' } as any;
+    const promise = service.executeCustomAction('Car', 'Wash', parent, ['cars/1', 'cars/2'], { id: 'companies/1', type: 'Company' }, 'q/cars');
+    const req = httpTesting.expectOne('/spark/actions/execute');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({
+      objectTypeId: 'Car', actionName: 'Wash', parent, selectedItemIds: ['cars/1', 'cars/2'],
+      parentId: 'companies/1', parentType: 'Company', queryId: 'q/cars',
+    });
+    const operations = [{ type: 'notify', message: 'Washed', kind: 1 }];
+    req.flush({ result: null, operations });
+    await promise;
+    expect(dispatcher.dispatch).toHaveBeenCalledWith(operations);
+  });
+
+  it('executeCustomAction without a query parent leaves parentId/parentType unset', async () => {
+    const promise = service.executeCustomAction('Car', 'Wash');
+    const req = httpTesting.expectOne('/spark/actions/execute');
+    expect(req.request.body.parentId).toBeUndefined();
+    expect(req.request.body.parentType).toBeUndefined();
+    req.flush({ result: null, operations: [] });
+    await promise;
+  });
+
+  describe('lookup references', () => {
+    const value = { key: 'k', values: { en: 'K' }, isActive: true };
+
+    it('getLookupReferences GETs the list', async () => {
+      const promise = service.getLookupReferences();
+      const req = httpTesting.expectOne('/spark/lookupref');
+      expect(req.request.method).toBe('GET');
+      req.flush([]);
+      await expect(promise).resolves.toEqual([]);
+    });
+
+    it('getLookupReference GETs by encoded name', async () => {
+      const promise = service.getLookupReference('Car Colors/2');
+      const req = httpTesting.expectOne('/spark/lookupref/Car%20Colors%2F2');
+      expect(req.request.method).toBe('GET');
+      req.flush({ name: 'Car Colors/2', values: [] });
+      await expect(promise).resolves.toMatchObject({ name: 'Car Colors/2' });
+    });
+
+    it('addLookupReferenceValue POSTs the value to the encoded name', async () => {
+      const promise = service.addLookupReferenceValue('A/B', value);
+      const req = httpTesting.expectOne('/spark/lookupref/A%2FB');
+      expect(req.request.method).toBe('POST');
+      expect(req.request.body).toEqual(value);
+      req.flush(value);
+      await expect(promise).resolves.toEqual(value);
+    });
+
+    it('updateLookupReferenceValue PUTs to name/key, both encoded', async () => {
+      const promise = service.updateLookupReferenceValue('A/B', 'k?1', value);
+      const req = httpTesting.expectOne('/spark/lookupref/A%2FB/k%3F1');
+      expect(req.request.method).toBe('PUT');
+      expect(req.request.body).toEqual(value);
+      req.flush(value);
+      await expect(promise).resolves.toEqual(value);
+    });
+
+    it('deleteLookupReferenceValue DELETEs name/key, both encoded', async () => {
+      const promise = service.deleteLookupReferenceValue('A/B', 'k#1');
+      const req = httpTesting.expectOne('/spark/lookupref/A%2FB/k%231');
+      expect(req.request.method).toBe('DELETE');
+      req.flush(null);
+      await promise;
+    });
+  });
+
+  it('prefixes every call with the configured base URL', async () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SPARK_CONFIG, useValue: { baseUrl: '/api/spark' } },
+        { provide: SparkClientOperationDispatcher, useValue: dispatcher },
+        { provide: RetryActionService, useValue: retryService },
+      ],
+    });
+    service = TestBed.inject(SparkService);
+    httpTesting = TestBed.inject(HttpTestingController);
+
+    const promise = service.get('Car', 'cars/1');
+    httpTesting.expectOne('/api/spark/po/load').flush({ id: 'cars/1' });
+    await expect(promise).resolves.toEqual({ id: 'cars/1' });
+  });
+
+  it('a 449 on a read re-issues the read with the answer attached', async () => {
+    retryService.show.mockResolvedValue({ step: 0, option: 'Yes' });
+    const promise = service.get('Car', 'cars/1');
+
+    httpTesting.expectOne('/spark/po/load').flush(
+      { result: null, operations: [{ type: 'retry', step: 0, title: 'Sure?', options: ['Yes', 'No'] }] },
+      { status: 449, statusText: 'Retry With' },
+    );
+    await flushMicrotasks();
+
+    const second = httpTesting.expectOne('/spark/po/load');
+    expect(second.request.body.retryResults).toEqual([{ step: 0, option: 'Yes' }]);
+    second.flush({ id: 'cars/1' });
+    await expect(promise).resolves.toEqual({ id: 'cars/1' });
+  });
+
+  it('a 449 without a retry operation dispatches the other operations and rethrows', async () => {
+    const promise = service.create('Car', {});
+    const notify = { type: 'notify', message: 'x', kind: 0 };
+
+    httpTesting.expectOne('/spark/po/create').flush(
+      { result: null, operations: [notify] },
+      { status: 449, statusText: 'Retry With' },
+    );
+
+    await expect(promise).rejects.toMatchObject({ status: 449 });
+    expect(dispatcher.dispatch).toHaveBeenCalledWith([notify]);
+    expect(retryService.show).not.toHaveBeenCalled();
+  });
+
+  it('a 449 with no operations at all rethrows untouched', async () => {
+    const promise = service.create('Car', {});
+    httpTesting.expectOne('/spark/po/create').flush(null, { status: 449, statusText: 'Retry With' });
+    await expect(promise).rejects.toMatchObject({ status: 449 });
+    expect(dispatcher.dispatch).not.toHaveBeenCalled();
   });
 });

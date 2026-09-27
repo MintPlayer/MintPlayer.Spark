@@ -14,6 +14,9 @@ import { BrowseService } from '../services/browse.service';
  */
 const sparklinesByOwner = new Map<string, Promise<Record<string, number[]>>>();
 
+/** Specs only: the memo above outlives a TestBed, so each test starts from an empty one. */
+export function clearSparklineCacheForTesting(): void { sparklinesByOwner.clear(); }
+
 @Component({
   selector: 'app-coverage-sparkline-renderer',
   imports: [BsSparklineComponent],

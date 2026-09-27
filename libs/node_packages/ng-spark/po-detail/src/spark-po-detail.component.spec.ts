@@ -17,7 +17,8 @@ import {
   PersistentObject,
   ShowedOn,
 } from '@mintplayer/ng-spark/models';
-import { nextNavigationEnd, StubComponent } from '../../src/test-utils';
+import { SparkAttributeRefreshService } from '@mintplayer/ng-spark/client-operations';
+import { nextNavigationEnd, settle, StubComponent } from '../../src/test-utils';
 
 const personType: EntityType = {
   id: 't-person',
@@ -75,7 +76,7 @@ const routes: Routes = [
   { path: '', component: StubComponent },
 ];
 
-async function setup(serviceOverrides: Partial<SparkService> = {}) {
+async function setup(serviceOverrides: Partial<SparkService> = {}, renderers: any[] = []) {
   const service: any = {
     getEntityTypes: vi.fn().mockResolvedValue([personType]),
     get: vi.fn().mockResolvedValue(existingItem),
@@ -95,7 +96,7 @@ async function setup(serviceOverrides: Partial<SparkService> = {}) {
       provideHttpClientTesting(),
       { provide: SparkService, useValue: service },
       { provide: SparkLanguageService, useValue: { t: (k: string) => k } },
-      { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: [] },
+      { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: renderers },
     ],
   });
   const harness = await RouterTestingHarness.create();
@@ -427,6 +428,255 @@ describe('SparkPoDetailComponent', () => {
       const inputs = c.getAsDetailCellRendererInputs(FullDetailRenderer, row, col);
       expect(inputs['value']).toBe('X1');
       expect(inputs['item']).toBe(row);
+    });
+  });
+
+  describe('renderer resolution', () => {
+    @Component({ selector: 'spec-detail-stars', standalone: true, template: '' })
+    class StarsDetail {}
+    @Component({ selector: 'spec-column-stars', standalone: true, template: '' })
+    class StarsColumn {}
+
+    const registry = [
+      { name: 'stars', detailComponent: StarsDetail, columnComponent: StarsColumn },
+      // Registered for the form only: a detail page must fall back to its own display, not crash.
+      { name: 'edit-only', editComponent: StarsDetail },
+    ];
+
+    async function mounted() {
+      const { harness } = await setup({}, registry);
+      return harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    }
+
+    it('resolves the detail component of a registered renderer', async () => {
+      const c = await mounted();
+      expect(c.getDetailRendererComponent({ name: 'X', renderer: 'stars' } as any)).toBe(StarsDetail);
+    });
+
+    it('resolves the column component for an AsDetail sub-table cell', async () => {
+      const c = await mounted();
+      expect(c.getAsDetailCellRendererComponent({ name: 'X', renderer: 'stars' } as any)).toBe(StarsColumn);
+    });
+
+    it('is null without a renderer, for an unregistered name, and for a renderer lacking that slot', async () => {
+      const c = await mounted();
+      expect(c.getAsDetailCellRendererComponent({ name: 'X' } as any)).toBeNull();
+      expect(c.getAsDetailCellRendererComponent({ name: 'X', renderer: 'nope' } as any)).toBeNull();
+      expect(c.getAsDetailCellRendererComponent({ name: 'X', renderer: 'edit-only' } as any)).toBeNull();
+      expect(c.getDetailRendererComponent({ name: 'X', renderer: 'nope' } as any)).toBeNull();
+      expect(c.getDetailRendererComponent({ name: 'X', renderer: 'edit-only' } as any)).toBeNull();
+    });
+  });
+
+  describe('server-issued attribute patches (refreshAttribute)', () => {
+    const rows = [{ id: 'l/1', objectTypeId: 't-line', attributes: [] }] as any[];
+    const patchedItem: PersistentObject = {
+      id: 'people/1',
+      name: 'Alice',
+      objectTypeId: 't-person',
+      attributes: [
+        { id: 'a-first', name: 'FirstName', dataType: 'string', value: 'Alice', object: null, objects: null } as any,
+        { id: 'a-lines', name: 'Lines', dataType: 'AsDetail', value: null, object: null, objects: rows } as any,
+        { id: 'a-addr', name: 'Address', dataType: 'AsDetail', value: null, object: null, objects: null } as any,
+      ],
+    } as any;
+
+    async function mounted() {
+      const { harness } = await setup({ get: vi.fn().mockResolvedValue(patchedItem) } as Partial<SparkService>);
+      const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      await settle(harness.fixture);
+      const refresh = TestBed.inject(SparkAttributeRefreshService);
+      const patch = async (name: string, p: Record<string, unknown>) => {
+        refresh.request('t-person', 'people/1', name, p);
+        await settle(harness.fixture);
+      };
+      const attr = (name: string) => c.item()!.attributes.find(a => a.name === name) as any;
+      return { c, harness, patch, attr };
+    }
+
+    it('applies a changed scalar in place, without a re-fetch', async () => {
+      const { c, patch, attr } = await mounted();
+      const service = TestBed.inject(SparkService) as any;
+      service.get.mockClear();
+
+      await patch('FirstName', { value: 'Bob', object: null, objects: null });
+
+      expect(attr('FirstName').value).toBe('Bob');
+      expect(service.get).not.toHaveBeenCalled();
+      // Untouched attributes keep their identity: only the patched one was rebuilt.
+      expect(attr('Lines')).toBe(patchedItem.attributes[1]);
+      expect(c.item()).not.toBe(patchedItem);
+    });
+
+    it('leaves the object alone when the scalar is unchanged and object/objects are null against null', async () => {
+      // The server writes object/objects as null on every scalar patch. Treating null-vs-null as a
+      // change would repaint the page on each patch for nothing.
+      const { c, patch } = await mounted();
+      const before = c.item();
+
+      await patch('FirstName', { value: 'Alice', object: null, objects: null });
+      await patch('Address', { object: null, objects: null });
+
+      expect(c.item()).toBe(before);
+    });
+
+    it('ignores object/objects on a non-AsDetail attribute', async () => {
+      const { c, patch, attr } = await mounted();
+      const before = c.item();
+
+      await patch('FirstName', { object: { id: 'x' }, objects: [{ id: 'y' }] });
+
+      expect(c.item()).toBe(before);
+      expect(attr('FirstName').object).toBeNull();
+      expect(attr('FirstName').objects).toBeNull();
+    });
+
+    it('replaces the rows of an AsDetail collection, including emptying it', async () => {
+      // AsDetail carries its rows in objects and leaves value null — a value-only patch could never
+      // refresh a detail grid.
+      const { patch, attr } = await mounted();
+      const next = [{ id: 'l/2', objectTypeId: 't-line', attributes: [] }];
+
+      await patch('Lines', { value: null, objects: next });
+      expect(attr('Lines').objects).toBe(next);
+
+      await patch('Lines', { objects: [] });
+      expect(attr('Lines').objects).toEqual([]);
+    });
+
+    it('replaces a single embedded AsDetail object', async () => {
+      const { patch, attr } = await mounted();
+      const address = { id: 'addr', objectTypeId: 't-addr', attributes: [] };
+
+      await patch('Address', { object: address });
+
+      expect(attr('Address').object).toBe(address);
+    });
+
+    it('ignores a patch for an attribute the object does not carry', async () => {
+      const { c, patch } = await mounted();
+      const before = c.item();
+
+      await patch('Unknown', { value: 'x' });
+
+      expect(c.item()).toBe(before);
+    });
+
+    it('ignores patches addressed to another object', async () => {
+      const { c, harness, attr } = await mounted();
+      const before = c.item();
+
+      TestBed.inject(SparkAttributeRefreshService).request('t-person', 'people/2', 'FirstName', { value: 'Eve' });
+      await settle(harness.fixture);
+
+      expect(c.item()).toBe(before);
+      expect(attr('FirstName').value).toBe('Alice');
+    });
+  });
+
+  describe('lookup options (#453)', () => {
+    const lookupType: EntityType = {
+      ...personType,
+      attributes: [
+        { id: 'a-role', name: 'Role', dataType: 'string', lookupReferenceType: 'Roles', isVisible: true, order: 1, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'a-status', name: 'Status', dataType: 'string', lookupReferenceType: 'Statuses', isVisible: true, order: 2, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'a-alt', name: 'AltRole', dataType: 'string', lookupReferenceType: 'Roles', isVisible: true, order: 3, showedOn: ShowedOn.PersistentObject } as any,
+      ],
+    } as any;
+    const statuses = { name: 'Statuses', values: [{ key: 'on', values: { en: 'On' }, isActive: true }] } as any;
+
+    it('a failed lookup costs only its own labels: the others still load and the page does not error', async () => {
+      const getLookupReference = vi.fn((name: string) =>
+        name === 'Roles' ? Promise.reject(new HttpErrorResponse({ status: 404 })) : Promise.resolve(statuses));
+      const { harness } = await setup({
+        getEntityTypes: vi.fn().mockResolvedValue([lookupType]),
+        getLookupReference,
+      } as any);
+      const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      await settle(harness.fixture);
+
+      // Deduplicated: two attributes share Roles, so it is asked once.
+      expect(getLookupReference).toHaveBeenCalledTimes(2);
+      expect(Object.keys(c.lookupReferenceOptions())).toEqual(['Statuses']);
+      expect(c.lookupReferenceOptions()['Statuses']).toBe(statuses);
+      expect(c.errorMessage()).toBeNull();
+      expect(c.item()?.id).toBe('people/1');
+    });
+  });
+
+  describe('AsDetail row types', () => {
+    const lineType: EntityType = {
+      id: 't-line',
+      name: 'Line',
+      clrType: 'Test.Line',
+      attributes: [
+        { id: 'l-product', name: 'Product', dataType: 'Reference', query: 'GetProducts', referenceType: 'Test.Product', isVisible: true, order: 1, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'l-qty', name: 'Qty', dataType: 'string', isVisible: true, order: 2, showedOn: ShowedOn.PersistentObject } as any,
+      ],
+    } as any;
+    const orderType = (detailTypes?: EntityType[]): EntityType => ({
+      ...personType,
+      attributes: [
+        { id: 'a-lines', name: 'Lines', dataType: 'AsDetail', isArray: true, asDetailType: 'Test.Line', isVisible: true, order: 1, showedOn: ShowedOn.PersistentObject } as any,
+        // No type anywhere: must be skipped rather than recorded as undefined.
+        { id: 'a-ghost', name: 'Ghosts', dataType: 'AsDetail', isArray: true, asDetailType: 'Test.Ghost', isVisible: true, order: 2, showedOn: ShowedOn.PersistentObject } as any,
+      ],
+      detailTypes,
+    } as any);
+    const orderItem = {
+      id: 'people/1', objectTypeId: 't-person',
+      attributes: [{ id: 'a-lines', name: 'Lines', dataType: 'AsDetail', isArray: true, value: [{ Product: 'products/1', Qty: '2' }] }],
+    } as any;
+    const products = [{ id: 'products/1', breadcrumb: 'Widget', values: [] }];
+
+    it('takes the row type from the embedded detailTypes when the catalogue lacks it (#385), and loads its reference options', async () => {
+      const executeQueryByName = vi.fn().mockResolvedValue({ items: products, totalItems: 1 });
+      const { harness } = await setup({
+        getEntityTypes: vi.fn().mockResolvedValue([orderType([lineType])]),
+        get: vi.fn().mockResolvedValue(orderItem),
+        executeQueryByName,
+      } as any);
+      const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      await settle(harness.fixture);
+
+      expect(c.asDetailTypes()['Lines']).toBe(lineType);
+      expect(Object.keys(c.asDetailTypes())).toEqual(['Lines']);
+      // The sub-column's query runs scoped to the object on screen.
+      expect(executeQueryByName).toHaveBeenCalledTimes(1);
+      expect(executeQueryByName).toHaveBeenCalledWith('GetProducts', { parentId: 'people/1', parentType: 'person' });
+      expect(c.asDetailReferenceOptions()).toEqual({ Lines: { Product: products } });
+      // And the table resolves the reference id to its label through those options.
+      const cells = Array.from(harness.routeNativeElement!.querySelectorAll('tbody td')).map(td => td.textContent?.trim());
+      expect(cells).toContain('Widget');
+      expect(cells).not.toContain('products/1');
+    });
+
+    it('prefers the catalogue copy over the embedded one', async () => {
+      const catalogueLine = { ...lineType, attributes: [lineType.attributes[1]] } as EntityType;
+      const executeQueryByName = vi.fn();
+      const { harness } = await setup({
+        getEntityTypes: vi.fn().mockResolvedValue([orderType([lineType]), catalogueLine]),
+        get: vi.fn().mockResolvedValue(orderItem),
+        executeQueryByName,
+      } as any);
+      const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      await settle(harness.fixture);
+
+      expect(c.asDetailTypes()['Lines']).toBe(catalogueLine);
+      // The catalogue copy has no Reference column, so there is nothing to query.
+      expect(executeQueryByName).not.toHaveBeenCalled();
+    });
+
+    it('records nothing when the row type is in neither source', async () => {
+      const { harness } = await setup({
+        getEntityTypes: vi.fn().mockResolvedValue([orderType(undefined)]),
+        get: vi.fn().mockResolvedValue(orderItem),
+      } as any);
+      const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+      await settle(harness.fixture);
+
+      expect(c.asDetailTypes()).toEqual({});
+      expect(c.asDetailReferenceOptions()).toEqual({});
     });
   });
 });

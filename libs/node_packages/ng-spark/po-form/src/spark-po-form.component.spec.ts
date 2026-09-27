@@ -560,6 +560,201 @@ describe('SparkPoFormComponent', () => {
     });
   });
 
+  describe('multi-reference (Reference && isArray) editor', () => {
+    const tagsAttr = attr({ id: 'a-tags', name: 'Tags', dataType: 'Reference', isArray: true, query: 'TagQuery', referenceType: 'Test.Tag', order: 1 });
+    const taggedType: EntityType = {
+      id: 't-tagged', name: 'Tagged', clrType: 'Test.Tagged',
+      attributes: [tagsAttr, attr({ id: 'a-owner', name: 'Owner', dataType: 'Reference', query: 'OwnerQuery', order: 2 })],
+      tabs: [], groups: [],
+    };
+    const tags = [
+      { id: 'tags/1', breadcrumb: 'Red', values: [] },
+      { id: 'tags/2', values: [] },
+      // A row without an id cannot be selected, so it must not become a node.
+      { breadcrumb: 'Orphan', values: [] },
+    ] as any[];
+
+    async function mounted() {
+      const result = createComponent({
+        executeQueryByName: vi.fn((name: string) => Promise.resolve({ columns: [], items: name === 'TagQuery' ? tags : [], totalItems: 0 })),
+      } as any);
+      await setEntityType(result.fixture, taggedType);
+      return result;
+    }
+
+    it('builds a node per identified option, labelled by breadcrumb or else by id, for array references only', async () => {
+      const { component } = await mounted();
+
+      const nodes = component.referenceNodes()['Tags'];
+      expect(Object.keys(nodes)).toEqual(['tags/1', 'tags/2']);
+      expect(nodes['tags/1'].label).toBe('Red');
+      expect(nodes['tags/2'].label).toBe('tags/2');
+      expect(component.getReferenceProvider(tagsAttr)).toBeDefined();
+      // A single reference keeps its select; it gets no tree provider.
+      expect(component.getReferenceProvider(taggedType.attributes[1])).toBeUndefined();
+      expect(component.referenceNodes()['Owner']).toBeUndefined();
+    });
+
+    it('referenceTreeValues resolves the selected ids to nodes, falling back to the id for an unknown one', async () => {
+      const { component } = await mounted();
+
+      component.formData.set({ Tags: ['tags/1', 'tags/99'] });
+      expect(component.referenceTreeValues()['Tags']).toEqual([
+        { id: 'tags/1', label: 'Red' },
+        { id: 'tags/99', label: 'tags/99' },
+      ]);
+
+      // A non-array value (never set, or a stray scalar) reads as no selection rather than throwing.
+      component.formData.set({ Tags: 'tags/1' });
+      expect(component.referenceTreeValues()['Tags']).toEqual([]);
+      expect(Object.keys(component.referenceTreeValues())).toEqual(['Tags']);
+    });
+
+    it('onReferenceTreeChange writes ids back for a list, a single node and a cleared value', async () => {
+      const { component } = await mounted();
+
+      component.onReferenceTreeChange(tagsAttr, [{ id: 'tags/1', label: 'Red' }, { id: 'tags/2', label: 'tags/2' }] as any);
+      expect(component.formData()['Tags']).toEqual(['tags/1', 'tags/2']);
+
+      component.onReferenceTreeChange(tagsAttr, { id: 'tags/2', label: 'tags/2' } as any);
+      expect(component.formData()['Tags']).toEqual(['tags/2']);
+
+      component.onReferenceTreeChange(tagsAttr, null);
+      expect(component.formData()['Tags']).toEqual([]);
+    });
+  });
+
+  describe('renderer resolution', () => {
+    @Component({ selector: 'spec-form-editor', standalone: true, template: '' })
+    class StarsEditor {
+      value = input<any>();
+      attribute = input<any>();
+      valueChange = input<(v: any) => void>();
+    }
+    @Component({ selector: 'spec-form-column', standalone: true, template: '' })
+    class StarsColumn {
+      value = input<any>();
+      item = input<any>();
+    }
+    const registry = [
+      { name: 'stars', editComponent: StarsEditor, columnComponent: StarsColumn },
+      { name: 'display-only', detailComponent: StarsColumn },
+    ];
+
+    it('resolves the edit component, and null for no renderer / unknown / a renderer with no edit slot', async () => {
+      const { fixture, component } = createComponent({}, registry);
+      await setEntityType(fixture, personType);
+
+      expect(component.getEditRendererComponent(attr({ name: 'X', renderer: 'stars' }))).toBe(StarsEditor);
+      expect(component.getEditRendererComponent(attr({ name: 'X' }))).toBeNull();
+      expect(component.getEditRendererComponent(attr({ name: 'X', renderer: 'nope' }))).toBeNull();
+      expect(component.getEditRendererComponent(attr({ name: 'X', renderer: 'display-only' }))).toBeNull();
+    });
+
+    it('an edit renderer writes through valueChange into formData', async () => {
+      const { fixture, component } = createComponent({}, registry);
+      await setEntityType(fixture, personType);
+      const col = attr({ name: 'Rating', renderer: 'stars' });
+      component.formData.set({ Rating: 2, FirstName: 'Alice' });
+
+      const inputs = component.getEditRendererInputs(StarsEditor, col);
+      expect(inputs['value']).toBe(2);
+      expect(inputs['attribute']).toBe(col);
+      inputs['valueChange'](5);
+
+      // A new object, so the signal graph sees the write, with the rest of formData intact.
+      expect(component.formData()).toEqual({ Rating: 5, FirstName: 'Alice' });
+    });
+
+    it('resolves the AsDetail cell column component and hands it the flat row', async () => {
+      const { fixture, component } = createComponent({}, registry);
+      await setEntityType(fixture, personType);
+      const col = attr({ name: 'Rating', renderer: 'stars' });
+
+      expect(component.getAsDetailCellRendererComponent(col)).toBe(StarsColumn);
+      expect(component.getAsDetailCellRendererComponent(attr({ name: 'Plain' }))).toBeNull();
+      expect(component.getAsDetailCellRendererComponent(attr({ name: 'X', renderer: 'display-only' }))).toBeNull();
+
+      const row = { Rating: 4 };
+      const inputs = component.getAsDetailCellRendererInputs(StarsColumn, row, col);
+      expect(inputs).toEqual({ value: 4, item: row });
+    });
+  });
+
+  describe('nested form triggers (triggerPathPrefix)', () => {
+    // An embedded form never issues its own refresh: only the parent knows the object and holds the
+    // right the server authorizes against, so the embedded one reports the path upward instead.
+    const gate = attr({ id: 'g-mode', name: 'ProjectMode', dataType: 'boolean', triggersRefresh: true });
+    const notes = attr({ id: 'g-notes', name: 'Notes', triggersRefresh: true });
+    const plain = attr({ id: 'g-plain', name: 'Plain' });
+
+    async function nested() {
+      const refresh = vi.fn();
+      const result = createComponent({ refresh } as any);
+      result.fixture.componentRef.setInput('triggerPathPrefix', 'Gate');
+      result.fixture.componentRef.setInput('objectTypeId', 't-person');
+      await setEntityType(result.fixture, personType);
+      const requested: any[] = [];
+      const blurred: string[] = [];
+      result.component.nestedTriggerRequested.subscribe(e => requested.push(e));
+      result.component.nestedTriggerBlurred.subscribe(e => blurred.push(e));
+      return { ...result, refresh, requested, blurred };
+    }
+
+    it('reports a change upward with its full path, immediate for a select-like editor', async () => {
+      const { component, refresh, requested } = await nested();
+
+      component.onFieldChange(gate);
+      component.onFieldChange(notes);
+      component.onFieldChange(plain);
+
+      expect(requested).toEqual([
+        { path: 'Gate.ProjectMode', immediate: true },
+        // Free text only marks pending; the parent sends on blur.
+        { path: 'Gate.Notes', immediate: false },
+      ]);
+      expect(refresh).not.toHaveBeenCalled();
+    });
+
+    it('reports a blur upward only for a trigger attribute', async () => {
+      const { component, refresh, blurred } = await nested();
+
+      component.onFieldBlur(notes);
+      component.onFieldBlur(plain);
+
+      expect(blurred).toEqual(['Gate.Notes']);
+      expect(refresh).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('refresh-replaced reference options', () => {
+    it('synthesises option rows for a Reference attribute, labelled by translation or else by key', async () => {
+      const company = personType.attributes.find(a => a.name === 'Company')!;
+      const refresh = vi.fn().mockResolvedValue({
+        id: undefined, name: 'Person', objectTypeId: 't-person',
+        attributes: [
+          { name: 'Company', value: null, options: [{ key: 'companies/9', label: { en: 'Globex' } }, { key: 'companies/8' }] },
+          // null = the hook did not touch it: the loaded set must stand.
+          { name: 'Role', value: null, options: null },
+        ],
+      });
+      const { fixture, component } = createComponent({ refresh } as any);
+      fixture.componentRef.setInput('objectTypeId', 't-person');
+      await setEntityType(fixture, personType);
+      expect(component.referenceOptions()['Company']).toEqual(allCompanies);
+
+      component.onFieldChange({ ...company, triggersRefresh: true });
+      await flush();
+
+      expect(refresh).toHaveBeenCalledTimes(1);
+      expect(component.referenceOptions()['Company']).toEqual([
+        { id: 'companies/9', breadcrumb: 'Globex', values: [] },
+        { id: 'companies/8', breadcrumb: 'companies/8', values: [] },
+      ]);
+      expect(component.lookupReferenceOptions()['Roles']).toBe(rolesLookup);
+    });
+  });
+
   describe('attribute descriptions (#348)', () => {
     const describedType: EntityType = {
       ...personType,
