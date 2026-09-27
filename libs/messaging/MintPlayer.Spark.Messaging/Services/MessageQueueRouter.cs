@@ -176,8 +176,28 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
                 return;
             }
 
-            var stillOurs = await MessageClaims.TryRenewAsync(
-                documentStore, messageId, MessageClaims.NodeId, Options.ClaimTtl, cancellationToken);
+            bool stillOurs;
+            try
+            {
+                stillOurs = await MessageClaims.TryRenewAsync(
+                    documentStore, messageId, MessageClaims.NodeId, Options.ClaimTtl, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                // A transient failure to renew is not a lost claim: try again next interval, while
+                // the TTL still has most of its length to run. Letting it escape faulted this task,
+                // which ended renewal for the rest of the handler's run and then rethrew from the
+                // `finally` in ProcessWithClaimRenewalAsync — replacing the processing outcome, so
+                // a message that had been handled successfully was logged as a pump failure.
+                logger.LogWarning(ex,
+                    "Could not renew the claim on message {MessageId}; retrying in {Interval}",
+                    messageId, Options.ClaimRenewInterval);
+                continue;
+            }
 
             if (!stillOurs)
             {
