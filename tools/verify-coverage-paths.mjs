@@ -39,13 +39,19 @@ import { globSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+const E2E_HOST_REPORT = /^tests\/MintPlayer\.Spark\.E2E\.Tests\/coverage\/fleet-host-[^/]+\/coverage\.cobertura\.xml$/;
+
 /**
  * Every report CI must produce, one per coverage-producing Nx project. A missing one
  * fails the build.
  *
  * To add a report (for example the E2E subprocess coverage of the Fleet/HR hosts):
  *   1. append an entry here — `name` is what the error message calls it, `glob` is
- *      where the report lands, repo-relative, forward slashes;
+ *      where the report lands, repo-relative, forward slashes. Optional: `match`, a
+ *      RegExp every glob hit must also satisfy (for a shape a glob cannot state);
+ *      `exclude`, a RegExp of hits that belong to ANOTHER entry (so one report cannot satisfy
+ *      two entries), and `required`, a function deciding at run time whether its
+ *      absence fails (for a report CI produces only when switched on);
  *   2. make sure UPLOAD_GLOBS below matches it (the run fails if it does not, since a
  *      report that is verified but never uploaded is the same hole);
  *   3. add the same path to the `files:` list of the "Upload coverage" step in BOTH
@@ -54,7 +60,20 @@ import { pathToFileURL } from 'node:url';
  */
 export const EXPECTED_REPORTS = [
   { name: 'MintPlayer.Spark.Tests', glob: 'tests/MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml' },
-  { name: 'MintPlayer.Spark.E2E.Tests', glob: 'tests/MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml' },
+  {
+    name: 'MintPlayer.Spark.E2E.Tests',
+    glob: 'tests/MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml',
+    exclude: E2E_HOST_REPORT,
+  },
+  // The Fleet/HR hosts the E2E tests start as subprocesses, measured by dotnet-coverage
+  // (workstream F): one report per host session, no <source>, absolute workspace paths.
+  // Required only when CI switches host coverage on; a local E2E run does not produce it.
+  {
+    name: 'E2E host subprocess coverage',
+    glob: 'tests/MintPlayer.Spark.E2E.Tests/coverage/fleet-host-*/coverage.cobertura.xml',
+    match: E2E_HOST_REPORT,
+    required: (env) => /^(1|true)$/i.test(env.SPARK_E2E_HOST_COVERAGE ?? ''),
+  },
   { name: 'MintPlayer.Spark.SourceGenerators.Tests', glob: 'tests/MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml' },
   { name: 'MintPlayer.Spark.Client.Tests', glob: 'tests/MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml' },
   { name: 'CodeCoverage.Tests', glob: 'apps/CodeCoverage/CodeCoverage.Tests/coverage/**/coverage.cobertura.xml' },
@@ -227,17 +246,27 @@ function expand(globs, repoRoot) {
   ].sort();
 }
 
+/** The glob hits of one EXPECTED_REPORTS entry, narrowed by its `match` / `exclude`. */
+export function filterEntryHits(entry, hits) {
+  return hits.filter((f) => (!entry.match || entry.match.test(f)) && !(entry.exclude && entry.exclude.test(f)));
+}
+
+/** Whether an entry's absence fails the run; an entry without `required` always does. */
+export function isRequired(entry, env) {
+  return entry.required ? entry.required(env) : true;
+}
+
 /**
  * Which expected reports are absent, and which were found but would not be uploaded.
  * Pure, so the tests can drive it without a filesystem.
  */
-export function checkExpected(expected, foundByEntry, uploaded) {
+export function checkExpected(expected, foundByEntry, uploaded, env = {}) {
   const uploadedSet = new Set(uploaded);
   const missing = [];
   const notUploaded = [];
   for (const entry of expected) {
     const found = foundByEntry.get(entry) ?? [];
-    if (found.length === 0) missing.push(entry);
+    if (found.length === 0 && isRequired(entry, env)) missing.push(entry);
     for (const f of found) if (!uploadedSet.has(f)) notUploaded.push({ entry, report: f });
   }
   return { missing, notUploaded };
@@ -270,13 +299,14 @@ function main(argv) {
   const explicit = globs.length > 0;
 
   const reports = expand(explicit ? globs : UPLOAD_GLOBS, repoRoot);
-  const foundByEntry = new Map(EXPECTED_REPORTS.map((e) => [e, expand([e.glob], repoRoot)]));
+  const foundByEntry = new Map(EXPECTED_REPORTS.map((e) => [e, filterEntryHits(e, expand([e.glob], repoRoot))]));
 
   if (dryRun) {
     if (!explicit) {
       console.log('Expected reports:');
       for (const [entry, found] of foundByEntry) {
-        console.log(`  ${found.length > 0 ? 'found  ' : 'MISSING'}  ${entry.name}  (${entry.glob})`);
+        const state = found.length > 0 ? 'found  ' : isRequired(entry, process.env) ? 'MISSING' : 'absent, not required';
+        console.log(`  ${state}  ${entry.name}  (${entry.glob})`);
         for (const f of found) console.log(`             ${f}`);
       }
     }
@@ -288,7 +318,7 @@ function main(argv) {
   let failed = false;
 
   if (!explicit) {
-    const { missing, notUploaded } = checkExpected(EXPECTED_REPORTS, foundByEntry, reports);
+    const { missing, notUploaded } = checkExpected(EXPECTED_REPORTS, foundByEntry, reports, process.env);
     for (const entry of missing) {
       failed = true;
       console.error(

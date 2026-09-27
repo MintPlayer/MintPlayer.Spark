@@ -6,6 +6,7 @@ import {
   UPLOAD_GLOBS,
   checkExpected,
   createResolver,
+  filterEntryHits,
   isExpectedUnmatched,
   parseReport,
   rebasePath,
@@ -119,6 +120,44 @@ test('an expected report the upload globs would not send is reported', () => {
   const entry = { name: 'extra', glob: 'somewhere/cobertura.xml' };
   const { notUploaded } = checkExpected([entry], new Map([[entry, ['somewhere/cobertura.xml']]]), []);
   assert.deepEqual(notUploaded, [{ entry, report: 'somewhere/cobertura.xml' }]);
+});
+
+const E2E = EXPECTED_REPORTS.find((e) => e.name === 'MintPlayer.Spark.E2E.Tests');
+const HOST = EXPECTED_REPORTS.find((e) => e.name === 'E2E host subprocess coverage');
+const HOST_REPORT = 'tests/MintPlayer.Spark.E2E.Tests/coverage/fleet-host-1a2b/coverage.cobertura.xml';
+const IN_PROCESS_REPORT = 'tests/MintPlayer.Spark.E2E.Tests/coverage/3fd1518e/coverage.cobertura.xml';
+
+test('a host report cannot stand in for the in-process E2E report', () => {
+  assert.deepEqual(filterEntryHits(E2E, [HOST_REPORT, IN_PROCESS_REPORT]), [IN_PROCESS_REPORT]);
+  assert.deepEqual(filterEntryHits(HOST, [HOST_REPORT, IN_PROCESS_REPORT]), [HOST_REPORT]);
+  const { missing } = checkExpected([E2E], new Map([[E2E, filterEntryHits(E2E, [HOST_REPORT])]]), [HOST_REPORT]);
+  assert.deepEqual(missing, [E2E]);
+});
+
+test('the host report is required only when SPARK_E2E_HOST_COVERAGE is 1 or true', () => {
+  const none = new Map([[HOST, []]]);
+  assert.deepEqual(checkExpected([HOST], none, [], {}).missing, []);
+  assert.deepEqual(checkExpected([HOST], none, [], { SPARK_E2E_HOST_COVERAGE: '0' }).missing, []);
+  assert.deepEqual(checkExpected([HOST], none, [], { SPARK_E2E_HOST_COVERAGE: '1' }).missing, [HOST]);
+  assert.deepEqual(checkExpected([HOST], none, [], { SPARK_E2E_HOST_COVERAGE: 'True' }).missing, [HOST]);
+});
+
+test('several host reports are all uploaded by the E2E upload glob', () => {
+  const hosts = [HOST_REPORT, HOST_REPORT.replace('1a2b', '3c4d')];
+  const { missing, notUploaded } = checkExpected([HOST], new Map([[HOST, hosts]]), hosts, { SPARK_E2E_HOST_COVERAGE: 'true' });
+  assert.deepEqual(missing, []);
+  assert.deepEqual(notUploaded, []);
+  assert.ok(UPLOAD_GLOBS.includes('tests/*/coverage/**/coverage.cobertura.xml'));
+});
+
+// The host report's shape: no <source>, absolute workspace paths.
+test('an absolute workspace path with no <source> resolves', () => {
+  assert.equal(
+    resolves(`${REPO}/libs/spark/MintPlayer.Spark/Services/DatabaseAccess.cs`, [], [
+      'libs/spark/MintPlayer.Spark/Services/DatabaseAccess.cs',
+    ]),
+    true,
+  );
 });
 
 test('no upload glob reaches a demo app', () => {
