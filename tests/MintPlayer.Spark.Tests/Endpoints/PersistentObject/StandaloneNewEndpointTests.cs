@@ -46,7 +46,7 @@ public class StandaloneNewEndpointTests : SparkTestDriver
     public async Task New_without_the_New_right_is_refused()
     {
         await using var factory = new SparkEndpointFactory(
-            Store, [TestModels.Person(PersonTypeId)], security: SparkTestSecurity.Empty.Granting("Read/Person"));
+            Store, [TestModels.Person(PersonTypeId)], security: SparkTestSecurity.Empty);
         using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
 
         var ex = await Assert.ThrowsAsync<SparkClientException>(() => client.NewPersistentObjectAsync(PersonTypeId));
