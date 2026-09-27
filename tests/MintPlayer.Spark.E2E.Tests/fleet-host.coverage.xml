@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  dotnet-coverage settings for the Fleet host that FleetTestHost starts as a subprocess
+  when SPARK_E2E_HOST_COVERAGE is set. coverlet.runsettings cannot reach that process:
+  its collector instruments the test process only, so everything the E2E suite exercises
+  inside Fleet used to count as uncovered.
+
+  Only MintPlayer.Spark* assemblies are measured. The demo app itself (Fleet, and HR or
+  DemoApp if they are ever hosted the same way) must stay out of the report: it is not
+  the product, and 100%-exercised demo code would inflate the number.
+
+  Static instrumentation is off because it rewrites the DLLs in Fleet's bin directory on
+  disk and restores them afterwards. A run that dies before the restore would leave
+  instrumented binaries behind for the next build to pick up. Dynamic (profiler-based)
+  instrumentation touches nothing on disk.
+-->
+<Configuration>
+  <Format>cobertura</Format>
+  <CodeCoverage>
+    <ModulePaths>
+      <Include>
+        <ModulePath>.*[\\/]MintPlayer\.Spark[^\\/]*\.dll$</ModulePath>
+      </Include>
+    </ModulePaths>
+    <Sources>
+      <Exclude>
+        <!-- Generated code, gitignored, so the server could never match it anyway.
+             Same intent as ExcludeByFile in coverlet.runsettings. -->
+        <Source>.*[\\/]obj[\\/].*</Source>
+        <Source>.*\.g\.cs$</Source>
+      </Exclude>
+    </Sources>
+    <EnableStaticManagedInstrumentation>False</EnableStaticManagedInstrumentation>
+    <EnableDynamicManagedInstrumentation>True</EnableDynamicManagedInstrumentation>
+  </CodeCoverage>
+</Configuration>

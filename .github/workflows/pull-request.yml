@@ -22,6 +22,10 @@ permissions:
 env:
   NX_SELF_HOSTED_REMOTE_CACHE_SERVER: ${{ secrets.NX_CACHE_SERVER }}
   NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN: ${{ (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch) && secrets.NX_CACHE_RW_TOKEN || secrets.NX_CACHE_RO_TOKEN }}
+  # Runs the E2E suite's Fleet host under dotnet-coverage, so the framework code it
+  # exercises there is measured (FleetTestHost.HostCoverageEnabled). Workflow-level
+  # rather than on the test step: the path verifier reads it too, to require the report.
+  SPARK_E2E_HOST_COVERAGE: 'true'
 
 jobs:
   build:
@@ -68,6 +72,10 @@ jobs:
       run: dotnet restore
       env:
         NUGET_AUTH_TOKEN: ${{ github.token }}
+
+    # dotnet-coverage, for the E2E Fleet host (SPARK_E2E_HOST_COVERAGE above).
+    - name: dotnet tool restore
+      run: dotnet tool restore
 
     - name: Resolve Playwright version
       id: playwright
