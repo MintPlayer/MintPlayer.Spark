@@ -192,6 +192,11 @@ them, because in each case the configuration is internally consistent — it is 
   whole point is to be byte-identical to a genuine not-found (`LookupReferences/Get.cs:26-37`). So a
   missing grant and a misspelled lookup name look exactly alike from the client, and the dropdown is
   simply empty. CodeCoverage granted it nowhere; every demo does.
+  *Corrected 2026-09-27 (#453):* "no entity right implies it" is no longer true. `lookupref/{name}`
+  is also allowed when the caller may **Read an entity type with an attribute bound to that lookup**
+  (`LookupReferences/Get.cs`, `IsBoundToReadableTypeAsync`), so a PO the caller may read stays
+  renderable. The grant is still needed for a lookup no readable type binds (e.g. one only a rule grid
+  or a dynamic lookup uses), and the refusal is still `SparkDenial.RefuseJson`.
 
 ### Reference option sources, established 2026-09-07 — full detail in `docs/guide-reference-attributes.md`
 

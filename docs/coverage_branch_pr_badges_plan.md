@@ -128,6 +128,11 @@ authenticated caller may do. The badge is anonymous because `BadgeController` ca
 `[AllowAnonymous]` and no `[SparkAuthorize]` — not because of anything in security.json. This
 reverses M7 step 1; see there.)*
 
+*(Corrected 2026-09-27 (#453): that 401 was a Spark bug, not the intended semantics. An attribute
+with no policy made ASP.NET Core fold in its default require-authenticated policy. `[SparkAuthorize]`
+now names its own always-passing policy, so the anonymous `Browse/Coverage` grant takes effect and
+anonymous `/api/browse/**` on a public repository answers 200 once deployed.)*
+
 M2's branch picker is unaffected either way — the SPA caller is authenticated.
 
 Measured instead through the badge itself, which is the surface users actually hit: for 71 non-fork PR

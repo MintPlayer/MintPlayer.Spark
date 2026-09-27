@@ -1,6 +1,7 @@
 # PRD — a private repository must be indistinguishable from one that does not exist
 
-**Status:** In progress · **Date:** 2026-09-27 · **Plan:** [coverage_repo_existence_parity_plan.md](coverage_repo_existence_parity_plan.md)
+**Status:** Built in [PR #457](https://github.com/MintPlayer/MintPlayer.Spark/pull/457) (CI green) · ⏳ deploy
+and a production re-probe of the badge timing still pending · **Date:** 2026-09-27 · **Plan:** [coverage_repo_existence_parity_plan.md](coverage_repo_existence_parity_plan.md)
 **Issue:** [#453](https://github.com/MintPlayer/MintPlayer.Spark/issues/453) · **App:** `apps/CodeCoverage` (production, coverage.mintplayer.com) plus `libs/spark`, `libs/node_packages/ng-spark*`
 **Origin:** Five-agent investigation, 2026-09-27. Two observed production and a local host through a real
 browser (anonymous), two read the code, one diffed private-vs-missing responses byte for byte.
@@ -68,10 +69,11 @@ authenticated non-member sees the same kind of gap.
 |---|---|---|
 | D1 | `[SparkAuthorize]` names its own policy whose requirement always succeeds, so **security.json alone decides**, anonymous included. A refused anonymous caller is still challenged. | Fixes the Browse 401 at the root. Every other `[SparkAuthorize]` use is either not granted to anonymous (RepoSettings, Upload) or carries a separate `[Authorize]` (MeController) — verified. |
 | D2 | `lookupref/{name}` is also allowed when the caller may Read an entity type that has an attribute bound to that lookup. The detail page no longer fails over a lookup. | A PO the caller may read must be renderable. Granting anonymous `Read/LookupReferences` wholesale would open every future dynamic lookup too. |
-| D3 | **Invisible ≡ missing inside the resolver.** `ResolveAsync` takes the caller's visibility; a row the caller cannot see is treated as not found *at the step it was found* and resolution continues exactly as for a miss (alias query, account gate, GitHub lookup, cache). | Makes the private path and the missing path run the same work, so timing converges by construction instead of by padding. Uploads/settings pass their own authorization and keep today's behaviour. |
+| D3 | **Invisible ≡ missing inside the resolver.** `ResolveAsync` takes the caller's visibility; a row the caller cannot see is treated as not found *at the step it was found* and resolution continues exactly as for a miss (alias query, account gate, GitHub lookup, cache). | Makes the private path and the missing path run the same work, so timing converges by construction instead of by padding. Uploads/settings pass their own authorization and keep today's behaviour. *Amended 2026-09-27 (#453):* uploads and fork uploads also pass a **real** visibility rule — the token's scope check for Uploads, public-only for ForkUploads — and there is no "everything visible" escape. One would have kept the timing oracle for any token holder probing another org's private names, and for anonymous fork uploaders. |
 | D4 | The caller's owner set is fetched **before** resolving, unconditionally, for authenticated callers. | Removes the private-only cold GitHub call. |
 | D5 | One canonical refusal on JSON surfaces keyed by a repository: `SparkDenial` — anonymous → 401 `{"error":"Authentication required"}` (no `WWW-Authenticate`), authenticated → 404 `{"error":"Not found"}`. Browse switches its "not visible"/"unknown forge" arms to it. Badge keeps its never-404 200 "unknown"; uploads keep their constant 404. | Same shape as `po/load`, so the SPA's sign-in prompt behaves the same on every surface. |
 | D6 | Parity is enforced by tests that diff private-vs-missing responses (status, body, relevant headers) and assert the forge lookup is taken on both paths. | A clean status table today was only true because everything 401'd; it must be *held*. |
+| D7 | *Added 2026-09-27 (#453).* **SPARK020**, an analyzer **error** in `MintPlayer.Spark.SourceGenerators` (`Diagnostics/AuthorizeAttributeAnalyzer.cs`), active only in compilations that resolve `SparkAuthorizeAttribute`. It reports ASP.NET Core's own `AuthorizeAttribute` (that exact type, on classes, methods and route-handler lambdas) carrying a policy (ctor argument or `Policy =`) or `Roles =`; and ASP.NET's `RequireAuthorization(…)` with a policy name, or with an `AuthorizeAttribute` argument carrying a policy or roles. Allowed: bare `[Authorize]`, schemes-only `[Authorize(AuthenticationSchemes = …)]`, `RequireAuthorization()` with no arguments, `SparkAuthorizeAttribute` arguments, the `AuthorizationPolicy` / `Action<AuthorizationPolicyBuilder>` overloads. ⚠ Two edges, deliberately: `RequireRole(…)` inside a policy-builder lambda is **not** flagged (a policy built in code is an explicit choice), while a policy name is flagged **even when the host registered that named policy itself**. | D1 made `[SparkAuthorize]` the one authorization path that consults security.json. `UseSpark()` registers no named policies, so a `Policy` throws at request time, and `Roles` cannot see Spark's `group` claims — both fail at runtime on one endpoint, long after the build passed. |
 
 ## 4. Out of scope (genuinely not done)
 
@@ -82,15 +84,23 @@ authenticated non-member sees the same kind of gap.
   silently decided.
 - Sub-millisecond differences in RavenDB query cost (measured < 1 ms on `po/load`) — not practically
   exploitable over the network.
+- *Residual, noted 2026-09-27 (#453):* when GitHub resolves a guessed name to an id (a private repository
+  the App can see), the resolver does one extra `LoadAsync` that the missing path skips
+  (`RepositoryResolver.cs:111`). That is ~1 ms, the same order as the `po/load` gap above, and judged
+  unexploitable for the same reason. The GitHub round trip itself is taken on both paths.
 
 ## 5. Acceptance
 
 1. Anonymous visitor on a public repository page stays on the page; no 401 is issued by any request it makes.
 2. Anonymous and authenticated-non-member requests for a private repository and for a missing one are
    byte-identical on every surface in §2.1, by id and by name (live name, alias, made-up name under a
-   known owner, unknown owner, unknown forge).
+   known owner, unknown owner, unknown forge). ⚠ The signed-in non-member half is tested at controller
+   level only (`RepositoryExistenceParityTests`, real resolver): the test host has no GitHub sign-in, so
+   there is no end-to-end HTTP test for it.
 3. Private and missing names under a known owner take the same resolver path (both reach the forge
    lookup when applicable), verified by test.
 4. `/api/me/**`, RepoSettings and uploads still refuse anonymous callers.
 5. All five test projects green; `--spark-verify-model` clean; `libs/` packages bumped within their
    current major.
+6. *(D7)* `[Authorize]` / `.RequireAuthorization(…)` with a policy or roles fails the build with SPARK020
+   wherever Spark is referenced; nothing in `apps/`, `libs/` or `tests/` trips it.

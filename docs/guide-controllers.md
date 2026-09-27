@@ -123,10 +123,22 @@ right:
 
 `[AllowAnonymous]` overrides both, as it does for any authorization policy.
 
+⚠️ **An `anonymous` grant takes effect** (since #453). The attribute names its own policy,
+`SparkAuthorizeAttribute.PolicyName`, whose only requirement always passes, so security.json alone
+decides — anonymous callers included. Before, it named no policy, ASP.NET Core folded in its default
+require-authenticated policy, and every anonymous caller got a 401 before security.json was consulted.
+A refused anonymous caller is still challenged (401). So check what the `anonymous` group holds before
+putting `[SparkAuthorize]` on an endpoint that used to rely on that accident; pair it with a bare
+`[Authorize]` if sign-in must be required regardless.
+
+`AddSpark` registers that policy. A host that wires `AddAuthorization` by hand without `AddSpark`
+(unit tests, typically) must call `options => SparkAuthorizeAttribute.AddPolicy(options)` itself, or the
+first request throws "policy not found".
+
 ### What does *not* work
 
-- `[Authorize(Policy = "…")]` **throws at request time**. `UseSpark()` registers a bare
-  ASP.NET Core's own `AddAuthorization()` with no policies.
+- `[Authorize(Policy = "…")]` **throws at request time**. `UseSpark()` registers
+  ASP.NET Core's own `AddAuthorization()` with none of your policies (only `[SparkAuthorize]`'s own).
 - `[Authorize(Roles = "…")]` reads `ClaimTypes.Role`, i.e. ASP.NET Identity roles — **not** Spark
   groups. A group carried as a `group` claim (what the identity provider, the E2E fixtures and module
   certificates all use) is invisible to it. This is worth stating plainly because it is inconsistent:

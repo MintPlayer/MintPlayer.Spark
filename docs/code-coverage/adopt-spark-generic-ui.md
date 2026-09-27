@@ -148,7 +148,11 @@ three hand-rolled query tables onto `spark-sub-query` + attribute renderers.
    O(collection) — a real problem for Coverage's commit/build volumes), create-side WITH CHECK,
    custom-action row gating, per-viewer attribute redaction, and per-row permissions for the UI.
 2. **Anonymous read.** Public-repo browsing works logged-out (`BrowseController` has no
-   `[Authorize]`). Expressible today: grant `Query`/`Read` to the `Everyone` group in
+   `[Authorize]`). *Corrected 2026-09-27 (#453):* stale — `BrowseController`
+   carries `[SparkAuthorize("Browse", "Coverage")]`, and until #453 that attribute fell back to ASP.NET
+   Core's default require-authenticated policy, so anonymous `/api/browse/**` was a 401 despite the
+   anonymous `Browse/Coverage` grant. Since #453 the attribute names its own always-passing policy and
+   security.json's anonymous grant decides. Expressible today: grant `Query`/`Read` to the `Everyone` group in
    `security.json` and let the row filter narrow to public rows (Spark#236 open question 2 asks
    to bless and document exactly this pattern).
 3. **Secret leakage in the model.** `Repository.BadgeToken` is `isVisible: true`,
@@ -242,7 +246,10 @@ As built:
 
 1. Pins on `10.0.0-preview.45` / `@mintplayer/ng-spark 22.0.9`. Breaking changes checked:
    no Spark custom actions (`Submitted*` rename inert), no lookup references
-   (`Read/LookupReferences` requirement inert).
+   (`Read/LookupReferences` requirement inert). *Later (2026-09-27, #453):* no longer inert — the
+   Repository detail page binds the `DeleteBranchPolicy` lookup, whose `Read/LookupReferences` grant
+   is authenticated-only, and its anonymous 401 bounced visitors to sign-in. Fixed in Spark: a lookup is
+   also readable when the caller may Read a type bound to it.
 2. `App_Data/security.json`: `QueryRead` on Account/Repository/Commit/Build for `Everyone` —
    the row filters are the only gate behind that, per the guide's anonymous-read warning.
 3. `Coverage/Services/SparkVisibility.cs` — per-request Task-memoized snapshots (owners via

@@ -408,7 +408,11 @@ would misrepresent the badge as gated in the security posture report. Measured c
 sibling `BrowseController`, which carries `[SparkAuthorize("Browse", "Coverage")]` *without*
 `[AllowAnonymous]`, answers anonymously with `401` + `Www-Authenticate: Bearer` even though
 `security.json` grants `Browse/Coverage` to the anonymous group — the grant governs what an
-authenticated caller may do, not whether authentication is demanded.
+authenticated caller may do, not whether authentication is demanded. *(Corrected 2026-09-27 (#453):
+the measurement was right, the explanation was a Spark bug — a policy-less `AuthorizeAttribute` pulls
+in the default require-authenticated policy. `[SparkAuthorize]` now names its own always-passing
+policy, so the anonymous grant does decide. The conclusion for the badge stands: `[AllowAnonymous]`
+would still skip it.)*
 
 The badge's access control is therefore, in full: public repositories are open, a private
 repository's own badge needs `BadgeToken`, and a private repository's PR badge needs the PR-scoped

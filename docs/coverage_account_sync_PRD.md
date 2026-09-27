@@ -501,6 +501,15 @@ everything else. The residual signal is whether an *account* is known, which is 
 it is already public for any account with a public repository, and it says nothing about any
 particular repository.
 
+⚠ *Corrected 2026-09-27 (#453):* the gate does **not** close the timing oracle. It stops only
+*unknown* owners, and the organisations to protect are exactly the known ones: a guessed name under an
+App-installing org answered in ~4 ms when the private repository existed and ~272 ms when it did not.
+What closes it is the required `isVisible` argument `ResolveAsync` now takes — an invisible hit is
+treated as a miss at the step it was found, so both paths reach the GitHub lookup
+([coverage_repo_existence_parity_PRD.md](coverage_repo_existence_parity_PRD.md) D3). Also since #453,
+Browse refuses a hidden repository with `SparkDenial` (anonymous 401, signed-in 404), not a bare
+`NotFound`.
+
 The rest of the surface was checked and needs no change: `BrowseController.GetRepo`,
 `RepoSettingsController` and `TokensController` all answer a uniform `NotFound` for "unknown" and
 "not allowed" alike, and the `/spark` grids and detail pages are filtered by
