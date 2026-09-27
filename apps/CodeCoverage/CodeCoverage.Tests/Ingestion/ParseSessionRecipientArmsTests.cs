@@ -102,8 +102,13 @@ public class ParseSessionRecipientArmsTests : CoverageRavenTest
     public async Task A_corrupt_gzip_body_is_rejected_as_malformed()
     {
         using var store = GetDocumentStore();
+        // A real gzip whose first deflate block header is overwritten with the reserved block type
+        // (BTYPE = 11). A body of plain garbage after the magic bytes is not enough: the
+        // decompressor reads it as an empty stream rather than failing.
+        var corrupt = Gzip(Lcov);
+        corrupt[10] = 0xFF;
         await SeedAsync(store, "/repo", withFileList: true,
-            ("bad.gz", [0x1f, 0x8b, 0x08, 0x00, 0xde, 0xad, 0xbe, 0xef, 0x00, 0x01, 0x02]),
+            ("bad.gz", corrupt),
             ("good.info", Encoding.UTF8.GetBytes(Lcov)));
 
         await RunAsync(store);

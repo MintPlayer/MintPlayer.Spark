@@ -28,12 +28,13 @@ namespace CodeCoverage.Tests.Controllers;
 /// querytype/index lines vanished from every projection-backed entity's shape. Fixed in
 /// <c>SparkExtensions.UseContext</c>, which now anchors discovery on the context assembly.
 /// <para>
-/// The host is shared via <see cref="CoverageWebHostFixture"/>. <b>Do not construct a factory per
+/// The host is shared via <see cref="CoverageWebHostCollection"/>. <b>Do not construct a factory per
 /// test:</b> Spark's registry, index catalog and model loader are process-wide, and concurrent
 /// boots throw "Collection was modified; enumeration operation may not execute".
 /// </para>
 /// </remarks>
-public class SparkAuthorizeEndToEndTests : IClassFixture<CoverageWebHostFixture>
+[Collection(CoverageWebHostCollection.Name)]
+public class SparkAuthorizeEndToEndTests
 {
     private readonly CoverageWebHostFixture fixture;
 

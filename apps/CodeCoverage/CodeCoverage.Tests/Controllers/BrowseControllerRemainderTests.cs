@@ -39,16 +39,19 @@ public class BrowseControllerRemainderTests : CoverageRavenTest
     private static BrowseController CreateController(IAsyncDocumentSession session, params string[] owners)
     {
         var services = new ServiceCollection();
+        services.AddLogging();
         services.AddSingleton(session);
         var forge = ScriptedForge.From(new(owners, GitHubTokenState.Ok));
-        forge.Files["src/app.ts"] = "export const x = 1;";
+        forge.Files[$"{Sha}/src/app.ts"] = "export const x = 1;";
         services.AddSingleton<IForgeIntegration>(forge);
         services.AddSingleton<IForgeIntegrationResolver>(forge);
         services.AddSingleton(GitHubAuthTestFakes.TestConfiguration());
         services.AddScoped<IRepositoryResolver>(sp => new TestRepositoryResolver(sp.GetService<IAsyncDocumentSession>()));
         services.AddScoped<BrowseController>();
-        var controller = services.BuildServiceProvider().GetRequiredService<BrowseController>();
-        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+        var provider = services.BuildServiceProvider();
+        var controller = provider.GetRequiredService<BrowseController>();
+        // RequestServices, because a refusal is rendered by Spark from the request's services.
+        controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { RequestServices = provider } };
         return controller;
     }
 
