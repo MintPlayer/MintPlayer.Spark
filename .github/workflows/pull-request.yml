@@ -285,11 +285,11 @@ jobs:
         token: ${{ secrets.COVERAGE_TOKEN }}
         files: |
           tests/*/coverage/**/coverage.cobertura.xml
-          apps/*/*/coverage/**/coverage.cobertura.xml
+          apps/CodeCoverage/*/coverage/**/coverage.cobertura.xml
           libs/node_packages/*/coverage/cobertura-coverage.xml
-          apps/*/*/ClientApp/coverage/cobertura-coverage.xml
-          coverage/@spark-apps/*/cobertura-coverage.xml
-          apps/*/action/coverage/cobertura-coverage.xml
+          apps/CodeCoverage/CodeCoverage/ClientApp/coverage/cobertura-coverage.xml
+          coverage/@spark-apps/code-coverage/cobertura-coverage.xml
+          apps/CodeCoverage/action/coverage/cobertura-coverage.xml
         disable-search: true
         partial: true
         base-sha: ${{ env.NX_BASE }}
