@@ -155,8 +155,11 @@ public class MessageQueueRouterTests : SparkTestDriver
 
         await RouteAndDrainAsync(router, id, () => WaitForStatusAsync(id, EMessageStatus.Completed));
 
+        // Also covers the race at the end: a renewal that lands after the processor saved Completed
+        // fails, and must not be reported as a lost claim.
         _log.Entries.Any(e => e.Level >= LogLevel.Warning).Should().BeFalse(
-            "renewing our own claim, many times over, is the normal case");
+            "renewing our own claim, many times over, is the normal case. Log:\n{0}",
+            string.Join("\n", _log.Entries.Select(e => $"{e.Level}: {e.Message} {e.Exception?.GetType().Name}")));
     }
 
     /// <summary>

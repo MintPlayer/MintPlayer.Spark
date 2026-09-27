@@ -83,7 +83,15 @@ public class EtlTaskManagerDeploymentTests : SparkTestDriver
         updated.Success.Should().BeTrue(updated.Error ?? "");
         updated.TasksUpdated.Should().Be(1);
         updated.TasksCreated.Should().Be(0, "the task exists, so redeploying must not add a second one");
-        Task_()!.TaskId.Should().Be(task!.TaskId);
+
+        // ⚠️ Not `TaskId.Should().Be(task.TaskId)`: RavenDB gives an ETL task a NEW id on every
+        // update (the raft index of the update command), so an update and a delete-plus-add look
+        // identical by id. What proves "updated, not duplicated" is one task under the name,
+        // carrying the new script.
+        var record = Store.Maintenance.Server.Send(new GetDatabaseRecordOperation(Store.Database));
+        record.RavenEtls.Count(e => e.Name == task!.TaskName).Should().Be(1);
+        record.RavenEtls.Single(e => e.Name == task!.TaskName).Transforms.Single().Script
+            .Should().Contain("Plate: this.Plate");
     }
 
     /// <summary>

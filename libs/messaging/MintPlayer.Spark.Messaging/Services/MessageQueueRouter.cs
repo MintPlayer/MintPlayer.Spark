@@ -201,6 +201,23 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
 
             if (!stillOurs)
             {
+                // A renewal that lands just after the processor saved the outcome also fails; that
+                // is the normal end of processing, and warning about it would be a false alarm.
+                try
+                {
+                    if (!await MessageClaims.WasReclaimedAsync(documentStore, messageId, MessageClaims.NodeId, cancellationToken))
+                        return;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception)
+                {
+                    // Could not tell. Report the loss: a spurious warning costs less than hiding a
+                    // real double-processing window.
+                }
+
                 // The claim was reclaimed while we were working. We cannot un-run the handlers
                 // already invoked, but we can say so loudly: this is the window in which a message
                 // can be processed twice, and it means ClaimTtl is too short for this handler.

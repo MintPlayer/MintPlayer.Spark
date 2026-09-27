@@ -47,6 +47,24 @@ public class MessageClaimsTests : SparkTestDriver
         (await LoadAsync(id)).ClaimExpiresAtUtc!.Value.Should().BeAfter(before!.Value);
     }
 
+    /// <summary>
+    /// A renewal that fails because the processor has just saved the outcome must not be reported as
+    /// a lost claim. The router asks this question before it warns "may be handled twice".
+    /// </summary>
+    [Theory]
+    [InlineData(null, EMessageStatus.Completed, false)]
+    [InlineData(null, EMessageStatus.Failed, false)]
+    [InlineData(null, EMessageStatus.DeadLettered, false)]
+    [InlineData(Us, EMessageStatus.Processing, false)]
+    [InlineData(null, EMessageStatus.Pending, true)]
+    [InlineData(Them, EMessageStatus.Processing, true)]
+    public async Task Only_a_requeued_or_foreign_claim_counts_as_reclaimed(string? owner, EMessageStatus status, bool reclaimed)
+    {
+        var id = await SeedMessageAsync(owner, status);
+
+        (await MessageClaims.WasReclaimedAsync(Store, id, Us, CancellationToken.None)).Should().Be(reclaimed);
+    }
+
     [Theory]
     [InlineData(Them, EMessageStatus.Processing)]
     [InlineData(Us, EMessageStatus.Failed)]
