@@ -47,8 +47,11 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint
                 return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
             }
 
-            var obj = request.PersistentObject
-                ?? throw new InvalidOperationException("PersistentObject is required.");
+            // A body without the object is malformed: refused like one, not a 500.
+            if (request.PersistentObject is not { } obj)
+            {
+                return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
+            }
 
             RetryScope.Accept(retryAccessor, request);
 

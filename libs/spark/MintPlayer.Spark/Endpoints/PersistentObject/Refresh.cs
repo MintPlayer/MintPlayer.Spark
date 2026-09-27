@@ -60,8 +60,13 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
 
-        var submitted = request.PersistentObject
-            ?? throw new InvalidOperationException("PersistentObject is required.");
+        // A body without the object is malformed, and a malformed body is refused exactly like an
+        // unknown type (see Create). It used to throw, which answered 500 — and, since this runs
+        // before the permission check, a 500 against a refusal told a caller the type exists.
+        if (request.PersistentObject is not { } submitted)
+        {
+            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
+        }
 
         var isNew = string.IsNullOrEmpty(submitted.Id);
         var typeName = entityType.ClrType?.Split('.').Last() ?? entityType.Name;
