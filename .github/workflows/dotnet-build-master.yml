@@ -134,7 +134,7 @@ jobs:
       run: node tools/verify-coverage-paths.mjs
 
     - name: Upload coverage
-      if: always() && hashFiles('tests/*/coverage/**/coverage.cobertura.xml', 'apps/*/*/coverage/**/coverage.cobertura.xml', 'libs/node_packages/*/coverage/cobertura-coverage.xml', 'apps/*/*/ClientApp/coverage/cobertura-coverage.xml') != ''
+      if: always() && hashFiles('tests/*/coverage/**/coverage.cobertura.xml', 'apps/CodeCoverage/*/coverage/**/coverage.cobertura.xml', 'libs/node_packages/*/coverage/cobertura-coverage.xml', 'apps/CodeCoverage/CodeCoverage/ClientApp/coverage/cobertura-coverage.xml', 'coverage/@spark-apps/code-coverage/cobertura-coverage.xml', 'apps/CodeCoverage/action/coverage/cobertura-coverage.xml') != ''
       # The working copy — the action's source lives in this repository now.
       uses: ./apps/CodeCoverage/action
       with:
@@ -142,11 +142,11 @@ jobs:
         token: ${{ secrets.COVERAGE_TOKEN }}
         files: |
           tests/*/coverage/**/coverage.cobertura.xml
-          apps/*/*/coverage/**/coverage.cobertura.xml
+          apps/CodeCoverage/*/coverage/**/coverage.cobertura.xml
           libs/node_packages/*/coverage/cobertura-coverage.xml
-          apps/*/*/ClientApp/coverage/cobertura-coverage.xml
-          coverage/@spark-apps/*/cobertura-coverage.xml
-          apps/*/action/coverage/cobertura-coverage.xml
+          apps/CodeCoverage/CodeCoverage/ClientApp/coverage/cobertura-coverage.xml
+          coverage/@spark-apps/code-coverage/cobertura-coverage.xml
+          apps/CodeCoverage/action/coverage/cobertura-coverage.xml
         disable-search: true
         finish: true
         fail-ci-if-error: false

@@ -24,7 +24,10 @@ export default defineConfig({
     exclude: ['**/node_modules/**', '**/dist/**', '**/out-tsc/**'],
     coverage: {
       provider: 'v8',
-      reporter: ['cobertura', 'text'],
+      // Repo-relative filenames. Left at its default (this package), cobertura writes
+      // `pipes/src/translate-key.pipe.ts`, a tail ng-spark shares, so a resolver that
+      // ignores <source> cannot tell the two files apart.
+      reporter: [['cobertura', { projectRoot: fileURLToPath(new URL('../../..', import.meta.url)) }], 'text'],
       reportsDirectory: './coverage',
       // Every shipped source counts, not only what some spec happened to
       // import: a file no test touches is 0% covered, not invisible.

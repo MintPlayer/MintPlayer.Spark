@@ -5,6 +5,7 @@
   "sourceRoot": "apps/CodeCoverage/action/src",
   "targets": {
     "test": {
+      "executor": "nx:run-commands",
       "options": {
         "cwd": "apps/CodeCoverage/action",
         "command": "npm run test:coverage"
