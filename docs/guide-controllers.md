@@ -131,7 +131,15 @@ right:
   groups. A group carried as a `group` claim (what the identity provider, the E2E fixtures and module
   certificates all use) is invisible to it. This is worth stating plainly because it is inconsistent:
   test it against a role-shaped fixture and you will conclude interop already works.
-- A bare `[Authorize]` does work: it requires an authenticated caller and nothing more.
+- A bare `[Authorize]` does work: it requires an authenticated caller and nothing more. So does a
+  schemes-only `[Authorize(AuthenticationSchemes = "…")]`, which only picks how the caller is
+  authenticated.
+
+**SPARK020** (error) enforces the first two at build time: ASP.NET Core's own `AuthorizeAttribute`
+with a policy (constructor argument or `Policy =`) or `Roles =` fails the build, on a class, a
+method or a route-handler lambda. It judges only that exact type — `[SparkAuthorize]` derives from
+it and sets `Policy` itself, and a subclass of your own is your decision. Minimal-API
+`.RequireAuthorization("policy")` is a method call, not an attribute, and is not checked.
 
 ## Reusing a row rule
 
