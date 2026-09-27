@@ -109,20 +109,20 @@ internal partial class EtlTaskManager
     }
 
     /// <summary>
-    /// Tries to find an existing RavenDB ETL task by name and returns its task ID.
+    /// Finds an existing RavenDB ETL task by name and returns its task ID, or <c>null</c> when
+    /// there is none.
+    /// <para>
+    /// A missing task comes back as a <c>null</c> result, not an exception, so nothing here is
+    /// caught. It used to swallow every exception as "task doesn't exist": a transient failure on
+    /// this one request then sent an add for a task that already existed, and the deployment
+    /// failed on the duplicate — logging the duplicate, not the fault that caused it. A failure
+    /// now reaches the caller's catch, which reports it as what it is.
+    /// </para>
     /// </summary>
     private long? FindExistingEtlTaskId(string taskName)
     {
-        try
-        {
-            var result = documentStore.Maintenance.Send(
-                new GetOngoingTaskInfoOperation(taskName, OngoingTaskType.RavenEtl));
-            return result?.TaskId;
-        }
-        catch
-        {
-            // Task doesn't exist
-            return null;
-        }
+        var result = documentStore.Maintenance.Send(
+            new GetOngoingTaskInfoOperation(taskName, OngoingTaskType.RavenEtl));
+        return result?.TaskId;
     }
 }
