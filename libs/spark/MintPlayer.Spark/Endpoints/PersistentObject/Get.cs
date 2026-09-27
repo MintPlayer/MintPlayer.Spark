@@ -73,7 +73,7 @@ internal sealed partial class GetPersistentObject : IPostEndpoint
             // already reads disabledActions off the PO, so this needs no wire change, and the two
             // APIs converge on one field rather than one growing a second delivery mechanism. That
             // reasoning survives the move to POST — the response is still a bare object.
-            MergeClientWithholds(obj);
+            MergeClientWithholds(clientAccessor, obj);
 
             // ⚠️ Still a bare object, not an envelope, even though this is a POST now. The verb moved
             // so that a load could carry a retry answer; the response shape is a separate decision
@@ -108,7 +108,9 @@ internal sealed partial class GetPersistentObject : IPostEndpoint
     /// action. The action's own right is what refuses it, and that is re-checked on execute.
     /// </para>
     /// </remarks>
-    private void MergeClientWithholds(Abstractions.PersistentObject obj)
+    // Internal and static so the tests exercise this very filter rather than a copy of it.
+    internal static void MergeClientWithholds(
+        Abstractions.ClientOperations.IClientAccessor clientAccessor, Abstractions.PersistentObject obj)
     {
         var names = clientAccessor.Operations
             .OfType<Abstractions.ClientOperations.DisableActionOperation>()
