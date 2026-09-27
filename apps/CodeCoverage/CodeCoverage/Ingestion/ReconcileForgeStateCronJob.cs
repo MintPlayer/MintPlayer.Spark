@@ -2,6 +2,7 @@ using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark;
 using MintPlayer.Spark.Cron;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
@@ -47,24 +48,42 @@ public partial class ReconcileForgeStateCronJob : ISparkCronJob
         if (accounts.Count == 0)
             return;
 
+        // One save per account (below) plus the reconciles' own reads: bounded by the Take above,
+        // not by the default per-session budget of 30.
+        using var requestScope = session.IgnoreMaxRequests();
+
         var reconciled = 0;
-        foreach (var account in accounts)
+        foreach (var listed in accounts)
         {
             if (cancellationToken.IsCancellationRequested) break;
+
+            // Reloaded rather than used as listed. A tracked id is served from the session without a
+            // request; after a failed account has cleared the session (below), it is fetched again,
+            // because an entity from before the clear is no longer tracked and its changes would
+            // never be saved.
+            var account = await session.LoadAsync<Account>(listed.Id, cancellationToken);
+            if (account is null) continue;
 
             // One account failing must not cost every account behind it in the list its sweep.
             try
             {
                 await forges.For(account.Provider).ReconcileAsync(account, cancellationToken);
+
+                // Each account is its own unit of work. A single save after the loop persisted
+                // whatever a failing reconcile had written into the session before it threw — a
+                // half-applied reconcile, saved as though it were a whole one.
+                await session.SaveChangesAsync(cancellationToken);
                 reconciled++;
             }
             catch (Exception ex)
             {
+                // Everything pending belongs to this account alone, since every earlier one was
+                // saved; clearing discards exactly its partial changes.
+                session.Advanced.Clear();
                 logger.LogWarning(ex, "Reconciling {Login} failed; the other accounts continue", account.Login);
             }
         }
 
-        await session.SaveChangesAsync(cancellationToken);
         logger.LogInformation("Reconciled {Reconciled} of {Total} installed accounts", reconciled, accounts.Count);
     }
 }

@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Raven.Client.Documents;
 
@@ -49,11 +51,26 @@ public sealed class CoverageWebAppFactory : WebApplicationFactory<Program>
 
     private readonly string _ravenUrl;
     private readonly string _database;
+    private readonly Action<IServiceCollection>? _overrideServices;
+    private readonly IReadOnlyDictionary<string, string?> _settings;
 
-    public CoverageWebAppFactory(IDocumentStore store)
+    /// <param name="store">The embedded database the host runs against.</param>
+    /// <param name="overrideServices">
+    /// Runs after the real composition root, through <c>ConfigureTestServices</c>, so a
+    /// registration made here replaces the app's own — how a host gets a stub GitHub instead of the
+    /// real one. ⚠️ A factory with overrides is a second host: see <see cref="CoverageWebHostCollection"/>
+    /// for why it must never boot alongside another one.
+    /// </param>
+    /// <param name="settings">Extra host settings, applied after the defaults so they can replace them.</param>
+    public CoverageWebAppFactory(
+        IDocumentStore store,
+        Action<IServiceCollection>? overrideServices = null,
+        IReadOnlyDictionary<string, string?>? settings = null)
     {
         _ravenUrl = store.Urls[0];
         _database = store.Database;
+        _overrideServices = overrideServices;
+        _settings = settings ?? new Dictionary<string, string?>();
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -86,6 +103,12 @@ public sealed class CoverageWebAppFactory : WebApplicationFactory<Program>
         // different thing entirely.
         builder.UseSetting($"GitHub:{EnvironmentName}:ClientId", "integration-test-client-id");
         builder.UseSetting($"GitHub:{EnvironmentName}:ClientSecret", "integration-test-client-secret");
+
+        foreach (var (key, value) in _settings)
+            builder.UseSetting(key, value);
+
+        if (_overrideServices is not null)
+            builder.ConfigureTestServices(_overrideServices);
     }
 
     /// <summary>

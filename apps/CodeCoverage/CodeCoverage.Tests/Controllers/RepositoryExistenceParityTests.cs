@@ -38,23 +38,6 @@ public class RepositoryExistenceParityTests : CoverageRavenTest
     private const long PrivateRepoId = 4530;
     private const long PublicRepoId = 4531;
 
-    private sealed class CountingInstallationService : IGitHubInstallationService
-    {
-        public int AppClientRequests { get; private set; }
-
-        public Task<IGitHubClient> CreateAppClientAsync()
-        {
-            AppClientRequests++;
-            throw new InvalidOperationException("no GitHub in tests");
-        }
-
-        public Task<IGitHubClient> CreateInstallationClientAsync(long installationId)
-            => throw new NotSupportedException();
-
-        public Task<Octokit.GraphQL.Connection> CreateGraphQLConnectionAsync(long installationId, EClientType clientType)
-            => throw new NotSupportedException();
-    }
-
     private sealed class NullContentService : IGitHubContentService
     {
         public Task<string?> GetFileContentAsync(Repository repository, long? installationId, string sha, string path, CancellationToken cancellationToken = default)
@@ -109,9 +92,10 @@ public class RepositoryExistenceParityTests : CoverageRavenTest
     }
 
     /// <summary>A fresh container per call, so the resolver's memory cache never carries a variant's answer into the next.</summary>
-    private static (IServiceProvider Services, CountingInstallationService GitHub) CreateServices(IAsyncDocumentSession session)
+    private static (IServiceProvider Services, StubGitHub GitHub) CreateServices(IAsyncDocumentSession session)
     {
-        var github = new CountingInstallationService();
+        // Counts the app-client requests; there is no GitHub in these tests, so each one throws.
+        var github = new StubGitHub { Throws = new InvalidOperationException("no GitHub in tests") };
         var services = new ServiceCollection();
         services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.None));
         services.AddMemoryCache();
@@ -196,7 +180,7 @@ public class RepositoryExistenceParityTests : CoverageRavenTest
 
             await Controller<BrowseController>(services, authenticated).GetRepo("github", "acme", name, CancellationToken.None);
 
-            github.AppClientRequests.Should().Be(1,
+            github.AppClients.Should().Be(1,
                 $"acme/{name} must resolve by the same steps as a name that does not exist (#453) — returning early on an invisible hit is the ~4 ms vs ~270 ms oracle");
         }
     }
@@ -212,7 +196,7 @@ public class RepositoryExistenceParityTests : CoverageRavenTest
             .GetRepo("github", "acme", "open", CancellationToken.None);
 
         result.Result.Should().BeOfType<OkObjectResult>("anonymous visitors may browse a public repository");
-        github.AppClientRequests.Should().Be(0, "a live name the caller may see never needs GitHub");
+        github.AppClients.Should().Be(0, "a live name the caller may see never needs GitHub");
     }
 
     [Theory]
@@ -235,7 +219,7 @@ public class RepositoryExistenceParityTests : CoverageRavenTest
         controller.Response.Headers.ETag.ToString().Should().Be(reference.Response.Headers.ETag.ToString());
         controller.Response.Headers.CacheControl.ToString().Should().Be(reference.Response.Headers.CacheControl.ToString());
         if (provider == "github" && owner == "acme")
-            github.AppClientRequests.Should().Be(1, "a private name and a missing one must take the same path");
+            github.AppClients.Should().Be(1, "a private name and a missing one must take the same path");
     }
 
     [Fact]
@@ -249,7 +233,7 @@ public class RepositoryExistenceParityTests : CoverageRavenTest
             .Get("github", "acme", "secret", "the-real-badge-token", null, null, null, CancellationToken.None)).Content;
 
         svg.Should().Contain("90", "the token is the capability that makes a private badge visible");
-        github.AppClientRequests.Should().Be(0);
+        github.AppClients.Should().Be(0);
     }
 
     [Theory]
