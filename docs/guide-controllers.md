@@ -123,15 +123,52 @@ right:
 
 `[AllowAnonymous]` overrides both, as it does for any authorization policy.
 
+⚠️ **An `anonymous` grant takes effect** (since #453). The attribute names its own policy,
+`SparkAuthorizeAttribute.PolicyName`, whose only requirement always passes, so security.json alone
+decides — anonymous callers included. Before, it named no policy, ASP.NET Core folded in its default
+require-authenticated policy, and every anonymous caller got a 401 before security.json was consulted.
+A refused anonymous caller is still challenged (401). So check what the `anonymous` group holds before
+putting `[SparkAuthorize]` on an endpoint that used to rely on that accident; pair it with a bare
+`[Authorize]` if sign-in must be required regardless.
+
+`AddSpark` registers that policy. A host that wires `AddAuthorization` by hand without `AddSpark`
+(unit tests, typically) must call `options => SparkAuthorizeAttribute.AddPolicy(options)` itself, or the
+first request throws "policy not found".
+
 ### What does *not* work
 
-- `[Authorize(Policy = "…")]` **throws at request time**. `UseSpark()` registers a bare
-  ASP.NET Core's own `AddAuthorization()` with no policies.
+- `[Authorize(Policy = "…")]` **throws at request time**. `UseSpark()` registers
+  ASP.NET Core's own `AddAuthorization()` with none of your policies (only `[SparkAuthorize]`'s own).
 - `[Authorize(Roles = "…")]` reads `ClaimTypes.Role`, i.e. ASP.NET Identity roles — **not** Spark
   groups. A group carried as a `group` claim (what the identity provider, the E2E fixtures and module
   certificates all use) is invisible to it. This is worth stating plainly because it is inconsistent:
   test it against a role-shaped fixture and you will conclude interop already works.
-- A bare `[Authorize]` does work: it requires an authenticated caller and nothing more.
+- A bare `[Authorize]` does work: it requires an authenticated caller and nothing more. So does a
+  schemes-only `[Authorize(AuthenticationSchemes = "…")]`, which only picks how the caller is
+  authenticated.
+
+**SPARK020** (error) enforces the first two at build time: ASP.NET Core's own `AuthorizeAttribute`
+with a policy (constructor argument or `Policy =`) or `Roles =` fails the build, on a class, a
+method or a route-handler lambda. It judges only that exact type — `[SparkAuthorize]` derives from
+it and sets `Policy` itself, and a subclass of your own is your decision.
+
+The same rule covers the endpoint-convention form, on a route and on a `MapGroup(…)` group alike:
+
+```csharp
+app.MapGet("/uploads", …).RequireAuthorization("Administrators");                          // SPARK020
+group.RequireAuthorization(new AuthorizeAttribute { Roles = "Administrators" });          // SPARK020
+app.MapGet("/uploads", …).RequireAuthorization(new SparkAuthorizeAttribute("New", nameof(Upload))); // fine
+app.MapGet("/me", …).RequireAuthorization();                                              // fine: sign-in only
+```
+
+Any policy name is reported, whatever expression produces it, as is a `new AuthorizeAttribute(…)`
+argument carrying a policy or `Roles`. Not reported: `RequireAuthorization()` with no arguments (the
+default policy, i.e. sign-in only), a schemes-only `AuthorizeAttribute`, and the `AuthorizationPolicy`
+/ `Action<AuthorizationPolicyBuilder>` overloads, which hand over a policy object instead of looking
+one up by name. Be aware that `policy.RequireRole(…)` inside such a builder has exactly the
+`Roles` blindness described above — it sees role claims, not Spark's `group` claims — it is only
+not reported, because a policy built in code is an explicit choice. Only ASP.NET Core's own
+`RequireAuthorization` is judged; a method of yours with the same name is not.
 
 ## Reusing a row rule
 

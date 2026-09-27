@@ -305,13 +305,17 @@ export class SparkPoDetailComponent {
     if (lookupAttrs.length === 0) return;
 
     const lookupNames = [...new Set(lookupAttrs.map(a => a.lookupReferenceType!))];
+    // A lookup that fails to load only costs its labels: the attribute then shows its raw value
+    // (attributeValue's fallback) instead of the whole page erroring over a secondary request (#453).
     const entries = await Promise.all(
       lookupNames.map(async name => {
-        const result = await this.sparkService.getLookupReference(name);
+        const result = await this.sparkService.getLookupReference(name).catch(() => null);
         return [name, result] as const;
       })
     );
-    this.lookupReferenceOptions.set(entries.reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {} as Record<string, LookupReference>));
+    this.lookupReferenceOptions.set(entries.reduce(
+      (acc, [k, v]) => v ? { ...acc, [k]: v } : acc,
+      {} as Record<string, LookupReference>));
   }
 
   private async loadAsDetailTypes(): Promise<void> {

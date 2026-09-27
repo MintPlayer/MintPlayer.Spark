@@ -111,7 +111,10 @@ public partial class ForkUploadsController : ControllerBase
         // 1. The target repository must be one we already know. The resolution's Redirect flag is
         //    ignored on purpose: a 301 on an upload would have the caller re-POST its whole body,
         //    and an alias resolving to the right document is not an error worth correcting here.
-        var resolution = await repositories.ResolveAsync(forgeProvider, owner, name, cancellationToken);
+        //    ⚠️ Public-only is ALSO the resolver's visibility (#453): this endpoint is anonymous, and
+        //    a private repository found and then refused answered faster than a missing one. Step 2
+        //    below stays as the explicit statement of the rule.
+        var resolution = await repositories.ResolveAsync(forgeProvider, owner, name, r => !r.IsPrivate, cancellationToken);
         if (resolution.Repository is not { } repository || repository.Connection == RepositoryConnection.Disconnected)
             return NotFoundLikeEverythingElse();
 

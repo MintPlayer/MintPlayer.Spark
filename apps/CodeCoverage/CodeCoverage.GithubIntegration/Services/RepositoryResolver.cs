@@ -28,8 +28,11 @@ public partial class RepositoryResolver : IRepositoryResolver
     private static readonly TimeSpan LookupCacheDuration = TimeSpan.FromMinutes(10);
 
     public async Task<RepositoryResolution> ResolveAsync(
-        EForgeProvider provider, string owner, string name, CancellationToken cancellationToken = default)
+        EForgeProvider provider, string owner, string name, Func<Repository, bool> isVisible,
+        CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(isVisible);
+
         if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(name))
             return RepositoryResolution.None;
 
@@ -50,7 +53,9 @@ public partial class RepositoryResolver : IRepositoryResolver
             .Take(8)
             .ToListAsync(cancellationToken))
             .FirstOrDefault(r => r.Provider == provider);
-        if (live is not null)
+        //    ⚠ An invisible hit falls through, it does NOT return None here (#453). Returning early
+        //    is what made "private" answer in ~4 ms and "missing" in ~270 ms (the GitHub step).
+        if (live is not null && isVisible(live))
             return new RepositoryResolution(live, Redirect: false);
 
         // 2. A name we remember this repository leaving behind.
@@ -62,7 +67,7 @@ public partial class RepositoryResolver : IRepositoryResolver
             .Where(r => r.PreviousFullNames.Any(previous => previous == fullName))
             .Take(8)
             .ToListAsync(cancellationToken))
-            .Where(r => r.Provider == provider)
+            .Where(r => r.Provider == provider && isVisible(r))
             .Take(2)
             .ToList();
         if (aliased.Count == 1)
@@ -78,15 +83,18 @@ public partial class RepositoryResolver : IRepositoryResolver
         //
         // This step exists to map a *stale name of a repository we know* onto its current id, and a
         // stale name's owner is, by construction, an owner we knew. Calling GitHub for arbitrary
-        // input would be two gifts to an anonymous caller: the badge endpoint is [AllowAnonymous],
-        // so probing distinct names would burn the App's GitHub rate limit and degrade the
-        // reconciler and the PR bot; and it would turn response time into an existence oracle,
-        // because a name we know answers from RavenDB in milliseconds while one we do not costs a
-        // round-trip. For a private repository, "we know it" means it exists and the App is
-        // installed on it — precisely what the badge endpoint's never-404 rule refuses to reveal.
+        // input would burn the App's GitHub rate limit for any anonymous caller (the badge endpoint
+        // is [AllowAnonymous]) and degrade the reconciler and the PR bot. Gating on the account
+        // keeps the useful case (the owner is known; only the repository name is stale) and costs
+        // an indexed lookup instead of a network call for everything else.
         //
-        // Gating on the account keeps the useful case (the owner is known; only the repository name
-        // is stale) and costs an indexed lookup instead of a network call for everything else.
+        // ⚠ The gate is NOT what closes the timing oracle, though this comment once said so: the
+        // organisations whose private repositories need hiding are exactly the known owners, and
+        // for them a guessed name reaches this step either way. What closes it is `isVisible`: a
+        // repository the caller may not see never short-circuits steps 1-2, so a private name and
+        // a made-up one both arrive here and both pay the (cached) GitHub lookup. What remains is
+        // the account gate itself, i.e. whether the App is installed for the owner — which the
+        // anonymously listable Account documents disclose anyway (#453 PRD §4).
         if (!await IsKnownAccountAsync(provider, owner, cancellationToken))
             return RepositoryResolution.None;
 
@@ -101,7 +109,7 @@ public partial class RepositoryResolver : IRepositoryResolver
             return RepositoryResolution.None;
 
         var resolved = await session.LoadAsync<Repository>(Repository.DocumentId(provider, gitHubId.Value), cancellationToken);
-        return resolved is null
+        return resolved is null || !isVisible(resolved)
             ? RepositoryResolution.None
             : new RepositoryResolution(resolved, Redirect: true);
     }

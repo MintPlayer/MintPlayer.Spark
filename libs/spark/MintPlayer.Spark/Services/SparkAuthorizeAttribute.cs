@@ -29,7 +29,8 @@ namespace MintPlayer.Spark.Services;
 /// </para>
 /// <para>
 /// Implemented through <see cref="IAuthorizationRequirementData"/>, so the attribute <em>is</em> the
-/// requirement — no policy provider, and no policy-name strings to keep in step with anything.
+/// requirement — no policy provider, and no per-right policy names to keep in step with anything
+/// (the one fixed <see cref="PolicyName"/> exists only to displace the default policy; see remarks).
 /// <c>[AllowAnonymous]</c> still wins, as it does for any authorization policy.
 /// </para>
 /// </summary>
@@ -39,10 +40,25 @@ namespace MintPlayer.Spark.Services;
 /// an attribute implementing only <see cref="IAuthorizationRequirementData"/> is never looked at.
 /// This is the shape ASP.NET Core's own sample uses, and getting it wrong fails open — the endpoint
 /// simply is not authorized at all.
+/// <para>
+/// ⚠️ <b>It names <see cref="PolicyName"/>, and that is what lets anonymous callers through</b>
+/// (#453). An <see cref="IAuthorizeData"/> with no policy, roles or schemes makes ASP.NET Core
+/// combine in the <em>default</em> policy, which requires an authenticated user — so every
+/// anonymous caller got a 401 before security.json was consulted, and an <c>anonymous</c> grant
+/// had no effect. The named policy's only requirement always succeeds, leaving this attribute's
+/// own requirement as the sole gate. A refused anonymous caller is still challenged (401).
+/// </para>
 /// </remarks>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, AllowMultiple = true, Inherited = true)]
 public sealed class SparkAuthorizeAttribute : AuthorizeAttribute, IAuthorizationRequirement, IAuthorizationRequirementData
 {
+    /// <summary>
+    /// The policy every instance names in place of the default one. Registered by <c>AddSpark</c>
+    /// through <see cref="AddPolicy"/>; a host that wires authorization by hand must do the same,
+    /// or the first request throws "policy not found".
+    /// </summary>
+    public const string PolicyName = "MintPlayer.Spark.SparkAuthorize";
+
     /// <summary>Authorizes against the right <c>{action}/{target}</c>, e.g. <c>Read/Person</c>.</summary>
     public SparkAuthorizeAttribute(string action, string target)
     {
@@ -51,13 +67,21 @@ public sealed class SparkAuthorizeAttribute : AuthorizeAttribute, IAuthorization
 
         Action = action;
         Target = target;
+        Policy = PolicyName;
     }
 
     /// <summary>
     /// Authorizes against group membership alone. Prefer the right form: this one names a group
     /// directly in code, so changing who may do something means a redeploy.
     /// </summary>
-    public SparkAuthorizeAttribute() { }
+    public SparkAuthorizeAttribute() => Policy = PolicyName;
+
+    /// <summary>
+    /// Registers <see cref="PolicyName"/>: a policy that demands nothing on its own, so the
+    /// attribute's security.json requirement decides — anonymous callers included.
+    /// </summary>
+    public static void AddPolicy(AuthorizationOptions options)
+        => options.AddPolicy(PolicyName, policy => policy.RequireAssertion(_ => true));
 
     /// <summary>The action half of the right — <c>Read</c>, <c>Query</c>, <c>Edit</c>, <c>New</c>, <c>Delete</c>,
     /// or one of the combined forms <c>security.json</c> accepts.</summary>

@@ -293,6 +293,7 @@ at runtime.
 | SPARK005–006 | sort companions |
 | SPARK007–009 | index / projection / query-index declarations |
 | SPARK010 | `MapControllers()` outside Spark's pipeline |
+| SPARK020 | `[Authorize]` or `.RequireAuthorization(…)` with a policy name or roles (error) — use `[SparkAuthorize("Action", nameof(Target))]` / `.RequireAuthorization(new SparkAuthorizeAttribute("Action", nameof(Target)))` |
 
 ---
 

@@ -38,6 +38,15 @@ public interface IRepositoryResolver
     /// The forge the URL named. An <c>owner/name</c> pair is only unique within a forge, so this is
     /// required rather than defaulted.
     /// </param>
+    /// <param name="isVisible">
+    /// Whether the <em>caller</em> may see a candidate. ⚠️ A repository it may not see is treated as
+    /// absent <em>at the step it was found</em>, and resolution carries on exactly as for a miss
+    /// (#453): the existence of a private repository is itself private, and returning early on an
+    /// invisible hit answered in milliseconds where a miss costs a GitHub round trip. Required, not
+    /// defaulted, so every caller states whose view it resolves in — including the credentialed
+    /// ones, whose credential check belongs here rather than after resolving.
+    /// </param>
     Task<RepositoryResolution> ResolveAsync(
-        EForgeProvider provider, string owner, string name, CancellationToken cancellationToken = default);
+        EForgeProvider provider, string owner, string name, Func<Repository, bool> isVisible,
+        CancellationToken cancellationToken = default);
 }

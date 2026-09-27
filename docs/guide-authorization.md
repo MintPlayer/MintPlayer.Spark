@@ -183,6 +183,17 @@ A 403 would tell an unauthorized caller that the thing they asked for exists, wh
 data surface one probe at a time. So the status is a function of *the caller* and never of *the
 resource's existence*: a load naming `Bogus` answers the same as one naming `Car`.
 
+`/spark/lookupref/{name}` is allowed by `Read/LookupReferences`, **or** (since #453) when the caller
+may Read an entity type with an attribute bound to that lookup — a persistent object the caller may
+read stays renderable without handing anonymous visitors every lookup. A lookup that no readable type
+binds still needs the grant. The ng-spark detail page shows an attribute's raw value if its lookup
+fails to load, rather than failing the page.
+
+[`[SparkAuthorize]`](guide-controllers.md#authorizing-against-securityjson) on your own endpoints is
+decided by the same rights, `anonymous` grants included (since #453; before, ASP.NET Core's default
+policy refused every anonymous caller first). A host that configures authorization without `AddSpark`
+must call `SparkAuthorizeAttribute.AddPolicy`.
+
 Catalogue endpoints (`/spark/types`, `/spark/queries`, `/spark/aliases`, `/spark/program-units`,
 `/spark/actions/list`, `/spark/permissions/{type}`) are the exception. The client shell loads
 them on boot for every visitor, so they answer **200 with everything filtered out** rather than

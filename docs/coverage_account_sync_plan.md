@@ -392,7 +392,10 @@ Task<RepositoryResolution> ResolveAsync(string owner, string name, CancellationT
   fact). Without that gate the anonymous badge endpoint hands a caller the App's GitHub rate limit
   and a timing-based existence oracle for private repositories. The gate keeps the case the step
   exists for — known owner, stale repository name — and its own lookup is cached alongside the name
-  lookups, misses included.
+  lookups, misses included. ⚠ *Corrected 2026-09-27 (#453):* the gate closes the quota hole but
+  **not** the oracle — known owners are the ones that matter. The oracle is closed by the visibility
+  argument `ResolveAsync` gained in #453; see
+  [coverage_repo_existence_parity_PRD.md](coverage_repo_existence_parity_PRD.md) D3.
 - `Redirect: true` makes `BrowseController` and the SPA vanity guards issue a 301 to the current
   full name. `BadgeController` does **not** redirect — a 301 on an image inside a README is a wasted
   round-trip for camo; it serves the badge directly at the old URL.
