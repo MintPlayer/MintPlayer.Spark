@@ -61,12 +61,14 @@ public partial class RepoSettingsController : ControllerBase
         if (!ForgeProviders.TryParse(provider, out var parsedProvider))
             return null;
 
-        var repository = (await repositories.ResolveAsync(parsedProvider, owner, name, cancellationToken)).Repository;
-        if (repository is null) return null;
-
         // NotFound for the unauthorized too, upstream of this: an existence
         // oracle is the thing the badge-token endpoint already refuses to be.
-        var forge = forges.For(repository);
-        return await forge.IsOwnerAllowedAsync(new ForgeOwner(forge.Provider, repository.OwnerLogin), cancellationToken) ? repository : null;
+        // ⚠️ And in the same time (#453): the viewer's owner set is fetched first and is the
+        // resolver's visibility, so a repository they cannot manage resolves exactly like a missing
+        // one. Membership of that set is what IsOwnerAllowedAsync checked after resolving.
+        var owners = await forges.GetAllowedOwnerKeysAsync(cancellationToken);
+        return (await repositories.ResolveAsync(
+            parsedProvider, owner, name,
+            r => owners.Contains(r.OwnerKey, StringComparer.OrdinalIgnoreCase), cancellationToken)).Repository;
     }
 }

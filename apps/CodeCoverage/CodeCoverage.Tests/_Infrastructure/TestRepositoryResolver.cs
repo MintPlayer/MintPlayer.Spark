@@ -25,7 +25,8 @@ public sealed class TestRepositoryResolver(IAsyncDocumentSession? session) : IRe
     /// resolver does not - see RepositoryResolver, where it selects the document id.
     /// </remarks>
     public async Task<RepositoryResolution> ResolveAsync(
-        EForgeProvider provider, string owner, string name, CancellationToken cancellationToken = default)
+        EForgeProvider provider, string owner, string name, Func<Repository, bool> isVisible,
+        CancellationToken cancellationToken = default)
     {
         if (session is null) return RepositoryResolution.None;
 
@@ -34,6 +35,10 @@ public sealed class TestRepositoryResolver(IAsyncDocumentSession? session) : IRe
             .Where(r => r.FullName == fullName)
             .FirstOrDefaultAsync(cancellationToken);
 
-        return repository is null ? RepositoryResolution.None : new RepositoryResolution(repository, false);
+        // The visibility is honoured, because controllers now authorize THROUGH it (#453): ignoring
+        // it here would make every refusal test pass a repository the controller never sees.
+        return repository is null || !isVisible(repository)
+            ? RepositoryResolution.None
+            : new RepositoryResolution(repository, false);
     }
 }

@@ -3,6 +3,7 @@ using CodeCoverage.Forge;
 using CodeCoverage.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using MintPlayer.Spark.Endpoints;
 using MintPlayer.Spark.Services;
 using MintPlayer.SourceGenerators.Attributes;
 using Raven.Client.Documents;
@@ -67,7 +68,7 @@ public partial class BrowseController : ControllerBase
     {
         var owners = await forges.GetAllowedOwnerKeysAsync(cancellationToken);
         var forge = TryForge(provider);
-        if (forge is null) return NotFound();
+        if (forge is null) return Refuse();
         var ownerKey = new ForgeOwner(forge.Value, login).ToString();
         var includePrivate = owners.Contains(ownerKey, StringComparer.OrdinalIgnoreCase);
 
@@ -86,7 +87,7 @@ public partial class BrowseController : ControllerBase
     public async Task<ActionResult<RepoInfo>> GetRepo(string provider, string owner, string name, CancellationToken cancellationToken)
     {
         var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
-        if (repository is null) return NotFound();
+        if (repository is null) return Refuse();
         var canManage = await forges.CanManageAsync(repository, cancellationToken);
         return Ok(ToRepoInfo(repository, canManage));
     }
@@ -97,7 +98,7 @@ public partial class BrowseController : ControllerBase
         [FromQuery] int skip = 0, [FromQuery] int take = 50, CancellationToken cancellationToken = default)
     {
         var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
-        if (repository is null) return NotFound();
+        if (repository is null) return Refuse();
 
         // Fork-contributed commits are excluded from every repository-level listing: they carry
         // this repository's id, so without this they read as its own history, under a branch name
@@ -137,7 +138,7 @@ public partial class BrowseController : ControllerBase
         string provider, string owner, string name, [FromQuery] string? branch, [FromQuery] int take = 100, CancellationToken cancellationToken = default)
     {
         var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
-        if (repository is null) return NotFound();
+        if (repository is null) return Refuse();
 
         // Commits are ordered by time alone, so without a branch filter a feature
         // branch's points interleave with the default branch's and the line
@@ -193,7 +194,7 @@ public partial class BrowseController : ControllerBase
     {
         var owners = await forges.GetAllowedOwnerKeysAsync(cancellationToken);
         var forge = TryForge(provider);
-        if (forge is null) return NotFound();
+        if (forge is null) return Refuse();
         var ownerKey = new ForgeOwner(forge.Value, login).ToString();
 
         var repos = await session.Query<Repository, Indexes.Repositories_Overview>()
@@ -234,7 +235,7 @@ public partial class BrowseController : ControllerBase
     public async Task<ActionResult<IEnumerable<string>>> GetBranches(string provider, string owner, string name, CancellationToken cancellationToken)
     {
         var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
-        if (repository is null) return NotFound();
+        if (repository is null) return Refuse();
 
         // A fork's head branch must not appear in this repository's branch list: it is a branch
         // name from somebody else's repository, and picking it would render an empty badge.
@@ -270,7 +271,7 @@ public partial class BrowseController : ControllerBase
     public async Task<ActionResult<AccountRef>> GetAccount(string provider, string login, CancellationToken cancellationToken)
     {
         var forge = TryForge(provider);
-        if (forge is null) return NotFound();
+        if (forge is null) return Refuse();
 
         var ownerKey = new ForgeOwner(forge.Value, login).ToString();
         var account = await session.Query<Account, Indexes.Accounts_Overview>()
@@ -286,7 +287,7 @@ public partial class BrowseController : ControllerBase
     public async Task<ActionResult<object>> GetCommit(string provider, string owner, string name, string sha, CancellationToken cancellationToken)
     {
         var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
-        if (repository is null) return NotFound();
+        if (repository is null) return Refuse();
 
         var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.Provider, repository.GitHubId, sha), cancellationToken);
         if (commit is null) return NotFound();
@@ -357,7 +358,7 @@ public partial class BrowseController : ControllerBase
         string provider, string owner, string name, string sha, [FromQuery] string? path, [FromQuery] string? flag, CancellationToken cancellationToken)
     {
         var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
-        if (repository is null) return NotFound();
+        if (repository is null) return Refuse();
 
         var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.Provider, repository.GitHubId, sha), cancellationToken);
         if (commit?.LatestBuildId is null) return NotFound();
@@ -437,7 +438,7 @@ public partial class BrowseController : ControllerBase
     public async Task<ActionResult<HierarchyNodeDto>> GetHierarchy(string provider, string owner, string name, string sha, CancellationToken cancellationToken)
     {
         var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
-        if (repository is null) return NotFound();
+        if (repository is null) return Refuse();
 
         var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.Provider, repository.GitHubId, sha), cancellationToken);
         if (commit?.LatestBuildId is null) return NotFound();
@@ -496,7 +497,7 @@ public partial class BrowseController : ControllerBase
         string provider, string owner, string name, string sha, [FromQuery] string path, CancellationToken cancellationToken)
     {
         var repository = await ResolveVisibleRepository(provider, owner, name, cancellationToken);
-        if (repository is null) return NotFound();
+        if (repository is null) return Refuse();
 
         var commit = await session.LoadAsync<Commit>(Commit.DocumentId(repository.Provider, repository.GitHubId, sha), cancellationToken);
         if (commit?.LatestBuildId is null) return NotFound();
@@ -563,9 +564,9 @@ public partial class BrowseController : ControllerBase
 
     /// <summary>The route's forge.</summary>
     /// <remarks>
-    /// ⚠️ <b>404, never a default.</b> An unrecognised first segment means the URL is not one of
-    /// ours, and answering it with GitHub's data would be exactly the silent forge-defaulting this
-    /// milestone exists to remove. <see cref="ForgeProviders.TryParse"/> is the single list of
+    /// ⚠️ <b>Refused (<see cref="Refuse"/>), never a default.</b> An unrecognised first segment
+    /// means the URL is not one of ours, and answering it with GitHub's data would be exactly the
+    /// silent forge-defaulting this milestone exists to remove. <see cref="ForgeProviders.TryParse"/> is the single list of
     /// spellings — nothing here enumerates them, so a new forge needs no change in this file.
     /// </remarks>
     private static EForgeProvider? TryForge(string provider)
@@ -575,21 +576,33 @@ public partial class BrowseController : ControllerBase
         string provider, string owner, string name, CancellationToken cancellationToken)
     {
         // An unrecognised forge resolves to nothing rather than throwing: every caller already
-        // treats a null repository as 404, which is the right answer for a URL that names a forge
-        // this deployment does not have. Answering it with another forge's data would be exactly
+        // treats a null repository as the canonical refusal, the right answer for a URL naming a
+        // forge this deployment does not have. Answering it with another forge's data would be exactly
         // the silent defaulting this milestone removes.
         if (TryForge(provider) is not { } forge)
             return null;
 
-        var repository = (await repositories.ResolveAsync(forge, owner, name, cancellationToken)).Repository;
-        if (repository is null) return null;
-
         // Same rule as the /spark surface, from the same place — the two must
         // agree forever, and a shared doc-comment was the only thing binding
-        // them. The owner list is only fetched when it can matter.
-        if (!repository.IsPrivate) return repository;
+        // them.
+        // ⚠️ The owner set is fetched BEFORE resolving and unconditionally (#453). Fetching it only
+        // once a private repository turned up made the private path alone pay a (possibly cold)
+        // forge call, and the visibility is the resolver's, so an invisible repository takes the
+        // same steps as a missing one rather than being found and then discarded.
         var owners = await forges.GetAllowedOwnerKeysAsync(cancellationToken);
-        return RepositoryVisibility.IsVisible(repository, owners) ? repository : null;
+        return (await repositories.ResolveAsync(
+            forge, owner, name, r => RepositoryVisibility.IsVisible(r, owners), cancellationToken)).Repository;
+    }
+
+    /// <summary>
+    /// The refusal for a repository this caller cannot have — missing, private, or on a forge this
+    /// deployment does not have. All three must be indistinguishable (#453), and they are the same
+    /// answer <c>/spark/po/load</c> gives: anonymous 401, authenticated 404, one constant body.
+    /// </summary>
+    private JsonResult Refuse()
+    {
+        var (body, status) = SparkDenial.Refuse(HttpContext);
+        return new JsonResult(body) { StatusCode = status };
     }
 
     // BaseUrl rides along so the SPA builds badge markdown against the public

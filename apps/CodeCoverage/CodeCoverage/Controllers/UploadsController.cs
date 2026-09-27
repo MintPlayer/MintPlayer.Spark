@@ -598,15 +598,6 @@ public partial class UploadsController : ControllerBase
         var nameParts = fullName.Split('/');
         if (nameParts.Length != 2)
             return null;
-        // ⚠️ Explicit, not defaulted. Uploads arrive with a repository full name and a
-        // credential, and neither carries a forge today — GitHub is the only integration that can
-        // authenticate an upload at all. When a second one can, the forge must come from the
-        // credential rather than from here (M16), which is why this names GitHub out loud instead
-        // of letting a default decide.
-        var repository = (await repositories.ResolveAsync(
-            EForgeProvider.GitHub, nameParts[0], nameParts[1], cancellationToken)).Repository;
-        if (repository is null)
-            return null;
 
         var scope = User.FindFirst(ApiTokenAuthenticationHandler.ScopeClaim)?.Value;
         var account = User.FindFirst(ApiTokenAuthenticationHandler.AccountClaim)?.Value;
@@ -633,7 +624,7 @@ public partial class UploadsController : ControllerBase
             ? parsedProvider
             : (EForgeProvider?)null;
 
-        var authorized = scope switch
+        bool IsAuthorized(Repository repository) => scope switch
         {
             "Account" when accountId is not null =>
                 tokenProvider is { } provider
@@ -651,8 +642,16 @@ public partial class UploadsController : ControllerBase
             _ => false,
         };
 
-        // Unknown and unauthorized look identical to the caller (no existence leak).
-        return authorized ? repository : null;
+        // ⚠️ Explicit, not defaulted. Uploads arrive with a repository full name and a
+        // credential, and neither carries a forge today — GitHub is the only integration that can
+        // authenticate an upload at all. When a second one can, the forge must come from the
+        // credential rather than from here (M16), which is why this names GitHub out loud instead
+        // of letting a default decide.
+        // Unknown and unauthorized look identical to the caller (no existence leak) — and take the
+        // same time: the scope check is the resolver's visibility, so a repository this token may
+        // not touch resolves exactly like a missing one (#453).
+        return (await repositories.ResolveAsync(
+            EForgeProvider.GitHub, nameParts[0], nameParts[1], IsAuthorized, cancellationToken)).Repository;
     }
 
     /// <summary>

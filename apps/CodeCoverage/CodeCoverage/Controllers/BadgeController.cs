@@ -50,13 +50,16 @@ public partial class BadgeController : ControllerBase
         // ⚠️ An unrecognised forge takes the same path as an unknown repository — it must NOT
         // 404. This endpoint's never-404 rule exists so a badge URL cannot be used to probe which
         // repositories exist, and a 404 here would reintroduce exactly that oracle for forges.
+        // ⚠️ MayView is the resolver's visibility, not a check after it (#453): a private repository
+        // the caller holds no capability for must resolve exactly like a missing one — same steps,
+        // same GitHub lookup — or response time says it exists.
         var repository = ForgeProviders.TryParse(provider, out var forge)
-            ? (await repositories.ResolveAsync(forge, owner, name, cancellationToken)).Repository
+            ? (await repositories.ResolveAsync(forge, owner, name, r => MayView(r, token, pr, sig), cancellationToken)).Repository
             : null;
 
         double? percent = null;
         var partial = false;
-        if (repository is not null && MayView(repository, token, pr, sig))
+        if (repository is not null)
         {
             CoverageSummary? summary;
             // ⚠️ The two selectors differ on fork-contributed commits, deliberately and
