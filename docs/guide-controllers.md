@@ -138,8 +138,25 @@ right:
 **SPARK020** (error) enforces the first two at build time: ASP.NET Core's own `AuthorizeAttribute`
 with a policy (constructor argument or `Policy =`) or `Roles =` fails the build, on a class, a
 method or a route-handler lambda. It judges only that exact type — `[SparkAuthorize]` derives from
-it and sets `Policy` itself, and a subclass of your own is your decision. Minimal-API
-`.RequireAuthorization("policy")` is a method call, not an attribute, and is not checked.
+it and sets `Policy` itself, and a subclass of your own is your decision.
+
+The same rule covers the endpoint-convention form, on a route and on a `MapGroup(…)` group alike:
+
+```csharp
+app.MapGet("/uploads", …).RequireAuthorization("Administrators");                          // SPARK020
+group.RequireAuthorization(new AuthorizeAttribute { Roles = "Administrators" });          // SPARK020
+app.MapGet("/uploads", …).RequireAuthorization(new SparkAuthorizeAttribute("New", nameof(Upload))); // fine
+app.MapGet("/me", …).RequireAuthorization();                                              // fine: sign-in only
+```
+
+Any policy name is reported, whatever expression produces it, as is a `new AuthorizeAttribute(…)`
+argument carrying a policy or `Roles`. Not reported: `RequireAuthorization()` with no arguments (the
+default policy, i.e. sign-in only), a schemes-only `AuthorizeAttribute`, and the `AuthorizationPolicy`
+/ `Action<AuthorizationPolicyBuilder>` overloads, which hand over a policy object instead of looking
+one up by name. Be aware that `policy.RequireRole(…)` inside such a builder has exactly the
+`Roles` blindness described above — it sees role claims, not Spark's `group` claims — it is only
+not reported, because a policy built in code is an explicit choice. Only ASP.NET Core's own
+`RequireAuthorization` is judged; a method of yours with the same name is not.
 
 ## Reusing a row rule
 
