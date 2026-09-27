@@ -118,17 +118,6 @@ internal class OidcTokenGenerator
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        // Audiences must be added to `claims` BEFORE the ClaimsIdentity is constructed: its
-        // constructor copies the list rather than aliasing it, so the previous version — which
-        // built the identity first and appended the extra audiences afterwards — silently
-        // dropped every audience but the first. It narrows rather than widens, so it failed
-        // closed, but the comment there described behaviour the code did not have.
-        if (audiences.Count > 1)
-        {
-            foreach (var aud in audiences.Skip(1))
-                claims.Add(new Claim(JwtRegisteredClaimNames.Aud, aud));
-        }
-
         var key = _signingKeyService.GetSigningKey();
         var credentials = new SigningCredentials(key, SecurityAlgorithms.RsaSha256);
 
@@ -139,9 +128,17 @@ internal class OidcTokenGenerator
             IssuedAt = DateTime.UtcNow,
             Expires = DateTime.UtcNow.AddMinutes(lifetimeMinutes),
             SigningCredentials = credentials,
-            // Scope-defined audiences win; a client with none falls back to itself.
-            Audience = audiences.Count > 0 ? audiences[0] : app.ClientId,
         };
+
+        // Every audience through the descriptor's own list. The extra ones used to travel as "aud"
+        // claims on the Subject beside `Audience = audiences[0]`, and JsonWebTokenHandler emitted
+        // only the descriptor's audience — so every audience but the first was dropped (measured by
+        // OidcTokenGeneratorTests; a previous fix here moved the claims before the ClaimsIdentity
+        // was built, which was not the cause). It narrowed rather than widened, so it failed
+        // closed: a resource server named by a second scope simply rejected the token.
+        // Scope-defined audiences win; a client with none falls back to itself.
+        foreach (var audience in audiences.Count > 0 ? audiences : [app.ClientId])
+            descriptor.Audiences.Add(audience);
 
         var handler = new JsonWebTokenHandler();
         return (handler.CreateToken(descriptor), jti);

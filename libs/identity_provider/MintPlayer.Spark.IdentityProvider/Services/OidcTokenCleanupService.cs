@@ -50,9 +50,14 @@ internal class OidcTokenCleanupService : BackgroundService
 
         var now = DateTime.UtcNow;
 
+        // Every status, not just valid and redeemed. Revoked tokens (replay teardowns, withdrawn
+        // grants, explicit revocations) and codes marked expired used to be kept for ever, so the
+        // collection grew without bound. Past ExpiresAt none of them protects anything: expired
+        // redeemed tokens — the ones replay detection keys on — were already deleted here, and a
+        // token whose document is gone is refused exactly as an expired one is.
         var expiredTokens = await session
             .Query<OidcToken, OidcTokens_ByExpiration>()
-            .Where(t => t.ExpiresAt < now && (t.Status == "valid" || t.Status == "redeemed"))
+            .Where(t => t.ExpiresAt < now)
             .Take(1000)
             .ToListAsync(cancellationToken);
 
