@@ -1,0 +1,133 @@
+# Plan — Issue #460 (one pull request)
+
+Requirements, decisions (D1–D16, T1–T10) and spikes live in [issue_460_PRD.md](issue_460_PRD.md). This
+file is the order of work.
+
+**Rules for executing this plan**
+- One branch, one PR: `feat/460-mintplayer-migration-framework`.
+- Commit per milestone. **Do not run test suites per milestone.** Verify with a build + reading the code.
+  Run spikes when a milestone depends on their answer. One full test sweep at the end (M14).
+- Write logs raw to the scratchpad (`cmd > x.log 2>&1; echo "EXIT: $?"`), then grep them.
+- Never start `ng serve` next to a running host; `dotnet run` is the whole command.
+- Every touched `libs/` csproj gets a version bump; both npm packages bump minor (22.x).
+
+---
+
+## Milestones
+
+Dependencies flow downward. Items in the same milestone are independent.
+
+### M1 — Core foundations (no new packages yet)
+- [ ] **D3** Remove wildcard rights: validator + `SecurityConfigurationAnalyzer` reject `*` (error points at composite rights); delete matcher branches (`ISecurityConfigurationLoader.cs:130-131,199`), posture "floor" warning, `RowPolicyDeclarationValidator` wildcard handling; rewrite `SecurityFileAccessControlTests` / `SecurityPostureReporterTests` / analyzer tests to assert rejection.
+- [ ] **D15** Forwarded headers in core: `Spark:ForwardedHeaders:{KnownNetworks,KnownProxies,ProxyHops}`, private-range default, `ForwardLimit` never null, Proto/Host handling, startup refusal outside Development, trust list logged. Delete hand-written blocks in CodeCoverage (`Program.cs:35-70`; update the comment at `:371-374`), DemoApp (`:15-16`), HR (`:20-21`), Fleet (`:19-20`). `ForwardHost` opt-in refused while `AllowedHosts` is `*`. Spike **S-FH1**.
+- [ ] **D5** Data Protection in core: always `AddDataProtection()`, `ApplicationName`, `KeysPath` / `Storage=RavenDb` (lift `RavenDataProtectionKeyRepository`, same `DataProtectionKeys/` prefix), startup error outside Development when unset. Delete CodeCoverage's setup (`Program.cs:288-295`: comment + `:292-295`) + repository class; CodeCoverage config sets `ApplicationName=CodeCoverage`, `Storage=RavenDb`. Spike **SP-B** (key-document compatibility part).
+- [ ] `ISparkCurrentUser` abstraction.
+- [ ] **D12 core part**: `AddGroupMembershipProvider<T>()` composition, id-returning providers, per-request cache in `SecurityFileAccessControl`. Spike **S-MOD-B**.
+- [ ] Update memory note: "a claim CAN assert a reserved group" is stale (reserved ids are dropped now).
+
+### M2 — Seam (item 1) + #285 + #283
+- [ ] Spikes **S1, S3** first (expression shape decides the policy API).
+- [ ] `IRowPolicy` / `IRowFilterPolicy` / `IRowCheckPolicy`, typed helpers, `RowPolicyContext`, `AddSparkRowPolicy<T>()`; `AppliesTo` cached in `ReflectionCache`.
+- [ ] Compose in `RowSecurity` (`ResolveEffectiveRuleAsync`, `InvokeGetRowFilterAsync`, `ComposeRowFilterAsync`): rebinding + `AndAlso`, constant folding, same cache key, same position; budget + N+1 accounting.
+- [ ] `HasRowRule` split (spike **S5**); reroute base after-save WITH CHECK (`DefaultPersistentObjectActions.cs:284-309`) through `IRowSecurity`.
+- [ ] `IPersistentObjectInterceptor` in `DatabaseAccess` (save: `SaveEntityViaActionsAsync` `:255`, after the Edit row gate `:249`; delete `:277-321`, call at `:313`; load); contexts; ordering; delete `Replace()`; `ISyncActionInterceptor` awareness of replaced deletes. Spike **S4**.
+- [ ] **T2** query-request `deleted: exclude|include|only` field (core request contract; surfaces in `RowPolicyContext` request flags). ng-spark request model updated.
+- [ ] **D2 / #285**: projection rebinding + push-down with fallback. Spike **S2**.
+- [ ] #283 regression test design (breadcrumb + policy) — written now, run in M14.
+- [ ] Spike **S8** (request budget).
+
+### M3 — DisableActions redesign (item 8) + custom action results
+- [ ] **D13**: `IDisablable`, `OnDisableActionsAsync(IDisablable, DisableActionsContext)` + batched form; call at load (PO get, query execute) and at submit (update, delete, new, custom action: parent + query + each row, union); 403 after row gate. Delete the old entry points; migrate CodeCoverage `RepositoryActions.OnLoadAsync`. ng-spark: consume `DisabledActions` unchanged on the wire. Spike **S6**, **S-MOD-F**.
+- [ ] **T5**: `CustomActionArgs.SetResult<T>`, envelope `Result`, ng-spark `executeCustomAction<T>`, `SparkActionResult.Result`. Spike **S7**.
+
+### M4 — Messaging (item 11 + primitives for mail)
+- [ ] Fix `BroadcastOnceAsync` dedup key (hashed, type-namespaced) — keep existing ids readable (migration note).
+- [ ] **T8** `BroadcastOptions`, `SparkMessagingOptions.Queues` / `SparkQueueOptions`, `IMessageContext` (current message id).
+- [ ] Throttle admission in `MessageProcessor.RunHandlersAsync`: GCRA reserved slots, reschedule via `ReleaseUnstartedAsync`, `ExpiresAtUtc` → Expired dead-letter, `MaxConcurrency` pumps (SingleSubscription only).
+- [ ] `IMessageProgress` sidecar with matching `@expires`.
+- [ ] Fix `SubscriptionPerQueue` missing `HandlerTimeout` + claim renewal.
+- [ ] Fix stale line 14 in `docs/decisions_messaging_and_project_automation.md`.
+- [ ] Spike **S-M3** (throttle accuracy) at the end of the milestone.
+
+### M5 — Auth (items 4, 5, 6-server, 9)
+- [ ] **D4** `SparkSignInManager` + `@` rule in the user validator; `/connect/login` shares the resolver. Spike **SP-A**.
+- [ ] **D5** secrets at rest in `UserStore` (`sdp1:` prefix, legacy read, backfill job); decide + document purpose string (with/without user id) and unprotect-failure behaviour (must not silently disable 2FA). Spike **SP-B** (rest).
+- [ ] **D6** `RequireConfirmedEmail`, reset-confirms-email, forgotPassword to unconfirmed. **The no-op-sender startup guard lands in M8**, together with MailManager and the demo apps' pickup mode — otherwise CodeCoverage, HR and Fleet cannot start between milestone commits.
+- [ ] **D7** provider verified-email trust, X + LinkedIn presets, display-name slug user names. Spike **SP-C**.
+- [ ] **D8** personal-data + account-deletion endpoints and handler interfaces.
+- [ ] **D16 server**: `/manage/password`, `/manage/profile` + `ISparkProfileContributor<TUser>`, `/manage/2fa/authenticator-uri` + SVG QR (spike **SP-D**), confirm-new-email, `ISparkAuthLinkBuilder`; `SparkLocalCredentials` classification + antiforgery for every new route.
+- [ ] `SparkUser.CreatedAtUtc` + `RegistrationMethod` stamped in `UserStore.CreateAsync`; backfill from `@created`.
+- [ ] **T9** delete `SparkAuthEnsureNpmPackage`, add the missing-dependency warning.
+- [ ] Spike **SP-E** (#439 SP2 passkey clone detection).
+
+### M6 — SoftDelete package (item 2)
+- [ ] `libs/soft_delete/MintPlayer.Spark.SoftDelete(.Abstractions)`, slnx registration.
+- [ ] Spike **H1**'s `DeleteRevisionsOperation`-on-Community part first (Purge depends on it; the rest of H1 stays in M7).
+- [ ] `ISoftDeletable`, `SoftDeleteRowPolicy` (honours T2's `deleted` flag from M2), `SoftDeleteInterceptor` (incl. refusing references to soft-deleted targets), `ISparkSoftDelete` (Restore/Purge incl. `DeleteRevisionsOperation`), events, endpoints (T1), rights, analyzer/startup warnings (incl. `ISoftDeletable` + `OnDeleteAsync` override), natural-id error.
+
+### M7 — History package (item 3)
+- [ ] Spikes **H1, H2, H4** first.
+- [ ] `libs/history/MintPlayer.Spark.History`; **T10** `EntityTypeDefinition.Revisions` + model-sync preservation + merge at startup.
+- [ ] `IAuditable` stamping interceptor (ids only, `CreatedBy` immutable).
+- [ ] `ISparkHistory` + endpoints (redaction on reads, current-document gate, revert through the save pipeline). Spike **H3**.
+- [ ] `ISparkRevisionObserver`.
+
+### M8 — MailManager (item 10) + CodeCoverage migration
+- [ ] Spikes **S-M1, S-M2, S-M4, S-M6** first.
+- [ ] `libs/mail/MintPlayer.Spark.MailManager` (MailKit, Mjml.Net, Scriban — pin latest stable in the csproj).
+- [ ] Senders (`Replace` `IEmailSender<TUser>`), `SparkMail`/`SparkBulkMail` lanes, template loader + startup parse, render test helper, transports (SMTP, pickup, custom), failure classification, dev mode, **T4** payload protection + scrub.
+- [ ] VERP + `SparkMailDeliveries`, bounce endpoint + pluggable DSN parser (secret check first), suppression list, `List-Unsubscribe`, campaign fan-out.
+- [ ] **D10** CodeCoverage: delete `SmtpLinkConfirmationSender`, add MJML template, config keys, three hand-written lists.
+- [ ] **D6 no-op-sender startup guard** (moved here from M5), and in the same commit: demo apps with registration → pickup-folder mode.
+- [ ] Rewrite `guide-outgoing-mail.md` §8; Postfix recipes (tier 1 + tier 2); spike **S-M5** informs the recipe.
+
+### M9 — Timezone cookie (item 7)
+- [ ] Spikes **S-TZ1, S-TZ4**, then server resolver (options, validation, precedence, logging); **S-TZ2, S-TZ3**, then `withSparkTimezone(options)` cookie write + server-platform guard. Update `guide-dates-and-sorting.md`.
+
+### M10 — ng-spark / ng-spark-auth UI
+- [ ] ng-spark core: `SPARK_DETAIL_PANELS` token (+ list/detail action slots) wired into `sparkRoutes()` pages.
+- [ ] `@mintplayer/ng-spark/soft-delete`: Deleted toggle, Restore/Purge.
+- [ ] `@mintplayer/ng-spark/history`: `<spark-po-history>` list, read-only view, diff, Revert.
+- [ ] ng-spark-auth `withAccount()` + 7 standalone pages, `SPARK_ACCOUNT_PROFILE_FIELDS`, `twitterProvider()`/`linkedInProvider()`, login label "Email or user name".
+
+### M11 — E2E base host extraction (D11, pure refactor)
+- [ ] Extract a generic host from `FleetTestHost` (embedded Raven, `dotnet run` under dotnet-coverage, seeded users, stale-bundle check, shared rate-limit awareness). **Run Fleet's E2E suite here and require green** — the one sanctioned mid-plan test run, because every later E2E test depends on it.
+
+### M12 — Moderation package (item 12)
+- [ ] Spikes **S-MOD-A, S-MOD-E** first.
+- [ ] `libs/moderation/MintPlayer.Spark.Moderation(.Abstractions)`; `moderation.json` as `IConfiguration` source + post-layering validation (D12, D14); `--spark-init-moderation`.
+- [ ] Votes (deterministic ids), ledger, map-reduce indexes + deployment assertion; privilege provider (composed, request-cached; suspension from a document).
+- [ ] Fraud defence 1–10 (caps and eligibility in the write path; `CreditableAfterUtc` + crediting Cron job; nightly detector; compensating reversals; IP-hash with rotated HMAC key + 90-day `@expires`).
+- [ ] Flags, review cases + queue, lock interceptor (spike **S-MOD-D**), suspend (spike **S-MOD-C**), revert/restore/purge wiring, audit log, new-account throttle (429), deletion handler.
+- [ ] `@mintplayer/ng-spark/moderation`: vote widget renderer, flag button, review-queue page, reputation badge, moderator panel.
+
+### M13 — `apps/QnA` demo + E2E spec
+- [ ] Check the name against `.gitignore` (case-insensitive component match — the `Coverage` lesson).
+- [ ] App + Library projects (Questions, Answers, Moderation, SoftDelete, History, MailManager pickup mode, Identity), security.json grants from `--spark-init-moderation`, model sync, `securityPosture.txt`.
+- [ ] Add QnA to `pull-request.yml` in all three hand-written places: the build list (`:123`, `nx run-many --projects=DemoApp,HR,Fleet,CodeCoverage`), the model-sync loop (`:134`), and the security-posture loop (`:156`).
+- [ ] E2E tests on the extracted host: vote → delayed credit → privilege; serial-voting reversal; flag → review; lock blocks every write path; suspend; soft delete hidden everywhere + restore/purge; history diff + revert; account deletion.
+
+### M14 — Housekeeping, full verification, PR
+- [ ] Guides: row policies + interceptors (incl. the documented D1 override gaps), SoftDelete, History, MailManager, throttling lanes, Data Protection (volume warning), forwarded headers + proxy recipes, DisableActions hook, wildcard removal, account pages, GDPR (revisions not rewritten), Moderation + fraud limits + legitimate-interest text.
+- [ ] Release notes: every breaking change (wildcards, DisableActions entry points, new startup guards, dedup-key format).
+- [ ] Version bumps on every touched lib + both npm packages; spike **S-PKG2** (`dotnet pack` output); owner does **S-PKG1**.
+- [ ] **Full test sweep, all 5 test projects** (`MintPlayer.Spark.Tests`, `E2E.Tests`, `SourceGenerators.Tests`, `Client.Tests`, `CodeCoverage.Tests`) + vitest for ng-spark/ng-spark-auth + `--spark-verify-model` / `--spark-verify-security` for every app. The solution is `.slnx`.
+- [ ] Open the PR (closes #283, #285, #299, #432, #460); reply on #460 re SocketExtensions; check CI, not only local.
+
+---
+
+## Pre-merge checklist (merge auto-publishes packages and redeploys coverage.mintplayer.com)
+
+- [ ] VPS: set `Spark:DataProtection:Storage=RavenDb` + `ApplicationName=CodeCoverage` for CodeCoverage.
+- [ ] VPS: set `Spark:Mail:Smtp:*` (host, port, security) for CodeCoverage.
+- [ ] Verify what fronts coverage.mintplayer.com (and MintPlayer): if a CDN, add its ranges to `Spark:ForwardedHeaders:KnownNetworks`.
+- [ ] Postfix `ALLOWED_SENDER_DOMAINS` / SPF cover any VERP domain in use.
+- [ ] nuget.org prefix reservation + API key scope cover the new package ids (S-PKG1).
+- [ ] Version diff reviewed: NuGet major 11, npm major 22 — nothing else moves the major.
+
+## For the MintPlayer cutover (tracked in the MintPlayer repo, listed so nothing is lost)
+
+- Count accounts whose user name contains a foreign `@` (D4) before cutover.
+- Remove its ForwardedHeaders block (D15) and `RevisionsConfigurator` (T10); replace `EntityActions` soft-delete overrides with `ISoftDeletable`.
+- Its Data Protection volume maps to `Spark:DataProtection:KeysPath`.
+- `people_overview` / `subjects_search` indexes must emit `IsDeleted` for push-down.
