@@ -7,9 +7,9 @@ import { anonymousCredential, authHeaders, staticCredential } from './credential
 // Same reasoning as context.test.ts: `@actions/github` builds its context
 // singleton at import time, so it has to become a per-access getter.
 vi.mock('@actions/github', async () => {
-  const { Context } = await vi.importActual<typeof import('@actions/github/lib/context')>(
-    '@actions/github/lib/context',
-  );
+  // v7+ no longer exports lib/context; the class is reachable through the singleton.
+  const actual = await vi.importActual<typeof import('@actions/github')>('@actions/github');
+  const Context = actual.context.constructor as new () => typeof actual.context;
   return {
     get context() {
       return new Context();
