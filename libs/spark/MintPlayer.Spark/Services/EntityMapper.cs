@@ -590,7 +590,11 @@ internal partial class EntityMapper : IEntityMapper
         var keyProperty = Abstractions.Model.SparkValueObjects.GetKeyPropertyName(entityType) ?? "Id";
         var idProperty = entityType.GetCachedProperty(keyProperty);
         if (idProperty is null || !idProperty.CanWrite) return;
-        SetPropertyValue(idProperty, entity, id);
+
+        // A "try" in name and in effect: an id the key property cannot hold is not the user's
+        // input, so it stays the no-op it always was rather than becoming a validation error.
+        try { SetPropertyValue(idProperty, entity, id); }
+        catch (SparkValidationException) { }
     }
 
     private async Task WritePropertyAsync(PropertyInfo property, object entity,
@@ -1114,9 +1118,12 @@ internal partial class EntityMapper : IEntityMapper
             {
                 convertedValue = value is Guid g ? g : Guid.Parse(value.ToString()!);
             }
+            // Every string parse below is culture-invariant. The wire format does not depend on where
+            // the server runs, so neither may its reading: under the current culture "04/03/2026" is
+            // a different day in fr-FR than in en-US, and "1.5" is not a number at all in fr-FR.
             else if (targetType == typeof(DateTime))
             {
-                convertedValue = value is DateTime dt ? dt : DateTime.Parse(value.ToString()!);
+                convertedValue = value is DateTime dt ? dt : DateTime.Parse(value.ToString()!, CultureInfo.InvariantCulture);
             }
             // Without this branch a DateTimeOffset fell through to Convert.ChangeType, which throws
             // InvalidCastException because DateTimeOffset does not implement IConvertible (DateTime
@@ -1139,7 +1146,7 @@ internal partial class EntityMapper : IEntityMapper
             }
             else if (targetType == typeof(DateOnly))
             {
-                convertedValue = value is DateOnly d ? d : DateOnly.Parse(value.ToString()!);
+                convertedValue = value is DateOnly d ? d : DateOnly.Parse(value.ToString()!, CultureInfo.InvariantCulture);
             }
             else if (targetType == typeof(Color))
             {
@@ -1147,18 +1154,33 @@ internal partial class EntityMapper : IEntityMapper
             }
             else if (targetType.IsEnum)
             {
-                convertedValue = Enum.Parse(targetType, value.ToString()!);
+                // Case-insensitive, as the query filter's enum parse is: the two must accept the same
+                // spellings, or a value that filters fine cannot be saved.
+                convertedValue = Enum.Parse(targetType, value.ToString()!, ignoreCase: true);
             }
             else
             {
-                convertedValue = Convert.ChangeType(value, targetType);
+                convertedValue = Convert.ChangeType(value, targetType, CultureInfo.InvariantCulture);
             }
 
             setter(entity, convertedValue);
         }
+        catch (Exception ex) when (ex is FormatException or InvalidCastException or OverflowException or ArgumentException)
+        {
+            // A value that cannot be read as the property's type used to be skipped here, so the save
+            // reported success and the field kept its old value — an edit lost with no signal. It is a
+            // validation failure: report it the way every other one reaches the client (400, naming
+            // the attribute). An empty string stays a no-op, as it always was: that is what a cleared
+            // input sends, and refusing it would turn "left blank" into an error.
+            if (value is string blank && string.IsNullOrWhiteSpace(blank))
+                return;
+
+            throw new SparkValidationException(
+                $"'{value}' is not a valid {targetType.Name} value for {property.Name}.", property.Name);
+        }
         catch
         {
-            // Skip properties that can't be converted
+            // Anything else is not a statement about the value; keep the long-standing skip.
         }
     }
 
@@ -1175,25 +1197,6 @@ internal partial class EntityMapper : IEntityMapper
             JsonValueKind.Null => null,
             JsonValueKind.Undefined => null,
             _ => element.ToString()
-        };
-    }
-
-    private string GetDataType(Type type)
-    {
-        var underlying = Nullable.GetUnderlyingType(type) ?? type;
-
-        return underlying switch
-        {
-            _ when underlying == typeof(string) => "string",
-            _ when underlying == typeof(int) || underlying == typeof(long) => "number",
-            _ when underlying == typeof(decimal) || underlying == typeof(double) || underlying == typeof(float) => "number",
-            _ when underlying == typeof(bool) => "boolean",
-            _ when underlying == typeof(DateTime) => "datetime",
-            _ when underlying == typeof(DateOnly) => "date",
-            _ when underlying == typeof(Guid) => "guid",
-            _ when underlying == typeof(Color) => "color",
-            _ when IsComplexType(underlying) => "AsDetail",
-            _ => "string"
         };
     }
 

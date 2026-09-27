@@ -268,14 +268,21 @@ public partial class SparkExternalLoginLinker<TUser> where TUser : SparkUser, ne
         var result = await userManager.AddLoginAsync(user, new UserLoginInfo(
             pending.LoginProvider, pending.ProviderKey, pending.ProviderDisplayName ?? pending.LoginProvider));
 
-        // LoginAlreadyAssociated means the link this token asked for already exists — the outcome
-        // the user wanted, reached another way. Anything else is a real store failure, and the token
-        // is already spent, so saying "invalid" is the honest answer rather than a retry that would
-        // not work.
+        // LoginAlreadyAssociated means the login is attached to SOME account — the outcome the user
+        // wanted only when that account is this one. UserManager reports the same code when the
+        // login belongs to someone else, and calling that "Linked" would tell the user an account
+        // is theirs to sign in to when it is not. Anything else is a real store failure, and the
+        // token is already spent, so saying "invalid" is the honest answer rather than a retry that
+        // would not work.
         if (!result.Succeeded)
-            return result.Errors.Any(e => e.Code == "LoginAlreadyAssociated")
-                ? new(SparkLinkConfirmationOutcome.Linked, user.Id)
-                : new(SparkLinkConfirmationOutcome.InvalidOrExpired, null);
+        {
+            if (result.Errors.Any(e => e.Code == "LoginAlreadyAssociated")
+                && await userManager.FindByLoginAsync(pending.LoginProvider, pending.ProviderKey) is { } owner
+                && string.Equals(owner.Id, user.Id, StringComparison.Ordinal))
+                return new(SparkLinkConfirmationOutcome.Linked, user.Id);
+
+            return new(SparkLinkConfirmationOutcome.InvalidOrExpired, null);
+        }
 
         return new(SparkLinkConfirmationOutcome.Linked, user.Id);
     }

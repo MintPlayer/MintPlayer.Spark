@@ -17,6 +17,7 @@ namespace MintPlayer.Spark.Tests.Builder;
 /// never had a <c>new()</c> constraint, so the compiler accepted such a context and only these
 /// commands rejected it.
 /// </remarks>
+[Collection(ProcessExitCodeCollection.Name)]
 public class ContextWithDependenciesTests
 {
     private sealed class CurrentUser
@@ -146,28 +147,4 @@ public class ContextWithDependenciesTests
     }
 
     private sealed class EmptyDepContext : SparkContext;
-
-    /// <summary>
-    /// A throwaway content root plus a <see cref="WebApplicationBuilder"/> rooted at it, so
-    /// synchronization writes into the temp directory rather than the test host's own folder.
-    /// Also restores <see cref="Environment.ExitCode"/>, which these tests deliberately set.
-    /// </summary>
-    private sealed class ScratchContentRoot : IDisposable
-    {
-        private readonly int _previousExitCode = Environment.ExitCode;
-
-        public string Path { get; } = System.IO.Path.Combine(
-            System.IO.Path.GetTempPath(), "spark-ctordeps-tests-" + Guid.NewGuid().ToString("N"));
-
-        public ScratchContentRoot() => Directory.CreateDirectory(Path);
-
-        public WebApplicationBuilder CreateBuilder() =>
-            WebApplication.CreateBuilder(new WebApplicationOptions { ContentRootPath = Path });
-
-        public void Dispose()
-        {
-            Environment.ExitCode = _previousExitCode;
-            try { Directory.Delete(Path, recursive: true); } catch (IOException) { }
-        }
-    }
 }

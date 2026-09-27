@@ -93,7 +93,12 @@ public static class ModelFileShape
         {
             var builder = new StringBuilder();
 
-            if (!document.RootElement.TryGetProperty("persistentObject", out var po))
+            // TryGetProperty THROWS on a non-object, so a file containing `null` (or a
+            // `"persistentObject": null`) used to take the verify run down with a stack trace —
+            // exactly what the summary above promises it will not do.
+            if (document.RootElement.ValueKind != JsonValueKind.Object
+                || !document.RootElement.TryGetProperty("persistentObject", out var po)
+                || po.ValueKind != JsonValueKind.Object)
                 return "no-persistent-object\n";
 
             AppendScalar(builder, "name", po);

@@ -484,29 +484,14 @@ public static class SparkExtensions
     }
 
     /// <summary>
-    /// Populates <paramref name="indexCatalog"/> from the index and projection types declared in
-    /// <paramref name="targetAssembly"/>. Pure reflection — no database, no host, no DI. The caller
-    /// freezes once every assembly is registered.
-    /// <para>
-    /// Separated from <see cref="CreateSparkIndexes"/> so the offline paths (model synchronization
-    /// and the startup model-hash check) can populate the catalog without a live
-    /// <c>IDocumentStore</c>. Both consult the catalog for projection types and index names, and an
-    /// unpopulated catalog does not fail — it silently emits projection types as their own model
-    /// files and skips the query-type merge. Wrong output, no error, which is why this must run.
-    /// </para>
-    /// <para>
-    /// Deliberately does not swallow exceptions: a catalog that failed to populate has to fail the
-    /// run. Only the database call in <see cref="CreateSparkIndexes"/> is best-effort.
-    /// </para>
-    /// </summary>
-    internal static void PopulateIndexCatalog(IIndexCatalog indexCatalog, Assembly targetAssembly)
-    {
-        PopulateIndexTypes(indexCatalog, targetAssembly);
-        PopulateProjectionTypes(indexCatalog, targetAssembly);
-    }
-
-    /// <summary>
     /// Registers the index types declared in <paramref name="targetAssembly"/>.
+    /// <para>
+    /// Pure reflection — no database, no host, no DI — so the offline paths (model synchronization
+    /// and the startup model-hash check) can populate the catalog without a live
+    /// <c>IDocumentStore</c>. An unpopulated catalog does not fail: it silently emits projection
+    /// types as their own model files and skips the query-type merge. Deliberately does not swallow
+    /// exceptions: a catalog that failed to populate has to fail the run.
+    /// </para>
     /// <para>
     /// Separate from projection registration so callers spanning several assemblies can register
     /// every index before any projection. A projection resolves its index by name, so with a single

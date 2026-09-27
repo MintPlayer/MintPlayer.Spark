@@ -33,6 +33,9 @@ public class StreamExecuteQueryTests : IAsyncLifetime
     private readonly IPermissionService _permissions = Substitute.For<IPermissionService>();
     private IHost _host = null!;
 
+    /// <summary>Completes when the endpoint handler has returned (or faults with what it threw).</summary>
+    private readonly TaskCompletionSource _handlerDone = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     public async Task InitializeAsync()
     {
         // Permissive by default: NSubstitute returns false for an unstubbed Task<bool>, which
@@ -58,9 +61,18 @@ public class StreamExecuteQueryTests : IAsyncLifetime
                     {
                         endpoints.MapGet("/stream/{id}", async httpContext =>
                         {
-                            var endpoint = new StreamExecuteQuery(_queryLoader, _executor, _permissions);
-                            var result = await endpoint.HandleAsync(httpContext);
-                            await result.ExecuteAsync(httpContext);
+                            try
+                            {
+                                var endpoint = new StreamExecuteQuery(_queryLoader, _executor, _permissions);
+                                var result = await endpoint.HandleAsync(httpContext);
+                                await result.ExecuteAsync(httpContext);
+                                _handlerDone.TrySetResult();
+                            }
+                            catch (Exception ex)
+                            {
+                                _handlerDone.TrySetException(ex);
+                                throw;
+                            }
                         });
                     });
                 }))
@@ -233,12 +245,26 @@ public class StreamExecuteQueryTests : IAsyncLifetime
         return JsonDocument.Parse(ms);
     }
 
-    private static async Task ExpectCloseAsync(WebSocket socket, WebSocketCloseStatus expected)
+    /// <summary>
+    /// Receives the server's close frame and answers it, then waits for the handler to return.
+    /// </summary>
+    /// <remarks>
+    /// The server closes with <c>CloseAsync</c>, which waits for the client's own close frame. Without
+    /// the reply the handler stays parked inside that call, so nothing after the close ever ran and a
+    /// handler that threw on its way out would still have passed.
+    /// </remarks>
+    private async Task ExpectCloseAsync(WebSocket socket, WebSocketCloseStatus expected)
     {
         var buffer = new byte[1024];
         var result = await socket.ReceiveAsync(buffer, CancellationToken.None);
         result.MessageType.Should().Be(WebSocketMessageType.Close);
         socket.CloseStatus.Should().Be(expected);
+
+        await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
+
+        // A failure bound, not an expected duration: the handler returns as soon as the frame lands.
+        await _handlerDone.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        socket.State.Should().Be(WebSocketState.Closed);
     }
 
     /// <summary>One streamed row: id plus a value per column. Rows carry no metadata (#327 M4).</summary>
