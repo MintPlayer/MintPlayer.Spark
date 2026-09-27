@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
- * Verifies that every file path in every Cobertura coverage report will resolve to a
- * tracked file, the same way the ingestion server resolves it.
+ * Verifies that every coverage report CI is supposed to upload exists, and that every
+ * file path in it resolves to a tracked file the same way the ingestion server
+ * resolves it.
  *
- *   node tools/verify-coverage-paths.mjs [--json] [glob ...]
+ *   node tools/verify-coverage-paths.mjs [--json] [--dry-run] [--help] [glob ...]
  *
  * Why this exists, and why it verifies rather than rewrites
  * --------------------------------------------------------
@@ -20,10 +21,17 @@
  * logic the server already performs correctly. What is missing is not a rewrite but a
  * *tripwire*: something that turns the silent drop into a red build.
  *
- * Since `coverlet.runsettings` began excluding `**\/*.g.cs` and `**\/obj\/**`, the
- * expected number of unresolvable paths is zero. Anything else is a real defect —
- * usually coverlet's `<source>` moving because the set of instrumented assemblies
- * changed, which is invisible in the report itself.
+ * The matching rules below are a port of the server's, not an approximation of them.
+ * An earlier version tried every `<source>` + filename join and accepted ANY tracked
+ * hit, which the server never did: it passed `pipes/src/translate-key.pipe.ts` (a tail
+ * ng-spark and ng-spark-auth share) while the server dropped both files. A verifier
+ * more lenient than the thing it verifies is a false green. Change the two together:
+ * `apps/CodeCoverage/CodeCoverage/Ingestion/PathNormalizer.cs` and `createResolver` here.
+ *
+ * A report that is missing altogether is the other silent failure: the upload glob
+ * matches nothing, nothing complains, and the suite simply is not in the number
+ * (the upload action went unmeasured for its whole life that way). EXPECTED_REPORTS
+ * turns that into a red build too.
  */
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -31,48 +39,152 @@ import { globSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const DEFAULT_GLOBS = [
-  'tests/*/coverage/**/coverage.cobertura.xml',
-  'apps/*/*/coverage/**/coverage.cobertura.xml',
-  'libs/node_packages/*/coverage/cobertura-coverage.xml',
-  'coverage/*/*/cobertura-coverage.xml',
+/**
+ * Every report CI must produce, one per coverage-producing Nx project. A missing one
+ * fails the build.
+ *
+ * To add a report (for example the E2E subprocess coverage of the Fleet/HR hosts):
+ *   1. append an entry here — `name` is what the error message calls it, `glob` is
+ *      where the report lands, repo-relative, forward slashes;
+ *   2. make sure UPLOAD_GLOBS below matches it (the run fails if it does not, since a
+ *      report that is verified but never uploaded is the same hole);
+ *   3. add the same path to the `files:` list of the "Upload coverage" step in BOTH
+ *      .github/workflows/pull-request.yml and dotnet-build-master.yml, and to the
+ *      `hashFiles` gate in dotnet-build-master.yml.
+ */
+export const EXPECTED_REPORTS = [
+  { name: 'MintPlayer.Spark.Tests', glob: 'tests/MintPlayer.Spark.Tests/coverage/**/coverage.cobertura.xml' },
+  { name: 'MintPlayer.Spark.E2E.Tests', glob: 'tests/MintPlayer.Spark.E2E.Tests/coverage/**/coverage.cobertura.xml' },
+  { name: 'MintPlayer.Spark.SourceGenerators.Tests', glob: 'tests/MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml' },
+  { name: 'MintPlayer.Spark.Client.Tests', glob: 'tests/MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml' },
+  { name: 'CodeCoverage.Tests', glob: 'apps/CodeCoverage/CodeCoverage.Tests/coverage/**/coverage.cobertura.xml' },
+  { name: '@mintplayer/ng-spark', glob: 'libs/node_packages/ng-spark/coverage/cobertura-coverage.xml' },
+  { name: '@mintplayer/ng-spark-auth', glob: 'libs/node_packages/ng-spark-auth/coverage/cobertura-coverage.xml' },
+  { name: '@spark-apps/code-coverage (SPA)', glob: 'coverage/@spark-apps/code-coverage/cobertura-coverage.xml' },
+  { name: '@mintplayer/coverage-upload-action', glob: 'apps/CodeCoverage/action/coverage/cobertura-coverage.xml' },
 ];
 
-/** Repo-root-relative, forward slashes — the shape `git ls-files` prints. */
-export function toRepoRelative(candidate, repoRoot) {
-  const normalized = candidate.replace(/\\/g, '/');
-  const isAbsolute = path.isAbsolute(normalized) || /^[a-zA-Z]:\//.test(normalized);
-  const relative = isAbsolute ? path.relative(repoRoot, normalized) : normalized;
-  return relative.split(path.sep).join('/').replace(/^\.\//, '');
+/**
+ * Mirrors the `files:` list of the workflows' "Upload coverage" step: what is verified
+ * is what is uploaded. Apps are limited to apps/CodeCoverage — the demo apps are not
+ * measured (docs/coverage_increase_PRD.md).
+ */
+export const UPLOAD_GLOBS = [
+  'tests/*/coverage/**/coverage.cobertura.xml',
+  'apps/CodeCoverage/*/coverage/**/coverage.cobertura.xml',
+  'libs/node_packages/*/coverage/cobertura-coverage.xml',
+  'apps/CodeCoverage/CodeCoverage/ClientApp/coverage/cobertura-coverage.xml',
+  'coverage/@spark-apps/code-coverage/cobertura-coverage.xml',
+  'apps/CodeCoverage/action/coverage/cobertura-coverage.xml',
+];
+
+const unify = (p) => p.replace(/\\/g, '/');
+const looksAbsolute = (p) => p.startsWith('/') || (p.length >= 2 && p[1] === ':');
+const withSlash = (p) => unify(p).replace(/\/+$/, '') + '/';
+
+/**
+ * What the upload action does to every `filename` before the server sees it
+ * (`apps/CodeCoverage/action/src/paths.ts` `rebasePath`): unify separators, and strip
+ * the workspace prefix case-insensitively. `<source>` is left alone.
+ */
+export function rebasePath(rawPath, repoRoot) {
+  const unified = unify(rawPath);
+  const prefix = withSlash(repoRoot);
+  return unified.toLowerCase().startsWith(prefix.toLowerCase()) ? unified.slice(prefix.length) : unified;
+}
+
+function endsWithPath(full, tail) {
+  return (
+    full.toLowerCase().endsWith(tail.toLowerCase()) &&
+    (full.length === tail.length || full[full.length - tail.length - 1] === '/')
+  );
 }
 
 /**
- * Every candidate the server could plausibly resolve this filename to: joined with
- * each declared `<source>`, and bare. Order does not matter — we only ask whether
- * *any* candidate is tracked.
+ * A port of `PathNormalizer`: the resolver for one report, given the uploader's root
+ * (the server receives it as `rootDir`), the report's `<source>` roots and the tracked
+ * file list. Returns `(rawPath) => { path, matched }`.
  */
-export function resolutionCandidates(filename, sources, repoRoot) {
-  const bare = toRepoRelative(filename, repoRoot);
-  const joined = sources.map((source) =>
-    toRepoRelative(path.posix.join(source.replace(/\\/g, '/').replace(/\/$/, ''), filename.replace(/\\/g, '/')), repoRoot),
-  );
-  return [bare, ...joined];
+export function createResolver(rootDir, sourceRoots, fileList) {
+  const root = rootDir == null ? null : withSlash(rootDir);
+  const sources = sourceRoots.map(withSlash);
+  const files = new Set(fileList.map(unify));
+  const bySuffix = new Map();
+  for (const f of files) {
+    const base = f.slice(f.lastIndexOf('/') + 1).toLowerCase();
+    if (!bySuffix.has(base)) bySuffix.set(base, []);
+    bySuffix.get(base).push(f);
+  }
+
+  const findExact = (p) => {
+    if (files.has(p)) return p;
+    const lower = p.toLowerCase();
+    for (const f of files) if (f.toLowerCase() === lower) return f;
+    return null;
+  };
+
+  const resolveAgainstSources = (p) => {
+    let hit = null;
+    for (const source of sources) {
+      let relativeRoot = source;
+      if (root !== null && relativeRoot.toLowerCase().startsWith(root.toLowerCase()))
+        relativeRoot = relativeRoot.slice(root.length);
+      if (looksAbsolute(relativeRoot)) continue;
+      const candidate = findExact(relativeRoot.replace(/^\/+/, '') + p);
+      if (candidate === null) continue;
+      if (hit !== null && hit !== candidate) return null;
+      hit = candidate;
+    }
+    return hit;
+  };
+
+  return (rawPath) => {
+    let p = unify(rawPath);
+    let stripped = false;
+
+    // 1. Strip the workspace root.
+    if (root !== null && p.toLowerCase().startsWith(root.toLowerCase())) {
+      p = p.slice(root.length);
+      stripped = true;
+    }
+
+    // 2. Strip the first report-declared source root that prefixes it.
+    for (const source of sources) {
+      if (p.toLowerCase().startsWith(source.toLowerCase())) {
+        p = p.slice(source.length);
+        stripped = true;
+        break;
+      }
+    }
+
+    const stillAbsolute = looksAbsolute(p);
+    p = p.replace(/^\/+/, '');
+
+    // 3. Without a file list only root-stripped relative paths are trusted.
+    if (files.size === 0) return { path: p, matched: !stillAbsolute };
+
+    // 3a. A relative filename is relative to its <source>.
+    if (!stripped && !stillAbsolute) {
+      const joined = resolveAgainstSources(p);
+      if (joined !== null) return { path: joined, matched: true };
+    }
+
+    const exact = findExact(p);
+    if (exact !== null) return { path: exact, matched: true };
+
+    // 4. A UNIQUE tracked file sharing the tail. Two candidates is a drop, not a guess.
+    const base = p.slice(p.lastIndexOf('/') + 1).toLowerCase();
+    const candidates = (bySuffix.get(base) ?? []).filter((f) => endsWithPath(f, p) || endsWithPath(p, f));
+    if (candidates.length === 1) return { path: candidates[0], matched: true };
+
+    return { path: p, matched: false };
+  };
 }
 
 export function parseReport(xml) {
   const sources = [...xml.matchAll(/<source>([^<]*)<\/source>/g)].map((m) => m[1].trim());
   const filenames = [...xml.matchAll(/\bfilename="([^"]+)"/g)].map((m) => m[1]);
   return { sources, filenames: [...new Set(filenames)] };
-}
-
-/** A path is resolvable if any candidate is tracked, exactly or by unique suffix. */
-export function isResolvable(candidates, tracked, trackedBySuffix) {
-  if (candidates.some((c) => tracked.has(c))) return true;
-  return candidates.some((c) => {
-    const base = c.slice(c.lastIndexOf('/') + 1);
-    const matches = trackedBySuffix.get(base);
-    return matches?.some((t) => t === c || t.endsWith(`/${c}`));
-  });
 }
 
 /**
@@ -92,48 +204,117 @@ export function isResolvable(candidates, tracked, trackedBySuffix) {
  * Keep this as narrow as the evidence: `obj/` only. A real source file that stops resolving —
  * coverlet's `<source>` root moving, say — must still fail.
  */
-function isExpectedUnmatched(filename) {
+export function isExpectedUnmatched(filename) {
   return /(^|[/\\])obj[/\\]/.test(filename);
 }
 
 function trackedFiles(repoRoot) {
   const output = execFileSync('git', ['ls-files'], { cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  const tracked = new Set(output.split('\n').filter(Boolean));
-  const bySuffix = new Map();
-  for (const file of tracked) {
-    const base = file.slice(file.lastIndexOf('/') + 1);
-    if (!bySuffix.has(base)) bySuffix.set(base, []);
-    bySuffix.get(base).push(file);
-  }
-  return { tracked, bySuffix };
+  return output.split('\n').filter(Boolean);
 }
 
+function expand(globs, repoRoot) {
+  return [
+    ...new Set(
+      globs.flatMap((g) => {
+        try {
+          return globSync(g, { cwd: repoRoot }).map(unify);
+        } catch {
+          return [];
+        }
+      }),
+    ),
+  ].sort();
+}
+
+/**
+ * Which expected reports are absent, and which were found but would not be uploaded.
+ * Pure, so the tests can drive it without a filesystem.
+ */
+export function checkExpected(expected, foundByEntry, uploaded) {
+  const uploadedSet = new Set(uploaded);
+  const missing = [];
+  const notUploaded = [];
+  for (const entry of expected) {
+    const found = foundByEntry.get(entry) ?? [];
+    if (found.length === 0) missing.push(entry);
+    for (const f of found) if (!uploadedSet.has(f)) notUploaded.push({ entry, report: f });
+  }
+  return { missing, notUploaded };
+}
+
+const HELP = `Usage: node tools/verify-coverage-paths.mjs [--json] [--dry-run] [--help] [glob ...]
+
+Run from the repository root, after the test targets have written their reports.
+
+  (no glob)   Check that every EXPECTED_REPORTS entry exists and is matched by
+              UPLOAD_GLOBS, then resolve every path in every uploaded report with
+              the server's rules. A missing report or an unresolvable path fails.
+  glob ...    Resolve the paths in these reports only. The expected-report check
+              is skipped: it is about what CI uploads, not about ad-hoc files.
+  --dry-run   List the expected reports and upload globs and what each matches on
+              disk. Reads no report and always exits 0.
+  --json      Also print a per-report summary as JSON.
+  --help      This text.
+`;
+
 function main(argv) {
+  if (argv.includes('--help')) {
+    console.log(HELP);
+    return 0;
+  }
   const asJson = argv.includes('--json');
+  const dryRun = argv.includes('--dry-run');
   const globs = argv.filter((a) => !a.startsWith('--'));
   const repoRoot = process.cwd();
+  const explicit = globs.length > 0;
 
-  const reports = (globs.length > 0 ? globs : DEFAULT_GLOBS).flatMap((g) => {
-    try {
-      return globSync(g, { cwd: repoRoot });
-    } catch {
-      return [];
+  const reports = expand(explicit ? globs : UPLOAD_GLOBS, repoRoot);
+  const foundByEntry = new Map(EXPECTED_REPORTS.map((e) => [e, expand([e.glob], repoRoot)]));
+
+  if (dryRun) {
+    if (!explicit) {
+      console.log('Expected reports:');
+      for (const [entry, found] of foundByEntry) {
+        console.log(`  ${found.length > 0 ? 'found  ' : 'MISSING'}  ${entry.name}  (${entry.glob})`);
+        for (const f of found) console.log(`             ${f}`);
+      }
     }
-  });
-
-  if (reports.length === 0) {
-    console.log('No coverage reports found — nothing to verify.');
+    console.log(`Reports that would be verified${explicit ? '' : ' and uploaded'}: ${reports.length}`);
+    for (const r of reports) console.log(`  ${r}`);
     return 0;
   }
 
-  const { tracked, bySuffix } = trackedFiles(repoRoot);
-  const summary = [];
   let failed = false;
 
-  for (const report of reports.sort()) {
+  if (!explicit) {
+    const { missing, notUploaded } = checkExpected(EXPECTED_REPORTS, foundByEntry, reports);
+    for (const entry of missing) {
+      failed = true;
+      console.error(
+        `::error::Expected coverage report missing: ${entry.name} (${entry.glob}). Its suite either ` +
+          `did not run with coverage or wrote the report elsewhere; either way it is absent from the number.`,
+      );
+    }
+    for (const { entry, report } of notUploaded) {
+      failed = true;
+      console.error(`::error file=${report}::${entry.name} produced ${report}, but no upload glob matches it.`);
+    }
+  }
+
+  if (reports.length === 0) {
+    console.error('::error::No coverage reports found — nothing was measured.');
+    return 1;
+  }
+
+  const fileList = trackedFiles(repoRoot);
+  const summary = [];
+
+  for (const report of reports) {
     const { sources, filenames } = parseReport(readFileSync(path.join(repoRoot, report), 'utf8'));
+    const resolve = createResolver(repoRoot, sources, fileList);
     const unresolvable = filenames.filter(
-      (f) => !isResolvable(resolutionCandidates(f, sources, repoRoot), tracked, bySuffix) && !isExpectedUnmatched(f),
+      (f) => !resolve(rebasePath(f, repoRoot)).matched && !isExpectedUnmatched(f),
     );
 
     summary.push({ report, sources, total: filenames.length, unresolvable: unresolvable.length });
@@ -148,8 +329,8 @@ function main(argv) {
       failed = true;
       console.error(
         `::error file=${report}::${unresolvable.length} of ${filenames.length} paths resolve to no ` +
-          `tracked file. The server drops these silently, so the uploaded percentage would be ` +
-          `measured over a smaller denominator than you think. Declared <source> roots: ` +
+          `tracked file, or to several. The server drops these silently, so the uploaded percentage ` +
+          `would be measured over a smaller denominator than you think. Declared <source> roots: ` +
           `${sources.join(', ') || '(none)'}. First few unresolvable:`,
       );
       for (const f of unresolvable.slice(0, 10)) console.error(`  ${f}`);
@@ -164,7 +345,9 @@ function main(argv) {
     console.error(
       '\nIf these are generated files, they should be excluded by coverlet.runsettings ' +
         '(ExcludeByFile) rather than uploaded. If they are real source, coverlet\'s <source> ' +
-        'root has moved — usually because the set of instrumented assemblies changed.',
+        'root has moved — usually because the set of instrumented assemblies changed. If two ' +
+        'packages share a relative path, make the reporter write repo-relative filenames ' +
+        '(the vitest configs set cobertura `projectRoot` for exactly that).',
     );
   }
   return failed ? 1 : 0;
