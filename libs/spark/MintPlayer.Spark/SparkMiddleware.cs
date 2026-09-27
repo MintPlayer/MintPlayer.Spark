@@ -57,8 +57,9 @@ public static class SparkExtensions
         // configuration. Same instance the builder holds, so later configure() tweaks apply.
         services.AddSingleton(options);
 
-        // Register authorization (required by UseSpark → UseAuthorization)
-        services.AddAuthorization();
+        // Register authorization (required by UseSpark → UseAuthorization), with the policy
+        // [SparkAuthorize] names so ASP.NET Core's require-authenticated default never applies to it.
+        services.AddAuthorization(Services.SparkAuthorizeAttribute.AddPolicy);
 
         // Register antiforgery (required by Spark's POST/PUT/DELETE endpoints)
         services.AddAntiforgery(opt => opt.HeaderName = "X-XSRF-TOKEN");
