@@ -165,6 +165,19 @@ internal partial class ValidationService : IValidationService
 
     private ValidationError? ValidateRange(in ValidationTarget attrDef, object? value, ValidationRule rule)
     {
+        // NaN, the infinities and anything beyond decimal's range have no decimal form — the cast
+        // used to throw OverflowException, a 500 for the whole save. They are still numbers, so they
+        // are judged in double: an infinity is outside any bound on its side, and NaN is inside none.
+        if (value is double or float && !TryConvertToDecimal(value, out _))
+        {
+            var d = Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture);
+            if (rule.Min.HasValue && !(d >= (double)rule.Min.Value))
+                return RangeError(attrDef, rule, "validation.rangeMin", rule.Min.Value);
+            if (rule.Max.HasValue && !(d <= (double)rule.Max.Value))
+                return RangeError(attrDef, rule, "validation.rangeMax", rule.Max.Value);
+            return null;
+        }
+
         if (!TryConvertToDecimal(value, out var numericValue))
         {
             return null;
@@ -192,6 +205,13 @@ internal partial class ValidationService : IValidationService
 
         return null;
     }
+
+    private ValidationError RangeError(in ValidationTarget attrDef, ValidationRule rule, string key, int bound) => new()
+    {
+        AttributeName = attrDef.Name,
+        RuleType = "range",
+        ErrorMessage = rule.Message ?? FormatTranslatedMessage(key, attrDef.Label, attrDef.Name, bound)
+    };
 
     private ValidationError? ValidateRegex(in ValidationTarget attrDef, string value, ValidationRule rule)
     {
@@ -321,11 +341,22 @@ internal partial class ValidationService : IValidationService
         return value switch
         {
             decimal d => (result = d) == d,
-            double db => (result = (decimal)db) == (decimal)db,
-            float f => (result = (decimal)f) == (decimal)f,
+            double db => TryNarrow(db, out result),
+            float f => TryNarrow(f, out result),
             int i => (result = i) == i,
             long l => (result = l) == l,
             _ => decimal.TryParse(value.ToString(), out result)
         };
+    }
+
+    /// <summary>A double as a decimal, or false when it has none (NaN, ±∞, beyond ±7.9e28).</summary>
+    private static bool TryNarrow(double value, out decimal result)
+    {
+        result = 0;
+        if (!double.IsFinite(value) || value >= (double)decimal.MaxValue || value <= (double)decimal.MinValue)
+            return false;
+
+        result = (decimal)value;
+        return true;
     }
 }

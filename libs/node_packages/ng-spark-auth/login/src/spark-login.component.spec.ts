@@ -2,7 +2,9 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { HttpErrorResponse } from '@angular/common/http';
-import { describe, expect, it, vi } from 'vitest';
+// eslint-disable-next-line @typescript-eslint/no-deprecated -- bs-alert emits synthetic animation props
+import { provideNoopAnimations } from '@angular/platform-browser/animations';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { SparkLoginComponent } from './spark-login.component';
 import { SparkAuthService, SparkAuthTranslationService } from '@mintplayer/ng-spark-auth/core';
@@ -34,6 +36,8 @@ async function setup(authOverrides: Partial<SparkAuthService> = {}) {
   TestBed.configureTestingModule({
     providers: [
       provideRouter(routes),
+      // eslint-disable-next-line @typescript-eslint/no-deprecated
+      provideNoopAnimations(),
       { provide: SparkAuthService, useValue: auth },
       { provide: SparkAuthTranslationService, useValue: { t: (k: string) => k } },
       { provide: SPARK_AUTH_CONFIG, useValue: defaultSparkAuthConfig },
@@ -128,5 +132,161 @@ describe('SparkLoginComponent', () => {
 
     expect(component.errorMessage()).toBe('auth.invalidCredentials');
     expect(TestBed.inject(Router).url).toBe('/login');
+  });
+
+  it('shows the invalid-credentials error on a non-HTTP failure too', async () => {
+    const { harness } = await setup({ login: vi.fn().mockRejectedValue(new Error('network')) });
+    const component = await harness.navigateByUrl('/login', SparkLoginComponent);
+    component.form.setValue({ email: 'a@b.c', password: 'pw', rememberMe: false });
+
+    await component.onSubmit();
+
+    expect(component.errorMessage()).toBe('auth.invalidCredentials');
+    expect(component.loading()).toBe(false);
+  });
+});
+
+/**
+ * jsdom implements none of WebAuthn; the button is gated on browser support as well as on the
+ * server's capability, so the browser half has to be faked for the button to appear at all.
+ */
+function installWebAuthn() {
+  (globalThis as Record<string, unknown>)['PublicKeyCredential'] = Object.assign(function () { }, {
+    parseCreationOptionsFromJSON: vi.fn(),
+    parseRequestOptionsFromJSON: vi.fn(),
+  });
+  Object.defineProperty(globalThis.navigator, 'credentials', {
+    value: { create: vi.fn(), get: vi.fn() },
+    configurable: true,
+  });
+  Object.defineProperty(globalThis.window, 'isSecureContext', { value: true, configurable: true });
+}
+
+function removeWebAuthn() {
+  delete (globalThis as Record<string, unknown>)['PublicKeyCredential'];
+  Object.defineProperty(globalThis.navigator, 'credentials', { value: undefined, configurable: true });
+  Object.defineProperty(globalThis.window, 'isSecureContext', { value: false, configurable: true });
+}
+
+describe('SparkLoginComponent passkeys', () => {
+  afterEach(() => removeWebAuthn());
+
+  const passkeyButton = (harness: RouterTestingHarness) =>
+    Array.from(harness.routeNativeElement!.querySelectorAll('button'))
+      .find((b) => b.textContent!.includes('auth.signInWithPasskey'));
+
+  async function open(url: string, auth: Record<string, unknown>) {
+    const { harness } = await setup({
+      capabilities: vi.fn().mockResolvedValue({ passkeys: true, localCredentials: 'Full', externalProviders: [] }),
+      signInWithPasskey: vi.fn().mockResolvedValue({ success: true }),
+      ...auth,
+    } as any);
+    const component = await harness.navigateByUrl(url, SparkLoginComponent);
+    await harness.fixture.whenStable();
+    harness.detectChanges();
+    return { harness, component };
+  }
+
+  it('offers the passkey button when the server has passkeys and the browser supports them', async () => {
+    installWebAuthn();
+    const { harness, component } = await open('/login', {});
+
+    expect(component.passkeysAvailable()).toBe(true);
+    expect(passkeyButton(harness)).toBeDefined();
+  });
+
+  it('hides the passkey button when the browser cannot run the ceremony', async () => {
+    const { harness, component } = await open('/login', {});
+
+    expect(component.passkeysAvailable()).toBe(false);
+    expect(passkeyButton(harness)).toBeUndefined();
+  });
+
+  it('hides the passkey button when the server has not enabled passkeys', async () => {
+    installWebAuthn();
+    const { harness } = await open('/login', {
+      capabilities: vi.fn().mockResolvedValue({ passkeys: false, localCredentials: 'Full', externalProviders: [] }),
+    });
+
+    expect(passkeyButton(harness)).toBeUndefined();
+  });
+
+  it('keeps the password form usable when the capability lookup fails', async () => {
+    installWebAuthn();
+    const { harness, component } = await open('/login', {
+      capabilities: vi.fn().mockRejectedValue(new Error('network')),
+    });
+
+    expect(component.passkeysAvailable()).toBe(false);
+    expect(passkeyButton(harness)).toBeUndefined();
+    expect(harness.routeNativeElement!.querySelector('button[type="submit"]')).not.toBeNull();
+  });
+
+  it('signs in with a passkey from the button and lands on the sanitized returnUrl', async () => {
+    installWebAuthn();
+    const signInWithPasskey = vi.fn().mockResolvedValue({ success: true });
+    const { harness } = await open('/login?returnUrl=%2Fprotected', { signInWithPasskey });
+
+    const navigated = nextNavigationEnd();
+    passkeyButton(harness)!.click();
+    await navigated;
+
+    expect(signInWithPasskey).toHaveBeenCalledTimes(1);
+    expect(TestBed.inject(Router).url).toBe('/protected');
+  });
+
+  it('drops an off-site returnUrl after a passkey sign-in and falls back to the default', async () => {
+    const { component } = await open('/login?returnUrl=%2F%2Fevil.example', {});
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl').mockResolvedValue(true);
+
+    await component.signInWithPasskey();
+
+    expect(navigate).toHaveBeenCalledWith('/');
+  });
+
+  it('treats a dismissed passkey prompt as "not now": no error, no navigation', async () => {
+    const { component } = await open('/login', {
+      signInWithPasskey: vi.fn().mockResolvedValue({ success: false, error: 'cancelled' }),
+    });
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl');
+
+    await component.signInWithPasskey();
+
+    expect(component.errorMessage()).toBe('');
+    expect(navigate).not.toHaveBeenCalled();
+    expect(component.passkeyBusy()).toBe(false);
+  });
+
+  it.each([
+    ['locked_out', 'auth.lockedOut'],
+    ['failed', 'auth.passkeyFailed'],
+    ['no_credential', 'auth.passkeyFailed'],
+  ])('maps a %s passkey failure to %s and stays on the page', async (error, key) => {
+    const { component } = await open('/login', {
+      signInWithPasskey: vi.fn().mockResolvedValue({ success: false, error }),
+    });
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigateByUrl');
+
+    await component.signInWithPasskey();
+
+    expect(component.errorMessage()).toBe(key);
+    expect(navigate).not.toHaveBeenCalled();
+    expect(component.passkeyBusy()).toBe(false);
+  });
+
+  it('clears a previous error and marks itself busy while the ceremony runs', async () => {
+    let resolve!: (value: unknown) => void;
+    const { component } = await open('/login', {
+      signInWithPasskey: vi.fn(() => new Promise((r) => (resolve = r))),
+    });
+    component.errorMessage.set('auth.invalidCredentials');
+
+    const running = component.signInWithPasskey();
+
+    expect(component.errorMessage()).toBe('');
+    expect(component.passkeyBusy()).toBe(true);
+    resolve({ success: false, error: 'cancelled' });
+    await running;
+    expect(component.passkeyBusy()).toBe(false);
   });
 });

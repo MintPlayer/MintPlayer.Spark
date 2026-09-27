@@ -103,6 +103,32 @@ public sealed class FleetTestHost : IAsyncLifetime
     private static readonly SemaphoreSlim BuildGate = new(1, 1);
     private static bool _fleetBuilt;
 
+    /// <summary>
+    /// Whether to measure coverage <b>inside</b> the Fleet subprocess. Opt-in through the
+    /// <c>SPARK_E2E_HOST_COVERAGE</c> environment variable (<c>1</c> or <c>true</c>); CI sets it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The <c>XPlat Code Coverage</c> collector instruments the test process only. Fleet runs as a
+    /// separate <c>dotnet</c> process, so every framework line the E2E suite exercises there
+    /// (certificate authentication, replication, websockets) used to count as uncovered. With this
+    /// on, Fleet runs under <c>dotnet-coverage collect</c> (a local tool, <c>.config/dotnet-tools.json</c>)
+    /// filtered to <c>MintPlayer.Spark*</c> by <c>fleet-host.coverage.xml</c>, and writes its own
+    /// cobertura report under this project's <c>coverage/</c> directory, where the upload glob
+    /// <c>tests/*/coverage/**/coverage.cobertura.xml</c> already finds it.
+    /// </para>
+    /// <para>
+    /// Off by default because it costs a slower host start and a tool restore, which a local
+    /// run of one test class has no use for.
+    /// </para>
+    /// </remarks>
+    private static readonly bool HostCoverageEnabled =
+        Environment.GetEnvironmentVariable("SPARK_E2E_HOST_COVERAGE") is { } flag
+        && (flag == "1" || flag.Equals("true", StringComparison.OrdinalIgnoreCase));
+
+    private string CoverageSessionId => $"spark-e2e-{EnvironmentName}-{_suffix}";
+    private string? _hostCoverageReport;
+
     private SparkTestDriverHost? _raven;
     private Process? _fleetProcess;
     private string? _fleetUrl;
@@ -448,6 +474,9 @@ public sealed class FleetTestHost : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
+        if (HostCoverageEnabled && _fleetProcess is { HasExited: false })
+            await StopHostCoverageAsync(_fleetProcess);
+
         if (_fleetProcess is { HasExited: false })
         {
             try { _fleetProcess.Kill(entireProcessTree: true); }
@@ -472,6 +501,48 @@ public sealed class FleetTestHost : IAsyncLifetime
 
         if (_raven is not null)
             await _raven.DisposeAsync();
+    }
+
+    /// <summary>
+    /// Ends the coverage session so the hits Fleet has collected are written to its report.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>A kill loses the report.</b> The hits live in the instrumented process until the
+    /// collector asks for them, and <c>Kill(entireProcessTree)</c> takes the collector down with
+    /// Fleet, so nothing is ever written. <c>dotnet-coverage shutdown</c> is the graceful path, and
+    /// it works the same on Windows and Linux, which a Ctrl+C or SIGTERM would not: Windows has no
+    /// way to send a console signal to one child without also hitting this test process.
+    /// </para>
+    /// <para>
+    /// Measured 2026-09-27: shutdown fetches the hits from the process while it is still running,
+    /// writes the report, ends the process, and the collector then exits by itself, all in about
+    /// half a second. Both waits here are failure bounds, not expected durations. If either one
+    /// runs out, the caller's kill is still the fallback, and the missing report is caught by
+    /// <c>tools/verify-coverage-paths.mjs</c>.
+    /// </para>
+    /// </remarks>
+    private async Task StopHostCoverageAsync(Process collector)
+    {
+        var psi = new ProcessStartInfo("dotnet") { WorkingDirectory = FindRepoRoot() };
+        foreach (var arg in new[] { "tool", "run", "dotnet-coverage", "shutdown", CoverageSessionId, "--nologo" })
+            psi.ArgumentList.Add(arg);
+
+        try
+        {
+            var (exitCode, output) = await RunToCompletionAsync(psi, TimeSpan.FromMinutes(2));
+            if (exitCode != 0)
+                lock (_logLock) _fleetLog.Add($"[coverage] shutdown exited {exitCode}: {output}");
+
+            await collector.WaitForExitAsync(new CancellationTokenSource(TimeSpan.FromMinutes(1)).Token);
+        }
+        catch (Exception ex)
+        {
+            lock (_logLock) _fleetLog.Add($"[coverage] graceful shutdown failed, falling back to kill: {ex.Message}");
+        }
+
+        if (_hostCoverageReport is not null && !File.Exists(_hostCoverageReport))
+            lock (_logLock) _fleetLog.Add($"[coverage] no report was written at {_hostCoverageReport}");
     }
 
     private async Task SeedAdminUserAsync(string[] ravenUrls)
@@ -771,13 +842,37 @@ public sealed class FleetTestHost : IAsyncLifetime
         // (a) ASP.NET Core's ContentRoot resolves to the project source, making
         // appsettings.{env}.json + ClientApp/dist/ paths work, and (b) `--no-launch-profile`
         // keeps launchSettings.json from overriding our ASPNETCORE_URLS / ENVIRONMENT.
-        var psi = new ProcessStartInfo("dotnet", $"run --project \"{fleetProject}\" --configuration Debug --no-build --no-launch-profile")
+        string[] runArgs = ["run", "--project", fleetProject, "--configuration", "Debug", "--no-build", "--no-launch-profile"];
+        var psi = new ProcessStartInfo("dotnet")
         {
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             WorkingDirectory = fleetDir,
         };
+
+        if (HostCoverageEnabled)
+        {
+            // The same `dotnet run`, wrapped. dotnet-coverage follows child processes, so the
+            // runner's Fleet child is measured too; the module filter in the settings keeps both the
+            // runner's own assemblies and Fleet's out of the report. One report per host, because
+            // two hosts run concurrently and each session ends in its own DisposeAsync.
+            var projectDir = Path.Combine(repoRoot, "tests", "MintPlayer.Spark.E2E.Tests");
+            _hostCoverageReport = Path.Combine(projectDir, "coverage", $"fleet-host-{EnvironmentName}-{_suffix}", "coverage.cobertura.xml");
+            string[] collectArgs =
+            [
+                "tool", "run", "dotnet-coverage", "collect",
+                "--session-id", CoverageSessionId,
+                "--settings", Path.Combine(projectDir, "fleet-host.coverage.xml"),
+                "--output-format", "cobertura",
+                "--output", _hostCoverageReport,
+                "--nologo",
+                "--", "dotnet",
+            ];
+            foreach (var arg in collectArgs) psi.ArgumentList.Add(arg);
+        }
+
+        foreach (var arg in runArgs) psi.ArgumentList.Add(arg);
         psi.Environment["ASPNETCORE_ENVIRONMENT"] = EnvironmentName;
         psi.Environment["ASPNETCORE_URLS"] = $"{httpsUrl};http://localhost:{httpPort}";
 

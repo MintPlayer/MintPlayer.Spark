@@ -94,8 +94,10 @@ public static class SparkBuilderExtensions
                 }
 
                 // Validate GitHub token and resolve username
-                var githubClient = new Octokit.GitHubClient(new Octokit.ProductHeaderValue("SparkWebhooks"));
-                githubClient.Credentials = new Octokit.Credentials(handshake.GithubToken);
+                // Through the factory rather than `new GitHubClient`, so the call can be pointed at
+                // a stand-in server; it was the one GitHub call in the package that could not.
+                var githubClient = context.RequestServices.GetRequiredService<IGitHubClientFactory>()
+                    .CreateUserClient(handshake.GithubToken);
                 var githubUser = await githubClient.User.Current();
 
                 // R2-H12: empty AllowedDevUsers fails closed — every webhook
@@ -116,7 +118,11 @@ public static class SparkBuilderExtensions
             }
             catch (Octokit.AuthorizationException)
             {
-                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                // GitHub refused the token. Closed with a reason, not answered with a 401: the
+                // 101 upgrade has already been sent, so setting StatusCode here threw, the
+                // exception escaped the endpoint, and the developer saw an aborted socket with
+                // no explanation.
+                await ws.CloseAsync(WebSocketCloseStatus.PolicyViolation, "Unauthorized", CancellationToken.None);
             }
         });
     }

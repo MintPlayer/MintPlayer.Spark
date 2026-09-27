@@ -230,6 +230,26 @@
       "fr": "Supprimer",
       "nl": "Verwijderen"
     },
+    "passkeyRename": {
+      "en": "Rename",
+      "fr": "Renommer",
+      "nl": "Hernoemen"
+    },
+    "passkeyName": {
+      "en": "Passkey name",
+      "fr": "Nom de la clé d'accès",
+      "nl": "Naam van de passkey"
+    },
+    "passkeySave": {
+      "en": "Save",
+      "fr": "Enregistrer",
+      "nl": "Opslaan"
+    },
+    "passkeyCancel": {
+      "en": "Cancel",
+      "fr": "Annuler",
+      "nl": "Annuleren"
+    },
     "passkeyUnnamed": {
       "en": "Unnamed passkey",
       "fr": "Clé d'accès sans nom",

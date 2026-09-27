@@ -128,40 +128,43 @@ public class EntityMapperInverseTests
     }
 
     [Fact]
-    public void PopulateObjectValues_InvalidEnumString_SilentlySkipsKeepingDefault()
+    public void PopulateObjectValues_InvalidEnumString_IsAValidationErrorKeepingTheValue()
     {
-        // Enum.Parse throws on unknown name; the mapper's catch (line 814) swallows.
-        // Existing default value on the entity must survive.
+        // Enum.Parse throws on an unknown name. That used to be swallowed, so the save reported
+        // success with the edit silently lost; it is now a validation error naming the field.
         var person = new TestPerson { FavoriteStatus = TestStatus.Active };
         var po = PoWith(("FavoriteStatus", "NotARealStatus", "string"));
 
-        _mapper.PopulateObjectValues(po, person);
+        var act = () => _mapper.PopulateObjectValues(po, person);
 
+        act.Should().Throw<SparkValidationException>().Which.AttributeName.Should().Be("FavoriteStatus");
         person.FavoriteStatus.Should().Be(TestStatus.Active);
     }
 
     [Fact]
-    public void PopulateObjectValues_InvalidColorHex_SilentlySkipsKeepingDefault()
+    public void PopulateObjectValues_InvalidColorHex_IsAValidationErrorKeepingTheValue()
     {
-        // ColorTranslator.FromHtml throws on garbage; the mapper's catch swallows.
+        // ColorTranslator.FromHtml throws on garbage — reported, no longer swallowed.
         var person = new TestPerson { FavoriteColor = Color.FromArgb(0xAB, 0xCD, 0xEF) };
         var po = PoWith(("FavoriteColor", "not-a-color", "color"));
 
-        _mapper.PopulateObjectValues(po, person);
+        var act = () => _mapper.PopulateObjectValues(po, person);
 
+        act.Should().Throw<SparkValidationException>().Which.AttributeName.Should().Be("FavoriteColor");
         person.FavoriteColor.Should().Be(Color.FromArgb(0xAB, 0xCD, 0xEF));
     }
 
     [Fact]
-    public void PopulateObjectValues_TypeMismatchOnPrimitive_SilentlySkips()
+    public void PopulateObjectValues_TypeMismatchOnPrimitive_IsAValidationError()
     {
-        // The Convert.ChangeType fallback (line 808) is the catch-all for unspecialised
-        // types. A non-numeric string into Age (int) throws FormatException → swallowed.
+        // The Convert.ChangeType fallback is the catch-all for unspecialised types. A non-numeric
+        // string into Age (int) throws FormatException — reported, no longer swallowed.
         var person = new TestPerson { Age = 30 };
         var po = PoWith(("Age", "not-a-number", "number"));
 
-        _mapper.PopulateObjectValues(po, person);
+        var act = () => _mapper.PopulateObjectValues(po, person);
 
+        act.Should().Throw<SparkValidationException>().Which.AttributeName.Should().Be("Age");
         person.Age.Should().Be(30);
     }
 

@@ -23,7 +23,10 @@ export default defineConfig({
     exclude: ['**/node_modules/**', '**/dist/**', '**/out-tsc/**'],
     coverage: {
       provider: 'v8',
-      reporter: ['cobertura', 'text'],
+      // Repo-relative filenames. Left at its default (this package), cobertura writes
+      // `pipes/src/translate-key.pipe.ts`, a tail ng-spark-auth shares, so a resolver
+      // that ignores <source> cannot tell the two files apart.
+      reporter: [['cobertura', { projectRoot: path.resolve(root, '../../..') }], 'text'],
       reportsDirectory: './coverage',
       // Every shipped source counts, not only what some spec happened to
       // import: a file no test touches is 0% covered, not invisible.
@@ -33,7 +36,8 @@ export default defineConfig({
       // tests are included"). An `all: true` here was dead config that also failed
       // `tsc --noEmit`, and it was easy to mistake for the thing making this work.
       include: ['**/src/**/*.ts'],
-      exclude: ['**/*.spec.ts', '**/test-setup.ts', '**/public-api.ts', '**/*.d.ts', '**/index.ts', '**/dist/**', '**/node_modules/**'],
+      // test-utils.ts is spec scaffolding, not shipped source (ng-spark-auth excludes it too).
+      exclude: ['**/*.spec.ts', '**/test-setup.ts', '**/test-utils.ts', '**/public-api.ts', '**/*.d.ts', '**/index.ts', '**/dist/**', '**/node_modules/**'],
     },
   },
 });

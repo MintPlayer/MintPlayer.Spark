@@ -173,6 +173,10 @@ export default class FileComponent {
         this.detail.set(null);
         try {
           this.detail.set(await this.browse.getFile(provider, owner, name, sha, path));
+        } catch {
+          // The subscriber is async, so nothing upstream awaits it: without this catch a failed
+          // load escaped as an unhandled rejection. The template already renders null as "no data".
+          this.detail.set(null);
         } finally {
           this.loading.set(false);
           setTimeout(() => this.scrollToTarget());

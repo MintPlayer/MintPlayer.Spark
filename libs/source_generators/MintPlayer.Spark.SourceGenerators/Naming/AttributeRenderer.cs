@@ -181,8 +181,12 @@ internal static class AttributeRenderer
 
             case TypedConstantKind.Enum:
                 // Rendered as a cast rather than a member name: a flags combination has no single member.
+                // A negative value is parenthesized: `(E)-1` parses as a subtraction from a type (CS0119).
                 if (constant.Type is null) return false;
-                text = $"({constant.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}){constant.Value}";
+                var enumValue = System.Convert.ToString(constant.Value, System.Globalization.CultureInfo.InvariantCulture);
+                if (enumValue is null) return false;
+                if (enumValue.StartsWith("-", System.StringComparison.Ordinal)) enumValue = $"({enumValue})";
+                text = $"({constant.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}){enumValue}";
                 return true;
 
             case TypedConstantKind.Primitive:
@@ -220,11 +224,18 @@ internal static class AttributeRenderer
             case char c:
                 text = $"'{(c == '\'' ? "\\'" : c == '\\' ? "\\\\" : c.ToString())}'";
                 return true;
+            // NaN and the infinities have no literal form; ToString gives "NaN"/"Infinity", which is not C#.
             case float f:
-                text = $"{f.ToString(System.Globalization.CultureInfo.InvariantCulture)}f";
+                text = float.IsNaN(f) ? "float.NaN"
+                    : float.IsPositiveInfinity(f) ? "float.PositiveInfinity"
+                    : float.IsNegativeInfinity(f) ? "float.NegativeInfinity"
+                    : $"{f.ToString(System.Globalization.CultureInfo.InvariantCulture)}f";
                 return true;
             case double d:
-                text = d.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                text = double.IsNaN(d) ? "double.NaN"
+                    : double.IsPositiveInfinity(d) ? "double.PositiveInfinity"
+                    : double.IsNegativeInfinity(d) ? "double.NegativeInfinity"
+                    : d.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 return true;
             case decimal m:
                 text = $"{m.ToString(System.Globalization.CultureInfo.InvariantCulture)}m";

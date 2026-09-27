@@ -92,6 +92,29 @@ internal static class MessageClaims
     }
 
     /// <summary>
+    /// After a failed renewal: whether the claim was really taken away, as opposed to the message
+    /// having just been finished by its owner.
+    /// </summary>
+    /// <remarks>
+    /// A renewal also fails when it lands after <see cref="MessageProcessor"/> saved the outcome but
+    /// before the renewal was cancelled: the message is then Completed / Failed / DeadLettered with
+    /// no owner. That is the normal end of processing, not a loss. A real loss leaves the message
+    /// Pending (the sweeper requeued it) or Processing under another owner.
+    /// </remarks>
+    public static async Task<bool> WasReclaimedAsync(
+        IDocumentStore store,
+        string messageId,
+        string ownerId,
+        CancellationToken cancellationToken)
+    {
+        using var session = store.OpenAsyncSession();
+        var message = await session.LoadAsync<SparkMessage>(messageId, cancellationToken);
+        return message is not null
+            && (message.Status == EMessageStatus.Pending
+                || (message.Status == EMessageStatus.Processing && message.OwnerId != ownerId));
+    }
+
+    /// <summary>
     /// Releases a claim without deciding the message's fate, returning it to
     /// <see cref="EMessageStatus.Pending"/> so it is picked up again promptly. Used on graceful
     /// shutdown for messages that were claimed but never started: parking them for a backoff

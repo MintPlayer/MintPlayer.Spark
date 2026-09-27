@@ -338,26 +338,4 @@ public sealed partial class ValueObjectCompletenessAnalyzer : DiagnosticAnalyzer
 
         return false;
     }
-
-    private static IEnumerable<INamedTypeSymbol> AllTypes(
-        INamespaceSymbol ns, System.Threading.CancellationToken ct)
-    {
-        foreach (var member in ns.GetMembers())
-        {
-            ct.ThrowIfCancellationRequested();
-
-            switch (member)
-            {
-                case INamespaceSymbol nested:
-                    foreach (var type in AllTypes(nested, ct))
-                        yield return type;
-                    break;
-                case INamedTypeSymbol type:
-                    yield return type;
-                    foreach (var nestedType in type.GetTypeMembers())
-                        yield return nestedType;
-                    break;
-            }
-        }
-    }
 }

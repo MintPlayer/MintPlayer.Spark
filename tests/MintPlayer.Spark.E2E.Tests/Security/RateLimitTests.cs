@@ -31,8 +31,12 @@ public class RateLimitTests
 
         // GetCurrentUserAsync hits /spark/auth/me, same target as the original test. On 429,
         // the client throws SparkClientException; we break as soon as we see one.
-        // Enough to cross the configured budget with margin, whatever that budget is.
-        var burst = FleetTestHost.RateLimitPermits + 50;
+        // ⚠️ TWICE the budget, not budget + margin. The window is FIXED, so a burst that happens to
+        // straddle a window boundary splits across two counters, e.g. 600 + 450 of 1050, and neither
+        // window ever exceeds 1000. A burst shorter than one window spans at most two windows, so
+        // 2 × budget + 50 always pushes one of them over. The loop stops at the first 429, so a run
+        // that does not straddle still sends only about the budget.
+        var burst = 2 * FleetTestHost.RateLimitPermits + 50;
 
         var saw429 = false;
         try

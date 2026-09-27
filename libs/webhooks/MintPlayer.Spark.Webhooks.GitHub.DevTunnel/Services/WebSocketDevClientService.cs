@@ -69,7 +69,9 @@ internal partial class WebSocketDevClientService : BackgroundService
 
     private async Task ConnectAndReceive(CancellationToken stoppingToken)
     {
-        var ws = new ClientWebSocket();
+        // Disposed on every exit. It used to be abandoned, so each reconnect leaked the previous
+        // socket — its connection never torn down, the server's close never completed.
+        using var ws = new ClientWebSocket();
         ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(900);
         ws.Options.AddSubProtocol("ws");
         ws.Options.AddSubProtocol("wss");
@@ -101,15 +103,11 @@ internal partial class WebSocketDevClientService : BackgroundService
 
             var headerBlock = message[..separatorIndex];
             var body = message[(separatorIndex + 2)..];
-            var headers = headerBlock.Split('\n')
-                .Select(h => h.Split(':', 2))
-                .Where(parts => parts.Length == 2)
-                .ToDictionary(
-                    parts => parts[0].Trim(),
-                    parts => new StringValues(parts[1].Trim()));
 
             try
             {
+                var headers = ParseHeaders(headerBlock);
+
                 using var scope = _serviceProvider.CreateScope();
                 var processor = scope.ServiceProvider.GetRequiredService<WebhookEventProcessor>();
                 await processor.ProcessWebhookAsync(headers, body);
@@ -119,5 +117,32 @@ internal partial class WebSocketDevClientService : BackgroundService
                 _logger.LogError(ex, "Failed to process WebSocket webhook");
             }
         }
+    }
+
+    /// <summary>
+    /// Parses the <c>Name: value</c> lines of a forwarded delivery. A name that appears more than
+    /// once keeps every value, as HTTP does, and names compare case-insensitively.
+    /// <para>
+    /// This used to be a <c>ToDictionary</c>, which throws on a repeated name — outside the
+    /// per-message <c>try</c>, so one such delivery dropped the connection, and with it every
+    /// delivery sent during the five seconds before the reconnect.
+    /// </para>
+    /// </summary>
+    private static Dictionary<string, StringValues> ParseHeaders(string headerBlock)
+    {
+        var headers = new Dictionary<string, StringValues>(StringComparer.OrdinalIgnoreCase);
+        foreach (var line in headerBlock.Split('\n'))
+        {
+            var parts = line.Split(':', 2);
+            if (parts.Length != 2)
+                continue;
+
+            var name = parts[0].Trim();
+            headers[name] = headers.TryGetValue(name, out var existing)
+                ? StringValues.Concat(existing, parts[1].Trim())
+                : new StringValues(parts[1].Trim());
+        }
+
+        return headers;
     }
 }

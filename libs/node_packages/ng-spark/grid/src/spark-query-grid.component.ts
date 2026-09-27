@@ -609,8 +609,10 @@ export class SparkQueryGridComponent {
 
     const sourceName = extractSourceName(query.source);
     const singular = singularize(sourceName);
+    // `name + 's'` because the "-es" rule over-strips (Vehicles -> "Vehicl", Roles -> "Rol"); the
+    // page resolver in spark-query-list has always matched this way.
     return entityTypes.find(t =>
-      t.name === sourceName || t.name === singular || t.clrType?.endsWith(singular)) ?? null;
+      t.name === sourceName || t.name === singular || t.name + 's' === sourceName || t.clrType?.endsWith(singular)) ?? null;
   }
 
   private makeFetch(query: SparkQuery, parentId: string, parentType: string): BsDatatableFetch<QueryResultItem> {

@@ -176,11 +176,48 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
                 return;
             }
 
-            var stillOurs = await MessageClaims.TryRenewAsync(
-                documentStore, messageId, MessageClaims.NodeId, Options.ClaimTtl, cancellationToken);
+            bool stillOurs;
+            try
+            {
+                stillOurs = await MessageClaims.TryRenewAsync(
+                    documentStore, messageId, MessageClaims.NodeId, Options.ClaimTtl, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                // A transient failure to renew is not a lost claim: try again next interval, while
+                // the TTL still has most of its length to run. Letting it escape faulted this task,
+                // which ended renewal for the rest of the handler's run and then rethrew from the
+                // `finally` in ProcessWithClaimRenewalAsync — replacing the processing outcome, so
+                // a message that had been handled successfully was logged as a pump failure.
+                logger.LogWarning(ex,
+                    "Could not renew the claim on message {MessageId}; retrying in {Interval}",
+                    messageId, Options.ClaimRenewInterval);
+                continue;
+            }
 
             if (!stillOurs)
             {
+                // A renewal that lands just after the processor saved the outcome also fails; that
+                // is the normal end of processing, and warning about it would be a false alarm.
+                try
+                {
+                    if (!await MessageClaims.WasReclaimedAsync(documentStore, messageId, MessageClaims.NodeId, cancellationToken))
+                        return;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception)
+                {
+                    // Could not tell. Report the loss: a spurious warning costs less than hiding a
+                    // real double-processing window.
+                }
+
                 // The claim was reclaimed while we were working. We cannot un-run the handlers
                 // already invoked, but we can say so loudly: this is the window in which a message
                 // can be processed twice, and it means ClaimTtl is too short for this handler.

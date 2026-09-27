@@ -44,6 +44,13 @@
                Do not assume this line is doing its job. -->
           <ExcludeByFile>**/*.g.cs,**/obj/**</ExcludeByFile>
 
+          <!-- The demo apps are not measured, by decision (docs/coverage_increase_PRD.md),
+               not by the accident of no test project referencing them. An assembly filter,
+               which unlike the file glob above does work. The names are the csproj names
+               (none sets AssemblyName): DemoApp, Fleet, HR and their .Library projects.
+               apps/CodeCoverage is production and stays measured. -->
+          <Exclude>[DemoApp*]*,[Fleet*]*,[HR*]*</Exclude>
+
           <!-- Both off deliberately. SourceLink rewrites paths to raw.githubusercontent
                URLs and DeterministicReport rewrites them to /_/-prefixed placeholders;
                either one breaks the server's path resolution, which matches report paths

@@ -29,7 +29,6 @@ public class SyncActionAuthorizationTests
     private static readonly Guid CarTypeId = Guid.Parse("aaaaaaaa-2222-2222-2222-222222222222");
 
     private readonly IDocumentStore _documentStore = Substitute.For<IDocumentStore>();
-    private readonly IActionsResolver _actionsResolver = Substitute.For<IActionsResolver>();
     private readonly IModelLoader _modelLoader = Substitute.For<IModelLoader>();
     private readonly IEntityMapper _entityMapper = Substitute.For<IEntityMapper>();
     private readonly IDatabaseAccess _databaseAccess = Substitute.For<IDatabaseAccess>();
@@ -49,7 +48,7 @@ public class SyncActionAuthorizationTests
     }
 
     private SyncActionHandler CreateHandler()
-        => new(_documentStore, _actionsResolver, _modelLoader, _entityMapper, _databaseAccess, _logger);
+        => new(_documentStore, _modelLoader, _entityMapper, _databaseAccess, _logger);
 
     /// <summary>Registers TestCar as a known entity type so the schema path is taken.</summary>
     private void RegisterCar()

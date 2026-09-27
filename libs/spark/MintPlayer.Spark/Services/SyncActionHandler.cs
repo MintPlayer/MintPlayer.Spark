@@ -8,7 +8,6 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.Json;
 
-using static MintPlayer.Spark.Services.SparkHookInvocation;
 
 namespace MintPlayer.Spark.Services;
 
@@ -23,7 +22,6 @@ namespace MintPlayer.Spark.Services;
 internal partial class SyncActionHandler : ISyncActionHandler
 {
     [Inject] private readonly IDocumentStore documentStore;
-    [Inject] private readonly IActionsResolver actionsResolver;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IEntityMapper entityMapper;
     [Inject] private readonly IDatabaseAccess databaseAccess;
@@ -257,31 +255,5 @@ internal partial class SyncActionHandler : ISyncActionHandler
         if (resolved is not null)
             _collectionTypeCache[collection] = resolved;
         return resolved;
-    }
-
-
-    private async Task<object> SaveEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, PersistentObject obj)
-    {
-        var actions = actionsResolver.ResolveForType(entityType);
-        var onSaveMethod = ReflectionCache.GetOrAdd<(string Op, Type Actions), MethodInfo>(
-            ("SyncActionHandler.OnSaveAsync", actions.GetType()),
-            static k => k.Actions.GetMethod("OnSaveAsync")
-                ?? throw new InvalidOperationException(
-                    $"Actions type '{k.Actions.FullName}' is missing required method 'OnSaveAsync'."));
-        var task = (Task)onSaveMethod.Invoke(actions, HookInvoke, binder: null, parameters: [session, obj], culture: null)!;
-        await task;
-        return task.GetCompletedTaskResult()!;
-    }
-
-    private async Task DeleteEntityViaActionsAsync(IAsyncDocumentSession session, Type entityType, string id)
-    {
-        var actions = actionsResolver.ResolveForType(entityType);
-        var onDeleteMethod = ReflectionCache.GetOrAdd<(string Op, Type Actions), MethodInfo>(
-            ("SyncActionHandler.OnDeleteAsync", actions.GetType()),
-            static k => k.Actions.GetMethod("OnDeleteAsync")
-                ?? throw new InvalidOperationException(
-                    $"Actions type '{k.Actions.FullName}' is missing required method 'OnDeleteAsync'."));
-        var task = (Task)onDeleteMethod.Invoke(actions, HookInvoke, binder: null, parameters: [session, id], culture: null)!;
-        await task;
     }
 }

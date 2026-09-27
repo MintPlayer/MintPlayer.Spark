@@ -42,6 +42,10 @@ public partial class FinalizeBuildsCronJob : ISparkCronJob
         if (openBuilds.Count == 0)
             return;
 
+        // Only the builds this sweep actually finalized are announced below. A build that is
+        // past the debounce but still parsing is skipped here and must stay silent too: it was
+        // announced every minute until it finalized, re-running the assembler for nothing.
+        var finalized = new List<Build>(openBuilds.Count);
         foreach (var build in openBuilds)
         {
             // Only debounce once every session is parsed — otherwise the commit
@@ -72,14 +76,18 @@ public partial class FinalizeBuildsCronJob : ISparkCronJob
             }
             await BuildFinalizer.Finalize(session, forges, build, reason, cancellationToken);
             logger.LogInformation("Finalized build {BuildId} ({Reason})", build.Id, reason);
+            finalized.Add(build);
         }
+
+        if (finalized.Count == 0)
+            return;
 
         await session.SaveChangesAsync(cancellationToken);
 
         // After the save: an assemble/feedback message racing an unsaved
         // finalize would load a still-open build and skip. The assembler
         // publishes feedback once the commit's headline is rebuilt.
-        foreach (var build in openBuilds)
+        foreach (var build in finalized)
         {
             if (build.Id is null)
                 continue;

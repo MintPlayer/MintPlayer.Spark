@@ -1,7 +1,9 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
+import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
 import { SparkPasskey, SparkPasskeyError, passkeysSupported } from '@mintplayer/ng-spark-auth/models';
@@ -17,7 +19,7 @@ import { TranslateKeyPipe } from '@mintplayer/ng-spark-auth/pipes';
   selector: 'spark-passkeys',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsSpinnerComponent, TranslateKeyPipe],
+  imports: [ReactiveFormsModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsSpinnerComponent, TranslateKeyPipe],
   templateUrl: './spark-passkeys.component.html',
 })
 export class SparkPasskeysComponent {
@@ -35,6 +37,10 @@ export class SparkPasskeysComponent {
   readonly loading = signal(true);
   readonly busy = signal(false);
   readonly errorKey = signal('');
+
+  /** The passkey whose name is being edited inline; at most one row is in edit mode at a time. */
+  readonly editingId = signal<string | null>(null);
+  readonly renameForm = new FormGroup({ name: new FormControl('', { nonNullable: true }) });
 
   constructor() {
     this.refresh();
@@ -65,6 +71,22 @@ export class SparkPasskeysComponent {
     } finally {
       this.busy.set(false);
     }
+  }
+
+  startRename(passkey: SparkPasskey): void {
+    this.errorKey.set('');
+    this.renameForm.setValue({ name: passkey.name ?? '' });
+    this.editingId.set(passkey.id);
+  }
+
+  cancelRename(): void {
+    this.editingId.set(null);
+  }
+
+  /** A failed rename keeps the row in edit mode, so the user can correct or retry without retyping. */
+  async saveRename(passkey: SparkPasskey): Promise<void> {
+    await this.rename(passkey, this.renameForm.controls.name.value);
+    if (!this.errorKey()) this.editingId.set(null);
   }
 
   async rename(passkey: SparkPasskey, name: string): Promise<void> {

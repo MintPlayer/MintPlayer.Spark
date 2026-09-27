@@ -264,6 +264,59 @@ public class SparkExternalLoginLinkerTests : SparkTestDriver
     }
 
     /// <summary>
+    /// The link already exists — attached by another route between the mail and the click. That is
+    /// the outcome the user asked for, so it reads as linked.
+    /// </summary>
+    [Fact]
+    public async Task A_login_already_attached_to_this_account_reads_as_linked()
+    {
+        var h = NewHarness();
+        await RequestAsync(h);
+        h.UserManager.AddLoginAsync(Arg.Any<SparkUser>(), Arg.Any<UserLoginInfo>())
+            .Returns(IdentityResult.Failed(new IdentityErrorDescriber().LoginAlreadyAssociated()));
+        h.UserManager.FindByLoginAsync(Provider, ProviderKey).Returns(h.User);
+
+        var result = await h.Linker.ConfirmAsync(TokenOf(h.Sender));
+
+        result.Outcome.Should().Be(SparkLinkConfirmationOutcome.Linked);
+        result.UserId.Should().Be(h.User.Id);
+    }
+
+    /// <summary>
+    /// ⚠️ UserManager answers <c>LoginAlreadyAssociated</c> whoever owns the login. When it belongs to
+    /// a different account nothing was linked, and "Linked" would tell this user an identity is
+    /// theirs to sign in with when it signs someone else in.
+    /// </summary>
+    [Fact]
+    public async Task A_login_attached_to_another_account_is_not_reported_as_linked()
+    {
+        var h = NewHarness();
+        await RequestAsync(h);
+        h.UserManager.AddLoginAsync(Arg.Any<SparkUser>(), Arg.Any<UserLoginInfo>())
+            .Returns(IdentityResult.Failed(new IdentityErrorDescriber().LoginAlreadyAssociated()));
+        h.UserManager.FindByLoginAsync(Provider, ProviderKey)
+            .Returns(new SparkUser { Id = "users/mallory", UserName = "mallory" });
+
+        var result = await h.Linker.ConfirmAsync(TokenOf(h.Sender));
+
+        result.Outcome.Should().NotBe(SparkLinkConfirmationOutcome.Linked);
+        result.UserId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task A_store_failure_while_attaching_is_reported_as_invalid()
+    {
+        // The token is already spent by then, so a retry would not work; "invalid" is the honest answer.
+        var h = NewHarness();
+        await RequestAsync(h);
+        h.UserManager.AddLoginAsync(Arg.Any<SparkUser>(), Arg.Any<UserLoginInfo>())
+            .Returns(IdentityResult.Failed(new IdentityError { Code = "ConcurrencyFailure", Description = "x" }));
+
+        (await h.Linker.ConfirmAsync(TokenOf(h.Sender))).Outcome
+            .Should().Be(SparkLinkConfirmationOutcome.InvalidOrExpired);
+    }
+
+    /// <summary>
     /// Reaching the request path with no transport registered is a configuration that the startup
     /// guard exists to prevent. If it is reached anyway, writing a pending document nobody will be
     /// told about is worse than failing.

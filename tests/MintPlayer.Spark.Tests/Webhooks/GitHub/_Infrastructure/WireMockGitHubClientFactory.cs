@@ -22,6 +22,12 @@ internal sealed class WireMockGitHubClientFactory(Uri restBaseAddress) : IGitHub
             Credentials = new Credentials(jwt, AuthenticationType.Bearer),
         };
 
+    public IGitHubClient CreateUserClient(string token) =>
+        new GitHubClient(ProductHeader, restBaseAddress)
+        {
+            Credentials = new Credentials(token),
+        };
+
     public IGitHubClient CreateInstallationClient(IHttpClient refreshingHttpClient, ICredentialStore credentialStore)
     {
         var connection = new Connection(

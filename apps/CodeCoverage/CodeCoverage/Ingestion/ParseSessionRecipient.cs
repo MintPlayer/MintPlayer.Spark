@@ -304,11 +304,17 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
     /// because they mean different things to whoever has to fix it: a truncated
     /// report is a CI job killed mid-write, a malformed one is a bad producer.
     /// </summary>
-    private static string ClassifyParseFailure(Exception ex) => ex switch
+    // Internal, not private, so the mapping is tested arm by arm: the TooLarge arms need a 512 MB
+    // expansion or an XmlReader character limit to reach end to end.
+    internal static string ClassifyParseFailure(Exception ex) => ex switch
     {
         System.Xml.XmlException xml when xml.Message.Contains("Unexpected end of file", StringComparison.Ordinal)
             => ReportRejectionReason.Truncated,
-        System.Xml.XmlException xml when xml.Message.Contains("exceeds the MaxCharacters", StringComparison.OrdinalIgnoreCase)
+        // ⚠️ Matched on the setting's name. The reader's real message is "The input document has
+        // exceeded a limit set by MaxCharactersInDocument." — this used to look for "exceeds the
+        // MaxCharacters", which that message never contains, so a report over SafeXml's limit
+        // was reported as malformed rather than too large.
+        System.Xml.XmlException xml when xml.Message.Contains("MaxCharacters", StringComparison.OrdinalIgnoreCase)
             => ReportRejectionReason.TooLarge,
         ReportTooLargeException => ReportRejectionReason.TooLarge,
         System.IO.InvalidDataException => ReportRejectionReason.Malformed,
@@ -352,7 +358,8 @@ public partial class ParseSessionRecipient : IRecipient<ParseSessionMessage>
     /// rather than truncating: a silently truncated report is exactly the failure
     /// mode #417 exists to remove.
     /// </summary>
-    private static async Task CopyBounded(Stream source, Stream destination, long limit, CancellationToken cancellationToken)
+    // Internal so the bound is tested with a small limit; the real one would need 512 MB of output.
+    internal static async Task CopyBounded(Stream source, Stream destination, long limit, CancellationToken cancellationToken)
     {
         var buffer = new byte[81920];
         long total = 0;

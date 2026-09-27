@@ -27,20 +27,10 @@ public class DetailWithholdTests
 
     private static string[] Withheld(IClientAccessor accessor, Abstractions.PersistentObject obj)
     {
-        // Mirrors GetPersistentObject.MergeClientWithholds. Kept as an explicit projection rather
-        // than reaching into the endpoint, because the question is which TARGETS apply to a detail
-        // response, and that answer should be stated somewhere a reader can check it.
-        return [.. accessor.Operations
-            .OfType<DisableActionOperation>()
-            .Where(op => op.Target switch
-            {
-                PersistentObjectDisableTarget t => t.ObjectTypeId == obj.ObjectTypeId
-                                                   && string.Equals(t.Id, obj.Id, StringComparison.Ordinal),
-                CurrentResponseDisableTarget => true,
-                SessionDisableTarget => true,
-                _ => false,
-            })
-            .Select(op => op.ActionName)];
+        // The endpoint's own merge, not a copy of it: a copy passes whatever the endpoint does, so
+        // it could never catch the two drifting apart.
+        global::MintPlayer.Spark.Endpoints.PersistentObject.GetPersistentObject.MergeClientWithholds(accessor, obj);
+        return [.. obj.DisabledActions ?? []];
     }
 
     [Fact]

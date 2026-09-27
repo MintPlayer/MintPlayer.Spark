@@ -16,6 +16,12 @@ public interface IGitHubClientFactory
     IGitHubClient CreateAppClient(string jwt);
 
     /// <summary>
+    /// Creates a client acting as the holder of a user's personal access token. The dev WebSocket
+    /// endpoint uses it to learn which developer is connecting.
+    /// </summary>
+    IGitHubClient CreateUserClient(string token);
+
+    /// <summary>
     /// Creates an installation client whose REST pipeline uses the given
     /// <paramref name="refreshingHttpClient"/> (decorates Octokit's default with
     /// a 401-retry + token-refresh layer) and <paramref name="credentialStore"/>

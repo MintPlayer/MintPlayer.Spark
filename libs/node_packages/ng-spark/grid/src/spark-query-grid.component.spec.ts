@@ -11,6 +11,7 @@ import { SparkQueryGridComponent } from './spark-query-grid.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import { EntityType, QueryResultItem, ShowedOn, SparkQuery } from '@mintplayer/ng-spark/models';
+import { settle } from '../../src/test-utils';
 
 /**
  * These carry over from the two components this one replaces. They are not fresh coverage: each
@@ -85,24 +86,7 @@ function makeService(overrides: Partial<Record<string, unknown>> = {}) {
   } as any;
 }
 
-/**
- * Settle the component, not just the fixture.
- *
- * `loadData` awaits twice — the query and the entity types, and only then the permissions and the
- * custom actions. A single `whenStable()` flushes the first level and returns while the second is
- * still pending, so permissions, actions and the fetch all appear to be missing. Draining until
- * the queue is quiet is the honest wait.
- */
-async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
-  for (let i = 0; i < 5; i++) {
-    await fixture.whenStable();
-    await Promise.resolve();
-    fixture.detectChanges();
-  }
-  await fixture.whenStable();
-}
-
-async function setup(overrides: Partial<Record<string, unknown>> = {}, inputs: Record<string, unknown> = {}) {
+async function setup(overrides: Partial<Record<string, unknown>> = {}, inputs: Record<string, unknown> = {}, renderers: any[] = []) {
   const service = makeService(overrides);
   TestBed.configureTestingModule({
     providers: [
@@ -112,7 +96,7 @@ async function setup(overrides: Partial<Record<string, unknown>> = {}, inputs: R
       provideHttpClientTesting(),
       { provide: SparkService, useValue: service },
       { provide: SparkLanguageService, useValue: langStub },
-      { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: [] },
+      { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: renderers },
     ],
   });
   const fixture: ComponentFixture<SparkQueryGridComponent> = TestBed.createComponent(SparkQueryGridComponent);
@@ -687,6 +671,262 @@ describe('SparkQueryGridComponent', () => {
       // Its own filter is excluded: a panel must offer the values you could still pick, not only
       // the ones you already picked.
       expect(getDistinctValues).toHaveBeenCalledWith('q-all', 'FirstName', expect.objectContaining({ columns: [] }));
+    });
+
+    describe('selecting < none >', () => {
+      // `Col == null` misses a field the document never wrote, so a selection containing the null
+      // entry is sent as the complement: an exclusion of every real value NOT selected.
+      const complete = { matching: [{ value: 'Alice' }, { value: 'Bob' }, { value: 'Carol' }, { value: null }], remaining: [], hasMore: false };
+
+      async function filtered(distincts: any, search = '') {
+        const executeQuery = vi.fn().mockResolvedValue(filterPage);
+        const s = await setup({ executeQuery, getDistinctValues: vi.fn().mockResolvedValue(distincts) });
+        // Protected members; reached directly, as the rest of this block does.
+        const grid = s.c as any;
+        await grid.distinctsFn({ column: 'FirstName', search, signal: new AbortController().signal });
+        const apply = async (values: unknown[], inverse = false) => {
+          grid.onFilterChange({ mode: 'values', column: 'FirstName', selected: values.map(v => ({ value: v, label: String(v) })), inverse } as any);
+          await settle(s.fixture);
+          await s.c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
+          return executeQuery.mock.calls.at(-1)![1].columns;
+        };
+        return { ...s, apply };
+      }
+
+      it('sends the unselected real values as excludes when the list is complete', async () => {
+        const { apply } = await filtered(complete);
+
+        expect(await apply([null, 'Alice'])).toEqual([{ name: 'FirstName', excludes: ['Bob', 'Carol'] }]);
+      });
+
+      it('drops the filter when everything, none included, is selected', async () => {
+        const { apply } = await filtered(complete);
+
+        expect(await apply([null, 'Alice', 'Bob', 'Carol'])).toEqual([]);
+      });
+
+      it('cannot build a complement from a truncated list, so sends the selection as-is', async () => {
+        const { apply } = await filtered({ ...complete, hasMore: true });
+
+        expect(await apply([null, 'Alice'])).toEqual([{ name: 'FirstName', includes: [null, 'Alice'] }]);
+      });
+
+      it('never treats a searched (subset) list as complete', async () => {
+        const { apply } = await filtered(complete, 'a');
+
+        expect(await apply([null])).toEqual([{ name: 'FirstName', includes: [null] }]);
+      });
+
+      it('an inversed selection containing none stays a plain exclusion', async () => {
+        const { apply } = await filtered(complete);
+
+        expect(await apply([null], true)).toEqual([{ name: 'FirstName', excludes: [null] }]);
+      });
+    });
+
+    it('ignores a comparison-mode change, which the panel never declares', async () => {
+      const { c } = await setup({ executeQuery: vi.fn().mockResolvedValue(filterPage) });
+      const before = c.fetchFn();
+
+      (c as any).onFilterChange({ mode: 'comparison', column: 'FirstName' });
+
+      expect(c.fetchFn()).toBe(before);
+    });
+
+    it('lists no values before the query is known', async () => {
+      const getDistinctValues = vi.fn();
+      const { c } = await setup({ getQuery: vi.fn().mockRejectedValue({ status: 404 }), getDistinctValues });
+
+      expect(await (c as any).distinctsFn({ column: 'FirstName', search: '', signal: new AbortController().signal })).toBeNull();
+      expect(getDistinctValues).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('custom actions', () => {
+    const archive = { name: 'Archive', displayName: { en: 'Archive' }, showedOn: 'query', refreshOnCompleted: false } as any;
+    const other = { ...archive, name: 'Other' };
+
+    it('withholds the actions the result disabled, case-insensitively, re-read per page', async () => {
+      const executeQuery = vi.fn().mockResolvedValue({ ...samplePage, disabledActions: ['ARCHIVE'] });
+      const { c } = await setup({ executeQuery, getCustomActions: vi.fn().mockResolvedValue([archive, other]) });
+
+      expect(c.visibleCustomActions().map(a => a.name)).toEqual(['Other']);
+
+      executeQuery.mockResolvedValue(samplePage);
+      await c.fetchFn()!({ page: 2, perPage: 10, sortColumns: [] } as any);
+      expect(c.visibleCustomActions().map(a => a.name)).toEqual(['Archive', 'Other']);
+    });
+
+    it('asks for confirmation and does nothing when it is declined', async () => {
+      const confirmSpy = vi.spyOn(globalThis, 'confirm').mockReturnValue(false);
+      try {
+        const { c, service } = await setup({ getCustomActions: vi.fn().mockResolvedValue([archive]) });
+
+        await c.onCustomAction({ ...archive, confirmationMessageKey: 'confirm.archive' });
+
+        expect(confirmSpy).toHaveBeenCalledWith('confirm.archive');
+        expect(service.executeCustomAction).not.toHaveBeenCalled();
+      } finally {
+        confirmSpy.mockRestore();
+      }
+    });
+
+    it('runs a confirmed action, emits, and re-runs the query when asked to refresh', async () => {
+      const confirmSpy = vi.spyOn(globalThis, 'confirm').mockReturnValue(true);
+      try {
+        const { c, service } = await setup({ getCustomActions: vi.fn().mockResolvedValue([archive]) });
+        const executed = vi.fn();
+        c.customActionExecuted.subscribe(executed);
+        const before = c.fetchFn();
+
+        await c.onCustomAction({ ...archive, confirmationMessageKey: 'confirm.archive', refreshOnCompleted: true });
+
+        expect(service.executeCustomAction).toHaveBeenCalledTimes(1);
+        expect(executed).toHaveBeenCalledTimes(1);
+        // A new fetch identity is what makes the datatable re-request the current page.
+        expect(c.fetchFn()).not.toBe(before);
+      } finally {
+        confirmSpy.mockRestore();
+      }
+    });
+
+    it('keeps the fetch when the action does not ask for a refresh', async () => {
+      const { c } = await setup({ getCustomActions: vi.fn().mockResolvedValue([archive]) });
+      const before = c.fetchFn();
+
+      await c.onCustomAction(archive);
+
+      expect(c.fetchFn()).toBe(before);
+    });
+
+    it('falls back to the translated generic text for a failure with no message', async () => {
+      const { c } = await setup({ executeCustomAction: vi.fn().mockRejectedValue({}) });
+
+      await c.onCustomAction(archive);
+
+      expect(c.errorMessage()).toBe('common.actionFailed');
+    });
+  });
+
+  describe('error text', () => {
+    it('shows the server-sent error for a non-404 load failure', async () => {
+      const { c } = await setup({ getQuery: vi.fn().mockRejectedValue({ status: 500, error: { error: 'Index is stale' } }) });
+
+      expect(c.errorMessage()).toBe('Index is stale');
+    });
+
+    it('falls back to the error message and then to a generic text', async () => {
+      const first = await setup({ getQuery: vi.fn().mockRejectedValue({ status: 0, message: 'Http failure' }) });
+      expect(first.c.errorMessage()).toBe('Http failure');
+
+      TestBed.resetTestingModule();
+      const second = await setup({ getQuery: vi.fn().mockRejectedValue({ status: 500 }) });
+      expect(second.c.errorMessage()).toBe('common.unexpectedError');
+    });
+
+    it('a failed page fetch reports and emits, then renders an empty page rather than throwing', async () => {
+      const { c, service } = await setup();
+      const emitted = vi.fn();
+      c.error.subscribe(emitted);
+      service.executeQuery.mockRejectedValue({ status: 500, error: { error: 'Timeout' } });
+
+      const page = await c.fetchFn()!({ page: 3, perPage: 25, sortColumns: [] } as any);
+
+      expect(page).toEqual({ data: [], totalRecords: 0, totalPages: 1, perPage: 25, page: 3 });
+      expect(c.errorMessage()).toBe('Timeout');
+      expect(c.resultCount()).toBe(0);
+      expect(emitted).toHaveBeenCalledWith(expect.objectContaining({ status: 500 }));
+    });
+
+    it('a later successful page clears the error', async () => {
+      const { c, service } = await setup();
+      service.executeQuery.mockRejectedValueOnce({ status: 500, error: { error: 'Timeout' } });
+      await c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
+
+      const page = await c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
+
+      expect(c.errorMessage()).toBeNull();
+      expect(page.totalPages).toBe(1);
+      expect(page.data).toHaveLength(1);
+    });
+  });
+
+  describe('entity type from the query source', () => {
+    // A Database.* query need not declare entityType; the grid maps its source onto a type name.
+    const typeNamed = (name: string, clrType = `Test.${name}`) =>
+      ({ id: `t-${name}`, name, alias: name.toLowerCase(), clrType, attributes: [] }) as any;
+
+    it.each([
+      ['Database.Categories', 'Category'],
+      ['Database.Boxes', 'Box'],
+      ['Database.Children', 'Child'],
+      ['Database.Cars', 'Car'],
+      ['Staff', 'Staff'],
+    ])('maps %s to %s', async (source, expected) => {
+      const { c } = await setup({
+        getQuery: vi.fn().mockResolvedValue({ ...allPeopleQuery, entityType: undefined, source }),
+        getEntityTypes: vi.fn().mockResolvedValue([personType, typeNamed(expected)]),
+      });
+
+      expect(c.entityType()?.name).toBe(expected);
+    });
+
+    it('falls back to the CLR type name when no type is named after the source', async () => {
+      const { c } = await setup({
+        getQuery: vi.fn().mockResolvedValue({ ...allPeopleQuery, entityType: undefined, source: 'Database.Autos' }),
+        getEntityTypes: vi.fn().mockResolvedValue([personType, typeNamed('Car', 'Fleet.Auto')]),
+      });
+
+      expect(c.entityType()?.name).toBe('Car');
+    });
+
+    it.each([
+      ['Database.Vehicles', 'Vehicle'],
+      ['Database.Roles', 'Role'],
+    ])('maps %s to %s although the -es rule mis-singularizes it', async (source, expected) => {
+      // `singularize` strips "es" from anything ending in it, so Vehicles becomes "Vehicl" and Roles
+      // "Rol". The page resolver (spark-query-list) matches `name + 's'` and found these types; the
+      // grid did not, and resolved no entity type at all — no permissions, no actions, no row links.
+      const { c } = await setup({
+        getQuery: vi.fn().mockResolvedValue({ ...allPeopleQuery, entityType: undefined, source }),
+        getEntityTypes: vi.fn().mockResolvedValue([personType, typeNamed(expected)]),
+      });
+
+      expect(c.entityType()?.name).toBe(expected);
+    });
+
+    it('matches a declared entityType by alias, case-insensitively', async () => {
+      const { c } = await setup({ getQuery: vi.fn().mockResolvedValue({ ...allPeopleQuery, entityType: 'PERSON' }) });
+
+      expect(c.entityType()?.id).toBe('t-person');
+    });
+  });
+
+  describe('renderer registry', () => {
+    @Component({ selector: 'spec-stars-column', standalone: true, template: '' })
+    class StarsColumn {}
+    const starsLabel = (v: unknown) => `${v} stars`;
+    const registry = [
+      { name: 'stars', columnComponent: StarsColumn, filterLabel: starsLabel },
+      { name: 'edit-only', editComponent: StarsColumn },
+    ];
+
+    it('resolves the column component and filter label of a registered renderer', async () => {
+      const { c } = await setup({}, {}, registry);
+      const col = { name: 'Rating', dataType: 'number', renderer: 'stars' } as any;
+
+      expect(c.getColumnRendererComponent(col)).toBe(StarsColumn);
+      expect(c.filterLabelFor(col)).toBe(starsLabel);
+    });
+
+    it('is null for a plain column, an unknown renderer, and a renderer without those slots', async () => {
+      const { c } = await setup({}, {}, registry);
+
+      for (const renderer of [undefined, 'nope', 'edit-only']) {
+        const col = { name: 'Rating', dataType: 'number', renderer } as any;
+        expect(c.getColumnRendererComponent(col)).toBeNull();
+        expect(c.filterLabelFor(col)).toBeNull();
+      }
     });
   });
 

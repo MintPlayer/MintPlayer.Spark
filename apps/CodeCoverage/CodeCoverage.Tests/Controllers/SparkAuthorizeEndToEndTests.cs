@@ -28,12 +28,13 @@ namespace CodeCoverage.Tests.Controllers;
 /// querytype/index lines vanished from every projection-backed entity's shape. Fixed in
 /// <c>SparkExtensions.UseContext</c>, which now anchors discovery on the context assembly.
 /// <para>
-/// The host is shared via <see cref="CoverageWebHostFixture"/>. <b>Do not construct a factory per
+/// The host is shared via <see cref="CoverageWebHostCollection"/>. <b>Do not construct a factory per
 /// test:</b> Spark's registry, index catalog and model loader are process-wide, and concurrent
 /// boots throw "Collection was modified; enumeration operation may not execute".
 /// </para>
 /// </remarks>
-public class SparkAuthorizeEndToEndTests : IClassFixture<CoverageWebHostFixture>
+[Collection(CoverageWebHostCollection.Name)]
+public class SparkAuthorizeEndToEndTests
 {
     private readonly CoverageWebHostFixture fixture;
 
@@ -248,4 +249,72 @@ public class SparkAuthorizeEndToEndTests : IClassFixture<CoverageWebHostFixture>
 
     /// <summary>Repository's model id (<c>App_Data/Model/Repository.json</c>).</summary>
     private const string RepositoryTypeId = "22880468-80f5-4fd2-9472-4f87842ce4ff";
+
+    /// <summary>Commit's model id (<c>App_Data/Model/Commit.json</c>).</summary>
+    private const string CommitTypeId = "ec83c3f7-45d7-44e8-928a-2daf9a4b3ffe";
+
+    /// <summary>Build's model id (<c>App_Data/Model/Build.json</c>).</summary>
+    private const string BuildTypeId = "2487903b-6dc7-4540-a99c-fc94c5d92551";
+
+    private const string ParitySha = "453c0ffee453c0ffee453c0ffee453c0ffee4530";
+
+    /// <summary>A commit and a build under both the private and the public parity repository.</summary>
+    private async Task SeedParityCommitsAsync()
+    {
+        await SeedParityAsync();
+        using (var seed = fixture.Store.OpenAsyncSession())
+        {
+            foreach (var repo in new[] { ParityPrivateId, ParityPublicId })
+            {
+                var commitId = Entities.Commit.DocumentId(EForgeProvider.GitHub, repo, ParitySha);
+                await seed.StoreAsync(new Entities.Commit
+                {
+                    Repository = Entities.Repository.DocumentId(EForgeProvider.GitHub, repo),
+                    Sha = ParitySha,
+                    Message = "parity",
+                }, commitId);
+                await seed.StoreAsync(new Entities.Build
+                {
+                    Commit = commitId, CiRunId = 1, CiRunAttempt = 1, Run = Entities.Build.ComposeRun(1, 1),
+                }, Entities.Build.DocumentId(EForgeProvider.GitHub, repo, ParitySha, 1, 1));
+            }
+            await seed.SaveChangesAsync();
+        }
+        fixture.WaitForIndexing();
+    }
+
+    /// <summary>
+    /// <c>security.json</c> grants anonymous <c>QueryRead/Commit</c> and <c>QueryRead/Build</c>, so the
+    /// only thing between an anonymous caller and a private repository's commits and builds is the
+    /// row rule — <c>CommitActions.GetRowFilterAsync</c> and <c>BuildActions.IsAllowedAsync</c> over
+    /// the real <c>SparkVisibility</c>. Through the pipeline, the private id must be byte-identical to
+    /// an unused one; the public id loading proves the comparison is not two identical refusals of
+    /// everything.
+    /// </summary>
+    [Theory]
+    [InlineData(CommitTypeId, "commit")]
+    [InlineData(BuildTypeId, "build")]
+    public async Task Anonymous_po_load_answers_a_private_commit_or_build_exactly_like_a_missing_one(string typeId, string kind)
+    {
+        await SeedParityCommitsAsync();
+        using var client = CreateClient();
+
+        string IdFor(long repo, string sha) => kind == "commit"
+            ? Entities.Commit.DocumentId(EForgeProvider.GitHub, repo, sha)
+            : Entities.Build.DocumentId(EForgeProvider.GitHub, repo, sha, 1, 1);
+
+        async Task<(HttpStatusCode, string)> Load(string id)
+        {
+            var response = await client.PostAsync("/spark/po/load", new StringContent(
+                JsonSerializer.Serialize(new { objectTypeId = typeId, id }), Encoding.UTF8, "application/json"));
+            return (response.StatusCode, await response.Content.ReadAsStringAsync());
+        }
+
+        var missing = await Load(IdFor(ParityPrivateId, "0000000000000000000000000000000000000000"));
+        var @private = await Load(IdFor(ParityPrivateId, ParitySha));
+        var @public = await Load(IdFor(ParityPublicId, ParitySha));
+
+        @private.Should().Be(missing, $"a private repository's {kind} must not be distinguishable from an unused id");
+        @public.Item1.Should().Be(HttpStatusCode.OK, $"a public repository's {kind} is anonymously readable");
+    }
 }
