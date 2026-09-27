@@ -24,6 +24,9 @@ public sealed class CoverageWebHostFixture : CoverageRavenTest, IAsyncLifetime
     public IDocumentStore Store { get; private set; } = null!;
     public CoverageWebAppFactory Factory { get; private set; } = null!;
 
+    /// <summary>Waits for the host database's indexes, for a test that seeds before it asks.</summary>
+    public void WaitForIndexing() => WaitForIndexing(Store);
+
     public Task InitializeAsync()
     {
         Store = GetDocumentStore();

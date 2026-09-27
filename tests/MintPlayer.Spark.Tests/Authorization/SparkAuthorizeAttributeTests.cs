@@ -28,12 +28,18 @@ public class SparkAuthorizeAttributeTests
 {
     private const string TestScheme = "TestScheme";
 
+    /// <summary>Sent to make the one request anonymous; every other request is signed in.</summary>
+    private const string AnonymousHeader = "X-Test-Anonymous";
+
     private sealed class AlwaysSignedInHandler(
         IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder)
         : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
     {
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()
         {
+            if (Request.Headers.ContainsKey(AnonymousHeader))
+                return Task.FromResult(AuthenticateResult.NoResult());
+
             var identity = new ClaimsIdentity([new Claim(ClaimTypes.Name, "tester")], TestScheme);
             return Task.FromResult(AuthenticateResult.Success(
                 new AuthenticationTicket(new ClaimsPrincipal(identity), TestScheme)));
@@ -83,7 +89,7 @@ public class SparkAuthorizeAttributeTests
                     services.AddRouting();
                     services.AddAuthentication(TestScheme)
                         .AddScheme<AuthenticationSchemeOptions, AlwaysSignedInHandler>(TestScheme, null);
-                    services.AddAuthorization();
+                    services.AddAuthorization(SparkAuthorizeAttribute.AddPolicy);
                     services.AddSingleton<IAuthorizationHandler, SparkAuthorizeHandler>();
                     services.AddScoped(_ => accessControl);
                     if (groups is not null)
@@ -193,6 +199,49 @@ public class SparkAuthorizeAttributeTests
         var response = await host.GetTestClient().GetAsync("/anonymous");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    // ----------------------------------------------------------------------------------
+    // #453 — security.json alone decides, anonymous callers included
+    // ----------------------------------------------------------------------------------
+
+    private static async Task<HttpResponseMessage> GetAnonymouslyAsync(IHost host, string path)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, path);
+        request.Headers.Add(AnonymousHeader, "1");
+        return await host.GetTestClient().SendAsync(request);
+    }
+
+    [Fact]
+    public async Task An_anonymous_caller_holding_the_right_is_authorized()
+    {
+        // Before #453 the attribute named no policy, so ASP.NET Core combined in its default
+        // require-authenticated policy and 401'd this caller before the right was ever asked about:
+        // an anonymous grant in security.json had no effect at all.
+        using var host = await StartAsync(new StubAccessControl("Read/Person"));
+
+        var response = await GetAnonymouslyAsync(host, "/read-person");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, "security.json granted this caller the right");
+    }
+
+    [Fact]
+    public async Task An_anonymous_caller_without_the_right_is_challenged()
+    {
+        // A refusal must still be a challenge for an anonymous caller — the 401 is what sends a
+        // visitor to sign in — not a 403 that says "you, as you are, may never".
+        using var host = await StartAsync(new StubAccessControl("Read/Company"));
+
+        var response = await GetAnonymouslyAsync(host, "/read-person");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public void Every_instance_names_the_policy_that_displaces_the_default()
+    {
+        new SparkAuthorizeAttribute("Read", "Person").Policy.Should().Be(SparkAuthorizeAttribute.PolicyName);
+        new SparkAuthorizeAttribute { Group = "Administrators" }.Policy.Should().Be(SparkAuthorizeAttribute.PolicyName);
     }
 
     // ----------------------------------------------------------------------------------

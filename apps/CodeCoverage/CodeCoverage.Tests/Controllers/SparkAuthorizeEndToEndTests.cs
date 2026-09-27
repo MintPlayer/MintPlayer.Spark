@@ -1,4 +1,7 @@
 using System.Net;
+using System.Text;
+using System.Text.Json;
+using CodeCoverage.Forge;
 using CodeCoverage.Tests._Infrastructure;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Xunit;
@@ -131,4 +134,118 @@ public class SparkAuthorizeEndToEndTests : IClassFixture<CoverageWebHostFixture>
                 or HttpStatusCode.Redirect,
             $"{path} answered {(int)response.StatusCode} to an anonymous caller.");
     }
+
+    // ----------------------------------------------------------------------------------
+    // #453 — anonymous visitors on public pages, and private ≡ missing through the pipeline
+    // ----------------------------------------------------------------------------------
+
+    private const long ParityPrivateId = 453_000;
+    private const long ParityPublicId = 453_001;
+
+    /// <summary>
+    /// Seeds an installed owner with one private and one public repository. Idempotent: every test
+    /// in this class shares the host and its database, so each one may seed and none may depend on
+    /// running first.
+    /// </summary>
+    private async Task SeedParityAsync()
+    {
+        using (var seed = fixture.Store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(
+                new Entities.Account { GitHubId = 45300, Provider = EForgeProvider.GitHub, Login = "parity-org", Type = "Organization" },
+                Entities.Account.DocumentId(EForgeProvider.GitHub, 45300));
+            await seed.StoreAsync(new Entities.Repository
+            {
+                GitHubId = ParityPrivateId, Provider = EForgeProvider.GitHub, Name = "secret",
+                FullName = "parity-org/secret", OwnerLogin = "parity-org", IsPrivate = true,
+                PreviousFullNames = ["parity-org/old-secret"],
+            }, Entities.Repository.DocumentId(EForgeProvider.GitHub, ParityPrivateId));
+            await seed.StoreAsync(new Entities.Repository
+            {
+                GitHubId = ParityPublicId, Provider = EForgeProvider.GitHub, Name = "open",
+                FullName = "parity-org/open", OwnerLogin = "parity-org", IsPrivate = false,
+            }, Entities.Repository.DocumentId(EForgeProvider.GitHub, ParityPublicId));
+            await seed.SaveChangesAsync();
+        }
+        fixture.WaitForIndexing();
+    }
+
+    /// <summary>
+    /// The bug as filed: the Browse API 401'd every anonymous caller before security.json was
+    /// consulted, because <c>[SparkAuthorize]</c> had no policy and so inherited ASP.NET Core's
+    /// require-authenticated default — and the SPA's interceptor turned that 401 into a sign-in
+    /// redirect off a public page. security.json grants anonymous <c>Browse/Coverage</c>.
+    /// </summary>
+    [Theory]
+    [InlineData("/api/browse/repos/github/parity-org/open")]
+    [InlineData("/api/browse/repos/github/parity-org/open/history")]
+    [InlineData("/api/browse/repos/github/parity-org/open/branches")]
+    public async Task An_anonymous_visitor_can_browse_a_public_repository(string path)
+    {
+        await SeedParityAsync();
+        using var client = CreateClient();
+
+        var response = await client.GetAsync(path);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, $"{path} is public and anonymous holds Browse/Coverage");
+    }
+
+    /// <summary>
+    /// The public Repository detail page needs the <c>DeleteBranchPolicy</c> labels. Anonymous holds
+    /// no <c>Read/LookupReferences</c>, but may Read Repository, which binds that lookup.
+    /// </summary>
+    [Fact]
+    public async Task An_anonymous_visitor_can_read_a_lookup_bound_by_a_readable_type()
+    {
+        using var client = CreateClient();
+
+        var response = await client.GetAsync("/spark/lookupref/DeleteBranchPolicy");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Theory]
+    [InlineData("/api/browse/repos/github/parity-org/old-secret")]  // private, remembered alias
+    [InlineData("/api/browse/repos/github/parity-org/made-up")]     // missing, known owner
+    [InlineData("/api/browse/repos/github/parity-stranger/x")]      // unknown owner
+    [InlineData("/api/browse/repos/nosuchforge/parity-org/secret")] // unknown forge
+    [InlineData("/api/browse/repos/github/parity-org/secret/history")]
+    public async Task Anonymous_browse_answers_a_private_repository_exactly_like_a_missing_one(string path)
+    {
+        await SeedParityAsync();
+        using var client = CreateClient();
+
+        var reference = await client.GetAsync("/api/browse/repos/github/parity-org/secret");
+        var response = await client.GetAsync(path);
+
+        // 401 is load-bearing: it is what the SPA turns into "sign in to see this", and it is the
+        // same answer /spark/po/load gives. What matters for #453 is that it is the SAME answer.
+        reference.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        response.StatusCode.Should().Be(reference.StatusCode, path);
+        (await response.Content.ReadAsStringAsync()).Should().Be(await reference.Content.ReadAsStringAsync(), path);
+        response.Content.Headers.ContentType?.ToString().Should().Be(reference.Content.Headers.ContentType?.ToString(), path);
+        response.Headers.WwwAuthenticate.ToString().Should().Be(reference.Headers.WwwAuthenticate.ToString(), path);
+    }
+
+    [Fact]
+    public async Task Anonymous_po_load_answers_a_private_id_exactly_like_a_missing_one()
+    {
+        await SeedParityAsync();
+        using var client = CreateClient();
+
+        async Task<(HttpStatusCode, string)> Load(string id)
+        {
+            var response = await client.PostAsync("/spark/po/load", new StringContent(
+                JsonSerializer.Serialize(new { objectTypeId = RepositoryTypeId, id }), Encoding.UTF8, "application/json"));
+            return (response.StatusCode, await response.Content.ReadAsStringAsync());
+        }
+
+        var missing = await Load(Entities.Repository.DocumentId(EForgeProvider.GitHub, 453_999));
+        var @private = await Load(Entities.Repository.DocumentId(EForgeProvider.GitHub, ParityPrivateId));
+
+        @private.Should().Be(missing, "a private repository's id must not be distinguishable from an unused one");
+    }
+
+    /// <summary>Repository's model id (<c>App_Data/Model/Repository.json</c>).</summary>
+    private const string RepositoryTypeId = "22880468-80f5-4fd2-9472-4f87842ce4ff";
 }
