@@ -1,5 +1,6 @@
 import { TestBed, ComponentFixture } from '@angular/core/testing';
-import { provideRouter, Routes } from '@angular/router';
+import { provideRouter, Router, Routes } from '@angular/router';
+import { DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
@@ -11,7 +12,7 @@ import { SparkQueryListComponent } from './spark-query-list.component';
 import { SparkService, SparkStreamingService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import { EntityType, ShowedOn, SparkQuery } from '@mintplayer/ng-spark/models';
-import { StubComponent, settle } from '../../src/test-utils';
+import { StubComponent, nextNavigationEnd, settle } from '../../src/test-utils';
 
 /**
  * What remains page-shaped after the grid moved out: route resolution, and streaming.
@@ -131,6 +132,47 @@ describe('SparkQueryListComponent', () => {
 
       expect(c.errorMessage()).toBe('spark.query.unavailable');
     });
+
+    it('matches a query by its source name when it declares no entityType, singular or plural', async () => {
+      const bySource = { ...allPeopleQuery, alias: undefined, id: 'q-src', entityType: undefined, source: 'Database.Persons' } as any;
+      const { harness } = await setup({ getQueries: vi.fn().mockResolvedValue([bySource]) });
+      const c = await navigate(harness, '/po/person');
+
+      // No alias, so the id is what the grid is handed.
+      expect(c.queryId()).toBe('q-src');
+    });
+
+    it('matches an undotted source name too', async () => {
+      const bare = { ...allPeopleQuery, alias: 'bare', entityType: undefined, source: 'Person' } as any;
+      const other = { ...allPeopleQuery, alias: 'other', entityType: 'Car', source: 'Database.Cars' } as any;
+      const { harness } = await setup({ getQueries: vi.fn().mockResolvedValue([other, bare]) });
+      const c = await navigate(harness, '/po/person');
+
+      expect(c.queryId()).toBe('bare');
+    });
+
+    /**
+     * The handler is async inside a subscribe, so a rejection used to land nowhere and the page
+     * spun forever. It must surface as the page's own error instead.
+     */
+    it('renders a metadata load failure instead of spinning', async () => {
+      const { harness } = await setup({
+        getEntityTypes: vi.fn().mockRejectedValue({ status: 500, error: { error: 'Database offline' } }),
+      });
+      const c = await navigate(harness, '/po/person');
+
+      expect(c.errorMessage()).toBe('Database offline');
+      expect(harness.fixture.nativeElement.querySelector('bs-alert')?.textContent).toContain('Database offline');
+    });
+
+    it('falls back to the error message, then to a generic text, for a failure without a body', async () => {
+      const first = await setup({ getQueries: vi.fn().mockRejectedValue(new Error('socket hang up')) });
+      expect((await navigate(first.harness, '/po/person')).errorMessage()).toBe('socket hang up');
+
+      TestBed.resetTestingModule();
+      const second = await setup({ getQueries: vi.fn().mockRejectedValue({}) });
+      expect((await navigate(second.harness, '/po/person')).errorMessage()).toBe('An unexpected error occurred');
+    });
   });
 
   describe('streaming', () => {
@@ -209,6 +251,89 @@ describe('SparkQueryListComponent', () => {
       expect(c.errorMessage()).toContain('socket died');
     });
 
+    it('renders an error message sent over the stream as the page error, and stops being live', async () => {
+      // The server sends `error` only on its way to closing the socket (StreamExecuteQuery's
+      // SendErrorAndCloseAsync), so it is terminal: the alert replaces the grid, and with the grid
+      // gone the stream is disconnected rather than left showing LIVE over nothing.
+      const { c, harness, streamSubject } = await live();
+
+      streamSubject.next({ type: 'error', message: 'Access denied' });
+      await settle(harness.fixture, { rounds: 6 });
+
+      expect(c.errorMessage()).toBe('Access denied');
+      expect(harness.fixture.nativeElement.querySelector('bs-alert')?.textContent).toContain('Access denied');
+      expect(harness.fixture.nativeElement.querySelector('spark-query-grid')).toBeNull();
+      expect(c.isStreaming()).toBe(false);
+    });
+
+    it('stops being live when the server completes the stream', async () => {
+      const { c, harness, streamSubject } = await live();
+
+      streamSubject.complete();
+      await settle(harness.fixture, { rounds: 6 });
+
+      expect(c.isStreaming()).toBe(false);
+    });
+
+    it('ignores a patch that updates nothing and leaves rows it does not name untouched', async () => {
+      const { c, harness, streamSubject } = await live();
+      streamSubject.next({
+        type: 'snapshot',
+        columns: [{ name: 'FirstName', dataType: 'string', order: 1 }],
+        data: [
+          { id: 'people/1', values: [{ key: 'FirstName', value: 'Alice' }] },
+          { id: 'people/2', values: [{ key: 'FirstName', value: 'Bob' }, { key: 'Age', value: 30 }] },
+        ],
+      });
+      await settle(harness.fixture, { rounds: 6 });
+      const bob = c.gridData()!.find((i: any) => i.id === 'people/2');
+
+      streamSubject.next({ type: 'patch', updated: [] });
+      streamSubject.next({ type: 'patch', updated: [{ id: 'people/1', values: { Age: 41 } }] });
+      await settle(harness.fixture, { rounds: 6 });
+
+      // A key the patch does not carry keeps its value; the row the patch does not name keeps its identity.
+      const alice = c.gridData()!.find((i: any) => i.id === 'people/1')!;
+      expect(alice.values).toEqual([{ key: 'FirstName', value: 'Alice' }]);
+      expect(c.gridData()!.find((i: any) => i.id === 'people/2')).toBe(bob);
+    });
+
+    it('re-applies the grid sort to the snapshot, descending and with a tie-breaker', async () => {
+      // The sort must survive every patch: re-deriving from the snapshot without it would reorder the
+      // grid under the user on each update.
+      const { c, harness, streamSubject } = await live();
+      streamSubject.next({
+        type: 'snapshot',
+        columns: [{ name: 'Last', dataType: 'string', order: 1 }, { name: 'First', dataType: 'string', order: 2 }],
+        data: [
+          { id: 'p/1', values: [{ key: 'Last', value: 'Smith' }, { key: 'First', value: 'Anna' }] },
+          { id: 'p/2', values: [{ key: 'Last', value: 'Jones' }, { key: 'First', value: 'Carl' }] },
+          { id: 'p/3', values: [{ key: 'Last', value: 'Smith' }, { key: 'First', value: 'Bea' }] },
+          // No Last at all: sorts as the empty string, not as "undefined".
+          { id: 'p/4', values: [{ key: 'First', value: 'Dan' }] },
+        ],
+      });
+      await settle(harness.fixture, { rounds: 6 });
+
+      const grid = c.grid();
+      grid.settings.set(new DatatableSettings({
+        perPage: { values: [50], selected: 50 },
+        page: { values: [1], selected: 1 },
+        sortColumns: [
+          { property: 'Last', direction: 'descending' },
+          { property: 'First', direction: 'ascending' },
+        ],
+      }));
+      await settle(harness.fixture, { rounds: 6 });
+
+      expect(c.gridData()!.map((i: any) => i.id)).toEqual(['p/1', 'p/3', 'p/2', 'p/4']);
+
+      streamSubject.next({ type: 'patch', updated: [{ id: 'p/2', values: { Last: 'Zed' } }] });
+      await settle(harness.fixture, { rounds: 6 });
+
+      expect(c.gridData()!.map((i: any) => i.id)).toEqual(['p/2', 'p/1', 'p/3', 'p/4']);
+    });
+
     it('hands the grid null for a non-streaming query, so it fetches for itself', async () => {
       const { harness, service } = await setup();
       const c = await navigate(harness, '/query/q-all');
@@ -235,6 +360,80 @@ describe('SparkQueryListComponent', () => {
       await navigate(harness, '/query/q-all');
 
       expect(harness.fixture.nativeElement.textContent).toContain('Everyone');
+    });
+
+    it('onCreate emits and opens the new-object page under the type alias', async () => {
+      const { harness } = await setup();
+      const c = await navigate(harness, '/query/q-all');
+      const created = vi.fn();
+      c.createClicked.subscribe(created);
+
+      const navigated = nextNavigationEnd();
+      c.onCreate();
+      await navigated;
+
+      expect(created).toHaveBeenCalledTimes(1);
+      expect(TestBed.inject(Router).url).toBe('/po/person/new');
+    });
+
+    it('onCreate only emits while the entity type is still unknown', async () => {
+      const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([]) });
+      const c = await navigate(harness, '/query/q-all');
+      const created = vi.fn();
+      c.createClicked.subscribe(created);
+      const navigate$ = vi.spyOn(TestBed.inject(Router), 'navigate');
+
+      c.onCreate();
+
+      expect(created).toHaveBeenCalledTimes(1);
+      expect(navigate$).not.toHaveBeenCalled();
+    });
+
+    it('clearSearch empties the term and the grid refetches without it', async () => {
+      const { harness, service } = await setup();
+      const c = await navigate(harness, '/query/q-all');
+      c.searchTerm.set('ali');
+      await settle(harness.fixture, { rounds: 6 });
+
+      c.clearSearch();
+      await settle(harness.fixture, { rounds: 6 });
+
+      expect(c.searchTerm()).toBe('');
+      expect(c.grid().search()).toBe('');
+      expect(service.executeQuery.mock.calls.at(-1)![1].search).toBeUndefined();
+    });
+
+    it('delegates custom actions and their enabled state to the grid, which holds the selection', async () => {
+      const action = { name: 'Archive', displayName: { en: 'Archive' }, showedOn: 'query', selectionRule: '=1', offset: 0 } as any;
+      const { harness, service } = await setup({ getCustomActions: vi.fn().mockResolvedValue([action]) });
+      const c = await navigate(harness, '/query/q-all');
+
+      expect(c.customActions().map((a: any) => a.name)).toEqual(['Archive']);
+      expect(c.isActionEnabled(action)).toBe(false);
+      c.grid().selection.set([{ id: 'people/1', values: [] }]);
+      expect(c.isActionEnabled(action)).toBe(true);
+
+      await c.onCustomAction(action);
+
+      expect(service.executeCustomAction).toHaveBeenCalledWith('t-person', 'Archive', undefined, ['people/1'], undefined, 'q-all');
+    });
+
+    it('reports actions as disabled before the grid exists', async () => {
+      const { harness } = await setup({ getEntityTypes: vi.fn().mockResolvedValue([]) });
+      const c = await navigate(harness, '/po/nope');
+
+      expect(c.isActionEnabled({ name: 'X' } as any)).toBe(false);
+    });
+
+    it('customActionClass allow-lists the server variant and defaults everything else', async () => {
+      const { harness } = await setup();
+      const c = await navigate(harness, '/query/q-all');
+
+      expect(c.customActionClass({ variant: 'Danger' } as any)).toBe('btn btn-danger');
+      expect(c.customActionClass({ variant: 'success' } as any)).toBe('btn btn-success');
+      // Arriving from JSON: an arbitrary value must not reach the class attribute.
+      expect(c.customActionClass({ variant: 'danger evil-class' } as any)).toBe('btn btn-outline-primary');
+      expect(c.customActionClass({} as any)).toBe('btn btn-outline-primary');
     });
   });
 });
