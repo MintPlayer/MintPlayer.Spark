@@ -326,5 +326,93 @@ describe('SparkPasskeysComponent', () => {
       expect(text(fixture)).toContain('Laptop');
       expect(component.busy()).toBe(false);
     });
+
+    it('edits one row inline from its rename button, prefilled with the current name', async () => {
+      const { fixture } = configure({
+        passkeys: vi.fn().mockResolvedValue([passkey({ id: 'a', name: 'Laptop' }), passkey({ id: 'b', name: 'Phone' })]),
+      });
+      await render(fixture);
+
+      renameButtons(fixture)[1].click();
+      await render(fixture);
+
+      const inputs = nameInputs(fixture);
+      expect(inputs.length).toBe(1);
+      expect(inputs[0].value).toBe('Phone');
+      // The other row keeps its actions; the edited row trades them for save / cancel.
+      expect(renameButtons(fixture).length).toBe(1);
+      expect(removeButtons(fixture).length).toBe(1);
+      expect(buttonWith(fixture, 'auth.passkeySave')).toBeTruthy();
+    });
+
+    it('saves the typed name by id from the form, then leaves edit mode', async () => {
+      const passkeys = vi.fn()
+        .mockResolvedValueOnce([passkey({ id: 'a', name: 'Laptop' })])
+        .mockResolvedValueOnce([passkey({ id: 'a', name: 'Work laptop' })]);
+      const { fixture, auth } = configure({ passkeys });
+      await render(fixture);
+
+      renameButtons(fixture)[0].click();
+      await render(fixture);
+      const input = nameInputs(fixture)[0];
+      input.value = 'Work laptop';
+      input.dispatchEvent(new Event('input'));
+      buttonWith(fixture, 'auth.passkeySave')!.click();
+      await render(fixture);
+
+      expect(auth.renamePasskey).toHaveBeenCalledWith('a', 'Work laptop');
+      expect(nameInputs(fixture).length).toBe(0);
+      expect(text(fixture)).toContain('Work laptop');
+    });
+
+    it('stays in edit mode with the typed name when saving fails', async () => {
+      const { fixture, component } = configure({
+        passkeys: vi.fn().mockResolvedValue([passkey({ id: 'a', name: 'Laptop' })]),
+        renamePasskey: vi.fn().mockResolvedValue({ success: false, error: 'failed' }),
+      });
+      await render(fixture);
+
+      renameButtons(fixture)[0].click();
+      await render(fixture);
+      const input = nameInputs(fixture)[0];
+      input.value = 'Other';
+      input.dispatchEvent(new Event('input'));
+      buttonWith(fixture, 'auth.passkeySave')!.click();
+      await render(fixture);
+
+      expect(component.editingId()).toBe('a');
+      expect(nameInputs(fixture)[0].value).toBe('Other');
+      expect(dangerAlert(fixture)).toContain('auth.passkeyFailed');
+    });
+
+    it('cancels without calling the server, from the cancel button and from Escape', async () => {
+      const { fixture, component, auth } = configure({
+        passkeys: vi.fn().mockResolvedValue([passkey({ id: 'a', name: 'Laptop' })]),
+      });
+      await render(fixture);
+
+      renameButtons(fixture)[0].click();
+      await render(fixture);
+      buttonWith(fixture, 'auth.passkeyCancel')!.click();
+      await render(fixture);
+      expect(component.editingId()).toBeNull();
+
+      renameButtons(fixture)[0].click();
+      await render(fixture);
+      nameInputs(fixture)[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      await render(fixture);
+
+      expect(component.editingId()).toBeNull();
+      expect(nameInputs(fixture).length).toBe(0);
+      expect(auth.renamePasskey).not.toHaveBeenCalled();
+      expect(text(fixture)).toContain('Laptop');
+    });
   });
 });
+
+const buttonWith = (fixture: ComponentFixture<unknown>, key: string) =>
+  buttons(fixture).find((b) => b.textContent!.includes(key));
+const renameButtons = (fixture: ComponentFixture<unknown>) =>
+  buttons(fixture).filter((b) => b.textContent!.includes('auth.passkeyRename'));
+const nameInputs = (fixture: ComponentFixture<unknown>) =>
+  Array.from(el(fixture).querySelectorAll('input[formcontrolname="name"]')) as HTMLInputElement[];

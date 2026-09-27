@@ -20,19 +20,41 @@
         } @else {
           @for (passkey of passkeys(); track passkey.id) {
             <div class="d-flex align-items-center justify-content-between border-bottom py-2">
-              <div>
-                <div>{{ passkey.name || ('auth.passkeyUnnamed' | t) }}</div>
-                <small class="text-muted">
-                  {{ 'auth.passkeyAdded' | t }} {{ passkey.createdAt }}
-                  @if (passkey.isBackedUp) {
-                    · {{ 'auth.passkeySynced' | t }}
-                  }
-                </small>
-              </div>
-              <button type="button" class="btn btn-outline-danger btn-sm"
-                      [disabled]="busy()" (click)="remove(passkey)">
-                {{ 'auth.passkeyRemove' | t }}
-              </button>
+              @if (editingId() === passkey.id) {
+                <bs-form class="flex-grow-1">
+                  <form class="d-flex align-items-center" [formGroup]="renameForm" (ngSubmit)="saveRename(passkey)">
+                    <input type="text" formControlName="name" maxlength="64"
+                           [attr.aria-label]="'auth.passkeyName' | t" (keydown.escape)="cancelRename()" />
+                    <button type="submit" class="btn btn-primary btn-sm ms-2" [disabled]="busy()">
+                      {{ 'auth.passkeySave' | t }}
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm ms-2"
+                            [disabled]="busy()" (click)="cancelRename()">
+                      {{ 'auth.passkeyCancel' | t }}
+                    </button>
+                  </form>
+                </bs-form>
+              } @else {
+                <div>
+                  <div>{{ passkey.name || ('auth.passkeyUnnamed' | t) }}</div>
+                  <small class="text-muted">
+                    {{ 'auth.passkeyAdded' | t }} {{ passkey.createdAt }}
+                    @if (passkey.isBackedUp) {
+                      · {{ 'auth.passkeySynced' | t }}
+                    }
+                  </small>
+                </div>
+                <div class="d-flex">
+                  <button type="button" class="btn btn-outline-secondary btn-sm me-2"
+                          [disabled]="busy()" (click)="startRename(passkey)">
+                    {{ 'auth.passkeyRename' | t }}
+                  </button>
+                  <button type="button" class="btn btn-outline-danger btn-sm"
+                          [disabled]="busy()" (click)="remove(passkey)">
+                    {{ 'auth.passkeyRemove' | t }}
+                  </button>
+                </div>
+              }
             </div>
           } @empty {
             <bs-alert [type]="colors.info">{{ 'auth.passkeysNone' | t }}</bs-alert>
