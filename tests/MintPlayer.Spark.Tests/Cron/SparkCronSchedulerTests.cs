@@ -3,6 +3,7 @@ using System.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Cron;
 using MintPlayer.Spark.Testing;
@@ -119,16 +120,170 @@ public class SparkCronSchedulerTests : SparkTestDriver
         }
     }
 
-    private SparkCronScheduler BuildScheduler(RunRecorder recorder, Action<ISparkCronBuilder> configure)
+    private SparkCronScheduler BuildScheduler(
+        RunRecorder recorder,
+        Action<ISparkCronBuilder> configure,
+        LogRecorder? log = null,
+        IDocumentStore? store = null,
+        params CronJobDescriptor[] handBuilt)
     {
         var builder = new TestBuilder();
-        builder.Services.AddLogging();
+        builder.Services.AddLogging(logging =>
+        {
+            logging.SetMinimumLevel(LogLevel.Debug);
+            if (log is not null)
+                logging.AddProvider(log);
+        });
         builder.Services.AddSingleton(recorder);
-        builder.Services.AddSingleton<IDocumentStore>(Store);
+        builder.Services.AddSingleton<IDocumentStore>(store ?? Store);
         builder.AddCron(configure);
 
         var provider = builder.Services.BuildServiceProvider();
+
+        // Descriptors AddJob would have refused. The scheduler reads the registry when it starts,
+        // so adding them here, before StartAsync, is the same as having registered them.
+        var registry = provider.GetRequiredService<SparkCronJobRegistry>();
+        foreach (var descriptor in handBuilt)
+            registry.Add(descriptor);
+
         return provider.GetServices<IHostedService>().OfType<SparkCronScheduler>().Single();
+    }
+
+    /// <summary>Captures every log line, so a test can wait on the branch it drives.</summary>
+    private sealed class LogRecorder : ILoggerProvider
+    {
+        private readonly ConcurrentQueue<(LogLevel Level, string Message)> entries = new();
+
+        public bool Has(LogLevel level, string fragment)
+            => entries.Any(e => e.Level == level && e.Message.Contains(fragment, StringComparison.Ordinal));
+
+        public ILogger CreateLogger(string categoryName) => new Logger(entries);
+        public void Dispose() { }
+
+        private sealed class Logger(ConcurrentQueue<(LogLevel, string)> entries) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel logLevel) => true;
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+                => entries.Enqueue((logLevel, formatter(state, exception)));
+        }
+    }
+
+    /// <summary>Runs until cancelled, so a stop always lands mid-run.</summary>
+    private sealed class LongRunningJob(RunRecorder recorder) : ISparkCronJob
+    {
+        public static string CronSchedule => "* * * * * *";
+        public async Task RunAsync(CancellationToken cancellationToken)
+        {
+            recorder.Record(nameof(LongRunningJob));
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+        }
+    }
+
+    [Fact]
+    public async Task A_hand_built_descriptor_with_an_invalid_expression_disables_only_its_loop()
+    {
+        var recorder = new RunRecorder();
+        var log = new LogRecorder();
+        var scheduler = BuildScheduler(recorder, cron => cron.AddJob<SiblingJob>(), log,
+            handBuilt: new CronJobDescriptor(typeof(EverySecondJob), "broken", "not a cron expression", false));
+
+        await scheduler.StartAsync(CancellationToken.None);
+        try
+        {
+            await AsyncWait.UntilAsync(() => recorder.Count(nameof(SiblingJob)) > 0, "the valid sibling to run", TimeSpan.FromSeconds(8));
+        }
+        finally
+        {
+            await scheduler.StopAsync(CancellationToken.None);
+        }
+
+        log.Has(LogLevel.Warning, "Invalid cron expression 'not a cron expression'").Should().BeTrue();
+        recorder.Count(nameof(EverySecondJob)).Should().Be(0);
+    }
+
+    /// <summary>
+    /// Another node has already claimed a later occurrence — a legitimate value, within the skew
+    /// window — so every local occurrence up to it is skipped rather than run a second time.
+    /// </summary>
+    [Fact]
+    public async Task Occurrences_another_node_already_claimed_are_skipped()
+    {
+        await Store.Operations.SendAsync(new PutCompareExchangeValueOperation<string>(
+            $"cron/{nameof(EverySecondJob)}", DateTime.UtcNow.AddHours(1).ToString("O"), 0));
+        var recorder = new RunRecorder();
+        var log = new LogRecorder();
+        var scheduler = BuildScheduler(recorder, cron => cron.AddJob<EverySecondJob>(), log);
+
+        await scheduler.StartAsync(CancellationToken.None);
+        try
+        {
+            await AsyncWait.UntilAsync(() => log.Has(LogLevel.Debug, "already claimed"), "an occurrence to be skipped", TimeSpan.FromSeconds(8));
+        }
+        finally
+        {
+            await scheduler.StopAsync(CancellationToken.None);
+        }
+
+        recorder.Count(nameof(EverySecondJob)).Should().Be(0, "every occurrence in the next hour belongs to the other node");
+    }
+
+    [Fact]
+    public async Task A_claim_that_cannot_be_made_skips_the_run_and_the_loop_survives()
+    {
+        using var broken = new DocumentStore { Urls = Store.Urls, Database = $"missing-{Guid.NewGuid():N}" }.Initialize();
+        var recorder = new RunRecorder();
+        var log = new LogRecorder();
+        var scheduler = BuildScheduler(recorder, cron => cron.AddJob<EverySecondJob>(), log, broken);
+
+        await scheduler.StartAsync(CancellationToken.None);
+        try
+        {
+            await AsyncWait.UntilAsync(() => log.Has(LogLevel.Error, "Failed to claim occurrence"), "a failed claim", TimeSpan.FromSeconds(8));
+        }
+        finally
+        {
+            await scheduler.StopAsync(CancellationToken.None);
+        }
+
+        recorder.Count(nameof(EverySecondJob)).Should().Be(0, "an unclaimed occurrence must not run");
+        scheduler.ExecuteTask!.IsCompletedSuccessfully.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Stopping_mid_run_is_a_graceful_shutdown_not_a_job_failure()
+    {
+        var recorder = new RunRecorder();
+        var log = new LogRecorder();
+        var scheduler = BuildScheduler(recorder, cron => cron.AddJob<LongRunningJob>(), log);
+
+        await scheduler.StartAsync(CancellationToken.None);
+        await AsyncWait.UntilAsync(() => recorder.Count(nameof(LongRunningJob)) > 0, "the job to start", TimeSpan.FromSeconds(8));
+        await scheduler.StopAsync(CancellationToken.None);
+
+        scheduler.ExecuteTask!.IsCompletedSuccessfully.Should().BeTrue();
+        log.Has(LogLevel.Error, "threw an exception").Should().BeFalse();
+    }
+
+    /// <summary>
+    /// A claim value written without the round-trip "O" format is still read as a time: one with
+    /// no zone is taken as UTC, one with an offset is converted. Both far-future values here are
+    /// poison and must be reclaimed.
+    /// </summary>
+    [Theory]
+    [InlineData("yyyy-MM-ddTHH:mm:ss")]
+    [InlineData("yyyy-MM-ddTHH:mm:sszzz")]
+    public async Task A_claim_value_in_another_time_format_is_still_judged_as_a_time(string format)
+    {
+        const string job = "format-test";
+        await Store.Operations.SendAsync(new PutCompareExchangeValueOperation<string>(
+            $"cron/{job}", DateTimeOffset.Now.AddDays(3).ToString(format, System.Globalization.CultureInfo.InvariantCulture), 0));
+
+        var occurrence = DateTime.UtcNow;
+        (await SparkCronScheduler.TryClaimOccurrenceAsync(Store, job, occurrence, CancellationToken.None)).Should().BeTrue();
+
+        var stored = await Store.Operations.SendAsync(new GetCompareExchangeValueOperation<string>($"cron/{job}"));
+        stored.Value.Should().Be(occurrence.ToString("O"));
     }
 
     [Fact]
@@ -217,8 +372,9 @@ public class SparkCronSchedulerTests : SparkTestDriver
     public async Task A_concurrent_job_that_overruns_is_capped_at_the_max_in_flight()
     {
         var tracker = new ConcurrencyTracker();
+        var log = new LogRecorder();
         var builder = new TestBuilder();
-        builder.Services.AddLogging();
+        builder.Services.AddLogging(logging => logging.AddProvider(log));
         builder.Services.AddSingleton(tracker);
         builder.Services.AddSingleton<IDocumentStore>(Store);
         builder.AddCron(cron => cron.AddJob<BlockingConcurrentJob>());
@@ -243,6 +399,12 @@ public class SparkCronSchedulerTests : SparkTestDriver
                 () => tracker.Max >= SparkCronScheduler.MaxConcurrentRunsPerJob,
                 "concurrent occurrences to accumulate up to the cap",
                 TimeSpan.FromMinutes(2));
+
+            // And the next occurrence is shed, not queued: one more second, still blocked.
+            await AsyncWait.UntilAsync(
+                () => log.Has(LogLevel.Warning, "concurrent runs already in flight"),
+                "an occurrence beyond the cap to be shed",
+                TimeSpan.FromMinutes(1));
         }
         finally
         {

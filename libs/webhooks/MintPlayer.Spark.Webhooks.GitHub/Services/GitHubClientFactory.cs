@@ -23,6 +23,12 @@ internal sealed class GitHubClientFactory : IGitHubClientFactory
             Credentials = new Credentials(jwt, AuthenticationType.Bearer),
         };
 
+    public IGitHubClient CreateUserClient(string token) =>
+        new GitHubClient(ProductHeader)
+        {
+            Credentials = new Credentials(token),
+        };
+
     public IGitHubClient CreateInstallationClient(IHttpClient refreshingHttpClient, ICredentialStore credentialStore)
     {
         var connection = new Connection(

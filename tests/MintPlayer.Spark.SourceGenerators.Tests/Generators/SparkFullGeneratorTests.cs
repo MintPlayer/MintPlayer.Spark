@@ -147,4 +147,138 @@ public class SparkFullGeneratorTests
         // Emitted as a fully-qualified static call (not extension-method syntax) to avoid collisions.
         combined.Should().Contain("global::TestApp.SparkMigrationsBuilderExtensions.AddMigrations(spark)");
     }
+
+    [Fact]
+    public void Actions_custom_actions_and_recipients_are_each_wired_in()
+    {
+        var source = """
+            using System.Threading;
+            using System.Threading.Tasks;
+            using MintPlayer.Spark;
+            using MintPlayer.Spark.Actions;
+            using MintPlayer.Spark.Abstractions.Actions;
+            using MintPlayer.Spark.Messaging.Abstractions;
+
+            namespace TestApp;
+
+            public class AppContext : SparkContext { }
+
+            public class Car { public string? Id { get; set; } }
+
+            // Found through the base-type walk, one level removed.
+            public class VehicleActions<T> : DefaultPersistentObjectActions<T> where T : class { }
+            public class CarActions : VehicleActions<Car> { }
+
+            public class ExportAction : ICustomAction
+            {
+                public Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            }
+
+            public record CarSold(string Plate);
+            public class CarSoldRecipient : IRecipient<CarSold>
+            {
+                public Task HandleAsync(CarSold message, CancellationToken cancellationToken = default) => Task.CompletedTask;
+            }
+
+            // Neither is anything the bundle wires: an abstract base and an unrelated derived class.
+            public abstract class BaseAction : ICustomAction
+            {
+                public abstract Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default);
+            }
+            public class Unrelated : System.Exception { }
+            """;
+
+        var result = GeneratorHarness.Run(
+            GeneratorName,
+            [source],
+            referenceTypes: [typeof(SparkContext), typeof(MintPlayer.Spark.Actions.DefaultPersistentObjectActions<>), typeof(ICustomAction), typeof(IRecipient<>)],
+            rootNamespace: "TestApp",
+            generatorAssemblyName: GeneratorAssembly);
+
+        var combined = string.Join("\n", result.GeneratedSources.Select(s => s.Source));
+        combined.Should().Contain("global::TestApp.SparkActionsBuilderExtensions.AddActions(spark)");
+        combined.Should().Contain("global::TestApp.SparkCustomActionsBuilderExtensions.AddCustomActions(spark)");
+        combined.Should().Contain("global::TestApp.SparkRecipientsBuilderExtensions.AddRecipients(spark)");
+        combined.Should().NotContain("AddCronJobs");
+        combined.Should().NotContain("AddMigrations");
+    }
+
+    /// <summary>
+    /// Messaging and replication are detected by their builder-extension types being in the
+    /// compilation. Declared in the source here so the test needs no reference to either package —
+    /// the generator looks the types up by metadata name and cannot tell the difference.
+    /// </summary>
+    [Fact]
+    public void Referenced_messaging_replication_and_authorization_are_wired_in()
+    {
+        var source = """
+            using MintPlayer.Spark;
+
+            namespace TestApp
+            {
+                public class AppContext : SparkContext { }
+            }
+
+            namespace MintPlayer.Spark.Messaging
+            {
+                public static class SparkBuilderMessagingExtensions { }
+            }
+
+            namespace MintPlayer.Spark.Replication
+            {
+                public static class SparkBuilderReplicationExtensions { }
+            }
+            """;
+
+        var result = GeneratorHarness.Run(
+            GeneratorName,
+            [source],
+            referenceTypes: [typeof(SparkContext), typeof(SparkUser)],
+            rootNamespace: "TestApp",
+            generatorAssemblyName: GeneratorAssembly);
+
+        var combined = string.Join("\n", result.GeneratedSources.Select(s => s.Source));
+        combined.Should().Contain("SparkBuilderMessagingExtensions.AddMessaging(spark, options.Messaging)");
+        combined.Should().Contain("if (options.Replication != null)");
+        combined.Should().Contain("SparkBuilderReplicationExtensions.AddReplication(spark, options.Replication)");
+        // No SparkUser subclass, but Authorization is referenced: the base type is used.
+        combined.Should().Contain("AddAuthentication<global::MintPlayer.Spark.Authorization.Identity.SparkUser>");
+    }
+
+    [Fact]
+    public void Emits_nothing_without_a_SparkContext_subclass()
+    {
+        var source = """
+            namespace TestApp;
+            public class NotAContext : System.Exception { }
+            """;
+
+        var result = GeneratorHarness.Run(
+            GeneratorName,
+            [source],
+            referenceTypes: [typeof(SparkContext)],
+            rootNamespace: "TestApp",
+            generatorAssemblyName: GeneratorAssembly);
+
+        string.Join("\n", result.GeneratedSources.Select(s => s.Source)).Should().NotContain("AddSparkFull");
+    }
+
+    [Fact]
+    public void Without_a_root_namespace_the_code_lands_in_GeneratedCode()
+    {
+        var source = """
+            using MintPlayer.Spark;
+            namespace TestApp;
+            public class AppContext : SparkContext { }
+            """;
+
+        var result = GeneratorHarness.Run(
+            GeneratorName,
+            [source],
+            referenceTypes: [typeof(SparkContext)],
+            rootNamespace: null,
+            generatorAssemblyName: GeneratorAssembly);
+
+        string.Join("\n", result.GeneratedSources.Select(s => s.Source)).Should().Contain("namespace GeneratedCode");
+    }
 }

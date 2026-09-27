@@ -214,9 +214,14 @@ public abstract partial class SparkSubscriptionWorker<T> : BackgroundService whe
 
                 break;
             }
-            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            catch (Exception) when (stoppingToken.IsCancellationRequested)
             {
-                // Graceful shutdown
+                // Graceful shutdown. Not only OperationCanceledException: cancelling Run() tears
+                // down the TCP connection under the batch read, and the RavenDB client surfaces
+                // that as an AggregateException wrapping an IOException. Matching OCE alone let
+                // that escape every catch here, so each stop faulted ExecuteTask and the host
+                // logged "BackgroundService failed" on every graceful shutdown. Once a stop has
+                // been requested, whatever Run() throws is the teardown.
                 break;
             }
             catch (SubscriptionInUseException ex)
