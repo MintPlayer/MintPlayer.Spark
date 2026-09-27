@@ -121,6 +121,25 @@ function main(argv) {
     }
   });
 
+  // --- E2E host coverage (workstream F) -----------------------------------------------
+  // With SPARK_E2E_HOST_COVERAGE set, FleetTestHost runs Fleet under dotnet-coverage and must
+  // leave one report per host here. Its filenames are absolute paths with no <source>, which the
+  // resolution below already handles (toRepoRelative; the server strips rootDir). A MISSING report
+  // is what nothing else would notice: the graceful shutdown failing falls back to a kill, which
+  // writes nothing, and the upload then quietly carries in-process coverage only.
+  // Merge note: fold this into the expected-report list when that lands.
+  const HOST_COVERAGE_REPORT = /^tests\/MintPlayer\.Spark\.E2E\.Tests\/coverage\/fleet-host-[^/]+\/coverage\.cobertura\.xml$/;
+  const hostCoverageRequired = /^(1|true)$/i.test(process.env.SPARK_E2E_HOST_COVERAGE ?? '');
+  if (hostCoverageRequired && !reports.some((r) => HOST_COVERAGE_REPORT.test(r.replace(/\\/g, '/')))) {
+    console.error(
+      '::error::SPARK_E2E_HOST_COVERAGE is set but no E2E host report exists at ' +
+        'tests/MintPlayer.Spark.E2E.Tests/coverage/fleet-host-*/coverage.cobertura.xml. ' +
+        'Either the E2E suite never started Fleet, or FleetTestHost.StopHostCoverageAsync fell back to a kill.',
+    );
+    return 1;
+  }
+  // --- end E2E host coverage -----------------------------------------------------------
+
   if (reports.length === 0) {
     console.log('No coverage reports found — nothing to verify.');
     return 0;
