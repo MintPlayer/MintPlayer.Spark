@@ -1173,12 +1173,6 @@ internal partial class ModelSynchronizer : IModelSynchronizer
     // never disagree about what a property's data type is.
     private string GetDataType(Type type) => SparkModelShape.GetDataType(type);
 
-    private bool IsCollectionOfComplexType(Type type)
-    {
-        var elementType = GetCollectionElementType(type);
-        return elementType != null && IsComplexType(elementType);
-    }
-
     private static Type? GetCollectionElementType(Type type) => SparkModelShape.GetCollectionElementType(type);
 
     private bool IsComplexType(Type type) => SparkModelShape.IsComplexType(type);

@@ -736,24 +736,6 @@ public class GenerateIndexGenerator : IncrementalGenerator
     }
 
     /// <summary>
-    /// The sort companion for a searchable field: same value, same nullability, <c>[IgnoreProperty]</c>, and
-    /// deliberately <em>no</em> <c>FieldIndexing</c> — see <see cref="IndexPropertyInfo.FieldIndexing"/>.
-    /// <para>The map expression is a byte-identical copy of the base field's. No normalization: lower-casing
-    /// or trimming here would make the sort order disagree with the value the user sees, and RavenDB's
-    /// default analyzer already lower-cases for comparison purposes.</para>
-    /// </summary>
-    private static IndexPropertyInfo SortCompanionFor(IndexPropertyInfo field, List<string> attributes) => new()
-    {
-        Name = IndexNaming.SortCompanion(field.Name),
-        TypeDisplay = field.TypeDisplay,
-        NeedsDefaultInitializer = field.NeedsDefaultInitializer,
-        MapExpression = field.MapExpression,
-        FieldIndexing = null,
-        IsSortCompanion = true,
-        Attributes = attributes,
-    };
-
-    /// <summary>
     /// The analyzed copy of a <c>[Search]</c> field. Same value, same type, same map expression — the
     /// only difference is that <em>this</em> one is declared <c>FieldIndexing.Search</c>.
     /// </summary>

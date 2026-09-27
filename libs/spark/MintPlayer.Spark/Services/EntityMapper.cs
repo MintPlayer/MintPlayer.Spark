@@ -1178,25 +1178,6 @@ internal partial class EntityMapper : IEntityMapper
         };
     }
 
-    private string GetDataType(Type type)
-    {
-        var underlying = Nullable.GetUnderlyingType(type) ?? type;
-
-        return underlying switch
-        {
-            _ when underlying == typeof(string) => "string",
-            _ when underlying == typeof(int) || underlying == typeof(long) => "number",
-            _ when underlying == typeof(decimal) || underlying == typeof(double) || underlying == typeof(float) => "number",
-            _ when underlying == typeof(bool) => "boolean",
-            _ when underlying == typeof(DateTime) => "datetime",
-            _ when underlying == typeof(DateOnly) => "date",
-            _ when underlying == typeof(Guid) => "guid",
-            _ when underlying == typeof(Color) => "color",
-            _ when IsComplexType(underlying) => "AsDetail",
-            _ => "string"
-        };
-    }
-
     private static bool IsComplexType(Type type)
     {
         // A complex type is a class (not string) that has its own properties
