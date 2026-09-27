@@ -111,9 +111,15 @@ function evaluateRule(
   }
 }
 
+/**
+ * Mirrors the server's `TryGetIntValue`: an integer number, or a string `int.TryParse` accepts.
+ * Anything else means "no rule". `Number(value)` is NOT that — it turns null and '' into 0 (so every
+ * non-empty value failed "must be at most 0 characters") and truncated 2.5, which the server ignores.
+ */
 function toInt(value: any): number | null {
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.trunc(n) : null;
+  if (typeof value === 'number') return Number.isInteger(value) ? value : null;
+  if (typeof value === 'string' && /^\s*[+-]?\d+\s*$/.test(value)) return parseInt(value, 10);
+  return null;
 }
 
 function toNumber(value: any): number | null {

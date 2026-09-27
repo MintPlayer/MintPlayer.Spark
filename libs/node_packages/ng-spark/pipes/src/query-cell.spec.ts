@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { QueryCellValuePipe } from './query-cell.pipe';
+import { QueryCellValuePipe, QueryReferenceChipsPipe } from './query-cell.pipe';
 import { QueryColumn, QueryResultItem } from '@mintplayer/ng-spark/models';
 
 /**
@@ -58,5 +58,110 @@ describe('QueryCellValuePipe — AsDetail breadcrumbs', () => {
     const col = column({ name: 'Columns', isArray: true, asDetailType: 'CodeCoverage.Entities.ProjectColumn' });
 
     expect(run(col, itemWith('Columns', { value: 4 }))).toBe('4 items');
+  });
+});
+
+describe('QueryCellValuePipe — value kinds', () => {
+  const plain = (over: Partial<QueryColumn>) => column({ name: 'X', asDetailType: undefined, isArray: false, ...over });
+
+  it('returns empty text for a missing row or a cell the row does not carry', () => {
+    const col = plain({ dataType: 'string' });
+    expect(new QueryCellValuePipe().transform(col, null, {})).toBe('');
+    expect(run(col, itemWith('Other', { value: 'x' }))).toBe('');
+  });
+
+  it('pluralises an AsDetail count and blanks zero, a non-number and a single-child cell', () => {
+    const arr = plain({ dataType: 'AsDetail', isArray: true });
+    expect(run(arr, itemWith('X', { value: 1 }))).toBe('1 item');
+    expect(run(arr, itemWith('X', { value: 0 }))).toBe('');
+    expect(run(arr, itemWith('X', { value: 'lots' }))).toBe('');
+    // A single child without a breadcrumb must not be stringified to "[object Object]".
+    expect(run(plain({ dataType: 'AsDetail', isArray: false }), itemWith('X', { value: { a: 1 } }))).toBe('');
+  });
+
+  describe('lookup columns', () => {
+    const lookups = {
+      Colors: { name: 'Colors', isTransient: true, displayType: 0, values: [
+        { key: '1', values: { en: 'Red' }, isActive: true },
+        { key: '2', values: {}, isActive: true },
+      ] },
+    } as any;
+    const col = plain({ dataType: 'string', lookupReferenceType: 'Colors' });
+    const cell = (value: unknown) => new QueryCellValuePipe().transform(col, itemWith('X', { value }), lookups);
+
+    it('translates the key to its label, matching a numeric value against the string key', () => {
+      expect(cell(1)).toBe('Red');
+    });
+
+    it('falls back to the key when the option has no translation', () => {
+      expect(cell('2')).toBe('2');
+    });
+
+    it('shows the raw value when the key is unknown or the lookup is not loaded', () => {
+      expect(cell('9')).toBe('9');
+      expect(new QueryCellValuePipe().transform(col, itemWith('X', { value: '1' }), {})).toBe('1');
+    });
+  });
+
+  it('passes a boolean through and maps an absent one to null (indeterminate, not unchecked)', () => {
+    const col = plain({ dataType: 'boolean' });
+    expect(run(col, itemWith('X', { value: false }))).toBe(false);
+    expect(run(col, itemWith('X', { value: true }))).toBe(true);
+    expect(run(col, itemWith('X', {}))).toBeNull();
+  });
+
+  describe('date columns', () => {
+    const col = plain({ dataType: 'datetime' });
+
+    it('parses an ISO string into a Date at the same instant', () => {
+      const result = run(col, itemWith('X', { value: '2026-01-02T03:04:05Z' }));
+      expect(result).toBeInstanceOf(Date);
+      expect((result as Date).toISOString()).toBe('2026-01-02T03:04:05.000Z');
+    });
+
+    it('returns null for an absent value and for an invalid Date instance', () => {
+      expect(run(col, itemWith('X', { value: null }))).toBeNull();
+      expect(run(col, itemWith('X', { value: '' }))).toBeNull();
+      expect(run(plain({ dataType: 'date' }), itemWith('X', { value: new Date('nope') }))).toBeNull();
+    });
+
+    it('passes a valid Date instance through unchanged', () => {
+      const d = new Date('2026-05-05T00:00:00Z');
+      expect(run(col, itemWith('X', { value: d }))).toBe(d);
+    });
+
+    it('keeps unparseable text as text rather than "Invalid Date"', () => {
+      expect(run(col, itemWith('X', { value: 'someday' }))).toBe('someday');
+    });
+  });
+
+  it('returns a plain value as-is and an undefined one as empty text', () => {
+    const col = plain({ dataType: 'number' });
+    expect(run(col, itemWith('X', { value: 42 }))).toBe(42);
+    expect(run(col, itemWith('X', {}))).toBe('');
+  });
+});
+
+describe('QueryReferenceChipsPipe', () => {
+  const col = column({ name: 'Tags', dataType: 'Reference', isArray: true, asDetailType: undefined });
+  const chips = (cell: Record<string, unknown> | null) =>
+    new QueryReferenceChipsPipe().transform(col, cell ? itemWith('Tags', cell) : null);
+
+  it('labels each id from breadcrumbs, falling back to the id, and drops blank ids', () => {
+    expect(chips({ value: ['t/1', null, '', 't/2', 3], breadcrumbs: { 't/1': 'One', 't/2': null } })).toEqual([
+      { id: 't/1', label: 'One' },
+      { id: 't/2', label: 't/2' },
+      { id: '3', label: '3' },
+    ]);
+  });
+
+  it('falls back to ids when the cell carries no breadcrumbs at all', () => {
+    expect(chips({ value: ['t/1'] })).toEqual([{ id: 't/1', label: 't/1' }]);
+  });
+
+  it('returns no chips for a missing row, a missing cell or a non-array value', () => {
+    expect(chips(null)).toEqual([]);
+    expect(new QueryReferenceChipsPipe().transform(col, itemWith('Other', { value: ['x'] }))).toEqual([]);
+    expect(chips({ value: 't/1' })).toEqual([]);
   });
 });
