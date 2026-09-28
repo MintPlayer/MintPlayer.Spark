@@ -88,10 +88,12 @@ Dependencies flow downward. Items in the same milestone are independent.
 - [x] M8 carry-over: the bounce pipe maps the endpoint's answer to its exit code (spike S-M5b). Spikes and deviations in PRD §4.1 (M9).
 
 ### M10 — ng-spark / ng-spark-auth UI
-- [ ] ng-spark core: `SPARK_DETAIL_PANELS` token (+ list/detail action slots) wired into `sparkRoutes()` pages.
-- [ ] `@mintplayer/ng-spark/soft-delete`: Deleted toggle, Restore/Purge. Consumes the server flags added in M7 (carried over from M6): `canRestore`/`canPurge`/`canViewDeleted` on the permissions endpoint, and the `deleted` flag on `/spark/po/load` so a row can be opened from the recycle bin.
-- [ ] `@mintplayer/ng-spark/history`: `<spark-po-history>` list, read-only view, diff, Revert.
-- [ ] ng-spark-auth `withAccount()` + 7 standalone pages, `SPARK_ACCOUNT_PROFILE_FIELDS`, `twitterProvider()`/`linkedInProvider()`, login label "Email or user name".
+- [x] ng-spark core: `SPARK_DETAIL_PANELS` token (+ list/detail action slots) wired into `sparkRoutes()` pages.
+- [x] `@mintplayer/ng-spark/soft-delete`: Deleted toggle, Restore/Purge. Consumes the server flags added in M7 (carried over from M6): `canRestore`/`canPurge`/`canViewDeleted` on the permissions endpoint, and the `deleted` flag on `/spark/po/load` so a row can be opened from the recycle bin.
+- [x] `@mintplayer/ng-spark/history`: `<spark-po-history>` list, read-only view, diff, Revert.
+- [x] ng-spark-auth `withAccount()` + 7 standalone pages, `SPARK_ACCOUNT_PROFILE_FIELDS`, `twitterProvider()`/`linkedInProvider()`, login label "Email or user name".
+- [x] Carry-overs: bounce endpoint 503 when disabled; `RedirectTo` refused in Production; explicit transports + Development fail-closed + Mailpit AutoStart (owner decisions, PRD §3.10); spike S-TZ5 (five browser zones); profile `preferredCulture`. Spikes and deviations in PRD §4.1 (M10).
+- [ ] **Browser verification pending** (parent session, playwright_node MCP): recycle bin → open → Restore/Purge; History diff + Revert; every account page.
 
 ### M11 — E2E base host extraction (D11, pure refactor)
 - [ ] Extract a generic host from `FleetTestHost` (embedded Raven, `dotnet run` under dotnet-coverage, seeded users, stale-bundle check, shared rate-limit awareness). **Run Fleet's E2E suite here and require green** — the one sanctioned mid-plan test run, because every later E2E test depends on it.

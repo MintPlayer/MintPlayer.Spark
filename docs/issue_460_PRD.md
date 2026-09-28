@@ -1027,6 +1027,26 @@ them. `America/Ojinaga` still reports −7/−6, though it has followed Central 
   keeps it, null or empty clears it, and otherwise it must be a predefined culture, stored in canonical
   casing; an invalid value is a 400 under `PreferredCulture`. The personal-data export includes it. The
   profile page exposes it.
+- *Where the tokens live:* `SPARK_DETAIL_PANELS`, and the two action slots `SPARK_DETAIL_ACTIONS` and
+  `SPARK_QUERY_LIST_ACTIONS`, are in a new entry point, `@mintplayer/ng-spark/panels`, not in the root
+  entry point, which exports only the bootstrap API. Every component receives one `context` input
+  (`SparkDetailContext` / `SparkQueryListContext`).
+- *The recycle bin is a route parameter:* the query page and the detail page read `?deleted=`, and core
+  understands it without the soft-delete entry point. The grid sends the value with every page and
+  distinct-values request, and row links carry it. A row loaded with `only` hides Edit, Delete and
+  custom actions, because those judge live rows and would 404. `SparkService.postEnvelope` was made
+  public so the add-on entry points get the envelope and 449-retry handling.
+- *Account pages:* `withAccount()` mounts the 7 D16 pages, plus an `account` overview. The six
+  signed-in pages share one `@mintplayer/ng-spark-auth/account` entry point, so they load as one lazy
+  chunk; `confirm-email` and `passkeys` have their own. The signed-in pages use a new
+  `sparkAuthenticatedGuard`, which waits for `/me`. The existing synchronous `sparkAuthGuard` sends a
+  signed-in user to sign-in on a hard reload; it is unchanged.
+- *The mail-language list* is the app's UI languages (`GET /spark/culture`). A stored culture outside
+  that list is kept as an extra option.
+- *Deletion re-authentication:* a wrong password and a stale sign-in both answer 403
+  `reauthentication_required`, and the page shows one message for both.
+- No spikes are named for M10. Nothing in M10 was verified in a browser; that is left to the parent
+  session.
 ---
 
 ## 5. Risks
