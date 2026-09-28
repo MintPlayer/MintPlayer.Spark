@@ -215,9 +215,8 @@ whose next retry or slot would fall after it is dead-lettered with `DeadLetterRe
 rather than handled late.
 
 `Queue` overrides the queue the message type declares — but only onto a queue declared in
-`SparkMessagingOptions.Queues`; anything else throws at publish. That restriction is why the old
-`BroadcastAsync(message, queueName)` overload could be deleted and this one added: an undeclared
-name produced documents no worker ever selected, whereas a declared queue is known to both sides (in
+`SparkMessagingOptions.Queues`; anything else throws at publish. An undeclared name would produce
+documents no worker ever selects, whereas a declared queue is known to both sides (in
 `SubscriptionPerQueue` mode it gets its own worker).
 
 ## How It Works

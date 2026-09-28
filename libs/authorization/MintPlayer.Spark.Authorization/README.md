@@ -215,6 +215,16 @@ authentication state and their ids are excluded from claim-derived membership, s
 `UseGroupMembershipProvider` removes the default registration rather than adding a second one, so
 which provider runs does not depend on registration order.
 
+**Adding membership instead of replacing it.** `spark.AddGroupMembershipProvider<T>()` registers a
+provider whose answers are **merged** with the primary one's (claims by default, or whatever
+`UseGroupMembershipProvider` installed). Use it for membership that doesn't come from the sign-in,
+such as the privileges Moderation grants by reputation. A provider can also return group **ids**
+by implementing `IGroupIdMembershipProvider` (`GetCurrentUserGroupIdsAsync`), which avoids matching
+on display names. Reserved ids (`anonymous`, `authenticated`) and ids not declared in
+`security.json` are dropped. Every provider is asked once per request, and the merged answer is
+cached for the rest of that request, including `[SparkAuthorize(Group = …)]`. The order of the
+calls doesn't matter, and adding the same provider type twice does nothing.
+
 ### XSRF/Antiforgery Protection
 
 When using cookie-based authentication, mutation endpoints (POST, PUT, DELETE) are protected with

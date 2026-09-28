@@ -152,9 +152,10 @@ location / {
 }
 ```
 
-**Caddy** — `reverse_proxy` sets `X-Forwarded-For` / `X-Forwarded-Proto` itself and, unless its
-`trusted_proxies` option names an upstream, does not pass on what the client sent. Leave
-`trusted_proxies` unset when Caddy is the entry point; the Spark defaults then fit.
+**Caddy** — `reverse_proxy` sets `X-Forwarded-For` / `X-Forwarded-Proto` itself and ignores the
+values a client sent, unless the client's address is in the global `servers { trusted_proxies … }`
+option (meant for a CDN in front of Caddy). Leave `trusted_proxies` unset when Caddy is the entry
+point; the Spark defaults then fit.
 
 **Traefik** — the compose file below: Traefik is the only ingress on a private Docker network, so the
 defaults fit. Set `entryPoints.<name>.forwardedHeaders.trustedIPs` only when something sits in front
