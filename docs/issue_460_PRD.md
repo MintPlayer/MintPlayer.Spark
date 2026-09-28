@@ -1073,6 +1073,133 @@ them. `America/Ojinaga` still reports −7/−6, though it has followed Central 
   licence; nothing in the code changed it.
 - *Coverage slug:* `tools/verify-coverage-paths.mjs` accepts only `fleet-host-*` reports. A QnA host
   run with `SPARK_E2E_HOST_COVERAGE` needs its slug added there (M13).
+
+**S-MOD-A — map-reduce indexes from the add-on assembly (M12, 2026-09-28).**
+*Question:* do hand-written map-reduce indexes (voter→target counts, reciprocal pairs, rep sums)
+deploy from an add-on assembly through core's index creation, pass the SPARK018 tooling, and how
+fast do they catch up?
+*Method:* `ModerationSpikeTests.S_MOD_A_…` (Developer licence): a `SparkEndpointFactory` host that
+only declares `AddIndexesFrom(<Moderation assembly>)`; then 8,002 documents bulk-inserted (4,001
+`ModerationVote`, 4,001 `ReputationEvent`, 40 voters × 50 authors × 2), `WaitForIndexingAsync`, and
+queries against each index. The Moderation project references Spark's analyzer project
+(`OutputItemType="Analyzer"`) and was rebuilt with `--no-incremental`.
+*Answer:* all four indexes deployed by core's `UseSpark` from the add-on assembly with no index
+errors: `Moderation/ReputationCells`, `Moderation/PendingReputation`, `Moderation/VotePairs`
+(`MapReduce`) and `Moderation/EntriesToCredit` (`Map`). Spark's catalog accepted them (no
+projection, so no default-index conflict with three indexes on one collection). **0 SPARK018 (0
+SPARK diagnostics of any id) on the Moderation sources.** The bulk insert took 889 ms; all four
+indexes were non-stale **365 ms** after it returned. Results were exact: a voter→author pair summed
+to its 2 votes, a withdrawn vote (`Direction 0`) was not mapped, a recipient's credited cells summed
+to 40 × 10 from 40 distinct voters and the pending index held the other 40 × 10.
+Found on the way (measured, not in the spike's question): RavenDB **refuses
+`WaitForNonStaleResults` on a stream** (`NotSupportedException: Since Stream() does not wait for
+indexing …`) — Moderation waits with a zero-row query first, then streams; and the LINQ provider
+**cannot translate `string.Compare`** on a static index field (`ArgumentException: Could not
+understand expression`) — the vote-pair index carries an integer `DayNumber` for the window filter.
+
+**S-MOD-E — vote + ledger entry atomic on the shared session (M12, 2026-09-28).**
+*Question:* do a vote, its `ReputationEvent` and the tally commit atomically on the request's
+(shared actions) session?
+*Method:* `ModerationSpikeTests.S_MOD_E_…`: the scoped `IAsyncDocumentSession` of a Spark host;
+(1) store vote (deterministic id, `""` change vector = must not exist) + event + tally, one
+`SaveChangesAsync`; (2) load "no vote", let a second session store the same vote id, then save the
+first session's vote + event + tally.
+*Answer:* (1) **one request** for all three documents. (2) `ConcurrencyException`; the event was
+**not** stored and the tally kept its previous value (`Up = 1`) — the batch is one transaction.
+Moderation therefore writes each vote as one optimistic transaction (Writes mode) on a **fresh**
+session per attempt (a retry cannot reuse the request session after a failed save), retried up to 4
+times on a conflict.
+
+**S-MOD-C — how long a suspended user's cookie and bearer token keep working (M12, 2026-09-28).**
+*Question:* after the Identity lockout + security-stamp refresh Moderation does on a suspension, how
+long does an existing cookie / bearer token still authenticate?
+*Method:* `ModerationSuspensionSpikeTests.S_MOD_C_…`: `AccountTestHost` (Identity + Spark's store,
+`MapSparkIdentityApi`), a controllable `TimeProvider` on `SecurityStampValidatorOptions`, the cookie
+and bearer options; `ValidationInterval = 30 min`, `BearerTokenExpiration = 1 h`. Sign in once with a
+cookie and once for a bearer + refresh token, then `IdentityModerationAccounts.LockOutAsync` (lockout
+end = max, `UpdateSecurityStampAsync`), then `/whoami` authenticating each scheme at +0, +29, +31, +59
+and +61 minutes.
+*Answer:* cookie `True, True, False, False, False`; bearer `True, True, True, True, False`. So a
+**cookie survives until its next stamp validation (≤ `ValidationInterval`)** and a **bearer access
+token until it expires (the stamp is not re-checked on access tokens)**; `/refresh` answered **401**
+and a new password sign-in **401** immediately. The window is covered server-side: the suspension
+document is read by id on every request, so writes and reputation groups stop on the **next request**
+(`A_suspension_blocks_writes_votes_and_privileges_on_the_next_request`).
+
+**S-MOD-D — the lock on every write path (M12, 2026-09-28).**
+*Method:* `ModerationToolsTests.S_MOD_D_…`: a post by a non-moderator (who holds Edit, Delete,
+Revert, Restore, Purge), locked by a moderator; every path attempted by the author.
+*Answer:* PO update → 400 "This post is locked."; AsDetail parent (update adding a `Lines` row) →
+400; custom action saving through `IDatabaseAccess` → 400 (was the catch-all **500** before this
+milestone; `/spark/actions/execute` now maps `SparkValidationException` to 400); revert → 400; delete
+→ 400; after the moderator (exempt) soft-deleted it: restore → 400, purge → 400; vote → 400. The
+moderator's restore → 200. The document kept `Title = second`, no lines, not deleted. A module
+**Sync** save by the same author **passed** (by design, below). `/spark/po/delete-row` writes nothing
+(a consultation), so there is no write to refuse — the removal is the parent save, refused above. A
+locked post loads for the author with `disabledActions` containing `Edit` and `Delete`, for the
+moderator without.
+
+**Deviations (M12).**
+- *Refusal codes.* A suspended account's write is **400** "Your account is suspended." (a
+  `SparkValidationException`, like the lock), not 403: 403 is the disabled-action answer and names an
+  action. The new-account throttle is **429** through a new core `SparkThrottledException`
+  (`Retry-After`, envelope `retryAfterSeconds`), mapped on `/spark/po/create` and
+  `/spark/actions/execute`; §3.12 said "a row check on `New`", but a row check can only answer 404, so
+  it is a before-save interceptor.
+- *The score is not on the entity.* A vote writes `ModerationTallies/{targetId}`; putting the score on
+  the post would move its etag and 409 an author editing at the same time. The vote widget (attribute
+  renderer `spark-vote`) ignores the attribute value and reads `/spark/moderation/votes` (batched per
+  macrotask); a grid column needs `rendererOptions.type` because a query row carries no type.
+- *Document ids.* `ModerationLocks/{targetId}` instead of `locks/{targetId}` (a bare `locks/` prefix
+  could collide with an application's documents); cases are `ModerationCases/{rule}/{a}/{b}` and
+  `ModerationCases/flag/{targetId}`; one compensation per entry is `{entryId}/compensation` (a
+  retraction and a reversal share it, so an entry is never compensated twice).
+- *Sync passes a lock.* A module sync replicates the owner's decision; refusing it would split the
+  replicas. Measured in S-MOD-D, documented.
+- *Privileges read a summary document.* The provider reads `ModerationReputation/{userId}` (with the
+  profile and the suspension, one lazy batch) instead of querying the map-reduce indexes per request.
+  The summary is recomputed from the indexes by the crediting job, by reversals, flag decisions and
+  deletions. Consequence: a newly credited entry counts from the job run that credits it (every 5 min
+  by default), which the 48 h delay dwarfs.
+- *Diversity reading.* "votes" = credited, uncapped, eligible **up-votes received**; when the rule
+  fails, the vote-derived part of the reputation (net of compensations) is excluded from the
+  privilege reputation and non-vote reputation (flags) still counts. Zero votes pass trivially.
+- *Caps.* The votes-cast cap refuses (429 until UTC midnight); the other caps zero the entry's points
+  (`ZeroedBy = pair-cap / daily-cap / ineligible-voter`) and the score still moves. The daily
+  recipient cap clamps the last entry to the headroom (10 → 5). A retraction does not refund a cap.
+- *Delayed crediting* applies to every vote-derived entry, the voter's down-vote cost included; flag
+  outcomes are credited at once (a moderator decided them). A compensation is never creditable before
+  the entry it cancels, so a vote withdrawn inside the delay nets to zero instead of dipping first.
+- *A reversal also neutralises the vote* (direction 0, tally decremented), so the score is corrected
+  with the reputation; the voter may vote again (caps and the next detector run apply).
+- *Invented defaults* where §3.12 gave none: reciprocal ≥ 5 votes each way, fast voting ≥ 3 votes
+  under 60 s, the webmail-domain list, `NewAccounts` 5 posts/day for 7 days. A decided case is never
+  reopened by the detector.
+- *Registration cluster* uses network observations recorded on the user's activity (once per user,
+  day and network): Authorization has no registration hook exposing the address. Hashes only match
+  within one key period (30 days by default); the key is Data-Protection-protected in
+  `ModerationIpKeys/{period}` and expires with the last observation made under it.
+- *Unknown account age fails closed.* `SparkUser.CreatedAtUtc = null` (no revision found by the M5
+  backfill) counts as 0 days, so such accounts pass no age gate — see risks for M13 / the MintPlayer
+  cutover.
+- *Configuration names.* "Down-vote cast on an answer" is `DownvoteCastTypes` (empty = every
+  moderatable type); "content deleted by a moderator reverses its votes" is
+  `ReverseVotesOnModeratorDelete` (a behaviour, not points), so `Reputation` only takes the five point
+  events. `Audit/Moderation` is a right of its own and never earnable; the default earnable set is
+  `Query, Read, New, Edit, Vote, Downvote, Flag, Review`. Each privilege lists `Grants` for
+  `--spark-init-moderation`, which prints the rights and writes nothing.
+- *Merge* reverses every vote the duplicate cast (rule `merge`); it does not move content or
+  accounts.
+- *Package references.* Moderation references `MintPlayer.Spark.Authorization` (`SparkUser`, lockout,
+  the D8 deletion/personal-data hooks) and `MintPlayer.Spark.Cron`; `AddModeration<TUser>()` is
+  generic. It does not reference SoftDelete or History: moderator restore/purge/revert/delete are seen
+  (and audited, and a moderator delete reverses votes) through the core interceptor's operations.
+- *Map-reduce base class.* The indexes derive from `AbstractIndexCreationTask<T, R>` directly;
+  `SparkIndexCreationTask<T>` has no two-type form and none of them has generated field options.
+- *Core translations* gained a `moderation` block (en/fr/nl) for the ng-spark entry point.
+- *Test harness notes (measured):* a test host without a sign-in scheme refuses anonymous callers
+  with 404, not 401 (`SparkDenial`, by design); the antiforgery token is bound to the user name, so a
+  test that switches principals mints a token per identity.
 ---
 
 ## 5. Risks
@@ -1087,6 +1214,9 @@ them. `America/Ojinaga` still reports −7/−6, though it has followed Central 
 8. **Vote fraud**: a patient attacker still farms slowly; thresholds are visible config. Bounded by "only reversible privileges are earnable".
 9. **Revisions keep personal data**; no storage quota exists.
 10. **E2E host refactor** in known-flaky infrastructure can block CI for the whole PR.
+11. **Moderation age gates fail closed** (M12): accounts whose `CreatedAtUtc` the M5 backfill could not
+    find pass no `MinAccountAgeDays` gate. Count them before the MintPlayer cutover; backfill from
+    another source or accept it.
 
 ## 6. Out of scope (genuinely not being done)
 

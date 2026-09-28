@@ -373,6 +373,32 @@ through `SendCampaignAsync` (one mail per recipient, never BCC).
 
 See `libs/mail/MintPlayer.Spark.MailManager/README.md` and `docs/guide-outgoing-mail.md`.
 
+## Moderation (`spark.AddModeration<TUser>()`, package `MintPlayer.Spark.Moderation`)
+
+Votes, reputation, privileges, flags, locks and suspensions are a package — never hand-roll a
+`Score` field, a vote counter or an "is moderator" check.
+
+- **Opt in per entity**: implement `IModeratable { AuthorId, PostedAt }` (abstractions package).
+  Both are the framework's: stamped on create, restored on every later write. Never set them
+  yourself, never put the score on the entity (a vote would move its etag and 409 the author).
+- **Configuration is `Spark:Moderation`**, fed by `App_Data/moderation.json` as the
+  **lowest-precedence** source — env vars (`Spark__Moderation__Fraud__…`) override it. Startup
+  validates the *layered* result: unknown reputation event names, privilege groups that are missing /
+  well-known / hold a non-earnable right / have no grant, a destructive `Earnable` entry.
+- **Privileges are `security.json` groups by id**, conferred by a composed group-membership provider
+  (never a claim). `Lock`, `Suspend`, `Audit`, `Purge`, `Restore`, `Revert`, `ViewDeleted` are never
+  earnable. Rights: `Vote/T`, `Downvote/T`, `Flag/T`, `Lock/T`, `Review/Moderation`,
+  `Suspend/Moderation`, `Audit/Moderation` — by name. `--spark-init-moderation` prints the grants.
+- **All ten fraud measures are on**; tune thresholds in configuration, do not disable them in
+  code. The ledger is append-only: a correction is a compensating entry, never an edit or delete.
+- A lock refuses save / AsDetail change / custom-action write / revert / delete / restore / purge
+  with **400** for everyone without `Lock/T`; a suspension blocks writes on the **next request**
+  (document read by id) — the cookie/bearer lifetime after the stamp refresh is measured in the README.
+- New accounts over the posting quota get **429** (`SparkThrottledException`, core) — throw the same
+  exception for any business quota of your own, never a 400 or 404.
+
+See `libs/moderation/MintPlayer.Spark.Moderation/README.md` and `docs/guide-moderation.md`.
+
 ---
 
 ## Things that look right and are not
