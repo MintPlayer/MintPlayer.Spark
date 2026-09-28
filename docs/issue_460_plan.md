@@ -74,13 +74,14 @@ Dependencies flow downward. Items in the same milestone are independent.
 - [x] M6 carry-overs: refused delete evicts the entity; `/spark/po/load` `deleted` flag; permissions `canRestore`/`canPurge`/`canViewDeleted`/`canViewHistory`/`canRevert`; purge refuses before deleting without database-admin; base-verb mapping for Actions-class row rules.
 
 ### M8 — MailManager (item 10) + CodeCoverage migration
-- [ ] Spikes **S-M1, S-M2, S-M4, S-M6** first.
-- [ ] `libs/mail/MintPlayer.Spark.MailManager` (MailKit, Mjml.Net, Scriban — pin latest stable in the csproj).
-- [ ] Senders (`Replace` `IEmailSender<TUser>`), `SparkMail`/`SparkBulkMail` lanes, template loader + startup parse, render test helper, transports (SMTP, pickup, custom), failure classification, dev mode, **T4** payload protection + scrub.
-- [ ] VERP + `SparkMailDeliveries`, bounce endpoint + pluggable DSN parser (secret check first), suppression list, `List-Unsubscribe`, campaign fan-out.
-- [ ] **D10** CodeCoverage: delete `SmtpLinkConfirmationSender`, add MJML template, config keys, three hand-written lists.
-- [ ] **D6 no-op-sender startup guard** (moved here from M5), and in the same commit: demo apps with registration → pickup-folder mode.
-- [ ] Rewrite `guide-outgoing-mail.md` §8; Postfix recipes (tier 1 + tier 2); spike **S-M5** informs the recipe.
+- [x] Spikes **S-M1, S-M2, S-M4, S-M6** first.
+- [x] `libs/mail/MintPlayer.Spark.MailManager` (MailKit, Mjml.Net, Scriban — pin latest stable in the csproj).
+- [x] Senders (`Replace` `IEmailSender<TUser>`), `SparkMail`/`SparkBulkMail` lanes, template loader + startup parse, render test helper, transports (SMTP, pickup, custom), failure classification, dev mode, **T4** payload protection + scrub.
+- [x] VERP + `SparkMailDeliveries`, bounce endpoint + pluggable DSN parser (secret check first), suppression list, `List-Unsubscribe`, campaign fan-out.
+- [x] **D10** CodeCoverage: delete `SmtpLinkConfirmationSender`, add MJML template, config keys, three hand-written lists.
+- [x] **D6 no-op-sender startup guard** (moved here from M5), and in the same commit: demo apps with registration → pickup-folder mode.
+- [x] Rewrite `guide-outgoing-mail.md` §8; Postfix recipes (tier 1 + tier 2); spike **S-M5** informs the recipe.
+- [x] Owner decision (added during M8): multi-language, file-based templates with a culture fallback chain, culture stored on the message (PRD §3.10). M7 carry-overs: a refused save evicts the entity; History reads take `deleted`. Spikes and deviations in PRD §4.1 (M8).
 
 ### M9 — Timezone cookie (item 7)
 - [ ] Spikes **S-TZ1, S-TZ4**, then server resolver (options, validation, precedence, logging); **S-TZ2, S-TZ3**, then `withSparkTimezone(options)` cookie write + server-platform guard. Update `guide-dates-and-sorting.md`.
@@ -120,7 +121,7 @@ Dependencies flow downward. Items in the same milestone are independent.
 ## Pre-merge checklist (merge auto-publishes packages and redeploys coverage.mintplayer.com)
 
 - [ ] CodeCoverage Data Protection: nothing to set on the VPS. The deploy pulls `apps/CodeCoverage/docker-compose.yml` from master, which now mounts the `dataprotection-keys` volume at `/var/lib/codecoverage/dataprotection-keys` and sets `Spark__DataProtection__KeysPath` to it (`ApplicationName=CodeCoverage` is in `appsettings.json`). Do **not** set `Spark__DataProtection__Storage` in the VPS `.env` — KeysPath + Storage together refuse startup. Expect every user to be signed out once on the first deploy. Once that deploy is healthy and a key file exists in the volume, the orphaned `DataProtectionKeys/…` documents (`KeyDocuments` collection) in the `Coverage` database can be deleted.
-- [ ] VPS: set `Spark:Mail:Smtp:*` (host, port, security) for CodeCoverage.
+- [ ] CodeCoverage mail: nothing new is required on the VPS. The compose file now maps the SAME `.env` variables (`MAIL_HOST`, `MAIL_PORT`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME`) onto `Spark__Mail__Smtp__*` / `Spark__Mail__From__*`, sets `Spark__Mail__Smtp__Security=None` and `Spark__Auth__PublicBaseUrl=https://coverage.mintplayer.com`. With `MAIL_FROM_ADDRESS` unset the app still starts and sends nothing (as today). Secret names only if bounces are ever enabled: `SPARK_BOUNCE_SECRET` (relay) = `Spark__Mail__Bounces__Endpoint__Secret` (app); `MAIL_RELAY_PASSWORD` is unchanged.
 - [ ] Verify what fronts coverage.mintplayer.com (and MintPlayer): if a CDN, add its ranges to `Spark:ForwardedHeaders:KnownNetworks`.
 - [ ] Postfix `ALLOWED_SENDER_DOMAINS` / SPF cover any VERP domain in use.
 - [ ] nuget.org prefix reservation + API key scope cover the new package ids (S-PKG1).
