@@ -15,6 +15,7 @@ using MintPlayer.Spark.Controllers;
 using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Webhooks.GitHub.DevTunnel.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Webhooks.GitHub.Extensions;
 
@@ -54,10 +55,13 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<CodeCoverage.Services.ISourceContentCache, CodeCoverage.Services.SourceContentCache>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddCodeCoverage();
-// Outgoing mail. Bound before AddSpark so the conditional registration below can read it.
-builder.Services.Configure<CoverageMailOptions>(builder.Configuration.GetSection("Coverage:Mail"));
-var mailOptions = builder.Configuration.GetSection("Coverage:Mail").Get<CoverageMailOptions>()
-    ?? new CoverageMailOptions();
+// Outgoing mail (#460 M8, D10): MailManager under Spark:Mail. Added only when a relay AND a sender
+// are configured — the same rule the hand-written SmtpLinkConfirmationSender had. Without it the
+// app has no way to send, which stays a supported state: Spark then registers no link-confirmation
+// sender, so the ConfirmByEmail startup guard refuses that mode instead of discarding mail, and
+// LocalCredentials is Disabled (no registration), so the D6 guard does not apply.
+var mailConfigured = !string.IsNullOrWhiteSpace(builder.Configuration["Spark:Mail:Smtp:Host"])
+    && !string.IsNullOrWhiteSpace(builder.Configuration["Spark:Mail:From:Address"]);
 
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
@@ -213,6 +217,8 @@ builder.Services.AddSpark(builder.Configuration, spark =>
         rateLimiter.PathPrefixes = ["/spark", "/connect", "/api/browse"]);
 
     spark.AddMessaging();
+    if (mailConfigured)
+        spark.AddMailManager();
     spark.AddCustomActions();
     spark.AddRecipients();
     spark.AddCronJobs();
@@ -272,14 +278,6 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 // the audience must be this deployment's public base URL and the action must
 // request exactly that audience. (ApiToken is registered inside AddSpark as a
 // credential scheme — see above.)
-// ⚠️ Registered only when there is somewhere to send. Spark ships the contract and no
-// transport on purpose, so an unregistered sender is how "this deployment cannot send mail"
-// is expressed — and it is what makes the ConfirmByEmail startup guard a plain null check
-// rather than a guess about whether some default is a real transport.
-if (mailOptions.IsConfigured)
-{
-    builder.Services.AddScoped<ISparkLinkConfirmationSender<SparkUser>, SmtpLinkConfirmationSender>();
-}
 
 builder.Services.AddAuthentication()
     .AddJwtBearer(GitHubOidc.SchemeName, options =>

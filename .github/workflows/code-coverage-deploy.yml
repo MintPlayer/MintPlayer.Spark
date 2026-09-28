@@ -31,6 +31,8 @@ on:
       - 'libs/cron/MintPlayer.Spark.Cron/**'
       - 'libs/messaging/MintPlayer.Spark.Messaging/**'
       - 'libs/messaging/MintPlayer.Spark.Messaging.Abstractions/**'
+      - 'libs/mail/MintPlayer.Spark.MailManager/**'
+      - 'libs/mail/MintPlayer.Spark.MailManager.Abstractions/**'
       - 'libs/migrations/MintPlayer.Spark.Migrations/**'
       - 'libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/**'
       - 'libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/**'

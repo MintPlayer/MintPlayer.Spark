@@ -186,14 +186,21 @@ services:
       - GitHub__Production__ClientId=${GITHUB_APP_CLIENT_ID}
       - GitHub__Production__ClientSecret=${GITHUB_APP_CLIENT_SECRET}
       - GitHub__Production__PrivateKeyPath=/run/secrets/github-app.pem
-      # Outgoing mail. Unset Host disables it: Spark registers no transport of its own,
-      # so the app simply has no way to send, which is a supported state as long as
-      # ExternalLoginLinking is not ConfirmByEmail (startup refuses that combination
-      # rather than discarding confirmations silently).
-      - Coverage__Mail__Host=${MAIL_HOST:-coverage-smtp}
-      - Coverage__Mail__Port=${MAIL_PORT:-587}
-      - Coverage__Mail__FromAddress=${MAIL_FROM_ADDRESS:-}
-      - Coverage__Mail__FromName=${MAIL_FROM_NAME:-MintPlayer Coverage}
+      # Outgoing mail through Spark MailManager (#460 M8; was Coverage__Mail__*). The .env
+      # variables are the same ones as before. MailManager is added only when Host AND
+      # From:Address are set, so an unset MAIL_FROM_ADDRESS still means "this deployment
+      # cannot send" — supported as long as ExternalLoginLinking is not ConfirmByEmail
+      # (startup refuses that combination rather than discarding confirmations silently).
+      # Security=None: the relay is reachable only on coverage-internal and advertises
+      # STARTTLS it has no certificate for; None never sends STARTTLS (spike S-M6), exactly
+      # what the old System.Net.Mail client (EnableSsl=false) did.
+      - Spark__Mail__Smtp__Host=${MAIL_HOST:-coverage-smtp}
+      - Spark__Mail__Smtp__Port=${MAIL_PORT:-587}
+      - Spark__Mail__Smtp__Security=None
+      - Spark__Mail__From__Address=${MAIL_FROM_ADDRESS:-}
+      - Spark__Mail__From__Name=${MAIL_FROM_NAME:-MintPlayer Coverage}
+      # Links in mail are built from this, never from the request Host (#460 M5).
+      - Spark__Auth__PublicBaseUrl=https://coverage.mintplayer.com
       # Disabled | WhenSignedIn | ConfirmByEmail. Left at the Spark default (Disabled)
       # until there is a second forge worth linking to.
       - Spark__Auth__ExternalLoginLinking=${EXTERNAL_LOGIN_LINKING:-Disabled}
