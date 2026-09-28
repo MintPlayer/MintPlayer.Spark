@@ -853,6 +853,79 @@ address is envelope-only. `StartTlsWhenAvailable` sends STARTTLS and the connect
 - *Found (M5 left it):* `XsrfSurfaceTests.Auth_surface_…` still pinned MapIdentityApi's surface; M5's account endpoints (incl. `register`, `resendConfirmationEmail`, `manage/account`, `manage/password`, `manage/profile`, `confirm-email`) all require antiforgery — the pinned lists were updated to the measured surface.
 - *Not built:* VERP tier 2 (MX + inbound 25) is a recipe only (§6 out of scope); complaint (ARF)
   parsing; a UI for `PreferredCulture` (M10 profile page can expose it).
+
+**S-TZ1 — `FindSystemTimeZoneById` on path-shaped ids (M9, 2026-09-28).**
+*Question:* what does .NET 11 do with path-shaped zone ids on Windows and Linux — is the regex the
+only thing between a header and the file system?
+*Method:* scratch console app (`net11.0`, .NET `11.0.0-rc.1.26425.128`), run on Windows 11 and
+self-contained on `mcr.microsoft.com/dotnet/runtime:11.0-preview` (Ubuntu 26.04, `TZDIR` unset), 35
+probes through `FindSystemTimeZoneById`, each also checked against the PRD regex. Pinned in
+`RequestTimeZoneResolverTests.The_id_shape_check_is_the_PRD_regex`.
+*Answer:* both OSes throw `TimeZoneNotFoundException` for every `..`, absolute (`/etc/passwd`,
+`/usr/share/zoneinfo/Europe/Brussels`), `./`, trailing-slash, backslash, NUL and `%2F` probe, so .NET
+itself refuses traversal. **Linux resolves `Europe//Brussels`** (found, id kept as given), and also
+non-zone names in the zoneinfo folder: `posixrules` (−05:00), `localtime` (the container's zone, UTC),
+`right/Europe/Brussels`, `Factory`; `leapseconds` throws `InvalidTimeZoneException` ("the file … was
+corrupt"). `zone.tab`/`tzdata.zi`/`iso3166.tab` are not found. Windows finds none of those. The regex
+refuses `Europe//Brussels` and every dotted or path-shaped probe; it accepts `posixrules`, `localtime`,
+`Factory` and `right/…` (well-formed names of real tz files — harmless, and the resolver catches both
+exception types). A 65-character id matches the regex (the length cap is what refuses it).
+
+**S-TZ4 — the strict regex against `SparkClient.TimeZoneId` callers passing Windows ids (M9, 2026-09-28).**
+*Method:* the same app enumerated `GetSystemTimeZones()` and the Windows→IANA conversions on both OSes;
+`Intl.supportedValuesOf('timeZone')` from Node 24.15 (ICU 78.2, tz 2026a) as the browser's list; a grep
+for `TimeZoneId =` callers.
+*Answer:* the server resolved Windows ids before this change on **both** OSes (`Romance Standard
+Time`, `W. Europe Standard Time`, `Pacific Standard Time (Mexico)` all found on Linux too). The regex
+refuses **134 of the 141** Windows ids (spaces, dots, parentheses), so such a caller would silently
+fall back to UTC. In-repo callers pass IANA ids only (`Europe/Brussels`, `Asia/Kolkata` in
+`EndpointCoverageTests`). `TryConvertWindowsIdToIanaId` converts 139 of 141 on Windows, and the same
+answers on Linux (`Romance Standard Time`→`Europe/Paris`, `Pacific Standard Time (Mexico)`→
+`America/Tijuana`, `UTC`→`Etc/UTC`); every converted id passes the regex. All 419 Linux system ids and
+all 418 browser ids pass it; the longest browser id is 30 characters
+(`America/Argentina/Rio_Gallegos`). 5 browser ids are unknown to .NET on Windows by direct lookup
+(`America/Ciudad_Juarez`, `America/Coyhaique`, `Antarctica/Troll`, `Antarctica/Vostok`,
+`Asia/Urumqi`). Pinned in `A_Windows_zone_id_is_sent_as_its_IANA_id` and
+`Every_zone_this_runtime_reports_as_IANA_passes_the_shape_check`.
+
+**S-TZ2 — how MintPlayer's prerender gets its data (M9, 2026-09-28).**
+*Method:* read `C:\Repos\MintPlayer` (branch `feature/spark-migration`): `Program.cs`,
+`PublicSite/MintPlayerSpaPrerenderingService.cs`, `ClientApp/src/main.server.ts`,
+`app/ssr/server-renderer.ts`, `app.config.ts`; a scratch Node script calling Angular 22.2's
+`formatDate` under `TZ=UTC`.
+*Answer:* **in-process.** `UseSpaPrerendering` (MintPlayer.AspNetCore.SpaServices) renders in Node, but
+the data comes from `ISpaPrerenderingService.OnSupplyData(HttpContext, data)`, which loads from RavenDB
+inside the ASP.NET Core request and hands it to the boot function as `params.data`; `main.server.ts`
+renders with a path-only URL and makes no HttpClient call ("no relative HttpClient call is made during
+the render"). So the browser's cookie is on the request `IRequestTimeZoneResolver` reads, and
+**ng-spark needs no SSR cookie-forwarding helper**. MintPlayer's `app.config.ts` registers
+`withSparkAuth()` only, not `withSparkTimezone()`. Side finding: Angular's `formatDate` (what
+`DatePipe` calls) **ignores an IANA id silently** — for 12:00Z, `'Europe/Brussels'` and
+`'Asia/Tokyo'` both render `2026-07-15 12:00 Z` (the process zone), `'+0200'` renders
+`14:00 +02:00`. A date in a Node render follows the Node process's zone whatever the cookie says.
+
+**S-TZ3 — the interceptor during a server-side render (M9, 2026-09-28).**
+*Method:* vitest, `PLATFORM_ID = 'server'`, the pre-M9 interceptor, a relative `/spark/po/load`
+request; run on this machine and under `TZ=UTC`.
+*Answer:* the pre-M9 interceptor **sent the process's zone**: `expected 'Europe/Brussels' to be null`
+locally, `expected 'UTC' to be null` under `TZ=UTC` — on the server that header wins over the viewer's
+cookie. With the `isPlatformBrowser` guard: no header and no cookie write on the server platform
+(21/21 in `spark-timezone.interceptor.spec.ts`, both runs).
+
+**Deviations (M9).**
+- *Windows ids:* the PRD regex stands (owner decision), but S-TZ4 showed it breaks a `SparkClient`
+  caller passing a Windows id, which worked before. `SparkClient` now converts a Windows id to IANA
+  before sending; one that does not convert is sent as given and the server falls back.
+- *Cookie write point:* the cookie is written by the interceptor on the first browser request, not
+  by an app initializer — `withSparkTimezone()` returns `HttpFeature`s, and every Spark app makes a
+  request on start. It is written only when the zone passes the server's shape check.
+- *Logging:* a malformed value is logged at Debug with its length only (never the value); a
+  well-formed but unknown id keeps the existing Warning, now naming the source (`header`/`cookie`).
+  `Spark:TimeZone:CookieName=""` disables the cookie (measured: the binder binds the empty string).
+- *Mail rendering is not wired to the resolver:* MailManager renders in a queue worker with no
+  request (the resolver answers UTC there). The guide says to convert at enqueue time, while the
+  request is still available.
+- *No SSR helper* in ng-spark (S-TZ2). The guide documents the `DatePipe` limitation instead.
 ---
 
 ## 5. Risks
