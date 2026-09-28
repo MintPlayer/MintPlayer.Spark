@@ -70,6 +70,15 @@ with `Spark:Mail:Mailpit:{Host,Port,Tags}`). It sends real SMTP, so Mailpit show
 tags each mail with its template and lane (`X-Tags`); the UI is at http://localhost:8025. Mailpit, the
 pickup folder and loopback SMTP need no redirect.
 
+Or let the app start Mailpit: `Spark:Mail:Mailpit:AutoStart=true` (Development only; ignored
+elsewhere). `Mode=Binary` (default) runs an installed `mailpit` — never downloaded; install it with
+`winget install axllent.mailpit` or `scoop install mailpit` — and `Mode=Docker` runs the pinned
+`axllent/mailpit:v1.31.3` image as container `spark-mailpit`. It never blocks startup, reuses whatever
+already listens on the SMTP port or an existing container of that name, and at shutdown stops only
+what it started. On Windows the binary is tied to the host with a kill-on-close Job Object, so it dies
+even when the host crashes; on Linux and macOS a leftover from a crash is adopted by the next run. The
+MailManager README lists every option.
+
 ---
 
 ## 2. What your host blocks before you write any code

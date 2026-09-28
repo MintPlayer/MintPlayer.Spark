@@ -76,6 +76,38 @@ docker run -d --name mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit
 
 then `spark.AddMailManager().UseMailpitTransport()`; the UI is at http://localhost:8025.
 
+**AutoStart** (opt-in): `Spark:Mail:Mailpit:AutoStart=true` makes the host start Mailpit itself —
+**only in the Development environment** (elsewhere it is ignored with one Information line).
+
+| `Spark:Mail:Mailpit:…` | Default | |
+|---|---|---|
+| `AutoStart` | `false` | |
+| `Mode` | `Binary` | `Binary` runs `mailpit` from `PATH` (or `ExecutablePath`) with `--smtp 127.0.0.1:{Port} --listen 127.0.0.1:{UiPort}`; it is **never downloaded**. `Docker` runs `docker run --rm -d --name {ContainerName} --label spark.mailpit.owner={ApplicationName} -p {Port}:1025 -p {UiPort}:8025 axllent/mailpit:{ImageTag}`. |
+| `ExecutablePath` | — | Binary mode. |
+| `UiPort` | `8025` | |
+| `ContainerName` | `spark-mailpit` | Docker mode; an existing container with this name is reused (started when stopped). |
+| `ImageTag` | `v1.31.3` (pinned) | Docker mode. |
+
+- It runs as a hosted service that **never blocks startup** and never waits: the mail lanes' retry
+  covers the first seconds. The UI URL is logged once Mailpit is up.
+- Whatever already **listens on the SMTP port** is reused, and nothing is started.
+- A missing binary is one warning with install hints (`winget install axllent.mailpit`,
+  `scoop install mailpit`, or https://github.com/axllent/mailpit/releases); Docker not installed or its
+  daemon down is one warning. The app starts either way.
+- **Shutdown stops only what this process started**: in binary mode the whole process tree is
+  killed; in Docker mode `docker stop` is sent only to a container that carries
+  `spark.mailpit.owner={ApplicationName}` **and** that this process created or started — a container
+  that was already running, or that someone else made, stays up.
+- **Windows, binary mode**: the Mailpit process is put in a Job Object with
+  `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, held for the host's lifetime, so Mailpit dies with the host
+  even when it crashes or the debugger stops it. If the assignment fails, one warning, and the
+  graceful stop at shutdown still applies.
+- **Linux and macOS, binary mode**: there is no reliable parent-death hook for a process started
+  with `Process.Start`, and no polling watchdog by design. The graceful stop at shutdown applies; a
+  Mailpit left over from a crash is harmless, because the next run finds it listening on the port and
+  adopts it.
+- Every command is started with an argument list, never through a shell.
+
 **Failure classification**: an SMTP 5xx reply (sender or recipient refused) and an authentication
 failure throw `NonRetryableException` — dead-lettered at once and **logged as an error**, because a
 relay refusing the sender (a `553` from Postfix `ALLOWED_SENDER_DOMAINS`) refuses every mail the same

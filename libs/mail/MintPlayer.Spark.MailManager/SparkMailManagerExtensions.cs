@@ -109,12 +109,17 @@ public static class SparkMailManagerExtensions
     /// SMTP into a local Mailpit (<c>docker run -d --name mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit</c>):
     /// <c>localhost:1025</c>, no TLS, no authentication, overridable through <c>Spark:Mail:Mailpit:{Host,Port,Tags}</c>
     /// and <paramref name="configure"/>. Every mail gets Mailpit's <c>X-Tags</c> (template, lane, extra tags).
-    /// Never delivers to real recipients, so Development needs no <c>RedirectTo</c>.
+    /// Never delivers to real recipients, so Development needs no <c>RedirectTo</c>. With
+    /// <c>Spark:Mail:Mailpit:AutoStart</c>, Mailpit is started with the host in Development (see
+    /// <see cref="SparkMailMailpitOptions.AutoStart"/>).
     /// </summary>
     public static ISparkBuilder UseMailpitTransport(this ISparkBuilder builder, Action<SparkMailMailpitOptions>? configure = null)
     {
         if (configure is not null)
             builder.Services.PostConfigure<SparkMailOptions>(o => configure(o.Mailpit));
+        // Spark:Mail:Mailpit:AutoStart (Development only); a no-op hosted service otherwise.
+        builder.Services.TryAddSingleton<IMailpitLauncher, MailpitLauncher>();
+        builder.Services.AddHostedService<MailpitAutoStart>();
         return builder.RegisterMailTransport<MailpitMailTransport>(nameof(UseMailpitTransport));
     }
 

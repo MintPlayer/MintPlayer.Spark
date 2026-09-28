@@ -182,6 +182,23 @@ Implemented in M3 as specified in D13; the author-facing contract is in `guide-c
   a transport that delivers to real recipients without `Spark:Mail:Development:RedirectTo` refuses
   startup (set RedirectTo in user secrets, or use Mailpit). In Production `RedirectTo` itself refuses
   startup; other environments (staging, E2E) keep redirecting with a warning.
+- **Owner decision (2026-09-28, during M10): Mailpit AutoStart.** `Spark:Mail:Mailpit:AutoStart`
+  (default `false`) with `Mode` = `Binary` (default: `mailpit` from `PATH` or `ExecutablePath`, `--smtp`
+  and `--listen` from the configured SMTP port and `UiPort`, default 8025; never downloaded) or `Docker`
+  (`docker run --rm -d --name spark-mailpit -p <smtp>:1025 -p <ui>:8025 axllent/mailpit:v1.31.3` by default, `ImageTag` configurable;
+  an existing container of that name is reused and started). Only in Development (elsewhere: ignored,
+  one Information line). A listener already on the SMTP port is reused and nothing starts. A hosted
+  service that never blocks startup; logs the UI URL; on shutdown stops only what this process started
+  (the process tree, or `docker stop` of a container it started). A missing binary or Docker gives one
+  warning (install hints: `winget install axllent.mailpit`, `scoop install mailpit`, the GitHub release)
+  and the app continues. `ProcessStartInfo` with an argument list, never a shell string.
+  Process lifetime: on Windows the started binary is assigned to a Job Object with
+  `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, its handle held for the host's lifetime, so Mailpit dies with a
+  crashed or debugger-stopped host (assignment failure → one warning, graceful stop only). Linux/macOS
+  have no reliable parent-death hook from `Process.Start` and no watchdog is added: graceful stop on
+  shutdown, and a leftover from a crash is adopted by the next run through the port-in-use reuse. Docker
+  containers are labelled `spark.mailpit.owner=<ApplicationName>`; only a labelled container this
+  process created or started is stopped.
 
 ### 3.11 Queue throttling (item 11) — T8
 

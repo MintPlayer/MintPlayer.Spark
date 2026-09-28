@@ -117,6 +117,40 @@ public sealed class SparkMailMailpitOptions
 
     /// <summary>The socket timeout for one send. Default 30 seconds.</summary>
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Start Mailpit with the host — only in the Development environment (elsewhere ignored, with one
+    /// Information line). Never blocks startup, reuses whatever already listens on <see cref="Port"/>,
+    /// and on shutdown stops only what it started. Default <see langword="false"/>.
+    /// </summary>
+    public bool AutoStart { get; set; }
+
+    /// <summary>How <see cref="AutoStart"/> runs Mailpit. Default <see cref="SparkMailMailpitMode.Binary"/>.</summary>
+    public SparkMailMailpitMode Mode { get; set; } = SparkMailMailpitMode.Binary;
+
+    /// <summary>The <c>mailpit</c> executable for <see cref="SparkMailMailpitMode.Binary"/>; null searches <c>PATH</c>. Never downloaded.</summary>
+    public string? ExecutablePath { get; set; }
+
+    /// <summary>Mailpit's web UI port. Default 8025.</summary>
+    public int UiPort { get; set; } = 8025;
+
+    /// <summary>The container name for <see cref="SparkMailMailpitMode.Docker"/>; an existing one is reused. Default <c>spark-mailpit</c>.</summary>
+    public string ContainerName { get; set; } = "spark-mailpit";
+
+    /// <summary>The <c>axllent/mailpit</c> image tag for <see cref="SparkMailMailpitMode.Docker"/>. Pinned by default (<see cref="DefaultImageTag"/>).</summary>
+    public string ImageTag { get; set; } = DefaultImageTag;
+
+    /// <summary>The pinned default image tag (the newest release on 2026-09-28).</summary>
+    public const string DefaultImageTag = "v1.31.3";
+}
+
+/// <summary>How <see cref="SparkMailMailpitOptions.AutoStart"/> runs Mailpit.</summary>
+public enum SparkMailMailpitMode
+{
+    /// <summary>The <c>mailpit</c> executable from <c>PATH</c> or <see cref="SparkMailMailpitOptions.ExecutablePath"/>.</summary>
+    Binary,
+    /// <summary><c>docker run axllent/mailpit:{ImageTag}</c>.</summary>
+    Docker,
 }
 
 /// <summary><c>Spark:Mail:Templates</c>.</summary>
