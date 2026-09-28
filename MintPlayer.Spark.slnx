@@ -52,6 +52,10 @@
   <Folder Name="/libs/identity_provider/">
     <Project Path="libs/identity_provider/MintPlayer.Spark.IdentityProvider/MintPlayer.Spark.IdentityProvider.csproj" />
   </Folder>
+  <Folder Name="/libs/mail/">
+    <Project Path="libs/mail/MintPlayer.Spark.MailManager.Abstractions/MintPlayer.Spark.MailManager.Abstractions.csproj" />
+    <Project Path="libs/mail/MintPlayer.Spark.MailManager/MintPlayer.Spark.MailManager.csproj" />
+  </Folder>
   <Folder Name="/libs/messaging/">
     <Project Path="libs/messaging/MintPlayer.Spark.Messaging.Abstractions/MintPlayer.Spark.Messaging.Abstractions.csproj" />
     <Project Path="libs/messaging/MintPlayer.Spark.Messaging/MintPlayer.Spark.Messaging.csproj" />

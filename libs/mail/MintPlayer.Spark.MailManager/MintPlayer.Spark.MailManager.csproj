@@ -1,0 +1,52 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.MailManager</PackageId>
+		<Version>11.0.0-preview.91</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Outgoing mail for MintPlayer.Spark, as building blocks configured through IConfiguration: MJML + Scriban templates with a per-recipient culture fallback chain, queued through Spark Messaging lanes (mail-transactional, mail-bulk), SMTP (MailKit) / pickup-folder / custom transports, payload protection, VERP bounces with a pluggable DSN parser, a suppression list, one-click List-Unsubscribe and campaign fan-out.</Description>
+		<PackageTags>mail;email;smtp;mjml;scriban;bounces;verp;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="12.1.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="12.1.0" GeneratePathProperty="true" />
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.2.0-rc.0" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+		<PackageReference Include="MailKit" Version="4.18.1" />
+		<PackageReference Include="Mjml.Net" Version="4.15.0" />
+		<!-- Scriban.Signed, not Scriban: the same library strong-named. WireMock.Net (used by the test
+		     project) depends on Scriban.Signed, and both packages side by side are CS0433 on every type. -->
+		<PackageReference Include="Scriban.Signed" Version="7.5.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\MintPlayer.Spark.MailManager.Abstractions\MintPlayer.Spark.MailManager.Abstractions.csproj" />
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\..\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+	</ItemGroup>
+
+</Project>

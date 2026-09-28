@@ -37,6 +37,15 @@
     <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- #460 spike S-M1: where embedded .mjml resources land for each naming layout. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Mail\SpikeM1Templates\folder\**\*.mjml" />
+    <EmbeddedResource Include="Mail\SpikeM1Templates\suffix\*.mjml" />
+    <EmbeddedResource Include="Mail\SpikeM1Templates\suffixnoculture\*.mjml" WithCulture="false" />
+    <Content Include="Mail\SpikeM1Templates\content\*.mjml" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="Mail\SpikeM1Templates\logical\**\*.mjml" LogicalName="SparkMailSpike/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
@@ -53,6 +62,7 @@
     <ProjectReference Include="..\..\libs\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
     <ProjectReference Include="..\..\libs\soft_delete\MintPlayer.Spark.SoftDelete\MintPlayer.Spark.SoftDelete.csproj" />
     <ProjectReference Include="..\..\libs\history\MintPlayer.Spark.History\MintPlayer.Spark.History.csproj" />
+    <ProjectReference Include="..\..\libs\mail\MintPlayer.Spark.MailManager\MintPlayer.Spark.MailManager.csproj" />
     <ProjectReference Include="..\..\libs\controllers\MintPlayer.Spark.Controllers\MintPlayer.Spark.Controllers.csproj" />
     <ProjectReference Include="..\..\libs\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
     <ProjectReference Include="..\..\libs\all_features\MintPlayer.Spark.AllFeatures\MintPlayer.Spark.AllFeatures.csproj" />

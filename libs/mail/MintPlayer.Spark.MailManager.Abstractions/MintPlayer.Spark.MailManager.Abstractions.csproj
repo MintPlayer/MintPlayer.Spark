@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.MailManager.Abstractions</PackageId>
+		<Version>11.0.0-preview.91</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Abstractions for MintPlayer.Spark.MailManager: ISparkMailer (queue a templated mail), SparkMailRequest, ISparkMailSuppressions, template sources and the recipient-culture seam. Reference this from a library that sends mail without taking MailKit, Mjml.Net or Scriban.</Description>
+		<PackageTags>mail;email;templates;abstractions;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+	</PropertyGroup>
+
+</Project>
