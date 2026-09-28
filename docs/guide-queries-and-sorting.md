@@ -359,6 +359,15 @@ channel. An unknown column is a 400.
 > makes column filtering expressible when it arrives: several columns, each with a multi-selection, is
 > not something a second such encoding should have to carry.
 
+### Soft-deletion mode (`deleted`)
+
+`POST /spark/queries/execute` and `/spark/queries/distinct-values` take an optional
+`"deleted": "exclude" | "include" | "only"` (default `exclude`; ng-spark:
+`executeQuery(id, { deleted: 'include' })`). Core does not filter on it: it hands it to every row
+policy as `RowPolicyContext.Deleted`, and the policy that implements soft deletion decides whether
+this caller may widen the view (only holders of `ViewDeleted` on the type). See
+[guide-row-security.md](./guide-row-security.md#row-policies--one-rule-for-many-types-460).
+
 If `sortBy` or `sortDirection` are not provided, the query falls back to the values defined in the query JSON file.
 
 ### Sortable Columns in the Frontend

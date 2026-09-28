@@ -53,6 +53,13 @@ internal sealed class ExecuteQueryRequest : IRetryableRequest
     /// <inheritdoc cref="ParentId" />
     public string? ParentType { get; set; }
 
+    /// <summary>
+    /// Whether deleted rows are excluded (default), included, or the only rows (#460, T2). Carried to
+    /// every row policy through <c>RowPolicyContext.Deleted</c>; honoured by the SoftDelete package's
+    /// policy only for holders of <c>ViewDeleted/T</c>. Core itself filters nothing on it.
+    /// </summary>
+    public SparkDeletedFilter? Deleted { get; set; }
+
     /// <inheritdoc />
     public RetryResult[]? RetryResults { get; set; }
 }
@@ -83,4 +90,7 @@ internal sealed class DistinctValuesRequest
 
     /// <inheritdoc cref="ParentId" />
     public string? ParentType { get; set; }
+
+    /// <summary>The same soft-deletion mode as the grid the panel belongs to (#460, T2).</summary>
+    public SparkDeletedFilter? Deleted { get; set; }
 }

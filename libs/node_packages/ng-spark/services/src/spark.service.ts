@@ -1,7 +1,7 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { CustomActionDefinition, DistinctValuesResult, EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, QueryColumnFilter, QueryResult, SparkQuery, RetryActionPayload, RetryActionResult } from '@mintplayer/ng-spark/models';
+import { CustomActionDefinition, DistinctValuesResult, EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, QueryColumnFilter, QueryResult, SparkDeletedFilter, SparkQuery, RetryActionPayload, RetryActionResult } from '@mintplayer/ng-spark/models';
 import { ClientOperationEnvelope, RetryOperation, SparkClientOperationDispatcher } from '@mintplayer/ng-spark/client-operations';
 import { SortColumn } from '@mintplayer/pagination';
 import { RetryActionService } from './retry-action.service';
@@ -131,6 +131,8 @@ export class SparkService {
       // Per-column value filters (#431). The shape that could not be expressed as a query string,
       // and the reason these reads are a POST at all.
       columns: options?.columns?.length ? options.columns : undefined,
+      // Soft-deletion mode (#460, T2). Omitted = exclude.
+      deleted: options?.deleted,
     });
   }
 
@@ -149,12 +151,15 @@ export class SparkService {
     columns?: QueryColumnFilter[];
     parentId?: string;
     parentType?: string;
+    /** The same soft-deletion mode as the grid the panel belongs to (#460). */
+    deleted?: SparkDeletedFilter;
   }): Promise<DistinctValuesResult> {
     return this.sendRead<DistinctValuesResult>(`${this.baseUrl}/queries/distinct-values`, {
       queryId,
       column,
       search: options?.search || undefined,
       columns: options?.columns?.length ? options.columns : undefined,
+      deleted: options?.deleted,
       parentId: options?.parentId,
       parentType: options?.parentType,
     });
@@ -435,4 +440,9 @@ export interface ExecuteQueryOptions {
   search?: string;
   /** Per-column value filters (#431). Columns AND together; values within a column OR. */
   columns?: QueryColumnFilter[];
+  /**
+   * Soft-deletion mode (#460): `exclude` (default), `include`, `only`. Sent only when set; the server
+   * honours a widening only for callers holding `ViewDeleted` on the type.
+   */
+  deleted?: SparkDeletedFilter;
 }

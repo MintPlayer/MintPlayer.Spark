@@ -36,6 +36,7 @@ internal sealed partial class ExecuteQuery : IPostEndpoint
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IClientAccessor clientAccessor;
+    [Inject] private readonly IRowPolicyRequestState rowPolicyRequestState;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -50,6 +51,10 @@ internal sealed partial class ExecuteQuery : IPostEndpoint
 
         // A query hook can prompt now, which is what having a body buys.
         RetryScope.Accept(retryAccessor, request);
+
+        // T2 (#460): the soft-deletion mode reaches row policies through RowPolicyContext. Set before
+        // anything asks row security, because row filters are memoized per request.
+        rowPolicyRequestState.Deleted = request.Deleted ?? SparkDeletedFilter.Exclude;
 
         var query = queryLoader.ResolveQuery(id);
 

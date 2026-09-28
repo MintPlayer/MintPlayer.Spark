@@ -43,6 +43,7 @@ internal sealed partial class DistinctValues : IPostEndpoint
     [Inject] private readonly IDatabaseAccess databaseAccess;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IPermissionService permissionService;
+    [Inject] private readonly IRowPolicyRequestState rowPolicyRequestState;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -54,6 +55,9 @@ internal sealed partial class DistinctValues : IPostEndpoint
             // The same 404 a denied query gets, for the same reason.
             return Results.Json(new { error = "Query not found" }, statusCode: 404);
         }
+
+        // T2 (#460): the same soft-deletion mode as the grid, so the panel offers what the grid can show.
+        rowPolicyRequestState.Deleted = request.Deleted ?? SparkDeletedFilter.Exclude;
 
         var query = queryLoader.ResolveQuery(id);
 

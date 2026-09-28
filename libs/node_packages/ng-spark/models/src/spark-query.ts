@@ -22,3 +22,10 @@ export interface SparkQuery {
   /** When true, this query uses WebSocket streaming with snapshot + patch updates. */
   isStreamingQuery?: boolean;
 }
+
+/**
+ * Which rows a query asks for with respect to soft deletion (#460). Core carries it to every row
+ * policy; the SoftDelete package's policy honours it only for holders of `ViewDeleted` on the type.
+ * Omitted means `'exclude'`.
+ */
+export type SparkDeletedFilter = 'exclude' | 'include' | 'only';
