@@ -149,6 +149,19 @@ believing it applied the rule. Use `ISparkRowRule<T>.ApplyAsync`, which applies 
 runs and signed-in callers are denied too. To restrict a type, *move* the grant to a narrower group
 — never delete it.
 
+**Rules for many types at once** (soft deletion, tenancy, locks) are row policies and interceptors,
+not copies in every Actions class — see `docs/guide-row-security.md`:
+
+- `spark.AddSparkRowPolicy<T>()` with `RowFilterPolicy<TEntityOrInterface>` (a predicate, pushed
+  down, ANDed with `GetRowFilterAsync`) or `RowCheckPolicy<T>` (per row — switches DB paging off).
+  Write absent-field-safe predicates: `x.IsDeleted != true`, **never** `!x.IsDeleted` (measured: a
+  document without the field does not match `!x`).
+- `spark.AddPersistentObjectInterceptor<T>()` with `IPersistentObjectInterceptor` — before/after
+  save, before/after delete (`DeleteContext.Replace()` replaces the hard delete and cannot be
+  defeated by an `OnDeleteAsync` override), after load. Runs in `IDatabaseAccess` after every gate.
+- ⚠️ An `OnLoadAsync`/`OnSaveAsync` override that skips the base also skips the row gate / WITH
+  CHECK / before-save interceptors for its type — policies included.
+
 ### `OnRefreshAsync` — forms that reshape themselves
 
 Mark an attribute `"triggersRefresh": true` in the model JSON (hand-set; synchronize preserves it).

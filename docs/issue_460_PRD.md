@@ -243,6 +243,88 @@ Each spike states what it proves. Run them in the milestone that needs them, bef
 | S-PKG1 | nuget.org `MintPlayer.*` prefix reservation + CI API key scope cover the 6 new package ids (**owner checks in the nuget.org account**). | publish |
 | S-PKG2 | `dotnet pack` on the branch includes the new libs without `IsPackable` tweaks. | publish |
 
+### 4.1 Spike results (measured)
+
+Measured facts only. Each spike is kept as a test so the answer stays pinned.
+
+**S1 — composed filter + column filter + search (M2, 2026-09-28).**
+*Question:* do two rebound lambdas joined with `AndAlso`, then a column filter, then a two-field
+search, translate on RavenDB 7.2 as one AND group ahead of the search group, on Corax and Lucene?
+*Method:* `RowPolicyCompositionSpikeTests_{Corax,Lucene}.S1_…`: 25 documents (16 alice incl. 6
+deleted, 5 bob, 4 legacy documents **without** the `IsDeleted` field), an actions-style filter
+`d => d.Owner == "alice"` and a policy `(ISpikeSoftDeletable x) => x.IsDeleted != true` combined by
+`RowFilterExpressions.Combine`, then `.Where(Category == "A").Search(Title).Search(Body)`, against the
+collection (auto index) and a static index, with the database's auto and static engines set per
+fixture and verified through `IndexStats.SearchEngineType`.
+*Answer:* identical RQL on all four combinations —
+`where ((Owner = $p0 and IsDeleted != $p1)) and (Category = $p2) and (search(Title, $p3) or search(Body, $p4))`.
+No `Invoke`, no search-options leak; the result set was exactly the 4 expected rows on every
+combination.
+
+**S3 — absent field and expression shape (M2, 2026-09-28).**
+*Question:* `IsDeleted != true` vs `!x.IsDeleted` on documents without the field, and which shape the
+provider translates: the interface cast `((ISoftDeletable)row).IsDeleted` or the property
+`row.IsDeleted`.
+*Method:* same fixture, same four engine/source combinations; plus the compiled predicate over a loaded
+legacy document (the detail and distinct-value paths evaluate in memory).
+*Answer:* `!= true` returns 14 rows (10 explicit `false` + all 4 without the field); `!x.IsDeleted`
+returns 10 — it drops **every** document lacking the field, on both engines, collection and static
+index. In memory both shapes return `true` for the legacy document (CLR default `false`), so the
+divergence exists only in the database. Both expression shapes translate: the cast shape produced RQL
+byte-identical to the property shape and the same 14 rows. **Decision:** rebinding uses the property
+shape (member re-resolved by name on the target type), because it is the only shape that also works on
+an index projection (S2), which implements no interface; the cast is used only when a predicate uses
+the parameter as a whole value.
+
+**S2 — projection rebinding (#285, M2, 2026-09-28).**
+*Question:* does an entity filter rebound onto an index projection by member name push down, with
+correct paging and totals under 30% deleted rows, and is a missing member detected?
+*Method:* `S2_…`: the composed filter rebound onto `SpikeRow` (stored index fields `Owner`, `Title`,
+`IsDeleted`), applied after `ProjectInto` (the order the query executor uses), `Skip(10).Take(5)` with
+statistics; and a projection without `Owner`.
+*Answer:* RQL `from index 'SpikeDocs/Overview' where (Owner = $p0 and IsDeleted != $p1) order by Title, id() select id() as Id, Owner, Title, IsDeleted`;
+`TotalResults` = 14 (25 rows − 5 bob − 6 deleted), the page held rows 11–14 (4 rows); every row
+`Owner == alice`, not deleted. The projection without `Owner` makes `Rebind` return null → fallback.
+Also through `RowSecurity.ComposeRowFilterAsync` (`Issue285_…`): mode `PushedDownOntoProjection`, the
+right rows; a projection lacking `LicensePlate` → `ProjectionFallback`. Note: the query executor still
+pages a static-index query in memory (fan-out rule, #431 M14); the pushdown narrows what is read.
+
+**S4 — delete replacement vs an `OnDeleteAsync` override (M2, 2026-09-28).**
+*Question:* with an Actions class whose `OnDeleteAsync` hard-deletes without calling the base, does a
+replacement decided in `DatabaseAccess` hold, and does replication avoid a hard delete?
+*Method:* `PersistentObjectInterceptorTests.S4_…` through `IDatabaseAccess` with two interceptors and a
+recording `ISyncActionInterceptor`.
+*Answer:* the document survives with `IsDeleted = true`; the override's `OnDeleteAsync` is never
+called; call order `actions.OnBeforeDeleteAsync → replace.before → stamp.before → stamp.after →
+replace.after`; replication received one `HandleSaveAsync(entity, id)` and no `HandleDeleteAsync`. A
+`Purge` is not replaced: the override deletes, replication receives the delete.
+
+**S5 — `HasRowRule` split (M2, 2026-09-28).**
+*Question:* under a non-visibility filter policy, do the anonymous-readable validator, the
+`SparkQueryPage<T>` refusal and the per-row `Can` flags behave?
+*Method:* `RowPolicyCompositionTests.S5_…` (kinds + `RowPolicyDeclarationValidator.Validate` with an
+anonymous `Query/RpTag` grant) and `RowPolicyPipelineTests.S5_…` (detail load through `IDatabaseAccess`
+with a soft-delete filter policy and a lock check policy, no Actions override).
+*Answer:* a type governed only by a soft-delete filter reports `RowRuleKinds.FilterPolicy`; the
+validator **still reports** the anonymous type (soft deletion does not satisfy it); the
+`SparkQueryPage` refusal does not fire for it. A visibility policy or check policy does trigger both.
+`Can` is computed: live row `Edit/Delete = true/true`, locked row `false/true`; a soft-deleted row is
+404 by id; a create that would produce a deleted row is refused by the rerouted WITH CHECK.
+
+**S8 — request budget with breadcrumbs and three policies (M2, 2026-09-28).**
+*Question:* breadcrumbs + 3 policies stay under 30 session requests, ≤ 1 policy call per (type,
+action)?
+*Method:* `RowPolicyBreadcrumbTests.S8_…`: 50 spots → cars → people, a soft-delete filter policy, an
+every-type filter policy and a check policy, real `RowSecurity` + `BreadcrumbResolver`.
+*Answer:* the resolution added **2** session requests (one batched load per level), independent of
+row count; every filter policy was called exactly **once** per (type, `Read`). Check policies run per
+row by design (in memory, no request).
+
+**Deviation (S5):** §3.1 said filter-only policies do not trigger the `SparkQueryPage<T>` refusal. A
+*visibility* filter policy (tenancy) now does: it removes rows the caller may not see from the
+author's page after the author counted them, which is exactly the total-count oracle the refusal
+exists to stop. Only non-visibility filter policies (soft deletion) are exempt, as intended.
+
 ---
 
 ## 5. Risks
