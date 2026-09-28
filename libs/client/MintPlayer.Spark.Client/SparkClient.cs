@@ -297,9 +297,10 @@ public partial class SparkClient : IDisposable
     /// <remarks>
     /// The Create endpoint returns the new <c>ClientOperationEnvelope</c> wire shape
     /// (<c>{ result, operations }</c>); this method unwraps the envelope and returns just the
-    /// <see cref="PersistentObject"/>. Any client operations emitted by server-side action code
-    /// (notify / navigate / refresh / disableAction) are currently dropped by this SDK — see
-    /// docs/prd/PRD-ClientOperations.md.
+    /// <see cref="PersistentObject"/>. Client operations emitted by server-side action code
+    /// (notify / navigate / refresh) are passed to <paramref name="onOperation"/> (or the client-wide
+    /// handler); with neither, they are dropped. An operation this SDK does not know — including
+    /// an older server's removed <c>disableAction</c> — arrives as <see cref="SparkUnknownOperation"/>.
     /// </remarks>
     public Task<PersistentObject> CreatePersistentObjectAsync(
         PersistentObject obj, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null)

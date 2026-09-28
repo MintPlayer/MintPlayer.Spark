@@ -55,8 +55,9 @@ builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<CodeCoverage.Services.ISourceContentCache, CodeCoverage.Services.SourceContentCache>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddCodeCoverage();
-// Outgoing mail (#460 M8, D10): MailManager under Spark:Mail. Added only when a relay AND a sender
-// are configured — the same rule the hand-written SmtpLinkConfirmationSender had. Without it the
+// Outgoing mail (#460 M8, D10): MailManager under Spark:Mail. Added only when a relay
+// (Spark:Mail:Smtp:Host) AND a sender (Spark:Mail:From:Address) are configured; compose maps both
+// from MAIL_HOST / MAIL_FROM_ADDRESS, and an unset MAIL_FROM_ADDRESS leaves mail off. Without it the
 // app has no way to send, which stays a supported state: Spark then registers no link-confirmation
 // sender, so the ConfirmByEmail startup guard refuses that mode instead of discarding mail, and
 // LocalCredentials is Disabled (no registration), so the D6 guard does not apply.
