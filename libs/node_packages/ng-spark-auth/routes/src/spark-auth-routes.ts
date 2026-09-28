@@ -8,7 +8,7 @@ import {
 } from '@mintplayer/ng-spark-auth/models';
 
 import type { CanActivateFn } from '@angular/router';
-import { sparkAuthenticatedGuard } from '@mintplayer/ng-spark-auth/guards';
+import { sparkAuthGuard } from '@mintplayer/ng-spark-auth/guards';
 
 type Loader = () => Promise<any>;
 
@@ -218,7 +218,7 @@ export type SparkAccountRouteOptions =
   Pick<SparkAuthRouteEntries, 'confirmEmail' | 'account' | 'profile' | 'changePassword' | 'twoFactorSetup' | 'externalLogins' | 'passkeys' | 'personalData'>
   & {
     /**
-     * Guards the signed-in pages (everything but confirm-email). Defaults to `[sparkAuthenticatedGuard]`,
+     * Guards the signed-in pages (everything but confirm-email). Defaults to `[sparkAuthGuard]`,
      * which waits for the session check so a hard reload does not bounce a signed-in user to the
      * sign-in page. Pass `[]` when the pages sit under a guarded parent route already.
      */
@@ -249,7 +249,7 @@ export type SparkAccountRouteOptions =
  * group neither shadows `sparkRoutes()` nor is shadowed by it.
  */
 export function withAccount(options?: SparkAccountRouteOptions): SparkAuthRoutesFeature {
-  const guard = options?.canActivate ?? [sparkAuthenticatedGuard];
+  const guard = options?.canActivate ?? [sparkAuthGuard];
   const excluded = new Set(options?.exclude ?? []);
   const paths: SparkAuthRoutePaths = {};
   const children: Child[] = [];

@@ -371,8 +371,8 @@ provideSparkAccountProfileFields(
 | Passkeys | `account/passkeys` | `SparkPasskeysComponent` | `passkeys/*` |
 | Personal data + deletion | `account/personal-data` | `SparkPersonalDataComponent` | `GET manage/personal-data`, `DELETE manage/account` |
 
-- **Guarding and paths.** Every page except confirm-email is guarded by `sparkAuthenticatedGuard`.
-  That guard waits for the session check, so reloading an account page does not send a signed-in user
+- **Guarding and paths.** Every page except confirm-email is guarded by `sparkAuthGuard`
+  (`sparkAuthenticatedGuard` is the same guard). That guard waits for the session check, so reloading an account page does not send a signed-in user
   to the sign-in page. Override the guard with `withAccount({ canActivate: [...] })`, change a path
   with `withAccount({ profile: 'me' })`, or leave pages out with `exclude: ['externalLogins']`.
   `confirm-email` must match `Spark:Auth:Links:ConfirmEmailPath`, which is where confirmation mails

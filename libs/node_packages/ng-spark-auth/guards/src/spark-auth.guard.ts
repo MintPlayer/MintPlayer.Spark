@@ -3,27 +3,15 @@ import { CanActivateFn, Router } from '@angular/router';
 import { SPARK_AUTH_CONFIG, resolveSignInUrl } from '@mintplayer/ng-spark-auth/models';
 import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
 
-export const sparkAuthGuard: CanActivateFn = (route, state) => {
-  const authService = inject(SparkAuthService);
-  const router = inject(Router);
-  const config = inject(SPARK_AUTH_CONFIG);
-
-  if (authService.isAuthenticated()) {
-    return true;
-  }
-
-  return router.createUrlTree([resolveSignInUrl(config, router)], {
-    queryParams: { returnUrl: state.url },
-  });
-};
-
 /**
- * Like {@link sparkAuthGuard}, but waits for the session check when the user is not known to be
- * signed in yet. `SparkAuthService` reads `/me` asynchronously at start-up, so on a hard reload of an
- * account page the synchronous guard would send a signed-in user to the sign-in page. The account
- * pages mounted by `withAccount()` use this one.
+ * Lets a signed-in user through and sends everyone else to the sign-in page with a `returnUrl`.
+ *
+ * `SparkAuthService` reads `/me` asynchronously at start-up, so on a hard reload the user is not
+ * known to be signed in yet when the router runs this guard. When the session is not known, the
+ * guard waits for the session check before deciding, so a signed-in user is never bounced to the
+ * sign-in page. A session that is already known passes without a round trip.
  */
-export const sparkAuthenticatedGuard: CanActivateFn = async (route, state) => {
+export const sparkAuthGuard: CanActivateFn = async (route, state) => {
   const authService = inject(SparkAuthService);
   const router = inject(Router);
   const config = inject(SPARK_AUTH_CONFIG);
@@ -36,3 +24,9 @@ export const sparkAuthenticatedGuard: CanActivateFn = async (route, state) => {
     queryParams: { returnUrl: state.url },
   });
 };
+
+/**
+ * The same guard as {@link sparkAuthGuard}. It existed separately while `sparkAuthGuard` decided
+ * before the session check had finished; both now wait for it.
+ */
+export const sparkAuthenticatedGuard: CanActivateFn = sparkAuthGuard;

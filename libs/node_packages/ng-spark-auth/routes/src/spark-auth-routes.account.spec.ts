@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { linkedInProvider, sparkAuthRoutes, twitterProvider, withAccount, withPasskeys } from './spark-auth-routes';
 import { SPARK_AUTH_CONFIG, SPARK_AUTH_ROUTE_PATHS, defaultSparkAuthConfig } from '@mintplayer/ng-spark-auth/models';
 import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
-import { sparkAuthenticatedGuard } from '@mintplayer/ng-spark-auth/guards';
+import { sparkAuthGuard, sparkAuthenticatedGuard } from '@mintplayer/ng-spark-auth/guards';
 
 describe('withAccount (#460, D16)', () => {
   const children = (...features: Parameters<typeof sparkAuthRoutes>) => sparkAuthRoutes(...features)[0].children;
@@ -38,7 +38,7 @@ describe('withAccount (#460, D16)', () => {
   it('guards every signed-in page with the waiting guard, but never confirm-email', () => {
     for (const child of children(withAccount())) {
       if (child.path === 'confirm-email') expect(child.canActivate).toBeUndefined();
-      else expect(child.canActivate).toEqual([sparkAuthenticatedGuard]);
+      else expect(child.canActivate).toEqual([sparkAuthGuard]);
     }
     expect(children(withAccount({ canActivate: [] })).every((c: any) => !c.canActivate)).toBe(true);
   });
