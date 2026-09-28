@@ -156,6 +156,30 @@ seen. History does not depend on Messaging — publish a message from an observe
 `GET /spark/permissions/{type}` reports `canViewHistory` (`History/T`) and `canRevert` (`Revert/T` and
 `Edit/T`), type-level only.
 
+## Angular UI (`@mintplayer/ng-spark/history`)
+
+```ts
+import { provideSparkHistory } from '@mintplayer/ng-spark/history';
+
+providers: [provideSpark(...), provideSparkHistory()]
+```
+
+This adds a History card to every detail page that `sparkRoutes()` routes to, through the
+`SPARK_DETAIL_PANELS` token from `@mintplayer/ng-spark/panels`. The card lists the revisions newest
+first, with the date, who made the change (the name from `IHistoryUserNameResolver`, else the id),
+and markers for the current revision and delete revisions. Selecting a revision shows two views:
+
+- **Changes**: the shown attributes whose value differs from the current object.
+- **Revision**: a read-only view of every shown attribute.
+
+The card renders only with `canViewHistory`. **Revert** is offered only with `canRevert`, and never
+for the current revision, a delete revision, or a row opened from the recycle bin (`?deleted=only`),
+because a revert saves through the live pipeline. Revert asks for confirmation. After it succeeds,
+the page reloads the object. The page reports a 409 (the row changed meanwhile) and a 404 inline.
+
+Outside the routed pages, use `<spark-po-history [type] [id] [entityType] [current] [permissions]
+[deleted] (reverted)>` directly, or call `SparkHistoryService` (`list`, `get`, `revert`).
+
 ## Limits
 
 - An `OnSaveAsync` override that skips the base implementation skips before-save interceptors for its

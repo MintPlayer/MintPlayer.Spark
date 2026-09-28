@@ -21,6 +21,14 @@
           <ng-container *ngTemplateOutlet="extraActionsTpl"></ng-container>
         </ng-container>
       }
+      <!-- Add-on actions (SPARK_QUERY_LIST_ACTIONS), e.g. the soft-delete Deleted toggle. -->
+      @if (listContext(); as ctx) {
+        @for (action of listActions; track action.id) {
+          <ng-container *bsPriorityNavItem="action.priority ?? 60">
+            <ng-container *ngComponentOutlet="action.component; inputs: { context: ctx }" />
+          </ng-container>
+        }
+      }
     </bs-priority-nav>
   </div>
 
@@ -28,6 +36,9 @@
     {{ (query()?.description | resolveTranslation) || query()?.name || ('common.loading' | t) }}
     @if (isStreaming()) {
       <bs-badge [type]="colors.success" class="ms-2 align-middle spark-live-badge">LIVE</bs-badge>
+    }
+    @if (deletedMode() === 'only') {
+      <bs-badge [type]="colors.secondary" class="ms-2 align-middle spark-deleted-badge">{{ 'softDelete.deleted' | t }}</bs-badge>
     }
   </h2>
 
@@ -87,6 +98,8 @@
         [data]="gridData()"
         [columns]="gridData() ? streamColumns() : null"
         [search]="searchTerm()"
+        [deleted]="deletedMode()"
+        [reloadToken]="gridReloadToken()"
         [rowRoute]="rowRoute()"
         (rowClicked)="rowClicked.emit($event)"
         (customActionExecuted)="customActionExecuted.emit($event)" />

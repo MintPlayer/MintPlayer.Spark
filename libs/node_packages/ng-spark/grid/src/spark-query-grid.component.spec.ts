@@ -174,6 +174,33 @@ describe('SparkQueryGridComponent', () => {
     expect(service.executeQuery.mock.calls.at(-1)![1].search).toBe('alice');
   });
 
+  describe('soft-deletion mode (#460)', () => {
+    it('sends nothing for the default mode', async () => {
+      const { service } = await setup();
+      expect('deleted' in service.executeQuery.mock.calls[0][1]).toBe(false);
+    });
+
+    it('sends the recycle-bin mode, refetches on change and links rows with ?deleted', async () => {
+      const { fixture, c, service } = await setup();
+      service.executeQuery.mockClear();
+
+      fixture.componentRef.setInput('deleted', 'only');
+      fixture.detectChanges();
+      await settle(fixture);
+
+      expect(service.executeQuery).toHaveBeenCalled();
+      expect(service.executeQuery.mock.calls.at(-1)![1].deleted).toBe('only');
+      const link: HTMLAnchorElement | null = fixture.nativeElement.querySelector('a[href]');
+      expect(link?.getAttribute('href')).toContain('deleted=only');
+      expect(c.permissions()?.canRead).toBe(true);
+    });
+
+    it('treats exclude as the default', async () => {
+      const { service } = await setup({}, { deleted: 'exclude' });
+      expect('deleted' in service.executeQuery.mock.calls[0][1]).toBe(false);
+    });
+  });
+
   describe('where the rows come from', () => {
     /**
      * Bound `data` means the host owns the rows. A fetch here would be a second, contradictory

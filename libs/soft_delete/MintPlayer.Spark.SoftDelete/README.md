@@ -109,6 +109,30 @@ edit of that row, which the row gate refuses. Holders of `ViewDeleted/T` or `Res
 job that works on deleted rows sets `Spark:SoftDelete:ApplyInSystemContext = false` (or
 `AddSoftDelete(o => o.ApplyInSystemContext = false)`) — then the system context sees every row.
 
+## Angular UI (`@mintplayer/ng-spark/soft-delete`)
+
+```ts
+import { provideSparkSoftDelete } from '@mintplayer/ng-spark/soft-delete';
+
+providers: [provideSpark(...), provideSparkSoftDelete()]
+```
+
+This adds two things to the pages that `sparkRoutes()` routes to, through the `SPARK_QUERY_LIST_ACTIONS`
+and `SPARK_DETAIL_ACTIONS` tokens from `@mintplayer/ng-spark/panels`:
+
+- **A Deleted toggle** on the query page, shown to holders of `ViewDeleted/T` (`canViewDeleted`). It
+  switches the list to the recycle bin by writing `?deleted=only` to the route, so a reload or the
+  back button keeps the mode. The grid sends `deleted: "only"` with every page and distinct-values
+  request. Row links carry the same parameter, so the detail page loads the row with
+  `/spark/po/load { deleted: "only" }`.
+- **Restore and Purge** on the detail page of a row opened from the recycle bin. Restore needs
+  `canRestore` and Purge needs `canPurge`; Purge asks for confirmation first. On that page, Edit,
+  Delete and custom actions are hidden, since they judge live rows only. After a Restore the page
+  drops `?deleted` and re-reads the row as a live one. After a Purge it goes back.
+
+Core ng-spark understands `?deleted=` on both pages even without this entry point: the entry point
+only adds the controls. The server stays the gate, and a widening from a non-holder is ignored.
+
 ## Observers
 
 ```csharp

@@ -21,6 +21,8 @@ import {
   QueryColumnFilter,
   QueryResultItem,
   SparkQuery,
+  EntityPermissions,
+  SparkDeletedFilter,
   filterQueryActions,
   parseSelectionRule,
   selectionModeFor,
@@ -126,6 +128,27 @@ export class SparkQueryGridComponent {
   reloadToken = input<unknown>(null);
 
   /**
+   * Soft-deletion mode (#460, T2): `exclude` (the default, not sent), `include` or `only` (the
+   * recycle bin). Sent with every page and distinct-values request; the server honours a widening
+   * only for `ViewDeleted` holders. A change goes back to page 1 and refetches, like a filter.
+   * While set, row links carry `?deleted=` so the detail page loads the row the same way — a deleted
+   * row is a 404 by id otherwise.
+   */
+  deleted = input<SparkDeletedFilter | null | undefined>(null);
+
+  /** The mode actually sent: `exclude` and "unset" are the same request. */
+  protected readonly effectiveDeleted = computed(() => {
+    const mode = this.deleted();
+    return mode && mode !== 'exclude' ? mode : undefined;
+  });
+
+  /** Query parameters for the row links; null keeps a plain link. */
+  protected readonly rowQueryParams = computed(() => {
+    const mode = this.effectiveDeleted();
+    return mode ? { deleted: mode } : null;
+  });
+
+  /**
    * Paging and sorting. Two-way, so a host driving `data` can sort those rows by whatever the
    * user actually clicked — the datatable writes the new sort back through here.
    */
@@ -192,6 +215,8 @@ export class SparkQueryGridComponent {
   loading = signal(true);
   canRead = signal(false);
   canCreate = signal(false);
+  /** The entity type's full rights, for hosts (the query page hands them to its add-on actions). */
+  permissions = signal<EntityPermissions | null>(null);
   resultCount = signal<number | null>(null);
   customActions = signal<CustomActionDefinition[]>([]);
 
@@ -314,6 +339,18 @@ export class SparkQueryGridComponent {
       if (firstSearch) { firstSearch = false; return; }
       untracked(() => this.onSearchChanged());
     });
+
+    // A different soft-deletion mode is a different result set: page 1, fresh fetch identity. The
+    // selection is dropped too — ids ticked in the recycle bin are not rows of the live list.
+    let firstDeleted = true;
+    effect(() => {
+      this.effectiveDeleted();
+      if (firstDeleted) { firstDeleted = false; return; }
+      untracked(() => {
+        this.selection.set([]);
+        this.onFilterChanged();
+      });
+    });
   }
 
   /**
@@ -413,6 +450,7 @@ export class SparkQueryGridComponent {
       columns: others,
       parentId: this.parentId(),
       parentType: this.parentType(),
+      deleted: this.effectiveDeleted(),
     });
 
     // A searched list is a subset by construction, so it is never a basis for a complement.
@@ -551,6 +589,7 @@ export class SparkQueryGridComponent {
     this.entityType.set(null);
     this.canRead.set(false);
     this.canCreate.set(false);
+    this.permissions.set(null);
     this.customActions.set([]);
     this.resultCount.set(null);
     // Ids from the previous query are meaningless against the next one, and would be POSTed as
@@ -577,6 +616,7 @@ export class SparkQueryGridComponent {
         ]);
         this.canRead.set(permissions.canRead);
         this.canCreate.set(permissions.canCreate);
+        this.permissions.set(permissions);
         // 'query', not 'list'. The server model has always documented "detail" | "query" |
         // "both"; a filter testing for a value nothing emits renders the action NOWHERE.
         this.customActions.set(filterQueryActions(actions));
@@ -635,6 +675,8 @@ export class SparkQueryGridComponent {
       // identity `reload()` creates, not the value captured when this closure was built.
       columns: this.filters(),
       parentId, parentType,
+      // Only when set, so a plain grid's request body is exactly what it was before #460.
+      ...(this.effectiveDeleted() ? { deleted: this.effectiveDeleted() } : {}),
     }).then(r => {
       this.errorMessage.set(null);
       this.resultCount.set(r.totalItems);

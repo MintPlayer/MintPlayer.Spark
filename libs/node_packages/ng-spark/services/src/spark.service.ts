@@ -336,6 +336,17 @@ export class SparkService {
     ));
   }
 
+  /**
+   * Posts to an add-on package's endpoint under the Spark base URL (`/spark` + `path`) and unwraps
+   * the `ClientOperationEnvelope` exactly like the built-in mutations: operations are dispatched and
+   * a 449 retry opens the retry modal. For the ng-spark add-on entry points (`soft-delete`,
+   * `history`, `moderation`) whose server packages answer through core's envelope helpers
+   * (`SparkAddOnEndpoints`, #460).
+   */
+  postEnvelope<T>(path: string, body: Record<string, unknown>): Promise<T> {
+    return this.postWithEnvelope<T>(`${this.baseUrl}${path}`, body as EnvelopeRequestBody);
+  }
+
   // Envelope-aware HTTP helpers.
   // All mutation endpoints (Create / Update / Delete / Execute custom action) emit the
   // ClientOperationEnvelope { result, operations } shape. These helpers unwrap the envelope,

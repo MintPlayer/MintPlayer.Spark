@@ -5,6 +5,7 @@ import { ActivatedRoute, Router, RouterModule } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
+import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
@@ -41,11 +42,21 @@ import {
   QueryResultItem,
   ShowedOn,
   hasShowedOnFlag,
+  EntityPermissions,
+  SparkDeletedFilter,
 } from '@mintplayer/ng-spark/models';
+import {
+  SPARK_DETAIL_ACTIONS,
+  SPARK_DETAIL_PANELS,
+  SparkDetailContext,
+  orderSparkExtensions,
+  parseSparkDeletedParam,
+} from '@mintplayer/ng-spark/panels';
+import { combineLatest } from 'rxjs';
 
 @Component({
   selector: 'spark-po-detail',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryCardComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, ReferenceChipsPipe, ParsedDatePipe, SparkAttributeDescriptionComponent],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsBadgeComponent,BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryCardComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, ReferenceChipsPipe, ParsedDatePipe, SparkAttributeDescriptionComponent],
   templateUrl: './spark-po-detail.component.html',
   styleUrl: './spark-po-detail.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -58,6 +69,14 @@ export class SparkPoDetailComponent {
   private readonly attributeRefresh = inject(SparkAttributeRefreshService);
   protected readonly lang = inject(SparkLanguageService);
   private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
+
+  /**
+   * Add-on panels and action-bar buttons (#460, `SPARK_DETAIL_PANELS` / `SPARK_DETAIL_ACTIONS`).
+   * Multi-provided, so History, SoftDelete and Moderation can each add theirs to the page
+   * `sparkRoutes()` routes to, which is created by the router and takes no templates.
+   */
+  protected readonly detailPanels = orderSparkExtensions(inject(SPARK_DETAIL_PANELS, { optional: true }), p => p.order);
+  protected readonly detailActions = orderSparkExtensions(inject(SPARK_DETAIL_ACTIONS, { optional: true }), a => a.priority ?? 60);
 
   showCustomActions = input(true);
   extraActionsTemplate = input<TemplateRef<void> | null>(null);
@@ -96,6 +115,34 @@ export class SparkPoDetailComponent {
   canEdit = signal(false);
   canDelete = signal(false);
   customActions = signal<CustomActionDefinition[]>([]);
+  /** Type-level rights, kept for the add-on context; null until loaded. */
+  permissions = signal<EntityPermissions | null>(null);
+
+  /**
+   * The route's `?deleted=` mode (#460, T2): `only` when the row was opened from the recycle bin.
+   * Sent with every load of this object; the server honours it only for `ViewDeleted` holders, so
+   * for anyone else a deleted row stays a 404.
+   */
+  deletedMode = signal<SparkDeletedFilter | null>(null);
+
+  /** True when the page shows a soft-deleted row: nothing but Restore/Purge applies to it. */
+  protected readonly isDeletedView = computed(() => this.deletedMode() === 'only');
+
+  /** What every add-on panel and action receives; rebuilt whenever the object or rights change. */
+  protected readonly detailContext = computed((): SparkDetailContext | null => {
+    const item = this.item();
+    const entityType = this.entityType();
+    if (!item || !entityType) return null;
+    return {
+      type: this.type,
+      id: this.id,
+      item,
+      entityType,
+      permissions: this.permissions(),
+      deleted: this.deletedMode(),
+      reload: () => this.load(),
+    };
+  });
 
   /**
    * The actions actually offered for the object on screen.
@@ -120,7 +167,11 @@ export class SparkPoDetailComponent {
   });
 
   constructor() {
-    this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
+    // The query map too: Restore navigates from `?deleted=only` to the same path without it, and the
+    // object must then be re-read as a live row.
+    combineLatest([this.route.paramMap, this.route.queryParamMap])
+      .pipe(takeUntilDestroyed())
+      .subscribe(([params, query]) => this.onParamsChange(params, query.get('deleted')));
 
     // Server-issued `refreshAttribute` patches for the object this page is showing.
     //
@@ -189,14 +240,30 @@ export class SparkPoDetailComponent {
     if (changed) this.item.set({ ...current, attributes });
   }
 
-  private async onParamsChange(params: any): Promise<void> {
+  private async onParamsChange(params: any, deleted: string | null = null): Promise<void> {
     this.type = params.get('type') || '';
     this.id = params.get('id') || '';
+    const mode = parseSparkDeletedParam(deleted);
+    // `exclude` is the default on the wire; keep it out of the request like an absent parameter.
+    this.deletedMode.set(mode === 'exclude' ? null : mode);
+    await this.load();
+  }
 
+  /** The object as the page's current mode sees it. Only a set mode is sent. */
+  private loadItem(): Promise<PersistentObject> {
+    const deleted = this.deletedMode();
+    return deleted
+      ? this.sparkService.get(this.type, this.id, { deleted })
+      : this.sparkService.get(this.type, this.id);
+  }
+
+  /** (Re)loads the object, its type, rights and actions. Also what add-ons call via `context.reload()`. */
+  async load(): Promise<void> {
+    this.errorMessage.set(null);
     try {
       const [entityTypes, item] = await Promise.all([
         this.sparkService.getEntityTypes(),
-        this.sparkService.get(this.type, this.id)
+        this.loadItem()
       ]);
 
       this.allEntityTypes.set(entityTypes);
@@ -223,9 +290,14 @@ export class SparkPoDetailComponent {
         // so offering the button would only lead to that refusal. Case-insensitive, like the
         // custom-action filter below.
         const withheld = new Set((item.disabledActions ?? []).map(name => name.toLowerCase()));
-        this.canEdit.set((can ? can.edit : permissions.canEdit) && !withheld.has('edit') && !withheld.has('save'));
-        this.canDelete.set((can ? can.delete : permissions.canDelete) && !withheld.has('delete'));
-        this.customActions.set(actions.filter(a => a.showedOn === 'detail' || a.showedOn === 'both'));
+        // A row opened from the recycle bin (#460): Edit and Delete judge live rows only — the
+        // SoftDelete policy hides a deleted row from both — so they would 404. Restore/Purge come
+        // from the soft-delete entry point's detail action instead.
+        const deletedView = this.isDeletedView();
+        this.permissions.set(permissions);
+        this.canEdit.set(!deletedView && (can ? can.edit : permissions.canEdit) && !withheld.has('edit') && !withheld.has('save'));
+        this.canDelete.set(!deletedView && (can ? can.delete : permissions.canDelete) && !withheld.has('delete'));
+        this.customActions.set(deletedView ? [] : actions.filter(a => a.showedOn === 'detail' || a.showedOn === 'both'));
       }
     } catch (e) {
       const error = e as HttpErrorResponse;
@@ -407,7 +479,7 @@ export class SparkPoDetailComponent {
       await this.sparkService.executeCustomAction(this.type, action.name, this.item() || undefined);
       this.customActionExecuted.emit({ action, item: this.item()! });
       if (action.refreshOnCompleted) {
-        const item = await this.sparkService.get(this.type, this.id);
+        const item = await this.loadItem();
         this.item.set(item);
 
         // The sub-query grids below do not depend on item(), so re-fetching the PO left them

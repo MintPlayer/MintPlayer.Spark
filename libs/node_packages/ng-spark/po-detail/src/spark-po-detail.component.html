@@ -33,9 +33,22 @@
             <ng-container *ngTemplateOutlet="extraActionsTpl"></ng-container>
           </ng-container>
         }
+        <!-- Add-on actions (SPARK_DETAIL_ACTIONS): each decides for itself whether it applies. -->
+        @if (detailContext(); as ctx) {
+          @for (action of detailActions; track action.id) {
+            <ng-container *bsPriorityNavItem="action.priority ?? 60">
+              <ng-container *ngComponentOutlet="action.component; inputs: { context: ctx }" />
+            </ng-container>
+          }
+        }
       </bs-priority-nav>
     </div>
-    <h2>{{ currentItem.breadcrumb || currentItem.name }}</h2>
+    <h2>
+      {{ currentItem.breadcrumb || currentItem.name }}
+      @if (isDeletedView()) {
+        <bs-badge [type]="colors.secondary" class="align-middle ms-2 spark-deleted-badge">{{ 'softDelete.deleted' | t }}</bs-badge>
+      }
+    </h2>
 
     <bs-grid>
       <bs-tab-control>
@@ -222,6 +235,14 @@
     }
     @if (extraContentTemplate(); as extraContentTpl) {
       <ng-container *ngTemplateOutlet="extraContentTpl; context: { $implicit: currentItem, entityType: et }"></ng-container>
+    }
+    <!-- Add-on panels (SPARK_DETAIL_PANELS), e.g. <spark-po-history>. -->
+    @if (detailContext(); as ctx) {
+      @for (panel of detailPanels; track panel.id) {
+        <div class="spark-detail-panel m-3">
+          <ng-container *ngComponentOutlet="panel.component; inputs: { context: ctx }" />
+        </div>
+      }
     }
     }
   } @else {
