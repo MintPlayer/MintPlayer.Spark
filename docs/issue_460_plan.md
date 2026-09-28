@@ -84,7 +84,8 @@ Dependencies flow downward. Items in the same milestone are independent.
 - [x] Owner decision (added during M8): multi-language, file-based templates with a culture fallback chain, culture stored on the message (PRD §3.10). M7 carry-overs: a refused save evicts the entity; History reads take `deleted`. Spikes and deviations in PRD §4.1 (M8).
 
 ### M9 — Timezone cookie (item 7)
-- [ ] Spikes **S-TZ1, S-TZ4**, then server resolver (options, validation, precedence, logging); **S-TZ2, S-TZ3**, then `withSparkTimezone(options)` cookie write + server-platform guard. Update `guide-dates-and-sorting.md`.
+- [x] Spikes **S-TZ1, S-TZ4**, then server resolver (options, validation, precedence, logging); **S-TZ2, S-TZ3**, then `withSparkTimezone(options)` cookie write + server-platform guard. Update `guide-dates-and-sorting.md`.
+- [x] M8 carry-over: the bounce pipe maps the endpoint's answer to its exit code (spike S-M5b). Spikes and deviations in PRD §4.1 (M9).
 
 ### M10 — ng-spark / ng-spark-auth UI
 - [ ] ng-spark core: `SPARK_DETAIL_PANELS` token (+ list/detail action slots) wired into `sparkRoutes()` pages.
