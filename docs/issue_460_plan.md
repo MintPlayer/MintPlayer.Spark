@@ -66,11 +66,12 @@ Dependencies flow downward. Items in the same milestone are independent.
 - [x] `ISoftDeletable`, `SoftDeleteRowPolicy` (honours T2's `deleted` flag from M2), `SoftDeleteInterceptor` (incl. refusing references to soft-deleted targets), `ISparkSoftDelete` (Restore/Purge incl. `DeleteRevisionsOperation`), events, endpoints (T1), rights, analyzer/startup warnings (incl. `ISoftDeletable` + `OnDeleteAsync` override), natural-id error.
 
 ### M7 — History package (item 3)
-- [ ] Spikes **H1, H2, H4** first.
-- [ ] `libs/history/MintPlayer.Spark.History`; **T10** `EntityTypeDefinition.Revisions` + model-sync preservation + merge at startup.
-- [ ] `IAuditable` stamping interceptor (ids only, `CreatedBy` immutable).
-- [ ] `ISparkHistory` + endpoints (redaction on reads, current-document gate, revert through the save pipeline). Spike **H3**.
-- [ ] `ISparkRevisionObserver`.
+- [x] Spikes **H1, H2, H4** first.
+- [x] `libs/history/MintPlayer.Spark.History`; **T10** `EntityTypeDefinition.Revisions` + model-sync preservation + merge at startup.
+- [x] `IAuditable` stamping interceptor (ids only, `CreatedBy` immutable).
+- [x] `ISparkHistory` + endpoints (redaction on reads, current-document gate, revert through the save pipeline). Spike **H3**.
+- [x] `ISparkRevisionObserver`.
+- [x] M6 carry-overs: refused delete evicts the entity; `/spark/po/load` `deleted` flag; permissions `canRestore`/`canPurge`/`canViewDeleted`/`canViewHistory`/`canRevert`; purge refuses before deleting without database-admin; base-verb mapping for Actions-class row rules.
 
 ### M8 — MailManager (item 10) + CodeCoverage migration
 - [ ] Spikes **S-M1, S-M2, S-M4, S-M6** first.
@@ -86,7 +87,7 @@ Dependencies flow downward. Items in the same milestone are independent.
 
 ### M10 — ng-spark / ng-spark-auth UI
 - [ ] ng-spark core: `SPARK_DETAIL_PANELS` token (+ list/detail action slots) wired into `sparkRoutes()` pages.
-- [ ] `@mintplayer/ng-spark/soft-delete`: Deleted toggle, Restore/Purge.
+- [ ] `@mintplayer/ng-spark/soft-delete`: Deleted toggle, Restore/Purge. Consumes the server flags added in M7 (carried over from M6): `canRestore`/`canPurge`/`canViewDeleted` on the permissions endpoint, and the `deleted` flag on `/spark/po/load` so a row can be opened from the recycle bin.
 - [ ] `@mintplayer/ng-spark/history`: `<spark-po-history>` list, read-only view, diff, Revert.
 - [ ] ng-spark-auth `withAccount()` + 7 standalone pages, `SPARK_ACCOUNT_PROFILE_FIELDS`, `twitterProvider()`/`linkedInProvider()`, login label "Email or user name".
 

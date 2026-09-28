@@ -576,8 +576,10 @@ force-created revision in a collection without a revisions configuration, delete
 then on. The server's `/license/status` is printed. Run three times: `RAVENDB_LICENSE` =
 `raven-community-license.log`, = `raven-license.log`, and the shell's ambient value.
 *Answer:* **the Community licence could not be applied** — with `raven-community-license.log` the
-server reported `Type=None, Status=AGPL - Open Source, MaxCores=3` (the file's licence expired
-2026-09-25, before this run); with `raven-license.log`, `Type=Developer, Status=Commercial,
+server reported `Type=None, Status=AGPL - Open Source, MaxCores=3` (the spike read this as the
+file's licence having expired on 2026-09-25. That is unverified, because a licence RavenDB fails to apply
+also falls back to AGPL without any error. Renew the Community licence before any Community-tier
+measurement); with `raven-license.log`, `Type=Developer, Status=Commercial,
 MaxCores=9`; the ambient value also gave AGPL. The results were identical under AGPL and Developer:
 (A) 3 revisions → 4 after the delete (a delete revision) → the operation reported 4 deletes → **0
 left**; (B) 3 → 3 deleted → 0 → **2** again after the document delete; (C) 1 → 2 after the delete →
@@ -618,6 +620,115 @@ the client certificate lacks database-admin (the operation is documented as admi
   runtime (the wall `SortCompanionAnalyzer` documents).
 - *Not in AllFeatures.* `MintPlayer.Spark.AllFeatures` does not reference SoftDelete: it would change
   every delete of an `ISoftDeletable` type for apps that only wanted the meta-package.
+
+**Licence observed in the M7 runs.** The test fixtures used the ambient `RAVENDB_LICENSE` (which file
+it holds was not inspected). `/license/status` read at the start of each test showed `Type=None,
+Status=AGPL - Open Source` for the first tests of a process and `Type=Community, Status=Commercial,
+Expired=False, MaxCores=3` for later tests **in the same process** — the licence is applied some time
+after the embedded server starts, and a test that runs first sees AGPL. That timing alone could
+explain the AGPL reading in H1 (M6 part) above. Results below say which licence they ran under; the
+Community-tier limits were measured under `Type=Community`.
+
+**H1 (M7 part) — revisions configuration and reads (M7, 2026-09-28).**
+*Question:* do the revisions configuration and revision reads History needs work on Community, and
+what does the licence refuse?
+*Method:* `HistorySpikeTests.H1_…`: (1) seven `ConfigureRevisionsOperation` probes, each result
+recorded; (2) a collection configured with `MinimumRevisionsToKeep = 2`, `MinimumRevisionAgeToKeep =
+30 d` read back through `GetDatabaseRecordOperation`; two documents written three times each, then
+`GetMetadataForAsync`, `GetForAsync<T>`, `GetAsync<T>(changeVector)` for the document's own, another
+document's and an unknown change vector.
+*Answer:* under **Community**: accepted — a collection without limits, `PurgeOnDelete = true`, a
+**disabled** default; refused with `LicenseLimitException` — `MinimumRevisionsToKeep = 100` ("exceeds
+the licensed one '2'"), `MinimumRevisionAgeToKeep = 90 d` ("exceeds the licensed one '45'"), an
+**enabled** default ("doesn't allow the creation of a default configuration for revisions"), and
+therefore any configuration carrying one. Under AGPL (an earlier run) an enabled default with 100
+revisions was accepted. The configuration reads back as written (min 2, 30 d). Revisions list
+**newest first** (change vectors in reverse write order, contents `v3, v2, v1`); metadata keys
+`@change-vector, @collection, @flags, @id, @last-modified, Raven-Clr-Type`, flags `HasRevisions,
+Revision`. `GetAsync<T>(cv)` of **another** document's change vector returns that document's revision
+(`@id = HSpikeDocs/b`) — a change vector is not scoped to the id asked about; an unknown one returns
+null. 5 requests for the reads.
+
+**H2 — a save's change vector is the newest revision's (M7, 2026-09-28).**
+*Method:* `HistorySpikeTests.H2_…` (raw session) and `HistoryTests.H2_…` (`POST /spark/po/update`
+through the pipeline, revisions from the model).
+*Answer:* equal in both: the raw save's `GetChangeVectorFor` = the newest revision's `@change-vector`
+= the reloaded document's; the update response's `etag` = the newest revision's change vector
+(`A:3-…` in both runs).
+
+**H4 — merging the revisions configuration (M7, 2026-09-28).**
+*Question:* does reading + merging keep existing settings and is it idempotent; can it be read without
+a server-wide operation?
+*Method:* `HistorySpikeTests.H4_…`: an operator configuration (a disabled default with 1, collection
+`HSpikeOthers` with 2); then a naive `ConfigureRevisionsOperation` naming only `HSpikeDocs`; restored;
+then read-modify-write; then the same again. Plus `GET /databases/{db}/revisions/config` before and
+after a configuration. Kept end to end in `HistoryTests.Startup_merges_…` through
+`RevisionsConfigurator` at host startup.
+*Answer:* the naive send **wiped** the default (null) and every other collection (only `HSpikeDocs`
+left) — `ConfigureRevisionsOperation` replaces the whole configuration. Read-modify-write kept the
+default (disabled, 1) and `HSpikeOthers` (2) and added `HSpikeDocs`. Sending an **unchanged**
+configuration again still bumped the database-record etag (35 → 36), so "idempotent" must mean "send
+nothing when equal" — the configurator compares first and a second `ApplyAsync` returned no changes.
+`GET /databases/{db}/revisions/config` answers 404 (empty body) before any configuration and `200
+{"Default":null,"Collections":{…}}` after, so the configurator reads through that database-level
+endpoint (a small custom operation; the 7.2.6 client has none) rather than the server-wide
+`GetDatabaseRecordOperation`. Not measured: which clearance that endpoint needs on a secured server.
+
+**H3 — revert fidelity through the save pipeline (M7, 2026-09-28).**
+*Question:* does a revert through `SavePersistentObjectAsync(…, Revert)` restore a `TranslatedString`,
+a `DateTimeOffset`, `AsDetail` rows and leave undeclared fields?
+*Method:* `HistoryTests.H3_…`: v1 = `Title v1`, `Label {en: one}`, `DueAt 2026-01-01T10:00+02:00`,
+`Lines [a×1, b×2]`, `CreatedBy alice`; v2 written raw (`Label {en: two, nl: twee}`, `DueAt
+2026-06-01T08:30−05:00`, `Lines [b×5, c×3]`); an undeclared field `Legacy` patched in. First v1's
+values saved as a **plain edit** (`Save`, base pipeline only), then the real `POST /spark/po/revert`
+as bob.
+*Answer:* the plain edit left `Label {"en":"one","nl":"twee"}` — the base save **merges**
+`TranslatedString` per language, so a language added after the revision survives. The revert (with
+History's interceptor) gave `Title v1`, `Label {"en":"one"}`, `DueAt 2026-01-01T10:00:00+02:00`
+(offset kept), `Lines [a×1, b×2]`, `Legacy` still `added after v1`, `CreatedBy alice`, `ModifiedBy bob`.
+
+**Deviations (M7).**
+- *Revert's rights and aliases.* `IDatabaseAccess` gates a `Revert` save under `Revert/T` **and**
+  `Edit/T` (the PRD lists both), row action `"Revert"`, and the disabled-action hook refuses it when
+  `Revert`, `Edit` or `Save` is withheld — the same reading as Restore in M6.
+- *Base-verb mapping for Actions-class row rules (M6 finding).* The PRD is silent; the safe reading
+  was taken: an Actions class's `GetRowFilterAsync` / `IsAllowedAsync` is asked about `"Edit"` for a
+  restore or revert and `"Delete"` for a purge; row policies keep the real name (SoftDelete needs it).
+  Before, a rule handling only the built-in verbs let those operations through unfiltered. Measured
+  with the mapping disabled: a purge of a row the Delete rule forbids answered 204, and a revert that
+  hands a row now owned by someone else back to its old state answered 200 (WITH CHECK judges the
+  result, which passes); a restore was already refused by WITH CHECK under `"Edit"`. With the mapping:
+  404 for all three (`Restore_and_purge_are_judged_…`, `Revert_is_judged_…`). This changes what M6's
+  row-gate action names mean for Actions classes only.
+- *Exact `TranslatedString` on revert.* H3 showed the base merge would keep later languages; the
+  History interceptor replaces each reverted (non-shielded) `TranslatedString` with the revision's.
+  Validation rules are not re-run on a revert (the revision was valid when written); documented.
+- *Revisions read at the database level* (H4), not via `GetDatabaseRecordOperation`; a model limit
+  beyond the licence (Community: 2 revisions / 45 days / no enabled default) refuses startup with
+  RavenDB's reason; `Spark:History:ConfigureRevisions=false` opts out.
+- *No `.Abstractions` for History.* §3.3 names one package; `IAuditable` lives in
+  `MintPlayer.Spark.History` (a Domain project that implements it references the package).
+- *Names at read time.* D8's "resolved to a name at read time" needs an id → name source core does
+  not have; History adds an optional `IHistoryUserNameResolver` (none → ids only).
+- *Revision reads use a core presenter.* `IRowSecurity` is internal; core gained the public
+  `IPersistentObjectPresenter` (breadcrumbs + redaction, no row filter) so an add-on renders content
+  core did not load. Redaction is the union of "protected on the revision" and "protected on the
+  current row". `SparkAddOnEndpoints` gained the 409 (`IsConcurrencyConflict` / `ConcurrencyConflict`).
+- *Observers fire for model-enabled types only* (`revisions.enabled`), after the write; a purge is not
+  reported (its revisions are gone). `canViewHistory` was added to the permissions endpoint alongside
+  the requested `canRevert`.
+- *M6 carry-overs.* (1) A delete refused by a later interceptor now evicts the entity from the request
+  session in `IDatabaseAccess` (any interceptor, and the Actions class's `OnBeforeDeleteAsync`), so
+  no later save in the request writes the mark (test fails without the eviction). (2)
+  `/spark/po/load` takes `deleted`, honoured through the same row policy as queries (ViewDeleted);
+  ng-spark `get(type, id, { deleted })`, `SparkClient.GetPersistentObjectAsync(…, deleted:)`. (3) The
+  permissions endpoint reports `canRestore`, `canPurge`, `canViewDeleted`, `canViewHistory`,
+  `canRevert` (ng-spark fields optional, for older servers). (4) A purge first runs
+  `DeleteRevisionsOperation` on an id that names nothing (same endpoint and authorization, no effect);
+  if refused, the purge is refused before the document is deleted; success is cached per process.
+  README documents the database-admin requirement. Not measured: the probe on a secured server with a
+  non-admin certificate (the embedded server is unsecured); the test replaces the probe with a
+  refusing fake.
 
 ---
 
