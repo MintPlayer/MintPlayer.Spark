@@ -61,9 +61,9 @@ Dependencies flow downward. Items in the same milestone are independent.
 - [x] Spike **SP-E** (#439 SP2 passkey clone detection).
 
 ### M6 — SoftDelete package (item 2)
-- [ ] `libs/soft_delete/MintPlayer.Spark.SoftDelete(.Abstractions)`, slnx registration.
-- [ ] Spike **H1**'s `DeleteRevisionsOperation`-on-Community part first (Purge depends on it; the rest of H1 stays in M7).
-- [ ] `ISoftDeletable`, `SoftDeleteRowPolicy` (honours T2's `deleted` flag from M2), `SoftDeleteInterceptor` (incl. refusing references to soft-deleted targets), `ISparkSoftDelete` (Restore/Purge incl. `DeleteRevisionsOperation`), events, endpoints (T1), rights, analyzer/startup warnings (incl. `ISoftDeletable` + `OnDeleteAsync` override), natural-id error.
+- [x] `libs/soft_delete/MintPlayer.Spark.SoftDelete(.Abstractions)`, slnx registration.
+- [x] Spike **H1**'s `DeleteRevisionsOperation`-on-Community part first (Purge depends on it; the rest of H1 stays in M7).
+- [x] `ISoftDeletable`, `SoftDeleteRowPolicy` (honours T2's `deleted` flag from M2), `SoftDeleteInterceptor` (incl. refusing references to soft-deleted targets), `ISparkSoftDelete` (Restore/Purge incl. `DeleteRevisionsOperation`), events, endpoints (T1), rights, analyzer/startup warnings (incl. `ISoftDeletable` + `OnDeleteAsync` override), natural-id error.
 
 ### M7 — History package (item 3)
 - [ ] Spikes **H1, H2, H4** first.
