@@ -126,6 +126,19 @@ Cross-cutting write behaviour — stamping, soft deletion, locks — is an `IPer
 
 ⚠️ An `OnSaveAsync` override that does not call the base skips before-save interceptors along with `WITH CHECK` (D1); a warning is logged once per type. After-save hooks always run.
 
+- **`OnNaturalIdCollisionAsync(NaturalIdCollisionContext)`** — a create of an `IHasNaturalId` type derived an id an existing row holds, and the row gate refused the caller that row. Core answers 404; an interceptor may throw its own exception first to explain (SoftDelete: "restore it instead"). Whatever it throws tells the caller about a row it may not see — explain only to callers entitled to know.
+
+### Restore and purge are gated under their own names
+
+`IDatabaseAccess` treats the two SoftDelete operations as their own verbs, so a row policy can confine them to deleted rows while `Edit` / `Delete` keep hiding those rows:
+
+| Operation | Type-level right | Row-gate action | Refused by the disabled-action hook when withheld |
+|---|---|---|---|
+| `SavePersistentObjectAsync(po, Restore)` | `Restore/T` | `"Restore"` | `Restore`, `Edit`, `Save` |
+| `DeletePersistentObjectAsync(typeId, id, Purge)` | `Purge/T` | `"Purge"` | `Purge`, `Delete` |
+
+A restore never creates: an id that names nothing is a 404. The `WITH CHECK` after a restore still asks `"Edit"` (the row is live again by then). An Actions class's `GetRowFilterAsync` / `IsAllowedAsync` is asked with the action names `"Restore"` / `"Purge"` — a rule that only handles the built-in verbs lets them through unfiltered, so write the rule for every action. The package that uses all this is [`MintPlayer.Spark.SoftDelete`](../libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md) — use it rather than a hand-written soft-delete policy.
+
 ## Write-side enforcement (`WITH CHECK`)
 
 The row rule also guards writes, judged against the entity's **resulting** state (after mapping and `OnBeforeSaveAsync`, so any ownership stamping has happened):

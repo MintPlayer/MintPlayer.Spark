@@ -43,6 +43,7 @@ the diagnostic guarding the generated row key — reached no external consumer a
 | SPARK019 | Warning | `HasValue` is translated as a field name, not a null test | `RavenHasValueAnalyzer` | — |
 | SPARK020 | Error | `[Authorize]` or `.RequireAuthorization(…)` with a policy name or roles does not work under Spark — use `[SparkAuthorize]` / `.RequireAuthorization(new SparkAuthorizeAttribute(…))` ([why](guide-controllers.md#what-does-not-work)) | `AuthorizeAttributeAnalyzer` | — |
 | SPARK021 | Error | Security right uses a wildcard (`*`), which is refused at startup | `SecurityConfigurationAnalyzer` | — |
+| SPARK022 | Warning | `!x.IsDeleted` / `x.IsDeleted == false` on an `ISoftDeletable` in a translated expression drops every document without the field — use `x.IsDeleted != true` ([why](../libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md#startup-checks)) | `SoftDeleteFilterAnalyzer` | — |
 
 Two further id namespaces are generator-only and not analyzer diagnostics: `SPARK_INDEX_001…012`
 (`GenerateIndexDiagnostics.cs`, note `004` is absent) and `SPARK_TRANS_001…`

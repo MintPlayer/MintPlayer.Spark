@@ -565,6 +565,60 @@ it; Spark adds no check (as `guide-passkeys.md` claimed, now measured).
   from a second file produced a second, ambiguous constructor. All of `UserStore`'s live in `UserStore.cs`.
 - *T9*: warning `SPARK030` (text match on `"@mintplayer/ng-spark-auth"` in `$(SpaRoot)package.json`).
 
+**H1 (M6 part) — `DeleteRevisionsOperation` for a purge (M6, 2026-09-28).** The config / read parts
+of H1 stay in M7.
+*Question:* does `DeleteRevisionsOperation` work on the Community licence, and in which order must a
+purge delete the document and its revisions so that nothing is left?
+*Method:* `PurgeRevisionsSpikeTests.H1_…` on the embedded RavenDB 7.2 server: revisions enabled on one
+collection; a document created and edited twice; (A) document deleted, then
+`DeleteRevisionsOperation(id, removeForceCreatedRevisions: true)`; (B) the reverse order; (C) a
+force-created revision in a collection without a revisions configuration, deleted with the flag off,
+then on. The server's `/license/status` is printed. Run three times: `RAVENDB_LICENSE` =
+`raven-community-license.log`, = `raven-license.log`, and the shell's ambient value.
+*Answer:* **the Community licence could not be applied** — with `raven-community-license.log` the
+server reported `Type=None, Status=AGPL - Open Source, MaxCores=3` (the file's licence expired
+2026-09-25, before this run); with `raven-license.log`, `Type=Developer, Status=Commercial,
+MaxCores=9`; the ambient value also gave AGPL. The results were identical under AGPL and Developer:
+(A) 3 revisions → 4 after the delete (a delete revision) → the operation reported 4 deletes → **0
+left**; (B) 3 → 3 deleted → 0 → **2** again after the document delete; (C) 1 → 2 after the delete →
+without the flag 1 deleted, **1 left** (the force-created one) → with the flag 1 deleted, 0 left. So a
+purge deletes the document **first**, then its revisions **with** `removeForceCreatedRevisions: true`.
+Not measured: an actual Community licence (needs a current licence file), and a secured server where
+the client certificate lacks database-admin (the operation is documented as admin).
+
+**Deviations (M6).**
+- *Restore and purge are gated under their own names in core.* §3.2 lists the rights; it does not say
+  how core asks. `IDatabaseAccess` now uses `Restore/T` (not `Edit/T`) and row-gate action `"Restore"`
+  for a `Restore` save, and `Purge/T` (not `Delete/T`) and `"Purge"` for a `Purge` delete — the only
+  way a row policy can say "only a deleted row" while `Edit`/`Delete` keep hiding deleted rows. A
+  restore of an id that names nothing is a 404 (the base save would otherwise create it).
+- *Disabled-action aliases (M3 left it open).* The PRD is silent, so the conservative reading: a hook
+  withholding `Restore`, `Edit` or `Save` refuses a restore; `Purge` or `Delete` refuses a purge. The
+  403 names the withheld action that matched (`Edit` / `Delete`), not the operation.
+- *Reference refusal checks only changed references.* §3.2 says a save that "points a reference at" a
+  deleted target is refused; a reference that was already stored before its target was deleted does
+  not block unrelated edits. Checked for `[Reference]` `string` and string-collection properties on
+  the entity itself (not inside AsDetail rows).
+- *Natural-id trap.* Core gained `IPersistentObjectInterceptor.OnNaturalIdCollisionAsync`; SoftDelete
+  answers 400 "restore it instead" only to holders of `ViewDeleted/T` or `Restore/T` — everyone else
+  keeps core's 404, so the deleted state of a row the caller cannot see is not disclosed.
+- *Purge completion.* A purge through `IDatabaseAccess` returns quietly for a missing or
+  foreign-collection id; revisions are deleted in the interceptor's after-delete hook (which only runs
+  when the delete happened), after re-checking that the document is gone. An `OnDeleteAsync` override
+  that did not delete makes the purge fail with a 500 rather than wipe the history of a live row.
+- *Add-on endpoint helpers.* Core's envelope / refusal / request-type helpers are internal; the
+  package needs the same answers, so core exposes them as `MintPlayer.Spark.Endpoints.SparkAddOnEndpoints`
+  (History reuses it in M7). The package references `MintPlayer.Spark` (core), not only Abstractions.
+- *Detail view of a deleted row.* `/spark/po/load` carries no `deleted` field, so a deleted row is a
+  404 by id for everyone, `ViewDeleted` holders included. The recycle-bin list works (query
+  `deleted: only`); opening a row from it needs a load-side flag (M10).
+- *Analyzer.* SPARK022 (`SoftDeleteFilterAnalyzer`) flags `!x.IsDeleted` / `== false` on an
+  `ISoftDeletable` inside a lambda converted to `Expression<…>`. The "index Map doesn't emit IsDeleted"
+  check is a **startup warning**, not an analyzer: the query-to-index binding is model JSON, read at
+  runtime (the wall `SortCompanionAnalyzer` documents).
+- *Not in AllFeatures.* `MintPlayer.Spark.AllFeatures` does not reference SoftDelete: it would change
+  every delete of an `ISoftDeletable` type for apps that only wanted the meta-package.
+
 ---
 
 ## 5. Risks

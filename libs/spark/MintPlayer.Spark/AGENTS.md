@@ -171,6 +171,17 @@ not copies in every Actions class — see `docs/guide-row-security.md`:
   defeated by an `OnDeleteAsync` override), after load. Runs in `IDatabaseAccess` after every gate.
 - ⚠️ An `OnLoadAsync`/`OnSaveAsync` override that skips the base also skips the row gate / WITH
   CHECK / before-save interceptors for its type — policies included.
+- **Soft deletion is a package, not hand-written** — `MintPlayer.Spark.SoftDelete`: entity implements
+  `ISoftDeletable` (four **public** properties), host calls `spark.AddSoftDelete()`, grant
+  `Restore/T`, `Purge/T`, `ViewDeleted/T` by name. Delete becomes soft, deleted rows vanish from every
+  read path, `POST /spark/po/restore` / `/spark/po/purge` are mapped (purge also deletes the
+  revisions). Do not override `OnDeleteAsync` for it, and do not write your own `IsDeleted` filter.
+  `IDatabaseAccess` gates a `Restore` save under `Restore/T` + row action `"Restore"` and a `Purge`
+  delete under `Purge/T` + `"Purge"`; the disabled-action hook refuses a restore when `Edit`/`Save`
+  is withheld and a purge when `Delete` is. README: `libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md`.
+- An add-on package mapping its own `/spark/*` endpoint answers through
+  `MintPlayer.Spark.Endpoints.SparkAddOnEndpoints` (envelope, the one refusal, 400, 403) — never an
+  invented error shape (#453 oracle).
 
 ### `OnRefreshAsync` — forms that reshape themselves
 
