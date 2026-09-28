@@ -115,10 +115,11 @@ Dependencies flow downward. Items in the same milestone are independent.
 - [x] E2E tests on the extracted host: vote → delayed credit → privilege; serial-voting reversal; flag → review; lock blocks every write path; suspend; soft delete hidden everywhere + restore/purge; history diff + revert; account deletion. Written and compiled; **run in M14**. Deviations and two M12 findings in PRD §4.1 (M13).
 
 ### M14 — Housekeeping, full verification, PR
-- [ ] Guides: row policies + interceptors (incl. the documented D1 override gaps), SoftDelete, History, MailManager, throttling lanes, Data Protection (volume warning), forwarded headers + proxy recipes, DisableActions hook, wildcard removal, account pages, GDPR (revisions not rewritten), Moderation + fraud limits + legitimate-interest text.
-- [ ] Release notes: every breaking change (wildcards, DisableActions entry points, new startup guards, dedup-key format).
-- [ ] Version bumps on every touched lib + both npm packages; spike **S-PKG2** (`dotnet pack` output); owner does **S-PKG1**.
-- [ ] **Full test sweep, all 5 test projects** (`MintPlayer.Spark.Tests`, `E2E.Tests`, `SourceGenerators.Tests`, `Client.Tests`, `CodeCoverage.Tests`) + vitest for ng-spark/ng-spark-auth + `--spark-verify-model` / `--spark-verify-security` for every app. The solution is `.slnx`.
+- [x] M13 findings fixed first: pending read live, reversals credited at once, `ISparkAccountDeletedHandler<TUser>` (QnA's goodbye mail after the delete), host coverage reports required only for hosts that started. See PRD §4.1 (M13, "Fixed in M14").
+- [x] Guides: row policies + interceptors (incl. the documented D1 override gaps), SoftDelete, History, MailManager, throttling lanes, Data Protection (volume warning), forwarded headers + proxy recipes, DisableActions hook, wildcard removal, account pages, GDPR (revisions not rewritten), Moderation + fraud limits + legitimate-interest text.
+- [x] Release notes: every breaking change (wildcards, DisableActions entry points, new startup guards, dedup-key format) — `docs/release-notes-preview-91.md`.
+- [x] Version bumps on every touched lib + both npm packages; spike **S-PKG2** (`dotnet pack` output; PRD §4.1, MailManager.Abstractions README fixed); owner does **S-PKG1**.
+- [x] **Full test sweep, all 5 test projects** (`MintPlayer.Spark.Tests`, `E2E.Tests`, `SourceGenerators.Tests`, `Client.Tests`, `CodeCoverage.Tests`) + vitest for ng-spark/ng-spark-auth + `--spark-verify-model` / `--spark-verify-security` for every app. The solution is `.slnx`. Final: 3198 / 120 / 417 / 105 / 1041 passed; vitest 760 + 216 + QnA 7; verify model + security exit 0 for all five apps. Failures and fixes in PRD §4.1 (M14).
 - [ ] Open the PR (closes #283, #285, #299, #432, #460); reply on #460 re SocketExtensions; check CI, not only local.
 
 ---

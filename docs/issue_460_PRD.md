@@ -1279,6 +1279,20 @@ other Abstractions packages do. The master workflow packs the whole `.slnx` (`do
 after `nx run-many --target=build:release`, which lists all seven projects), so the new ids are
 pushed with no workflow change. S-PKG1 (nuget.org prefix reservation and API-key scope for the new
 ids) is the owner's.
+
+**Full sweep (M14).** First pass: Spark.Tests 3197/3198, E2E 116/120, the rest green. Triage:
+- *Real bug:* a suspended account's vote or flag answered 404 (the suspension withdraws the earned
+  right, and the right was checked first) instead of the documented 400; the suspension is now
+  checked first — it depends on the caller only, so it reveals nothing about the target.
+- *Tests behind intended changes:* `FailOpenRegressionTests` mocked `HasRowRule` while the refusal asks
+  `GetRowRuleKinds` since M2 (an NSubstitute substitute replaces the default interface method); two QnA
+  specs expected `null` for an anonymous load, but anonymous callers get 401 by design (now compared
+  with a missing id); the QnA confirm-link regex captured the `)` the mail's text part puts after a URL.
+- *CI-only (run 36472913903):* both E2E collections ran `playwright install --with-deps` at once and
+  apt-get's lock failed every QnA test; now one install per process.
+- *Harness hang:* the host's `dotnet build` left MSBuild nodes holding its redirected stdout, so a
+  local run waited ~15 min for EOF; builds now use `--disable-build-servers`, output drain bounded.
+Reruns: the failed tests, then Spark.Tests (3198/3198) and E2E (120/120) in full.
 ---
 
 ## 5. Risks
