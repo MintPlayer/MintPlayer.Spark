@@ -62,6 +62,7 @@
     <ProjectReference Include="..\..\libs\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
     <ProjectReference Include="..\..\libs\soft_delete\MintPlayer.Spark.SoftDelete\MintPlayer.Spark.SoftDelete.csproj" />
     <ProjectReference Include="..\..\libs\history\MintPlayer.Spark.History\MintPlayer.Spark.History.csproj" />
+    <ProjectReference Include="..\..\libs\moderation\MintPlayer.Spark.Moderation\MintPlayer.Spark.Moderation.csproj" />
     <ProjectReference Include="..\..\libs\mail\MintPlayer.Spark.MailManager\MintPlayer.Spark.MailManager.csproj" />
     <ProjectReference Include="..\..\libs\controllers\MintPlayer.Spark.Controllers\MintPlayer.Spark.Controllers.csproj" />
     <ProjectReference Include="..\..\libs\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />

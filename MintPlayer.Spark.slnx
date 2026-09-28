@@ -63,6 +63,10 @@
   <Folder Name="/libs/migrations/">
     <Project Path="libs/migrations/MintPlayer.Spark.Migrations/MintPlayer.Spark.Migrations.csproj" />
   </Folder>
+  <Folder Name="/libs/moderation/">
+    <Project Path="libs/moderation/MintPlayer.Spark.Moderation.Abstractions/MintPlayer.Spark.Moderation.Abstractions.csproj" />
+    <Project Path="libs/moderation/MintPlayer.Spark.Moderation/MintPlayer.Spark.Moderation.csproj" />
+  </Folder>
   <Folder Name="/libs/node_packages/">
     <Project Path="libs/node_packages/ng-spark-auth/ng-spark-auth.esproj">
       <Platform Project="AnyCPU" />
