@@ -1,4 +1,9 @@
 FROM mcr.microsoft.com/dotnet/aspnet:11.0 AS base
+# Mount point for the Data Protection key ring (docker-compose.yml mounts the dataprotection-keys
+# volume here and points Spark__DataProtection__KeysPath at it). Created as root and handed to `app`
+# because a fresh named volume copies the mount point's ownership from the image: without this the
+# directory would be root-owned and the non-root app could not write its first key.
+RUN mkdir -p /var/lib/codecoverage/dataprotection-keys && chown app:app /var/lib/codecoverage/dataprotection-keys
 USER app
 WORKDIR /app
 # 8080 only, deliberately. Traefik's port detection picks the single exposed port; exposing 8081 as

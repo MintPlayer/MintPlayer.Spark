@@ -96,6 +96,9 @@ public sealed class CoverageWebAppFactory : WebApplicationFactory<Program>
         builder.UseSetting("Spark:RavenDb:Urls:0", _ravenUrl);
         builder.UseSetting("Spark:RavenDb:Database", _database);
         builder.UseSetting("Coverage:BaseUrl", "http://localhost");
+        // The key ring lives in the test database. Production mounts a volume and sets
+        // Spark:DataProtection:KeysPath instead, so the base appsettings.json carries neither.
+        builder.UseSetting("Spark:DataProtection:Storage", "RavenDb");
 
         // Placeholders, and deliberately obvious ones. The OAuth handler is registered but
         // never reached: these tests assert what happens BEFORE any redirect to GitHub, and a

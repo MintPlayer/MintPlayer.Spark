@@ -819,6 +819,7 @@ public sealed class FleetTestHost : IAsyncLifetime
               "Database": "{{TestDatabase}}",
               "EnsureDatabaseCreated": true
             },
+            "DataProtection": { "Storage": "RavenDb" },
             "Replication": {
               "ModuleName": "Fleet",
               "ModuleUrl": "{{httpsUrl}}",

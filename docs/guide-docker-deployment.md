@@ -85,9 +85,26 @@ docker compose up -d
 ### Data Protection keys
 
 Outside Development, Spark refuses to start until the Data Protection key ring is persisted —
-otherwise every redeploy signs every user out. Set `Spark__DataProtection__Storage=RavenDb` (keys in
-the database, persisted by the `raven-data` volume) or `Spark__DataProtection__KeysPath` pointing at
-a **mounted** volume. See [Data Protection](guide-data-protection.md).
+otherwise every redeploy signs every user out. The recommended production setup is a named volume
+for the key ring plus `Spark__DataProtection__KeysPath` pointing into it:
+
+```yaml
+services:
+  app:
+    environment:
+      - Spark__DataProtection__KeysPath=/var/lib/myapp/dataprotection-keys
+    volumes:
+      - dataprotection-keys:/var/lib/myapp/dataprotection-keys
+volumes:
+  dataprotection-keys:
+```
+
+The .NET images run as the non-root `app` user, and a fresh named volume takes the ownership of the
+image's mount point, so create that directory in the Dockerfile before `USER app`
+(`RUN mkdir -p /var/lib/myapp/dataprotection-keys && chown app:app /var/lib/myapp/dataprotection-keys`),
+otherwise the first key cannot be written. Do not also set `Storage` (in `appsettings.json` or the
+environment): both together refuse to start. `apps/CodeCoverage` is the worked example. See
+[Data Protection](guide-data-protection.md).
 
 ### Forwarded headers (behind a reverse proxy)
 

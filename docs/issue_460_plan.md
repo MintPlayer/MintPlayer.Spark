@@ -20,7 +20,7 @@ Dependencies flow downward. Items in the same milestone are independent.
 ### M1 — Core foundations (no new packages yet)
 - [x] **D3** Remove wildcard rights: validator + `SecurityConfigurationAnalyzer` reject `*` (error points at composite rights); delete matcher branches (`ISecurityConfigurationLoader.cs:130-131,199`), posture "floor" warning, `RowPolicyDeclarationValidator` wildcard handling; rewrite `SecurityFileAccessControlTests` / `SecurityPostureReporterTests` / analyzer tests to assert rejection.
 - [x] **D15** Forwarded headers in core: `Spark:ForwardedHeaders:{KnownNetworks,KnownProxies,ProxyHops}`, private-range default, `ForwardLimit` never null, Proto/Host handling, startup refusal outside Development, trust list logged. Delete hand-written blocks in CodeCoverage (`Program.cs:35-70`; update the comment at `:371-374`), DemoApp (`:15-16`), HR (`:20-21`), Fleet (`:19-20`). `ForwardHost` opt-in refused while `AllowedHosts` is `*`. Spike **S-FH1**.
-- [x] **D5** Data Protection in core: always `AddDataProtection()`, `ApplicationName`, `KeysPath` / `Storage=RavenDb` (lift `RavenDataProtectionKeyRepository`, same `DataProtectionKeys/` prefix), startup error outside Development when unset. Delete CodeCoverage's setup (`Program.cs:288-295`: comment + `:292-295`) + repository class; CodeCoverage config sets `ApplicationName=CodeCoverage`, `Storage=RavenDb`. Spike **SP-B** (key-document compatibility part).
+- [x] **D5** Data Protection in core: always `AddDataProtection()`, `ApplicationName`, `KeysPath` / `Storage=RavenDb` (lift `RavenDataProtectionKeyRepository`, same `DataProtectionKeys/` prefix), startup error outside Development when unset. Delete CodeCoverage's setup (`Program.cs:288-295`: comment + `:292-295`) + repository class; CodeCoverage config sets `ApplicationName=CodeCoverage`; production uses `KeysPath` on a volume (compose), test hosts set `Storage=RavenDb` (owner decision, see PRD D5). Spike **SP-B** (key-document compatibility part).
 - [x] `ISparkCurrentUser` abstraction.
 - [x] **D12 core part**: `AddGroupMembershipProvider<T>()` composition, id-returning providers, per-request cache in `SecurityFileAccessControl`. Spike **S-MOD-B**.
 - [x] Update memory note: "a claim CAN assert a reserved group" is stale (reserved ids are dropped now).
@@ -118,7 +118,7 @@ Dependencies flow downward. Items in the same milestone are independent.
 
 ## Pre-merge checklist (merge auto-publishes packages and redeploys coverage.mintplayer.com)
 
-- [ ] VPS: set `Spark:DataProtection:Storage=RavenDb` + `ApplicationName=CodeCoverage` for CodeCoverage.
+- [ ] CodeCoverage Data Protection: nothing to set on the VPS. The deploy pulls `apps/CodeCoverage/docker-compose.yml` from master, which now mounts the `dataprotection-keys` volume at `/var/lib/codecoverage/dataprotection-keys` and sets `Spark__DataProtection__KeysPath` to it (`ApplicationName=CodeCoverage` is in `appsettings.json`). Do **not** set `Spark__DataProtection__Storage` in the VPS `.env` — KeysPath + Storage together refuse startup. Expect every user to be signed out once on the first deploy. Once that deploy is healthy and a key file exists in the volume, the orphaned `DataProtectionKeys/…` documents (`KeyDocuments` collection) in the `Coverage` database can be deleted.
 - [ ] VPS: set `Spark:Mail:Smtp:*` (host, port, security) for CodeCoverage.
 - [ ] Verify what fronts coverage.mintplayer.com (and MintPlayer): if a CDN, add its ranges to `Spark:ForwardedHeaders:KnownNetworks`.
 - [ ] Postfix `ALLOWED_SENDER_DOMAINS` / SPF cover any VERP domain in use.
@@ -170,4 +170,5 @@ out again.
 - Count accounts whose user name contains a foreign `@` (D4) before cutover.
 - Remove its ForwardedHeaders block (D15) and `RevisionsConfigurator` (T10); replace `EntityActions` soft-delete overrides with `ISoftDeletable`.
 - Its Data Protection volume maps to `Spark:DataProtection:KeysPath`.
+- MintPlayer production sets `Spark__DataProtection__KeysPath` to a directory on a mounted volume (its legacy site already persisted keys to a folder, per the line above), and sets an explicit, stable `Spark:DataProtection:ApplicationName` so existing cookies keep decrypting. No `Storage` in its base `appsettings.json`; its test hosts set `Storage=RavenDb` (PRD D5 owner decision).
 - `people_overview` / `subjects_search` indexes must emit `IsDeleted` for push-down.

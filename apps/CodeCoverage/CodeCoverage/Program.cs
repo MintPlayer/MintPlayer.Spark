@@ -260,11 +260,13 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     });
 });
 
-// The Data Protection key ring lives in RavenDB, not the container filesystem, where a redeploy
-// destroyed it and signed everyone out (auth + antiforgery cookies both decrypt with these keys).
-// Spark owns that wiring now (#460, D5): appsettings.json sets Spark:DataProtection:Storage=RavenDb
-// and ApplicationName=CodeCoverage, and Spark's repository reads the same DataProtectionKeys/
-// documents this file's hand-written one wrote — changing either value signs every user out once.
+// The Data Protection key ring (auth + antiforgery cookies both decrypt with it) is wired by Spark
+// core (#460, D5). appsettings.json sets only ApplicationName=CodeCoverage; production sets
+// Spark__DataProtection__KeysPath in docker-compose.yml to a directory on the dataprotection-keys
+// volume, so a redeploy keeps the ring. Test hosts set Spark:DataProtection:Storage=RavenDb instead —
+// never both, which Spark refuses. Changing ApplicationName or the key location signs every user out
+// once. (The ring previously lived in RavenDB DataProtectionKeys/ documents; those are orphaned by the
+// move to KeysPath and can be deleted once the first deploy with the volume is healthy.)
 
 // GitHubOidc: GitHub-signed workflow JWTs, validated against GitHub's JWKS;
 // the audience must be this deployment's public base URL and the action must

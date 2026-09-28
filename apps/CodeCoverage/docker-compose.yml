@@ -163,6 +163,11 @@ services:
       - ASPNETCORE_ENVIRONMENT=Production
       - Spark__RavenDb__Urls__0=http://coverage-raven:8080
       - Spark__RavenDb__EnsureDatabaseCreated=true
+      # Data Protection key ring (auth + antiforgery cookies decrypt with it). Kept on the
+      # dataprotection-keys volume so a redeploy does not sign everyone out; Spark refuses to
+      # start in Production without a location. appsettings.json deliberately sets no
+      # Storage, because KeysPath and Storage=RavenDb together also refuse startup.
+      - Spark__DataProtection__KeysPath=/var/lib/codecoverage/dataprotection-keys
       # OIDC audience: workflows must request an id-token with this audience
       - Coverage__BaseUrl=https://coverage.mintplayer.com
       # Signs the per-pull-request badge URL the bot puts in a PR comment, so a
@@ -196,6 +201,9 @@ services:
       # GitHub App private key, downloaded from the App settings page; see
       # .env.example for the expected location.
       - ./github-app.pem:/run/secrets/github-app.pem:ro
+      # Survives `docker compose down` / image updates. Deleting this volume signs every user
+      # out once and invalidates outstanding antiforgery tokens -- nothing else is lost.
+      - dataprotection-keys:/var/lib/codecoverage/dataprotection-keys
     labels:
       - "traefik.enable=true"
       # Hardcoded like every other MintPlayer deployment: interpolating the
@@ -234,6 +242,7 @@ services:
 volumes:
   raven-data:
   smtp-queue:
+  dataprotection-keys:
 
 networks:
   web:
