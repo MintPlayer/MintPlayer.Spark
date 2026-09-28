@@ -253,6 +253,18 @@ describe('SparkTwoFactorSetupComponent', () => {
     expect(twoFactor).toHaveBeenLastCalledWith({ forgetMachine: true });
     confirmSpy.mockRestore();
   });
+
+  it('hides "Forget this browser" after forgetting, though the server still answers remembered', async () => {
+    // MapIdentityApi reads isMachineRemembered from the cookie of the very request that deletes it.
+    const remembered = { sharedKey: 'K', recoveryCodesLeft: 3, isTwoFactorEnabled: true, isMachineRemembered: true };
+    const twoFactor = vi.fn().mockResolvedValue({ success: true, value: remembered });
+    configure({ twoFactor, authenticatorUri: vi.fn() });
+    const fixture = await render(TestBed.createComponent(SparkTwoFactorSetupComponent));
+    expect(fixture.componentInstance.state()?.isMachineRemembered).toBe(true);
+
+    await fixture.componentInstance.forgetMachine();
+    expect(fixture.componentInstance.state()?.isMachineRemembered).toBe(false);
+  });
 });
 
 describe('SparkExternalLoginsComponent', () => {

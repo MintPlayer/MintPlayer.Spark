@@ -43,17 +43,33 @@ export class SparkAuthService {
     this.checkAuth();
   }
 
+  /**
+   * The credentials of a sign-in that answered `RequiresTwoFactor`, held in memory only until the
+   * second step. MapIdentityApi's `/login` is stateless per request: the 2FA step must repeat the
+   * email and password next to the code (its `LoginRequest` requires both), or it answers 400.
+   */
+  private pendingTwoFactorLogin: { email: string; password: string } | null = null;
+
   async login(email: string, password: string): Promise<void> {
-    await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/login?useCookies=true`, { email, password }));
+    this.pendingTwoFactorLogin = null;
+    try {
+      await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/login?useCookies=true`, { email, password }));
+    } catch (err: any) {
+      if (err?.status === 401 && err?.error?.detail === 'RequiresTwoFactor')
+        this.pendingTwoFactorLogin = { email, password };
+      throw err;
+    }
     await this.csrfRefresh();
     await this.checkAuth();
   }
 
   async loginTwoFactor(twoFactorCode: string, twoFactorRecoveryCode?: string): Promise<void> {
     await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/login?useCookies=true`, {
+      ...this.pendingTwoFactorLogin,
       twoFactorCode,
       twoFactorRecoveryCode,
     }));
+    this.pendingTwoFactorLogin = null;
     await this.csrfRefresh();
     await this.checkAuth();
   }
@@ -63,6 +79,7 @@ export class SparkAuthService {
   }
 
   async logout(): Promise<void> {
+    this.pendingTwoFactorLogin = null;
     await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/logout`, {}));
     await this.csrfRefresh();
     this.currentUser.set(null);

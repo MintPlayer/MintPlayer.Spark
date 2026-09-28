@@ -146,6 +146,11 @@ export class SparkTwoFactorSetupComponent {
 
   async forgetMachine(): Promise<void> {
     await this.run({ forgetMachine: true });
+    // MapIdentityApi computes isMachineRemembered from the request's own remember-me cookie, which this
+    // same response deletes, so it still answers true. The browser is forgotten once the call succeeded.
+    const state = this.state();
+    if (state?.isMachineRemembered && this.messages().length === 0)
+      this.state.set({ ...state, isMachineRemembered: false });
   }
 
   async resetKey(): Promise<void> {
