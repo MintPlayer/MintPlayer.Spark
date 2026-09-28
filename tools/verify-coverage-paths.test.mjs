@@ -142,6 +142,17 @@ test('the host report is required only when SPARK_E2E_HOST_COVERAGE is 1 or true
   assert.deepEqual(checkExpected([HOST], none, [], { SPARK_E2E_HOST_COVERAGE: 'True' }).missing, [HOST]);
 });
 
+const QNA_HOST = EXPECTED_REPORTS.find((e) => e.name === 'E2E QnA host subprocess coverage');
+const QNA_HOST_REPORT = 'tests/MintPlayer.Spark.E2E.Tests/coverage/qna-host-E2E-5e6f/coverage.cobertura.xml';
+
+test('the QnA host report is its own entry, and cannot stand in for the in-process one either', () => {
+  assert.deepEqual(filterEntryHits(E2E, [QNA_HOST_REPORT, IN_PROCESS_REPORT]), [IN_PROCESS_REPORT]);
+  assert.deepEqual(filterEntryHits(QNA_HOST, [QNA_HOST_REPORT, IN_PROCESS_REPORT]), [QNA_HOST_REPORT]);
+  // Fleet's report does not satisfy QnA's entry: a run that lost one host's report still fails.
+  const { missing } = checkExpected([QNA_HOST], new Map([[QNA_HOST, []]]), [HOST_REPORT], { SPARK_E2E_HOST_COVERAGE: '1' });
+  assert.deepEqual(missing, [QNA_HOST]);
+});
+
 test('several host reports are all uploaded by the E2E upload glob', () => {
   const hosts = [HOST_REPORT, HOST_REPORT.replace('1a2b', '3c4d')];
   const { missing, notUploaded } = checkExpected([HOST], new Map([[HOST, hosts]]), hosts, { SPARK_E2E_HOST_COVERAGE: 'true' });
@@ -161,5 +172,5 @@ test('an absolute workspace path with no <source> resolves', () => {
 });
 
 test('no upload glob reaches a demo app', () => {
-  for (const g of UPLOAD_GLOBS) assert.doesNotMatch(g, /^apps\/(\*|DemoApp|Fleet|HR)\//);
+  for (const g of UPLOAD_GLOBS) assert.doesNotMatch(g, /^apps\/(\*|DemoApp|Fleet|HR|QnA)\//);
 });

@@ -39,7 +39,8 @@ import { globSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const E2E_HOST_REPORT = /^tests\/MintPlayer\.Spark\.E2E\.Tests\/coverage\/fleet-host-[^/]+\/coverage\.cobertura\.xml$/;
+// One slug per app the E2E suite hosts (SparkAppDescriptor.CoverageSlug): Fleet, and QnA since #460 M13.
+const E2E_HOST_REPORT = /^tests\/MintPlayer\.Spark\.E2E\.Tests\/coverage\/(fleet|qna)-host-[^/]+\/coverage\.cobertura\.xml$/;
 
 /**
  * Every report CI must produce, one per coverage-producing Nx project. A missing one
@@ -71,6 +72,14 @@ export const EXPECTED_REPORTS = [
   {
     name: 'E2E host subprocess coverage',
     glob: 'tests/MintPlayer.Spark.E2E.Tests/coverage/fleet-host-*/coverage.cobertura.xml',
+    match: E2E_HOST_REPORT,
+    required: (env) => /^(1|true)$/i.test(env.SPARK_E2E_HOST_COVERAGE ?? ''),
+  },
+  // The QnA host (QnATestHost), the same shape. A separate entry, so a run that measured Fleet but
+  // lost QnA's report still fails.
+  {
+    name: 'E2E QnA host subprocess coverage',
+    glob: 'tests/MintPlayer.Spark.E2E.Tests/coverage/qna-host-*/coverage.cobertura.xml',
     match: E2E_HOST_REPORT,
     required: (env) => /^(1|true)$/i.test(env.SPARK_E2E_HOST_COVERAGE ?? ''),
   },
