@@ -215,8 +215,20 @@ names the address and stream (default: the template name). `POST /spark/mail/uns
   delivery record names. 204 applied, 401 wrong secret, 413 too large (`MaxBodyBytes`, 1 MiB), 429
   over 120/min, 400 unparseable, 404 when disabled. Explicitly exempt from antiforgery.
 
-The Postfix side (pipe → curl → this endpoint, exit 75 on failure) is a documented recipe in
-`docs/guide-outgoing-mail.md` §8 (spike S-M5).
+The Postfix side (pipe → curl → this endpoint) is a documented recipe in
+`docs/guide-outgoing-mail.md` §8.3 (spikes S-M5, S-M5b). The pipe maps this endpoint's answer to its
+exit code, so Postfix retries only what can still succeed:
+
+| Endpoint answer | Pipe exit | Postfix |
+|---|---|---|
+| 2xx | 0 | delivered |
+| 400, 404, 413, 422 — the report can never be accepted | 0, with a `dropped` line | delivered (dropped), logged |
+| 401, 403 — wrong secret, a misconfiguration | 75 | deferred, retried until fixed |
+| 429, 5xx, no answer, anything else | 75 | deferred, retried |
+
+⚠️ 404 is also what a **disabled** endpoint answers: enable it before routing bounces to it, or the
+reports that arrive meanwhile are dropped. A deferred report lives until Postfix's queue lifetime (5
+days by default); when bounces pile up, look for the 401 in the app log.
 
 ## With MintPlayer.Spark.Authorization
 

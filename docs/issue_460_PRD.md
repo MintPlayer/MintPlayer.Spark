@@ -926,6 +926,31 @@ cookie. With the `isPlatformBrowser` guard: no header and no cookie write on the
   request (the resolver answers UTC there). The guide says to convert at enqueue time, while the
   request is still available.
 - *No SSR helper* in ng-spark (S-TZ2). The guide documents the `DatePipe` limitation instead.
+
+**S-M5b — the bounce pipe's exit code per endpoint answer (M9, carry-over from M8, 2026-09-28).**
+*Question:* M8's pipe exited 75 on every non-2xx, so a 400 report sat in the queue for 5 days. Which
+exit code drops a report the endpoint can never accept without Postfix retrying it or bouncing the
+bounce, and does the drop get logged?
+*Method:* the S-M5 setup again (`boky/postfix:v4.3.0`, the recipe's init script and pipe, a DSN from
+`sendmail -f "" -t`), with a Python receiver answering the status in its path; one DSN per case, then
+`postqueue -j | wc -l`, `postsuper -d ALL`. Two runs: 204/400/404/413/422/401/403/429/500/503/
+unreachable, then 204/400/422/401 and 400 with exit 69, followed by 15 s of log.
+*Answer:* 2xx → `status=sent`, queue 0. 400/404/413/422 with exit 0 → `status=sent`, queue 0, and
+**the command output is appended on success too** (`delivered via sparkbounce service (spark-bounce:
+dropped, the endpoint answered 400 …)`). 401/403/429/500/503 with exit 75 → `dsn=4.3.0,
+status=deferred (temporary failure. Command output: spark-bounce: the endpoint answered 401; …)`,
+queue 1; unreachable → `curl: (6) Could not resolve host … answered 000`, deferred. Exit 69 →
+`dsn=5.3.0, status=bounced (service unavailable. …)`, then `removed`, and no `postfix/bounce` line in
+the next 15 s (the message has a null sender, so no notification). `postlog` exists at
+`/usr/sbin/postlog` but the pipe's empty environment cannot find it (`postlog: not found`). The
+recipe's `chown nobody` of the URL/secret files makes `postfix-script` warn `not owned by root` at
+start (harmless, pre-existing).
+*Resolution:* 2xx → 0; 400/404/413/422 → echo a `dropped` line, exit 0; everything else (401/403,
+429, 5xx, no answer, unlisted codes) → 75. Documented in the MailManager README and
+`guide-outgoing-mail.md` §8.3. The guide's exact script, extracted from the markdown and run as
+`nobody` under `env -i /bin/sh` in the same image, exited 0 for 204/400/404/413/422 (the four with the
+`dropped` line) and 75 for 401/403/429/500/unresolvable host. No automated test covers the script (none existed; it is a recipe run
+inside the relay container).
 ---
 
 ## 5. Risks

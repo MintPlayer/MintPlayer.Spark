@@ -311,14 +311,41 @@ chmod 0400 /etc/postfix/spark-bounce-url /etc/postfix/spark-bounce-secret
 
 ```sh
 #!/bin/sh
-# stdin = the bounce; $1 = the VERP address. Exit 75 (EX_TEMPFAIL) on any HTTP failure.
+# stdin = the bounce; $1 = the VERP address.
+# Exit 0: delivered (2xx), or dropped because the endpoint can never accept this report
+#         (400 unparseable, 404 endpoint disabled, 413 too large, 422 unprocessable).
+# Exit 75 (EX_TEMPFAIL): anything else -- 401/403 (wrong secret), 429, 5xx, no answer -- so
+#         Postfix keeps the bounce queued and retries until the operator fixes the cause.
+# Postfix appends the command's output to the delivery's log line, on success too.
 recipient=$(printf '%s' "$1" | sed 's/+/%2B/g; s/@/%40/g')
-curl --silent --show-error --fail --max-time 30 \
+status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 30 \
   -H "Authorization: Bearer $(cat /etc/postfix/spark-bounce-secret)" \
   -H "Content-Type: message/rfc822" \
   --data-binary @- \
-  "$(cat /etc/postfix/spark-bounce-url)?recipient=${recipient}" || exit 75
+  "$(cat /etc/postfix/spark-bounce-url)?recipient=${recipient}")
+case "$status" in
+  2??) exit 0 ;;
+  400|404|413|422)
+    echo "spark-bounce: dropped, the endpoint answered $status and will never accept this report"
+    exit 0 ;;
+  *)
+    echo "spark-bounce: the endpoint answered ${status:-nothing}; Postfix will retry"
+    exit 75 ;;
+esac
 ```
+
+| Endpoint answer | Exit | Postfix (measured, S-M5b) |
+|---|---|---|
+| 2xx | 0 | `status=sent`, queue empty |
+| 400, 404, 413, 422 | 0 | `status=sent (… (spark-bounce: dropped, the endpoint answered 400 …))`, queue empty |
+| 401, 403, 429, 500, 503 | 75 | `status=deferred (temporary failure. Command output: spark-bounce: the endpoint answered 401; …)`, kept |
+| unreachable | 75 | `status=deferred (… curl: (6) Could not resolve host … answered 000 …)`, kept |
+
+Why a dropped report exits 0 and not a permanent-failure code: exit 69 (`EX_UNAVAILABLE`) was measured
+too: Postfix logs `status=bounced (service unavailable …)` and removes the message without sending a
+notification (its sender is empty) — the same drop, logged as a delivery failure of the bounce itself.
+`postlog` is not an option for the log line: it lives in `/usr/sbin`, outside the pipe's `PATH`. ⚠️ A **disabled** endpoint also answers 404, so enable it before pointing the
+relay at it.
 
 Relay environment: `VERP_DOMAIN`, `SPARK_BOUNCE_URL=http://<app>:8080/spark/mail/bounces`,
 `SPARK_BOUNCE_SECRET` (in the VPS `.env`, never in the compose file), and the VERP domain added to
@@ -331,9 +358,10 @@ bearer header, `Content-Type: message/rfc822`, the full report (720 bytes) and
 `?recipient=bounces%2B{id}%40verp.test`; the queue was then empty. With the endpoint unreachable, curl
 failed, the script exited 75 and Postfix kept the bounce **deferred** (`dsn=4.3.0, status=deferred
 (temporary failure. Command output: curl: (6) Could not resolve host …)`); once the endpoint was back,
-`postqueue -f` delivered it (204) and the queue emptied. A non-2xx answer (401 for a wrong secret, 400
-for an unparseable report) also exits 75, so such a bounce is retried until Postfix's queue lifetime
-(5 days by default) — check the app log for the 401 when bounces pile up.
+`postqueue -f` delivered it (204) and the queue emptied. A 401 or 403 (wrong secret) is retried until
+Postfix's queue lifetime (5 days by default) — check the app log for the 401 when bounces pile up. A
+report the endpoint can never accept (400, 404, 413, 422) is dropped at once instead of being retried
+for five days (#460, M9).
 
 ### 8.4 Bounces — tier 2: remote bounces via MX
 
