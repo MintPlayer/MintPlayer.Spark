@@ -688,7 +688,7 @@ internal partial class RowSecurity : IRowSecurity
 
             if (hookOverridden)
             {
-                var task = (Task)hook!.Invoke(actions, HookInvoke, binder: null, parameters: [action, subject], culture: null)!;
+                var task = (Task)hook!.Invoke(actions, HookInvoke, binder: null, parameters: [ActionsHookVerb(action), subject], culture: null)!;
                 await task;
                 if (!(bool)task.GetCompletedTaskResult()!)
                     return false;
@@ -703,6 +703,22 @@ internal partial class RowSecurity : IRowSecurity
             return true;
         };
     }
+
+    /// <summary>
+    /// The verb an Actions class's own row hooks (<c>GetRowFilterAsync</c>, <c>IsAllowedAsync</c>)
+    /// are asked about. <c>Restore</c> and <c>Revert</c> are edits of the stored row and <c>Purge</c>
+    /// a delete of it (#460, M7), so they reach those hooks as <c>Edit</c> / <c>Delete</c>: a rule
+    /// written for the built-in verbs — "only the owner may edit" — then governs them too, instead of
+    /// letting an unfamiliar name fall through to "unrestricted". Row policies still see the real
+    /// name (<see cref="RowPolicyContext.Action"/>), which is how SoftDelete confines a restore to a
+    /// deleted row while <c>Edit</c> keeps hiding it.
+    /// </summary>
+    internal static string ActionsHookVerb(string action) => action switch
+    {
+        "Restore" or "Revert" => "Edit",
+        "Purge" => "Delete",
+        _ => action,
+    };
 
     /// <summary>The request's filter expression, or null when the type declares none or the
     /// override returns null for this caller. Construction is async — the hook may await — and
@@ -737,7 +753,7 @@ internal partial class RowSecurity : IRowSecurity
         {
             CountHookInvocation();
             var actions = actionsResolver.ResolveForType(entityType);
-            var task = (Task)method!.Invoke(actions, HookInvoke, binder: null, parameters: [action], culture: null)!;
+            var task = (Task)method!.Invoke(actions, HookInvoke, binder: null, parameters: [ActionsHookVerb(action)], culture: null)!;
             await task;
             if ((LambdaExpression?)task.GetCompletedTaskResult() is { } actionsFilter)
                 parts.Add((actionsFilter, $"{actions.GetType().Name}.GetRowFilterAsync"));

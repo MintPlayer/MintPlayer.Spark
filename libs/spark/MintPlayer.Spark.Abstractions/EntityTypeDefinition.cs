@@ -137,6 +137,15 @@ public sealed class EntityTypeDefinition
     /// </remarks>
     public bool? ServerSideRowLifecycle { get; set; }
 
+    /// <summary>
+    /// RavenDB revisions for this type's collection (#460, T10) — hand-written in the model JSON and
+    /// preserved by model synchronization. Applied by the History package at startup, merged into the
+    /// database record's revisions configuration (other collections and the default are kept).
+    /// <see langword="null"/> leaves the collection's configuration to whoever owns the database.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public EntityRevisionsDefinition? Revisions { get; set; }
+
     public AttributeTab[] Tabs { get; set; } = [];
     public AttributeGroup[] Groups { get; set; } = [];
     public EntityAttributeDefinition[] Attributes { get; set; } = [];
@@ -162,6 +171,28 @@ public sealed class EntityTypeDefinition
     /// </para>
     /// </remarks>
     public EntityTypeDefinition ShallowCopy() => (EntityTypeDefinition)MemberwiseClone();
+}
+
+/// <summary>
+/// The model's revisions settings for one entity type (#460, T10). Mirrors RavenDB's
+/// <c>RevisionsCollectionConfiguration</c>: <c>Enabled = false</c> is <c>Disabled = true</c>; the
+/// rest map one to one. Unset limits keep every revision.
+/// </summary>
+public sealed class EntityRevisionsDefinition
+{
+    /// <summary>Whether RavenDB keeps revisions of this collection.</summary>
+    public bool Enabled { get; set; }
+
+    /// <summary>At least this many revisions are kept per document; older ones may be deleted.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public long? MinimumRevisionsToKeep { get; set; }
+
+    /// <summary>Revisions younger than this are kept (JSON: <c>"d.hh:mm:ss"</c>, e.g. <c>"90.00:00:00"</c>).</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public TimeSpan? MinimumRevisionAgeToKeep { get; set; }
+
+    /// <summary>Whether a document's revisions go when the document is deleted (a hard delete).</summary>
+    public bool PurgeOnDelete { get; set; }
 }
 
 public sealed class EntityAttributeDefinition

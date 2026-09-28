@@ -88,8 +88,10 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
     /// <c>Restore</c>, <c>Purge</c> and <c>ViewDeleted</c> are asked for by core on behalf of the
     /// SoftDelete package (#460): core gates a restore and a purge under their own names, and the
     /// soft-delete row policy asks <c>ViewDeleted</c> before honouring a query's <c>deleted</c> mode.
+    /// <c>History</c> and <c>Revert</c> are the History package's (M7): core gates a revert under
+    /// <c>Revert</c>, the package gates revision reads under <c>History</c>.
     /// </remarks>
-    private static readonly string[] BuiltInActions = ["Query", "Read", "New", "Edit", "Delete", "Replicate", "Restore", "Purge", "ViewDeleted"];
+    private static readonly string[] BuiltInActions = ["Query", "Read", "New", "Edit", "Delete", "Replicate", "Restore", "Purge", "ViewDeleted", "History", "Revert"];
 
     private static readonly string[] CombinedActions =
     [

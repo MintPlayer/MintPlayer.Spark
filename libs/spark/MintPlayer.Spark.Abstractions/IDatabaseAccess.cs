@@ -66,7 +66,15 @@ public interface IDatabaseAccess
     /// one-argument overload, except that a <b>Restore</b> is gated under its own name: the
     /// type-level right is <c>Restore/T</c> (not <c>Edit/T</c>), the row gate is asked about
     /// <c>"Restore"</c>, the disabled-action hook refuses it when <c>Restore</c>, <c>Edit</c> or
-    /// <c>Save</c> is withheld, and the document must exist (a restore never creates).
+    /// <c>Save</c> is withheld, and the document must exist (a restore never creates). A
+    /// <b>Revert</b> needs <c>Revert/T</c> <i>and</i> <c>Edit/T</c>, the row gate is asked about
+    /// <c>"Revert"</c>, the disabled-action hook refuses it when <c>Revert</c>, <c>Edit</c> or
+    /// <c>Save</c> is withheld, and the document must exist.
+    /// <para>
+    /// An Actions class's own row hooks (<c>GetRowFilterAsync</c> / <c>IsAllowedAsync</c>) are asked
+    /// about the base verb — <c>Edit</c> for a restore or revert, <c>Delete</c> for a purge — so a rule
+    /// written for the built-in verbs also governs them; row policies see the real name.
+    /// </para>
     /// </summary>
     Task<PersistentObject> SavePersistentObjectAsync(PersistentObject persistentObject, Interceptors.PersistentObjectOperation operation);
 
@@ -78,7 +86,9 @@ public interface IDatabaseAccess
     /// <see cref="Interceptors.PersistentObjectOperation.Sync"/>. Same gates as the two-argument overload,
     /// except that a <b>Purge</b> is gated under its own name: the type-level right is
     /// <c>Purge/T</c> (not <c>Delete/T</c>), the row gate is asked about <c>"Purge"</c>, and the
-    /// disabled-action hook refuses it when <c>Purge</c> or <c>Delete</c> is withheld.
+    /// disabled-action hook refuses it when <c>Purge</c> or <c>Delete</c> is withheld. If an interceptor
+    /// refuses after an earlier hook changed the entity, the entity is evicted from the request
+    /// session, so no later save in the request writes the half-made change.
     /// </summary>
     Task DeletePersistentObjectAsync(Guid objectTypeId, string id, Interceptors.PersistentObjectOperation operation);
 }

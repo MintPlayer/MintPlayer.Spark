@@ -228,9 +228,14 @@ public partial class SparkClient : IDisposable
     // --------------------------------------------------------------------------------
 
     /// <summary>Returns the PersistentObject with its <see cref="PersistentObject.Etag"/> populated, or null on 404.</summary>
+    /// <remarks>
+    /// <paramref name="deleted"/> (#460): <c>Include</c> / <c>Only</c> lets a <c>ViewDeleted</c> holder
+    /// open a soft-deleted row; without that right the server ignores it and a deleted row is null.
+    /// </remarks>
     public Task<PersistentObject?> GetPersistentObjectAsync(
-        Guid objectTypeId, string id, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null)
-        => GetPersistentObjectCoreAsync(objectTypeId.ToString(), id, onRetry, onOperation, cancellationToken);
+        Guid objectTypeId, string id, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null,
+        SparkDeletedFilter? deleted = null)
+        => GetPersistentObjectCoreAsync(objectTypeId.ToString(), id, onRetry, onOperation, deleted, cancellationToken);
 
     // ⚠️ Every method below posts a JSON body to a literal path. Nothing is escaped into a URL any
     // more, which removes a whole class of bug rather than moving it: a Raven id contains slashes,
@@ -244,18 +249,19 @@ public partial class SparkClient : IDisposable
     /// denied — the endpoint conflates these per security audit M-3).
     /// </summary>
     public Task<PersistentObject?> GetPersistentObjectAsync(
-        string aliasOrName, string id, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null)
-        => GetPersistentObjectCoreAsync(aliasOrName, id, onRetry, onOperation, cancellationToken);
+        string aliasOrName, string id, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null,
+        SparkDeletedFilter? deleted = null)
+        => GetPersistentObjectCoreAsync(aliasOrName, id, onRetry, onOperation, deleted, cancellationToken);
 
     private Task<PersistentObject?> GetPersistentObjectCoreAsync(
-        string objectTypeId, string id, SparkRetryHandler? onRetry, SparkOperationHandler? onOperation, CancellationToken cancellationToken)
+        string objectTypeId, string id, SparkRetryHandler? onRetry, SparkOperationHandler? onOperation, SparkDeletedFilter? deleted, CancellationToken cancellationToken)
         // A read can prompt too: OnLoadAsync is one of the nine hooks that may call Retry.Action, and
         // making reads POST is what bought the body this needs. ⚠️ A prompt from OnLoadAsync fires on
         // EVERY read of the type, so a handler that answers unconditionally is answering far more
         // often than a caller tends to expect.
         => PostConversationAsync<PersistentObject?>(
             "/spark/po/load",
-            new Dictionary<string, object?> { ["objectTypeId"] = objectTypeId, ["id"] = id },
+            WithDeleted(new Dictionary<string, object?> { ["objectTypeId"] = objectTypeId, ["id"] = id }, deleted),
             // A read needs no antiforgery token, and /spark/po/load carries an explicit exemption
             // saying so — which is what keeps this false now that the framework default gates
             // ambient-credentialed POSTs. Warming up here would cost every reading client a round

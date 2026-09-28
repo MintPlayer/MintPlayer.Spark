@@ -51,4 +51,15 @@ public static class SparkAddOnEndpoints
     /// </summary>
     public static IResult ActionDisabled(IClientAccessor client, SparkActionDisabledException exception)
         => ClientResult.ActionDisabled(client, exception);
+
+    /// <summary>
+    /// Whether <paramref name="exception"/> is the optimistic-concurrency refusal of a save (the
+    /// posted etag is not the stored change vector). Answer it with <see cref="ConcurrencyConflict"/>.
+    /// The exception type itself stays internal.
+    /// </summary>
+    public static bool IsConcurrencyConflict(Exception exception) => exception is SparkConcurrencyException;
+
+    /// <summary>The 409 <c>POST /spark/po/update</c> answers a concurrency conflict with, in the envelope.</summary>
+    public static IResult ConcurrencyConflict(IClientAccessor client)
+        => ClientResult.Envelope(client, new { error = "Concurrency conflict" }, StatusCodes.Status409Conflict);
 }

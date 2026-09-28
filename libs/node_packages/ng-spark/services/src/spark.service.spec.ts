@@ -392,6 +392,14 @@ describe('SparkService', () => {
     expect(dispatcher.dispatch).not.toHaveBeenCalled();
   });
 
+  it('get carries the soft-deletion mode when asked (#460)', async () => {
+    const promise = service.get('Car', 'cars/1', { deleted: 'include' });
+    const req = httpTesting.expectOne('/spark/po/load');
+    expect(req.request.body).toEqual({ objectTypeId: 'Car', id: 'cars/1', deleted: 'include' });
+    req.flush({ id: 'cars/1', attributes: [] });
+    await promise;
+  });
+
   it('refresh posts the object and the triggering attribute, and unwraps the envelope', async () => {
     const data = { attributes: [] } as any;
     const promise = service.refresh('Car', data, 'Jobs[2].ProfessionId');

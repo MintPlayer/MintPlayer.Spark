@@ -237,6 +237,11 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (isRestore && string.IsNullOrEmpty(persistentObject.Id))
             throw new ArgumentException("A restore must name the document it restores.", nameof(persistentObject));
 
+        // A revert, likewise, rewrites an existing document from one of its revisions (#460, History).
+        var isRevert = operation == PersistentObjectOperation.Revert;
+        if (isRevert && string.IsNullOrEmpty(persistentObject.Id))
+            throw new ArgumentException("A revert must name the document it reverts.", nameof(persistentObject));
+
         // Natural-id create-collision (security sweep H2): for an IHasNaturalId type the document
         // id is derived from the entity's own contents, so a "create" (Id == null) whose derived id
         // already exists is really an overwrite — and the New branch skips the Edit right, the row
@@ -266,7 +271,13 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (isRestore)
             await permissionService.EnsureAuthorizedAsync("Restore", entityTypeDefinition.Name);
         else
+        {
+            // A revert is an edit (Edit/T) that also needs its own right (Revert/T): it rewrites every
+            // model attribute at once, from content the caller did not type (#460, History).
+            if (isRevert)
+                await permissionService.EnsureAuthorizedAsync("Revert", entityTypeDefinition.Name);
             await EnsureSaveAuthorizedAsync(persistentObject);
+        }
 
         // Save vs New follows the id (after the natural-id collision above may have set it); an
         // explicit kind — Revert, Restore, Sync — is what the caller said.
@@ -288,11 +299,11 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // can be restored" while Edit keeps hiding deleted rows.
         if (!string.IsNullOrEmpty(persistentObject.Id))
         {
-            var rowAction = isRestore ? "Restore" : "Edit";
+            var rowAction = isRestore ? "Restore" : isRevert ? "Revert" : "Edit";
             using var checkSession = documentStore.OpenAsyncSession();
             var existing = await LoadEntityAsync(checkSession, entityType, persistentObject.Id);
-            if (existing is null && isRestore)
-                throw new SparkRowLevelAccessDeniedException($"Restore/{entityTypeDefinition.Name}");
+            if (existing is null && (isRestore || isRevert))
+                throw new SparkRowLevelAccessDeniedException($"{rowAction}/{entityTypeDefinition.Name}");
             if (existing is not null)
             {
                 // Id-to-type binding (security sweep C1/H1): the update targets an existing
@@ -466,7 +477,15 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entity = await LoadEntityAsync(session, entityType, id);
         if (entity is null) return;
 
-        await InvokeBeforeDeleteHookAsync(actions, entityType, entity);
+        try
+        {
+            await InvokeBeforeDeleteHookAsync(actions, entityType, entity);
+        }
+        catch
+        {
+            session.Advanced.Evict(entity);
+            throw;
+        }
         interceptorPipeline.MarkBeforeDeleteHandled(entity);
 
         var context = new DeleteContext
@@ -499,6 +518,16 @@ internal partial class DatabaseAccess : IDatabaseAccess
                 if (replicated)
                     await syncInterceptor!.HandleDeleteAsync(entityType, id);
             }
+        }
+        catch
+        {
+            // A refusal after an earlier hook already changed the entity (SoftDelete marks it deleted,
+            // then a later interceptor says no) must leave nothing behind. The entity is tracked by the
+            // REQUEST session, so any later SaveChangesAsync in this request — another save, a custom
+            // action's own write — would otherwise commit the half-made change (#460, M6 finding).
+            // Evicted, the next load in this request reads what is stored.
+            session.Advanced.Evict(entity);
+            throw;
         }
         finally
         {
@@ -567,7 +596,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
     /// A restore is an edit of the stored row and a purge a delete of it, so a hook that withholds
     /// <c>Edit</c> (or <c>Save</c>) refuses a restore and one that withholds <c>Delete</c> refuses a
     /// purge, besides their own names (#460, M6 — the conservative reading: a row an author froze
-    /// against editing is not silently rewritten by a restore).
+    /// against editing is not silently rewritten by a restore). A revert is an edit too, so
+    /// <c>Revert</c>, <c>Edit</c> or <c>Save</c> refuses it (M7).
     /// </para>
     /// </summary>
     private static (string Name, string[] RefusedBy)? SubmittedAction(PersistentObjectOperation operation) => operation switch
@@ -576,6 +606,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         PersistentObjectOperation.New => ("New", ["New", "Save"]),
         PersistentObjectOperation.Delete => ("Delete", ["Delete"]),
         PersistentObjectOperation.Restore => ("Restore", ["Restore", "Edit", "Save"]),
+        PersistentObjectOperation.Revert => ("Revert", ["Revert", "Edit", "Save"]),
         PersistentObjectOperation.Purge => ("Purge", ["Purge", "Delete"]),
         PersistentObjectOperation.Sync => null,
         _ => (operation.ToString(), [operation.ToString()]),

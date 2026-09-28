@@ -38,6 +38,7 @@ internal sealed partial class GetPersistentObject : IPostEndpoint
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IDisabledActionsEvaluator disabledActions;
+    [Inject] private readonly IRowPolicyRequestState rowPolicyRequestState;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -53,6 +54,10 @@ internal sealed partial class GetPersistentObject : IPostEndpoint
         // A load can prompt now, which is the whole reason it grew a body. OnLoadAsync raising a
         // retry gets the same 449 envelope as every other hook.
         RetryScope.Accept(retryAccessor, request);
+
+        // T2 on the load side (#460, M7): a ViewDeleted holder opening a row from the recycle bin.
+        // Set before anything asks row security, because row filters are memoized per request.
+        rowPolicyRequestState.Deleted = request.Deleted ?? SparkDeletedFilter.Exclude;
 
         try
         {

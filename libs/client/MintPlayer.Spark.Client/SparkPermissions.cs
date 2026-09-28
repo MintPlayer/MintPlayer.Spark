@@ -20,6 +20,21 @@ public sealed class SparkPermissions
     public bool CanCreate { get; init; }
     public bool CanEdit { get; init; }
     public bool CanDelete { get; init; }
+
+    /// <summary><c>Restore/T</c> (SoftDelete, #460). False when the app grants it nowhere.</summary>
+    public bool CanRestore { get; init; }
+
+    /// <summary><c>Purge/T</c> (SoftDelete, #460).</summary>
+    public bool CanPurge { get; init; }
+
+    /// <summary><c>ViewDeleted/T</c> (SoftDelete, #460): the recycle bin — query and load with <c>deleted</c>.</summary>
+    public bool CanViewDeleted { get; init; }
+
+    /// <summary><c>History/T</c> (History, #460): list and read revisions.</summary>
+    public bool CanViewHistory { get; init; }
+
+    /// <summary><c>Revert/T</c> together with <c>Edit/T</c> (History, #460).</summary>
+    public bool CanRevert { get; init; }
 }
 
 /// <summary>

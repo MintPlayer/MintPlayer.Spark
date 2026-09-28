@@ -179,9 +179,21 @@ not copies in every Actions class — see `docs/guide-row-security.md`:
   `IDatabaseAccess` gates a `Restore` save under `Restore/T` + row action `"Restore"` and a `Purge`
   delete under `Purge/T` + `"Purge"`; the disabled-action hook refuses a restore when `Edit`/`Save`
   is withheld and a purge when `Delete` is. README: `libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md`.
+  `/spark/po/load` takes `deleted: include|only` (honoured for `ViewDeleted/T` holders) to open a row
+  from the recycle bin; `/spark/permissions/{type}` reports `canRestore`, `canPurge`, `canViewDeleted`.
+- **History / audit is a package** — `MintPlayer.Spark.History`: `spark.AddHistory()`, entity
+  implements `IAuditable` (stamped with user **ids**; `CreatedBy` immutable), revisions come from the
+  model's `"revisions": { "enabled": true, … }` block (merged into the database at startup — never
+  call `ConfigureRevisionsOperation` by hand, it replaces the whole configuration). Grant `History/T`
+  and `Revert/T` by name. A revert is `SavePersistentObjectAsync(po, Revert)`: `Revert/T` + `Edit/T`,
+  row action `"Revert"`. README: `libs/history/MintPlayer.Spark.History/README.md`.
+- Row rules in an Actions class see the **base verb** for the package operations: `"Edit"` for a
+  restore or revert, `"Delete"` for a purge (row policies see the real name). Write rules for the
+  built-in verbs; do not special-case `"Restore"`/`"Revert"`/`"Purge"` there.
 - An add-on package mapping its own `/spark/*` endpoint answers through
-  `MintPlayer.Spark.Endpoints.SparkAddOnEndpoints` (envelope, the one refusal, 400, 403) — never an
-  invented error shape (#453 oracle).
+  `MintPlayer.Spark.Endpoints.SparkAddOnEndpoints` (envelope, the one refusal, 400, 403, 409) — never
+  an invented error shape (#453 oracle). Content core did not load itself (an old revision) is shown
+  through `IPersistentObjectPresenter` (breadcrumbs + redaction), never by mapping it raw.
 
 ### `OnRefreshAsync` — forms that reshape themselves
 

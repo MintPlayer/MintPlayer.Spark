@@ -185,8 +185,13 @@ export class SparkService {
   }
 
   // Persistent Objects
-  async get(type: string, id: string): Promise<PersistentObject> {
-    return this.sendRead<PersistentObject>(`${this.baseUrl}/po/load`, { objectTypeId: type, id });
+  /**
+   * Loads one object. `options.deleted` (#460) lets a `ViewDeleted` holder open a soft-deleted row
+   * from the recycle bin (`'include'` or `'only'`); without the right the server ignores it and a
+   * deleted row stays a 404. Omitted = exclude.
+   */
+  async get(type: string, id: string, options?: { deleted?: SparkDeletedFilter }): Promise<PersistentObject> {
+    return this.sendRead<PersistentObject>(`${this.baseUrl}/po/load`, { objectTypeId: type, id, deleted: options?.deleted });
   }
 
   async create(type: string, data: Partial<PersistentObject>): Promise<PersistentObject> {

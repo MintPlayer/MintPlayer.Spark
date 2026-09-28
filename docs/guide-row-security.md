@@ -136,8 +136,13 @@ Cross-cutting write behaviour — stamping, soft deletion, locks — is an `IPer
 |---|---|---|---|
 | `SavePersistentObjectAsync(po, Restore)` | `Restore/T` | `"Restore"` | `Restore`, `Edit`, `Save` |
 | `DeletePersistentObjectAsync(typeId, id, Purge)` | `Purge/T` | `"Purge"` | `Purge`, `Delete` |
+| `SavePersistentObjectAsync(po, Revert)` (History) | `Revert/T` **and** `Edit/T` | `"Revert"` | `Revert`, `Edit`, `Save` |
 
-A restore never creates: an id that names nothing is a 404. The `WITH CHECK` after a restore still asks `"Edit"` (the row is live again by then). An Actions class's `GetRowFilterAsync` / `IsAllowedAsync` is asked with the action names `"Restore"` / `"Purge"` — a rule that only handles the built-in verbs lets them through unfiltered, so write the rule for every action. The package that uses all this is [`MintPlayer.Spark.SoftDelete`](../libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md) — use it rather than a hand-written soft-delete policy.
+A restore or revert never creates: an id that names nothing is a 404. The `WITH CHECK` after a restore or revert still asks `"Edit"`.
+
+**The Actions class sees the base verb.** Row *policies* get the real name (`RowPolicyContext.Action` is `"Restore"`, `"Purge"`, `"Revert"`) — that is how SoftDelete confines a restore to a deleted row. An Actions class's own `GetRowFilterAsync` / `IsAllowedAsync` is asked about the base verb instead: `"Edit"` for a restore or revert, `"Delete"` for a purge. So a rule written for the built-in verbs ("only the owner may edit") governs them too, instead of an unfamiliar name falling through to "unrestricted" (#460, M7). The packages that use all this are [`MintPlayer.Spark.SoftDelete`](../libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md) and [`MintPlayer.Spark.History`](../libs/history/MintPlayer.Spark.History/README.md) — use them rather than a hand-written soft-delete policy or revert.
+
+If an interceptor refuses a delete after an earlier hook changed the entity (SoftDelete marked it, a lock said no), `IDatabaseAccess` evicts the entity from the request session, so no later save in the request writes the half-made change.
 
 ## Write-side enforcement (`WITH CHECK`)
 
