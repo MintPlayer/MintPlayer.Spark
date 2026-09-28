@@ -50,15 +50,15 @@ Dependencies flow downward. Items in the same milestone are independent.
 - [x] Spike **S-M3** (throttle accuracy) at the end of the milestone.
 
 ### M5 — Auth (items 4, 5, 6-server, 9)
-- [ ] **D4** `SparkSignInManager` + `@` rule in the user validator; `/connect/login` shares the resolver. Spike **SP-A**.
-- [ ] **D5** secrets at rest in `UserStore` (`sdp1:` prefix, legacy read, backfill job); decide + document purpose string (with/without user id) and unprotect-failure behaviour (must not silently disable 2FA). Spike **SP-B** (rest).
-- [ ] **D6** `RequireConfirmedEmail`, reset-confirms-email, forgotPassword to unconfirmed. **The no-op-sender startup guard lands in M8**, together with MailManager and the demo apps' pickup mode — otherwise CodeCoverage, HR and Fleet cannot start between milestone commits.
-- [ ] **D7** provider verified-email trust, X + LinkedIn presets, display-name slug user names. Spike **SP-C**.
-- [ ] **D8** personal-data + account-deletion endpoints and handler interfaces.
-- [ ] **D16 server**: `/manage/password`, `/manage/profile` + `ISparkProfileContributor<TUser>`, `/manage/2fa/authenticator-uri` + SVG QR (spike **SP-D**), confirm-new-email, `ISparkAuthLinkBuilder`; `SparkLocalCredentials` classification + antiforgery for every new route.
-- [ ] `SparkUser.CreatedAtUtc` + `RegistrationMethod` stamped in `UserStore.CreateAsync`; backfill from `@created`.
-- [ ] **T9** delete `SparkAuthEnsureNpmPackage`, add the missing-dependency warning.
-- [ ] Spike **SP-E** (#439 SP2 passkey clone detection).
+- [x] **D4** `SparkSignInManager` + `@` rule in the user validator; `/connect/login` shares the resolver. Spike **SP-A**.
+- [x] **D5** secrets at rest in `UserStore` (`sdp1:` prefix, legacy read, backfill job); decide + document purpose string (with/without user id) and unprotect-failure behaviour (must not silently disable 2FA). Spike **SP-B** (rest).
+- [x] **D6** `RequireConfirmedEmail`, reset-confirms-email, forgotPassword to unconfirmed. **The no-op-sender startup guard lands in M8**, together with MailManager and the demo apps' pickup mode — otherwise CodeCoverage, HR and Fleet cannot start between milestone commits.
+- [x] **D7** provider verified-email trust, X + LinkedIn presets, display-name slug user names. Spike **SP-C**.
+- [x] **D8** personal-data + account-deletion endpoints and handler interfaces.
+- [x] **D16 server**: `/manage/password`, `/manage/profile` + `ISparkProfileContributor<TUser>`, `/manage/2fa/authenticator-uri` + SVG QR (spike **SP-D**), confirm-new-email, `ISparkAuthLinkBuilder`; `SparkLocalCredentials` classification + antiforgery for every new route.
+- [x] `SparkUser.CreatedAtUtc` + `RegistrationMethod` stamped in `UserStore.CreateAsync`; backfill from `@created`.
+- [x] **T9** delete `SparkAuthEnsureNpmPackage`, add the missing-dependency warning.
+- [x] Spike **SP-E** (#439 SP2 passkey clone detection).
 
 ### M6 — SoftDelete package (item 2)
 - [ ] `libs/soft_delete/MintPlayer.Spark.SoftDelete(.Abstractions)`, slnx registration.
