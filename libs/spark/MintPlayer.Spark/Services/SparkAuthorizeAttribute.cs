@@ -141,16 +141,56 @@ internal sealed class SparkAuthorizeHandler(IServiceProvider serviceProvider)
         {
             RefuseWellKnownGroup(scoped, group);
 
-            var membership = scoped.GetService<IGroupMembershipProvider>();
-            if (membership is null)
-                return;
-
-            var groups = await membership.GetCurrentUserGroupsAsync();
-            if (!groups.Contains(group, StringComparer.OrdinalIgnoreCase))
+            if (!await IsInGroupAsync(scoped, group))
                 return;
         }
 
         context.Succeed(requirement);
+    }
+
+    /// <summary>
+    /// Whether the caller is in <paramref name="group"/>, read from the same per-request snapshot
+    /// <c>SecurityFileAccessControl</c> uses (#460, D12), so every composed provider is consulted and
+    /// none is asked twice.
+    /// </summary>
+    /// <remarks>
+    /// A name matches as it always has: case-insensitively against the names the providers return,
+    /// whether or not <c>security.json</c> declares such a group. A provider-returned <b>id</b> —
+    /// new, so there is no older answer to preserve — matches the attribute's value as the id itself
+    /// or as any translation of that group's name. The fallback, for a host that registers a provider
+    /// but not Spark's membership service, is the old single-provider read.
+    /// </remarks>
+    private static async Task<bool> IsInGroupAsync(IServiceProvider scoped, string group)
+    {
+        if (scoped.GetService<SparkGroupMembership>() is not { } membership)
+        {
+            var provider = scoped.GetService<IGroupMembershipProvider>();
+            return provider is not null
+                && (await provider.GetCurrentUserGroupsAsync()).Contains(group, StringComparer.OrdinalIgnoreCase);
+        }
+
+        var groups = await membership.GetAsync();
+        if (groups.Names.Contains(group, StringComparer.OrdinalIgnoreCase))
+            return true;
+
+        if (groups.Ids.Count == 0)
+            return false;
+
+        if (Guid.TryParse(group, out var asId) && groups.Ids.Contains(asId))
+            return true;
+
+        var config = scoped.GetService<ISecurityConfigurationLoader>()?.GetConfiguration();
+        if (config is null)
+            return false;
+
+        foreach (var id in groups.Ids)
+        {
+            var declared = config.Groups.FirstOrDefault(g => Guid.TryParse(g.Key, out var key) && key == id);
+            if (declared.Value?.Translations.Values.Any(v => string.Equals(v, group, StringComparison.OrdinalIgnoreCase)) == true)
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>

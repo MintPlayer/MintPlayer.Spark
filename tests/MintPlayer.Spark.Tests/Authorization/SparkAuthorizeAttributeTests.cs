@@ -80,7 +80,8 @@ public class SparkAuthorizeAttributeTests
     private static async Task<IHost> StartAsync(
         IAccessControl accessControl,
         IGroupMembershipProvider? groups = null,
-        ISecurityConfigurationLoader? securityLoader = null)
+        ISecurityConfigurationLoader? securityLoader = null,
+        IGroupMembershipProvider? composed = null)
         => await new HostBuilder()
             .ConfigureWebHost(webHost => webHost
                 .UseTestServer()
@@ -96,6 +97,13 @@ public class SparkAuthorizeAttributeTests
                         services.AddScoped(_ => groups);
                     if (securityLoader is not null)
                         services.AddScoped(_ => securityLoader);
+                    if (composed is not null)
+                    {
+                        // What AddSpark + AddGroupMembershipProvider register (#460, D12).
+                        services.AddScoped<SparkGroupMembership>();
+                        services.AddScoped<IComposedGroupMembershipProvider>(
+                            _ => new ComposedGroupMembershipProvider<IGroupMembershipProvider>(composed));
+                    }
                 })
                 .Configure(app =>
                 {
@@ -177,6 +185,62 @@ public class SparkAuthorizeAttributeTests
         var response = await host.GetTestClient().GetAsync("/administrators");
 
         response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
+
+    /// <summary>
+    /// #460, D12: the group form reads the same merged, per-request snapshot as security.json, so a
+    /// group a composed provider asserts counts here too.
+    /// </summary>
+    [Fact]
+    public async Task The_group_form_counts_a_composed_provider()
+    {
+        using var host = await StartAsync(
+            new StubAccessControl(), new StubGroups("Readers"), composed: new StubGroups("Administrators"));
+
+        var response = await host.GetTestClient().GetAsync("/administrators");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    /// <summary>
+    /// A provider-returned id matches the attribute through the group's declared name — the id is
+    /// what an earned privilege knows, the name is what an author writes.
+    /// </summary>
+    [Fact]
+    public async Task The_group_form_matches_a_provider_returned_id_by_its_declared_name()
+    {
+        var administrators = Guid.Parse("5d0a5a2e-0000-0000-0000-0000000000ad");
+
+        using var host = await StartAsync(
+            new StubAccessControl(),
+            new StubGroups("Readers"),
+            securityLoader: new NamedGroupLoader(administrators, "Administrators"),
+            composed: new StubGroupIds(administrators));
+
+        var response = await host.GetTestClient().GetAsync("/administrators");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    private sealed class StubGroupIds(params Guid[] ids) : IGroupMembershipProvider, IGroupIdMembershipProvider
+    {
+        public Task<IEnumerable<string>> GetCurrentUserGroupsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(Enumerable.Empty<string>());
+
+        public Task<IEnumerable<Guid>> GetCurrentUserGroupIdsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IEnumerable<Guid>>(ids);
+    }
+
+    /// <summary>A security.json declaring one ordinary (not well-known) group.</summary>
+    private sealed class NamedGroupLoader(Guid groupId, string displayName) : ISecurityConfigurationLoader
+    {
+        public SecurityConfiguration GetConfiguration() => new()
+        {
+            Groups = { [groupId.ToString()] = TranslatedString.Create(displayName) },
+        };
+
+        public RightsDecision GetResolvedRights(IReadOnlySet<Guid> groupIds) => RightsDecision.None;
+        public void InvalidateCache() { }
     }
 
     [Fact]

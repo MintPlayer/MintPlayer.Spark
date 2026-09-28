@@ -164,6 +164,27 @@ spark.UseGroupMembershipProvider<MyProvider>();
 
 The default reads `group` / `groups` / the two Microsoft role claim types / the SOAP group claim.
 
+To **add** a source of membership instead of replacing the claims — groups earned by reputation,
+a directory lookup on top of sign-in claims — compose one:
+
+```csharp
+spark.AddGroupMembershipProvider<EarnedPrivilegesProvider>();
+```
+
+Every composed provider's answer is merged with the primary one's (`Use…` keeps replacing only the
+primary; the call order does not matter; adding the same type twice is a no-op). A provider may also
+name groups by **id** — the keys of the `groups` block — by implementing `IGroupIdMembershipProvider`
+next to `IGroupMembershipProvider`; that is the unambiguous way, since a display name may be any
+string. Ids obey the same rules as names: a well-known id is dropped and an undeclared one grants
+nothing. All providers are asked **once per request**; the merged answer is cached for the rest of it
+and shared by `[SparkAuthorize(Group = …)]`, which matches a provider-returned id by the id itself or
+by any translation of that group's name.
+
+**The current user.** Code that needs *who* rather than *which groups* — audit stamping, moderation —
+injects `ISparkCurrentUser` (`Id`, `IsAuthenticated`), scoped, which reads the principal's
+`NameIdentifier` claim by default. It is an id, never a name; replace the registration to resolve it
+differently.
+
 ---
 
 ## Never delete a type-level grant to lock something down

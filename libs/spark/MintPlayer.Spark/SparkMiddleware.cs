@@ -116,6 +116,11 @@ public static class SparkExtensions
         // controllers and jobs (#301).
         services.AddScoped(typeof(Abstractions.Authorization.ISparkRowRule<>), typeof(Services.SparkRowRule<>));
 
+        // The per-request group-membership snapshot SecurityFileAccessControl and the
+        // [SparkAuthorize] group handler share (#460, D12). A concrete class, which the [Register]
+        // generator does not register as itself, so it is wired here too.
+        Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddScoped<Services.SparkGroupMembership>(services);
+
         // The model synchronizer rewrites App_Data/Model/*.json from the entity classes. It is a
         // build-time tool, so outside Development it is not in the container at all — there is
         // nothing to resolve rather than a guard to get past.

@@ -35,8 +35,22 @@ public class SecurityFileAccessControlTests
         _configLoader.GetResolvedRights(Arg.Any<IReadOnlySet<Guid>>())
             .Returns(ci => RightsDecision.For(config, ci.Arg<IReadOnlySet<Guid>>()));
 
-        return new SecurityFileAccessControl(_configLoader, _groupMembership, _logger,
-            authenticated is null ? null : HttpContextFor(authenticated.Value));
+        return CreateService(authenticated, composed: []);
+    }
+
+    /// <summary>
+    /// The service over the real per-request membership snapshot, with <paramref name="composed"/>
+    /// as providers added by <c>AddGroupMembershipProvider</c> (#460, D12).
+    /// </summary>
+    private SecurityFileAccessControl CreateService(bool? authenticated, IGroupMembershipProvider[] composed)
+    {
+        var accessor = authenticated is null ? null : HttpContextFor(authenticated.Value);
+        var membership = new SparkGroupMembership(
+            _groupMembership,
+            composed.Select(p => (IComposedGroupMembershipProvider)new ComposedGroupMembershipProvider<IGroupMembershipProvider>(p)).ToList(),
+            accessor);
+
+        return new SecurityFileAccessControl(_configLoader, membership, _logger, accessor);
     }
 
     /// <summary>
@@ -526,5 +540,110 @@ public class SecurityFileAccessControlTests
 
             (await service.IsAllowedAsync("Query/Person")).Should().BeTrue();
         }
+    }
+
+    // ---------- #460 D12: composed providers, provider-returned ids, the per-request cache ----------
+
+    private sealed class NamesProvider(params string[] names) : IGroupMembershipProvider
+    {
+        public int Calls { get; private set; }
+
+        public Task<IEnumerable<string>> GetCurrentUserGroupsAsync(CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.FromResult<IEnumerable<string>>(names);
+        }
+    }
+
+    /// <summary>A provider that knows groups only by id — the shape earned privileges take.</summary>
+    private sealed class IdsProvider(params Guid[] ids) : IGroupMembershipProvider, IGroupIdMembershipProvider
+    {
+        public Task<IEnumerable<string>> GetCurrentUserGroupsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(Enumerable.Empty<string>());
+
+        public Task<IEnumerable<Guid>> GetCurrentUserGroupIdsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IEnumerable<Guid>>(ids);
+    }
+
+    private SecurityConfiguration ComposedConfig()
+    {
+        var config = ConfigWith(
+            groups: new()
+            {
+                [AdminsId] = En("Admins"),
+                [EditorsId] = En("Editors"),
+                [AuthenticatedId] = En("Signed-in users"),
+            },
+            wellKnown: new() { ["authenticated"] = AuthenticatedId },
+            new Right { GroupId = AdminsId, Resource = "Delete/Car" },
+            new Right { GroupId = EditorsId, Resource = "Edit/Car" });
+
+        _configLoader.GetConfiguration().Returns(config);
+        _configLoader.GetResolvedRights(Arg.Any<IReadOnlySet<Guid>>())
+            .Returns(ci => RightsDecision.For(config, ci.Arg<IReadOnlySet<Guid>>()));
+        return config;
+    }
+
+    [Fact]
+    public async Task A_composed_provider_adds_to_the_primary_one_rather_than_replacing_it()
+    {
+        ComposedConfig();
+        _groupMembership.GetCurrentUserGroupsAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IEnumerable<string>>(["Admins"]));
+
+        var service = CreateService(authenticated: true, composed: [new NamesProvider("Editors")]);
+
+        (await service.IsAllowedAsync("Delete/Car")).Should().BeTrue("the primary provider's group still counts");
+        (await service.IsAllowedAsync("Edit/Car")).Should().BeTrue("the composed provider's group is merged in");
+    }
+
+    [Fact]
+    public async Task A_provider_may_name_a_group_by_id()
+    {
+        ComposedConfig();
+        _groupMembership.GetCurrentUserGroupsAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Enumerable.Empty<string>()));
+
+        var service = CreateService(authenticated: true, composed: [new IdsProvider(EditorsId)]);
+
+        (await service.IsAllowedAsync("Edit/Car")).Should().BeTrue();
+        (await service.IsAllowedAsync("Delete/Car")).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The reserved-id rule holds for ids exactly as for names: a provider cannot hand an anonymous
+    /// caller the authenticated role, and an id security.json does not declare grants nothing.
+    /// </summary>
+    [Fact]
+    public async Task A_provider_returned_id_cannot_assert_a_well_known_role()
+    {
+        var config = ComposedConfig();
+        config.Rights.Add(new Right { GroupId = AuthenticatedId, Resource = "Read/Car" });
+        _groupMembership.GetCurrentUserGroupsAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Enumerable.Empty<string>()));
+
+        var service = CreateService(authenticated: false, composed: [new IdsProvider(AuthenticatedId, Guid.NewGuid())]);
+
+        (await service.IsAllowedAsync("Read/Car")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Every_provider_is_asked_once_per_request()
+    {
+        ComposedConfig();
+        _groupMembership.GetCurrentUserGroupsAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IEnumerable<string>>(["Admins"]));
+        var composed = new NamesProvider("Editors");
+
+        var service = CreateService(authenticated: true, composed: [composed]);
+
+        for (var i = 0; i < 5; i++)
+        {
+            await service.IsAllowedAsync("Delete/Car");
+            await service.IsAllowedAsync("Edit/Car");
+        }
+
+        composed.Calls.Should().Be(1);
+        await _groupMembership.Received(1).GetCurrentUserGroupsAsync(Arg.Any<CancellationToken>());
     }
 }
