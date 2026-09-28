@@ -65,7 +65,14 @@ at all) stay visible. A query asks for more with the request field `deleted`:
 | `include` | live + deleted | live rows (flag ignored) |
 | `only` | deleted rows | live rows (flag ignored) |
 
-Opening a deleted row by id (`/spark/po/load`) is a 404 for everyone.
+Opening a row by id (`POST /spark/po/load`) takes the same field: `{ objectTypeId, id, deleted:
+"include" }` opens a deleted row from the recycle bin for a `ViewDeleted/T` holder (ng-spark
+`spark.get(type, id, { deleted })`, `SparkClient.GetPersistentObjectAsync(…, deleted: …)`); for
+everyone else, and without the field, a deleted row is a 404. The loaded row's `can.edit` is false
+(an edit still hides deleted rows — restore first).
+
+`GET /spark/permissions/{type}` reports `canRestore`, `canPurge` and `canViewDeleted` alongside the
+built-in rights, so a UI knows whether to offer the recycle bin.
 
 **Restore** — `POST /spark/po/restore { objectTypeId, id }` → 200 with the restored object. Needs
 `Restore/T`; the row must be deleted; it is saved through the normal pipeline with no attributes, so
@@ -75,7 +82,11 @@ nothing but the four fields changes. Refused with 403 when the Actions class's
 **Purge** — `POST /spark/po/purge { objectTypeId, id }` → 204. Needs `Purge/T`; the row must already
 be deleted. The document is deleted (this time the Actions class's `OnDeleteAsync` **is** called),
 then every revision of it, force-created ones included. Refused with 403 when the hook withholds
-`Purge` or `Delete`. Cannot be undone.
+`Purge` or `Delete`. Cannot be undone. See [Purge needs database-admin](#purge-needs-database-admin).
+
+**A refused delete leaves nothing behind.** The mark is set on the request session's copy of the
+row; if a later interceptor (a lock, say) refuses the delete, `IDatabaseAccess` evicts that copy, so
+no later save in the same request writes the half-made delete.
 
 Every refusal — no right, a live row, a missing id, an id of another collection, a type that is not
 soft-deletable — is the same answer as any other Spark endpoint: 404 (401 when signing in could
@@ -131,10 +142,21 @@ Analyzer **SPARK022** flags `!x.IsDeleted` and `x.IsDeleted == false` on an `ISo
 expression a provider translates: both drop every document without the field. Write
 `x.IsDeleted != true`.
 
+## Purge needs database-admin
+
+Purge deletes the document, then runs RavenDB's `DeleteRevisionsOperation` — a **database-admin**
+operation (deleting a document is not). On a secured server the client certificate the app connects
+with must therefore have **Admin** access to that database (the certificate's per-database access
+level), or no purge can finish.
+
+A purge **fails safe** without it: before the document is deleted, the interceptor runs the same
+operation on an id that names nothing (no effect, same authorization). If that is refused, the purge
+is refused — the caller gets a 500, the log says why, and the document and its revisions are
+untouched. A success is remembered for the process, so the probe costs one request per process.
+Unsecured servers (development, the embedded test server) need nothing.
+
 ## Limits
 
-- Purge runs RavenDB's `DeleteRevisionsOperation`, an **admin** operation: the client certificate
-  (on a secured server) needs database-admin access, or every purge fails after the document is gone.
 - Revisions of *other* documents that embed the purged row's data are not touched (GDPR guidance:
   that content is the app's to handle).
 - An Actions class that overrides `OnDeleteAsync` without deleting makes a purge fail (the document

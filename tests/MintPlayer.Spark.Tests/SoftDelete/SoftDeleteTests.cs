@@ -3,9 +3,12 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Actions;
+using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Actions;
+using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.SoftDelete;
 using MintPlayer.Spark.Testing;
@@ -41,18 +44,24 @@ public class SoftDeleteTests : SparkTestDriver
         await base.DisposeAsync();
     }
 
-    private async Task<Host> StartAsync(SparkTestSecurity? security = null)
+    private async Task<Host> StartAsync(SparkTestSecurity? security = null, Action<IServiceCollection>? services = null)
     {
         var factory = new SparkEndpointFactory<SdContext>(
             Store,
             [NoteModel(), PersonModel(), SlugModel()],
-            configureServices: services =>
+            configureServices: s =>
             {
-                services.AddSingleton<SdRecorder>();
-                services.AddScoped<SdNoteActions>();
-                services.AddSoftDeleteObserver<SdObserver>();
+                s.AddSingleton<SdRecorder>();
+                s.AddScoped<SdNoteActions>();
+                s.AddSoftDeleteObserver<SdObserver>();
+                services?.Invoke(s);
             },
-            configureSpark: spark => spark.AddSoftDelete(),
+            configureSpark: spark =>
+            {
+                spark.AddSoftDelete();
+                // Registered after SoftDelete, so it refuses AFTER the soft-delete mark was set.
+                spark.Services.AddPersistentObjectInterceptor<SdVetoInterceptor>();
+            },
             security: security ?? SparkTestSecurity.Permissive);
         factories.Add(factory);
         var (cookie, xsrf) = await factory.MintAntiforgeryAsync();
@@ -326,6 +335,110 @@ public class SoftDeleteTests : SparkTestDriver
         (await LoadAsync<SdSlug>("SdSlugs/alpha"))!.IsDeleted.Should().BeTrue();
     }
 
+    // ---- M7 carry-overs ----------------------------------------------------------------------------
+
+    [Fact]
+    public async Task A_delete_a_later_interceptor_refuses_leaves_no_mark_for_a_later_save_in_the_request()
+    {
+        var host = await StartAsync();
+        var note = await SeedNoteAsync("veto");
+
+        using (var scope = host.Factory.CreateScope())
+        {
+            Exception? refused = null;
+            try { await scope.ServiceProvider.GetRequiredService<IDatabaseAccess>().DeletePersistentObjectAsync(NoteTypeId, note.Id!); }
+            catch (Exception ex) { refused = ex; }
+            refused.Should().BeOfType<SparkValidationException>();
+
+            // Any later write in the same request commits the request session.
+            await scope.ServiceProvider.GetRequiredService<IAsyncDocumentSession>().SaveChangesAsync();
+        }
+
+        var stored = await LoadAsync<SdNote>(note.Id!);
+        stored!.IsDeleted.Should().BeFalse("a refused delete must leave nothing behind");
+        stored.DeletedAt.HasValue.Should().BeFalse();
+        host.Recorder.Events.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_ViewDeleted_holder_opens_a_deleted_row_with_the_load_deleted_flag()
+    {
+        var host = await StartAsync();
+        var denied = await StartAsync(SparkTestSecurity.Permissive.Denying("ViewDeleted/SdNote"));
+        var live = await SeedNoteAsync("live");
+        var gone = await SeedNoteAsync("gone", deleted: true);
+
+        var (included, body) = await host.SendAsync("/spark/po/load", Wire.Typed(NoteTypeId, new { deleted = "include" }, gone.Id));
+        var (onlyLive, _) = await host.SendAsync("/spark/po/load", Wire.Typed(NoteTypeId, new { deleted = "only" }, live.Id));
+        var (liveIncluded, _) = await host.SendAsync("/spark/po/load", Wire.Typed(NoteTypeId, new { deleted = "include" }, live.Id));
+        var (withoutRight, _) = await denied.SendAsync("/spark/po/load", Wire.Typed(NoteTypeId, new { deleted = "include" }, gone.Id));
+        var (withoutFlag, _) = await host.SendAsync("/spark/po/load", Wire.Typed(NoteTypeId, id: gone.Id));
+
+        included.Should().Be(HttpStatusCode.OK);
+        body.GetProperty("id").GetString().Should().Be(gone.Id);
+        onlyLive.Should().Be(HttpStatusCode.NotFound, "'only' opens deleted rows only");
+        liveIncluded.Should().Be(HttpStatusCode.OK);
+        withoutRight.Should().Be(HttpStatusCode.NotFound, "the flag is ignored without ViewDeleted");
+        withoutFlag.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task The_permissions_endpoint_reports_the_soft_delete_rights()
+    {
+        var host = await StartAsync();
+        var denied = await StartAsync(SparkTestSecurity.Permissive.Denying("Restore/SdNote", "Purge/SdNote", "ViewDeleted/SdNote"));
+
+        var granted = await host.GetAsync("/spark/permissions/SdNote");
+        var refused = await denied.GetAsync("/spark/permissions/SdNote");
+
+        granted.GetProperty("canRestore").GetBoolean().Should().BeTrue();
+        granted.GetProperty("canPurge").GetBoolean().Should().BeTrue();
+        granted.GetProperty("canViewDeleted").GetBoolean().Should().BeTrue();
+        refused.GetProperty("canRestore").GetBoolean().Should().BeFalse();
+        refused.GetProperty("canPurge").GetBoolean().Should().BeFalse();
+        refused.GetProperty("canViewDeleted").GetBoolean().Should().BeFalse();
+        refused.GetProperty("canDelete").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task A_purge_the_revisions_probe_refuses_deletes_nothing()
+    {
+        var host = await StartAsync(services: s => s.Replace(ServiceDescriptor.Singleton<ISoftDeleteRevisions>(new SdRefusingRevisions())));
+        await EnableRevisionsAsync();
+        var note = await SeedNoteAsync("gone");
+        await host.SendAsync("/spark/po/delete", Wire.Typed(NoteTypeId, id: note.Id));
+        var revisions = await RevisionCountAsync(note.Id!);
+
+        Exception? refused = null;
+        using (var scope = host.Factory.CreateScope())
+        {
+            try { await scope.ServiceProvider.GetRequiredService<ISparkSoftDelete>().PurgeAsync(NoteTypeId, note.Id!); }
+            catch (Exception ex) { refused = ex; }
+        }
+
+        refused.Should().BeOfType<InvalidOperationException>();
+        (await LoadAsync<SdNote>(note.Id!)).Should().NotBeNull("the probe runs before the document is deleted");
+        (await RevisionCountAsync(note.Id!)).Should().Be(revisions);
+        host.Recorder.OnDeleteCalls.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Restore_and_purge_are_judged_by_the_Actions_classs_Edit_and_Delete_rules()
+    {
+        // SdNoteActions filters "Edit" and "Delete" only. Restore reaches that hook as Edit, purge as
+        // Delete. (Measured without the mapping: the purge went through — 204; the restore was still
+        // refused, by the WITH CHECK that judges the restored row under "Edit".)
+        var host = await StartAsync();
+        var theirs = await SeedNoteAsync("not-mine", deleted: true);
+
+        (await host.SendAsync("/spark/po/restore", Wire.Typed(NoteTypeId, id: theirs.Id))).Status.Should().Be(HttpStatusCode.NotFound);
+        (await host.SendAsync("/spark/po/purge", Wire.Typed(NoteTypeId, id: theirs.Id))).Status.Should().Be(HttpStatusCode.NotFound);
+
+        var stored = await LoadAsync<SdNote>(theirs.Id!);
+        stored.Should().NotBeNull();
+        stored!.IsDeleted.Should().BeTrue();
+    }
+
     // ---- startup ---------------------------------------------------------------------------------
 
     [Fact]
@@ -446,6 +559,13 @@ public class SoftDeleteTests : SparkTestDriver
             return (response.StatusCode, string.IsNullOrWhiteSpace(text) ? default : JsonDocument.Parse(text).RootElement.Clone());
         }
 
+        public async Task<JsonElement> GetAsync(string url)
+        {
+            var response = await Client.GetAsync(url);
+            response.StatusCode.Should().Be(HttpStatusCode.OK);
+            return JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement.Clone();
+        }
+
         public async Task<IReadOnlyList<string>> QueryIdsAsync(string? deleted)
         {
             var (status, body) = await SendAsync("/spark/queries/execute", Wire.Query(NotesQueryId, deleted is null ? null : new { deleted }));
@@ -512,6 +632,11 @@ public sealed class SdRecorder
 /// <summary>Withholds Edit on a row titled "frozen" and Delete on one titled "keep"; records OnDeleteAsync.</summary>
 public class SdNoteActions(IEntityMapper mapper, SdRecorder recorder) : DefaultPersistentObjectActions<SdNote>(mapper)
 {
+    /// <summary>A rule written for the built-in verbs only: a row titled "not-mine" may not be edited or deleted.</summary>
+    public override Task<System.Linq.Expressions.Expression<Func<SdNote, bool>>?> GetRowFilterAsync(string action)
+        => Task.FromResult<System.Linq.Expressions.Expression<Func<SdNote, bool>>?>(
+            action is "Edit" or "Delete" ? x => x.Title != "not-mine" : null);
+
     public override Task OnDisableActionsAsync(IDisablable target, DisableActionsContext context)
     {
         if (context.Entity is SdNote { Title: "frozen" })
@@ -526,6 +651,23 @@ public class SdNoteActions(IEntityMapper mapper, SdRecorder recorder) : DefaultP
         recorder.OnDeleteCalls.Enqueue(id);
         return base.OnDeleteAsync(session, id);
     }
+}
+
+/// <summary>Refuses the delete of a row titled "veto" — registered after SoftDelete, so the mark is already set.</summary>
+public sealed class SdVetoInterceptor : IPersistentObjectInterceptor
+{
+    public bool AppliesTo(Type entityType) => entityType == typeof(SdNote);
+
+    public ValueTask OnBeforeDeleteAsync(DeleteContext context)
+        => context.Entity is SdNote { Title: "veto" } ? throw new SparkValidationException("Vetoed.") : ValueTask.CompletedTask;
+}
+
+/// <summary>A connection that may not delete revisions (a certificate without database-admin).</summary>
+internal sealed class SdRefusingRevisions : ISoftDeleteRevisions
+{
+    public Task EnsureCanDeleteAsync() => throw new InvalidOperationException("Purge refused: the probe was not allowed.");
+
+    public Task<long> DeleteAsync(string id) => throw new InvalidOperationException("Must not be reached: the probe refused.");
 }
 
 public sealed class SdObserver(SdRecorder recorder) : ISoftDeleteObserver

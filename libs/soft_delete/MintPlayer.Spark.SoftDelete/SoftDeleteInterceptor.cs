@@ -36,6 +36,7 @@ internal sealed partial class SoftDeleteInterceptor : IPersistentObjectIntercept
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly SoftDeleteRequestState state;
+    [Inject] private readonly ISoftDeleteRevisions revisions;
     [Inject] private readonly IEnumerable<ISoftDeleteObserver> observers;
     [Inject] private readonly ILogger<SoftDeleteInterceptor> logger;
     [Inject] private readonly TimeProvider? timeProvider;
@@ -44,18 +45,29 @@ internal sealed partial class SoftDeleteInterceptor : IPersistentObjectIntercept
 
     private DateTimeOffset Now => (timeProvider ?? TimeProvider.System).GetUtcNow();
 
-    public ValueTask OnBeforeDeleteAsync(DeleteContext context)
+    public async ValueTask OnBeforeDeleteAsync(DeleteContext context)
     {
-        // A purge must delete; a module sync is the owner's decision. Only a caller's delete is softened.
-        if (context.Operation != PersistentObjectOperation.Delete || context.Entity is not ISoftDeletable entity)
-            return ValueTask.CompletedTask;
+        // A purge deletes the document and then its revisions, and the second step is a RavenDB
+        // admin operation. Prove it will be allowed BEFORE the document goes, so a client certificate
+        // without database-admin refuses the purge instead of leaving the history of a row that no
+        // longer exists (#460, M6 finding).
+        if (context.Operation == PersistentObjectOperation.Purge)
+        {
+            await revisions.EnsureCanDeleteAsync();
+            return;
+        }
 
+        // A module sync is the owner's decision. Only a caller's delete is softened.
+        if (context.Operation != PersistentObjectOperation.Delete || context.Entity is not ISoftDeletable entity)
+            return;
+
+        // Marked on the request session's tracked entity; if a later interceptor refuses the delete,
+        // DatabaseAccess evicts the entity, so the mark is never written by a later save (M7 fix).
         entity.IsDeleted = true;
         entity.DeletedAt = Now;
         entity.DeletedBy = currentUser.Id;
         entity.DeleteReason = state.PendingReason;
         context.Replace();
-        return ValueTask.CompletedTask;
     }
 
     public async ValueTask OnAfterDeleteAsync(DeleteContext context)
@@ -82,8 +94,8 @@ internal sealed partial class SoftDeleteInterceptor : IPersistentObjectIntercept
 
         // After the document, never before: deleting revisions first and the document second writes a
         // fresh delete revision (measured, #460 spike H1). Force-created revisions only go with the flag.
-        var result = await documentStore.Maintenance.SendAsync(new DeleteRevisionsOperation(context.Id, removeForceCreatedRevisions: true));
-        logger.LogInformation("Purged {EntityType} {Id} and {Revisions} revision(s).", context.EntityType.Name, context.Id, result.TotalDeletes);
+        var deleted = await revisions.DeleteAsync(context.Id);
+        logger.LogInformation("Purged {EntityType} {Id} and {Revisions} revision(s).", context.EntityType.Name, context.Id, deleted);
 
         state.Purged.Add(context.Id);
         await NotifyAsync(context.EntityType, context.Id, null, static (o, e) => o.OnPurgedAsync(e));

@@ -37,6 +37,7 @@ public static class SparkSoftDeleteExtensions
         builder.Services.AddPersistentObjectInterceptor<SoftDeleteInterceptor>();
         builder.Services.TryAddScoped<SoftDeleteRequestState>();
         builder.Services.TryAddScoped<ISparkSoftDelete, SparkSoftDelete>();
+        builder.Services.TryAddSingleton<ISoftDeleteRevisions, RavenSoftDeleteRevisions>();
 
         builder.Registry.AddMiddleware(app => SoftDeleteStartupCheck.Run(app.ApplicationServices));
         builder.Registry.AddEndpoints(endpoints =>
