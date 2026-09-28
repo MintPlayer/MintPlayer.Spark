@@ -399,6 +399,54 @@ status code and dropped the success envelope's operations; it now surfaces both.
   button, so only a hand-made request or a reconnect between load and click sees the difference.
   `DeleteDataAction` keeps its own checks.
 
+**S-M3 — throttle accuracy (M4, 2026-09-28).**
+*Question:* 1000 messages at 20/min alongside transactional traffic — rate, burst, transactional p95,
+writes per message.
+*Method:* `ThrottleAccuracySpikeTests.S_M3_…` (run with `SPARK_SPIKE_SM3_BULK=1000`; the kept test
+defaults to 100): the real single-subscription pipeline (manager, lease, feeder, lanes, admission,
+sweeper) on the embedded RavenDB 7.2 server. Time compressed ×20: `MaxPerInterval = 20` per
+`Interval = 3 s`, `FallbackPollInterval = 1.5 s` (every ratio preserved). 1000 `spike-bulk` messages
+published at once; a `spike-transactional` message (unthrottled queue) every 250 ms while the backlog
+drains; revisions enabled on `SparkMessages`, so writes per message = revisions per document. A
+no-backlog baseline of 20 transactional messages first.
+*Answer:* publishing 1000 took 3.3 s; the backlog drained in 148.0 s (expected (1000−20)×0.15 s =
+147 s). **Steady rate 19.90 per interval** (target 20). **Burst: up to 61 starts in one sliding 3 s
+window** — the initial burst of 20 followed by the steady rate, clumped by the 1.5 s sweeper tick
+(`MaxPerInterval` is a rate with a burst allowance, not a hard window cap). **Transactional latency:**
+baseline p50 16 ms / p95 29 ms / max 43 ms; during the backlog (n = 556) p50 9 ms / **p95 153 ms** /
+max 5788 ms. **Writes:** every unthrottled message 5 writes (577 transactional + 21 bulk admitted at
+once); every deferred bulk message **8** (979 of them) — exactly 3 more: the deferral, the sweeper's
+wake-up patch, the re-claim. No message was deferred twice.
+
+**Deviations (M4).**
+- *Burst semantics.* §3.11 says "MaxPerInterval + Interval"; measured, GCRA with burst tolerance
+  `Interval − T` lets a sliding window hold ~3× the figure right after an idle period (61 vs 20 above).
+  Kept as GCRA (the PRD's own choice) and documented on `SparkQueueOptions.MaxPerInterval` and in the
+  README: for no burst, state the rate alone (1 per 3 s).
+- *Transactional max 5.8 s during the bulk publish.* The p95 (153 ms) is fine, but the single feeder
+  claims in etag order, so transactional messages written while 1000 bulk documents are in front of
+  them wait for those claims. A lane cannot help here; it is the one-subscription trade-off (A6), not
+  the throttle. Recorded, not fixed.
+- *Configuration beats code for `Queues` only.* D14 asks for operator-overridable thresholds; code
+  winning (the rest of `Spark:Messaging`) would make a library-declared queue default unoverridable.
+  `Spark:Messaging:Queues` is re-applied in a `PostConfigure`, property by property; a configured
+  `Backoff` replaces the code schedule.
+- *`BroadcastOptions.Queue` must be declared* in `Queues` (else the publish throws) — this is what
+  keeps the reason the old queue-name overload was deleted from coming back; declared queues also get
+  a worker in per-queue mode.
+- *Dedup id* `SparkMessages/{readable ≤64}.{first 16 bytes of SHA-256(versionless type + "\n" + key)}`.
+  Pre-upgrade documents keep their old ids, so a duplicate of a pre-upgrade message is enqueued once
+  more within their retention (README upgrade note).
+- *`IMessageProgress`* writes through the processor's session (like `IMessageCheckpoint`) and marks
+  `HandlerExecution.HasProgress`, which is how the terminal save knows to copy `@expires` onto the
+  sidecar (a deferred patch per sidecar).
+- *`WasReclaimedAsync`* no longer reports a throttle deferral (Pending, `WakeUp = false`, future
+  `NextAttemptAtUtc`) as a lost claim; a sweeper reclaim always sets `WakeUp`.
+- *Found, not fixed:* the processor's session saves the whole message after each handler, which
+  writes back the `ClaimExpiresAtUtc` it loaded and so undoes a renewal made in between; the next
+  renewal restores it. A handler longer than `ClaimTtl` right after such a save can be reclaimed for
+  up to one `ClaimRenewInterval`. Pre-existing; both modes now share it.
+
 ---
 
 ## 5. Risks

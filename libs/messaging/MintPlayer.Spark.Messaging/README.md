@@ -181,11 +181,44 @@ Note that this deduplicates *enqueueing*, not handling. A duplicate arriving aft
 been processed and expired by retention is a new message again — the correct trade-off for a
 retention window measured in days.
 
-> **Removed: the queue-name override.** `BroadcastAsync(message, queueName)` is gone. The consumer
-> side derives queue names by reflecting over `IRecipient<T>` registrations and cannot see what a
-> producer passed, so an override that disagreed produced documents no worker ever selected —
-> enqueued for ever, consumed by nobody, with the application reporting itself healthy. The queue a
-> message belongs to is a property of its type; declare it with `[MessageQueue]`.
+The id is `SparkMessages/{readable}.{hash}`: the readable part is the key with every character other
+than ASCII letters, digits, `-` and `_` replaced by `_` (at most 64 characters), and the hash is the
+first 16 bytes of SHA-256 over the **versionless message type** and the **exact key**. So two message
+types may use the same key, and keys that differ only in a character an id cannot hold (`a:b`,
+`a/b`, `a_b`) or only in letter case (RavenDB ids are case-insensitive) are distinct. Before #460 the
+id was `SparkMessages/{sanitized key}`, and all of those collided — the second publish was dropped
+silently.
+
+> **Upgrade note.** Messages enqueued before this version keep their old ids. A duplicate of such a
+> message published *after* the upgrade gets a new-format id and is therefore enqueued once more.
+> The window is the retention period of the old documents (7 days by default); for webhook
+> redeliveries it only matters if GitHub re-sends a pre-upgrade delivery after the deploy.
+
+#### Broadcast options
+
+Every publish method is shorthand for `BroadcastAsync(message, BroadcastOptions)`:
+
+```csharp
+await messageBus.BroadcastAsync(new PasswordResetMail(userId, token), new BroadcastOptions
+{
+    DeduplicationKey = $"reset:{userId}:{tokenId}", // at most once (hashed, type-namespaced)
+    Delay = TimeSpan.FromSeconds(10),               // not before
+    MaxAttempts = 8,                                // overrides the queue's and the global value
+    ExpiresAtUtc = tokenExpiresAtUtc,               // never handle it after this; dead-letter as Expired
+    Queue = "mail-transactional",                   // must be declared under Spark:Messaging:Queues
+    ScrubPayloadOnTerminal = true,                  // clear PayloadJson once Completed/DeadLettered
+});
+```
+
+`ExpiresAtUtc` is checked at pickup, against the throttle slot, and before every retry: a message
+whose next retry or slot would fall after it is dead-lettered with `DeadLetterReason = Expired`
+rather than handled late.
+
+`Queue` overrides the queue the message type declares — but only onto a queue declared in
+`SparkMessagingOptions.Queues`; anything else throws at publish. That restriction is why the old
+`BroadcastAsync(message, queueName)` overload could be deleted and this one added: an undeclared
+name produced documents no worker ever selected, whereas a declared queue is known to both sides (in
+`SubscriptionPerQueue` mode it gets its own worker).
 
 ## How It Works
 
@@ -217,7 +250,11 @@ Internally the messaging library uses **one RavenDB data subscription for every 
 
 Set `SubscriptionMode = SubscriptionPerQueue` to get the old model back — one subscription per queue,
 one slot per queue — which is worth it only where the licence has headroom and server-side isolation
-is genuinely wanted. Both modes share `MessageProcessor`, so the per-message contract is identical.
+is genuinely wanted. Both modes share `MessageProcessor`, so the per-message contract is identical,
+and both run a claimed message under the same guards — claim renewal every `ClaimRenewInterval` and
+cancellation at `HandlerTimeout`. (Before #460 the per-queue worker had neither: a handler slower than
+`ClaimTtl` was reclaimed underneath itself and ran twice, and a hung handler held its queue for ever.)
+Queues declared in `SparkMessagingOptions.Queues` get a worker in this mode too.
 
 ### Crash recovery
 
@@ -314,8 +351,96 @@ spark.AddMessaging(options =>
         TimeSpan.FromMinutes(10),
         TimeSpan.FromHours(1),
     };
+    options.HandlerTimeout = TimeSpan.FromMinutes(10);        // Cancels a hung handler (both subscription modes)
 });
 ```
+
+### Per-queue options and throttling
+
+`SparkMessagingOptions.Queues` holds a `SparkQueueOptions` per queue name, bound from
+`Spark:Messaging:Queues:{name}`:
+
+| Property | Meaning |
+|---|---|
+| `MaxPerInterval` + `Interval` | Start rate N per interval — one every `Interval / N` — with a burst of N for an idle queue (GCRA). A rate, not a hard window cap: a burst plus the steady rate can put ~2N starts in one sliding interval. For no burst, state the rate alone (`1` per `3s` rather than `20` per minute). 0 = unlimited. |
+| `BatchSize` + `MinDelayBetweenBatches` | Start at most N back to back, then pause. A batch is a pacing window only; each message keeps its own status and retries. |
+| `MaxConcurrency` | Messages of this queue handled at once (default 1 = FIFO). `SingleSubscription` mode only; warned about and ignored in `SubscriptionPerQueue` mode. |
+| `MaxAttempts` | Attempts per handler for messages published to this queue. |
+| `Backoff` | Retry schedule for this queue (empty = the global `BackoffDelays`). |
+
+```json
+"Spark": {
+  "Messaging": {
+    "Queues": {
+      "mail-transactional": { "MaxPerInterval": 600, "Backoff": [ "00:00:30", "00:05:00", "00:30:00", "02:00:00" ] },
+      "mail-bulk":          { "MaxPerInterval": 20, "Interval": "00:01:00", "BatchSize": 50, "MinDelayBetweenBatches": "00:05:00" }
+    }
+  }
+}
+```
+
+**Configuration beats code for queue settings.** A queue declared in code (`AddMessaging(o =>
+o.Queues["mail-bulk"] = …)`, or a library's own `Configure<SparkMessagingOptions>`) is a set of
+defaults; `Spark:Messaging:Queues` is applied over it afterwards, property by property, from any
+configuration source — appsettings, user secrets, or environment variables such as
+`Spark__Messaging__Queues__mail-bulk__MaxPerInterval=20`. A configured `Backoff` replaces the code
+schedule rather than being appended to it. Everything outside `Queues` keeps "code wins".
+
+**How throttling works.** Admission runs at the top of `MessageProcessor.RunHandlersAsync`, shared by
+both subscription modes, and it never waits inside a lane (a sleeping lane would block the bounded
+channel, the one feeder, and every other queue). A message over budget is written back **once** —
+`Pending`, no owner, `WakeUp = false`, `NextAttemptAtUtc` = its reserved slot, `AttemptCount`
+restored — and the lane moves on; the sweeper wakes it at the slot and it starts without asking
+again. Slots are reserved GCRA-style in memory (the leader lease means one process admits for every
+queue), so each throttled message is deferred once, not once per poll. After a restart the
+reservations are gone and a deferred message is deferred once more.
+
+Accuracy: the long-run rate is exact; bursts are quantised by `FallbackPollInterval` (default 30 s),
+because due messages are woken on the sweeper's tick. The measured figures are in the #460 PRD (§4.1,
+S-M3).
+
+**Pattern for mail:** `mail-transactional` generous (it carries password resets and confirmations,
+which a user is waiting for — and give them `ExpiresAtUtc`), `mail-bulk` strict (it must never crowd
+out the relay or trip a provider's rate limit). Separate queues are separate lanes, so a bulk backlog
+never delays a transactional mail.
+
+### Inside a handler: `IMessageContext` and `IMessageProgress`
+
+Both are scoped services a recipient can inject.
+
+- `IMessageContext` — `MessageId` (stable across retries; use it as an idempotency key, a mail
+  `Message-ID`, a VERP token), `QueueName`, `AttemptCount`, `ExpiresAtUtc`.
+- `IMessageProgress` — `IsDoneAsync(step)` / `MarkDoneAsync(step)` for handlers that do several
+  externally visible things, so a retry skips the ones that already happened. Progress lives in a
+  sidecar document `{messageId}/progress/{handlerIndex}` (collection `SparkMessageProgresses`),
+  appended by patch, never on the message itself, and gets the same `@expires` as its message when
+  the message becomes terminal. Mark a step *after* its effect: a crash in between repeats that one
+  step.
+
+```csharp
+public partial class SendCampaignRecipient : IRecipient<Campaign>
+{
+    [Inject] private readonly IMessageProgress progress;
+    [Inject] private readonly ICampaignMailer mailer;   // your own sender
+
+    public async Task HandleAsync(Campaign campaign, CancellationToken ct)
+    {
+        foreach (var address in campaign.Recipients)
+        {
+            if (await progress.IsDoneAsync(address, ct)) continue;
+            await mailer.SendAsync(address, ct);
+            await progress.MarkDoneAsync(address, ct);
+        }
+    }
+}
+```
+
+### Dead-letter reasons
+
+A dead-lettered message carries `DeadLetterReason`: `MaxAttempts` (a handler failed `MaxAttempts`
+times), `NonRetryable` (`NonRetryableException`, or an unusable message — type outside the
+allow-list, unresolvable, empty payload) or `Expired` (`ExpiresAtUtc` passed, or the next retry or
+throttle slot would have fallen after it). The status stays `DeadLettered`; there is no new status.
 
 ## RavenDB Document Model
 
@@ -336,6 +461,9 @@ Messages are stored as `SparkMessage` documents in the `SparkMessages` collectio
 | `Handlers` | `HandlerExecution[]` | Per-handler execution state (see below) |
 | `WakeUp` | `bool` | Redelivery gate: set by the sweeper when the message is due, cleared by the worker on pickup |
 | `LastWakeUpUtc` | `DateTime?` | When the sweeper last woke this message (informational) |
+| `ExpiresAtUtc` | `DateTime?` | Publish-time deadline (`BroadcastOptions.ExpiresAtUtc`) |
+| `DeadLetterReason` | `EDeadLetterReason?` | `MaxAttempts`, `NonRetryable` or `Expired`; set only with `DeadLettered` |
+| `ScrubPayloadOnTerminal` | `bool` | Clear `PayloadJson` once terminal |
 
 Each entry in the `Handlers` array tracks an individual recipient:
 
@@ -383,7 +511,10 @@ You can query message status directly in RavenDB Studio for observability. Compl
 
 | Type | Description |
 |------|-------------|
-| `IMessageBus` | `BroadcastAsync<T>()`, `DelayBroadcastAsync<T>()` |
+| `IMessageBus` | `BroadcastAsync<T>(message, BroadcastOptions)`; shorthands `BroadcastAsync<T>()`, `DelayBroadcastAsync<T>()`, `BroadcastOnceAsync<T>()` (default interface methods — a fake implements only the options overload) |
+| `BroadcastOptions` | `DeduplicationKey`, `Delay`, `MaxAttempts`, `ExpiresAtUtc`, `Queue`, `ScrubPayloadOnTerminal` |
+| `IMessageContext` | The message the current handler runs for (`MessageId`, `QueueName`, `AttemptCount`, `ExpiresAtUtc`) |
+| `IMessageProgress` | `IsDoneAsync(step)` / `MarkDoneAsync(step)` — per-handler progress sidecar |
 | `IRecipient<TMessage>` | `HandleAsync(TMessage, CancellationToken)` |
 | `ICheckpointRecipient<TMessage>` | Extends `IRecipient<T>` with `HandleAsync(TMessage, string checkpoint, CancellationToken)` for resume-from-checkpoint |
 | `IMessageCheckpoint` | `SaveAsync(string)` -- saves progress during handler execution |

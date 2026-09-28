@@ -280,6 +280,33 @@ the searchable field is a measured regression on both sort and equality.
 
 ---
 
+## Messaging (`spark.AddMessaging()`)
+
+Publish with `IMessageBus`; every method is shorthand for `BroadcastAsync(message, BroadcastOptions
+{ DeduplicationKey, Delay, MaxAttempts, ExpiresAtUtc, Queue, ScrubPayloadOnTerminal })`. A test fake
+implements only that overload (the others are default interface methods).
+
+- **Deduplication ids are hashed and type-namespaced** (`SparkMessages/{readable}.{hash}`): two
+  message types may share a key; keys differing only in punctuation or case no longer collide. No
+  need to prefix keys per type.
+- **`Queue` must be declared** in `Spark:Messaging:Queues:{name}` (or `options.Queues` in code), or
+  the publish throws — an undeclared queue has no consumer.
+- **Per-queue options** (`SparkQueueOptions`: `MaxPerInterval`/`Interval`, `BatchSize`/
+  `MinDelayBetweenBatches`, `MaxConcurrency`, `MaxAttempts`, `Backoff`). ⚠️ Here **configuration beats
+  code**: `Spark:Messaging:Queues` (appsettings, env vars `Spark__Messaging__Queues__{name}__…`) is
+  applied over code-declared queue settings. Everywhere else in `Spark:Messaging` code wins.
+- Throttling defers an over-budget message **once** to a reserved slot (never waits in a lane).
+  `MaxPerInterval` is a rate with a burst (GCRA), not a hard per-window cap; bursts are quantised by
+  `FallbackPollInterval`. `MaxConcurrency > 1` gives up FIFO and works in `SingleSubscription` only.
+- `ExpiresAtUtc` → dead-lettered with `DeadLetterReason = Expired` instead of being handled late.
+  `DeadLetterReason` is `MaxAttempts` / `NonRetryable` / `Expired`; the status stays `DeadLettered`.
+- In a handler, inject `IMessageContext` (the message id — stable across retries) and
+  `IMessageProgress` (`IsDoneAsync`/`MarkDoneAsync` per step, so a retry skips finished steps).
+
+See `libs/messaging/MintPlayer.Spark.Messaging/README.md`.
+
+---
+
 ## Things that look right and are not
 
 **Absent JSON field ≠ `== false`.** Add a boolean and query its default, and every pre-existing

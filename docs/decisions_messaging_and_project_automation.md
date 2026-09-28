@@ -11,7 +11,11 @@ Detail lives in:
 - [messaging_single_subscription_PRD.md](messaging_single_subscription_PRD.md) + [plan](messaging_single_subscription_plan.md)
 - [coverage_project_automation_PRD.md](coverage_project_automation_PRD.md) + [plan](coverage_project_automation_plan.md)
 
-Neither is implemented. Branch: `feat/coverage-project-automation`.
+**Both are implemented and on master** — they landed together in #369 (commit `f5ec5068`), with the
+board-automation flags following in #377. The branch named in the original version of this line,
+`feat/coverage-project-automation`, is merged. *(Corrected 2026-09-28, #460: this line used to say
+"Neither is implemented".)* Per-queue throttling and options, which neither initiative built, came in
+#460 — see `libs/messaging/MintPlayer.Spark.Messaging/README.md`.
 
 ---
 
