@@ -131,6 +131,9 @@ Both are unset by default, and **the server falls back silently** — to UTC and
 default language, with no error and no log. So a test asserting timezone- or culture-dependent output
 through this client is asserting the fallback until you set these, and it passes either way.
 
+The server accepts IANA zone ids only. A Windows id (`"Romance Standard Time"`) is converted to its
+IANA id (`"Europe/Paris"`) before it is sent, so `TimeZoneInfo.Local.Id` works on Windows too.
+
 Every type and query argument accepts **either a Guid or an alias** — `"cars"` and
 `"a20e8400-…"` resolve to the same thing. Ids need no escaping: they travel in a JSON body, so a Raven
 id's slashes arrive intact.

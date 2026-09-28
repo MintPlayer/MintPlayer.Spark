@@ -108,6 +108,9 @@ public static class SparkExtensions
         // unpersisted ring outside Development is refused by UseSpark(). See SparkDataProtectionOptions.
         services.AddSparkDataProtection();
 
+        // Viewer timezone (#460, item 7): header, then the spark-timezone cookie, then UTC.
+        services.AddSparkConfigurationSection<SparkTimeZoneOptions>(SparkTimeZoneOptions.SectionName);
+
         // Register the Spark services
         services.AddSparkServices();
 

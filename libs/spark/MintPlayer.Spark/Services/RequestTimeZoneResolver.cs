@@ -1,6 +1,9 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Configuration;
 
 namespace MintPlayer.Spark.Services;
 
@@ -26,8 +29,9 @@ namespace MintPlayer.Spark.Services;
 public interface IRequestTimeZoneResolver
 {
     /// <summary>
-    /// The viewer's timezone as declared by the <c>X-Spark-Timezone</c> header, or
-    /// <see cref="TimeZoneInfo.Utc"/> when the header is absent, unparseable, or names an unknown zone.
+    /// The viewer's timezone: the <c>X-Spark-Timezone</c> header when it names a valid zone, else the
+    /// <c>spark-timezone</c> cookie (<see cref="Configuration.SparkTimeZoneOptions.CookieName"/>) when
+    /// it does, else <see cref="TimeZoneInfo.Utc"/>. Outside a request (a background job) it is UTC.
     /// </summary>
     TimeZoneInfo GetViewerTimeZone();
 
@@ -45,24 +49,66 @@ public interface IRequestTimeZoneResolver
 internal partial class RequestTimeZoneResolver : IRequestTimeZoneResolver
 {
     /// <summary>
-    /// The header the Spark client sends on every request, carrying an IANA zone id such as
+    /// The header the Spark client sends on every browser request, carrying an IANA zone id such as
     /// <c>Europe/Brussels</c>. Must stay in lockstep with <c>spark-timezone.interceptor.ts</c>.
     /// </summary>
     public const string HeaderName = "X-Spark-Timezone";
 
+    /// <summary>The longest id accepted from a header or cookie (the longest id a browser reports is 30, S-TZ4).</summary>
+    internal const int MaxIdLength = 64;
+
     [Inject] private readonly IHttpContextAccessor httpContextAccessor;
+    [Inject] private readonly IOptions<SparkTimeZoneOptions> options;
     [Inject] private readonly ILogger<RequestTimeZoneResolver>? logger;
+
+    // Scoped, so one resolution (and one log line) per request.
+    private TimeZoneInfo? resolved;
+
+    /// <summary>
+    /// An IANA-shaped zone id: a letter, then up to three <c>/</c>-separated segments of letters,
+    /// digits, <c>_</c>, <c>+</c> and <c>-</c>. No dots, spaces, backslashes or empty segments, so
+    /// nothing path-like reaches <see cref="TimeZoneInfo.FindSystemTimeZoneById"/> (S-TZ1: on Linux
+    /// that call reads a file under <c>/usr/share/zoneinfo</c>, and resolves <c>Europe//Brussels</c>).
+    /// </summary>
+    [GeneratedRegex(@"^[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){0,2}$", RegexOptions.CultureInvariant)]
+    private static partial Regex ZoneIdShape();
+
+    /// <summary>
+    /// Whether <paramref name="id"/> passes the validation applied before any lookup: at most
+    /// <see cref="MaxIdLength"/> characters and IANA-shaped (<see cref="ZoneIdShape"/>).
+    /// </summary>
+    internal static bool IsWellFormedZoneId(string? id)
+        => !string.IsNullOrEmpty(id) && id.Length <= MaxIdLength && ZoneIdShape().IsMatch(id);
 
     public TimeZoneInfo GetViewerTimeZone()
     {
-        var header = httpContextAccessor.HttpContext?.Request.Headers[HeaderName].ToString();
-        if (string.IsNullOrWhiteSpace(header))
+        if (resolved is not null)
+            return resolved;
+
+        var request = httpContextAccessor.HttpContext?.Request;
+        if (request is null)
             return TimeZoneInfo.Utc;
 
-        return TryResolve(header.Trim(), out var zone)
-            ? zone
-            : TimeZoneInfo.Utc;
+        return resolved = Resolve(request);
     }
+
+    private TimeZoneInfo Resolve(HttpRequest request)
+    {
+        // A repeated header joins with a comma, which fails the shape check and falls through.
+        if (TryResolve(request.Headers[HeaderName].ToString(), HeaderSource, out var zone))
+            return zone;
+
+        var cookieName = options.Value.CookieName;
+        if (!string.IsNullOrWhiteSpace(cookieName)
+            && TryResolve(request.Cookies[cookieName], CookieSource, out zone))
+            return zone;
+
+        logger?.LogDebug("Viewer timezone: UTC (no valid {Header} header or timezone cookie).", HeaderName);
+        return TimeZoneInfo.Utc;
+    }
+
+    private const string HeaderSource = "header";
+    private const string CookieSource = "cookie";
 
     public DateTimeOffset ToViewerDateTimeOffset(DateTime wallClock)
         => ToViewerDateTimeOffset(wallClock, GetViewerTimeZone());
@@ -106,11 +152,25 @@ internal partial class RequestTimeZoneResolver : IRequestTimeZoneResolver
         return new DateTimeOffset(wallClock, offset);
     }
 
-    private bool TryResolve(string id, [NotNullWhen(true)] out TimeZoneInfo? zone)
+    private bool TryResolve(string? raw, string source, [NotNullWhen(true)] out TimeZoneInfo? zone)
     {
+        zone = null;
+        if (string.IsNullOrWhiteSpace(raw))
+            return false;
+
+        var id = raw.Trim();
+        if (!IsWellFormedZoneId(id))
+        {
+            // Deliberately not logged verbatim: the value is whatever the client sent.
+            logger?.LogDebug(
+                "Ignored a malformed timezone id in the {Source} ({Length} characters).", source, id.Length);
+            return false;
+        }
+
         try
         {
             zone = TimeZoneInfo.FindSystemTimeZoneById(id);
+            logger?.LogDebug("Viewer timezone {TimeZoneId} from the {Source}.", zone.Id, source);
             return true;
         }
         catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
@@ -123,6 +183,7 @@ internal partial class RequestTimeZoneResolver : IRequestTimeZoneResolver
                 try
                 {
                     zone = TimeZoneInfo.FindSystemTimeZoneById(windowsId);
+                    logger?.LogDebug("Viewer timezone {TimeZoneId} (as {WindowsId}) from the {Source}.", id, windowsId, source);
                     return true;
                 }
                 catch (Exception inner) when (inner is TimeZoneNotFoundException or InvalidTimeZoneException)
@@ -130,10 +191,11 @@ internal partial class RequestTimeZoneResolver : IRequestTimeZoneResolver
                 }
             }
 
+            // Safe to log: it passed the shape check (IANA characters only, at most 64).
             logger?.LogWarning(
-                "Unknown timezone {TimeZoneId} in the {Header} header; falling back to UTC. " +
+                "Unknown timezone {TimeZoneId} in the {Source}; trying the next source, then UTC. " +
                 "This is usually a zone rename between the browser's tzdata and the server's.",
-                id, HeaderName);
+                id, source);
 
             zone = null;
             return false;

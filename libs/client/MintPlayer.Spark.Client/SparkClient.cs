@@ -84,6 +84,11 @@ public partial class SparkClient : IDisposable
     /// ⚠️ <b>The server falls back to UTC silently</b> when the header is absent, blank or names a
     /// zone it does not know — no error, no log. So a test asserting viewer-zone behaviour through
     /// this client is asserting the fallback until this is set, and it passes either way.
+    /// <para>
+    /// The server accepts IANA ids only (#460: a strict shape check before any lookup), so a Windows
+    /// id such as <c>"Romance Standard Time"</c> is converted to its IANA id (<c>"Europe/Paris"</c>)
+    /// before it is sent; one that cannot be converted is sent as given, and the server falls back.
+    /// </para>
     /// </remarks>
     public string? TimeZoneId { get; set; }
 
@@ -203,10 +208,18 @@ public partial class SparkClient : IDisposable
     /// defaults would leak this client's settings into everything else using it.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// A Windows zone id converted to IANA; anything else unchanged. S-TZ4 (#460): the conversion
+    /// works on Windows and Linux alike (ICU), and 134 of 141 Windows ids contain a space or a
+    /// parenthesis the server's shape check refuses.
+    /// </summary>
+    internal static string ToIanaId(string id)
+        => TimeZoneInfo.TryConvertWindowsIdToIanaId(id, out var iana) ? iana : id;
+
     private void ApplyViewerHeaders(HttpRequestMessage request)
     {
         if (!string.IsNullOrWhiteSpace(TimeZoneId))
-            request.Headers.TryAddWithoutValidation("X-Spark-Timezone", TimeZoneId);
+            request.Headers.TryAddWithoutValidation("X-Spark-Timezone", ToIanaId(TimeZoneId.Trim()));
         if (!string.IsNullOrWhiteSpace(AcceptLanguage))
             request.Headers.TryAddWithoutValidation("Accept-Language", AcceptLanguage);
     }

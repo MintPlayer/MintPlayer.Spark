@@ -1,4 +1,10 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using MintPlayer.Spark.Configuration;
+using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.Services;
 using NSubstitute;
 
@@ -17,20 +23,28 @@ public class RequestTimeZoneResolverTests
 {
     private readonly IHttpContextAccessor _httpContextAccessor = Substitute.For<IHttpContextAccessor>();
 
-    private RequestTimeZoneResolver CreateResolver(string? header)
+    private RequestTimeZoneResolver CreateResolver(
+        string? header,
+        string? cookie = null,
+        string? cookieName = SparkTimeZoneOptions.DefaultCookieName,
+        ILogger<RequestTimeZoneResolver>? logger = null)
     {
-        if (header is null)
+        if (header is null && cookie is null)
         {
             _httpContextAccessor.HttpContext.Returns((HttpContext?)null);
         }
         else
         {
             var ctx = new DefaultHttpContext();
-            ctx.Request.Headers[RequestTimeZoneResolver.HeaderName] = header;
+            if (header is not null)
+                ctx.Request.Headers[RequestTimeZoneResolver.HeaderName] = header;
+            if (cookie is not null)
+                ctx.Request.Headers.Cookie = $"{SparkTimeZoneOptions.DefaultCookieName}={cookie}";
             _httpContextAccessor.HttpContext.Returns(ctx);
         }
 
-        return new RequestTimeZoneResolver(_httpContextAccessor, null);
+        var options = Options.Create(new SparkTimeZoneOptions { CookieName = cookieName });
+        return new RequestTimeZoneResolver(_httpContextAccessor, options, logger);
     }
 
     private static TimeZoneInfo Brussels => TimeZoneInfo.FindSystemTimeZoneById("Europe/Brussels");
@@ -142,5 +156,147 @@ public class RequestTimeZoneResolverTests
         // The daylight offset in both cases -- the larger one, which is what the browser picks.
         resolved.Offset.Should().Be(TimeSpan.FromHours(expectedHours));
         resolved.Offset.Should().Be(zone.GetAmbiguousTimeOffsets(wall).Max());
+    }
+
+    // ---- #460 item 7: header → cookie → UTC, validated before any lookup ----
+
+    [Fact]
+    public void The_cookie_is_used_when_there_is_no_header()
+    {
+        // The server-side render of a first page, or a link opened from a mail: the browser sends
+        // its cookies but no script has run to add the header.
+        CreateResolver(header: null, cookie: "Asia/Tokyo").GetViewerTimeZone().Id
+            .Should().Be(TimeZoneInfo.FindSystemTimeZoneById("Asia/Tokyo").Id);
+    }
+
+    [Fact]
+    public void A_valid_header_wins_over_the_cookie()
+    {
+        CreateResolver("Europe/Brussels", cookie: "Asia/Tokyo").GetViewerTimeZone().Id
+            .Should().Be(Brussels.Id);
+    }
+
+    [Theory]
+    [InlineData("../../etc/passwd")]
+    [InlineData("Romance Standard Time")]
+    [InlineData("Mars/Olympus_Mons")]
+    [InlineData("Europe/Brussels, Asia/Tokyo")]
+    public void An_invalid_or_unknown_header_falls_through_to_the_cookie(string header)
+    {
+        CreateResolver(header, cookie: "Asia/Tokyo").GetViewerTimeZone().Id
+            .Should().Be(TimeZoneInfo.FindSystemTimeZoneById("Asia/Tokyo").Id);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void A_disabled_cookie_name_ignores_the_cookie(string? cookieName)
+    {
+        CreateResolver(header: null, cookie: "Asia/Tokyo", cookieName: cookieName).GetViewerTimeZone()
+            .Should().Be(TimeZoneInfo.Utc);
+    }
+
+    [Fact]
+    public void An_invalid_cookie_falls_back_to_UTC()
+    {
+        CreateResolver(header: null, cookie: "..%2F..%2Fetc%2Fpasswd").GetViewerTimeZone().Should().Be(TimeZoneInfo.Utc);
+        CreateResolver(header: null, cookie: "Mars/Olympus_Mons").GetViewerTimeZone().Should().Be(TimeZoneInfo.Utc);
+    }
+
+    [Theory]
+    [InlineData("Europe/Brussels", true)]
+    [InlineData("America/Argentina/Rio_Gallegos", true)]
+    [InlineData("Etc/GMT+5", true)]
+    [InlineData("Etc/GMT-14", true)]
+    [InlineData("EST5EDT", true)]
+    [InlineData("America/Port-au-Prince", true)]
+    [InlineData("UTC", true)]
+    // S-TZ1: path shapes. .NET 11 already refuses '..' and absolute paths on Windows and Linux, but
+    // on Linux it RESOLVES "Europe//Brussels"; the shape check is what stops such ids reaching it.
+    [InlineData("Europe//Brussels", false)]
+    [InlineData("../../etc/passwd", false)]
+    [InlineData("/etc/localtime", false)]
+    [InlineData("./Europe/Brussels", false)]
+    [InlineData("Europe/Brussels/", false)]
+    [InlineData("zone.tab", false)]
+    [InlineData(@"..\..\Windows\win.ini", false)]
+    [InlineData("Europe/Brussels\0", false)]
+    [InlineData("a/b/c/d", false)]
+    [InlineData("Romance Standard Time", false)]
+    [InlineData("", false)]
+    public void The_id_shape_check_is_the_PRD_regex(string id, bool accepted)
+    {
+        RequestTimeZoneResolver.IsWellFormedZoneId(id).Should().Be(accepted);
+    }
+
+    [Fact]
+    public void An_id_longer_than_64_characters_is_refused()
+    {
+        RequestTimeZoneResolver.IsWellFormedZoneId(new string('A', 64)).Should().BeTrue();
+        RequestTimeZoneResolver.IsWellFormedZoneId(new string('A', 65)).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Every_zone_this_runtime_reports_as_IANA_passes_the_shape_check()
+    {
+        // S-TZ4: on Linux every system zone is IANA (419, all accepted); on Windows the system ids are
+        // Windows ids, so check their IANA conversions instead (139 of 141 convert, all accepted).
+        var ianaIds = TimeZoneInfo.GetSystemTimeZones()
+            .Select(z => z.HasIanaId ? z.Id : TimeZoneInfo.TryConvertWindowsIdToIanaId(z.Id, out var iana) ? iana : null)
+            .OfType<string>()
+            .ToList();
+
+        ianaIds.Should().NotBeEmpty();
+        ianaIds.Where(id => !RequestTimeZoneResolver.IsWellFormedZoneId(id)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void The_log_names_the_source_and_never_echoes_a_malformed_value()
+    {
+        var logger = new RecordingLogger();
+        CreateResolver("<script>", cookie: "Asia/Tokyo", logger: logger).GetViewerTimeZone();
+
+        logger.Messages.Should().Contain(m => m.Contains("from the cookie"));
+        logger.Messages.Should().Contain(m => m.Contains("malformed timezone id in the header"));
+        logger.Messages.Should().NotContain(m => m.Contains("<script>"));
+    }
+
+    [Fact]
+    public void The_resolution_runs_once_per_request()
+    {
+        var logger = new RecordingLogger();
+        var resolver = CreateResolver("Europe/Brussels", logger: logger);
+
+        resolver.GetViewerTimeZone();
+        resolver.GetViewerTimeZone();
+
+        logger.Messages.Count(m => m.Contains("from the header")).Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData(null, SparkTimeZoneOptions.DefaultCookieName)]
+    [InlineData("tz", "tz")]
+    [InlineData("", "")]
+    public void The_cookie_name_binds_from_Spark_TimeZone(string? configured, string? expected)
+    {
+        var values = new Dictionary<string, string?>();
+        if (configured is not null)
+            values["Spark:TimeZone:CookieName"] = configured;
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IConfiguration>(new ConfigurationBuilder().AddInMemoryCollection(values).Build());
+        services.AddSparkConfigurationSection<SparkTimeZoneOptions>(SparkTimeZoneOptions.SectionName);
+
+        using var sp = services.BuildServiceProvider();
+        sp.GetRequiredService<IOptions<SparkTimeZoneOptions>>().Value.CookieName.Should().Be(expected);
+    }
+
+    private sealed class RecordingLogger : ILogger<RequestTimeZoneResolver>
+    {
+        public List<string> Messages { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Messages.Add(formatter(state, exception));
     }
 }
