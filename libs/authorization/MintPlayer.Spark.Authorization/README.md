@@ -127,6 +127,16 @@ and `{PublicBaseUrl}/reset-password?email=…&code=…` — whose components pos
   Development. Without it no link-bearing mail is sent (logged as an error) rather than deriving a
   link from the request's `Host` header, which on an anonymous endpoint is the attacker's to choose
   (password-reset poisoning). Development falls back to the request origin.
+- **Sending** (#460 M8): add `MintPlayer.Spark.MailManager` (`spark.AddMailManager()`, `Spark:Mail:*`)
+  and nothing else. Spark replaces Identity's no-op `IEmailSender<TUser>` with one that queues the
+  shipped MJML templates `SparkAuth/ConfirmEmail`, `SparkAuth/PasswordReset` and
+  `SparkAuth/LinkConfirmation` (English + Dutch; override one with `Templates/Mail/SparkAuth/{Name}[.{culture}].mjml`
+  in the app). Each mail is `Sensitive` (encrypted in the queue, scrubbed when done), expires shortly
+  before its token and is written in `SparkUser.PreferredCulture` (null → `Spark:Mail:DefaultCulture`).
+  An `IEmailSender<TUser>` the app registers itself is kept.
+- **Registration needs mail (D6).** `LocalCredentials = Full` whose mail would be discarded —
+  Identity's no-op, or Spark's sender without MailManager — refuses startup. Opt out with
+  `AllowUnconfirmedRegistration = true` / `Spark:Auth:AllowUnconfirmedRegistration=true`.
 - `SparkAuthenticationOptions.RequireConfirmedEmail` (default `false`) refuses sign-in to unconfirmed
   accounts. A completed password reset confirms the email, and `forgotPassword` mails unconfirmed
   addresses, so older unconfirmed accounts can always get in.

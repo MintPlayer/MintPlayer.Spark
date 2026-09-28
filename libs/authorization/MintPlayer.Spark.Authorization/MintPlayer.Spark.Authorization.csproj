@@ -25,6 +25,14 @@
 		<None Include="README.md" Pack="true" PackagePath="\" />
 	</ItemGroup>
 
+	<!-- #460 M8: the account mails' default MJML templates (SparkAuth/*), read by MailManager. An app
+	     overrides one by placing a file with the same name in its Templates/Mail folder.
+	     WithCulture="false" is load-bearing: without it MSBuild moves every Name.{culture}.mjml into a
+	     satellite assembly under the neutral file's name (measured, spike S-M1). -->
+	<ItemGroup>
+		<EmbeddedResource Include="Mail\**\*.mjml;Mail\**\*.txt" LogicalName="SparkMail/%(RecursiveDir)%(Filename)%(Extension)" WithCulture="false" />
+	</ItemGroup>
+
 	<ItemGroup>
 		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
 		<InternalsVisibleTo Include="MintPlayer.Spark.IdentityProvider" />
@@ -57,6 +65,7 @@
 		<PackageReference Include="QRCoder" Version="1.8.0" />
 		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.2.0-rc.0" />
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<ProjectReference Include="..\..\mail\MintPlayer.Spark.MailManager.Abstractions\MintPlayer.Spark.MailManager.Abstractions.csproj" />
 		<ProjectReference Include="..\..\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>
 

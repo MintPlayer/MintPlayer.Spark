@@ -107,6 +107,14 @@ public class SparkAuthenticationOptions
     public bool RequireConfirmedEmail { get; set; }
 
     /// <summary>
+    /// Allows a registration surface (<see cref="SparkLocalCredentials.Full"/>) with no mail transport.
+    /// Default <see langword="false"/>: startup refuses registration while every account mail would be
+    /// discarded by Identity's no-op sender — confirmation and reset links would never arrive (#460,
+    /// D6). Also read from <c>Spark:Auth:AllowUnconfirmedRegistration</c>.
+    /// </summary>
+    public bool AllowUnconfirmedRegistration { get; set; }
+
+    /// <summary>
     /// How recent a sign-in must be for operations that require re-authentication when no password is
     /// supplied (account deletion). Defaults to 5 minutes.
     /// </summary>

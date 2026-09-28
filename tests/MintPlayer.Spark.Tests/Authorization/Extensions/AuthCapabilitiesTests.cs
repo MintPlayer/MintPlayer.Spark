@@ -31,6 +31,7 @@ public class AuthCapabilitiesTests : SparkTestDriver
                 {
                     services.AddSingleton<IDocumentStore>(Store);
                     services.AddSparkAuthentication<SparkUser>();
+                    services.AddTestMailSink(); // #460 D6: registration needs a mail sender
 
                     // Two providers a human can click, plus one machine-only scheme that must not
                     // be offered as a sign-in button.

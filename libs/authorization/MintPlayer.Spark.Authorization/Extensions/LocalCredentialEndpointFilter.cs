@@ -71,6 +71,8 @@ internal static class LocalCredentialEndpointFilter
         // a mode whose mail would be discarded. Placing this after the early return would have
         // meant the guard never fired for the most common configuration.
         GuardAgainstSilentlyDiscardedMail<TUser>(endpoints.ServiceProvider);
+        if (mode == SparkLocalCredentials.Full)
+            GuardAgainstRegistrationWithoutMail<TUser>(endpoints.ServiceProvider);
 
         // #460: every mode goes through the filter now, Full included — Spark replaces Microsoft's
         // mail-sending endpoints in all of them (SparkAccountEndpoints), so there is no longer a mode
@@ -212,8 +214,10 @@ internal static class LocalCredentialEndpointFilter
         if (options?.ExternalLoginLinking != SparkExternalLoginLinking.ConfirmByEmail)
             return;
 
-        if (services.GetService<ISparkLinkConfirmationSender<TUser>>() is not null)
-            return;
+        // In a scope: senders are scoped (M8 registers a factory that yields none without MailManager).
+        using (var scope = services.CreateScope())
+            if (scope.ServiceProvider.GetService<ISparkLinkConfirmationSender<TUser>>() is not null)
+                return;
 
         throw new InvalidOperationException(
             "Spark authentication is configured with ExternalLoginLinking = ConfirmByEmail, but no "
@@ -221,6 +225,37 @@ internal static class LocalCredentialEndpointFilter
             + "would ever be sent and no external login would ever be linked. Register one, or use "
             + "SparkExternalLoginLinking.WhenSignedIn or SparkExternalLoginLinking.Disabled "
             + "instead.");
+    }
+
+    /// <summary>
+    /// #460 D6: refuses a registration surface whose account mail goes nowhere — Identity's no-op
+    /// sender, or Spark's MailManager-backed sender with no MailManager. A user who registers would
+    /// never get the confirmation link, and nobody could ever reset a password. Opt out with
+    /// <see cref="SparkAuthenticationOptions.AllowUnconfirmedRegistration"/> or
+    /// <c>Spark:Auth:AllowUnconfirmedRegistration=true</c>.
+    /// </summary>
+    internal static void GuardAgainstRegistrationWithoutMail<TUser>(IServiceProvider services)
+        where TUser : SparkUser, new()
+    {
+        var options = services.GetService<IOptions<SparkAuthenticationOptions>>()?.Value;
+        var configured = services.GetService<Microsoft.Extensions.Configuration.IConfiguration>()?["Spark:Auth:AllowUnconfirmedRegistration"];
+        if (options?.AllowUnconfirmedRegistration == true || string.Equals(configured, "true", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        using var scope = services.CreateScope();
+        var sender = scope.ServiceProvider.GetService<IEmailSender<TUser>>();
+        var discards = sender is null
+            || SparkAuthenticationExtensions.IsIdentityNoOpSender(sender.GetType())
+            || sender is SparkMailEmailSender<TUser> { CanSend: false };
+        if (!discards)
+            return;
+
+        throw new InvalidOperationException(
+            "Spark authentication maps registration (LocalCredentials = Full), but account mail would be "
+            + "discarded: no mail transport is registered, so confirmation and password-reset links would "
+            + "never arrive. Add MintPlayer.Spark.MailManager (spark.AddMailManager() with "
+            + "Spark:Mail:Smtp:Host or Spark:Mail:PickupFolder), register your own IEmailSender<TUser>, use "
+            + "SparkLocalCredentials.SignInOnly, or set Spark:Auth:AllowUnconfirmedRegistration=true to accept it.");
     }
 
     private static void StampAntiforgery(IEndpointConventionBuilder convention) =>

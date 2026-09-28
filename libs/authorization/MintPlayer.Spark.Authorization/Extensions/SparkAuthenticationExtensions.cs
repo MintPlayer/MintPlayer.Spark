@@ -10,6 +10,7 @@ using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Endpoints.ExternalLogin;
 using MintPlayer.Spark.Authorization.Identity;
 using System.Security.Claims;
+using MintPlayer.Spark.MailManager;
 
 namespace MintPlayer.Spark.Authorization.Extensions;
 
@@ -79,10 +80,35 @@ internal static class SparkAuthenticationExtensions
         builder.Services.TryAddSingleton<SparkQrCodeRenderer>();
         builder.Services.TryAddScoped<SparkAccountMail<TUser>>();
 
+        // #460 M8: account mail through MailManager. Identity's AddIdentityApiEndpoints TryAdds its no-op
+        // DefaultMessageEmailSender, so it is REPLACED here — but only that one: an app that registered
+        // its own IEmailSender<TUser> first keeps it (and one registered later wins anyway).
+        var emailSender = builder.Services.LastOrDefault(d => d.ServiceType == typeof(IEmailSender<TUser>));
+        if (emailSender is null || IsIdentityNoOpSender(emailSender.ImplementationType))
+            // Transient, like the default it replaces: MapIdentityApi resolves the sender from the ROOT
+            // provider at mapping time, and a scoped one is refused there. Resolved in a request, its
+            // IServiceProvider is the request scope, so the (scoped) ISparkMailer is the request's.
+            builder.Services.Replace(ServiceDescriptor.Transient<IEmailSender<TUser>, SparkMailEmailSender<TUser>>());
+        // Only while MailManager is present: the ConfirmByEmail guard tests for a registered sender.
+        builder.Services.TryAddScoped<ISparkLinkConfirmationSender<TUser>>(sp =>
+            sp.GetService<MailManager.ISparkMailer>() is { } mailer
+                ? new SparkMailLinkConfirmationSender<TUser>(mailer, sp.GetRequiredService<TimeProvider>())
+                : null!);
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<MailManager.ISparkMailRecipientCulture, SparkUserMailCulture<TUser>>());
+        // The account mails' default templates; an app's Templates/Mail/SparkAuth/*.mjml overrides them.
+        builder.Services.AddSparkMailTemplates(typeof(SparkUser).Assembly, "SparkMail/");
+
         services.AddAntiforgery(options => options.HeaderName = "X-XSRF-TOKEN");
 
         return builder;
     }
+
+    /// <summary>
+    /// Identity's own sender, which discards every mail. Internal to Identity, so only recognisable by
+    /// name (measured 2026-09-20: it is the resolved sender whether or not a transport exists).
+    /// </summary>
+    internal static bool IsIdentityNoOpSender(Type? type)
+        => type is not null && type.Namespace == "Microsoft.AspNetCore.Identity" && type.Name.StartsWith("DefaultMessageEmailSender", StringComparison.Ordinal);
 
     /// <summary>
     /// Maps Spark's authentication endpoints under the <c>/spark/auth</c> route prefix.

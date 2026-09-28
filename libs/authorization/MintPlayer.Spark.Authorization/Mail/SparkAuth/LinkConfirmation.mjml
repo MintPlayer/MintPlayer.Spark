@@ -1,0 +1,24 @@
+<mjml>
+  <mj-head>
+    <mj-title>Confirm adding {{ provider }} to your {{ if app_name }}{{ app_name }} {{ end }}account</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">Confirm adding {{ provider }}</mj-text>
+        <mj-text>Somebody signed in with {{ provider }}{{ if provider_identity }} as {{ provider_identity }}{{ end }}, using the email address on {{ if app_name }}your {{ app_name }}{{ else }}your{{ end }} account.</mj-text>
+        <mj-text>Nobody has been signed in, and nothing has been added to your account yet. If that was you, confirm it here:</mj-text>
+        <mj-button href="{{ link }}">Add {{ provider }} to my account</mj-button>
+        <mj-text font-size="13px" color="#4b5563">If the button does not work, open this link: <a href="{{ link }}">{{ link }}</a></mj-text>
+        <mj-text font-size="13px" color="#4b5563">The link works once and stops working after {{ if valid_for_minutes >= 60 }}{{ valid_for_hours }} hour{{ if valid_for_hours >= 2 }}s{{ end }}{{ else }}{{ valid_for_minutes }} minutes{{ end }}.</mj-text>
+        <mj-text font-size="13px" color="#4b5563">If it was not you, do nothing. The link will expire on its own and your account stays as it is. Somebody knowing your email address is not enough to get into it.</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-include path="_Footer.mjml" />
+  </mj-body>
+</mjml>

@@ -76,18 +76,43 @@ public class EmailSenderRegistrationTests : SparkTestDriver
     /// adapter that formats the three Identity messages and hands them to the <em>non-generic</em>
     /// <c>IEmailSender</c> — so the presence or absence of a real transport is invisible here.
     /// </remarks>
+    // #460 M8:
+    // Spark now replaces that adapter with <see cref="SparkMailEmailSender{TUser}"/>, which
+    // queues through MailManager and knows whether MailManager is there (<c>CanSend</c>) — the
+    // signal the D6 guard needs and Identity's adapter never gave.
+    //
     [Fact]
-    public async Task The_generic_sender_is_always_the_framework_adapter()
+    public async Task The_generic_sender_is_Sparks_MailManager_sender_and_says_it_cannot_send()
     {
         using var host = await StartAsync();
 
         var sender = host.Services.GetRequiredService<IEmailSender<SparkUser>>();
-        var senderTypeName = sender.GetType().FullName ?? sender.GetType().Name;
 
-        // Asserted on the name because DefaultMessageEmailSender<T> is internal to the framework
-        // and cannot be named from here.
-        senderTypeName.Should().Contain("DefaultMessageEmailSender",
-            "the generic sender is an adapter, so it says nothing about whether mail can be delivered");
+        sender.Should().BeOfType<SparkMailEmailSender<SparkUser>>("Identity's no-op adapter is replaced");
+        ((SparkMailEmailSender<SparkUser>)sender).CanSend.Should().BeFalse("no MailManager is registered");
+    }
+
+    [Fact]
+    public async Task D6_registration_without_a_mail_sender_is_refused_at_startup()
+    {
+        using var noMail = await StartAsync();
+        using var withMailer = await StartAsync(s => s.AddScoped<MintPlayer.Spark.MailManager.ISparkMailer, NullMailer>());
+        using var ownSender = await StartAsync(s => s.AddSingleton<IEmailSender<SparkUser>, RecordingEmailSender>());
+        using var optedOut = await StartAsync(s => s.AddSingleton<Microsoft.Extensions.Options.IOptions<MintPlayer.Spark.Authorization.Configuration.SparkAuthenticationOptions>>(
+            Microsoft.Extensions.Options.Options.Create(new MintPlayer.Spark.Authorization.Configuration.SparkAuthenticationOptions { AllowUnconfirmedRegistration = true })));
+
+        var refused = () => LocalCredentialEndpointFilter.GuardAgainstRegistrationWithoutMail<SparkUser>(noMail.Services);
+        refused.Should().Throw<InvalidOperationException>().WithMessage("*AllowUnconfirmedRegistration*");
+        LocalCredentialEndpointFilter.GuardAgainstRegistrationWithoutMail<SparkUser>(withMailer.Services);
+        LocalCredentialEndpointFilter.GuardAgainstRegistrationWithoutMail<SparkUser>(ownSender.Services);
+        LocalCredentialEndpointFilter.GuardAgainstRegistrationWithoutMail<SparkUser>(optedOut.Services);
+    }
+
+    private sealed class NullMailer : MintPlayer.Spark.MailManager.ISparkMailer
+    {
+        public Task<MintPlayer.Spark.MailManager.SparkMailReceipt> SendAsync(MintPlayer.Spark.MailManager.SparkMailRequest request, CancellationToken cancellationToken = default)
+            => Task.FromResult(new MintPlayer.Spark.MailManager.SparkMailReceipt("x", false));
+        public Task SendCampaignAsync(MintPlayer.Spark.MailManager.SparkMailCampaign campaign, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     /// <summary>

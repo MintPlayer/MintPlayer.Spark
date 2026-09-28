@@ -77,6 +77,7 @@ public class ExternalLoginManagementTests : SparkTestDriver
                 {
                     services.AddSingleton<IDocumentStore>(Store);
                     services.AddSparkAuthentication<SparkUser>();
+                    services.AddTestMailSink(); // #460 D6: registration needs a mail sender
                     services.AddRouting();
                     // ⚠️ LocalCredentials is configured here, not only passed to MapSparkIdentityApi.
                     // The last-credential guard now lives in an endpoint class, which cannot see a

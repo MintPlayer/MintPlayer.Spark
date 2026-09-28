@@ -50,6 +50,13 @@ public class SparkUser
     /// </summary>
     public string? RegistrationMethod { get; set; }
 
+    /// <summary>
+    /// The culture the user's mail is written in (<c>nl-BE</c>, <c>fr</c>), or null for
+    /// <c>Spark:Mail:DefaultCulture</c> (#460, M8). Read when a mail is queued, never the request's
+    /// culture: account mail renders on a worker.
+    /// </summary>
+    public string? PreferredCulture { get; set; }
+
     public List<string> Roles { get; set; } = [];
     public List<SparkUserClaim> Claims { get; set; } = [];
     public List<SparkUserLogin> Logins { get; set; } = [];

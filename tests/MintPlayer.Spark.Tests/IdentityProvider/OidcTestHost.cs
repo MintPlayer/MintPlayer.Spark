@@ -46,7 +46,7 @@ public abstract class OidcTestHost : SparkTestDriver
                 // Explicit since preview.60: LocalCredentials now defaults to Disabled, and these
                 // tests sign in with a password at /connect/login.
                 spark.AddAuthentication<SparkUser>(
-                    configure: auth => auth.LocalCredentials = SparkLocalCredentials.Full);
+                    configure: auth => { auth.LocalCredentials = SparkLocalCredentials.Full; auth.AllowUnconfirmedRegistration = true; });
                 spark.AddIdentityProvider(options =>
                 {
                     // Pinned rather than derived from the Host header: O7's fix makes this

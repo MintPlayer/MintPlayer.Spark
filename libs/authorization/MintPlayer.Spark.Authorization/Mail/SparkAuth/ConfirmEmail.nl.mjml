@@ -1,0 +1,22 @@
+<mjml>
+  <mj-head>
+    <mj-title>{{ if changed_email }}Bevestig je nieuwe e-mailadres{{ else }}Bevestig je e-mailadres{{ end }}{{ if app_name }} voor {{ app_name }}{{ end }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ if changed_email }}Bevestig je nieuwe e-mailadres{{ else }}Bevestig je e-mailadres{{ end }}</mj-text>
+        <mj-text>{{ if changed_email }}Iemand vroeg om het e-mailadres van {{ if app_name }}je {{ app_name }}-account{{ else }}je account{{ end }} te wijzigen naar {{ changed_email }}. Was jij dat, bevestig het dan met de knop hieronder.{{ else }}Bedankt voor je registratie{{ if app_name }} bij {{ app_name }}{{ end }}. Bevestig met de knop hieronder dat dit adres van jou is.{{ end }}</mj-text>
+        <mj-button href="{{ link }}">{{ if changed_email }}Nieuw adres bevestigen{{ else }}Mijn adres bevestigen{{ end }}</mj-button>
+        <mj-text font-size="13px" color="#4b5563">Werkt de knop niet? Open dan deze link: <a href="{{ link }}">{{ link }}</a></mj-text>
+        <mj-text font-size="13px" color="#4b5563">De link werkt {{ valid_for_hours }} uur. Was jij het niet, doe dan niets: er verandert niets.</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-include path="_Footer.mjml" />
+  </mj-body>
+</mjml>

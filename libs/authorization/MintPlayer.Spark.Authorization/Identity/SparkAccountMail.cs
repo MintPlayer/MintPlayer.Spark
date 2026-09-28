@@ -9,7 +9,7 @@ namespace MintPlayer.Spark.Authorization.Identity;
 /// <summary>
 /// Generates the token, builds the SPA link (<see cref="ISparkAuthLinkBuilder"/>) and hands it to
 /// Identity's <see cref="IEmailSender{TUser}"/> — the one seam every account mail goes through, which
-/// MailManager (#460, M8) implements.
+/// MailManager implements (#460, M8: SparkMailEmailSender).
 /// </summary>
 /// <remarks>
 /// Never throws on a delivery-side problem: every caller is an endpoint whose answer must not depend
@@ -35,8 +35,12 @@ internal sealed class SparkAccountMail<TUser>(
             var userId = await userManager.GetUserIdAsync(user);
             var link = links.ConfirmEmail(context, userId, code, changedEmail);
 
-            // HTML-encoded, like MapIdentityApi does: IEmailSender's link methods receive markup-safe text.
-            await emailSender.SendConfirmationLinkAsync(user, email, HtmlEncoder.Default.Encode(link));
+            // MailManager's sender takes the raw link (its templates escape) and knows about an email
+            // change; any other IEmailSender gets MapIdentityApi's contract: HTML-encoded, markup-safe text.
+            if (emailSender is SparkMailEmailSender<TUser> mail)
+                await mail.SendConfirmationAsync(user, email, link, changedEmail);
+            else
+                await emailSender.SendConfirmationLinkAsync(user, email, HtmlEncoder.Default.Encode(link));
             return true;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
