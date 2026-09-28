@@ -7,11 +7,15 @@ import {
   SparkExternalProviderPresentation,
 } from '@mintplayer/ng-spark-auth/models';
 
+import type { CanActivateFn } from '@angular/router';
+import { sparkAuthenticatedGuard } from '@mintplayer/ng-spark-auth/guards';
+
 type Loader = () => Promise<any>;
 
 interface Child {
   path: string;
   loadComponent: Loader;
+  canActivate?: CanActivateFn[];
 }
 
 /** The routed path for an entry, independent of how its component is loaded. */
@@ -209,6 +213,76 @@ export function withPasskeys(entry?: SparkAuthRouteEntry): SparkAuthRoutesFeatur
   };
 }
 
+/** Options for {@link withAccount}: a path/component per page, and the guard of the signed-in pages. */
+export type SparkAccountRouteOptions =
+  Pick<SparkAuthRouteEntries, 'confirmEmail' | 'account' | 'profile' | 'changePassword' | 'twoFactorSetup' | 'externalLogins' | 'passkeys' | 'personalData'>
+  & {
+    /**
+     * Guards the signed-in pages (everything but confirm-email). Defaults to `[sparkAuthenticatedGuard]`,
+     * which waits for the session check so a hard reload does not bounce a signed-in user to the
+     * sign-in page. Pass `[]` when the pages sit under a guarded parent route already.
+     */
+    canActivate?: CanActivateFn[];
+    /**
+     * Pages to leave out, e.g. `['externalLogins']` for an app without external providers or
+     * `['changePassword']` under `SparkLocalCredentials.Disabled` (the endpoint is not mapped there).
+     */
+    exclude?: (keyof Omit<SparkAccountRouteOptions, 'canActivate' | 'exclude'>)[];
+  };
+
+/**
+ * Mounts the account pages (#460, D16), each also usable as a standalone component:
+ *
+ * | page | default path | component |
+ * |---|---|---|
+ * | confirm email (public; the mail link target) | `confirm-email` | `SparkConfirmEmailComponent` |
+ * | overview | `account` | `SparkAccountOverviewComponent` |
+ * | profile (user name, email change, mail language, app fields) | `account/profile` | `SparkAccountProfileComponent` |
+ * | change / set password | `account/password` | `SparkChangePasswordComponent` |
+ * | two-factor (authenticator, recovery codes) | `account/two-factor` | `SparkTwoFactorSetupComponent` |
+ * | connected logins | `account/logins` | `SparkExternalLoginsComponent` |
+ * | passkeys | `account/passkeys` | `SparkPasskeysComponent` |
+ * | personal data + account deletion | `account/personal-data` | `SparkPersonalDataComponent` |
+ *
+ * `confirm-email` must stay at the server's `Spark:Auth:Links:ConfirmEmailPath` (default
+ * `/confirm-email`), which confirmation mails link to. No path has a parameterised first segment, so the
+ * group neither shadows `sparkRoutes()` nor is shadowed by it.
+ */
+export function withAccount(options?: SparkAccountRouteOptions): SparkAuthRoutesFeature {
+  const guard = options?.canActivate ?? [sparkAuthenticatedGuard];
+  const excluded = new Set(options?.exclude ?? []);
+  const paths: SparkAuthRoutePaths = {};
+  const children: Child[] = [];
+
+  const add = (key: keyof SparkAccountRouteOptions & keyof SparkAuthRouteEntries, defaultPath: string, loader: Loader, guarded = true) => {
+    if (excluded.has(key as never)) return;
+    const entry = options?.[key] as SparkAuthRouteEntry | undefined;
+    const path = entryPath(entry, defaultPath);
+    paths[key] = '/' + path;
+    const route = child(entry, path, loader);
+    children.push(guarded && guard.length ? { ...route, canActivate: guard } : route);
+  };
+
+  add('confirmEmail', 'confirm-email',
+    () => import('@mintplayer/ng-spark-auth/confirm-email').then(m => m.SparkConfirmEmailComponent), false);
+  add('profile', 'account/profile',
+    () => import('@mintplayer/ng-spark-auth/account').then(m => m.SparkAccountProfileComponent));
+  add('changePassword', 'account/password',
+    () => import('@mintplayer/ng-spark-auth/account').then(m => m.SparkChangePasswordComponent));
+  add('twoFactorSetup', 'account/two-factor',
+    () => import('@mintplayer/ng-spark-auth/account').then(m => m.SparkTwoFactorSetupComponent));
+  add('externalLogins', 'account/logins',
+    () => import('@mintplayer/ng-spark-auth/account').then(m => m.SparkExternalLoginsComponent));
+  add('passkeys', 'account/passkeys',
+    () => import('@mintplayer/ng-spark-auth/passkeys').then(m => m.SparkPasskeysComponent));
+  add('personalData', 'account/personal-data',
+    () => import('@mintplayer/ng-spark-auth/account').then(m => m.SparkPersonalDataComponent));
+  add('account', 'account',
+    () => import('@mintplayer/ng-spark-auth/account').then(m => m.SparkAccountOverviewComponent));
+
+  return { paths, children };
+}
+
 export function externalProvider(
   scheme: string,
   presentation?: Omit<SparkExternalProviderPresentation, 'scheme'>,
@@ -238,4 +312,18 @@ export function microsoftProvider(
   presentation?: Omit<SparkExternalProviderPresentation, 'scheme'>,
 ): SparkExternalProviderPresentation {
   return externalProvider('Microsoft', { iconClass: 'bi bi-microsoft', ...presentation });
+}
+
+/** X (formerly Twitter) — the server's `AddSparkTwitter()` preset, scheme `Twitter`. */
+export function twitterProvider(
+  presentation?: Omit<SparkExternalProviderPresentation, 'scheme'>,
+): SparkExternalProviderPresentation {
+  return externalProvider('Twitter', { displayName: 'X', iconClass: 'bi bi-twitter-x', ...presentation });
+}
+
+/** LinkedIn — the server's `AddSparkLinkedIn()` preset (OpenID Connect userinfo), scheme `LinkedIn`. */
+export function linkedInProvider(
+  presentation?: Omit<SparkExternalProviderPresentation, 'scheme'>,
+): SparkExternalProviderPresentation {
+  return externalProvider('LinkedIn', { iconClass: 'bi bi-linkedin', ...presentation });
 }

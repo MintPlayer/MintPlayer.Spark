@@ -18,6 +18,24 @@ export interface SparkAuthRouteEntries {
    * whatever guard the application uses for its account area rather than on the public sign-in path.
    */
   passkeys?: SparkAuthRouteEntry;
+  /**
+   * The link target of confirmation mails, mounted by `withAccount()`. Public (the link is opened from a
+   * mailbox, possibly signed out); its path must equal the server's `Spark:Auth:Links:ConfirmEmailPath`
+   * (default `/confirm-email`).
+   */
+  confirmEmail?: SparkAuthRouteEntry;
+  /** The account overview (links to every mounted account page), mounted by `withAccount()`. */
+  account?: SparkAuthRouteEntry;
+  /** User name, email change, preferred mail language and app fields (`withAccount()`). */
+  profile?: SparkAuthRouteEntry;
+  /** Change the password, or set a first one on a social-only account (`withAccount()`). */
+  changePassword?: SparkAuthRouteEntry;
+  /** Authenticator enrollment, recovery codes, disabling 2FA (`withAccount()`). */
+  twoFactorSetup?: SparkAuthRouteEntry;
+  /** Connected external logins: link and unlink providers (`withAccount()`). */
+  externalLogins?: SparkAuthRouteEntry;
+  /** Download personal data and delete the account (`withAccount()`). */
+  personalData?: SparkAuthRouteEntry;
 }
 
 /**

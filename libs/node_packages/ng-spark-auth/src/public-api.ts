@@ -8,6 +8,9 @@
 //   @mintplayer/ng-spark-auth/routes       (sparkAuthRoutes + its with* features)
 //   @mintplayer/ng-spark-auth/auth-bar     (SparkAuthBarComponent)
 //   @mintplayer/ng-spark-auth/{login,two-factor,register,forgot-password,reset-password,sign-in}
+//   @mintplayer/ng-spark-auth/confirm-email (SparkConfirmEmailComponent — the confirmation-mail target)
+//   @mintplayer/ng-spark-auth/account       (withAccount()'s pages: overview, profile, password, two-factor setup,
+//                                            connected logins, personal data + deletion)
 
 export type { SparkAuthConfig } from '@mintplayer/ng-spark-auth/models';
 export { SPARK_AUTH_CONFIG, defaultSparkAuthConfig } from '@mintplayer/ng-spark-auth/models';

@@ -95,7 +95,7 @@ hand. They live under `/spark/auth/`:
 | `/spark/auth/confirm-email` | POST | all | `{ userId, code, changedEmail? }` — what the SPA's confirm page posts |
 | `/spark/auth/manage/info` | GET / POST | all / Full, SignInOnly | Read email + confirmed; change password (`oldPassword`) or email (link to the new address) |
 | `/spark/auth/manage/password` | POST | Full, SignInOnly | `{ currentPassword?, newPassword }` — set a first password or change it |
-| `/spark/auth/manage/profile` | GET / POST | all | User name + app fields (`ISparkProfileContributor<TUser>`) |
+| `/spark/auth/manage/profile` | GET / POST | all | User name, `preferredCulture` (mail language) + app fields (`ISparkProfileContributor<TUser>`) |
 | `/spark/auth/manage/2fa` | POST | all | Microsoft's 2FA management (creates the authenticator key) |
 | `/spark/auth/manage/2fa/authenticator-uri` | GET | all | `{ sharedKey, authenticatorUri, qrCodeSvg }`, `Cache-Control: no-store` |
 | `/spark/auth/manage/personal-data` | GET | all | GDPR export: the account + `ISparkPersonalDataContributor<TUser>` sections |
@@ -340,6 +340,62 @@ coarse: they never distinguish "no such account" from anything else.
 Do not hand-roll `window.open` plus a `message` listener. The popup can end in four ways —
 success, a server-side refusal, a blocked window, and a user who simply closes it — and a
 listener that is only removed on success leaks on the other three.
+
+`twitterProvider()` (scheme `Twitter`, labelled "X") and `linkedInProvider()` (scheme `LinkedIn`) match
+the server's `AddSparkTwitter()` / `AddSparkLinkedIn()` presets, next to `githubProvider()`,
+`googleProvider()`, `facebookProvider()` and `microsoftProvider()`.
+
+### Account pages (`withAccount()`, #460 D16)
+
+```typescript
+import { sparkAuthRoutes, withLocalLogin, withAccount } from '@mintplayer/ng-spark-auth/routes';
+import { provideSparkAccountProfileFields } from '@mintplayer/ng-spark-auth/models';
+
+// routes
+...sparkAuthRoutes(withLocalLogin(), withAccount()),
+// providers (optional: app fields on the profile page)
+provideSparkAccountProfileFields(
+  { name: 'Bio', label: 'profile.bio', type: 'textarea', maxLength: 500 },
+  { name: 'Newsletter', label: 'profile.newsletter', type: 'checkbox' },
+),
+```
+
+| Page | Default path | Component | Server |
+|---|---|---|---|
+| Confirm email (public) | `confirm-email` | `SparkConfirmEmailComponent` | `POST confirm-email { userId, code, changedEmail? }` |
+| Overview | `account` | `SparkAccountOverviewComponent` | links to the mounted pages |
+| Profile | `account/profile` | `SparkAccountProfileComponent` | `GET/POST manage/profile`; email change via `POST manage/info { newEmail }` |
+| Password | `account/password` | `SparkChangePasswordComponent` | `POST manage/password` |
+| Two-factor | `account/two-factor` | `SparkTwoFactorSetupComponent` | `POST manage/2fa`, `GET manage/2fa/authenticator-uri` |
+| Connected logins | `account/logins` | `SparkExternalLoginsComponent` | `GET external-logins`, link / unlink |
+| Passkeys | `account/passkeys` | `SparkPasskeysComponent` | `passkeys/*` |
+| Personal data + deletion | `account/personal-data` | `SparkPersonalDataComponent` | `GET manage/personal-data`, `DELETE manage/account` |
+
+- **Guarding and paths.** Every page except confirm-email is guarded by `sparkAuthenticatedGuard`.
+  That guard waits for the session check, so reloading an account page does not send a signed-in user
+  to the sign-in page. Override the guard with `withAccount({ canActivate: [...] })`, change a path
+  with `withAccount({ profile: 'me' })`, or leave pages out with `exclude: ['externalLogins']`.
+  `confirm-email` must match `Spark:Auth:Links:ConfirmEmailPath`, which is where confirmation mails
+  link to. No path starts with a parameter, so the pages neither shadow `sparkRoutes()` nor are
+  shadowed by it.
+- **Profile.** The profile page shows:
+  - the user name;
+  - the email, with a change form that mails the NEW address, so nothing changes until that link is
+    opened;
+  - the **language for emails**, which sets `SparkUser.PreferredCulture`. The choices are the app's
+    languages from `/spark/culture`, and "Default" clears it;
+  - the app's `SPARK_ACCOUNT_PROFILE_FIELDS`, each validated and stored by an
+    `ISparkProfileContributor<TUser>` that declares the same name.
+  Field errors render next to their control.
+- **Two-factor.** The QR code is the server's SVG, shown as an `<img>` data URL and never inserted as
+  markup. Recovery codes are shown once, right after they are generated.
+- **Account deletion.** It asks for the password, or accepts a sign-in younger than
+  `ReauthenticationMaxAge` (5 minutes). A 403 `reauthentication_required` is explained on the page.
+- **Mode restrictions.** Under `SparkLocalCredentials.Disabled`, `manage/password` and `manage/info`
+  are not mapped. Exclude `changePassword` there; the profile page's email-change form then shows the
+  404 as "not available".
+- **Login label.** The login form's identifier field is labelled "Email or user name"
+  (`auth.emailOrUserName`, D4).
 
 ### Customizing the Generated File
 
