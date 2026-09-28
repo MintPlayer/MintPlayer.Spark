@@ -51,12 +51,8 @@ public static class SparkHistoryExtensions
                 services.GetRequiredService<IModelLoader>(),
                 services.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(RevisionsConfigurator).FullName!));
         });
-        builder.Registry.AddEndpoints(endpoints =>
-        {
-            endpoints.MapEndpoint<ListRevisions>();
-            endpoints.MapEndpoint<GetRevision>();
-            endpoints.MapEndpoint<RevertPersistentObject>();
-        });
+        // The per-library method the Endpoints generator emits for this assembly (AssemblyInfo.cs).
+        builder.Registry.AddEndpoints(endpoints => endpoints.MapSparkHistoryEndpoints());
 
         return builder;
     }

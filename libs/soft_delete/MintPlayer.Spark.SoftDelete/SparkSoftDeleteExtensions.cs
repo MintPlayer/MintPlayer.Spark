@@ -40,11 +40,8 @@ public static class SparkSoftDeleteExtensions
         builder.Services.TryAddSingleton<ISoftDeleteRevisions, RavenSoftDeleteRevisions>();
 
         builder.Registry.AddMiddleware(app => SoftDeleteStartupCheck.Run(app.ApplicationServices));
-        builder.Registry.AddEndpoints(endpoints =>
-        {
-            endpoints.MapEndpoint<RestorePersistentObject>();
-            endpoints.MapEndpoint<PurgePersistentObject>();
-        });
+        // The per-library method the Endpoints generator emits for this assembly (AssemblyInfo.cs).
+        builder.Registry.AddEndpoints(endpoints => endpoints.MapSparkSoftDeleteEndpoints());
 
         return builder;
     }
