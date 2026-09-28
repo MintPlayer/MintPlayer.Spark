@@ -1,5 +1,4 @@
 using CodeCoverage.GithubIntegration.Extensions;
-using System.Net;
 using System.Text.RegularExpressions;
 using MintPlayer.Spark.Authorization.Configuration;
 using System.Threading.RateLimiting;
@@ -7,8 +6,6 @@ using CodeCoverage;
 using CodeCoverage.ApiTokens;
 using CodeCoverage.Services;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.DataProtection;
-using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
@@ -32,42 +29,20 @@ var envPrefix = builder.Environment.EnvironmentName;
 // unconditional. Nothing they touch can reach an authentication handler.
 var isSparkBuildCommand = args.Any(a => a.StartsWith("--spark-", StringComparison.Ordinal));
 
-builder.Services.Configure<ForwardedHeadersOptions>(options =>
-{
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
-
-    // ⚠️ These lists used to be CLEARED, which does not mean "no proxies" — it disables peer
-    // validation entirely, so ASP.NET Core took `X-Forwarded-For` from whoever sent it. Any
-    // anonymous caller could therefore choose the address every rate limiter partitions on and
-    // every log line records, which is a bypass of the fork-upload limiter rather than a
-    // theoretical one.
-    //
-    // The proxy's address cannot be pinned (Docker assigns it), but it does not have to be. See
-    // docker-compose.yml: `coverage-app` publishes no host ports and is reachable only from the
-    // `web` network, where Traefik is the sole ingress. So the transport peer is ALWAYS a
-    // container address on a Docker bridge network, and trusting the private ranges is exactly
-    // as tight as naming the container would be — nothing on a public address can reach this
-    // process to be trusted in the first place.
-    //
-    // ⚠️ If this app is ever exposed directly, or put behind a proxy that is not on a private
-    // network, this must become an explicit KnownProxies entry. The safety argument is the
-    // topology, not the address family.
-    options.KnownIPNetworks.Clear();
-    options.KnownProxies.Clear();
-    options.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Parse("10.0.0.0"), 8));
-    options.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Parse("172.16.0.0"), 12));
-    options.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Parse("192.168.0.0"), 16));
-    options.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Parse("127.0.0.0"), 8));
-    options.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Parse("::1"), 128));
-    options.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Parse("fc00::"), 7));
-
-    // One hop, which is what makes a spoofed header harmless rather than merely validated.
-    // Traefik APPENDS the real peer to whatever the client sent, so with a limit of one the
-    // rightmost entry — the only one Traefik wrote — is the one taken, and the attacker-supplied
-    // entries to its left are never read. It is the default; it is spelled out because the whole
-    // argument above collapses without it.
-    options.ForwardLimit = 1;
-});
+// Forwarded headers are configured by Spark (#460, D15): X-Forwarded-For and -Proto, trusted from
+// loopback and the private ranges (10/8, 172.16/12, 192.168/16, fc00::/7), one hop. That is exactly
+// what this file used to hand-write, and the safety argument for it is unchanged — see
+// docker-compose.yml: `coverage-app` publishes no host ports and is reachable only from the `web`
+// network, where Traefik is the sole ingress. So the transport peer is ALWAYS a container address
+// on a Docker bridge network, and trusting the private ranges is exactly as tight as naming the
+// container would be. With one hop, the rightmost X-Forwarded-For entry — the only one Traefik
+// wrote, since it APPENDS the real peer — is the one taken, and entries a client wrote to its left
+// are never read.
+//
+// ⚠️ If this app is ever exposed directly, or put behind a proxy that is not on a private network,
+// set Spark:ForwardedHeaders:KnownProxies explicitly. The safety argument is the topology, not the
+// address family. (X-Forwarded-Host is no longer honoured: Traefik passes the original Host header
+// through, so it was never needed.)
 
 builder.Services.AddControllers()
     .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(
@@ -285,14 +260,11 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     });
 });
 
-// Key ring in RavenDB instead of the container filesystem, where a redeploy
-// destroyed it and signed everyone out (auth + antiforgery cookies both
-// decrypt with these keys). Configured through options so the IDocumentStore
-// that AddSpark registers is resolved lazily, not at registration time.
-builder.Services.AddDataProtection().SetApplicationName("CodeCoverage");
-builder.Services.AddOptions<Microsoft.AspNetCore.DataProtection.KeyManagement.KeyManagementOptions>()
-    .Configure<Raven.Client.Documents.IDocumentStore>((options, store) =>
-        options.XmlRepository = new CodeCoverage.Services.RavenDataProtectionKeyRepository(store));
+// The Data Protection key ring lives in RavenDB, not the container filesystem, where a redeploy
+// destroyed it and signed everyone out (auth + antiforgery cookies both decrypt with these keys).
+// Spark owns that wiring now (#460, D5): appsettings.json sets Spark:DataProtection:Storage=RavenDb
+// and ApplicationName=CodeCoverage, and Spark's repository reads the same DataProtectionKeys/
+// documents this file's hand-written one wrote — changing either value signs every user out once.
 
 // GitHubOidc: GitHub-signed workflow JWTs, validated against GitHub's JWKS;
 // the audience must be this deployment's public base URL and the action must
@@ -371,8 +343,10 @@ static string ForkUploadsPartitionKey(HttpContext context)
     // `KnownProxies` and `KnownNetworks` were cleared, `RemoteIpAddress` was whatever the caller
     // put in `X-Forwarded-For` — so keying on it would have been exactly as caller-chosen as
     // keying on the path: one header per request, one fresh window per request, the same abuse
-    // through a different string. See the ForwardedHeadersOptions at the top of this file; if the
-    // trust list is ever emptied again, this stops being a control and silently reads as one.
+    // through a different string. The trust list is now Spark's (Spark:ForwardedHeaders — see the
+    // comment near the top of this file), and Spark refuses to start outside Development if it is
+    // ever emptied; were that refusal bypassed, this would stop being a control and silently read
+    // as one.
     return $"{context.Connection.RemoteIpAddress?.ToString() ?? "anonymous"}|{repository}";
 }
 
@@ -512,8 +486,6 @@ if (args.Contains("--verify-forge-ids", StringComparer.Ordinal))
     Environment.ExitCode = failed == 0 ? 0 : 1;
     return;
 }
-
-app.UseForwardedHeaders();
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();

@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions;
@@ -93,6 +94,13 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
         SparkTestSecurityFile.Write(_contentRoot, security);
 
         _host = new HostBuilder()
+            // Test hosts run outside Development, where Spark refuses an unpersisted Data Protection
+            // key ring (#460, D5). A folder in the throwaway content root is persisted for exactly as
+            // long as the host lives, which is all a test needs.
+            .ConfigureAppConfiguration(configuration => configuration.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Spark:DataProtection:KeysPath"] = Path.Combine(_contentRoot, "DataProtection-Keys"),
+            }))
             .ConfigureWebHost(webHost =>
             {
                 webHost

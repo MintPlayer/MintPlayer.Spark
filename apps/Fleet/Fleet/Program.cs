@@ -1,6 +1,5 @@
 using System.Text.RegularExpressions;
 using Fleet;
-using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using MintPlayer.Spark;
 using MintPlayer.Spark.Extensions;
@@ -12,13 +11,6 @@ using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
-
-builder.Services.Configure<ForwardedHeadersOptions>(options =>
-{
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
-    options.KnownNetworks.Clear();
-    options.KnownProxies.Clear();
-});
 
 // Fleet owns data other modules replicate, so it has to be able to recognise them. Asking for a
 // client certificate is not the same as requiring one: AllowCertificate keeps every ordinary
@@ -152,8 +144,6 @@ if (builder.VerifySparkSecurityIfRequested(args))
     return;
 
 var app = builder.Build();
-
-app.UseForwardedHeaders();
 
 // Deployments that terminate TLS at a proxy — and the E2E host, whose issuer must be reachable
 // over plain http so the JWT handler can fetch discovery from itself without a trusted certificate

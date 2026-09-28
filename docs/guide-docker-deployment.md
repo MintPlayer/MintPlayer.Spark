@@ -82,6 +82,42 @@ docker compose up -d
 | `Spark__RavenDb__MaxConnectionRetries` | Max retry attempts waiting for RavenDB | `30` |
 | `Spark__RavenDb__RetryDelaySeconds` | Seconds between retry attempts | `2` |
 
+### Data Protection keys
+
+Outside Development, Spark refuses to start until the Data Protection key ring is persisted —
+otherwise every redeploy signs every user out. Set `Spark__DataProtection__Storage=RavenDb` (keys in
+the database, persisted by the `raven-data` volume) or `Spark__DataProtection__KeysPath` pointing at
+a **mounted** volume. See [Data Protection](guide-data-protection.md).
+
+### Forwarded headers (behind a reverse proxy)
+
+Spark configures `X-Forwarded-For` / `X-Forwarded-Proto` handling itself and places
+`UseForwardedHeaders()` at the front of the pipeline — do **not** call it or configure
+`ForwardedHeadersOptions` yourself.
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `Spark__ForwardedHeaders__KnownNetworks__0` … | trusted proxy networks (CIDR); setting any **replaces** the default | loopback, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7` |
+| `Spark__ForwardedHeaders__KnownProxies__0` … | trusted proxy addresses; setting any replaces the default | — |
+| `Spark__ForwardedHeaders__ProxyHops` | proxies between the internet and the app (ASP.NET Core's `ForwardLimit`); at least 1 | `1` |
+| `Spark__ForwardedHeaders__ForwardHost` | also honour `X-Forwarded-Host` — refused while `AllowedHosts` is `*` | `false` |
+
+The effective trust list is logged at startup. Outside Development, a configuration that trusts
+**every** sender (both lists empty — what `KnownNetworks.Clear(); KnownProxies.Clear();` does) is a
+startup error: it lets any caller choose the address every rate limiter partitions on.
+
+The default is right when the app is reachable **only** through a proxy on a private network — the
+compose file below, where the app publishes no ports and Traefik is the sole ingress on the `web`
+network. It is wrong when:
+
+- the app is exposed directly on a private network to untrusted clients — name the proxy instead;
+- a **CDN** sits in front of the proxy — add the CDN's published ranges and raise `ProxyHops`, or
+  every visitor shares the CDN's address and one rate-limit bucket.
+
+The **entry** proxy should *overwrite* (or append to, with `ProxyHops` counting it) the client's
+`X-Forwarded-For` rather than trust it: nginx `proxy_set_header X-Forwarded-For $remote_addr;`,
+Traefik `forwardedHeaders.trustedIPs` limited to real upstreams — **never** `forwardedHeaders.insecure`.
+
 ### Connection Retry
 
 When using Docker Compose, the application container may start before RavenDB is ready. Spark includes built-in retry logic that waits for RavenDB to become available. With the default settings (30 retries, 2 second delay), the app will wait up to ~60 seconds for RavenDB to start.

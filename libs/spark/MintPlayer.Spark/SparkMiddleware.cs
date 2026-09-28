@@ -99,6 +99,15 @@ public static class SparkExtensions
         // Ensure HttpContextAccessor is available (needed for RequestCultureResolver)
         services.AddHttpContextAccessor();
 
+        // Forwarded headers (#460, D15) — trusted from private ranges by default, placed at the
+        // front of the pipeline by a startup filter. An application no longer configures or calls
+        // UseForwardedHeaders() itself; see SparkForwardedHeadersOptions.
+        services.AddSparkForwardedHeaders();
+
+        // Data Protection (#460, D5) — always on, key ring persisted per Spark:DataProtection; an
+        // unpersisted ring outside Development is refused by UseSpark(). See SparkDataProtectionOptions.
+        services.AddSparkDataProtection();
+
         // Register the Spark services
         services.AddSparkServices();
 
@@ -234,6 +243,12 @@ public static class SparkExtensions
     /// </summary>
     public static IApplicationBuilder UseSpark(this IApplicationBuilder app)
     {
+        // #460 D5: a key ring that would not survive a redeploy is refused here, at startup, rather
+        // than discovered as every user being signed out after the next deploy.
+        SparkDataProtection.Validate(
+            app.ApplicationServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<SparkDataProtectionOptions>>().Value,
+            app.ApplicationServices.GetRequiredService<IHostEnvironment>());
+
         var registry = app.ApplicationServices.GetRequiredService<SparkModuleRegistry>();
 
         // Middleware that must reject a request before the cost of authenticating it is paid — a rate

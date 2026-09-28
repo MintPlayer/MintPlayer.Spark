@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Configuration;
@@ -36,6 +37,11 @@ public class UseSparkOptionsTests : SparkTestDriver
         SparkTestSecurityFile.Write(contentRoot);
 
         using var host = await new HostBuilder()
+            // Outside Development, so the key ring has to be persisted somewhere (#460, D5).
+            .ConfigureAppConfiguration(c => c.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Spark:DataProtection:KeysPath"] = Path.Combine(contentRoot, "DataProtection-Keys"),
+            }))
             .ConfigureWebHost(webHost => webHost
                 .UseTestServer()
                 .UseContentRoot(contentRoot)

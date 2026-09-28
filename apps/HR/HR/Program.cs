@@ -1,6 +1,5 @@
 using System.Text.RegularExpressions;
 using HR;
-using Microsoft.AspNetCore.HttpOverrides;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
 using MintPlayer.Spark.Extensions;
@@ -13,13 +12,6 @@ using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Replication;
 
 var builder = WebApplication.CreateBuilder(args);
-
-builder.Services.Configure<ForwardedHeadersOptions>(options =>
-{
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
-    options.KnownNetworks.Clear();
-    options.KnownProxies.Clear();
-});
 
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
@@ -88,8 +80,6 @@ if (builder.VerifySparkSecurityIfRequested(args))
     return;
 
 var app = builder.Build();
-
-app.UseForwardedHeaders();
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
