@@ -332,7 +332,7 @@ internal partial class QueryExecutor : IQueryExecutor
             // SparkQueryPage with a row-ruled type today, so this costs no working query.
             if (definition?.ClrType is { Length: > 0 } authorClrType
                 && SparkTypeResolver.ResolveClrType(authorClrType) is { } authorEntityType
-                && rowSecurity.HasRowRule(authorEntityType))
+                && rowSecurity.GetRowRuleKinds(authorEntityType).RefusesAuthorPagedTotals())
             {
                 throw new InvalidOperationException(
                     $"Query '{query.Name}' returns SparkQueryPage<T>, which transfers paging and the row " +

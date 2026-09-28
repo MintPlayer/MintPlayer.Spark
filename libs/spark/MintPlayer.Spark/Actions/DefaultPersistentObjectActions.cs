@@ -291,13 +291,27 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// another tenant's owner. Skipped for the system context (module sync, background work) —
     /// row rules scope viewers, and infrastructure has none. Overriding <see cref="OnSaveAsync"/>
     /// without calling the base implementation takes over this responsibility.
+    /// <para>
+    /// Judged through row security (#460, D1), so it is the same rule every read path applies: this
+    /// class's <see cref="GetRowFilterAsync"/> and <see cref="IsAllowedAsync"/> AND every applicable
+    /// row policy — and a policy that opts out of the system-context exemption applies to the system
+    /// here too.
+    /// </para>
     /// </summary>
     private async Task EnsureRowSaveAllowedAsync(PersistentObject obj, T entity)
     {
+        var action = string.IsNullOrEmpty(obj.Id) ? "New" : "Edit";
+
+        if (serviceProvider?.GetService<IRowSecurity>() is { } rowSecurity)
+        {
+            if (!await rowSecurity.IsAllowedAsync(typeof(T), action, entity))
+                throw new Abstractions.Authorization.SparkRowLevelAccessDeniedException($"{action}/{typeof(T).Name}");
+            return;
+        }
+
+        // Constructed by hand, outside the framework: no row security to ask, so the class's own rule.
         if (Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
             return;
-
-        var action = string.IsNullOrEmpty(obj.Id) ? "New" : "Edit";
 
         var filter = await GetRowFilterAsync(action);
         if (filter is not null && !filter.Compile()(entity))

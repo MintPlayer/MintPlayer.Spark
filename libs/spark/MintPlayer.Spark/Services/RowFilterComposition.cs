@@ -35,6 +35,13 @@ public enum RowFilterMode
 
     /// <summary>The rule composed into the database query as a <c>Where</c>.</summary>
     PushedDown,
+
+    /// <summary>
+    /// The query returns an index projection and the rule, rebound onto the projection by member name,
+    /// composed into it as a <c>Where</c> (#285, D2). The post-materialization gate still reloads and
+    /// re-judges the base documents; this narrows what is read.
+    /// </summary>
+    PushedDownOntoProjection,
 }
 
 /// <summary>
@@ -74,6 +81,7 @@ public sealed record RowFilterComposition(
         RowFilterMode.SystemContext => true,
         RowFilterMode.NoRule => !HasPerRowRefinement,
         RowFilterMode.PushedDown => !HasPerRowRefinement,
+        RowFilterMode.PushedDownOntoProjection => !HasPerRowRefinement,
         _ => false,
     };
 }

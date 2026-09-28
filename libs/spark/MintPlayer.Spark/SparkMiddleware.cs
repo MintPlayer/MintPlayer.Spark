@@ -693,7 +693,8 @@ public static class SparkExtensions
         var problems = RowPolicyDeclarationValidator.Validate(
             configuration,
             [.. modelLoader.GetEntityTypes()],
-            type => ResolveClrType(type) is { } clr && rowSecurity.HasRowRule(clr),
+            type => ResolveClrType(type) is { } clr
+                && rowSecurity.GetRowRuleKinds(clr).DecidesVisibility(),
             type => ResolveClrType(type) is { } clr
                 ? TryResolve(() => actionsResolver.ResolveForType(clr))
                 : TryResolve(() => actionsResolver.ResolveByEntityName(type.Name)));
