@@ -1,10 +1,11 @@
 using System.Diagnostics;
 using System.Net;
-using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Client;
+using MintPlayer.Spark.Client.Authorization;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
 using Raven.Client.ServerWide;
@@ -278,14 +279,7 @@ public abstract class SparkAppTestHost : IAsyncLifetime
     /// </remarks>
     public async Task SeedUserAsync(string email, string password, string groupName, string? roleName = null)
     {
-        using var client = CreateSeedingClient();
-
-        var registerResp = await client.PostAsJsonAsync("/spark/auth/register", new { email, password });
-        if (!registerResp.IsSuccessStatusCode)
-        {
-            var body = await registerResp.Content.ReadAsStringAsync();
-            throw new InvalidOperationException($"Seed register for '{email}' failed ({(int)registerResp.StatusCode}): {body}");
-        }
+        await RegisterAsync(email, password, $"Seed register for '{email}'");
 
         using var appStore = OpenAppStore();
 
@@ -472,31 +466,33 @@ public abstract class SparkAppTestHost : IAsyncLifetime
             lock (_logLock) _appLog.Add($"[coverage] no report was written at {_hostCoverageReport}");
     }
 
-    private HttpClient CreateSeedingClient()
+    /// <summary>
+    /// Registers through the real endpoint with the typed client. Since #460 (M5) register requires an
+    /// antiforgery token like every mutating account route; a bare POST is refused with an empty 400.
+    /// The client warms up for the token, as a browser holding the app would already have it.
+    /// </summary>
+    private async Task RegisterAsync(string email, string password, string failurePrefix)
     {
         var handler = new HttpClientHandler
         {
             ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
         };
-        return new HttpClient(handler) { BaseAddress = new Uri(AppUrl) };
+        using var client = new SparkClient(new HttpClient(handler) { BaseAddress = new Uri(AppUrl) }, ownsClient: true);
+        try
+        {
+            await client.RegisterAsync(email, password);
+        }
+        catch (SparkClientException ex)
+        {
+            throw new InvalidOperationException($"{failurePrefix} failed ({(int)ex.StatusCode}): {ex.Message}", ex);
+        }
     }
 
     private async Task SeedAdminUserAsync(string[] ravenUrls)
     {
         // Register via the public endpoint so the password hash is compatible with whatever
         // PasswordHasher version the app's Identity is configured with.
-        using var client = CreateSeedingClient();
-
-        var response = await client.PostAsJsonAsync("/spark/auth/register", new
-        {
-            email = AdminEmail,
-            password = _password,
-        });
-        if (!response.IsSuccessStatusCode)
-        {
-            var body = await response.Content.ReadAsStringAsync();
-            throw new InvalidOperationException($"Register failed ({(int)response.StatusCode}): {body}");
-        }
+        await RegisterAsync(AdminEmail, _password, "Register");
 
         // Now patch the stored user: mark email confirmed + add the admin group claim and role.
         using var appStore = OpenAppStore();

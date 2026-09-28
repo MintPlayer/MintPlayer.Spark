@@ -60,9 +60,10 @@ public static class SparkClientAuthExtensions
     }
 
     /// <summary>
-    /// Registers a new user via <c>POST /spark/auth/register</c>. Outside Spark's antiforgery
-    /// surface. Does not automatically sign the user in — call <see cref="LoginAsync"/> if
-    /// that's the intent.
+    /// Registers a new user via <c>POST /spark/auth/register</c>. Inside Spark's antiforgery
+    /// surface like every mutating account route, so the client warms up and attaches the
+    /// X-XSRF-TOKEN header. Does not automatically sign the user in — call
+    /// <see cref="LoginAsync"/> if that's the intent.
     /// </summary>
     public static async Task RegisterAsync(
         this SparkClient client,
@@ -77,7 +78,7 @@ public static class SparkClientAuthExtensions
             HttpMethod.Post,
             "/spark/auth/register",
             content,
-            requiresAntiforgery: false,
+            requiresAntiforgery: true,
             cancellationToken);
         await SparkClientException.ThrowIfNotSuccessAsync(response, cancellationToken);
     }

@@ -114,26 +114,41 @@ public class SparkClientAuthExtensionsTests
 
     #region RegisterAsync
 
+    /// <summary>
+    /// ⚠️ This test used to be named <c>..._without_antiforgery</c> and asserted the opposite. Since
+    /// #460 (M5) every mutating account route, the anonymous <c>/spark/auth/register</c> included,
+    /// requires an antiforgery token, so a register without one is a bare 400 — the client warms up
+    /// and sends the token, as it does for login.
+    /// </summary>
     [Fact]
-    public async Task RegisterAsync_posts_email_and_password_to_register_endpoint_without_antiforgery()
+    public async Task RegisterAsync_warms_up_and_sends_an_antiforgery_token()
     {
-        var handler = new ScriptedHttpHandler().EnqueueOk();
+        var handler = new ScriptedHttpHandler()
+            .EnqueueWithCookies(                                    // warmup GET
+                ".AspNetCore.Antiforgery.abc=validation-cookie-value; Path=/",
+                "XSRF-TOKEN=fake-xsrf-token; Path=/")
+            .EnqueueOk();                                           // register
         using var client = NewClient(handler);
 
         await client.RegisterAsync("alice@example.com", "p@ss");
 
-        handler.Requests.Should().ContainSingle();
+        handler.Requests.Should().HaveCount(2);
+        handler.Requests[0].Method.Should().Be(HttpMethod.Get, "the warmup mints the token");
 
-        var register = handler.Requests[0];
+        var register = handler.Requests[1];
         register.Method.Should().Be(HttpMethod.Post);
         register.RequestUri!.AbsolutePath.Should().Be("/spark/auth/register");
-        register.Headers.Contains("X-XSRF-TOKEN").Should().BeFalse();
+        register.Headers.Contains("X-XSRF-TOKEN").Should().BeTrue(
+            "register is gated, so a programmatic client must present the token a browser would already hold");
     }
 
     [Fact]
     public async Task RegisterAsync_throws_SparkClientException_on_non_success()
     {
         var handler = new ScriptedHttpHandler()
+            .EnqueueWithCookies(
+                ".AspNetCore.Antiforgery.abc=validation-cookie-value; Path=/",
+                "XSRF-TOKEN=fake-xsrf-token; Path=/")
             .Enqueue(new HttpResponseMessage(HttpStatusCode.BadRequest));
         using var client = NewClient(handler);
 
