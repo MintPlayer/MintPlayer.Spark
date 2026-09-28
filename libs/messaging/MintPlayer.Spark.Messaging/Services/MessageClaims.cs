@@ -71,23 +71,34 @@ internal static class MessageClaims
         TimeSpan ttl,
         CancellationToken cancellationToken)
     {
-        using var session = store.OpenAsyncSession();
-        session.Advanced.UseOptimisticConcurrency = true;
-
-        var message = await session.LoadAsync<SparkMessage>(messageId, cancellationToken);
-        if (message is null || message.OwnerId != ownerId || message.Status != EMessageStatus.Processing)
-            return false;
-
-        message.ClaimExpiresAtUtc = DateTime.UtcNow + ttl;
-
-        try
+        // A conflict is not a lost claim: the owner's own handler-step saves write the same document,
+        // and one landing between our load and save made the renewal fail. Returning false then read
+        // as "finished" to the renewal loop, which stopped renewing for the rest of the handler's run.
+        // Reload and re-check instead; ownership is what decides. Bounded, and without any wait.
+        const int attempts = 3;
+        for (var attempt = 1; ; attempt++)
         {
-            await session.SaveChangesAsync(cancellationToken);
-            return true;
-        }
-        catch (Raven.Client.Exceptions.ConcurrencyException)
-        {
-            return false;
+            using var session = store.OpenAsyncSession();
+            session.Advanced.UseOptimisticConcurrency = true;
+
+            var message = await session.LoadAsync<SparkMessage>(messageId, cancellationToken);
+            if (message is null || message.OwnerId != ownerId || message.Status != EMessageStatus.Processing)
+                return false;
+
+            message.ClaimExpiresAtUtc = DateTime.UtcNow + ttl;
+
+            try
+            {
+                await session.SaveChangesAsync(cancellationToken);
+                return true;
+            }
+            catch (Raven.Client.Exceptions.ConcurrencyException) when (attempt < attempts)
+            {
+            }
+            catch (Raven.Client.Exceptions.ConcurrencyException)
+            {
+                return false;
+            }
         }
     }
 

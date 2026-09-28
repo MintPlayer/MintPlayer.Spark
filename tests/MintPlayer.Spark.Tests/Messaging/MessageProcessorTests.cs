@@ -362,6 +362,61 @@ public class MessageProcessorTests : SparkTestDriver
         }
     }
 
+    /// <summary>Renews its own claim mid-handler, as ClaimedExecution's renewal loop does, and records the renewed expiry.</summary>
+    public sealed class RenewingRecipient(Func<Task<DateTime?>> renew, List<DateTime?> renewed) : IRecipient<Ping>
+    {
+        public async Task HandleAsync(Ping message, CancellationToken cancellationToken = default)
+            => renewed.Add(await renew());
+    }
+
+    /// <summary>Runs after the first handler's step was saved and records the stored claim expiry.</summary>
+    public sealed class ObservingRecipient(Func<Task<DateTime?>> read, List<DateTime?> observed) : IRecipient<Ping>
+    {
+        public async Task HandleAsync(Ping message, CancellationToken cancellationToken = default)
+            => observed.Add(await read());
+    }
+
+    [Fact]
+    public async Task A_handler_step_save_does_not_undo_a_claim_renewal_made_meanwhile()
+    {
+        var options = new SparkMessagingOptions { ClaimTtl = TimeSpan.FromMinutes(5) };
+        var renewed = new List<DateTime?>();
+        var observed = new List<DateTime?>();
+        string id = null!;
+
+        async Task<DateTime?> StoredExpiryAsync()
+        {
+            using var session = Store.OpenAsyncSession();
+            return (await session.LoadAsync<SparkMessage>(id)).ClaimExpiresAtUtc;
+        }
+
+        using var services = Services(Everything, s =>
+        {
+            s.AddSingleton<IRecipient<Ping>>(new RenewingRecipient(async () =>
+            {
+                (await MessageClaims.TryRenewAsync(Store, id, Owner, options.ClaimTtl, CancellationToken.None))
+                    .Should().BeTrue("the claim is ours");
+                return await StoredExpiryAsync();
+            }, renewed));
+            s.AddSingleton<IRecipient<Ping>>(new ObservingRecipient(StoredExpiryAsync, observed));
+        });
+
+        // Loaded with an expiry well short of any renewal, so a write-back of the loaded value shows.
+        id = await SeedMessageAsync(m =>
+        {
+            m.ClaimExpiresAtUtc = DateTime.UtcNow.AddMinutes(1);
+            m.Handlers = [Handler<RenewingRecipient>(), Handler<ObservingRecipient>()];
+        });
+
+        await NewProcessor(services, options).ProcessAsync(id, Owner, CancellationToken.None);
+
+        renewed.Should().ContainSingle().Which.Should().HaveValue();
+        observed.Should().ContainSingle().Which.Should().HaveValue();
+        observed[0]!.Value.Should().BeOnOrAfter(renewed[0]!.Value,
+            "the first handler's step save must not write back the claim expiry the processor loaded");
+        (await LoadAsync(id)).Message.Status.Should().Be(EMessageStatus.Completed);
+    }
+
     private static SparkMessagingOptions WithQueue(SparkQueueOptions queue)
         => new() { Queues = { ["processor-tests"] = queue } };
 

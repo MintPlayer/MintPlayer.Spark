@@ -446,6 +446,9 @@ wake-up patch, the re-claim. No message was deferred twice.
   writes back the `ClaimExpiresAtUtc` it loaded and so undoes a renewal made in between; the next
   renewal restores it. A handler longer than `ClaimTtl` right after such a save can be reclaimed for
   up to one `ClaimRenewInterval`. Pre-existing; both modes now share it.
+  **Now fixed:** an `OnBeforeStore` hook on the processor's session stamps `ClaimExpiresAtUtc = now +
+  ClaimTtl` on every save of a message it still owns (Processing), so no step save moves the expiry
+  back; `TryRenewAsync` also reloads on a conflict with such a save instead of ending renewal.
 
 ---
 

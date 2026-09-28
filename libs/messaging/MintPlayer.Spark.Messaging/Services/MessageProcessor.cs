@@ -77,7 +77,34 @@ internal sealed partial class MessageProcessor
             return;
         }
 
+        // Every save below stores the whole document, including the ClaimExpiresAtUtc this session
+        // loaded. ClaimedExecution renews the claim meanwhile from its own session, so a plain save
+        // wrote the stale expiry back and undid the renewal: a long handler could then be reclaimed
+        // by another worker for up to one ClaimRenewInterval. A save by the owner is proof the owner
+        // is alive, so each one carries a fresh expiry instead — never earlier than any renewal made
+        // before it. Terminal and parked states clear the claim first, so they are left alone.
+        var claimTtl = Options.ClaimTtl;
+        session.Advanced.OnBeforeStore += (_, e) =>
+        {
+            if (ReferenceEquals(e.Entity, sparkMessage))
+                ExtendOwnClaim(sparkMessage, ownerId, claimTtl);
+        };
+
         await RunHandlersAsync(session, sparkMessage, cancellationToken);
+    }
+
+    /// <summary>
+    /// Pushes <paramref name="message"/>'s claim expiry to now + <paramref name="ttl"/> when it is
+    /// still claimed by <paramref name="ownerId"/>, so the owner's own save cannot move it backwards.
+    /// </summary>
+    internal static void ExtendOwnClaim(SparkMessage message, string ownerId, TimeSpan ttl)
+    {
+        if (message.Status != EMessageStatus.Processing || message.OwnerId != ownerId)
+            return;
+
+        var renewed = DateTime.UtcNow + ttl;
+        if (message.ClaimExpiresAtUtc is not { } current || current < renewed)
+            message.ClaimExpiresAtUtc = renewed;
     }
 
     /// <summary>
