@@ -51,6 +51,7 @@
     <!-- The shipping worker package. Referenced so it is MEASURED at all: without this it appears in no coverage report. -->
     <ProjectReference Include="..\..\libs\subscription_worker\MintPlayer.Spark.SubscriptionWorker\MintPlayer.Spark.SubscriptionWorker.csproj" />
     <ProjectReference Include="..\..\libs\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+    <ProjectReference Include="..\..\libs\soft_delete\MintPlayer.Spark.SoftDelete\MintPlayer.Spark.SoftDelete.csproj" />
     <ProjectReference Include="..\..\libs\controllers\MintPlayer.Spark.Controllers\MintPlayer.Spark.Controllers.csproj" />
     <ProjectReference Include="..\..\libs\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
     <ProjectReference Include="..\..\libs\all_features\MintPlayer.Spark.AllFeatures\MintPlayer.Spark.AllFeatures.csproj" />

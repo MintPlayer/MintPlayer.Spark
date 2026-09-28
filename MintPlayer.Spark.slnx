@@ -68,6 +68,10 @@
     <Project Path="libs/replication/MintPlayer.Spark.Replication.Abstractions/MintPlayer.Spark.Replication.Abstractions.csproj" />
     <Project Path="libs/replication/MintPlayer.Spark.Replication/MintPlayer.Spark.Replication.csproj" />
   </Folder>
+  <Folder Name="/libs/soft_delete/">
+    <Project Path="libs/soft_delete/MintPlayer.Spark.SoftDelete.Abstractions/MintPlayer.Spark.SoftDelete.Abstractions.csproj" />
+    <Project Path="libs/soft_delete/MintPlayer.Spark.SoftDelete/MintPlayer.Spark.SoftDelete.csproj" />
+  </Folder>
   <Folder Name="/libs/socket_extensions/">
     <Project Path="libs/socket_extensions/MintPlayer.Dotnet.SocketExtensions/MintPlayer.Dotnet.SocketExtensions.csproj" />
   </Folder>
