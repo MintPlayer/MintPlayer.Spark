@@ -125,11 +125,18 @@ Dependencies flow downward. Items in the same milestone are independent.
 - [ ] nuget.org prefix reservation + API key scope cover the new package ids (S-PKG1).
 - [ ] Version diff reviewed: NuGet major 11, npm major 22 — nothing else moves the major.
 
-## Considered: absorbing MintPlayer into this repository (decision 2026-09-28: stay separate for now)
+## After this PR: absorb MintPlayer into this repository (decided 2026-09-28)
 
-The owner is considering moving the MintPlayer website into `apps/MintPlayer`, as CodeCoverage was
-(`docs/coverage_monorepo_*`). For #460 it **stays a separate repository** that consumes the published
-packages. This is recorded so the trade-off doesn't have to be worked out again.
+**Decision:** the MintPlayer website moves into `apps/MintPlayer`, the same way CodeCoverage was
+absorbed (`docs/coverage_monorepo_*`). This happens as the **next step after this PR merges**, not
+inside it. Until then MintPlayer consumes the published packages. Afterwards:
+
+- The owner archives `MintPlayer/MintPlayer`, with a README pointing to `apps/MintPlayer`.
+- The owner pins `MintPlayer.Spark` first on the organisation profile.
+- Both are manual GitHub UI steps; there is no API for pinning.
+
+Archive only once the code builds here. The trade-off is kept below so it doesn't have to be worked
+out again.
 
 - **For:** MintPlayer would use `ProjectReference` instead of NuGet, so a framework change would be
   checked against its biggest consumer in the same PR, with no publish-then-consume round trip and no
@@ -143,12 +150,22 @@ packages. This is recorded so the trade-off doesn't have to be worked out again.
     path filter would be copied.
   - CI cost grows: `pull-request.yml` builds and verifies every app through hand-written lists and
     doesn't use Nx `affected` for apps.
-- **If it happens later:** move only `MintPlayer.Web`, `MintPlayer.Domain` (plus `MintPlayer.Migration`
-  while the cutover is pending) and their tests, never `legacy/`. Check `apps/MintPlayer` against
-  `.gitignore` first, which is the `Coverage` lesson. The natural moment is after this PR merges and
-  before the MintPlayer cutover.
+- **How to do the import:**
+  - Move only `MintPlayer.Web`, `MintPlayer.Domain` (plus `MintPlayer.Migration` while the cutover is
+    pending) and their tests, with history via `git filter-repo`. Never move `legacy/`.
+  - Check `apps/MintPlayer` and every imported path against `.gitignore` first. A folder named
+    `coverage` would be silently untracked (the `Coverage` lesson).
+  - MintPlayer's root `appsettings.json` / `docker-compose.yml` / `deploy/` belong under
+    `apps/MintPlayer`, never at this repository's root.
+  - Switch its `PackageReference`s to `MintPlayer.Spark*` into `ProjectReference`s.
+  - Add it to the three hand-written lists in `pull-request.yml`, and consider building only affected
+    apps there.
+  - Add a deploy workflow only at the cutover. mintplayer.com still runs the legacy app, so importing
+    redeploys nothing.
+- **Timing:** after this PR merges, before the MintPlayer cutover. The cutover tasks listed below then
+  land in this repository.
 
-## For the MintPlayer cutover (tracked in the MintPlayer repo, listed so nothing is lost)
+## For the MintPlayer cutover (done in `apps/MintPlayer` once it is imported; listed so nothing is lost)
 
 - Count accounts whose user name contains a foreign `@` (D4) before cutover.
 - Remove its ForwardedHeaders block (D15) and `RevisionsConfigurator` (T10); replace `EntityActions` soft-delete overrides with `ISoftDeletable`.

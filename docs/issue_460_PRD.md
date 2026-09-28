@@ -263,6 +263,6 @@ Each spike states what it proves. Run them in the milestone that needs them, bef
 - Rewriting the overridable core pipeline (D1 — owner decision, documented gaps instead).
 - Moderation: suggested edits, accepted answers/bounties, close votes, badges, notifications, device fingerprinting, ML Sybil detection, vote fuzzing, shadow bans, automatic suspension.
 - Opening inbound SMTP on the VPS (tier-2 bounces are a documented recipe, D9).
-- Absorbing the MintPlayer repository into `apps/` — considered, owner decided to stay separate for now (trade-off recorded in the plan).
+- Absorbing the MintPlayer repository into `apps/MintPlayer`: **decided, as the next step after this PR merges**, then the old repository is archived and this one pinned (see the plan).
 - MintPlayer's own upgrade (tracked in the MintPlayer repo) — but its ForwardedHeaders and soft-delete overrides are called out for it.
 - Deprecating SocketExtensions 10.0.0 on nuget.org (manual account step).
