@@ -16,8 +16,8 @@ public class Right
     /// <item><c>"Read/Person"</c> — read access to the Person entity</item>
     /// <item><c>"EditNewDelete/Person"</c> — a combined action covering all three</item>
     /// <item><c>"CarCopy/Car"</c> — a custom action defined on the Actions class</item>
-    /// <item><c>"Read/*"</c>, <c>"*/Person"</c>, <c>"*/*"</c> — wildcards on either half</item>
     /// </list>
+    /// Wildcards (<c>*</c>) are refused when the file loads — name every target.
     /// <para>
     /// <b>There is no property-level form.</b> This comment used to advertise
     /// <c>"Edit/Person/Salary"</c>, but matching is per-half and nothing in Spark ever builds a

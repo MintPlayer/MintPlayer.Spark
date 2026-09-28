@@ -42,6 +42,7 @@ the diagnostic guarding the generated row key — reached no external consumer a
 | SPARK018 | Warning | Generated index field configuration is never applied | `SortCompanionAnalyzer` | — |
 | SPARK019 | Warning | `HasValue` is translated as a field name, not a null test | `RavenHasValueAnalyzer` | — |
 | SPARK020 | Error | `[Authorize]` or `.RequireAuthorization(…)` with a policy name or roles does not work under Spark — use `[SparkAuthorize]` / `.RequireAuthorization(new SparkAuthorizeAttribute(…))` ([why](guide-controllers.md#what-does-not-work)) | `AuthorizeAttributeAnalyzer` | — |
+| SPARK021 | Error | Security right uses a wildcard (`*`), which is refused at startup | `SecurityConfigurationAnalyzer` | — |
 
 Two further id namespaces are generator-only and not analyzer diagnostics: `SPARK_INDEX_001…012`
 (`GenerateIndexDiagnostics.cs`, note `004` is absent) and `SPARK_TRANS_001…`

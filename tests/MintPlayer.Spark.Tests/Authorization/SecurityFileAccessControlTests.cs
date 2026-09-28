@@ -89,32 +89,17 @@ public class SecurityFileAccessControlTests
     }
 
     /// <summary>
-    /// There is no DefaultBehavior switch any more: permissiveness is expressed as data, by
-    /// granting the wildcard. One way to be permissive, and it is visible in the file rather than
-    /// in a line of startup code nobody reads next to the rights it silently overrides.
-    /// </summary>
-    [Fact]
-    public async Task A_wildcard_grant_covers_a_resource_no_right_names()
-    {
-        var config = ConfigWith(
-            groups: new() { [AdminsId] = En("Admins") },
-            new Right { GroupId = AdminsId, Resource = "*/*" });
-
-        var service = CreateService(config, ["Admins"]);
-
-        (await service.IsAllowedAsync("Read/Person")).Should().BeTrue();
-        (await service.IsAllowedAsync("AnythingAtAll/Whatever")).Should().BeTrue();
-    }
-
-    /// <summary>
-    /// The half-wildcards, which are what an application reaching for "*/*" usually wanted.
+    /// D3 (#460): wildcard rights are refused when the file loads (see
+    /// <c>SecurityConfigurationValidatorTests</c>). The evaluator no longer knows the token either,
+    /// so a configuration that reached it without passing the validator still grants only what it
+    /// names — <c>*</c> is an ordinary, unmatchable character, never "everything".
     /// </summary>
     [Theory]
-    [InlineData("Read/*", "Read/Car", true)]
-    [InlineData("Read/*", "Edit/Car", false)]
-    [InlineData("*/Person", "Delete/Person", true)]
-    [InlineData("*/Person", "Delete/Car", false)]
-    public async Task A_wildcard_binds_only_the_half_it_appears_in(string granted, string requested, bool expected)
+    [InlineData("*/*", "Read/Person")]
+    [InlineData("*/*", "AnythingAtAll/Whatever")]
+    [InlineData("Read/*", "Read/Car")]
+    [InlineData("*/Person", "Delete/Person")]
+    public async Task A_wildcard_right_covers_nothing(string granted, string requested)
     {
         var config = ConfigWith(
             groups: new() { [AdminsId] = En("Admins") },
@@ -122,19 +107,19 @@ public class SecurityFileAccessControlTests
 
         var service = CreateService(config, ["Admins"]);
 
-        (await service.IsAllowedAsync(requested)).Should().Be(expected);
+        (await service.IsAllowedAsync(requested)).Should().BeFalse();
     }
 
     /// <summary>
-    /// S8: the wildcard composes with denial-first precedence rather than needing a tier of its
-    /// own. A blanket grant does not outrun a specific denial.
+    /// The replacement for <c>*/Person</c>: a combined action names every action it covers, so an
+    /// access review can read it, and it still composes with denial-first precedence.
     /// </summary>
     [Fact]
-    public async Task A_denial_survives_a_wildcard_grant()
+    public async Task A_denial_survives_a_combined_grant()
     {
         var config = ConfigWith(
             groups: new() { [AdminsId] = En("Admins") },
-            new Right { GroupId = AdminsId, Resource = "*/*" },
+            new Right { GroupId = AdminsId, Resource = "QueryReadEditNewDelete/Car" },
             new Right { GroupId = AdminsId, Resource = "Delete/Car", IsDenied = true });
 
         var service = CreateService(config, ["Admins"]);

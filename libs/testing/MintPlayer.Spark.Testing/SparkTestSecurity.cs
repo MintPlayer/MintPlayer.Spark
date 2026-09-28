@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 
@@ -23,11 +24,11 @@ public sealed class SparkTestSecurity
     private readonly string? _json;
     private readonly List<Right> _rights = [];
     private readonly HashSet<string> _withoutTargets = new(StringComparer.OrdinalIgnoreCase);
-    private readonly bool _wildcard;
+    private readonly bool _permissive;
 
-    private SparkTestSecurity(bool wildcard, string? json = null)
+    private SparkTestSecurity(bool permissive, string? json = null)
     {
-        _wildcard = wildcard;
+        _permissive = permissive;
         _json = json;
     }
 
@@ -36,20 +37,28 @@ public sealed class SparkTestSecurity
     /// about authorization wants: the endpoint's own logic under an "everyone can" baseline.
     /// </summary>
     /// <remarks>
-    /// A wildcard grant to both well-known roles, so it is expressed the way an application would
-    /// express it rather than by a switch that only tests have. That also means the permissive
-    /// default is exercising the same evaluation path production does.
+    /// This used to be a <c>*/*</c> grant in the file. Wildcard rights were removed (#460, D3) —
+    /// the runtime refuses them — and "everything" cannot be enumerated by a builder that does not
+    /// know the fixture's custom actions or controller resources. So the baseline is now a thin
+    /// layer over the real evaluator, added by <see cref="SparkEndpointFactory{TContext}"/>: a
+    /// resource is allowed when <c>security.json</c> allows it <em>or</em> when nothing this
+    /// builder denied covers it. Denials (<see cref="Denying"/>, <see cref="Without"/>) are still
+    /// written to the file and still evaluated by the production code path.
+    /// <para>
+    /// ⚠️ A host assembled by hand through <see cref="SparkTestSecurityFile.Write"/> gets only the
+    /// file, which grants nothing — so there <c>Permissive</c> means "boots", not "allows".
+    /// </para>
     /// </remarks>
-    public static SparkTestSecurity Permissive => new(wildcard: true);
+    public static SparkTestSecurity Permissive => new(permissive: true);
 
     /// <summary>
     /// Nothing granted to anyone. The deny-all mirror: what every Spark endpoint must do when the
     /// caller holds no right at all.
     /// </summary>
-    public static SparkTestSecurity Empty => new(wildcard: false);
+    public static SparkTestSecurity Empty => new(permissive: false);
 
     /// <summary>Boots the host with this exact JSON, for a test about the file's own shape.</summary>
-    public static SparkTestSecurity FromJson(string json) => new(wildcard: false, json);
+    public static SparkTestSecurity FromJson(string json) => new(permissive: false, json);
 
     /// <summary>Boots the host with the file at <paramref name="path"/>, copied in verbatim.</summary>
     public static SparkTestSecurity FromFile(string path) => FromJson(File.ReadAllText(path));
@@ -86,7 +95,8 @@ public sealed class SparkTestSecurity
     /// </summary>
     /// <remarks>
     /// A denial rather than a narrowed grant, so the caller need not enumerate every type the
-    /// fixture happens to contain. Denials beat the wildcard, which is the tier order under test.
+    /// fixture happens to contain. Every action on the target is withheld, custom ones included;
+    /// the file carries the five built-in actions as a concrete combined denial.
     /// </remarks>
     public SparkTestSecurity Without(params string[] targets)
     {
@@ -105,6 +115,30 @@ public sealed class SparkTestSecurity
     /// <inheritdoc cref="AnonymousGroupId"/>
     public static readonly Guid AuthenticatedGroupId = Guid.Parse("00000000-0000-0000-0000-0000000a0001");
 
+    /// <summary>Whether this configuration carries the "everything not denied" baseline.</summary>
+    internal bool IsPermissive => _permissive && _json is null;
+
+    /// <summary>
+    /// Whether a denial this builder emitted covers <paramref name="resource"/> — the half of the
+    /// permissive baseline the file cannot express. Combined actions expand exactly as the
+    /// evaluator expands them, because the check runs through <see cref="RightsDecision"/>.
+    /// </summary>
+    internal bool Denies(string resource)
+    {
+        if (_withoutTargets.Contains(ResourcePattern.Parse(resource).Target))
+            return true;
+
+        var denials = new SecurityConfiguration
+        {
+            Rights = _rights
+                .Where(r => r.IsDenied && r.GroupId == AnonymousGroupId)
+                .Select(r => new Right { Id = r.Id, Resource = r.Resource, GroupId = AnonymousGroupId })
+                .ToList(),
+        };
+
+        return RightsDecision.For(denials, new HashSet<Guid> { AnonymousGroupId }).Allows(resource);
+    }
+
     /// <summary>The JSON this configuration writes.</summary>
     public string Build()
     {
@@ -113,16 +147,10 @@ public sealed class SparkTestSecurity
 
         var rights = new List<Right>(_rights);
 
-        if (_wildcard)
-        {
-            rights.Insert(0, new Right { Id = DeriveId("wildcard:anonymous"), Resource = "*/*", GroupId = AnonymousGroupId });
-            rights.Insert(1, new Right { Id = DeriveId("wildcard:authenticated"), Resource = "*/*", GroupId = AuthenticatedGroupId });
-        }
-
         foreach (var target in _withoutTargets.OrderBy(t => t, StringComparer.Ordinal))
         {
-            rights.Add(new Right { Id = DeriveId("without:" + target), Resource = $"*/{target}", GroupId = AnonymousGroupId, IsDenied = true });
-            rights.Add(new Right { Id = DeriveId("withoutauth:" + target), Resource = $"*/{target}", GroupId = AuthenticatedGroupId, IsDenied = true });
+            rights.Add(new Right { Id = DeriveId("without:" + target), Resource = $"QueryReadEditNewDelete/{target}", GroupId = AnonymousGroupId, IsDenied = true });
+            rights.Add(new Right { Id = DeriveId("withoutauth:" + target), Resource = $"QueryReadEditNewDelete/{target}", GroupId = AuthenticatedGroupId, IsDenied = true });
         }
 
         var config = new SecurityConfiguration
@@ -145,6 +173,28 @@ public sealed class SparkTestSecurity
     }
 
     /// <summary>
+    /// Layers the permissive baseline over the registered <see cref="IAccessControl"/>, when this
+    /// configuration is <see cref="Permissive"/>. The inner service is the production evaluator,
+    /// constructed from its own registration, so an important denial in the file still refuses.
+    /// </summary>
+    internal void ApplyBaseline(IServiceCollection services)
+    {
+        if (!IsPermissive)
+            return;
+
+        var inner = services.LastOrDefault(d => d.ServiceType == typeof(IAccessControl));
+        if (inner?.ImplementationType is not { } innerType)
+            return;
+
+        services.Remove(inner);
+        services.Add(new ServiceDescriptor(
+            typeof(IAccessControl),
+            sp => new PermissiveBaselineAccessControl(
+                (IAccessControl)ActivatorUtilities.CreateInstance(sp, innerType), this),
+            inner.Lifetime));
+    }
+
+    /// <summary>
     /// Derives a right's id from what it is, never from <see cref="Guid.NewGuid"/>.
     /// </summary>
     /// <remarks>
@@ -153,6 +203,16 @@ public sealed class SparkTestSecurity
     /// </remarks>
     private static Guid DeriveId(string key)
         => new(System.Security.Cryptography.MD5.HashData(Encoding.UTF8.GetBytes(key)));
+
+    /// <summary>
+    /// Allowed when the file allows it, or when no denial of the builder's covers it. The file is
+    /// asked first so that an important denial — which the file alone can express — still wins.
+    /// </summary>
+    private sealed class PermissiveBaselineAccessControl(IAccessControl inner, SparkTestSecurity security) : IAccessControl
+    {
+        public async Task<bool> IsAllowedAsync(string resource, CancellationToken cancellationToken = default)
+            => await inner.IsAllowedAsync(resource, cancellationToken) || !security.Denies(resource);
+    }
 }
 
 /// <summary>

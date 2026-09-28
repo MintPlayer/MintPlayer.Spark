@@ -162,7 +162,7 @@ MintPlayer.Spark/
 | [TranslatedString & i18n](docs/guide-translated-strings.md) | Multi-language support for labels, descriptions, and validation messages |
 | [Attribute Descriptions](docs/guide-attribute-descriptions.md) | Help text per attribute, rendered as an [i] tooltip; seeded from `[Description]` or `///` summaries on synchronize |
 | [Identity & external login](libs/authorization/MintPlayer.Spark.Authorization/README.md) | The optional identity package: RavenDB-backed ASP.NET Identity, OAuth providers, JWT bearer, and the Angular half |
-| [Authorization](docs/guide-authorization.md) | `security.json`: rights, combined actions, wildcards, the four precedence tiers, and what `Query` without `Read` does to a grid |
+| [Authorization](docs/guide-authorization.md) | `security.json`: rights, combined actions (no wildcards), the four precedence tiers, and what `Query` without `Read` does to a grid |
 | [Authentication Schemes & Well-Known Groups](docs/guide-authentication-schemes.md) | Every scheme in the repo, the `anonymous`/`authenticated` groups, what an unauthenticated caller gets, and what happens when authentication fails |
 | [Passkeys (WebAuthn)](docs/guide-passkeys.md) | Turning them on, why they are gated separately from `SparkLocalCredentials`, why sign-in takes no username, pinning the relying-party id — and why the ceremony challenge must never reach the client |
 | [Controllers](docs/guide-controllers.md) | Mounting your own MVC controllers inside Spark's pipeline, CSRF on endpoints you wrote, `[SparkAuthorize]`, and reusing a row rule outside `/spark` |

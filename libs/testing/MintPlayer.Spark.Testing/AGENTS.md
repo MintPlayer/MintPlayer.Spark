@@ -230,7 +230,7 @@ path production does.
 
 | | |
 |---|---|
-| `Permissive` | `*/*` to both well-known groups — **the default** |
+| `Permissive` | everything not denied, to both well-known groups — **the default**. Wildcards are refused since #460, so this is a baseline the factory layers over the real evaluator, not a `*/*` grant |
 | `Empty` | nothing granted to anyone |
 | `.Granting("Read/Car", …)` | resources are `{action}/{target}` |
 | `.Denying(…)` | denials beat grants |

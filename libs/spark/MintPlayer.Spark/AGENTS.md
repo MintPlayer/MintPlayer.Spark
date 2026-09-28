@@ -210,7 +210,7 @@ A right is `{action}/{target}`:
 |---|---|
 | Actions | `Query`, `Read`, `New`, `Edit`, `Delete`, plus any custom action name |
 | Combined | `QueryRead`, `ReadEdit`, `EditNew`, `NewDelete`, `EditNewDelete`, `ReadEditNew`, `QueryReadEdit`, `ReadEditNewDelete`, `QueryReadEditNew`, `QueryReadEditNewDelete` |
-| Wildcards | `*` on either half — `Read/*`, `*/Person`, `*/*` |
+| Wildcards | **none** — `*` is refused at startup and by SPARK021; name every target, use a combined action |
 
 Combined actions expand **symmetrically** — `deny EditNewDelete/Car` denies all three.
 

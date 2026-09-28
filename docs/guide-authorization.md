@@ -59,9 +59,13 @@ Delete. (They used to expand on the grant side only, so a combined denial denied
 string and therefore nothing at all. The loader refused that shape rather than fixing it. Both
 are gone.)
 
-`*` is a wildcard on either half — `Read/*`, `*/Person`, `*/*`. Use it sparingly: a wildcard
-covers types and actions that do not exist yet, and the startup posture report warns when the
-anonymous group holds one.
+**There are no wildcards.** A resource containing `*` — `Read/*`, `*/Person`, `*/*`, grant or
+denial — is refused at startup, and the build reports it first as **SPARK021** (an error). An
+access review (GDPR, ISO 27001) has to be able to enumerate who can do what, and a wildcard also
+covers types and actions that do not exist yet. Name every target, and use a combined action to
+cover several actions at once: `QueryReadEditNewDelete/Person` instead of `*/Person`. A new
+entity type is therefore denied to everyone until a right names it — accepted busywork. (Wildcards
+existed until #460; the posture report's "floor rather than a ceiling" warning went with them.)
 
 ---
 
@@ -262,8 +266,9 @@ new SparkEndpointFactory<MyContext>(store, models,
     security: SparkTestSecurity.Permissive.Without("Secret"));
 ```
 
-`SparkTestSecurity` gives you `Permissive` (the default — a wildcard grant, so the baseline
-exercises the same evaluation path production does), `Empty`, `Granting`, `Denying`, `Without`,
+`SparkTestSecurity` gives you `Permissive` (the default — everything not explicitly denied; the
+factory layers that baseline over the real evaluator, so denials still run through the production
+path), `Empty`, `Granting`, `Denying`, `Without`,
 `FromFile` and `FromJson`. The factory writes the file and then asserts the host loaded it, so a
 silently-ignored override cannot make an authorization test vacuously green.
 

@@ -99,14 +99,31 @@ public class SecurityConfigurationAnalyzerTests
         diagnostics.Should().ContainSingle().Which.Id.Should().Be("SPARK014");
     }
 
+    /// <summary>
+    /// D3 (#460): the runtime refuses a wildcard at startup, so the build does too — as an error,
+    /// and as the only diagnostic, since judging a wildcard's halves as unknown names would only
+    /// bury the real message.
+    /// </summary>
+    [Theory]
+    [InlineData("*/Person")]
+    [InlineData("Query/*")]
+    [InlineData("*/*")]
+    public async Task A_wildcard_right_is_an_error(string resource)
+    {
+        var diagnostics = await RunAsync(resource);
+
+        var diagnostic = diagnostics.Should().ContainSingle().Which;
+        diagnostic.Id.Should().Be("SPARK021");
+        diagnostic.Severity.Should().Be(Microsoft.CodeAnalysis.DiagnosticSeverity.Error);
+        diagnostic.GetMessage().Should().Contain("combined action");
+    }
+
     // ---------- the false positives it must NOT report ----------
 
     [Theory]
     [InlineData("Query/Person")]
     [InlineData("Read/Person")]
     [InlineData("QueryReadEditNewDelete/Person")]
-    [InlineData("*/Person")]
-    [InlineData("Query/*")]
     public async Task A_correct_right_is_not_reported(string resource)
     {
         (await RunAsync(resource)).Should().BeEmpty();

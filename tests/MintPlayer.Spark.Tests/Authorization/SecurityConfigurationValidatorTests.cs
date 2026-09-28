@@ -171,6 +171,31 @@ public class SecurityConfigurationValidatorTests
         act.Should().Throw<SparkSecurityConfigurationException>().WithMessage("*action*/*target*");
     }
 
+    /// <summary>
+    /// D3 (#460): wildcard rights are gone, grants and denials alike. An access review has to be
+    /// able to enumerate who can do what, and a wildcard covers types added after the review. The
+    /// message points at combined actions, which is what an author reaching for <c>*/Person</c>
+    /// wanted.
+    /// </summary>
+    [Theory]
+    [InlineData("*/*", false)]
+    [InlineData("Read/*", false)]
+    [InlineData("*/Person", false)]
+    [InlineData("*/Person", true)]
+    [InlineData("Query*/Person", false)]
+    public void A_wildcard_right_is_rejected_and_points_at_combined_actions(string resource, bool isDenied)
+    {
+        var config = Config(
+            groups: MigratedGroups(),
+            wellKnown: Migrated(),
+            new Right { Id = Guid.NewGuid(), GroupId = AdminsId, Resource = resource, IsDenied = isDenied });
+
+        var act = () => SecurityConfigurationValidator.Validate(config);
+
+        act.Should().Throw<SparkSecurityConfigurationException>()
+            .WithMessage($"*'{resource}'*wildcard*QueryReadEditNewDelete/Person*");
+    }
+
     [Fact]
     public void A_duplicated_right_id_is_rejected()
     {

@@ -48,7 +48,7 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
     /// </param>
     /// <param name="security">
     /// The <c>security.json</c> the host boots with. Defaults to
-    /// <see cref="SparkTestSecurity.Permissive"/> — a wildcard grant to both well-known roles — so
+    /// <see cref="SparkTestSecurity.Permissive"/> — everything not explicitly denied, to both well-known roles — so
     /// an endpoint test that is not about authorization exercises the endpoint under an
     /// "everyone can" baseline, as it always has.
     /// <para>
@@ -89,6 +89,7 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
         // In the constructor, beside the model files, and NOT deferred like the hash file below:
         // unlike the hash this depends on nothing AddSpark registered, and it has to be on disk
         // before _host.Start() reaches the startup gate.
+        security ??= SparkTestSecurity.Permissive;
         SparkTestSecurityFile.Write(_contentRoot, security);
 
         _host = new HostBuilder()
@@ -127,6 +128,9 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
                         services.Remove(existing);
                         services.AddSingleton(testStore);
 
+                        // Before configureServices, so a test that swaps IAccessControl itself still wins.
+                        security.ApplyBaseline(services);
+
                         configureServices?.Invoke(services);
                     })
                     .Configure(app =>
@@ -154,10 +158,10 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
     /// reason. Compares the rights count rather than the bytes, because the loader parses and the
     /// serializer round-trip need not be byte-identical.
     /// </remarks>
-    private void AssertSecurityFileWasLoaded(SparkTestSecurity? security)
+    private void AssertSecurityFileWasLoaded(SparkTestSecurity security)
     {
         var expected = JsonSerializer.Deserialize<Abstractions.Authorization.SecurityConfiguration>(
-            (security ?? SparkTestSecurity.Permissive).Build(),
+            security.Build(),
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
 
         var loaded = _host.Services

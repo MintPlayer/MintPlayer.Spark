@@ -68,8 +68,20 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
 
+    /// <remarks>
+    /// An error rather than a warning because the runtime refuses the same file at startup: the
+    /// build is only reporting early what the host would report on its first run.
+    /// </remarks>
+    internal static readonly DiagnosticDescriptor WildcardRightRule = new(
+        id: "SPARK021",
+        title: "Security right uses a wildcard, which is not supported",
+        messageFormat: "'{0}' uses the wildcard '*'. Wildcard rights are refused at startup: an access review must be able to enumerate who can do what, and a wildcard covers types and actions that do not exist yet. Name the target, and use a combined action (for example 'QueryReadEditNewDelete/Person') to cover several actions",
+        category: "Security",
+        defaultSeverity: DiagnosticSeverity.Error,
+        isEnabledByDefault: true);
+
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
-        [UnknownActionRule, UnknownTargetRule, DanglingGroupRule, ThreeSegmentResourceRule];
+        [UnknownActionRule, UnknownTargetRule, DanglingGroupRule, ThreeSegmentResourceRule, WildcardRightRule];
 
     /// <summary>The verbs the framework itself asks for. Anything else must be a declared custom action.</summary>
     private static readonly string[] BuiltInActions = ["Query", "Read", "New", "Edit", "Delete", "Replicate"];
@@ -131,6 +143,12 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
                     new TextSpan(right.ResourceStart, right.ResourceLength),
                     text.Lines.GetLinePositionSpan(new TextSpan(right.ResourceStart, right.ResourceLength)));
 
+                if (right.Resource.IndexOf('*') >= 0)
+                {
+                    end.ReportDiagnostic(Diagnostic.Create(WildcardRightRule, location, right.Resource));
+                    continue;
+                }
+
                 var slash = right.Resource.IndexOf('/');
                 if (slash < 0) continue; // Shape is the runtime validator's job, and it refuses this.
 
@@ -144,7 +162,7 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
                     continue;
                 }
 
-                if (action != "*" && !IsKnownAction(action, customActions) && !authorized.ContainsKey(action))
+                if (!IsKnownAction(action, customActions) && !authorized.ContainsKey(action))
                 {
                     end.ReportDiagnostic(Diagnostic.Create(
                         UnknownActionRule, location, right.Resource, action, string.Join(", ", BuiltInActions)));
@@ -159,7 +177,7 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
                 // names reported every correct replication right in two demo apps.
                 var judgeTarget = !string.Equals(action, "Replicate", StringComparison.OrdinalIgnoreCase);
 
-                if (judgeTarget && target != "*" && knownTargets.Count > 0
+                if (judgeTarget && knownTargets.Count > 0
                     && !knownTargets.Contains(target) && !authorizedTargets.ContainsKey(target))
                 {
                     end.ReportDiagnostic(Diagnostic.Create(

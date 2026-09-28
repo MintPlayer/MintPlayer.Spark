@@ -25,7 +25,8 @@ internal static class SecurityConfigurationValidator
     }
 
     /// <summary>
-    /// Two rules about the rights list, both about a file meaning something other than it looks like.
+    /// Three rules about the rights list, all about a file meaning something other than it looks
+    /// like — a wildcard included, because it silently grows to cover every type added later.
     /// </summary>
     /// <remarks>
     /// There used to be a third, rejecting a combined action in a denial, because expansion ran on
@@ -44,8 +45,18 @@ internal static class SecurityConfigurationValidator
             {
                 throw new SparkSecurityConfigurationException(
                     $"security.json declares a right with resource '{right.Resource}', which is not in "
-                    + "the form '<action>/<target>' (for example 'QueryRead/Person', or 'Read/*' to "
-                    + "cover every target). It would match nothing.");
+                    + "the form '<action>/<target>' (for example 'QueryRead/Person'). It would match nothing.");
+            }
+
+            if (right.Resource.Contains('*'))
+            {
+                throw new SparkSecurityConfigurationException(
+                    $"security.json declares a right with resource '{right.Resource}', which uses the "
+                    + "wildcard '*'. Wildcard rights are not supported: an access review has to be able "
+                    + "to enumerate who can do what, and a wildcard also covers types and actions that "
+                    + "do not exist yet. Name every target, and use a combined action to cover several "
+                    + "actions at once — for example 'QueryReadEditNewDelete/Person' instead of "
+                    + "'*/Person' (see SparkCombinedActions).");
             }
 
             if (right.Id != Guid.Empty && !seenIds.Add(right.Id))
