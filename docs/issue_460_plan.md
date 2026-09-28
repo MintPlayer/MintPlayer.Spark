@@ -96,7 +96,8 @@ Dependencies flow downward. Items in the same milestone are independent.
 - [ ] **Browser verification pending** (parent session, playwright_node MCP): recycle bin → open → Restore/Purge; History diff + Revert; every account page.
 
 ### M11 — E2E base host extraction (D11, pure refactor)
-- [ ] Extract a generic host from `FleetTestHost` (embedded Raven, `dotnet run` under dotnet-coverage, seeded users, stale-bundle check, shared rate-limit awareness). **Run Fleet's E2E suite here and require green** — the one sanctioned mid-plan test run, because every later E2E test depends on it.
+- [x] Extract a generic host from `FleetTestHost` (embedded Raven, `dotnet run` under dotnet-coverage, seeded users, stale-bundle check, shared rate-limit awareness). **Run Fleet's E2E suite here and require green** — the one sanctioned mid-plan test run, because every later E2E test depends on it.
+- [x] `sparkAuthGuard` waits for the session check (M10 bug); `SparkClient.RegisterAsync` sends the antiforgery token (M5 regression). Fleet E2E 104/105, the one failure is the machine's ETL-less Raven licence. Deviations in PRD §4.1 (M11).
 
 ### M12 — Moderation package (item 12)
 - [ ] Spikes **S-MOD-A, S-MOD-E** first.

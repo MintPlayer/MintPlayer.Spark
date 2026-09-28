@@ -1047,6 +1047,32 @@ them. `America/Ojinaga` still reports −7/−6, though it has followed Central 
   `reauthentication_required`, and the page shows one message for both.
 - No spikes are named for M10. Nothing in M10 was verified in a browser; that is left to the parent
   session.
+
+**Deviations (M11).**
+- *`sparkAuthGuard` fixed (supersedes the M10 note above):* it now waits for the session check when
+  the user is not known to be signed in, so a hard reload no longer bounces a signed-in user.
+  `sparkAuthenticatedGuard` is kept as an alias of it, and `withAccount()` defaults to
+  `sparkAuthGuard`. The vitest hard-reload case failed before the fix and passes after.
+- *Base host shape:* `SparkAppTestHost` (abstract) + `SparkAppDescriptor` (project path, SPA root,
+  bundle output, extra bundle source roots, database prefix, coverage slug, mail pickup) in
+  `tests/MintPlayer.Spark.E2E.Tests/_Infrastructure/`. Hooks: `ConfigureAppSettings` (JSON override),
+  `ExtraDatabases`, `SeedAsync`, `RegisterTemporaryFile`, `AdminGroup`. The build gate is global
+  across apps, because apps share the library outputs. `FleetTestHost` keeps every public member the
+  tests use.
+- *Two harness changes that are not pure refactor:* the stale-bundle check also watches
+  `libs/node_packages/ng-spark-auth` (consumed from source, previously unwatched), and in pickup mode
+  each host writes mail to its own temp folder (`MailPickupFolder`, `PickedUpMails()`), deleted on
+  dispose, instead of the shared `apps/Fleet/Fleet/mail-pickup`.
+- *M5 regression found by the run:* M5 put `/spark/auth/register` behind antiforgery, but
+  `SparkClient.RegisterAsync` and the hosts' seeding still posted without a token, so every Fleet
+  E2E test failed in fixture startup (`Register failed (400)`). `RegisterAsync` now warms up and sends
+  the token; the hosts seed through it.
+- *Fleet E2E result (2026-09-28):* 104/105 passed. The one failure,
+  `CrossModuleSyncTests.Etl_deployment_is_accepted_for_a_granted_collection`, is environmental: the
+  machine's `RAVENDB_LICENSE` has no ETL feature (`LicenseLimitException`). It needs the Developer
+  licence; nothing in the code changed it.
+- *Coverage slug:* `tools/verify-coverage-paths.mjs` accepts only `fleet-host-*` reports. A QnA host
+  run with `SPARK_E2E_HOST_COVERAGE` needs its slug added there (M13).
 ---
 
 ## 5. Risks
