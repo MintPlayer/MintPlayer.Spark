@@ -50,12 +50,12 @@ Locked with the owner. Do not re-litigate without new evidence.
 | D5 | **Data Protection always on, in Spark core.** Persisted keys required outside Development: `Spark:DataProtection:KeysPath` (file system) or `Spark:DataProtection:Storage=RavenDb`; unset → startup error explaining the redeploy sign-out. Development defaults to a local folder. `Spark:DataProtection:ApplicationName` configurable (default entry assembly name; **CodeCoverage keeps `CodeCoverage`**). Raven store keeps the `DataProtectionKeys/` prefix; CodeCoverage's hand-written setup + repository deleted. Docs state loudly: an unmounted key folder loses its keys on redeploy — the operator's responsibility. Authenticator key + external-login tokens stored as `sdp1:` + Protect(value); legacy plaintext still read; idempotent backfill. **Owner decision (2026-09-28): production (CodeCoverage, and MintPlayer once absorbed) uses `KeysPath` on a mounted volume via `Spark__DataProtection__KeysPath`; test hosts set `Storage=RavenDb` in their own config; no app's base `appsettings.json` sets either (both set refuses startup). CodeCoverage users are signed out once on the first deploy; its old `DataProtectionKeys/` documents are orphaned.** |
 | D6 | **`RequireConfirmedEmail`** option, default `false`. Startup guard: registration enabled + no-op email sender → error, unless `Spark:Auth:AllowUnconfirmedRegistration=true`. **Completing a password reset (valid token) sets `EmailConfirmed=true`**, and `forgotPassword` sends to unconfirmed addresses (rescues MintPlayer's ~650 unconfirmed users). Demo apps use MailManager pickup-folder mode. Closes #299. |
 | D7 | **Per-provider verified-email trust** for social sign-up. Each provider preset declares its verified-email signal; Microsoft trusted only for personal accounts (consumers tenant); a provider without a reliable signal → account created unconfirmed + confirmation mail. Add Twitter/X and LinkedIn presets. **User name = slug of display name** (`john-doe`, `john-doe-2`), editable on the profile page (never the email local part). Spike SP-C required. |
-| D8 | **GDPR.** `DELETE /spark/auth/manage/account` (re-authentication required) → all `ISparkAccountDeletionHandler<TUser>` (multi-registered) → `UserStore.DeleteAsync` last (releases email/passkey reservations; a handler failure leaves the account intact and retryable). `GET /spark/auth/manage/personal-data` → account JSON + all `ISparkPersonalDataContributor<TUser>`. Audit fields hold the **user id only**, resolved to a name at read time ("deleted user" afterwards). **Revisions are not rewritten** — stated in the guide; content-level personal data is the app's handler's job. Moderation ships a deletion handler. |
-| D9 | **MailManager is building blocks, configured through `IConfiguration`.** Pluggable `ISparkMailTransport`: SMTP (MailKit) when `Spark:Mail:Smtp:Host` is set (Security `None`/`StartTls`/`SslOnConnect`/`Auto` — no forced STARTTLS); `.eml` pickup folder when `Spark:Mail:PickupFolder` is set; custom transport replaces both; none → startup error. Bounce handling opt-in: `Spark:Mail:Bounces:VerpDomain` enables VERP; `Spark:Mail:Bounces:Endpoint:Enabled` + secret maps `POST /spark/mail/bounces`; DSN parser pluggable, **the secret check stays in the framework, before the parser**. Suppression list always present (checked at publish and send; fed by bounces, unsubscribes, public `ISparkMailSuppressions`). One-click `List-Unsubscribe` (RFC 8058) per message type (default on for bulk). Dev mode: `Spark:Mail:Development:RedirectTo` or pickup folder. Tier-1 (local Postfix pipe) and tier-2 (MX + inbound 25) are documented deployment recipes; the framework doesn't care which. |
-| D10 | **CodeCoverage moves onto MailManager in this PR** (production dogfooding). **Pre-merge ops step:** set `Spark:Mail:*` on the VPS before merging (Data Protection needs no VPS step: `docker-compose.yml` carries the key-ring volume and `KeysPath`, see D5) (merge auto-redeploys). Update CodeCoverage's three hand-written lists (Dockerfile COPY, deploy path filter, `implicitDependencies`). |
+| D8 | **GDPR.** `DELETE /spark/auth/manage/account` (re-authentication required) → all `ISparkAccountDeletionHandler<TUser>` (multi-registered) → `UserStore.DeleteAsync` last (releases email/passkey reservations; a handler failure leaves the account intact and retryable). `GET /spark/auth/manage/personal-data` → account JSON + all `ISparkPersonalDataContributor<TUser>`. Audit fields hold the **user id only**, resolved to a name at read time ("deleted user" afterwards). **Revisions are not rewritten** — stated in the guide; content-level personal data is the app's handler's job. Moderation ships a deletion handler. **Extended in M14 (§4.1 "Deviations and findings (M13)", *Account-deletion mail*):** `ISparkAccountDeletedHandler<TUser>` (`OnAccountDeletedAsync`) runs only after `UserManager.DeleteAsync` succeeded; work that must not happen for a refused or failed deletion (a goodbye mail) belongs there, not in `ISparkAccountDeletionHandler<TUser>`. |
+| D9 | **MailManager is building blocks, configured through `IConfiguration`.** Pluggable `ISparkMailTransport`: SMTP (MailKit) when `Spark:Mail:Smtp:Host` is set (Security `None`/`StartTls`/`SslOnConnect`/`Auto` — no forced STARTTLS); `.eml` pickup folder when `Spark:Mail:PickupFolder` is set; custom transport replaces both; none → startup error. Bounce handling opt-in: `Spark:Mail:Bounces:VerpDomain` enables VERP; `Spark:Mail:Bounces:Endpoint:Enabled` + secret maps `POST /spark/mail/bounces`; DSN parser pluggable, **the secret check stays in the framework, before the parser**. Suppression list always present (checked at publish and send; fed by bounces, unsubscribes, public `ISparkMailSuppressions`). One-click `List-Unsubscribe` (RFC 8058) per message type (default on for bulk). Dev mode: `Spark:Mail:Development:RedirectTo` or pickup folder. Tier-1 (local Postfix pipe) and tier-2 (MX + inbound 25) are documented deployment recipes; the framework doesn't care which. **Superseded in part by the M10 owner decisions (§3.10):** transports are registered explicitly (`UseSmtpTransport`, `UseMailpitTransport`, `UsePickupFolderTransport`, `AddMailTransport<T>`), the config fallback remains; two transports are a startup error; `ISparkMailTransport.DeliversToRealRecipients` decides the dev-mode rule — Development fails closed without `RedirectTo` for a real-recipient transport, Production refuses `RedirectTo`; Mailpit AutoStart. |
+| D10 | **CodeCoverage moves onto MailManager in this PR** (production dogfooding). **Pre-merge ops step:** set `Spark:Mail:*` on the VPS before merging (Data Protection needs no VPS step: `docker-compose.yml` carries the key-ring volume and `KeysPath`, see D5) (merge auto-redeploys). Update CodeCoverage's three hand-written lists (Dockerfile COPY, deploy path filter, `implicitDependencies`). **Superseded (M8/M14, plan §"Pre-merge checklist"):** the VPS needs nothing — `docker-compose.yml` maps the existing `.env` variables (`MAIL_HOST`, `MAIL_PORT`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME`) onto `Spark__Mail__*`, sets `Spark__Mail__Smtp__Security=None` and `Spark__Auth__PublicBaseUrl`, and the deploy pulls that file from master. |
 | D11 | **New `apps/QnA` demo** proves Moderation. A generic E2E base host is extracted from `FleetTestHost` **as a pure refactor, Fleet's suite green before any QnA test**. QnA joins the model-sync and posture CI loops; name checked against `.gitignore`. |
 | D12 | **Earned privileges are bounded.** `moderation.json` references security.json groups **by id**; validated at startup (exists, not well-known, holds only earnable rights). `Lock`, `Suspend`, `Purge`, `Restore`, `Revert`, `ViewDeleted` are **never earnable**; explicit `earnable` escape hatch in moderation.json, also validated against the destructive list. Core: `AddGroupMembershipProvider<T>()` **composes** (merges results; `Use…` keeps replace semantics), providers may return group ids, resolution cached per request in the evaluator. |
-| D13 | **`IDisablable` + `OnDisableActionsAsync`** — the single source of truth for disabled actions (deliberately deviates from Vidyano). `IDisablable.DisableActions(params string[])` is the *only* member that knows the method; implemented by `PersistentObject` and the query result. Empty virtual `OnDisableActionsAsync(IDisablable target, DisableActionsContext ctx)` on the actions class. The framework calls it **at page load** (result → returned `DisabledActions`) **and at submit** (parent, query, each selected row — union). Covers **every action, built-in (Edit/Save/Delete/New) and custom**. Refused with **403 + action name, only after the row gate passed** (a hidden row stays 404 — #453 lesson). Old entry points **deleted**: `PersistentObject.DisableActions`, `ClientAccessor.DisableActionsOn`/`DisableQueryActions`/`DisableActions`, `IClientAccessor.DisableActionsForSession` (`IClientAccessor.cs:74`), `CustomQueryArgs.DisableActions`, `SparkQueryContext.DisableActions` (`Queries/SparkQueryContext.cs:58`). CodeCoverage `RepositoryActions` migrates. Batched form for multi-row submits. Documented rule: the hook depends only on entity, user and stored state. |
+| D13 | **`IDisablable` + `OnDisableActionsAsync`** — the single source of truth for disabled actions (deliberately deviates from Vidyano). `IDisablable.DisableActions(params string[])` is the *only* member that knows the method; implemented by `PersistentObject` and the query result. Empty virtual `OnDisableActionsAsync(IDisablable target, DisableActionsContext ctx)` on the actions class. The framework calls it **at page load** (result → returned `DisabledActions`) **and at submit** (parent, query, each selected row — union). Covers **every action, built-in (Edit/Save/Delete/New) and custom**. Refused with **403 + action name, only after the row gate passed** (a hidden row stays 404 — #453 lesson). Old entry points **deleted**: `PersistentObject.DisableActions`, `ClientAccessor.DisableActionsOn`/`DisableQueryActions`/`DisableActions`, `IClientAccessor.DisableActionsForSession` (`IClientAccessor.cs:74`), `CustomQueryArgs.DisableActions`, `SparkQueryContext.DisableActions` (`Queries/SparkQueryContext.cs:58`). CodeCoverage `RepositoryActions` migrates. Batched form for multi-row submits. Documented rule: the hook depends only on entity, user and stored state. **Superseded in part (§4.1 "Deviations (M3)", *Where `IDisablable` lives*):** `IDisablable` is implemented by `PersistentObject` and by per-request framework collectors, not by `SparkQuery` (a shared singleton) or `QueryResult`. |
 | D14 | **All 10 vote-fraud measures in v1** (§3.12). `moderation.json` is an `IConfiguration` source bound to `Spark:Moderation` — every threshold overridable via appsettings/env vars/user secrets; group-id and earnable validation runs **after** layering. |
 | D15 | **Forwarded headers configured by Spark.** Default trust: loopback + private ranges (10/8, 172.16/12, 192.168/16, fc00::/7); override `Spark:ForwardedHeaders:KnownNetworks`/`KnownProxies`; `ForwardLimit` = `Spark:ForwardedHeaders:ProxyHops` (default 1, **never null**); `X-Forwarded-Proto` same trust; **`X-Forwarded-Host` not forwarded by default** — opt-in `Spark:ForwardedHeaders:ForwardHost=true`, which is refused at startup while `AllowedHosts` is `*` (every app's appsettings has `"*"` today, so checking against it would do nothing). Outside Development, a trust-everyone configuration is a startup error. Effective trust list logged at startup. Hand-written blocks in CodeCoverage (`Program.cs:35-70`, plus the comment at `:371-374`), DemoApp, HR and Fleet deleted (MintPlayer, a separate repo, removes its own). Deployment guide: entry proxy should *overwrite* XFF (nginx `$remote_addr`, Traefik `trustedIPs`, never `insecure`). **Pre-merge: verify what fronts coverage.mintplayer.com and MintPlayer** (a CDN needs its ranges added, or the whole site shares one rate-limit bucket). |
 | D16 | **ng-spark-auth `withAccount()`**: confirm-email, change/set-password, profile, 2FA enrollment + recovery regeneration, connected logins, passkeys, personal data/delete — each also a standalone component. Profile accepts app-contributed fields (`SPARK_ACCOUNT_PROFILE_FIELDS`), validated server-side via `ISparkProfileContributor<TUser>`. Email change goes through confirmation. QR code server-rendered SVG. Test enumerates every `/manage/*` route for `SparkLocalCredentials` classification + antiforgery stamp. |
@@ -126,7 +126,15 @@ Locked with the owner. Do not re-litigate without new evidence.
 - ng-spark `/history`: `SPARK_DETAIL_PANELS` multi-provider token (new in ng-spark core, since `sparkRoutes()` passes no templates) + `<spark-po-history>`: revision list, read-only view, field diff vs current, Revert.
 
 ### 3.4 Sign in by email (item 4) — D4
+
+Specified in full by D4 (resolver, `@` user-name rule, shared `/connect/login`). Implemented in M5:
+the measurement is §4.1 SP-A, the author-facing text the Authorization README ("Sign-in identifier (#460 D4)").
+
 ### 3.5 Secrets at rest (item 5) — D5
+
+Specified by D5 (Data Protection in core, `sdp1:` values, backfill; production uses `KeysPath`).
+Measured in §4.1 (M1 "SP-B (key documents)", M5 "SP-B (rest)"); operator guide `guide-data-protection.md`.
+
 ### 3.6 Account flows (item 6) — D6, D7, D8, D16
 
 Server endpoints under `/spark/auth/manage/`: `password` (set, for social-only accounts), `profile` (GET/POST, via `ISparkProfileContributor<TUser>`), `2fa/authenticator-uri` (+ SVG QR), `personal-data` (GET), `account` (DELETE, re-auth), confirm-new-email. `ISparkAuthLinkBuilder` (SPA base URL + route paths) so confirmation/reset mails link to SPA pages, not the server's plain-text `confirmEmail`. `SparkUser` gains `CreatedAtUtc` + `RegistrationMethod` (stamped in `UserStore.CreateAsync`; backfill from Raven `@created`).
@@ -142,6 +150,9 @@ Implemented in M3 as specified in D13; the author-facing contract is in `guide-c
 ("Disabling actions"), the measurements in §4.1 (S6, S-MOD-F) and the deviations there.
 
 ### 3.9 Pinned npm (item 9) — T9
+
+Specified by T9: `SparkAuthEnsureNpmPackage` is deleted, and a missing `@mintplayer/ng-spark-auth`
+in `$(SpaRoot)package.json` is warning `SPARK030` (`docs/diagnostics.md`; M5 deviation *T9* in §4.1).
 
 ### 3.10 MailManager (item 10) — `libs/mail/MintPlayer.Spark.MailManager` — D9, D10, T4, T8
 
@@ -238,6 +249,10 @@ Implemented in M3 as specified in D13; the author-facing contract is in `guide-c
 
 ### 3.13 Forwarded headers — D15 (new, found during investigation)
 
+Specified in full by D15 (`AddSparkForwardedHeaders`, private-range default, `ProxyHops`, opt-in
+`ForwardHost`, startup refusals). Measured in §4.1 M1 "S-FH1"; operator guide and proxy recipes in
+`guide-docker-deployment.md` ("Forwarded headers").
+
 ### 3.14 Housekeeping
 
 - Close #283 (regression test with a policy), #285, #299, #432.
@@ -288,12 +303,77 @@ Each spike states what it proves. Run them in the milestone that needs them, bef
 | S-MOD-E | Vote + ReputationEvent commit atomically on the shared actions session. | Moderation |
 | S-MOD-F | 404/400/429/403 through the response envelope, distinguishable by the client. | Seam, D13 |
 | S-FH1 | `ForwardedHeadersMiddleware` with Spark defaults: spoofed leftmost XFF ignored, untrusted source keeps socket IP, `ProxyHops=2`, startup refusal. | D15 |
-| S-PKG1 | nuget.org `MintPlayer.*` prefix reservation + CI API key scope cover the 6 new package ids (**owner checks in the nuget.org account**). | publish |
+| S-PKG1 | nuget.org `MintPlayer.*` prefix reservation + CI API key scope cover the 7 new package ids (**owner checks in the nuget.org account**). | publish |
 | S-PKG2 | `dotnet pack` on the branch includes the new libs without `IsPackable` tweaks. | publish |
 
 ### 4.1 Spike results (measured)
 
 Measured facts only. Each spike is kept as a test so the answer stays pinned.
+
+#### M1 — forwarded headers, group-provider composition, key documents
+
+Written after the fact from the M1 tests and a re-run on 2026-09-28
+(`dotnet test tests/MintPlayer.Spark.Tests --filter "FullyQualifiedName~SparkForwardedHeadersTests|FullyQualifiedName~SparkDataProtectionTests|FullyQualifiedName~MintPlayer.Spark.Tests.Authorization"`:
+**470/470 passed**, 52 s; 13 forwarded-headers cases, 7 Data Protection cases, 450 in the
+`Tests.Authorization` namespace).
+
+**S-FH1 — `ForwardedHeadersMiddleware` with Spark defaults (M1, 2026-09-28).**
+*Question:* with Spark's defaults, is a spoofed leftmost `X-Forwarded-For` ignored, does an untrusted
+sender keep its socket address, does `ProxyHops=2` read exactly two entries, and which configurations
+refuse to start?
+*Method:* `SparkForwardedHeadersTests` (13 cases): the pipeline assembled from the registered
+`IStartupFilter`s exactly as the host does, after `AddSparkForwardedHeaders()`, invoked with a
+hand-built `HttpContext` whose `RemoteIpAddress` is chosen per case (a test server cannot choose the
+transport peer). Trusted peer `172.18.0.2` (Docker bridge, inside the private-range default), public
+peer `198.51.100.9`.
+*Answer:* from the trusted peer, `XFF: 6.6.6.6, 203.0.113.7` → `203.0.113.7` (one hop reads only the
+entry the proxy appended); from the public peer, `XFF: 6.6.6.6` + `X-Forwarded-Proto: https` → the
+socket address and scheme `http` are kept; with `ProxyHops=2`, `6.6.6.6, 203.0.113.7, 10.0.0.5` →
+`203.0.113.7`. `X-Forwarded-Proto` is honoured from a trusted peer; `X-Forwarded-Host: evil.example`
+is not applied by default. `KnownProxies:0=203.0.113.1` **replaces** the private-range default (the
+Docker peer is then untrusted). Startup refusals, all `InvalidOperationException`: clearing
+`KnownNetworks` + `KnownProxies` outside Development ("trusts every sender"; in Development it runs
+and forwards `6.6.6.6`), `ProxyHops=0`, `ForwardLimit = null`, and `ForwardHost=true` while
+`AllowedHosts` is unset or `*`. With `ForwardHost=true` and `AllowedHosts=coverage.example;…`, an
+allowed forwarded host is applied and `evil.example` is not. Not measured: a real proxy in front
+(nginx/Traefik recipes are documentation) and what fronts coverage.mintplayer.com (D15 pre-merge).
+
+**S-MOD-B — composed group providers + per-request cache (M1, 2026-09-28).**
+*Question:* does `AddGroupMembershipProvider<T>()` compose with the primary provider while
+`Use…` keeps replacing, may providers return ids, is resolution cached per request, and do the
+existing authorization tests still pass?
+*Method:* `GroupMembershipCompositionTests` (the real registrations `AddSpark` makes);
+`SecurityFileAccessControlTests` (composed provider, id provider, reserved ids, call counts);
+`SparkAuthorizeAttributeTests` (the `[SparkAuthorize]` group form through a composed provider and a
+provider-returned id); the rest of the `Tests.Authorization` namespace unchanged as the regression
+net.
+*Answer:* `Use…` replaces the primary and `Add…` merges, in either call order; adding the same
+provider twice is a no-op; with neither call only the claims provider is asked. A composed provider's
+group is added to the primary's (both `Delete/Car` via the primary and `Edit/Car` via the composed
+one are allowed). An `IGroupIdMembershipProvider` naming `EditorsId` grants that group's rights and no
+other; an id equal to the well-known authenticated group (or an id security.json does not declare)
+grants nothing to an anonymous caller. Ten `IsAllowedAsync` calls in one request ask **each provider
+exactly once**. All 450 tests in the namespace pass, so answers for existing configurations are
+unchanged.
+
+**SP-B (key documents) — CodeCoverage's existing key ring under Spark (M1, 2026-09-28).**
+*Question:* does Spark's Data Protection, with `ApplicationName=CodeCoverage` and `Storage=RavenDb`,
+decrypt what CodeCoverage's hand-written setup protected, and where do new keys land?
+*Method:* `SparkDataProtectionTests` (7 cases) on the embedded RavenDB: a payload protected through
+CodeCoverage's old wiring (`SetApplicationName("CodeCoverage")` over its repository, writing
+`DataProtectionKeys/{name}` documents through a raw put with production's metadata verbatim —
+`@collection: KeyDocuments`, `@Raven-Clr-Type: CodeCoverage.Services.RavenDataProtectionKeyRepository+KeyDocument, CodeCoverage`),
+then unprotected by a provider built with `AddSparkDataProtection()`.
+*Answer:* it decrypts (`"signed-in"` round-trips). The same ring under `ApplicationName=SomethingElse`
+throws `CryptographicException`, so the application name is part of the contract. New keys land under
+`DataProtectionKeys/` in the `KeyDocuments` collection. `KeysPath` writes one `key-*.xml` and a second
+provider over the same folder (a restart) decrypts. `Validate` refuses an unpersisted ring outside
+Development ("signs every user out on every redeploy"), accepts it in Development, and refuses both
+`KeysPath` and `Storage=RavenDb`. Production later moved to `KeysPath` (D5 owner decision), so the old
+documents are orphaned and users are signed out once; this measurement is what `Storage=RavenDb`
+still guarantees. The rest of SP-B is in the M5 entry below.
+
+#### M2 onward
 
 **S1 — composed filter + column filter + search (M2, 2026-09-28).**
 *Question:* do two rebound lambdas joined with `AndAlso`, then a column filter, then a two-field
@@ -1297,8 +1377,8 @@ Reruns: the failed tests, then Spark.Tests (3198/3198) and E2E (120/120) in full
 
 ## 5. Risks
 
-1. **Size.** One PR carrying a core seam, 4 packages (+2 abstractions), auth, mail, messaging, a new demo app and an E2E host refactor. Mitigation: milestone commits, each type-checked; one test sweep at the end (per the user's global rules); CI must be green across **all 5** test projects.
-2. **Production redeploy on merge** (CodeCoverage): new startup guards (Data Protection storage, mail transport, forwarded headers) stop it from starting unless the VPS config is set first → pre-merge ops checklist (plan §"Pre-merge").
+1. **Size.** One PR carrying a core seam, 4 packages (+3 abstractions), auth, mail, messaging, a new demo app and an E2E host refactor. Mitigation: milestone commits, each type-checked; one test sweep at the end (per the user's global rules); CI must be green across **all 5** test projects.
+2. **Production redeploy on merge** (CodeCoverage): new startup guards (Data Protection storage, mail transport, forwarded headers) stop it from starting unless the VPS config is set first → pre-merge ops checklist (plan §"Pre-merge"). **Updated (M14):** none of them needs a VPS step — `docker-compose.yml` (pulled from master on deploy) carries the key-ring volume + `Spark__DataProtection__KeysPath`, maps `MAIL_*` onto `Spark__Mail__*` with `Security=None`, and sets `Spark__Auth__PublicBaseUrl`; forwarded headers use the private-range default and need a setting only if a CDN fronts the site. What remains is verifying what fronts coverage.mintplayer.com (risk 4).
 3. **Key ring**: wrong `ApplicationName`/prefix during CodeCoverage's migration signs every production user out once → SP-B + a test reading a current-format key document.
 4. **Behind a CDN**: D15 defaults make every visitor share the proxy IP → verify both production front-ends.
 5. **Absent-field semantics** (`!= true`) — this repo has shipped the `!x` bug twice.
