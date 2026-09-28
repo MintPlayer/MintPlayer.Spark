@@ -176,7 +176,7 @@ internal static class SparkMailStartup
         var environment = services.GetRequiredService<IHostEnvironment>();
         var logger = services.GetRequiredService<ILoggerFactory>().CreateLogger("MintPlayer.Spark.MailManager");
         var transports = services.GetServices<SparkMailTransportRegistration>().Select(r => r.Name).ToList();
-        var problems = Problems(o, transports, services.GetService<IMessageBus>() is not null || HasMessageBus(services), environment.IsProduction());
+        var problems = Problems(o, transports, HasMessageBus(services), environment.IsProduction());
         if (problems.Count == 0
             && DevelopmentProblem(o, environment.IsDevelopment(), services.GetRequiredService<ISparkMailTransport>()) is { } development)
             problems.Add(development);
@@ -196,8 +196,12 @@ internal static class SparkMailStartup
         }
     }
 
+    // IMessageBus is scoped (AddSparkMessaging), and a Development host validates scopes: resolving it
+    // from the root provider throws. Ask whether it is registered instead of resolving it.
     private static bool HasMessageBus(IServiceProvider services)
     {
+        if (services.GetService<IServiceProviderIsService>() is { } isService)
+            return isService.IsService(typeof(IMessageBus));
         using var scope = services.CreateScope();
         return scope.ServiceProvider.GetService<IMessageBus>() is not null;
     }

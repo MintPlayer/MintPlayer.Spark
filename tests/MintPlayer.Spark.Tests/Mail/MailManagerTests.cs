@@ -53,7 +53,7 @@ public class MailManagerTests : SparkTestDriver
     }
 
     private ServiceProvider Build(Action<IServiceCollection>? services = null, Dictionary<string, string?>? config = null, bool withAuthTemplates = false,
-        Action<ISparkBuilder>? spark = null, string environment = "Production")
+        Action<ISparkBuilder>? spark = null, string environment = "Production", bool validateScopes = false)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -79,7 +79,7 @@ public class MailManagerTests : SparkTestDriver
         if (withAuthTemplates)
             collection.AddSparkMailTemplates(typeof(SparkUser).Assembly, "SparkMail/");
         services?.Invoke(collection);
-        return collection.BuildServiceProvider();
+        return collection.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = validateScopes });
     }
 
     // ---- templates: the owner's culture rules ---------------------------------------------------------
@@ -468,6 +468,23 @@ public class MailManagerTests : SparkTestDriver
         data.Should().Contain("X-Tags: News, bulk, demo, local run");
         data.Should().Contain($"Message-Id: <{message.DeliveryId}@app.example>", "the MIME is the one a relay would get");
         MailpitMailTransport.Tag("SparkAuth/ConfirmEmail").Should().Be("SparkAuth-ConfirmEmail");
+    }
+
+    [Fact]
+    public void Startup_accepts_a_scoped_message_bus_under_Development_scope_validation()
+    {
+        // AddSparkMessaging registers IMessageBus scoped, and a Development host validates scopes, so
+        // resolving the bus from the root provider threw "Cannot resolve scoped service" at startup.
+        using var sp = Build(
+            services: c => c.Replace(ServiceDescriptor.Scoped<IMessageBus>(p => p.GetRequiredService<RecordingBus>())),
+            environment: "Development",
+            validateScopes: true);
+        var act = () => SparkMailStartup.Validate(sp);
+        act.Should().NotThrow();
+
+        using var withoutBus = Build(services: c => c.RemoveAll<IMessageBus>(), environment: "Development", validateScopes: true);
+        var refused = () => SparkMailStartup.Validate(withoutBus);
+        refused.Should().Throw<InvalidOperationException>();
     }
 
     [Fact]
