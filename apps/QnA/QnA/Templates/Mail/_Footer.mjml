@@ -1,0 +1,8 @@
+<mj-section padding="0 0 24px 0">
+  <mj-column>
+    <mj-divider border-width="1px" border-color="#e5e7eb" />
+    <mj-text font-size="12px" color="#6b7280">
+      This is an automatic message{{ if app_name }} from {{ app_name }}{{ end }}, a demo site: no real mail is sent. There is no need to reply.
+    </mj-text>
+  </mj-column>
+</mj-section>

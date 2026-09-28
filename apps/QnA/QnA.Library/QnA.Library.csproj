@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<IsPackable>false</IsPackable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+		<!-- The three #460 marker interfaces the entities implement. -->
+		<ProjectReference Include="..\..\..\libs\moderation\MintPlayer.Spark.Moderation.Abstractions\MintPlayer.Spark.Moderation.Abstractions.csproj" />
+		<ProjectReference Include="..\..\..\libs\soft_delete\MintPlayer.Spark.SoftDelete.Abstractions\MintPlayer.Spark.SoftDelete.Abstractions.csproj" />
+		<!-- IAuditable lives in the History package itself (it has no .Abstractions, PRD §4.1 M7). -->
+		<ProjectReference Include="..\..\..\libs\history\MintPlayer.Spark.History\MintPlayer.Spark.History.csproj" />
+		<!-- Runs AttributeDescriptionsGenerator here, where the /// summaries live (#348). -->
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+</Project>

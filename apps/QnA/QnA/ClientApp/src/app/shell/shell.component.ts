@@ -1,0 +1,20 @@
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { RouterLink, RouterOutlet } from '@angular/router';
+import { SparkShellComponent, SparkShellTopbarEndDirective, SparkLanguageSelectorComponent } from '@mintplayer/ng-spark/shell';
+import { SparkAuthBarComponent } from '@mintplayer/ng-spark-auth/auth-bar';
+import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
+import { SparkReputationBadgeComponent } from '@mintplayer/ng-spark/moderation';
+import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
+
+@Component({
+  selector: 'app-shell',
+  imports: [
+    RouterOutlet, RouterLink, SparkShellComponent, SparkShellTopbarEndDirective, SparkLanguageSelectorComponent,
+    SparkAuthBarComponent, SparkReputationBadgeComponent, TranslateKeyPipe,
+  ],
+  templateUrl: './shell.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush
+})
+export class ShellComponent {
+  protected readonly auth = inject(SparkAuthService);
+}

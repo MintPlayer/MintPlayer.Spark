@@ -1,0 +1,16 @@
+{
+  "CloseQuestion": {
+    "displayName": { "en": "Close", "fr": "Fermer", "nl": "Sluiten" },
+    "icon": "Lock",
+    "description": "Closes the question: it takes no new answers. Offered to its author and to moderators.",
+    "showedOn": "detail",
+    "refreshOnCompleted": true
+  },
+  "ReopenQuestion": {
+    "displayName": { "en": "Reopen", "fr": "Rouvrir", "nl": "Heropenen" },
+    "icon": "Unlock",
+    "description": "Reopens a closed question, so it takes answers again.",
+    "showedOn": "detail",
+    "refreshOnCompleted": true
+  }
+}

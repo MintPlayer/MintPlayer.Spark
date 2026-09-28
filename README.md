@@ -154,7 +154,8 @@ MintPlayer.Spark/
 │   ├── CodeCoverage/                             # The coverage server behind coverage.mintplayer.com (a product, not a demo)
 │   ├── DemoApp/                                  # Sample ASP.NET Core + Angular application
 │   ├── Fleet/                                    # Fleet management demo (auth, messaging, replication)
-│   └── HR/                                       # HR demo (auth, messaging, replication)
+│   ├── HR/                                       # HR demo (auth, messaging, replication)
+│   └── QnA/                                      # Q&A demo (#460: moderation, soft delete, history, mail, account pages)
 └── docs/                                         # Documentation (guides, prd/, code-coverage/, codecov/)
 ```
 
@@ -263,7 +264,16 @@ cd apps/DemoApp/DemoApp
 dotnet run
 ```
 
-The application will be available at `https://localhost:5001`.
+The application will be available at `https://localhost:5007` (`--launch-profile https`).
+
+The other demos run the same way, each from its own project directory:
+
+| Demo | Directory | Host | Shows |
+| --- | --- | --- | --- |
+| DemoApp | `apps/DemoApp/DemoApp` | `https://localhost:5007` | the core PersistentObject pattern |
+| Fleet | `apps/Fleet/Fleet` | `https://localhost:5003` | authentication, messaging, replication (with HR) |
+| HR | `apps/HR/HR` | `https://localhost:5005` | authentication, the identity provider, replication (with Fleet) |
+| QnA | `apps/QnA/QnA` | `https://localhost:5009` | the #460 packages: Moderation, SoftDelete, History, MailManager, the account pages — see [apps/QnA/README.md](apps/QnA/README.md) |
 
 > **RavenDB note:** the demos connect to `http://localhost:8080` (`appsettings.json` → `Spark:RavenDb:Urls`). If you point them at a **standalone/local RavenDB** instead of the Docker container above, make sure its `PublicServerUrl` is `http://localhost:8080` — *not* `http://host.docker.internal:8080`. RavenDB advertises `PublicServerUrl` through its cluster topology and the client routes **all** subsequent requests there (caching it under `apps/**/bin/**/*.raven-cluster-topology`); a `host.docker.internal` value the host can't reach makes every request fail with `ServiceUnavailable`. `host.docker.internal` is only correct when a *container* must reach a host-installed database.
 

@@ -14,6 +14,7 @@
     "apps/DemoApp/DemoApp/ClientApp",
     "apps/Fleet/Fleet/ClientApp",
     "apps/HR/HR/ClientApp",
+    "apps/QnA/QnA/ClientApp",
     "apps/CodeCoverage/CodeCoverage/ClientApp",
     "apps/CodeCoverage/action"
   ],

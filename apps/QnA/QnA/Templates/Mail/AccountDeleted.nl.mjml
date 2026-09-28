@@ -1,0 +1,19 @@
+<mjml>
+  <mj-head>
+    <mj-title>Uw {{ if app_name }}{{ app_name }}-{{ end }}account werd verwijderd</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">Uw account werd verwijderd</mj-text>
+        <mj-text>Hallo {{ user_name }}, uw account{{ if app_name }} op {{ app_name }}{{ end }} werd op uw verzoek verwijderd. Uw stemmen en meldingen zijn weg; uw vragen en antwoorden blijven staan, als geplaatst door een verwijderde gebruiker.</mj-text>
+        <mj-text font-size="13px" color="#4b5563">Vroeg u dit niet? Neem contact op met de moderatoren van de site: de account kan niet terugkomen, de inhoud kan wel verwijderd worden.</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-include path="_Footer.mjml" />
+  </mj-body>
+</mjml>

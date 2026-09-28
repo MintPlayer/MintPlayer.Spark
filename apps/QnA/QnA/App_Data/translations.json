@@ -1,0 +1,34 @@
+{
+  "app": {
+    "welcomeTitle": {
+      "en": "Welcome to QnA",
+      "fr": "Bienvenue sur QnA",
+      "nl": "Welkom bij QnA"
+    },
+    "welcomeSubtitle": {
+      "en": "Ask questions, answer them, and earn the privileges that keep the site tidy.",
+      "fr": "Posez des questions, répondez-y et gagnez les privilèges qui gardent le site en ordre.",
+      "nl": "Stel vragen, beantwoord ze en verdien de rechten die de site netjes houden."
+    },
+    "selectMenuItem": {
+      "en": "Pick Questions in the sidebar to get started.",
+      "fr": "Choisissez Questions dans le menu latéral pour commencer.",
+      "nl": "Kies Vragen in de zijbalk om te beginnen."
+    },
+    "yourReputation": {
+      "en": "Your reputation",
+      "fr": "Votre réputation",
+      "nl": "Uw reputatie"
+    },
+    "reviewQueue": {
+      "en": "Review queue",
+      "fr": "File de révision",
+      "nl": "Beoordelingswachtrij"
+    },
+    "account": {
+      "en": "Account",
+      "fr": "Compte",
+      "nl": "Account"
+    }
+  }
+}

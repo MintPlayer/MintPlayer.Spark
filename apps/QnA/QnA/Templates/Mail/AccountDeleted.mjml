@@ -1,0 +1,19 @@
+<mjml>
+  <mj-head>
+    <mj-title>Your {{ if app_name }}{{ app_name }} {{ end }}account was deleted</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">Your account was deleted</mj-text>
+        <mj-text>Hello {{ user_name }}, your account{{ if app_name }} on {{ app_name }}{{ end }} was deleted at your request. Your votes and flags are gone; your questions and answers stay, shown as posted by a deleted user.</mj-text>
+        <mj-text font-size="13px" color="#4b5563">If you did not ask for this, reply to the site's moderators: the account cannot be restored, but the content can be removed.</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-include path="_Footer.mjml" />
+  </mj-body>
+</mjml>

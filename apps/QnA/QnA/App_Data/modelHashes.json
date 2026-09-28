@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "modelHash": "5cbf31a29e6130d5878f5f23562954dc503ee7118dacd5f5ce053329c46900a8",
+  "contextRoots": "9099816a4937704d31a0f5356772deaed6e16029fadfd929187179bfb8f7d560",
+  "modelFiles": "5b71c27508b7b488123a5130db033bc6754daa2cbdff696bd41d2e7fc7976863",
+  "files": {
+    "Answer.json": "6dd83c0f8efe76b09f597045c5ae477a198d39bc827e791c0ba984e5150d5140",
+    "Question.json": "f9d2af050ec0b97a8cc9f3c381d29738b489def9ea41bcd5fe90c72e0a284e41"
+  },
+  "entities": {
+    "Answer": "324611827f042b178f783ac3a3024b1c60094f8349309997671b12e23dae9b38",
+    "Question": "4af78a40ce725c13a563819a821b0328e8a80b4868f7f7adab50db569b44ba03"
+  },
+  "configFiles": {
+    "customActions.json": "db39bec2868146724a71246373f5d14de1475ba60edb20bf7ce04552e8551eab",
+    "programUnits.json": "818b0aad31de517f93a421b6beb21104c929d81c79b8f6f7fb8cc0a59446c739"
+  }
+}

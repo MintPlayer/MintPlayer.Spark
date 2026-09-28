@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+	<Import Project="..\..\..\libs\spark\MintPlayer.Spark\Targets\spark.props" />
+
+	<Import Project="..\..\..\libs\authorization\MintPlayer.Spark.Authorization\Targets\spark-authorization.props" />
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<IsPackable>false</IsPackable>
+		<SpaRoot>ClientApp\</SpaRoot>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="10.7.1" />
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="12.1.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\QnA.Library\QnA.Library.csproj" />
+		<ProjectReference Include="..\..\..\libs\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+		<ProjectReference Include="..\..\..\libs\messaging\MintPlayer.Spark.Messaging\MintPlayer.Spark.Messaging.csproj" />
+		<ProjectReference Include="..\..\..\libs\mail\MintPlayer.Spark.MailManager\MintPlayer.Spark.MailManager.csproj" />
+		<ProjectReference Include="..\..\..\libs\cron\MintPlayer.Spark.Cron\MintPlayer.Spark.Cron.csproj" />
+		<ProjectReference Include="..\..\..\libs\soft_delete\MintPlayer.Spark.SoftDelete\MintPlayer.Spark.SoftDelete.csproj" />
+		<ProjectReference Include="..\..\..\libs\history\MintPlayer.Spark.History\MintPlayer.Spark.History.csproj" />
+		<ProjectReference Include="..\..\..\libs\moderation\MintPlayer.Spark.Moderation\MintPlayer.Spark.Moderation.csproj" />
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- The app's own mail templates (MailManager, #460 M8): read from the content root at run time. -->
+		<Content Include="Templates\Mail\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+	</ItemGroup>
+
+	<Import Project="..\..\..\libs\authorization\MintPlayer.Spark.Authorization\Targets\spark-authorization.targets" />
+
+  <!--
+    Imported explicitly because this repo consumes the package by ProjectReference, where
+    NuGet's automatic buildTransitive import does not apply. A downstream consumer using a
+    PackageReference gets this for free.
+  -->
+  <Import Project="..\..\..\libs\spark\MintPlayer.Spark\Targets\spark.targets" />
+
+</Project>
