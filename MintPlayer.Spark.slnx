@@ -46,6 +46,9 @@
   <Folder Name="/libs/cron/">
     <Project Path="libs/cron/MintPlayer.Spark.Cron/MintPlayer.Spark.Cron.csproj" />
   </Folder>
+  <Folder Name="/libs/history/">
+    <Project Path="libs/history/MintPlayer.Spark.History/MintPlayer.Spark.History.csproj" />
+  </Folder>
   <Folder Name="/libs/identity_provider/">
     <Project Path="libs/identity_provider/MintPlayer.Spark.IdentityProvider/MintPlayer.Spark.IdentityProvider.csproj" />
   </Folder>

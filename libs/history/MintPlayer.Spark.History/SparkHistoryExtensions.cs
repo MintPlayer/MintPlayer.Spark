@@ -1,0 +1,79 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.Spark.Extensions;
+using MintPlayer.Spark.History.Endpoints;
+using MintPlayer.Spark.Services;
+using Raven.Client.Documents;
+
+namespace MintPlayer.Spark.History;
+
+/// <summary>Registration for revision history.</summary>
+public static class SparkHistoryExtensions
+{
+    private const string ConfigurationSection = "Spark:History";
+
+    /// <summary>
+    /// Revision history: at startup each model type's <c>revisions</c> block is merged into the
+    /// database's revisions configuration; <see cref="IAuditable"/> entities are stamped on every write;
+    /// <c>POST /spark/po/revisions</c>, <c>/spark/po/revision</c> and <c>/spark/po/revert</c> are
+    /// mapped; <see cref="ISparkRevisionObserver"/>s are told about every write. Binds
+    /// <c>Spark:History</c>, then applies <paramref name="configure"/> (code wins).
+    /// </summary>
+    /// <remarks>
+    /// Grant per type in <c>security.json</c>: <c>History/T</c> to read revisions, <c>Revert/T</c>
+    /// (with <c>Edit/T</c>) to revert (see <see cref="HistoryRights"/>).
+    /// </remarks>
+    public static ISparkBuilder AddHistory(this ISparkBuilder builder, Action<SparkHistoryOptions>? configure = null)
+    {
+        var section = builder.Configuration?.GetSection(ConfigurationSection);
+        builder.Services.AddOptions<SparkHistoryOptions>().Configure(options =>
+        {
+            section?.Bind(options);
+            configure?.Invoke(options);
+        });
+
+        builder.Services.AddPersistentObjectInterceptor<HistoryInterceptor>();
+        builder.Services.TryAddScoped<HistoryRequestState>();
+        builder.Services.TryAddScoped<ISparkHistory, SparkHistory>();
+
+        builder.Registry.AddMiddleware(app =>
+        {
+            var services = app.ApplicationServices;
+            if (!services.GetRequiredService<IOptions<SparkHistoryOptions>>().Value.ConfigureRevisions)
+                return;
+            RevisionsConfigurator.Apply(
+                services.GetRequiredService<IDocumentStore>(),
+                services.GetRequiredService<IModelLoader>(),
+                services.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(RevisionsConfigurator).FullName!));
+        });
+        builder.Registry.AddEndpoints(endpoints =>
+        {
+            endpoints.MapEndpoint<ListRevisions>();
+            endpoints.MapEndpoint<GetRevision>();
+            endpoints.MapEndpoint<RevertPersistentObject>();
+        });
+
+        return builder;
+    }
+
+    /// <summary>Adds an <see cref="ISparkRevisionObserver"/>. Scoped, multi-registered; adding the same type twice is a no-op.</summary>
+    public static ISparkBuilder AddRevisionObserver<TObserver>(this ISparkBuilder builder)
+        where TObserver : class, ISparkRevisionObserver
+    {
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkRevisionObserver, TObserver>());
+        return builder;
+    }
+
+    /// <summary>Sets the <see cref="IHistoryUserNameResolver"/> revision lists use (scoped; replaces an earlier one).</summary>
+    public static ISparkBuilder AddHistoryUserNameResolver<TResolver>(this ISparkBuilder builder)
+        where TResolver : class, IHistoryUserNameResolver
+    {
+        builder.Services.Replace(ServiceDescriptor.Scoped<IHistoryUserNameResolver, TResolver>());
+        return builder;
+    }
+}
