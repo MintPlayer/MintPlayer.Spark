@@ -78,7 +78,9 @@ refused by the framework with 403 before the action runs. See
 - **Data Protection key ring.** Spark now calls `AddDataProtection()` itself. Outside Development,
   startup is refused unless the key ring is persisted: `Spark:DataProtection:KeysPath` (a folder —
   on a **mounted volume**, or every redeploy signs everyone out) **or**
-  `Spark:DataProtection:Storage=RavenDb`. Setting **both** also refuses. `ApplicationName` defaults to
+  `Spark:DataProtection:Storage=RavenDb`. `Storage=RavenDb` is supported but meant for **test hosts**
+  (set in their own configuration); production uses `KeysPath` on a mounted volume (owner decision,
+  #460 D5), and no app's base `appsettings.json` sets either. Setting **both** also refuses. `ApplicationName` defaults to
   the entry assembly's name. Development defaults to a per-user local folder. An application's own
   `AddDataProtection()` calls still win, but the check still wants one of the two keys; delete them.
   See [guide-data-protection.md](guide-data-protection.md).
@@ -215,6 +217,25 @@ result synchronously must await it. `sparkAuthenticatedGuard` is an alias.
 - **Actions-class row rules and the new operations.** `GetRowFilterAsync` / `IsAllowedAsync` are asked
   about `"Edit"` for a restore or revert and `"Delete"` for a purge (row policies see the real names),
   so a rule written for the built-in verbs also governs them.
+- **A custom `ISparkMailTransport` is treated as delivering to real recipients.**
+  `ISparkMailTransport.DeliversToRealRecipients` defaults to `true` (Mailpit and the pickup folder say
+  `false`, SMTP only for a loopback host), so a custom transport added with `AddMailTransport<T>()`
+  **refuses to start in Development** unless `Spark:Mail:Development:RedirectTo` is set. For a catcher
+  (a local test inbox, an in-memory sink) override the property to `false`.
+- **The bounce endpoint answers 503 while disabled**, never 404. `POST /spark/mail/bounces` is mapped
+  with the rest of MailManager; with `Spark:Mail:Bounces:Endpoint:Enabled` false it answers 503. The
+  documented pipe recipe (`spark-bounce`, [guide-outgoing-mail.md § 8.3](guide-outgoing-mail.md))
+  maps the answer to an exit code: **2xx → 0** (delivered); **400, 413, 422 → 0** with a `dropped` line
+  (the report can never be accepted); **anything else → 75** (`EX_TEMPFAIL`: 401/403 wrong secret,
+  404 wrong URL, 429, 503 disabled, other 5xx, no answer), so Postfix keeps the report deferred and
+  delivers it once the cause is fixed or the endpoint is enabled. Update a copied script whose
+  `case` treated 404 or 503 as a drop.
+- **Goodbye mail moves to `ISparkAccountDeletedHandler<TUser>`.** `ISparkAccountDeletionHandler<TUser>`
+  runs *before* the account is deleted, so a mail sent there goes out even when a later handler or the
+  store refuses the deletion. Anything that must happen only for a completed deletion (a goodbye or
+  confirmation mail) belongs in the new `ISparkAccountDeletedHandler<TUser>.OnAccountDeletedAsync`,
+  which runs after `UserManager.DeleteAsync` succeeded; keep clean-up that must succeed first (and may
+  stop the deletion) in `ISparkAccountDeletionHandler<TUser>`.
 
 ---
 
@@ -337,8 +358,12 @@ From the plan's pre-merge checklist (`docs/issue_460_plan.md`), the items a depl
 - [ ] **Data Protection volume.** Mount a volume for the key ring and set
   `Spark__DataProtection__KeysPath` into it (create the folder in the Dockerfile before `USER app`).
   Do not also set `Spark__DataProtection__Storage`: both together refuse startup. Expect every user to
-  be signed out once when an existing app first switches key ring. CodeCoverage's compose file already
-  carries both; its orphaned `DataProtectionKeys/…` documents can be deleted once the deploy is healthy.
+  be signed out once when an existing app first switches key ring. CodeCoverage's
+  `docker-compose.yml` already carries what it needs: the `dataprotection-keys` volume mounted at
+  `/var/lib/codecoverage/dataprotection-keys` and `Spark__DataProtection__KeysPath` pointing at it
+  (`ApplicationName=CodeCoverage` is in `appsettings.json`). It sets **no** `Storage`, and the VPS
+  `.env` must not add one. Its orphaned `DataProtectionKeys/…` documents can be deleted once the
+  deploy is healthy and a key file exists in the volume.
 - [ ] **Mail environment.** Set `Spark__Mail__Smtp__*` (or a pickup folder) and
   `Spark__Mail__From__Address`, plus `Spark__Auth__PublicBaseUrl`. Never set
   `Spark__Mail__Development__RedirectTo` in Production. If bounces are enabled, the relay's secret must

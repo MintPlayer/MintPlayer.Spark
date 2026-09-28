@@ -204,6 +204,8 @@ MintPlayer.Spark/
 | [Data Protection](docs/guide-data-protection.md) | Where the key ring lives (`Spark:DataProtection`), why an unpersisted one refuses to start outside Development, and why an unmounted key folder signs everyone out on redeploy |
 | [Testing Harness](libs/testing/MintPlayer.Spark.Testing/README.md) | Embedded RavenDB driver, in-memory Spark host factory, antiforgery-aware HTTP client, JSON fixtures, Verify defaults |
 | [Testing without a browser — `SparkClient`](libs/client/MintPlayer.Spark.Client/README.md) | Drive a real Spark backend from C# over the same protocol the Angular frontend uses: CRUD, queries, actions, auth. What it covers, what it cannot do yet, and why it will never replace browser tests |
+| [`@mintplayer/ng-spark`](libs/node_packages/ng-spark/README.md) | The Angular front end: `provideSpark()`, `sparkRoutes()` and every secondary entry point — panels, soft delete, history, moderation, renderers, client operations, `withSparkTimezone` |
+| [`@mintplayer/ng-spark-auth`](libs/node_packages/ng-spark-auth/README.md) | The Angular half of Authorization: `provideSparkAuth()`, `sparkAuthRoutes(...)` with `withLocalLogin` / `withRegistration` / `withExternalLogin` / `withPasskeys` / `withAccount()`, the guards and entry points |
 
 ### Reference
 
@@ -213,6 +215,8 @@ MintPlayer.Spark/
 - **[Messaging API](libs/messaging/MintPlayer.Spark.Messaging/README.md)** - Message bus API reference
 - **[Cron Jobs](libs/cron/MintPlayer.Spark.Cron/README.md)** - Cron-scheduled background jobs: `ISparkCronJob`, schedule overrides, multi-node compare-exchange locking
 - **[Product Requirements Document](docs/prd/PRD.md)** - Full specification and architecture
+- **[Compiler diagnostics](docs/diagnostics.md)** - Every `SPARK*` diagnostic, what raises it, and its code fix
+- **[Release notes 11.0.0-preview.91](docs/release-notes-preview-91.md)** - The #460 release: breaking changes, new packages, the operator checklist
 - **[Leftovers](docs/leftovers.md)** - What shipped work knowingly did not close: unverified paths, and deferrals with the evidence behind them
 
 ## Contributing

@@ -44,6 +44,11 @@ the diagnostic guarding the generated row key — reached no external consumer a
 | SPARK020 | Error | `[Authorize]` or `.RequireAuthorization(…)` with a policy name or roles does not work under Spark — use `[SparkAuthorize]` / `.RequireAuthorization(new SparkAuthorizeAttribute(…))` ([why](guide-controllers.md#what-does-not-work)) | `AuthorizeAttributeAnalyzer` | — |
 | SPARK021 | Error | Security right uses a wildcard (`*`), which is refused at startup | `SecurityConfigurationAnalyzer` | — |
 | SPARK022 | Warning | `!x.IsDeleted` / `x.IsDeleted == false` on an `ISoftDeletable` in a translated expression drops every document without the field — use `x.IsDeleted != true` ([why](../libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md#startup-checks)) | `SoftDeleteFilterAnalyzer` | — |
+| SPARK030 | Warning | The app's `$(SpaRoot)package.json` does not declare `@mintplayer/ng-spark-auth`, which the generated `spark-auth.setup.ts` imports — add it with the major matching your Angular major, or set `EnableSparkAuthSpa=false` for a project without the Spark SPA ([why](../libs/authorization/MintPlayer.Spark.Authorization/README.md#npm-dependency-and-the-generated-setup-file)) | MSBuild target `SparkAuthCheckNpmDependency` (`spark-authorization.targets`, MintPlayer.Spark.Authorization) | — |
+
+SPARK030 is an **MSBuild** warning, not a Roslyn diagnostic: it is raised before `Build` in a project
+that references `MintPlayer.Spark.Authorization`, has `EnableSparkAuthSpa=true` and a
+`$(SpaRoot)package.json`. `#pragma` and `.editorconfig` severities do not apply to it.
 
 Two further id namespaces are generator-only and not analyzer diagnostics: `SPARK_INDEX_001…012`
 (`GenerateIndexDiagnostics.cs`, note `004` is absent) and `SPARK_TRANS_001…`
