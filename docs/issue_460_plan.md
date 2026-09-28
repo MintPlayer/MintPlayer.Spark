@@ -125,6 +125,29 @@ Dependencies flow downward. Items in the same milestone are independent.
 - [ ] nuget.org prefix reservation + API key scope cover the new package ids (S-PKG1).
 - [ ] Version diff reviewed: NuGet major 11, npm major 22 — nothing else moves the major.
 
+## Considered: absorbing MintPlayer into this repository (decision 2026-09-28: stay separate for now)
+
+The owner is considering moving the MintPlayer website into `apps/MintPlayer`, as CodeCoverage was
+(`docs/coverage_monorepo_*`). For #460 it **stays a separate repository** that consumes the published
+packages. This is recorded so the trade-off doesn't have to be worked out again.
+
+- **For:** MintPlayer would use `ProjectReference` instead of NuGet, so a framework change would be
+  checked against its biggest consumer in the same PR, with no publish-then-consume round trip and no
+  cross-repo work. It also means one fewer repository in the organisation.
+- **Against / costs:**
+  - The organisation would no longer have a `MintPlayer` repository. Mitigation: archive it with a
+    README pointing to `apps/MintPlayer`, and import its history with `git filter-repo`.
+  - The fetcher might eventually have to come along too. That isn't forced: it can stay a NuGet
+    dependency, like `MintPlayer.AspNetCore.SpaServices`.
+  - Every `libs/` merge would redeploy **two** production sites, since `code-coverage-deploy.yml`'s
+    path filter would be copied.
+  - CI cost grows: `pull-request.yml` builds and verifies every app through hand-written lists and
+    doesn't use Nx `affected` for apps.
+- **If it happens later:** move only `MintPlayer.Web`, `MintPlayer.Domain` (plus `MintPlayer.Migration`
+  while the cutover is pending) and their tests, never `legacy/`. Check `apps/MintPlayer` against
+  `.gitignore` first, which is the `Coverage` lesson. The natural moment is after this PR merges and
+  before the MintPlayer cutover.
+
 ## For the MintPlayer cutover (tracked in the MintPlayer repo, listed so nothing is lost)
 
 - Count accounts whose user name contains a foreign `@` (D4) before cutover.
