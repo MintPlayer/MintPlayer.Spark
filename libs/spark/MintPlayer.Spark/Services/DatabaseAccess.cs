@@ -370,6 +370,16 @@ internal partial class DatabaseAccess : IDatabaseAccess
         {
             savedEntity = await SaveEntityViaActionsAsync(session, entityType, persistentObject);
         }
+        catch
+        {
+            // The twin of the refused-delete eviction below (#460, M7 finding): the base OnSaveAsync
+            // loads the row into the REQUEST session and maps the posted values onto it before WITH
+            // CHECK (or an interceptor, or OnBeforeSaveAsync) refuses. Left tracked, the request's next
+            // SaveChangesAsync — another save, a custom action's own write — would commit the refused
+            // change. Evicted, the next load in this request reads what is stored.
+            await EvictTrackedAsync(entityType, persistentObject.Id);
+            throw;
+        }
         finally
         {
             if (saveContext is not null)
@@ -611,6 +621,18 @@ internal partial class DatabaseAccess : IDatabaseAccess
         PersistentObjectOperation.Sync => null,
         _ => (operation.ToString(), [operation.ToString()]),
     };
+
+    /// <summary>
+    /// Evicts <paramref name="id"/> from the request session when it is tracked there. A tracked id
+    /// is answered from the session's identity map, so the load costs no request.
+    /// </summary>
+    private async Task EvictTrackedAsync(Type entityType, string? id)
+    {
+        if (string.IsNullOrEmpty(id) || !session.Advanced.IsLoaded(id))
+            return;
+        if (await LoadEntityAsync(session, entityType, id) is { } tracked)
+            session.Advanced.Evict(tracked);
+    }
 
     private async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)
     {

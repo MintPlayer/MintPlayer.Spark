@@ -87,6 +87,31 @@ public class RowPolicyPipelineTests : SparkTestDriver
         using var verify = Store.OpenAsyncSession();
         (await verify.Query<PolicedDoc>().Customize(c => c.WaitForNonStaleResults()).CountAsync()).Should().Be(0);
     }
+
+    [Fact]
+    public async Task An_edit_WITH_CHECK_refuses_leaves_nothing_for_a_later_save_in_the_request()
+    {
+        // #460, M7 finding: the base OnSaveAsync loads the row into the REQUEST session and maps the
+        // posted values onto it before WITH CHECK judges the result. A refusal must not leave that
+        // modified entity tracked, or the request's next SaveChangesAsync writes the refused change.
+        await SeedAsync();
+        using var scope = factory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<IDatabaseAccess>();
+        var po = new PersistentObject { ObjectTypeId = DocTypeId, Name = "PolicedDoc", Id = "PolicedDocs/live" };
+        po.AddAttribute(new PersistentObjectAttribute { Name = "Name", DataType = "string", Value = "renamed", IsValueChanged = true });
+        po.AddAttribute(new PersistentObjectAttribute { Name = "IsDeleted", DataType = "bool", Value = true, IsValueChanged = true });
+
+        var act = () => db.SavePersistentObjectAsync(po);
+        await act.Should().ThrowAsync<SparkRowLevelAccessDeniedException>("the edit moves the row out of the caller's scope");
+
+        // Any later write in the same request commits the request session.
+        await scope.ServiceProvider.GetRequiredService<Raven.Client.Documents.Session.IAsyncDocumentSession>().SaveChangesAsync();
+
+        using var verify = Store.OpenAsyncSession();
+        var stored = await verify.LoadAsync<PolicedDoc>("PolicedDocs/live");
+        stored.Name.Should().Be("live", "a refused save must leave nothing behind");
+        stored.IsDeleted.Should().BeFalse();
+    }
 }
 
 public class PolicedDoc
