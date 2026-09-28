@@ -37,8 +37,8 @@ Dependencies flow downward. Items in the same milestone are independent.
 - [x] Spike **S8** (request budget).
 
 ### M3 — DisableActions redesign (item 8) + custom action results
-- [ ] **D13**: `IDisablable`, `OnDisableActionsAsync(IDisablable, DisableActionsContext)` + batched form; call at load (PO get, query execute) and at submit (update, delete, new, custom action: parent + query + each row, union); 403 after row gate. Delete the old entry points; migrate CodeCoverage `RepositoryActions.OnLoadAsync`. ng-spark: consume `DisabledActions` unchanged on the wire. Spike **S6**, **S-MOD-F**.
-- [ ] **T5**: `CustomActionArgs.SetResult<T>`, envelope `Result`, ng-spark `executeCustomAction<T>`, `SparkActionResult.Result`. Spike **S7**.
+- [x] **D13**: `IDisablable`, `OnDisableActionsAsync(IDisablable, DisableActionsContext)` + batched form; call at load (PO get, query execute) and at submit (update, delete, new, custom action: parent + query + each row, union); 403 after row gate. Delete the old entry points; migrate CodeCoverage `RepositoryActions.OnLoadAsync`. ng-spark: consume `DisabledActions` unchanged on the wire. Spike **S6**, **S-MOD-F**.
+- [x] **T5**: `CustomActionArgs.SetResult<T>`, envelope `Result`, ng-spark `executeCustomAction<T>`, `SparkActionResult.Result`. Spike **S7**.
 
 ### M4 — Messaging (item 11 + primitives for mail)
 - [ ] Fix `BroadcastOnceAsync` dedup key (hashed, type-namespaced) — keep existing ids readable (migration note).
