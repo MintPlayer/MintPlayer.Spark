@@ -16,10 +16,28 @@ A low-code web application framework for .NET that eliminates boilerplate code. 
 
 | Component | Technology |
 |-----------|------------|
-| Backend | .NET 10.0 |
+| Backend | .NET 11.0 |
 | Frontend | Angular 22 |
 | Database | RavenDB 6.2+ |
 | UI Library | @mintplayer/ng-bootstrap |
+
+### RavenDB licences
+
+Spark runs on any RavenDB licence, but some features depend on the edition. **ETL** (used for
+cross-module replication, as in the Fleet demo) needs a paid licence in production.
+
+| Edition | Price | Production use | ETL |
+|---|---|---|---|
+| Developer | Free, renewed every 6 months | No (development and testing only) | Not applicable (no production use) |
+| Community | Free, renewed yearly | Yes | None |
+| Professional | Paid (quote from sales) | Yes | RavenDB ETL and SQL ETL; OLAP, Elasticsearch, Kafka and RabbitMQ need the P30+ tier |
+| Enterprise | Paid | Yes | All ETL types (OLAP, Elasticsearch, Kafka, queues, …) |
+
+Community also caps licence-gated limits that Developer does not (3 cores, 3 subscriptions, a
+36-hour minimum for document expiration and refresh), so code that passes against a Developer
+licence can still be refused in a Community production. Open-source projects could historically
+request a free licence from RavenDB; the current pricing page no longer lists that programme, so
+ask RavenDB directly. Details: [RavenDB pricing](https://ravendb.net/buy).
 
 ## Quick Start (AllFeatures)
 
