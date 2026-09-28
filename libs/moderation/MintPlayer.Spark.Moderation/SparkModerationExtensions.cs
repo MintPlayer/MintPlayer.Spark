@@ -57,6 +57,7 @@ public static class SparkModerationExtensions
         services.TryAddScoped<FraudDetector>();
         services.TryAddScoped<ModerationReview>();
         services.TryAddScoped<ISparkModeration, SparkModeration>();
+        services.TryAddScoped<ISparkModerationJobs, SparkModerationJobs>();
         services.TryAddScoped<IModerationAccounts, IdentityModerationAccounts<TUser>>();
         services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkAccountDeletionHandler<TUser>, ModerationAccountDeletionHandler<TUser>>());
         services.TryAddEnumerable(ServiceDescriptor.Scoped<ISparkPersonalDataContributor<TUser>, ModerationPersonalDataContributor<TUser>>());

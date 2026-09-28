@@ -90,8 +90,17 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
     /// soft-delete row policy asks <c>ViewDeleted</c> before honouring a query's <c>deleted</c> mode.
     /// <c>History</c> and <c>Revert</c> are the History package's (M7): core gates a revert under
     /// <c>Revert</c>, the package gates revision reads under <c>History</c>.
+    /// <c>Vote</c>, <c>Downvote</c>, <c>Flag</c>, <c>Lock</c>, <c>Review</c>, <c>Suspend</c> and
+    /// <c>Audit</c> are the Moderation package's (M12, <c>ModerationRights</c>): it asks for them in code
+    /// through <c>IPermissionService</c>, not through <c>[SparkAuthorize]</c>, so the analyzer cannot
+    /// harvest them from a referenced assembly — the first app to grant them (QnA, M13) got a SPARK011 per
+    /// right.
     /// </remarks>
-    private static readonly string[] BuiltInActions = ["Query", "Read", "New", "Edit", "Delete", "Replicate", "Restore", "Purge", "ViewDeleted", "History", "Revert"];
+    private static readonly string[] BuiltInActions =
+    [
+        "Query", "Read", "New", "Edit", "Delete", "Replicate", "Restore", "Purge", "ViewDeleted", "History", "Revert",
+        "Vote", "Downvote", "Flag", "Lock", "Review", "Suspend", "Audit",
+    ];
 
     private static readonly string[] CombinedActions =
     [
@@ -100,7 +109,8 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
     ];
 
     /// <summary>Targets the framework owns, which have no model file.</summary>
-    private static readonly string[] ReservedTargets = ["LookupReferences"];
+    /// <remarks><c>Moderation</c>: the Moderation package's own surface (<c>Review</c>, <c>Suspend</c>, <c>Audit</c>), T6.</remarks>
+    private static readonly string[] ReservedTargets = ["LookupReferences", "Moderation"];
 
     public override void Initialize(AnalysisContext context)
     {

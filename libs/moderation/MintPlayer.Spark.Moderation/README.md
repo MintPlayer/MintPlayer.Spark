@@ -170,6 +170,12 @@ configuration. What bounds the damage is that only reversible privileges are ear
 `/reputation/history`, `/cases`, `/case`, `/case/decide`, `/suspend`, `/unsuspend`, `/merge`,
 `/audit`. Service API: `ISparkModeration`.
 
+`ISparkModerationJobs` runs the Cron jobs' work on demand — `RunCreditingAsync` (crediting +
+summary recompute), `RunFraudDetectorAsync`, `RecomputeReputationAsync(userIds)` — for an operator
+after a threshold change, or an end-to-end test that must not wait for the schedule. It checks no
+right (the jobs have no caller either) and is never mapped by the package; `apps/QnA` exposes it only
+to its E2E host.
+
 ## GDPR (D8)
 
 - `ISparkAccountDeletionHandler<TUser>`: reverses every vote the account cast, deletes its votes,

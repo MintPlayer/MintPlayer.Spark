@@ -165,6 +165,25 @@ public class SecurityConfigurationAnalyzerTests
     }
 
     /// <summary>
+    /// The Moderation package's rights (#460 M12) are asked for in code through <c>IPermissionService</c>,
+    /// never through a <c>[SparkAuthorize]</c> the analyzer could harvest, and <c>Moderation</c> is the
+    /// package's own target with no model file. QnA (M13), the first app to grant them, got a SPARK011
+    /// per right before the list knew them.
+    /// </summary>
+    [Theory]
+    [InlineData("Vote/Person")]
+    [InlineData("Downvote/Person")]
+    [InlineData("Flag/Person")]
+    [InlineData("Lock/Person")]
+    [InlineData("Review/Moderation")]
+    [InlineData("Suspend/Moderation")]
+    [InlineData("Audit/Moderation")]
+    public async Task A_moderation_right_is_not_reported(string resource)
+    {
+        (await RunAsync(resource)).Should().BeEmpty();
+    }
+
+    /// <summary>
     /// A lookup reference type is a legitimate target with no model file of its own — it is named by
     /// a <c>lookupReferenceType</c> on an attribute. Two demo apps grant rights on theirs.
     /// </summary>
