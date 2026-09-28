@@ -1217,11 +1217,20 @@ the QnA E2E spec compiles and is run by M14, and nothing was checked in a browse
   credited, so `Pending` (the badge's "+N pending") changes only when something else recomputes the
   summary: that user being credited, a reversal, a flag decision, a deletion. During the 48 h delay
   the badge never shows the pending part. Not fixed here (a recompute on the vote path costs two
-  index waits); the E2E spec calls the recompute seam. Decide in M14.
+  index waits); the E2E spec calls the recompute seam. Decide in M14. **Fixed in M14:** pending is
+  read live from `Moderation/PendingReputation` by `GetReputationAsync` (bounded 2 s index wait,
+  the stale figure on timeout). Chosen over a recompute on vote because the ledger entries are
+  written in the vote's own transaction, so a live read can never miss a vote through a skipped or
+  crashed recompute, and the vote path stays free of index waits; pending affects no privilege, so
+  only the badge needs it.
 - *Found: a reversal lowers the total at the next crediting run.* A compensation is written with
   `Credited = false` (never creditable before the entry it cancels), so the detector's reversal
   reaches `Total` only when crediting runs next (every 5 min). Consistent with the design; the spec
-  credits after detecting.
+  credits after detecting. **Fixed in M14:** a `Reversal` of an already-credited entry is written
+  credited, so the recompute every reversal path already runs (`ReverseVotesAsync`: detector,
+  moderator reverse, content delete, account deletion, merge) lowers `Total` at once; a reversal of a
+  pending entry still waits for the entry it cancels. Tests: the vote test reads the badge with no
+  recompute; the serial-voting test reads the stored summary with no crediting run.
 - *SPARK011 / SPARK012 did not know Moderation.* The first app to grant `Vote`, `Downvote`, `Flag`,
   `Lock`, `Review`, `Suspend`, `Audit` got a SPARK011 per right: Moderation asks for them through
   `IPermissionService`, not `[SparkAuthorize]`, so the analyzer cannot harvest them. They joined the
@@ -1238,13 +1247,20 @@ the QnA E2E spec compiles and is run by M14, and nothing was checked in a browse
 - *Account-deletion mail.* The framework sends none; QnA's `ISparkAccountDeletionHandler` mails one
   from an app template (`Templates/Mail/AccountDeleted{,.nl}.mjml`), registered after Moderation's.
   Handlers run before the store delete, so a store failure after it leaves a sent goodbye on a live
-  account — documented on the handler.
+  account — documented on the handler. **Fixed in M14:** Authorization gained
+  `ISparkAccountDeletedHandler<TUser>` (`OnAccountDeletedAsync`), run only after
+  `UserManager.DeleteAsync` succeeded; a failure there is logged and the answer stays 204. QnA's
+  handler implements it instead, so a stopped or refused deletion mails nothing (tests in
+  `AccountFlowTests`).
 - *QnA sets `RequireConfirmedEmail = true`* (D6's option, default false), so the E2E spec proves the
   confirmation link. `appsettings.Development.json` lowers the fraud gates and turns the seams on, as
   a layering override of `moderation.json` (D14).
 - *Coverage.* QnA's host report is its own expected entry in `tools/verify-coverage-paths.mjs`
   (required when `SPARK_E2E_HOST_COVERAGE` is on), so a CI run that filters the QnA tests out while host
-  coverage is on fails that check.
+  coverage is on fails that check. **Fixed in M14:** `SparkAppTestHost` writes
+  `coverage/{slug}-host-…/host-started.txt` before it starts a measured host, and a host report is
+  required only for the slugs with a marker (still fail-closed when marker information is absent);
+  a filtered run passes, a host that started and lost its report still fails. Node tests added.
 ---
 
 ## 5. Risks

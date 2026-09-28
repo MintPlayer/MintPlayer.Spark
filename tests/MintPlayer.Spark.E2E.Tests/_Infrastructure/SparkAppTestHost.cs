@@ -752,6 +752,12 @@ public abstract class SparkAppTestHost : IAsyncLifetime
             // hosts run concurrently and each session ends in its own DisposeAsync.
             var projectDir = Path.Combine(repoRoot, "tests", "MintPlayer.Spark.E2E.Tests");
             _hostCoverageReport = Path.Combine(projectDir, "coverage", $"{App.CoverageSlug}-host-{EnvironmentName}-{Suffix}", "coverage.cobertura.xml");
+            // "This host's tests ran": tools/verify-coverage-paths.mjs requires a host report only for
+            // the apps that wrote this marker, so a run that filters an app's tests out does not fail
+            // while a host that started and then lost its report still does.
+            var reportDir = Path.GetDirectoryName(_hostCoverageReport)!;
+            Directory.CreateDirectory(reportDir);
+            File.WriteAllText(Path.Combine(reportDir, "host-started.txt"), $"{App.AppName} {EnvironmentName} {DateTimeOffset.UtcNow:O}");
             string[] collectArgs =
             [
                 "tool", "run", "dotnet-coverage", "collect",
