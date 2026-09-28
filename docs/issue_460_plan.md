@@ -41,13 +41,13 @@ Dependencies flow downward. Items in the same milestone are independent.
 - [x] **T5**: `CustomActionArgs.SetResult<T>`, envelope `Result`, ng-spark `executeCustomAction<T>`, `SparkActionResult.Result`. Spike **S7**.
 
 ### M4 — Messaging (item 11 + primitives for mail)
-- [ ] Fix `BroadcastOnceAsync` dedup key (hashed, type-namespaced) — keep existing ids readable (migration note).
-- [ ] **T8** `BroadcastOptions`, `SparkMessagingOptions.Queues` / `SparkQueueOptions`, `IMessageContext` (current message id).
-- [ ] Throttle admission in `MessageProcessor.RunHandlersAsync`: GCRA reserved slots, reschedule via `ReleaseUnstartedAsync`, `ExpiresAtUtc` → Expired dead-letter, `MaxConcurrency` pumps (SingleSubscription only).
-- [ ] `IMessageProgress` sidecar with matching `@expires`.
-- [ ] Fix `SubscriptionPerQueue` missing `HandlerTimeout` + claim renewal.
-- [ ] Fix stale line 14 in `docs/decisions_messaging_and_project_automation.md`.
-- [ ] Spike **S-M3** (throttle accuracy) at the end of the milestone.
+- [x] Fix `BroadcastOnceAsync` dedup key (hashed, type-namespaced) — keep existing ids readable (migration note).
+- [x] **T8** `BroadcastOptions`, `SparkMessagingOptions.Queues` / `SparkQueueOptions`, `IMessageContext` (current message id).
+- [x] Throttle admission in `MessageProcessor.RunHandlersAsync`: GCRA reserved slots, reschedule via `ReleaseUnstartedAsync`, `ExpiresAtUtc` → Expired dead-letter, `MaxConcurrency` pumps (SingleSubscription only).
+- [x] `IMessageProgress` sidecar with matching `@expires`.
+- [x] Fix `SubscriptionPerQueue` missing `HandlerTimeout` + claim renewal.
+- [x] Fix stale line 14 in `docs/decisions_messaging_and_project_automation.md`.
+- [x] Spike **S-M3** (throttle accuracy) at the end of the milestone.
 
 ### M5 — Auth (items 4, 5, 6-server, 9)
 - [ ] **D4** `SparkSignInManager` + `@` rule in the user validator; `/connect/login` shares the resolver. Spike **SP-A**.
