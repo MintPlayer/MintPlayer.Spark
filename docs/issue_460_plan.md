@@ -26,15 +26,15 @@ Dependencies flow downward. Items in the same milestone are independent.
 - [x] Update memory note: "a claim CAN assert a reserved group" is stale (reserved ids are dropped now).
 
 ### M2 — Seam (item 1) + #285 + #283
-- [ ] Spikes **S1, S3** first (expression shape decides the policy API).
-- [ ] `IRowPolicy` / `IRowFilterPolicy` / `IRowCheckPolicy`, typed helpers, `RowPolicyContext`, `AddSparkRowPolicy<T>()`; `AppliesTo` cached in `ReflectionCache`.
-- [ ] Compose in `RowSecurity` (`ResolveEffectiveRuleAsync`, `InvokeGetRowFilterAsync`, `ComposeRowFilterAsync`): rebinding + `AndAlso`, constant folding, same cache key, same position; budget + N+1 accounting.
-- [ ] `HasRowRule` split (spike **S5**); reroute base after-save WITH CHECK (`DefaultPersistentObjectActions.cs:284-309`) through `IRowSecurity`.
-- [ ] `IPersistentObjectInterceptor` in `DatabaseAccess` (save: `SaveEntityViaActionsAsync` `:255`, after the Edit row gate `:249`; delete `:277-321`, call at `:313`; load); contexts; ordering; delete `Replace()`; `ISyncActionInterceptor` awareness of replaced deletes. Spike **S4**.
-- [ ] **T2** query-request `deleted: exclude|include|only` field (core request contract; surfaces in `RowPolicyContext` request flags). ng-spark request model updated.
-- [ ] **D2 / #285**: projection rebinding + push-down with fallback. Spike **S2**.
-- [ ] #283 regression test design (breadcrumb + policy) — written now, run in M14.
-- [ ] Spike **S8** (request budget).
+- [x] Spikes **S1, S3** first (expression shape decides the policy API).
+- [x] `IRowPolicy` / `IRowFilterPolicy` / `IRowCheckPolicy`, typed helpers, `RowPolicyContext`, `AddSparkRowPolicy<T>()`; `AppliesTo` cached in `ReflectionCache`.
+- [x] Compose in `RowSecurity` (`ResolveEffectiveRuleAsync`, `InvokeGetRowFilterAsync`, `ComposeRowFilterAsync`): rebinding + `AndAlso`, constant folding, same cache key, same position; budget + N+1 accounting.
+- [x] `HasRowRule` split (spike **S5**); reroute base after-save WITH CHECK (`DefaultPersistentObjectActions.cs:284-309`) through `IRowSecurity`.
+- [x] `IPersistentObjectInterceptor` in `DatabaseAccess` (save: `SaveEntityViaActionsAsync` `:255`, after the Edit row gate `:249`; delete `:277-321`, call at `:313`; load); contexts; ordering; delete `Replace()`; `ISyncActionInterceptor` awareness of replaced deletes. Spike **S4**.
+- [x] **T2** query-request `deleted: exclude|include|only` field (core request contract; surfaces in `RowPolicyContext` request flags). ng-spark request model updated.
+- [x] **D2 / #285**: projection rebinding + push-down with fallback. Spike **S2**.
+- [x] #283 regression test design (breadcrumb + policy) — written now, run in M14.
+- [x] Spike **S8** (request budget).
 
 ### M3 — DisableActions redesign (item 8) + custom action results
 - [ ] **D13**: `IDisablable`, `OnDisableActionsAsync(IDisablable, DisableActionsContext)` + batched form; call at load (PO get, query execute) and at submit (update, delete, new, custom action: parent + query + each row, union); 403 after row gate. Delete the old entry points; migrate CodeCoverage `RepositoryActions.OnLoadAsync`. ng-spark: consume `DisabledActions` unchanged on the wire. Spike **S6**, **S-MOD-F**.

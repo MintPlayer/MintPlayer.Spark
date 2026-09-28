@@ -105,7 +105,7 @@ public class RowPolicyBreadcrumbTests : SparkTestDriver
 
         var loader = Substitute.For<IModelLoader>();
         loader.GetEntityTypes().Returns(defs);
-        var byClr = defs.ToDictionary(d => d.ClrType, d => d, StringComparer.Ordinal);
+        var byClr = defs.ToDictionary(d => d.ClrType!, d => d, StringComparer.Ordinal);
         loader.GetEntityTypeByClrType(Arg.Any<string>()).Returns(ci => byClr.GetValueOrDefault((string)ci[0]!));
 
         var mapper = new EntityMapper(loader);
