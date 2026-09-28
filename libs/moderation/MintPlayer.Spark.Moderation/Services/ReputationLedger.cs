@@ -35,6 +35,11 @@ internal sealed partial class ReputationLedger
         if (await session.Advanced.ExistsAsync(id))
             return null;
 
+        // A reversal (detector, moderator, deletion, merge) of an entry that already counts is a
+        // decision, not something farmed: credited at once, so the total drops on the recompute that
+        // follows instead of at the next crediting run. Every other compensation, and a reversal of a
+        // still-pending entry, waits for the entry it cancels.
+        var creditNow = kind == ReputationEventKinds.Reversal && original.Credited;
         var compensation = new ReputationEvent
         {
             Id = id,
@@ -51,7 +56,7 @@ internal sealed partial class ReputationLedger
             // Never credited before the entry it cancels: a pending up-vote withdrawn inside the delay
             // nets to zero at crediting time instead of dipping below zero first.
             CreditableAfterUtc = original.CreditableAfterUtc > nowUtc ? original.CreditableAfterUtc : nowUtc,
-            Credited = false,
+            Credited = creditNow,
             CompensatesId = original.Id,
             RuleId = ruleId,
             CaseId = caseId,
@@ -159,6 +164,34 @@ internal sealed partial class ReputationLedger
             var summary = await ComputeAsync(session, userId, cancellationToken);
             await session.StoreAsync(summary, ModerationIds.Summary(userId), cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// The not-yet-credited points of <paramref name="userId"/>, read from the pending index at the
+    /// moment of asking. The stored summary's <see cref="ReputationSummary.Pending"/> is only as fresh
+    /// as the last recompute, and a vote does not recompute (that would cost the vote path two index
+    /// waits); the index is updated by the vote's own transaction, so this read cannot miss a vote
+    /// through a skipped or crashed recompute. Waits briefly for the index; when it is still stale the
+    /// stale figure is returned rather than failing a badge.
+    /// </summary>
+    public async Task<int> ReadPendingAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        using var session = documentStore.OpenAsyncSession();
+        try
+        {
+            var row = await session.Query<Moderation_PendingReputation.Result, Moderation_PendingReputation>()
+                .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(2)))
+                .Where(c => c.UserId == userId)
+                .FirstOrDefaultAsync(cancellationToken);
+            return row?.Points ?? 0;
+        }
+        catch (TimeoutException)
+        {
+            var row = await session.Query<Moderation_PendingReputation.Result, Moderation_PendingReputation>()
+                .Where(c => c.UserId == userId)
+                .FirstOrDefaultAsync(cancellationToken);
+            return row?.Points ?? 0;
         }
     }
 

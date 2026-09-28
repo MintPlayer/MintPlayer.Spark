@@ -83,6 +83,11 @@ public class ModerationFraudTests : SparkTestDriver
         reversals.Should().HaveCount(5);
         reversals.Should().OnlyContain(e => e.RuleId == "serial" && e.CaseId == caseId && e.Points == -10);
         (await host.LoadAsync<ModerationTally>(ModerationIds.Tally(alicePosts[0])))!.Score.Should().Be(0);
+        // The stored summary (what the privilege provider reads), with no recompute or crediting run:
+        // the reversal itself lowered the total.
+        var stored = await host.LoadAsync<ReputationSummary>(ModerationIds.Summary(Alice));
+        stored!.Total.Should().Be(0, "a reversal of credited entries counts at once");
+        stored.Pending.Should().Be(0);
 
         await host.CreditAsync();
         (await host.SummaryAsync(Alice)).Total.Should().Be(0);

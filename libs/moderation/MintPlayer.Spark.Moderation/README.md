@@ -116,8 +116,15 @@ Privileges are applied as groups by a composed group-membership provider (core's
   `Moderation/PendingReputation`, `Moderation/VotePairs`, and the map index
   `Moderation/EntriesToCredit`), deployed from this assembly by core; a test asserts they deploy
   (a deploy failure only logs to the console). The privilege provider reads a per-user
-  `ModerationReputation/{userId}` summary document, recomputed from the indexes by the jobs — so a
-  request costs one batched load, never a query.
+  `ModerationReputation/{userId}` summary document, recomputed from the indexes by the crediting job
+  and by every reversal, flag decision and deletion — so a request costs one batched load, never a
+  query. A vote does not recompute (it would cost the vote path two index waits); the badge's
+  "+N pending" is therefore read live from `Moderation/PendingReputation` by
+  `GetReputationAsync`, so a new vote shows at once.
+- A reversal of an entry that is already credited is itself credited at once (a decision, like a
+  flag outcome), so the total drops when the reversal recomputes the summary, not at the next
+  crediting run. A reversal of a still-pending entry, and every retraction, waits for the entry it
+  cancels.
 
 ## The ten vote-fraud measures (D14)
 

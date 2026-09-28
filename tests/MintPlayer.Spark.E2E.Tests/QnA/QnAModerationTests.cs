@@ -38,8 +38,7 @@ public class QnAModerationTests
         var (voted, votedBody) = await voter.Client.VoteAsync(QuestionTypeId, question.Id!, +1);
         voted.Should().Be(200, votedBody.ToString());
 
-        // Summaries are derived data the jobs write; recompute shows the pending half before any credit.
-        await host.RecomputeAsync(author.Id);
+        // No recompute: the badge reads pending live, so the vote shows at once (M13 finding, fixed in M14).
         var pending = await author.Client.ReputationAsync();
         pending.Total.Should().Be(0, "nothing is credited before the job runs");
         pending.Pending.Should().Be(10, "the up-vote is on the ledger, waiting");
@@ -82,8 +81,7 @@ public class QnAModerationTests
         var report = await host.RunFraudDetectorAsync();
         report.GetProperty("reversedVotes").GetInt32().Should().BeGreaterThanOrEqualTo(5, report.ToString());
 
-        // A compensation is a ledger entry like any other: it counts once the crediting job credits it.
-        await host.RunCreditingAsync();
+        // A reversal of credited entries counts at once: no crediting run between detecting and reading.
         (await target.Client.ReputationAsync()).Total.Should().Be(0, "a reversal compensates every credited entry");
         foreach (var id in ids)
             (await voter.Client.ScoreAsync(QuestionTypeId, id)).Should().Be(0, "a reversal also neutralises the vote");

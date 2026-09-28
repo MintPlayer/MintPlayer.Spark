@@ -100,7 +100,11 @@ public sealed class ReputationSummary
     public string UserId { get; set; } = string.Empty;
     /// <summary>Sum of every credited entry — the number shown on the badge.</summary>
     public int Total { get; set; }
-    /// <summary>Sum of entries not yet credited (delayed crediting).</summary>
+    /// <summary>
+    /// Sum of entries not yet credited (delayed crediting), as of the last recompute. A vote does not
+    /// recompute, so this lags; the badge (<c>ISparkModeration.GetReputationAsync</c>) reads pending
+    /// live from the index instead.
+    /// </summary>
     public int Pending { get; set; }
     /// <summary>What counts toward privileges: <see cref="Total"/>, minus the vote-derived part when the diversity rule fails.</summary>
     public int PrivilegeReputation { get; set; }

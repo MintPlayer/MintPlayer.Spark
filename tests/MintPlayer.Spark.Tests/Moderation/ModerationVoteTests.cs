@@ -231,6 +231,25 @@ public class ModerationVoteTests : SparkTestDriver
         (await host.CreditAsync()).Should().Be(0, "crediting is idempotent");
     }
 
+    [Fact]
+    public async Task M5_the_badge_shows_a_new_vote_as_pending_at_once_without_any_recompute()
+    {
+        // M13 finding: a vote never recomputed its recipient's summary, so "+N pending" stayed stale
+        // for the whole 48 h delay. No SummaryAsync / crediting here: only the vote and the badge read.
+        await using var host = await StartAsync(o => o.Fraud.CreditDelayHours = 48);
+        var post = await host.SeedPostAsync(Alice);
+
+        await host.VoteAsync(Bob, post, 1);
+        var (status, voted) = await host.SendAsync("/spark/moderation/reputation", new { }, Alice);
+        status.Should().Be(HttpStatusCode.OK);
+        voted.GetProperty("result").GetProperty("pending").GetInt32().Should().Be(10);
+        voted.GetProperty("result").GetProperty("total").GetInt32().Should().Be(0);
+
+        await host.VoteAsync(Bob, post, 0);
+        var (_, withdrawn) = await host.SendAsync("/spark/moderation/reputation", new { }, Alice);
+        withdrawn.GetProperty("result").GetProperty("pending").GetInt32().Should().Be(0, "the withdrawal nets the pending entry to zero");
+    }
+
     // ---- fraud measure 2: diversity --------------------------------------------------------------
 
     [Fact]

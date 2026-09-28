@@ -444,7 +444,8 @@ internal sealed partial class SparkModeration : ISparkModeration
         {
             UserId = userId,
             Total = snapshot.Summary?.Total ?? 0,
-            Pending = snapshot.Summary?.Pending ?? 0,
+            // Read live: a vote does not recompute its recipient's summary (see ReadPendingAsync).
+            Pending = await ledger.ReadPendingAsync(userId, cancellationToken),
             Privileges = ModerationPrivilegeProvider.Earned(snapshot, options.Value).Select(p => p.Key).ToList(),
             Suspended = snapshot.IsSuspended,
         };
