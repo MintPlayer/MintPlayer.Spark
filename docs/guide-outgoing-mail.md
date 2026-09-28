@@ -295,7 +295,10 @@ MJML + Scriban files in the app's repository, one per culture with a fallback ch
 
 Campaigns go through `ISparkMailer.SendCampaignAsync`: one message per recipient on the `mail-bulk`
 lane, throttled to 20 a minute by default (`Spark:Messaging:Queues:mail-bulk:MaxPerInterval` /
-`Interval`), each with one-click `List-Unsubscribe`. Never one mail with many BCCs.
+`Interval`), each with one-click `List-Unsubscribe`. Never one mail with many BCCs. How lanes are
+throttled (GCRA slots, burst allowance, deferral without burning retries, `ExpiresAtUtc`) is in the
+[Messaging README § Per-queue options and throttling](../libs/messaging/MintPlayer.Spark.Messaging/README.md#per-queue-options-and-throttling);
+the lane defaults are in the [MailManager README](../libs/mail/MintPlayer.Spark.MailManager/README.md).
 
 The lane paces what the app hands to the relay; the relay paces what it sends to each receiving
 domain. For a burst to one large provider, also set Postfix's per-destination pacing (a

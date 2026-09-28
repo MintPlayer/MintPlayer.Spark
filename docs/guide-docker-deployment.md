@@ -135,6 +135,52 @@ The **entry** proxy should *overwrite* (or append to, with `ProxyHops` counting 
 `X-Forwarded-For` rather than trust it: nginx `proxy_set_header X-Forwarded-For $remote_addr;`,
 Traefik `forwardedHeaders.trustedIPs` limited to real upstreams — **never** `forwardedHeaders.insecure`.
 
+#### Proxy recipes
+
+Spark reads only `X-Forwarded-For` and `X-Forwarded-Proto` (and `X-Forwarded-Host` with
+`ForwardHost`). Vendor headers such as `CF-Connecting-IP` are not read.
+
+**nginx in front, app on the same host or a private network** — the default trust list already covers
+it (`ProxyHops = 1`). Have nginx write the address it saw:
+
+```nginx
+location / {
+    proxy_pass         http://127.0.0.1:8080;
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Forwarded-For   $remote_addr;   # overwrite, never $proxy_add_x_forwarded_for at the edge
+    proxy_set_header   X-Forwarded-Proto $scheme;
+}
+```
+
+**Caddy** — `reverse_proxy` sets `X-Forwarded-For` / `X-Forwarded-Proto` itself and, unless its
+`trusted_proxies` option names an upstream, does not pass on what the client sent. Leave
+`trusted_proxies` unset when Caddy is the entry point; the Spark defaults then fit.
+
+**Traefik** — the compose file below: Traefik is the only ingress on a private Docker network, so the
+defaults fit. Set `entryPoints.<name>.forwardedHeaders.trustedIPs` only when something sits in front
+of Traefik.
+
+**A CDN in front of the proxy (e.g. Cloudflare → Traefik → app)** — two hops, and the CDN's edge
+addresses are public, so neither default holds:
+
+1. Let the proxy keep the CDN's `X-Forwarded-For`: Traefik `forwardedHeaders.trustedIPs` = the CDN's
+   published ranges (Cloudflare: `https://www.cloudflare.com/ips-v4` and `/ips-v6`).
+2. Tell Spark about both hops. Setting `KnownNetworks` **replaces** the default list, so name the
+   proxy's own network too:
+
+```yaml
+environment:
+  - Spark__ForwardedHeaders__ProxyHops=2
+  - Spark__ForwardedHeaders__KnownNetworks__0=172.16.0.0/12      # the Docker network Traefik is on
+  - Spark__ForwardedHeaders__KnownNetworks__1=173.245.48.0/20    # one entry per published CDN range …
+  - Spark__ForwardedHeaders__KnownNetworks__2=2400:cb00::/32     # … IPv4 and IPv6
+```
+
+Copy the ranges from the CDN's published list rather than from this page, and re-check it when the
+CDN announces changes. Check the trust list Spark logs at startup, then confirm that the client
+address the app sees (`HttpContext.Connection.RemoteIpAddress`) is the visitor's and not an edge
+address: if every visitor shares one address, they all share one rate-limit bucket.
+
 ### Connection Retry
 
 When using Docker Compose, the application container may start before RavenDB is ready. Spark includes built-in retry logic that waits for RavenDB to become available. With the default settings (30 retries, 2 second delay), the app will wait up to ~60 seconds for RavenDB to start.

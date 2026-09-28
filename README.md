@@ -182,6 +182,7 @@ MintPlayer.Spark/
 | [Attribute Descriptions](docs/guide-attribute-descriptions.md) | Help text per attribute, rendered as an [i] tooltip; seeded from `[Description]` or `///` summaries on synchronize |
 | [Identity & external login](libs/authorization/MintPlayer.Spark.Authorization/README.md) | The optional identity package: RavenDB-backed ASP.NET Identity, OAuth providers, JWT bearer, and the Angular half |
 | [Authorization](docs/guide-authorization.md) | `security.json`: rights, combined actions (no wildcards), the four precedence tiers, and what `Query` without `Read` does to a grid |
+| [Row Security](docs/guide-row-security.md) | Row filters and checks per type, row policies for many types, persistent-object interceptors, `WITH CHECK`, attribute redaction — and the documented override gaps |
 | [Authentication Schemes & Well-Known Groups](docs/guide-authentication-schemes.md) | Every scheme in the repo, the `anonymous`/`authenticated` groups, what an unauthenticated caller gets, and what happens when authentication fails |
 | [Passkeys (WebAuthn)](docs/guide-passkeys.md) | Turning them on, why they are gated separately from `SparkLocalCredentials`, why sign-in takes no username, pinning the relying-party id — and why the ceremony challenge must never reach the client |
 | [Controllers](docs/guide-controllers.md) | Mounting your own MVC controllers inside Spark's pipeline, CSRF on endpoints you wrote, `[SparkAuthorize]`, and reusing a row rule outside `/spark` |
@@ -189,6 +190,10 @@ MintPlayer.Spark/
 | [CORS](docs/guide-cors.md) | Which endpoints a page on another origin may read: Spark's own answer cross-origin by default, a library's and your own do not, and how each opts in or out — plus why the wildcard makes the dangerous configuration unreachable |
 | [Rate Limiting](docs/guide-rate-limiting.md) | Opting into the fixed-window limiter, metering your own path prefixes, where the middleware sits, and why a second `UseRateLimiter()` halves your budget |
 | [Durable Message Bus](libs/messaging/MintPlayer.Spark.Messaging/README.md) | RavenDB-backed messaging with per-handler retry isolation, checkpoint support, and queue isolation |
+| [Outgoing mail (MailManager)](docs/guide-outgoing-mail.md) | Transports and why none is silent, Development fail-closed and Mailpit, DNS and the relay container, templates, bulk pacing, bounces and suppression ([package README](libs/mail/MintPlayer.Spark.MailManager/README.md)) |
+| [Soft Delete](libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md) | `ISoftDeletable`: a delete becomes a mark, deleted rows hidden on every path, restore and purge, the recycle bin |
+| [History](libs/history/MintPlayer.Spark.History/README.md) | RavenDB revisions from the model, audit stamping, revision reads and revert through the save pipeline, licence limits |
+| [Moderation](docs/guide-moderation.md) | Votes, reputation, earned privileges as groups, vote-fraud defences, flags, lock/suspend ([package README](libs/moderation/MintPlayer.Spark.Moderation/README.md)) |
 | [Cross-Module Synchronization](docs/guide-cross-module-sync.md) | Entity replication between modules with write-back support |
 | [Cross-Module mTLS](docs/guide-replication-mtls.md) | Issuing and pinning the client certificates that authenticate one module to another |
 | [Subscription Workers](libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker/README.md) | RavenDB subscription-based background processing with retry handling |

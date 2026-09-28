@@ -1261,6 +1261,24 @@ the QnA E2E spec compiles and is run by M14, and nothing was checked in a browse
   `coverage/{slug}-host-…/host-started.txt` before it starts a measured host, and a host report is
   required only for the slugs with a marker (still fail-closed when marker information is absent);
   a filtered run passes, a host that started and lost its report still fails. Node tests added.
+
+**S-PKG2 — `dotnet pack` output of the new packages (M14, 2026-09-28).** `dotnet pack -c Release` of
+the seven new projects into a scratch folder, nuspecs read back. Every package is
+`11.0.0-preview.91`, `net11.0`, MIT, with its own id:
+`MintPlayer.Spark.Moderation.Abstractions` (no dependencies, README),
+`MintPlayer.Spark.Moderation` (→ Spark.Authorization, Spark.Cron, Moderation.Abstractions, Spark,
+Endpoints 11.2.0-rc.0, SourceGenerators.Attributes 12.1.0, RavenDB.Client 7.2.6; README),
+`MintPlayer.Spark.MailManager.Abstractions` (no dependencies), `MintPlayer.Spark.MailManager`
+(→ MailManager.Abstractions, Messaging, Spark, MailKit 4.18.1, Mjml.Net 4.15.0, Scriban.Signed 7.5.0,
+Endpoints, Attributes, RavenDB.Client; README), `MintPlayer.Spark.SoftDelete.Abstractions` (none,
+README), `MintPlayer.Spark.SoftDelete` (→ SoftDelete.Abstractions, Spark, …; README),
+`MintPlayer.Spark.History` (→ Spark, …; README). Only `lib/net11.0/<id>.dll` + README in each; no
+app or test project packs (`IsPackable=false` on both QnA projects). **Found and fixed:**
+`MailManager.Abstractions` shipped without a README; it now packs the MailManager README, as the
+other Abstractions packages do. The master workflow packs the whole `.slnx` (`dotnet pack --no-build`
+after `nx run-many --target=build:release`, which lists all seven projects), so the new ids are
+pushed with no workflow change. S-PKG1 (nuget.org prefix reservation and API-key scope for the new
+ids) is the owner's.
 ---
 
 ## 5. Risks

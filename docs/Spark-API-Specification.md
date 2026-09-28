@@ -68,9 +68,9 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
 
 **`POST /spark/po/load`** — `Endpoints/PersistentObject/Get.cs`
 
-- **Request body**: `{ objectTypeId, id, retryResults? }`
+- **Request body**: `{ objectTypeId, id, deleted?, retryResults? }` — `deleted` (`exclude` default, `include`, `only`) is honoured through the soft-delete row policy for holders of `ViewDeleted/T` (#460), so a row can be opened from the recycle bin
 - **Response shapes**:
-  - `200 OK` — a bare `PersistentObject` (**not** enveloped)
+  - `200 OK` — a bare `PersistentObject` (**not** enveloped); `disabledActions` lists what `OnDisableActionsAsync` withheld for the stored object
   - `404 Not Found` — object unknown, type unknown, or denied — indistinguishable by design
   - `449` on retry, enveloped
   - `401` on auth failure where signing in could help
@@ -193,6 +193,7 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
   - `take` — default `50`; clamped to `[1, 1000]`
   - `search` — passed to the query's search handler if declared
   - `parentId` + `parentType` — scoped-query context (requires both; `404` if the parent is not resolvable or not authorized)
+  - `deleted?` — `exclude` (default) / `include` / `only`; honoured only for holders of `ViewDeleted/T` (#460, T2)
   - `retryResults?` — `OnQueryAsync` can prompt
 - **Response shapes**:
   - `200 OK` — query result (bare): `{ columns, items, totalItems, skip, take }`
@@ -407,8 +408,10 @@ two are deliberately indistinguishable — the difference is a fact about the ca
 - **Response shapes**:
   - `200 OK` — body:
     ```json
-    { "canRead": bool, "canCreate": bool, "canEdit": bool, "canDelete": bool }
+    { "canRead": bool, "canCreate": bool, "canEdit": bool, "canDelete": bool,
+      "canRestore": bool, "canPurge": bool, "canViewDeleted": bool, "canViewHistory": bool, "canRevert": bool }
     ```
+    The last five (#460) answer the `Restore`, `Purge`, `ViewDeleted`, `History` and `Revert` rights; clients should treat them as optional (older servers omit them).
   - `404 Not Found` — unknown entity type
 
 #### Get Program Units
@@ -418,6 +421,20 @@ two are deliberately indistinguishable — the difference is a fact about the ca
 - **Response**: `200 OK` — body: `ProgramUnitsConfiguration` (navigation tree of Program Unit Groups and their Program Units, filtered per caller).
 - **Filtering** — by the right the unit's click will demand: `query` units require the `Query` right on the target's entity type, `persistentObject` units require `Read`, `url` units are always visible. Groups whose units all filtered away are dropped. Fail-closed: a typed unit whose target can't be resolved is hidden.
 - **Unit shape** — `type` is canonicalized by the loader to exactly `query` / `persistentObject` / `url`; a `persistentObject` unit may carry `objectId` (deep link to one object — for a model-only type, the composed page served by the type's name-resolved Actions class via `OnLoadAsync(id, parent)`; see `guide-program-units.md`); a `url` unit carries `url`.
+
+### Endpoints mapped by add-on packages (#460)
+
+These are mapped only when the package is added, follow the same literal-route convention (ids in the `POST` body, antiforgery on mutating routes — the two mail routes are explicitly exempt, since a relay or a mail provider posts them without a browser session) and are specified in each package's README:
+
+| Package | Routes | Reference |
+|---|---|---|
+| `MintPlayer.Spark.SoftDelete` | `POST /spark/po/restore`, `POST /spark/po/purge` | [README](../libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md) |
+| `MintPlayer.Spark.History` | `POST /spark/po/revisions`, `/spark/po/revision`, `/spark/po/revert` | [README](../libs/history/MintPlayer.Spark.History/README.md) |
+| `MintPlayer.Spark.MailManager` | `POST /spark/mail/bounces` (opt-in, bearer secret; `503` while disabled), `/spark/mail/unsubscribe` (one-click `List-Unsubscribe`) | [README](../libs/mail/MintPlayer.Spark.MailManager/README.md) |
+| `MintPlayer.Spark.Moderation` | `POST /spark/moderation/{vote, votes, flag, lock, unlock, status, reputation, reputation/history, cases, case, case/decide, suspend, unsuspend, merge, audit}` | [README](../libs/moderation/MintPlayer.Spark.Moderation/README.md) |
+| `MintPlayer.Spark.Authorization` | `/spark/auth/*` including the account routes `manage/password`, `manage/profile`, `manage/2fa/authenticator-uri`, `manage/personal-data`, `DELETE manage/account`, `confirm-email` | [README § Identity Endpoints](../libs/authorization/MintPlayer.Spark.Authorization/README.md#identity-endpoints) |
+
+Refusals from these and from the core write endpoints are told apart by status code: `404` (not visible — a hidden row is never disclosed), `400` (`SparkValidationException`, e.g. locked or suspended), `403 { error, action }` (a disabled action), `409` (stale `etag`), `429` (`SparkThrottledException`, with `Retry-After` and envelope `retryAfterSeconds`; the rate limiter's own `429` has an empty body).
 
 ---
 
