@@ -39,7 +39,23 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
         // call and no ordering argument to defend. See LegacySubscriptionCleanup.
         await legacyCleanup.RunAsync(stoppingToken);
 
-        var queueNames = DiscoverQueueNames(serviceProvider).ToList();
+        // Declared queues count too: a BroadcastOptions.Queue override may only name a declared queue,
+        // and in per-queue mode a queue with no worker is a queue nobody drains.
+        var queueNames = DiscoverQueueNames(serviceProvider)
+            .Union(Options.Queues.Keys.Where(Services.QueueNames.IsValid), StringComparer.Ordinal)
+            .ToList();
+
+        if (Options.SubscriptionMode == ESubscriptionMode.SubscriptionPerQueue)
+        {
+            foreach (var (name, queue) in Options.Queues)
+            {
+                if (queue.MaxConcurrency > 1)
+                    logger.LogWarning(
+                        "Queue '{QueueName}' sets MaxConcurrency = {MaxConcurrency}, which only applies in "
+                        + "SingleSubscription mode; in SubscriptionPerQueue mode it is handled one message at a time",
+                        name, queue.MaxConcurrency);
+            }
+        }
         if (queueNames.Count == 0)
         {
             logger.LogWarning(

@@ -620,4 +620,95 @@ public class MessageSubscriptionWorkerE2ETests : SparkTestDriver
             await worker.StopAsync(CancellationToken.None);
         }
     }
+
+    // --- #460 M4: SubscriptionPerQueue gets HandlerTimeout and claim renewal -----------------
+
+    public record HangMessage(string Id);
+    public record SlowMessage(string Id);
+
+    public sealed class HangingRecipient : IRecipient<HangMessage>
+    {
+        public TaskCompletionSource Cancelled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task HandleAsync(HangMessage message, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                Cancelled.TrySetResult();
+                throw;
+            }
+        }
+    }
+
+    public sealed class SlowRecipient : IRecipient<SlowMessage>
+    {
+        public Func<Task> During { get; set; } = () => Task.CompletedTask;
+
+        public Task HandleAsync(SlowMessage message, CancellationToken cancellationToken = default) => During();
+    }
+
+    [Fact]
+    public async Task Per_queue_mode_cancels_a_hung_handler_at_HandlerTimeout_and_frees_the_queue()
+    {
+        var recipient = new HangingRecipient();
+        var sp = ProviderFor<HangMessage, HangingRecipient>(recipient, new SparkMessagingOptions
+        {
+            HandlerTimeout = TimeSpan.FromMilliseconds(500),
+        });
+
+        var id = await SeedAsync(new HangMessage("orders/hang"));
+        var worker = NewWorker(typeof(HangMessage).FullName!, sp);
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            await recipient.Cancelled.Task.WaitAsync(PollTimeout);
+            var final = await WaitForMessageAsync(id, m => m.Status != EMessageStatus.Processing);
+
+            final.Status.Should().Be(EMessageStatus.Failed, "a timed-out handler is parked for a retry, not left claimed");
+            final.OwnerId.Should().BeNull();
+            final.Handlers.Should().ContainSingle().Which.AttemptCount.Should().Be(1);
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
+    [Fact]
+    public async Task Per_queue_mode_renews_the_claim_while_a_handler_runs()
+    {
+        var recipient = new SlowRecipient();
+        var sp = ProviderFor<SlowMessage, SlowRecipient>(recipient, new SparkMessagingOptions
+        {
+            ClaimRenewInterval = TimeSpan.FromMilliseconds(50),
+            ClaimTtl = TimeSpan.FromMinutes(5),
+        });
+
+        var id = await SeedAsync(new SlowMessage("orders/slow"));
+        DateTime? before = null;
+        DateTime? after = null;
+        recipient.During = async () =>
+        {
+            before = (await WaitForMessageAsync(id, m => m.ClaimExpiresAtUtc.HasValue)).ClaimExpiresAtUtc;
+            after = (await WaitForMessageAsync(id, m => m.ClaimExpiresAtUtc > before)).ClaimExpiresAtUtc;
+        };
+        var worker = NewWorker(typeof(SlowMessage).FullName!, sp);
+
+        await worker.StartAsync(CancellationToken.None);
+        try
+        {
+            await WaitForMessageAsync(id, m => m.Status == EMessageStatus.Completed);
+
+            after!.Value.Should().BeAfter(before!.Value, "the claim was pushed out while the handler was still running");
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
 }

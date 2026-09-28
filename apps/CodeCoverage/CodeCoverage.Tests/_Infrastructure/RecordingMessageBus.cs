@@ -11,6 +11,12 @@ namespace CodeCoverage.Tests;
 /// </remarks>
 public sealed class RecordingMessageBus : IMessageBus
 {
+    // Routes the options overload onto the three this fake records, so it sees every publish.
+    public Task BroadcastAsync<TMessage>(TMessage message, BroadcastOptions options, CancellationToken cancellationToken = default)
+        => options.DeduplicationKey is { } key ? BroadcastOnceAsync(message, key, cancellationToken)
+         : options.Delay is { } delay ? DelayBroadcastAsync(message, delay, cancellationToken)
+         : BroadcastAsync(message, cancellationToken);
+
     /// <summary>Every message, in the order sent, whatever the method.</summary>
     public List<object> Messages { get; } = [];
 

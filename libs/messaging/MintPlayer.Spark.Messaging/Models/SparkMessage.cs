@@ -19,6 +19,21 @@ public class SparkMessage
     public DateTime? CompletedAtUtc { get; set; }
 
     /// <summary>
+    /// Publish-time deadline (<c>BroadcastOptions.ExpiresAtUtc</c>). Past it — or when the next retry
+    /// or throttle slot would fall past it — the message is dead-lettered with
+    /// <see cref="EDeadLetterReason.Expired"/> instead of being handled.
+    /// </summary>
+    public DateTime? ExpiresAtUtc { get; set; }
+
+    /// <summary>Set together with <see cref="EMessageStatus.DeadLettered"/>; null otherwise.</summary>
+    public EDeadLetterReason? DeadLetterReason { get; set; }
+
+    /// <summary>
+    /// Clear <see cref="PayloadJson"/> once the message is terminal (<c>BroadcastOptions.ScrubPayloadOnTerminal</c>).
+    /// </summary>
+    public bool ScrubPayloadOnTerminal { get; set; }
+
+    /// <summary>
     /// Per-handler execution state. Populated when the message is first picked up for processing.
     /// </summary>
     public List<HandlerExecution> Handlers { get; set; } = new();

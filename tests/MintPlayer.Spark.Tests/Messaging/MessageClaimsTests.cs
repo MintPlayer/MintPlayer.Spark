@@ -141,4 +141,47 @@ public class MessageClaimsTests : SparkTestDriver
         lost.Should().BeFalse("the second writer read a version the first has already replaced");
         (await LoadAsync(id)).OwnerId.Should().Be(Us);
     }
+
+    [Fact]
+    public async Task Deferring_an_unstarted_message_parks_it_unwoken_at_its_slot_in_one_write()
+    {
+        var id = await SeedMessageAsync(Us, attempts: 2);
+        var slot = DateTime.UtcNow.AddMinutes(3);
+
+        using (var session = Store.OpenAsyncSession())
+        {
+            var message = await session.LoadAsync<SparkMessage>(id);
+            message.WakeUp = true;
+            (await MessageClaims.DeferUnstartedAsync(session, message, slot, CancellationToken.None)).Should().BeTrue();
+            session.Advanced.NumberOfRequests.Should().Be(2, "one load, one write");
+        }
+
+        var parked = await LoadAsync(id);
+        parked.Status.Should().Be(EMessageStatus.Pending);
+        parked.OwnerId.Should().BeNull();
+        parked.ClaimExpiresAtUtc.Should().NotHaveValue();
+        parked.WakeUp.Should().BeFalse("true would redeliver it at once, in a tight loop");
+        parked.NextAttemptAtUtc.Should().Be(slot);
+        parked.AttemptCount.Should().Be(1, "the pickup that did not start is not an attempt");
+        (await MessageClaims.WasReclaimedAsync(Store, id, Us, CancellationToken.None))
+            .Should().BeFalse("the owner deferred it itself; that is not a lost claim");
+    }
+
+    [Fact]
+    public async Task Deferring_loses_to_a_concurrent_reclaim()
+    {
+        var id = await SeedMessageAsync(Us);
+
+        using var session = Store.OpenAsyncSession();
+        var message = await session.LoadAsync<SparkMessage>(id);
+        using (var sweeper = Store.OpenAsyncSession())
+        {
+            (await sweeper.LoadAsync<SparkMessage>(id)).OwnerId = Them;
+            await sweeper.SaveChangesAsync();
+        }
+
+        (await MessageClaims.DeferUnstartedAsync(session, message, DateTime.UtcNow.AddMinutes(1), CancellationToken.None))
+            .Should().BeFalse();
+        (await LoadAsync(id)).OwnerId.Should().Be(Them, "the reclaim wins");
+    }
 }

@@ -110,9 +110,17 @@ internal static class MessageClaims
         using var session = store.OpenAsyncSession();
         var message = await session.LoadAsync<SparkMessage>(messageId, cancellationToken);
         return message is not null
-            && (message.Status == EMessageStatus.Pending
+            && ((message.Status == EMessageStatus.Pending && !IsDeferredByThrottle(message))
                 || (message.Status == EMessageStatus.Processing && message.OwnerId != ownerId));
     }
+
+    /// <summary>
+    /// Pending, unwoken and scheduled for later: the shape <see cref="DeferUnstartedAsync"/> leaves.
+    /// The owner put it there itself, so it is not a reclaim. A sweeper reclaim always sets
+    /// <see cref="SparkMessage.WakeUp"/>, which is what tells the two apart.
+    /// </summary>
+    private static bool IsDeferredByThrottle(SparkMessage message)
+        => !message.WakeUp && message.NextAttemptAtUtc is { } next && next > DateTime.UtcNow;
 
     /// <summary>
     /// Releases a claim without deciding the message's fate, returning it to
@@ -141,5 +149,47 @@ internal static class MessageClaims
             message.AttemptCount--;
 
         await session.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The throttle's variant of <see cref="ReleaseUnstartedAsync"/>: gives up a claim on a message
+    /// whose handlers have not started, and schedules it for <paramref name="nextAttemptAtUtc"/>.
+    /// <para>
+    /// Three differences, each required. It runs in the <b>caller's</b> session on the message the
+    /// caller already loaded, so it is one write, not a load and a write. It leaves
+    /// <see cref="SparkMessage.WakeUp"/> <b>false</b>, because the message must stay invisible to the
+    /// subscription until the sweeper wakes it at its slot — <c>true</c> would redeliver it at once,
+    /// in a tight loop. And the save is <b>optimistic</b>: if the sweeper reclaimed the message in the
+    /// meantime, the reclaim wins and this returns false.
+    /// </para>
+    /// </summary>
+    public static async Task<bool> DeferUnstartedAsync(
+        IAsyncDocumentSession session,
+        SparkMessage message,
+        DateTime nextAttemptAtUtc,
+        CancellationToken cancellationToken)
+    {
+        message.Status = EMessageStatus.Pending;
+        message.OwnerId = null;
+        message.ClaimExpiresAtUtc = null;
+        message.WakeUp = false;
+        message.NextAttemptAtUtc = nextAttemptAtUtc;
+        // Not an attempt: nothing ran, so no retry budget is burned.
+        if (message.AttemptCount > 0)
+            message.AttemptCount--;
+
+        // Forced for this one entity, leaving the session's own mode alone: the processor's session is
+        // deliberately last-write-wins for the handler saves that follow a normal admission.
+        // Re-storing a tracked entity with its own change vector forces the check for that entity only.
+        await session.StoreAsync(message, session.Advanced.GetChangeVectorFor(message), message.Id, cancellationToken);
+        try
+        {
+            await session.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        catch (Raven.Client.Exceptions.ConcurrencyException)
+        {
+            return false;
+        }
     }
 }

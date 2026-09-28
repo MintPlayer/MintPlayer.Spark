@@ -124,6 +124,22 @@ public class SparkMessagingOptions
     /// </para>
     /// </summary>
     public TimeSpan HandlerTimeout { get; set; } = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// Per-queue settings — throttling, concurrency, attempts, backoff — keyed by queue name
+    /// (<c>Spark:Messaging:Queues:{name}</c>). A queue with no entry behaves exactly as before.
+    /// Declaring a queue here also makes it a valid <c>BroadcastOptions.Queue</c> target and, in
+    /// <see cref="ESubscriptionMode.SubscriptionPerQueue"/> mode, gives it a worker.
+    /// <para>
+    /// Empty by default (a dictionary is merged by the binder, so an initializer would be kept, not
+    /// replaced). Configuration is applied over code for this property; see <see cref="SparkQueueOptions"/>.
+    /// </para>
+    /// </summary>
+    public Dictionary<string, SparkQueueOptions> Queues { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>The settings for <paramref name="queueName"/>, or null when the queue has none.</summary>
+    public SparkQueueOptions? QueueOptionsFor(string queueName)
+        => Queues.TryGetValue(queueName, out var queue) ? queue : null;
 }
 
 /// <summary>

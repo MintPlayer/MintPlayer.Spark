@@ -80,11 +80,10 @@ public class MessageProcessorTests : SparkTestDriver
     private static readonly AllowList Everything = new(_ => true, _ => true);
 
     private MessageProcessor NewProcessor(IServiceProvider services, int retentionDays = 7)
-        => new(
-            services,
-            Store,
-            Options.Create(new SparkMessagingOptions { RetentionDays = retentionDays }),
-            NullLogger<MessageProcessor>.Instance);
+        => NewProcessor(services, new SparkMessagingOptions { RetentionDays = retentionDays });
+
+    private MessageProcessor NewProcessor(IServiceProvider services, SparkMessagingOptions options)
+        => new(services, Store, Options.Create(options), NullLogger<MessageProcessor>.Instance);
 
     private static ServiceProvider Services(IMessageTypeAllowList allowList, Action<IServiceCollection>? configure = null)
     {
@@ -92,6 +91,10 @@ public class MessageProcessorTests : SparkTestDriver
         services.AddSingleton(allowList);
         services.AddScoped<MessageCheckpoint>();
         services.AddScoped<IMessageCheckpoint>(sp => sp.GetRequiredService<MessageCheckpoint>());
+        services.AddScoped<MessageContext>();
+        services.AddScoped<IMessageContext>(sp => sp.GetRequiredService<MessageContext>());
+        services.AddScoped<MessageProgress>();
+        services.AddScoped<IMessageProgress>(sp => sp.GetRequiredService<MessageProgress>());
         configure?.Invoke(services);
         return services.BuildServiceProvider();
     }
@@ -101,24 +104,36 @@ public class MessageProcessorTests : SparkTestDriver
         string? payloadJson = null,
         string owner = Owner,
         params HandlerExecution[] handlers)
+        => await SeedMessageAsync(m =>
+        {
+            if (messageType is not null) m.MessageType = messageType;
+            if (payloadJson is not null) m.PayloadJson = payloadJson;
+            m.OwnerId = owner;
+            m.Handlers = [.. handlers];
+        });
+
+    private async Task<string> SeedMessageAsync(Action<SparkMessage> shape)
     {
-        var message = new SparkMessage
+        var message = NewClaimedMessage();
+        shape(message);
+        await SeedAsync(session => session.StoreAsync(message));
+        return message.Id!;
+    }
+
+    private static SparkMessage NewClaimedMessage()
+        => new()
         {
             QueueName = "processor-tests",
-            MessageType = messageType ?? typeof(Ping).AssemblyQualifiedName!,
-            PayloadJson = payloadJson ?? JsonConvert.SerializeObject(new Ping { Text = "hello" }),
+            MessageType = typeof(Ping).AssemblyQualifiedName!,
+            PayloadJson = JsonConvert.SerializeObject(new Ping { Text = "hello" }),
             CreatedAtUtc = DateTime.UtcNow,
             MaxAttempts = 3,
             AttemptCount = 1,
             Status = EMessageStatus.Processing,
-            OwnerId = owner,
+            OwnerId = Owner,
             ClaimExpiresAtUtc = DateTime.UtcNow.AddMinutes(5),
             WakeUp = true,
-            Handlers = [.. handlers],
         };
-        await SeedAsync(session => session.StoreAsync(message));
-        return message.Id!;
-    }
 
     private async Task<(SparkMessage Message, bool HasExpiry)> LoadAsync(string id)
     {
@@ -302,5 +317,249 @@ public class MessageProcessorTests : SparkTestDriver
         message.Status.Should().Be(EMessageStatus.Completed);
         message.CompletedAtUtc.Should().HaveValue();
         hasExpiry.Should().BeTrue();
+    }
+
+    // --- #460 M4: expiry, dead-letter reasons, throttling, scrubbing, context, progress ----------
+
+    public sealed class FailingRecipient : IRecipient<Ping>
+    {
+        public int Calls;
+
+        public Task HandleAsync(Ping message, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            throw new InvalidOperationException("relay down");
+        }
+    }
+
+    public sealed class ContextRecipient(IMessageContext context, List<string> seen) : IRecipient<Ping>
+    {
+        public Task HandleAsync(Ping message, CancellationToken cancellationToken = default)
+        {
+            seen.Add($"{context.MessageId}|{context.QueueName}|{context.AttemptCount}|{context.ExpiresAtUtc:O}");
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>Sends to three recipients; the first attempt dies after two of them.</summary>
+    public sealed class FanOutRecipient(IMessageProgress progress, List<string> sent) : IRecipient<Ping>
+    {
+        public static int Attempts;
+
+        public async Task HandleAsync(Ping message, CancellationToken cancellationToken = default)
+        {
+            Attempts++;
+            foreach (var recipient in new[] { "a", "b", "c" })
+            {
+                if (await progress.IsDoneAsync(recipient, cancellationToken))
+                    continue;
+                if (Attempts == 1 && recipient == "c")
+                    throw new InvalidOperationException("crashed before c");
+
+                sent.Add(recipient);
+                await progress.MarkDoneAsync(recipient, cancellationToken);
+            }
+        }
+    }
+
+    private static SparkMessagingOptions WithQueue(SparkQueueOptions queue)
+        => new() { Queues = { ["processor-tests"] = queue } };
+
+    private async Task ReclaimAsync(string id)
+    {
+        using var session = Store.OpenAsyncSession();
+        var message = await session.LoadAsync<SparkMessage>(id);
+        message.Status = EMessageStatus.Processing;
+        message.OwnerId = Owner;
+        message.ClaimExpiresAtUtc = DateTime.UtcNow.AddMinutes(5);
+        message.AttemptCount++;
+        await session.SaveChangesAsync();
+    }
+
+    [Fact]
+    public async Task A_message_past_its_expiry_is_dead_lettered_as_Expired_without_running()
+    {
+        var recipient = new PingRecipient();
+        using var services = Services(Everything, s => s.AddSingleton<IRecipient<Ping>>(recipient));
+        var id = await SeedMessageAsync(m => m.ExpiresAtUtc = DateTime.UtcNow.AddMinutes(-1));
+
+        await NewProcessor(services).ProcessAsync(id, Owner, CancellationToken.None);
+
+        var (message, hasExpiry) = await LoadAsync(id);
+        message.Status.Should().Be(EMessageStatus.DeadLettered);
+        message.DeadLetterReason.Should().Be(EDeadLetterReason.Expired);
+        message.OwnerId.Should().BeNull();
+        hasExpiry.Should().BeTrue();
+        recipient.Seen.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Dead_letter_reasons_say_which_road_led_there()
+    {
+        using var failing = Services(Everything, s => s.AddScoped<IRecipient<Ping>, FailingRecipient>());
+        var exhausted = await SeedMessageAsync(m => m.MaxAttempts = 1);
+        await NewProcessor(failing).ProcessAsync(exhausted, Owner, CancellationToken.None);
+
+        using var refusing = Services(new AllowList(_ => false, _ => true));
+        var poison = await SeedMessageAsync(m => { });
+        await NewProcessor(refusing).ProcessAsync(poison, Owner, CancellationToken.None);
+
+        using var nonRetryable = Services(Everything, s => s.AddScoped<IRecipient<Ping>, SyncNonRetryableRecipient>());
+        var refused = await SeedMessageAsync(m => { });
+        await NewProcessor(nonRetryable).ProcessAsync(refused, Owner, CancellationToken.None);
+
+        (await LoadAsync(exhausted)).Message.DeadLetterReason.Should().Be(EDeadLetterReason.MaxAttempts);
+        (await LoadAsync(poison)).Message.DeadLetterReason.Should().Be(EDeadLetterReason.NonRetryable);
+        (await LoadAsync(refused)).Message.DeadLetterReason.Should().Be(EDeadLetterReason.NonRetryable);
+    }
+
+    [Fact]
+    public async Task A_completed_message_carries_no_dead_letter_reason()
+    {
+        using var services = Services(Everything, s => s.AddSingleton<IRecipient<Ping>>(new PingRecipient()));
+        var id = await SeedMessageAsync(m => { });
+
+        await NewProcessor(services).ProcessAsync(id, Owner, CancellationToken.None);
+
+        var (message, _) = await LoadAsync(id);
+        message.Status.Should().Be(EMessageStatus.Completed);
+        message.DeadLetterReason.HasValue.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_throttled_message_is_deferred_once_to_its_slot_and_admitted_when_it_returns()
+    {
+        var recipient = new PingRecipient();
+        using var services = Services(Everything, s => s.AddSingleton<IRecipient<Ping>>(recipient));
+        var processor = NewProcessor(services, WithQueue(new SparkQueueOptions { MaxPerInterval = 1, Interval = TimeSpan.FromSeconds(1) }));
+        var first = await SeedMessageAsync(m => { });
+        var second = await SeedMessageAsync(m => { });
+
+        await processor.ProcessAsync(first, Owner, CancellationToken.None);
+        await processor.ProcessAsync(second, Owner, CancellationToken.None);
+
+        (await LoadAsync(first)).Message.Status.Should().Be(EMessageStatus.Completed);
+        var (deferred, _) = await LoadAsync(second);
+        deferred.Status.Should().Be(EMessageStatus.Pending);
+        deferred.OwnerId.Should().BeNull();
+        deferred.ClaimExpiresAtUtc.Should().NotHaveValue();
+        deferred.WakeUp.Should().BeFalse("it must stay invisible to the subscription until the sweeper wakes it at its slot");
+        deferred.AttemptCount.Should().Be(0, "a deferral is not an attempt");
+        deferred.Handlers.Should().BeEmpty("no handler started");
+        deferred.NextAttemptAtUtc.Should().HaveValue();
+        recipient.Seen.Should().HaveCount(1);
+        processor.Admission.ReservationCount.Should().Be(1);
+
+        var slot = deferred.NextAttemptAtUtc!.Value;
+        await AsyncWait.UntilAsync(() => DateTime.UtcNow >= slot, "the reserved slot to arrive", TimeSpan.FromSeconds(10));
+        await ReclaimAsync(second);
+        await processor.ProcessAsync(second, Owner, CancellationToken.None);
+
+        (await LoadAsync(second)).Message.Status.Should().Be(EMessageStatus.Completed);
+        processor.Admission.ReservationCount.Should().Be(0, "the returning message used the slot it held");
+        recipient.Seen.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task A_throttle_slot_after_the_expiry_dead_letters_the_message_as_Expired()
+    {
+        using var services = Services(Everything, s => s.AddSingleton<IRecipient<Ping>>(new PingRecipient()));
+        var processor = NewProcessor(services, WithQueue(new SparkQueueOptions { MaxPerInterval = 1, Interval = TimeSpan.FromHours(1) }));
+        var first = await SeedMessageAsync(m => { });
+        var resetMail = await SeedMessageAsync(m => m.ExpiresAtUtc = DateTime.UtcNow.AddMinutes(10));
+
+        await processor.ProcessAsync(first, Owner, CancellationToken.None);
+        await processor.ProcessAsync(resetMail, Owner, CancellationToken.None);
+
+        var (message, _) = await LoadAsync(resetMail);
+        message.Status.Should().Be(EMessageStatus.DeadLettered);
+        message.DeadLetterReason.Should().Be(EDeadLetterReason.Expired);
+        processor.Admission.ReservationCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task A_retry_that_would_run_after_the_expiry_dead_letters_the_message_as_Expired()
+    {
+        using var services = Services(Everything, s => s.AddScoped<IRecipient<Ping>, FailingRecipient>());
+        // First backoff is 5 s by default; the message expires sooner.
+        var id = await SeedMessageAsync(m => m.ExpiresAtUtc = DateTime.UtcNow.AddSeconds(2));
+
+        await NewProcessor(services).ProcessAsync(id, Owner, CancellationToken.None);
+
+        var (message, _) = await LoadAsync(id);
+        message.Status.Should().Be(EMessageStatus.DeadLettered);
+        message.DeadLetterReason.Should().Be(EDeadLetterReason.Expired);
+        message.Handlers.Should().OnlyContain(h => h.Status == EHandlerStatus.DeadLettered);
+    }
+
+    [Fact]
+    public async Task A_queue_backoff_replaces_the_global_schedule_for_that_queue()
+    {
+        using var services = Services(Everything, s => s.AddScoped<IRecipient<Ping>, FailingRecipient>());
+        var id = await SeedMessageAsync(m => { });
+
+        await NewProcessor(services, WithQueue(new SparkQueueOptions { Backoff = [TimeSpan.FromMinutes(20)] }))
+            .ProcessAsync(id, Owner, CancellationToken.None);
+
+        var (message, _) = await LoadAsync(id);
+        message.Status.Should().Be(EMessageStatus.Failed);
+        message.NextAttemptAtUtc!.Value.Should().BeAfter(DateTime.UtcNow.AddMinutes(19));
+    }
+
+    [Fact]
+    public async Task A_scrubbed_message_loses_its_payload_once_terminal()
+    {
+        using var services = Services(Everything, s => s.AddSingleton<IRecipient<Ping>>(new PingRecipient()));
+        var scrubbed = await SeedMessageAsync(m => m.ScrubPayloadOnTerminal = true);
+        var kept = await SeedMessageAsync(m => { });
+
+        await NewProcessor(services).ProcessAsync(scrubbed, Owner, CancellationToken.None);
+        await NewProcessor(services).ProcessAsync(kept, Owner, CancellationToken.None);
+
+        (await LoadAsync(scrubbed)).Message.PayloadJson.Should().BeEmpty();
+        (await LoadAsync(kept)).Message.PayloadJson.Should().Contain("hello");
+    }
+
+    [Fact]
+    public async Task A_handler_sees_the_current_message_through_IMessageContext()
+    {
+        var seen = new List<string>();
+        using var services = Services(Everything,
+            s => s.AddScoped<IRecipient<Ping>>(sp => new ContextRecipient(sp.GetRequiredService<IMessageContext>(), seen)));
+        var expires = new DateTime(2099, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        var id = await SeedMessageAsync(m => m.ExpiresAtUtc = expires);
+
+        await NewProcessor(services).ProcessAsync(id, Owner, CancellationToken.None);
+
+        seen.Should().Equal($"{id}|processor-tests|1|{expires:O}");
+    }
+
+    [Fact]
+    public async Task IMessageProgress_lets_a_retry_skip_the_steps_already_done_and_expires_with_its_message()
+    {
+        FanOutRecipient.Attempts = 0;
+        var sent = new List<string>();
+        using var services = Services(Everything,
+            s => s.AddScoped<IRecipient<Ping>>(sp => new FanOutRecipient(sp.GetRequiredService<IMessageProgress>(), sent)));
+        var id = await SeedMessageAsync(m => { });
+
+        await NewProcessor(services).ProcessAsync(id, Owner, CancellationToken.None);
+        (await LoadAsync(id)).Message.Status.Should().Be(EMessageStatus.Failed);
+
+        await ReclaimAsync(id);
+        await NewProcessor(services).ProcessAsync(id, Owner, CancellationToken.None);
+
+        sent.Should().Equal("a", "b", "c");
+        var (message, _) = await LoadAsync(id);
+        message.Status.Should().Be(EMessageStatus.Completed);
+        message.Handlers[0].HasProgress.Should().BeTrue();
+
+        using var session = Store.OpenAsyncSession();
+        var progress = await session.LoadAsync<SparkMessageProgress>(SparkMessageProgress.IdFor(id, 0));
+        progress.Steps.Should().Equal("a", "b", "c");
+        progress.MessageId.Should().Be(id);
+        var metadata = session.Advanced.GetMetadataFor(progress);
+        metadata[Constants.Documents.Metadata.Collection].Should().Be("SparkMessageProgresses");
+        metadata.ContainsKey(Constants.Documents.Metadata.Expires).Should().BeTrue("a sidecar expires with its message");
     }
 }

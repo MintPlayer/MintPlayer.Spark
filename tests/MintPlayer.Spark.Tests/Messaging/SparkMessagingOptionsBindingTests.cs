@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Messaging;
 
 namespace MintPlayer.Spark.Tests.Messaging;
@@ -68,5 +70,66 @@ public class SparkMessagingOptionsBindingTests
 
         options.FallbackPollInterval.Should().Be(TimeSpan.FromSeconds(2));
         options.RetentionDays.Should().Be(1);
+    }
+
+    [Fact]
+    public void Queues_bind_per_name()
+    {
+        var options = Bind(
+            ("Spark:Messaging:Queues:mail-bulk:MaxPerInterval", "20"),
+            ("Spark:Messaging:Queues:mail-bulk:Interval", "00:01:00"),
+            ("Spark:Messaging:Queues:mail-bulk:MaxConcurrency", "2"),
+            ("Spark:Messaging:Queues:mail-transactional:MaxAttempts", "12"),
+            ("Spark:Messaging:Queues:mail-transactional:Backoff:0", "00:05:00"));
+
+        options.QueueOptionsFor("mail-bulk")!.MaxPerInterval.Should().Be(20);
+        options.QueueOptionsFor("mail-bulk")!.MaxConcurrency.Should().Be(2);
+        options.QueueOptionsFor("mail-transactional")!.MaxAttempts.Should().Be(12);
+        options.QueueOptionsFor("mail-transactional")!.ResolveBackoff(options.ResolvedBackoffDelays)
+            .Should().Equal(TimeSpan.FromMinutes(5));
+        options.QueueOptionsFor("unconfigured").Should().BeNull();
+    }
+
+    /// <summary>
+    /// D14: a queue's thresholds declared in code are defaults, and configuration — appsettings,
+    /// environment variables, user secrets — overrides them property by property. Everything else in
+    /// <c>Spark:Messaging</c> keeps "code wins".
+    /// </summary>
+    [Fact]
+    public void Configuration_overrides_queue_settings_declared_in_code_property_by_property()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Spark:Messaging:MaxAttempts"] = "3",
+                ["Spark:Messaging:Queues:mail-bulk:MaxPerInterval"] = "5",
+                ["Spark:Messaging:Queues:mail-bulk:Backoff:0"] = "00:00:10",
+            })
+            .Build();
+        var services = new ServiceCollection();
+        var builder = new MintPlayer.Spark.SparkBuilder(services, configuration);
+
+        builder.AddMessaging(o =>
+        {
+            o.MaxAttempts = 7;
+            o.Queues["mail-bulk"] = new SparkQueueOptions
+            {
+                MaxPerInterval = 50,
+                Interval = TimeSpan.FromMinutes(2),
+                Backoff = [TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(5)],
+            };
+        });
+        // A library declaring its own queue defaults after the app — still overridable by configuration.
+        services.Configure<SparkMessagingOptions>(o => o.Queues["mail-bulk"].MaxPerInterval = 60);
+
+        var resolved = services
+            .BuildServiceProvider()
+            .GetRequiredService<IOptions<SparkMessagingOptions>>().Value;
+
+        resolved.MaxAttempts.Should().Be(7, "outside Queues, code still wins");
+        var bulk = resolved.QueueOptionsFor("mail-bulk")!;
+        bulk.MaxPerInterval.Should().Be(5, "configuration wins for a queue threshold");
+        bulk.Interval.Should().Be(TimeSpan.FromMinutes(2), "an unconfigured property keeps the code default");
+        bulk.Backoff.Should().Equal([TimeSpan.FromSeconds(10)], "a configured schedule replaces the code one, not appends to it");
     }
 }

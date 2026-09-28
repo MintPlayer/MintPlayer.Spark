@@ -20,4 +20,11 @@ public class HandlerExecution
     /// Stored as JSON. The handler is responsible for serializing/deserializing.
     /// </summary>
     public string? Checkpoint { get; set; }
+
+    /// <summary>
+    /// Whether this handler wrote an <c>IMessageProgress</c> sidecar
+    /// (<c>{messageId}/progress/{handlerIndex}</c>), so the message's expiry is copied onto it when
+    /// the message becomes terminal.
+    /// </summary>
+    public bool HasProgress { get; set; }
 }

@@ -29,6 +29,12 @@ public class UploadsControllerCapabilitiesTests
     /// <summary>Capabilities is a pure read; the bus only serves the POST paths.</summary>
     private sealed class NullMessageBus : IMessageBus
     {
+        // Routes the options overload onto the three this fake records, so it sees every publish.
+        public Task BroadcastAsync<TMessage>(TMessage message, BroadcastOptions options, CancellationToken cancellationToken = default)
+            => options.DeduplicationKey is { } key ? BroadcastOnceAsync(message, key, cancellationToken)
+             : options.Delay is { } delay ? DelayBroadcastAsync(message, delay, cancellationToken)
+             : BroadcastAsync(message, cancellationToken);
+
         public Task BroadcastAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 
