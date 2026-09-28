@@ -305,6 +305,34 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         stored.DeletedAt.HasValue.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task A_deleted_rows_history_is_readable_with_the_deleted_flag_by_ViewDeleted_holders_only()
+    {
+        // M7 finding: History had no load-side deleted flag, so a soft-deleted row's history was a 404
+        // for everyone. Same flag and gate as /spark/po/load (M7 carry-over).
+        var host = await StartAsync();
+        var denied = await StartAsync(security: SparkTestSecurity.Permissive.Denying("ViewDeleted/HiNote"));
+        var note = await SeedNoteAsync("v1");
+        var v1 = await CurrentChangeVectorAsync(note.Id!);
+        (await host.SendAsync("/spark/po/delete", Wire.Typed(NoteTypeId, id: note.Id))).Status.Should().Be(HttpStatusCode.NoContent);
+
+        var (plain, _) = await host.SendAsync("/spark/po/revisions", Wire.Typed(NoteTypeId, id: note.Id));
+        var (included, list) = await host.SendAsync("/spark/po/revisions", Wire.Typed(NoteTypeId, new { deleted = "include" }, note.Id));
+        var (only, _) = await host.SendAsync("/spark/po/revisions", Wire.Typed(NoteTypeId, new { deleted = "only" }, note.Id));
+        var (revision, content) = await host.SendAsync("/spark/po/revision", Wire.Typed(NoteTypeId, new { changeVector = v1, deleted = "include" }, note.Id));
+        var (withoutRight, _) = await denied.SendAsync("/spark/po/revisions", Wire.Typed(NoteTypeId, new { deleted = "include" }, note.Id));
+        var (revisionWithoutRight, _) = await denied.SendAsync("/spark/po/revision", Wire.Typed(NoteTypeId, new { changeVector = v1, deleted = "only" }, note.Id));
+
+        plain.Should().Be(HttpStatusCode.NotFound, "without the flag a deleted row stays hidden");
+        included.Should().Be(HttpStatusCode.OK);
+        list.GetProperty("result").GetArrayLength().Should().BeGreaterThan(1);
+        only.Should().Be(HttpStatusCode.OK);
+        revision.Should().Be(HttpStatusCode.OK);
+        AttributeValue(content, "Title").Should().Be("v1");
+        withoutRight.Should().Be(HttpStatusCode.NotFound, "the flag is honoured only for ViewDeleted holders");
+        revisionWithoutRight.Should().Be(HttpStatusCode.NotFound);
+    }
+
     // ---- observers -------------------------------------------------------------------------------------
 
     [Fact]

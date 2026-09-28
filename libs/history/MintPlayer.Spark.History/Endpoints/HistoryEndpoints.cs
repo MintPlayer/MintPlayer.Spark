@@ -39,6 +39,15 @@ internal sealed class HistoryRequest : ISparkTypedRequest
 
     /// <summary><c>revisions</c> paging: rows to return (default 50, at most 200).</summary>
     public int? Take { get; set; }
+
+    /// <summary>
+    /// <c>revisions</c> and <c>revision</c> only (ignored by <c>revert</c>): whether the row may be a
+    /// deleted one — <c>exclude</c> (default), <c>include</c> or <c>only</c>, exactly as on
+    /// <c>/spark/po/load</c> (#460, T2). The SoftDelete package honours it only for holders of
+    /// <c>ViewDeleted/T</c>; everyone else keeps the 404, so a soft-deleted row's history is readable
+    /// from the recycle bin without disclosing the row to anyone else.
+    /// </summary>
+    public SparkDeletedFilter? Deleted { get; set; }
 }
 
 /// <summary>
@@ -66,9 +75,12 @@ internal sealed partial class ListRevisions : IPostEndpoint
         if (request is null || entityType is null || string.IsNullOrEmpty(request.Id))
             return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
 
+        // Before the current-row gate asks row security (row filters are memoized per request).
+        SparkAddOnEndpoints.UseDeletedFilter(httpContext, request.Deleted);
+
         try
         {
-            var revisions = await history.ListAsync(entityType.Id, request.Id, request.Skip ?? 0, request.Take ?? 50, httpContext.RequestAborted);
+            var revisions =await history.ListAsync(entityType.Id, request.Id, request.Skip ?? 0, request.Take ?? 50, httpContext.RequestAborted);
             return SparkAddOnEndpoints.Envelope(clientAccessor, revisions, StatusCodes.Status200OK);
         }
         catch (SparkAccessDeniedException)
@@ -102,9 +114,11 @@ internal sealed partial class GetRevision : IPostEndpoint
         if (request is null || entityType is null || string.IsNullOrEmpty(request.Id) || string.IsNullOrEmpty(request.ChangeVector))
             return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
 
+        SparkAddOnEndpoints.UseDeletedFilter(httpContext, request.Deleted);
+
         try
         {
-            var revision = await history.GetAsync(entityType.Id, request.Id, request.ChangeVector, httpContext.RequestAborted);
+            var revision =await history.GetAsync(entityType.Id, request.Id, request.ChangeVector, httpContext.RequestAborted);
             return SparkAddOnEndpoints.Envelope(clientAccessor, revision, StatusCodes.Status200OK);
         }
         catch (SparkAccessDeniedException)

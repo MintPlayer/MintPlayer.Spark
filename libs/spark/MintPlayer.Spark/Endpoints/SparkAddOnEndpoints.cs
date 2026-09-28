@@ -62,4 +62,14 @@ public static class SparkAddOnEndpoints
     /// <summary>The 409 <c>POST /spark/po/update</c> answers a concurrency conflict with, in the envelope.</summary>
     public static IResult ConcurrencyConflict(IClientAccessor client)
         => ClientResult.Envelope(client, new { error = "Concurrency conflict" }, StatusCodes.Status409Conflict);
+
+    /// <summary>
+    /// Carries a request's <c>deleted: exclude|include|only</c> field to row policies
+    /// (<c>RowPolicyContext.Deleted</c>, #460 T2), exactly as <c>/spark/po/load</c> and the query
+    /// endpoints do. Call it <b>before anything asks row security in the request</b> — row filters are
+    /// memoized per request. Core filters nothing on it; the SoftDelete package honours it only for
+    /// holders of <c>ViewDeleted/T</c>, so an add-on passes the flag through and gates nothing itself.
+    /// </summary>
+    public static void UseDeletedFilter(HttpContext httpContext, SparkDeletedFilter? deleted)
+        => httpContext.RequestServices.GetRequiredService<IRowPolicyRequestState>().Deleted = deleted ?? SparkDeletedFilter.Exclude;
 }

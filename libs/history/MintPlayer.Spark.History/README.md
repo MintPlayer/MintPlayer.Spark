@@ -100,6 +100,11 @@ and every refusal — no right, hidden row, missing row, a change vector of **an
 standard 404 (401 when signing in could help). The change-vector check matters: RavenDB returns a
 revision for any change vector, whatever document it belongs to.
 
+A **soft-deleted** row's history: both reads take `deleted: exclude|include|only`, exactly as
+`/spark/po/load` does (`exclude` by default). Row policies see it through `RowPolicyContext.Deleted`;
+the SoftDelete package honours it only for holders of `ViewDeleted/T`, so for everyone else a deleted
+row keeps answering 404. `revert` ignores it — restore the row first.
+
 Revision content is **redacted** like a load: an attribute the Actions class's
 `GetProtectedAttributesAsync` hides is hidden when it is protected on the revision **or** on the
 current row. Both endpoints are reads and explicitly exempt from antiforgery.
