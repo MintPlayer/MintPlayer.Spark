@@ -43,15 +43,18 @@ internal sealed partial class SparkModeration : ISparkModeration
             throw new SparkValidationException("A vote is +1, -1 or 0.", "direction");
 
         var voterId = RequireUser();
+        // Before the right check: a suspension withdraws every earned privilege, so asking for the
+        // right first answered a suspended voter with the no-right refusal (404) instead of saying
+        // why. It depends on the caller only, never on the target, so it reveals nothing about it.
+        var voter = await userState.GetCurrentAsync();
+        if (voter?.IsSuspended == true)
+            throw new SparkValidationException("Your account is suspended.");
+
         var target = await targets.ResolveAsync(objectTypeId, id);
 
         var right = direction switch { > 0 => ModerationRights.Vote, < 0 => ModerationRights.Downvote, _ => null };
         if (right is not null)
             await permissions.EnsureAuthorizedAsync(right, target.TypeName, cancellationToken);
-
-        var voter = await userState.GetCurrentAsync();
-        if (voter?.IsSuspended == true)
-            throw new SparkValidationException("Your account is suspended.");
         if (target.AuthorId is { } author && author == voterId)
             throw new SparkValidationException("You cannot vote on your own post.");
         if (await IsLockedAsync(target.Id, cancellationToken))
@@ -272,10 +275,11 @@ internal sealed partial class SparkModeration : ISparkModeration
         var flaggerId = RequireUser();
         if (string.IsNullOrWhiteSpace(reason))
             throw new SparkValidationException("Say why you flag this.", "reason");
-        var target = await targets.ResolveAsync(objectTypeId, id);
-        await permissions.EnsureAuthorizedAsync(ModerationRights.Flag, target.TypeName, cancellationToken);
+        // Before the right check, as for a vote: a suspension withdraws the Flag privilege too.
         if (await userState.IsCurrentUserSuspendedAsync())
             throw new SparkValidationException("Your account is suspended.");
+        var target = await targets.ResolveAsync(objectTypeId, id);
+        await permissions.EnsureAuthorizedAsync(ModerationRights.Flag, target.TypeName, cancellationToken);
 
         var now = UtcNow;
         for (var attempt = 1; ; attempt++)

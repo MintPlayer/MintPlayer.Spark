@@ -109,6 +109,9 @@ public class FailOpenRegressionTests
 
         // The condition under test: this type carries a row rule.
         rowSecurity.HasRowRule(typeof(PagedDoc)).Returns(true);
+        // The refusal asks for the rule's kind (#460 S5): a substitute replaces the interface's default
+        // GetRowRuleKinds too, so it must answer that as well — an Actions-class rule.
+        rowSecurity.GetRowRuleKinds(typeof(PagedDoc)).Returns(RowRuleKinds.ActionsRule);
         rowSecurity.FilterAsync(
                 Arg.Any<IAsyncDocumentSession>(), Arg.Any<IReadOnlyList<object>>(),
                 Arg.Any<Type>(), Arg.Any<Type>(), Arg.Any<string>(), Arg.Any<CancellationToken>())

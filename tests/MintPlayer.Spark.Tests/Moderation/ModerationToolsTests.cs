@@ -178,7 +178,12 @@ public class ModerationToolsTests : SparkTestDriver
         var update = await host.SendAsync("/spark/po/update", MoHost.UpdateBody(bobsPost, ("Title", "x")), Bob);
         update.Status.Should().Be(HttpStatusCode.BadRequest);
         update.Body.GetRawText().Should().Contain("suspended");
-        (await host.VoteAsync(Bob, post, -1)).Status.Should().Be(HttpStatusCode.NotFound, "no reputation groups while suspended: the Downvote privilege is gone");
+        // The README's rule: voting while suspended is 400 and says why — checked before the right, which
+        // the suspension also withdrew (the privileges assertion below), so it is not a bare 404.
+        var suspendedVote = await host.VoteAsync(Bob, post, -1);
+        suspendedVote.Status.Should().Be(HttpStatusCode.BadRequest);
+        suspendedVote.Body.GetRawText().Should().Contain("suspended");
+        (await host.VoteAsync(Bob, "MoPosts/does-not-exist", 1)).Status.Should().Be(HttpStatusCode.BadRequest, "the answer depends on the caller only, never on the target");
         var (_, reputation) = await host.SendAsync("/spark/moderation/reputation", new { }, Bob);
         reputation.GetProperty("result").GetProperty("suspended").GetBoolean().Should().BeTrue();
         reputation.GetProperty("result").GetProperty("privileges").GetArrayLength().Should().Be(0);

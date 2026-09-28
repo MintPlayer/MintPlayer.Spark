@@ -18,6 +18,23 @@ public class QnAContentTests
 
     public QnAContentTests(QnAE2ECollectionFixture fixture) => host = fixture.Host;
 
+    /// <summary>
+    /// The status a detail load answers: 200 with a row, 404 when the client maps it to null, else the
+    /// refusal's code. An anonymous caller is refused with 401 (signing in may help) — for a hidden row
+    /// and a missing one alike, which is the #453 property the assertions compare.
+    /// </summary>
+    private static async Task<int> LoadStatusAsync(SparkClient client, Guid typeId, string id)
+    {
+        try
+        {
+            return await client.GetPersistentObjectAsync(typeId, id) is null ? 404 : 200;
+        }
+        catch (SparkClientException ex)
+        {
+            return (int)ex.StatusCode;
+        }
+    }
+
     // ---------- SoftDelete (M6) ----------
 
     /// <summary>
@@ -38,7 +55,9 @@ public class QnAContentTests
         (await host.LoadAsync<StoredPost>(answer.Id!))!.IsDeleted.Should().BeTrue("a delete marks the document, it does not remove it");
 
         await host.WaitForIndexingAsync();
-        (await anonymous.GetPersistentObjectAsync(AnswerTypeId, answer.Id!)).Should().BeNull();
+        var hidden = await LoadStatusAsync(anonymous, AnswerTypeId, answer.Id!);
+        hidden.Should().NotBe(200);
+        hidden.Should().Be(await LoadStatusAsync(anonymous, AnswerTypeId, answer.Id! + "-missing"), "a deleted row answers like a missing one (#453)");
         (await answerer.Client.GetPersistentObjectAsync(AnswerTypeId, answer.Id!)).Should().BeNull("its author does not see it either");
         (await anonymous.ExecuteQueryAsync(QuestionAnswersQueryId, take: 100, parentId: question.Id, parentType: "Question"))
             .Items.Select(i => i.Id).Should().NotContain(answer.Id!);
@@ -133,7 +152,9 @@ public class QnAContentTests
 
         (await author.Client.GetPersistentObjectAsync(QuestionTypeId, draft.Id!)).Should().NotBeNull();
         (await other.Client.GetPersistentObjectAsync(QuestionTypeId, draft.Id!)).Should().BeNull();
-        (await anonymous.GetPersistentObjectAsync(QuestionTypeId, draft.Id!)).Should().BeNull();
+        var hidden = await LoadStatusAsync(anonymous, QuestionTypeId, draft.Id!);
+        hidden.Should().NotBe(200);
+        hidden.Should().Be(await LoadStatusAsync(anonymous, QuestionTypeId, draft.Id! + "-missing"), "a draft answers like a missing post (#453)");
 
         await host.WaitForIndexingAsync();
         (await author.Client.ExecuteQueryAsync(QuestionsQueryId, take: 200)).Items.Select(i => i.Id).Should().Contain(draft.Id!);

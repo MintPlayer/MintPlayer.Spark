@@ -42,7 +42,7 @@ public partial class QnAAccountTests
 
         var query = HttpUtility.ParseQueryString(new Uri(link.Value).Query);
         var (confirmed, body) = await client.PostAsync("/spark/auth/confirm-email", new { userId = query["userId"], code = query["code"] });
-        confirmed.Should().BeOneOf(200, 204);
+        confirmed.Should().BeOneOf([200, 204], $"the mailed link confirms the account (answer: {body}; link: {link.Value})");
 
         await client.LoginAsync(email, password);
         (await client.GetCurrentUserAsync()).IsAuthenticated.Should().BeTrue(body.ToString());
@@ -81,6 +81,8 @@ public partial class QnAAccountTests
         (await signIn.Should().ThrowAsync<SparkClientException>()).Which.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
-    [GeneratedRegex(@"https?://[^\s""'<>]+/confirm-email\?[^\s""'<>]+")]
+    // Parentheses excluded: the text part renders a link as "label (url)", and a captured ")" corrupts
+    // the code (measured in M14: "Invalid token").
+    [GeneratedRegex(@"https?://[^\s""'<>()]+/confirm-email\?[^\s""'<>()]+")]
     private static partial Regex ConfirmLink();
 }
