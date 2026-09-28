@@ -275,6 +275,10 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         }
 
         await OnBeforeSaveAsync(obj, entity);
+        // Before-save interceptors (#460): after the Actions class's own hook, before WITH CHECK, so
+        // what they stamp is what the row check judges and what gets written.
+        if (serviceProvider?.GetService<IPersistentObjectInterceptorPipeline>() is { } pipeline)
+            await pipeline.RunBeforeSaveAsync(obj, entity);
         await EnsureRowSaveAllowedAsync(obj, entity);
         await session.StoreAsync(entity);
         await session.SaveChangesAsync();
@@ -327,7 +331,11 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         var entity = await session.LoadAsync<T>(id);
         if (entity != null)
         {
-            await OnBeforeDeleteAsync(entity);
+            // When interceptors govern this type, DatabaseAccess already ran OnBeforeDeleteAsync (it
+            // must, to decide a replacement after it) — run it once, not twice.
+            if (serviceProvider?.GetService<IPersistentObjectInterceptorPipeline>() is not { } pipeline
+                || !pipeline.ConsumeBeforeDeleteHandled(entity))
+                await OnBeforeDeleteAsync(entity);
             session.Delete(entity);
             await session.SaveChangesAsync();
         }

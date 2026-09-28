@@ -43,7 +43,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
         // actions pipeline directly, so an authenticated module could insert, update or delete any
         // document in any collection — the certificate proved *which* module was calling and
         // nothing consulted what that module was allowed to touch.
-        var saved = await databaseAccess.SavePersistentObjectAsync(po);
+        var saved = await databaseAccess.SavePersistentObjectAsync(po, Abstractions.Interceptors.PersistentObjectOperation.Sync);
 
         logger.LogInformation("Sync action: saved {Collection}/{DocumentId} ({PropertyMode})",
             collection, saved.Id ?? documentId,
@@ -59,7 +59,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
         var entityTypeDef = FindEntityTypeDefinition(entityType)
             ?? throw new SparkSyncNotAuthorizableException(collection);
 
-        await databaseAccess.DeletePersistentObjectAsync(entityTypeDef.Id, documentId);
+        await databaseAccess.DeletePersistentObjectAsync(entityTypeDef.Id, documentId, Abstractions.Interceptors.PersistentObjectOperation.Sync);
 
         logger.LogInformation("Sync action: deleted {Collection}/{DocumentId}", collection, documentId);
     }

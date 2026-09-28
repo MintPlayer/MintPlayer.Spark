@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions.Interceptors;
 using Microsoft.Extensions.Logging;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Reflection;
@@ -71,7 +72,7 @@ public class SyncActionAuthorizationTests
             Attributes = [new PersistentObjectAttribute { Name = nameof(TestCar.LicensePlate) }],
         });
 
-        _databaseAccess.SavePersistentObjectAsync(Arg.Any<PersistentObject>())
+        _databaseAccess.SavePersistentObjectAsync(Arg.Any<PersistentObject>(), PersistentObjectOperation.Sync)
             .Returns(call => Task.FromResult(call.Arg<PersistentObject>()));
     }
 
@@ -87,7 +88,7 @@ public class SyncActionAuthorizationTests
             properties: null);
 
         await _databaseAccess.Received(1).SavePersistentObjectAsync(
-            Arg.Is<PersistentObject>(po => po.ObjectTypeId == CarTypeId));
+            Arg.Is<PersistentObject>(po => po.ObjectTypeId == CarTypeId), PersistentObjectOperation.Sync);
     }
 
     [Fact]
@@ -98,7 +99,7 @@ public class SyncActionAuthorizationTests
 
         await handler.HandleDeleteAsync("TestCars", "cars/1");
 
-        await _databaseAccess.Received(1).DeletePersistentObjectAsync(CarTypeId, "cars/1");
+        await _databaseAccess.Received(1).DeletePersistentObjectAsync(CarTypeId, "cars/1", PersistentObjectOperation.Sync);
     }
 
     /// <summary>
@@ -123,6 +124,6 @@ public class SyncActionAuthorizationTests
         await act.Should().ThrowAsync<Exception>(
             "a collection that cannot be authorized must not be written");
 
-        await _databaseAccess.DidNotReceive().SavePersistentObjectAsync(Arg.Any<PersistentObject>());
+        await _databaseAccess.DidNotReceive().SavePersistentObjectAsync(Arg.Any<PersistentObject>(), Arg.Any<PersistentObjectOperation>());
     }
 }

@@ -1,8 +1,10 @@
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Exceptions;
+using Microsoft.Extensions.Logging;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
@@ -27,6 +29,12 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly IRowSecurity rowSecurity;
     [Inject] private readonly ICollectionGuard collectionGuard;
     [Inject] private readonly ISparkTypeResolver typeResolver;
+    [Inject] private readonly IPersistentObjectInterceptorPipeline interceptorPipeline;
+    [Inject] private readonly Microsoft.AspNetCore.Http.IHttpContextAccessor? httpContextAccessor;
+    [Inject] private readonly Microsoft.Extensions.Logging.ILogger<DatabaseAccess>? logger;
+
+    /// <summary>Actions types whose OnSaveAsync override was seen to bypass before-save interceptors, so the warning logs once.</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, bool> bypassAnnounced = new();
 
     public async Task<T?> GetDocumentUncheckedAsync<T>(string id) where T : class
     {
@@ -102,7 +110,27 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // omission was finally caught, by the OnLoadAsync retry row.
         var task = (Task)onLoadMethod.Invoke(actions, HookInvoke, binder: null, parameters: [id, null], culture: null)!;
         await task;
-        return (PersistentObject?)task.GetCompletedTaskResult();
+        var loaded = (PersistentObject?)task.GetCompletedTaskResult();
+        if (loaded is not null)
+            await RunAfterLoadInterceptorsAsync(entityType, [loaded]);
+        return loaded;
+    }
+
+    /// <summary>After-load interceptors (#460), in reverse registration order like every after-hook.</summary>
+    private async Task RunAfterLoadInterceptorsAsync(Type entityType, IReadOnlyList<PersistentObject> objects)
+    {
+        var interceptors = interceptorPipeline.For(entityType);
+        if (interceptors.Count == 0 || objects.Count == 0)
+            return;
+
+        var user = httpContextAccessor?.HttpContext?.User;
+        var system = Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor);
+        foreach (var obj in objects)
+        {
+            var context = new LoadContext { EntityType = entityType, PersistentObject = obj, User = user, IsSystemContext = system };
+            for (var i = interceptors.Count - 1; i >= 0; i--)
+                await interceptors[i].OnAfterLoadAsync(context);
+        }
     }
 
     /// <inheritdoc />
@@ -138,7 +166,11 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // were asked for. SupportsBatchedLoad is false for exactly those, and they fall through to
         // the per-id loop below: slower, and correct.
         if (actions is Actions.IBatchedLoadActions { SupportsBatchedLoad: true } batched)
-            return await batched.LoadManyAsync(ids, null);
+        {
+            var batch = await batched.LoadManyAsync(ids, null);
+            await RunAfterLoadInterceptorsAsync(entityType, batch);
+            return batch;
+        }
 
         var onLoadMethod = GetCachedActionMethod(actions.GetType(), "OnLoadAsync");
         var resolved = new List<PersistentObject>(ids.Count);
@@ -149,6 +181,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
             if ((PersistentObject?)task.GetCompletedTaskResult() is { } obj)
                 resolved.Add(obj);
         }
+        await RunAfterLoadInterceptorsAsync(entityType, resolved);
         return resolved;
     }
 
@@ -184,8 +217,14 @@ internal partial class DatabaseAccess : IDatabaseAccess
         await permissionService.EnsureAuthorizedAsync(action, entityTypeDefinition.Name);
     }
 
-    public async Task<PersistentObject> SavePersistentObjectAsync(PersistentObject persistentObject)
+    public Task<PersistentObject> SavePersistentObjectAsync(PersistentObject persistentObject)
+        => SavePersistentObjectAsync(persistentObject, PersistentObjectOperation.Save);
+
+    public async Task<PersistentObject> SavePersistentObjectAsync(PersistentObject persistentObject, PersistentObjectOperation operation)
     {
+        if (operation is PersistentObjectOperation.Delete or PersistentObjectOperation.Purge)
+            throw new ArgumentOutOfRangeException(nameof(operation), operation, "A save cannot be a delete or a purge.");
+
         var entityTypeDefinition = modelLoader.GetEntityType(persistentObject.ObjectTypeId)
             ?? throw new InvalidOperationException($"Could not find EntityType with ID '{persistentObject.ObjectTypeId}'");
 
@@ -213,6 +252,12 @@ internal partial class DatabaseAccess : IDatabaseAccess
         }
 
         await EnsureSaveAuthorizedAsync(persistentObject);
+
+        // Save vs New follows the id (after the natural-id collision above may have set it); an
+        // explicit kind — Revert, Restore, Sync — is what the caller said.
+        if (operation is PersistentObjectOperation.Save or PersistentObjectOperation.New)
+            operation = string.IsNullOrEmpty(persistentObject.Id) ? PersistentObjectOperation.New : PersistentObjectOperation.Save;
+        object? before = null;
 
         // Row-level Edit gate (R2-H2): for an update against an existing entity, the
         // Actions class's IsAllowedAsync(Edit, entity) hook decides whether THIS caller
@@ -248,11 +293,53 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
                 if (!await rowSecurity.IsAllowedAsync(entityType, "Edit", existing))
                     throw new SparkRowLevelAccessDeniedException($"Edit/{entityTypeDefinition.Name}");
+
+                before = existing;
             }
         }
 
+        // Interceptors (#460, D1): registered here, after every gate, so an interceptor only ever sees
+        // a save the caller was allowed to make. The before-hooks run inside the base OnSaveAsync
+        // (after mapping and OnBeforeSaveAsync, before WITH CHECK and the write); the after-hooks run
+        // here, in reverse order, once the Actions class returned.
+        var interceptors = interceptorPipeline.For(entityType);
+        SaveContext? saveContext = null;
+        if (interceptors.Count > 0)
+        {
+            saveContext = new SaveContext
+            {
+                EntityType = entityType,
+                Operation = operation,
+                PersistentObject = persistentObject,
+                Before = before,
+                User = httpContextAccessor?.HttpContext?.User,
+                IsSystemContext = Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor),
+            };
+            interceptorPipeline.BeginSave(saveContext, interceptors);
+        }
+
         // Pass PO directly to actions — entity mapping happens inside the actions pipeline
-        var savedEntity = await SaveEntityViaActionsAsync(session, entityType, persistentObject);
+        object savedEntity;
+        var beforeHooksRan = false;
+        try
+        {
+            savedEntity = await SaveEntityViaActionsAsync(session, entityType, persistentObject);
+        }
+        finally
+        {
+            if (saveContext is not null)
+                beforeHooksRan = interceptorPipeline.EndSave(saveContext);
+        }
+
+        if (saveContext is not null)
+        {
+            if (!beforeHooksRan)
+                AnnounceBeforeSaveBypass(entityType);
+
+            saveContext.Entity = savedEntity;
+            for (var i = interceptors.Count - 1; i >= 0; i--)
+                await interceptors[i].OnAfterSaveAsync(saveContext);
+        }
 
         // Get the generated ID from the entity
         var idProperty = entityType.GetCachedProperty("Id");
@@ -274,8 +361,14 @@ internal partial class DatabaseAccess : IDatabaseAccess
         return persistentObject;
     }
 
-    public async Task DeletePersistentObjectAsync(Guid objectTypeId, string id)
+    public Task DeletePersistentObjectAsync(Guid objectTypeId, string id)
+        => DeletePersistentObjectAsync(objectTypeId, id, PersistentObjectOperation.Delete);
+
+    public async Task DeletePersistentObjectAsync(Guid objectTypeId, string id, PersistentObjectOperation operation)
     {
+        if (operation is not (PersistentObjectOperation.Delete or PersistentObjectOperation.Purge or PersistentObjectOperation.Sync))
+            throw new ArgumentOutOfRangeException(nameof(operation), operation, "A delete is a Delete, a Purge or a Sync.");
+
         var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
         if (entityTypeDefinition == null) return;
 
@@ -309,15 +402,96 @@ internal partial class DatabaseAccess : IDatabaseAccess
                 throw new SparkRowLevelAccessDeniedException($"Delete/{entityTypeDefinition.Name}");
         }
 
-        // Delete locally first (includes before hook)
-        await DeleteEntityViaActionsAsync(session, entityType, id);
+        var interceptors = interceptorPipeline.For(entityType);
+        var syncInterceptor = serviceProvider.GetService<ISyncActionInterceptor>();
+        var replicated = syncInterceptor != null && syncInterceptor.IsReplicated(entityType);
 
-        // If this is a replicated entity, also notify the owner module
-        var interceptor = serviceProvider.GetService<ISyncActionInterceptor>();
-        if (interceptor != null && interceptor.IsReplicated(entityType))
+        if (interceptors.Count == 0)
         {
-            await interceptor.HandleDeleteAsync(entityType, id);
+            // Delete locally first (includes before hook)
+            await DeleteEntityViaActionsAsync(session, entityType, id);
+
+            // If this is a replicated entity, also notify the owner module
+            if (replicated)
+                await syncInterceptor!.HandleDeleteAsync(entityType, id);
+            return;
         }
+
+        // Interceptors (#460, D1): the replacement is decided HERE, not in the Actions class, so an
+        // OnDeleteAsync override cannot defeat it (spike S4). Order: the Actions class's
+        // OnBeforeDeleteAsync, then every interceptor's before-hook in registration order; then either
+        // the replacement is saved or the Actions class deletes; then the after-hooks in reverse.
+        var actions = actionsResolver.ResolveForType(entityType);
+        var entity = await LoadEntityAsync(session, entityType, id);
+        if (entity is null) return;
+
+        await InvokeBeforeDeleteHookAsync(actions, entityType, entity);
+        interceptorPipeline.MarkBeforeDeleteHandled(entity);
+
+        var context = new DeleteContext
+        {
+            EntityType = entityType,
+            Operation = operation,
+            Id = id,
+            Entity = entity,
+            User = httpContextAccessor?.HttpContext?.User,
+            IsSystemContext = Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor),
+        };
+
+        try
+        {
+            foreach (var interceptor in interceptors)
+                await interceptor.OnBeforeDeleteAsync(context);
+
+            if (context.WasReplaced)
+            {
+                // The entity is tracked by the request session, so whatever the interceptors set on it
+                // is what gets written. Replication must forward that save — a hard delete sent for a
+                // soft one would destroy the owner module's copy.
+                await session.SaveChangesAsync();
+                if (replicated)
+                    await syncInterceptor!.HandleSaveAsync(entity, id);
+            }
+            else
+            {
+                await DeleteEntityViaActionsAsync(session, entityType, id);
+                if (replicated)
+                    await syncInterceptor!.HandleDeleteAsync(entityType, id);
+            }
+        }
+        finally
+        {
+            // Not consumed when the Actions class's override never reached the base OnDeleteAsync.
+            interceptorPipeline.ConsumeBeforeDeleteHandled(entity);
+        }
+
+        for (var i = interceptors.Count - 1; i >= 0; i--)
+            await interceptors[i].OnAfterDeleteAsync(context);
+    }
+
+    /// <summary>The Actions class's <c>OnBeforeDeleteAsync(T)</c>, when it has one.</summary>
+    private static async Task InvokeBeforeDeleteHookAsync(object actions, Type entityType, object entity)
+    {
+        var method = ReflectionCache.GetOrAdd<(string Op, Type Actions, Type Entity), MethodInfo?>(
+            ("DatabaseAccess.OnBeforeDeleteAsync", actions.GetType(), entityType),
+            static k => k.Actions.GetMethod("OnBeforeDeleteAsync", [k.Entity]));
+        if (method is null)
+            return;
+
+        var task = (Task)method.Invoke(actions, HookInvoke, binder: null, parameters: [entity], culture: null)!;
+        await task;
+    }
+
+    private void AnnounceBeforeSaveBypass(Type entityType)
+    {
+        if (!bypassAnnounced.TryAdd(entityType, true))
+            return;
+
+        logger?.LogWarning(
+            "Before-save interceptors did not run for {EntityType}: its Actions class overrides OnSaveAsync " +
+            "without calling the base implementation. That override takes over before-save interceptors " +
+            "along with WITH CHECK (#460, D1). After-save interceptors still run.",
+            entityType.Name);
     }
 
     private async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)

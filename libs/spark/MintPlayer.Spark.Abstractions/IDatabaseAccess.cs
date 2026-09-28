@@ -57,5 +57,22 @@ public interface IDatabaseAccess
     Task EnsureSaveAuthorizedAsync(PersistentObject persistentObject);
 
     Task<PersistentObject> SavePersistentObjectAsync(PersistentObject persistentObject);
+
+    /// <summary>
+    /// A save whose kind the caller states — <see cref="Interceptors.PersistentObjectOperation.Revert"/>,
+    /// <see cref="Interceptors.PersistentObjectOperation.Restore"/> or
+    /// <see cref="Interceptors.PersistentObjectOperation.Sync"/> — so interceptors can tell it from an
+    /// ordinary edit. <c>Save</c> and <c>New</c> are derived from the id either way. Same gates as the
+    /// one-argument overload.
+    /// </summary>
+    Task<PersistentObject> SavePersistentObjectAsync(PersistentObject persistentObject, Interceptors.PersistentObjectOperation operation);
+
     Task DeletePersistentObjectAsync(Guid objectTypeId, string id);
+
+    /// <summary>
+    /// A delete whose kind the caller states: <see cref="Interceptors.PersistentObjectOperation.Purge"/>
+    /// (must not be replaced — a soft-delete interceptor lets it through) or
+    /// <see cref="Interceptors.PersistentObjectOperation.Sync"/>. Same gates as the two-argument overload.
+    /// </summary>
+    Task DeletePersistentObjectAsync(Guid objectTypeId, string id, Interceptors.PersistentObjectOperation operation);
 }
