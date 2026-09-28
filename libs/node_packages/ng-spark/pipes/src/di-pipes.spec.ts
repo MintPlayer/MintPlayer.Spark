@@ -11,9 +11,9 @@ import { AS_DETAIL_SELF_BREADCRUMB_KEY } from '@mintplayer/ng-spark/models';
 class FakeLanguageService {
   t(key: string): string {
     const map: Record<string, string> = {
-      notSet: '(not set)',
-      notSelected: '(not selected)',
-      clickToEdit: '(click to edit)',
+      'common.notSet': '(not set)',
+      'common.notSelected': '(not selected)',
+      'common.clickToEdit': '(click to edit)',
       hello: 'Hello',
     };
     return map[key] ?? key;

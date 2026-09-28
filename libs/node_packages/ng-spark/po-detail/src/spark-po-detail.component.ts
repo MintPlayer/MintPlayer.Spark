@@ -505,7 +505,7 @@ export class SparkPoDetailComponent {
   }
 
   async onDelete(): Promise<void> {
-    if (confirm(this.lang.t('confirmDelete'))) {
+    if (confirm(this.lang.t('common.confirmDelete'))) {
       await this.sparkService.delete(this.type, this.id);
       this.deleted.emit();
       this.router.navigate(['/']);

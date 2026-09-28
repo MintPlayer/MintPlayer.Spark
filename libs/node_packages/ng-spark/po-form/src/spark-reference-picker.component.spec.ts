@@ -46,7 +46,7 @@ describe('SparkReferencePickerComponent', () => {
     expect(component.displayValue()).toBe('companies/missing');
 
     fixture.componentRef.setInput('value', null);
-    expect(component.displayValue()).toBe('notSelected');
+    expect(component.displayValue()).toBe('common.notSelected');
   });
 
   it('open lazily loads the target entity type for the grid columns and seeds pagination', async () => {

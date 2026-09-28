@@ -9,7 +9,7 @@ export class AsDetailDisplayValuePipe implements PipeTransform {
 
   transform(attr: EntityAttributeDefinition, formData: Record<string, any>, asDetailTypes: Record<string, EntityType>): string {
     const value = formData[attr.name];
-    if (!value) return this.lang.t('notSet');
+    if (!value) return this.lang.t('common.notSet');
 
     const asDetailType = asDetailTypes[attr.name] || null;
 
@@ -29,6 +29,6 @@ export class AsDetailDisplayValuePipe implements PipeTransform {
       if (result && result.trim()) return result;
     }
 
-    return this.lang.t('clickToEdit');
+    return this.lang.t('common.clickToEdit');
   }
 }
