@@ -602,7 +602,12 @@ public abstract class SparkAppTestHost : IAsyncLifetime
 
             await EnsureAngularBundleAsync(app, repoRoot);
 
-            var psi = new ProcessStartInfo("dotnet", $"build \"{project}\" --configuration Debug");
+            // --disable-build-servers: no reused MSBuild node, compiler server or MSBuild server. Those
+            // outlive `dotnet build` and inherit its redirected stdout, so the pipe never reaches EOF and
+            // RunToCompletionAsync waited on it until they idled out (~15 min) — measured in M14 as a
+            // local E2E run stuck after the QnA collection, with Fleet's build long finished.
+            var psi = new ProcessStartInfo("dotnet", $"build \"{project}\" --configuration Debug --disable-build-servers");
+            psi.Environment["MSBUILDDISABLENODEREUSE"] = "1";
             var (exitCode, output) = await RunToCompletionAsync(psi, TimeSpan.FromMinutes(10));
             if (exitCode != 0)
                 throw new InvalidOperationException($"Building {app.AppName} failed (exit {exitCode}).\n{output}");
@@ -684,6 +689,12 @@ public abstract class SparkAppTestHost : IAsyncLifetime
                 + $"stdout so far: {await stdoutTask}\nstderr so far: {await stderrTask}");
         }
 
+        // The process has exited, but a grandchild that inherited the pipes (a build server) can keep
+        // them open indefinitely. The exit code is what decides; the output is diagnostics, so wait for
+        // it only briefly rather than for the grandchild's lifetime.
+        var drained = Task.WhenAll(stdoutTask, stderrTask);
+        if (await Task.WhenAny(drained, Task.Delay(TimeSpan.FromSeconds(30))) != drained)
+            return (proc.ExitCode, "(output not drained: a child process still holds the pipes)");
         return (proc.ExitCode, $"stdout: {await stdoutTask}\nstderr: {await stderrTask}");
     }
 

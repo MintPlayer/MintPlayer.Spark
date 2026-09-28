@@ -22,10 +22,8 @@ public sealed class FleetE2ECollectionFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        // Install Chromium the first time we run. No-op if already installed.
-        var exitCode = Microsoft.Playwright.Program.Main(["install", "chromium", "--with-deps"]);
-        if (exitCode != 0)
-            throw new InvalidOperationException($"Playwright install failed with exit code {exitCode}");
+        // Install Chromium the first time we run, once per process (shared with QnA's fixture).
+        await PlaywrightInstall.EnsureAsync();
 
         await Host.InitializeAsync();
 

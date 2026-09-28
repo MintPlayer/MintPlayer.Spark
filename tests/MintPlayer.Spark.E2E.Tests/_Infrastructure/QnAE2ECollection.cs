@@ -20,9 +20,7 @@ public sealed class QnAE2ECollectionFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
-        var exitCode = Microsoft.Playwright.Program.Main(["install", "chromium", "--with-deps"]);
-        if (exitCode != 0)
-            throw new InvalidOperationException($"Playwright install failed with exit code {exitCode}");
+        await PlaywrightInstall.EnsureAsync();
 
         await Host.InitializeAsync();
 
