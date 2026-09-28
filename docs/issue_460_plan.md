@@ -100,12 +100,13 @@ Dependencies flow downward. Items in the same milestone are independent.
 - [x] `sparkAuthGuard` waits for the session check (M10 bug); `SparkClient.RegisterAsync` sends the antiforgery token (M5 regression). Fleet E2E 104/105, the one failure is the machine's ETL-less Raven licence. Deviations in PRD §4.1 (M11).
 
 ### M12 — Moderation package (item 12)
-- [ ] Spikes **S-MOD-A, S-MOD-E** first.
-- [ ] `libs/moderation/MintPlayer.Spark.Moderation(.Abstractions)`; `moderation.json` as `IConfiguration` source + post-layering validation (D12, D14); `--spark-init-moderation`.
-- [ ] Votes (deterministic ids), ledger, map-reduce indexes + deployment assertion; privilege provider (composed, request-cached; suspension from a document).
-- [ ] Fraud defence 1–10 (caps and eligibility in the write path; `CreditableAfterUtc` + crediting Cron job; nightly detector; compensating reversals; IP-hash with rotated HMAC key + 90-day `@expires`).
-- [ ] Flags, review cases + queue, lock interceptor (spike **S-MOD-D**), suspend (spike **S-MOD-C**), revert/restore/purge wiring, audit log, new-account throttle (429), deletion handler.
-- [ ] `@mintplayer/ng-spark/moderation`: vote widget renderer, flag button, review-queue page, reputation badge, moderator panel.
+- [x] Spikes **S-MOD-A, S-MOD-E** first.
+- [x] `libs/moderation/MintPlayer.Spark.Moderation(.Abstractions)`; `moderation.json` as `IConfiguration` source + post-layering validation (D12, D14); `--spark-init-moderation`.
+- [x] Votes (deterministic ids), ledger, map-reduce indexes + deployment assertion; privilege provider (composed, request-cached; suspension from a document).
+- [x] Fraud defence 1–10 (caps and eligibility in the write path; `CreditableAfterUtc` + crediting Cron job; nightly detector; compensating reversals; IP-hash with rotated HMAC key + 90-day `@expires`).
+- [x] Flags, review cases + queue, lock interceptor (spike **S-MOD-D**), suspend (spike **S-MOD-C**), revert/restore/purge wiring, audit log, new-account throttle (429), deletion handler.
+- [x] `@mintplayer/ng-spark/moderation`: vote widget renderer, flag button, review-queue page, reputation badge, moderator panel.
+- [x] Core: `SparkThrottledException` → 429; custom actions map a refused write to 400. Spikes and deviations in PRD §4.1 (M12). 42 moderation tests + 7 vitest pass.
 
 ### M13 — `apps/QnA` demo + E2E spec
 - [ ] Check the name against `.gitignore` (case-insensitive component match — the `Coverage` lesson).
