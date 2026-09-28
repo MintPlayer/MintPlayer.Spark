@@ -18,12 +18,12 @@ file is the order of work.
 Dependencies flow downward. Items in the same milestone are independent.
 
 ### M1 — Core foundations (no new packages yet)
-- [ ] **D3** Remove wildcard rights: validator + `SecurityConfigurationAnalyzer` reject `*` (error points at composite rights); delete matcher branches (`ISecurityConfigurationLoader.cs:130-131,199`), posture "floor" warning, `RowPolicyDeclarationValidator` wildcard handling; rewrite `SecurityFileAccessControlTests` / `SecurityPostureReporterTests` / analyzer tests to assert rejection.
-- [ ] **D15** Forwarded headers in core: `Spark:ForwardedHeaders:{KnownNetworks,KnownProxies,ProxyHops}`, private-range default, `ForwardLimit` never null, Proto/Host handling, startup refusal outside Development, trust list logged. Delete hand-written blocks in CodeCoverage (`Program.cs:35-70`; update the comment at `:371-374`), DemoApp (`:15-16`), HR (`:20-21`), Fleet (`:19-20`). `ForwardHost` opt-in refused while `AllowedHosts` is `*`. Spike **S-FH1**.
-- [ ] **D5** Data Protection in core: always `AddDataProtection()`, `ApplicationName`, `KeysPath` / `Storage=RavenDb` (lift `RavenDataProtectionKeyRepository`, same `DataProtectionKeys/` prefix), startup error outside Development when unset. Delete CodeCoverage's setup (`Program.cs:288-295`: comment + `:292-295`) + repository class; CodeCoverage config sets `ApplicationName=CodeCoverage`, `Storage=RavenDb`. Spike **SP-B** (key-document compatibility part).
-- [ ] `ISparkCurrentUser` abstraction.
-- [ ] **D12 core part**: `AddGroupMembershipProvider<T>()` composition, id-returning providers, per-request cache in `SecurityFileAccessControl`. Spike **S-MOD-B**.
-- [ ] Update memory note: "a claim CAN assert a reserved group" is stale (reserved ids are dropped now).
+- [x] **D3** Remove wildcard rights: validator + `SecurityConfigurationAnalyzer` reject `*` (error points at composite rights); delete matcher branches (`ISecurityConfigurationLoader.cs:130-131,199`), posture "floor" warning, `RowPolicyDeclarationValidator` wildcard handling; rewrite `SecurityFileAccessControlTests` / `SecurityPostureReporterTests` / analyzer tests to assert rejection.
+- [x] **D15** Forwarded headers in core: `Spark:ForwardedHeaders:{KnownNetworks,KnownProxies,ProxyHops}`, private-range default, `ForwardLimit` never null, Proto/Host handling, startup refusal outside Development, trust list logged. Delete hand-written blocks in CodeCoverage (`Program.cs:35-70`; update the comment at `:371-374`), DemoApp (`:15-16`), HR (`:20-21`), Fleet (`:19-20`). `ForwardHost` opt-in refused while `AllowedHosts` is `*`. Spike **S-FH1**.
+- [x] **D5** Data Protection in core: always `AddDataProtection()`, `ApplicationName`, `KeysPath` / `Storage=RavenDb` (lift `RavenDataProtectionKeyRepository`, same `DataProtectionKeys/` prefix), startup error outside Development when unset. Delete CodeCoverage's setup (`Program.cs:288-295`: comment + `:292-295`) + repository class; CodeCoverage config sets `ApplicationName=CodeCoverage`, `Storage=RavenDb`. Spike **SP-B** (key-document compatibility part).
+- [x] `ISparkCurrentUser` abstraction.
+- [x] **D12 core part**: `AddGroupMembershipProvider<T>()` composition, id-returning providers, per-request cache in `SecurityFileAccessControl`. Spike **S-MOD-B**.
+- [x] Update memory note: "a claim CAN assert a reserved group" is stale (reserved ids are dropped now).
 
 ### M2 — Seam (item 1) + #285 + #283
 - [ ] Spikes **S1, S3** first (expression shape decides the policy API).
