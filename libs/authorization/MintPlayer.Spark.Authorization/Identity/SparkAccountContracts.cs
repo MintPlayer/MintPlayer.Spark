@@ -87,3 +87,20 @@ public interface ISparkAccountDeletionHandler<TUser>
 {
     Task OnDeletingAccountAsync(TUser user, CancellationToken cancellationToken);
 }
+
+/// <summary>
+/// Runs <b>after</b> the store deleted an account (<c>DELETE /spark/auth/manage/account</c>) — the
+/// place for anything that must only happen once the deletion is certain, such as a goodbye mail.
+/// Multi-registered, run in registration order, and never run when a
+/// <see cref="ISparkAccountDeletionHandler{TUser}"/> or the store refused the deletion.
+/// </summary>
+/// <remarks>
+/// The account is already gone, so a handler that throws is logged and the remaining handlers still
+/// run; the response stays 204 (a retry could only answer 404). <paramref name="user"/> is the
+/// instance as it was loaded before the delete — read, never save it.
+/// </remarks>
+public interface ISparkAccountDeletedHandler<TUser>
+    where TUser : SparkUser
+{
+    Task OnAccountDeletedAsync(TUser user, CancellationToken cancellationToken);
+}

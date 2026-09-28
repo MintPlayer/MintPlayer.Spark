@@ -294,6 +294,70 @@ public class AccountFlowTests : SparkTestDriver
         }
     }
 
+    private sealed class RecordingDeletedHandler(List<string> calls, Func<SparkUser, Task<bool>>? stillStored = null, bool fail = false) : ISparkAccountDeletedHandler<SparkUser>
+    {
+        public async Task OnAccountDeletedAsync(SparkUser user, CancellationToken cancellationToken)
+        {
+            calls.Add("deleted:" + user.Id + (stillStored is not null && await stillStored(user) ? ":still-stored" : string.Empty));
+            if (fail)
+                throw new InvalidOperationException("mail queue unavailable");
+        }
+    }
+
+    [Fact]
+    public async Task The_after_deletion_hook_runs_once_the_store_deleted_the_account_and_never_before()
+    {
+        var calls = new List<string>();
+        AccountTestHost? started = null;
+        await using var host = started = await AccountTestHost.StartAsync(Store,
+            services: s =>
+            {
+                s.AddScoped<ISparkAccountDeletionHandler<SparkUser>>(_ => new RecordingDeletionHandler(calls, fail: false));
+                s.AddScoped<ISparkAccountDeletedHandler<SparkUser>>(_ => new RecordingDeletedHandler(calls,
+                    async u => await started!.FindByEmailAsync(u.Email!) is not null));
+            });
+        var user = await host.CreateUserAsync("goodbye", "goodbye@example.com");
+        using var client = host.Client();
+        var cookie = await host.CookieSignInAsync(client, "goodbye@example.com");
+
+        var deleted = await AccountTestHost.SendAsync(client, HttpMethod.Delete, "/spark/auth/manage/account", cookie, new { password = AccountTestHost.Password });
+
+        deleted.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        calls.Should().Equal(user.Id!, "deleted:" + user.Id);
+    }
+
+    [Fact]
+    public async Task No_after_deletion_hook_runs_when_the_deletion_stopped_and_a_failing_one_does_not_undo_it()
+    {
+        var calls = new List<string>();
+        await using (var stopped = await AccountTestHost.StartAsync(Store,
+            services: s =>
+            {
+                s.AddScoped<ISparkAccountDeletionHandler<SparkUser>>(_ => new RecordingDeletionHandler(calls, fail: true));
+                s.AddScoped<ISparkAccountDeletedHandler<SparkUser>>(_ => new RecordingDeletedHandler(calls));
+            }))
+        {
+            await stopped.CreateUserAsync("stays", "stays@example.com");
+            using var client = stopped.Client();
+            var cookie = await stopped.CookieSignInAsync(client, "stays@example.com");
+            (await AccountTestHost.SendAsync(client, HttpMethod.Delete, "/spark/auth/manage/account", cookie, new { password = AccountTestHost.Password }))
+                .StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+            calls.Should().ContainSingle().Which.Should().NotStartWith("deleted:", "the account is intact, so nothing may say goodbye");
+        }
+
+        calls.Clear();
+        await using var failing = await AccountTestHost.StartAsync(Store,
+            services: s => s.AddScoped<ISparkAccountDeletedHandler<SparkUser>>(_ => new RecordingDeletedHandler(calls, fail: true)));
+        await failing.CreateUserAsync("gone", "gone@example.com");
+        using var goneClient = failing.Client();
+        var goneCookie = await failing.CookieSignInAsync(goneClient, "gone@example.com");
+
+        (await AccountTestHost.SendAsync(goneClient, HttpMethod.Delete, "/spark/auth/manage/account", goneCookie, new { password = AccountTestHost.Password }))
+            .StatusCode.Should().Be(HttpStatusCode.NoContent, "the account is already gone; a retry could only 404");
+        calls.Should().ContainSingle();
+        (await failing.FindByEmailAsync("gone@example.com")).Should().BeNull();
+    }
+
     [Fact]
     public async Task Personal_data_holds_the_account_and_contributions_and_never_a_secret()
     {

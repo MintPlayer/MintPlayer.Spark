@@ -505,6 +505,21 @@ internal static class SparkAccountEndpoints
             return Results.Json(new { error = "deletion_failed" }, statusCode: StatusCodes.Status500InternalServerError);
         }
 
+        // The deletion is committed: only now may anything act on it (a goodbye mail). A failure here
+        // cannot undo it, so it is logged and the rest still run. CancellationToken.None: the client
+        // hanging up after the delete must not skip the after-deletion work.
+        foreach (var handler in services.GetServices<ISparkAccountDeletedHandler<TUser>>())
+        {
+            try
+            {
+                await handler.OnAccountDeletedAsync(user, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "After-deletion handler {Handler} failed for deleted user {UserId}.", handler.GetType().FullName, user.Id);
+            }
+        }
+
         if (claimsPrincipal.Identity?.AuthenticationType == IdentityConstants.ApplicationScheme)
             await context.SignOutAsync(IdentityConstants.ApplicationScheme);
 

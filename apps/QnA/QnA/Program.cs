@@ -62,9 +62,9 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 
 builder.Services.AddScoped<QnAAccess>();
 builder.Services.AddScoped<QuestionStateChanges>();
-// After AddModeration: deletion handlers run in registration order, so Moderation has removed the
-// votes and flags before QnA queues its goodbye mail.
-builder.Services.AddScoped<ISparkAccountDeletionHandler<SparkUser>, QnAAccountDeletionHandler>();
+// An after-deletion handler: the goodbye mail is queued only once the store deleted the account
+// (Moderation's deletion handler removed the votes and flags before that).
+builder.Services.AddScoped<ISparkAccountDeletedHandler<SparkUser>, QnAAccountDeletionHandler>();
 
 builder.Services.ConfigureApplicationCookie(options =>
 {

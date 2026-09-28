@@ -173,7 +173,9 @@ the profile page; GitHub keeps the login verbatim (applications compare it with 
 younger than `ReauthenticationMaxAge` (default 5 minutes) — otherwise `403 reauthentication_required`.
 Every `ISparkAccountDeletionHandler<TUser>` runs first (registration order); one that throws stops the
 deletion with the account intact (`500 deletion_failed`, retryable — make handlers idempotent). The
-store deletes the account last and releases its email and passkey reservations. Audit fields hold user
+store deletes the account last and releases its email and passkey reservations. Only then does every
+`ISparkAccountDeletedHandler<TUser>` run — the place for a goodbye mail, which must not go out when
+the deletion stopped; one that throws is logged and the response is still 204. Audit fields hold user
 ids only; **RavenDB revisions are not rewritten** — content-level personal data is the application's
 handler's job.
 
