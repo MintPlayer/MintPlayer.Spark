@@ -292,12 +292,15 @@ two are deliberately indistinguishable — the difference is a fact about the ca
 **`POST /spark/actions/execute`** — `Endpoints/Actions/ExecuteCustomAction.cs`
 
 - **Request body**: `CustomActionRequest` — `{ objectTypeId, actionName, parent?, selectedItemIds?, parentId?, parentType?, queryId?, retryResults? }`
-- **Response shapes**:
-  - `200 OK` — empty (or action-specific)
-  - `404 Not Found` — entity type or action not registered
-  - `449` on retry (see protocol)
+- **Response shapes** (all enveloped `{ result, operations }`):
+  - `200 OK` — `result` is what the action passed to `CustomActionArgs.SetResult` (#460, T5), `null` otherwise
+  - `400 Bad Request` — selection breaks the `selectionRule`, or more than 200 ids
+  - `403 Forbidden` — `{ error, action }`: the action is disabled by `OnDisableActionsAsync` on the parent, the query or a selected row (#460, D13); only after the row gate
+  - `404 Not Found` — entity type or action not registered, or a parent / row the caller may not see (401 for an anonymous caller when signing in could help)
+  - `449` on retry (see protocol) — `result` is always `null`
   - `500 Internal Server Error` — `{ "error": "..." }` from unhandled action exception (logged server-side)
-  - `401` / `403` on auth failure
+  - `429` (no envelope) when the optional rate limiter refuses the request
+- Update, delete and create answer the same `403 { error, action }` when `Edit`/`Save`, `Delete` or `New`/`Save` is disabled for the stored object.
 - **Auth**: XSRF-TOKEN required; permission check via `IPermissionService.EnsureAuthorizedAsync({actionName}, {EntityTypeName})`
 
 ---

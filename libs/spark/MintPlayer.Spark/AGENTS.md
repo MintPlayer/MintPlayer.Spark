@@ -137,7 +137,17 @@ The hooks worth knowing:
 | `GetRowFilterAsync(action)` | row filter pushed **into the query** |
 | `GetProtectedAttributesAsync` | per-row attribute redaction |
 | `OnRefreshAsync` | reshape the form when a `triggersRefresh` attribute changes |
+| `OnDisableActionsAsync(target, context)` | **the only place** an action is disabled — asked at load and enforced at submit (403) |
 | `StreamItems` / `StreamItem` | streaming queries over WebSocket |
+
+⚠️ **Disabling an action is one hook (#460, D13).** `OnDisableActionsAsync(IDisablable target,
+DisableActionsContext context)` — call `target.DisableActions("Edit", "MyAction")`. The framework asks
+it when a detail page or query loads (the answer is `DisabledActions` on the wire) **and again at
+submit** for update (`Edit`/`Save`), delete, create (`New`/`Save`) and every custom action (the object
+it runs on, its query and each selected row — union), answering `403 { action }` after the row gate.
+Decide from `context.Entity` (the **stored** entity), the user and stored state only, or load and
+submit disagree. `PersistentObject.DisableActions`, `SparkQueryContext`/`CustomQueryArgs.DisableActions`
+and every `IClientAccessor.DisableActions*` overload are deleted. See `docs/guide-custom-actions.md`.
 
 ⚠️ **`IsAllowedAsync` runs per row; `GetRowFilterAsync` runs in the database.** Prefer the filter
 where the rule is expressible as an expression — it is the difference between reading a page and

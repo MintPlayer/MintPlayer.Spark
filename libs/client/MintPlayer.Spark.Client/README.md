@@ -228,8 +228,40 @@ the question — delivering it afterwards would show the dialog first and the re
 
 ⚠️ **Nothing is applied for you.** `refreshAttribute` is the one operation a headless client can act
 on, and `SparkClientOperations.Apply` is explicit because this SDK keeps no registry of open objects
-the way a UI does. Only the caller knows which object a patch is for. `navigate`, `refreshQuery` and
-`disableAction` are surfaced and nothing more — the last is a no-op in the browser too.
+the way a UI does. Only the caller knows which object a patch is for. `navigate` and `refreshQuery`
+are surfaced and nothing more. (`disableAction` no longer exists, #460: disabled actions arrive on
+`PersistentObject.DisabledActions` / `QueryResult.DisabledActions`, and submitting one throws a
+`SparkClientException` with status 403 whose body names the action. An older server's
+`disableAction` parses as `SparkUnknownOperation`.)
+
+### What an action returns
+
+An action can hand a value back with `args.SetResult(value)` on the server (#460, T5). It arrives as
+`SparkActionResult.Result` (raw JSON) — read it typed with `GetResult<T>()`. A prompt (449) carries no
+result; the attempt that completes does, whether a handler answered or you called `ContinueAsync`:
+
+```csharp
+var result = await client.ExecuteActionAsync(carTypeId, "ExportCars", selectedItemIds: ids, queryId: "cars",
+    onRetry: (prompt, ct) => Task.FromResult<RetryAnswer?>(RetryAnswer.Choose("Yes")));
+var export = result.GetResult<ExportJob>();   // null when the action set nothing
+```
+
+⚠️ The value bypasses the server's redaction — the action author decides what it discloses.
+
+### Refusals you can tell apart
+
+| Status | Means | Body |
+|---|---|---|
+| 404 | unknown action, or a row/parent you may not see (indistinguishable on purpose; 401 instead for an anonymous caller when signing in could help) | envelope `{ result: { error } }` |
+| 400 | the selection breaks the action's `selectionRule`, or exceeds 200 ids | envelope `{ result: { error } }` |
+| 403 | the action is disabled for this object, query or selection (`OnDisableActionsAsync`) | envelope `{ result: { error, action } }` |
+| 429 | the rate limiter refused the request before any endpoint ran | empty |
+
+All four throw `SparkClientException`; switch on `StatusCode`.
+
+Query calls take `deleted:` (`SparkDeletedFilter.Exclude` / `Include` / `Only`, #460 T2) on
+`ExecuteQueryAsync` and `GetDistinctValuesAsync`; it is sent only when set, and a widening is
+honoured only for callers holding `ViewDeleted` on the type.
 
 ⚠️ **An operation type this client has never heard of is ignored, not thrown on.** It arrives as
 `SparkUnknownOperation` with its payload intact. That is the point of the contract: a newer server

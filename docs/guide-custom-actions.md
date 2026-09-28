@@ -97,6 +97,27 @@ independently, and its entity type must match the action's type or the request i
 To act on the **entity** behind a row, materialize it -- see below. A row is deliberately weak: no
 attribute metadata, no `can` block, no etag. It is not a document and cannot be saved.
 
+### Returning a result (#460, T5)
+
+An action can hand a value back to its caller:
+
+```csharp
+public override async Task ExecuteAsync(CustomActionArgs args, CancellationToken ct = default)
+{
+    var job = await exports.StartAsync(args.SelectedItems.Select(r => r.Id), ct);
+    args.SetResult(new { jobId = job.Id, rows = args.SelectedItems.Length });
+}
+```
+
+It travels as the response envelope's `result`. In Angular,
+`sparkService.executeCustomAction<T>(...)` resolves to it (`undefined` when nothing was set); in .NET,
+`SparkActionResult.Result` holds the JSON and `GetResult<T>()` reads it typed. The last `SetResult`
+wins, and a retry prompt (449) never carries one — the attempt that completes does.
+
+⚠️ **The value bypasses redaction and row security.** The framework serializes it as given. Returning
+an entity hands the caller every field on it, including ones `GetProtectedAttributesAsync` hides on
+every read path — return a purpose-built shape.
+
 ### SparkCustomAction vs ICustomAction
 
 You can either extend `SparkCustomAction` (convenience base class) or implement `ICustomAction` directly. Both approaches work identically. The base class currently provides the same abstract method, but in a future phase it will add helper methods for navigation and notifications (same mechanism as PersistentObject Actions classes).
@@ -324,6 +345,77 @@ See the Fleet demo app for a working example:
 - `MintPlayer.Spark/Services/CustomActionResolver.cs` -- action discovery
 - `MintPlayer.Spark/Endpoints/Actions/ListCustomActions.cs` -- list endpoint
 - `MintPlayer.Spark/Endpoints/Actions/ExecuteCustomAction.cs` -- execute endpoint
+
+## Disabling actions: `OnDisableActionsAsync` (#460, D13)
+
+The action catalogue (`POST /spark/actions/list`) and `security.json` are per **type**. Whether an
+action applies to *this* repository, *this* query or *this* selection is answered by one hook on the
+entity's Actions class — the only place in Spark that can disable an action:
+
+```csharp
+public override Task OnDisableActionsAsync(IDisablable target, DisableActionsContext context)
+{
+    // context.Entity is the STORED entity for an object target; null for a query or a create.
+    if (context.TargetKind == DisableActionsTargetKind.PersistentObject
+        && context.Entity is Repository { Connection: not RepositoryConnection.Disconnected })
+    {
+        target.DisableActions("DeleteData");
+    }
+
+    if (context.TargetKind == DisableActionsTargetKind.Query && context.Query?.Name == "ArchivedRepositories")
+        target.DisableActions("Resync", "New");
+
+    return Task.CompletedTask;
+}
+```
+
+The framework asks it twice, and the two answers are meant to be the same:
+
+| When | Targets | What happens |
+|---|---|---|
+| **Load** — `POST /spark/po/load`, `POST /spark/queries/execute` | the object; the query | the answer is returned as `disabledActions`; ng-spark hides those custom actions, and `Edit`/`Save`/`Delete` (detail) and `New` (query) |
+| **Submit** — update, delete, create, every custom action | update/delete: the stored object; create: an object with no entity; custom action: the object it runs on, the query it was invoked from, and **each selected row** | a disabled action is refused with **403** `{ result: { error, action } }` |
+
+Names at submit: an update is refused when `Edit` or `Save` is disabled, a create when `New` or
+`Save` is, a delete when `Delete` is, a custom action when its own name is — on **any** evaluated
+target (the union).
+
+⚠️ **403 only after the row gate.** A row the caller may not see is still a 404 — the hook is never
+asked about it, so a 403 never confirms that a hidden row exists.
+
+⚠️ **Decide from the entity, the user and stored state only.** `context.Entity` at submit is what is
+stored, never what the client posted; a hook that looked at anything the load had and the submit does
+not would offer a button that then refuses. Two consequences:
+
+- `New` has no entity and a create names no query, so a hook that withholds `New` only for one query
+  hides the button but cannot enforce it. Decide `New` on the user and stored state.
+- There are no rows in scope for a query target (the hook runs before the query does), so "hide the
+  action when the result is empty" cannot be expressed — deliberately, because it could never be
+  re-derived at submit.
+
+For a large selection, override the **batched** form `OnDisableActionsAsync(IReadOnlyList<DisableActionsItem>)`
+— every target of one request in one call — to answer with one round-trip instead of one per row. The
+default calls the single form per item.
+
+Not asked at submit in the system context (module sync, background work). A write an action makes
+through `IDatabaseAccess` on an object whose own hook disables that write is refused the same way
+(403), so an action that must edit a locked row writes through the session instead.
+
+### Migrating from the old entry points
+
+These are **deleted** (breaking, 11.0.0-preview): they emitted answers nothing enforced, and the
+`IClientAccessor` ones rode a client operation no client honoured and the detail path dropped.
+
+| Removed | Instead |
+|---|---|
+| `PersistentObject.DisableActions(...)` in `OnLoadAsync` | `OnDisableActionsAsync`, object target, `context.Entity` |
+| `SparkQueryContext.DisableActions(...)` in `OnQueryAsync` | `OnDisableActionsAsync`, query target, `context.Query` / `context.Parent` |
+| `CustomQueryArgs.DisableActions(...)` in a custom query | `OnDisableActionsAsync`, query target (no rows in scope, see above) |
+| `IClientAccessor.DisableActionsOn` / `DisableQueryActions` / `DisableActions` / `DisableActionsForSession` | `OnDisableActionsAsync`; for session-wide rules, `security.json` |
+| the `disableAction` client operation (ng-spark `DisableActionOperation`, `SparkDisableActionOperation`) | `disabledActions` on the object / result, and the 403 at submit |
+
+`PersistentObject` still implements `IDisablable` — explicitly, so only the framework (handing the
+object to the hook at load) calls it. `disabledActions` on the wire is unchanged.
 
 ## Row-level security: nothing an action receives came from the browser (#236, #327)
 

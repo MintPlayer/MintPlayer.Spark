@@ -137,6 +137,10 @@ Server endpoints under `/spark/auth/manage/`: `password` (set, for social-only a
 - ng-spark `withSparkTimezone({ cookieName?: string | false })`: sets the cookie in the browser only, only when changed (`Path=/; Max-Age=31536000; SameSite=Lax; Secure` on https); **the interceptor must not send the header on the server platform** (it would send Node's UTC and override the cookie). First visit renders in UTC (documented). Update `docs/guide-dates-and-sorting.md`.
 
 ### 3.8 DisableActions enforced (item 8) — D13
+
+Implemented in M3 as specified in D13; the author-facing contract is in `guide-custom-actions.md`
+("Disabling actions"), the measurements in §4.1 (S6, S-MOD-F) and the deviations there.
+
 ### 3.9 Pinned npm (item 9) — T9
 
 ### 3.10 MailManager (item 10) — `libs/mail/MintPlayer.Spark.MailManager` — D9, D10, T4, T8
@@ -324,6 +328,76 @@ row by design (in memory, no request).
 *visibility* filter policy (tenancy) now does: it removes rows the caller may not see from the
 author's page after the author counted them, which is exactly the total-count oracle the refusal
 exists to stop. Only non-visibility filter policies (soft deletion) are exempt, as intended.
+
+**S6 — `OnDisableActionsAsync` at load and submit (M3, 2026-09-28).**
+*Question:* is the hook evaluated at load (detail, query execute) and at submit (update, delete,
+create, custom action over parent + query + rows, union), with no operation leakage into the execute
+response and 403 only after the row gate?
+*Method:* `DisableActionsTests` against the real route table (`SparkEndpointFactory`): a `DisProbe`
+type whose hook withholds `Edit`, `Delete` and `DisProbeRun` on a stored row with `State = Locked`,
+withholds `DisProbeRun` on the query `DisProbesFrozen`, and optionally `New` everywhere; a row rule
+hiding rows referenced `hidden`; a recorder capturing every context and every batched call.
+*Answer:* load — `/po/load` of a locked row returns `disabledActions = [Edit, Delete, DisProbeRun]`
+(context: Load, PersistentObject, `Entity` the stored `DisProbe`); an open row omits the field;
+`/queries/execute` of the frozen query returns `disabledActions = [DisProbeRun]` in a bare
+`QueryResult` with no `operations` member (context: Load, Query, `Entity` null). Submit — update of a
+locked row: `403 { action: "Edit" }`, document unchanged, and the context's entity carried the
+**stored** `Reference`, not the posted one; delete: `403 Delete`, document kept; create with `New`
+withheld: `403 New`, 0 documents, entity null; a custom action whose parent, query, or one of two
+selected rows withholds it: `403`, the action never ran. A hidden row that would also withhold: update,
+delete and custom action all `404`, and the hook was **never asked** about it at submit. An enabled
+custom action with parent + query + 2 rows: one Load batch (the re-executed query, 1 item) then
+exactly **one** Submit batch of **4** items (1 query, 3 objects each carrying its entity); the success
+envelope had `operations: []` and only the action's own result. A save made by an action through
+`IDatabaseAccess` on a locked row: `403 Edit`, not the catch-all 500.
+
+**S-MOD-F — refusals distinguishable by the client (M3, 2026-09-28).**
+*Question:* do 404, 400, 429 and 403 arrive through the response envelope distinguishably?
+*Method:* same fixture, raw HTTP and `SparkClient`; a second host with `AddRateLimiter(PermitLimit = 3)`.
+*Answer:* unknown action → `404 { result: { error: "Custom action '…' not found" }, operations: [] }`;
+a hidden selected row → `404 { result: { error: "Not found" } }`; 201 ids → `400 { result: { error:
+"At most 200 items…" } }`; disabled → `403 { result: { error, action } }`. All four are envelopes;
+`SparkClient` throws `SparkClientException` with `StatusCode` 404 / 404 / 400 / 403 and the 403
+`ResponseBody` names the action. **429 is not an envelope:** the rate limiter answers before any
+endpoint runs, with an **empty** body; `SparkClient` surfaces `StatusCode = 429`. So the four are
+told apart by status code; only 403 carries a machine-readable action name.
+
+**S7 — custom-action result through the envelope and a 449 retry (M3, 2026-09-28).**
+*Question:* does `CustomActionArgs.SetResult` reach ng-spark and `SparkClient`, including across a
+449 conversation?
+*Method:* `DisableActionsTests.S7_…` with an action that sets a result, then prompts, then sets
+another from the answer; ng-spark `spark.service.spec.ts` (HttpTestingController).
+*Answer:* the 449 envelope's `result` is `null` even though the action had called `SetResult` before
+raising the prompt; the answered attempt returns `200 { result: { jobId: "job-1", answer: "Yes" } }`.
+`SparkClient`: with `onRetry` the finished call's `GetResult<T>()` is the value; without a handler
+`IsRetry` is true and `Result` null, and `ContinueAsync(…, "No")` returns `{ job-1, No }`. ng-spark:
+`executeCustomAction<T>()` resolves to the result, to `undefined` for `result: null`, and to the second
+attempt's result after a 449. Found on the way: `SparkClient`'s handler-driven path returned a bare
+status code and dropped the success envelope's operations; it now surfaces both.
+
+**Deviations (M3).**
+- *Where `IDisablable` lives.* D13 names `PersistentObject` and "the query result". `PersistentObject`
+  implements it (explicitly, so `DisableActions` is no longer a public member). The query side does
+  **not** implement it on `SparkQuery` — `ModelLoader` hands out the shared singleton, so withholding
+  on it would leak across requests (the #310 lesson) — nor on `QueryResult`, which is built after the
+  hook runs and whose rows must stay out of the hook's reach (they cannot be re-derived at submit). The
+  query target is a per-request framework collector; at submit every target is. Authors must not
+  downcast the target; the context's `TargetKind` says what it is.
+- *`Save` alias.* Update is refused when `Edit` **or** `Save` is disabled, create when `New` or
+  `Save` is. Revert / Restore / Purge (later milestones) check their own operation name; a module sync
+  and the system context are never gated.
+- *`disableAction` client operation deleted* (server type, `SparkDisableActionOperation`, the ng-spark
+  type and its warn-only handler), since every entry point that emitted it is gone. An older server's
+  operation still parses in `SparkClient` as `SparkUnknownOperation`.
+- *ng-spark UI* consumes the unchanged `disabledActions` for built-ins too: detail hides Edit when
+  `Edit`/`Save` is withheld and Delete when `Delete` is; the grid gained `offersCreate` (New/Save),
+  used by the query list; `canCreate` stays the bare right.
+- *CodeCoverage.* `RepositoryActions.OnLoadAsync` became `OnDisableActionsAsync` with the same rule
+  (withhold `DeleteData` unless the stored repository is `Disconnected`), so the page is identical.
+  At submit a connected repository's `DeleteData` is now refused by the framework with 403 before
+  `DeleteDataAction` runs (it used to answer 200 with a warning toast); the UI never offers that
+  button, so only a hand-made request or a reconnect between load and click sees the difference.
+  `DeleteDataAction` keeps its own checks.
 
 ---
 
