@@ -17,7 +17,7 @@ rather than a measurement, it says so.
 
 | | |
 |---|---|
-| **Spark ships** | `MintPlayer.Spark.MailManager` (#460 M8): templates, queueing, SMTP / pickup / custom transports, suppression, bounces — all configured under `Spark:Mail` |
+| **Spark ships** | `MintPlayer.Spark.MailManager` (#460 M8): templates, queueing, SMTP / Mailpit / pickup / custom transports, suppression, bounces — all configured under `Spark:Mail` |
 | **Spark does not ship** | a default transport: with MailManager added and none configured, startup refuses — see §1 |
 | **The app ships** | its `Spark:Mail` settings and, if it wants, its own `Templates/Mail/*.mjml` |
 | **The relay ships** | queueing, retry, DKIM signing and delivery |
@@ -39,8 +39,8 @@ renamed.
 
 Spark therefore refuses the configurations whose mail would go nowhere, at startup:
 
-- `spark.AddMailManager()` with neither `Spark:Mail:Smtp:Host` nor `Spark:Mail:PickupFolder` (nor a
-  custom transport), or with no `Spark:Mail:From:Address`.
+- `spark.AddMailManager()` with no registered transport and neither `Spark:Mail:Smtp:Host` nor
+  `Spark:Mail:PickupFolder`, or with no `Spark:Mail:From:Address`.
 - `SparkExternalLoginLinking.ConfirmByEmail` without a link-confirmation sender (MailManager registers
   one; without MailManager there is none): a confirmation nobody sends is a link nobody makes.
 - A registration surface (`LocalCredentials = Full`) whose account mail goes to Identity's no-op
@@ -48,7 +48,27 @@ Spark therefore refuses the configurations whose mail would go nowhere, at start
   `Spark:Auth:AllowUnconfirmedRegistration=true`.
 
 A development or demo app that should not send real mail uses the pickup folder
-(`Spark:Mail:PickupFolder`), which writes every mail as an `.eml` file — HR and Fleet do.
+(`Spark:Mail:PickupFolder`), which writes every mail as an `.eml` file — HR and Fleet do. A staging or
+test deployment that must send through the real relay but never reach real users sets
+`Spark:Mail:Development:RedirectTo`: every mail goes to that one address (the original recipient in
+`X-Spark-Original-To`), with a warning per mail outside Development. Startup **refuses** it in the
+Production environment (`IHostEnvironment.IsProduction()`), where it would divert every user's mail.
+
+The transport is registered explicitly — `UseSmtpTransport()`, `UseMailpitTransport()`,
+`UsePickupFolderTransport()` or `AddMailTransport<T>()` after `spark.AddMailManager()` — or, with none
+registered, picked from the configuration as above (`Smtp:Host`, else `PickupFolder`). Two
+registrations refuse startup. Each transport states whether it `DeliversToRealRecipients`: SMTP does
+(unless its host is loopback), Mailpit and the pickup folder do not, a custom transport does unless it
+says otherwise.
+
+Development **fails closed**: in the Development environment a transport that delivers to real
+recipients refuses startup unless `Spark:Mail:Development:RedirectTo` is set (put it in user secrets:
+`dotnet user-secrets set "Spark:Mail:Development:RedirectTo" "you@example.com"`). To see the mail
+instead, run Mailpit — `docker run -d --name mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit` — and
+register `spark.AddMailManager().UseMailpitTransport()` (`localhost:1025`, no TLS, no auth; override
+with `Spark:Mail:Mailpit:{Host,Port,Tags}`). It sends real SMTP, so Mailpit shows the exact MIME, and
+tags each mail with its template and lane (`X-Tags`); the UI is at http://localhost:8025. Mailpit, the
+pickup folder and loopback SMTP need no redirect.
 
 ---
 
@@ -313,8 +333,10 @@ chmod 0400 /etc/postfix/spark-bounce-url /etc/postfix/spark-bounce-secret
 #!/bin/sh
 # stdin = the bounce; $1 = the VERP address.
 # Exit 0: delivered (2xx), or dropped because the endpoint can never accept this report
-#         (400 unparseable, 404 endpoint disabled, 413 too large, 422 unprocessable).
-# Exit 75 (EX_TEMPFAIL): anything else -- 401/403 (wrong secret), 429, 5xx, no answer -- so
+#         (400 unparseable, 413 too large, 422 unprocessable).
+# Exit 75 (EX_TEMPFAIL): anything else -- 401/403 (wrong secret), 404 (wrong URL), 429,
+#         503 (endpoint disabled),
+#         other 5xx, no answer -- so
 #         Postfix keeps the bounce queued and retries until the operator fixes the cause.
 # Postfix appends the command's output to the delivery's log line, on success too.
 recipient=$(printf '%s' "$1" | sed 's/+/%2B/g; s/@/%40/g')
@@ -325,7 +347,7 @@ status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}
   "$(cat /etc/postfix/spark-bounce-url)?recipient=${recipient}")
 case "$status" in
   2??) exit 0 ;;
-  400|404|413|422)
+  400|413|422)
     echo "spark-bounce: dropped, the endpoint answered $status and will never accept this report"
     exit 0 ;;
   *)
@@ -337,15 +359,22 @@ esac
 | Endpoint answer | Exit | Postfix (measured, S-M5b) |
 |---|---|---|
 | 2xx | 0 | `status=sent`, queue empty |
-| 400, 404, 413, 422 | 0 | `status=sent (… (spark-bounce: dropped, the endpoint answered 400 …))`, queue empty |
-| 401, 403, 429, 500, 503 | 75 | `status=deferred (temporary failure. Command output: spark-bounce: the endpoint answered 401; …)`, kept |
+| 400, 413, 422 | 0 | `status=sent (… (spark-bounce: dropped, the endpoint answered 400 …))`, queue empty |
+| 401, 403, 404, 429, 500, 503 (503 = endpoint disabled) | 75 | `status=deferred (temporary failure. Command output: spark-bounce: the endpoint answered 401; …)`, kept |
 | unreachable | 75 | `status=deferred (… curl: (6) Could not resolve host … answered 000 …)`, kept |
 
 Why a dropped report exits 0 and not a permanent-failure code: exit 69 (`EX_UNAVAILABLE`) was measured
 too: Postfix logs `status=bounced (service unavailable …)` and removes the message without sending a
 notification (its sender is empty) — the same drop, logged as a delivery failure of the bounce itself.
-`postlog` is not an option for the log line: it lives in `/usr/sbin`, outside the pipe's `PATH`. ⚠️ A **disabled** endpoint also answers 404, so enable it before pointing the
-relay at it.
+`postlog` is not an option for the log line: it lives in `/usr/sbin`, outside the pipe's `PATH`.
+
+A **disabled** endpoint (`Spark:Mail:Bounces:Endpoint:Enabled` false) answers **503**, so the reports
+that arrive before it is enabled stay deferred in Postfix's queue and are delivered once it is — they
+are not lost. The endpoint itself never answers 404 (a report for an unknown delivery id is accepted
+with 204, logged, and suppresses nothing); a 404 therefore means the request never reached it — a
+wrong `SPARK_BOUNCE_URL`, or an app without MailManager — a misconfiguration like a wrong secret, so the
+script defers it (exit 75) and Postfix retries until the URL is fixed (#460, M10). Check the URL
+before pointing the relay at the app.
 
 Relay environment: `VERP_DOMAIN`, `SPARK_BOUNCE_URL=http://<app>:8080/spark/mail/bounces`,
 `SPARK_BOUNCE_SECRET` (in the VPS `.env`, never in the compose file), and the VERP domain added to
@@ -360,7 +389,7 @@ failed, the script exited 75 and Postfix kept the bounce **deferred** (`dsn=4.3.
 (temporary failure. Command output: curl: (6) Could not resolve host …)`); once the endpoint was back,
 `postqueue -f` delivered it (204) and the queue emptied. A 401 or 403 (wrong secret) is retried until
 Postfix's queue lifetime (5 days by default) — check the app log for the 401 when bounces pile up. A
-report the endpoint can never accept (400, 404, 413, 422) is dropped at once instead of being retried
+report the endpoint can never accept (400, 413, 422) is dropped at once instead of being retried
 for five days (#460, M9).
 
 ### 8.4 Bounces — tier 2: remote bounces via MX

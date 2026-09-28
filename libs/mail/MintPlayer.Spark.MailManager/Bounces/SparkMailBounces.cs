@@ -116,9 +116,10 @@ internal sealed class SparkMailGroup : IEndpointGroup
 
 /// <summary>
 /// <c>POST /spark/mail/bounces[?recipient=…]</c> with the raw DSN as the body and
-/// <c>Authorization: Bearer {Spark:Mail:Bounces:Endpoint:Secret}</c>. Answers 404 unless
-/// <c>Spark:Mail:Bounces:Endpoint:Enabled</c>. 204 when applied, 401 on a wrong secret, 413 when too
-/// large, 429 when flooded, 400 when unparseable.
+/// <c>Authorization: Bearer {Spark:Mail:Bounces:Endpoint:Secret}</c>. Answers 503 unless
+/// <c>Spark:Mail:Bounces:Endpoint:Enabled</c> (temporary: the relay keeps the report). 204 when applied —
+/// also for a report whose delivery id is unknown, which is logged and suppresses nothing — 401 on a
+/// wrong secret, 413 when too large, 429 when flooded, 400 when unparseable. Never 404.
 /// </summary>
 [MemberOf<SparkMailGroup>]
 internal sealed partial class ReceiveBounce : IPostEndpoint
@@ -150,10 +151,12 @@ internal sealed partial class ReceiveBounce : IPostEndpoint
         if (!lease.IsAcquired)
             return Results.StatusCode(StatusCodes.Status429TooManyRequests);
 
-        // Opt-in: mapped with the rest of the assembly's endpoints, answering like an unmapped route.
+        // Opt-in, but mapped with the rest of the assembly's endpoints. Disabled answers 503, never 404:
+        // the relay's pipe DROPS a report on 400/404/413/422 and defers (EX_TEMPFAIL) on everything else,
+        // so a 404 here would silently discard every bounce sent while the endpoint is switched off.
         var endpoint = options.Value.Bounces.Endpoint;
         if (!endpoint.Enabled)
-            return Results.NotFound();
+            return Results.StatusCode(StatusCodes.Status503ServiceUnavailable);
 
         // The secret first, before a single byte of the body is parsed (#460, D9).
         if (!IsAuthorized(httpContext.Request.Headers.Authorization.ToString(), endpoint.Secret))

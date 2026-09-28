@@ -9,7 +9,7 @@ service.
   chain. Embedded defaults (the account mails) can be overridden file by file.
 - **Queued, never inline**: a mail is a Spark Messaging message on `mail-transactional` or `mail-bulk`,
   so a relay outage delays mail instead of failing the request, and retries render the same mail.
-- **Transports**: SMTP (MailKit), an `.eml` pickup folder, or your own.
+- **Transports**: SMTP (MailKit), Mailpit for local development, an `.eml` pickup folder, or your own.
 - **Safety**: token-carrying payloads encrypted with Data Protection and scrubbed once done;
   per-mail expiry; a suppression list checked at queue and send time; 5xx refusals logged loudly.
 - **Bulk and bounces**: campaign fan-out (one mail per recipient), one-click `List-Unsubscribe`
@@ -41,17 +41,40 @@ builder.Services.AddSpark(builder.Configuration, spark =>
 Secrets (`Spark:Mail:Smtp:Password`, `Spark:Mail:Bounces:Endpoint:Secret`) belong in environment
 variables or user secrets (`Spark__Mail__Smtp__Password`), never in `appsettings.json`.
 
-**Startup refuses**: no transport; both `Smtp:Host` and `PickupFolder`; no `From:Address`; no
+**Startup refuses**: no transport; two registered transports; both `Smtp:Host` and `PickupFolder`
+(for the fallback, `UseSmtpTransport()` and `UsePickupFolderTransport()`); no `From:Address`; no
 `spark.AddMessaging()`; a template file that does not parse; the bounce endpoint enabled without a
-secret of 32+ characters; and a template with no neutral file (a warning in Development).
+secret of 32+ characters; `Development:RedirectTo` in Production; in Development, a transport that
+delivers to real recipients without `Development:RedirectTo`; and a template with no neutral file (a
+warning in Development).
 
 ### Transports
 
-| Setting | Transport |
-|---|---|
-| `Spark:Mail:Smtp:Host` | SMTP through MailKit, one connection per mail. `Security`: `Auto` (default: TLS on 465, STARTTLS when offered), `None` (never TLS, even when the relay advertises STARTTLS — for a relay on a private network), `StartTls` (required), `SslOnConnect`. `UserName`/`Password` when the relay authenticates. |
-| `Spark:Mail:PickupFolder` | Each mail written as `{deliveryId}.eml` (relative to the content root). Development and demo apps. |
-| `spark.AddMailTransport<T>()` | Your `ISparkMailTransport` (an HTTP API provider, a test double). Replaces both. |
+Register one, after `AddMailManager()` (`spark.AddMailManager().UseMailpitTransport()`):
+
+| Registration | Transport | Real recipients? |
+|---|---|---|
+| `UseSmtpTransport(smtp => …)` | SMTP through MailKit, bound from `Spark:Mail:Smtp` (`Host` required), one connection per mail; the callback runs after binding. `Security`: `Auto` (default: TLS on 465, STARTTLS when offered), `None` (never TLS, even when the relay advertises STARTTLS — for a relay on a private network), `StartTls` (required), `SslOnConnect`. `UserName`/`Password` when the relay authenticates. | yes — **no** when the host is loopback (`localhost`, `127.0.0.0/8`, `::1`) |
+| `UseMailpitTransport(mailpit => …)` | Plain SMTP into a local [Mailpit](https://mailpit.axllent.org/): `localhost:1025`, no TLS, no auth; `Spark:Mail:Mailpit:{Host,Port,Tags}` and the callback override it. SMTP, not Mailpit's JSON send API, so Mailpit shows the exact MIME a relay would get. Adds Mailpit's `X-Tags`: the template (`/` → `-`), the lane (`transactional`/`bulk`) and `Tags`, for filtering in its UI. | no |
+| `UsePickupFolderTransport(folder?)` | Each mail written as `{deliveryId}.eml` into `Spark:Mail:PickupFolder` or `folder` (relative to the content root). | no |
+| `AddMailTransport<T>()` | Your `ISparkMailTransport` (an HTTP API provider, a test double). | yes, unless `T` overrides `DeliversToRealRecipients => false` |
+
+Explicit registration wins. **With none registered**, the configuration picks, as before: SMTP when
+`Spark:Mail:Smtp:Host` is set, else the pickup folder when `Spark:Mail:PickupFolder` is set — so an
+existing configuration (the CodeCoverage compose file) keeps working unchanged. A second
+registration is a startup error.
+
+`ISparkMailTransport` has two default members a custom transport may override:
+`SendAsync(…, SparkMailSendContext context, …)` (the delivery id, template, stream and lane; the
+default forwards to the plain `SendAsync`) and `bool DeliversToRealRecipients => true`.
+
+Mailpit, locally:
+
+```
+docker run -d --name mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit
+```
+
+then `spark.AddMailManager().UseMailpitTransport()`; the UI is at http://localhost:8025.
 
 **Failure classification**: an SMTP 5xx reply (sender or recipient refused) and an authentication
 failure throw `NonRetryableException` — dead-lettered at once and **logged as an error**, because a
@@ -61,7 +84,22 @@ way. 4xx replies, dropped connections and timeouts are retried with the lane's b
 ### Development
 
 `Spark:Mail:Development:RedirectTo` sends every mail to one address (the original recipient is in
-`X-Spark-Original-To`; a warning is logged outside Development). Or use the pickup folder.
+`X-Spark-Original-To`). In Development it is silent; in any other non-Production environment
+(Staging, E2E, a custom name) it still redirects and logs a warning per mail; in **Production**
+(`IHostEnvironment.IsProduction()`) startup refuses it, because it would divert every user's mail.
+
+**Development fails closed.** In the Development environment, a transport whose
+`DeliversToRealRecipients` is true (remote SMTP, a custom transport that does not say otherwise)
+refuses startup unless `Development:RedirectTo` is set — a developer machine pointed at a real relay
+would otherwise mail real people (a copied database, a seeded address). Either set the redirect in
+user secrets:
+
+```
+dotnet user-secrets set "Spark:Mail:Development:RedirectTo" "you@example.com"
+```
+
+or catch everything locally with `UseMailpitTransport()` (the recipe above; UI at
+http://localhost:8025). Mailpit, the pickup folder and loopback SMTP need nothing.
 
 ## Templates — multi-language, file based (owner decision, #460 M8)
 
@@ -213,7 +251,8 @@ names the address and stream (default: the template name). `POST /spark/mail/uns
   DSN via MimeKit; replace with `spark.AddMailBounceParser<T>()` for a provider's format). A permanent
   failure (`Action: failed`, `5.x.x`) marks the delivery `Bounced` and suppresses the address the
   delivery record names. 204 applied, 401 wrong secret, 413 too large (`MaxBodyBytes`, 1 MiB), 429
-  over 120/min, 400 unparseable, 404 when disabled. Explicitly exempt from antiforgery.
+  over 120/min, 400 unparseable, **503 when disabled**. A report for an unknown delivery id is still
+  204 (logged, nothing suppressed); the endpoint never answers 404. Explicitly exempt from antiforgery.
 
 The Postfix side (pipe → curl → this endpoint) is a documented recipe in
 `docs/guide-outgoing-mail.md` §8.3 (spikes S-M5, S-M5b). The pipe maps this endpoint's answer to its
@@ -222,13 +261,15 @@ exit code, so Postfix retries only what can still succeed:
 | Endpoint answer | Pipe exit | Postfix |
 |---|---|---|
 | 2xx | 0 | delivered |
-| 400, 404, 413, 422 — the report can never be accepted | 0, with a `dropped` line | delivered (dropped), logged |
-| 401, 403 — wrong secret, a misconfiguration | 75 | deferred, retried until fixed |
-| 429, 5xx, no answer, anything else | 75 | deferred, retried |
+| 400, 413, 422 — the report can never be accepted | 0, with a `dropped` line | delivered (dropped), logged |
+| 401, 403 — wrong secret; 404 — wrong URL (the endpoint never answers 404) | 75 | deferred, retried until fixed |
+| 503 — the endpoint is disabled | 75 | deferred, delivered once it is enabled |
+| 429, other 5xx, no answer, anything else | 75 | deferred, retried |
 
-⚠️ 404 is also what a **disabled** endpoint answers: enable it before routing bounces to it, or the
-reports that arrive meanwhile are dropped. A deferred report lives until Postfix's queue lifetime (5
-days by default); when bounces pile up, look for the 401 in the app log.
+A **disabled** endpoint answers 503, so reports sent before it is enabled wait in Postfix's queue
+instead of being dropped. Since the endpoint never answers 404, a 404 means the relay's URL does not
+reach it (a wrong `SPARK_BOUNCE_URL`, or an app without MailManager), and the pipe retries it. A deferred report lives until
+Postfix's queue lifetime (5 days by default); when bounces pile up, look for the 401 in the app log.
 
 ## With MintPlayer.Spark.Authorization
 

@@ -19,8 +19,11 @@ public sealed class SparkMailOptions
     /// <summary>The <c>From:</c> of every mail. <see cref="SparkMailAddressOptions.Address"/> is required.</summary>
     public SparkMailAddressOptions From { get; set; } = new();
 
-    /// <summary>SMTP through MailKit; used when <see cref="SparkMailSmtpOptions.Host"/> is set.</summary>
+    /// <summary>SMTP through MailKit: <c>UseSmtpTransport()</c>, or — with no transport registered — whenever <see cref="SparkMailSmtpOptions.Host"/> is set.</summary>
     public SparkMailSmtpOptions Smtp { get; set; } = new();
+
+    /// <summary><c>Spark:Mail:Mailpit</c>: the local mail catcher <c>UseMailpitTransport()</c> sends to.</summary>
+    public SparkMailMailpitOptions Mailpit { get; set; } = new();
 
     /// <summary>
     /// A folder every mail is written to as an <c>.eml</c> file instead of being sent — for development
@@ -77,7 +80,7 @@ public enum SparkMailSmtpSecurity
 /// <summary><c>Spark:Mail:Smtp</c>.</summary>
 public sealed class SparkMailSmtpOptions
 {
-    /// <summary>The relay's host name. Setting it selects the SMTP transport.</summary>
+    /// <summary>The relay's host name. Without a registered transport, setting it selects SMTP.</summary>
     public string? Host { get; set; }
 
     /// <summary>The port. Default 587.</summary>
@@ -96,6 +99,26 @@ public sealed class SparkMailSmtpOptions
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(100);
 }
 
+/// <summary>
+/// <c>Spark:Mail:Mailpit</c>, for <c>UseMailpitTransport()</c>: plain SMTP into a local
+/// <see href="https://mailpit.axllent.org/">Mailpit</see> (no TLS, no authentication), so the exact MIME
+/// is what Mailpit shows.
+/// </summary>
+public sealed class SparkMailMailpitOptions
+{
+    /// <summary>Mailpit's SMTP host. Default <c>localhost</c>.</summary>
+    public string Host { get; set; } = "localhost";
+
+    /// <summary>Mailpit's SMTP port. Default 1025.</summary>
+    public int Port { get; set; } = 1025;
+
+    /// <summary>Extra Mailpit tags on every mail, besides the template and the lane (<c>transactional</c>/<c>bulk</c>).</summary>
+    public List<string> Tags { get; set; } = [];
+
+    /// <summary>The socket timeout for one send. Default 30 seconds.</summary>
+    public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(30);
+}
+
 /// <summary><c>Spark:Mail:Templates</c>.</summary>
 public sealed class SparkMailTemplateOptions
 {
@@ -111,7 +134,8 @@ public sealed class SparkMailDevelopmentOptions
 {
     /// <summary>
     /// Every mail goes to this address instead of its recipient (the original is in
-    /// <c>X-Spark-Original-To</c>). Logged as a warning outside Development.
+    /// <c>X-Spark-Original-To</c>). Logged as a warning outside Development; startup refuses it in
+    /// Production (<c>IHostEnvironment.IsProduction()</c>), where it would silently divert every user's mail.
     /// </summary>
     public string? RedirectTo { get; set; }
 }

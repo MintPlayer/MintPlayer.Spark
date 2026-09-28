@@ -10,6 +10,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using MimeKit;
+using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.MailManager.Bounces;
@@ -51,7 +52,8 @@ public class MailManagerTests : SparkTestDriver
         File.WriteAllText(full, $"<mjml><mj-head><mj-title>{subject}</mj-title></mj-head><mj-body><mj-section><mj-column><mj-text>{body}</mj-text></mj-column></mj-section></mj-body></mjml>");
     }
 
-    private ServiceProvider Build(Action<IServiceCollection>? services = null, Dictionary<string, string?>? config = null, bool withAuthTemplates = false)
+    private ServiceProvider Build(Action<IServiceCollection>? services = null, Dictionary<string, string?>? config = null, bool withAuthTemplates = false,
+        Action<ISparkBuilder>? spark = null, string environment = "Production")
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -65,13 +67,15 @@ public class MailManagerTests : SparkTestDriver
         var collection = new ServiceCollection();
         collection.AddLogging();
         collection.AddSingleton<IConfiguration>(configuration);
-        collection.AddSingleton<IHostEnvironment>(new TestHostEnvironment(contentRoot));
+        collection.AddSingleton<IHostEnvironment>(new TestHostEnvironment(contentRoot) { EnvironmentName = environment });
         collection.AddSingleton<Raven.Client.Documents.IDocumentStore>(Store);
         collection.AddDataProtection().UseEphemeralDataProtectionProvider();
         collection.AddSingleton<RecordingBus>();
         collection.AddSingleton<IMessageBus>(sp => sp.GetRequiredService<RecordingBus>());
         collection.AddSingleton(TimeProvider.System);
-        new SparkBuilder(collection, configuration).AddMailManager();
+        var builder = new SparkBuilder(collection, configuration);
+        builder.AddMailManager();
+        spark?.Invoke(builder);
         if (withAuthTemplates)
             collection.AddSparkMailTemplates(typeof(SparkUser).Assembly, "SparkMail/");
         services?.Invoke(collection);
@@ -198,13 +202,13 @@ public class MailManagerTests : SparkTestDriver
     [Fact]
     public void Startup_refuses_no_transport_two_transports_no_sender_and_a_short_bounce_secret()
     {
-        SparkMailStartup.Problems(new SparkMailOptions(), customTransport: false, messaging: true)
+        SparkMailStartup.Problems(new SparkMailOptions(), [], messaging: true)
             .Should().Contain(p => p.Contains("No transport")).And.Contain(p => p.Contains("From:Address"));
-        SparkMailStartup.Problems(new SparkMailOptions { From = { Address = "a@b.example" }, PickupFolder = "p", Smtp = { Host = "h" } }, false, true)
+        SparkMailStartup.Problems(new SparkMailOptions { From = { Address = "a@b.example" }, PickupFolder = "p", Smtp = { Host = "h" } }, [], true)
             .Should().ContainSingle().Which.Should().Contain("choose one");
-        SparkMailStartup.Problems(new SparkMailOptions { From = { Address = "a@b.example" }, PickupFolder = "p", Bounces = { Endpoint = { Enabled = true, Secret = "short" } } }, false, true)
+        SparkMailStartup.Problems(new SparkMailOptions { From = { Address = "a@b.example" }, PickupFolder = "p", Bounces = { Endpoint = { Enabled = true, Secret = "short" } } }, [], true)
             .Should().ContainSingle().Which.Should().Contain("32 characters");
-        SparkMailStartup.Problems(new SparkMailOptions { From = { Address = "a@b.example" } }, customTransport: true, messaging: false)
+        SparkMailStartup.Problems(new SparkMailOptions { From = { Address = "a@b.example" } }, ["AddMailTransport<X>"], messaging: false)
             .Should().ContainSingle().Which.Should().Contain("AddMessaging");
     }
 
@@ -376,7 +380,162 @@ public class MailManagerTests : SparkTestDriver
         loaded.Headers["X-Spark-Original-To"].Should().Be("ann@app.example");
     }
 
+    [Fact]
+    public void Startup_refuses_RedirectTo_in_Production_but_other_environments_keep_redirecting()
+    {
+        var redirect = new SparkMailOptions { From = { Address = "a@b.example" }, PickupFolder = "p", Development = { RedirectTo = "dev@app.example" } };
+        SparkMailStartup.Problems(redirect, [], true, production: true)
+            .Should().ContainSingle().Which.Should().Contain("RedirectTo");
+        SparkMailStartup.Problems(redirect, [], true, production: false).Should().BeEmpty();
+
+        var config = new Dictionary<string, string?> { ["Spark:Mail:Development:RedirectTo"] = "dev@app.example" };
+        using (var production = Build(config: config))
+        {
+            var act = () => SparkMailStartup.Validate(production);
+            act.Should().Throw<InvalidOperationException>().WithMessage("*RedirectTo*Production*");
+        }
+        foreach (var name in new[] { "Staging", "E2E", "Development" })
+        {
+            using var other = Build(config: config, environment: name);
+            var act = () => SparkMailStartup.Validate(other);
+            act.Should().NotThrow(name);
+        }
+    }
+
+    // ---- transports: explicit registration, the config fallback, Development fails closed ---------------
+
+    private static readonly Dictionary<string, string?> RemoteSmtp = new() { ["Spark:Mail:PickupFolder"] = "", ["Spark:Mail:Smtp:Host"] = "relay.example" };
+
+    [Fact]
+    public void Each_Use_registration_resolves_its_transport_and_explicit_registration_wins_over_the_config()
+    {
+        // The default test config has a PickupFolder, so the fallback alone would pick the pickup folder.
+        using (var smtp = Build(config: RemoteSmtp, spark: b => b.UseSmtpTransport()))
+            (smtp.GetRequiredService<ISparkMailTransport>() is SmtpMailTransport).Should().BeTrue();
+        using (var mailpit = Build(spark: b => b.UseMailpitTransport()))
+            (mailpit.GetRequiredService<ISparkMailTransport>() is MailpitMailTransport).Should().BeTrue("explicit wins over Spark:Mail:PickupFolder");
+        using (var pickup = Build(config: new() { ["Spark:Mail:PickupFolder"] = "" }, spark: b => b.UsePickupFolderTransport("drop")))
+        {
+            (pickup.GetRequiredService<ISparkMailTransport>() is PickupFolderMailTransport).Should().BeTrue();
+            pickup.GetRequiredService<IOptions<SparkMailOptions>>().Value.PickupFolder.Should().Be("drop");
+        }
+        using (var custom = Build(spark: b => b.AddMailTransport<RealTransport>()))
+            (custom.GetRequiredService<ISparkMailTransport>() is RealTransport).Should().BeTrue();
+        using (var callback = Build(config: RemoteSmtp, spark: b => b.UseSmtpTransport(s => s.Port = 2525)))
+            callback.GetRequiredService<IOptions<SparkMailOptions>>().Value.Smtp.Port.Should().Be(2525, "the callback runs after binding");
+    }
+
+    [Fact]
+    public void Without_a_registration_the_configuration_still_picks_the_transport()
+    {
+        using (var smtp = Build(config: RemoteSmtp))
+            (smtp.GetRequiredService<ISparkMailTransport>() is SmtpMailTransport).Should().BeTrue();
+        using (var pickup = Build())
+            (pickup.GetRequiredService<ISparkMailTransport>() is PickupFolderMailTransport).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Two_registered_transports_refuse_startup()
+    {
+        using var sp = Build(spark: b => b.UseMailpitTransport().AddMailTransport<RealTransport>());
+        var act = () => SparkMailStartup.Validate(sp);
+        act.Should().Throw<InvalidOperationException>().WithMessage("*2 mail transports*UseMailpitTransport*AddMailTransport<RealTransport>*");
+        SparkMailStartup.Problems(new SparkMailOptions { From = { Address = "a@b.example" } }, ["UseSmtpTransport"], true)
+            .Should().ContainSingle().Which.Should().Contain("Smtp:Host");
+    }
+
+    [Fact]
+    public async Task Mailpit_gets_plain_SMTP_on_the_configured_port_with_X_Tags()
+    {
+        await using var mailpit = new FakeSmtpServer(advertiseStartTls: true);
+        WriteTemplate("News.mjml", "News");
+        using var sp = Build(
+            config: new()
+            {
+                ["Spark:Mail:Mailpit:Host"] = "127.0.0.1",
+                ["Spark:Mail:Mailpit:Port"] = mailpit.Port.ToString(CultureInfo.InvariantCulture),
+                ["Spark:Mail:Mailpit:Tags:0"] = "demo",
+            },
+            spark: b => b.UseMailpitTransport(m => m.Tags.Add("local run")));
+        var message = new SparkMailMessage { DeliveryId = SparkMailer.NewDeliveryId(), Template = "News", To = "ann@app.example", Culture = "en", Stream = "news", Queue = SparkMailQueues.Bulk };
+
+        await Handler(sp).HandleAsync(message);
+
+        mailpit.Commands.Should().NotContain("STARTTLS", "Mailpit gets no TLS even when offered");
+        mailpit.Commands.Should().NotContain(c => c.StartsWith("AUTH", StringComparison.Ordinal));
+        mailpit.Commands.Should().Contain(c => c.StartsWith("RCPT TO:<ann@app.example>", StringComparison.Ordinal));
+        var data = mailpit.Messages.Single();
+        data.Should().Contain("X-Tags: News, bulk, demo, local run");
+        data.Should().Contain($"Message-Id: <{message.DeliveryId}@app.example>", "the MIME is the one a relay would get");
+        MailpitMailTransport.Tag("SparkAuth/ConfirmEmail").Should().Be("SparkAuth-ConfirmEmail");
+    }
+
+    [Fact]
+    public void Development_fails_closed_for_a_transport_that_delivers_to_real_recipients()
+    {
+        void Starts(string because, Dictionary<string, string?>? config = null, Action<ISparkBuilder>? spark = null)
+        {
+            using var sp = Build(config: config, spark: spark, environment: "Development");
+            var act = () => SparkMailStartup.Validate(sp);
+            act.Should().NotThrow(because);
+        }
+        void Refuses(string because, Dictionary<string, string?>? config = null, Action<ISparkBuilder>? spark = null)
+        {
+            using var sp = Build(config: config, spark: spark, environment: "Development");
+            var act = () => SparkMailStartup.Validate(sp);
+            act.Should().Throw<InvalidOperationException>().WithMessage("*RedirectTo*UseMailpitTransport*");
+        }
+
+        Refuses("remote SMTP, no redirect", RemoteSmtp);
+        Refuses("remote SMTP through UseSmtpTransport, no redirect", RemoteSmtp, b => b.UseSmtpTransport());
+        Starts("remote SMTP with a redirect", new(RemoteSmtp) { ["Spark:Mail:Development:RedirectTo"] = "dev@app.example" });
+        Starts("loopback SMTP is a local catcher", new() { ["Spark:Mail:PickupFolder"] = "", ["Spark:Mail:Smtp:Host"] = "localhost" });
+        Starts("Mailpit", spark: b => b.UseMailpitTransport());
+        Starts("the pickup folder");
+        Starts("a custom transport that says it catches", spark: b => b.AddMailTransport<CatchingTransport>());
+        Refuses("a custom transport keeps the safe default", spark: b => b.AddMailTransport<RealTransport>());
+
+        using var staging = Build(config: RemoteSmtp, environment: "Staging");
+        var outside = () => SparkMailStartup.Validate(staging);
+        outside.Should().NotThrow("only Development fails closed");
+
+        foreach (var loopback in new[] { "localhost", "LOCALHOST", "127.0.0.1", "127.0.0.2", "::1", "[::1]" })
+            SmtpMailTransport.IsLoopback(loopback).Should().BeTrue(loopback);
+        SmtpMailTransport.IsLoopback("relay.example").Should().BeFalse();
+        SmtpMailTransport.IsLoopback("10.0.0.1").Should().BeFalse();
+    }
+
+    private sealed class RealTransport : ISparkMailTransport
+    {
+        public Task SendAsync(MimeMessage message, MailboxAddress envelopeFrom, MailboxAddress recipient, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private sealed class CatchingTransport : ISparkMailTransport
+    {
+        public bool DeliversToRealRecipients => false;
+        public Task SendAsync(MimeMessage message, MailboxAddress envelopeFrom, MailboxAddress recipient, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
     // ---- bounces and unsubscribe -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task A_disabled_bounce_endpoint_answers_503_so_the_relay_keeps_the_report()
+    {
+        // The relay's pipe drops a report on 400/404/413/422 and defers it on anything else: disabled
+        // must be temporary, or every bounce sent before the endpoint is enabled is lost.
+        using var sp = Build();
+        using var scope = sp.CreateScope();
+        var endpoint = ActivatorUtilities.CreateInstance<ReceiveBounce>(scope.ServiceProvider);
+        var httpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { RequestServices = scope.ServiceProvider };
+        httpContext.Request.Method = "POST";
+        httpContext.Request.Headers.Authorization = $"Bearer {new string('s', 40)}";
+        httpContext.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(Dsn("bounces+x@bounce.app.example", "failed", "5.1.1")));
+
+        var result = await endpoint.HandleAsync(httpContext);
+
+        (result is Microsoft.AspNetCore.Http.IStatusCodeHttpResult).Should().BeTrue();
+        ((Microsoft.AspNetCore.Http.IStatusCodeHttpResult)result).StatusCode.Should().Be(503, "503 is temporary: Postfix keeps the report");
+    }
 
     [Fact]
     public async Task A_permanent_DSN_for_a_VERP_delivery_suppresses_the_address_it_was_sent_to()

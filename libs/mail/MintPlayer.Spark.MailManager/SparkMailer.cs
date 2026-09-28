@@ -59,6 +59,7 @@ internal sealed class SparkMailer(
             Data = protector.Protect(SerializeData(request.Data), request.Sensitive),
             Stream = stream,
             ListUnsubscribe = request.ListUnsubscribe ?? queue == SparkMailQueues.Bulk,
+            Queue = queue,
         };
 
         await bus.BroadcastAsync(message, new BroadcastOptions

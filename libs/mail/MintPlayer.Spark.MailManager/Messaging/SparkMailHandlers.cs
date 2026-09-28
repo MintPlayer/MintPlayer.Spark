@@ -68,7 +68,8 @@ internal sealed class SparkMailHandler(
 
         try
         {
-            await transport.SendAsync(mime, envelopeFrom, recipient, cancellationToken);
+            var context = new SparkMailSendContext(message.DeliveryId, message.Template, message.Stream, message.Queue ?? SparkMailQueues.Transactional);
+            await transport.SendAsync(mime, envelopeFrom, recipient, context, cancellationToken);
         }
         catch (NonRetryableException ex)
         {
@@ -157,6 +158,7 @@ internal sealed class SparkMailCampaignHandler(
                 Stream = message.Stream,
                 ListUnsubscribe = message.ListUnsubscribe,
                 CampaignId = message.CampaignId,
+                Queue = SparkMailQueues.Bulk,
             };
             // One message per recipient, deduplicated on "{campaignId}:{recipient}", so a retried
             // fan-out (a crash half way) never mails anyone twice — and never one mail with many BCCs.

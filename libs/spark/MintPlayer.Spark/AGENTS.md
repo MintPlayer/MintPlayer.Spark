@@ -350,10 +350,13 @@ Never send mail inline, never hand-roll SMTP or HTML. Inject `ISparkMailer` (abs
 and queue a `SparkMailRequest { Template, To, Culture?, Data, Sensitive, ExpiresAtUtc }`; campaigns go
 through `SendCampaignAsync` (one mail per recipient, never BCC).
 
-- **Everything is `Spark:Mail` configuration**: transport = `Smtp:Host` **or** `PickupFolder` (or
-  `AddMailTransport<T>()`), `From:Address` required, `Smtp:Security` `None|Auto|StartTls|SslOnConnect`
-  (no forced STARTTLS). Startup refuses no/both transports, no sender, a template without a neutral file
-  (warning in Development), a template that does not parse.
+- **Everything is `Spark:Mail` configuration**: transport = one of `UseSmtpTransport()` /
+  `UseMailpitTransport()` / `UsePickupFolderTransport()` / `AddMailTransport<T>()`, or with none
+  registered `Smtp:Host` **or** `PickupFolder`; `From:Address` required, `Smtp:Security`
+  `None|Auto|StartTls|SslOnConnect` (no forced STARTTLS). Startup refuses no/two transports, no sender,
+  a template without a neutral file (warning in Development), a template that does not parse,
+  `Development:RedirectTo` in Production, and in Development a transport whose
+  `DeliversToRealRecipients` is true without `Development:RedirectTo`.
 - **Templates are files**: `Templates/Mail/{name}.{culture}.mjml` → `{name}.{language}.mjml` →
   `{name}.mjml`, same chain for the optional `.txt` part; subject = `<mj-title>`. The app's folder wins
   over embedded defaults **per file** (Authorization ships `SparkAuth/ConfirmEmail|PasswordReset|LinkConfirmation`

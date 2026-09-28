@@ -45,6 +45,9 @@ public sealed class SparkMailMessage
 
     /// <summary>The campaign this mail belongs to, if any.</summary>
     public string? CampaignId { get; set; }
+
+    /// <summary>The lane it was queued on (<see cref="SparkMailQueues"/>); null (a message queued by an older version) means transactional. Informational: handed to the transport as <see cref="Transports.SparkMailSendContext.Lane"/>.</summary>
+    public string? Queue { get; set; }
 }
 
 /// <summary>A queued campaign; its handler fans it out into one <see cref="SparkMailMessage"/> per recipient.</summary>
