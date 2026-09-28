@@ -1200,6 +1200,51 @@ moderator without.
 - *Test harness notes (measured):* a test host without a sign-in scheme refuses anonymous callers
   with 404, not 401 (`SparkDenial`, by design); the antiforgery token is bound to the user name, so a
   test that switches principals mints a token per identity.
+
+**Deviations and findings (M13).** No spikes are named for M13. Nothing in M13 was run end to end:
+the QnA E2E spec compiles and is run by M14, and nothing was checked in a browser.
+- *Test seam.* Moderation gained a public `ISparkModerationJobs` (`RunCreditingAsync`,
+  `RunFraudDetectorAsync`, `RecomputeReputationAsync`), the Cron jobs' own code, with no right check
+  and no endpoint of its own. QnA maps `POST /qna-test/moderation/{credit,detect,recompute}` only when
+  `QnA:TestSeams:Enabled` is set (Development and the E2E host), refuses startup with it in
+  Production, and answers 404 to anyone without `Audit/Moderation`. The E2E host sets
+  `CreditDelayHours = 0` and both job schedules to 31 February instead of shifting a clock: a global
+  `TimeProvider` moved 49 h would also move Identity's cookie and bearer expiry. So "delayed" in the
+  E2E spec means "counted only once the job credits it"; the 48 h figure stays pinned by the unit
+  tests on a controllable clock.
+- *Found (M12): the pending figure is stale.* A vote does not recompute its recipient's
+  `ModerationReputation/{userId}` summary, and the crediting job recomputes only the users it
+  credited, so `Pending` (the badge's "+N pending") changes only when something else recomputes the
+  summary: that user being credited, a reversal, a flag decision, a deletion. During the 48 h delay
+  the badge never shows the pending part. Not fixed here (a recompute on the vote path costs two
+  index waits); the E2E spec calls the recompute seam. Decide in M14.
+- *Found: a reversal lowers the total at the next crediting run.* A compensation is written with
+  `Credited = false` (never creditable before the entry it cancels), so the detector's reversal
+  reaches `Total` only when crediting runs next (every 5 min). Consistent with the design; the spec
+  credits after detecting.
+- *SPARK011 / SPARK012 did not know Moderation.* The first app to grant `Vote`, `Downvote`, `Flag`,
+  `Lock`, `Review`, `Suspend`, `Audit` got a SPARK011 per right: Moderation asks for them through
+  `IPermissionService`, not `[SparkAuthorize]`, so the analyzer cannot harvest them. They joined the
+  analyzer's built-in actions (as M6/M7's did) and `Moderation` its reserved targets; tests added.
+- *QnA's own rules.* A moderator is whoever holds `Lock/Question` (never earnable, D12). `IsClosed` is
+  read-only, and the entity mapper never writes a read-only attribute — not even from server code
+  through `IDatabaseAccess` — so Close / Reopen record the change in a scoped `QuestionStateChanges`
+  and save through `IDatabaseAccess`, where `QuestionActions.OnBeforeSaveAsync` applies it; the lock,
+  the stamping and the revision all apply. The Delete gate asks a query (live answers), waited on for
+  at most 3 s and failing closed, because the auto index is created by that first query.
+- *The vote widget's slot* is a real `int Votes` property (a model cannot declare a display-only
+  attribute); it is always 0 — the score is in `ModerationTallies/{id}`. The `AuthorId` cell renders
+  the author's reputation badge: the SPA has no user names (D8 stores ids; `AuthUser` carries no id).
+- *Account-deletion mail.* The framework sends none; QnA's `ISparkAccountDeletionHandler` mails one
+  from an app template (`Templates/Mail/AccountDeleted{,.nl}.mjml`), registered after Moderation's.
+  Handlers run before the store delete, so a store failure after it leaves a sent goodbye on a live
+  account — documented on the handler.
+- *QnA sets `RequireConfirmedEmail = true`* (D6's option, default false), so the E2E spec proves the
+  confirmation link. `appsettings.Development.json` lowers the fraud gates and turns the seams on, as
+  a layering override of `moderation.json` (D14).
+- *Coverage.* QnA's host report is its own expected entry in `tools/verify-coverage-paths.mjs`
+  (required when `SPARK_E2E_HOST_COVERAGE` is on), so a CI run that filters the QnA tests out while host
+  coverage is on fails that check.
 ---
 
 ## 5. Risks

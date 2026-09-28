@@ -109,10 +109,10 @@ Dependencies flow downward. Items in the same milestone are independent.
 - [x] Core: `SparkThrottledException` → 429; custom actions map a refused write to 400. Spikes and deviations in PRD §4.1 (M12). 42 moderation tests + 7 vitest pass.
 
 ### M13 — `apps/QnA` demo + E2E spec
-- [ ] Check the name against `.gitignore` (case-insensitive component match — the `Coverage` lesson).
-- [ ] App + Library projects (Questions, Answers, Moderation, SoftDelete, History, MailManager pickup mode, Identity), security.json grants from `--spark-init-moderation`, model sync, `securityPosture.txt`.
-- [ ] Add QnA to `pull-request.yml` in all three hand-written places: the build list (`:123`, `nx run-many --projects=DemoApp,HR,Fleet,CodeCoverage`), the model-sync loop (`:134`), and the security-posture loop (`:156`).
-- [ ] E2E tests on the extracted host: vote → delayed credit → privilege; serial-voting reversal; flag → review; lock blocks every write path; suspend; soft delete hidden everywhere + restore/purge; history diff + revert; account deletion.
+- [x] Check the name against `.gitignore` (case-insensitive component match — the `Coverage` lesson).
+- [x] App + Library projects (Questions, Answers, Moderation, SoftDelete, History, MailManager pickup mode, Identity), security.json grants from `--spark-init-moderation`, model sync, `securityPosture.txt`.
+- [x] Add QnA to `pull-request.yml` in all three hand-written places: the build list (`:123`, `nx run-many --projects=DemoApp,HR,Fleet,CodeCoverage`), the model-sync loop (`:134`), and the security-posture loop (`:156`).
+- [x] E2E tests on the extracted host: vote → delayed credit → privilege; serial-voting reversal; flag → review; lock blocks every write path; suspend; soft delete hidden everywhere + restore/purge; history diff + revert; account deletion. Written and compiled; **run in M14**. Deviations and two M12 findings in PRD §4.1 (M13).
 
 ### M14 — Housekeeping, full verification, PR
 - [ ] Guides: row policies + interceptors (incl. the documented D1 override gaps), SoftDelete, History, MailManager, throttling lanes, Data Protection (volume warning), forwarded headers + proxy recipes, DisableActions hook, wildcard removal, account pages, GDPR (revisions not rewritten), Moderation + fraud limits + legitimate-interest text.
