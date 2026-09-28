@@ -63,7 +63,10 @@ public interface IDatabaseAccess
     /// <see cref="Interceptors.PersistentObjectOperation.Restore"/> or
     /// <see cref="Interceptors.PersistentObjectOperation.Sync"/> — so interceptors can tell it from an
     /// ordinary edit. <c>Save</c> and <c>New</c> are derived from the id either way. Same gates as the
-    /// one-argument overload.
+    /// one-argument overload, except that a <b>Restore</b> is gated under its own name: the
+    /// type-level right is <c>Restore/T</c> (not <c>Edit/T</c>), the row gate is asked about
+    /// <c>"Restore"</c>, the disabled-action hook refuses it when <c>Restore</c>, <c>Edit</c> or
+    /// <c>Save</c> is withheld, and the document must exist (a restore never creates).
     /// </summary>
     Task<PersistentObject> SavePersistentObjectAsync(PersistentObject persistentObject, Interceptors.PersistentObjectOperation operation);
 
@@ -72,7 +75,10 @@ public interface IDatabaseAccess
     /// <summary>
     /// A delete whose kind the caller states: <see cref="Interceptors.PersistentObjectOperation.Purge"/>
     /// (must not be replaced — a soft-delete interceptor lets it through) or
-    /// <see cref="Interceptors.PersistentObjectOperation.Sync"/>. Same gates as the two-argument overload.
+    /// <see cref="Interceptors.PersistentObjectOperation.Sync"/>. Same gates as the two-argument overload,
+    /// except that a <b>Purge</b> is gated under its own name: the type-level right is
+    /// <c>Purge/T</c> (not <c>Delete/T</c>), the row gate is asked about <c>"Purge"</c>, and the
+    /// disabled-action hook refuses it when <c>Purge</c> or <c>Delete</c> is withheld.
     /// </summary>
     Task DeletePersistentObjectAsync(Guid objectTypeId, string id, Interceptors.PersistentObjectOperation operation);
 }

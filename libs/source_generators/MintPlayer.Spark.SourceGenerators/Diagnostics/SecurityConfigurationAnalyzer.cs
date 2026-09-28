@@ -84,7 +84,12 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
         [UnknownActionRule, UnknownTargetRule, DanglingGroupRule, ThreeSegmentResourceRule, WildcardRightRule];
 
     /// <summary>The verbs the framework itself asks for. Anything else must be a declared custom action.</summary>
-    private static readonly string[] BuiltInActions = ["Query", "Read", "New", "Edit", "Delete", "Replicate"];
+    /// <remarks>
+    /// <c>Restore</c>, <c>Purge</c> and <c>ViewDeleted</c> are asked for by core on behalf of the
+    /// SoftDelete package (#460): core gates a restore and a purge under their own names, and the
+    /// soft-delete row policy asks <c>ViewDeleted</c> before honouring a query's <c>deleted</c> mode.
+    /// </remarks>
+    private static readonly string[] BuiltInActions = ["Query", "Read", "New", "Edit", "Delete", "Replicate", "Restore", "Purge", "ViewDeleted"];
 
     private static readonly string[] CombinedActions =
     [

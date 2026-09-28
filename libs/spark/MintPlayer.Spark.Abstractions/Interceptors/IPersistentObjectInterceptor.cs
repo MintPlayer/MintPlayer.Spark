@@ -62,6 +62,32 @@ public interface IPersistentObjectInterceptor
 
     /// <summary>After an entity-backed persistent object was loaded through the row-gated read path.</summary>
     ValueTask OnAfterLoadAsync(LoadContext context) => ValueTask.CompletedTask;
+
+    /// <summary>
+    /// A creation of an <c>IHasNaturalId</c> type derived an id that an existing document already
+    /// holds, and the row gate refused the caller that document. The framework answers 404 unless an
+    /// interceptor throws its own exception here to say why (for example a
+    /// <c>SparkValidationException</c>: "a deleted row holds this key — restore it instead").
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Whatever is thrown here tells the caller something about a row it may not see. Explain only
+    /// to a caller entitled to know (SoftDelete explains only to holders of <c>ViewDeleted</c> or
+    /// <c>Restore</c> on the type); otherwise return and let the 404 stand.
+    /// </remarks>
+    ValueTask OnNaturalIdCollisionAsync(NaturalIdCollisionContext context) => ValueTask.CompletedTask;
+}
+
+/// <summary>A refused natural-id collision (see <see cref="IPersistentObjectInterceptor.OnNaturalIdCollisionAsync"/>).</summary>
+public sealed class NaturalIdCollisionContext : PersistentObjectInterceptorContext
+{
+    /// <summary>The derived id, held by <see cref="Existing"/>.</summary>
+    public required string Id { get; init; }
+
+    /// <summary>The object the caller tried to create.</summary>
+    public required PersistentObject PersistentObject { get; init; }
+
+    /// <summary>The stored entity that holds the id, loaded from a side session. Do not modify it.</summary>
+    public required object Existing { get; init; }
 }
 
 /// <summary>What kind of write is happening.</summary>

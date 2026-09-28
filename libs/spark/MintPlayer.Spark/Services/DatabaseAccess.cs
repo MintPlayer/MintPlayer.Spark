@@ -232,6 +232,11 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityType = typeResolver.Resolve(entityTypeDefinition.ClrType)
             ?? throw new InvalidOperationException($"Could not resolve type '{entityTypeDefinition.ClrType}'");
 
+        // A restore names an existing document; it never creates one (#460, SoftDelete).
+        var isRestore = operation == PersistentObjectOperation.Restore;
+        if (isRestore && string.IsNullOrEmpty(persistentObject.Id))
+            throw new ArgumentException("A restore must name the document it restores.", nameof(persistentObject));
+
         // Natural-id create-collision (security sweep H2): for an IHasNaturalId type the document
         // id is derived from the entity's own contents, so a "create" (Id == null) whose derived id
         // already exists is really an overwrite — and the New branch skips the Edit right, the row
@@ -239,6 +244,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // the id, so the request flows through the Edit path below (and EnsureSaveAuthorizedAsync
         // then checks "Edit", not "New"). A caller with only New rights can no longer rewrite an
         // existing document by replaying its natural key.
+        var naturalIdCollision = false;
         if (string.IsNullOrEmpty(persistentObject.Id)
             && typeof(IHasNaturalId).IsAssignableFrom(entityType))
         {
@@ -248,11 +254,19 @@ internal partial class DatabaseAccess : IDatabaseAccess
             {
                 using var probeSession = documentStore.OpenAsyncSession();
                 if (await probeSession.Advanced.ExistsAsync(derivedId))
+                {
                     persistentObject.Id = derivedId;
+                    naturalIdCollision = true;
+                }
             }
         }
 
-        await EnsureSaveAuthorizedAsync(persistentObject);
+        // A restore is its own right (Restore/T), not Edit: restoring is a moderator's act, and the
+        // row it targets is one an ordinary Edit may not even see (#460, SoftDelete).
+        if (isRestore)
+            await permissionService.EnsureAuthorizedAsync("Restore", entityTypeDefinition.Name);
+        else
+            await EnsureSaveAuthorizedAsync(persistentObject);
 
         // Save vs New follows the id (after the natural-id collision above may have set it); an
         // explicit kind — Revert, Restore, Sync — is what the caller said.
@@ -269,10 +283,16 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // gate sees the pre-update state. New entities (Id == null) skip the gate —
         // there's no instance yet to filter on; the entity-type-level "New" check
         // above is sufficient.
+        //
+        // A restore is gated under its own action name, so a row policy can say "only a deleted row
+        // can be restored" while Edit keeps hiding deleted rows.
         if (!string.IsNullOrEmpty(persistentObject.Id))
         {
+            var rowAction = isRestore ? "Restore" : "Edit";
             using var checkSession = documentStore.OpenAsyncSession();
             var existing = await LoadEntityAsync(checkSession, entityType, persistentObject.Id);
+            if (existing is null && isRestore)
+                throw new SparkRowLevelAccessDeniedException($"Restore/{entityTypeDefinition.Name}");
             if (existing is not null)
             {
                 // Id-to-type binding (security sweep C1/H1): the update targets an existing
@@ -282,7 +302,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
                 // update endpoint maps SparkRowLevelAccessDeniedException to 404. Covers the sync
                 // path too: SyncActionHandler routes module writes through here.
                 if (!collectionGuard.BelongsToAuthorizedCollection(checkSession, existing, entityType))
-                    throw new SparkRowLevelAccessDeniedException($"Edit/{entityTypeDefinition.Name}");
+                    throw new SparkRowLevelAccessDeniedException($"{rowAction}/{entityTypeDefinition.Name}");
 
                 // Concurrency check folds into the same side session — see R2-M7 / M-7.
                 if (!string.IsNullOrEmpty(persistentObject.Etag))
@@ -292,8 +312,15 @@ internal partial class DatabaseAccess : IDatabaseAccess
                         throw new SparkConcurrencyException(persistentObject.Etag, currentEtag);
                 }
 
-                if (!await rowSecurity.IsAllowedAsync(entityType, "Edit", existing))
-                    throw new SparkRowLevelAccessDeniedException($"Edit/{entityTypeDefinition.Name}");
+                if (!await rowSecurity.IsAllowedAsync(entityType, rowAction, existing))
+                {
+                    // A creation whose natural id is held by a row this caller may not edit (a
+                    // soft-deleted one, say). Still a 404 by default; an interceptor that owns the
+                    // reason may explain it instead (SoftDelete: "restore it rather than create it").
+                    if (naturalIdCollision)
+                        await ExplainNaturalIdCollisionAsync(entityType, persistentObject, existing);
+                    throw new SparkRowLevelAccessDeniedException($"{rowAction}/{entityTypeDefinition.Name}");
+                }
 
                 before = existing;
             }
@@ -379,7 +406,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId);
         if (entityTypeDefinition == null) return;
 
-        await permissionService.EnsureAuthorizedAsync("Delete", entityTypeDefinition.Name);
+        // A purge is its own right (Purge/T) and its own row-gate action, so a row policy can confine
+        // it to rows that are already soft-deleted while Delete keeps hiding them (#460, SoftDelete).
+        var deleteAction = operation == PersistentObjectOperation.Purge ? "Purge" : "Delete";
+        await permissionService.EnsureAuthorizedAsync(deleteAction, entityTypeDefinition.Name);
 
         var clrType = entityTypeDefinition.ClrType;
         var entityType = typeResolver.Resolve(clrType);
@@ -405,8 +435,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
             if (!collectionGuard.BelongsToAuthorizedCollection(checkSession, existing, entityType))
                 return;
 
-            if (!await rowSecurity.IsAllowedAsync(entityType, "Delete", existing))
-                throw new SparkRowLevelAccessDeniedException($"Delete/{entityTypeDefinition.Name}");
+            if (!await rowSecurity.IsAllowedAsync(entityType, deleteAction, existing))
+                throw new SparkRowLevelAccessDeniedException($"{deleteAction}/{entityTypeDefinition.Name}");
 
             // Disabled-action gate (#460, D13), after the row gate, on the stored entity.
             if (SubmittedAction(operation) is { } submitted)
@@ -493,6 +523,29 @@ internal partial class DatabaseAccess : IDatabaseAccess
         await task;
     }
 
+    /// <summary>
+    /// Gives every applicable interceptor the chance to explain a refused natural-id collision with
+    /// its own exception (a 400 that says why) before the default 404 is thrown.
+    /// </summary>
+    private async Task ExplainNaturalIdCollisionAsync(Type entityType, PersistentObject persistentObject, object existing)
+    {
+        var interceptors = interceptorPipeline.For(entityType);
+        if (interceptors.Count == 0)
+            return;
+
+        var context = new NaturalIdCollisionContext
+        {
+            EntityType = entityType,
+            Id = persistentObject.Id!,
+            PersistentObject = persistentObject,
+            Existing = existing,
+            User = httpContextAccessor?.HttpContext?.User,
+            IsSystemContext = Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor),
+        };
+        foreach (var interceptor in interceptors)
+            await interceptor.OnNaturalIdCollisionAsync(context);
+    }
+
     private void AnnounceBeforeSaveBypass(Type entityType)
     {
         if (!bypassAnnounced.TryAdd(entityType, true))
@@ -510,12 +563,20 @@ internal partial class DatabaseAccess : IDatabaseAccess
     /// refuses it. <c>Save</c> is Vidyano's name for committing either an edit or a create, so a
     /// hook that disables it refuses both. Null for <see cref="PersistentObjectOperation.Sync"/>: a
     /// module sync is the system writing, not a user submitting an action.
+    /// <para>
+    /// A restore is an edit of the stored row and a purge a delete of it, so a hook that withholds
+    /// <c>Edit</c> (or <c>Save</c>) refuses a restore and one that withholds <c>Delete</c> refuses a
+    /// purge, besides their own names (#460, M6 — the conservative reading: a row an author froze
+    /// against editing is not silently rewritten by a restore).
+    /// </para>
     /// </summary>
     private static (string Name, string[] RefusedBy)? SubmittedAction(PersistentObjectOperation operation) => operation switch
     {
         PersistentObjectOperation.Save => ("Edit", ["Edit", "Save"]),
         PersistentObjectOperation.New => ("New", ["New", "Save"]),
         PersistentObjectOperation.Delete => ("Delete", ["Delete"]),
+        PersistentObjectOperation.Restore => ("Restore", ["Restore", "Edit", "Save"]),
+        PersistentObjectOperation.Purge => ("Purge", ["Purge", "Delete"]),
         PersistentObjectOperation.Sync => null,
         _ => (operation.ToString(), [operation.ToString()]),
     };
