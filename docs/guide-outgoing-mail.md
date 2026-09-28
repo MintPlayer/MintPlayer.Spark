@@ -17,30 +17,38 @@ rather than a measurement, it says so.
 
 | | |
 |---|---|
-| **Spark ships** | the contract (`ISparkLinkConfirmationSender<TUser>`) and the message text (`SparkLinkConfirmationMessage`) |
-| **Spark does not ship** | any transport, on purpose — see §1 |
-| **The app ships** | an implementation that hands the message to a local relay |
+| **Spark ships** | `MintPlayer.Spark.MailManager` (#460 M8): templates, queueing, SMTP / pickup / custom transports, suppression, bounces — all configured under `Spark:Mail` |
+| **Spark does not ship** | a default transport: with MailManager added and none configured, startup refuses — see §1 |
+| **The app ships** | its `Spark:Mail` settings and, if it wants, its own `Templates/Mail/*.mjml` |
 | **The relay ships** | queueing, retry, DKIM signing and delivery |
 
-⚠️ **The app does not talk to the internet.** It hands the message to a relay container one hop
-away and returns. This is not tidiness: the send happens *inside the external-login callback*,
-while somebody is waiting on an HTTP response. A local handoff takes milliseconds and succeeds
-whether or not the receiving mail server is reachable; a direct connection to a remote SMTP server
-would put an internet round-trip, and its timeouts, in the middle of a sign-in.
+⚠️ **The app does not talk to the internet.** A mail is queued on a Spark Messaging lane and a worker
+hands it to a relay container one hop away. The request that caused it (a sign-up, a password reset,
+an external-login callback) never waits on SMTP at all, and a relay outage delays mail instead of
+failing requests: the `mail-transactional` lane retries for about four hours, and a mail whose token
+would be dead by then expires instead of arriving late.
 
 ---
 
-## 1. Why Spark registers no default transport
+## 1. Why there is no silent default transport
 
 ASP.NET Identity `TryAdd`s a no-op `IEmailSender`, so an application with no mail configured still
 *resolves* one and every message is silently discarded. Absence is invisible; the only way to
 detect it is to recognise an internal type by name, which fails **open** the day that type is
 renamed.
 
-Spark ships no default for its own contract precisely so the guard can be a plain null check. The
-consequence you will meet: configuring `SparkExternalLoginLinking.ConfirmByEmail` **without**
-registering a sender is refused at startup, because a confirmation nobody sends is a link nobody
-makes — and the symptom would otherwise be a sign-in that appears to do nothing at all.
+Spark therefore refuses the configurations whose mail would go nowhere, at startup:
+
+- `spark.AddMailManager()` with neither `Spark:Mail:Smtp:Host` nor `Spark:Mail:PickupFolder` (nor a
+  custom transport), or with no `Spark:Mail:From:Address`.
+- `SparkExternalLoginLinking.ConfirmByEmail` without a link-confirmation sender (MailManager registers
+  one; without MailManager there is none): a confirmation nobody sends is a link nobody makes.
+- A registration surface (`LocalCredentials = Full`) whose account mail goes to Identity's no-op
+  (#460, D6): nobody who registers would ever get a confirmation or reset link. Opt out with
+  `Spark:Auth:AllowUnconfirmedRegistration=true`.
+
+A development or demo app that should not send real mail uses the pickup folder
+(`Spark:Mail:PickupFolder`), which writes every mail as an `.eml` file — HR and Fleet do.
 
 ---
 
@@ -242,16 +250,106 @@ not grant one.
 
 ---
 
-## 8. What this does *not* cover
+## 8. Templates, bulk mail and bounces
 
-- **Inbound mail.** The relay sends only. Bounces addressed back to a `no-reply@` on a host with no
-  MX will defer and expire, which is harmless but means you never see them. Point `From` at a real
-  mailbox if you want them.
-- **Volume.** Everything here is sized for transactional mail measured in messages per day. Bulk
-  sending is a different problem with different answers, and a self-hosted relay is the wrong tool
-  for it.
-- **A mail manager.** Message bodies are plain strings today (D24 in the multi-forge PRD). A
-  templating layer is separate, future work.
+The earlier version of this section said bulk mail and a mail manager were out of scope. Both are now
+in MailManager (#460 M8); its README (`libs/mail/MintPlayer.Spark.MailManager/README.md`) is the
+reference. What matters for the relay:
+
+### 8.1 Templates
+
+MJML + Scriban files in the app's repository, one per culture with a fallback chain
+(`Name.nl-BE.mjml` → `Name.nl.mjml` → `Name.mjml`). The account mails ship as embedded defaults in
+`en` and `nl`; an app overrides one by adding a file with the same name under `Templates/Mail/`.
+
+### 8.2 Bulk mail and pacing
+
+Campaigns go through `ISparkMailer.SendCampaignAsync`: one message per recipient on the `mail-bulk`
+lane, throttled to 20 a minute by default (`Spark:Messaging:Queues:mail-bulk:MaxPerInterval` /
+`Interval`), each with one-click `List-Unsubscribe`. Never one mail with many BCCs.
+
+The lane paces what the app hands to the relay; the relay paces what it sends to each receiving
+domain. For a burst to one large provider, also set Postfix's per-destination pacing (a
+recommendation, not measured here):
+
+```yaml
+# docker-compose.yml, relay service
+- POSTFIX_smtp_destination_concurrency_limit=2   # parallel connections per receiving domain
+- POSTFIX_smtp_destination_rate_delay=1s         # pause between deliveries to the same domain
+```
+
+A self-hosted relay on a fresh IP still has no sending reputation: large volumes belong on a
+provider relay (`RELAYHOST`, §7), whatever the pacing.
+
+### 8.3 Bounces — tier 1: the local relay pipes them to the app
+
+With `Spark:Mail:Bounces:VerpDomain` set, every mail's envelope sender is
+`bounces+{deliveryId}@{VerpDomain}`. When the **relay itself** fails to deliver (the receiver refuses
+with a 5xx), Postfix generates the bounce and addresses it to that envelope sender. Routing that domain
+to a pipe hands the bounce to Spark — no MX record and no inbound port 25 needed. Measured against
+`boky/postfix:v4.3.0` (spike S-M5, #460): the image has `curl` (no `wget`), sources every
+`/docker-init.db/*.sh` after its own configuration, and `postconf -M` adds the `master.cf` entry.
+
+`init/50-spark-bounces.sh`, mounted at `/docker-init.db/`:
+
+```bash
+#!/bin/bash
+postconf -e "relay_domains = ${VERP_DOMAIN}"
+postconf -e "transport_maps = inline:{ ${VERP_DOMAIN}=sparkbounce: }"
+postconf -e "recipient_delimiter = +"
+postconf -e "sparkbounce_destination_recipient_limit = 1"
+postconf -M "sparkbounce/unix=sparkbounce unix - n n - - pipe flags=Rq user=nobody argv=/usr/local/bin/spark-bounce \${original_recipient}"
+# The pipe runs with an empty environment, and the image unsets secret variables after this
+# script: URL and secret reach the pipe as files.
+printf '%s' "${SPARK_BOUNCE_URL}" > /etc/postfix/spark-bounce-url
+printf '%s' "${SPARK_BOUNCE_SECRET}" > /etc/postfix/spark-bounce-secret
+chown nobody /etc/postfix/spark-bounce-url /etc/postfix/spark-bounce-secret
+chmod 0400 /etc/postfix/spark-bounce-url /etc/postfix/spark-bounce-secret
+```
+
+`spark-bounce`, mounted at `/usr/local/bin/spark-bounce`:
+
+```sh
+#!/bin/sh
+# stdin = the bounce; $1 = the VERP address. Exit 75 (EX_TEMPFAIL) on any HTTP failure.
+recipient=$(printf '%s' "$1" | sed 's/+/%2B/g; s/@/%40/g')
+curl --silent --show-error --fail --max-time 30 \
+  -H "Authorization: Bearer $(cat /etc/postfix/spark-bounce-secret)" \
+  -H "Content-Type: message/rfc822" \
+  --data-binary @- \
+  "$(cat /etc/postfix/spark-bounce-url)?recipient=${recipient}" || exit 75
+```
+
+Relay environment: `VERP_DOMAIN`, `SPARK_BOUNCE_URL=http://<app>:8080/spark/mail/bounces`,
+`SPARK_BOUNCE_SECRET` (in the VPS `.env`, never in the compose file), and the VERP domain added to
+`ALLOWED_SENDER_DOMAINS`. App: `Spark__Mail__Bounces__VerpDomain`, `Spark__Mail__Bounces__Endpoint__Enabled=true`,
+`Spark__Mail__Bounces__Endpoint__Secret` (the same secret). SPF of the VERP domain must authorise the
+server, as for the `From` domain (§3).
+
+What S-M5 measured: a DSN addressed to `bounces+{id}@verp.test` reached the pipe and was POSTed with the
+bearer header, `Content-Type: message/rfc822`, the full report (720 bytes) and
+`?recipient=bounces%2B{id}%40verp.test`; the queue was then empty. With the endpoint unreachable, curl
+failed, the script exited 75 and Postfix kept the bounce **deferred** (`dsn=4.3.0, status=deferred
+(temporary failure. Command output: curl: (6) Could not resolve host …)`); once the endpoint was back,
+`postqueue -f` delivered it (204) and the queue emptied. A non-2xx answer (401 for a wrong secret, 400
+for an unparseable report) also exits 75, so such a bounce is retried until Postfix's queue lifetime
+(5 days by default) — check the app log for the 401 when bounces pile up.
+
+### 8.4 Bounces — tier 2: remote bounces via MX
+
+A receiver that **accepts** a mail and bounces it later sends the bounce to the VERP domain's MX. That
+needs an MX record for the VERP domain pointing at the server and inbound port 25 open to the relay,
+which this deployment deliberately does not have (§6 of the PRD: opening inbound SMTP is out of scope).
+Recipe, not done here: publish `MX 10 relay.example.` for the VERP domain, publish port 25 of the relay
+container, keep `relay_domains` limited to the VERP domain (anything else is an open relay), and the
+same pipe handles both tiers. Without tier 2, late bounces are lost; synchronous refusals (the common
+case for unknown mailboxes) are still caught by tier 1.
+
+### 8.5 Still not covered
+
+- **Inbound mail** other than bounces. Point `From` at a real mailbox if people reply.
+- **Complaint feedback loops** (ARF): `ISparkMailSuppressions.SuppressAsync(…, Complaint)` is there
+  for an app that receives them from a provider; nothing parses them.
 
 
 ---
@@ -331,16 +429,22 @@ The third row is the one worth remembering: it looked like success and was not.
 ### 9.5 In the repository
 
 - `apps/CodeCoverage/docker-compose.yml` — the `coverage-smtp` service, the `smtp-queue` volume,
-  and `Coverage__Mail__*` plus `Spark__Auth__ExternalLoginLinking` on the app.
-- `apps/CodeCoverage/CodeCoverage/Services/` — `CoverageMailOptions` and
-  `SmtpLinkConfirmationSender`, registered only when `Host` and `FromAddress` are both set.
-- `apps/CodeCoverage/.env.example` — every new variable, with the delivery caveats inline.
+  and on the app `Spark__Mail__Smtp__*`, `Spark__Mail__From__*`, `Spark__Auth__PublicBaseUrl` and
+  `Spark__Auth__ExternalLoginLinking` (#460 M8: these replaced `Coverage__Mail__*`; the `.env`
+  variables are unchanged).
+- `apps/CodeCoverage/CodeCoverage/Program.cs` — `spark.AddMailManager()`, only when both
+  `Spark:Mail:Smtp:Host` and `Spark:Mail:From:Address` are set. The hand-written
+  `SmtpLinkConfirmationSender` and `CoverageMailOptions` are gone; the link-confirmation mail is the
+  shipped `SparkAuth/LinkConfirmation` MJML template.
+- `apps/CodeCoverage/.env.example` — every variable, with the delivery caveats inline.
 
 ### 9.6 Still to do before mail is live
 
 1. Deploy the updated `docker-compose.yml` (the VPS refetches it per deploy).
-2. Set `MAIL_FROM_ADDRESS` in `/var/www/code-coverage/.env`. Until then the app registers no
-   transport, which is deliberate and supported.
+2. Set `MAIL_FROM_ADDRESS` in `/var/www/code-coverage/.env`. Until then the app does not add
+   MailManager, which is deliberate and supported.
 3. Flip `EXTERNAL_LOGIN_LINKING` to `ConfirmByEmail` only when a second forge exists — with a
    single provider the situation the mode exists for cannot arise.
 4. Optionally set the PTR, per §9.1.
+5. Bounces (§8.3) are not enabled for coverage.mintplayer.com; doing so needs a VERP domain in
+   `ALLOWED_SENDER_DOMAINS` and SPF, and `SPARK_BOUNCE_SECRET` in the VPS `.env`.

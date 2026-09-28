@@ -155,6 +155,21 @@ Implemented in M3 as specified in D13; the author-facing contract is in `guide-c
 - Bulk: one campaign message fans out via `BroadcastOnceAsync(…, "{campaignId}:{recipient}")` (with the fixed, hashed dedup key); never one mail with many BCCs.
 - Dev mode per D9. Rewrite `guide-outgoing-mail.md` §8 (bulk no longer out of scope) instead of contradicting it; add Postfix per-domain pacing notes (`smtp_destination_rate_delay`, `smtp_destination_concurrency_limit`).
 - CodeCoverage migration (D10): its link-confirmation template becomes MJML (default wording from `SparkLinkConfirmationMessage`).
+- **Owner decision (2026-09-28, during M8): multi-language, file-based templates.** Templates are files
+  in the app's repository, managed by developers. A pluggable resolver (`ISparkMailTemplateResolver`,
+  file-system default) picks the file per recipient culture with a fallback chain —
+  `PasswordReset.nl-BE.mjml` → `PasswordReset.nl.mjml` → `PasswordReset.mjml` — applied to the subject
+  (`<mj-title>`), the optional `.txt` part and every `mj-include` alike. The culture is chosen **per
+  send, never from the ambient request culture**: explicit culture on the send → the recipient's
+  stored preference (`ISparkMailRecipientCulture`; Authorization adds `SparkUser.PreferredCulture`) →
+  `Spark:Mail:DefaultCulture`. The resolved culture is **stored on the queued message**, so a retry
+  renders the same language. Embedded defaults (the account mails, shipped by Authorization) are
+  overridden by an app file with the same name. Dates and numbers format in the resolved culture
+  (Scriban culture pushed). Startup: a template name without a neutral file fails (warns in
+  Development); a missing localized variant falls back silently (Debug log). Tested: fallback order,
+  explicit culture over preference, culture surviving a retry, app override over embedded default.
+  This supersedes the `{lang}/{name}.mjml` layout above (S-M1 showed `WithCulture="false"` solves the
+  satellite problem for `{name}.{culture}.mjml`).
 
 ### 3.11 Queue throttling (item 11) — T8
 
@@ -730,6 +745,114 @@ History's interceptor) gave `Title v1`, `Label {"en":"one"}`, `DueAt 2026-01-01T
   non-admin certificate (the embedded server is unsecured); the test replaces the probe with a
   refusing fake.
 
+
+**S-M1 — where embedded `.mjml` resources land (M8, 2026-09-28).**
+*Question:* for `{lang}/{name}.mjml` and `{name}.{lang}.mjml`, main or satellite assembly?
+*Method:* `MailSpikeM1Tests.S_M1_…`: fixtures under `tests/…/Mail/SpikeM1Templates` embedded four ways
+in the test csproj (folder layout; suffix layout; suffix with `WithCulture="false"`; `LogicalName` +
+`WithCulture="false"`), plus a `Content` item; manifest names of the main assembly and of the `nl` /
+`nl-BE` satellites listed.
+*Answer:* folder layout → main assembly, `…folder.nl.Welcome.mjml` / `…folder.nl_BE.Welcome.mjml`
+(`-` becomes `_`). Suffix layout → the neutral file stays in main as `…suffix.Welcome.mjml`; **`nl` and
+`nl-BE` are moved into `nl/…resources.dll` and `nl-BE/…resources.dll` under the neutral file's name**
+(`…suffix.Welcome.mjml`). With `WithCulture="false"` they stay in main under their full names
+(`…Welcome.nl-BE.mjml`). `LogicalName="SparkMailSpike/%(RecursiveDir)%(Filename)%(Extension)"` gives
+`SparkMailSpike/Auth\Welcome.nl-BE.mjml` — the OS separator from `%(RecursiveDir)` (Windows build).
+`Content` files are copied under their own names.
+
+**S-M2 — Mjml.Net vs npm mjml (M8, 2026-09-28).**
+*Question:* does Mjml.Net render the shipped templates (with `mj-include`) like npm mjml, Outlook
+conditionals included?
+*Method:* `MailSpikeM2Tests.S_M2_…` (npm half with `SPARK_SPIKE_SM2_MJML` = the mjml CLI): the three
+`SparkAuth/*` templates rendered by Mjml.Net 4.15.0 through `SparkMailRenderer`; the same Scriban
+output (main file + include) written to disk and rendered by npm `mjml` 5.4.1
+(`--config.beautify false --config.allowIncludes true`); visible text compared after the same
+HTML→text conversion.
+*Answer:* Mjml.Net: 0 validation errors on all three; 9 `<!--[if mso` conditionals and 10 `<table>`s
+each; 7591 / 7650 / 8360 characters. npm mjml: 9 conditionals and 10 tables each; 9138 / 9197 / 10079
+characters. **Visible text identical for all three** (headings, paragraphs, button text with its URL,
+the fallback link, the included footer). Neither emits VML buttons for `mj-button`. npm mjml 5 refuses
+`mj-include` unless `allowIncludes` is set (first run: the footer was silently missing). Not measured:
+rendering in a real Outlook client.
+
+**S-M4 — Scriban strict mode, JSON data, escaping, culture (M8, 2026-09-28).**
+*Method:* `MailSpikeM4Tests` against Scriban 7.5.0 (`Scriban.Signed`).
+*Answer:* `StrictVariables` refuses an unknown top-level name (`ScriptRuntimeException: The variable
+or function 'missing' was not found`) but a **missing member renders empty** (`{{ user.missing }}` →
+`''`, no error); with `EnableRelaxedMemberAccess = false` it fails too ("Cannot get member with name
+missing"). A Newtonsoft `JObject` is readable (`Ann|2`); an STJ `JsonElement` is **opaque** (members
+null: "Cannot get the member data.items.size for a null object"); converted to `ScriptObject`s it
+renders `Ann|2|12` under strict mode. Scriban writes values **verbatim** (`<b>Ann & "Co"</b><script>`);
+pre-escaped with `WebUtility.HtmlEncode` the value survives Mjml.Net as `&lt;b&gt;Ann &amp; &quot;Co&quot;…`
+and an `href` with `&amp;` stays intact. Culture: pushed `nl-BE` → `1234,5|1.234,50|05 januari 2026|5/01/2026`,
+`en-US` → `1234.5|1,234.50|05 January 2026|1/5/2026`; **nothing pushed on an `nl-BE` thread →
+invariant** (`1,234.50|05 January 2026`). A `DateTimeOffset` value makes `date.to_string` fail
+("Unable to convert type DateTimeOffset to DateTime") — found in `MailManagerTests`.
+
+**S-M5 — boky/postfix VERP → pipe → HTTP (M8, 2026-09-28).**
+*Question:* can the relay image route VERP bounces to an HTTP endpoint; `master.cf` customisation,
+`curl`, exit 75.
+*Method:* scratch script against `boky/postfix:v4.3.0` (Postfix 3.7.11, Debian 12) and a Python HTTP
+receiver on one Docker network: an init script in `/docker-init.db/` (`postconf -e relay_domains,
+transport_maps = inline:{…=sparkbounce:}, recipient_delimiter`, `postconf -M sparkbounce/unix=… pipe
+flags=Rq user=nobody argv=… ${original_recipient}`), the pipe script (curl, `|| exit 75`), a DSN injected
+with `sendmail -f "" -t`; then the receiver stopped, another DSN, receiver started, `postqueue -f`.
+*Answer:* `curl` present (`/usr/bin/curl`), `wget` absent; `/docker-init.db/*.sh` are sourced after the
+image's own postconf steps (`execute_post_init_scripts`), and the image then unsets secret variables,
+so the pipe reads URL and secret from files. The master.cf entry read back as written. Up: one POST
+`/spark/mail/bounces?recipient=bounces%2B{id}%40verp.test`, bearer correct, `Content-Type:
+message/rfc822`, 720 bytes containing `message/delivery-status`, queue empty, `status=sent (delivered
+via sparkbounce service)`. Down: `dsn=4.3.0, status=deferred (temporary failure. Command output: curl:
+(6) Could not resolve host: sm5-receiver)`, one message in the queue. Back + flush: second POST (204),
+queue empty. Recipe in `guide-outgoing-mail.md` §8.3.
+
+**S-M6 — MailKit against a relay advertising STARTTLS (M8, 2026-09-28).**
+*Method:* `MailSpikeM6Tests` against `FakeSmtpServer` (loopback; advertises STARTTLS, answers it 454),
+MailKit 4.18.1.
+*Answer:* `SecureSocketOptions.None`: `Capabilities` lists StartTLS, the client **never sends
+STARTTLS**; commands `EHLO`, `MAIL FROM:<bounces+d-1234@verp.app.example> SIZE=221`, `RCPT TO`, `DATA`,
+`QUIT`; the headers carry `From: App <noreply@app.example>` and `Message-Id`, **no `Sender:`** — the VERP
+address is envelope-only. `StartTlsWhenAvailable` sends STARTTLS and the connect fails
+(`SmtpCommandException: 4.7.0 TLS not available`). Refusals surface as `SmtpCommandException`:
+`553` at MAIL FROM → `SenderNotAccepted`, `StatusCode 553`; `550` / `451` at RCPT →
+`RecipientNotAccepted` with the mailbox — so 5xx vs 4xx is `(int)StatusCode`.
+
+**Deviations (M8).**
+- *Template layout* (owner decision, §3.10): `{name}.{culture}.mjml` in the app's folder over embedded
+  defaults, not `{lang}/{name}.mjml`; S-M1 made it safe (`WithCulture="false"`). Precedence is per
+  file: an app's neutral file does not hide a shipped `nl` file — documented.
+- *Strict members:* §3.10 says "strict variables"; S-M4 showed that covers top-level names only, so
+  `EnableRelaxedMemberAccess = false` is set too. Dates in template data are ISO strings converted to
+  `DateTime` (the clock time as written; S-M4 found `DateTimeOffset` unsupported by `date.to_string`).
+- *Package split:* `MintPlayer.Spark.MailManager.Abstractions` (`ISparkMailer`, requests,
+  `ISparkMailSuppressions`, `ISparkMailRecipientCulture`, template-assembly registration) so
+  Authorization wires account mail without referencing MailKit/Mjml.Net/Scriban. The `IEmailSender<TUser>`
+  and link-confirmation implementations live in Authorization (auth code stays out of the mail
+  package), replacing Identity's no-op only when it is the registered one; transient (MapIdentityApi
+  resolves it from the root provider — a scoped registration fails there, found by the OIDC tests).
+  `IEmailSender`'s link methods receive HTML-encoded links (Identity's contract); the sender decodes
+  them because the renderer escapes.
+- *Scriban.Signed* instead of `Scriban`: WireMock.Net in the test project depends on `Scriban.Signed`;
+  both side by side are CS0433 on every type. Same library, strong-named.
+- *Bounce endpoint always mapped* through the generated `MapSparkMailManagerEndpoints()` and answers 404
+  unless enabled (the per-library generated method maps every endpoint; History and SoftDelete were
+  moved onto theirs too). Rate limit is an endpoint-local fixed window (120/min), not a second
+  `UseRateLimiter()`.
+- *Delivery records* are written when the worker handles the mail (sent / suppressed / failed), not at
+  queue time: one write per mail, and the record holds the address a bounce is matched against. The
+  bounce suppresses **the delivery record's address**, not the DSN's `Final-Recipient` (a forwarded
+  bounce could name another address).
+- *D6 guard* fires for `LocalCredentials = Full` only (the one mode that maps `register`); a sender is
+  "discarding" when it is Identity's no-op or Spark's with no MailManager. 14 auth test hosts that map
+  registration without being about mail register a test sink or set `AllowUnconfirmedRegistration`.
+- *CodeCoverage* (D10): no app template copy — the shipped `SparkAuth/LinkConfirmation` carries
+  `SparkLinkConfirmationMessage`'s wording, in HTML + text instead of text only; `ApplicationName=Coverage`
+  and `From:Name` moved to `appsettings.json`; MailManager is added only when `Smtp:Host` and
+  `From:Address` are set (the old `IsConfigured` rule), so production with no `MAIL_FROM_ADDRESS` still
+  starts and sends nothing. `implicitDependencies` needed no entry (Nx infers project references).
+- *Found (M5 left it):* `XsrfSurfaceTests.Auth_surface_…` still pinned MapIdentityApi's surface; M5's account endpoints (incl. `register`, `resendConfirmationEmail`, `manage/account`, `manage/password`, `manage/profile`, `confirm-email`) all require antiforgery — the pinned lists were updated to the measured surface.
+- *Not built:* VERP tier 2 (MX + inbound 25) is a recipe only (§6 out of scope); complaint (ARF)
+  parsing; a UI for `PreferredCulture` (M10 profile page can expose it).
 ---
 
 ## 5. Risks

@@ -344,6 +344,32 @@ implements only that overload (the others are default interface methods).
 
 See `libs/messaging/MintPlayer.Spark.Messaging/README.md`.
 
+## Mail (`spark.AddMailManager()`, package `MintPlayer.Spark.MailManager`)
+
+Never send mail inline, never hand-roll SMTP or HTML. Inject `ISparkMailer` (abstractions package)
+and queue a `SparkMailRequest { Template, To, Culture?, Data, Sensitive, ExpiresAtUtc }`; campaigns go
+through `SendCampaignAsync` (one mail per recipient, never BCC).
+
+- **Everything is `Spark:Mail` configuration**: transport = `Smtp:Host` **or** `PickupFolder` (or
+  `AddMailTransport<T>()`), `From:Address` required, `Smtp:Security` `None|Auto|StartTls|SslOnConnect`
+  (no forced STARTTLS). Startup refuses no/both transports, no sender, a template without a neutral file
+  (warning in Development), a template that does not parse.
+- **Templates are files**: `Templates/Mail/{name}.{culture}.mjml` → `{name}.{language}.mjml` →
+  `{name}.mjml`, same chain for the optional `.txt` part; subject = `<mj-title>`. The app's folder wins
+  over embedded defaults **per file** (Authorization ships `SparkAuth/ConfirmEmail|PasswordReset|LinkConfirmation`
+  in `en` + `nl`). Scriban with strict variables (a missing member fails the render too); string
+  values are HTML-escaped for you — never `| html.escape` again.
+- **Culture is chosen per send**, never from the request: explicit → `ISparkMailRecipientCulture`
+  (Authorization: `SparkUser.PreferredCulture`) → `Spark:Mail:DefaultCulture`. Stored on the message.
+- **A mail with a token or link that grants something is `Sensitive = true`** (Data Protection in
+  the queue, scrubbed on terminal) **and has `ExpiresAtUtc`** before the token dies.
+- Lanes `mail-transactional` / `mail-bulk` are declared with defaults; retune them under
+  `Spark:Messaging:Queues:{name}`. A registration surface (`LocalCredentials = Full`) without a
+  transport refuses startup (D6) unless `Spark:Auth:AllowUnconfirmedRegistration=true`.
+- Test every template with `SparkMailTemplateTester.RenderAllAsync(services, sample, "en", "nl")`.
+
+See `libs/mail/MintPlayer.Spark.MailManager/README.md` and `docs/guide-outgoing-mail.md`.
+
 ---
 
 ## Things that look right and are not
