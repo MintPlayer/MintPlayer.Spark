@@ -331,6 +331,17 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint
             // disables that write. A 403 naming it, rather than the catch-all's anonymous 500.
             return ClientResult.ActionDisabled(clientAccessor, ex);
         }
+        catch (SparkValidationException ex)
+        {
+            // A write the action made through IDatabaseAccess that an interceptor refused for a
+            // readable reason (a locked post, #460 M12 spike S-MOD-D): a 400 like /po/update gives,
+            // not the catch-all's anonymous 500.
+            return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, StatusCodes.Status400BadRequest);
+        }
+        catch (SparkThrottledException ex)
+        {
+            return ClientResult.Throttled(clientAccessor, httpContext, ex);
+        }
         // ⚠️ The filter is load-bearing, and this is the only endpoint that needs one. A retry is not
         // a failure — it is the server asking the caller a question, and the middleware turns it into
         // a 449. Every other retry-capable endpoint catches only specific exception types, so the

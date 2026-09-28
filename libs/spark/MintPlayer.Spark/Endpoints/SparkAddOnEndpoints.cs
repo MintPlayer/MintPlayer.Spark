@@ -53,6 +53,12 @@ public static class SparkAddOnEndpoints
         => ClientResult.ActionDisabled(client, exception);
 
     /// <summary>
+    /// A 429 for a business quota, in the envelope, with <c>Retry-After</c> when known (#460, M12).
+    /// </summary>
+    public static IResult Throttled(IClientAccessor client, HttpContext httpContext, SparkThrottledException exception)
+        => ClientResult.Throttled(client, httpContext, exception);
+
+    /// <summary>
     /// Whether <paramref name="exception"/> is the optimistic-concurrency refusal of a save (the
     /// posted etag is not the stored change vector). Answer it with <see cref="ConcurrencyConflict"/>.
     /// The exception type itself stays internal.
