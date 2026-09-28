@@ -32,10 +32,6 @@ namespace MintPlayer.Spark.Authorization.Extensions;
 /// </remarks>
 internal static class LocalCredentialEndpointFilter
 {
-    /// <summary>Routes that exist only to serve local (password) credentials.</summary>
-    private static readonly string[] PasswordRecoveryRoutes =
-        ["/confirmEmail", "/resendConfirmationEmail", "/forgotPassword", "/resetPassword"];
-
     private static readonly string[] PasswordSignInRoutes = ["/login", "/refresh"];
 
     /// <summary>
@@ -76,15 +72,9 @@ internal static class LocalCredentialEndpointFilter
         // meant the guard never fired for the most common configuration.
         GuardAgainstSilentlyDiscardedMail<TUser>(endpoints.ServiceProvider);
 
-        if (mode == SparkLocalCredentials.Full)
-        {
-            // The default takes the original code path verbatim — no throwaway builder, no
-            // re-publication. Whatever the filter does or does not preserve cannot affect the
-            // behaviour of an application that never opted in.
-            StampAntiforgery(endpoints.MapGroup("/spark/auth").MapIdentityApi<TUser>());
-            return;
-        }
-
+        // #460: every mode goes through the filter now, Full included — Spark replaces Microsoft's
+        // mail-sending endpoints in all of them (SparkAccountEndpoints), so there is no longer a mode
+        // whose route table is MapIdentityApi's verbatim.
         if (mode == SparkLocalCredentials.Disabled)
             GuardAgainstUnreachableSignIn(endpoints.ServiceProvider);
 
@@ -101,7 +91,16 @@ internal static class LocalCredentialEndpointFilter
             .ToArray();
 
         endpoints.DataSources.Add(new FixedEndpointDataSource(kept));
+
+        SparkAccountEndpoints.Map<TUser>(endpoints, mode);
     }
+
+    /// <summary>
+    /// Microsoft's endpoints that Spark maps its own version of (<see cref="SparkAccountEndpoints"/>) and
+    /// that are therefore dropped in every mode. <c>/manage/info</c> is dropped for POST only.
+    /// </summary>
+    private static readonly string[] ReplacedBySpark =
+        ["/register", "/resendConfirmationEmail", "/confirmEmail", "/forgotPassword", "/resetPassword"];
 
     /// <summary>
     /// The complete set of routes <c>MapIdentityApi</c> contributed when this filter was written,
@@ -244,22 +243,20 @@ internal static class LocalCredentialEndpointFilter
         bool Matches(params string[] suffixes) =>
             suffixes.Any(suffix => raw.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
 
-        // Self-service registration goes in both non-default modes. resendConfirmationEmail goes
-        // with it: an account nobody can create has nothing to confirm, and it is an unauthenticated
-        // mail-send trigger keyed on an email address.
-        if (Matches("/register", "/resendConfirmationEmail"))
+        // Spark maps its own version of these in every mode, classified there (register and
+        // resendConfirmationEmail in Full only; the recovery family outside Disabled; confirmEmail
+        // everywhere). GET and POST /manage/info share one route pattern, so the POST — replaced —
+        // is told apart by method; the GET, which only reads, stays Microsoft's.
+        if (Matches(ReplacedBySpark))
+            return false;
+
+        if (Matches("/manage/info") && IsMutating(route.Metadata))
             return false;
 
         if (mode != SparkLocalCredentials.Disabled)
             return true;
 
-        if (Matches(PasswordSignInRoutes) || Matches(PasswordRecoveryRoutes))
-            return false;
-
-        // GET and POST /manage/info share one route pattern, so this has to discriminate on method.
-        // The POST rotates the email address that the external login was provisioned against, which
-        // would desynchronize it from the issuer-attested claim; the GET only reads.
-        if (Matches("/manage/info") && IsMutating(route.Metadata))
+        if (Matches(PasswordSignInRoutes))
             return false;
 
         return true;

@@ -30,7 +30,25 @@ public class SparkUser
     public DateTimeOffset? LockoutEnd { get; set; }
     public bool LockoutEnabled { get; set; }
     public int AccessFailedCount { get; set; }
+
+    /// <summary>
+    /// The TOTP authenticator key, stored protected (<c>sdp1:</c> + Data Protection) by the store.
+    /// Read it through <c>UserManager.GetAuthenticatorKeyAsync</c>, never from this property.
+    /// </summary>
     public string? AuthenticatorKey { get; set; }
+
+    /// <summary>
+    /// When the account was created (UTC). Stamped by the store on create; <see langword="null"/> for
+    /// an account created before the field existed and not yet backfilled.
+    /// </summary>
+    public DateTime? CreatedAtUtc { get; set; }
+
+    /// <summary>
+    /// How the account was created — one of <see cref="SparkRegistrationMethods"/>
+    /// (<c>password</c>, <c>external:{provider}</c>, <c>other</c>); <see langword="null"/> when unknown
+    /// (accounts that predate the field).
+    /// </summary>
+    public string? RegistrationMethod { get; set; }
 
     public List<string> Roles { get; set; } = [];
     public List<SparkUserClaim> Claims { get; set; } = [];
@@ -49,6 +67,7 @@ public class SparkUser
     /// </para>
     /// </summary>
     public List<string> TwoFactorRecoveryCodes { get; set; } = [];
+    /// <summary>External-login tokens; each value is stored protected (<c>sdp1:</c>) by the store.</summary>
     public List<SparkUserToken> Tokens { get; set; } = [];
 
     /// <summary>

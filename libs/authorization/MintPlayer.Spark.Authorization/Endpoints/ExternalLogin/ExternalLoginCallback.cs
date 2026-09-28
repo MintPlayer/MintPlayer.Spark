@@ -38,6 +38,7 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
     [Inject] private readonly SparkExternalLoginLinker<TUser> linker;
     [Inject] private readonly IOptions<SparkAuthenticationOptions> options;
     [Inject] private readonly IAntiforgery antiforgery;
+    [Inject] private readonly SparkAccountMail<TUser> accountMail;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -94,15 +95,20 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
             // verified. So there is no longer a second chance to establish this later, and the gate
             // must fail closed: a provider that does not say counts as not verified. A forge that
             // cannot report it must not be trusted to assert identity by email at all.
+            //
+            // #460 D7: *which* claim carries the signal, and whether a provider has one at all, is
+            // the provider preset's declaration (SparkExternalProviderPolicy). A scheme nobody
+            // described keeps the rule above: email_verified=true or no account. A provider that
+            // declares it has no reliable signal gets an unconfirmed account and a confirmation mail
+            // instead — the mail is then the proof the SSO could not give.
+            var policy = SparkExternalProviderPolicies.For(httpContext.RequestServices, info.LoginProvider);
             var email = info.Principal.FindFirstValue(ClaimTypes.Email);
-            var emailVerified = string.Equals(
-                info.Principal.FindFirstValue("email_verified"), "true",
-                StringComparison.OrdinalIgnoreCase);
+            var verification = policy.EmailVerification(info.Principal);
 
-            if (string.IsNullOrEmpty(email) || !emailVerified)
+            if (string.IsNullOrEmpty(email) || verification == SparkEmailVerification.Unverified)
                 return SparkAuthenticationExtensions.ExternalLoginOutcome(httpContext, safeReturnUrl, ExternalLoginErrors.EmailNotVerified);
 
-            var userName = info.Principal.FindFirstValue(ClaimTypes.Name)
+            var providerHandle = info.Principal.FindFirstValue(ClaimTypes.Name)
                 ?? info.Principal.FindFirstValue(ClaimTypes.NameIdentifier);
 
             // 4c: the address may already belong to somebody. Asked *before* provisioning rather
@@ -115,21 +121,28 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
             {
                 return await SparkAuthenticationExtensions.LinkOrRefuseAsync(
                     httpContext, signInManager, userManager, linker, options, antiforgery,
-                    existing, info, userName, safeReturnUrl);
+                    existing, info, providerHandle, safeReturnUrl);
             }
+
+            // #460 D7: a slug of the display name (john-doe, john-doe-2, …), never the email's local
+            // part — unless the preset declares its name claim a unique handle the app relies on.
+            var userName = policy.UserName == SparkUserNameSource.ProviderHandle
+                ? providerHandle
+                : await UniqueSlugAsync(info.Principal.FindFirstValue(ClaimTypes.Name) ?? providerHandle);
 
             user = new TUser();
             await userManager.SetUserNameAsync(user, userName);
             await userManager.SetEmailAsync(user, email);
+            user.RegistrationMethod = SparkRegistrationMethods.External(info.LoginProvider);
 
             // 4f: set because the provider *said the address is verified* — a fact about the token,
             // checked immediately above — and not by fiat. The distinction is the whole of 4g:
             // writing `true` unconditionally would make the field mean nothing, and it is the field
             // the next feature will trust.
             //
-            // D23: no confirmation mail follows. The SSO already established what one would have,
-            // and mailing anyway is ceremony the user has no reason to complete.
-            user.EmailConfirmed = true;
+            // D23: no confirmation mail follows a verified address. The SSO already established what
+            // one would have. A NoSignal provider (D7) is the exception, handled after creation.
+            user.EmailConfirmed = verification == SparkEmailVerification.Verified;
 
             var createResult = await userManager.CreateAsync(user);
             if (!createResult.Succeeded)
@@ -145,6 +158,16 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
             {
                 await userManager.DeleteAsync(user);
                 return SparkAuthenticationExtensions.ExternalLoginOutcome(httpContext, safeReturnUrl, ExternalLoginErrors.AccountCreationFailed);
+            }
+
+            if (!user.EmailConfirmed)
+            {
+                await accountMail.SendConfirmationAsync(httpContext, user, email);
+
+                // SignInAsync does not consult RequireConfirmedEmail (only the password and external
+                // sign-in paths do), so the option is honoured here explicitly.
+                if (options.Value.RequireConfirmedEmail)
+                    return SparkAuthenticationExtensions.ExternalLoginOutcome(httpContext, safeReturnUrl, ExternalLoginErrors.ConfirmEmailSent);
             }
 
             await signInManager.SignInAsync(user, isPersistent: true);
@@ -169,5 +192,23 @@ internal sealed partial class ExternalLoginCallback<TUser> : IGetEndpoint
         // (window.opener.postMessage) is unaffected (no caller-data interpolation), and the
         // non-popup branch is now a standard server redirect that the framework HTML-encodes for us.
         return SparkAuthenticationExtensions.ExternalLoginOutcome(httpContext, safeReturnUrl, error: null);
+    }
+
+    /// <summary><c>slug</c>, else <c>slug-2</c>, <c>slug-3</c>, … — the first user name nobody holds.</summary>
+    private async Task<string> UniqueSlugAsync(string? displayName)
+    {
+        var slug = SparkExternalProviderPolicy.Slugify(displayName);
+        if (await userManager.FindByNameAsync(slug) is null)
+            return slug;
+
+        for (var n = 2; n <= 100; n++)
+        {
+            var candidate = $"{slug}-{n}";
+            if (await userManager.FindByNameAsync(candidate) is null)
+                return candidate;
+        }
+
+        // A hundred people with one display name: stop probing and take a random suffix.
+        return $"{slug}-{Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(4))}";
     }
 }

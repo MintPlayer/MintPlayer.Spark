@@ -75,6 +75,27 @@ losing the key ring: every cookie issued before the change stops decrypting and 
 signed out once. The default is the entry assembly's name, so **renaming the application's project
 changes it too** — set it explicitly on anything deployed.
 
+## Secrets at rest in the user store
+
+`MintPlayer.Spark.Authorization` also uses the key ring for data, not only for cookies: every user's
+TOTP authenticator key and every external-login token (a GitHub access/refresh token, say) is stored
+as `sdp1:` + Data Protection ciphertext (#460, D5). That raises the stakes of losing the ring: a lost
+ring no longer only signs everyone out, it makes those values unreadable.
+
+What happens then is deliberate:
+
+- **An unreadable authenticator key never switches two-factor off.** The store answers a random key
+  nobody holds (and logs an error): 2FA stays required, authenticator codes fail, **recovery codes
+  still work**, and resetting the authenticator key from the account page repairs it. Returning
+  "no key" instead would have made Identity find no second-factor provider and skip the step.
+- An unreadable token reads as absent (warning logged) — the provider issues a new one at the next
+  sign-in; CodeCoverage's GitHub token refresh then asks the user to sign in again.
+- Existing plaintext values keep working and are rewritten protected once after start
+  (`SparkUserBackfill`, marker document `SparkAuth/Backfills/Users.v1`).
+
+So `KeysPath` on a mounted volume (or `Storage=RavenDb`) is not optional hygiene: it is what keeps
+second factors and stored provider tokens usable across redeploys.
+
 ## Migrating from a hand-written setup
 
 Delete your own `AddDataProtection()` / `SetApplicationName(...)` / `PersistKeysTo...()` calls and set

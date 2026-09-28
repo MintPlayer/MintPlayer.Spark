@@ -157,6 +157,12 @@ Step 3 is the one worth knowing about when writing a store: the counter is only 
 persisted, and Spark's `UpdateAsync` runs with optimistic concurrency so two concurrent assertions
 cannot both write it.
 
+**Measured** (#460 spike SP-E, the #439 SP2 that had never run — `PasskeyCloneDetectionTests`, a
+software ES256 authenticator through the real `/passkeys/request-options` + `/passkeys/sign-in`):
+stored 5 → presented 6 signs in and the store then holds 6; stored 5 → presented 3 **and** stored 5 →
+presented 5 are refused with the uniform `401 passkey_failed` and the stored count stays 5; stored 0 →
+presented 0 signs in, twice in a row. So points 1–3 above hold as written.
+
 ## Removing the last credential
 
 `DELETE /spark/auth/passkeys/{id}` refuses with `last_credential` when the passkey is the only thing

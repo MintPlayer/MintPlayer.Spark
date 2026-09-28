@@ -252,6 +252,22 @@ caller's group claims, in any translation, so display names are load-bearing.
 map evaluated against every type, so granting an action on a type that should not offer it renders a
 stray button.
 
+**Accounts** (`spark.AddAuthentication<TUser>()`, `MintPlayer.Spark.Authorization` README has the
+route table):
+
+- Sign-in takes an **email or a user name**; a user name containing `@` must be that account's own
+  email (enforced on save). Don't read `UserName` as "the email".
+- Account mail goes through `IEmailSender<TUser>`; its links point at the SPA (`/confirm-email`,
+  `/reset-password`) and need **`Spark:Auth:PublicBaseUrl` outside Development** — without it the mail
+  is not sent (never built from the request `Host`).
+- `SparkUser.AuthenticatorKey` and token values are stored encrypted (`sdp1:`). Read them through
+  `UserManager` (`GetAuthenticatorKeyAsync`, `GetAuthenticationTokenAsync`), never from the property.
+- App fields on the profile page: `ISparkProfileContributor<TUser>`; GDPR: `ISparkPersonalDataContributor<TUser>`
+  and `ISparkAccountDeletionHandler<TUser>` (idempotent — a failed deletion is retried with every
+  handler again). Register them as scoped services.
+- External providers: use the presets (`AddGitHub`, `AddSparkGoogle`, …) — they declare whether the
+  provider's email can be trusted; a provider without a signal gets an unconfirmed account and a mail.
+
 **The startup posture report** prints what an anonymous caller can reach on every boot, including
 when that is nothing. `--spark-verify-security` compares it against a committed
 `App_Data/securityPosture.txt` and exits 3 if it moved — because widening that file is a one-line

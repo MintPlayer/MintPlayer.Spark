@@ -23,6 +23,18 @@ public static class GitHubAuthenticationExtensions
         string authenticationScheme,
         Action<OAuthOptions> configureOptions)
     {
+        // #460 D7: GitHub's signal is reliable (email_verified from /user/emails, below) and absent
+        // means "not verified or not obtainable" — refuse, as before. The user name is the GitHub
+        // login verbatim: it is already a unique handle, and applications (CodeCoverage) compare it
+        // with repository owners, which a slug would lower-case.
+        builder.Services.AddSingleton(new MintPlayer.Spark.Authorization.Configuration.SparkExternalProviderRegistration(
+            authenticationScheme,
+            new MintPlayer.Spark.Authorization.Configuration.SparkExternalProviderPolicy
+            {
+                EmailVerification = MintPlayer.Spark.Authorization.Configuration.SparkExternalProviderPolicy.Default.EmailVerification,
+                UserName = MintPlayer.Spark.Authorization.Configuration.SparkUserNameSource.ProviderHandle,
+            }));
+
         var authBuilder = new AuthenticationBuilder(builder.Services);
         authBuilder.AddOAuth(authenticationScheme, authenticationScheme, options =>
         {

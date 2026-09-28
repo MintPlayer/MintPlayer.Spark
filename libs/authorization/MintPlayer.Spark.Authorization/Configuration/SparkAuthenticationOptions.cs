@@ -93,4 +93,71 @@ public class SparkAuthenticationOptions
     /// </para>
     /// </remarks>
     public string? PasskeyServerDomain { get; set; }
+
+    /// <summary>
+    /// Refuse sign-in to accounts whose email is not confirmed (#460, D6). Defaults to
+    /// <see langword="false"/>. Sets <c>IdentityOptions.SignIn.RequireConfirmedEmail</c>, and the
+    /// external-login callback honours it for accounts it provisions unconfirmed.
+    /// </summary>
+    /// <remarks>
+    /// Completing a password reset confirms the email (the reset link was delivered to it), and
+    /// <c>forgotPassword</c> sends to unconfirmed addresses, so an account created before confirmation
+    /// was required can always get in.
+    /// </remarks>
+    public bool RequireConfirmedEmail { get; set; }
+
+    /// <summary>
+    /// How recent a sign-in must be for operations that require re-authentication when no password is
+    /// supplied (account deletion). Defaults to 5 minutes.
+    /// </summary>
+    public TimeSpan ReauthenticationMaxAge { get; set; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// Where mailed links point (#460, D16). See <see cref="SparkAuthLinkOptions"/>.
+    /// </summary>
+    public SparkAuthLinkOptions Links { get; set; } = new();
+
+    /// <summary>
+    /// The issuer shown by authenticator apps for this application's TOTP entry. Defaults to the host's
+    /// application name.
+    /// </summary>
+    public string? AuthenticatorIssuer { get; set; }
+
+    /// <summary>
+    /// Per-provider sign-up policy — verified-email trust and user-name source (#460, D7), keyed by
+    /// authentication scheme (case-insensitive). The Spark provider presets (<c>AddGitHub</c>,
+    /// <c>AddSparkGoogle</c>, …) fill their own entry; a scheme without one gets
+    /// <see cref="SparkExternalProviderPolicy.Default"/>.
+    /// </summary>
+    public IDictionary<string, SparkExternalProviderPolicy> ExternalProviders { get; } =
+        new Dictionary<string, SparkExternalProviderPolicy>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Run <see cref="Identity.SparkUserBackfill{TUser}"/> once after start. Defaults to
+    /// <see langword="true"/>; the pass is a no-op after its completion marker exists.
+    /// </summary>
+    public bool BackfillUsersOnStartup { get; set; } = true;
+}
+
+/// <summary>
+/// Where confirmation and reset links in mail point: the SPA's pages, whose components post the token
+/// back to the API (#460, D16).
+/// </summary>
+/// <remarks>
+/// ⚠️ <see cref="PublicBaseUrl"/> must be set outside Development. Deriving a link from the request's
+/// <c>Host</c> header on an anonymous endpoint (<c>forgotPassword</c>) is the password-reset-poisoning
+/// hole — an attacker sends the request with their own host and the victim's reset token arrives in a
+/// link to it. Unset outside Development, a link-bearing mail is not sent (logged as an error); in
+/// Development the request origin is used.
+/// </remarks>
+public class SparkAuthLinkOptions
+{
+    /// <summary>The SPA's public origin, e.g. <c>https://example.com</c>. Bound from <c>Spark:Auth:PublicBaseUrl</c> when unset in code.</summary>
+    public string? PublicBaseUrl { get; set; }
+
+    /// <summary>The page that confirms an email (and a changed email). Default <c>/confirm-email</c>; receives <c>userId</c>, <c>code</c> and, for a change, <c>changedEmail</c>.</summary>
+    public string ConfirmEmailPath { get; set; } = "/confirm-email";
+
+    /// <summary>The page that completes a password reset. Default <c>/reset-password</c> (ng-spark-auth's); receives <c>email</c> and <c>code</c>.</summary>
+    public string ResetPasswordPath { get; set; } = "/reset-password";
 }

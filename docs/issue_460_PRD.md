@@ -450,6 +450,121 @@ wake-up patch, the re-claim. No message was deferred twice.
   ClaimTtl` on every save of a message it still owns (Processing), so no step save moves the expiry
   back; `TryRenewAsync` also reloads on a conflict with such a save instead of ending renewal.
 
+**SP-A — second factor and recovery codes under `SparkSignInManager` (M5, 2026-09-28).**
+*Question:* do the 2FA and recovery-code steps of `MapIdentityApi`'s `/login` still work when the
+identifier is resolved by the override, in cookie and bearer mode?
+*Method:* `SignInIdentifierTests` against a real Identity host (Spark stores, sign-in manager,
+endpoints) on the embedded RavenDB; TOTP computed from the stored key per RFC 6238.
+*Answer:* by email and by user name → 200 (bearer body carries `accessToken`), unknown identifier → 401.
+With 2FA on, identifier = user name: password only → `401 "RequiresTwoFactor"`, wrong code → 401,
+correct TOTP → 200 in both modes (cookie: `.AspNetCore.Identity.Application` set; bearer:
+`accessToken`). Identifier = email: recovery code → 200, the same code again → 401, both modes. A
+legacy account B whose user name is account A's email: B's password with that identifier → 401 and B's
+`AccessFailedCount` stays 0 (no fall-through); A's password → 200. The session's sign-in instant
+(`.spark.authenticated_at` in the ticket properties) reads back within a minute of the login.
+
+**SP-B (rest) — secrets at rest (M5, 2026-09-28).** The key-document compatibility half ran in M1
+(`SparkDataProtectionTests`).
+*Question:* protected round trip through the store; restart over the persisted Raven key ring; legacy
+plaintext; backfill idempotence; the GitHub token path; what an unreadable key does.
+*Method:* `UserSecretsAtRestTests`: containers built with Spark's own `AddSparkDataProtection`
+(`Storage=RavenDb`) + `AddSparkAuthentication`, raw documents read back through a plain session.
+*Answer:* after `ResetAuthenticatorKeyAsync` and `SetAuthenticationTokenAsync("GitHub", "access_token", …)`
+— the calls CodeCoverage's `GitHubUserTokenService` makes — both stored values start `sdp1:` and do
+not contain the plaintext; `UserManager` reads the base32 key and the token back. A second container
+over the same database reads both. A legacy plaintext key reads as-is; the backfill's first pass
+protects 1 user, the second is skipped by the marker, and with the marker deleted a third pass
+protects 0 and leaves the ciphertext byte-identical. Under another `ApplicationName` (a lost ring)
+`GetValidTwoFactorProvidersAsync` still lists `Authenticator` and the original TOTP is rejected. A
+stored document's metadata holds `@last-modified` and **no `@created`**; with revisions on, the
+backfill filled `CreatedAtUtc` for the document with history and left the one stored before revisions
+existed `null`. Not measured: `GitHubUserTokenService` itself against GitHub (its own tests use fakes).
+
+**SP-C — provider verified-email signals (M5, 2026-09-28).**
+*Question:* per provider (Google, Microsoft, Facebook, X, LinkedIn): the verified-email signal, the
+`ClaimTypes.Name` shape, Microsoft consumers-tenant detection.
+*Method:* `ExternalProviderPolicyTests.SP_C_…` resolves each preset's handler options (package
+`11.0.0-rc.1.26425.128`) and lists endpoints, scopes and claim actions; the callback tests drive each
+policy outcome through the real `/external-login-callback`. **No live provider was contacted** — what
+each provider's response contains is from its documentation, not measured.
+*Answer (measured, handler side):* Google — userinfo `https://www.googleapis.com/oauth2/v3/userinfo`,
+scopes `openid profile email`; the handler maps `sub`/`id`, `name`, `email`… and **no verification
+claim** — `email_verified→email_verified` exists only because the preset adds it. Microsoft — authorize
+`…/common/oauth2/v2.0/authorize`, userinfo Graph `/v1.0/me`, scope `user.read` (+ `openid` from the
+preset); `displayName→Name`, email via a custom action (mail / userPrincipalName); no tenant claim, so
+the preset reads `tid` from the token response's `id_token`. Facebook — Graph `v22.0/me`, fields
+`name,email,first_name,last_name`, no verification claim. X — `RetrieveUserDetails=True` (preset),
+claim actions map only `email`. LinkedIn (preset over OAuth) — OIDC userinfo, `sub`, `name`, `email`,
+`email_verified`. Registrations: GitHub `ProviderHandle`, the other five `DisplayNameSlug`.
+*Answer (callback):* a no-signal policy → account created `EmailConfirmed=false`, user name
+`Jöhn Doe` → `john-doe`, `RegistrationMethod external:StubProvider`, one confirmation mail to
+`{PublicBaseUrl}/confirm-email?…`, signed in; with `RequireConfirmedEmail` → `confirm_email_sent`, no
+application cookie, account exists; an undescribed scheme without `email_verified` → `email_not_verified`,
+no account, no mail; `Jane Doe` then `Jane  DOE!` → `jane-doe`, `jane-doe-2`.
+*Decisions from it:* Google and LinkedIn `email_verified=true` → verified, else no account; Microsoft
+verified only for tid `9188040d-6c67-4c5b-b112-36a304b66dad` (consumers), otherwise no signal; Facebook
+and X no signal. The `tid` value and each provider's response shape are documented facts, unverified here.
+
+**SP-D — server-side SVG QR (M5, 2026-09-28).**
+*Question:* library vs in-house encoder; does the SVG scan?
+*Method:* `AuthenticatorQrCodeTests`: the otpauth URI rendered by `SparkQrCodeRenderer` (QRCoder 1.8.0,
+ECC level M), the SVG's own geometry rasterised at 2 px/module and decoded by ZXing.Net's
+`QRCodeReader`; separately, every module compared with the encoder's matrix.
+*Answer:* a 117-character otpauth URI → `viewBox="0 0 53 53"` (45 modules + 4-module quiet zone), one
+white `rect` and one `path` of horizontal runs; ZXing decodes the exact URI and every module matches.
+**Library chosen** (MIT, no dependencies): an in-house encoder is mode selection + Reed–Solomon +
+masking with nothing application-specific. Not measured: physical authenticator apps.
+
+**SP-E — passkey clone detection (#439 SP2, M5, 2026-09-28).**
+*Question:* does sign-in refuse a sign counter that did not advance from a non-zero baseline, and still
+accept the permanent zero of synced passkeys?
+*Method:* `PasskeyCloneDetectionTests`: a software ES256 authenticator (COSE key stored through
+`AddOrUpdatePasskeyAsync`; authenticator data, client data and a DER signature built per assertion)
+through the real `/passkeys/request-options` and `/passkeys/sign-in`.
+*Answer:* stored 5 → presented 6: 200, stored count becomes 6. Stored 5 → 3 and stored 5 → 5: `401
+passkey_failed`, stored count stays 5. Stored 0 → 0: 200, twice in a row. Identity's handler enforces
+it; Spark adds no check (as `guide-passkeys.md` claimed, now measured).
+
+**Deviations (M5).**
+- *Spark owns the mail-sending half of the local-credential surface.* D6 (`forgotPassword` to
+  unconfirmed addresses, reset confirms) and D16 (links to SPA pages) cannot be had from
+  `MapIdentityApi`, whose `register`, `resendConfirmationEmail`, `confirmEmail`, `forgotPassword`,
+  `resetPassword` and `POST manage/info` build their own links and check confirmation. They are
+  filtered out in **every** mode (Full no longer maps Microsoft's surface verbatim) and mapped by
+  `SparkAccountEndpoints` with the same contracts. `forgotPassword` now sends a **link**
+  (`SendPasswordResetLinkAsync`) instead of Microsoft's code; `resendConfirmationEmail` sends only to
+  unconfirmed accounts. Kept from Microsoft: `login`, `refresh`, `manage/2fa`, `GET manage/info`.
+- *Confirm-new-email is not its own route*: `POST /spark/auth/confirm-email { userId, code, changedEmail? }`
+  handles both (the SPA page gets the same query either way). Microsoft's `GET confirmEmail` was
+  replaced too — it set the user name to the new email unconditionally, overwriting a chosen handle.
+- *`confirmEmail` / `confirm-email` are mapped under `Disabled`* (they were not): a D7 sign-up from a
+  provider without a signal must be confirmable in any mode.
+- *`Spark:Auth:PublicBaseUrl` is new and required outside Development* for link-bearing mail. A link
+  built from the request `Host` on anonymous `forgotPassword` is password-reset poisoning. Not a
+  startup guard (HR, Fleet and CodeCoverage would stop between milestone commits, as the plan notes for
+  the mail guard); the mail is refused and logged. M8 should configure it with the transport.
+- *Unknown schemes fail closed.* A scheme without a preset keeps "`email_verified=true` or no account";
+  only presets that **declare** no signal (Facebook, X, Microsoft work/school) get an unconfirmed
+  account + mail.
+- *GitHub keeps the login verbatim* (`SparkUserNameSource.ProviderHandle`) instead of a display-name
+  slug: CodeCoverage compares `ClaimTypes.Name` (= user name) with repository owners, so a slug would
+  change production behaviour. Every other preset slugs.
+- *`CreatedAtUtc` backfill*: RavenDB has no `@created` (SP-B), so the source is the oldest revision's
+  `@last-modified`, else `null`. `RegistrationMethod` is not inferred for existing accounts (`null`).
+- *Purpose strings without the user id*; *unreadable key → a random key nobody holds* (2FA stays
+  required, recovery codes work), unreadable token → absent. Reasons in `UserStore.Secrets.cs`.
+- *Re-authentication for deletion* = the current password (lockout-counted) **or** a sign-in younger
+  than `ReauthenticationMaxAge` (5 min), read from a ticket property `SparkSignInManager` stamps.
+- *`GET manage/2fa/authenticator-uri` is read-only* (409 `no_authenticator_key` until `POST manage/2fa`
+  created one), `Cache-Control: no-store`.
+- *LinkedIn* uses the generic OAuth handler against LinkedIn's OIDC userinfo (no third-party package);
+  its provider key is `sub`, and whether that equals the member id the retired v2 API (legacy
+  `AspNet.Security.OAuth.LinkedIn`) stored is undocumented — MintPlayer's one LinkedIn login may land on
+  the email-already-registered path instead of signing in.
+- *Found:* the `[Inject]` generator emits one constructor per `partial` declaration; fields injected
+  from a second file produced a second, ambiguous constructor. All of `UserStore`'s live in `UserStore.cs`.
+- *T9*: warning `SPARK030` (text match on `"@mintplayer/ng-spark-auth"` in `$(SpaRoot)package.json`).
+
 ---
 
 ## 5. Risks

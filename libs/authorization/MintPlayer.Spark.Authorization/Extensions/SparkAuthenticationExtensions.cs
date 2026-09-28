@@ -53,7 +53,13 @@ internal static class SparkAuthenticationExtensions
             {
                 configureIdentity?.Invoke(options);
             })
-            .AddRoles<SparkRole>();
+            .AddRoles<SparkRole>()
+            // #460 D4: sign in with email or user name, one resolver for every password sign-in
+            // (MapIdentityApi's /login and the OIDC /connect/login page both call the string
+            // overload), plus the user-name rule that keeps the two namespaces from colliding.
+            .AddSignInManager<SparkSignInManager<TUser>>()
+            .AddUserManager<SparkUserManager<TUser>>()
+            .AddUserValidator<SparkUserNameValidator<TUser>>();
 
         builder.Services.AddScoped<IUserStore<TUser>, UserStore<TUser>>();
         builder.Services.AddScoped<IRoleStore<SparkRole>, RoleStore>();
@@ -62,6 +68,16 @@ internal static class SparkAuthenticationExtensions
         // need to move. Registered rather than reading DateTimeOffset.UtcNow inline so that
         // "the link expired" is testable without waiting an hour for it.
         builder.Services.TryAddSingleton(TimeProvider.System);
+
+        // #460 D5 / item 6: protect legacy plaintext secrets and fill CreatedAtUtc, once, after start.
+        builder.Services.TryAddSingleton<SparkUserBackfill<TUser>>();
+        builder.Services.AddHostedService<SparkUserBackfillHostedService<TUser>>();
+
+        // #460 D16: where mailed confirmation/reset links point (the SPA's pages, not the server's
+        // plain-text confirmEmail). Replaceable.
+        builder.Services.TryAddSingleton<ISparkAuthLinkBuilder, SparkAuthLinkBuilder>();
+        builder.Services.TryAddSingleton<SparkQrCodeRenderer>();
+        builder.Services.TryAddScoped<SparkAccountMail<TUser>>();
 
         services.AddAntiforgery(options => options.HeaderName = "X-XSRF-TOKEN");
 
@@ -250,6 +266,13 @@ internal static class SparkAuthenticationExtensions
         /// signed in.
         /// </remarks>
         public const string LinkConfirmationSent = "link_confirmation_sent";
+
+        /// <summary>
+        /// An account was created from a provider without a reliable verified-email signal (#460,
+        /// D7) and <c>RequireConfirmedEmail</c> is on: a confirmation link was mailed, nobody is
+        /// signed in yet. Like <see cref="LinkConfirmationSent"/>, not an error.
+        /// </summary>
+        public const string ConfirmEmailSent = "confirm_email_sent";
 
         /// <summary>
         /// The provider identity is already attached to an account — possibly this one, possibly
