@@ -579,7 +579,7 @@ internal partial class RowSecurity : IRowSecurity
     /// Ids with no document are simply absent — callers treat unverifiable as not shown.
     /// </para>
     /// </summary>
-    private static async Task<Dictionary<string, object>> LoadBaseDocumentsAsync(
+    internal static async Task<Dictionary<string, object>> LoadBaseDocumentsAsync(
         IAsyncDocumentSession session, Type entityType, IReadOnlyCollection<string> ids,
         CancellationToken cancellationToken = default)
     {

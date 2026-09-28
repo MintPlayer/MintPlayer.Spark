@@ -453,6 +453,37 @@ describe('SparkService', () => {
     expect(dispatcher.dispatch).toHaveBeenCalledWith(operations);
   });
 
+  // --- #460 T5 / spike S7: a custom action returns data ---------------
+
+  it('executeCustomAction resolves to the envelope result the action set', async () => {
+    const promise = service.executeCustomAction<{ jobId: string }>('Car', 'Export');
+    httpTesting.expectOne('/spark/actions/execute').flush({ result: { jobId: 'job-7' }, operations: [] });
+    await expect(promise).resolves.toEqual({ jobId: 'job-7' });
+  });
+
+  it('executeCustomAction resolves to undefined when the action set nothing', async () => {
+    const promise = service.executeCustomAction('Car', 'Wash');
+    httpTesting.expectOne('/spark/actions/execute').flush({ result: null, operations: [] });
+    await expect(promise).resolves.toBeUndefined();
+  });
+
+  it('executeCustomAction carries the result of the attempt that completes after a 449', async () => {
+    retryService.show.mockResolvedValueOnce({ step: 0, option: 'Yes' });
+
+    const promise = service.executeCustomAction<{ jobId: string }>('Car', 'Export');
+    httpTesting.expectOne('/spark/actions/execute').flush(
+      { result: null, operations: [{ type: 'retry', step: 0, title: 'Export?', options: ['Yes', 'No'] }] },
+      { status: 449, statusText: 'Retry With' });
+
+    await flushMicrotasks();
+
+    const second = httpTesting.expectOne('/spark/actions/execute');
+    expect(second.request.body).toMatchObject({ retryResults: [{ step: 0, option: 'Yes' }] });
+    second.flush({ result: { jobId: 'job-8' }, operations: [] });
+
+    await expect(promise).resolves.toEqual({ jobId: 'job-8' });
+  });
+
   it('executeCustomAction without a query parent leaves parentId/parentType unset', async () => {
     const promise = service.executeCustomAction('Car', 'Wash');
     const req = httpTesting.expectOne('/spark/actions/execute');

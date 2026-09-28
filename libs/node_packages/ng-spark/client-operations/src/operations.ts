@@ -49,17 +49,9 @@ export interface RefreshQueryOperation {
     queryId: string;
 }
 
-export type DisableTarget =
-    | { kind: 'persistentObject'; objectTypeId: string; id: string }
-    | { kind: 'query'; queryId: string }
-    | { kind: 'currentResponse' }
-    | { kind: 'session' };
-
-export interface DisableActionOperation {
-    type: 'disableAction';
-    actionName: string;
-    target: DisableTarget;
-}
+// `disableAction` is gone (#460, D13): the server no longer emits it. Disabled actions arrive on
+// `PersistentObject.disabledActions` / `QueryResult.disabledActions`, and a submitted disabled action
+// is refused with 403.
 
 export interface RetryOperation {
     type: 'retry';
@@ -81,7 +73,6 @@ export type ClientOperation =
     | NotifyOperation
     | RefreshAttributeOperation
     | RefreshQueryOperation
-    | DisableActionOperation
     | RetryOperation
     | { type: string; [key: string]: unknown };
 

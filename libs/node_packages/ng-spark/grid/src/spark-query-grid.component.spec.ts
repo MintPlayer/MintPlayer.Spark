@@ -757,6 +757,18 @@ describe('SparkQueryGridComponent', () => {
       expect(c.visibleCustomActions().map(a => a.name)).toEqual(['Archive', 'Other']);
     });
 
+    it('stops offering New when the result withholds it, leaving canCreate the bare right (#460, D13)', async () => {
+      const executeQuery = vi.fn().mockResolvedValue({ ...samplePage, disabledActions: ['new'] });
+      const { c } = await setup({ executeQuery });
+
+      expect(c.canCreate()).toBe(true);
+      expect(c.offersCreate()).toBe(false);
+
+      executeQuery.mockResolvedValue(samplePage);
+      await c.fetchFn()!({ page: 2, perPage: 10, sortColumns: [] } as any);
+      expect(c.offersCreate()).toBe(true);
+    });
+
     it('asks for confirmation and does nothing when it is declined', async () => {
       const confirmSpy = vi.spyOn(globalThis, 'confirm').mockReturnValue(false);
       try {

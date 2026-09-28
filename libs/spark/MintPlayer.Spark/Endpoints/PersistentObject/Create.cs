@@ -100,6 +100,11 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint
         {
             return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, 400);
         }
+        catch (SparkActionDisabledException ex)
+        {
+            // After the row gate (#460, D13): the caller can see this row, so naming the action hides nothing.
+            return ClientResult.ActionDisabled(clientAccessor, ex);
+        }
         catch (SparkAccessDeniedException)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);

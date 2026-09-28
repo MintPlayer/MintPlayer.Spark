@@ -36,7 +36,7 @@ describe('provideSparkClientOperations', () => {
     // If you add a wire type to operations.ts, add a handler in provide.ts and list it here.
     // Deliberately exact: an operation that reaches the dispatcher unregistered is invisible.
     expect(registeredTypes()).toEqual(
-      ['disableAction', 'navigate', 'notify', 'refreshAttribute', 'refreshQuery'].sort());
+      ['navigate', 'notify', 'refreshAttribute', 'refreshQuery'].sort());
   });
 
   it('refreshAttribute reaches the attribute-refresh service with the value the server sent', () => {

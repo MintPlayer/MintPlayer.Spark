@@ -385,24 +385,46 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// edit, delete, create (WITH CHECK), streaming and breadcrumb loads — so they cannot drift.
     /// </para>
     /// <para>
-    /// What it is for is the answer the action catalogue cannot give.
-    /// <c>GET /spark/actions/{objectTypeId}</c> is type-level and is never told what an execution
-    /// returned, so an action that applies to only some results can only be withheld here.
+    /// Nor is it where actions are withheld any more: that is
+    /// <see cref="OnDisableActionsAsync(IDisablable, DisableActionsContext)"/> (#460, D13), which the
+    /// framework also enforces at submit. What remains here is a per-execution seam that can raise a
+    /// retry prompt.
     /// </para>
+    /// </remarks>
+    public virtual Task OnQueryAsync(SparkQueryContext context) => Task.CompletedTask;
+
+    /// <summary>
+    /// Withholds actions on a detail page, a query, or the targets of a submitted action — the single
+    /// source of truth for disabled actions (#460, D13). Called at load (the answer is returned as
+    /// <c>DisabledActions</c>) and at submit (a disabled action is refused with <c>403</c>, after the
+    /// row gate). Empty by default.
+    /// </summary>
+    /// <remarks>
+    /// Depend only on the entity (<see cref="DisableActionsContext.Entity"/>, the <b>stored</b>
+    /// state), the user and other stored state, so the load and submit answers agree.
     /// <example>
     /// <code>
-    /// public override Task OnQueryAsync(SparkQueryContext context)
+    /// public override Task OnDisableActionsAsync(IDisablable target, DisableActionsContext context)
     /// {
-    ///     if (context.Query.Name == "DisconnectedRepositories")
-    ///         return Task.CompletedTask;
-    ///
-    ///     context.DisableActions("DeleteData");
+    ///     if (context.Entity is Repository { Connection: not RepositoryConnection.Disconnected })
+    ///         target.DisableActions("DeleteData");
     ///     return Task.CompletedTask;
     /// }
     /// </code>
     /// </example>
     /// </remarks>
-    public virtual Task OnQueryAsync(SparkQueryContext context) => Task.CompletedTask;
+    public virtual Task OnDisableActionsAsync(IDisablable target, DisableActionsContext context) => Task.CompletedTask;
+
+    /// <summary>
+    /// The batched form: every target of one request in one call (a custom action's parent, its query
+    /// and each selected row). Override to answer a large selection in one round-trip; the default
+    /// calls <see cref="OnDisableActionsAsync(IDisablable, DisableActionsContext)"/> per item.
+    /// </summary>
+    public virtual async Task OnDisableActionsAsync(IReadOnlyList<DisableActionsItem> items)
+    {
+        foreach (var item in items)
+            await OnDisableActionsAsync(item.Target, item.Context);
+    }
 
     /// <summary>
     /// Row-level authorization as a composable filter. Where <see cref="IsAllowedAsync"/> judges

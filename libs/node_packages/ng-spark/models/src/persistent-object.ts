@@ -38,11 +38,9 @@ export interface PersistentObject {
    *
    * The action catalogue at `/spark/actions/{objectTypeId}` is per TYPE -- it is never told which
    * row is open -- so an action that applies to only some rows cannot be filtered there. The
-   * entity actions hook decides while it has the entity in hand, and the answer arrives here.
-   *
-   * An affordance, not a permission: the action endpoint is still reachable and its handler still
-   * refuses on its own terms. What this prevents is offering a destructive action where it cannot
-   * apply.
+   * entity's `OnDisableActionsAsync` hook decides on the stored entity, and the answer arrives here
+   * -- built-in actions (`Edit`, `Save`, `Delete`) included (#460, D13). The server asks the same
+   * hook again at submit and refuses a disabled action with 403.
    */
   disabledActions?: string[];
 }

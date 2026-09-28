@@ -40,7 +40,7 @@ public partial class SparkClient : IDisposable
     private readonly Dictionary<string, string> _cookies = new(StringComparer.Ordinal);
     private string? _xsrfToken;
 
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    internal static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     /// <summary>
     /// Answers retry prompts for calls that do not pass their own <c>onRetry</c>. Null by default, so
@@ -573,7 +573,19 @@ public partial class SparkClient : IDisposable
                 async (response, ct) =>
                 {
                     await SparkClientException.ThrowIfNotSuccessAsync(response, ct);
-                    return SparkActionResult.ForSuccess((int)response.StatusCode);
+
+                    // The completed attempt's envelope: its operations, surfaced as the single-attempt
+                    // path surfaces them, and the action's result (#460, T5). Both used to be dropped
+                    // on this path — a conversation ended in a bare status code.
+                    var text = await response.Content.ReadAsStringAsync(ct);
+                    var operations = SparkClientOperations.Parse(text);
+                    var sink = onOperation ?? OperationHandler;
+                    if (sink is not null)
+                        foreach (var operation in operations)
+                            sink(operation);
+
+                    return SparkActionResult.ForSuccess(
+                        (int)response.StatusCode, operations, SparkClientOperations.ParseResult(text));
                 },
                 onRetry, onOperation, cancellationToken);
         }
@@ -675,16 +687,16 @@ public partial class SparkClient : IDisposable
 
         await SparkClientException.ThrowIfNotSuccessAsync(response, cancellationToken);
 
-        // The success body is an envelope too, and carries whatever the action asked the client to
-        // do. ⚠️ Its `result` is always null today (ExecuteCustomAction envelopes a literal null),
-        // so `operations` is the only part of it worth reading.
+        // The success body is an envelope too: the operations the action asked the client to perform,
+        // and its `result` — whatever it handed to CustomActionArgs.SetResult (#460, T5), null otherwise.
         var successBody = await response.Content.ReadAsStringAsync(cancellationToken);
         var successOperations = SparkClientOperations.Parse(successBody);
         if (sink is not null)
             foreach (var operation in successOperations)
                 sink(operation);
 
-        return SparkActionResult.ForSuccess((int)response.StatusCode, successOperations);
+        return SparkActionResult.ForSuccess(
+            (int)response.StatusCode, successOperations, SparkClientOperations.ParseResult(successBody));
     }
 
     // --------------------------------------------------------------------------------

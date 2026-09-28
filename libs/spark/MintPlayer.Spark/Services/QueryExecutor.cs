@@ -291,29 +291,19 @@ internal partial class QueryExecutor : IQueryExecutor
         // data exists CANNOT filter it, however hard someone tries. Running it after row security
         // would put mapped rows one refactor away from the context signature, and the first request
         // for "hide the action when the result is empty" would answer itself by passing them in.
-        var queryContext = await InvokeQueryHookAsync(query, parent);
+        var (queryContext, queryActions) = await InvokeQueryHookAsync(query, parent);
 
-        QuerySourceResult source;
-        if (isCustom)
-        {
-            source = await ExecuteCustomQueryAsync(query, name, parent, searchTerm, skip, take, search, restrictToIds, columnFilters, cancellationToken);
+        // The query-execute half of D13 (#460): the same actions class, asked about a Query target
+        // before any row exists — so the answer cannot depend on what this page happened to return,
+        // and the submit path, which re-asks it, gets the same answer.
+        var disabledActions = await DisabledActionsEvaluator.EvaluateQueryCoreAsync(
+            queryActions, query, parent, queryContext.ParentType);
 
-            // UNION, not last-writer-wins. Both mechanisms are legitimate and a query may use both:
-            // the hook is the only channel a Database.* query has, and the custom method is the only
-            // place with rows in hand, so a data-dependent withhold can only happen there. Letting
-            // either overwrite the other would silently drop a withhold and leave an action offered.
-            source = source with
-            {
-                DisabledActions = MergeDisabledActions(queryContext.DisabledActions, source.DisabledActions),
-            };
-        }
-        else
-        {
-            source = await ExecuteDatabaseQueryAsync(query, name, parent, searchTerm, restrictToIds, columnFilters, skip, take, cancellationToken)
-                with { DisabledActions = queryContext.DisabledActions };
-        }
+        var source = isCustom
+            ? await ExecuteCustomQueryAsync(query, name, parent, searchTerm, skip, take, search, restrictToIds, columnFilters, cancellationToken)
+            : await ExecuteDatabaseQueryAsync(query, name, parent, searchTerm, restrictToIds, columnFilters, skip, take, cancellationToken);
 
-        var (allResults, definition, searchPushedDown, authorTotalItems, _, _, _, _) = source;
+        var (allResults, definition, searchPushedDown, authorTotalItems, _, _, _) = source;
 
         // The author's page is returned as it stands. Search, sort, count and paging were all
         // transferred with it (the binary authority rule on SparkQueryPage), so applying any of
@@ -360,7 +350,7 @@ internal partial class QueryExecutor : IQueryExecutor
                 TotalItems = authorTotal,
                 Skip = skip,
                 Take = take,
-                DisabledActions = source.DisabledActions,
+                DisabledActions = disabledActions,
             };
         }
 
@@ -414,7 +404,7 @@ internal partial class QueryExecutor : IQueryExecutor
             TotalItems = totalItems,
             Skip = skip,
             Take = take,
-            DisabledActions = source.DisabledActions,
+            DisabledActions = disabledActions,
         };
     }
 
@@ -440,7 +430,7 @@ internal partial class QueryExecutor : IQueryExecutor
     /// failure yields a context nobody wrote to rather than throwing.
     /// </para>
     /// </remarks>
-    private async Task<SparkQueryContext> InvokeQueryHookAsync(SparkQuery query, PersistentObject? parent)
+    private async Task<(SparkQueryContext Context, object? Actions)> InvokeQueryHookAsync(SparkQuery query, PersistentObject? parent)
     {
         var context = new SparkQueryContext
         {
@@ -471,7 +461,7 @@ internal partial class QueryExecutor : IQueryExecutor
         }
 
         if (actionsInstance is null)
-            return context;
+            return (context, null);
 
         // ⚠️ `DoNotWrapExceptions`, for the same reason as `DatabaseAccess` and the three invokers:
         // without it a hook that throws before returning its Task arrives as
@@ -485,7 +475,7 @@ internal partial class QueryExecutor : IQueryExecutor
             await task;
         }
 
-        return context;
+        return (context, actionsInstance);
     }
 
     /// <summary>
@@ -519,33 +509,11 @@ internal partial class QueryExecutor : IQueryExecutor
         return elementType is null ? null : modelLoader.GetEntityTypeByClrType(elementType.FullName!);
     }
 
-    /// <summary>Union of two withheld-action lists, case-insensitive, order-preserving.</summary>
-    private static IReadOnlyList<string>? MergeDisabledActions(IReadOnlyList<string>? first, IReadOnlyList<string>? second)
-    {
-        if (first is null || first.Count == 0) return second;
-        if (second is null || second.Count == 0) return first;
-
-        var merged = new List<string>(first);
-        foreach (var name in second)
-        {
-            if (!merged.Contains(name, StringComparer.OrdinalIgnoreCase))
-                merged.Add(name);
-        }
-
-        return merged;
-    }
-
     private sealed record QuerySourceResult(
         RowSecurityGate.SecuredRows Rows,
         EntityTypeDefinition? Definition,
         bool SearchPushedDown,
         int? AuthorTotalItems = null,
-        /// <summary>
-        /// Actions the custom query withheld via <c>CustomQueryArgs.DisableActions</c>. Carried
-        /// here because the source is produced in one method and the QueryResult is assembled in
-        /// another — the alternative was a field, which would leak across concurrent executions.
-        /// </summary>
-        IReadOnlyList<string>? DisabledActions = null,
 
         /// <summary>
         /// Set when the database applied <c>Skip</c>/<c>Take</c> and counted the matches, so the rows
@@ -1462,7 +1430,7 @@ internal sealed record DatabasePage(int TotalItems);
         });
 
         return new QuerySourceResult(
-            secured, entityTypeDefinition, searchPushedDown, authorPage?.TotalItems, args.DisabledActions, SortType: methodInfo.ResultElementType, IndexedFields: indexedFields);
+            secured, entityTypeDefinition, searchPushedDown, authorPage?.TotalItems, SortType: methodInfo.ResultElementType, IndexedFields: indexedFields);
     }
 
     /// <summary>

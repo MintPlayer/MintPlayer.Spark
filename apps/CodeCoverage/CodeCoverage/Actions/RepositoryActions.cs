@@ -41,24 +41,28 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     /// <c>POST /spark/actions/list</c> is per type, so it cannot answer that.
     /// </para>
     /// <para>
-    /// This is the place that can: the entity is in hand, so the answer travels back on the object
-    /// itself and the browser simply never renders the button. <c>DeleteDataAction</c> still
-    /// refuses independently — withholding an affordance is not a permission check, and the
-    /// endpoint stays reachable — but a user is no longer offered an irreversible red button on a
-    /// healthy repository that only admits it will refuse after the confirmation prompt.
+    /// This is the place that can: the stored entity is in hand, so the answer travels back on the
+    /// object itself and the browser simply never renders the button. Since #460 (D13) the framework
+    /// asks this same hook again when <c>DeleteData</c> is submitted and refuses it with 403 while the
+    /// repository is connected. <c>DeleteDataAction</c> still refuses independently (the repository
+    /// can reconnect between the check and the queued sweep), but a user is no longer offered an
+    /// irreversible red button on a healthy repository that only admits it will refuse after the
+    /// confirmation prompt.
+    /// </para>
+    /// <para>
+    /// Only object targets: a repository query never withheld <c>DeleteData</c>, and the action is
+    /// <c>showedOn: detail</c>. A missing entity withholds, as the load override this replaced did.
     /// </para>
     /// </summary>
-    public override async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
+    public override Task OnDisableActionsAsync(IDisablable target, DisableActionsContext context)
     {
-        var obj = await base.OnLoadAsync(id, parent);
-        if (obj is null)
-            return obj;
+        if (context.TargetKind == DisableActionsTargetKind.PersistentObject
+            && context.Entity is not Repository { Connection: RepositoryConnection.Disconnected })
+        {
+            target.DisableActions("DeleteData");
+        }
 
-        var repository = await session.LoadAsync<Repository>(id);
-        if (repository is null || repository.Connection != RepositoryConnection.Disconnected)
-            obj.DisableActions("DeleteData");
-
-        return obj;
+        return Task.CompletedTask;
     }
 
     /// <summary>

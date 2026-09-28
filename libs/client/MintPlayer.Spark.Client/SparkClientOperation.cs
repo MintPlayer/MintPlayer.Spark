@@ -116,22 +116,10 @@ public sealed class SparkNavigateOperation : SparkClientOperation
     public string? RouteName { get; init; }
 }
 
-/// <summary>
-/// An action should be greyed out. Surfaced only.
-/// </summary>
-/// <remarks>
-/// ⚠️ This is a no-op <b>in the browser too</b> — ng-spark logs a warning and moves on. It is modelled
-/// here so that reading the operations of a response does not silently lose one, not because this SDK
-/// is expected to act on it. Note also that <c>DisableActionsOn(po, "A", "B")</c> emits <b>two</b>
-/// operations, one per action name.
-/// </remarks>
-public sealed class SparkDisableActionOperation : SparkClientOperation
-{
-    public string? ActionName { get; init; }
-
-    /// <summary>The target discriminator — <c>persistentObject</c>, <c>query</c>, <c>currentResponse</c> or <c>session</c>.</summary>
-    public string? TargetKind { get; init; }
-}
+// SparkDisableActionOperation is gone (#460, D13): the server no longer emits `disableAction`.
+// Disabled actions travel on PersistentObject.DisabledActions / QueryResult.DisabledActions, and a
+// submitted disabled action is refused with 403. An older server's `disableAction` still parses, as a
+// SparkUnknownOperation (FR10).
 
 /// <summary>
 /// The server is asking a question — the <c>449</c> that <see cref="SparkClient"/> answers through a

@@ -83,6 +83,26 @@ public class CustomActionArgs
     /// shorter list dressed up as a complete one.
     /// </remarks>
     public string[] SubmittedSelectedItemIds { get; set; } = [];
+
+    /// <summary>
+    /// The value the action returns to its caller, set by <see cref="SetResult{T}"/>; null when it
+    /// returns nothing. Sent as the response envelope's <c>result</c> (#460, T5).
+    /// </summary>
+    public object? Result { get; private set; }
+
+    /// <summary>
+    /// Returns <paramref name="value"/> to the caller as the response envelope's <c>result</c> — read
+    /// by ng-spark's <c>executeCustomAction&lt;T&gt;()</c> and by <c>SparkActionResult.Result</c> in the
+    /// .NET client. The last call wins.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ <b>The value bypasses redaction and row security.</b> The framework serializes it as given,
+    /// so the action author owns what it discloses: returning an entity hands the caller every field
+    /// on it, including ones <c>GetProtectedAttributesAsync</c> hides on every read path. Return a
+    /// purpose-built shape. A retry prompt (449) carries no result; the value set on the attempt that
+    /// completes is the one returned.
+    /// </remarks>
+    public void SetResult<T>(T value) => Result = value;
 }
 
 /// <summary>

@@ -41,6 +41,13 @@ internal static class ClientResult
         return Envelope(client, body, statusCode);
     }
 
+    /// <summary>
+    /// A submitted action the actions class disabled (#460, D13): <c>403</c>, naming the action, so a
+    /// client can tell it apart from a missing row (404), a malformed request (400) and a throttle (429).
+    /// </summary>
+    public static IResult ActionDisabled(IClientAccessor client, SparkActionDisabledException ex)
+        => Envelope(client, new { error = ex.Message, action = ex.ActionName }, StatusCodes.Status403Forbidden);
+
     public static IResult Retry(IClientAccessor client, SparkRetryActionException ex)
     {
         if (!client.Operations.Any(o => o is RetryOperation))

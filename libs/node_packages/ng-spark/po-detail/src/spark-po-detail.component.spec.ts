@@ -135,6 +135,19 @@ describe('SparkPoDetailComponent', () => {
     expect(c.canDelete()).toBe(false);
   });
 
+  it('hides Edit and Delete when the object withholds them (#460, D13)', async () => {
+    // The server's OnDisableActionsAsync covers the built-in actions too, and refuses a disabled
+    // one with 403 at submit -- so the button must not be offered. Case-insensitive; Save withholds Edit.
+    const { harness } = await setup({
+      get: vi.fn().mockResolvedValue({ ...existingItem, disabledActions: ['save', 'DELETE'] }),
+    } as Partial<SparkService>);
+    const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.fixture.whenStable();
+
+    expect(c.canEdit()).toBe(false);
+    expect(c.canDelete()).toBe(false);
+  });
+
   it('falls back to type-level permissions when no can block is present', async () => {
     // Unruled types omit the can block entirely; behaviour is exactly as before, backward-compatible.
     const { harness } = await setup({

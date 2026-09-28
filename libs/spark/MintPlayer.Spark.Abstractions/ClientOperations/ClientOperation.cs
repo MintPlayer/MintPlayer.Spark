@@ -12,6 +12,7 @@ namespace MintPlayer.Spark.Abstractions.ClientOperations;
 [JsonDerivedType(typeof(NotifyOperation),           "notify")]
 [JsonDerivedType(typeof(RefreshAttributeOperation), "refreshAttribute")]
 [JsonDerivedType(typeof(RefreshQueryOperation),     "refreshQuery")]
-[JsonDerivedType(typeof(DisableActionOperation),    "disableAction")]
+// `disableAction` is gone (#460, D13): a disabled action is decided by OnDisableActionsAsync and
+// travels on the object's or result's DisabledActions, where the submit path enforces it too.
 [JsonDerivedType(typeof(RetryOperation),            "retry")]
 public abstract class ClientOperation { }

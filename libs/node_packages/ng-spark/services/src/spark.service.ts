@@ -277,25 +277,32 @@ export class SparkService {
    *   own type with its own Read gate.
    * @param queryId The query the selection came from, so the server can re-run it narrowed to those
    *   ids and hand the action the rows the grid actually had -- index-computed columns included.
+   * @returns What the action handed to `CustomActionArgs.SetResult` (#460, T5) -- the envelope's
+   *   `result` -- or `undefined` when it set nothing. The value is the action author's to shape: it
+   *   bypasses the server's redaction. A 403 means the action is disabled for this object, query or
+   *   selection (the server's `OnDisableActionsAsync` said so), distinct from a 404 for a row the
+   *   caller cannot see.
    */
-  async executeCustomAction(
+  async executeCustomAction<T = unknown>(
     objectTypeId: string,
     actionName: string,
     parent?: PersistentObject,
     selectedItemIds?: string[],
     queryParent?: { id: string; type: string },
     queryId?: string,
-  ): Promise<void> {
+  ): Promise<T | undefined> {
     const body: {
       objectTypeId: string; actionName: string;
       parent?: PersistentObject; selectedItemIds?: string[];
       parentId?: string; parentType?: string; queryId?: string;
       retryResults?: RetryActionResult[];
     } = { objectTypeId, actionName, parent, selectedItemIds, parentId: queryParent?.id, parentType: queryParent?.type, queryId };
-    return this.postWithEnvelope<void>(
+    // A literal `null` result (the action set nothing) becomes undefined, so callers test one thing.
+    const result = await this.postWithEnvelope<T | null>(
       `${this.baseUrl}/actions/execute`,
       body as any
     );
+    return result ?? undefined;
   }
 
   // LookupReferences

@@ -90,7 +90,7 @@ export class SparkQueryListComponent {
   protected readonly query = computed(() => this.grid()?.query() ?? null);
   protected readonly entityType = computed(() => this.grid()?.entityType() ?? null);
   protected readonly customActions = computed(() => this.grid()?.customActions() ?? []);
-  protected readonly canCreate = computed(() => this.grid()?.canCreate() ?? false);
+  protected readonly canCreate = computed(() => this.grid()?.offersCreate() ?? false);
   protected readonly resultCount = computed(() => this.grid()?.resultCount() ?? null);
   protected readonly isVirtualScrolling = computed(() => this.grid()?.isVirtualScrolling() ?? false);
   protected readonly gridError = computed(() => this.grid()?.errorMessage() ?? null);

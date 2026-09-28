@@ -105,10 +105,11 @@ export class SparkPoDetailComponent {
    * entity's actions hook decides while it has the entity in hand and withholds what does not
    * apply, and the object arrives carrying that answer.
    *
-   * An affordance, not a permission: the endpoint stays reachable and the action handler still
-   * refuses on its own terms. What this prevents is offering a destructive action where it cannot
-   * possibly apply -- Coverage showed an irreversible red "Delete data" button on every repository
-   * page, healthy ones included, and only admitted it would refuse after the confirmation prompt.
+   * Since #460 (D13) the server asks the same hook again when the action is submitted and refuses a
+   * disabled one with 403, so hiding it here matches what the server will do. What this prevents is
+   * offering a destructive action where it cannot possibly apply -- Coverage showed an irreversible
+   * red "Delete data" button on every repository page, healthy ones included, and only admitted it
+   * would refuse after the confirmation prompt.
    */
   visibleCustomActions = computed(() => {
     const withheld = this.item()?.disabledActions;
@@ -217,8 +218,13 @@ export class SparkPoDetailComponent {
         // intersection of type-level rights and the row rule (#243) — it never claims more than
         // `permissions` does.
         const can = item.can;
-        this.canEdit.set(can ? can.edit : permissions.canEdit);
-        this.canDelete.set(can ? can.delete : permissions.canDelete);
+        // The built-in actions honour `disabledActions` too (#460, D13): the server's
+        // OnDisableActionsAsync decides, and refuses a disabled Edit/Save/Delete with 403 at submit,
+        // so offering the button would only lead to that refusal. Case-insensitive, like the
+        // custom-action filter below.
+        const withheld = new Set((item.disabledActions ?? []).map(name => name.toLowerCase()));
+        this.canEdit.set((can ? can.edit : permissions.canEdit) && !withheld.has('edit') && !withheld.has('save'));
+        this.canDelete.set((can ? can.delete : permissions.canDelete) && !withheld.has('delete'));
         this.customActions.set(actions.filter(a => a.showedOn === 'detail' || a.showedOn === 'both'));
       }
     } catch (e) {

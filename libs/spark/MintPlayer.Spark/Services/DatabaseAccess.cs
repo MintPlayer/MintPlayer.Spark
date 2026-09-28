@@ -30,6 +30,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly ICollectionGuard collectionGuard;
     [Inject] private readonly ISparkTypeResolver typeResolver;
     [Inject] private readonly IPersistentObjectInterceptorPipeline interceptorPipeline;
+    [Inject] private readonly IDisabledActionsEvaluator disabledActions;
     [Inject] private readonly Microsoft.AspNetCore.Http.IHttpContextAccessor? httpContextAccessor;
     [Inject] private readonly Microsoft.Extensions.Logging.ILogger<DatabaseAccess>? logger;
 
@@ -298,6 +299,12 @@ internal partial class DatabaseAccess : IDatabaseAccess
             }
         }
 
+        // Disabled-action gate (#460, D13): after every row gate, so a row the caller may not see
+        // stays a 404 and only a visible one can answer 403. Judged on the STORED entity (`before`),
+        // never on the posted values — the hook must give the answer it gave when the page loaded.
+        if (SubmittedAction(operation) is { } submitted)
+            await disabledActions.EnsureEnabledAsync(entityType, submitted.Name, submitted.RefusedBy, persistentObject.Id, before);
+
         // Interceptors (#460, D1): registered here, after every gate, so an interceptor only ever sees
         // a save the caller was allowed to make. The before-hooks run inside the base OnSaveAsync
         // (after mapping and OnBeforeSaveAsync, before WITH CHECK and the write); the after-hooks run
@@ -400,6 +407,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
             if (!await rowSecurity.IsAllowedAsync(entityType, "Delete", existing))
                 throw new SparkRowLevelAccessDeniedException($"Delete/{entityTypeDefinition.Name}");
+
+            // Disabled-action gate (#460, D13), after the row gate, on the stored entity.
+            if (SubmittedAction(operation) is { } submitted)
+                await disabledActions.EnsureEnabledAsync(entityType, submitted.Name, submitted.RefusedBy, id, existing);
         }
 
         var interceptors = interceptorPipeline.For(entityType);
@@ -493,6 +504,21 @@ internal partial class DatabaseAccess : IDatabaseAccess
             "along with WITH CHECK (#460, D1). After-save interceptors still run.",
             entityType.Name);
     }
+
+    /// <summary>
+    /// The action a write submits, for the disabled-action gate (#460, D13), and every name that
+    /// refuses it. <c>Save</c> is Vidyano's name for committing either an edit or a create, so a
+    /// hook that disables it refuses both. Null for <see cref="PersistentObjectOperation.Sync"/>: a
+    /// module sync is the system writing, not a user submitting an action.
+    /// </summary>
+    private static (string Name, string[] RefusedBy)? SubmittedAction(PersistentObjectOperation operation) => operation switch
+    {
+        PersistentObjectOperation.Save => ("Edit", ["Edit", "Save"]),
+        PersistentObjectOperation.New => ("New", ["New", "Save"]),
+        PersistentObjectOperation.Delete => ("Delete", ["Delete"]),
+        PersistentObjectOperation.Sync => null,
+        _ => (operation.ToString(), [operation.ToString()]),
+    };
 
     private async Task<object?> LoadEntityAsync(IAsyncDocumentSession session, Type entityType, string id)
     {

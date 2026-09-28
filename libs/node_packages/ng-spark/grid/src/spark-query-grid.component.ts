@@ -203,11 +203,21 @@ export class SparkQueryGridComponent {
    *
    * The catalogue at `/spark/actions/{objectTypeId}` is per TYPE and is never told what an
    * execution returned, so an action that applies to only some results cannot be filtered there.
-   * A custom query withholds what does not apply via `CustomQueryArgs.DisableActions(...)`, and
-   * the answer arrives on the result.
-   *
-   * An affordance, not a permission -- the action handler still refuses on its own terms.
+   * The entity's `OnDisableActionsAsync` hook withholds what does not apply to this query (#460,
+   * D13), and the answer arrives on the result. The server asks the same hook when an action is
+   * submitted from this query and refuses a disabled one with 403.
    */
+  /**
+   * Whether to offer "New": the type-level right, unless the result withholds `New` (or `Save`) --
+   * the server's OnDisableActionsAsync said so and would refuse the create with 403 (#460, D13).
+   * `canCreate` stays the bare right, since hosts read it as exactly that.
+   */
+  offersCreate = computed(() => {
+    if (!this.canCreate()) return false;
+    const withheld = this.disabledActions().map(name => name.toLowerCase());
+    return !withheld.includes('new') && !withheld.includes('save');
+  });
+
   visibleCustomActions = computed(() => {
     const withheld = this.disabledActions();
     if (!withheld.length) return this.customActions();

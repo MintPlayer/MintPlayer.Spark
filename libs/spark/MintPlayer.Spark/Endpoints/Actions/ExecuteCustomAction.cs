@@ -3,6 +3,7 @@ using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Actions;
+using MintPlayer.Spark.Actions;
 // The sibling namespace MintPlayer.Spark.Endpoints.PersistentObject shadows the type name here.
 using Po = MintPlayer.Spark.Abstractions.PersistentObject;
 using MintPlayer.Spark.Abstractions.Authorization;
@@ -48,6 +49,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint
     [Inject] private readonly ICustomActionsConfigurationLoader configLoader;
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IQueryExecutor queryExecutor;
+    [Inject] private readonly IDisabledActionsEvaluator disabledActions;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -291,6 +293,18 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint
                 return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
             }
 
+            // Disabled-action gate (#460, D13) — after every row gate above, so a row the caller may
+            // not see is still a 404 and only a visible one can answer 403. The same hook that filled
+            // DisabledActions when the page loaded is asked about every target this action touches:
+            // the object it runs on, the query it was invoked from, and each selected row. The union
+            // decides, because a button hidden on any of them was never offered for this request.
+            var disabled = await EvaluateDisabledAsync(
+                entityType, clrType, actionName, parent, request, queryParent, queryParentTypeName, selectedItems);
+            if (disabled.Contains(actionName))
+            {
+                return ClientResult.ActionDisabled(clientAccessor, new SparkActionDisabledException(actionName));
+            }
+
             var args = new CustomActionArgs
             {
                 Parent = parent,
@@ -302,11 +316,20 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint
             };
 
             await action.ExecuteAsync(args, httpContext.RequestAborted);
-            return ClientResult.Envelope(clientAccessor, null, StatusCodes.Status200OK);
+
+            // T5 (#460): whatever the action handed to SetResult, as the envelope's result. Null when
+            // it set nothing, which is the shape every existing caller already reads.
+            return ClientResult.Envelope(clientAccessor, args.Result, StatusCodes.Status200OK);
         }
         catch (SparkAccessDeniedException)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
+        }
+        catch (SparkActionDisabledException ex)
+        {
+            // Raised by a write the action made through IDatabaseAccess, on an object whose own hook
+            // disables that write. A 403 naming it, rather than the catch-all's anonymous 500.
+            return ClientResult.ActionDisabled(clientAccessor, ex);
         }
         // ⚠️ The filter is load-bearing, and this is the only endpoint that needs one. A retry is not
         // a failure — it is the server asking the caller a question, and the middleware turns it into
@@ -320,6 +343,77 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint
             return ClientResult.Envelope(clientAccessor, new { error = "Operation failed" }, StatusCodes.Status500InternalServerError);
         }
     }
+    /// <summary>
+    /// Asks <c>OnDisableActionsAsync</c> about every target of this submit, in one batched call, and
+    /// returns the union of what it withheld (#460, D13).
+    /// </summary>
+    /// <remarks>
+    /// Every target is of the action's own type — the parent is loaded under the route type (C3), the
+    /// rows come from this type's query, and the query was checked to produce this type's rows — so
+    /// one actions class answers for all of them. The sub-query's container is a different type and
+    /// is not a target: it is context on the query target, exactly as it is when the grid loads.
+    /// Entities are the <b>stored</b> documents, one batched load that the row gate above has already
+    /// put in the session.
+    /// </remarks>
+    private async Task<IReadOnlySet<string>> EvaluateDisabledAsync(
+        EntityTypeDefinition entityType,
+        Type? clrType,
+        string actionName,
+        Po? parent,
+        CustomActionRequest? request,
+        Po? queryParent,
+        string? queryParentTypeName,
+        IReadOnlyList<QueryResultItem> selectedItems)
+    {
+        var actions = disabledActions.ResolveActions(clrType, entityType.Name);
+        if (actions is null)
+            return new HashSet<string>();
+
+        var ids = selectedItems.Select(i => i.Id)
+            .Append(parent?.Id)
+            .Where(id => !string.IsNullOrEmpty(id))
+            .Select(id => id!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        IReadOnlyDictionary<string, object> entities = clrType is not null && ids.Length > 0
+            ? await disabledActions.LoadEntitiesAsync(clrType, ids)
+            : new Dictionary<string, object>();
+
+        DisableActionsItem ForObject(string? id) => new(new DisabledActionSet(), new DisableActionsContext
+        {
+            Phase = DisableActionsPhase.Submit,
+            TargetKind = DisableActionsTargetKind.PersistentObject,
+            ActionName = actionName,
+            Id = id,
+            Entity = id is not null && entities.TryGetValue(id, out var entity) ? entity : null,
+        });
+
+        var items = new List<DisableActionsItem>(selectedItems.Count + 2);
+        if (parent is not null)
+            items.Add(ForObject(parent.Id));
+
+        if (!string.IsNullOrEmpty(request?.QueryId)
+            && queryLoader.ResolveQuery(request.QueryId) is { } query
+            && string.Equals(query.EntityType, entityType.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            items.Add(new DisableActionsItem(new DisabledActionSet(), new DisableActionsContext
+            {
+                Phase = DisableActionsPhase.Submit,
+                TargetKind = DisableActionsTargetKind.Query,
+                ActionName = actionName,
+                Query = MintPlayer.Spark.Queries.SparkQueryInfo.From(query),
+                Parent = queryParent,
+                ParentType = queryParentTypeName,
+            }));
+        }
+
+        foreach (var row in selectedItems)
+            items.Add(ForObject(row.Id));
+
+        return await disabledActions.EvaluateAsync(actions, items);
+    }
+
     /// <summary>
     /// The selected rows, re-materialized server-side. <see langword="null"/> means refuse.
     /// </summary>
