@@ -1,7 +1,9 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
@@ -296,7 +298,34 @@ internal static class SparkAccountEndpoints
                 fields[name] = value;
         }
 
-        return Results.Ok(new SparkProfileResponse(user.UserName, user.Email, fields));
+        return Results.Ok(new SparkProfileResponse(user.UserName, user.Email, fields) { PreferredCulture = user.PreferredCulture });
+    }
+
+    /// <summary>
+    /// A posted <see cref="SparkProfileRequest.PreferredCulture"/>: null or empty clears it, a predefined
+    /// culture name is stored in its canonical casing (<c>nl-be</c> → <c>nl-BE</c>), anything else is
+    /// refused. <see langword="false"/> with <paramref name="culture"/> unset means invalid.
+    /// </summary>
+    internal static bool TryNormalizeCulture(string? posted, out string? culture)
+    {
+        culture = null;
+        var name = posted?.Trim();
+        if (string.IsNullOrEmpty(name))
+            return true;
+
+        // 85 = LOCALE_NAME_MAX_LENGTH; the invariant culture has the empty name, handled above.
+        if (name.Length > 85)
+            return false;
+        try
+        {
+            culture = CultureInfo.GetCultureInfo(name, predefinedOnly: true).Name;
+            return culture.Length > 0;
+        }
+        catch (CultureNotFoundException)
+        {
+            culture = null;
+            return false;
+        }
     }
 
     private static async Task<IResult> PostProfileAsync<TUser>(
@@ -329,6 +358,11 @@ internal static class SparkAccountEndpoints
         foreach (var (contributor, values) in perContributor)
             await contributor.ValidateAsync(user, values, errors, context.RequestAborted);
 
+        // Absent keeps it; null or "" clears it (back to Spark:Mail:DefaultCulture).
+        string? preferredCulture = null;
+        if (request.HasPreferredCulture && !TryNormalizeCulture(request.PreferredCulture, out preferredCulture))
+            errors.Add("PreferredCulture", "Not a known culture name (for example 'en', 'nl-BE').");
+
         if (errors.HasErrors)
             return TypedResults.ValidationProblem(errors.ToDictionary());
 
@@ -338,6 +372,9 @@ internal static class SparkAccountEndpoints
             // rule), normalizes and saves it together with the contributed fields.
             await services.GetRequiredService<IUserStore<TUser>>().SetUserNameAsync(user, userName.Trim(), context.RequestAborted);
         }
+
+        if (request.HasPreferredCulture)
+            user.PreferredCulture = preferredCulture;
 
         foreach (var (contributor, values) in perContributor)
             await contributor.ApplyAsync(user, values, context.RequestAborted);
@@ -409,6 +446,7 @@ internal static class SparkAccountEndpoints
                 twoFactorEnabled = user.TwoFactorEnabled,
                 createdAtUtc = user.CreatedAtUtc,
                 registrationMethod = user.RegistrationMethod,
+                preferredCulture = user.PreferredCulture,
                 roles = user.Roles,
                 claims = user.Claims.Select(c => new { type = c.ClaimType, value = c.ClaimValue }),
                 externalLogins = user.Logins.Select(l => new { provider = l.LoginProvider, displayName = l.ProviderDisplayName }),
@@ -563,10 +601,31 @@ public sealed class SparkProfileRequest
     public string? UserName { get; set; }
     /// <summary>Application fields, each owned by an <see cref="ISparkProfileContributor{TUser}"/>.</summary>
     public Dictionary<string, JsonElement>? Fields { get; set; }
+
+    private string? preferredCulture;
+
+    /// <summary>
+    /// The culture the user's mail is written in (<see cref="SparkUser.PreferredCulture"/>): absent keeps
+    /// it, <see langword="null"/> or empty clears it, otherwise a predefined culture name (<c>nl-BE</c>);
+    /// anything else is a validation problem under <c>PreferredCulture</c>.
+    /// </summary>
+    public string? PreferredCulture
+    {
+        get => preferredCulture;
+        set { preferredCulture = value; HasPreferredCulture = true; }
+    }
+
+    /// <summary>Whether the request carried <see cref="PreferredCulture"/> at all (an explicit null counts).</summary>
+    [JsonIgnore]
+    public bool HasPreferredCulture { get; private set; }
 }
 
 /// <summary>Answer of <c>GET/POST /spark/auth/manage/profile</c>.</summary>
-public sealed record SparkProfileResponse(string? UserName, string? Email, IReadOnlyDictionary<string, object?> Fields);
+public sealed record SparkProfileResponse(string? UserName, string? Email, IReadOnlyDictionary<string, object?> Fields)
+{
+    /// <summary><see cref="SparkUser.PreferredCulture"/>; <see langword="null"/> when unset (the mail default applies).</summary>
+    public string? PreferredCulture { get; init; }
+}
 
 /// <summary>Answer of <c>GET /spark/auth/manage/2fa/authenticator-uri</c>.</summary>
 public sealed record SparkAuthenticatorUriResponse(string SharedKey, string AuthenticatorUri, string QrCodeSvg);

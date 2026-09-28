@@ -291,6 +291,57 @@ public class RequestTimeZoneResolverTests
         sp.GetRequiredService<IOptions<SparkTimeZoneOptions>>().Value.CookieName.Should().Be(expected);
     }
 
+    // ---- #460 M9: zones a browser sends that the server's timezone data may not know ----
+
+    [Theory]
+    // Measured 2026-09-28 on Windows 11 (.NET 11 rc.1, ICU 72.1): none of these five resolves directly
+    // or through TryConvertIanaIdToWindowsId. The expected offsets are the zones' CURRENT rules.
+    [InlineData("America/Ciudad_Juarez", -7, -6)]
+    [InlineData("America/Coyhaique", -3, -3)]
+    [InlineData("Antarctica/Troll", 0, 2)]
+    [InlineData("Antarctica/Vostok", 5, 5)]
+    [InlineData("Asia/Urumqi", 6, 6)]
+    public void A_zone_unknown_to_the_server_data_resolves_to_its_current_rules(string id, int januaryHours, int julyHours)
+    {
+        var zone = CreateResolver(id).GetViewerTimeZone();
+
+        zone.Should().NotBe(TimeZoneInfo.Utc);
+        zone.GetUtcOffset(new DateTime(2026, 1, 15, 12, 0, 0, DateTimeKind.Utc)).Should().Be(TimeSpan.FromHours(januaryHours));
+        zone.GetUtcOffset(new DateTime(2026, 7, 15, 12, 0, 0, DateTimeKind.Utc)).Should().Be(TimeSpan.FromHours(julyHours));
+        RequestTimeZoneResolver.Find(id, out _, out _).Should().NotBe(RequestTimeZoneResolver.ZoneMatch.None);
+    }
+
+    [Fact]
+    public void Every_alias_target_resolves_on_this_platform()
+    {
+        foreach (var target in RequestTimeZoneResolver.Aliases.Values)
+            (RequestTimeZoneResolver.Find(target, out _, out _) is RequestTimeZoneResolver.ZoneMatch.Direct or RequestTimeZoneResolver.ZoneMatch.WindowsId)
+                .Should().BeTrue($"{target} must be a system zone here, not another alias");
+    }
+
+    [Fact]
+    public void The_built_in_Troll_rule_switches_at_the_EU_instants_by_two_hours()
+    {
+        var troll = RequestTimeZoneResolver.Troll.Value;
+
+        troll.GetUtcOffset(new DateTime(2026, 3, 29, 0, 59, 0, DateTimeKind.Utc)).Should().Be(TimeSpan.Zero);
+        troll.GetUtcOffset(new DateTime(2026, 3, 29, 1, 0, 0, DateTimeKind.Utc)).Should().Be(TimeSpan.FromHours(2));
+        troll.GetUtcOffset(new DateTime(2026, 10, 25, 0, 59, 0, DateTimeKind.Utc)).Should().Be(TimeSpan.FromHours(2));
+        troll.GetUtcOffset(new DateTime(2026, 10, 25, 1, 0, 0, DateTimeKind.Utc)).Should().Be(TimeSpan.Zero);
+        troll.GetUtcOffset(new DateTime(2027, 3, 28, 1, 0, 0, DateTimeKind.Utc)).Should().Be(TimeSpan.FromHours(2));
+    }
+
+    [Fact]
+    public void An_aliased_zone_is_logged_with_its_source_and_the_alias()
+    {
+        var logger = new RecordingLogger();
+        CreateResolver("Asia/Urumqi", logger: logger).GetViewerTimeZone();
+
+        // Either this platform knows the zone (Linux with current tzdata) or the alias is named.
+        logger.Messages.Should().Contain(m =>
+            m.Contains("Asia/Urumqi from the header") || (m.Contains("Asia/Urumqi") && m.Contains("the header") && m.Contains("Asia/Dhaka")));
+    }
+
     private sealed class RecordingLogger : ILogger<RequestTimeZoneResolver>
     {
         public List<string> Messages { get; } = [];

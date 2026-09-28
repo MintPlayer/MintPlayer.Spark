@@ -175,3 +175,8 @@ out again.
 - Its Data Protection volume maps to `Spark:DataProtection:KeysPath`.
 - MintPlayer production sets `Spark__DataProtection__KeysPath` to a directory on a mounted volume (its legacy site already persisted keys to a folder, per the line above), and sets an explicit, stable `Spark:DataProtection:ApplicationName` so existing cookies keep decrypting. No `Storage` in its base `appsettings.json`; its test hosts set `Storage=RavenDb` (PRD D5 owner decision).
 - `people_overview` / `subjects_search` indexes must emit `IsDeleted` for push-down.
+- Call `withSparkTimezone()` in `app.config.ts` (it registers only `withSparkAuth()` today, S-TZ2), so the
+  browser writes the `spark-timezone` cookie the server resolver reads.
+- Format dates in the SSR render in .NET (`OnSupplyData`), not in the Node render: Angular's `formatDate`
+  / `DatePipe` ignores IANA ids, so a Node render uses the Node process's zone whatever the cookie says
+  (S-TZ2).

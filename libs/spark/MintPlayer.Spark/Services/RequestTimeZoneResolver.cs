@@ -167,38 +167,135 @@ internal partial class RequestTimeZoneResolver : IRequestTimeZoneResolver
             return false;
         }
 
-        try
+        var match = Find(id, out var found, out var via);
+        if (match == ZoneMatch.None || found is null)
         {
-            zone = TimeZoneInfo.FindSystemTimeZoneById(id);
-            logger?.LogDebug("Viewer timezone {TimeZoneId} from the {Source}.", zone.Id, source);
-            return true;
-        }
-        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
-        {
-            // The hazard on a container is not missing tzdata -- every supported base image ships a
-            // current one -- but zone RENAMES: a browser on a newer tzdata sends an id the image has
-            // never heard of, or an older browser sends a retired one such as America/Godthab.
-            if (TimeZoneInfo.TryConvertIanaIdToWindowsId(id, out var windowsId))
-            {
-                try
-                {
-                    zone = TimeZoneInfo.FindSystemTimeZoneById(windowsId);
-                    logger?.LogDebug("Viewer timezone {TimeZoneId} (as {WindowsId}) from the {Source}.", id, windowsId, source);
-                    return true;
-                }
-                catch (Exception inner) when (inner is TimeZoneNotFoundException or InvalidTimeZoneException)
-                {
-                }
-            }
-
             // Safe to log: it passed the shape check (IANA characters only, at most 64).
             logger?.LogWarning(
                 "Unknown timezone {TimeZoneId} in the {Source}; trying the next source, then UTC. " +
                 "This is usually a zone rename between the browser's tzdata and the server's.",
                 id, source);
-
-            zone = null;
             return false;
         }
+
+        zone = found;
+        switch (match)
+        {
+            case ZoneMatch.Direct:
+                logger?.LogDebug("Viewer timezone {TimeZoneId} from the {Source}.", zone.Id, source);
+                break;
+            case ZoneMatch.WindowsId:
+                logger?.LogDebug("Viewer timezone {TimeZoneId} (as {WindowsId}) from the {Source}.", id, via, source);
+                break;
+            default:
+                // Safe to log: it passed the shape check, and the alias is one of ours.
+                logger?.LogInformation(
+                    "Viewer timezone {TimeZoneId} from the {Source} is unknown to this server's timezone data; " +
+                    "using {Alias}, which has the same current rules.", id, source, via);
+                break;
+        }
+        return true;
+    }
+
+    internal enum ZoneMatch { None, Direct, WindowsId, Alias }
+
+    /// <summary>
+    /// Zones a browser reports that this server's timezone data may not know, each mapped to a zone with
+    /// the SAME CURRENT rules (offset and DST schedule from 2026 on; history differs, and only the
+    /// present matters for a server-initiated local time). Consulted only when the id itself does not
+    /// resolve, so a server whose tzdata knows the real zone uses it.
+    /// </summary>
+    /// <remarks>
+    /// Measured 2026-09-28 on Windows 11 (.NET 11 rc.1, Windows ICU 72.1): all five below fail both
+    /// <see cref="TimeZoneInfo.FindSystemTimeZoneById"/> and <see cref="TimeZoneInfo.TryConvertIanaIdToWindowsId(string, out string?)"/>.
+    /// Deliberately NOT aliased through the Windows zone CLDR names for them (Central Asia Standard Time
+    /// for Urumqi and Vostok): on that machine Central Asia Standard Time still says +06 for Almaty, which
+    /// moved to +05 in 2024, so the Windows zone is itself stale.
+    /// </remarks>
+    internal static readonly IReadOnlyDictionary<string, string> Aliases = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        // US Mountain time with US DST since 2022-11-30 (tzdata 2022g), like Denver.
+        ["America/Ciudad_Juarez"] = "America/Denver",
+        // Aysén: permanent -03 since 2025 (tzdata 2025b), like Magallanes since 2016.
+        ["America/Coyhaique"] = "America/Punta_Arenas",
+        // Permanent +05 since 2023-12-18 (tzdata 2024a), like Uzbekistan.
+        ["Antarctica/Vostok"] = "Asia/Tashkent",
+        // Xinjiang time: permanent +06, like Bangladesh (no DST since 2010).
+        ["Asia/Urumqi"] = "Asia/Dhaka",
+    };
+
+    /// <summary>
+    /// <c>Antarctica/Troll</c>: +00, and +02 from the last Sunday of March to the last Sunday of October,
+    /// both switches at 01:00 UTC (the EU instants). No system zone has a two-hour DST step, so it is
+    /// built from the tzdata rule rather than aliased.
+    /// </summary>
+    internal static readonly Lazy<TimeZoneInfo> Troll = new(() => TimeZoneInfo.CreateCustomTimeZone(
+        "Antarctica/Troll", TimeSpan.Zero, "(UTC+00:00/+02:00) Troll", "+00", "+02",
+        [TimeZoneInfo.AdjustmentRule.CreateAdjustmentRule(
+            DateTime.MinValue.Date, DateTime.MaxValue.Date, TimeSpan.FromHours(2),
+            // Start in standard local time (01:00+00 = 01:00Z), end in daylight local time (03:00+02 = 01:00Z).
+            TimeZoneInfo.TransitionTime.CreateFloatingDateRule(new DateTime(1, 1, 1, 1, 0, 0), 3, 5, DayOfWeek.Sunday),
+            TimeZoneInfo.TransitionTime.CreateFloatingDateRule(new DateTime(1, 1, 1, 3, 0, 0), 10, 5, DayOfWeek.Sunday))]));
+
+    /// <summary>
+    /// Looks <paramref name="id"/> up: the system zone, else its Windows equivalent, else an
+    /// <see cref="Aliases"/> entry (or <see cref="Troll"/>). <paramref name="via"/> is the Windows id or
+    /// the alias used.
+    /// </summary>
+    internal static ZoneMatch Find(string id, out TimeZoneInfo? zone, out string? via)
+    {
+        via = null;
+        if (TryFindSystemZone(id, out zone, out var windowsId))
+        {
+            via = windowsId;
+            return windowsId is null ? ZoneMatch.Direct : ZoneMatch.WindowsId;
+        }
+
+        // The hazard on a container is not missing tzdata -- every supported base image ships a current
+        // one -- but zone RENAMES and NEW zones: a browser on a newer tzdata sends an id the server has
+        // never heard of, or an older browser sends a retired one such as America/Godthab.
+        if (string.Equals(id, "Antarctica/Troll", StringComparison.OrdinalIgnoreCase))
+        {
+            zone = Troll.Value;
+            via = "the built-in Antarctica/Troll rule";
+            return ZoneMatch.Alias;
+        }
+        if (Aliases.TryGetValue(id, out var alias) && TryFindSystemZone(alias, out zone, out _))
+        {
+            via = alias;
+            return ZoneMatch.Alias;
+        }
+
+        zone = null;
+        return ZoneMatch.None;
+    }
+
+    private static bool TryFindSystemZone(string id, [NotNullWhen(true)] out TimeZoneInfo? zone, out string? windowsId)
+    {
+        windowsId = null;
+        try
+        {
+            zone = TimeZoneInfo.FindSystemTimeZoneById(id);
+            return true;
+        }
+        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
+        {
+        }
+
+        if (TimeZoneInfo.TryConvertIanaIdToWindowsId(id, out var converted))
+        {
+            try
+            {
+                zone = TimeZoneInfo.FindSystemTimeZoneById(converted);
+                windowsId = converted;
+                return true;
+            }
+            catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
+            {
+            }
+        }
+
+        zone = null;
+        return false;
     }
 }

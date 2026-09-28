@@ -202,6 +202,56 @@ public class AccountFlowTests : SparkTestDriver
     }
 
     [Fact]
+    public async Task The_profile_reads_and_writes_the_preferred_mail_culture()
+    {
+        await using var host = await AccountTestHost.StartAsync(Store);
+        await host.CreateUserAsync("polyglot", "polyglot@example.com");
+        using var client = host.Client();
+        var cookie = await host.CookieSignInAsync(client, "polyglot@example.com");
+
+        async Task<HttpResponseMessage> Post(object body) => await AccountTestHost.SendAsync(client, HttpMethod.Post, "/spark/auth/manage/profile", cookie, body);
+        async Task<string?> Stored() => (await host.FindByEmailAsync("polyglot@example.com"))!.PreferredCulture;
+
+        var initial = await AccountTestHost.SendAsync(client, HttpMethod.Get, "/spark/auth/manage/profile", cookie);
+        using (var json = JsonDocument.Parse(await initial.Content.ReadAsStringAsync()))
+            json.RootElement.GetProperty("preferredCulture").ValueKind.Should().Be(JsonValueKind.Null);
+
+        var set = await Post(new { preferredCulture = "nl-be" });
+        set.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await set.Content.ReadAsStringAsync()).Should().Contain("\"preferredCulture\":\"nl-BE\"", "stored in its canonical casing");
+        (await Stored()).Should().Be("nl-BE");
+
+        var invalid = await Post(new { preferredCulture = "xx-not-a-culture" });
+        invalid.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await invalid.Content.ReadAsStringAsync()).Should().Contain("PreferredCulture");
+        (await Stored()).Should().Be("nl-BE", "a refused save writes nothing");
+
+        (await Post(new { userName = "polyglot" })).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await Stored()).Should().Be("nl-BE", "an absent field keeps the value");
+
+        (await Post(new { preferredCulture = "" })).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await Stored()).Should().BeNull("empty clears it, back to Spark:Mail:DefaultCulture");
+
+        await Post(new { preferredCulture = "fr" });
+        (await Post(new { preferredCulture = (string?)null })).StatusCode.Should().Be(HttpStatusCode.OK);
+        (await Stored()).Should().BeNull("an explicit null clears it too");
+    }
+
+    [Theory]
+    [InlineData("en", true, "en")]
+    [InlineData("nl-be", true, "nl-BE")]
+    [InlineData(" fr ", true, "fr")]
+    [InlineData("", true, null)]
+    [InlineData(null, true, null)]
+    [InlineData("xx-not-a-culture", false, null)]
+    [InlineData("en-US-x-custom-private-use-extension-longer-than-any-real-locale-name-could-be-at-all-padding", false, null)]
+    public void A_preferred_culture_must_be_a_predefined_culture_name(string? posted, bool valid, string? stored)
+    {
+        MintPlayer.Spark.Authorization.Extensions.SparkAccountEndpoints.TryNormalizeCulture(posted, out var culture).Should().Be(valid);
+        culture.Should().Be(stored);
+    }
+
+    [Fact]
     public async Task The_authenticator_uri_carries_the_key_and_a_server_rendered_svg_and_is_never_cached()
     {
         await using var host = await AccountTestHost.StartAsync(Store, configure: o => o.AuthenticatorIssuer = "Spark Tests");

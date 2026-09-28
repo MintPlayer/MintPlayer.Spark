@@ -170,6 +170,18 @@ Implemented in M3 as specified in D13; the author-facing contract is in `guide-c
   explicit culture over preference, culture surviving a retry, app override over embedded default.
   This supersedes the `{lang}/{name}.mjml` layout above (S-M1 showed `WithCulture="false"` solves the
   satellite problem for `{name}.{culture}.mjml`).
+- **Owner decision (2026-09-28, during M10): explicit, pluggable transports; development mail fails
+  closed.** MailManager ships `UseSmtpTransport(...)` (MailKit, `Spark:Mail:Smtp`),
+  `UseMailpitTransport(...)` (SMTP into Mailpit, default `localhost:1025`, no TLS/auth,
+  `Spark:Mail:Mailpit:{Host,Port,Tags}`, an `X-Tags` header with template name and stream; SMTP, not
+  Mailpit's JSON API, so the exact MIME is kept), `UsePickupFolderTransport(...)` and
+  `AddMailTransport<T>()`. Explicit registration wins; with none, the config fallback
+  (`Smtp:Host` / `PickupFolder`) keeps existing configs (CodeCoverage) unchanged; two transports
+  (registered or configured) are a startup error. `ISparkMailTransport.DeliversToRealRecipients`
+  (default `true`): Mailpit and pickup `false`, SMTP `false` only for a loopback host. In Development
+  a transport that delivers to real recipients without `Spark:Mail:Development:RedirectTo` refuses
+  startup (set RedirectTo in user secrets, or use Mailpit). In Production `RedirectTo` itself refuses
+  startup; other environments (staging, E2E) keep redirecting with a warning.
 
 ### 3.11 Queue throttling (item 11) — T8
 
@@ -951,6 +963,53 @@ start (harmless, pre-existing).
 `nobody` under `env -i /bin/sh` in the same image, exited 0 for 204/400/404/413/422 (the four with the
 `dropped` line) and 75 for 401/403/429/500/unresolvable host. No automated test covers the script (none existed; it is a recipe run
 inside the relay container).
+
+**S-TZ5 — the five browser zones .NET on Windows does not know (M10 carry-over from S-TZ4, 2026-09-28).**
+*Question:* do `America/Ciudad_Juarez`, `America/Coyhaique`, `Antarctica/Troll`, `Antarctica/Vostok` and
+`Asia/Urumqi` resolve through the M9 resolver on Windows, whose fallback is `TryConvertIanaIdToWindowsId`?
+*Method:* scratch probe and `RequestTimeZoneResolverTests` on Windows 11 10.0.26200, .NET
+`11.0.0-rc.1.26425.128`, ICU 72.1.0.4 (NLS off): for each id, `FindSystemTimeZoneById`,
+`TryConvertIanaIdToWindowsId`, and what the resolver returned; offsets probed on 2026-01, -04, -07, -11
+and 2027-07.
+*Answer:* **none resolved.** For all five, `FindSystemTimeZoneById` threw `TimeZoneNotFoundException` and
+`TryConvertIanaIdToWindowsId` returned `False` (empty id), so the resolver fell back to UTC for each.
+*Resolution:* when an id does not resolve, the resolver uses an explicit alias to a zone with the same
+current rules. A server whose tz data knows the id still uses it directly. Each alias target resolves
+on this machine, and its probed offsets match the zone's current rules:
+
+| Zone | Alias | Offsets |
+|---|---|---|
+| `America/Ciudad_Juarez` | `America/Denver` | −7 / −6, US DST |
+| `America/Coyhaique` | `America/Punta_Arenas` | −3 all year |
+| `Antarctica/Vostok` | `Asia/Tashkent` | +5 |
+| `Asia/Urumqi` | `Asia/Dhaka` | +6 |
+| `Antarctica/Troll` | built-in rule (no alias) | +0, and +2 from the last Sunday of March to the last Sunday of October, switching at 01:00Z |
+
+An alias hit logs at Information, naming the id, its source and the alias. Unknown ids keep the UTC
+fallback and the Warning. Pinned in
+`A_zone_unknown_to_the_server_data_resolves_to_its_current_rules`,
+`Every_alias_target_resolves_on_this_platform` and
+`The_built_in_Troll_rule_switches_at_the_EU_instants_by_two_hours`.
+
+Side finding: this machine's Windows zone data is stale for two other zones. `Asia/Almaty` and
+`Central Asia Standard Time` still report +06, though Almaty moved to +05 in 2024, so no alias points at
+them. `America/Ojinaga` still reports −7/−6, though it has followed Central time since 2022.
+
+**Deviations (M10).**
+- *Bounce endpoint when disabled:* answers 503 instead of 404, so Postfix keeps the report (exit 75)
+  until the endpoint is enabled. The endpoint never distinguished an unknown delivery: that case is 204,
+  logged, and suppresses nothing. It therefore never answers 404, and a 404 can only mean the relay's URL
+  does not reach it. The pipe recipe moved 404 from the drop branch to the retry branch, like a wrong
+  secret. The exit-75 branch itself was measured in S-M5b; 404 was not re-measured under the new branch.
+- *`RedirectTo`:* refused at startup in Production. It still redirects in other environments, with a
+  warning, and the Development fail-closed rule is the owner decision in §3.10.
+- *Transport context:* `ISparkMailTransport` gained two default members, `DeliversToRealRecipients` and
+  `SendAsync(…, SparkMailSendContext, …)`, which forwards to the old overload. `SparkMailMessage` gained
+  a nullable `Queue`, so Mailpit's `X-Tags` can name the lane.
+- *Preferred mail language:* `GET/POST /spark/auth/manage/profile` carries `preferredCulture`. Absent
+  keeps it, null or empty clears it, and otherwise it must be a predefined culture, stored in canonical
+  casing; an invalid value is a 400 under `PreferredCulture`. The personal-data export includes it. The
+  profile page exposes it.
 ---
 
 ## 5. Risks
