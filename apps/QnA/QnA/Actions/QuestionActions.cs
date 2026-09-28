@@ -66,7 +66,26 @@ public partial class QuestionActions : DefaultPersistentObjectActions<Question>
         return Task.CompletedTask;
     }
 
-    // `!= true`, never `!a.IsDeleted`: a document without the field must count as live (PRD §4.1 S3).
-    private Task<bool> HasLiveAnswersAsync(string questionId)
-        => session.Query<Answer>().AnyAsync(a => a.QuestionId == questionId && a.IsDeleted != true);
+    /// <summary>
+    /// Whether any live answer points at the question. `!= true`, never `!a.IsDeleted`: a document
+    /// without the field must count as live (PRD §4.1 S3).
+    /// </summary>
+    /// <remarks>
+    /// A query, so an index: waited on (bounded) so that an answer posted a moment ago counts, and the
+    /// load and the submit agree (D13). An index still stale after the bound fails closed — Delete is
+    /// withheld, which a reload can lift; offering it wrongly would let the author delete answered work.
+    /// </remarks>
+    private async Task<bool> HasLiveAnswersAsync(string questionId)
+    {
+        try
+        {
+            return await session.Query<Answer>()
+                .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(3)))
+                .AnyAsync(a => a.QuestionId == questionId && a.IsDeleted != true);
+        }
+        catch (Exception ex) when (ex is TimeoutException or Raven.Client.Exceptions.RavenTimeoutException)
+        {
+            return true;
+        }
+    }
 }
