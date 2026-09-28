@@ -23,8 +23,8 @@ namespace MintPlayer.Spark.E2E.Tests._Infrastructure;
 /// <param name="DatabasePrefix">Prefix of the per-host app database; a random suffix is appended.</param>
 /// <param name="CoverageSlug">
 /// Prefix of the host's coverage report directory (<c>coverage/{slug}-host-{env}-{suffix}/</c>).
-/// ⚠️ <c>tools/verify-coverage-paths.mjs</c> matches <c>fleet-host-*</c> only; a second app's slug must be
-/// added there, or its report is rejected.
+/// ⚠️ <c>tools/verify-coverage-paths.mjs</c> knows each slug by name (<c>fleet</c>, <c>qna</c>); another app's
+/// slug must be added there, or its report is rejected.
 /// </param>
 public sealed record SparkAppDescriptor(
     string AppName,
@@ -265,7 +265,9 @@ public abstract class SparkAppTestHost : IAsyncLifetime
     /// <summary>
     /// Registers an additional user and patches the Raven document so the user is email-confirmed
     /// and belongs to the given group (matching a name declared in the app's App_Data/security.json).
+    /// Returns the user's document id.
     /// </summary>
+    /// <param name="groupName">A group to grant by claim, or null for a plain signed-in user (QnA's users earn their groups).</param>
     /// <param name="roleName">
     /// An ASP.NET Identity <b>role</b> to grant as well as the group claim, or null for none.
     /// </param>
@@ -277,7 +279,7 @@ public abstract class SparkAppTestHost : IAsyncLifetime
     /// an empty grid during setup, which reads like a broken query rather than a missing role.
     /// The seeded admin gets both, which is why it behaves as expected.
     /// </remarks>
-    public async Task SeedUserAsync(string email, string password, string groupName, string? roleName = null)
+    public async Task<string> SeedUserAsync(string email, string password, string? groupName, string? roleName = null)
     {
         await RegisterAsync(email, password, $"Seed register for '{email}'");
 
@@ -303,13 +305,14 @@ public abstract class SparkAppTestHost : IAsyncLifetime
         user.EmailConfirmed = true;
         user.UserName ??= email;
         user.NormalizedUserName ??= email.ToUpperInvariant();
-        if (!user.Claims.Any(c => c.ClaimType == "group" && c.ClaimValue == groupName))
+        if (groupName is not null && !user.Claims.Any(c => c.ClaimType == "group" && c.ClaimValue == groupName))
             user.Claims.Add(new SparkUserClaim { ClaimType = "group", ClaimValue = groupName });
 
         if (roleName is not null && !user.Roles.Contains(roleName))
             user.Roles.Add(roleName);
 
         await session.SaveChangesAsync();
+        return user.Id!;
     }
 
     /// <summary>
