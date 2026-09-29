@@ -150,6 +150,24 @@ describe('SparkPoCreateComponent', () => {
     expect(c.isSaving()).toBe(false);
   });
 
+  it('onSave 400 reads the errors inside the client-operation envelope', async () => {
+    // The server wraps every body as { result, operations }: a create refused by a rule (a
+    // suspended author, a closed question) carries its reason in result.errors.
+    const error = new HttpErrorResponse({
+      status: 400,
+      error: { result: { errors: [{ attributeName: '', errorMessage: { en: 'Your account is suspended.' }, ruleType: 'custom' }] }, operations: [] },
+    });
+    const { harness } = await setup({ create: vi.fn().mockRejectedValue(error) });
+    const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
+    await harness.fixture.whenStable();
+
+    await c.onSave();
+
+    expect(c.validationErrors()).toHaveLength(1);
+    expect(c.validationErrors()[0].errorMessage).toEqual({ en: 'Your account is suspended.' });
+    expect(c.generalErrors()).toHaveLength(1);
+  });
+
   it('onSave non-400 error sets a single generic error', async () => {
     const { harness } = await setup({ create: vi.fn().mockRejectedValue(new Error('boom')) });
     const c = await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);

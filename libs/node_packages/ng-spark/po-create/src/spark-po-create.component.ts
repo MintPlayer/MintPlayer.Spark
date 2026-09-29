@@ -155,8 +155,12 @@ export class SparkPoCreateComponent {
     } catch (e) {
       this.isSaving.set(false);
       const error = e as HttpErrorResponse;
-      if (error.status === 400 && error.error?.errors) {
-        this.validationErrors.set(error.error.errors);
+      // The errors live under `result` (every endpoint wraps its body in a ClientOperationEnvelope:
+      // `{ result: { errors: [...] }, operations: [] }`), as in po-edit. Reading only
+      // `error.error.errors` showed every create-time refusal as the raw Angular HTTP string.
+      const errors = error.error?.result?.errors ?? error.error?.errors;
+      if (error.status === 400 && errors) {
+        this.validationErrors.set(errors);
       } else {
         this.validationErrors.set([{
           attributeName: '',
