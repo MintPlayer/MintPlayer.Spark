@@ -110,6 +110,39 @@ public class QnASubQueryTests
         return (context, page);
     }
 
+    /// <summary>
+    /// The card header's button for an action — the one on screen. <c>bs-priority-nav</c> stamps each
+    /// item three times (an inert measuring copy, the strip, and the "…" overflow list), so a bare
+    /// <c>[data-action]</c> selector matches three elements and trips strict mode. Only one is ever
+    /// visible: the strip's while it fits, the overflow list's while "…" is open.
+    /// </summary>
+    private static ILocator CardAction(ILocator card, string name) =>
+        card.Locator($"bs-card-header [data-action='{name}']").Filter(new() { Visible = true });
+
+    /// <summary>
+    /// Waits for the "N selected" chip to show <paramref name="count"/>. A read straight after the
+    /// click raced the selection's change detection ("1 selected" right after the second tick).
+    /// </summary>
+    private static Task WaitForChipAsync(ILocator chip, int count) =>
+        chip.Filter(new() { HasTextRegex = new System.Text.RegularExpressions.Regex($@"\b{count}\b") })
+            .WaitForAsync(new() { Timeout = 15_000 });
+
+    /// <summary>
+    /// Polls <see cref="IPage.Url"/> rather than using <c>WaitForURLAsync</c>, which waits for a
+    /// navigation event: the Angular router's same-document navigations were intermittently not seen
+    /// under load (the URL had changed, the wait still timed out), with Load and Commit alike.
+    /// </summary>
+    private static async Task WaitForUrlAsync(IPage page, Func<string, bool> matches, string because)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        while (!matches(page.Url))
+        {
+            if (DateTime.UtcNow > deadline)
+                matches(page.Url).Should().BeTrue($"{because}, but the page is at {page.Url}");
+            await Task.Delay(100);
+        }
+    }
+
     private static async Task WaitForRowCountAsync(ILocator rows, int expected)
     {
         var deadline = DateTime.UtcNow.AddSeconds(15);
@@ -137,24 +170,28 @@ public class QnASubQueryTests
             // Checkboxes, because the entry declares selectionMode: multiple.
             (await card.Locator("td.checkbox-cell mp-checkbox").CountAsync()).Should().Be(3);
 
+            // The header offers New, Delete and the =1 Duplicate — each exactly once on screen.
+            foreach (var action in new[] { "New", "Delete", "DuplicateAnswer" })
+                (await CardAction(card, action).CountAsync()).Should().Be(1, $"'{action}' is shown once in the card header");
+
             // Select all -> "3 selected"; Duplicate (=1) is disabled with three.
             await card.Locator(".spark-select-all-input").ClickAsync();
             var chip = card.Locator(".spark-selection-chip");
             await chip.WaitForAsync(new() { Timeout = 15_000 });
-            (await chip.InnerTextAsync()).Should().Contain("3");
-            (await card.Locator("bs-card-header [data-action='DuplicateAnswer']").IsDisabledAsync()).Should().BeTrue();
-            (await card.Locator("bs-card-header [data-action='Delete']").IsDisabledAsync()).Should().BeFalse();
+            await WaitForChipAsync(chip, 3);
+            (await CardAction(card, "DuplicateAnswer").IsDisabledAsync()).Should().BeTrue();
+            (await CardAction(card, "Delete").IsDisabledAsync()).Should().BeFalse();
 
             // The chip clears the selection.
             await card.Locator(".spark-selection-clear").ClickAsync();
             await chip.WaitForAsync(new() { State = WaitForSelectorState.Detached, Timeout = 15_000 });
-            (await card.Locator("bs-card-header [data-action='Delete']").IsDisabledAsync()).Should().BeTrue("Delete is '>0'");
+            (await CardAction(card, "Delete").IsDisabledAsync()).Should().BeTrue("Delete is '>0'");
 
             // Tick two rows, delete them (the confirm is accepted).
             await rows.Nth(0).Locator("td.checkbox-cell mp-checkbox").ClickAsync();
             await rows.Nth(1).Locator("td.checkbox-cell mp-checkbox").ClickAsync();
-            (await chip.InnerTextAsync()).Should().Contain("2");
-            await card.Locator("bs-card-header [data-action='Delete']").ClickAsync();
+            await WaitForChipAsync(chip, 2);
+            await CardAction(card, "Delete").ClickAsync();
             await WaitForRowCountAsync(rows, 1);
 
             var remaining = await LiveAnswerIdsAsync(author.Client, questionId);
@@ -173,6 +210,45 @@ public class QnASubQueryTests
         }
     }
 
+    /// <summary>
+    /// The owner's D17 addendum: a search box in the card header, next to the actions. It narrows the
+    /// Answers rows on the server (search + parent), and a new term clears the selection.
+    /// </summary>
+    [Fact]
+    public async Task Searching_the_Answers_card_narrows_its_rows_and_clears_the_selection()
+    {
+        var (author, questionId, _) = await QuestionWithAnswersAsync("search-ui", 2);
+        using var _ = author;
+        await author.Client.AnswerAsync(questionId, "Zebra crossing of search-ui");
+        await Host.WaitForIndexingAsync();
+        var (context, page) = await OpenQuestionAsync(author, questionId);
+        try
+        {
+            var card = page.Locator("spark-query-card").First;
+            var rows = card.Locator("tbody tr").Filter(new() { HasTextString = "of search-ui" });
+            await rows.First.WaitForAsync(new() { Timeout = 15_000 });
+            await WaitForRowCountAsync(rows, 3);
+
+            await card.Locator(".spark-select-all-input").ClickAsync();
+            var chip = card.Locator(".spark-selection-chip");
+            await chip.WaitForAsync(new() { Timeout = 15_000 });
+
+            var search = card.Locator("bs-card-header spark-search-box input");
+            await search.FillAsync("zebra");
+            await WaitForRowCountAsync(rows, 1);
+            (await rows.First.InnerTextAsync()).Should().Contain("Zebra crossing");
+            await chip.WaitForAsync(new() { State = WaitForSelectorState.Detached, Timeout = 15_000 });
+
+            // The clear button brings every answer back.
+            await card.Locator("bs-card-header .spark-search-clear").ClickAsync();
+            await WaitForRowCountAsync(rows, 3);
+        }
+        finally
+        {
+            await context.CloseAsync();
+        }
+    }
+
     [Fact]
     public async Task New_from_the_Answers_card_creates_an_answer_under_the_question()
     {
@@ -181,17 +257,22 @@ public class QnASubQueryTests
         var (context, page) = await OpenQuestionAsync(author, questionId);
         try
         {
-            var newButton = page.Locator("spark-query-card bs-card-header [data-action='New']").First;
+            var newButton = CardAction(page.Locator("spark-query-card").First, "New");
             await newButton.WaitForAsync(new() { Timeout = 15_000 });
+            // The detail page and its card are still loading (entity types, the sub-query, its
+            // actions) when the button first appears; a click during that settling was lost once.
+            await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
             await newButton.ClickAsync();
 
-            await page.WaitForURLAsync(url => url.Contains("/po/answer/new") && url.Contains("parentId="), new() { Timeout = 15_000 });
+            await WaitForUrlAsync(page, url => url.Contains("/po/answer/new") && url.Contains("parentId="),
+                "New from the card should open the create page carrying the parent");
 
             var body = page.Locator("spark-po-form textarea").First;
             await body.WaitForAsync(new() { Timeout = 15_000 });
             await body.FillAsync("Created from the sub-query");
             await page.GetByRole(AriaRole.Button, new() { Name = "Save" }).First.ClickAsync();
-            await page.WaitForURLAsync(url => url.Contains("/po/answer/") && !url.Contains("/new"), new() { Timeout = 15_000 });
+            await WaitForUrlAsync(page, url => url.Contains("/po/answer/") && !url.Contains("/new"),
+                "saving should open the created answer");
 
             var created = await LiveAnswerIdsAsync(author.Client, questionId);
             created.Should().HaveCount(1, "the question was filled in by the base OnNewAsync, not by the user");
