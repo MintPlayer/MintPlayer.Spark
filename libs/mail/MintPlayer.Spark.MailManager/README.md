@@ -242,8 +242,8 @@ Declared with `Configure`, so `Spark:Messaging:Queues:mail-bulk:MaxPerInterval` 
 `MaxPerInterval` is a rate with a burst allowance: right after an idle period a window can hold ~3× the
 figure (measured, S-M3); state the rate alone (1 per 3 s) for no burst.
 
-The priorities (#460 M16) make Spark Messaging's single feeder claim account mail ahead of a campaign's
-backlog in each look-ahead window, without starving the campaign (Messaging README, *Priority lanes*).
+The priorities (#460 M16/M16b) make Spark Messaging's single feeder claim account mail ahead of a campaign's
+whole backlog, without starving the campaign (Messaging README, *Priority lanes*).
 Apps get them by default; `Spark:Messaging:Queues:mail-bulk:Priority=Normal` (etc.) overrides them.
 
 ### Campaigns

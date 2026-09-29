@@ -200,7 +200,7 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
             Interlocked.Increment(ref PageUnavailableCount);
             if (Interlocked.Exchange(ref missingIndexLogged, 1) == 0)
                 Logger.LogWarning(
-                    "The {Index} index does not exist, so messages are served in delivery order only; call AddMessaging() "
+                    "The {Index} index does not exist, so priority applies within each subscription batch only; call AddMessaging() "
                     + "through the Spark builder (it deploys the index) or deploy it with the messaging assembly's indexes",
                     nameof(SparkMessages_ByPriority));
             return [];

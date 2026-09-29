@@ -463,7 +463,7 @@ deferred message leaves the "pending now" set (and the index) until the sweeper 
 What it still does not do: a lane filled to its capacity (512 claimed messages) by an **unthrottled**
 slow low-priority queue back-pressures the feeder. Throttle bulk queues (MailManager's `mail-bulk` is).
 The feeder needs the index, which `AddMessaging()` deploys; without it the feeder logs one warning and
-serves the batch alone, in delivery order. The measured figures are in the #460 PRD (§4.1, M16b).
+serves each batch alone, priority first within it (M16's window). The measured figures are in the #460 PRD (§4.1, M16b).
 
 `SubscriptionPerQueue` mode is unaffected: each queue has its own subscription, delivered one message
 at a time, and nothing is shared to prioritise. The index is deployed in both modes; only the single

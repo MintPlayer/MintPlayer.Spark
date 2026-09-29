@@ -97,12 +97,12 @@ public class SparkQueueOptions
 /// </summary>
 public enum SparkQueuePriority
 {
-    /// <summary>Served after the other priorities in each window: bulk and campaign traffic.</summary>
+    /// <summary>Served after the other priorities: bulk and campaign traffic.</summary>
     Low = -1,
 
     /// <summary>The default for a queue without a setting.</summary>
     Normal = 0,
 
-    /// <summary>Served first in each window: a message somebody is waiting for (password reset, confirmation).</summary>
+    /// <summary>Served first: a message somebody is waiting for (password reset, confirmation).</summary>
     High = 1,
 }

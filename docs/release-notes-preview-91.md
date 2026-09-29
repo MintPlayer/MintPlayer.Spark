@@ -245,6 +245,15 @@ result synchronously must await it. `sparkAuthenticatedGuard` is an alias.
   `Spark:Messaging:FeederBatchSize` (256) messages per subscription batch and claims them a priority at
   a time; a throttled message is deferred before it is claimed. A test that counted writes per deferred
   message sees 7, not 8.
+- **…and then from a sorted page (M16b).** On each subscription wake-up the feeder reads the top
+  `FeederBatchSize` claimable messages from the new static index `SparkMessages_ByPriority`
+  (`Priority desc, Sequence asc`) and serves them together with the batch, so priority is strict across
+  the whole backlog, not per batch. Deploy the index: `AddMessaging()` does it at startup; an app or
+  test that wires `AddSparkMessaging` by hand must deploy the messaging assembly's indexes, or the feeder
+  logs a warning and applies priority within each subscription batch only. `SparkMessage` gains `Priority` (stamped at publish, so a
+  changed `Priority` setting applies to messages published after it) and `QueuedAtUtc` (the server's
+  commit time, captured on the feeder's first write). Messages published before this version read as
+  `Normal`.
 
 ### 11. Sub-query selection & actions (M15, D17–D19)
 
@@ -411,10 +420,12 @@ that never waits inside a lane, `DeadLetterReason` (`MaxAttempts` / `NonRetryabl
 `IMessageContext`, `IMessageProgress`. `SubscriptionPerQueue` gained the handler timeout and claim
 renewal. [README § Per-queue options and throttling](../libs/messaging/MintPlayer.Spark.Messaging/README.md#per-queue-options-and-throttling)
 
-**Priority lanes (M16):** `SparkQueueOptions.Priority` (`Low`/`Normal`/`High`, `Spark:Messaging:Queues:{name}:Priority`)
-and `FeederBatchSize`. The single feeder serves each look-ahead window highest priority first, without
-starving lower priorities; measured, a transactional message behind a 1,000-message bulk backlog now waits
-at most 52 ms instead of 5.2 s. [README § Priority lanes](../libs/messaging/MintPlayer.Spark.Messaging/README.md#priority-lanes)
+**Priority lanes (M16, M16b):** `SparkQueueOptions.Priority` (`Low`/`Normal`/`High`, `Spark:Messaging:Queues:{name}:Priority`)
+and `FeederBatchSize`. The single feeder serves strictly by priority, then by server-assigned enqueue
+order, across the whole backlog (a sorted page from `SparkMessages_ByPriority` merged with each
+subscription batch), without starving lower priorities (every delivered message is served in its batch); measured, a transactional message behind a 1,000-message bulk backlog now waits
+at most 30–80 ms (M16: 52–89 ms) instead of 5.2 s. A graceful stop now also releases the claims a
+batch still in flight could not route, so they no longer wait `ClaimTtl` (5 min) on a rolling deploy. [README § Priority lanes](../libs/messaging/MintPlayer.Spark.Messaging/README.md#priority-lanes)
 
 ### `MintPlayer.Spark.Moderation` (+ `.Abstractions`)
 

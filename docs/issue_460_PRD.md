@@ -65,6 +65,7 @@ Locked with the owner. Do not re-litigate without new evidence.
 | D20 | **Messaging priority lanes (M16, owner 2026-09-29).** Fixes the M4-measured 5.8 s transactional max behind a bulk backlog. `SparkQueueOptions.Priority` (`Low`/`Normal`/`High`; `Spark:Messaging:Queues:{name}:Priority`, config beats code, D14). The single feeder reads **look-ahead windows** (`SparkMessagingOptions.FeederBatchSize`, default 256) and serves each window highest priority first, one load and one write per priority, deferring a throttled message **before** claiming it; FIFO between windows and within a queue. **No starvation by construction**: a window is served completely before the next is fetched (a message is overtaken by at most `FeederBatchSize − 1`). The existing single subscription is kept (same query, no `now()`, never deleted); a subscription per priority is rejected (Community's 3-slot cap, decision register A15). MailManager declares `mail-transactional` High and `mail-bulk` Low, so apps get it with no code. |
 | D21 | **ARF complaint parsing (M16, owner 2026-09-29).** RFC 5965 feedback reports go to the existing bounce endpoint (same secret, rate limit, 503-when-disabled) and the default parser: delivery from `Original-Mail-From` (VERP) → original `Return-Path` → original `Message-ID` → envelope recipient; `abuse`/`fraud` suppress the **delivery record's** address for every stream with `SparkMailSuppressionReason.Complaint` and mark the delivery `Complained`; `not-spam` and other types are recorded only. Unmatched → logged, 204 (dropped, not retried); malformed → 400 (dropped). Feedback-loop address on the VERP domain, same pipe (guide §8.6). |
 | D22 | **Configurable revision limits (M16, owner 2026-09-29).** `SparkHistoryOptions.Revisions` (default) and `Types[{type}]` (with `Enabled`), bound from `Spark:History:Revisions` / `Spark:History:Types:{type}`, config beats code. Per setting: type options → model block → default; `0` = no limit. **Default: 30 days, no count limit, no purge on delete** (fits Community; bounds personal data in revisions, risk 9). `RevisionsConfigurator` keeps H4 (read, merge, send only on change); when `/license/status` says `Community`, the merged limits are checked against 2 revisions / 45 days **before** sending, and startup refuses naming type, setting and source, with `Spark:History:ConfigureRevisions=false` as the escape hatch. |
+| D23 | **Hybrid sorted-query feeder (M16b, owner 2026-09-29; supersedes D20's window).** Strict ordering: **sort by priority descending, then enqueue order ascending, and only then take a page.** The one leader-elected `SparkMessaging` subscription stays (A6: the wake-up signal and the exclusivity/claim safety; query unchanged, no `now()`, never deleted, no new subscription). On each batch the leader's feeder reads the top `FeederBatchSize` (page size, default 256) of the static index `SparkMessages_ByPriority` — claimable-now messages only, `order by Priority desc, Sequence asc` — merges the batch's own items (a message not indexed yet is served from the batch, never skipped), and claims highest priority first with the existing durable per-message claim under optimistic concurrency; throttled messages are deferred before the claim as in M4/M16 and leave "pending now" until their slot. **`Sequence` is server-assigned** (spike S-M7): `@last-modified` of the write that made the message claimable, captured once into `SparkMessage.QueuedAtUtc` on the feeder's first write; `SparkMessage.Priority` is stamped at publish. **Starvation:** strict priority cannot starve `Low` — every delivered message is served in its batch, so a `Low` message waits at most for its FIFO position plus one page per batch — so no aging is added (decision register A16). `SubscriptionPerQueue` mode is unaffected. |
 
 ### Technical decisions (made by Claude, reasons recorded; owner may override)
 
@@ -229,7 +230,8 @@ in `$(SpaRoot)package.json` is warning `SPARK030` (`docs/diagnostics.md`; M5 dev
 - Accuracy documented: long-run rate exact, bursts quantised by `FallbackPollInterval` (30 s).
 - Optional `IMessageProgress`: sidecar `SparkMessages/{id}/progress/{handlerIndex}` in its own collection, appended by patch, **same `@expires` as its message**; `IsDoneAsync`/`MarkDoneAsync`. Not an array on `SparkMessage`.
 - Pattern documented: `mail-transactional` generous, `mail-bulk` strict.
-- **Priority lanes (D20, M16):** `SparkQueueOptions.Priority`, `FeederBatchSize`; the feeder serves each look-ahead window highest priority first and defers throttled messages before the claim; no starvation (window bound). Measured in §4.1 (M16).
+- **Priority lanes (D20, M16):** `SparkQueueOptions.Priority`, `FeederBatchSize`; the feeder serves each look-ahead window highest priority first and defers throttled messages before the claim; no starvation (window bound). Measured in §4.1 (M16). **Superseded in M16b (D23):**
+- **Sorted-query feeder (D23, M16b):** static index `SparkMessages_ByPriority` (claimable-now only; `Priority`, `Sequence` stored); per wake-up one page `order by Priority desc, Sequence asc` of `FeederBatchSize`, merged with the subscription batch, claimed a priority at a time (one load + one write each), stale entries re-checked on load against the subscription's predicate; `SparkMessage.Priority` stamped at publish, `SparkMessage.QueuedAtUtc` captured from `@last-modified` on the feeder's first write (no extra write). A missing index degrades to the batch alone with one warning. No starvation by the subscription backstop; no aging. Measured in §4.1 (M16b: S-M7, S-M3, S-M8, S-M9).
 
 ### 3.12 Moderation (item 12) — `libs/moderation/MintPlayer.Spark.Moderation` (+ `.Abstractions`) — D11, D12, D14, T6
 
@@ -467,6 +469,9 @@ Each spike states what it proves. Run them in the milestone that needs them, bef
 | S-M4 | Scriban strict mode, `JToken` conversion, escaping. | MailManager |
 | S-M5 | boky/postfix: VERP → pipe → HTTP; `master.cf` customisation, `curl` presence, exit 75 on HTTP failure. | D9 docs |
 | S-M6 | MailKit `SecureSocketOptions.None` against a relay advertising STARTTLS; VERP envelope; no `Sender:` header. | MailManager |
+| S-M7 | Where the feeder's FIFO key `Sequence` comes from: `@last-modified`, a compare-exchange / document counter, the first-save etag written back, a server identity — cost per enqueue and inversions against commit order under concurrent producers; sort-index lag under a 1,000-message bulk load. | D23 |
+| S-M8 | Leader handover under load (crash and graceful), two hosts on one database, 1,000 mixed-priority backlog: no loss, duplicates, takeover gap, sorted order under the new leader. | D23 |
+| S-M9 | The feeder and the S-M3 load under the **Community** licence: one subscription, the sort index deploys and serves. | D23 |
 | S-TZ1 | `FindSystemTimeZoneById` on path-shaped ids under .NET 11 (Linux + Windows) — defence-in-depth evidence. | item 7 |
 | S-TZ2 | How MintPlayer's prerender fetches data (in-process vs Node over HTTP) — whether ng-spark needs an SSR cookie-forwarding helper. | item 7 |
 | S-TZ3 | Vitest proves the interceptor would send Node's zone during SSR (and the guard stops it). | item 7 |
@@ -1642,6 +1647,117 @@ the lower burst figure follows from deferrals now being written in window batche
 - *Libraries only.* No app code changed: MailManager declares the lane priorities, ARF lives in its
   bounce pipeline, the limits in History's options and configurator. QnA (the only History user) gets
   the 30-day default with no change.
+
+#### M16b — hybrid sorted-query feeder (owner decision D23, 2026-09-29)
+
+**S-M7 — where `Sequence` comes from (M16b, 2026-09-29).**
+*Method:* `SequenceSourceSpikeTests` (kept; run with `SPARK_SPIKE_SM7_N=1000`, the kept test defaults
+to 100). For each candidate, 1,000 `SparkMessage`s are
+enqueued from **8 producers in parallel**, one session per message as `MessageBus` does; the ground
+truth is each document's etag (its change vector on a fresh single-node database), i.e. commit order
+and the order the subscription delivers in. An *inversion* is an adjacent pair, in commit order, whose
+key goes down. Developer licence, embedded RavenDB 7.2.
+*Answer:*
+
+| Candidate | Per enqueue p50 / p95 / mean | Inversions / 999 | Notes |
+|---|---|---|---|
+| **(a) `@last-modified`** (via `MetadataFor` in the index) | 7.3 / 21.4 / 9.8 ms — the plain store, no extra work | **0** (ties 0) | Set by the server on commit. Changes on every write, hence captured once (below) |
+| (b1) compare-exchange counter, taken before the store | 34 / 345 / 99 ms | 0 | **6,668 CAS retries** for 1,000 enqueues; 12 s wall against 1.3 s |
+| (b2) document counter (`CounterBatchOperation`, returns the total) | 5.5 / 11.3 / 6.1 ms | **340** | Taken before the store, so commit order and key order disagree |
+| (b3) batch enqueue with one reserved range of 100 | 0.14 ms / message | not measured | Cheap per message, but a range is reserved before its batch commits, so concurrent batches interleave exactly as (b2) does |
+| (c) first-save etag written back | 7.6 / 14.4 / 8.3 ms | 356 against delivery order | A **second write** per message, and that write moves the etag, so delivery order no longer matches the key |
+| (d) server identity id (`SparkMessages\|`) | 6.5 / 11.5 / 6.9 ms | **183** | Identities are not handed out in commit order; and a deduplicated message has a fixed id, so it cannot have one |
+
+Four runs, the same shape each time ((a) 0 inversions every run; (b1) 0–1; (b2) 307–340; (d) 109–199).
+**Chosen: (a), captured once.** The index uses `QueuedAtUtc` when set, else `@last-modified`; the
+feeder writes `QueuedAtUtc` from the loaded `@last-modified` in the claim or deferral it writes
+anyway, so a retry, a reclaim or a throttle wake-up (each of which moves `@last-modified`) keeps the
+message's place, at no extra write. Until the feeder's first write nothing else writes a claimable
+message, so the two values are the same; a delayed broadcast is the one exception, and its key is then
+the sweeper's wake-up — "joined the queue when it became due", which is the intended reading.
+Caveat, accepted: on a cluster fail-over to another node the keys come from a different server clock,
+so ordering across that moment is off by the clock skew; nothing is lost, and the subscription still
+delivers everything.
+*Index semantics, asserted:* the index holds exactly the claimable set (deferred, parked, claimed and
+finished messages have no entry; `Status` compares as a string); an absent `NextAttemptAtUtc`
+**matches** `== null` in the map (a pre-M16b-shaped document is indexed); an absent `Priority` sorted
+**below `Low`** under `desc` until the map coalesced it (`(int?)m.Priority ?? 0`) — now `Normal`.
+*Index lag:* 1,000 messages from 8 producers in 212 ms; time from a message's save returning until it
+is visible in `SparkMessages_ByPriority`: p50 61 ms, p95 98 ms, max 107 ms (poll granularity ~15 ms);
+the last write was visible 27 ms after it returned. The subscription's own delivery lag was not measured, but
+the S-M3 merge counters below show batches carrying messages the page did not have yet, and
+those are served from the batch, never skipped.
+
+**S-M3 re-run — transactional latency behind the bulk backlog (M16b, 2026-09-29).**
+*Method:* unchanged from M4 and M16 (`SPARK_SPIKE_SM3_BULK=1000`, ×20 compression, a transactional
+message every 250 ms while 1,000 bulk messages drain at 20 per 3 s, revisions on, Developer licence;
+both spike queues `Normal`, so what is measured is the feeder mechanism). "Before" ran from a clean
+worktree at `0510a293` (M16) immediately before "after" at the M16b code, same machine, nothing else
+running.
+*Answer:*
+
+| | M16 as recorded | Before (0510a293, today) | After (M16b) |
+|---|---|---|---|
+| Transactional during backlog, p50 / p95 / **max** | 9 / 21 / **52** ms (n = 564) | 10 / 19 / **89** ms (n = 559) | 9 / 17 / **30** ms (n = 558); an earlier run the same hour 13 / 25 / 80 ms |
+| Baseline, no backlog, p50 / p95 / max | 13 / 33 / 37 ms | 19 / 29 / 34 ms | 18 / 35 / 39 ms (earlier run 23 / 43 / 59) |
+| Bulk steady rate / drain | 19.96 per interval / 147.5 s | 19.93 per interval / 147.7 s | 20.01 per interval / 147.2 s |
+| Most starts in one sliding 3 s window | 32 | 33 | 32 |
+| Writes per deferred bulk message | 7 (×980) | 7 (×980) | 7 (×980) — capturing `QueuedAtUtc` adds no write |
+| Feeder merge (M16b only) | — | — | 227 messages pulled ahead from the page; 106 served from the batch alone (not indexed yet, or beyond the page); page never unavailable |
+
+*Reading:* with both spike queues at `Normal`, M16b is within run noise of M16 despite the extra
+query per wake-up (p95 17–25 ms against 19–21, max 30–80 against 52–89; the back-to-back pair is
+9/17/30 against 10/19/89, and the M16 max itself ranged 52–89 across two runs). The throttle is unchanged (rate,
+drain, burst, writes). Strict ordering is not what this spike exercises — the pipeline test in
+`QueuePriorityTests` does (a High message behind 300 Low is served first, and fails with the page
+disabled). The merge counters are the confirmation S-M7 asked for: during the bulk load the
+subscription batch repeatedly carried messages the page did not yet have (106), and each was served.
+
+**S-M8 — leader handover under load (M16b, 2026-09-29).**
+*Method:* `LeaderHandoverSpikeTests` (`SPARK_SPIKE_SM8=1`). Three messaging hosts in one process on
+one database, each with its own `IDocumentStore` and its own identity (`MessageClaims.HostScope`, an
+`AsyncLocal` test seam, because `NodeId` is per process); queues `High`/`Normal`/`Low`, a 3 ms
+handler that records its side effect last, `ClaimTtl` 10 s, sweeper tick 1 s, the real lease (TTL
+30 s, standby poll 5 s). **Crash:** 1,000 mixed messages; once 250 are handled, host A's document
+store is disposed (no release, no drain, claims left at `Processing`) and a High message is published
+through B. **Graceful:** B drains a second 1,000, is stopped with `StopAsync` mid-drain; the test then
+holds the released lease, commits 300 mixed + 1 High in one transaction, waits for indexing and
+releases, so C's first page is the whole sorted backlog.
+*Answer:*
+
+| | Crash (store disposed at 250–258 handled) | Graceful (`StopAsync` mid-drain) |
+|---|---|---|
+| Lost | **0** of 1,001 (two runs) | **0** of 1,301 |
+| Processed twice | **3** then **1** — each the handler in flight on one of the dead host's three lanes (finished, completion not recorded) | **0** |
+| Takeover | standby leads after **27.4–27.5 s** (the lease's 30 s TTL, less its age at the crash), serves its first message the same instant; all 1,001 done after 32.3–32.6 s (737–744 orphaned claims come back in two sweeps, 512 + the rest, once `ClaimTtl` has passed) | `StopAsync` (feeder stop + lane drain + release) **3.1–4.0 s**; standby leads **4.7 s** after the release (≤ its 5 s poll) |
+| High message published during the handover | the new leader's **#1** | the new leader's **#102** — after the 101 older High messages, before every Normal and Low |
+
+*Found and fixed by this spike:* (1) RavenDB's `SubscriptionWorker.Run()` can return on cancellation
+while the batch callback still runs, so a stopping feeder routed into lanes the drain had closed
+(`ChannelClosedException`) and the messages it had just claimed waited for `ClaimTtl` — 5 minutes by
+default on every graceful deploy that landed mid-batch. The feeder now releases the claims it could not
+route (`MessageClaims.ReleaseUnstartedAsync`, which existed and nothing called). (2) The first run's
+graceful takeover took 29 s because the spike stopped B under the *test's* identity, and the release is
+(correctly) guarded on the holder's `NodeId`; with the host's own identity the release works, and
+`MessageSubscriptionManagerLifecycleTests.A_graceful_stop_releases_the_messaging_lease` pins it. One
+`OperationCanceledException` from a lease release is still logged once per run; the log line does not
+name the host, it did not affect either measured handover (C took over 4.7 s after the release), and it
+was not traced further — most likely the crashed host A's own teardown, whose store is gone.
+
+**S-M9 — the feeder under the Community licence (M16b, 2026-09-29).**
+*Method:* `ThrottleAccuracySpikeTests.S_M9_…` (`SPARK_SPIKE_SM9=1`, `SPARK_SPIKE_SM3_BULK=1000`,
+`RAVENDB_LICENSE` = the renewed Community licence): polls `/license/status` until the licence is applied
+(reading only `Type` and `Status`), then runs the S-M3 load without revisions (Community keeps 2) and
+checks the database's subscriptions and the sort index.
+*Answer:* `/license/status` reported **`Type: Community`**, `Status: Commercial` (not an AGPL
+fallback). After the run the database held **one** subscription (`SparkMessaging`), inside the 3-slot
+cap; `SparkMessages/ByPriority` deployed and served in state `Normal` with **0** indexing errors (0
+entries once everything was done, as it should be), and the page was never unavailable. The load: 1,000
+bulk drained in 147.2 s at 20.03 per interval (most starts in one window 31); transactional during the
+backlog p50 / p95 / max **11 / 29 / 193 ms** (n = 559), baseline 29 / 40 / 47 ms. Community's 3-core cap
+shows in the merge counters: 1,337 messages pulled ahead from the page and 1,103 served from the batch
+alone (Developer: 227 / 106), consistent with the index lagging further behind on 3 cores; the batch merge is what keeps that
+from delaying anything. Revisions (writes per message) are not measured under Community.
 
 ---
 

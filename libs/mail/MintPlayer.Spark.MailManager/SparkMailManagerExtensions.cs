@@ -57,7 +57,7 @@ public static class SparkMailManagerExtensions
             TimeSpan[] backoff = [TimeSpan.FromSeconds(30), TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(5),
                 TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(20), TimeSpan.FromMinutes(30), TimeSpan.FromHours(1), TimeSpan.FromHours(2)];
             // High priority (M16): account mail (reset, confirm) is what somebody is waiting for, so the
-            // single feeder claims it ahead of a campaign's backlog in each window.
+            // single feeder claims it ahead of a campaign's whole backlog (M16b: sorted page).
             messaging.Queues.TryAdd(SparkMailQueues.Transactional, new SparkQueueOptions { MaxAttempts = 10, Backoff = backoff, Priority = SparkQueuePriority.High });
             // Strict: 20 a minute (GCRA; a burst after idle can reach ~3x, measured S-M3). Low priority.
             messaging.Queues.TryAdd(SparkMailQueues.Bulk, new SparkQueueOptions { MaxPerInterval = 20, Interval = TimeSpan.FromMinutes(1), MaxAttempts = 10, Backoff = backoff, Priority = SparkQueuePriority.Low });

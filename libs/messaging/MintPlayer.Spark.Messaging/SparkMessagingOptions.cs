@@ -148,7 +148,7 @@ public class SparkMessagingOptions
     /// </summary>
     public int FeederBatchSize { get; set; } = DefaultFeederBatchSize;
 
-    /// <summary>The window used when nothing is configured.</summary>
+    /// <summary>The page size used when nothing is configured.</summary>
     public const int DefaultFeederBatchSize = 256;
 
     /// <summary>The settings for <paramref name="queueName"/>, or null when the queue has none.</summary>
