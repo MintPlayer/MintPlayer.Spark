@@ -22,7 +22,8 @@ on:
       # (`paths-ignore: ['action/**']` in its publish.yml).
       - '!apps/CodeCoverage/action/**'
       # CodeCoverage's transitive ProjectReference closure. Hand-maintained: if the app takes a new
-      # Spark dependency, add it here or a change to that library will not trigger a deploy.
+      # Spark dependency, add it here or a change to that library will not trigger a deploy. Add it
+      # to code-coverage-image-check.yml's filter and the Dockerfile's COPY list as well.
       - 'libs/spark/MintPlayer.Spark/**'
       - 'libs/spark/MintPlayer.Spark.Abstractions/**'
       - 'libs/attributes/MintPlayer.Spark.Attributes/**'
@@ -79,8 +80,10 @@ jobs:
       uses: actions/checkout@v7
 
     # No host .NET/Node setup: the Dockerfile's build stage runs dotnet restore, npm ci,
-    # nx run @spark-apps/code-coverage:build and dotnet build/publish inside the container.
-    # Build failures are already gated by pull-request.yml pre-merge.
+    # nx run @spark-apps/code-coverage:build and dotnet publish inside the container.
+    # Build failures are gated pre-merge: pull-request.yml builds and tests the code, and
+    # code-coverage-image-check.yml builds this exact Dockerfile (no push) on every pull request
+    # that could change the image.
     #
     # Nor does this job run --spark-verify-model, and that is a decision rather than an oversight.
     # It would need a host .NET install on every deploy to re-check something that cannot drift

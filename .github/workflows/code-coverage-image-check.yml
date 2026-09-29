@@ -1,0 +1,74 @@
+name: code-coverage-image-check
+
+# Builds the CodeCoverage production image on a pull request, without pushing it.
+#
+# code-coverage-deploy.yml builds this image only AFTER a merge to master, so a broken Dockerfile
+# (a missing COPY for a new ProjectReference, a stage that no longer builds) used to surface first
+# as a failed production deploy. This job builds the same Dockerfile with the same context before
+# the merge. It never pushes, never logs in to a registry, and never deploys.
+#
+# The paths below MIRROR code-coverage-deploy.yml's push filter (plus this file and the deploy
+# workflow): a change that would rebuild the production image is exactly a change worth checking
+# here. Keep the two lists in sync when CodeCoverage takes a new dependency.
+
+on:
+  pull_request:
+    paths:
+      - 'apps/CodeCoverage/**'
+      - '!apps/CodeCoverage/action/**'
+      - 'libs/spark/MintPlayer.Spark/**'
+      - 'libs/spark/MintPlayer.Spark.Abstractions/**'
+      - 'libs/attributes/MintPlayer.Spark.Attributes/**'
+      - 'libs/authorization/MintPlayer.Spark.Authorization/**'
+      - 'libs/controllers/MintPlayer.Spark.Controllers/**'
+      - 'libs/cron/MintPlayer.Spark.Cron/**'
+      - 'libs/messaging/MintPlayer.Spark.Messaging/**'
+      - 'libs/messaging/MintPlayer.Spark.Messaging.Abstractions/**'
+      - 'libs/mail/MintPlayer.Spark.MailManager/**'
+      - 'libs/mail/MintPlayer.Spark.MailManager.Abstractions/**'
+      - 'libs/migrations/MintPlayer.Spark.Migrations/**'
+      - 'libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/**'
+      - 'libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/**'
+      - 'libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/**'
+      - 'libs/source_generators/MintPlayer.Spark.SourceGenerators/**'
+      - 'libs/source_generators/MintPlayer.Spark.LibraryGenerators/**'
+      - 'libs/socket_extensions/MintPlayer.Dotnet.SocketExtensions/**'
+      - 'libs/node_packages/ng-spark/**'
+      - 'libs/node_packages/ng-spark-auth/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'nx.json'
+      - 'tsconfig.base.json'
+      - '.github/workflows/code-coverage-image-check.yml'
+      - '.github/workflows/code-coverage-deploy.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-image:
+    name: Build the CodeCoverage image (no push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+
+    # cache-from only: a pull request may READ the layers the master deploy cached, but never
+    # writes to that cache, so nothing a pull request builds can be replayed into a production
+    # image. The Dockerfile itself stays hermetic either way (--skip-nx-cache).
+    - name: Build the image
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: ./apps/CodeCoverage/CodeCoverage/Dockerfile
+        push: false
+        cache-from: type=gha

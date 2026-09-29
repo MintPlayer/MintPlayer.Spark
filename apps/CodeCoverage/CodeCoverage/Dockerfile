@@ -61,12 +61,12 @@ WORKDIR /src
 RUN npm ci
 RUN npx nx run @spark-apps/code-coverage:build --configuration=production --skip-nx-cache
 
-# Build .NET application
-WORKDIR "/src/apps/CodeCoverage/CodeCoverage"
-RUN dotnet build "./CodeCoverage.csproj" -c $BUILD_CONFIGURATION -o /app/build
-
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
+WORKDIR "/src/apps/CodeCoverage/CodeCoverage"
+# No separate `dotnet build` step: publish compiles the app itself. The template's
+# `dotnet build -o /app/build` wrote output nothing ever copied, so every image compiled the whole
+# closure twice (~30 s each, measured locally 2026-09-29).
 # EnableSpaBuilder=false: the SPA was already built above by Nx. Left on, the SpaServices targets
 # would try to build it a second time from inside the publish.
 RUN dotnet publish "./CodeCoverage.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false /p:EnableSpaBuilder=false
