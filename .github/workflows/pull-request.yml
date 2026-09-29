@@ -102,6 +102,15 @@ jobs:
     - name: Build affected projects (Nx)
       run: npx nx affected --target=build
 
+    # vitest strips TypeScript without checking it, and the library build (ng-packagr) excludes the
+    # spec files, so a type error in a spec was never reported anywhere: ten had built up in
+    # ng-spark's specs (#460), one of them a fixture silently set to `undefined` because it named an
+    # enum member that doesn't exist. Type-check the specs of both npm packages explicitly.
+    - name: Type-check the npm packages' specs
+      run: |
+        npx tsc --noEmit -p libs/node_packages/ng-spark/tsconfig.spec.json
+        npx tsc --noEmit -p libs/node_packages/ng-spark-auth/tsconfig.spec.json
+
     # The two verifications below run `dotnet run --no-build` against all five apps, which needs all
     # five binaries on disk -- and `nx affected` above only schedules the ones it considers affected.
     # A pull request that leaves an app unaffected therefore died on dotnet's opaque "An error

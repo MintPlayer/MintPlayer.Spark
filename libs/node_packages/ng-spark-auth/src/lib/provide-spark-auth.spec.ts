@@ -28,15 +28,17 @@ describe('provideSparkAuth', () => {
 
   it('merges a partial config over the defaults rather than replacing them', () => {
     TestBed.configureTestingModule({
-      providers: [provideSparkAuth({ apiBase: '/custom-auth' } as never)],
+      // A real key of SparkAuthConfig: this used to pass `apiBase`, which does not exist, behind
+      // `as never`, so the merge was never tested on a property the config actually has.
+      providers: [provideSparkAuth({ apiBasePath: '/custom-auth' })],
     });
 
-    const config = TestBed.inject(SPARK_AUTH_CONFIG) as Record<string, unknown>;
+    const config = TestBed.inject(SPARK_AUTH_CONFIG);
 
-    expect(config['apiBase']).toBe('/custom-auth');
+    expect(config.apiBasePath).toBe('/custom-auth');
     // Every other default survives — a spread, not an overwrite.
-    for (const [key, value] of Object.entries(defaultSparkAuthConfig)) {
-      if (key !== 'apiBase') expect(config[key]).toEqual(value);
+    for (const key of Object.keys(defaultSparkAuthConfig) as (keyof typeof defaultSparkAuthConfig)[]) {
+      if (key !== 'apiBasePath') expect(config[key]).toEqual(defaultSparkAuthConfig[key]);
     }
   });
 
