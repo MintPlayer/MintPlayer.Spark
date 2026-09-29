@@ -1457,7 +1457,6 @@ ids) is the owner's.
 - *Harness hang:* the host's `dotnet build` left MSBuild nodes holding its redirected stdout, so a
   local run waited ~15 min for EOF; builds now use `--disable-build-servers`, output drain bounded.
 Reruns: the failed tests, then Spark.Tests (3198/3198) and E2E (120/120) in full.
----
 #### M15 — deviations and findings
 
 - **`OnNewAsync` already existed.** It is `OnNewAsync(SparkNewArgs<T>)`, behind `POST /spark/po/new`,
@@ -1486,6 +1485,8 @@ Reruns: the failed tests, then Spark.Tests (3198/3198) and E2E (120/120) in full
   and `--spark-verify-*` for the other apps were not run locally. QnA's verify-model (after the
   resync) and verify-security pass.
 
+
+---
 
 ## 5. Risks
 
