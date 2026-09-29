@@ -88,17 +88,17 @@ public class MessagingLeaseManagerTests : SparkTestDriver
         await ForgeAsync(ForeignNode, DateTime.UtcNow.AddMinutes(1));
         var manager = NewManager();
 
-        await manager.ReleaseAsync(CancellationToken.None);
+        await manager.ReleaseAsync();
         (await ReadAsync()).Should().NotBeNull("releasing must never drop a lease another host took over");
 
         await Store.Operations.SendAsync(new DeleteCompareExchangeValueOperation<MessagingLease>(
             LeaseKey, (await Store.Operations.SendAsync(new GetCompareExchangeValueOperation<MessagingLease>(LeaseKey))).Index));
         (await manager.TryAcquireAsync(CancellationToken.None)).Should().BeTrue();
 
-        await manager.ReleaseAsync(CancellationToken.None);
+        await manager.ReleaseAsync();
         (await ReadAsync()).Should().BeNull();
 
         // Releasing with nothing held is a no-op.
-        await manager.ReleaseAsync(CancellationToken.None);
+        await manager.ReleaseAsync();
     }
 }

@@ -272,7 +272,7 @@ public class LeaderHandoverSpikeTests(ITestOutputHelper output) : SparkTestDrive
             await WaitForIndexesAsync();
             var releasedAt = DateTime.UtcNow;
             if (held)
-                await WithScopeAsync("spike-holder", async () => { await holder.ReleaseAsync(CancellationToken.None); return true; });
+                await WithScopeAsync("spike-holder", async () => { await holder.ReleaseAsync(); return true; });
 
             await AsyncWait.UntilAsync(() => c.Manager.IsLeader, "host C to take over", MessagingLeaseManager.Ttl + TimeSpan.FromSeconds(60));
             var cLeadsAt = DateTime.UtcNow;

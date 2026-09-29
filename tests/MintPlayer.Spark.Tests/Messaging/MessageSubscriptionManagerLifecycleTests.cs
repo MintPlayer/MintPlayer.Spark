@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Services;
@@ -181,6 +182,103 @@ public class MessageSubscriptionManagerLifecycleTests : SparkTestDriver
         lease.Should().BeNull("a graceful stop releases the lease so a standby takes over on its next poll");
     }
 
+    [Fact]
+    public async Task A_graceful_stop_with_an_already_cancelled_token_still_releases_the_lease()
+    {
+        // A host's stop token can be cancelled before StopAsync runs (its shutdown timeout already
+        // spent). The release must not ride on it, or every standby waits out the 30 s TTL.
+        var provider = BuildProvider(ESubscriptionMode.SingleSubscription, registerSecondQueue: false);
+        await using var _ = provider;
+        var hosted = provider.GetServices<IHostedService>().OfType<MessageSubscriptionManager>().Single();
+
+        await hosted.StartAsync(CancellationToken.None);
+        await AsyncWait.UntilAsync(() => hosted.IsLeader, "the manager to take the lease", TimeSpan.FromSeconds(30));
+        await hosted.StopAsync(new CancellationToken(canceled: true));
+
+        (await ReadLeaseAsync()).Should().BeNull("the release runs on its own bounded token, not the cancelled stop token");
+    }
+
+    [Fact]
+    public async Task A_renewal_falling_due_during_the_drain_does_not_restart_messaging()
+    {
+        // Spike S-M8 (#460 M16b). The lease loop used to run on the host's stopping token alone,
+        // which fires only in base.StopAsync, after the drain. A renewal falling due during the drain
+        // saw isLeader == false (StopAsync had cleared it), re-acquired its own lease and started a
+        // second feeder on a host that was stopping. A handler held open makes the drain outlast
+        // RenewInterval, so the renewal is certain to fall due inside it.
+        var gate = new HoldGate();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(Store);
+        services.AddSingleton(gate);
+        services.AddSparkMessaging(o => o.ClaimTtl = TimeSpan.FromMinutes(2));
+        services.AddScoped<MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestHold>, TestHoldRecipient>();
+        var provider = services.BuildServiceProvider();
+        await using var _ = provider;
+        var hosted = provider.GetServices<IHostedService>().OfType<MessageSubscriptionManager>().Single();
+
+        await hosted.StartAsync(CancellationToken.None);
+        await AsyncWait.UntilAsync(() => hosted.IsLeader, "the manager to take the lease", TimeSpan.FromSeconds(30));
+        using (var scope = provider.CreateScope())
+            await scope.ServiceProvider.GetRequiredService<MintPlayer.Spark.Messaging.Abstractions.IMessageBus>().BroadcastAsync(new TestHold());
+        await gate.Started.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        var stop = hosted.StopAsync(CancellationToken.None);
+        try
+        {
+            // Either the loop has ended (fixed), or it re-leads once its renewal falls due (the bug).
+            await AsyncWait.UntilAsync(
+                () => hosted.IsLeader || hosted.ExecuteTask!.IsCompleted,
+                "the lease loop to end or to re-acquire", MessagingLeaseManager.RenewInterval * 3);
+            hosted.IsLeader.Should().BeFalse("a stopping host must not re-acquire its lease and restart messaging");
+        }
+        finally
+        {
+            gate.Release.TrySetResult();
+            await stop;
+        }
+
+        hosted.Feeder.Should().BeNull("no feeder may survive the stop");
+        (await ReadLeaseAsync()).Should().BeNull("the stop still releases the lease");
+    }
+
+    [Fact]
+    public async Task A_stop_after_the_store_is_disposed_logs_no_lease_error_and_leaves_the_lease_to_lapse()
+    {
+        // Spike S-M8's crashed host (#460 M16b): its document store was disposed, and its teardown
+        // logged "Error releasing the messaging lease -- OperationCanceledException" (RavenDB's
+        // context pool throws that on a disposed store). A release that cannot run is expected - the
+        // lease lapses at its TTL, the path a standby handles for any crash - not an error.
+        var store = new Raven.Client.Documents.DocumentStore { Urls = Store.Urls, Database = Store.Database };
+        store.ApplySparkConventions();
+        store.Initialize();
+
+        var log = new System.Collections.Concurrent.ConcurrentQueue<(Microsoft.Extensions.Logging.LogLevel Level, string Category, string Message)>();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(new RecordingLoggerProvider(log)));
+        services.AddSingleton<Raven.Client.Documents.IDocumentStore>(store);
+        services.AddSparkMessaging(o => o.SubscriptionMode = ESubscriptionMode.SingleSubscription);
+        services.AddScoped<MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestPing>, TestPingRecipient>();
+        var provider = services.BuildServiceProvider();
+        var hosted = provider.GetServices<IHostedService>().OfType<MessageSubscriptionManager>().Single();
+
+        await hosted.StartAsync(CancellationToken.None);
+        await AsyncWait.UntilAsync(() => hosted.IsLeader, "the manager to take the lease", TimeSpan.FromSeconds(30));
+        store.Dispose();
+        await hosted.StopAsync(CancellationToken.None);
+        try { await provider.DisposeAsync(); } catch (ObjectDisposedException) { }
+
+        log.Where(e => e.Level >= Microsoft.Extensions.Logging.LogLevel.Warning && e.Message.Contains("lease", StringComparison.OrdinalIgnoreCase))
+            .Should().BeEmpty("a release against a disposed store is expected, not an error");
+        var lease = await ReadLeaseAsync();
+        lease.Should().NotBeNull("nothing could release it; it lapses at its TTL");
+        lease!.NodeId.Should().Be(MessageClaims.NodeId);
+    }
+
+    private async Task<MessagingLease?> ReadLeaseAsync()
+        => (await Store.Operations.SendAsync(
+            new Raven.Client.Documents.Operations.CompareExchange.GetCompareExchangeValueOperation<MessagingLease>("spark/messaging/leader")))?.Value;
+
     private ServiceProvider BuildProvider(ESubscriptionMode mode, bool registerSecondQueue)
     {
         var services = new ServiceCollection();
@@ -216,5 +314,47 @@ public class MessageSubscriptionManagerLifecycleTests : SparkTestDriver
     private sealed class TestPongRecipient : MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestPong>
     {
         public Task HandleAsync(TestPong message, CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    private const string HoldQueue = "MessageSubscriptionManagerLifecycleTests-Hold";
+
+    [MintPlayer.Spark.Messaging.Abstractions.MessageQueueAttribute(HoldQueue)]
+    public sealed class TestHold
+    {
+        public string? Hello { get; set; }
+    }
+
+    private sealed class HoldGate
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    /// <summary>Holds the drain open until the test lets go. Not bound to the handler's token: the drain must wait for it.</summary>
+    private sealed class TestHoldRecipient(HoldGate gate) : MintPlayer.Spark.Messaging.Abstractions.IRecipient<TestHold>
+    {
+        public async Task HandleAsync(TestHold message, CancellationToken cancellationToken)
+        {
+            gate.Started.TrySetResult();
+            await gate.Release.Task;
+        }
+    }
+
+    private sealed class RecordingLoggerProvider(
+        System.Collections.Concurrent.ConcurrentQueue<(Microsoft.Extensions.Logging.LogLevel Level, string Category, string Message)> entries)
+        : Microsoft.Extensions.Logging.ILoggerProvider
+    {
+        public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName) => new Logger(entries, categoryName);
+        public void Dispose() { }
+
+        private sealed class Logger(
+            System.Collections.Concurrent.ConcurrentQueue<(Microsoft.Extensions.Logging.LogLevel Level, string Category, string Message)> entries,
+            string category) : Microsoft.Extensions.Logging.ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+            public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+                => entries.Enqueue((logLevel, category, formatter(state, exception)));
+        }
     }
 }

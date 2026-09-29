@@ -1739,10 +1739,8 @@ default on every graceful deploy that landed mid-batch. The feeder now releases 
 route (`MessageClaims.ReleaseUnstartedAsync`, which existed and nothing called). (2) The first run's
 graceful takeover took 29 s because the spike stopped B under the *test's* identity, and the release is
 (correctly) guarded on the holder's `NodeId`; with the host's own identity the release works, and
-`MessageSubscriptionManagerLifecycleTests.A_graceful_stop_releases_the_messaging_lease` pins it. One
-`OperationCanceledException` from a lease release is still logged once per run; the log line does not
-name the host, it did not affect either measured handover (C took over 4.7 s after the release), and it
-was not traced further — most likely the crashed host A's own teardown, whose store is gone.
+`MessageSubscriptionManagerLifecycleTests.A_graceful_stop_releases_the_messaging_lease` pins it.
+(3) *Traced and fixed:* the one `OperationCanceledException` logged per run as "Error releasing the messaging lease" was the crashed host A's teardown — RavenDB's context pool throws it on a disposed store (the release already used `CancellationToken.None`, not the stopping token); the release now skips a disposed store at Debug and runs on its own 5 s failure bound (`ReleaseTimeout`), and the trace also exposed a real race — the lease loop ran on the stopping token alone, so a renewal falling due during the drain re-acquired the lease and started a second feeder on the stopping host — now ended first by `StopAsync`; rerun: no lease error, graceful takeover 4.7 s, 0 lost (`A_stop_after_the_store_is_disposed_…`, `A_renewal_falling_due_during_the_drain_…` fail before, pass after).
 
 **S-M9 — the feeder under the Community licence (M16b, 2026-09-29).**
 *Method:* `ThrottleAccuracySpikeTests.S_M9_…` (`SPARK_SPIKE_SM9=1`, `SPARK_SPIKE_SM3_BULK=1000`,
