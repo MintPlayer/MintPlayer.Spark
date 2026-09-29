@@ -73,8 +73,24 @@ bundle; the **three** duplicated `<bs-datatable>` blocks still collapse to one. 
 
 ### `spark-query-card` — chrome around it
 
-A `<bs-card>` with a header (icon · caption · actions) and a `spark-query-grid` in the body.
+A `<bs-card>` with a header (icon · caption · actions · search) and a `spark-query-grid` in the body.
 Everything a host does not override renders exactly as it does today.
+
+**The header search box (#460 M15, the owner's D17 addendum).** On the trailing edge, after the
+actions, as Vidyano's sub-query tabs have it. It is `<spark-search-box>` from `@mintplayer/ng-spark/grid`,
+the same component the query-list page renders above its grid, so both surfaces behave identically:
+a 300 ms debounce while typing, a clear button, and Escape to clear. It feeds the grid's `search`, so
+`/spark/queries/execute` receives `search` together with `parentId`/`parentType` and searches
+server-side (#210), and the grid sends the same term to `/spark/queries/distinct-values` as
+`querySearch`, so a column filter lists only the values of the searched rows.
+- The card's `search` input is the box's starting value; a new value from the host replaces what was
+  typed (`linkedSignal`).
+- `[searchable]="false"` hides the box. A card over bound `data` never shows it, because the grid does
+  not refetch bound rows.
+- **A new term clears the selection**, on both surfaces. Reconciling it with the new rows was rejected:
+  a ticked row that is merely on another page of the searched result cannot be told from one the
+  search excluded, and a bulk Delete would then act on rows the user can no longer see. The
+  "N selected" chip therefore always counts what is ticked on screen.
 
 ### The slots
 

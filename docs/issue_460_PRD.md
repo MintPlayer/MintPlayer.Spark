@@ -347,6 +347,41 @@ Three latent defects in that chain are fixed:
   page's parent round-trip.
 - E2E (QnA): sub-query checkboxes, bulk soft Delete, and New with the parent.
 
+**Owner's addendum to D17 (2026-09-29): the sub-query search box**
+- A search box on the right of the `<spark-query-card>` header, after the actions, as in Vidyano.
+- It is `<spark-search-box>` (`@mintplayer/ng-spark/grid`), extracted from the query-list page, which
+  renders the same component. Both surfaces therefore share the 300 ms debounce, the clear button and
+  Escape-to-clear. The query page used to send one query per keystroke.
+- It feeds the card's grid `search`, so `/spark/queries/execute` gets `search` with
+  `parentId`/`parentType` and searches server-side (#210). The card's `search` input is the starting
+  term (`linkedSignal`). `[searchable]="false"` hides the box, and a card over bound `data` never
+  shows it.
+- **`/spark/queries/distinct-values` did not take the grid's search.** Its `search` narrows the
+  listed values (the panel's own box), so a searched grid's filter panel listed values from rows the
+  grid did not show. It now takes **`querySearch`**, applied exactly as `/execute` applies `search`:
+  pushed down where possible, otherwise narrowed in memory by the same helper
+  (`QueryExecutor.NarrowBySearch`). It was added to `SparkService.getDistinctValues`,
+  `SparkClient.GetDistinctValuesAsync` and `IQueryExecutor.GetDistinctValuesAsync`.
+- **Selection on search: cleared.** A new term empties the selection on both surfaces, in both
+  transports. Reconciling it with the new rows was rejected, because a ticked row on another page of
+  the searched result cannot be told apart from one the search excluded, and a bulk Delete would
+  then act on rows the user can no longer see. The "N selected" chip therefore always counts rows
+  that are ticked on screen, which is also what the soft-deletion mode switch does.
+- Tests: vitest for the box (debounce, clear, Escape, external term), for the card (header order,
+  term plus parent sent to the grid, opt-out, bound data), and for the grid (search with the parent,
+  the selection cleared, `querySearch` sent to the value list). .NET tests cover `querySearch` on the
+  endpoint. The QnA E2E step checks that searching the Answers card narrows its rows and clears the
+  selection.
+
+**Row `⋮` menu: CDK overlay, not `@mintplayer/ng-bootstrap/dropdown`.** ng-bootstrap 22.19.0's
+dropdown fesm declares `BsDropdownToggleDirective`, whose factory lists `BsDropdownDirective` as an
+eager dependency, before `BsDropdownDirective`. An app build links it and never notices. Every
+unlinked JIT test run that imported the grid (7 ng-spark suites and CodeCoverage's detail page spec
+in CI run `a1b47012`) failed at import with "Cannot access 'BsDropdownDirective' before
+initialization". The menu now uses `cdkConnectedOverlay` directly, with ng-bootstrap's
+`<bs-dropdown-menu>`/`bsDropdownItem` inside. The upstream fix is for the toggle to
+`inject(forwardRef(() => BsDropdownDirective))`, as `BsDropdownMenuDirective` already does.
+
 ## 4. Spikes
 
 Each spike states what it proves. Run them in the milestone that needs them, before building on the answer. "Real" = a database with an index, documents and a query (an empty-DB spike proves nothing).

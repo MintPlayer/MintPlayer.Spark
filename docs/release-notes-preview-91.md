@@ -281,6 +281,18 @@ result synchronously must await it. `sparkAuthenticatedGuard` is an alias.
   - `showedOn` is compared case-insensitively.
   - `selectionModeFor(actions, declared?)` gained its second parameter.
   - `SparkService.newObject()` accepts `queryId`.
+  - **A new search term clears the grid's selection**, on the card and on the query page alike, so
+    the "N selected" chip only ever counts rows that are ticked on screen.
+  - The card's header shows a search box (see "New"). A host that does not want it sets
+    `[searchable]="false"`. The card's `search` input is now the box's starting value, not a fixed
+    term.
+  - The query page's search box is the shared `<spark-search-box>`. It debounces by 300 ms, where it
+    used to send one query per keystroke.
+  - The row `⋮` menu no longer uses `@mintplayer/ng-bootstrap/dropdown`. It is a CDK connected
+    overlay with ng-bootstrap's `<bs-dropdown-menu>` inside. ng-bootstrap 22.19.0's dropdown fesm
+    declares `BsDropdownToggleDirective` before `BsDropdownDirective`, which it needs eagerly, so
+    every unlinked (JIT) test run that imported the grid failed at import with "Cannot access
+    'BsDropdownDirective' before initialization".
 
 ---
 
@@ -306,6 +318,11 @@ result synchronously must await it. `sparkAuthenticatedGuard` is an alias.
       when there are several, and startup validates that name.
   - `SparkClient` gains `DeletePersistentObjectsAsync` and `NewPersistentObjectFromSubQueryAsync`, and
     `SparkCustomAction` gains `IsDefault`.
+  - **`/spark/queries/distinct-values` takes `querySearch`**, the grid's own search (what `/execute`
+    takes as `search`), so a column filter's value list comes only from the rows the searched grid
+    shows. It is pushed down or narrowed in memory exactly as `/execute` does it. `search` keeps its
+    meaning: it narrows the listed values themselves. `SparkClient.GetDistinctValuesAsync` and
+    `IQueryExecutor.GetDistinctValuesAsync` gain a trailing `querySearch` parameter.
 
 - **Row policies** — `IRowFilterPolicy` / `IRowCheckPolicy` (typed helpers `RowFilterPolicy<T>`,
   `RowCheckPolicy<T>`), `spark.AddSparkRowPolicy<T>()`: one rule for many types, composed with the
@@ -414,6 +431,11 @@ Two fixes landed at the end of this PR:
   - the selection bar (a select-all box and the "N selected ⊗" chip);
   - the per-row `⋮` menu;
   - `SparkService.deleteMany()`;
+  - **a search box in the `<spark-query-card>` header** (the owner's D17 addendum), on the trailing
+    edge next to the actions, as in Vidyano. It is `<spark-search-box>`, the same component the query
+    page uses (debounce, clear button, Escape clears). It feeds the grid's `search`, which the server
+    applies together with the sub-query's parent, and the grid passes it to the column filters'
+    value lists as `querySearch`;
   - `SparkSelectionModeSetting`, `subQueriesOf()`, `defaultQueryActions()` and
     `filterDetailActions()`;
   - the built-in icons `three-dots-vertical` and `x-circle`.
