@@ -9,8 +9,9 @@ using Raven.Client.Documents.Subscriptions;
 namespace MintPlayer.Spark.Messaging.Services;
 
 /// <summary>
-/// The single RavenDB data subscription behind all Spark messaging. It claims each delivered
-/// message and hands it to <see cref="MessageQueueRouter"/>; it runs no handler and makes no
+/// The single RavenDB data subscription behind all Spark messaging. On each batch it claims the top
+/// of the sorted claimable set together with what was delivered (#460 M16b, see
+/// <see cref="ServeOrder"/>) and hands each to <see cref="MessageQueueRouter"/>; it runs no handler and makes no
 /// outbound call, so nothing a recipient does can stall delivery for other queues.
 /// <para>
 /// <b>Why one subscription.</b> Spark previously created one per distinct queue name. RavenDB caps
@@ -256,7 +257,7 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
             }
             catch (Raven.Client.Exceptions.ConcurrencyException)
             {
-                Logger.LogDebug("A message in a window of {Count} changed while being claimed; claiming them one at a time", decisions.Count);
+                Logger.LogDebug("A message in a group of {Count} changed while being claimed; claiming them one at a time", decisions.Count);
                 toRoute = null;
             }
         }
@@ -275,8 +276,42 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
         // on, the message sits at Processing with an expiring claim and the sweeper returns it to the
         // queue. That ordering is the webhook-drop fix: previously the batch could be acknowledged for
         // a message whose Processing status nothing ever read again.
-        foreach (var message in toRoute)
-            await router.RouteAsync(message.QueueName, message.Id!, cancellationToken);
+        for (var i = 0; i < toRoute.Count; i++)
+        {
+            try
+            {
+                await router.RouteAsync(toRoute[i].QueueName, toRoute[i].Id!, cancellationToken);
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or System.Threading.Channels.ChannelClosedException)
+            {
+                // Stopping: the subscription's Run() can return while this callback is still running
+                // (measured in S-M8), so the lanes may already be closed for the drain. The claims
+                // taken above would otherwise sit at Processing until ClaimTtl (5 min by default) on
+                // every graceful deploy; released, the next leader serves them at once.
+                await ReleaseUnroutedAsync(toRoute.Skip(i));
+                throw;
+            }
+        }
+    }
+
+    private async Task ReleaseUnroutedAsync(IEnumerable<SparkMessage> unrouted)
+    {
+        var count = 0;
+        foreach (var message in unrouted)
+        {
+            admission.Forget(message.Id!);
+            try
+            {
+                await MessageClaims.ReleaseUnstartedAsync(DocumentStore, message.Id!, MessageClaims.NodeId, CancellationToken.None);
+                count++;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogDebug(ex, "Could not release message {MessageId}; it is reclaimed once its claim expires", message.Id);
+            }
+        }
+        if (count > 0)
+            Logger.LogInformation("Released {Count} claimed message(s) that could not be routed because messaging is stopping", count);
     }
 
     /// <summary>The fallback for a conflicting group write: the decision already taken, one message at a time.</summary>

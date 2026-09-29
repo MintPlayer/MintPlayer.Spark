@@ -275,6 +275,14 @@ long an *abandoned* message waits, not how long a handler may take. Kubernetes' 
 grace period is **not** enough for long handlers such as coverage report parsing — a pod stopped
 mid-handler would be killed before it could drain.
 
+On a **graceful** stop the feeder stops, the lanes drain, and only then is the lease released, so a
+standby takes over on its next poll (≤ 5 s) with no duplicate. A batch that is still being claimed when
+the lanes close releases the claims it could not route (`Pending`, `WakeUp`, the attempt not counted),
+so they are served by the next leader at once rather than after `ClaimTtl`. After a **crash** the
+standby takes over when the lease lapses (30 s), and the dead host's claims come back when they expire;
+a handler that finished on the dead host without recording it runs again — at most one per lane,
+which is the at-least-once window (measured in the #460 PRD §4.1, S-M8).
+
 ### Per-Handler Retry Isolation
 
 When multiple recipients handle the same message type, each handler's success or failure is tracked independently. If handler A succeeds but handler B fails, only handler B is retried -- handler A is **not** re-executed.
@@ -393,7 +401,7 @@ schedule rather than being appended to it. Everything outside `Queues` keeps "co
 
 **How throttling works.** Admission runs at the top of `MessageProcessor.RunHandlersAsync`, shared by
 both subscription modes — and, in `SingleSubscription` mode, once more in the feeder **before** the
-claim, so a message its queue cannot start yet is deferred in the feeder's window write and never
+claim, so a message its queue cannot start yet is deferred in the feeder's claim write and never
 enters a lane (a message the feeder admitted keeps a due reservation, so the processor does not
 charge it a second slot). It never waits inside a lane (a sleeping lane would block the bounded
 channel, the one feeder, and every other queue). A message over budget is written back **once** —
@@ -416,8 +424,8 @@ out the relay or trip a provider's rate limit). MailManager declares exactly tha
 
 Separate queues are separate lanes, so a slow bulk *handler* never delays a transactional one. But in
 `SingleSubscription` mode every queue's documents reach the process through one subscription, in
-etag order, and the feeder must claim what is in front before it sees what is behind: measured in
-S-M3 (#460 PRD §4.1), a transactional message published behind a 1,000-message bulk backlog waited up
+etag order, and a feeder that follows that order must claim what is in front before it sees what is
+behind: measured in S-M3 before M16 (#460 PRD §4.1), a transactional message published behind a 1,000-message bulk backlog waited up
 to 5.8 s (9.4 s on a loaded machine), because each bulk message cost a load and a claim of its own and
 then a second write when its lane deferred it.
 

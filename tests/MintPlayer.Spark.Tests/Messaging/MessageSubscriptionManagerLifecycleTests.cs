@@ -162,6 +162,25 @@ public class MessageSubscriptionManagerLifecycleTests : SparkTestDriver
         }
     }
 
+    [Fact]
+    public async Task A_graceful_stop_releases_the_messaging_lease()
+    {
+        // What a graceful handover rests on (spike S-M8, #460 M16b): without the release a standby
+        // waits out the whole 30 s TTL instead of taking over on its next poll. The lease is a
+        // compare-exchange value; after a graceful stop it must be gone.
+        var provider = BuildProvider(ESubscriptionMode.SingleSubscription, registerSecondQueue: false);
+        await using var _ = provider;
+        var hosted = provider.GetServices<IHostedService>().OfType<MessageSubscriptionManager>().Single();
+
+        await hosted.StartAsync(CancellationToken.None);
+        await AsyncWait.UntilAsync(() => hosted.IsLeader, "the manager to take the lease", TimeSpan.FromSeconds(30));
+        await hosted.StopAsync(CancellationToken.None);
+
+        var lease = await Store.Operations.SendAsync(
+            new Raven.Client.Documents.Operations.CompareExchange.GetCompareExchangeValueOperation<MessagingLease>("spark/messaging/leader"));
+        lease.Should().BeNull("a graceful stop releases the lease so a standby takes over on its next poll");
+    }
+
     private ServiceProvider BuildProvider(ESubscriptionMode mode, bool registerSecondQueue)
     {
         var services = new ServiceCollection();

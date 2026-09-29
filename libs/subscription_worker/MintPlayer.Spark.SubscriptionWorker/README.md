@@ -327,7 +327,7 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
     // No trailing hyphen: the startup cleanup deletes "SparkMessaging-*", and this name
     // escapes that prefix by exactly one character.
     protected override string SubscriptionName => "SparkMessaging";
-    protected override int MaxDocsPerBatch => 1;
+    protected override int MaxDocsPerBatch => 256; // FeederBatchSize
 
     protected override SubscriptionCreationOptions ConfigureSubscription()
     {
@@ -346,7 +346,8 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
     {
         foreach (var item in batch.Items)
         {
-            // Claim under optimistic concurrency and save BEFORE acknowledging the batch,
+            // Merge with the sorted page (#460 M16b), claim under optimistic concurrency and save
+            // BEFORE acknowledging the batch,
             // then hand the id to the queue's lane. No handler runs on this path.
         }
     }
@@ -363,6 +364,11 @@ Two things in that query are worth copying, because both were learned the hard w
 - **The claim is saved before the batch is acknowledged.** Subscriptions re-deliver an
   unacknowledged batch on reconnect but never a acknowledged one, so a status written *after* the
   acknowledgement — with nothing that reads it — leaves a crashed host's message stranded for ever.
+- **One `batch.OpenAsyncSession()` per batch, ever.** RavenDB throws `InvalidOperationException`
+  ("Session can only be opened once per each Subscription batch") on the second, which surfaces as a
+  subscriber error and the worker's retry delay. `MessageFeeder` opens several sessions per batch (the
+  sorted page, one per priority, a conflict fallback), so it uses `DocumentStore.OpenAsyncSession()`;
+  #460 M16 got this wrong and stalled 30 s on every batch that mixed priorities.
 
 ## Extension Methods
 
