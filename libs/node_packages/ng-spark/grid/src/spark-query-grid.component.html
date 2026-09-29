@@ -30,6 +30,36 @@
     here: `fetchFn` is left null whenever `data` is bound. See the class comment for why rows can
     arrive from outside at all (streaming must not put a websocket in every detail page's bundle).
   -->
+  <!--
+    The selection bar (#460, M15): a select-all box for the page on screen, and the
+    "N selected ⊗" chip that clears the selection. Only while rows are selectable, and part of the
+    grid rather than of a host, so the query card and the query-list page show the same thing. The
+    datatable's own header checkbox only deselects — it cannot know the rows outside its page — so
+    selecting the page is this box's job.
+  -->
+  @if (selectionMode() !== 'none') {
+    <div class="spark-selection-bar d-flex align-items-center gap-2 mb-2">
+      @if (selectionMode() === 'multiple') {
+        <label class="spark-select-all d-inline-flex align-items-center gap-1 mb-0">
+          <input type="checkbox" class="spark-select-all-input"
+                 [checked]="allPageRowsSelected()" [indeterminate]="somePageRowsSelected()"
+                 [attr.aria-label]="'common.selectAll' | t"
+                 (change)="toggleSelectAll()">
+          <span>{{ 'common.selectAll' | t }}</span>
+        </label>
+      }
+      @if (selection().length) {
+        <bs-badge [type]="colors.primary" class="spark-selection-chip">
+          {{ selection().length }} {{ 'common.selected' | t }}
+          <button type="button" class="spark-selection-clear"
+                  [attr.aria-label]="'common.clearSelection' | t" (click)="clearSelection()">
+            <spark-icon name="x-circle" />
+          </button>
+        </bs-badge>
+      }
+    </div>
+  }
+
   <bs-datatable
       [selectionMode]="selectionMode()"
       [(selection)]="selection"
@@ -72,6 +102,12 @@
         }
       </div>
     }
+    @if (rowActions().length) {
+      <!-- The per-row ⋮ menu's column: no header, never sorted or filtered. -->
+      <div *bsDatatableColumn="'__sparkRowActions'; sortable: false; filterable: false">
+        <span class="visually-hidden">{{ 'common.actions' | t }}</span>
+      </div>
+    }
 
     <ng-container *bsRowTemplate="let item">
       @let row = $any(item);
@@ -101,6 +137,28 @@
             }
           } @else {
             &nbsp;
+          }
+        </td>
+      }
+      @if (rowActions().length) {
+        <!-- The row menu: every action whose rule accepts one row, run on THIS row only. The
+             checkbox selection is left alone (runRowAction never reads or writes it). -->
+        <td class="spark-row-actions text-end" (click)="$event.stopPropagation()" (dblclick)="$event.stopPropagation()">
+          @if (row) {
+            <div bsDropdown #rowMenu="bsDropdown" [closeOnClickOutside]="true" class="d-inline-block">
+              <button type="button" bsDropdownToggle class="btn btn-sm btn-link spark-row-menu-toggle"
+                      [attr.aria-label]="'common.actions' | t">
+                <spark-icon name="three-dots-vertical" />
+              </button>
+              <bs-dropdown-menu *bsDropdownMenu>
+                @for (action of rowActions(); track action.name) {
+                  <li bsDropdownItem class="spark-row-action" [attr.data-action]="action.name"
+                      (click)="rowMenu.isOpen.set(false); runRowAction(action, row)">
+                    {{ action.definition.displayName | resolveTranslation }}
+                  </li>
+                }
+              </bs-dropdown-menu>
+            </div>
           }
         </td>
       }

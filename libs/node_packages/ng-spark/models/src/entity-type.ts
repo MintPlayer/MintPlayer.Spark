@@ -1,6 +1,7 @@
 import { ShowedOn } from './showed-on';
 import { TranslatedString } from './translated-string';
 import { ValidationRule } from './validation-rule';
+import { SparkSubQueryEntry } from './sub-query';
 
 /**
  * Controls how a Reference attribute is picked in the PO-edit form.
@@ -120,8 +121,11 @@ export interface EntityType {
   tabs?: AttributeTab[];
   groups?: AttributeGroup[];
   attributes: EntityAttributeDefinition[];
-  /** Query aliases or IDs to display as related query tables on the detail page. */
-  queries?: string[];
+  /**
+   * The sub-queries displayed as related query tables on the detail page: a bare alias or id, or
+   * `{ query, selectionMode?, parentReference? }` (#460, D17). Read them with `subQueriesOf(type)`.
+   */
+  queries?: SparkSubQueryEntry[];
   /**
    * The definitions of this type's AsDetail row types, sent alongside it so a detail table can draw
    * its columns.

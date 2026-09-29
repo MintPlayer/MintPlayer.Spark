@@ -9,38 +9,40 @@
         <ng-container *ngTemplateOutlet="tpl; context: { $implicit: query() }"></ng-container>
       }
 
-      @if (actionsTpl(); as tpl) {
-        <ng-container *ngTemplateOutlet="tpl; context: { $implicit: customActions(), selection: selection(), query: query() }"></ng-container>
-      } @else if (customActions().length) {
-        <!-- The default: the actions the server declares for this type. The nav renders only when
-             there are any, so a query without actions is pixel-identical to a plain caption.
-
-             Disabled, not hidden: hiding makes the affordance undiscoverable and reflows the
-             priority nav on every selection change. The server enforces the same rule. -->
-        <bs-priority-nav [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
-          @for (action of customActions(); track action.name) {
-            <button *bsPriorityNavItem="10 + action.offset" class="btn btn-sm btn-outline-primary"
-                    [disabled]="!grid()?.isActionEnabled(action)" (click)="grid()?.onCustomAction(action)">
-              {{ action.displayName | resolveTranslation }}
-            </button>
-          }
-        </bs-priority-nav>
-      }
-
       <!--
-        Caption last, actions first. The auto margin is conditional rather than fixed, and that is
-        the point: with actions present `ms-auto` pushes the caption to the trailing edge, and with
-        none it falls back to `me-auto` so a plain card looks exactly as it always did. A fixed
-        `ms-auto` would have right-aligned the caption of every action-less query card in every app
-        — a change nobody asked for, to fix a layout only some cards have.
+        Caption first, actions on the trailing edge (#460 M15, as query-grid-card-PRD.md always said,
+        and as Vidyano's sub-query tabs do). `me-auto` on the caption pushes the actions right; a card
+        without actions looks exactly as a plain caption did.
       -->
-      <span [class.ms-auto]="customActions().length" [class.me-auto]="!customActions().length">
+      <span class="me-auto spark-query-card-caption">
         @if (captionTpl(); as tpl) {
           <ng-container *ngTemplateOutlet="tpl; context: { $implicit: caption(), query: query() }"></ng-container>
         } @else {
           {{ caption() }}
         }
       </span>
+
+      @if (actionsTpl(); as tpl) {
+        <ng-container *ngTemplateOutlet="tpl; context: { $implicit: customActions(), actions: toolbarActions(), selection: selection(), query: query() }"></ng-container>
+      } @else if (toolbarActions().length) {
+        <!-- The default: New, Delete and the custom actions the server offers this caller, with the
+             overflow in the priority nav's "…". The nav renders only when there are any.
+
+             Disabled, not hidden: hiding makes the affordance undiscoverable and reflows the
+             priority nav on every selection change. The server enforces the same rules. -->
+        <bs-priority-nav class="spark-query-card-actions" [moreLabel]="'…'" [collapseAt]="'sm'">
+          @for (action of toolbarActions(); track action.name) {
+            <button *bsPriorityNavItem="action.priority" type="button" [class]="actionClass(action)"
+                    [attr.data-action]="action.name"
+                    [disabled]="!isEnabled(action)" (click)="run(action)">
+              @if (action.definition.icon && action.kind !== 'custom') {
+                <spark-icon [name]="action.definition.icon" />
+              }
+              {{ action.definition.displayName | resolveTranslation }}
+            </button>
+          }
+        </bs-priority-nav>
+      }
     </div>
   </bs-card-header>
 
@@ -53,6 +55,7 @@
         [data]="data()"
         [search]="search()"
         [rowRoute]="rowRoute()"
+        [selectionModeSetting]="selectionMode()"
         (error)="error.emit($event)"
         (rowClicked)="rowClicked.emit($event)"
         (customActionExecuted)="customActionExecuted.emit($event)" />

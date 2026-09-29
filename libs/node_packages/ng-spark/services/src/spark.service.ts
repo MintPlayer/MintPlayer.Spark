@@ -22,6 +22,21 @@ export interface NewObjectOptions {
   parentId?: string;
   /** Free-form arguments, e.g. which variant a New menu chose. */
   parameters?: Record<string, string>;
+  /**
+   * The sub-query New was started from (#460, D19), with `parentType` and `parentId` and no
+   * `asDetailAttribute`. The server loads the parent, checks the parent's type declares this
+   * sub-query, and runs `OnNewAsync` with it — whose base fills the reference to the parent.
+   */
+  queryId?: string;
+}
+
+/** Where a bulk delete was started from; see {@link SparkService.deleteMany}. */
+export interface DeleteManyOptions {
+  /** The query the rows were selected in, for the server's `OnDisableActionsAsync`. */
+  queryId?: string;
+  /** The sub-query's container, when deleting from a sub-query. */
+  parentId?: string;
+  parentType?: string;
 }
 
 /** Context for {@link SparkService.deleteRow}. Every field is required — see `DeleteRow.cs`. */
@@ -50,7 +65,9 @@ type EnvelopeRequestBody = {
   persistentObject?: any;
   triggeredBy?: string;
   retryResults?: RetryActionResult[];
-} & Partial<NewObjectOptions> & Partial<Omit<DeleteRowOptions, 'asDetailAttribute' | 'parentType' | 'parentId'>>;
+  /** The rows of a bulk delete. */
+  ids?: string[];
+} & Partial<NewObjectOptions> & Partial<DeleteManyOptions> & Partial<Omit<DeleteRowOptions, 'asDetailAttribute' | 'parentType' | 'parentId'>>;
 
 @Injectable({ providedIn: 'root' })
 export class SparkService {
@@ -228,8 +245,10 @@ export class SparkService {
    * Asks the server to construct a new object of `type`, so `OnNewAsync` can default it.
    *
    * Writes nothing — the object comes back unsaved, and for an AsDetail row the parent still owns
-   * the save. Only called for a row type whose `serverSideRowLifecycle` is on; every other type
-   * keeps building its blank row locally, which is why switching the flag off costs no request.
+   * the save. Called by the create page for every New (#460, D19: with `parentId`/`parentType`/
+   * `queryId` when started from a sub-query, whose base hook fills the parent reference), and for an
+   * AsDetail row only when its type's `serverSideRowLifecycle` is on; every other row type keeps
+   * building its blank row locally, which is why switching the flag off costs no request.
    *
    * ⚠️ The row comes back **keyed**: the server constructs the CLR instance, so the row-key field
    * initializer runs and `po.id` carries the key. Flattening it with `nestedPoToDict` therefore
@@ -265,6 +284,19 @@ export class SparkService {
     return this.postWithEnvelope<void>(
       `${this.baseUrl}/po/delete`,
       { objectTypeId: type, id }
+    );
+  }
+
+  /**
+   * Deletes several rows of one type in one request — the default Delete action on a selection
+   * (`POST /spark/po/delete-many`, #460 D18). All or nothing: a 404 means some row is missing or not
+   * yours to delete, a 403 that the server's `OnDisableActionsAsync` withholds Delete on the query or
+   * on one of the rows, a 400 that the selection breaks the rule or the 200-row cap.
+   */
+  async deleteMany(type: string, ids: string[], options?: DeleteManyOptions): Promise<void> {
+    return this.postWithEnvelope<void>(
+      `${this.baseUrl}/po/delete-many`,
+      { objectTypeId: type, ids, ...(options ?? {}) }
     );
   }
 

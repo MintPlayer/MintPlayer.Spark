@@ -1,18 +1,23 @@
 <div class="d-flex flex-column h-100">
   <div class="spark-actionbar py-2 flex-shrink-0" [class.spark-actionbar-wide]="isVirtualScrolling()">
     <bs-priority-nav [moreLabel]="lang.t('common.more')" [collapseAt]="'sm'">
-      @if (canCreate()) {
-        <button *bsPriorityNavItem="1" class="btn btn-primary" (click)="onCreate()">
-          <spark-icon name="plus-lg" /> {{ 'common.new' | t }}
-        </button>
-      }
-      @if (showCustomActions()) {
-        @for (action of customActions(); track action.name) {
-          <!-- Disabled, not hidden: hiding makes the affordance undiscoverable and reflows the
-               priority nav on every selection change. The server enforces the same rule. -->
-          <button *bsPriorityNavItem="10 + action.offset" [class]="customActionClass(action)"
-                  [disabled]="!isActionEnabled(action)" (click)="onCustomAction(action)">
-            {{ action.displayName | resolveTranslation }}
+      <!-- The grid's toolbar model (#460, M15): New, Delete and the custom actions — the list the
+           sub-query card renders too. Disabled, not hidden: hiding makes the affordance
+           undiscoverable and reflows the priority nav on every selection change. The server
+           enforces the same rules. -->
+      @for (action of toolbarActions(); track action.name) {
+        @if (action.kind !== 'custom' || showCustomActions()) {
+          <button *bsPriorityNavItem="action.priority" type="button" [class]="toolbarActionClass(action)"
+                  [attr.data-action]="action.name"
+                  [disabled]="!isToolbarActionEnabled(action)" (click)="runToolbarAction(action)">
+            @if (action.kind === 'new') {
+              <spark-icon name="plus-lg" /> {{ 'common.new' | t }}
+            } @else {
+              @if (action.definition.icon && action.kind === 'delete') {
+                <spark-icon [name]="action.definition.icon" />
+              }
+              {{ action.definition.displayName | resolveTranslation }}
+            }
           </button>
         }
       }

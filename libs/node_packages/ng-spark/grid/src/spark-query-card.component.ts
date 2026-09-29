@@ -6,7 +6,9 @@ import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap
 import { BsPriorityNavComponent, BsPriorityNavItemDirective } from '@mintplayer/ng-bootstrap/priority-nav';
 import { ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
-import { CustomActionDefinition, PersistentObject, QueryResultItem } from '@mintplayer/ng-spark/models';
+import { CustomActionDefinition, PersistentObject, QueryResultItem, type SparkSelectionModeSetting } from '@mintplayer/ng-spark/models';
+import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
+import { SparkQueryToolbarAction, sparkActionClass } from './spark-query-toolbar';
 import { inject } from '@angular/core';
 import { SparkQueryGridComponent } from './spark-query-grid.component';
 import {
@@ -40,7 +42,7 @@ import {
  */
 @Component({
   selector: 'spark-query-card',
-  imports: [CommonModule, BsCardComponent, BsCardHeaderComponent, BsPriorityNavComponent, BsPriorityNavItemDirective, SparkQueryGridComponent, ResolveTranslationPipe],
+  imports: [CommonModule, BsCardComponent, BsCardHeaderComponent, BsPriorityNavComponent, BsPriorityNavItemDirective, SparkQueryGridComponent, ResolveTranslationPipe, SparkIconComponent],
   templateUrl: './spark-query-card.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -53,6 +55,12 @@ export class SparkQueryCardComponent {
   reloadToken = input<unknown>(null);
   data = input<QueryResultItem[] | null>(null);
   search = input<string>('');
+
+  /**
+   * Overrides the query's `selectionMode` for this card (#460, D17) — the detail page passes the
+   * sub-query entry's. `null` defers to the query (absent there = `'auto'`).
+   */
+  selectionMode = input<SparkSelectionModeSetting | null>(null);
 
   /**
    * Slots forwarded from a host that cannot project content — see the class comment. A card
@@ -111,5 +119,23 @@ export class SparkQueryCardComponent {
   });
 
   protected readonly customActions = computed(() => this.grid()?.visibleCustomActions() ?? []);
+
+  /**
+   * The header's buttons: New, Delete and the custom actions, from the grid (#460, M15) — the same
+   * list the query-list page renders.
+   */
+  protected readonly toolbarActions = computed(() => this.grid()?.toolbarActions() ?? []);
+
+  protected actionClass(action: SparkQueryToolbarAction): string {
+    return sparkActionClass(action.definition, 'sm');
+  }
+
+  protected isEnabled(action: SparkQueryToolbarAction): boolean {
+    return this.grid()?.isToolbarActionEnabled(action) ?? false;
+  }
+
+  protected run(action: SparkQueryToolbarAction): void {
+    void this.grid()?.runToolbarAction(action);
+  }
   protected readonly selection = computed(() => this.grid()?.selection() ?? []);
 }

@@ -44,6 +44,8 @@ import {
   hasShowedOnFlag,
   EntityPermissions,
   SparkDeletedFilter,
+  filterDetailActions,
+  subQueriesOf,
 } from '@mintplayer/ng-spark/models';
 import {
   SPARK_DETAIL_ACTIONS,
@@ -106,6 +108,9 @@ export class SparkPoDetailComponent {
   colors = Color;
   errorMessage = signal<string | null>(null);
   entityType = signal<EntityType | null>(null);
+
+  /** The sub-queries rendered as cards below the form, in object form (#460, D17). */
+  protected readonly subQueries = computed(() => subQueriesOf(this.entityType()));
   allEntityTypes = signal<EntityType[]>([]);
   item = signal<PersistentObject | null>(null);
   lookupReferenceOptions = signal<Record<string, LookupReference>>({});
@@ -298,7 +303,8 @@ export class SparkPoDetailComponent {
         this.permissions.set(permissions);
         this.canEdit.set(!deletedView && (can ? can.edit : permissions.canEdit) && !withheld.has('edit') && !withheld.has('save'));
         this.canDelete.set(!deletedView && (can ? can.delete : permissions.canDelete) && !withheld.has('delete'));
-        this.customActions.set(deletedView ? [] : actions.filter(a => a.showedOn === 'detail' || a.showedOn === 'both'));
+        // Custom actions only: the built-in New and Delete (#460, D18) are this page's own buttons.
+        this.customActions.set(deletedView ? [] : filterDetailActions(actions));
       }
     } catch (e) {
       const error = e as HttpErrorResponse;
@@ -486,8 +492,8 @@ export class SparkPoDetailComponent {
         // The sub-query grids below do not depend on item(), so re-fetching the PO left them
         // showing pre-action rows -- the action appeared to have done nothing to the very
         // lists it changed.
-        for (const queryAlias of (this.entityType()?.queries ?? []) as string[]) {
-          this.queryRefresh.request(queryAlias);
+        for (const subQuery of this.subQueries()) {
+          this.queryRefresh.request(subQuery.query);
         }
       }
     } catch (e) {

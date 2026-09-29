@@ -16,7 +16,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { SparkService, SparkStreamingService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { TranslateKeyPipe, ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
-import { SparkQueryGridComponent } from '@mintplayer/ng-spark/grid';
+import { SparkQueryGridComponent, SparkQueryToolbarAction, sparkActionClass } from '@mintplayer/ng-spark/grid';
 import {
   CustomActionDefinition,
   StreamingMessage,
@@ -154,6 +154,27 @@ export class SparkQueryListComponent {
       default:
         return 'btn btn-outline-primary';
     }
+  }
+
+  /** The grid's toolbar model (#460, M15), the same list the sub-query card renders. */
+  protected readonly toolbarActions = computed(() => this.grid()?.toolbarActions() ?? []);
+
+  protected toolbarActionClass(action: SparkQueryToolbarAction): string {
+    // New keeps its solid primary look; the rest follow their variant.
+    return action.kind === 'new' ? 'btn btn-primary' : sparkActionClass(action.definition);
+  }
+
+  protected isToolbarActionEnabled(action: SparkQueryToolbarAction): boolean {
+    return this.grid()?.isToolbarActionEnabled(action) ?? false;
+  }
+
+  protected runToolbarAction(action: SparkQueryToolbarAction): void {
+    if (action.kind === 'new') {
+      // Through this page's own onCreate, so `createClicked` fires exactly as it always has.
+      this.onCreate();
+      return;
+    }
+    void this.grid()?.runToolbarAction(action);
   }
 
   protected isActionEnabled(action: CustomActionDefinition): boolean {

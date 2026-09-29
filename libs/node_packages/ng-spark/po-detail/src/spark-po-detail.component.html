@@ -226,12 +226,12 @@
               </dd>
           </ng-template>
     </bs-grid>
-    @if (et.queries?.length) {
-      @for (queryAlias of et.queries; track queryAlias) {
-        <spark-query-card [queryId]="queryAlias" [parentId]="currentItem.id!" [parentType]="et.name"
-                          [iconTemplate]="queryIconTemplate()" [captionTemplate]="queryCaptionTemplate()"
-                          [actionsTemplate]="queryActionsTemplate()" />
-      }
+    @for (subQuery of subQueries(); track subQuery.query) {
+      <!-- The entry's selectionMode overrides the query's own for this parent (#460, D17). -->
+      <spark-query-card [queryId]="subQuery.query" [parentId]="currentItem.id!" [parentType]="et.name"
+                        [selectionMode]="subQuery.selectionMode ?? null"
+                        [iconTemplate]="queryIconTemplate()" [captionTemplate]="queryCaptionTemplate()"
+                        [actionsTemplate]="queryActionsTemplate()" />
     }
     @if (extraContentTemplate(); as extraContentTpl) {
       <ng-container *ngTemplateOutlet="extraContentTpl; context: { $implicit: currentItem, entityType: et }"></ng-container>

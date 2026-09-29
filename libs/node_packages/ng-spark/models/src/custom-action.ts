@@ -19,4 +19,11 @@ export interface CustomActionDefinition {
    */
   variant?: string;
   offset: number;
+  /**
+   * True for the framework's built-in `New` and `Delete` (#460, D18): catalogue entries with a
+   * `showedOn` and a `selectionRule` like any custom action (defaults: New has no rule, Delete is
+   * `>0`; an app overrides them in `customActions.json`), but run through `/po/new` and
+   * `/po/delete-many`, never `/actions/execute`. Absent for a custom action.
+   */
+  isDefault?: boolean;
 }

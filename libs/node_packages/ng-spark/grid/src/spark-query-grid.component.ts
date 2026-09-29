@@ -8,6 +8,10 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsDatatableComponent, BsDatatableColumnDirective, BsDatatableFilterPanelDirective, BsRowTemplateDirective, DatatableSettings, type BsDatatableFetch, type BsDatatableRowEvent, type DatatableDistincts, type FilterChangeDetail } from '@mintplayer/ng-bootstrap/datatable';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
+import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
+import { BsDropdownDirective, BsDropdownMenuDirective, BsDropdownToggleDirective } from '@mintplayer/ng-bootstrap/dropdown';
+import { BsDropdownItemDirective, BsDropdownMenuComponent } from '@mintplayer/ng-bootstrap/dropdown-menu';
+import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import { cellValue } from '@mintplayer/ng-spark/renderers';
 import { QueryCellValuePipe, QueryReferenceChipsPipe, ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
@@ -26,6 +30,8 @@ import {
   EntityPermissions,
   SparkDeletedFilter,
   filterQueryActions,
+  defaultQueryActions,
+  type SparkSelectionModeSetting,
   parseSelectionRule,
   selectionModeFor,
   valueFor,
@@ -33,6 +39,7 @@ import {
 import { SPARK_GRID_PAGE_SIZES, initialGridSettings, isVirtualScrollingQuery } from './spark-grid-columns';
 import { SparkGridRenderers } from './spark-grid-renderers';
 import { SparkGridCellComponent } from './spark-grid-cell.component';
+import { SparkQueryToolbarAction, sparkActionClass } from './spark-query-toolbar';
 
 /**
  * The one Spark grid: a `<bs-datatable>` rendering a query or a sub-query.
@@ -65,7 +72,7 @@ import { SparkGridCellComponent } from './spark-grid-cell.component';
  */
 @Component({
   selector: 'spark-query-grid',
-  imports: [CommonModule, RouterModule, BsAlertComponent, BsDatatableComponent, BsDatatableColumnDirective, BsDatatableFilterPanelDirective, BsRowTemplateDirective, BsSpinnerComponent, SparkGridCellComponent, ResolveTranslationPipe, QueryCellValuePipe, QueryReferenceChipsPipe, TranslateKeyPipe, SparkAttributeDescriptionComponent, SparkColumnFilterPanelComponent],
+  imports: [CommonModule, RouterModule, BsAlertComponent, BsDatatableComponent, BsDatatableColumnDirective, BsDatatableFilterPanelDirective, BsRowTemplateDirective, BsSpinnerComponent, SparkGridCellComponent, ResolveTranslationPipe, QueryCellValuePipe, QueryReferenceChipsPipe, TranslateKeyPipe, SparkAttributeDescriptionComponent, SparkColumnFilterPanelComponent, BsBadgeComponent, BsDropdownDirective, BsDropdownMenuDirective, BsDropdownToggleDirective, BsDropdownMenuComponent, BsDropdownItemDirective, SparkIconComponent],
   templateUrl: './spark-query-grid.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -216,10 +223,18 @@ export class SparkQueryGridComponent {
    */
   rowRoute = input<((row: QueryResultItem) => unknown[] | null) | null>(null);
 
+  /**
+   * Overrides the query's own `selectionMode` (#460, D17) — the detail page passes the sub-query
+   * entry's. `null` (the default) defers to the query, whose absent setting is `'auto'`.
+   */
+  selectionModeSetting = input<SparkSelectionModeSetting | null>(null);
+
   /** Emitted whenever a load or a page fetch fails, for a host in bespoke chrome. */
   error = output<HttpErrorResponse>();
   rowClicked = output<QueryResultItem>();
   customActionExecuted = output<{ action: CustomActionDefinition }>();
+  /** Emitted when the toolbar's New is pressed, just before the grid navigates to the create page. */
+  createClicked = output<void>();
 
   colors = Color;
 
@@ -260,6 +275,8 @@ export class SparkQueryGridComponent {
   permissions = signal<EntityPermissions | null>(null);
   resultCount = signal<number | null>(null);
   customActions = signal<CustomActionDefinition[]>([]);
+  /** The built-in New and Delete the server listed for this caller (#460, D18); see `toolbarActions`. */
+  defaultActions = signal<CustomActionDefinition[]>([]);
 
   /** Names the server withheld for this RESULT; see QueryResult.disabledActions. */
   private readonly disabledActions = signal<string[]>([]);
@@ -303,8 +320,192 @@ export class SparkQueryGridComponent {
    */
   errorMessage = signal<string | null>(null);
 
-  /** 'none' unless an action is selection-gated, so unaffected grids gain no checkbox column. */
-  selectionMode = computed(() => selectionModeFor(this.customActions()));
+  /**
+   * The rendered selection mode (#460, D17): the host's override (a sub-query entry's
+   * `selectionMode`), else the query's own, else `'auto'` — derived from the CUSTOM actions offered,
+   * exactly as before the setting existed, so no existing grid changes behaviour. The default Delete
+   * does not widen `'auto'`: selection is opt-in, and without it Delete stays reachable per row
+   * through the row menu.
+   */
+  selectionMode = computed(() => selectionModeFor(
+    this.visibleCustomActions(),
+    this.selectionModeSetting() ?? this.query()?.selectionMode ?? 'auto'));
+
+  /**
+   * The actions a host renders in its toolbar, in one list (#460, M15): New, Delete and the custom
+   * actions, each with the rule that enables it. The query card and the query-list page render this
+   * same list, so the two surfaces cannot drift.
+   *
+   * - New: the default entry's `showedOn` includes the query, the caller holds `New/T`, and the
+   *   result does not withhold `New`/`Save`.
+   * - Delete: likewise with `Delete/T` and `Delete`, and only while rows can be selected (otherwise
+   *   it could never be enabled — the row menu offers it per row instead).
+   * - Custom: `visibleCustomActions()`.
+   */
+  toolbarActions = computed((): SparkQueryToolbarAction[] => {
+    const actions: SparkQueryToolbarAction[] = [];
+    const withheld = new Set(this.disabledActions().map(name => name.toLowerCase()));
+
+    for (const definition of this.defaultActions()) {
+      const name = definition.name.toLowerCase();
+      if (name === 'new' && this.offersCreate()) {
+        actions.push({ kind: 'new', name: definition.name, definition, priority: 1 + definition.offset });
+      } else if (name === 'delete' && !withheld.has('delete') && this.selectionMode() !== 'none') {
+        actions.push({ kind: 'delete', name: definition.name, definition, priority: 5 + definition.offset });
+      }
+    }
+
+    for (const definition of this.visibleCustomActions())
+      actions.push({ kind: 'custom', name: definition.name, definition, priority: 10 + definition.offset });
+
+    return actions;
+  });
+
+  /**
+   * The per-row `⋮` menu: every offered action whose rule accepts exactly one row — Delete included,
+   * whatever the selection mode. An action without a rule acts on the query, not on a row, and is
+   * left to the toolbar.
+   */
+  rowActions = computed((): SparkQueryToolbarAction[] => {
+    const withheld = new Set(this.disabledActions().map(name => name.toLowerCase()));
+    const rowTaking = (definition: CustomActionDefinition) =>
+      !!definition.selectionRule?.trim() && parseSelectionRule(definition.selectionRule)(1);
+
+    const actions: SparkQueryToolbarAction[] = [];
+    for (const definition of this.defaultActions()) {
+      if (definition.name.toLowerCase() === 'delete' && !withheld.has('delete') && rowTaking(definition))
+        actions.push({ kind: 'delete', name: definition.name, definition, priority: 5 + definition.offset });
+    }
+    for (const definition of this.visibleCustomActions()) {
+      if (rowTaking(definition))
+        actions.push({ kind: 'custom', name: definition.name, definition, priority: 10 + definition.offset });
+    }
+    return actions;
+  });
+
+  /** The rows of the page on screen, for the select-all box. */
+  private readonly pageRows = signal<QueryResultItem[]>([]);
+
+  /** Every row of the current page is selected. */
+  allPageRowsSelected = computed(() => {
+    const rows = this.visiblePageRows();
+    if (!rows.length) return false;
+    const selected = new Set(this.selection().map(r => r.id));
+    return rows.every(r => selected.has(r.id));
+  });
+
+  /** Some, but not all, rows of the current page are selected. */
+  somePageRowsSelected = computed(() => {
+    const selected = new Set(this.selection().map(r => r.id));
+    const rows = this.visiblePageRows();
+    const count = rows.filter(r => selected.has(r.id)).length;
+    return count > 0 && count < rows.length;
+  });
+
+  private readonly visiblePageRows = computed(() => this.data() ?? this.pageRows());
+
+  /** Ticks every row of the page on screen, or clears the selection when they already are. */
+  toggleSelectAll(): void {
+    if (this.allPageRowsSelected()) {
+      this.clearSelection();
+      return;
+    }
+    const byId = new Map(this.selection().map(r => [r.id, r] as const));
+    for (const row of this.visiblePageRows()) byId.set(row.id, row);
+    this.selection.set([...byId.values()]);
+  }
+
+  /** The "N selected ⊗" chip's clear button. */
+  clearSelection(): void {
+    this.selection.set([]);
+  }
+
+  /** Whether a toolbar action can run with the current selection. The server checks again. */
+  isToolbarActionEnabled(action: SparkQueryToolbarAction): boolean {
+    return this.isActionEnabled(action.definition);
+  }
+
+  /** Runs a toolbar action on the current selection. */
+  async runToolbarAction(action: SparkQueryToolbarAction): Promise<void> {
+    switch (action.kind) {
+      case 'new':
+        this.startNew();
+        return;
+      case 'delete':
+        await this.deleteRows(this.selection().map(r => r.id), action.definition);
+        return;
+      default:
+        await this.onCustomAction(action.definition);
+    }
+  }
+
+  /**
+   * Runs a row-menu action on that ONE row. The checkbox selection is neither read nor changed:
+   * the menu is a shortcut for this row, not a second way to tick it.
+   */
+  async runRowAction(action: SparkQueryToolbarAction, row: QueryResultItem): Promise<void> {
+    if (action.kind === 'delete') {
+      await this.deleteRows([row.id], action.definition);
+      return;
+    }
+    await this.onCustomAction(action.definition, [row.id]);
+  }
+
+  /**
+   * New from this grid: the create page, carrying the sub-query's parent (#460, D19) as query
+   * parameters so it survives the navigation and a reload of the create page. The server's
+   * `OnNewAsync` receives the parent; its base fills the parent reference.
+   */
+  startNew(): void {
+    const type = this.entityType();
+    if (!type) return;
+    this.createClicked.emit();
+
+    const parentId = this.parentId();
+    const parentType = this.parentType();
+    const query = this.query();
+    const queryParams = parentId && parentType && query
+      ? { parentId, parentType, queryId: query.alias || query.id }
+      : undefined;
+    void this.router.navigate(['/po', type.alias || type.id, 'new'], { queryParams, state: this.rowLinkState() });
+  }
+
+  /**
+   * The default Delete on `ids`: one request, all rows or none (#460, D18). Asks first — with the
+   * entry's `confirmationMessageKey` — then clears the selection and refreshes.
+   */
+  async deleteRows(ids: string[], definition?: CustomActionDefinition): Promise<void> {
+    const type = this.entityType();
+    if (!type || !ids.length) return;
+
+    const key = definition?.confirmationMessageKey;
+    const message = ids.length === 1
+      ? this.lang.t('common.confirmDelete')
+      : (key ? this.lang.t(key) : '') || this.lang.t('common.confirmDeleteSelected');
+    if (!confirm(`${message || 'Are you sure?'}${ids.length > 1 ? ` (${ids.length})` : ''}`)) return;
+
+    const parentId = this.parentId();
+    const parentType = this.parentType();
+    try {
+      await this.sparkService.deleteMany(type.id, ids, {
+        queryId: this.query()?.id,
+        ...(parentId && parentType ? { parentId, parentType } : {}),
+      });
+      const removed = new Set(ids);
+      this.selection.set(this.selection().filter(r => !removed.has(r.id)));
+      this.reload();
+    } catch (e) {
+      const err = e as HttpErrorResponse;
+      this.errorMessage.set(
+        err.error?.result?.errors?.[0]?.message
+        || err.error?.result?.error
+        || err.error?.error
+        || (err.status === 404 ? this.lang.t('common.deleteRefused') : '')
+        || err.message
+        || this.lang.t('common.actionFailed')
+        || 'Action failed');
+    }
+  }
 
   isVirtualScrolling = computed(() => isVirtualScrollingQuery(this.query()));
 
@@ -566,7 +767,11 @@ export class SparkQueryGridComponent {
     this.reload();
   }
 
-  async onCustomAction(action: CustomActionDefinition): Promise<void> {
+  /**
+   * Runs a custom action on the selection — or on `rowIds` when given (the row menu), which leaves
+   * the checkbox selection untouched.
+   */
+  async onCustomAction(action: CustomActionDefinition, rowIds?: string[]): Promise<void> {
     if (action.confirmationMessageKey) {
       const message = this.lang.t(action.confirmationMessageKey) || 'Are you sure?';
       if (!confirm(message)) return;
@@ -585,7 +790,7 @@ export class SparkQueryGridComponent {
         this.entityType()!.id,
         action.name,
         undefined,
-        this.selection().map(r => r.id),
+        rowIds ?? this.selection().map(r => r.id),
         pId && pType ? { id: pId, type: pType } : undefined,
         // The query too: the server re-runs it narrowed to these ids, so the action receives the
         // rows this grid rendered rather than a re-derivation from documents.
@@ -632,6 +837,8 @@ export class SparkQueryGridComponent {
     this.canCreate.set(false);
     this.permissions.set(null);
     this.customActions.set([]);
+    this.defaultActions.set([]);
+    this.pageRows.set([]);
     this.resultCount.set(null);
     // Ids from the previous query are meaningless against the next one, and would be POSTed as
     // though they belonged to it.
@@ -661,6 +868,12 @@ export class SparkQueryGridComponent {
         // 'query', not 'list'. The server model has always documented "detail" | "query" |
         // "both"; a filter testing for a value nothing emits renders the action NOWHERE.
         this.customActions.set(filterQueryActions(actions));
+        this.defaultActions.set(defaultQueryActions(actions));
+      } else if (resolvedQuery) {
+        // Said out loud: with no entity type there are no permissions and no actions to ask for, and
+        // a grid that silently offers nothing reads exactly like "this type has no actions" (M15).
+        console.warn(`[spark] Query '${resolvedQuery.name}' names entity type '${resolvedQuery.entityType ?? resolvedQuery.source}', `
+          + 'which resolves to no type in /spark/types; the grid offers no actions and no row links.');
       }
 
       this.settings.set(initialGridSettings(resolvedQuery));
@@ -728,6 +941,7 @@ export class SparkQueryGridComponent {
       this.setFetchedColumns(r.columns ?? []);
       // Per-result, so it is re-read on every page rather than latched from the first.
       this.disabledActions.set(r.disabledActions ?? []);
+      this.pageRows.set(r.items ?? []);
       return {
         data: r.items,
         totalRecords: r.totalItems,

@@ -21,6 +21,7 @@ import {
   EntityTypeResolver,
   isDateDataType,
   fromDateInputValue,
+  toDateInputValue,
   RefreshOverlay,
   applyOverlay,
 } from '@mintplayer/ng-spark/models';
@@ -58,14 +59,54 @@ export class SparkPoCreateComponent {
     this.type.set(params.get('type') || '');
     const types = await this.sparkService.getEntityTypes();
     const entityType = types.find(t => t.id === this.type() || t.alias === this.type()) || null;
-    this.entityType.set(entityType);
     this.allEntityTypes.set(types);
-    this.initFormData();
+    this.initFormData(entityType);
+    if (entityType) await this.applyServerDefaults(entityType);
+    this.entityType.set(entityType);
   }
 
-  initFormData(): void {
+  /**
+   * The blank object comes from the server (#460, D19): `/po/new` runs the type's `OnNewAsync`, so a
+   * default a hook sets — and, for a New started from a sub-query, the reference to the parent the
+   * base hook fills — reaches the form. The sub-query card passes the parent as query parameters
+   * (`parentId`, `parentType`, `queryId`), so it survives the navigation and a reload of this page.
+   *
+   * A refusal (the parent is gone, or not the caller's to see) is shown and the client-side blank
+   * form stays usable, exactly as it was before the round-trip existed.
+   */
+  private async applyServerDefaults(entityType: EntityType): Promise<void> {
+    const query = this.route.snapshot.queryParamMap;
+    const parentId = query.get('parentId') ?? undefined;
+    const parentType = query.get('parentType') ?? undefined;
+    const queryId = query.get('queryId') ?? undefined;
+    const fromSubQuery = !!(parentId && parentType && queryId);
+
+    try {
+      const po = await this.sparkService.newObject(this.type(), fromSubQuery ? { parentId, parentType, queryId } : undefined);
+      const editable = new Map(this.getEditableAttributes(entityType).map(a => [a.name, a] as const));
+      const data = { ...this.formData() };
+      for (const attr of po?.attributes ?? []) {
+        const definition = editable.get(attr.name);
+        if (!definition || attr.value === null || attr.value === undefined || definition.dataType === 'AsDetail') continue;
+        data[attr.name] = isDateDataType(definition.dataType)
+          ? toDateInputValue(definition.dataType, attr.value)
+          : attr.value;
+      }
+      this.formData.set(data);
+    } catch (e) {
+      const error = e as HttpErrorResponse;
+      const errors = error.error?.result?.errors ?? error.error?.errors;
+      this.validationErrors.set(errors ?? [{
+        attributeName: '',
+        errorMessage: { en: error.message || 'The new item could not be prepared.' },
+        ruleType: 'error'
+      }]);
+    }
+  }
+
+  initFormData(entityType: EntityType | null = this.entityType()): void {
     const data: Record<string, any> = {};
-    this.getEditableAttributes().forEach(attr => {
+    this.getEditableAttributes(entityType).forEach(attr => {
       if (attr.dataType === 'Reference') {
         data[attr.name] = null;
       } else if (attr.dataType === 'AsDetail') {
@@ -86,9 +127,9 @@ export class SparkPoCreateComponent {
    * the <em>only</em> source of the create payload, so an attribute a refresh hook revealed was not
    * merely sent stale, it was absent from the new object entirely.
    */
-  getEditableAttributes() {
+  getEditableAttributes(entityType: EntityType | null = this.entityType()) {
     const overlay = this.refreshOverlay();
-    return this.entityType()?.attributes
+    return entityType?.attributes
       .map(a => applyOverlay(a, overlay[a.name]))
       .filter(a => a.isVisible && !a.isReadOnly && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => a.order - b.order) || [];
