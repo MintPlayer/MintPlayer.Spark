@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { HttpErrorResponse } from '@angular/common/http';
+import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { describe, expect, it, vi } from 'vitest';
 
 import { SparkPoCreateComponent } from './spark-po-create.component';
@@ -54,6 +55,8 @@ async function setup(serviceOverrides: Partial<SparkService> = {}) {
   TestBed.configureTestingModule({
     providers: [
       provideRouter(routes),
+      // The general-error <bs-alert> animates (@fadeInOut); a refused New renders it.
+      provideNoopAnimations(),
       { provide: SparkService, useValue: service },
       { provide: SparkLanguageService, useValue: { t: (k: string) => k } },
     ],

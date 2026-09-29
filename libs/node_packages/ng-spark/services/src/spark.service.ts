@@ -164,7 +164,13 @@ export class SparkService {
    * are deliberately indistinguishable, so there is nothing for a caller to branch on.
    */
   async getDistinctValues(queryId: string, column: string, options?: {
+    /** Narrows the listed values themselves (the panel's own box). */
     search?: string;
+    /**
+     * The grid's search term, what `executeQuery` sends as `search` (#460 M15): the values come only
+     * from the rows it matches, so a searched grid's panel lists what the grid shows.
+     */
+    querySearch?: string;
     columns?: QueryColumnFilter[];
     parentId?: string;
     parentType?: string;
@@ -175,6 +181,7 @@ export class SparkService {
       queryId,
       column,
       search: options?.search || undefined,
+      querySearch: options?.querySearch || undefined,
       columns: options?.columns?.length ? options.columns : undefined,
       deleted: options?.deleted,
       parentId: options?.parentId,

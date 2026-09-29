@@ -174,6 +174,50 @@ describe('SparkQueryGridComponent', () => {
     expect(service.executeQuery.mock.calls.at(-1)![1].search).toBe('alice');
   });
 
+  describe('search (#460 M15, D17 addendum)', () => {
+    it('sends the search together with the sub-query parent', async () => {
+      const { fixture, service } = await setup({}, { parentId: 'companies/1', parentType: 'Company' });
+      service.executeQuery.mockClear();
+
+      fixture.componentRef.setInput('search', 'ali');
+      await settle(fixture);
+
+      expect(service.executeQuery.mock.calls.at(-1)![1]).toEqual(expect.objectContaining({
+        search: 'ali', parentId: 'companies/1', parentType: 'Company', skip: 0,
+      }));
+    });
+
+    it('clears the selection when the search changes, so the chip counts what is on screen', async () => {
+      const { fixture, c } = await setup();
+      c.selection.set([{ id: 'people/1', values: [] } as QueryResultItem]);
+
+      fixture.componentRef.setInput('search', 'bob');
+      await settle(fixture);
+
+      expect(c.selection()).toEqual([]);
+    });
+
+    it('lists a column filter\'s values from the searched rows only', async () => {
+      const { fixture, c, service } = await setup({}, { parentId: 'companies/1', parentType: 'Company' });
+      fixture.componentRef.setInput('search', 'ali');
+      await settle(fixture);
+
+      await (c as any).distinctsFn({ column: 'FirstName', search: 'x', signal: new AbortController().signal });
+
+      expect(service.getDistinctValues).toHaveBeenCalledWith('q-all', 'FirstName', expect.objectContaining({
+        search: 'x', querySearch: 'ali', parentId: 'companies/1', parentType: 'Company',
+      }));
+    });
+
+    it('sends no grid search to the value list when there is none', async () => {
+      const { c, service } = await setup();
+
+      await (c as any).distinctsFn({ column: 'FirstName', search: '', signal: new AbortController().signal });
+
+      expect(service.getDistinctValues.mock.calls.at(-1)![2].querySearch).toBeUndefined();
+    });
+  });
+
   describe('soft-deletion mode (#460)', () => {
     it('sends nothing for the default mode', async () => {
       const { service } = await setup();

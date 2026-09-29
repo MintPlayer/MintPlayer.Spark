@@ -43,6 +43,14 @@
           }
         </bs-priority-nav>
       }
+
+      <!-- The query search, on the trailing edge next to the actions, as Vidyano's sub-query tabs
+           have it (#460 M15, D17 addendum). The same box as the query-list page; it feeds the
+           grid's `search`, which the server applies together with the parent. Absent for bound
+           `data`, which the grid never refetches. -->
+      @if (showSearch()) {
+        <spark-search-box class="spark-query-card-search" size="sm" [(term)]="searchTerm" />
+      }
     </div>
   </bs-card-header>
 
@@ -53,7 +61,7 @@
         [parentType]="parentType()"
         [reloadToken]="reloadToken()"
         [data]="data()"
-        [search]="search()"
+        [search]="searchTerm()"
         [rowRoute]="rowRoute()"
         [selectionModeSetting]="selectionMode()"
         (error)="error.emit($event)"

@@ -2,21 +2,18 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, injec
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subscription } from 'rxjs';
 import { CommonModule, NgTemplateOutlet } from '@angular/common';
-import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, ParamMap, Router } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
-import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
-import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { BsPriorityNavComponent, BsPriorityNavItemDirective } from '@mintplayer/ng-bootstrap/priority-nav';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { HttpErrorResponse } from '@angular/common/http';
 import { SparkService, SparkStreamingService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { TranslateKeyPipe, ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
-import { SparkQueryGridComponent, SparkQueryToolbarAction, sparkActionClass } from '@mintplayer/ng-spark/grid';
+import { SparkQueryGridComponent, SparkQueryToolbarAction, SparkSearchBoxComponent, sparkActionClass } from '@mintplayer/ng-spark/grid';
 import {
   CustomActionDefinition,
   StreamingMessage,
@@ -51,7 +48,7 @@ import {
  */
 @Component({
   selector: 'spark-query-list',
-  imports: [BsBadgeComponent, CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, BsAlertComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, BsPriorityNavComponent, BsPriorityNavItemDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryGridComponent, ResolveTranslationPipe, TranslateKeyPipe],
+  imports: [BsBadgeComponent, CommonModule, NgTemplateOutlet, NgComponentOutlet, BsAlertComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryGridComponent, SparkSearchBoxComponent, ResolveTranslationPipe, TranslateKeyPipe],
   templateUrl: './spark-query-list.component.html',
   styleUrl: './spark-query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,

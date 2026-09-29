@@ -58,7 +58,7 @@ Import from the entry point, not from the package root; each one is a separate c
 | `/models` | The wire types (persistent objects, attributes, queries, envelopes) |
 | `/shell` | `<spark-shell>` with its slot directives, `<spark-program-units>`, `<spark-language-selector>` ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-program-units.md)) |
 | `/query-list` | `<spark-query-list>` — the routed query page |
-| `/grid` | `<spark-query-grid>`, `<spark-query-card>`, `<spark-grid-cell>` and the caption/icon/actions slot directives; `SPARK_GRID_PAGE_SIZES` |
+| `/grid` | `<spark-query-grid>`, `<spark-query-card>`, `<spark-grid-cell>`, `<spark-search-box>` and the caption/icon/actions slot directives; `SPARK_GRID_PAGE_SIZES` |
 | `/column-filter` | `<spark-column-filter-panel>` |
 | `/po-detail`, `/po-create`, `/po-edit` | The routed detail, create and edit pages |
 | `/po-form` | `<spark-po-form>`, `<spark-reference-picker>`, `<spark-lookup-picker>` |
@@ -124,6 +124,17 @@ The grid also renders:
   parent.
 - Read `EntityType.queries` with `subQueriesOf(type)`. An entry is a bare alias or
   `{ query, selectionMode?, parentReference? }`.
+- **Search.** The card's header has a search box on the right, after the actions, as Vidyano's
+  sub-query tabs do. It is `<spark-search-box [(term)]>`, the same component the query page uses: a
+  300 ms debounce, a clear button, and Escape to clear. The term goes to the grid's `search`, so the
+  server searches the sub-query's rows (with `parentId`/`parentType`), and to the column filters'
+  value lists as `querySearch`. **A new term clears the selection.** The card's `search` input is the
+  starting term; `[searchable]="false"` hides the box, and a card over bound `data` has none.
+
+```html
+<spark-search-box [(term)]="term" />
+<spark-query-grid queryId="all-cars" [search]="term()" />
+```
 
 See [guide-custom-actions.md](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-custom-actions.md)
 for the server side of this.

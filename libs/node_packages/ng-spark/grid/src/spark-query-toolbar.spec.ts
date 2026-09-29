@@ -309,6 +309,42 @@ describe('query toolbar (#460 M15)', () => {
       expect(c.selection().map(r => r.id)).toEqual(['answers/1']);
     });
 
+    it('opens from the row toggle, lists the actions and runs the chosen one on that row', async () => {
+      const { c, fixture, service } = await grid([deleteAction, duplicateAction], { selectionModeSetting: 'multiple' });
+      const toggles = fixture.nativeElement.querySelectorAll('.spark-row-menu-toggle') as NodeListOf<HTMLButtonElement>;
+      expect(toggles.length).toBe(rows.length);
+
+      toggles[1].click();
+      await settle(fixture);
+
+      // The CDK overlay renders outside the grid, in the overlay container.
+      const items = Array.from(document.querySelectorAll('.spark-row-action')) as HTMLElement[];
+      expect(items.map(i => i.getAttribute('data-action'))).toEqual(['Delete', 'DuplicateAnswer']);
+      expect(toggles[1].getAttribute('aria-expanded')).toBe('true');
+
+      items[1].click();
+      await settle(fixture);
+
+      expect(service.executeCustomAction.mock.calls[0][3]).toEqual(['answers/2']);
+      expect(c.openRowMenu()).toBeNull();
+      expect(document.querySelector('.spark-row-action')).toBeNull();
+    });
+
+    it('keeps at most one row menu open, and its own toggle closes it', async () => {
+      const { c, fixture } = await grid([duplicateAction]);
+      const toggles = fixture.nativeElement.querySelectorAll('.spark-row-menu-toggle') as NodeListOf<HTMLButtonElement>;
+
+      toggles[0].click();
+      toggles[2].click();
+      await settle(fixture);
+      expect(c.openRowMenu()).toBe('answers/3');
+      expect(document.querySelectorAll('.spark-row-action').length).toBe(1);
+
+      toggles[2].click();
+      await settle(fixture);
+      expect(c.openRowMenu()).toBeNull();
+    });
+
     it('renders a menu column only when some action takes one row', async () => {
       const { fixture } = await grid([newAction]);
       expect(fixture.componentInstance.rowActions()).toEqual([]);
@@ -334,6 +370,45 @@ describe('query toolbar (#460 M15)', () => {
       const names = [...el.querySelectorAll('bs-card-header [data-action]')].map(b => b.getAttribute('data-action'));
       expect(names).toContain('New');
       expect(names).toContain('Delete');
+    });
+
+    /**
+     * The owner's end-to-end ask for a sub-query card, in one place: the default New and Delete, every
+     * custom action shown on the query (or both), each enabled live from the selection, and the row
+     * menu. A detail-only action stays off the card.
+     */
+    it('a sub-query card offers New, Delete and the query actions, enabled live, with the row menu', async () => {
+      const detailOnly = { name: 'CloseQuestion', displayName: { en: 'Close' }, showedOn: 'detail', offset: 0, refreshOnCompleted: false } as CustomActionDefinition;
+      const { fixture, el } = await card([newAction, deleteAction, duplicateAction, exportAction, detailOnly],
+        { selectionMode: 'multiple', parentId: 'questions/1', parentType: 'Question' });
+      const inner = fixture.debugElement.query(d => d.componentInstance instanceof SparkQueryGridComponent)
+        .componentInstance as SparkQueryGridComponent;
+
+      // bs-priority-nav stamps each item more than once (a measuring copy, the strip, the overflow
+      // list), so the names are compared as a set; which copy is visible is the nav's business.
+      const buttons = (name: string) => [...el.querySelectorAll(`bs-card-header .priority-nav-strip [data-action='${name}']`)] as HTMLButtonElement[];
+      const names = new Set([...el.querySelectorAll('bs-card-header [data-action]')].map(b => b.getAttribute('data-action')));
+      expect([...names]).toEqual(['New', 'Delete', 'DuplicateAnswer', 'Export']);
+      expect(buttons('New')).toHaveLength(1);
+
+      const enabled = (name: string) => !buttons(name)[0].disabled;
+      expect(enabled('New')).toBe(true);
+      expect(enabled('Delete')).toBe(false);
+      expect(enabled('DuplicateAnswer')).toBe(false);
+      expect(enabled('Export')).toBe(true);
+
+      inner.selection.set([rows[0]]);
+      await settle(fixture);
+      expect(enabled('Delete')).toBe(true);
+      expect(enabled('DuplicateAnswer')).toBe(true);
+
+      inner.selection.set([rows[0], rows[1]]);
+      await settle(fixture);
+      expect(enabled('Delete')).toBe(true);
+      expect(enabled('DuplicateAnswer')).toBe(false);
+
+      expect(el.querySelectorAll('.spark-row-menu-toggle').length).toBe(rows.length);
+      expect(inner.rowActions().map(a => a.name)).toEqual(['Delete', 'DuplicateAnswer']);
     });
 
     it('passes the sub-query entry selection mode down to the grid', async () => {

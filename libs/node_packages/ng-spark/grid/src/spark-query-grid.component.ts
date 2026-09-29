@@ -9,7 +9,13 @@ import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsDatatableComponent, BsDatatableColumnDirective, BsDatatableFilterPanelDirective, BsRowTemplateDirective, DatatableSettings, type BsDatatableFetch, type BsDatatableRowEvent, type DatatableDistincts, type FilterChangeDetail } from '@mintplayer/ng-bootstrap/datatable';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
-import { BsDropdownDirective, BsDropdownMenuDirective, BsDropdownToggleDirective } from '@mintplayer/ng-bootstrap/dropdown';
+// ⚠️ NOT @mintplayer/ng-bootstrap/dropdown. Its fesm (22.19.0) declares BsDropdownToggleDirective,
+// whose factory lists BsDropdownDirective as an eager dependency, BEFORE BsDropdownDirective. Linked
+// (an app build) that is harmless; evaluated unlinked — every vitest / unit-test-builder spec that
+// imports this grid, in ng-spark and in every app — it throws "Cannot access 'BsDropdownDirective'
+// before initialization" at import time (#460 M15, CI run a1b47012). The row menu therefore drives
+// the CDK overlay itself and keeps ng-bootstrap's menu for the look.
+import { CdkConnectedOverlay, CdkOverlayOrigin, type ConnectedPosition } from '@angular/cdk/overlay';
 import { BsDropdownItemDirective, BsDropdownMenuComponent } from '@mintplayer/ng-bootstrap/dropdown-menu';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
@@ -72,7 +78,7 @@ import { SparkQueryToolbarAction, sparkActionClass } from './spark-query-toolbar
  */
 @Component({
   selector: 'spark-query-grid',
-  imports: [CommonModule, RouterModule, BsAlertComponent, BsDatatableComponent, BsDatatableColumnDirective, BsDatatableFilterPanelDirective, BsRowTemplateDirective, BsSpinnerComponent, SparkGridCellComponent, ResolveTranslationPipe, QueryCellValuePipe, QueryReferenceChipsPipe, TranslateKeyPipe, SparkAttributeDescriptionComponent, SparkColumnFilterPanelComponent, BsBadgeComponent, BsDropdownDirective, BsDropdownMenuDirective, BsDropdownToggleDirective, BsDropdownMenuComponent, BsDropdownItemDirective, SparkIconComponent],
+  imports: [CommonModule, RouterModule, BsAlertComponent, BsDatatableComponent, BsDatatableColumnDirective, BsDatatableFilterPanelDirective, BsRowTemplateDirective, BsSpinnerComponent, SparkGridCellComponent, ResolveTranslationPipe, QueryCellValuePipe, QueryReferenceChipsPipe, TranslateKeyPipe, SparkAttributeDescriptionComponent, SparkColumnFilterPanelComponent, BsBadgeComponent, CdkOverlayOrigin, CdkConnectedOverlay, BsDropdownMenuComponent, BsDropdownItemDirective, SparkIconComponent],
   templateUrl: './spark-query-grid.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -439,6 +445,38 @@ export class SparkQueryGridComponent {
     }
   }
 
+  /** The id of the row whose `⋮` menu is open; at most one is. */
+  readonly openRowMenu = signal<string | null>(null);
+
+  /** Below the toggle, right-aligned; above it when there is no room below. */
+  readonly rowMenuPositions: ConnectedPosition[] = [
+    { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top' },
+    { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom' },
+  ];
+
+  toggleRowMenu(row: QueryResultItem): void {
+    this.openRowMenu.update(open => open === row.id ? null : row.id);
+  }
+
+  closeRowMenu(): void {
+    this.openRowMenu.set(null);
+  }
+
+  /**
+   * A click outside the open menu closes it — except on its own toggle, whose click handler toggles
+   * it; closing here as well would reopen it at once.
+   */
+  onRowMenuOutsideClick(event: MouseEvent, toggle: HTMLElement): void {
+    if (event.target instanceof Node && toggle.contains(event.target)) return;
+    this.closeRowMenu();
+  }
+
+  /** Runs the chosen row-menu item and closes the menu. */
+  async chooseRowAction(action: SparkQueryToolbarAction, row: QueryResultItem): Promise<void> {
+    this.closeRowMenu();
+    await this.runRowAction(action, row);
+  }
+
   /**
    * Runs a row-menu action on that ONE row. The checkbox selection is neither read nor changed:
    * the menu is a shortcut for this row, not a second way to tick it.
@@ -575,11 +613,21 @@ export class SparkQueryGridComponent {
     // A new search term must refetch even when page, perPage and sort are unchanged — the
     // datatable dedupes reloads by exactly that triple, and a new fetch identity is what resets
     // its dedupe key. Skipping the first run keeps mount to a single request.
+    //
+    // ⚠️ A new term also CLEARS the selection (#460 M15, D17 addendum), on both surfaces — the card
+    // and the query-list page — and in both transports. Reconciling it with the new rows was the
+    // alternative and was rejected: the grid only ever holds one page, so a ticked row that is merely
+    // on another page of the searched result would be indistinguishable from one the search excluded,
+    // and a bulk Delete would then act on rows the user can no longer see. Clearing keeps the
+    // "N selected" chip equal to what is ticked on screen, exactly as the soft-deletion mode does.
     let firstSearch = true;
     effect(() => {
       this.search();
       if (firstSearch) { firstSearch = false; return; }
-      untracked(() => this.onSearchChanged());
+      untracked(() => {
+        this.selection.set([]);
+        this.onSearchChanged();
+      });
     });
 
     // A different soft-deletion mode is a different result set: page 1, fresh fetch identity. The
@@ -687,16 +735,21 @@ export class SparkQueryGridComponent {
     const others = this.filters().filter(f => f.name !== request.column);
 
     // The server's shape IS the datatable's shape, so there is nothing to map.
+    // The grid's own search too (#460 M15), read at call time like the filters: the values are
+    // drawn from the rows the searched grid shows, not from the whole query.
+    const querySearch = this.search() || undefined;
     const result = await this.sparkService.getDistinctValues(queryId, request.column, {
       search: request.search,
+      querySearch,
       columns: others,
       parentId: this.parentId(),
       parentType: this.parentType(),
       deleted: this.effectiveDeleted(),
     });
 
-    // A searched list is a subset by construction, so it is never a basis for a complement.
-    if (result && !result.hasMore && !request.search)
+    // A searched list is a subset by construction, so it is never a basis for a complement — and
+    // that holds for the grid's search as much as for the panel's own.
+    if (result && !result.hasMore && !request.search && !querySearch)
       this.completeDistincts.set(request.column, result.matching.map(v => v.value));
     else
       this.completeDistincts.delete(request.column);

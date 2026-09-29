@@ -29,7 +29,8 @@
     "selected":          { "en": "selected",       "fr": "sélectionné(s)",  "nl": "geselecteerd" },
     "selectAll":         { "en": "Select all",     "fr": "Tout sélectionner", "nl": "Alles selecteren" },
     "clearSelection":    { "en": "Clear selection", "fr": "Effacer la sélection", "nl": "Selectie wissen" },
-    "actions":           { "en": "Actions",        "fr": "Actions",          "nl": "Acties" }
+    "actions":           { "en": "Actions",        "fr": "Actions",          "nl": "Acties" },
+    "clearSearch":       { "en": "Clear search",   "fr": "Effacer la recherche", "nl": "Zoekopdracht wissen" }
   },
   "softDelete": {
     "deleted":      { "en": "Deleted",  "fr": "Supprimé",   "nl": "Verwijderd" },

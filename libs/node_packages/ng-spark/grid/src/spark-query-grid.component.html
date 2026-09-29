@@ -145,20 +145,28 @@
              checkbox selection is left alone (runRowAction never reads or writes it). -->
         <td class="spark-row-actions text-end" (click)="$event.stopPropagation()" (dblclick)="$event.stopPropagation()">
           @if (row) {
-            <div bsDropdown #rowMenu="bsDropdown" [closeOnClickOutside]="true" class="d-inline-block">
-              <button type="button" bsDropdownToggle class="btn btn-sm btn-link spark-row-menu-toggle"
-                      [attr.aria-label]="'common.actions' | t">
-                <spark-icon name="three-dots-vertical" />
-              </button>
-              <bs-dropdown-menu *bsDropdownMenu>
+            <button type="button" cdkOverlayOrigin #rowMenuOrigin="cdkOverlayOrigin" #rowMenuToggle
+                    class="btn btn-sm btn-link spark-row-menu-toggle"
+                    aria-haspopup="menu" [attr.aria-expanded]="openRowMenu() === row.id"
+                    [attr.aria-label]="'common.actions' | t" (click)="toggleRowMenu(row)">
+              <spark-icon name="three-dots-vertical" />
+            </button>
+            <ng-template cdkConnectedOverlay
+                         [cdkConnectedOverlayOrigin]="rowMenuOrigin"
+                         [cdkConnectedOverlayOpen]="openRowMenu() === row.id"
+                         [cdkConnectedOverlayPositions]="rowMenuPositions"
+                         (overlayOutsideClick)="onRowMenuOutsideClick($event, rowMenuToggle)"
+                         (overlayKeydown)="$event.key === 'Escape' && closeRowMenu()"
+                         (detach)="closeRowMenu()">
+              <bs-dropdown-menu class="spark-row-menu">
                 @for (action of rowActions(); track action.name) {
                   <li bsDropdownItem class="spark-row-action" [attr.data-action]="action.name"
-                      (click)="rowMenu.isOpen.set(false); runRowAction(action, row)">
+                      (click)="chooseRowAction(action, row)">
                     {{ action.definition.displayName | resolveTranslation }}
                   </li>
                 }
               </bs-dropdown-menu>
-            </div>
+            </ng-template>
           }
         </td>
       }

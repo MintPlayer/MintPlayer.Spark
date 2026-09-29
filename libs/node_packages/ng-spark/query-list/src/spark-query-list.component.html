@@ -55,28 +55,11 @@
     </bs-alert>
   } @else if (queryId(); as qId) {
     <div class="flex-shrink-0" [class.px-4]="isVirtualScrolling()">
-      <bs-form>
         <bs-grid>
           <div bsRow class="mb-3">
             <div [md]="12">
-              <bs-input-group>
-                <span class="addon">
-                  <spark-icon name="search" />
-                </span>
-                <input
-                  type="text"
-                  [placeholder]="'common.search' | t"
-                  [ngModel]="searchTerm()"
-                  (ngModelChange)="searchTerm.set($event)">
-                @if (searchTerm()) {
-                  <button
-                    type="button"
-                    class="btn btn-outline-secondary"
-                    (click)="clearSearch()">
-                    <spark-icon name="x-lg" />
-                  </button>
-                }
-              </bs-input-group>
+              <!-- The same box as the sub-query card's header (#460 M15): debounce, clear button. -->
+              <spark-search-box [(term)]="searchTerm" />
             </div>
             <!-- Its own full-width row rather than a column beside the box: the count is
                  occasional, and reserving 8 columns for it shrank the search permanently. The
@@ -90,7 +73,6 @@
             }
           </div>
         </bs-grid>
-      </bs-form>
     </div>
 
     <!--

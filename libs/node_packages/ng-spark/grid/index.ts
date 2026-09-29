@@ -5,3 +5,4 @@ export * from './src/spark-query-grid.component';
 export * from './src/spark-query-card.component';
 export * from './src/spark-grid-cell.component';
 export * from './src/spark-query-toolbar';
+export * from './src/spark-search-box.component';
