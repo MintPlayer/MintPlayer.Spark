@@ -337,7 +337,11 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
                 || !pipeline.ConsumeBeforeDeleteHandled(entity))
                 await OnBeforeDeleteAsync(entity);
             session.Delete(entity);
-            await session.SaveChangesAsync();
+
+            // A bulk delete commits every row with ONE SaveChanges (#460, D18), so while its batch is
+            // open the save is the caller's. An override that saves here itself breaks that guarantee.
+            if (serviceProvider?.GetService<SparkWriteBatch>() is not { IsDeferring: true })
+                await session.SaveChangesAsync();
         }
     }
 
@@ -587,14 +591,29 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
 
     /// <inheritdoc />
     /// <remarks>
-    /// The base implementation does nothing, and in particular does not bind the child's
-    /// parent-typed attribute for you. That is a deliberate omission rather than a gap: automatic
-    /// binding is what forces a grandchild's hook to substitute a different parent before
-    /// delegating, and the ordering rule that creates ("substitute before calling base, never
-    /// after") is the kind of invisible trap that only exists because the binding is implicit.
-    /// A hook that wants a parent's value sets it explicitly, from whichever object it likes.
+    /// <para>
+    /// When New was started from a <b>sub-query</b> (#460, D19, owner refinement), the base fills the
+    /// new object's reference to the parent — <see cref="SparkNewArgs{T}.FillParentReference"/>: the
+    /// single reference attribute whose target is the parent's type, or the one the sub-query names
+    /// with <c>parentReference</c>. Zero or several candidates fill nothing (logged at Debug).
+    /// </para>
+    /// <para>
+    /// ⚠️ An override that does not call <c>base.OnNewAsync</c> loses the auto-fill — intended: the
+    /// hook then owns the initialisation (D1: nothing relies on base calls). Call
+    /// <c>args.FillParentReference()</c> to keep it without calling base.
+    /// </para>
+    /// <para>
+    /// A standalone New and an <c>AsDetail</c> row get nothing from the base: an embedded row's parent
+    /// owns the save, and a grandchild's hook would otherwise have to substitute a different parent
+    /// before delegating — the invisible ordering trap implicit binding creates. There, a hook that
+    /// wants a parent's value sets it explicitly, from whichever object it likes.
+    /// </para>
     /// </remarks>
-    public virtual Task OnNewAsync(SparkNewArgs<T> args) => Task.CompletedTask;
+    public virtual Task OnNewAsync(SparkNewArgs<T> args)
+    {
+        args.FillParentReference();
+        return Task.CompletedTask;
+    }
 
     /// <inheritdoc />
     /// <remarks>

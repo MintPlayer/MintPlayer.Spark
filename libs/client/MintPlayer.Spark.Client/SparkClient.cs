@@ -342,6 +342,47 @@ public partial class SparkClient : IDisposable
             onOperation,
             cancellationToken);
 
+    /// <summary>
+    /// Deletes several objects of one type in one request — the default <c>Delete</c> action on a
+    /// query's selection (<c>POST /spark/po/delete-many</c>, #460 D18). All or nothing: one row that is
+    /// missing, denied or whose hook withholds Delete refuses the lot.
+    /// </summary>
+    /// <param name="queryId">The query the rows were selected in, for the disabled-action hook.</param>
+    /// <param name="parentId">The sub-query's container, when deleting from a sub-query.</param>
+    /// <param name="parentType">The container's type.</param>
+    public Task DeletePersistentObjectsAsync(
+        Guid objectTypeId,
+        IReadOnlyList<string> ids,
+        string? queryId = null,
+        string? parentId = null,
+        string? parentType = null,
+        CancellationToken cancellationToken = default,
+        SparkRetryHandler? onRetry = null,
+        SparkOperationHandler? onOperation = null)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        return PostConversationAsync<object?>(
+            "/spark/po/delete-many",
+            new Dictionary<string, object?>
+            {
+                ["objectTypeId"] = objectTypeId.ToString(),
+                ["ids"] = ids,
+                ["queryId"] = queryId,
+                ["parentId"] = parentId,
+                ["parentType"] = parentType,
+            },
+            requiresAntiforgery: true,
+            async (response, ct) =>
+            {
+                await SparkClientException.ThrowIfNotSuccessAsync(response, ct);
+                await ReadEnvelopeResultAsync<object>(response, onOperation, ct);
+                return null;
+            },
+            onRetry,
+            onOperation,
+            cancellationToken);
+    }
+
     // ListPersistentObjectsAsync is gone, with the GET /spark/po/{type} endpoint it called. That was
     // a second list pipeline with no paging, no search, no sort and no take cap, beside a
     // /queries/{id}/execute that clamps take for exactly that reason. Use ExecuteQueryAsync against

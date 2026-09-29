@@ -36,7 +36,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint
     /// bounding what one request can cost. See the comment at the check for why the existing
     /// "estimatedRequests" figure is not a bound at all.
     /// </remarks>
-    private const int MaxSelectedItems = 200;
+    private const int MaxSelectedItems = SparkDefaultActions.MaxSelectedItems;
     [Inject] private readonly ICustomActionResolver actionResolver;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IRetryAccessor retryAccessor;
@@ -83,7 +83,11 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint
         // retired by removing it from customActions.json (the documented way) — was still callable
         // by name. Gate on the configuration, exactly as ListCustomActions does: absent → 404.
         var configuration = configLoader.GetConfiguration();
-        if (!configuration.Keys.Contains(actionName, StringComparer.OrdinalIgnoreCase))
+        // New and Delete are the framework's own (#460, D18): an entry of that name overrides the
+        // default's presentation and rule, and they run through /po/new and /po/delete-many — never
+        // here, whatever ICustomAction class happens to share the name.
+        if (SparkDefaultActions.IsDefault(actionName)
+            || !configuration.Keys.Contains(actionName, StringComparer.OrdinalIgnoreCase))
         {
             return ClientResult.Envelope(clientAccessor, new { error = $"Custom action '{actionName}' not found" }, StatusCodes.Status404NotFound);
         }

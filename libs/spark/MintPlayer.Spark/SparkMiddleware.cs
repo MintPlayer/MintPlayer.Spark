@@ -670,7 +670,15 @@ public static class SparkExtensions
         // duplicate alias would otherwise surface as a 500 on whichever request first needed a
         // query — in an unrelated place, long after the mistake. Here it is a startup failure that
         // names both queries.
-        app.ApplicationServices.GetRequiredService<IQueryLoader>().GetQueries();
+        var queries = app.ApplicationServices.GetRequiredService<IQueryLoader>().GetQueries();
+
+        // A parentReference that names nothing, or names a reference to another type, would make a
+        // sub-query New silently fill nothing (#460, D19). Refused here, naming every offender.
+        var parentReferenceProblems = SparkSubQueries.ValidateParentReferences(
+            app.ApplicationServices.GetRequiredService<IModelLoader>().GetEntityTypes(), queries);
+        if (parentReferenceProblems.Count > 0)
+            throw new InvalidOperationException(
+                "Invalid sub-query parentReference: " + string.Join(" ", parentReferenceProblems));
     }
 
     /// <summary>

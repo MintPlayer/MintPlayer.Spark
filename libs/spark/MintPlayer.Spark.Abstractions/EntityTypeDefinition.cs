@@ -150,10 +150,12 @@ public sealed class EntityTypeDefinition
     public AttributeGroup[] Groups { get; set; } = [];
     public EntityAttributeDefinition[] Attributes { get; set; } = [];
     /// <summary>
-    /// Query aliases or IDs to display as related query tables on the detail page.
-    /// Each entry references a SparkQuery that accepts parent context.
+    /// The queries displayed as related query tables (sub-queries) on the detail page. Each entry
+    /// names a SparkQuery that accepts parent context, by alias or id, and may override that query's
+    /// selection mode and parent reference for this parent (#460, D17). In the model file an entry is
+    /// a bare alias or an object; see <see cref="SparkSubQuery"/>.
     /// </summary>
-    public string[] Queries { get; set; } = [];
+    public SparkSubQuery[] Queries { get; set; } = [];
 
     /// <summary>
     /// A shallow copy, for a request that must present this definition differently without

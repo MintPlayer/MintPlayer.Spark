@@ -91,4 +91,40 @@ public interface IDatabaseAccess
     /// session, so no later save in the request writes the half-made change.
     /// </summary>
     Task DeletePersistentObjectAsync(Guid objectTypeId, string id, Interceptors.PersistentObjectOperation operation);
+
+    /// <summary>
+    /// Deletes several objects of one type as <b>one unit of work</b> (#460, D18): all of them or none.
+    /// <para>
+    /// Every row goes through the single-row delete pipeline — <c>Delete/T</c>, the collection guard,
+    /// the row gate, the disabled-action hook (asked about the query target, with its parent, and every
+    /// row; one refused row refuses the lot), <c>OnBeforeDeleteAsync</c>, the interceptors (so a
+    /// soft-deletable type is soft-deleted) and the Actions class's <c>OnDeleteAsync</c> — but every
+    /// gate runs before the first write, and the writes are committed by one <c>SaveChanges</c>. A
+    /// missing, foreign-collection or row-denied id refuses the whole request with
+    /// <see cref="Authorization.SparkRowLevelAccessDeniedException"/>, never a silently shorter delete.
+    /// </para>
+    /// <para>
+    /// ⚠️ The base <c>OnDeleteAsync</c> defers its own <c>SaveChanges</c> while the batch is open. An
+    /// override that saves on its own commits its row early and breaks the all-or-nothing guarantee
+    /// (logged as a warning) — the D1 override gap, documented rather than closed.
+    /// </para>
+    /// </summary>
+    /// <param name="objectTypeId">The type of every row.</param>
+    /// <param name="ids">The rows; duplicates collapse.</param>
+    /// <param name="context">The query the rows were selected in and its parent, for the disabled-action hook.</param>
+    Task DeletePersistentObjectsAsync(Guid objectTypeId, IReadOnlyList<string> ids, SparkBulkDeleteContext? context = null)
+        => throw new NotSupportedException($"{GetType().Name} does not implement bulk deletes.");
+}
+
+/// <summary>Where a bulk delete was started from, for <c>OnDisableActionsAsync</c> (#460, D18).</summary>
+public sealed class SparkBulkDeleteContext
+{
+    /// <summary>The query the rows were selected in; must produce the deleted type to count.</summary>
+    public SparkQuery? Query { get; init; }
+
+    /// <summary>The sub-query's container, already loaded through the gated read.</summary>
+    public PersistentObject? Parent { get; init; }
+
+    /// <summary>The container's entity type name.</summary>
+    public string? ParentType { get; init; }
 }

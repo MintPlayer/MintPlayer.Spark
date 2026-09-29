@@ -3,6 +3,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Abstractions.Reflection;
+using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Exceptions;
 using Microsoft.Extensions.Logging;
 using Raven.Client.Documents;
@@ -547,6 +548,172 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
         for (var i = interceptors.Count - 1; i >= 0; i--)
             await interceptors[i].OnAfterDeleteAsync(context);
+    }
+
+    /// <inheritdoc />
+    public async Task DeletePersistentObjectsAsync(Guid objectTypeId, IReadOnlyList<string> ids, SparkBulkDeleteContext? context = null)
+    {
+        var entityTypeDefinition = modelLoader.GetEntityType(objectTypeId)
+            ?? throw new SparkRowLevelAccessDeniedException($"Delete/{objectTypeId}");
+
+        const string deleteAction = "Delete";
+        await permissionService.EnsureAuthorizedAsync(deleteAction, entityTypeDefinition.Name);
+
+        // A composed type has no documents to delete; refused like a missing row.
+        var entityType = typeResolver.Resolve(entityTypeDefinition.ClrType)
+            ?? throw new SparkRowLevelAccessDeniedException($"{deleteAction}/{entityTypeDefinition.Name}");
+
+        // An empty id names no row and cannot be verified; it fails the whole request.
+        if (ids.Count == 0 || ids.Any(string.IsNullOrEmpty))
+            throw new SparkRowLevelAccessDeniedException($"{deleteAction}/{entityTypeDefinition.Name}");
+
+        var distinct = ids.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
+        // Every gate before the first write, judged on what is STORED (a side session, as the
+        // single-row delete does). Never shrink silently: a missing, foreign or denied row refuses
+        // the lot, indistinguishably (M-3) — deleting 198 of 200 and saying nothing is worse.
+        using (var checkSession = documentStore.OpenAsyncSession())
+        {
+            var stored = await RowSecurity.LoadBaseDocumentsAsync(checkSession, entityType, distinct);
+            foreach (var id in distinct)
+            {
+                if (!stored.TryGetValue(id, out var existing)
+                    || !collectionGuard.BelongsToAuthorizedCollection(checkSession, existing, entityType))
+                    throw new SparkRowLevelAccessDeniedException($"{deleteAction}/{entityTypeDefinition.Name}");
+            }
+
+            if (!await rowSecurity.AreAllowedAsync(checkSession, entityType, deleteAction, distinct))
+                throw new SparkRowLevelAccessDeniedException($"{deleteAction}/{entityTypeDefinition.Name}");
+
+            // Disabled-action gate (#460, D13), after the row gate: the query target (with its parent)
+            // and every row, in one batched call; the union decides, so one row whose hook withholds
+            // Delete refuses the whole request with a 403.
+            if (!Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
+            {
+                var actions = actionsResolver.ResolveForType(entityType);
+                var items = new List<DisableActionsItem>(distinct.Length + 1);
+                if (context?.Query is { } query
+                    && string.Equals(query.EntityType, entityTypeDefinition.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    items.Add(new DisableActionsItem(new DisabledActionSet(), new DisableActionsContext
+                    {
+                        Phase = DisableActionsPhase.Submit,
+                        TargetKind = DisableActionsTargetKind.Query,
+                        ActionName = deleteAction,
+                        Query = Queries.SparkQueryInfo.From(query),
+                        Parent = context.Parent,
+                        ParentType = context.ParentType,
+                    }));
+                }
+
+                foreach (var id in distinct)
+                {
+                    items.Add(new DisableActionsItem(new DisabledActionSet(), new DisableActionsContext
+                    {
+                        Phase = DisableActionsPhase.Submit,
+                        TargetKind = DisableActionsTargetKind.PersistentObject,
+                        ActionName = deleteAction,
+                        Id = id,
+                        Entity = stored[id],
+                    }));
+                }
+
+                var disabled = await disabledActions.EvaluateAsync(actions, items);
+                if (disabled.Contains(deleteAction))
+                    throw new SparkActionDisabledException(deleteAction);
+            }
+        }
+
+        var interceptors = interceptorPipeline.For(entityType);
+        var syncInterceptor = serviceProvider.GetService<ISyncActionInterceptor>();
+        var replicated = syncInterceptor != null && syncInterceptor.IsReplicated(entityType);
+        var batch = serviceProvider.GetRequiredService<SparkWriteBatch>();
+        var actionsInstance = actionsResolver.ResolveForType(entityType);
+
+        // One batched load into the request session: every later per-row load is an identity-map hit,
+        // so 200 rows cost one request rather than blowing the session's request budget.
+        var tracked = await RowSecurity.LoadBaseDocumentsAsync(session, entityType, distinct);
+        var contexts = new List<(DeleteContext Context, object Entity)>(distinct.Length);
+        var savedEarly = false;
+        void OnEarlySave(object? sender, AfterSaveChangesEventArgs e) => savedEarly = true;
+
+        session.Advanced.OnAfterSaveChanges += OnEarlySave;
+        try
+        {
+            using (batch.Begin())
+            {
+                foreach (var id in distinct)
+                {
+                    var entity = tracked[id];
+                    if (interceptors.Count == 0)
+                    {
+                        await DeleteEntityViaActionsAsync(session, entityType, id);
+                        continue;
+                    }
+
+                    await InvokeBeforeDeleteHookAsync(actionsInstance, entityType, entity);
+                    interceptorPipeline.MarkBeforeDeleteHandled(entity);
+
+                    var deleteContext = new DeleteContext
+                    {
+                        EntityType = entityType,
+                        Operation = PersistentObjectOperation.Delete,
+                        Id = id,
+                        Entity = entity,
+                        User = httpContextAccessor?.HttpContext?.User,
+                        IsSystemContext = Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor),
+                    };
+                    contexts.Add((deleteContext, entity));
+
+                    foreach (var interceptor in interceptors)
+                        await interceptor.OnBeforeDeleteAsync(deleteContext);
+
+                    // A replaced delete (SoftDelete) is the tracked entity's own change, written by the
+                    // single SaveChanges below; otherwise the Actions class deletes, deferred.
+                    if (!deleteContext.WasReplaced)
+                        await DeleteEntityViaActionsAsync(session, entityType, id);
+                }
+            }
+
+            if (savedEarly)
+                logger?.LogWarning(
+                    "A bulk delete of {Count} '{EntityType}' rows was not atomic: the Actions class's OnDeleteAsync "
+                    + "saved on its own, committing rows before the batch finished. Let the base OnDeleteAsync save, "
+                    + "or override OnBeforeDeleteAsync instead.", distinct.Length, entityTypeDefinition.Name);
+
+            await session.SaveChangesAsync();
+        }
+        catch
+        {
+            // Nothing half-made may reach a later save in this request: every row this batch touched —
+            // marked soft-deleted, or queued for deletion — is evicted, so it reads as stored again.
+            foreach (var entity in tracked.Values)
+                session.Advanced.Evict(entity);
+            throw;
+        }
+        finally
+        {
+            session.Advanced.OnAfterSaveChanges -= OnEarlySave;
+            foreach (var (_, entity) in contexts)
+                interceptorPipeline.ConsumeBeforeDeleteHandled(entity);
+        }
+
+        // After the commit, as the single-row delete does: replication, then the after-hooks.
+        foreach (var id in distinct)
+        {
+            if (!replicated) break;
+            var replaced = contexts.FirstOrDefault(c => string.Equals(c.Context.Id, id, StringComparison.OrdinalIgnoreCase));
+            if (replaced.Context?.WasReplaced == true)
+                await syncInterceptor!.HandleSaveAsync(replaced.Entity, id);
+            else
+                await syncInterceptor!.HandleDeleteAsync(entityType, id);
+        }
+
+        foreach (var (deleteContext, _) in contexts)
+        {
+            for (var i = interceptors.Count - 1; i >= 0; i--)
+                await interceptors[i].OnAfterDeleteAsync(deleteContext);
+        }
     }
 
     /// <summary>The Actions class's <c>OnBeforeDeleteAsync(T)</c>, when it has one.</summary>

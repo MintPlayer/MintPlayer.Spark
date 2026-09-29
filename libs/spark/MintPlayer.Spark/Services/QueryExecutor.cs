@@ -810,6 +810,7 @@ internal sealed record DatabasePage(int TotalItems);
         // request already returns these rows, and the Query right was enforced above either way.
         var declaresAsSubQuery = parent is not null
             && (modelLoader.GetEntityType(parent.ObjectTypeId)?.Queries ?? [])
+                .Select(entry => entry.Query)
                 .Contains(query.Alias ?? SparkQueryAliases.Derive(query.Name), StringComparer.OrdinalIgnoreCase);
 
         if (declaresAsSubQuery)

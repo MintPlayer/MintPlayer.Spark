@@ -72,6 +72,7 @@ internal partial class CustomActionsConfigurationLoader : ICustomActionsConfigur
             logger.LogInformation("Loaded custom actions configuration with {ActionCount} actions", config?.Count ?? 0);
 
             ValidateSelectionRules(config, fullPath);
+            ValidateDisplayNames(config, fullPath);
 
             return config ?? new CustomActionsConfiguration();
         }
@@ -112,6 +113,26 @@ internal partial class CustomActionsConfigurationLoader : ICustomActionsConfigur
             $"{fullPath} contains {invalid.Count} malformed selection rule(s): {string.Join("; ", invalid)}. "
             + "A rule is a cardinality expression over the number of selected rows, such as '=1', "
             + "'>0', '<=5' or '1<X<5'. Omit the property entirely to require no selection.");
+    }
+
+    /// <summary>
+    /// A custom action needs a label; only an entry overriding a default action (<c>New</c>,
+    /// <c>Delete</c>) may leave it out and keep the default's (#460, D18).
+    /// </summary>
+    private static void ValidateDisplayNames(CustomActionsConfiguration? config, string fullPath)
+    {
+        if (config == null) return;
+
+        var missing = config
+            .Where(entry => entry.Value.DisplayName is null && !SparkDefaultActions.IsDefault(entry.Key))
+            .Select(entry => $"'{entry.Key}'")
+            .ToList();
+
+        if (missing.Count == 0) return;
+
+        throw new FormatException(
+            $"{fullPath}: custom action(s) {string.Join(", ", missing)} declare no displayName. Only an "
+            + "entry overriding a default action (New, Delete) may omit it.");
     }
 
     private void SetupFileWatcher()

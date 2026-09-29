@@ -926,6 +926,8 @@ public static class SparkDevelopmentExtensions
         var jsonOptions = new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         var sourcesByAlias = new Dictionary<string, (string Source, string QueryName)>(StringComparer.OrdinalIgnoreCase);
         var subQueryAliases = new List<(string Alias, string ParentType)>();
+        var allTypes = new List<EntityTypeDefinition>();
+        var allQueries = new List<SparkQuery>();
 
         foreach (var file in Directory.GetFiles(modelPath, "*.json"))
         {
@@ -949,11 +951,19 @@ public static class SparkDevelopmentExtensions
                     sourcesByAlias[alias] = (source, query.Name);
             }
 
-            foreach (var alias in type.Queries ?? [])
-                subQueryAliases.Add((alias, type.Name));
+            allTypes.Add(type);
+            foreach (var query in entityTypeFile.Queries)
+            {
+                query.EntityType ??= type.Name;
+                allQueries.Add(query);
+            }
+
+            foreach (var entry in type.Queries ?? [])
+                subQueryAliases.Add((entry.Query, type.Name));
         }
 
-        var problems = new List<string>();
+        // #460, D19: the same check startup makes, in CI, so a bad parentReference never merges.
+        var problems = new List<string>(Services.SparkSubQueries.ValidateParentReferences(allTypes, allQueries));
         foreach (var (alias, parentType) in subQueryAliases)
         {
             if (!sourcesByAlias.TryGetValue(alias, out var entry))

@@ -7,7 +7,12 @@ namespace MintPlayer.Spark.Models;
 /// </summary>
 public class CustomActionDefinition
 {
-    public required TranslatedString DisplayName { get; set; }
+    /// <summary>
+    /// The label. Required for a custom action (the file is refused without it); optional on an
+    /// entry that overrides a default action (<c>New</c>, <c>Delete</c> — #460, D18), which keeps the
+    /// default label when it states none.
+    /// </summary>
+    public TranslatedString DisplayName { get; set; } = null!;
     public string? Icon { get; set; }
     public string? Description { get; set; }
 
