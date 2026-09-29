@@ -93,7 +93,7 @@ Dependencies flow downward. Items in the same milestone are independent.
 - [x] `@mintplayer/ng-spark/history`: `<spark-po-history>` list, read-only view, diff, Revert.
 - [x] ng-spark-auth `withAccount()` + 7 standalone pages, `SPARK_ACCOUNT_PROFILE_FIELDS`, `twitterProvider()`/`linkedInProvider()`, login label "Email or user name".
 - [x] Carry-overs: bounce endpoint 503 when disabled; `RedirectTo` refused in Production; explicit transports + Development fail-closed + Mailpit AutoStart (owner decisions, PRD §3.10); spike S-TZ5 (five browser zones); profile `preferredCulture`. Spikes and deviations in PRD §4.1 (M10).
-- [ ] **Browser verification pending** (parent session, playwright_node MCP): recycle bin → open → Restore/Purge; History diff + Revert; every account page.
+- [x] **Browser verification** (playwright_node MCP, on QnA, 2026-09-29): recycle bin → open → Restore/Purge; History view, diff and Revert; every account page, including 2FA with the QR code, recovery codes and deletion; Moderation (votes, flags, lock, suspension, review queue); DisableActions; drafts. It found and fixed 17 bugs; all passed on re-check. `/connect/login` wording is covered by a unit test only, because QnA hosts no identity provider.
 
 ### M11 — E2E base host extraction (D11, pure refactor)
 - [x] Extract a generic host from `FleetTestHost` (embedded Raven, `dotnet run` under dotnet-coverage, seeded users, stale-bundle check, shared rate-limit awareness). **Run Fleet's E2E suite here and require green** — the one sanctioned mid-plan test run, because every later E2E test depends on it.
