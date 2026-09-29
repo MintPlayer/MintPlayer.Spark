@@ -219,6 +219,54 @@ public class SparkModelVerifyChecksTests
         reported.Should().NotContain("resolves-to-nothing", "an unresolvable alias is the pruner's warning, not this check's");
     }
 
+    // --- sub-query parentReference (#460, D19) -----------------------------
+
+    private const string ParentClrType = "Verify.ParentRefProbe";
+
+    /// <summary>
+    /// A parent that lists a Custom.* sub-query over <see cref="VerifyChildRefProbe"/>, whose query
+    /// names <paramref name="parentReference"/>. The child has one single Reference to the parent.
+    /// </summary>
+    private static void PlantParentReference(ScratchContentRoot scratch, string parentReference)
+    {
+        Plant(scratch, "VerifyParentRefProbe", [Attribute("Title")], subQueries: ["verify-ref-children"]);
+        var parentPath = Path.Combine(scratch.ModelPath, "VerifyParentRefProbe.json");
+        var parent = JsonNode.Parse(File.ReadAllText(parentPath))!.AsObject();
+        parent["persistentObject"]!["clrType"] = ParentClrType;
+        File.WriteAllText(parentPath, parent.ToJsonString());
+
+        var reference = Attribute("Parent");
+        reference["dataType"] = "Reference";
+        reference["referenceType"] = ParentClrType;
+        var query = Query("GetVerifyRefChildren", "Custom." + nameof(VerifyChildRefProbeActions.Children), alias: "verify-ref-children");
+        query["parentReference"] = parentReference;
+        Plant(scratch, nameof(VerifyChildRefProbe), [Attribute("Title"), reference], [query]);
+    }
+
+    [Theory]
+    [InlineData("Missing", "names parentReference 'Missing', which is not an attribute of 'VerifyChildRefProbe'.")]
+    [InlineData("Title", "names parentReference 'Title', which is not a single Reference attribute of 'VerifyChildRefProbe'.")]
+    public void An_invalid_parentReference_exits_3(string parentReference, string expected)
+    {
+        using var scratch = new ScratchContentRoot();
+
+        var (exitCode, reported) = VerifyWith(scratch, () => PlantParentReference(scratch, parentReference));
+
+        exitCode.Should().Be(3);
+        reported.Should().Contain("query 'GetVerifyRefChildren' (a sub-query of 'VerifyParentRefProbe') " + expected);
+        reported.Should().Contain(HashUnchanged);
+    }
+
+    [Fact]
+    public void A_parentReference_naming_the_single_Reference_to_the_parent_verifies()
+    {
+        using var scratch = new ScratchContentRoot();
+
+        var (exitCode, reported) = VerifyWith(scratch, () => PlantParentReference(scratch, "Parent"));
+
+        exitCode.Should().Be(0, reported);
+    }
+
     // --- program units pointing at two different targets ------------------
 
     [Fact]
@@ -445,6 +493,13 @@ public class SparkModelVerifyChecksTests
     public sealed class VerifyCustomProbeActions(IEntityMapper mapper) : DefaultPersistentObjectActions<VerifyCustomProbe>(mapper)
     {
         public IEnumerable<VerifyCustomProbe> Recent() => [];
+    }
+
+    public sealed class VerifyChildRefProbe { public string? Id { get; set; } }
+
+    public sealed class VerifyChildRefProbeActions(IEntityMapper mapper) : DefaultPersistentObjectActions<VerifyChildRefProbe>(mapper)
+    {
+        public IEnumerable<VerifyChildRefProbe> Children() => [];
     }
 
     public sealed class VerifyComposedProbe { public string? Id { get; set; } }
