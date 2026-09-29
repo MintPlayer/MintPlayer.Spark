@@ -13,7 +13,7 @@ service.
 - **Safety**: token-carrying payloads encrypted with Data Protection and scrubbed once done;
   per-mail expiry; a suppression list checked at queue and send time; 5xx refusals logged loudly.
 - **Bulk and bounces**: campaign fan-out (one mail per recipient), one-click `List-Unsubscribe`
-  (RFC 8058), VERP + a bounce endpoint with a pluggable DSN parser.
+  (RFC 8058), VERP + a bounce endpoint with a pluggable parser for DSNs and ARF complaints.
 
 ## Setup
 
@@ -235,12 +235,16 @@ duplicate is identifiable. That is documented, not "fixed".
 
 | Queue | Default | For |
 |---|---|---|
-| `mail-transactional` | unthrottled, 10 attempts, backoff 30 s → 2 h (about 4 h in all) | account mail, notifications |
-| `mail-bulk` | 20 per minute (GCRA), same retries | campaigns |
+| `mail-transactional` | unthrottled, **`High` priority**, 10 attempts, backoff 30 s → 2 h (about 4 h in all) | account mail (reset, confirm), notifications |
+| `mail-bulk` | 20 per minute (GCRA), **`Low` priority**, same retries | campaigns |
 
 Declared with `Configure`, so `Spark:Messaging:Queues:mail-bulk:MaxPerInterval` (etc.) overrides them.
 `MaxPerInterval` is a rate with a burst allowance: right after an idle period a window can hold ~3× the
 figure (measured, S-M3); state the rate alone (1 per 3 s) for no burst.
+
+The priorities (#460 M16) make Spark Messaging's single feeder claim account mail ahead of a campaign's
+backlog in each look-ahead window, without starving the campaign (Messaging README, *Priority lanes*).
+Apps get them by default; `Spark:Messaging:Queues:mail-bulk:Priority=Normal` (etc.) overrides them.
 
 ### Campaigns
 
@@ -263,7 +267,8 @@ campaign message once it is fanned out. `List-Unsubscribe` is on by default for 
 
 `ISparkMailSuppressions` — `IsSuppressedAsync`, `SuppressAsync`, `RemoveAsync` — per stream or for
 every stream. Stored as `SparkMailSuppressions/{sha256(normalized email)}`: the address itself is not
-kept. Fed by permanent bounces (every stream), unsubscribes (one stream) and the app.
+kept. Fed by permanent bounces (every stream), spam complaints (every stream), unsubscribes (one
+stream) and the app.
 
 One-click unsubscribe (RFC 8058): with `ListUnsubscribe` (default on for bulk), a mail carries
 `List-Unsubscribe: <{PublicBaseUrl}/spark/mail/unsubscribe?t=…>` and
@@ -285,6 +290,18 @@ names the address and stream (default: the template name). `POST /spark/mail/uns
   delivery record names. 204 applied, 401 wrong secret, 413 too large (`MaxBodyBytes`, 1 MiB), 429
   over 120/min, 400 unparseable, **503 when disabled**. A report for an unknown delivery id is still
   204 (logged, nothing suppressed); the endpoint never answers 404. Explicitly exempt from antiforgery.
+- **Complaints (ARF, RFC 5965, #460 M16)** go to the same endpoint, with the same secret, rate limit and
+  503-when-disabled: the default parser recognises `multipart/report; report-type=feedback-report`,
+  reads `Feedback-Type` from the `message/feedback-report` part, and finds the delivery from
+  `Original-Mail-From` (the VERP address), else the original's `Return-Path`, else the original's
+  `Message-ID` (`<{deliveryId}@domain>`, which every MailManager mail carries and feedback loops usually
+  keep when they redact addresses), else the address the report was delivered to. `abuse` and `fraud`
+  mark the delivery `Complained` and suppress **the delivery record's address** for every stream with
+  `SparkMailSuppressionReason.Complaint` (lift it with `RemoveAsync`); `not-spam`, `virus`,
+  `auth-failure` and `other` are recorded on the delivery and suppress nothing. An unmatched report is
+  logged and answered 204 (the relay drops it, no retry); a feedback report without the feedback part
+  or `Feedback-Type` is malformed: 400, which the pipe also drops. Feedback-loop addresses and the
+  Postfix side: `docs/guide-outgoing-mail.md` §8.6.
 
 The Postfix side (pipe → curl → this endpoint) is a documented recipe in
 `docs/guide-outgoing-mail.md` §8.3 (spikes S-M5, S-M5b). The pipe maps this endpoint's answer to its

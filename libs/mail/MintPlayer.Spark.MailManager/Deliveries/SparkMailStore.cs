@@ -16,6 +16,8 @@ public enum SparkMailDeliveryStatus
     Failed,
     /// <summary>A bounce report arrived for it after sending.</summary>
     Bounced,
+    /// <summary>A complaint (an RFC 5965 feedback report) arrived for it; <see cref="SparkMailDelivery.Detail"/> names the feedback type.</summary>
+    Complained,
 }
 
 /// <summary>

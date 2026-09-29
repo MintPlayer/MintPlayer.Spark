@@ -22,7 +22,22 @@ namespace MintPlayer.Spark.MailManager.Bounces;
 /// <param name="Status">The enhanced status code (<c>5.1.1</c>).</param>
 /// <param name="Permanent"><c>Action: failed</c> with a 5.x.x status.</param>
 /// <param name="Diagnostic">The remote server's text, if any.</param>
-public sealed record SparkMailBounce(string? DeliveryId, string? Recipient, string? Status, bool Permanent, string? Diagnostic);
+/// <param name="FeedbackType">
+/// Set for a complaint (an RFC 5965 feedback report, #460 M16): the report's <c>Feedback-Type</c>,
+/// lower-cased (<c>abuse</c>, <c>fraud</c>, <c>not-spam</c>, …). Null for a delivery status notification.
+/// </param>
+public sealed record SparkMailBounce(string? DeliveryId, string? Recipient, string? Status, bool Permanent, string? Diagnostic, string? FeedbackType = null)
+{
+    /// <summary>
+    /// The feedback types that suppress the recipient: <c>abuse</c> (the recipient marked it as spam) and
+    /// <c>fraud</c>. <c>not-spam</c>, <c>virus</c>, <c>auth-failure</c> and <c>other</c> are recorded on
+    /// the delivery and suppress nothing — none of them says the recipient does not want the mail.
+    /// </summary>
+    public static readonly IReadOnlySet<string> SuppressingFeedbackTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "abuse", "fraud" };
+
+    /// <summary>Whether this is a complaint that suppresses the recipient.</summary>
+    public bool IsSuppressingComplaint => FeedbackType is not null && SuppressingFeedbackTypes.Contains(FeedbackType);
+}
 
 /// <summary>
 /// Turns a raw bounce into outcomes. Replace it for a provider's webhook format. Called only after
@@ -34,12 +49,19 @@ public interface ISparkMailBounceParser
     Task<IReadOnlyList<SparkMailBounce>> ParseAsync(Stream body, string? envelopeRecipient, CancellationToken cancellationToken);
 }
 
-/// <summary>RFC 3464 delivery status notifications, through MimeKit.</summary>
+/// <summary>
+/// RFC 3464 delivery status notifications and RFC 5965 feedback reports (complaints, #460 M16), through
+/// MimeKit.
+/// </summary>
 internal sealed class DsnBounceParser : ISparkMailBounceParser
 {
     public async Task<IReadOnlyList<SparkMailBounce>> ParseAsync(Stream body, string? envelopeRecipient, CancellationToken cancellationToken)
     {
         var message = await MimeMessage.LoadAsync(body, cancellationToken);
+        if (message.Body is MultipartReport { ReportType: { } reportType } report
+            && string.Equals(reportType, "feedback-report", StringComparison.OrdinalIgnoreCase))
+            return [ParseFeedbackReport(report, envelopeRecipient)];
+
         var deliveryId = SparkMailVerp.DeliveryId(envelopeRecipient)
             ?? message.To.Mailboxes.Select(m => SparkMailVerp.DeliveryId(m.Address)).FirstOrDefault(id => id is not null)
             ?? SparkMailVerp.DeliveryId(message.Headers["X-Original-To"])
@@ -60,6 +82,49 @@ internal sealed class DsnBounceParser : ISparkMailBounceParser
         }
         return outcomes;
     }
+
+    /// <summary>
+    /// An ARF report: the <c>message/feedback-report</c> part (required, with a <c>Feedback-Type</c>) and
+    /// the original message or its headers (the third part, optional). The delivery is found from the
+    /// original's envelope sender (<c>Original-Mail-From</c>, else the original's <c>Return-Path</c> — the
+    /// VERP address), else the original's <c>Message-ID</c> (<c>&lt;{deliveryId}@domain&gt;</c>, which
+    /// MailManager sets on every mail and which feedback loops keep when they redact addresses), else the
+    /// address the report was delivered to. A report without the feedback part or type is malformed
+    /// (<see cref="FormatException"/> → 400, which the relay's pipe drops).
+    /// </summary>
+    private static SparkMailBounce ParseFeedbackReport(MultipartReport report, string? envelopeRecipient)
+    {
+        var feedback = report.OfType<MessageFeedbackReport>().FirstOrDefault()
+            ?? throw new FormatException("A feedback report without a message/feedback-report part.");
+        var type = feedback.Fields["Feedback-Type"]?.Trim().ToLowerInvariant();
+        if (string.IsNullOrEmpty(type))
+            throw new FormatException("A feedback report without a Feedback-Type.");
+
+        // message/rfc822 (the whole original) or text/rfc822-headers (its headers only); both are a MessagePart.
+        var original = report.OfType<MessagePart>().Select(p => p.Message).FirstOrDefault(m => m is not null);
+
+        var deliveryId = SparkMailVerp.DeliveryId(feedback.Fields["Original-Mail-From"])
+            ?? SparkMailVerp.DeliveryId(original?.Headers[HeaderId.ReturnPath])
+            ?? DeliveryIdFromMessageId(original?.MessageId)
+            ?? SparkMailVerp.DeliveryId(envelopeRecipient);
+        var recipient = StripAngles(feedback.Fields["Original-Rcpt-To"])
+            ?? original?.To.Mailboxes.Select(m => m.Address).FirstOrDefault();
+
+        return new SparkMailBounce(deliveryId, recipient, Status: null, Permanent: false,
+            Diagnostic: $"feedback-report: {type}", FeedbackType: type);
+    }
+
+    /// <summary><c>{32 hex}@domain</c> (MimeKit strips the angle brackets) → the delivery id, or null.</summary>
+    private static string? DeliveryIdFromMessageId(string? messageId)
+    {
+        if (string.IsNullOrEmpty(messageId)) return null;
+        var at = messageId.IndexOf('@');
+        var local = at < 0 ? messageId : messageId[..at];
+        return local.Length == 32 && local.All(Uri.IsHexDigit) ? local.ToLowerInvariant() : null;
+    }
+
+    private static string? StripAngles(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim().Trim('<', '>').Trim();
 
     /// <summary><c>rfc822; someone@example.org</c> → <c>someone@example.org</c>.</summary>
     private static string? StripType(string? value)
@@ -83,6 +148,13 @@ internal sealed partial class SparkMailBounceProcessor
         foreach (var bounce in bounces)
         {
             SparkMailDelivery? delivery = bounce.DeliveryId is null ? null : await deliveries.LoadAsync(bounce.DeliveryId, cancellationToken);
+            if (bounce.FeedbackType is not null)
+            {
+                if (await ApplyComplaintAsync(bounce, delivery, cancellationToken))
+                    suppressed++;
+                continue;
+            }
+
             if (delivery is not null)
                 await deliveries.RecordAsync(bounce.DeliveryId!, d =>
                 {
@@ -106,6 +178,40 @@ internal sealed partial class SparkMailBounceProcessor
         }
         return suppressed;
     }
+
+    /// <summary>
+    /// A complaint (ARF): recorded on its delivery, and for <c>abuse</c> / <c>fraud</c> the delivery's
+    /// address is suppressed for <b>every</b> stream with <see cref="SparkMailSuppressionReason.Complaint"/> —
+    /// mailing someone who reported you as spam hurts the sender's reputation for all its mail, and the
+    /// app can lift it (<see cref="ISparkMailSuppressions.RemoveAsync"/>). As with bounces, the delivery
+    /// record is the authority on the address: feedback loops usually redact the report's own. A report
+    /// no delivery matches is logged and suppresses nothing (the endpoint still answers 204, so the relay
+    /// does not retry it).
+    /// </summary>
+    private async Task<bool> ApplyComplaintAsync(SparkMailBounce complaint, SparkMailDelivery? delivery, CancellationToken cancellationToken)
+    {
+        if (delivery is null)
+        {
+            logger.LogWarning("Complaint ({FeedbackType}) without a known delivery (id {DeliveryId}); nothing suppressed.", complaint.FeedbackType, complaint.DeliveryId ?? "<none>");
+            return false;
+        }
+
+        await deliveries.RecordAsync(complaint.DeliveryId!, d =>
+        {
+            d.Status = SparkMailDeliveryStatus.Complained;
+            d.Detail = complaint.Diagnostic;
+        }, cancellationToken);
+
+        if (!complaint.IsSuppressingComplaint)
+        {
+            logger.LogInformation("Complaint ({FeedbackType}) for delivery {DeliveryId} recorded; this feedback type suppresses nothing.", complaint.FeedbackType, complaint.DeliveryId);
+            return false;
+        }
+
+        await suppressions.SuppressAsync(delivery.Email, SparkMailSuppressionReason.Complaint, stream: null, cancellationToken);
+        logger.LogInformation("Complaint ({FeedbackType}) for delivery {DeliveryId}: the recipient is suppressed.", complaint.FeedbackType, complaint.DeliveryId);
+        return true;
+    }
 }
 
 /// <summary><c>/spark/mail</c>.</summary>
@@ -115,10 +221,11 @@ internal sealed class SparkMailGroup : IEndpointGroup
 }
 
 /// <summary>
-/// <c>POST /spark/mail/bounces[?recipient=…]</c> with the raw DSN as the body and
+/// <c>POST /spark/mail/bounces[?recipient=…]</c> with the raw DSN — or an RFC 5965 complaint
+/// (<c>multipart/report; report-type=feedback-report</c>) from a feedback loop — as the body and
 /// <c>Authorization: Bearer {Spark:Mail:Bounces:Endpoint:Secret}</c>. Answers 503 unless
 /// <c>Spark:Mail:Bounces:Endpoint:Enabled</c> (temporary: the relay keeps the report). 204 when applied —
-/// also for a report whose delivery id is unknown, which is logged and suppresses nothing — 401 on a
+/// also for a report (bounce or complaint) whose delivery id is unknown, which is logged and suppresses nothing — 401 on a
 /// wrong secret, 413 when too large, 429 when flooded, 400 when unparseable. Never 404.
 /// </summary>
 [MemberOf<SparkMailGroup>]

@@ -575,6 +575,149 @@ public class MailManagerTests : SparkTestDriver
         (await sp.GetRequiredService<SparkMailDeliveryStore>().LoadAsync(deliveryId, default))!.Status.Should().Be(SparkMailDeliveryStatus.Bounced);
     }
 
+    // ---- complaints (ARF, RFC 5965) — M16 --------------------------------------------------------------
+
+    [Fact]
+    public async Task An_abuse_report_suppresses_the_delivery_address_for_every_stream_as_a_complaint()
+    {
+        using var sp = Build(config: ReportEndpoint());
+        var deliveryId = await RecordDeliveryAsync(sp, "ann@app.example");
+
+        var (status, reports) = await PostReportAsync(sp, Arf("abuse", originalMailFrom: $"<bounces+{deliveryId}@bounce.app.example>"));
+
+        status.Should().Be(204);
+        reports.Single().FeedbackType.Should().Be("abuse");
+        (await sp.GetRequiredService<ISparkMailSuppressions>().IsSuppressedAsync("ann@app.example", "news")).Should().BeTrue();
+        using var session = Store.OpenAsyncSession();
+        (await session.LoadAsync<SparkMailSuppression>(SparkMailSuppression.IdFor("ann@app.example")))!.Reason.Should().Be(SparkMailSuppressionReason.Complaint);
+        var delivery = (await sp.GetRequiredService<SparkMailDeliveryStore>().LoadAsync(deliveryId, default))!;
+        delivery.Status.Should().Be(SparkMailDeliveryStatus.Complained);
+        delivery.Detail.Should().Be("feedback-report: abuse");
+    }
+
+    [Fact]
+    public async Task A_complaint_is_matched_by_the_original_Message_ID_when_the_loop_redacted_the_addresses()
+    {
+        using var sp = Build(config: ReportEndpoint());
+        var deliveryId = await RecordDeliveryAsync(sp, "bob@app.example");
+
+        // text/rfc822-headers third part, no Original-Mail-From, recipient redacted — the common shape.
+        var (status, reports) = await PostReportAsync(sp, Arf("abuse", originalMailFrom: null, messageId: $"<{deliveryId}@app.example>", headersOnly: true, rcptTo: "redacted@example.net"));
+
+        status.Should().Be(204);
+        reports.Single().DeliveryId.Should().Be(deliveryId);
+        (await sp.GetRequiredService<ISparkMailSuppressions>().IsSuppressedAsync("bob@app.example")).Should().BeTrue("the delivery record names the address, not the report");
+        (await sp.GetRequiredService<ISparkMailSuppressions>().IsSuppressedAsync("redacted@example.net")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_not_spam_report_is_recorded_and_suppresses_nothing()
+    {
+        using var sp = Build(config: ReportEndpoint());
+        var deliveryId = await RecordDeliveryAsync(sp, "cleo@app.example");
+
+        var (status, _) = await PostReportAsync(sp, Arf("not-spam", originalMailFrom: $"<bounces+{deliveryId}@bounce.app.example>"));
+
+        status.Should().Be(204);
+        (await sp.GetRequiredService<ISparkMailSuppressions>().IsSuppressedAsync("cleo@app.example")).Should().BeFalse();
+        (await sp.GetRequiredService<SparkMailDeliveryStore>().LoadAsync(deliveryId, default))!.Status.Should().Be(SparkMailDeliveryStatus.Complained);
+    }
+
+    [Fact]
+    public async Task An_unmatched_complaint_is_accepted_with_204_so_the_relay_drops_it_and_suppresses_nothing()
+    {
+        using var sp = Build(config: ReportEndpoint());
+
+        var (status, reports) = await PostReportAsync(sp, Arf("abuse", originalMailFrom: "<someone@example.net>", messageId: "<not-a-delivery@example.net>", rcptTo: "dana@app.example"));
+
+        status.Should().Be(204);
+        reports.Single().DeliveryId.Should().BeNull();
+        (await sp.GetRequiredService<ISparkMailSuppressions>().IsSuppressedAsync("dana@app.example")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_malformed_feedback_report_is_refused_with_400_which_the_relay_drops()
+    {
+        using var sp = Build(config: ReportEndpoint());
+        var noFeedbackPart = Arf("abuse", originalMailFrom: null).Replace("Content-Type: message/feedback-report", "Content-Type: text/plain");
+        var noFeedbackType = Arf("abuse", originalMailFrom: null).Replace("Feedback-Type: abuse\r\n", "");
+
+        (await PostReportAsync(sp, noFeedbackPart)).Status.Should().Be(400);
+        (await PostReportAsync(sp, noFeedbackType)).Status.Should().Be(400);
+    }
+
+    [Fact]
+    public void Account_mail_is_high_priority_and_campaign_mail_low_by_default()
+    {
+        using var sp = Build(config: ReportEndpoint());
+        var messaging = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<MintPlayer.Spark.Messaging.SparkMessagingOptions>>().Value;
+
+        messaging.PriorityFor(SparkMailQueues.Transactional).Should().Be(MintPlayer.Spark.Messaging.SparkQueuePriority.High);
+        messaging.PriorityFor(SparkMailQueues.Bulk).Should().Be(MintPlayer.Spark.Messaging.SparkQueuePriority.Low);
+    }
+
+    private static async Task<string> RecordDeliveryAsync(IServiceProvider sp, string email)
+    {
+        var deliveryId = SparkMailer.NewDeliveryId();
+        await sp.GetRequiredService<SparkMailDeliveryStore>().RecordAsync(deliveryId, d => { d.Email = email; d.Status = SparkMailDeliveryStatus.Sent; }, default);
+        return deliveryId;
+    }
+
+    /// <summary>POSTs a report to an enabled endpoint; returns the status and what the parser made of it (when it parses).</summary>
+    private static Dictionary<string, string?> ReportEndpoint() => new()
+    {
+        ["Spark:Mail:Bounces:Endpoint:Enabled"] = "true",
+        ["Spark:Mail:Bounces:Endpoint:Secret"] = ReportSecret,
+    };
+
+    private static readonly string ReportSecret = new('s', 40);
+
+    private static async Task<(int Status, IReadOnlyList<SparkMailBounce> Reports)> PostReportAsync(ServiceProvider sp, string report)
+    {
+        using var scope = sp.CreateScope();
+        var endpoint = ActivatorUtilities.CreateInstance<ReceiveBounce>(scope.ServiceProvider);
+        var httpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext { RequestServices = scope.ServiceProvider };
+        httpContext.Request.Method = "POST";
+        httpContext.Request.Headers.Authorization = $"Bearer {ReportSecret}";
+        httpContext.Request.QueryString = new Microsoft.AspNetCore.Http.QueryString("?recipient=fbl%40bounce.app.example");
+        httpContext.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(report));
+
+        var result = await endpoint.HandleAsync(httpContext);
+        var status = ((Microsoft.AspNetCore.Http.IStatusCodeHttpResult)result).StatusCode ?? 200;
+        IReadOnlyList<SparkMailBounce> parsed = [];
+        if (status != 400)
+            parsed = await sp.GetRequiredService<ISparkMailBounceParser>().ParseAsync(new MemoryStream(Encoding.UTF8.GetBytes(report)), "fbl@bounce.app.example", default);
+        return (status, parsed);
+    }
+
+    /// <summary>
+    /// An RFC 5965 feedback report, shaped on the RFC's Appendix B example (addresses on the reserved
+    /// example domains): a human-readable part, the <c>message/feedback-report</c> part and the original
+    /// message (<c>message/rfc822</c>) or its headers (<c>text/rfc822-headers</c>).
+    /// </summary>
+    private static string Arf(string feedbackType, string? originalMailFrom, string? messageId = null, bool headersOnly = false, string rcptTo = "ann@app.example")
+    {
+        var fields = $"Feedback-Type: {feedbackType}\r\nUser-Agent: SomeGenerator/1.0\r\nVersion: 1\r\n" +
+            (originalMailFrom is null ? "" : $"Original-Mail-From: {originalMailFrom}\r\n") +
+            $"Original-Rcpt-To: <{rcptTo}>\r\nArrival-Date: Thu, 8 Mar 2005 14:00:00 EDT\r\nReporting-MTA: dns; mail.example.net\r\n" +
+            "Source-IP: 192.0.2.1\r\nAuthentication-Results: mail.example.net; spf=fail smtp.mail=app.example\r\nReported-Domain: app.example\r\n";
+        var original = $"Received: from mailserver.app.example (mailserver.app.example [192.0.2.1]) by mail.example.net\r\n" +
+            $"From: <noreply@app.example>\r\nTo: <{rcptTo}>\r\nSubject: Spring news\r\nMIME-Version: 1.0\r\n" +
+            (messageId is null ? "" : $"Message-ID: {messageId}\r\n") +
+            "Date: Thu, 8 Mar 2005 17:40:36 EDT\r\n";
+        return "From: <abusedesk@example.net>\r\nDate: Thu, 8 Mar 2005 17:40:36 EDT\r\nSubject: FW: Spring news\r\n" +
+            "To: <fbl@bounce.app.example>\r\nMIME-Version: 1.0\r\n" +
+            "Content-Type: multipart/report; report-type=feedback-report; boundary=\"part1_13d.2e68ed54_boundary\"\r\n\r\n" +
+            "--part1_13d.2e68ed54_boundary\r\nContent-Type: text/plain; charset=\"US-ASCII\"\r\nContent-Transfer-Encoding: 7bit\r\n\r\n" +
+            "This is an email abuse report for an email message received from IP 192.0.2.1 on Thu, 8 Mar 2005 14:00:00 EDT.\r\n" +
+            "For more information about this format please see http://www.mipassoc.org/arf/.\r\n\r\n" +
+            "--part1_13d.2e68ed54_boundary\r\nContent-Type: message/feedback-report\r\n\r\n" + fields + "\r\n" +
+            "--part1_13d.2e68ed54_boundary\r\n" +
+            (headersOnly ? "Content-Type: text/rfc822-headers\r\n\r\n" + original + "\r\n"
+                         : "Content-Type: message/rfc822\r\nContent-Disposition: inline\r\n\r\n" + original + "\r\nSpring is here.\r\n") +
+            "\r\n--part1_13d.2e68ed54_boundary--\r\n";
+    }
+
     [Fact]
     public void The_bounce_secret_is_a_bearer_token_compared_whole()
     {

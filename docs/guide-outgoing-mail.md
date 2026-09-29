@@ -432,8 +432,32 @@ case for unknown mailboxes) are still caught by tier 1.
 ### 8.5 Still not covered
 
 - **Inbound mail** other than bounces. Point `From` at a real mailbox if people reply.
-- **Complaint feedback loops** (ARF): `ISparkMailSuppressions.SuppressAsync(…, Complaint)` is there
-  for an app that receives them from a provider; nothing parses them.
+- **Late bounces and complaints without tier 2** — see §8.6 for complaints.
+
+### 8.6 Complaints — feedback loops (ARF, RFC 5965)
+
+A mailbox provider that runs a feedback loop (Microsoft's JMRP/SNDS, Yahoo's CFL, many ISPs) sends an
+**ARF report** — `multipart/report; report-type=feedback-report` — when one of its users marks your mail
+as spam. MailManager parses these on the **same endpoint** as bounces (`POST /spark/mail/bounces`, same
+secret, same rate limit, same 503 while disabled; #460 M16): `Feedback-Type: abuse` or `fraud` suppresses
+the recipient with `SparkMailSuppressionReason.Complaint` for every stream; `not-spam`, `virus`,
+`auth-failure` and `other` are recorded on the delivery and suppress nothing. The delivery is found
+from the report's `Original-Mail-From` (the VERP address), the original's `Return-Path`, or the
+original's `Message-ID` (`<{deliveryId}@domain>`) — the last one matters because feedback loops redact
+the recipient's address, so the address suppressed is always the one in the delivery record.
+
+**Registering the address.** Register an address **at the VERP domain** as the feedback-loop address
+with each provider, e.g. `fbl@{VERP_DOMAIN}`. §8.3's `transport_maps` already routes the whole VERP
+domain to the `sparkbounce` pipe, so nothing changes in Postfix: the pipe POSTs the report with
+`?recipient=fbl%40…` exactly as it does a bounce, and the exit-code mapping above applies unchanged —
+an unmatched complaint is answered **204** and dropped (exit 0, never retried), a malformed one **400**
+and dropped (exit 0), a disabled endpoint **503** and kept (exit 75).
+
+**It needs inbound mail.** Feedback reports come from the provider's servers, so they arrive at the VERP
+domain's MX — tier 2 (§8.4: MX record + inbound 25), which `coverage.mintplayer.com` does not have. Without
+it, register a real mailbox as the feedback-loop address instead and forward (or fetch and POST) its
+reports to the endpoint with the bearer secret and `Content-Type: message/rfc822`; the body is the report
+as received.
 
 
 ---
