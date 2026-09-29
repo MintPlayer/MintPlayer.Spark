@@ -80,6 +80,7 @@ import { SparkQueryToolbarAction, sparkActionClass } from './spark-query-toolbar
   selector: 'spark-query-grid',
   imports: [CommonModule, RouterModule, BsAlertComponent, BsDatatableComponent, BsDatatableColumnDirective, BsDatatableFilterPanelDirective, BsRowTemplateDirective, BsSpinnerComponent, SparkGridCellComponent, ResolveTranslationPipe, QueryCellValuePipe, QueryReferenceChipsPipe, TranslateKeyPipe, SparkAttributeDescriptionComponent, SparkColumnFilterPanelComponent, BsBadgeComponent, CdkOverlayOrigin, CdkConnectedOverlay, BsDropdownMenuComponent, BsDropdownItemDirective, SparkIconComponent],
   templateUrl: './spark-query-grid.component.html',
+  styleUrl: './spark-query-grid.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class SparkQueryGridComponent {

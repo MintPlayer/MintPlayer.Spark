@@ -375,6 +375,22 @@ describe('query toolbar (#460 M15)', () => {
       expect(toggles[2].getAttribute('aria-expanded')).toBe('true');
     });
 
+    // The contrast rule itself lives in spark-query-grid.component.scss. The analog vitest plugin
+    // compiles components without their stylesheets (the host gets no _nghost attribute), so a
+    // computed-style assertion cannot see it here; the browser check covers the colour. What the
+    // rule keys on is the datatable's marker, pinned here: if the datatable stopped writing
+    // data-selected on the selected row, the rule would silently stop matching.
+    it('marks the selected row with data-selected, which the contrast rule keys on', async () => {
+      const { c, fixture } = await grid([duplicateAction], { selectionModeSetting: 'multiple' });
+      c.selection.set([rows[1]]);
+      fixture.detectChanges();
+      await settle(fixture);
+
+      const selected = Array.from(fixture.nativeElement.querySelectorAll('tbody tr[data-selected="true"]')) as HTMLElement[];
+      expect(selected.length).toBe(1);
+      expect(selected[0].querySelector('.spark-row-menu-toggle')).not.toBeNull();
+    });
+
     it('renders a menu column only when some action takes one row', async () => {
       const { fixture } = await grid([newAction]);
       expect(fixture.componentInstance.rowActions()).toEqual([]);
