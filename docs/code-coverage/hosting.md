@@ -20,7 +20,7 @@ Contents:
 7. [Deploy workflow](#7-deploy-workflow)
 8. [The upload action](#8-the-upload-action)
 9. [Fixed in code](#9-fixed-in-code)
-10. [Known inconsistencies](#10-known-inconsistencies)
+10. [Inconsistencies found](#10-inconsistencies-found)
 
 ---
 
@@ -28,13 +28,16 @@ Contents:
 
 Source: [`apps/CodeCoverage/docker-compose.yml`](../../apps/CodeCoverage/docker-compose.yml). No
 service publishes a host port. Traefik reaches the app over the external `web` network; everything
-else is on the project's own `coverage-internal` bridge network.
+else is on the project's own `coverage-internal` bridge network. Traefik itself is a separate stack;
+what it must provide (Docker provider on `web`, `exposedbydefault=false`, entrypoints `web` →
+`websecure`, resolver `letsencrypt`) is sketched in the README's
+[§3](../../apps/CodeCoverage/README.md#3-the-server-docker-and-traefik).
 
 | Service | Image (pinned tag) | Networks | Volumes | Healthcheck | Restart | Role |
 |---|---|---|---|---|---|---|
 | `coverage-raven` | `docker.io/ravendb/ravendb:7.1.10-ubuntu.22.04-x64` | `coverage-internal` | `raven-data` → `/var/lib/ravendb/data` | TCP connect to `127.0.0.1:8080`; interval 10 s, timeout 5 s, retries 12, start period 30 s | `unless-stopped` | The database, unsecured, reachable only from the internal network. |
 | `coverage-raven-license` | `curlimages/curl:8.11.1` | `coverage-internal` | `./raven-license.json` → `/raven-license.json` (ro) | — | `"no"` (one-shot) | POSTs the licence to `http://coverage-raven:8080/admin/license/activate` once Raven is healthy, with 10 retries 3 s apart, then exits. Runs on every `up`. Nothing depends on it. |
-| `coverage-smtp` | `boky/postfix:v4.3.0` | `coverage-internal` | `./mail-dkim` → `/etc/opendkim/keys` (ro); `smtp-queue` → `/var/spool/postfix` | TCP connect to `127.0.0.1:587`; interval 15 s, timeout 5 s, retries 6, start period 20 s | `unless-stopped` | Outbound-only mail relay. Unauthenticated, which is safe only because nothing outside the project can reach it. |
+| `coverage-smtp` | `boky/postfix:v4.3.0` | `coverage-internal` | `./mail-dkim` → `/etc/opendkim/keys` (ro); `smtp-queue` → `/var/spool/postfix` | TCP connect to `127.0.0.1:587` (under `bash`: `/dev/tcp` does not exist in the image's `sh`, which is dash); interval 15 s, timeout 5 s, retries 6, start period 20 s | `unless-stopped` | Outbound-only mail relay. Unauthenticated, which is safe only because nothing outside the project can reach it. |
 | `coverage-app` | `ghcr.io/mintplayer/codecoverage:master` (floating, pull-only: no `build:` block) | `web`, `coverage-internal` | `./github-app.pem` → `/run/secrets/github-app.pem` (ro); `dataprotection-keys` → `/var/lib/codecoverage/dataprotection-keys` | `GET /health` must answer 200; interval 15 s, timeout 5 s, retries 8, **start period 600 s** | `unless-stopped` | The application. `stop_grace_period: 120s`. Waits for `coverage-raven` to be *healthy* and `coverage-smtp` to be *started*. |
 
 Named volumes: `raven-data`, `smtp-queue`, `dataprotection-keys`. Docker prefixes them with the
@@ -316,7 +319,7 @@ cache, pushes `ghcr.io/mintplayer/codecoverage` with `docker/metadata-action` ta
 public. It runs no tests and no model verification — `pull-request.yml` gates those before merge,
 and a model mismatch refuses to start in Production anyway.
 
-**Job `deploy`** (permissions `contents: read`, `packages: read`), over SSH, with `set -e`:
+**Job `deploy`** (permissions `contents: read`, `packages: read`; timeout 25 min), over SSH, with `set -e`:
 
 1. `mkdir -p /var/www/code-coverage && cd` there.
 2. Fail if `.env` or `github-app.pem` is missing.
@@ -325,9 +328,11 @@ and a model mismatch refuses to start in Production anyway.
 5. `docker compose --env-file .env pull`, then `down --remove-orphans`, then `up -d --remove-orphans`.
    There is a short outage between `down` and `up`.
 6. `docker image prune -f`, `docker compose ps`.
-7. Poll `GET /health/ready` from inside `coverage-app` every 10 s, 18 times: 200 passes, 503 fails
-   the deploy immediately (the App key is unusable), anything else keeps polling; 180 s without a
-   200 fails the deploy.
+7. Poll `GET /health/ready` from inside `coverage-app` every 10 s, up to 66 times: 200 passes, 503
+   fails the deploy immediately (the App key is unusable), anything else keeps polling; 660 s
+   without a 200 fails the deploy. The bound is `coverage-app`'s 600 s healthcheck `start_period`
+   plus a minute, so a slow startup migration does not fail a deploy that would have succeeded;
+   keep the two in step.
 
 The directory `/var/www/code-coverage` is hard-coded in the script.
 
@@ -377,26 +382,28 @@ Health endpoints: `GET /health` (process answers; used by the compose healthchec
 `GET /health/ready` (round-trips an App JWT to GitHub; 503 while the key is unusable; used by the
 deploy).
 
-## 10. Known inconsistencies
+## 10. Inconsistencies found
 
-Found while writing this reference and deliberately **not** fixed here, because this change is
-documentation only:
+Found while writing this reference (2026-09-29), and fixed in the same pull request:
 
-- **Deploy readiness budget versus start period.** The deploy polls `/health/ready` for 180 s and its
-  comment says that "matches the compose healthcheck's start_period (60s)", but `coverage-app`'s
-  `start_period` is now 600 s, raised for a startup migration measured at roughly 100 s on a
-  restored copy. A future startup migration that runs longer than 180 s fails the deploy job while
-  the container carries on and becomes healthy.
-- **Deploy path-filter comment** names `coverage-action.yml`; the workflow is
+- **The relay's healthcheck always failed.** It ran `sh -c 'exec 3<>/dev/tcp/…'`, but `/dev/tcp` is
+  a bash feature and `boky/postfix`'s `sh` is dash, so production reported a working
+  `coverage-smtp` as `unhealthy` for days. It now runs under `bash`, like the other two.
+- **Deploy readiness budget versus start period.** The deploy polled `/health/ready` for 180 s, and
+  its comment said that "matches the compose healthcheck's start_period (60s)", but `coverage-app`'s
+  `start_period` is 600 s, raised for a startup migration measured at roughly 100 s on a restored
+  copy. A longer migration would have failed the deploy while the container carried on and became
+  healthy. The bound is now 660 s (still a poll that exits on the first 200) and the job timeout
+  25 min.
+- **Deploy path-filter comment** named `coverage-action.yml`; the workflow is
   `coverage-action-publish.yml`.
 - **Dockerfile restore closure.** Its comment says the csproj `COPY` list must be the app's full
-  transitive `ProjectReference` closure, but it omits `libs/attributes/MintPlayer.Spark.Attributes`
+  transitive `ProjectReference` closure, but it omitted `libs/attributes/MintPlayer.Spark.Attributes`
   (referenced by `MintPlayer.Spark.Abstractions`) and `libs/source_generators/MintPlayer.Spark.LibraryGenerators`
-  (an analyzer reference of `CodeCoverage` and `CodeCoverage.Library`), both of which are in the
-  deploy path filter.
-- **`.env.example`** points to "README 'Deployment' step 2" for the key fingerprint check; it is
-  [§3 step 4](../../apps/CodeCoverage/README.md#3-the-server-docker-and-traefik) of the hosting guide now,
-  and was step 3 before.
+  (an analyzer reference of `CodeCoverage` and `CodeCoverage.Library`). It now lists exactly the
+  computed closure, 22 projects. The deploy path filter already covered both.
+- **`.env.example`** pointed to "README 'Deployment' step 2" for the key fingerprint check; it now
+  names [§3 step 4](../../apps/CodeCoverage/README.md#3-the-server-docker-and-traefik).
 - **Stale RavenDB-licence history.** The README used to say running unlicensed "is what this
   deployment did for its whole life"; production has since been measured as a registered Community
   licence (`CoverageQueues.cs`, and `SparkMessagingExtensions.cs` on 2026-09-07). The README now
@@ -406,7 +413,10 @@ documentation only:
   deploy workflow runs tests (it does not; `pull-request.yml` does), said no organization
   permissions are needed (board automation and the `organization` event need them), and listed
   Contents as read-only although branch deletion needs write.
-- **Host facts not recorded in this repository**: the Traefik version and its static configuration
-  (entrypoints, the `letsencrypt` resolver's challenge type), the Docker Engine version, and any
-  cron or timer on the host. A self-hosted instance supplies its own; ours are not written down
-  anywhere in the repository.
+
+Still open, because they live on the server rather than in the repository:
+
+- **No scheduled database backup.** Nothing on the host backs up `code-coverage_raven-data`; see the
+  README's *Automating it*.
+- **A leftover `TRAEFIK_HOST` in the server's `.env`.** Nothing reads it since the hostname was
+  hard-coded into `docker-compose.yml`; it can be deleted.

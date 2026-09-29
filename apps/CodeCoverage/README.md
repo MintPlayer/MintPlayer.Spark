@@ -194,7 +194,7 @@ secret or host-specific stays in files on the server that deploys never touch.
 |---|---|
 | A Linux x64 server | The RavenDB image is the `-x64` build. Our deployment runs on a shared-vCPU VPS; the compose comments size the startup budget for that. |
 | Docker Engine with the Compose v2 plugin | The deploy runs `docker compose`, not `docker-compose`. |
-| Traefik, on an external Docker network named `web` | With an entrypoint named `websecure` and an ACME certificate resolver named `letsencrypt` — the compose labels use those exact names. Setting Traefik up is outside this repository. |
+| Traefik v3, on an external Docker network named `web` | With an entrypoint named `websecure` and an ACME certificate resolver named `letsencrypt` — the compose labels use those exact names. Traefik runs as its own compose stack, outside this repository; [§3](#3-the-server-docker-and-traefik) shows the configuration it needs. |
 | A hostname you control | For the app, and — only if you want mail — TXT records on its zone. |
 | A GitHub App | One per environment ([§5](#5-the-github-app)). |
 | A GitHub repository with Actions and GHCR | A fork of this one, to run the deploy workflow and publish the image. |
@@ -222,6 +222,47 @@ directory `/var/www/code-coverage`.
 | TXT (DMARC) | `_dmarc.<parent domain>` | your policy | Check what the *parent* publishes: a subdomain inherits `sp=`. |
 
 ### 3. The server: Docker and Traefik
+
+**Layout: one directory per compose stack.** Every service on the host is its own compose project
+in its own directory under `/var/www/<name>` — Traefik in `/var/www/traefik`, this app in
+`/var/www/code-coverage`. The directory name is the compose project name, so it prefixes the
+volumes and networks (`code-coverage_raven-data`, `code-coverage_coverage-internal`). Stacks share
+exactly one thing: the external `web` network, which every public stack joins and Traefik watches.
+
+**Traefik**, as its own stack. What this app's labels need from it, as Traefik v3 command-line
+arguments (the same settings can live in a static config file):
+
+```yaml
+# /var/www/traefik/docker-compose.yml (sketch — not part of this repository)
+services:
+  traefik:
+    image: traefik:v3
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false     # only containers with traefik.enable=true
+      - --providers.docker.network=web
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.letsencrypt.acme.email=<your-email>
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+    ports: ["80:80", "443:443"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+    networks: [web]
+volumes:
+  letsencrypt:
+networks:
+  web:
+    external: true
+```
+
+- `exposedbydefault=false` is why the app's labels start with `traefik.enable=true`.
+- The HTTP challenge runs on port 80, so 80 must be reachable from the internet even though every
+  request is redirected to 443.
+- `acme.json` holds the certificates' private keys: keep it on a volume, never print it.
 
 One-time setup, in `/var/www/code-coverage` (the path the deploy workflow uses):
 
@@ -503,7 +544,8 @@ GitHub side, once:
 What a deploy does on the server: fail unless `.env` and `github-app.pem` exist; download
 `docker-compose.yml` from `master`; `docker compose pull`, `down --remove-orphans`,
 `up -d --remove-orphans` (so there is a short outage); prune images; then poll `/health/ready` for
-up to 180 s. `/health/ready` round-trips an App JWT to GitHub, so a wrong key **fails the deploy**
+up to 660 s — `coverage-app`'s 600 s start period plus a minute of slack. That is a failure bound,
+not a wait: the first 200 ends it. `/health/ready` round-trips an App JWT to GitHub, so a wrong key **fails the deploy**
 (503) instead of surfacing hours later in check-runs. The triggering paths, secrets and steps are
 listed in full in [hosting.md §7](../../docs/code-coverage/hosting.md#7-deploy-workflow).
 
@@ -607,7 +649,8 @@ port 25 unblock stops mattering, and the provider's reputation replaces this IP'
 | `dataprotection-keys` | The Data Protection key ring | Every user is signed out once and outstanding antiforgery tokens are invalidated. Nothing else. |
 | `smtp-queue` | Mail queued for delivery | Undelivered queued mail. |
 
-All three survive `pull`/`down`/`up` deploys; only `docker compose down -v` or a volume prune
+On disk they are prefixed with the project name (`code-coverage_raven-data`, …); a volume is
+created by the first `up` that declares it. All three survive `pull`/`down`/`up` deploys; only `docker compose down -v` or a volume prune
 destroys them. The files next to the compose file ([§3](#3-the-server-docker-and-traefik)) are not
 in any volume — back up `.env`, `github-app.pem` and `raven-license.json` separately, somewhere
 private.
@@ -709,6 +752,33 @@ Finally, **copy the dump off the server** and compare `sha256sum` at both ends. 
 same disk as the data protects against a bad migration, which is the common case, but not against
 losing the disk.
 
+##### Automating it (recommended)
+
+Nothing in this repository schedules a backup, and a manual procedure only runs when someone
+remembers. Pick at least one of these, and preferably a database-level one *and* a host-level one:
+
+- **A RavenDB periodic backup task** on the `Coverage` database (Studio → *Tasks → Backups*, or the
+  `/admin/periodic-backup` API), writing to a directory that is itself copied off the host. Check
+  first that your licence tier offers the destination you want: `/license/status` lists the
+  features it grants.
+- **The export above, on a schedule** — a cron entry or systemd timer running the two `curl`
+  commands, followed by an off-host copy. It is the procedure already verified end to end.
+- **A volume snapshot** of `code-coverage_raven-data`. Stop `coverage-raven` for the copy, or the
+  snapshot is only crash-consistent.
+- **Provider-level server backups** (Hetzner Cloud offers daily whole-server backups as a paid
+  option). Whole-disk and crash-consistent, so a complement to the above, not a replacement.
+
+How to check what is in place, since none of it announces itself:
+
+```bash
+crontab -l; ls /etc/cron.d; systemctl list-timers --no-pager      # host-level schedules
+docker run --rm --network code-coverage_coverage-internal curlimages/curl:8.11.1 -sS \
+  "http://coverage-raven:8080/databases/Coverage/tasks"            # look for a Backup task
+```
+
+Provider backups are visible only in the provider's console (for Hetzner: the server's *Backups*
+tab). Whatever you choose, prove it the same way as above — by restoring one.
+
 #### Renewing the RavenDB licence
 
 A Community licence runs for a year. Renewing it emails a **new** licence JSON, and until that one
@@ -729,7 +799,7 @@ with every other licence failure.
   `start_period` is 600 s: a re-key migration was measured at roughly 100 s on a restored production
   copy (224k documents plus 708 attachment moves), and a container still migrating must not be
   marked unhealthy. It is a start period, not a timeout, so it costs nothing on an ordinary deploy.
-  ⚠️ The deploy's own readiness wait is only 180 s ([hosting.md §10](../../docs/code-coverage/hosting.md#10-known-inconsistencies)).
+  The deploy's readiness bound (660 s) is sized from it; keep the two in step.
 - **`stop_grace_period: 120s`** lets an in-flight message handler finish on shutdown. A handler
   killed mid-flight is not lost — its message is reclaimed after `ClaimTtl` (5 min) — but it is
   delayed and partly re-run. Keep the grace period below `ClaimTtl`.
@@ -743,21 +813,28 @@ with every other licence failure.
 
 ### 10. Our deployment
 
-The public facts of coverage.mintplayer.com, as a worked example of the steps above.
+The public facts of coverage.mintplayer.com, as a worked example of the steps above. Host facts
+were read on 2026-09-29.
 
 | | |
 |---|---|
-| Host | A Hetzner Cloud VPS in Nuremberg, shared vCPU. Docker + Traefik on the external `web` network, the stack in `/var/www/code-coverage`, deployed by `code-coverage-deploy.yml` on every qualifying push to `master`. |
-| DNS | The `mintplayer.com` zone is hosted separately from the server, at a Plesk-based DNS host; `coverage` is a record in that zone. |
+| Host | A Hetzner Cloud **CPX32** (shared vCPU) in Nuremberg, running Debian GNU/Linux 13 (trixie), Docker Engine 29.3.0 and Docker Compose 5.1.1. |
+| Layout | Twelve compose stacks, one directory each under `/var/www/<name>`. This one is `/var/www/code-coverage`, deployed by `code-coverage-deploy.yml` on every qualifying push to `master`. |
+| Traefik | 3.6.11 (image `traefik:latest`), its own stack in `/var/www/traefik`, configured exactly as the sketch in [§3](#3-the-server-docker-and-traefik): Docker provider with `exposedbydefault=false` on network `web`, `web` (:80) redirecting to `websecure` (:443), resolver `letsencrypt` using the HTTP challenge, certificates on a volume. It also loads a file provider from a host directory (`/var/www/traefik/dynamic`, watched) for routes that are not containers, and a certificate-dumper container runs beside it. Neither matters to this app. |
+| Networks | `web` (external, shared by every public stack), `code-coverage_coverage-internal`, and Traefik's own default network. |
+| Server-managed files | `.env`, `github-app.pem`, `raven-license.json` and `mail-dkim/` (the flat `coverage.mintplayer.com.private`, plus the nested copy `opendkim-genkey` wrote, which the relay ignores). |
+| `.env` | Sets `GITHUB_WEBHOOK_SECRET`, `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET` and `COVERAGE_BADGE_SIGNING_KEY`. It also still carries a `TRAEFIK_HOST`, a leftover that nothing reads since the hostname was hard-coded. |
+| Volumes | `code-coverage_raven-data` and `code-coverage_smtp-queue`. `code-coverage_dataprotection-keys` is created by the first deploy that declares it — that deploy signs everyone out once ([§9](#data-protection-keys)). |
+| DNS | The `mintplayer.com` zone is hosted separately from the server, at a Plesk-based DNS host; `coverage` is a record in that zone. `mintplayer.com`'s own MX points at a third-party spam filter, which plays no part in this app's outgoing mail. |
 | A / AAAA | `coverage.mintplayer.com` → `188.245.190.60` / `2a01:4f8:c0c:f87c::` |
 | SPF | `coverage.mintplayer.com TXT "v=spf1 ip4:188.245.190.60 ip6:2a01:4f8:c0c:f87c:: -all"` |
 | DKIM | Selector `mail` — `mail._domainkey.coverage.mintplayer.com`, a 2048-bit RSA key. |
-| DMARC | None of its own: `coverage.mintplayer.com` inherits `mintplayer.com`'s policy, `sp=reject`. |
+| DMARC | None of its own. `_dmarc.mintplayer.com` is a CNAME to the DNS host's default policy, `p=none; sp=reject`, so `coverage.mintplayer.com` inherits **`sp=reject`**. |
 | Reverse DNS | The IPv4 address's PTR is `coverage.mintplayer.com` (set 2026-09-29). The IPv6 address has **no** PTR, and it sends from `…::1` rather than the published `…::` — which is why outgoing mail is IPv4-only. |
-| Outbound SMTP | Ports 25 and 465 unblocked by Hetzner on request. |
+| Outbound SMTP | Port 25 open (Hetzner unblocked 25 and 465 on request). |
 | Mail | **Disabled.** No `MAIL_*` variables are set in the server's `.env`, so the app registers no mail transport; the relay container runs but receives nothing. `ExternalLoginLinking` is `Disabled`. |
-| RavenDB | A **Community** licence, activated through `coverage-raven-license`. It is renewed yearly: the renewal emails a new licence, which must then be activated ([§9](#renewing-the-ravendb-licence)). |
-| Backups | Manual only ([§9](#backing-up-the-database)). |
+| RavenDB | `ravendb:7.1.10-ubuntu.22.04-x64` with a **Community** licence, activated through `coverage-raven-license`. It is renewed yearly: the renewal emails a new licence, which must then be activated ([§9](#renewing-the-ravendb-licence)). |
+| Backups | ⚠️ **None scheduled.** No cron entry or systemd timer backs up `code-coverage_raven-data`; the manual export in [§9](#backing-up-the-database) is the only backup that has been made. Whether Hetzner server backups are enabled is not recorded here — check the server's *Backups* tab. See [Automating it](#automating-it-recommended). |
 | GitHub | Two Apps, `coverageproduction` and `coveragedevelopment`; the production App's webhook URL is `https://coverage.mintplayer.com/api/github/webhooks`. |
 
 ---
