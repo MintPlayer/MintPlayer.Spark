@@ -739,13 +739,17 @@ export class SparkQueryGridComponent {
     // The grid's own search too (#460 M15), read at call time like the filters: the values are
     // drawn from the rows the searched grid shows, not from the whole query.
     const querySearch = this.search() || undefined;
+    const parentId = this.parentId();
+    const parentType = this.parentType();
     const result = await this.sparkService.getDistinctValues(queryId, request.column, {
       search: request.search,
       querySearch,
       columns: others,
-      parentId: this.parentId(),
-      parentType: this.parentType(),
+      parentId,
+      parentType,
       deleted: this.effectiveDeleted(),
+      // The same parent mode as the grid's own fetch (#460), and under the same condition.
+      parentDeleted: this.parentDeleted() && parentId && parentType ? 'include' : undefined,
     });
 
     // A searched list is a subset by construction, so it is never a basis for a complement — and
@@ -984,6 +988,8 @@ export class SparkQueryGridComponent {
       parentId, parentType,
       // Only when set, so a plain grid's request body is exactly what it was before #460.
       ...(this.effectiveDeleted() ? { deleted: this.effectiveDeleted() } : {}),
+      // A deleted parent (#460) is resolved including deleted rows; its children keep `deleted`.
+      ...(this.parentDeleted() && parentId && parentType ? { parentDeleted: 'include' as const } : {}),
     }).then(r => {
       this.errorMessage.set(null);
       this.resultCount.set(r.totalItems);

@@ -317,6 +317,30 @@ describe('SparkQueryCardComponent', () => {
       }));
     });
 
+    it('sends parentDeleted: include when its parent is deleted, and leaves the rows\' deleted alone (#460)', async () => {
+      const { fixture, service } = await bare();
+      fixture.componentRef.setInput('parentId', 'companies/1');
+      fixture.componentRef.setInput('parentType', 'Company');
+      fixture.componentRef.setInput('parentDeleted', true);
+      await settle(fixture);
+
+      const body = lastExecute(service);
+      expect(body).toEqual(expect.objectContaining({
+        parentId: 'companies/1', parentType: 'Company', parentDeleted: 'include',
+      }));
+      expect(body).not.toHaveProperty('deleted');
+    });
+
+    it('sends no parentDeleted under a live parent', async () => {
+      const { fixture, service } = await bare();
+      fixture.componentRef.setInput('parentId', 'companies/1');
+      fixture.componentRef.setInput('parentType', 'Company');
+      await settle(fixture);
+
+      expect(lastExecute(service)).toEqual(expect.objectContaining({ parentId: 'companies/1' }));
+      expect(lastExecute(service)).not.toHaveProperty('parentDeleted');
+    });
+
     it('clearing the box searches for nothing again', async () => {
       const { fixture, service } = await bare();
       searchBox(fixture).term.set('ali');

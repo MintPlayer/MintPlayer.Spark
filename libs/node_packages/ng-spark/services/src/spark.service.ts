@@ -150,6 +150,8 @@ export class SparkService {
       columns: options?.columns?.length ? options.columns : undefined,
       // Soft-deletion mode (#460, T2). Omitted = exclude.
       deleted: options?.deleted,
+      // The parent's own mode (#460): a deleted parent opened from the recycle bin. Omitted = exclude.
+      parentDeleted: options?.parentDeleted,
     });
   }
 
@@ -176,6 +178,8 @@ export class SparkService {
     parentType?: string;
     /** The same soft-deletion mode as the grid the panel belongs to (#460). */
     deleted?: SparkDeletedFilter;
+    /** The same parent mode as the grid the panel belongs to (#460). */
+    parentDeleted?: SparkDeletedFilter;
   }): Promise<DistinctValuesResult> {
     return this.sendRead<DistinctValuesResult>(`${this.baseUrl}/queries/distinct-values`, {
       queryId,
@@ -186,6 +190,7 @@ export class SparkService {
       deleted: options?.deleted,
       parentId: options?.parentId,
       parentType: options?.parentType,
+      parentDeleted: options?.parentDeleted,
     });
   }
 
@@ -507,4 +512,11 @@ export interface ExecuteQueryOptions {
    * honours a widening only for callers holding `ViewDeleted` on the type.
    */
   deleted?: SparkDeletedFilter;
+  /**
+   * The mode the PARENT (`parentId`/`parentType`) is resolved under (#460) — `include` for a sub-query
+   * on a deleted object's page, opened from the recycle bin. Independent of `deleted`, which stays the
+   * rows' filter. Honoured only for callers holding `ViewDeleted` on the parent's type; anyone else
+   * gets the same 404 a missing parent gives.
+   */
+  parentDeleted?: SparkDeletedFilter;
 }
