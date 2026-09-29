@@ -50,10 +50,26 @@ export class SparkAuthService {
    */
   private pendingTwoFactorLogin: { email: string; password: string } | null = null;
 
-  async login(email: string, password: string): Promise<void> {
+  /** Whether the pending sign-in (and its two-factor step) asked for a persistent cookie. */
+  private pendingRememberMe = true;
+
+  /**
+   * The login URL. MapIdentityApi's `/login` issues a persistent cookie for `useCookies=true`
+   * and a session cookie (no `Expires`) when `useSessionCookies=true` is added.
+   */
+  private loginUrl(rememberMe: boolean): string {
+    return `${this.config.apiBasePath}/login?useCookies=true${rememberMe ? '' : '&useSessionCookies=true'}`;
+  }
+
+  /**
+   * Signs in with a cookie. `rememberMe` (default `true`) makes the cookie persistent; `false`
+   * makes it a session cookie that ends with the browser session.
+   */
+  async login(email: string, password: string, rememberMe = true): Promise<void> {
     this.pendingTwoFactorLogin = null;
+    this.pendingRememberMe = rememberMe;
     try {
-      await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/login?useCookies=true`, { email, password }));
+      await firstValueFrom(this.http.post<void>(this.loginUrl(rememberMe), { email, password }));
     } catch (err: any) {
       if (err?.status === 401 && err?.error?.detail === 'RequiresTwoFactor')
         this.pendingTwoFactorLogin = { email, password };
@@ -64,11 +80,12 @@ export class SparkAuthService {
   }
 
   async loginTwoFactor(twoFactorCode: string, twoFactorRecoveryCode?: string): Promise<void> {
-    await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/login?useCookies=true`, {
+    await firstValueFrom(this.http.post<void>(this.loginUrl(this.pendingRememberMe), {
       ...this.pendingTwoFactorLogin,
       twoFactorCode,
       twoFactorRecoveryCode,
     }));
+    this.pendingRememberMe = true;
     this.pendingTwoFactorLogin = null;
     await this.csrfRefresh();
     await this.checkAuth();

@@ -61,6 +61,23 @@ describe('SparkAuthService', () => {
     expect(service.user()?.email).toBe('user@example.com');
   });
 
+  it('login without rememberMe asks for a session cookie, and its 2FA step does too', async () => {
+    // MapIdentityApi: useCookies=true alone is a persistent cookie; useSessionCookies=true makes
+    // it a session cookie with no Expires.
+    const first = service.login('moduser', 'pw', false);
+    http.expectOne('/spark/auth/login?useCookies=true&useSessionCookies=true').flush(
+      { detail: 'RequiresTwoFactor' }, { status: 401, statusText: 'Unauthorized' });
+    await expect(first).rejects.toBeTruthy();
+
+    const promise = service.loginTwoFactor('123456');
+    http.expectOne('/spark/auth/login?useCookies=true&useSessionCookies=true').flush(null);
+    await flush();
+    http.expectOne('/spark/auth/csrf-refresh').flush(null);
+    await flush();
+    http.expectOne('/spark/auth/me').flush({ isAuthenticated: true, userName: 'u', email: 'u@x', roles: [] });
+    await promise;
+  });
+
   it('login propagates server errors', async () => {
     const promise = service.login('user@example.com', 'wrong');
 
