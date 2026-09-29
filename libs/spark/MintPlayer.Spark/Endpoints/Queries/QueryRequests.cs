@@ -77,6 +77,13 @@ internal sealed class DistinctValuesRequest
     public string? Search { get; set; }
 
     /// <summary>
+    /// The grid's own search term — what <c>/execute</c> takes as <c>search</c> (#460 M15). The values
+    /// are drawn only from the rows it matches, so a searched grid's panel offers what the grid shows.
+    /// Distinct from <see cref="Search"/>, which narrows the listed values themselves.
+    /// </summary>
+    public string? QuerySearch { get; set; }
+
+    /// <summary>
     /// The other columns' current filters, so the values returned are the ones still reachable.
     /// </summary>
     /// <remarks>

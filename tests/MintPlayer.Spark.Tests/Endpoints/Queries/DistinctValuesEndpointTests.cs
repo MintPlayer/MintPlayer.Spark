@@ -66,6 +66,29 @@ public class DistinctValuesEndpointTests : SparkTestDriver
         result.Matching.Select(v => v.Label).Should().Equal("Smith");
     }
 
+    /// <summary>
+    /// #460 M15: the grid's search narrows the ROWS the values come from, exactly as /execute
+    /// narrows the rows it returns — so a searched grid's panel offers only what the grid shows.
+    /// "carol" matches no LastName, so this is not the value search in disguise.
+    /// </summary>
+    [Fact]
+    public async Task The_grid_search_narrows_the_rows_the_values_come_from()
+    {
+        var result = await _client.GetDistinctValuesAsync(AllPeopleQueryId, "LastName", querySearch: "carol");
+
+        result.Matching.Select(v => v.Label).Should().Equal("Jones");
+    }
+
+    [Fact]
+    public async Task The_grid_search_matches_what_execute_returns()
+    {
+        var rows = await _client.ExecuteQueryAsync(AllPeopleQueryId, search: "smi");
+        var values = await _client.GetDistinctValuesAsync(AllPeopleQueryId, "FirstName", querySearch: "smi");
+
+        values.Matching.Select(v => v.Label).Should().BeEquivalentTo(["Alice", "Bob"]);
+        rows.TotalItems.Should().Be(2);
+    }
+
     [Fact]
     public async Task Other_column_filters_narrow_the_rows_the_values_come_from()
     {

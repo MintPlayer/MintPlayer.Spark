@@ -88,7 +88,8 @@ internal sealed partial class DistinctValues : IPostEndpoint
                 : null;
 
             var values = await queryExecutor.GetDistinctValuesAsync(
-                query, request.Column, parent, request.Search, filters, httpContext.RequestAborted);
+                query, request.Column, parent, request.Search, filters, httpContext.RequestAborted,
+                querySearch: request.QuerySearch);
 
             return Results.Ok(values);
         }

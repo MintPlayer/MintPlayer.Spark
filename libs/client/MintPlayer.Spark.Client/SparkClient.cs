@@ -466,6 +466,12 @@ public partial class SparkClient : IDisposable
     /// An empty result means either "nothing matches" or "you may not enumerate this column", and the
     /// two are deliberately indistinguishable.
     /// </para>
+    /// <para>
+    /// <paramref name="search"/> narrows the listed values themselves (the panel's own box);
+    /// <paramref name="querySearch"/> is the grid's search, the <c>search</c> of
+    /// <c>ExecuteQueryAsync</c>,
+    /// so the values come only from the rows that search matches.
+    /// </para>
     /// </remarks>
     public Task<DistinctValuesResult> GetDistinctValuesAsync(
         Guid queryId,
@@ -475,10 +481,11 @@ public partial class SparkClient : IDisposable
         string? parentId = null,
         string? parentType = null,
         CancellationToken cancellationToken = default,
-        SparkDeletedFilter? deleted = null)
-        => GetDistinctValuesCoreAsync(queryId.ToString(), column, search, columns, parentId, parentType, cancellationToken, deleted);
+        SparkDeletedFilter? deleted = null,
+        string? querySearch = null)
+        => GetDistinctValuesCoreAsync(queryId.ToString(), column, search, columns, parentId, parentType, cancellationToken, deleted, querySearch);
 
-    /// <summary>Alias-based overload for <see cref="GetDistinctValuesAsync(Guid,string,string?,QueryColumnFilter[]?,string?,string?,CancellationToken,SparkDeletedFilter?)"/>.</summary>
+    /// <summary>Alias-based overload for <see cref="GetDistinctValuesAsync(Guid,string,string?,QueryColumnFilter[]?,string?,string?,CancellationToken,SparkDeletedFilter?,string?)"/>.</summary>
     public Task<DistinctValuesResult> GetDistinctValuesAsync(
         string queryAlias,
         string column,
@@ -487,12 +494,14 @@ public partial class SparkClient : IDisposable
         string? parentId = null,
         string? parentType = null,
         CancellationToken cancellationToken = default,
-        SparkDeletedFilter? deleted = null)
-        => GetDistinctValuesCoreAsync(queryAlias, column, search, columns, parentId, parentType, cancellationToken, deleted);
+        SparkDeletedFilter? deleted = null,
+        string? querySearch = null)
+        => GetDistinctValuesCoreAsync(queryAlias, column, search, columns, parentId, parentType, cancellationToken, deleted, querySearch);
 
     private async Task<DistinctValuesResult> GetDistinctValuesCoreAsync(
         string queryId, string column, string? search, QueryColumnFilter[]? columns,
-        string? parentId, string? parentType, CancellationToken cancellationToken, SparkDeletedFilter? deleted)
+        string? parentId, string? parentType, CancellationToken cancellationToken, SparkDeletedFilter? deleted,
+        string? querySearch)
     {
         var content = JsonContent.Create(
             WithDeleted(new Dictionary<string, object?>
@@ -503,6 +512,8 @@ public partial class SparkClient : IDisposable
                 ["columns"] = columns,
                 ["parentId"] = parentId,
                 ["parentType"] = parentType,
+                // The grid's own search (#460 M15), so the values match the rows the grid shows.
+                ["querySearch"] = querySearch,
             }, deleted), options: JsonOptions);
 
         using var response = await SendAsync(

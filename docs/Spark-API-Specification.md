@@ -246,9 +246,14 @@ The value list behind one column's filter panel (#431).
   "search": "alf",
   "columns": [ { "name": "Region", "includes": ["eu"], "excludes": [] } ],
   "parentId": null,
-  "parentType": null
+  "parentType": null,
+  "querySearch": "rome"
 }
 ```
+
+`search` narrows the listed values themselves (the panel's own box). `querySearch` is the grid's
+search, the `search` of `/spark/queries/execute`: the values are drawn only from the rows it matches,
+so a searched grid's panel lists what the grid shows (#460 M15).
 
 Responds with two buckets and a truncation flag:
 
