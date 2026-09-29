@@ -275,6 +275,10 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         }
 
         await OnBeforeSaveAsync(obj, entity);
+        // Before-save interceptors (#460): after the Actions class's own hook, before WITH CHECK, so
+        // what they stamp is what the row check judges and what gets written.
+        if (serviceProvider?.GetService<IPersistentObjectInterceptorPipeline>() is { } pipeline)
+            await pipeline.RunBeforeSaveAsync(obj, entity);
         await EnsureRowSaveAllowedAsync(obj, entity);
         await session.StoreAsync(entity);
         await session.SaveChangesAsync();
@@ -291,13 +295,27 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// another tenant's owner. Skipped for the system context (module sync, background work) —
     /// row rules scope viewers, and infrastructure has none. Overriding <see cref="OnSaveAsync"/>
     /// without calling the base implementation takes over this responsibility.
+    /// <para>
+    /// Judged through row security (#460, D1), so it is the same rule every read path applies: this
+    /// class's <see cref="GetRowFilterAsync"/> and <see cref="IsAllowedAsync"/> AND every applicable
+    /// row policy — and a policy that opts out of the system-context exemption applies to the system
+    /// here too.
+    /// </para>
     /// </summary>
     private async Task EnsureRowSaveAllowedAsync(PersistentObject obj, T entity)
     {
+        var action = string.IsNullOrEmpty(obj.Id) ? "New" : "Edit";
+
+        if (serviceProvider?.GetService<IRowSecurity>() is { } rowSecurity)
+        {
+            if (!await rowSecurity.IsAllowedAsync(typeof(T), action, entity))
+                throw new Abstractions.Authorization.SparkRowLevelAccessDeniedException($"{action}/{typeof(T).Name}");
+            return;
+        }
+
+        // Constructed by hand, outside the framework: no row security to ask, so the class's own rule.
         if (Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
             return;
-
-        var action = string.IsNullOrEmpty(obj.Id) ? "New" : "Edit";
 
         var filter = await GetRowFilterAsync(action);
         if (filter is not null && !filter.Compile()(entity))
@@ -313,9 +331,17 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         var entity = await session.LoadAsync<T>(id);
         if (entity != null)
         {
-            await OnBeforeDeleteAsync(entity);
+            // When interceptors govern this type, DatabaseAccess already ran OnBeforeDeleteAsync (it
+            // must, to decide a replacement after it) — run it once, not twice.
+            if (serviceProvider?.GetService<IPersistentObjectInterceptorPipeline>() is not { } pipeline
+                || !pipeline.ConsumeBeforeDeleteHandled(entity))
+                await OnBeforeDeleteAsync(entity);
             session.Delete(entity);
-            await session.SaveChangesAsync();
+
+            // A bulk delete commits every row with ONE SaveChanges (#460, D18), so while its batch is
+            // open the save is the caller's. An override that saves here itself breaks that guarantee.
+            if (serviceProvider?.GetService<ISparkWriteBatch>() is not { IsDeferring: true })
+                await session.SaveChangesAsync();
         }
     }
 
@@ -363,24 +389,46 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// edit, delete, create (WITH CHECK), streaming and breadcrumb loads — so they cannot drift.
     /// </para>
     /// <para>
-    /// What it is for is the answer the action catalogue cannot give.
-    /// <c>GET /spark/actions/{objectTypeId}</c> is type-level and is never told what an execution
-    /// returned, so an action that applies to only some results can only be withheld here.
+    /// Nor is it where actions are withheld any more: that is
+    /// <see cref="OnDisableActionsAsync(IDisablable, DisableActionsContext)"/> (#460, D13), which the
+    /// framework also enforces at submit. What remains here is a per-execution seam that can raise a
+    /// retry prompt.
     /// </para>
+    /// </remarks>
+    public virtual Task OnQueryAsync(SparkQueryContext context) => Task.CompletedTask;
+
+    /// <summary>
+    /// Withholds actions on a detail page, a query, or the targets of a submitted action — the single
+    /// source of truth for disabled actions (#460, D13). Called at load (the answer is returned as
+    /// <c>DisabledActions</c>) and at submit (a disabled action is refused with <c>403</c>, after the
+    /// row gate). Empty by default.
+    /// </summary>
+    /// <remarks>
+    /// Depend only on the entity (<see cref="DisableActionsContext.Entity"/>, the <b>stored</b>
+    /// state), the user and other stored state, so the load and submit answers agree.
     /// <example>
     /// <code>
-    /// public override Task OnQueryAsync(SparkQueryContext context)
+    /// public override Task OnDisableActionsAsync(IDisablable target, DisableActionsContext context)
     /// {
-    ///     if (context.Query.Name == "DisconnectedRepositories")
-    ///         return Task.CompletedTask;
-    ///
-    ///     context.DisableActions("DeleteData");
+    ///     if (context.Entity is Repository { Connection: not RepositoryConnection.Disconnected })
+    ///         target.DisableActions("DeleteData");
     ///     return Task.CompletedTask;
     /// }
     /// </code>
     /// </example>
     /// </remarks>
-    public virtual Task OnQueryAsync(SparkQueryContext context) => Task.CompletedTask;
+    public virtual Task OnDisableActionsAsync(IDisablable target, DisableActionsContext context) => Task.CompletedTask;
+
+    /// <summary>
+    /// The batched form: every target of one request in one call (a custom action's parent, its query
+    /// and each selected row). Override to answer a large selection in one round-trip; the default
+    /// calls <see cref="OnDisableActionsAsync(IDisablable, DisableActionsContext)"/> per item.
+    /// </summary>
+    public virtual async Task OnDisableActionsAsync(IReadOnlyList<DisableActionsItem> items)
+    {
+        foreach (var item in items)
+            await OnDisableActionsAsync(item.Target, item.Context);
+    }
 
     /// <summary>
     /// Row-level authorization as a composable filter. Where <see cref="IsAllowedAsync"/> judges
@@ -543,14 +591,29 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
 
     /// <inheritdoc />
     /// <remarks>
-    /// The base implementation does nothing, and in particular does not bind the child's
-    /// parent-typed attribute for you. That is a deliberate omission rather than a gap: automatic
-    /// binding is what forces a grandchild's hook to substitute a different parent before
-    /// delegating, and the ordering rule that creates ("substitute before calling base, never
-    /// after") is the kind of invisible trap that only exists because the binding is implicit.
-    /// A hook that wants a parent's value sets it explicitly, from whichever object it likes.
+    /// <para>
+    /// When New was started from a <b>sub-query</b> (#460, D19, owner refinement), the base fills the
+    /// new object's reference to the parent — <see cref="SparkNewArgs{T}.FillParentReference"/>: the
+    /// single reference attribute whose target is the parent's type, or the one the sub-query names
+    /// with <c>parentReference</c>. Zero or several candidates fill nothing (logged at Debug).
+    /// </para>
+    /// <para>
+    /// ⚠️ An override that does not call <c>base.OnNewAsync</c> loses the auto-fill — intended: the
+    /// hook then owns the initialisation (D1: nothing relies on base calls). Call
+    /// <c>args.FillParentReference()</c> to keep it without calling base.
+    /// </para>
+    /// <para>
+    /// A standalone New and an <c>AsDetail</c> row get nothing from the base: an embedded row's parent
+    /// owns the save, and a grandchild's hook would otherwise have to substitute a different parent
+    /// before delegating — the invisible ordering trap implicit binding creates. There, a hook that
+    /// wants a parent's value sets it explicitly, from whichever object it likes.
+    /// </para>
     /// </remarks>
-    public virtual Task OnNewAsync(SparkNewArgs<T> args) => Task.CompletedTask;
+    public virtual Task OnNewAsync(SparkNewArgs<T> args)
+    {
+        args.FillParentReference();
+        return Task.CompletedTask;
+    }
 
     /// <inheritdoc />
     /// <remarks>

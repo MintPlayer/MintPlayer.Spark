@@ -33,12 +33,13 @@ public sealed class QueryResult
     public IReadOnlyDictionary<string, string>? TypeHints { get; init; }
 
     /// <summary>
-    /// Custom actions withheld for this result, by name. Null or empty means every action the
-    /// caller has the right to is offered.
+    /// Actions withheld for this result, by name. Null or empty means every action the caller has
+    /// the right to is offered.
     /// <para>
-    /// Set from <c>CustomQueryArgs.DisableActions(...)</c>. The action catalogue is per type and is
-    /// never told what a given execution returned, so this is where a per-result answer travels.
-    /// An affordance, not a permission — the handler must still refuse.
+    /// Set from the entity's <c>OnDisableActionsAsync</c> hook, called with a query target when the
+    /// query executes (#460, D13). The action catalogue is per type and is never told which query is
+    /// on screen, so this is where a per-query answer travels. The same hook is asked again when an
+    /// action is submitted from this query, and a disabled action is refused with <c>403</c>.
     /// </para>
     /// </summary>
     public IReadOnlyList<string>? DisabledActions { get; init; }

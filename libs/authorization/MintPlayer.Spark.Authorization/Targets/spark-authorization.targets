@@ -1,50 +1,32 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 
 	<!--
-	  Target: SparkAuthEnsureNpmPackage
-	  Installs @mintplayer/ng-spark-auth via npm if:
-	    - EnableSparkAuthSpa is true
-	    - A package.json exists in $(SpaRoot) (project has a SPA)
-	    - The package is not already in node_modules
-	    - No stamp file from a previous attempt exists (delete obj/ or run dotnet clean to retry)
-	  Runs BeforeTargets="Build", AfterTargets="DebugEnsureNodeEnv" to ensure
-	  base npm install has run first (if NodeServices is present).
-	  AfterTargets silently ignored if DebugEnsureNodeEnv does not exist.
+	  Target: SparkAuthCheckNpmDependency  (#460, T9)
+	  Warns when the SPA's package.json does not declare @mintplayer/ng-spark-auth.
+
+	  This replaces SparkAuthEnsureNpmPackage, which ran `npm i` during the .NET build: in the wrong
+	  directory for a workspace whose node_modules live at the repository root, writing an unpinned
+	  "^latest"-style range into package.json, and silently on every clean clone. Installing packages
+	  is the developer's decision and belongs in package.json; the build only says when it is missing.
+
+	  Reads the file as text: a JSON parser is not available to MSBuild without a task assembly, and a
+	  dependency name in quotes is unambiguous enough for a warning.
 	-->
-	<Target Name="SparkAuthEnsureNpmPackage"
+	<Target Name="SparkAuthCheckNpmDependency"
 	        BeforeTargets="Build"
-	        AfterTargets="DebugEnsureNodeEnv"
-	        Condition=" '$(EnableSparkAuthSpa)' == 'true'
-	                    And Exists('$(SpaRoot)package.json')
-	                    And !Exists('$(NodeModulesCheckPath)node_modules\$(SparkAuthNpmPackage)')
-	                    And !Exists('$(SparkAuthNpmStampFile)') ">
+	        Condition=" '$(EnableSparkAuthSpa)' == 'true' And Exists('$(SpaRoot)package.json') ">
 
-		<!-- Check if Node.js is available -->
-		<Exec Command="node --version" ContinueOnError="true">
-			<Output TaskParameter="ExitCode" PropertyName="_SparkAuthNodeExitCode" />
-		</Exec>
+		<ReadLinesFromFile File="$(SpaRoot)package.json">
+			<Output TaskParameter="Lines" ItemName="_SparkAuthPackageJsonLines" />
+		</ReadLinesFromFile>
 
-		<!-- If Node.js is not installed, warn and skip -->
-		<Warning Condition="'$(_SparkAuthNodeExitCode)' != '0'"
-		         Text="[MintPlayer.Spark.Authorization] Node.js is not installed. Skipping npm install of $(SparkAuthNpmPackage). Install Node.js from https://nodejs.org/ to enable automatic setup." />
+		<PropertyGroup>
+			<_SparkAuthPackageJson>@(_SparkAuthPackageJsonLines)</_SparkAuthPackageJson>
+		</PropertyGroup>
 
-		<!-- Run npm install (ContinueOnError in case package is not yet published to npm) -->
-		<Message Importance="high"
-		         Text="[MintPlayer.Spark.Authorization] Installing $(SparkAuthNpmPackage)..."
-		         Condition=" '$(_SparkAuthNodeExitCode)' == '0' " />
-
-		<Exec WorkingDirectory="$(NpmInstallWorkingDirectory)"
-		      Command="npm i $(SparkAuthNpmPackage)"
-		      ContinueOnError="WarnAndContinue"
-		      Condition=" '$(_SparkAuthNodeExitCode)' == '0' " />
-
-		<!-- Write stamp file after install attempt -->
-		<MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(SparkAuthNpmStampFile)'))"
-		         Condition=" '$(_SparkAuthNodeExitCode)' == '0' " />
-		<WriteLinesToFile File="$(SparkAuthNpmStampFile)"
-		                  Lines="$(SparkAuthNpmPackage) installed at $([System.DateTime]::Now.ToString('o'))"
-		                  Overwrite="true"
-		                  Condition=" '$(_SparkAuthNodeExitCode)' == '0' " />
+		<Warning Code="SPARK030"
+		         Condition=" !$(_SparkAuthPackageJson.Contains('&quot;$(SparkAuthNpmPackage)&quot;')) "
+		         Text="[MintPlayer.Spark.Authorization] $(SpaRoot)package.json does not declare $(SparkAuthNpmPackage). The generated spark-auth.setup.ts imports it; add it to the SPA's dependencies (with the major version matching your Angular major), e.g. npm install $(SparkAuthNpmPackage)@^22 in the directory that owns node_modules. Set EnableSparkAuthSpa=false to silence this for a project without the Spark SPA." />
 	</Target>
 
 	<!--
@@ -111,7 +93,6 @@
 	-->
 	<Target Name="SparkAuthGenerateSetupFile"
 	        BeforeTargets="Build"
-	        DependsOnTargets="SparkAuthEnsureNpmPackage"
 	        Condition=" '$(EnableSparkAuthSpa)' == 'true'
 	                    And '$(GenerateSparkAuthSetupFile)' == 'true'
 	                    And Exists('$(SpaRoot)package.json')

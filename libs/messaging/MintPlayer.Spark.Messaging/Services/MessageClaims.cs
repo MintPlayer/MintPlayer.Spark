@@ -20,7 +20,16 @@ internal static class MessageClaims
     /// concurrently with whatever the sweeper decides to do about them.
     /// </para>
     /// </summary>
-    public static readonly string NodeId = $"{Environment.MachineName}/{Guid.NewGuid():N}";
+    public static string NodeId => HostScope.Value ?? ProcessNodeId;
+
+    private static readonly string ProcessNodeId = $"{Environment.MachineName}/{Guid.NewGuid():N}";
+
+    /// <summary>
+    /// A per-host identity for tests and spikes that run two messaging hosts in one process (S-M8,
+    /// leader handover): set it before starting a host's services, and every task that host starts
+    /// inherits it. Unset in an application, where one process is one host.
+    /// </summary>
+    internal static readonly AsyncLocal<string?> HostScope = new();
 
     /// <summary>
     /// Marks the message as claimed by <paramref name="ownerId"/> and saves immediately, before any
@@ -71,23 +80,34 @@ internal static class MessageClaims
         TimeSpan ttl,
         CancellationToken cancellationToken)
     {
-        using var session = store.OpenAsyncSession();
-        session.Advanced.UseOptimisticConcurrency = true;
-
-        var message = await session.LoadAsync<SparkMessage>(messageId, cancellationToken);
-        if (message is null || message.OwnerId != ownerId || message.Status != EMessageStatus.Processing)
-            return false;
-
-        message.ClaimExpiresAtUtc = DateTime.UtcNow + ttl;
-
-        try
+        // A conflict is not a lost claim: the owner's own handler-step saves write the same document,
+        // and one landing between our load and save made the renewal fail. Returning false then read
+        // as "finished" to the renewal loop, which stopped renewing for the rest of the handler's run.
+        // Reload and re-check instead; ownership is what decides. Bounded, and without any wait.
+        const int attempts = 3;
+        for (var attempt = 1; ; attempt++)
         {
-            await session.SaveChangesAsync(cancellationToken);
-            return true;
-        }
-        catch (Raven.Client.Exceptions.ConcurrencyException)
-        {
-            return false;
+            using var session = store.OpenAsyncSession();
+            session.Advanced.UseOptimisticConcurrency = true;
+
+            var message = await session.LoadAsync<SparkMessage>(messageId, cancellationToken);
+            if (message is null || message.OwnerId != ownerId || message.Status != EMessageStatus.Processing)
+                return false;
+
+            message.ClaimExpiresAtUtc = DateTime.UtcNow + ttl;
+
+            try
+            {
+                await session.SaveChangesAsync(cancellationToken);
+                return true;
+            }
+            catch (Raven.Client.Exceptions.ConcurrencyException) when (attempt < attempts)
+            {
+            }
+            catch (Raven.Client.Exceptions.ConcurrencyException)
+            {
+                return false;
+            }
         }
     }
 
@@ -110,9 +130,17 @@ internal static class MessageClaims
         using var session = store.OpenAsyncSession();
         var message = await session.LoadAsync<SparkMessage>(messageId, cancellationToken);
         return message is not null
-            && (message.Status == EMessageStatus.Pending
+            && ((message.Status == EMessageStatus.Pending && !IsDeferredByThrottle(message))
                 || (message.Status == EMessageStatus.Processing && message.OwnerId != ownerId));
     }
+
+    /// <summary>
+    /// Pending, unwoken and scheduled for later: the shape <see cref="DeferUnstartedAsync"/> leaves.
+    /// The owner put it there itself, so it is not a reclaim. A sweeper reclaim always sets
+    /// <see cref="SparkMessage.WakeUp"/>, which is what tells the two apart.
+    /// </summary>
+    private static bool IsDeferredByThrottle(SparkMessage message)
+        => !message.WakeUp && message.NextAttemptAtUtc is { } next && next > DateTime.UtcNow;
 
     /// <summary>
     /// Releases a claim without deciding the message's fate, returning it to
@@ -141,5 +169,47 @@ internal static class MessageClaims
             message.AttemptCount--;
 
         await session.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// The throttle's variant of <see cref="ReleaseUnstartedAsync"/>: gives up a claim on a message
+    /// whose handlers have not started, and schedules it for <paramref name="nextAttemptAtUtc"/>.
+    /// <para>
+    /// Three differences, each required. It runs in the <b>caller's</b> session on the message the
+    /// caller already loaded, so it is one write, not a load and a write. It leaves
+    /// <see cref="SparkMessage.WakeUp"/> <b>false</b>, because the message must stay invisible to the
+    /// subscription until the sweeper wakes it at its slot — <c>true</c> would redeliver it at once,
+    /// in a tight loop. And the save is <b>optimistic</b>: if the sweeper reclaimed the message in the
+    /// meantime, the reclaim wins and this returns false.
+    /// </para>
+    /// </summary>
+    public static async Task<bool> DeferUnstartedAsync(
+        IAsyncDocumentSession session,
+        SparkMessage message,
+        DateTime nextAttemptAtUtc,
+        CancellationToken cancellationToken)
+    {
+        message.Status = EMessageStatus.Pending;
+        message.OwnerId = null;
+        message.ClaimExpiresAtUtc = null;
+        message.WakeUp = false;
+        message.NextAttemptAtUtc = nextAttemptAtUtc;
+        // Not an attempt: nothing ran, so no retry budget is burned.
+        if (message.AttemptCount > 0)
+            message.AttemptCount--;
+
+        // Forced for this one entity, leaving the session's own mode alone: the processor's session is
+        // deliberately last-write-wins for the handler saves that follow a normal admission.
+        // Re-storing a tracked entity with its own change vector forces the check for that entity only.
+        await session.StoreAsync(message, session.Advanced.GetChangeVectorFor(message), message.Id, cancellationToken);
+        try
+        {
+            await session.SaveChangesAsync(cancellationToken);
+            return true;
+        }
+        catch (Raven.Client.Exceptions.ConcurrencyException)
+        {
+            return false;
+        }
     }
 }

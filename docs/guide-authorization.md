@@ -59,9 +59,13 @@ Delete. (They used to expand on the grant side only, so a combined denial denied
 string and therefore nothing at all. The loader refused that shape rather than fixing it. Both
 are gone.)
 
-`*` is a wildcard on either half — `Read/*`, `*/Person`, `*/*`. Use it sparingly: a wildcard
-covers types and actions that do not exist yet, and the startup posture report warns when the
-anonymous group holds one.
+**There are no wildcards.** A resource containing `*` — `Read/*`, `*/Person`, `*/*`, grant or
+denial — is refused at startup, and the build reports it first as **SPARK021** (an error). An
+access review (GDPR, ISO 27001) has to be able to enumerate who can do what, and a wildcard also
+covers types and actions that do not exist yet. Name every target, and use a combined action to
+cover several actions at once: `QueryReadEditNewDelete/Person` instead of `*/Person`. A new
+entity type is therefore denied to everyone until a right names it — accepted busywork. (Wildcards
+existed until #460; the posture report's "floor rather than a ceiling" warning went with them.)
 
 ---
 
@@ -159,6 +163,27 @@ spark.UseGroupMembershipProvider<MyProvider>();
 ```
 
 The default reads `group` / `groups` / the two Microsoft role claim types / the SOAP group claim.
+
+To **add** a source of membership instead of replacing the claims — groups earned by reputation,
+a directory lookup on top of sign-in claims — compose one:
+
+```csharp
+spark.AddGroupMembershipProvider<EarnedPrivilegesProvider>();
+```
+
+Every composed provider's answer is merged with the primary one's (`Use…` keeps replacing only the
+primary; the call order does not matter; adding the same type twice is a no-op). A provider may also
+name groups by **id** — the keys of the `groups` block — by implementing `IGroupIdMembershipProvider`
+next to `IGroupMembershipProvider`; that is the unambiguous way, since a display name may be any
+string. Ids obey the same rules as names: a well-known id is dropped and an undeclared one grants
+nothing. All providers are asked **once per request**; the merged answer is cached for the rest of it
+and shared by `[SparkAuthorize(Group = …)]`, which matches a provider-returned id by the id itself or
+by any translation of that group's name.
+
+**The current user.** Code that needs *who* rather than *which groups* — audit stamping, moderation —
+injects `ISparkCurrentUser` (`Id`, `IsAuthenticated`), scoped, which reads the principal's
+`NameIdentifier` claim by default. It is an id, never a name; replace the registration to resolve it
+differently.
 
 ---
 
@@ -262,8 +287,9 @@ new SparkEndpointFactory<MyContext>(store, models,
     security: SparkTestSecurity.Permissive.Without("Secret"));
 ```
 
-`SparkTestSecurity` gives you `Permissive` (the default — a wildcard grant, so the baseline
-exercises the same evaluation path production does), `Empty`, `Granting`, `Denying`, `Without`,
+`SparkTestSecurity` gives you `Permissive` (the default — everything not explicitly denied; the
+factory layers that baseline over the real evaluator, so denials still run through the production
+path), `Empty`, `Granting`, `Denying`, `Without`,
 `FromFile` and `FromJson`. The factory writes the file and then asserts the host loaded it, so a
 silently-ignored override cannot make an authorization test vacuously green.
 

@@ -22,18 +22,20 @@ namespace MintPlayer.Spark.Services;
 internal partial class SecurityFileAccessControl : IAccessControl
 {
     [Inject] private readonly ISecurityConfigurationLoader configLoader;
-    [Inject] private readonly IGroupMembershipProvider groupMembershipProvider;
+    [Inject] private readonly SparkGroupMembership groupMembership;
     [Inject] private readonly ILogger<SecurityFileAccessControl> logger;
     [Inject] private readonly IHttpContextAccessor? httpContextAccessor;
+
+    private (SecurityConfiguration Config, SparkRequestGroups Groups, HashSet<Guid> Ids)? resolved;
 
     public async Task<bool> IsAllowedAsync(string resource, CancellationToken cancellationToken = default)
     {
         var config = configLoader.GetConfiguration();
-        var groupNames = (await groupMembershipProvider.GetCurrentUserGroupsAsync(cancellationToken)).ToList();
+        var groups = await groupMembership.GetAsync(cancellationToken);
 
-        // Resolve claim-asserted group names to ids, minus anything a well-known role claims.
-        var reserved = ReservedGroupIds(config);
-        var groupIds = ResolveGroupIds(config, groupNames, reserved);
+        // Resolve claim-asserted group names (and provider-asserted ids) to ids, minus anything a
+        // well-known role claims. Memoised per request and configuration — see ResolvedGroupIds.
+        var groupIds = new HashSet<Guid>(ResolvedGroupIds(config, groups));
 
         // The well-known roles are decided from authentication state, never from a claim.
         //
@@ -49,7 +51,7 @@ internal partial class SecurityFileAccessControl : IAccessControl
 
         var allowed = configLoader.GetResolvedRights(groupIds).Allows(resource);
 
-        LogAuthorizationDecision(resource, groupNames, allowed);
+        LogAuthorizationDecision(resource, groups.Names, allowed);
         return allowed;
     }
 
@@ -100,6 +102,35 @@ internal partial class SecurityFileAccessControl : IAccessControl
 
         return reserved;
     }
+
+    /// <summary>
+    /// The caller's non-reserved group ids under <paramref name="config"/>, resolved once per
+    /// request. Keyed on both inputs by reference, so a hot-reloaded file or a replaced principal
+    /// (which yields a fresh <see cref="SparkRequestGroups"/>) is resolved again rather than
+    /// answered from the old snapshot.
+    /// </summary>
+    private IReadOnlySet<Guid> ResolvedGroupIds(SecurityConfiguration config, SparkRequestGroups groups)
+    {
+        if (resolved is { } hit && ReferenceEquals(hit.Config, config) && ReferenceEquals(hit.Groups, groups))
+            return hit.Ids;
+
+        var reserved = ReservedGroupIds(config);
+        var ids = ResolveGroupIds(config, groups.Names, reserved);
+
+        // Ids a provider asserts directly (IGroupIdMembershipProvider) obey the same two rules as a
+        // resolved name: a well-known id is never assertable, and an undeclared one names nothing.
+        foreach (var id in groups.Ids)
+        {
+            if (!reserved.Contains(id) && IsDeclared(config, id))
+                ids.Add(id);
+        }
+
+        resolved = (config, groups, ids);
+        return ids;
+    }
+
+    private static bool IsDeclared(SecurityConfiguration config, Guid id)
+        => config.Groups.Keys.Any(k => Guid.TryParse(k, out var declared) && declared == id);
 
     private static HashSet<Guid> ResolveGroupIds(
         SecurityConfiguration config, IEnumerable<string> groupNames, HashSet<Guid> reserved)

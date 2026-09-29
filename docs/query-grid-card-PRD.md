@@ -73,8 +73,24 @@ bundle; the **three** duplicated `<bs-datatable>` blocks still collapse to one. 
 
 ### `spark-query-card` — chrome around it
 
-A `<bs-card>` with a header (icon · caption · actions) and a `spark-query-grid` in the body.
+A `<bs-card>` with a header (icon · caption · actions · search) and a `spark-query-grid` in the body.
 Everything a host does not override renders exactly as it does today.
+
+**The header search box (#460 M15, the owner's D17 addendum).** On the trailing edge, after the
+actions, as Vidyano's sub-query tabs have it. It is `<spark-search-box>` from `@mintplayer/ng-spark/grid`,
+the same component the query-list page renders above its grid, so both surfaces behave identically:
+a 300 ms debounce while typing, a clear button, and Escape to clear. It feeds the grid's `search`, so
+`/spark/queries/execute` receives `search` together with `parentId`/`parentType` and searches
+server-side (#210), and the grid sends the same term to `/spark/queries/distinct-values` as
+`querySearch`, so a column filter lists only the values of the searched rows.
+- The card's `search` input is the box's starting value; a new value from the host replaces what was
+  typed (`linkedSignal`).
+- `[searchable]="false"` hides the box. A card over bound `data` never shows it, because the grid does
+  not refetch bound rows.
+- **A new term clears the selection**, on both surfaces. Reconciling it with the new rows was rejected:
+  a ticked row that is merely on another page of the searched result cannot be told from one the
+  search excluded, and a bulk Delete would then act on rows the user can no longer see. The
+  "N selected" chip therefore always counts what is ticked on screen.
 
 ### The slots
 
@@ -84,7 +100,18 @@ Three structural directives, projected by the host, each collected with `content
 |---|---|---|
 | `*sparkQueryIcon` | header, left | nothing |
 | `*sparkQueryCaption` | header, centre | `query.description \| resolveTranslation` &#124;&#124; `query.name` |
-| `*sparkQueryActions` | header, right | the `bs-priority-nav` of server-declared custom actions |
+| `*sparkQueryActions` | header, right | the `bs-priority-nav` of the grid's toolbar actions: New, Delete and the custom actions (#460 M15) |
+
+**Header side (#460 M15):** the caption comes first, with `me-auto`, and the actions sit on the
+trailing edge, as this table always said. Until M15 the card rendered them the other way round,
+with the actions on the left and the caption pushed right. The priority nav's overflow label is the
+translated `common.more`, as on the list and detail pages. The actions slot's context gains
+`actions`, the full toolbar model, beside `$implicit`, which is still the custom actions only. See
+`guide-custom-actions.md`, "Default actions, selection and sub-queries", for the toolbar, the
+"N selected" chip and the per-row `⋮` menu. The grid owns all of them, so the query-list page shows
+the same ones. There is no select-all (owner decision, 2026-09-29): with lazy or virtual-scrolled
+rows it could only select the loaded rows. Deselect-all is the datatable's own header checkbox,
+shown only while a row is selected.
 
 Each takes an **optional query alias or id as its value** — `*sparkQueryIcon="'cars'"`. A detail
 page renders one card per entry in `EntityTypeDefinition.Queries`, so a bare slot would decorate

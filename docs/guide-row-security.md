@@ -72,9 +72,77 @@ You write the rule once; the framework derives every enforcement point:
 
 A startup diagnostic logs each row-scoped type and the mode it runs in.
 
-### Projection queries fall back — never silently unfiltered
+### Projection queries push down when they can — never silently unfiltered
 
-When a query returns an **index projection** (e.g. `VCar` from a `Cars_Overview` index), a predicate typed on the entity (`Car`) can't compose into `IRavenQueryable<VCar>`. The framework falls back automatically to post-materialization filtering: it loads the base documents for the page in **one batched request** and evaluates the compiled rule against those. A one-time diagnostic records the fallback. The result is filtered either way — the pushdown is an optimization, never the only gate.
+When a query returns an **index projection** (e.g. `VCar` from a `Cars_Overview` index), the predicate is typed on the entity (`Car`). The framework **rebinds it onto the projection by member name** (#285): when every member the predicate reads exists on `VCar` with the same type, the rebound predicate goes into the index query, so the database only returns rows the rule allows. When a member is missing — the index does not store `Owner` — it falls back to post-materialization filtering. Either way it then loads the base documents for the page in **one batched request** and evaluates the compiled rule against those. A one-time diagnostic records which branch ran. The result is filtered either way — the pushdown is an optimization, never the only gate.
+
+⚠️ Rebinding is by **name and type**, not meaning. A projection property that shares a name and type with an entity property but holds something else (a display name in `Owner` where the entity holds an id) narrows the index query wrongly and hides rows the rule would allow (it never shows a row the rule forbids — the reload still judges the documents). Keep projection fields that a row rule reads identical to the entity's.
+
+## Row policies — one rule for many types (#460)
+
+A rule that is not about any one entity — soft deletion, tenancy, a moderation lock — is a **row policy**: written once, applied to every type it claims, ANDed with each type's own rule. Register it with `AddSparkRowPolicy<T>()` (scoped):
+
+```csharp
+public sealed class HideDeleted : RowFilterPolicy<ISoftDeletable>   // covers every implementer
+{
+    public override bool BypassInSystemContext => false;            // background work skips deleted rows too
+    public override ValueTask<Expression<Func<ISoftDeletable, bool>>?> GetFilterAsync(RowPolicyContext context)
+        => ValueTask.FromResult<Expression<Func<ISoftDeletable, bool>>?>(
+            context.Deleted == SparkDeletedFilter.Exclude ? x => x.IsDeleted != true : null);
+}
+
+builder.Services.AddSpark(builder.Configuration, spark => spark.AddSparkRowPolicy<HideDeleted>());
+```
+
+- **Two kinds.** `IRowFilterPolicy` (helper `RowFilterPolicy<T>`) returns a predicate that is pushed into the query — paging stays in the database. `IRowCheckPolicy` (helper `RowCheckPolicy<T>`) judges each materialized row, which **switches database paging off** for the types it applies to; prefer a filter.
+- **`AppliesTo(Type)`** decides which types a policy governs. The helpers use `typeof(T).IsAssignableFrom`, so an interface covers every implementer. The answer must depend on the type alone — it is cached process-wide.
+- **How it composes.** Effective filter = the Actions class's `GetRowFilterAsync` AND every applicable filter policy, joined by rebinding each predicate onto one parameter and `AndAlso` (never `Expression.Invoke`, which RavenDB does not translate). A constant `false` from anyone short-circuits; a constant `true` is dropped. The combined filter goes where the Actions filter always went — before column filters and search — and is memoized per (type, action) per request exactly like it. Measured (#460 spike S1, Lucene and Corax): `where ((Owner = $p0 and IsDeleted != $p1)) and (Category = $p2) and (search(Title, $p3) or search(Body, $p4))`. Per-row rule = compiled filter AND `IsAllowedAsync` AND every check policy.
+- **Rebinding is by member name.** A predicate over `ISoftDeletable` reads `x.IsDeleted`; it is rebound as `row.IsDeleted` on each entity (and on an index projection, #285). Every member it reads must exist on the target with the same type, or composing throws — at the first request that needs it — rather than silently dropping the predicate.
+- **A policy returns a predicate, never a query.** It is not handed the `IQueryable` — RavenDB groups adjacent `Search` clauses and a policy-placed `Where` could be OR-ed into the search group.
+- **Absent fields.** `x.IsDeleted != true` matches a document with no `IsDeleted` field; `!x.IsDeleted` / `== false` does **not** — measured on both engines, collection and static index (#460 spike S3). In memory the two agree, which is exactly why the database-side difference is a trap.
+- **`RowPolicyContext`** carries the entity type, the action (including custom action names), the request's `Deleted` mode (the `deleted: exclude|include|only` field of a query request — core only carries it), `IsSystemContext` and the `User`.
+- **System context.** Policies are skipped for the system by default (`BypassInSystemContext => true`), like Actions-class rules. A policy that returns `false` still applies to module sync and background work.
+- **Which rules count as "declaring a row policy".** The anonymous-readable startup validator counts the Actions class's rule and policies with `IsVisibilityDecision => true` — a soft-delete filter on every type does not satisfy it. The `SparkQueryPage<T>` refusal counts the Actions rule, check policies and visibility policies, not a non-visibility filter policy. The per-row `can` block is computed whenever any rule or policy applies.
+- **Everywhere `IRowSecurity` is asked**: list, detail, custom queries, sub-queries, distinct values, streams, breadcrumbs, the edit/delete gates, custom-action selections and `WITH CHECK`.
+
+⚠️ **Known gap (D1, documented, not fixed):** an Actions class that overrides `OnLoadAsync` or `OnSaveAsync` without calling the base takes over the row gate and `WITH CHECK` for its type — policies included. References are not row-checked on save.
+
+## Persistent-object interceptors (#460)
+
+Cross-cutting write behaviour — stamping, soft deletion, locks — is an `IPersistentObjectInterceptor`, registered with `AddPersistentObjectInterceptor<T>()` (scoped, multi-registered). It runs in `IDatabaseAccess`, the chokepoint every framework write goes through, only after every gate passed:
+
+| Hook | When |
+|---|---|
+| `OnBeforeSaveAsync(SaveContext)` | inside the base `OnSaveAsync`, after mapping and the Actions class's `OnBeforeSaveAsync`, **before** `WITH CHECK` and the write — mutate `context.Entity` to stamp it |
+| `OnAfterSaveAsync(SaveContext)` | after the Actions class returned |
+| `OnBeforeDeleteAsync(DeleteContext)` | after the Actions class's `OnBeforeDeleteAsync`; may call `context.Replace()` |
+| `OnAfterDeleteAsync(DeleteContext)` | after the delete, or after the replacement was saved |
+| `OnAfterLoadAsync(LoadContext)` | after an entity-backed object was loaded through the row-gated read path |
+
+- **Order:** before-hooks in registration order; after-hooks in reverse, so the first-registered interceptor wraps the rest.
+- **Replacing a delete** is decided in `IDatabaseAccess`, not in the Actions class, so an `OnDeleteAsync` override cannot defeat it: the Actions class's `OnDeleteAsync` is not called, the tracked entity (as interceptors left it) is saved, and replication forwards a **save** rather than a hard delete (#460 spike S4). A purge (`DeletePersistentObjectAsync(typeId, id, PersistentObjectOperation.Purge)`) cannot be replaced.
+- **Context:** `Operation` (`Save`, `New`, `Delete`, `Revert`, `Restore`, `Purge`, `Sync` — the explicit kinds come from the `IDatabaseAccess` overloads that take a `PersistentObjectOperation`; module sync passes `Sync`), the submitted `PersistentObject`, `Before` (the stored entity, from a separate session), `Entity`, `User`, `IsSystemContext`.
+- **Refusing:** throw — `SparkRowLevelAccessDeniedException` is a 404, `SparkValidationException` a 400.
+
+⚠️ An `OnSaveAsync` override that does not call the base skips before-save interceptors along with `WITH CHECK` (D1); a warning is logged once per type. After-save hooks always run.
+
+- **`OnNaturalIdCollisionAsync(NaturalIdCollisionContext)`** — a create of an `IHasNaturalId` type derived an id an existing row holds, and the row gate refused the caller that row. Core answers 404; an interceptor may throw its own exception first to explain (SoftDelete: "restore it instead"). Whatever it throws tells the caller about a row it may not see — explain only to callers entitled to know.
+
+### Restore and purge are gated under their own names
+
+`IDatabaseAccess` treats the two SoftDelete operations as their own verbs, so a row policy can confine them to deleted rows while `Edit` / `Delete` keep hiding those rows:
+
+| Operation | Type-level right | Row-gate action | Refused by the disabled-action hook when withheld |
+|---|---|---|---|
+| `SavePersistentObjectAsync(po, Restore)` | `Restore/T` | `"Restore"` | `Restore`, `Edit`, `Save` |
+| `DeletePersistentObjectAsync(typeId, id, Purge)` | `Purge/T` | `"Purge"` | `Purge`, `Delete` |
+| `SavePersistentObjectAsync(po, Revert)` (History) | `Revert/T` **and** `Edit/T` | `"Revert"` | `Revert`, `Edit`, `Save` |
+
+A restore or revert never creates: an id that names nothing is a 404. The `WITH CHECK` after a restore or revert still asks `"Edit"`.
+
+**The Actions class sees the base verb.** Row *policies* get the real name (`RowPolicyContext.Action` is `"Restore"`, `"Purge"`, `"Revert"`) — that is how SoftDelete confines a restore to a deleted row. An Actions class's own `GetRowFilterAsync` / `IsAllowedAsync` is asked about the base verb instead: `"Edit"` for a restore or revert, `"Delete"` for a purge. So a rule written for the built-in verbs ("only the owner may edit") governs them too, instead of an unfamiliar name falling through to "unrestricted" (#460, M7). The packages that use all this are [`MintPlayer.Spark.SoftDelete`](../libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md) and [`MintPlayer.Spark.History`](../libs/history/MintPlayer.Spark.History/README.md) — use them rather than a hand-written soft-delete policy or revert.
+
+If an interceptor refuses a delete after an earlier hook changed the entity (SoftDelete marked it, a lock said no), `IDatabaseAccess` evicts the entity from the request session, so no later save in the request writes the half-made change.
 
 ## Write-side enforcement (`WITH CHECK`)
 

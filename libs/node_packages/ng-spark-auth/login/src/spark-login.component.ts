@@ -93,10 +93,10 @@ export class SparkLoginComponent {
     this.loading.set(true);
     this.errorMessage.set('');
 
-    const { email, password } = this.form.value;
+    const { email, password, rememberMe } = this.form.value;
 
     try {
-      await this.authService.login(email!, password!);
+      await this.authService.login(email!, password!, rememberMe === true);
       // R2-H9: validate returnUrl against the local-path rule. navigateByUrl
       // accepts some external shapes (protocol-relative '//attacker'); reject
       // and fall back to the default to close the open-redirect.

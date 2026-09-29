@@ -61,6 +61,11 @@ internal sealed partial class DeletePersistentObject : IPostEndpoint
             // R2-H2: row-level Delete denial returns 404 (M-3 uniformity).
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
+        catch (SparkActionDisabledException ex)
+        {
+            // After the row gate (#460, D13): the caller can see this row, so naming the action hides nothing.
+            return ClientResult.ActionDisabled(clientAccessor, ex);
+        }
         catch (SparkAccessDeniedException)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);

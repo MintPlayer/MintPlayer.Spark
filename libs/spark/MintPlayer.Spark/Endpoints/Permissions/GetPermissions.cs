@@ -32,7 +32,11 @@ internal sealed partial class GetPermissions : IGetEndpoint
             // its half of the existence oracle the other way: an unknown type answers
             // exactly what a fully denied one answers -- every right false -- rather than
             // 404. A 401 here would break the boot path for anonymous visitors.
-            return Results.Json(new { canQuery = false, canRead = false, canCreate = false, canEdit = false, canDelete = false });
+            return Results.Json(new
+            {
+                canQuery = false, canRead = false, canCreate = false, canEdit = false, canDelete = false,
+                canRestore = false, canPurge = false, canViewDeleted = false, canViewHistory = false, canRevert = false,
+            });
         }
 
         var target = entityType.Name;
@@ -48,6 +52,20 @@ internal sealed partial class GetPermissions : IGetEndpoint
         var canEdit = await permissionService.IsAllowedAsync("Edit", target);
         var canDelete = await permissionService.IsAllowedAsync("Delete", target);
 
-        return Results.Json(new { canQuery, canRead, canCreate, canEdit, canDelete });
+        // The rights the SoftDelete and History packages ask for (#460). Core reports them because it
+        // is what gates them (a restore under Restore/T, a purge under Purge/T, a revert under
+        // Revert/T + Edit/T); an app without the package simply never grants them, so they read
+        // false. Type-level only, like the rest: a row may still refuse.
+        var canRestore = await permissionService.IsAllowedAsync("Restore", target);
+        var canPurge = await permissionService.IsAllowedAsync("Purge", target);
+        var canViewDeleted = await permissionService.IsAllowedAsync("ViewDeleted", target);
+        var canViewHistory = await permissionService.IsAllowedAsync("History", target);
+        var canRevert = canEdit && await permissionService.IsAllowedAsync("Revert", target);
+
+        return Results.Json(new
+        {
+            canQuery, canRead, canCreate, canEdit, canDelete,
+            canRestore, canPurge, canViewDeleted, canViewHistory, canRevert,
+        });
     }
 }

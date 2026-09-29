@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Logging;
 using MintPlayer.SourceGenerators.Attributes;
+using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Actions;
 using Raven.Client.Documents.Session;
@@ -82,6 +84,15 @@ internal interface IRowSecurity
     bool HasRowRule(Type entityType);
 
     /// <summary>
+    /// Which kinds of row rule govern this entity type — its Actions class and the row policies that
+    /// apply to it (#460). <see cref="HasRowRule"/> is "any of them"; the callers that must tell them
+    /// apart (spike S5) ask here: the <c>SparkQueryPage&lt;T&gt;</c> refusal ignores filter policies,
+    /// and the anonymous-readable validator counts only visibility decisions.
+    /// </summary>
+    RowRuleKinds GetRowRuleKinds(Type entityType)
+        => HasRowRule(entityType) ? RowRuleKinds.ActionsRule : RowRuleKinds.None;
+
+    /// <summary>
     /// Drops rows the caller may not see.
     /// <para>
     /// <paramref name="resultType"/> may be a projection rather than the stored document. The rule
@@ -112,7 +123,9 @@ internal interface IRowSecurity
     /// re-authorization tick: a scoped memo on a socket would otherwise freeze the row filter for
     /// the whole connection, so a caller whose allow-list shrinks would keep seeing revoked rows
     /// until they disconnect — a liveness bug that is also a security bug. Clearing on the same tick
-    /// the type-level re-check already runs bounds staleness to that interval. No-op off a stream.
+    /// the type-level re-check already runs bounds staleness to that interval. Also called after a
+    /// sub-query's parent is read under its own soft-deletion mode (#460, <c>parentDeleted</c>), so
+    /// the filters memoized for the parent are not reused for the rows.
     /// </summary>
     void ResetRequestFilterCache();
 
@@ -149,12 +162,58 @@ internal interface IRowSecurity
     Task<LambdaExpression?> GetFilterExpressionAsync(Type entityType, string action);
 }
 
+/// <summary>The kinds of row rule that govern an entity type (#460, spike S5).</summary>
+[Flags]
+internal enum RowRuleKinds
+{
+    None = 0,
+
+    /// <summary>The Actions class overrides <c>GetRowFilterAsync</c> or <c>IsAllowedAsync</c>.</summary>
+    ActionsRule = 1,
+
+    /// <summary>At least one <see cref="IRowFilterPolicy"/> applies.</summary>
+    FilterPolicy = 2,
+
+    /// <summary>At least one <see cref="IRowCheckPolicy"/> applies — which refines per row.</summary>
+    CheckPolicy = 4,
+
+    /// <summary>At least one applicable policy declares <see cref="IRowPolicy.IsVisibilityDecision"/>.</summary>
+    VisibilityPolicy = 8,
+}
+
+/// <summary>The questions callers ask of <see cref="RowRuleKinds"/> (#460, spike S5), named once so
+/// the call sites and their tests cannot drift apart.</summary>
+internal static class RowRuleKindsExtensions
+{
+    /// <summary>
+    /// Whether something narrows <em>who</em> sees which rows — what the startup validator requires
+    /// of an anonymously readable type. A non-visibility policy (soft deletion) hides rows from
+    /// everyone and must not silently satisfy it.
+    /// </summary>
+    public static bool DecidesVisibility(this RowRuleKinds kinds)
+        => (kinds & (RowRuleKinds.ActionsRule | RowRuleKinds.VisibilityPolicy)) != 0;
+
+    /// <summary>
+    /// Whether rows the caller may not see can be removed from an author-paged
+    /// <c>SparkQueryPage&lt;T&gt;</c> after the author counted them — which makes its total an
+    /// oracle, so the combination is refused. A non-visibility filter policy does not count: what it
+    /// hides is hidden from everyone, so the only thing a total could reveal is how many rows are, for
+    /// example, soft-deleted.
+    /// </summary>
+    public static bool RefusesAuthorPagedTotals(this RowRuleKinds kinds)
+        => (kinds & (RowRuleKinds.ActionsRule | RowRuleKinds.CheckPolicy | RowRuleKinds.VisibilityPolicy)) != 0;
+}
+
 [Register(typeof(IRowSecurity), ServiceLifetime.Scoped)]
 internal partial class RowSecurity : IRowSecurity
 {
     [Inject] private readonly IActionsResolver actionsResolver;
     [Inject] private readonly ILogger<RowSecurity>? logger;
     [Inject] private readonly Microsoft.AspNetCore.Http.IHttpContextAccessor? httpContextAccessor;
+    // Row policies (#460): registered scoped by AddSparkRowPolicy<T>(), composed here and nowhere
+    // else, so every path that already asks row security applies them without knowing they exist.
+    [Inject] private readonly IEnumerable<IRowPolicy>? rowPolicies;
+    [Inject] private readonly IRowPolicyRequestState? requestState;
 
     /// <summary>Types whose row-security mode has been announced, so the diagnostic logs once.</summary>
     private static readonly ConcurrentDictionary<(Type Type, string Note), bool> announced = new();
@@ -203,8 +262,61 @@ internal partial class RowSecurity : IRowSecurity
         return true;
     }
 
-    public bool HasRowRule(Type entityType)
-        => IsOverridden(ResolveHook(entityType)) || IsOverridden(ResolveFilterHook(entityType));
+    public bool HasRowRule(Type entityType) => GetRowRuleKinds(entityType) != RowRuleKinds.None;
+
+    public RowRuleKinds GetRowRuleKinds(Type entityType)
+    {
+        var kinds = IsOverridden(ResolveHook(entityType)) || IsOverridden(ResolveFilterHook(entityType))
+            ? RowRuleKinds.ActionsRule
+            : RowRuleKinds.None;
+
+        foreach (var policy in ApplicablePolicies(entityType))
+        {
+            if (policy is IRowFilterPolicy) kinds |= RowRuleKinds.FilterPolicy;
+            if (policy is IRowCheckPolicy) kinds |= RowRuleKinds.CheckPolicy;
+            if (policy.IsVisibilityDecision) kinds |= RowRuleKinds.VisibilityPolicy;
+        }
+
+        return kinds;
+    }
+
+    /// <summary>
+    /// The registered policies that govern <paramref name="entityType"/>. <see cref="IRowPolicy.AppliesTo"/>
+    /// is fixed per type by contract, so its answer is cached process-wide per (policy type, entity
+    /// type) — the per-request cost is a dictionary lookup per registered policy.
+    /// </summary>
+    private IEnumerable<IRowPolicy> ApplicablePolicies(Type entityType)
+    {
+        if (rowPolicies is null)
+            yield break;
+
+        foreach (var policy in rowPolicies)
+        {
+            var applies = ReflectionCache.GetOrAdd<(string Op, Type Policy, Type Entity), bool>(
+                ("RowSecurity.PolicyAppliesTo", policy.GetType(), entityType),
+                k => policy.AppliesTo(k.Entity));
+            if (applies)
+                yield return policy;
+        }
+    }
+
+    /// <summary>The policies that take part for this caller: all applicable ones for a viewer, only
+    /// those that do not bypass the system context for the system.</summary>
+    private IEnumerable<IRowPolicy> ParticipatingPolicies(Type entityType, bool systemContext)
+        => ApplicablePolicies(entityType).Where(p => !systemContext || !p.BypassInSystemContext);
+
+    private bool IsSystemContext => Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor);
+
+    private RowPolicyContext CreatePolicyContext(Type entityType, string action, bool systemContext) => new()
+    {
+        EntityType = entityType,
+        Action = action,
+        // Scoped to the type the request asked about: a reference or breadcrumb of another type
+        // resolved in the same request sees live rows only.
+        Deleted = requestState?.DeletedFor(entityType) ?? SparkDeletedFilter.Exclude,
+        IsSystemContext = systemContext,
+        User = httpContextAccessor?.HttpContext?.User,
+    };
 
     public void ResetRequestFilterCache()
     {
@@ -290,10 +402,16 @@ internal partial class RowSecurity : IRowSecurity
     {
         // Whether IsAllowedAsync refines per row AFTER materialization. Carried on every branch
         // because it decides paging safety independently of whether the expression composed (#431).
-        var refined = IsOverridden(ResolveHook(entityType));
+        var systemContext = IsSystemContext;
 
-        // Same exemption as ResolveEffectiveRuleAsync: the system is not a viewer to scope rows for.
-        if (Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
+        // Whether anything refines per row AFTER materialization: the Actions class's IsAllowedAsync
+        // (never for the system) or any participating check policy (#460).
+        var refined = (!systemContext && IsOverridden(ResolveHook(entityType)))
+            || ParticipatingPolicies(entityType, systemContext).Any(p => p is IRowCheckPolicy);
+
+        // Same exemption as ResolveEffectiveRuleAsync: the system is not a viewer to scope rows for —
+        // unless a policy opted out of the exemption (soft deletion hides rows from background work too).
+        if (systemContext && !ParticipatingPolicies(entityType, systemContext).Any())
             return new RowFilterComposition(queryable, RowFilterMode.SystemContext, refined);
 
         var filter = await InvokeGetRowFilterAsync(entityType, action);
@@ -308,14 +426,34 @@ internal partial class RowSecurity : IRowSecurity
 
         if (elementType != entityType)
         {
-            // The filter is typed on the entity; it cannot compose into a projection query.
-            // FilterAsync stays the gate (batched base-document reload) — filtered, just not
-            // pushed down. Announced once so an O(collection) query on a large type is visible.
+            // #285 (D2): the filter is written over the entity, but the query yields an index
+            // projection. Rebind it onto the projection by member name; when every member it reads
+            // is on the projection with the same type, it pushes down (spike S2: RavenDB filters the
+            // index terms, paging and totals stay correct). FilterAsync still reloads the base
+            // documents and re-judges them afterwards — the pushdown narrows what is read, it is
+            // never the only gate.
+            var rebound = RowFilterExpressions.Rebind(filter, elementType);
+            if (rebound is not null)
+            {
+                if (announced.TryAdd((entityType, $"projection-pushdown:{elementType.Name}"), true))
+                {
+                    logger?.LogInformation(
+                        "Row filter for {EntityType} composes into projection {ProjectionType} by member name.",
+                        entityType.Name, elementType.Name);
+                }
+                return new RowFilterComposition(
+                    ApplyWhere(queryable, elementType, rebound), RowFilterMode.PushedDownOntoProjection, refined);
+            }
+
+            // A member the filter reads is not on the projection. FilterAsync stays the gate (batched
+            // base-document reload) — filtered, just not pushed down. Announced once so an
+            // O(collection) query on a large type is visible.
             if (announced.TryAdd((entityType, $"fallback:{elementType.Name}"), true))
             {
                 logger?.LogInformation(
-                    "Row filter for {EntityType} cannot compose into projection {ProjectionType}; "
-                    + "falling back to post-materialization filtering with a batched reload.",
+                    "Row filter for {EntityType} cannot compose into projection {ProjectionType} (a member it "
+                    + "reads is not on the projection); falling back to post-materialization filtering with a "
+                    + "batched reload.",
                     entityType.Name, elementType.Name);
             }
             return new RowFilterComposition(queryable, RowFilterMode.ProjectionFallback, refined);
@@ -326,11 +464,16 @@ internal partial class RowSecurity : IRowSecurity
             logger?.LogInformation(
                 "Row security for {EntityType}: filter expression composes into the database query{Refinement}.",
                 entityType.Name,
-                refined ? " with IsAllowedAsync as per-row refinement" : "");
+                refined ? " with a per-row refinement (IsAllowedAsync or a check policy)" : "");
         }
 
+        return new RowFilterComposition(ApplyWhere(queryable, entityType, filter), RowFilterMode.PushedDown, refined);
+    }
+
+    private static object ApplyWhere(object queryable, Type elementType, LambdaExpression predicate)
+    {
         var whereMethod = ReflectionCache.GetOrAdd<(string Op, Type Entity), MethodInfo>(
-            ("RowSecurity.QueryableWhere", entityType),
+            ("RowSecurity.QueryableWhere", elementType),
             static k => typeof(Queryable).GetMethods()
                 .First(m => m.Name == nameof(Queryable.Where)
                     && m.GetParameters().Length == 2
@@ -338,8 +481,7 @@ internal partial class RowSecurity : IRowSecurity
                     && m.GetParameters()[1].ParameterType.GetGenericArguments()[0].GetGenericArguments().Length == 2)
                 .MakeGenericMethod(k.Entity));
 
-        return new RowFilterComposition(
-            whereMethod.Invoke(null, [queryable, filter])!, RowFilterMode.PushedDown, refined);
+        return whereMethod.Invoke(null, [queryable, predicate])!;
     }
 
     public async Task RedactAsync(
@@ -441,7 +583,7 @@ internal partial class RowSecurity : IRowSecurity
     /// Ids with no document are simply absent — callers treat unverifiable as not shown.
     /// </para>
     /// </summary>
-    private static async Task<Dictionary<string, object>> LoadBaseDocumentsAsync(
+    internal static async Task<Dictionary<string, object>> LoadBaseDocumentsAsync(
         IAsyncDocumentSession session, Type entityType, IReadOnlyCollection<string> ids,
         CancellationToken cancellationToken = default)
     {
@@ -521,14 +663,17 @@ internal partial class RowSecurity : IRowSecurity
         // The system acting — module sync under an mTLS principal, background work with no HTTP
         // request — is not a viewer, and row rules scope viewers. Type-level authorization
         // (security.json Module:* groups) still governs which types it may touch.
-        if (Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
+        // A policy may opt out of that exemption (BypassInSystemContext = false); only those remain.
+        var systemContext = IsSystemContext;
+        if (systemContext && !ParticipatingPolicies(entityType, systemContext).Any())
             return null;
 
         var hook = ResolveHook(entityType);
-        var hookOverridden = IsOverridden(hook);
+        var hookOverridden = !systemContext && IsOverridden(hook);
         var filter = await InvokeGetRowFilterAsync(entityType, action);
+        var checks = ParticipatingPolicies(entityType, systemContext).OfType<IRowCheckPolicy>().ToList();
 
-        if (!hookOverridden && filter is null)
+        if (!hookOverridden && filter is null && checks.Count == 0)
             return null;
 
         // Compiled once per (type, action) per request (memoized), because the expression captures
@@ -536,20 +681,48 @@ internal partial class RowSecurity : IRowSecurity
         // row / every can-block action within one request is pure waste.
         var compiledFilter = GetCompiledFilter(entityType, action, filter);
         var actions = hookOverridden ? actionsResolver.ResolveForType(entityType) : null;
+        var context = checks.Count > 0 ? CreatePolicyContext(entityType, action, systemContext) : null;
 
+        // Per-row rule = compiled filter (actions filter AND every filter policy) AND the actions
+        // class's IsAllowedAsync AND every check policy — cheapest first, first refusal wins.
         return async subject =>
         {
             if (compiledFilter is not null && !(bool)compiledFilter.DynamicInvoke(subject)!)
                 return false;
 
-            if (!hookOverridden)
-                return true;
+            if (hookOverridden)
+            {
+                var task = (Task)hook!.Invoke(actions, HookInvoke, binder: null, parameters: [ActionsHookVerb(action), subject], culture: null)!;
+                await task;
+                if (!(bool)task.GetCompletedTaskResult()!)
+                    return false;
+            }
 
-            var task = (Task)hook!.Invoke(actions, HookInvoke, binder: null, parameters: [action, subject], culture: null)!;
-            await task;
-            return (bool)task.GetCompletedTaskResult()!;
+            foreach (var check in checks)
+            {
+                if (!await check.IsAllowedAsync(context!, subject))
+                    return false;
+            }
+
+            return true;
         };
     }
+
+    /// <summary>
+    /// The verb an Actions class's own row hooks (<c>GetRowFilterAsync</c>, <c>IsAllowedAsync</c>)
+    /// are asked about. <c>Restore</c> and <c>Revert</c> are edits of the stored row and <c>Purge</c>
+    /// a delete of it (#460, M7), so they reach those hooks as <c>Edit</c> / <c>Delete</c>: a rule
+    /// written for the built-in verbs — "only the owner may edit" — then governs them too, instead of
+    /// letting an unfamiliar name fall through to "unrestricted". Row policies still see the real
+    /// name (<see cref="RowPolicyContext.Action"/>), which is how SoftDelete confines a restore to a
+    /// deleted row while <c>Edit</c> keeps hiding it.
+    /// </summary>
+    internal static string ActionsHookVerb(string action) => action switch
+    {
+        "Restore" or "Revert" => "Edit",
+        "Purge" => "Delete",
+        _ => action,
+    };
 
     /// <summary>The request's filter expression, or null when the type declares none or the
     /// override returns null for this caller. Construction is async — the hook may await — and
@@ -566,12 +739,60 @@ internal partial class RowSecurity : IRowSecurity
         return task;
     }
 
+    /// <summary>
+    /// The effective filter for (type, action): the Actions class's <c>GetRowFilterAsync</c> AND every
+    /// participating <see cref="IRowFilterPolicy"/>, joined by parameter rebinding and <c>AndAlso</c>
+    /// (never <c>Expression.Invoke</c>, which RavenDB does not translate), constant-folded. Spike S1
+    /// measured the result on both engines: <c>((actions and policy)) and (column) and (search or
+    /// search)</c> — the security predicate stays one AND group ahead of the search group.
+    /// </summary>
     private async Task<LambdaExpression?> InvokeGetRowFilterUncachedAsync(Type entityType, string action)
     {
-        var method = ResolveFilterHook(entityType);
-        if (!IsOverridden(method))
-            return null;
+        var systemContext = IsSystemContext;
+        var parts = new List<(LambdaExpression Filter, string Source)>();
 
+        // The Actions class's own filter scopes viewers; the system is exempt from it.
+        var method = ResolveFilterHook(entityType);
+        if (!systemContext && IsOverridden(method))
+        {
+            CountHookInvocation();
+            var actions = actionsResolver.ResolveForType(entityType);
+            var task = (Task)method!.Invoke(actions, HookInvoke, binder: null, parameters: [ActionsHookVerb(action)], culture: null)!;
+            await task;
+            if ((LambdaExpression?)task.GetCompletedTaskResult() is { } actionsFilter)
+                parts.Add((actionsFilter, $"{actions.GetType().Name}.GetRowFilterAsync"));
+        }
+
+        RowPolicyContext? context = null;
+        var policyContributed = false;
+        foreach (var policy in ParticipatingPolicies(entityType, systemContext).OfType<IRowFilterPolicy>())
+        {
+            CountHookInvocation();
+            context ??= CreatePolicyContext(entityType, action, systemContext);
+            if (await policy.GetFilterAsync(context) is { } policyFilter)
+            {
+                parts.Add((policyFilter, policy.GetType().Name));
+                policyContributed = true;
+            }
+        }
+
+        return parts.Count switch
+        {
+            0 => null,
+            // Only the Actions class's filter: returned as written, so a type no policy governs keeps
+            // exactly the expression — and the constant-predicate handling — it had before policies.
+            1 when !policyContributed => parts[0].Filter,
+            _ => RowFilterExpressions.Combine(entityType, parts),
+        };
+    }
+
+    /// <summary>
+    /// Diagnostic (#239 M5, #460): counts actions-hook and policy invocations alike, post-memo. With
+    /// the memo they are bounded by distinct (type, action) × (1 + policies); the warning catches a
+    /// future loop that reaches them per row.
+    /// </summary>
+    private void CountHookInvocation()
+    {
         if (++hookInvocations == HookInvocationWarnThreshold)
         {
             logger?.LogWarning(
@@ -581,11 +802,6 @@ internal partial class RowSecurity : IRowSecurity
                 HookInvocationWarnThreshold,
                 string.Join(", ", filterExpressionMemo.Keys.Select(k => k.EntityType.Name).Distinct()));
         }
-
-        var actions = actionsResolver.ResolveForType(entityType);
-        var task = (Task)method!.Invoke(actions, HookInvoke, binder: null, parameters: [action], culture: null)!;
-        await task;
-        return (LambdaExpression?)task.GetCompletedTaskResult();
     }
 
     /// <summary>The compiled filter delegate for this (type, action), memoized for the request so a

@@ -91,13 +91,15 @@ anti-forgery gate and no useful message.
 | `CreatePersistentObjectAsync(obj)` | `POST /spark/po/create` |
 | `UpdatePersistentObjectAsync(obj)` | `POST /spark/po/update` |
 | `DeletePersistentObjectAsync(type, id)` | `POST /spark/po/delete` |
+| `DeletePersistentObjectsAsync(type, ids, queryId, parentId, parentType)` | `POST /spark/po/delete-many` |
 | `ExecuteQueryAsync(query, skip, take, search, parentId, parentType, sortColumns, columns)` | `POST /spark/queries/execute` |
-| `GetDistinctValuesAsync(query, column, search, columns, parentId, parentType)` | `POST /spark/queries/distinct-values` |
+| `GetDistinctValuesAsync(query, column, search, columns, parentId, parentType, …, deleted, querySearch, parentDeleted)` | `POST /spark/queries/distinct-values` (`search` narrows the listed values; `querySearch` is the grid's search, applied as `/execute` applies `search`) |
 | `GetQueryAsync(query)` / `ListQueriesAsync()` | `POST /spark/queries/get`, `GET /spark/queries` |
 | `ExecuteActionAsync(type, name, parent, selectedItemIds, parentId, parentType, queryId, …)` | `POST /spark/actions/execute` |
 | `ContinueAsync(result, option, persistentObject)` | the same endpoint, one answer further |
 | `RefreshPersistentObjectAsync(obj, triggeredBy)` | `POST /spark/po/refresh` |
 | `NewPersistentObjectAsync(type, asDetailAttribute, parentType, parentId, parameters)` | `POST /spark/po/new` |
+| `NewPersistentObjectFromSubQueryAsync(type, parentType, parentId, queryId, parameters)` | `POST /spark/po/new` (sub-query context: the base `OnNewAsync` fills the reference to the parent) |
 | `DeleteRowAsync(type, asDetailAttribute, parentType, parentId, rowKey)` | `POST /spark/po/delete-row` |
 | `ListEntityTypesAsync()` / `GetEntityTypeAsync(type)` | `GET /spark/types`, `GET /spark/types/{id}` |
 | `ListAliasesAsync()` | `GET /spark/aliases` |
@@ -130,6 +132,9 @@ client.AcceptLanguage = "nl-BE,nl;q=0.9";   // → Accept-Language
 Both are unset by default, and **the server falls back silently** — to UTC and to the application's
 default language, with no error and no log. So a test asserting timezone- or culture-dependent output
 through this client is asserting the fallback until you set these, and it passes either way.
+
+The server accepts IANA zone ids only. A Windows id (`"Romance Standard Time"`) is converted to its
+IANA id (`"Europe/Paris"`) before it is sent, so `TimeZoneInfo.Local.Id` works on Windows too.
 
 Every type and query argument accepts **either a Guid or an alias** — `"cars"` and
 `"a20e8400-…"` resolve to the same thing. Ids need no escaping: they travel in a JSON body, so a Raven
@@ -228,8 +233,44 @@ the question — delivering it afterwards would show the dialog first and the re
 
 ⚠️ **Nothing is applied for you.** `refreshAttribute` is the one operation a headless client can act
 on, and `SparkClientOperations.Apply` is explicit because this SDK keeps no registry of open objects
-the way a UI does. Only the caller knows which object a patch is for. `navigate`, `refreshQuery` and
-`disableAction` are surfaced and nothing more — the last is a no-op in the browser too.
+the way a UI does. Only the caller knows which object a patch is for. `navigate` and `refreshQuery`
+are surfaced and nothing more. (`disableAction` no longer exists, #460: disabled actions arrive on
+`PersistentObject.DisabledActions` / `QueryResult.DisabledActions`, and submitting one throws a
+`SparkClientException` with status 403 whose body names the action. An older server's
+`disableAction` parses as `SparkUnknownOperation`.)
+
+### What an action returns
+
+An action can hand a value back with `args.SetResult(value)` on the server (#460, T5). It arrives as
+`SparkActionResult.Result` (raw JSON) — read it typed with `GetResult<T>()`. A prompt (449) carries no
+result; the attempt that completes does, whether a handler answered or you called `ContinueAsync`:
+
+```csharp
+var result = await client.ExecuteActionAsync(carTypeId, "ExportCars", selectedItemIds: ids, queryId: "cars",
+    onRetry: (prompt, ct) => Task.FromResult<RetryAnswer?>(RetryAnswer.Choose("Yes")));
+var export = result.GetResult<ExportJob>();   // null when the action set nothing
+```
+
+⚠️ The value bypasses the server's redaction — the action author decides what it discloses.
+
+### Refusals you can tell apart
+
+| Status | Means | Body |
+|---|---|---|
+| 404 | unknown action, or a row/parent you may not see (indistinguishable on purpose; 401 instead for an anonymous caller when signing in could help) | envelope `{ result: { error } }` |
+| 400 | the selection breaks the action's `selectionRule`, or exceeds 200 ids | envelope `{ result: { error } }` |
+| 403 | the action is disabled for this object, query or selection (`OnDisableActionsAsync`) | envelope `{ result: { error, action } }` |
+| 429 | the rate limiter refused the request before any endpoint ran | empty |
+
+All four throw `SparkClientException`; switch on `StatusCode`.
+
+Query calls take `deleted:` (`SparkDeletedFilter.Exclude` / `Include` / `Only`, #460 T2) on
+`ExecuteQueryAsync` and `GetDistinctValuesAsync`; it is sent only when set, and a widening is
+honoured only for callers holding `ViewDeleted` on the type. Both also take `parentDeleted:` (their
+last optional parameter), the mode a sub-query's **parent** is resolved under: pass `Include` to list
+the sub-queries of a deleted row. It is honoured only for holders of `ViewDeleted/{ParentType}`;
+anyone else gets the same 404 as a missing parent. The rows' own `deleted:` is independent, and
+`ExecuteActionAsync` / `DeletePersistentObjectsAsync` always resolve a live parent.
 
 ⚠️ **An operation type this client has never heard of is ignored, not thrown on.** It arrives as
 `SparkUnknownOperation` with its payload intact. That is the point of the contract: a newer server

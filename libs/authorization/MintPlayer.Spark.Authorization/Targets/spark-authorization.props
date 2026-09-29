@@ -13,10 +13,7 @@
 		<!-- Path where the generated setup file will be placed -->
 		<SparkAuthSetupFile Condition=" '$(SparkAuthSetupFile)' == '' ">$(SpaRoot)src\spark-auth.setup.ts</SparkAuthSetupFile>
 
-		<!-- npm package name to install -->
+		<!-- The npm package the SPA must declare (checked by SparkAuthCheckNpmDependency; never installed by the build) -->
 		<SparkAuthNpmPackage Condition=" '$(SparkAuthNpmPackage)' == '' ">@mintplayer/ng-spark-auth</SparkAuthNpmPackage>
-
-		<!-- Stamp file to avoid running npm install on every build -->
-		<SparkAuthNpmStampFile Condition=" '$(SparkAuthNpmStampFile)' == '' ">$(BaseIntermediateOutputPath)spark-auth-npm.stamp</SparkAuthNpmStampFile>
 	</PropertyGroup>
 </Project>

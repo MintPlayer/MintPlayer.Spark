@@ -40,6 +40,7 @@ public class ExternalLoginRefusalTests : SparkTestDriver
                 {
                     services.AddSingleton<IDocumentStore>(Store);
                     services.AddSparkAuthentication<SparkUser>();
+                    services.AddTestMailSink(); // #460 D6: registration needs a mail sender
                     services.AddAuthentication().AddCookie("GitHub", "GitHub", _ => { });
                     services.AddAuthorization();
                     services.AddRouting();

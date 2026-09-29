@@ -39,10 +39,16 @@ public interface IQueryExecutor
     /// The distinct values of one column, for a filter panel (#431). Empty when the column may not
     /// be enumerated -- indistinguishable from "nothing to list", on purpose.
     /// </summary>
+    /// <param name="search">Narrows the listed values themselves (the panel's own search box).</param>
+    /// <param name="querySearch">
+    /// The grid's search term, the one <see cref="ExecuteQueryAsync"/> takes as <c>search</c>: the
+    /// values are drawn only from rows it matches, so a searched grid's panel lists what the grid shows.
+    /// </param>
     Task<DistinctValuesResult> GetDistinctValuesAsync(SparkQuery query, string column,
         PersistentObject? parent = null, string? search = null,
         IReadOnlyList<QueryColumnFilter>? columnFilters = null,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        string? querySearch = null);
 
     bool OwnsItsOwnPaging(SparkQuery query);
 }
@@ -99,7 +105,8 @@ internal partial class QueryExecutor : IQueryExecutor
     public async Task<DistinctValuesResult> GetDistinctValuesAsync(SparkQuery query, string column,
         PersistentObject? parent = null, string? search = null,
         IReadOnlyList<QueryColumnFilter>? columnFilters = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string? querySearch = null)
     {
         // Refused before anything loads. A streaming query's rows arrive over a socket from an
         // IAsyncEnumerable method, and resolving it the ordinary way throws — ResolveCustomQueryMethod
@@ -114,7 +121,7 @@ internal partial class QueryExecutor : IQueryExecutor
 
         // The whole result set, not a page: a distinct list describes the query, not the page the
         // grid happens to be on. Paging is applied to rows, never to this.
-        var rows = await LoadSecuredRowsAsync(query, parent, columnFilters, cancellationToken);
+        var rows = await LoadSecuredRowsAsync(query, parent, columnFilters, querySearch, cancellationToken);
         if (rows.Definition is null) return DistinctValuesResult.Empty;
 
         var attribute = ColumnCapabilities.FindQuerySurfaceAttribute(rows.Definition, column);
@@ -246,20 +253,29 @@ internal partial class QueryExecutor : IQueryExecutor
     /// </remarks>
     private async Task<(IReadOnlyList<PersistentObject> Rows, EntityTypeDefinition? Definition)> LoadSecuredRowsAsync(
         SparkQuery query, PersistentObject? parent, IReadOnlyList<QueryColumnFilter>? columnFilters,
-        CancellationToken cancellationToken)
+        string? querySearch, CancellationToken cancellationToken)
     {
         var (isCustom, name) = ResolveSource(query);
         await InvokeQueryHookAsync(query, parent);
+
+        // The grid's own search, exactly as /execute applies it (#460 M15): pushed down where it can
+        // be, narrowed in memory where it cannot. Without it a searched grid's filter panel listed the
+        // values of rows the grid was not showing.
+        var searchTerm = BuildSearchTerm(querySearch);
 
         // Bounded, not paged: a distinct list still describes the whole result set rather than the page
         // the grid is on, but it stops at MaxDistinctScanRows and reports the truncation instead of
         // materializing an entire production collection because someone opened a filter panel.
         var source = isCustom
-            ? await ExecuteCustomQueryAsync(query, name, parent, null, 0, MaxDistinctScanRows, null, null, columnFilters, cancellationToken)
-            : await ExecuteDatabaseQueryAsync(query, name, parent, null, null, columnFilters,
+            ? await ExecuteCustomQueryAsync(query, name, parent, searchTerm, 0, MaxDistinctScanRows, querySearch, null, columnFilters, cancellationToken)
+            : await ExecuteDatabaseQueryAsync(query, name, parent, searchTerm, null, columnFilters,
                 skip: 0, take: MaxDistinctScanRows, cancellationToken);
 
-        return (source.Rows.Rows, source.Definition);
+        var rows = searchTerm != null && !source.SearchPushedDown
+            ? NarrowBySearch(source.Rows, querySearch!)
+            : source.Rows;
+
+        return (rows.Rows, source.Definition);
     }
 
     public async Task<QueryResult> ExecuteQueryAsync(SparkQuery query, PersistentObject? parent = null, int skip = 0, int take = 50, string? search = null, IReadOnlyCollection<string>? restrictToIds = null, IReadOnlyList<QueryColumnFilter>? columnFilters = null, CancellationToken cancellationToken = default)
@@ -291,29 +307,19 @@ internal partial class QueryExecutor : IQueryExecutor
         // data exists CANNOT filter it, however hard someone tries. Running it after row security
         // would put mapped rows one refactor away from the context signature, and the first request
         // for "hide the action when the result is empty" would answer itself by passing them in.
-        var queryContext = await InvokeQueryHookAsync(query, parent);
+        var (queryContext, queryActions) = await InvokeQueryHookAsync(query, parent);
 
-        QuerySourceResult source;
-        if (isCustom)
-        {
-            source = await ExecuteCustomQueryAsync(query, name, parent, searchTerm, skip, take, search, restrictToIds, columnFilters, cancellationToken);
+        // The query-execute half of D13 (#460): the same actions class, asked about a Query target
+        // before any row exists — so the answer cannot depend on what this page happened to return,
+        // and the submit path, which re-asks it, gets the same answer.
+        var disabledActions = await DisabledActionsEvaluator.EvaluateQueryCoreAsync(
+            queryActions, query, parent, queryContext.ParentType);
 
-            // UNION, not last-writer-wins. Both mechanisms are legitimate and a query may use both:
-            // the hook is the only channel a Database.* query has, and the custom method is the only
-            // place with rows in hand, so a data-dependent withhold can only happen there. Letting
-            // either overwrite the other would silently drop a withhold and leave an action offered.
-            source = source with
-            {
-                DisabledActions = MergeDisabledActions(queryContext.DisabledActions, source.DisabledActions),
-            };
-        }
-        else
-        {
-            source = await ExecuteDatabaseQueryAsync(query, name, parent, searchTerm, restrictToIds, columnFilters, skip, take, cancellationToken)
-                with { DisabledActions = queryContext.DisabledActions };
-        }
+        var source = isCustom
+            ? await ExecuteCustomQueryAsync(query, name, parent, searchTerm, skip, take, search, restrictToIds, columnFilters, cancellationToken)
+            : await ExecuteDatabaseQueryAsync(query, name, parent, searchTerm, restrictToIds, columnFilters, skip, take, cancellationToken);
 
-        var (allResults, definition, searchPushedDown, authorTotalItems, _, _, _, _) = source;
+        var (allResults, definition, searchPushedDown, authorTotalItems, _, _, _) = source;
 
         // The author's page is returned as it stands. Search, sort, count and paging were all
         // transferred with it (the binary authority rule on SparkQueryPage), so applying any of
@@ -332,7 +338,7 @@ internal partial class QueryExecutor : IQueryExecutor
             // SparkQueryPage with a row-ruled type today, so this costs no working query.
             if (definition?.ClrType is { Length: > 0 } authorClrType
                 && SparkTypeResolver.ResolveClrType(authorClrType) is { } authorEntityType
-                && rowSecurity.HasRowRule(authorEntityType))
+                && rowSecurity.GetRowRuleKinds(authorEntityType).RefusesAuthorPagedTotals())
             {
                 throw new InvalidOperationException(
                     $"Query '{query.Name}' returns SparkQueryPage<T>, which transfers paging and the row " +
@@ -360,7 +366,7 @@ internal partial class QueryExecutor : IQueryExecutor
                 TotalItems = authorTotal,
                 Skip = skip,
                 Take = take,
-                DisabledActions = source.DisabledActions,
+                DisabledActions = disabledActions,
             };
         }
 
@@ -373,17 +379,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // SecuredRows.Narrow is an instance method: you must already hold a secured set to get
         // another one.
         if (searchTerm != null && !searchPushedDown)
-        {
-            var term = search!.ToLowerInvariant();
-            allResults = allResults.Narrow(rows => rows.Where(po =>
-                (po.Name != null && po.Name.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
-                (po.Breadcrumb != null && po.Breadcrumb.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
-                po.Attributes.Any(attr =>
-                {
-                    var value = attr.Breadcrumb ?? attr.Value?.ToString();
-                    return value != null && value.Contains(term, StringComparison.OrdinalIgnoreCase);
-                })));
-        }
+            allResults = NarrowBySearch(allResults, search!);
 
         // Counted after filtering and before paging, either way — which is what keeps
         // TotalItems search-aware now that the filter may have run in the database.
@@ -414,7 +410,7 @@ internal partial class QueryExecutor : IQueryExecutor
             TotalItems = totalItems,
             Skip = skip,
             Take = take,
-            DisabledActions = source.DisabledActions,
+            DisabledActions = disabledActions,
         };
     }
 
@@ -440,7 +436,7 @@ internal partial class QueryExecutor : IQueryExecutor
     /// failure yields a context nobody wrote to rather than throwing.
     /// </para>
     /// </remarks>
-    private async Task<SparkQueryContext> InvokeQueryHookAsync(SparkQuery query, PersistentObject? parent)
+    private async Task<(SparkQueryContext Context, object? Actions)> InvokeQueryHookAsync(SparkQuery query, PersistentObject? parent)
     {
         var context = new SparkQueryContext
         {
@@ -471,7 +467,7 @@ internal partial class QueryExecutor : IQueryExecutor
         }
 
         if (actionsInstance is null)
-            return context;
+            return (context, null);
 
         // ⚠️ `DoNotWrapExceptions`, for the same reason as `DatabaseAccess` and the three invokers:
         // without it a hook that throws before returning its Task arrives as
@@ -485,7 +481,7 @@ internal partial class QueryExecutor : IQueryExecutor
             await task;
         }
 
-        return context;
+        return (context, actionsInstance);
     }
 
     /// <summary>
@@ -519,33 +515,11 @@ internal partial class QueryExecutor : IQueryExecutor
         return elementType is null ? null : modelLoader.GetEntityTypeByClrType(elementType.FullName!);
     }
 
-    /// <summary>Union of two withheld-action lists, case-insensitive, order-preserving.</summary>
-    private static IReadOnlyList<string>? MergeDisabledActions(IReadOnlyList<string>? first, IReadOnlyList<string>? second)
-    {
-        if (first is null || first.Count == 0) return second;
-        if (second is null || second.Count == 0) return first;
-
-        var merged = new List<string>(first);
-        foreach (var name in second)
-        {
-            if (!merged.Contains(name, StringComparer.OrdinalIgnoreCase))
-                merged.Add(name);
-        }
-
-        return merged;
-    }
-
     private sealed record QuerySourceResult(
         RowSecurityGate.SecuredRows Rows,
         EntityTypeDefinition? Definition,
         bool SearchPushedDown,
         int? AuthorTotalItems = null,
-        /// <summary>
-        /// Actions the custom query withheld via <c>CustomQueryArgs.DisableActions</c>. Carried
-        /// here because the source is produced in one method and the QueryResult is assembled in
-        /// another — the alternative was a field, which would leak across concurrent executions.
-        /// </summary>
-        IReadOnlyList<string>? DisabledActions = null,
 
         /// <summary>
         /// Set when the database applied <c>Skip</c>/<c>Take</c> and counted the matches, so the rows
@@ -842,6 +816,7 @@ internal sealed record DatabasePage(int TotalItems);
         // request already returns these rows, and the Query right was enforced above either way.
         var declaresAsSubQuery = parent is not null
             && (modelLoader.GetEntityType(parent.ObjectTypeId)?.Queries ?? [])
+                .Select(entry => entry.Query)
                 .Contains(query.Alias ?? SparkQueryAliases.Derive(query.Name), StringComparer.OrdinalIgnoreCase);
 
         if (declaresAsSubQuery)
@@ -1462,7 +1437,7 @@ internal sealed record DatabasePage(int TotalItems);
         });
 
         return new QuerySourceResult(
-            secured, entityTypeDefinition, searchPushedDown, authorPage?.TotalItems, args.DisabledActions, SortType: methodInfo.ResultElementType, IndexedFields: indexedFields);
+            secured, entityTypeDefinition, searchPushedDown, authorPage?.TotalItems, SortType: methodInfo.ResultElementType, IndexedFields: indexedFields);
     }
 
     /// <summary>
@@ -1922,6 +1897,24 @@ internal sealed record DatabasePage(int TotalItems);
     /// result.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// The in-memory search, for a source that could not push it down: a row stays when its name,
+    /// breadcrumb or any attribute's display text contains the term. Shared by <c>/execute</c> and
+    /// the distinct pass, so a filter panel lists exactly the rows the searched grid shows.
+    /// </summary>
+    private static RowSecurityGate.SecuredRows NarrowBySearch(RowSecurityGate.SecuredRows secured, string search)
+    {
+        var term = search.ToLowerInvariant();
+        return secured.Narrow(rows => rows.Where(po =>
+            (po.Name != null && po.Name.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
+            (po.Breadcrumb != null && po.Breadcrumb.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
+            po.Attributes.Any(attr =>
+            {
+                var value = attr.Breadcrumb ?? attr.Value?.ToString();
+                return value != null && value.Contains(term, StringComparison.OrdinalIgnoreCase);
+            })));
+    }
+
     internal static string? BuildSearchTerm(string? search)
     {
         if (string.IsNullOrWhiteSpace(search)) return null;

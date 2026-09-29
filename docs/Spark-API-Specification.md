@@ -68,9 +68,9 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
 
 **`POST /spark/po/load`** — `Endpoints/PersistentObject/Get.cs`
 
-- **Request body**: `{ objectTypeId, id, retryResults? }`
+- **Request body**: `{ objectTypeId, id, deleted?, retryResults? }` — `deleted` (`exclude` default, `include`, `only`) is honoured through the soft-delete row policy for holders of `ViewDeleted/T` (#460), so a row can be opened from the recycle bin
 - **Response shapes**:
-  - `200 OK` — a bare `PersistentObject` (**not** enveloped)
+  - `200 OK` — a bare `PersistentObject` (**not** enveloped); `disabledActions` lists what `OnDisableActionsAsync` withheld for the stored object
   - `404 Not Found` — object unknown, type unknown, or denied — indistinguishable by design
   - `449` on retry, enveloped
   - `401` on auth failure where signing in could help
@@ -99,7 +99,15 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
 
 **`POST /spark/po/new`** — `Endpoints/PersistentObject/New.cs`
 
-- **Request body**: `{ objectTypeId, asDetailAttribute?, parentType?, parentId?, parameters?, retryResults? }`
+- **Request body**: `{ objectTypeId, asDetailAttribute?, parentType?, parentId?, queryId?, parameters?, retryResults? }`
+  - Without `asDetailAttribute`, `parentType` + `parentId` + `queryId` (all three) mean **a New
+    started from a sub-query** (#460 M15, D19).
+  - The parent is loaded through its gated read.
+  - The query must be a sub-query of the parent's type and must list the constructed type;
+    otherwise the answer is 404.
+  - `OnNewAsync` receives `Parent`, `ParentType`, `Query` and `ParentReference`, and the base fills
+    the reference to the parent.
+  - The ng-spark create page calls this for every New.
 - **Response shapes**:
   - `200 OK` — the constructed, unsaved `PersistentObject`, enveloped
   - `400 Bad Request` — `{ "errors": [...] }` when `OnNewAsync` refuses
@@ -148,6 +156,23 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
 - **Auth**: XSRF-TOKEN required; permission check on delete access
 - **Notes**: a delete always carries a body now. It used to be a `DELETE` that attached one *only* once there were retry answers to send, with the server sniffing `Content-Type` to decide whether to read it; that conditional went with the verb.
 
+#### Delete a selection (bulk)
+
+**`POST /spark/po/delete-many`**, implemented in `Endpoints/PersistentObject/DeleteMany.cs` (#460 M15, D18)
+
+- **Request body**: `{ objectTypeId, ids: string[], queryId?, parentId?, parentType?, retryResults? }`
+- **Response shapes**:
+  - `204 No Content`: every row was deleted, by one `SaveChanges`.
+  - `400 Bad Request`: more than 200 ids, or the `Delete` entry's selection rule refuses the count
+    (default `>0`), or a hook refused with `{ "errors": [...] }`.
+  - `403 Forbidden` `{ error, action: "Delete" }`: `OnDisableActionsAsync` withholds Delete on the
+    query target or on one row.
+  - `404 Not Found`: a row is missing, foreign or denied, or the parent is. The request is refused
+    whole.
+  - `449` on retry.
+- **Auth**: XSRF-TOKEN required, and `Delete/T`.
+- **Notes**: all or nothing. A soft-deletable type is soft-deleted. There is no bulk Purge.
+
 #### Delete AsDetail Row
 
 **`POST /spark/po/delete-row`** — `Endpoints/PersistentObject/DeleteRow.cs`
@@ -193,6 +218,7 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
   - `take` — default `50`; clamped to `[1, 1000]`
   - `search` — passed to the query's search handler if declared
   - `parentId` + `parentType` — scoped-query context (requires both; `404` if the parent is not resolvable or not authorized)
+  - `deleted?` — `exclude` (default) / `include` / `only`; honoured only for holders of `ViewDeleted/T` (#460, T2)
   - `retryResults?` — `OnQueryAsync` can prompt
 - **Response shapes**:
   - `200 OK` — query result (bare): `{ columns, items, totalItems, skip, take }`
@@ -220,9 +246,14 @@ The value list behind one column's filter panel (#431).
   "search": "alf",
   "columns": [ { "name": "Region", "includes": ["eu"], "excludes": [] } ],
   "parentId": null,
-  "parentType": null
+  "parentType": null,
+  "querySearch": "rome"
 }
 ```
+
+`search` narrows the listed values themselves (the panel's own box). `querySearch` is the grid's
+search, the `search` of `/spark/queries/execute`: the values are drawn only from the rows it matches,
+so a searched grid's panel lists what the grid shows (#460 M15).
 
 Responds with two buckets and a truncation flag:
 
@@ -292,12 +323,15 @@ two are deliberately indistinguishable — the difference is a fact about the ca
 **`POST /spark/actions/execute`** — `Endpoints/Actions/ExecuteCustomAction.cs`
 
 - **Request body**: `CustomActionRequest` — `{ objectTypeId, actionName, parent?, selectedItemIds?, parentId?, parentType?, queryId?, retryResults? }`
-- **Response shapes**:
-  - `200 OK` — empty (or action-specific)
-  - `404 Not Found` — entity type or action not registered
-  - `449` on retry (see protocol)
+- **Response shapes** (all enveloped `{ result, operations }`):
+  - `200 OK` — `result` is what the action passed to `CustomActionArgs.SetResult` (#460, T5), `null` otherwise
+  - `400 Bad Request` — selection breaks the `selectionRule`, or more than 200 ids
+  - `403 Forbidden` — `{ error, action }`: the action is disabled by `OnDisableActionsAsync` on the parent, the query or a selected row (#460, D13); only after the row gate
+  - `404 Not Found` — entity type or action not registered, or a parent / row the caller may not see (401 for an anonymous caller when signing in could help)
+  - `449` on retry (see protocol) — `result` is always `null`
   - `500 Internal Server Error` — `{ "error": "..." }` from unhandled action exception (logged server-side)
-  - `401` / `403` on auth failure
+  - `429` (no envelope) when the optional rate limiter refuses the request
+- Update, delete and create answer the same `403 { error, action }` when `Edit`/`Save`, `Delete` or `New`/`Save` is disabled for the stored object.
 - **Auth**: XSRF-TOKEN required; permission check via `IPermissionService.EnsureAuthorizedAsync({actionName}, {EntityTypeName})`
 
 ---
@@ -404,8 +438,10 @@ two are deliberately indistinguishable — the difference is a fact about the ca
 - **Response shapes**:
   - `200 OK` — body:
     ```json
-    { "canRead": bool, "canCreate": bool, "canEdit": bool, "canDelete": bool }
+    { "canRead": bool, "canCreate": bool, "canEdit": bool, "canDelete": bool,
+      "canRestore": bool, "canPurge": bool, "canViewDeleted": bool, "canViewHistory": bool, "canRevert": bool }
     ```
+    The last five (#460) answer the `Restore`, `Purge`, `ViewDeleted`, `History` and `Revert` rights; clients should treat them as optional (older servers omit them).
   - `404 Not Found` — unknown entity type
 
 #### Get Program Units
@@ -415,6 +451,20 @@ two are deliberately indistinguishable — the difference is a fact about the ca
 - **Response**: `200 OK` — body: `ProgramUnitsConfiguration` (navigation tree of Program Unit Groups and their Program Units, filtered per caller).
 - **Filtering** — by the right the unit's click will demand: `query` units require the `Query` right on the target's entity type, `persistentObject` units require `Read`, `url` units are always visible. Groups whose units all filtered away are dropped. Fail-closed: a typed unit whose target can't be resolved is hidden.
 - **Unit shape** — `type` is canonicalized by the loader to exactly `query` / `persistentObject` / `url`; a `persistentObject` unit may carry `objectId` (deep link to one object — for a model-only type, the composed page served by the type's name-resolved Actions class via `OnLoadAsync(id, parent)`; see `guide-program-units.md`); a `url` unit carries `url`.
+
+### Endpoints mapped by add-on packages (#460)
+
+These are mapped only when the package is added, follow the same literal-route convention (ids in the `POST` body, antiforgery on mutating routes — the two mail routes are explicitly exempt, since a relay or a mail provider posts them without a browser session) and are specified in each package's README:
+
+| Package | Routes | Reference |
+|---|---|---|
+| `MintPlayer.Spark.SoftDelete` | `POST /spark/po/restore`, `POST /spark/po/purge` | [README](../libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md) |
+| `MintPlayer.Spark.History` | `POST /spark/po/revisions`, `/spark/po/revision`, `/spark/po/revert` | [README](../libs/history/MintPlayer.Spark.History/README.md) |
+| `MintPlayer.Spark.MailManager` | `POST /spark/mail/bounces` (opt-in, bearer secret; `503` while disabled), `/spark/mail/unsubscribe` (one-click `List-Unsubscribe`) | [README](../libs/mail/MintPlayer.Spark.MailManager/README.md) |
+| `MintPlayer.Spark.Moderation` | `POST /spark/moderation/{vote, votes, flag, lock, unlock, status, reputation, reputation/history, cases, case, case/decide, suspend, unsuspend, merge, audit}` | [README](../libs/moderation/MintPlayer.Spark.Moderation/README.md) |
+| `MintPlayer.Spark.Authorization` | `/spark/auth/*` including the account routes `manage/password`, `manage/profile`, `manage/2fa/authenticator-uri`, `manage/personal-data`, `DELETE manage/account`, `confirm-email` | [README § Identity Endpoints](../libs/authorization/MintPlayer.Spark.Authorization/README.md#identity-endpoints) |
+
+Refusals from these and from the core write endpoints are told apart by status code: `404` (not visible — a hidden row is never disclosed), `400` (`SparkValidationException`, e.g. locked or suspended), `403 { error, action }` (a disabled action), `409` (stale `etag`), `429` (`SparkThrottledException`, with `Retry-After` and envelope `retryAfterSeconds`; the rate limiter's own `429` has an empty body).
 
 ---
 

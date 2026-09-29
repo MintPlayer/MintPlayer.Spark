@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Requests;
 using MintPlayer.Spark.Abstractions.Retry;
 
@@ -40,6 +41,15 @@ internal sealed class PersistentObjectReferenceRequest : ISparkTypedRequest, IRe
 
     /// <summary>The object's id. Raven ids contain slashes, which is why this never sat in a route.</summary>
     public string? Id { get; set; }
+
+    /// <summary>
+    /// <c>load</c> only (ignored by <c>delete</c>): whether a deleted row may be returned —
+    /// <c>exclude</c> (default), <c>include</c> or <c>only</c> (#460, T2 on the load side, so a row
+    /// can be opened from the recycle bin). Carried to row policies through
+    /// <c>RowPolicyContext.Deleted</c>; the SoftDelete package honours it only for holders of
+    /// <c>ViewDeleted/T</c>, exactly as on a query. Core itself filters nothing on it.
+    /// </summary>
+    public SparkDeletedFilter? Deleted { get; set; }
 
     /// <inheritdoc />
     public RetryResult[]? RetryResults { get; set; }

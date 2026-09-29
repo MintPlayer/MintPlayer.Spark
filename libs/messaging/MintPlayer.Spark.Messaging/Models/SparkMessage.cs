@@ -10,6 +10,28 @@ public class SparkMessage
     public DateTime? NextAttemptAtUtc { get; set; }
 
     /// <summary>
+    /// The queue's <c>SparkQueuePriority</c> as a number (<c>-1</c> Low, <c>0</c> Normal, <c>1</c> High),
+    /// stamped at publish (#460, M16b). Stored on the message because the single feeder's sorted query
+    /// (<c>SparkMessages_ByPriority</c>) orders by it, and an index cannot read configuration. A priority
+    /// changed in configuration therefore applies to messages published after the change.
+    /// </summary>
+    public int Priority { get; set; }
+
+    /// <summary>
+    /// When the message joined the queue <b>by the database server's clock</b> (#460, M16b, spike S-M7):
+    /// the <c>@last-modified</c> of the write that made it claimable, captured by the feeder on the first
+    /// write it makes to the message (its claim or its throttle deferral), which costs no extra write.
+    /// Null until then; the index reads <c>@last-modified</c> itself in the meantime, which is the same
+    /// value because nothing else writes a claimable message before the feeder does.
+    /// <para>
+    /// Never the producer's <see cref="CreatedAtUtc"/>: ordering by the publisher's wall clock across
+    /// instances is the design the decision register rejects. Captured once, so a retry, a reclaim or a
+    /// throttle wake-up keeps the message's place instead of sending it to the back.
+    /// </para>
+    /// </summary>
+    public DateTime? QueuedAtUtc { get; set; }
+
+    /// <summary>
     /// Number of times this message has been picked up for processing (informational).
     /// Per-handler attempt counts are tracked in <see cref="Handlers"/>.
     /// </summary>
@@ -17,6 +39,21 @@ public class SparkMessage
     public int MaxAttempts { get; set; }
     public EMessageStatus Status { get; set; }
     public DateTime? CompletedAtUtc { get; set; }
+
+    /// <summary>
+    /// Publish-time deadline (<c>BroadcastOptions.ExpiresAtUtc</c>). Past it — or when the next retry
+    /// or throttle slot would fall past it — the message is dead-lettered with
+    /// <see cref="EDeadLetterReason.Expired"/> instead of being handled.
+    /// </summary>
+    public DateTime? ExpiresAtUtc { get; set; }
+
+    /// <summary>Set together with <see cref="EMessageStatus.DeadLettered"/>; null otherwise.</summary>
+    public EDeadLetterReason? DeadLetterReason { get; set; }
+
+    /// <summary>
+    /// Clear <see cref="PayloadJson"/> once the message is terminal (<c>BroadcastOptions.ScrubPayloadOnTerminal</c>).
+    /// </summary>
+    public bool ScrubPayloadOnTerminal { get; set; }
 
     /// <summary>
     /// Per-handler execution state. Populated when the message is first picked up for processing.

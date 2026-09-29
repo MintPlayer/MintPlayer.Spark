@@ -24,12 +24,25 @@ public class DeleteDataActionTests : CoverageRavenTest
 {
     private const long RepoId = 5150;
 
+    /// <summary>Stands in for the framework's submit-time target: records what was withheld.</summary>
+    private sealed class RecordingDisablable : MintPlayer.Spark.Abstractions.IDisablable
+    {
+        public List<string> Names { get; } = [];
+        public void DisableActions(params string[] actionNames) => Names.AddRange(actionNames);
+    }
+
     /// <summary>
     /// Records what the action told the client, so a test can assert the outcome was reported at
     /// all rather than only that the right documents moved.
     /// </summary>
     private sealed class RecordingBus : IMessageBus
     {
+        // Routes the options overload onto the three this fake records, so it sees every publish.
+        public Task BroadcastAsync<TMessage>(TMessage message, BroadcastOptions options, CancellationToken cancellationToken = default)
+            => options.DeduplicationKey is { } key ? BroadcastOnceAsync(message, key, cancellationToken)
+             : options.Delay is { } delay ? DelayBroadcastAsync(message, delay, cancellationToken)
+             : BroadcastAsync(message, cancellationToken);
+
         public List<object?> Broadcast { get; } = [];
         public List<string?> QueueNames { get; } = [];
 
@@ -147,9 +160,9 @@ public class DeleteDataActionTests : CoverageRavenTest
     /// repository may be deleted is a property of the row.
     /// </para>
     /// <para>
-    /// So <c>RepositoryActions.OnLoadAsync</c> withholds it while the entity is in hand. An
-    /// affordance, not a permission: <c>DeleteDataAction</c> still refuses independently, which is
-    /// what the rest of this class covers.
+    /// So <c>RepositoryActions.OnDisableActionsAsync</c> withholds it on the stored entity — at load
+    /// (the button is not rendered) and at submit (the framework answers 403, #460 D13).
+    /// <c>DeleteDataAction</c> still refuses independently, which is what the rest of this class covers.
     /// </para>
     /// </summary>
     [Theory]
@@ -179,13 +192,35 @@ public class DeleteDataActionTests : CoverageRavenTest
             ObjectTypeId = Guid.Empty,
         };
 
-        // The hook's decision, exercised directly: OnLoadAsync needs the framework's load pipeline,
-        // so this asserts the rule it applies rather than re-hosting that pipeline.
+        // The real hook, called the way the framework calls it at load: with the object as the target
+        // and the stored entity in the context. It reads nothing but its arguments, so it is called on
+        // an instance without its injected services rather than re-hosting the whole pipeline.
         var repository = await session.LoadAsync<Repository>(Repository.DocumentId(EForgeProvider.GitHub, RepoId));
-        if (repository!.Connection != RepositoryConnection.Disconnected)
-            obj.DisableActions("DeleteData");
+        var actions = (global::CodeCoverage.Actions.RepositoryActions)System.Runtime.CompilerServices.RuntimeHelpers
+            .GetUninitializedObject(typeof(global::CodeCoverage.Actions.RepositoryActions));
+
+        await actions.OnDisableActionsAsync(obj, new MintPlayer.Spark.Actions.DisableActionsContext
+        {
+            Phase = MintPlayer.Spark.Actions.DisableActionsPhase.Load,
+            TargetKind = MintPlayer.Spark.Actions.DisableActionsTargetKind.PersistentObject,
+            Id = obj.Id,
+            Entity = repository,
+        });
 
         Assert.Equal(expectWithheld, obj.DisabledActions?.Contains("DeleteData") == true);
+
+        // The same question at submit (#460, D13) must give the same answer, or the button and the
+        // 403 disagree.
+        var submit = new RecordingDisablable();
+        await actions.OnDisableActionsAsync(submit, new MintPlayer.Spark.Actions.DisableActionsContext
+        {
+            Phase = MintPlayer.Spark.Actions.DisableActionsPhase.Submit,
+            TargetKind = MintPlayer.Spark.Actions.DisableActionsTargetKind.PersistentObject,
+            ActionName = "DeleteData",
+            Id = obj.Id,
+            Entity = repository,
+        });
+        Assert.Equal(expectWithheld, submit.Names.Contains("DeleteData"));
     }
 
     /// <summary>

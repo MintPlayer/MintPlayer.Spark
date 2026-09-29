@@ -73,7 +73,97 @@ public class MessageBusTests : SparkTestDriver
         var messages = await session.Query<SparkMessage>().ToListAsync();
 
         messages.Should().ContainSingle("the second call carries a key already enqueued");
-        messages[0].Id.Should().Be("SparkMessages/delivery-abc");
+        messages[0].Id.Should().Be(MessageBus.DeduplicationId(typeof(OrderShipped), "delivery-abc"));
+        messages[0].Id.Should().StartWith("SparkMessages/delivery-abc.", "the key stays readable in the id");
+    }
+
+    /// <summary>
+    /// The bug: the id was <c>SparkMessages/{sanitized key}</c>, so keys differing only in characters
+    /// an id cannot hold, or only in letter case (RavenDB ids are case-insensitive), or used by two
+    /// message types, all mapped to one document — and the second publish was silently dropped.
+    /// </summary>
+    [Theory]
+    [InlineData("a:b", "a/b")]
+    [InlineData("a:b", "a_b")]
+    [InlineData("Delivery-1", "delivery-1")]
+    public async Task BroadcastOnceAsync_keeps_keys_apart_that_used_to_sanitize_to_the_same_id(string first, string second)
+    {
+        var bus = NewBus();
+
+        await bus.BroadcastOnceAsync(new OrderShipped("orders/1"), first);
+        await bus.BroadcastOnceAsync(new OrderShipped("orders/2"), second);
+        await Store.WaitForIndexingAsync();
+
+        using var session = Store.OpenAsyncSession();
+        (await session.Query<SparkMessage>().CountAsync()).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task BroadcastOnceAsync_namespaces_the_key_by_message_type()
+    {
+        var bus = NewBus();
+
+        await bus.BroadcastOnceAsync(new OrderShipped("orders/1"), "delivery-abc");
+        await bus.BroadcastOnceAsync(new OrderPlaced("orders/1", 1m), "delivery-abc");
+        await Store.WaitForIndexingAsync();
+
+        using var session = Store.OpenAsyncSession();
+        (await session.Query<SparkMessage>().CountAsync()).Should().Be(2, "two message types may use one delivery id");
+    }
+
+    [Fact]
+    public void The_deduplication_id_is_bounded_whatever_the_key_length()
+    {
+        var id = MessageBus.DeduplicationId(typeof(OrderShipped), new string('x', 5000));
+
+        id.Length.Should().Be("SparkMessages/".Length + MessageBus.MaxReadableKeyLength + 1 + 32);
+    }
+
+    [Fact]
+    public async Task BroadcastOptions_are_written_onto_the_stored_message()
+    {
+        var bus = NewBus(new SparkMessagingOptions
+        {
+            Queues = { ["custom-orders-queue"] = new SparkQueueOptions { MaxAttempts = 9 } },
+        });
+        var expires = DateTime.UtcNow.AddHours(1);
+
+        await bus.BroadcastAsync(new OrderShipped("orders/1"), new BroadcastOptions
+        {
+            DeduplicationKey = "k",
+            Delay = TimeSpan.FromMinutes(5),
+            ExpiresAtUtc = expires,
+            ScrubPayloadOnTerminal = true,
+        });
+        await bus.BroadcastAsync(new OrderShipped("orders/2"), new BroadcastOptions { MaxAttempts = 2 });
+        await Store.WaitForIndexingAsync();
+
+        using var session = Store.OpenAsyncSession();
+        var messages = await session.Query<SparkMessage>().ToListAsync();
+        var first = messages.Single(m => m.PayloadJson.Contains("orders/1"));
+        first.Id.Should().Be(MessageBus.DeduplicationId(typeof(OrderShipped), "k"), "delay and deduplication combine");
+        first.NextAttemptAtUtc!.Value.Should().BeCloseTo(DateTime.UtcNow.AddMinutes(5), TimeSpan.FromSeconds(30));
+        first.WakeUp.Should().BeFalse();
+        first.ExpiresAtUtc!.Value.Should().BeCloseTo(expires, TimeSpan.FromMilliseconds(1));
+        first.ScrubPayloadOnTerminal.Should().BeTrue();
+        first.MaxAttempts.Should().Be(9, "the queue's MaxAttempts overrides the global one");
+        messages.Single(m => m.PayloadJson.Contains("orders/2")).MaxAttempts.Should().Be(2, "the publish's MaxAttempts overrides the queue's");
+    }
+
+    [Fact]
+    public async Task A_queue_override_must_name_a_declared_queue()
+    {
+        var bus = NewBus(new SparkMessagingOptions { Queues = { ["mail-bulk"] = new SparkQueueOptions() } });
+
+        await bus.BroadcastAsync(new OrderPlaced("orders/1", 1m), new BroadcastOptions { Queue = "mail-bulk" });
+        var undeclared = () => bus.BroadcastAsync(new OrderPlaced("orders/2", 1m), new BroadcastOptions { Queue = "nobody-drains-this" });
+        var invalid = () => bus.BroadcastAsync(new OrderPlaced("orders/3", 1m), new BroadcastOptions { Queue = "bad'name" });
+
+        await undeclared.Should().ThrowAsync<InvalidOperationException>();
+        await invalid.Should().ThrowAsync<ArgumentException>();
+        await Store.WaitForIndexingAsync();
+        using var session = Store.OpenAsyncSession();
+        (await session.Query<SparkMessage>().SingleAsync()).QueueName.Should().Be("mail-bulk");
     }
 
     [Fact]
@@ -88,7 +178,7 @@ public class MessageBusTests : SparkTestDriver
 
         using var session = Store.OpenAsyncSession();
         var message = await session.Query<SparkMessage>().SingleAsync();
-        message.Id.Should().Be("SparkMessages/a_b_c_d");
+        message.Id.Should().StartWith("SparkMessages/a_b_c_d.");
     }
 
     [Fact]

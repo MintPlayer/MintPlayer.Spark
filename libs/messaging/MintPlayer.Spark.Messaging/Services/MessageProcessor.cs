@@ -6,6 +6,8 @@ using MintPlayer.Spark.Messaging.Abstractions;
 using MintPlayer.Spark.Messaging.Models;
 using Raven.Client;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Commands.Batches;
+using Raven.Client.Documents.Operations;
 using Raven.Client.Documents.Session;
 using Newtonsoft.Json;
 
@@ -32,6 +34,12 @@ internal sealed partial class MessageProcessor
     [Inject] private readonly ILogger<MessageProcessor> logger;
 
     private SparkMessagingOptions Options => optionsAccessor.Value;
+
+    /// <summary>
+    /// Per-queue throttle state. Owned here, not registered separately: the processor is the one
+    /// singleton both subscription modes share, and admission is part of the per-message contract.
+    /// </summary>
+    internal QueueAdmission Admission { get; } = new();
 
     /// <summary>
     /// Loads the message, verifies this process still owns the claim, and runs the handlers.
@@ -69,13 +77,40 @@ internal sealed partial class MessageProcessor
             return;
         }
 
+        // Every save below stores the whole document, including the ClaimExpiresAtUtc this session
+        // loaded. ClaimedExecution renews the claim meanwhile from its own session, so a plain save
+        // wrote the stale expiry back and undid the renewal: a long handler could then be reclaimed
+        // by another worker for up to one ClaimRenewInterval. A save by the owner is proof the owner
+        // is alive, so each one carries a fresh expiry instead — never earlier than any renewal made
+        // before it. Terminal and parked states clear the claim first, so they are left alone.
+        var claimTtl = Options.ClaimTtl;
+        session.Advanced.OnBeforeStore += (_, e) =>
+        {
+            if (ReferenceEquals(e.Entity, sparkMessage))
+                ExtendOwnClaim(sparkMessage, ownerId, claimTtl);
+        };
+
         await RunHandlersAsync(session, sparkMessage, cancellationToken);
     }
 
     /// <summary>
-    /// Runs the handlers for a message already loaded in <paramref name="session"/>. Used
-    /// directly by <c>MessageSubscriptionWorker</c>, which gets its message from the
-    /// subscription batch rather than by id.
+    /// Pushes <paramref name="message"/>'s claim expiry to now + <paramref name="ttl"/> when it is
+    /// still claimed by <paramref name="ownerId"/>, so the owner's own save cannot move it backwards.
+    /// </summary>
+    internal static void ExtendOwnClaim(SparkMessage message, string ownerId, TimeSpan ttl)
+    {
+        if (message.Status != EMessageStatus.Processing || message.OwnerId != ownerId)
+            return;
+
+        var renewed = DateTime.UtcNow + ttl;
+        if (message.ClaimExpiresAtUtc is not { } current || current < renewed)
+            message.ClaimExpiresAtUtc = renewed;
+    }
+
+    /// <summary>
+    /// Runs the handlers for a message already loaded in <paramref name="session"/>, after expiry
+    /// and throttle admission. Both delivery paths reach it through <see cref="ProcessAsync"/>, under
+    /// <see cref="ClaimedExecution"/> (claim renewal + <see cref="SparkMessagingOptions.HandlerTimeout"/>).
     /// </summary>
     public async Task RunHandlersAsync(
         IAsyncDocumentSession session,
@@ -89,6 +124,13 @@ internal sealed partial class MessageProcessor
             // redelivered immediately in a tight loop.
             sparkMessage.WakeUp = false;
 
+            // Admission, before anything else and before any handler is materialized. Never wait here:
+            // this runs inside a lane, and a sleeping lane stalls the bounded channel behind it, the
+            // feeder writing into it, and with it every other queue. Over budget means one write that
+            // parks the message at its reserved slot, and the lane moves on.
+            if (await AdmitAsync(session, sparkMessage, cancellationToken) is false)
+                return;
+
             // R2-H6: allow-list check BEFORE Type.GetType. The DI-derived allow-list contains
             // only types that have an IRecipient<T> registration; an attacker who can write into
             // SparkMessages can no longer route through Type.GetType to instantiate arbitrary
@@ -99,7 +141,7 @@ internal sealed partial class MessageProcessor
                 logger.LogError(
                     "Message type {MessageType} is not in the allow-list (no registered IRecipient<>) — dead-lettering {MessageId}",
                     sparkMessage.MessageType, sparkMessage.Id);
-                DeadLetter(session, sparkMessage);
+                DeadLetter(session, sparkMessage, EDeadLetterReason.NonRetryable);
                 await session.SaveChangesAsync(cancellationToken);
                 return;
             }
@@ -108,7 +150,7 @@ internal sealed partial class MessageProcessor
             if (clrType == null)
             {
                 logger.LogError("Cannot resolve type {MessageType} for message {MessageId}", sparkMessage.MessageType, sparkMessage.Id);
-                DeadLetter(session, sparkMessage);
+                DeadLetter(session, sparkMessage, EDeadLetterReason.NonRetryable);
                 await session.SaveChangesAsync(cancellationToken);
                 return;
             }
@@ -117,7 +159,7 @@ internal sealed partial class MessageProcessor
             if (payload == null)
             {
                 logger.LogError("Failed to deserialize payload for message {MessageId}", sparkMessage.Id);
-                DeadLetter(session, sparkMessage);
+                DeadLetter(session, sparkMessage, EDeadLetterReason.NonRetryable);
                 await session.SaveChangesAsync(cancellationToken);
                 return;
             }
@@ -155,10 +197,13 @@ internal sealed partial class MessageProcessor
                 }
 
                 var checkpoint = scope.ServiceProvider.GetService<IMessageCheckpoint>() as MessageCheckpoint;
+                var progress = scope.ServiceProvider.GetService<IMessageProgress>() as MessageProgress;
+                (scope.ServiceProvider.GetService<IMessageContext>() as MessageContext)?.Set(sparkMessage);
 
                 // Execute each handler independently
-                foreach (var handler in sparkMessage.Handlers)
+                for (var handlerIndex = 0; handlerIndex < sparkMessage.Handlers.Count; handlerIndex++)
                 {
+                    var handler = sparkMessage.Handlers[handlerIndex];
                     if (handler.Status is EHandlerStatus.Completed or EHandlerStatus.DeadLettered)
                         continue;
 
@@ -199,6 +244,7 @@ internal sealed partial class MessageProcessor
                     }
 
                     checkpoint?.SetContext(session, handler);
+                    progress?.SetContext(session, sparkMessage, handler, handlerIndex);
 
                     try
                     {
@@ -286,11 +332,7 @@ internal sealed partial class MessageProcessor
             // Unexpected error outside the handler loop (deserialization, DI, etc.)
             logger.LogError(ex, "Unexpected error processing message {MessageId} (queue: {QueueName})", sparkMessage.Id, sparkMessage.QueueName);
 
-            sparkMessage.Status = EMessageStatus.Failed;
-            sparkMessage.OwnerId = null;
-            sparkMessage.ClaimExpiresAtUtc = null;
-            var delayIndex = Math.Min(sparkMessage.AttemptCount - 1, Options.ResolvedBackoffDelays.Length - 1);
-            sparkMessage.NextAttemptAtUtc = DateTime.UtcNow + Options.ResolvedBackoffDelays[Math.Max(0, delayIndex)];
+            ParkForRetry(session, sparkMessage, sparkMessage.AttemptCount);
 
             // CancellationToken.None, deliberately. This save is the park that makes the message
             // retryable, and the usual reason we are here on shutdown is that `cancellationToken`
@@ -311,11 +353,110 @@ internal sealed partial class MessageProcessor
         }
     }
 
-    private void DeadLetter(IAsyncDocumentSession session, SparkMessage sparkMessage)
+    /// <summary>
+    /// Expiry and throttle admission for a claimed message. Returns true when the handlers may run
+    /// now; otherwise the message has been saved dead-lettered (Expired) or deferred to its reserved
+    /// slot, and the caller returns.
+    /// </summary>
+    private async Task<bool> AdmitAsync(IAsyncDocumentSession session, SparkMessage sparkMessage, CancellationToken cancellationToken)
     {
-        sparkMessage.Status = EMessageStatus.DeadLettered;
+        var now = DateTime.UtcNow;
+
+        if (sparkMessage.ExpiresAtUtc is { } expiresAt && expiresAt <= now)
+        {
+            logger.LogWarning("Message {MessageId} (queue: {QueueName}) expired at {ExpiresAt} before it could be handled; dead-lettering",
+                sparkMessage.Id, sparkMessage.QueueName, expiresAt);
+            Expire(session, sparkMessage);
+            await session.SaveChangesAsync(cancellationToken);
+            return false;
+        }
+
+        var decision = Admission.Decide(
+            sparkMessage.QueueName, sparkMessage.Id!, Options.QueueOptionsFor(sparkMessage.QueueName), now, sparkMessage.ExpiresAtUtc);
+
+        switch (decision.Kind)
+        {
+            case AdmissionKind.Admit:
+                return true;
+
+            case AdmissionKind.Expired:
+                logger.LogWarning("Message {MessageId} (queue: {QueueName}) cannot start before it expires at {ExpiresAt}; dead-lettering",
+                    sparkMessage.Id, sparkMessage.QueueName, sparkMessage.ExpiresAtUtc);
+                Expire(session, sparkMessage);
+                await session.SaveChangesAsync(cancellationToken);
+                return false;
+
+            default:
+                if (await MessageClaims.DeferUnstartedAsync(session, sparkMessage, decision.Slot, cancellationToken))
+                {
+                    logger.LogDebug("Message {MessageId} (queue: {QueueName}) throttled; deferred to {Slot}",
+                        sparkMessage.Id, sparkMessage.QueueName, decision.Slot);
+                }
+                else
+                {
+                    // The sweeper reclaimed it meanwhile. Its reservation stands, so when it comes back
+                    // it starts at that slot.
+                    logger.LogDebug("Message {MessageId} changed while being deferred; leaving it to its new owner", sparkMessage.Id);
+                }
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// Parks a message for another attempt after <paramref name="attempt"/> failures, with the queue's
+    /// backoff when it has one. A retry that would fall after the message's expiry dead-letters it as
+    /// Expired instead: the retry could only ever run too late.
+    /// </summary>
+    private void ParkForRetry(IAsyncDocumentSession session, SparkMessage sparkMessage, int attempt)
+    {
+        var delays = Options.QueueOptionsFor(sparkMessage.QueueName)?.ResolveBackoff(Options.ResolvedBackoffDelays)
+            ?? Options.ResolvedBackoffDelays;
+        var next = DateTime.UtcNow + delays[Math.Clamp(attempt - 1, 0, delays.Length - 1)];
+
+        if (sparkMessage.ExpiresAtUtc is { } expiresAt && next > expiresAt)
+        {
+            logger.LogWarning("Message {MessageId} would retry at {Next}, after it expires at {ExpiresAt}; dead-lettering",
+                sparkMessage.Id, next, expiresAt);
+            Expire(session, sparkMessage);
+            return;
+        }
+
+        // The claim is released: the message is parked, so nothing is working on it, and leaving an
+        // owner behind would make the sweeper's reclaim query miss it.
+        sparkMessage.Status = EMessageStatus.Failed;
         sparkMessage.OwnerId = null;
         sparkMessage.ClaimExpiresAtUtc = null;
+        sparkMessage.NextAttemptAtUtc = next;
+    }
+
+    private void DeadLetter(IAsyncDocumentSession session, SparkMessage sparkMessage, EDeadLetterReason reason)
+        => Finish(session, sparkMessage, EMessageStatus.DeadLettered, reason);
+
+    private void Expire(IAsyncDocumentSession session, SparkMessage sparkMessage)
+    {
+        foreach (var handler in sparkMessage.Handlers)
+        {
+            if (handler.Status is EHandlerStatus.Completed or EHandlerStatus.DeadLettered)
+                continue;
+            handler.Status = EHandlerStatus.DeadLettered;
+            handler.LastError = $"Expired at {sparkMessage.ExpiresAtUtc:O} before it could be handled";
+        }
+
+        Finish(session, sparkMessage, EMessageStatus.DeadLettered, EDeadLetterReason.Expired);
+    }
+
+    /// <summary>The one place a message becomes terminal.</summary>
+    private void Finish(IAsyncDocumentSession session, SparkMessage sparkMessage, EMessageStatus status, EDeadLetterReason? reason)
+    {
+        sparkMessage.Status = status;
+        sparkMessage.DeadLetterReason = status == EMessageStatus.DeadLettered ? reason : null;
+        sparkMessage.CompletedAtUtc = DateTime.UtcNow;
+        sparkMessage.OwnerId = null;
+        sparkMessage.ClaimExpiresAtUtc = null;
+        if (sparkMessage.ScrubPayloadOnTerminal)
+            sparkMessage.PayloadJson = string.Empty;
+        if (sparkMessage.Id is { } id)
+            Admission.Forget(id);
         SetExpiration(session, sparkMessage);
     }
 
@@ -323,11 +464,7 @@ internal sealed partial class MessageProcessor
     {
         if (sparkMessage.Handlers.Count == 0)
         {
-            sparkMessage.Status = EMessageStatus.Completed;
-            sparkMessage.CompletedAtUtc = DateTime.UtcNow;
-            sparkMessage.OwnerId = null;
-            sparkMessage.ClaimExpiresAtUtc = null;
-            SetExpiration(session, sparkMessage);
+            Finish(session, sparkMessage, EMessageStatus.Completed, null);
             return;
         }
 
@@ -338,39 +475,61 @@ internal sealed partial class MessageProcessor
         if (allTerminal)
         {
             var allDeadLettered = sparkMessage.Handlers.All(h => h.Status == EHandlerStatus.DeadLettered);
-            sparkMessage.Status = allDeadLettered ? EMessageStatus.DeadLettered : EMessageStatus.Completed;
-            sparkMessage.CompletedAtUtc = DateTime.UtcNow;
-            sparkMessage.OwnerId = null;
-            sparkMessage.ClaimExpiresAtUtc = null;
-            SetExpiration(session, sparkMessage);
+            if (!allDeadLettered)
+            {
+                Finish(session, sparkMessage, EMessageStatus.Completed, null);
+                return;
+            }
+
+            var exhausted = sparkMessage.Handlers.Any(h => h.AttemptCount >= sparkMessage.MaxAttempts);
+            Finish(session, sparkMessage, EMessageStatus.DeadLettered,
+                exhausted ? EDeadLetterReason.MaxAttempts : EDeadLetterReason.NonRetryable);
         }
         else if (hasAnyFailed || hasAnyPending)
         {
-            // Schedule retry based on the highest attempt count among failed handlers. The claim
-            // is released: the message is parked, so nothing is working on it, and leaving an
-            // owner behind would make the sweeper's reclaim query miss it.
-            sparkMessage.Status = EMessageStatus.Failed;
-            sparkMessage.OwnerId = null;
-            sparkMessage.ClaimExpiresAtUtc = null;
+            // Schedule retry based on the highest attempt count among failed handlers.
             var maxAttempt = sparkMessage.Handlers
                 .Where(h => h.Status == EHandlerStatus.Failed)
                 .Select(h => h.AttemptCount)
                 .DefaultIfEmpty(0)
                 .Max();
-            var delayIndex = Math.Min(maxAttempt - 1, Options.ResolvedBackoffDelays.Length - 1);
-            sparkMessage.NextAttemptAtUtc = DateTime.UtcNow + Options.ResolvedBackoffDelays[Math.Max(0, delayIndex)];
+            ParkForRetry(session, sparkMessage, maxAttempt);
 
-            logger.LogInformation("Message {MessageId} has failing handlers, retrying at {NextAttempt}",
-                sparkMessage.Id, sparkMessage.NextAttemptAtUtc);
+            if (sparkMessage.Status == EMessageStatus.Failed)
+                logger.LogInformation("Message {MessageId} has failing handlers, retrying at {NextAttempt}",
+                    sparkMessage.Id, sparkMessage.NextAttemptAtUtc);
         }
     }
 
+    /// <summary>
+    /// Retention for a terminal message, and the same <c>@expires</c> on every progress sidecar its
+    /// handlers wrote — a sidecar must not outlive its message, nor die before it.
+    /// </summary>
     private void SetExpiration(IAsyncDocumentSession session, SparkMessage msg)
     {
         if (Options.RetentionDays <= 0) return;
 
+        var expires = DateTime.UtcNow.AddDays(Options.RetentionDays);
         var metadata = session.Advanced.GetMetadataFor(msg);
-        metadata[Constants.Documents.Metadata.Expires] = DateTime.UtcNow.AddDays(Options.RetentionDays);
+        metadata[Constants.Documents.Metadata.Expires] = expires;
+
+        if (msg.Id is null)
+            return;
+
+        for (var i = 0; i < msg.Handlers.Count; i++)
+        {
+            if (!msg.Handlers[i].HasProgress)
+                continue;
+
+            session.Advanced.Defer(new PatchCommandData(
+                SparkMessageProgress.IdFor(msg.Id, i),
+                changeVector: null,
+                patch: new PatchRequest
+                {
+                    Script = "this['@metadata']['@expires'] = args.expires;",
+                    Values = { ["expires"] = expires.ToString("O") },
+                }));
+        }
     }
 
     private static bool IsNonRetryable(Exception ex)

@@ -36,6 +36,8 @@ internal sealed partial class ExecuteQuery : IPostEndpoint
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IClientAccessor clientAccessor;
+    [Inject] private readonly IRowPolicyRequestState rowPolicyRequestState;
+    [Inject] private readonly IRowSecurity rowSecurity;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -50,6 +52,10 @@ internal sealed partial class ExecuteQuery : IPostEndpoint
 
         // A query hook can prompt now, which is what having a body buys.
         RetryScope.Accept(retryAccessor, request);
+
+        // T2 (#460): the soft-deletion mode reaches row policies through RowPolicyContext. Set before
+        // anything asks row security, because row filters are memoized per request.
+        rowPolicyRequestState.Deleted = request.Deleted ?? SparkDeletedFilter.Exclude;
 
         var query = queryLoader.ResolveQuery(id);
 
@@ -70,6 +76,12 @@ internal sealed partial class ExecuteQuery : IPostEndpoint
         {
             return Results.Json(new { error = $"Query '{id}' not found" }, statusCode: 404);
         }
+
+        // The deleted mode is for the query's own rows; their references (the live question of a
+        // deleted answer) are resolved as live. A query without a declared type keeps the old,
+        // request-wide scope.
+        if (query.EntityType is not null)
+            rowPolicyRequestState.DeletedScopeClrType = modelLoader.ResolveEntityType(query.EntityType)?.ClrType;
 
         // Only when the query declares its entity type. A query that leaves it unset has its type
         // inferred downstream, and QueryExecutor authorizes there — refusing here would break
@@ -174,11 +186,14 @@ internal sealed partial class ExecuteQuery : IPostEndpoint
                 var parentEntityType = modelLoader.ResolveEntityType(parentType);
                 if (parentEntityType != null)
                 {
-                    parent = await databaseAccess.GetPersistentObjectAsync(parentEntityType.Id, parentId);
+                    // Under the parent's own deleted mode (parentDeleted), not the rows' (deleted).
+                    parent = await SubQueryParent.ResolveAsync(databaseAccess, rowPolicyRequestState, rowSecurity,
+                        parentEntityType, parentId, request.ParentDeleted);
                 }
                 // Parent was asked for but we couldn't resolve or couldn't authorize it.
                 // Return 404 rather than silently running the query unscoped — that would
-                // leak data the caller shouldn't see (H-3).
+                // leak data the caller shouldn't see (H-3). A deleted parent asked for without
+                // ViewDeleted on its type lands here too, with the same body (#453).
                 if (parent is null)
                     return Results.Json(new { error = "Parent not found" }, statusCode: 404);
             }

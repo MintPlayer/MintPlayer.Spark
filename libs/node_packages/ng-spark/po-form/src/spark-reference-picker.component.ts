@@ -73,7 +73,7 @@ export class SparkReferencePickerComponent {
 
   displayValue = computed(() => {
     const id = this.value();
-    if (!id) return this.lang.t('notSelected');
+    if (!id) return this.lang.t('common.notSelected');
     const selected = this.options().find(o => o.id === id);
     return selected?.breadcrumb || id;
   });

@@ -34,6 +34,11 @@ public partial class UserStore<TUser> :
     private const string EmailReservationKeyPrefix = "emails/";
 
     [Inject] private readonly IDocumentStore documentStore;
+    // All [Inject] fields live in this file: the generator emits one constructor per partial
+    // declaration, so a field injected from UserStore.Secrets.cs produced a second, ambiguous one.
+    [Inject] private readonly Microsoft.AspNetCore.DataProtection.IDataProtectionProvider? dataProtectionProvider;
+    [Inject] private readonly Microsoft.Extensions.Logging.ILogger<UserStore<TUser>>? logger;
+    [Inject] private readonly TimeProvider? timeProvider;
     private IAsyncDocumentSession? session;
     private bool disposed;
 
@@ -70,6 +75,16 @@ public partial class UserStore<TUser> :
     {
         cancellationToken.ThrowIfCancellationRequested();
         ThrowIfDisposed();
+
+        // #460 item 6: when and how the account came to exist. A caller that knows the method (the
+        // external-login callback) sets it; otherwise it is inferred from what the account holds at
+        // creation. Existing accounts are backfilled by SparkUserBackfill.
+        user.CreatedAtUtc ??= (timeProvider ?? TimeProvider.System).GetUtcNow().UtcDateTime;
+        user.RegistrationMethod ??= user.PasswordHash is not null
+            ? SparkRegistrationMethods.Password
+            : user.Logins.FirstOrDefault() is { } login
+                ? SparkRegistrationMethods.External(login.LoginProvider)
+                : SparkRegistrationMethods.Other;
 
         if (user.Email != null)
         {
@@ -442,14 +457,16 @@ public partial class UserStore<TUser> :
 
     #region IUserAuthenticatorKeyStore
 
+    /// <summary>Stores the key protected (<c>sdp1:</c>) — see <c>UserStore.Secrets.cs</c>.</summary>
     public Task SetAuthenticatorKeyAsync(TUser user, string key, CancellationToken cancellationToken)
     {
-        user.AuthenticatorKey = key;
+        user.AuthenticatorKey = Protect(key, AuthenticatorKeyPurpose);
         return Task.CompletedTask;
     }
 
+    /// <summary>Reads legacy plaintext and protected values; an unreadable one never disables 2FA.</summary>
     public Task<string?> GetAuthenticatorKeyAsync(TUser user, CancellationToken cancellationToken)
-        => Task.FromResult(user.AuthenticatorKey);
+        => Task.FromResult(ReadAuthenticatorKey(user));
 
     #endregion
 
@@ -549,9 +566,10 @@ public partial class UserStore<TUser> :
     public Task SetTokenAsync(TUser user, string loginProvider, string name, string? value, CancellationToken cancellationToken)
     {
         var existing = user.Tokens.FirstOrDefault(t => t.LoginProvider == loginProvider && t.Name == name);
+        var stored = Protect(value, TokenPurpose);
         if (existing != null)
         {
-            existing.Value = value;
+            existing.Value = stored;
         }
         else
         {
@@ -559,7 +577,7 @@ public partial class UserStore<TUser> :
             {
                 LoginProvider = loginProvider,
                 Name = name,
-                Value = value
+                Value = stored
             });
         }
         return Task.CompletedTask;
@@ -574,7 +592,7 @@ public partial class UserStore<TUser> :
     public Task<string?> GetTokenAsync(TUser user, string loginProvider, string name, CancellationToken cancellationToken)
     {
         var token = user.Tokens.FirstOrDefault(t => t.LoginProvider == loginProvider && t.Name == name);
-        return Task.FromResult(token?.Value);
+        return Task.FromResult(token is null ? null : ReadToken(user, token));
     }
 
     #endregion

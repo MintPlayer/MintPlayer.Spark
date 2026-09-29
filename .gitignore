@@ -421,3 +421,6 @@ apps/*/raven-license.json
 # they are per-machine, and nothing outside a local run should ever see them --
 # a plain `git add -A` after running the tests was enough to stage one.
 **/oidc-signing-key*.json
+
+# #460 M8: MailManager pickup-folder mode in the demo apps writes every mail here as an .eml file.
+mail-pickup/

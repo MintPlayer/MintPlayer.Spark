@@ -37,6 +37,7 @@ public class MapSparkIdentityApiTests : SparkTestDriver
                 {
                     services.AddSingleton<IDocumentStore>(Store);
                     services.AddSparkAuthentication<SparkUser>();
+                    services.AddTestMailSink(); // #460 D6: registration needs a mail sender
 
                     // Append a cookie-backed external scheme that the SignInManager can
                     // challenge against without us having to mount a real OAuth handler.

@@ -1,0 +1,25 @@
+{
+  "name": "@spark-demo/qna-demo",
+  "version": "0.0.0",
+  "scripts": {
+    "start": "nx run @spark-demo/qna-demo:serve",
+    "build": "nx run @spark-demo/qna-demo:build",
+    "test": "nx run @spark-demo/qna-demo:test"
+  },
+  "prettier": {
+    "printWidth": 100,
+    "singleQuote": true,
+    "overrides": [
+      {
+        "files": "*.html",
+        "options": {
+          "parser": "angular"
+        }
+      }
+    ]
+  },
+  "private": true,
+  "dependencies": {
+    "@mintplayer/ng-spark-auth": "^22.3.0"
+  }
+}

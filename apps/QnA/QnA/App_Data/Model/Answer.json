@@ -1,0 +1,332 @@
+{
+  "persistentObject": {
+    "id": "39342297-cb55-4adb-b132-3c5e9b9fddcf",
+    "name": "Answer",
+    "description": {
+      "en": "Answer",
+      "fr": "Réponse",
+      "nl": "Antwoord"
+    },
+    "clrType": "QnA.Entities.Answer",
+    "alias": "answer",
+    "breadcrumb": "{QuestionId}",
+    "revisions": {
+      "enabled": true,
+      "purgeOnDelete": false
+    },
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "74a96d76-1be3-4df4-addc-0d0a0369b460",
+        "name": "AuthorId",
+        "label": {
+          "en": "Author",
+          "fr": "Auteur",
+          "nl": "Auteur"
+        },
+        "description": {
+          "en": "Who answered. Stamped by Moderation on create, never changed afterwards."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "renderer": "qna-author"
+      },
+      {
+        "id": "e14a6c48-000c-43a3-a5ec-c16df64d68c4",
+        "name": "Body",
+        "label": {
+          "en": "Body",
+          "fr": "Contenu",
+          "nl": "Inhoud"
+        },
+        "description": {
+          "en": "The answer itself."
+        },
+        "dataType": "MultiLineString",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e34d5925-b59b-4dff-97da-9559d02bf00b",
+        "name": "CreatedAt",
+        "label": {
+          "en": "Created",
+          "fr": "Créée",
+          "nl": "Aangemaakt"
+        },
+        "description": {
+          "en": "When the answer was created. Stamped by History."
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 30,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "f6c6159b-2d3b-43cb-973b-10651c4c056e",
+        "name": "CreatedBy",
+        "label": {
+          "en": "Created by",
+          "fr": "Créée par",
+          "nl": "Aangemaakt door"
+        },
+        "description": {
+          "en": "Who created the answer (a user id). Stamped by History."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": false,
+        "isReadOnly": true,
+        "order": 31,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "4f15c044-6f29-4473-8253-74f38486b234",
+        "name": "DeletedAt",
+        "label": {
+          "en": "Deleted at",
+          "fr": "Supprimée le",
+          "nl": "Verwijderd op"
+        },
+        "description": {
+          "en": "When the answer was deleted."
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 21,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "d455df12-5e02-4ee4-8940-e073d94e7c11",
+        "name": "DeletedBy",
+        "label": {
+          "en": "Deleted by",
+          "fr": "Supprimée par",
+          "nl": "Verwijderd door"
+        },
+        "description": {
+          "en": "Who deleted the answer (a user id)."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": false,
+        "isReadOnly": true,
+        "order": 23,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "85efa37d-7b3d-422f-858e-6fe959c53277",
+        "name": "DeleteReason",
+        "label": {
+          "en": "Delete reason",
+          "fr": "Motif de suppression",
+          "nl": "Reden van verwijdering"
+        },
+        "description": {
+          "en": "Why the answer was deleted, when a reason was given."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 22,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a6546851-3e3c-4332-bd45-ebe2d62c3bdb",
+        "name": "IsDeleted",
+        "label": {
+          "en": "Deleted",
+          "fr": "Supprimée",
+          "nl": "Verwijderd"
+        },
+        "description": {
+          "en": "Whether the answer was deleted. Deleted answers are hidden everywhere until restored."
+        },
+        "dataType": "boolean",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 20,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ce760ac6-8178-46e8-b7cd-1a6b36ae9e48",
+        "name": "ModifiedAt",
+        "label": {
+          "en": "Modified",
+          "fr": "Modifiée",
+          "nl": "Gewijzigd"
+        },
+        "description": {
+          "en": "When the answer was changed last. Stamped by History."
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 32,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ec944a10-5aba-4b7d-9a90-651e80f9359d",
+        "name": "ModifiedBy",
+        "label": {
+          "en": "Modified by",
+          "fr": "Modifiée par",
+          "nl": "Gewijzigd door"
+        },
+        "description": {
+          "en": "Who changed the answer last (a user id). Stamped by History."
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": false,
+        "isReadOnly": true,
+        "order": 33,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "0eba886e-f8ab-4a83-9c7e-167d9a8b4970",
+        "name": "PostedAt",
+        "label": {
+          "en": "Posted",
+          "fr": "Publiée",
+          "nl": "Geplaatst"
+        },
+        "description": {
+          "en": "When the answer was posted. Stamped by Moderation."
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "626cb3f8-65a7-4f87-9dfe-5cf532bfe660",
+        "name": "QuestionId",
+        "label": {
+          "en": "Question",
+          "fr": "Question",
+          "nl": "Vraag"
+        },
+        "description": {
+          "en": "The question this answers. A closed question refuses new answers."
+        },
+        "dataType": "Reference",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "query": "GetQuestions",
+        "referenceType": "QnA.Entities.Question",
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "56089038-404e-4baa-a32f-60a10911f366",
+        "name": "Votes",
+        "label": {
+          "en": "Votes",
+          "fr": "Votes",
+          "nl": "Stemmen"
+        },
+        "description": {
+          "en": "The vote widget's slot on the page; the score lives in ModerationTallies/{id}."
+        },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "renderer": "spark-vote",
+        "rendererOptions": {
+          "type": "Answer"
+        }
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "e4a0db0c-7ce3-4344-b273-cadccf285b10",
+      "name": "GetAnswers",
+      "description": {
+        "en": "Answers",
+        "fr": "Réponses",
+        "nl": "Antwoorden"
+      },
+      "source": "Database.Answers",
+      "alias": "answers",
+      "sortColumns": [
+        {
+          "property": "PostedAt",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "Answer",
+      "isStreamingQuery": false
+    },
+    {
+      "id": "4e13a000-0000-4000-8000-000000000001",
+      "name": "Question_Answers",
+      "description": {
+        "en": "Answers",
+        "fr": "Réponses",
+        "nl": "Antwoorden"
+      },
+      "source": "Custom.Question_Answers",
+      "alias": "question-answers",
+      "sortColumns": [
+        {
+          "property": "PostedAt",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "Answer",
+      "isStreamingQuery": false
+    }
+  ]
+}

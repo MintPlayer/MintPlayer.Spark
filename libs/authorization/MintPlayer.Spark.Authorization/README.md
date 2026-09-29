@@ -83,18 +83,101 @@ right order and wires antiforgery. There is no `UseSparkAntiforgery()`; see belo
 `AddAuthentication<TUser>()` registers the identity endpoints itself, so you never map them by
 hand. They live under `/spark/auth/`:
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `/spark/auth/register` | POST | Register a new user |
-| `/spark/auth/login` | POST | Log in (returns auth cookie) |
-| `/spark/auth/logout` | POST | Log out (requires XSRF token) |
-| `/spark/auth/me` | GET | Get current user info |
-| `/spark/auth/refresh` | POST | Refresh authentication token |
-| `/spark/auth/forgotPassword` | POST | Start password reset flow |
-| `/spark/auth/resetPassword` | POST | Complete password reset |
-| `/spark/auth/manage/2fa` | POST | Configure two-factor authentication |
-| `/spark/auth/manage/info` | GET/POST | Get or update user profile |
-| `/spark/auth/csrf-refresh` | POST | Get a fresh CSRF token |
+| Endpoint | Method | Modes | Description |
+|---|---|---|---|
+| `/spark/auth/register` | POST | Full | Register; mails a confirmation link |
+| `/spark/auth/resendConfirmationEmail` | POST | Full | Re-send the confirmation link (unconfirmed accounts only) |
+| `/spark/auth/login` | POST | Full, SignInOnly | Log in with **email or user name** (cookie with `?useCookies=true`, else bearer) |
+| `/spark/auth/refresh` | POST | Full, SignInOnly | Refresh a bearer token |
+| `/spark/auth/forgotPassword` | POST | Full, SignInOnly | Mail a reset link — also to an **unconfirmed** address |
+| `/spark/auth/resetPassword` | POST | Full, SignInOnly | Complete a reset; **confirms the email** |
+| `/spark/auth/confirmEmail` | GET | all | Legacy mailbox link (plain-text answer) |
+| `/spark/auth/confirm-email` | POST | all | `{ userId, code, changedEmail? }` — what the SPA's confirm page posts |
+| `/spark/auth/manage/info` | GET / POST | all / Full, SignInOnly | Read email + confirmed; change password (`oldPassword`) or email (link to the new address) |
+| `/spark/auth/manage/password` | POST | Full, SignInOnly | `{ currentPassword?, newPassword }` — set a first password or change it |
+| `/spark/auth/manage/profile` | GET / POST | all | User name, `preferredCulture` (mail language) + app fields (`ISparkProfileContributor<TUser>`) |
+| `/spark/auth/manage/2fa` | POST | all | Microsoft's 2FA management (creates the authenticator key) |
+| `/spark/auth/manage/2fa/authenticator-uri` | GET | all | `{ sharedKey, authenticatorUri, qrCodeSvg }`, `Cache-Control: no-store` |
+| `/spark/auth/manage/personal-data` | GET | all | GDPR export: the account + `ISparkPersonalDataContributor<TUser>` sections |
+| `/spark/auth/manage/account` | DELETE | all | GDPR deletion, re-authentication required |
+| `/spark/auth/me` | GET | all | Current user info |
+| `/spark/auth/logout` | POST | all | Log out (requires XSRF token) |
+| `/spark/auth/csrf-refresh` | POST | all | Get a fresh CSRF token |
+
+Every mutating route carries the antiforgery stamp, anonymous ones included; the one stated
+exemption is Microsoft's bearer `/refresh` (its credential travels in the body).
+
+#### Sign-in identifier (#460 D4)
+
+`/login` and the OIDC `/connect/login` page share `SparkSignInManager<TUser>.FindUserForSignInAsync`:
+an identifier containing `@` is looked up as an email first and as a user name only when **no
+account** has that email; without `@` it is a user name. A wrong password never falls through to a
+second account. `SparkUserNameValidator<TUser>` enforces the matching rule on every save: **a user
+name containing `@` must equal that account's own email**, so the two lookups cannot collide. A
+confirmed email change moves an email-shaped user name with it (`SparkUserManager<TUser>`); a chosen
+handle stays. Two-factor and recovery codes work unchanged (the resolved user carries them).
+
+#### Account mail and links (#460 D6, D16)
+
+Every account mail goes through Identity's `IEmailSender<TUser>` (MailManager implements it), and its
+link comes from `ISparkAuthLinkBuilder`: the **SPA's** pages — `{PublicBaseUrl}/confirm-email?userId=…&code=…[&changedEmail=…]`
+and `{PublicBaseUrl}/reset-password?email=…&code=…` — whose components post the token back.
+
+- ⚠️ Set `Spark:Auth:PublicBaseUrl` (or `SparkAuthenticationOptions.Links.PublicBaseUrl`) outside
+  Development. Without it no link-bearing mail is sent (logged as an error) rather than deriving a
+  link from the request's `Host` header, which on an anonymous endpoint is the attacker's to choose
+  (password-reset poisoning). Development falls back to the request origin.
+- **Sending** (#460 M8): add `MintPlayer.Spark.MailManager` (`spark.AddMailManager()`, `Spark:Mail:*`)
+  and nothing else. Spark replaces Identity's no-op `IEmailSender<TUser>` with one that queues the
+  shipped MJML templates `SparkAuth/ConfirmEmail`, `SparkAuth/PasswordReset` and
+  `SparkAuth/LinkConfirmation` (English + Dutch; override one with `Templates/Mail/SparkAuth/{Name}[.{culture}].mjml`
+  in the app). Each mail is `Sensitive` (encrypted in the queue, scrubbed when done), expires shortly
+  before its token and is written in `SparkUser.PreferredCulture` (null → `Spark:Mail:DefaultCulture`).
+  An `IEmailSender<TUser>` the app registers itself is kept.
+- **Registration needs mail (D6).** `LocalCredentials = Full` whose mail would be discarded —
+  Identity's no-op, or Spark's sender without MailManager — refuses startup. Opt out with
+  `AllowUnconfirmedRegistration = true` / `Spark:Auth:AllowUnconfirmedRegistration=true`.
+- `SparkAuthenticationOptions.RequireConfirmedEmail` (default `false`) refuses sign-in to unconfirmed
+  accounts. A completed password reset confirms the email, and `forgotPassword` mails unconfirmed
+  addresses, so older unconfirmed accounts can always get in.
+
+#### Secrets at rest (#460 D5)
+
+The authenticator key and every external-login token are stored as `sdp1:` + Data Protection
+ciphertext (purpose `MintPlayer.Spark.Authorization.UserStore` + field kind, no user id). Legacy
+plaintext is still read, and `SparkUserBackfill<TUser>` rewrites it once after start (marker document
+`SparkAuth/Backfills/Users.v1`; `BackfillUsersOnStartup = false` to skip). ⚠️ If the key ring loses
+its keys, protected values become unreadable: the authenticator key then reads as a key nobody holds —
+**two-factor stays required**, authenticator codes fail, recovery codes still work, and resetting the
+key repairs the account (a `null` would have made Identity skip the second factor). Tokens read as
+absent until the provider issues new ones. `SparkUser.CreatedAtUtc` and `RegistrationMethod`
+(`password`, `external:{scheme}`, `other`) are stamped on create; the backfill fills `CreatedAtUtc`
+from the oldest revision where revisions exist (RavenDB keeps no creation date in metadata).
+
+#### External providers (#460 D7)
+
+Presets: `AddGitHub`, `AddSparkGoogle`, `AddSparkMicrosoftAccount`, `AddSparkFacebook`,
+`AddSparkTwitter`, `AddSparkLinkedIn` (on the `IdentityBuilder` in `configureProviders`). Each declares
+its **verified-email signal**: verified → a confirmed account; a reliable signal saying "not verified"
+→ no account (`email_not_verified`); **no reliable signal** (Facebook, X, Microsoft work/school
+accounts) → an **unconfirmed** account and a confirmation mail (`confirm_email_sent` when
+`RequireConfirmedEmail` is on). Microsoft is trusted only for personal accounts (id-token `tid` = the
+consumers tenant). A scheme with no preset keeps the old rule: `email_verified=true` or no account.
+Override per scheme with `SparkAuthenticationOptions.ExternalProviders[scheme]`. New user names are a
+**slug of the display name** (`john-doe`, `john-doe-2`, never the email's local part), editable on
+the profile page; GitHub keeps the login verbatim (applications compare it with repository owners).
+
+#### Account deletion and personal data (#460 D8)
+
+`DELETE /spark/auth/manage/account` with `{ password }`, or with no body when the session's sign-in is
+younger than `ReauthenticationMaxAge` (default 5 minutes) — otherwise `403 reauthentication_required`.
+Every `ISparkAccountDeletionHandler<TUser>` runs first (registration order); one that throws stops the
+deletion with the account intact (`500 deletion_failed`, retryable — make handlers idempotent). The
+store deletes the account last and releases its email and passkey reservations. Only then does every
+`ISparkAccountDeletedHandler<TUser>` run — the place for a goodbye mail, which must not go out when
+the deletion stopped; one that throws is logged and the response is still 204. Audit fields hold user
+ids only; **RavenDB revisions are not rewritten** — content-level personal data is the application's
+handler's job.
 
 #### Custom Group Membership Provider
 
@@ -131,6 +214,16 @@ authentication state and their ids are excluded from claim-derived membership, s
 
 `UseGroupMembershipProvider` removes the default registration rather than adding a second one, so
 which provider runs does not depend on registration order.
+
+**Adding membership instead of replacing it.** `spark.AddGroupMembershipProvider<T>()` registers a
+provider whose answers are **merged** with the primary one's (claims by default, or whatever
+`UseGroupMembershipProvider` installed). Use it for membership that doesn't come from the sign-in,
+such as the privileges Moderation grants by reputation. A provider can also return group **ids**
+by implementing `IGroupIdMembershipProvider` (`GetCurrentUserGroupIdsAsync`), which avoids matching
+on display names. Reserved ids (`anonymous`, `authenticated`) and ids not declared in
+`security.json` are dropped. Every provider is asked once per request, and the merged answer is
+cached for the rest of that request, including `[SparkAuthorize(Group = …)]`. The order of the
+calls doesn't matter, and adding the same provider type twice does nothing.
 
 ### XSRF/Antiforgery Protection
 
@@ -175,14 +268,15 @@ by granting `*/*`.
 
 ## Angular Frontend Setup
 
-### Automatic npm Package Installation
+### npm dependency and the generated setup file
 
-When you reference `MintPlayer.Spark.Authorization` (via NuGet), the package includes MSBuild targets that automatically:
+When you reference `MintPlayer.Spark.Authorization` (via NuGet), the package's MSBuild targets:
 
-1. **Install `@mintplayer/ng-spark-auth`** via npm on first build (if your project has a `package.json` in the SPA root)
-2. **Generate `spark-auth.setup.ts`** - a TypeScript scaffolding file with documented auth helpers
-
-Both happen automatically during `dotnet build`. No manual npm install needed.
+1. **Check that the SPA declares `@mintplayer/ng-spark-auth`** — warning `SPARK030` when
+   `$(SpaRoot)package.json` does not. The build never runs `npm` (it used to, in the wrong directory
+   for a root-level `node_modules`, writing an unpinned range); add the dependency yourself with the
+   major matching your Angular major.
+2. **Generate `spark-auth.setup.ts`** once — a TypeScript scaffolding file with documented auth helpers.
 
 ### Wire Up Your Angular App
 
@@ -258,6 +352,62 @@ coarse: they never distinguish "no such account" from anything else.
 Do not hand-roll `window.open` plus a `message` listener. The popup can end in four ways —
 success, a server-side refusal, a blocked window, and a user who simply closes it — and a
 listener that is only removed on success leaks on the other three.
+
+`twitterProvider()` (scheme `Twitter`, labelled "X") and `linkedInProvider()` (scheme `LinkedIn`) match
+the server's `AddSparkTwitter()` / `AddSparkLinkedIn()` presets, next to `githubProvider()`,
+`googleProvider()`, `facebookProvider()` and `microsoftProvider()`.
+
+### Account pages (`withAccount()`, #460 D16)
+
+```typescript
+import { sparkAuthRoutes, withLocalLogin, withAccount } from '@mintplayer/ng-spark-auth/routes';
+import { provideSparkAccountProfileFields } from '@mintplayer/ng-spark-auth/models';
+
+// routes
+...sparkAuthRoutes(withLocalLogin(), withAccount()),
+// providers (optional: app fields on the profile page)
+provideSparkAccountProfileFields(
+  { name: 'Bio', label: 'profile.bio', type: 'textarea', maxLength: 500 },
+  { name: 'Newsletter', label: 'profile.newsletter', type: 'checkbox' },
+),
+```
+
+| Page | Default path | Component | Server |
+|---|---|---|---|
+| Confirm email (public) | `confirm-email` | `SparkConfirmEmailComponent` | `POST confirm-email { userId, code, changedEmail? }` |
+| Overview | `account` | `SparkAccountOverviewComponent` | links to the mounted pages |
+| Profile | `account/profile` | `SparkAccountProfileComponent` | `GET/POST manage/profile`; email change via `POST manage/info { newEmail }` |
+| Password | `account/password` | `SparkChangePasswordComponent` | `POST manage/password` |
+| Two-factor | `account/two-factor` | `SparkTwoFactorSetupComponent` | `POST manage/2fa`, `GET manage/2fa/authenticator-uri` |
+| Connected logins | `account/logins` | `SparkExternalLoginsComponent` | `GET external-logins`, link / unlink |
+| Passkeys | `account/passkeys` | `SparkPasskeysComponent` | `passkeys/*` |
+| Personal data + deletion | `account/personal-data` | `SparkPersonalDataComponent` | `GET manage/personal-data`, `DELETE manage/account` |
+
+- **Guarding and paths.** Every page except confirm-email is guarded by `sparkAuthGuard`
+  (`sparkAuthenticatedGuard` is the same guard). That guard waits for the session check, so reloading an account page does not send a signed-in user
+  to the sign-in page. Override the guard with `withAccount({ canActivate: [...] })`, change a path
+  with `withAccount({ profile: 'me' })`, or leave pages out with `exclude: ['externalLogins']`.
+  `confirm-email` must match `Spark:Auth:Links:ConfirmEmailPath`, which is where confirmation mails
+  link to. No path starts with a parameter, so the pages neither shadow `sparkRoutes()` nor are
+  shadowed by it.
+- **Profile.** The profile page shows:
+  - the user name;
+  - the email, with a change form that mails the NEW address, so nothing changes until that link is
+    opened;
+  - the **language for emails**, which sets `SparkUser.PreferredCulture`. The choices are the app's
+    languages from `/spark/culture`, and "Default" clears it;
+  - the app's `SPARK_ACCOUNT_PROFILE_FIELDS`, each validated and stored by an
+    `ISparkProfileContributor<TUser>` that declares the same name.
+  Field errors render next to their control.
+- **Two-factor.** The QR code is the server's SVG, shown as an `<img>` data URL and never inserted as
+  markup. Recovery codes are shown once, right after they are generated.
+- **Account deletion.** It asks for the password, or accepts a sign-in younger than
+  `ReauthenticationMaxAge` (5 minutes). A 403 `reauthentication_required` is explained on the page.
+- **Mode restrictions.** Under `SparkLocalCredentials.Disabled`, `manage/password` and `manage/info`
+  are not mapped. Exclude `changePassword` there; the profile page's email-change form then shows the
+  404 as "not available".
+- **Login label.** The login form's identifier field is labelled "Email or user name"
+  (`auth.emailOrUserName`, D4).
 
 ### Customizing the Generated File
 

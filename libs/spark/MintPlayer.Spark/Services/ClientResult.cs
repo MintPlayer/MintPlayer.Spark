@@ -41,6 +41,25 @@ internal static class ClientResult
         return Envelope(client, body, statusCode);
     }
 
+    /// <summary>
+    /// A submitted action the actions class disabled (#460, D13): <c>403</c>, naming the action, so a
+    /// client can tell it apart from a missing row (404), a malformed request (400) and a throttle (429).
+    /// </summary>
+    public static IResult ActionDisabled(IClientAccessor client, SparkActionDisabledException ex)
+        => Envelope(client, new { error = ex.Message, action = ex.ActionName }, StatusCodes.Status403Forbidden);
+
+    /// <summary>
+    /// A write refused by a business quota (#460, M12): <c>429</c> in the envelope, with a
+    /// <c>Retry-After</c> header (whole seconds, rounded up) when the exception knows it.
+    /// </summary>
+    public static IResult Throttled(IClientAccessor client, HttpContext httpContext, Abstractions.SparkThrottledException ex)
+    {
+        int? seconds = ex.RetryAfter is { } after ? (int)Math.Ceiling(Math.Max(0, after.TotalSeconds)) : null;
+        if (seconds is { } s)
+            httpContext.Response.Headers.RetryAfter = s.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return Envelope(client, new { error = ex.Message, retryAfterSeconds = seconds }, StatusCodes.Status429TooManyRequests);
+    }
+
     public static IResult Retry(IClientAccessor client, SparkRetryActionException ex)
     {
         if (!client.Operations.Any(o => o is RetryOperation))

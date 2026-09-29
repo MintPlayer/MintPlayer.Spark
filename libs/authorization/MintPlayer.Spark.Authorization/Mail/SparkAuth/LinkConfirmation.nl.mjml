@@ -1,0 +1,24 @@
+<mjml>
+  <mj-head>
+    <mj-title>Bevestig dat je {{ provider }} aan je {{ if app_name }}{{ app_name }}-{{ end }}account toevoegt</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">Bevestig {{ provider }}</mj-text>
+        <mj-text>Iemand meldde zich aan met {{ provider }}{{ if provider_identity }} als {{ provider_identity }}{{ end }}, met het e-mailadres van {{ if app_name }}je {{ app_name }}-account{{ else }}je account{{ end }}.</mj-text>
+        <mj-text>Er is niemand aangemeld en er is nog niets aan je account toegevoegd. Was jij dat, bevestig het dan hier:</mj-text>
+        <mj-button href="{{ link }}">{{ provider }} aan mijn account toevoegen</mj-button>
+        <mj-text font-size="13px" color="#4b5563">Werkt de knop niet? Open dan deze link: <a href="{{ link }}">{{ link }}</a></mj-text>
+        <mj-text font-size="13px" color="#4b5563">De link werkt één keer en vervalt na {{ if valid_for_minutes >= 60 }}{{ valid_for_hours }} uur{{ else }}{{ valid_for_minutes }} minuten{{ end }}.</mj-text>
+        <mj-text font-size="13px" color="#4b5563">Was jij het niet, doe dan niets. De link vervalt vanzelf en je account blijft zoals het is. Je e-mailadres kennen is niet genoeg om binnen te raken.</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-include path="_Footer.mjml" />
+  </mj-body>
+</mjml>

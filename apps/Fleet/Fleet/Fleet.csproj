@@ -23,6 +23,7 @@
 	<ItemGroup>
 		<ProjectReference Include="..\Fleet.Library\Fleet.Library.csproj" />
 		<ProjectReference Include="..\..\..\libs\all_features\MintPlayer.Spark.AllFeatures\MintPlayer.Spark.AllFeatures.csproj" />
+		<ProjectReference Include="..\..\..\libs\mail\MintPlayer.Spark.MailManager\MintPlayer.Spark.MailManager.csproj" />
 		<ProjectReference Include="..\..\..\libs\controllers\MintPlayer.Spark.Controllers\MintPlayer.Spark.Controllers.csproj" />
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />

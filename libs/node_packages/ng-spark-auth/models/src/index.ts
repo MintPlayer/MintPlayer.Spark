@@ -6,3 +6,4 @@ export * from './return-url';
 export * from './external-login';
 export * from './passkey';
 export * from './sign-in-redirect';
+export * from './account';

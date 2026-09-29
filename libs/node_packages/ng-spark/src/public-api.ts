@@ -13,6 +13,9 @@
 //   @mintplayer/ng-spark/retry-action-modal (SparkRetryActionModalComponent)
 //   @mintplayer/ng-spark/icon               (SparkIconComponent)
 //   @mintplayer/ng-spark/shell              (SparkShellComponent + slots, SparkProgramUnitsComponent, SparkLanguageSelectorComponent)
+//   @mintplayer/ng-spark/panels             (SPARK_DETAIL_PANELS, SPARK_DETAIL_ACTIONS, SPARK_QUERY_LIST_ACTIONS + provide* helpers, contexts)
+//   @mintplayer/ng-spark/soft-delete        (provideSparkSoftDelete, Deleted toggle, Restore/Purge, SparkSoftDeleteService)
+//   @mintplayer/ng-spark/history            (provideSparkHistory, <spark-po-history>, SparkHistoryService)
 
 export type { SparkConfig } from './lib/spark-config';
 export { SPARK_CONFIG, defaultSparkConfig } from './lib/spark-config';

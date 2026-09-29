@@ -1,0 +1,54 @@
+{
+  "Reputation": {
+    "UpvoteReceived": 10,
+    "DownvoteReceived": -2,
+    "DownvoteCast": -1,
+    "FlagUpheld": 2,
+    "FlagDeclined": 0
+  },
+  "DownvoteCastTypes": [ "Answer" ],
+  "ReverseVotesOnModeratorDelete": true,
+  "Privileges": {
+    "Upvote": {
+      "GroupId": "4e130000-0000-4000-8000-000000000002",
+      "Rep": 10,
+      "MinAccountAgeDays": 0,
+      "MinActiveDays": 0,
+      "Grants": [ "Vote" ]
+    },
+    "Flag": {
+      "GroupId": "4e130000-0000-4000-8000-000000000004",
+      "Rep": 15,
+      "MinAccountAgeDays": 1,
+      "MinActiveDays": 1,
+      "Grants": [ "Flag" ]
+    },
+    "Downvote": {
+      "GroupId": "4e130000-0000-4000-8000-000000000003",
+      "Rep": 125,
+      "MinAccountAgeDays": 7,
+      "MinActiveDays": 3,
+      "Grants": [ "Downvote" ]
+    },
+    "Review": {
+      "GroupId": "4e130000-0000-4000-8000-000000000005",
+      "Rep": 500,
+      "MinAccountAgeDays": 30,
+      "MinActiveDays": 10,
+      "Grants": [ "Review" ]
+    }
+  },
+  "Earnable": [],
+  "Fraud": {
+    "MaxVotesCastPerDay": 30,
+    "CreditDelayHours": 48
+  },
+  "NewAccounts": {
+    "AccountAgeDays": 7,
+    "MaxPostsPerDay": 5
+  },
+  "Jobs": {
+    "CreditingSchedule": "*/5 * * * *",
+    "DetectorSchedule": "17 3 * * *"
+  }
+}

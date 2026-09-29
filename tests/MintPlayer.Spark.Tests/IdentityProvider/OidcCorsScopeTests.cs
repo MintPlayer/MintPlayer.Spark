@@ -74,7 +74,7 @@ public class OidcCorsScopeTests : SparkTestDriver
                 // Full, explicitly: the default refuses to boot without an external provider, and this
                 // fixture is about CORS scope rather than credential modes.
                 spark.AddAuthentication<SparkUser>(
-                    configure: auth => auth.LocalCredentials = MintPlayer.Spark.Authorization.Configuration.SparkLocalCredentials.Full);
+                    configure: auth => { auth.LocalCredentials = MintPlayer.Spark.Authorization.Configuration.SparkLocalCredentials.Full; auth.AllowUnconfirmedRegistration = true; });
                 spark.AddIdentityProvider(options =>
                 {
                     options.Issuer = "https://idp.test";

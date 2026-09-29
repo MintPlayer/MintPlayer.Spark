@@ -1,0 +1,77 @@
+{
+  "name": "@spark-demo/qna-demo",
+  "$schema": "../../../../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "root": "apps/QnA/QnA/ClientApp",
+  "sourceRoot": "apps/QnA/QnA/ClientApp/src",
+  "prefix": "app",
+  "targets": {
+    "build": {
+      "executor": "@nx/angular:application",
+      "outputs": [
+        "{workspaceRoot}/apps/QnA/QnA/ClientApp/dist/ClientApp"
+      ],
+      "options": {
+        "outputPath": "apps/QnA/QnA/ClientApp/dist/ClientApp",
+        "browser": "apps/QnA/QnA/ClientApp/src/main.ts",
+        "tsConfig": "apps/QnA/QnA/ClientApp/tsconfig.app.json",
+        "inlineStyleLanguage": "scss",
+        "assets": [
+          {
+            "glob": "**/*",
+            "input": "apps/QnA/QnA/ClientApp/public"
+          }
+        ],
+        "styles": [
+          "node_modules/@mintplayer/ng-bootstrap/_bootstrap.scss",
+          "node_modules/bootstrap-icons/font/bootstrap-icons.css",
+          "apps/QnA/QnA/ClientApp/src/styles.scss"
+        ],
+        "loader": {
+          ".svg": "text"
+        }
+      },
+      "configurations": {
+        "production": {
+          "budgets": [
+            {
+              "type": "initial",
+              "maximumWarning": "1MB",
+              "maximumError": "2MB"
+            },
+            {
+              "type": "anyComponentStyle",
+              "maximumWarning": "4kB",
+              "maximumError": "8kB"
+            }
+          ],
+          "outputHashing": "all"
+        },
+        "development": {
+          "optimization": false,
+          "extractLicenses": false,
+          "sourceMap": true
+        }
+      },
+      "defaultConfiguration": "production"
+    },
+    "serve": {
+      "executor": "@nx/angular:dev-server",
+      "options": {
+        "hmr": true
+      },
+      "configurations": {
+        "production": {
+          "buildTarget": "@spark-demo/qna-demo:build:production"
+        },
+        "development": {
+          "buildTarget": "@spark-demo/qna-demo:build:development"
+        }
+      },
+      "defaultConfiguration": "development"
+    },
+    "test": {
+      "executor": "@nx/angular:unit-test"
+    }
+  }
+}

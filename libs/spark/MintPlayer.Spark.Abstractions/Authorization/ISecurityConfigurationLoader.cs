@@ -119,17 +119,13 @@ public sealed class RightsDecision(IReadOnlyList<GroupRights> groups)
     /// <summary>
     /// Whether any pattern in <paramref name="patterns"/> covers <paramref name="probe"/>.
     /// <para>
-    /// Four lookups rather than a scan: a concrete resource is covered by at most its own pattern
-    /// and the three wildcard forms, so the tier stays a hash set even though the patterns in it
-    /// are not all concrete.
+    /// One lookup: every pattern in a tier is concrete — combined actions are expanded when the
+    /// index is built, and wildcards are refused when the file is loaded — so a resource is
+    /// covered only by itself.
     /// </para>
     /// </summary>
     private static bool Covers(IReadOnlySet<ResourcePattern> patterns, ResourcePattern probe)
-        => patterns.Count != 0
-        && (patterns.Contains(probe)
-            || patterns.Contains(probe with { Action = ResourcePattern.Wildcard })
-            || patterns.Contains(probe with { Target = ResourcePattern.Wildcard })
-            || patterns.Contains(ResourcePattern.Any));
+        => patterns.Count != 0 && patterns.Contains(probe);
 }
 
 /// <summary>
@@ -185,8 +181,7 @@ public sealed record GroupRights(
 
     /// <summary>
     /// Every concrete <c>{action}/{target}</c> a written resource stands for — the whole
-    /// composition, so that evaluation is a set lookup and never a rule engine. A wildcard action
-    /// is left alone: <c>*</c> already covers everything the table would expand it into.
+    /// composition, so that evaluation is a set lookup and never a rule engine.
     /// </summary>
     /// <param name="isDenied">
     /// Which tier the caller is filling. Combined actions expand identically either way; the
@@ -195,12 +190,6 @@ public sealed record GroupRights(
     private static IEnumerable<ResourcePattern> Expand(string resource, bool isDenied)
     {
         var written = ResourcePattern.Parse(resource);
-
-        if (written.Action == ResourcePattern.Wildcard)
-        {
-            yield return written;
-            yield break;
-        }
 
         // Parse upper-cased the action; the combined-action table is case-insensitive, so it
         // still resolves.
@@ -221,7 +210,8 @@ public sealed record GroupRights(
 }
 
 /// <summary>
-/// A parsed <c>{action}/{target}</c> resource, with <c>*</c> allowed on either half.
+/// A parsed <c>{action}/{target}</c> resource. Always concrete: wildcard rights are refused when
+/// <c>security.json</c> is loaded.
 /// </summary>
 /// <remarks>
 /// Case-insensitive by construction — both halves are upper-cased on parse — so the record's
@@ -230,12 +220,6 @@ public sealed record GroupRights(
 /// </remarks>
 public readonly record struct ResourcePattern(string Action, string Target)
 {
-    /// <summary>Matches any value in the half it appears in.</summary>
-    public const string Wildcard = "*";
-
-    /// <summary>Matches every resource.</summary>
-    public static readonly ResourcePattern Any = new(Wildcard, Wildcard);
-
     /// <summary>
     /// Parses <c>{action}/{target}</c>. A string with no slash becomes the action with an empty
     /// target, which is what the old exact-equality matcher effectively did with one.

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, contentChildren, input, output, viewChild, TemplateRef } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, contentChildren, input, linkedSignal, output, viewChild, TemplateRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Color } from '@mintplayer/ng-bootstrap';
@@ -6,9 +6,12 @@ import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap
 import { BsPriorityNavComponent, BsPriorityNavItemDirective } from '@mintplayer/ng-bootstrap/priority-nav';
 import { ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
-import { CustomActionDefinition, PersistentObject, QueryResultItem } from '@mintplayer/ng-spark/models';
+import { CustomActionDefinition, PersistentObject, QueryResultItem, type SparkDeletedFilter, type SparkSelectionModeSetting } from '@mintplayer/ng-spark/models';
+import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
+import { SparkQueryToolbarAction, sparkActionClass } from './spark-query-toolbar';
 import { inject } from '@angular/core';
 import { SparkQueryGridComponent } from './spark-query-grid.component';
+import { SparkSearchBoxComponent } from './spark-search-box.component';
 import {
   SparkQueryActionsDirective,
   SparkQueryCaptionDirective,
@@ -40,7 +43,9 @@ import {
  */
 @Component({
   selector: 'spark-query-card',
-  imports: [CommonModule, BsCardComponent, BsCardHeaderComponent, BsPriorityNavComponent, BsPriorityNavItemDirective, SparkQueryGridComponent, ResolveTranslationPipe],
+  imports: [CommonModule, BsCardComponent, BsCardHeaderComponent, BsPriorityNavComponent, BsPriorityNavItemDirective, SparkQueryGridComponent, SparkSearchBoxComponent, ResolveTranslationPipe, SparkIconComponent],
+  // The search box keeps a steady width beside the actions; the priority nav gives way first.
+  styles: ['.spark-query-card-search { flex: 0 1 14rem; min-width: 8rem; }'],
   templateUrl: './spark-query-card.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -52,7 +57,38 @@ export class SparkQueryCardComponent {
   parentType = input<string>('');
   reloadToken = input<unknown>(null);
   data = input<QueryResultItem[] | null>(null);
+
+  /**
+   * The initial search term. The header's search box starts from it and the user takes over from
+   * there; a new value from the host replaces what was typed.
+   */
   search = input<string>('');
+
+  /**
+   * Whether the header offers the search box (#460 M15, D17 addendum). On by default, as every
+   * Vidyano sub-query tab has one; a card over bound `data` never shows it, because the grid does
+   * not refetch bound rows and the box would do nothing.
+   */
+  searchable = input<boolean>(true);
+
+  /** What the grid searches: the host's `search`, until the user types in the header box. */
+  readonly searchTerm = linkedSignal(() => this.search());
+
+  protected readonly showSearch = computed(() => this.searchable() && this.data() === null);
+
+  /**
+   * Overrides the query's `selectionMode` for this card (#460, D17) — the detail page passes the
+   * sub-query entry's. `null` defers to the query (absent there = `'auto'`).
+   */
+  selectionMode = input<SparkSelectionModeSetting | null>(null);
+
+  /**
+   * Soft-deletion mode and deleted parent (#460), forwarded to the grid. In the recycle bin — the
+   * grid lists `deleted: 'only'`, or its parent row was opened with `?deleted=only` — the card offers
+   * no New, Delete or custom action, exactly as the query-list page does. See `recycleBin`.
+   */
+  deleted = input<SparkDeletedFilter | null | undefined>(null);
+  parentDeleted = input(false);
 
   /**
    * Slots forwarded from a host that cannot project content — see the class comment. A card
@@ -111,5 +147,24 @@ export class SparkQueryCardComponent {
   });
 
   protected readonly customActions = computed(() => this.grid()?.visibleCustomActions() ?? []);
+
+  /**
+   * The header's buttons: New, Delete and the custom actions, from the grid (#460, M15) — the same
+   * list the query-list page renders.
+   */
+  protected readonly toolbarActions = computed(() => this.grid()?.toolbarActions() ?? []);
+
+  protected actionClass(action: SparkQueryToolbarAction): string {
+    // Square corners in the card header (owner, 2026-09-29): the buttons sit edge to edge there.
+    return `${sparkActionClass(action.definition, 'sm')} rounded-0`;
+  }
+
+  protected isEnabled(action: SparkQueryToolbarAction): boolean {
+    return this.grid()?.isToolbarActionEnabled(action) ?? false;
+  }
+
+  protected run(action: SparkQueryToolbarAction): void {
+    void this.grid()?.runToolbarAction(action);
+  }
   protected readonly selection = computed(() => this.grid()?.selection() ?? []);
 }

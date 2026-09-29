@@ -129,6 +129,12 @@ public class UploadFlagBoundsTests : CoverageRavenTest
 
     private sealed class SilentBus : IMessageBus
     {
+        // Routes the options overload onto the three this fake records, so it sees every publish.
+        public Task BroadcastAsync<TMessage>(TMessage message, BroadcastOptions options, CancellationToken cancellationToken = default)
+            => options.DeduplicationKey is { } key ? BroadcastOnceAsync(message, key, cancellationToken)
+             : options.Delay is { } delay ? DelayBroadcastAsync(message, delay, cancellationToken)
+             : BroadcastAsync(message, cancellationToken);
+
         public Task BroadcastAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task BroadcastOnceAsync<TMessage>(TMessage message, string deduplicationKey, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task DelayBroadcastAsync<TMessage>(TMessage message, TimeSpan delay, CancellationToken cancellationToken = default) => Task.CompletedTask;

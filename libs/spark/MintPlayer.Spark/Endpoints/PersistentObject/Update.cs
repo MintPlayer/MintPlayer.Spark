@@ -96,6 +96,11 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint
             // not-found for instance-level checks.
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
+        catch (SparkActionDisabledException ex)
+        {
+            // After the row gate (#460, D13): the caller can see this row, so naming the action hides nothing.
+            return ClientResult.ActionDisabled(clientAccessor, ex);
+        }
         catch (SparkAccessDeniedException)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);

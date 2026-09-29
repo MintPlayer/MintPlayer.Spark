@@ -45,31 +45,9 @@ public interface IClientAccessor
     /// <summary>Re-execute a named query if it's currently displayed.</summary>
     void RefreshQuery(string queryId);
 
-    // --- DisableAction overloads ---------------------------------------
-    //
-    // Spark keeps PersistentObject / Query as pure DTOs (no service back-reference),
-    // so the ergonomic "po.DisableActions(...)" shape from Vidyano doesn't port.
-    // Overloads on this accessor recover concision without coupling the DTO to
-    // framework services.
-
-    /// <summary>Disable actions while the given PO is displayed.</summary>
-    void DisableActionsOn(PersistentObject po, params string[] actionNames);
-
-    /// <summary>Disable actions for the PO identified by (<paramref name="objectTypeId"/>, <paramref name="id"/>).</summary>
-    void DisableActionsOn(Guid objectTypeId, string id, params string[] actionNames);
-
-    /// <summary>Disable actions while the named query is displayed.</summary>
-    void DisableQueryActions(string queryId, params string[] actionNames);
-
-    /// <summary>
-    /// Disable actions on whatever the current endpoint is returning (current-response
-    /// target — PO for PO endpoints, query for query-execute, etc.).
-    /// </summary>
-    void DisableActions(params string[] actionNames);
-
-    /// <summary>
-    /// Disable actions for the duration of the user's session. Rare — prefer
-    /// <c>security.json</c> for permission-driven disables.
-    /// </summary>
-    void DisableActionsForSession(params string[] actionNames);
+    // The DisableAction overloads (DisableActionsOn / DisableQueryActions / DisableActions /
+    // DisableActionsForSession) are deleted (#460, D13). They emitted a client operation no client
+    // honoured, the detail path dropped them, and nothing enforced them at submit. Disabling an action
+    // is now one hook — OnDisableActionsAsync on the actions class — which the framework asks at load
+    // and again at submit.
 }

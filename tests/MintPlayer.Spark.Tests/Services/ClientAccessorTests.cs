@@ -171,97 +171,6 @@ public class ClientAccessorTests
 
     #endregion
 
-    #region DisableActions — one operation per name × target kind
-
-    [Fact]
-    public void DisableActionsOn_PersistentObject_emits_one_op_per_name_with_PO_target()
-    {
-        var accessor = new ClientAccessor();
-
-        accessor.DisableActionsOn(NewPo("cars/1"), "Edit", "Delete");
-
-        accessor.Operations.Should().HaveCount(2);
-        accessor.Operations.Should().AllBeOfType<DisableActionOperation>();
-        accessor.Operations.Cast<DisableActionOperation>().Select(o => o.ActionName)
-            .Should().Equal("Edit", "Delete");
-        accessor.Operations.Cast<DisableActionOperation>().Should().AllSatisfy(o =>
-        {
-            var target = o.Target.Should().BeOfType<PersistentObjectDisableTarget>().Which;
-            target.ObjectTypeId.Should().Be(CarTypeId);
-            target.Id.Should().Be("cars/1");
-        });
-    }
-
-    [Fact]
-    public void DisableActionsOn_unsaved_PersistentObject_throws()
-    {
-        var accessor = new ClientAccessor();
-
-        var act = () => accessor.DisableActionsOn(NewPo(id: null), "Edit");
-
-        act.Should().Throw<InvalidOperationException>();
-    }
-
-    [Fact]
-    public void DisableActionsOn_by_type_and_id_emits_PO_disable_target()
-    {
-        var accessor = new ClientAccessor();
-
-        accessor.DisableActionsOn(CarTypeId, "cars/2", "Edit");
-
-        var op = (DisableActionOperation)accessor.Operations.Single();
-        op.ActionName.Should().Be("Edit");
-        op.Target.Should().BeOfType<PersistentObjectDisableTarget>()
-            .Which.Id.Should().Be("cars/2");
-    }
-
-    [Fact]
-    public void DisableQueryActions_emits_QueryDisableTarget()
-    {
-        var accessor = new ClientAccessor();
-
-        accessor.DisableQueryActions("queries/all-cars", "Export");
-
-        var op = (DisableActionOperation)accessor.Operations.Single();
-        op.ActionName.Should().Be("Export");
-        op.Target.Should().BeOfType<QueryDisableTarget>()
-            .Which.QueryId.Should().Be("queries/all-cars");
-    }
-
-    [Fact]
-    public void DisableActions_emits_CurrentResponseDisableTarget()
-    {
-        var accessor = new ClientAccessor();
-
-        accessor.DisableActions("Edit");
-
-        ((DisableActionOperation)accessor.Operations.Single()).Target
-            .Should().BeOfType<CurrentResponseDisableTarget>();
-    }
-
-    [Fact]
-    public void DisableActionsForSession_emits_SessionDisableTarget()
-    {
-        var accessor = new ClientAccessor();
-
-        accessor.DisableActionsForSession("Edit");
-
-        ((DisableActionOperation)accessor.Operations.Single()).Target
-            .Should().BeOfType<SessionDisableTarget>();
-    }
-
-    [Fact]
-    public void DisableActions_with_no_names_emits_nothing()
-    {
-        var accessor = new ClientAccessor();
-
-        accessor.DisableActions();
-
-        accessor.Operations.Should().BeEmpty();
-    }
-
-    #endregion
-
     #region PushRetry (framework-internal)
 
     [Fact]
@@ -296,13 +205,13 @@ public class ClientAccessorTests
 
         accessor.Notify("first");
         accessor.RefreshQuery("q1");
-        accessor.DisableActions("Edit");
+        accessor.RefreshAttribute(CarTypeId, "cars/1", "Plate", "AB-12");
         accessor.Navigate("home");
 
         accessor.Operations.Select(o => o.GetType()).Should().Equal(
             typeof(NotifyOperation),
             typeof(RefreshQueryOperation),
-            typeof(DisableActionOperation),
+            typeof(RefreshAttributeOperation),
             typeof(NavigateOperation));
     }
 }

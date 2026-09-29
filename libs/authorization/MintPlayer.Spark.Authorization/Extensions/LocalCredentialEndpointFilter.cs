@@ -32,10 +32,6 @@ namespace MintPlayer.Spark.Authorization.Extensions;
 /// </remarks>
 internal static class LocalCredentialEndpointFilter
 {
-    /// <summary>Routes that exist only to serve local (password) credentials.</summary>
-    private static readonly string[] PasswordRecoveryRoutes =
-        ["/confirmEmail", "/resendConfirmationEmail", "/forgotPassword", "/resetPassword"];
-
     private static readonly string[] PasswordSignInRoutes = ["/login", "/refresh"];
 
     /// <summary>
@@ -75,16 +71,12 @@ internal static class LocalCredentialEndpointFilter
         // a mode whose mail would be discarded. Placing this after the early return would have
         // meant the guard never fired for the most common configuration.
         GuardAgainstSilentlyDiscardedMail<TUser>(endpoints.ServiceProvider);
-
         if (mode == SparkLocalCredentials.Full)
-        {
-            // The default takes the original code path verbatim — no throwaway builder, no
-            // re-publication. Whatever the filter does or does not preserve cannot affect the
-            // behaviour of an application that never opted in.
-            StampAntiforgery(endpoints.MapGroup("/spark/auth").MapIdentityApi<TUser>());
-            return;
-        }
+            GuardAgainstRegistrationWithoutMail<TUser>(endpoints.ServiceProvider);
 
+        // #460: every mode goes through the filter now, Full included — Spark replaces Microsoft's
+        // mail-sending endpoints in all of them (SparkAccountEndpoints), so there is no longer a mode
+        // whose route table is MapIdentityApi's verbatim.
         if (mode == SparkLocalCredentials.Disabled)
             GuardAgainstUnreachableSignIn(endpoints.ServiceProvider);
 
@@ -101,7 +93,16 @@ internal static class LocalCredentialEndpointFilter
             .ToArray();
 
         endpoints.DataSources.Add(new FixedEndpointDataSource(kept));
+
+        SparkAccountEndpoints.Map<TUser>(endpoints, mode);
     }
+
+    /// <summary>
+    /// Microsoft's endpoints that Spark maps its own version of (<see cref="SparkAccountEndpoints"/>) and
+    /// that are therefore dropped in every mode. <c>/manage/info</c> is dropped for POST only.
+    /// </summary>
+    private static readonly string[] ReplacedBySpark =
+        ["/register", "/resendConfirmationEmail", "/confirmEmail", "/forgotPassword", "/resetPassword"];
 
     /// <summary>
     /// The complete set of routes <c>MapIdentityApi</c> contributed when this filter was written,
@@ -213,8 +214,10 @@ internal static class LocalCredentialEndpointFilter
         if (options?.ExternalLoginLinking != SparkExternalLoginLinking.ConfirmByEmail)
             return;
 
-        if (services.GetService<ISparkLinkConfirmationSender<TUser>>() is not null)
-            return;
+        // In a scope: senders are scoped (M8 registers a factory that yields none without MailManager).
+        using (var scope = services.CreateScope())
+            if (scope.ServiceProvider.GetService<ISparkLinkConfirmationSender<TUser>>() is not null)
+                return;
 
         throw new InvalidOperationException(
             "Spark authentication is configured with ExternalLoginLinking = ConfirmByEmail, but no "
@@ -222,6 +225,37 @@ internal static class LocalCredentialEndpointFilter
             + "would ever be sent and no external login would ever be linked. Register one, or use "
             + "SparkExternalLoginLinking.WhenSignedIn or SparkExternalLoginLinking.Disabled "
             + "instead.");
+    }
+
+    /// <summary>
+    /// #460 D6: refuses a registration surface whose account mail goes nowhere — Identity's no-op
+    /// sender, or Spark's MailManager-backed sender with no MailManager. A user who registers would
+    /// never get the confirmation link, and nobody could ever reset a password. Opt out with
+    /// <see cref="SparkAuthenticationOptions.AllowUnconfirmedRegistration"/> or
+    /// <c>Spark:Auth:AllowUnconfirmedRegistration=true</c>.
+    /// </summary>
+    internal static void GuardAgainstRegistrationWithoutMail<TUser>(IServiceProvider services)
+        where TUser : SparkUser, new()
+    {
+        var options = services.GetService<IOptions<SparkAuthenticationOptions>>()?.Value;
+        var configured = services.GetService<Microsoft.Extensions.Configuration.IConfiguration>()?["Spark:Auth:AllowUnconfirmedRegistration"];
+        if (options?.AllowUnconfirmedRegistration == true || string.Equals(configured, "true", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        using var scope = services.CreateScope();
+        var sender = scope.ServiceProvider.GetService<IEmailSender<TUser>>();
+        var discards = sender is null
+            || SparkAuthenticationExtensions.IsIdentityNoOpSender(sender.GetType())
+            || sender is SparkMailEmailSender<TUser> { CanSend: false };
+        if (!discards)
+            return;
+
+        throw new InvalidOperationException(
+            "Spark authentication maps registration (LocalCredentials = Full), but account mail would be "
+            + "discarded: no mail transport is registered, so confirmation and password-reset links would "
+            + "never arrive. Add MintPlayer.Spark.MailManager (spark.AddMailManager() with "
+            + "Spark:Mail:Smtp:Host or Spark:Mail:PickupFolder), register your own IEmailSender<TUser>, use "
+            + "SparkLocalCredentials.SignInOnly, or set Spark:Auth:AllowUnconfirmedRegistration=true to accept it.");
     }
 
     private static void StampAntiforgery(IEndpointConventionBuilder convention) =>
@@ -244,22 +278,20 @@ internal static class LocalCredentialEndpointFilter
         bool Matches(params string[] suffixes) =>
             suffixes.Any(suffix => raw.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
 
-        // Self-service registration goes in both non-default modes. resendConfirmationEmail goes
-        // with it: an account nobody can create has nothing to confirm, and it is an unauthenticated
-        // mail-send trigger keyed on an email address.
-        if (Matches("/register", "/resendConfirmationEmail"))
+        // Spark maps its own version of these in every mode, classified there (register and
+        // resendConfirmationEmail in Full only; the recovery family outside Disabled; confirmEmail
+        // everywhere). GET and POST /manage/info share one route pattern, so the POST — replaced —
+        // is told apart by method; the GET, which only reads, stays Microsoft's.
+        if (Matches(ReplacedBySpark))
+            return false;
+
+        if (Matches("/manage/info") && IsMutating(route.Metadata))
             return false;
 
         if (mode != SparkLocalCredentials.Disabled)
             return true;
 
-        if (Matches(PasswordSignInRoutes) || Matches(PasswordRecoveryRoutes))
-            return false;
-
-        // GET and POST /manage/info share one route pattern, so this has to discriminate on method.
-        // The POST rotates the email address that the external login was provisioned against, which
-        // would desynchronize it from the issuer-attested claim; the GET only reads.
-        if (Matches("/manage/info") && IsMutating(route.Metadata))
+        if (Matches(PasswordSignInRoutes))
             return false;
 
         return true;

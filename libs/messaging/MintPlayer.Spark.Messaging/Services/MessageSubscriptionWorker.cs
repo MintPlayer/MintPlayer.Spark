@@ -107,7 +107,15 @@ internal sealed class MessageSubscriptionWorker : SparkSubscriptionWorker<SparkM
                 continue;
             }
 
-            await processor.RunHandlersAsync(session, message, cancellationToken);
+            // The same guards as a single-subscription pump: renew the claim while the handlers run,
+            // and cancel a handler that exceeds HandlerTimeout. This path used to run the handlers
+            // with neither, so a handler slower than ClaimTtl was reclaimed by the sweeper and handled
+            // twice, and a hung handler held this queue's subscription for ever.
+            var messageId = message.Id!;
+            await ClaimedExecution.RunAsync(
+                DocumentStore, _options, Logger, messageId,
+                token => processor.ProcessAsync(messageId, MessageClaims.NodeId, token),
+                cancellationToken);
         }
     }
 }

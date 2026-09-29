@@ -1,0 +1,117 @@
+@if (canView()) {
+  <div class="spark-po-history">
+    @if (error(); as message) {
+      <bs-alert [type]="colors.danger" class="d-block mb-3">{{ message }}</bs-alert>
+    }
+
+    @if (revisions().length === 0 && !loading()) {
+      <p class="text-muted mb-0 spark-history-empty">{{ 'history.noRevisions' | t }}</p>
+    } @else {
+      <bs-table [isResponsive]="true">
+        <thead>
+          <tr>
+            <th>{{ 'history.modifiedAt' | t }}</th>
+            <th>{{ 'history.modifiedBy' | t }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (revision of revisions(); track revision.changeVector) {
+            <tr class="spark-history-row" [class.table-active]="selected()?.changeVector === revision.changeVector">
+              <td>
+                <button type="button" class="btn btn-link p-0 spark-history-select" (click)="select(revision)">
+                  {{ revision.lastModified ? (revision.lastModified | date:'medium') : '—' }}
+                </button>
+              </td>
+              <td>{{ who(revision) }}</td>
+              <td class="text-end">
+                @if (revision.isCurrent) {
+                  <bs-badge [type]="colors.primary" class="spark-history-current">{{ 'history.current' | t }}</bs-badge>
+                }
+                @if (revision.isDeleteRevision) {
+                  <bs-badge [type]="colors.secondary" class="ms-1">{{ 'history.deleteRevision' | t }}</bs-badge>
+                }
+              </td>
+            </tr>
+          }
+        </tbody>
+      </bs-table>
+    }
+
+    @if (loading()) {
+      <div class="text-center p-2"><bs-spinner /></div>
+    } @else if (hasMore()) {
+      <button type="button" class="btn btn-outline-secondary btn-sm spark-history-more" (click)="loadMore()">
+        {{ 'history.loadMore' | t }}
+      </button>
+    }
+
+    @if (selected(); as revision) {
+      <div class="mt-3 spark-history-selected">
+        <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+          <div class="btn-group" role="group">
+            <button type="button" class="btn btn-sm spark-history-diff-tab"
+                    [class.btn-secondary]="view() === 'diff'" [class.btn-outline-secondary]="view() !== 'diff'"
+                    (click)="view.set('diff')">{{ 'history.changes' | t }}</button>
+            <button type="button" class="btn btn-sm spark-history-view-tab"
+                    [class.btn-secondary]="view() === 'view'" [class.btn-outline-secondary]="view() !== 'view'"
+                    (click)="view.set('view')">{{ 'history.revision' | t }}</button>
+          </div>
+          @if (canRevertSelected()) {
+            <button type="button" class="btn btn-warning btn-sm spark-history-revert" [disabled]="reverting()" (click)="revert()">
+              {{ 'history.revert' | t }}
+            </button>
+          }
+          <button type="button" class="btn btn-outline-secondary btn-sm ms-auto" (click)="clearSelection()">
+            {{ 'history.close' | t }}
+          </button>
+        </div>
+
+        @if (selectedLoading()) {
+          <div class="text-center p-2"><bs-spinner /></div>
+        } @else if (selectedObject()) {
+          @if (view() === 'diff') {
+            @if (changes().length === 0) {
+              <p class="text-muted spark-history-nochanges">{{ 'history.noChanges' | t }}</p>
+            } @else {
+              <bs-table [isResponsive]="true">
+                <thead>
+                  <tr>
+                    <th>{{ 'history.field' | t }}</th>
+                    <th>{{ 'history.revisionValue' | t }}</th>
+                    <th>{{ 'history.currentValue' | t }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (row of changeCells(); track row.change.attribute.name) {
+                    <tr class="spark-history-change">
+                      <th scope="row">{{ row.change.attribute.label | resolveTranslation:row.change.attribute.name }}</th>
+                      <td class="spark-history-old">
+                        <spark-grid-cell [column]="row.old.column" [display]="row.old.display" [rendererValue]="row.old.rendererValue"
+                                         [item]="selectedObject()" [chips]="row.old.chips" />
+                      </td>
+                      <td class="spark-history-new">
+                        <spark-grid-cell [column]="row.now.column" [display]="row.now.display" [rendererValue]="row.now.rendererValue"
+                                         [item]="current()" [chips]="row.now.chips" />
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </bs-table>
+            }
+          } @else {
+            <dl class="spark-history-view">
+              @for (entry of viewCells(); track entry.attribute.name) {
+                <dt>{{ entry.attribute.label | resolveTranslation:entry.attribute.name }}</dt>
+                <dd>
+                  <spark-grid-cell [column]="entry.cell.column" [display]="entry.cell.display" [rendererValue]="entry.cell.rendererValue"
+                                   [item]="selectedObject()" [chips]="entry.cell.chips" />
+                </dd>
+              }
+            </dl>
+          }
+        }
+      </div>
+    }
+  </div>
+}

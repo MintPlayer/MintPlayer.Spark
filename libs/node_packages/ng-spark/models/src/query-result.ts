@@ -20,14 +20,12 @@ export interface QueryResult {
   take: number;
   typeHints?: Record<string, string>;
   /**
-   * Custom actions withheld for THIS result, by name. Absent or empty means every action the
-   * caller has the right to is offered.
+   * Actions withheld for THIS query, by name (custom, and `New`). Absent or empty means every
+   * action the caller has the right to is offered.
    *
-   * The mirror of `PersistentObject.disabledActions`, set server-side via
-   * `CustomQueryArgs.DisableActions(...)`. The action catalogue is per type and is never told what
-   * an execution returned, so this is where a per-result answer travels.
-   *
-   * An affordance, not a permission -- the action handler still refuses on its own terms.
+   * The mirror of `PersistentObject.disabledActions`, set server-side by the entity's
+   * `OnDisableActionsAsync` hook with a query target (#460, D13). The server asks the same hook when
+   * an action is submitted from this query and refuses a disabled one with 403.
    */
   disabledActions?: string[];
 }

@@ -71,20 +71,33 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
             this).Value;
 
         await lane.Channel.Writer.WriteAsync(messageId, cancellationToken);
+        Routed?.Invoke(queueName, messageId);
     }
+
+    /// <summary>
+    /// Raised after a message is accepted into its lane, in the order the feeder served it. For tests
+    /// and spikes that pin the feeder's serve order; lanes run concurrently, so handler start times cannot.
+    /// </summary>
+    internal event Action<string, string>? Routed;
 
     private Lane CreateLane(string queueName)
     {
+        // MaxConcurrency > 1 trades this queue's FIFO for throughput: N pumps drain one channel.
+        var pumps = Math.Max(1, Options.QueueOptionsFor(queueName)?.MaxConcurrency ?? 1);
+
         var channel = Channel.CreateBounded<string>(new BoundedChannelOptions(LaneCapacity)
         {
-            SingleReader = true,
+            SingleReader = pumps == 1,
             SingleWriter = false,
             FullMode = BoundedChannelFullMode.Wait,
         });
 
-        logger.LogInformation("Started message pump for queue '{QueueName}'", queueName);
+        logger.LogInformation("Started {Pumps} message pump(s) for queue '{QueueName}'", pumps, queueName);
         var lane = new Lane(channel);
-        lane.PumpTask = PumpAsync(queueName, channel, lifetime?.Token ?? CancellationToken.None);
+        var token = lifetime?.Token ?? CancellationToken.None;
+        lane.PumpTask = pumps == 1
+            ? PumpAsync(queueName, channel, token)
+            : Task.WhenAll(Enumerable.Range(0, pumps).Select(_ => PumpAsync(queueName, channel, token)));
         return lane;
     }
 
@@ -93,8 +106,9 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
 
     /// <summary>
     /// Drains one lane, strictly serially. One message in flight at a time is what makes a queue
-    /// FIFO; parallelism across queues comes from there being one of these per queue, not from
-    /// running several of them per queue.
+    /// FIFO; parallelism across queues comes from there being one of these per queue. The only
+    /// exception is a queue configured with <see cref="SparkQueueOptions.MaxConcurrency"/> above 1,
+    /// which runs that many of these on one channel and is FIFO no longer.
     /// </summary>
     private async Task PumpAsync(string queueName, Channel<string> channel, CancellationToken cancellationToken)
     {
@@ -102,7 +116,11 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
         {
             try
             {
-                await ProcessWithClaimRenewalAsync(messageId, cancellationToken);
+                // Claim renewal + HandlerTimeout, shared with the per-queue worker.
+                await ClaimedExecution.RunAsync(
+                    documentStore, Options, logger, messageId,
+                    token => processor.ProcessAsync(messageId, MessageClaims.NodeId, token),
+                    cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -123,111 +141,6 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
         }
 
         logger.LogInformation("Message pump for queue '{QueueName}' stopped", queueName);
-    }
-
-    /// <summary>
-    /// Runs the processor while keeping the claim alive, so a handler that legitimately takes
-    /// longer than <see cref="SparkMessagingOptions.ClaimTtl"/> is not reclaimed underneath itself.
-    /// </summary>
-    private async Task ProcessWithClaimRenewalAsync(string messageId, CancellationToken cancellationToken)
-    {
-        using var renewalCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var renewal = RenewUntilDoneAsync(messageId, renewalCts.Token);
-
-        // Bounds the lane. A handler that throws is parked by MessageProcessor and the pump moves
-        // on, so failures never hold the head of the queue — but a handler that HANGS would hold it
-        // for ever: one message is in flight at a time, and the claim is renewed while it runs, so
-        // the sweeper's reclaim never fires either. This is the only thing that ends that.
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(Options.HandlerTimeout);
-
-        try
-        {
-            await processor.ProcessAsync(messageId, MessageClaims.NodeId, timeoutCts.Token);
-        }
-        catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
-        {
-            // Timed out rather than shut down. MessageProcessor's own catch will have parked the
-            // message if it got that far; if the cancellation unwound past it, the claim lapses and
-            // the sweeper reclaims it. Either way the message is not lost and the lane is freed.
-            logger.LogError(
-                "Message {MessageId} exceeded SparkMessagingOptions.HandlerTimeout ({Timeout}) and was "
-                + "cancelled to free its queue. If this recurs, either the handler needs a longer "
-                + "timeout or it is not honouring its CancellationToken.",
-                messageId, Options.HandlerTimeout);
-        }
-        finally
-        {
-            await renewalCts.CancelAsync();
-            try { await renewal; } catch (OperationCanceledException) { /* expected */ }
-        }
-    }
-
-    private async Task RenewUntilDoneAsync(string messageId, CancellationToken cancellationToken)
-    {
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            try
-            {
-                await Task.Delay(Options.ClaimRenewInterval, cancellationToken);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-
-            bool stillOurs;
-            try
-            {
-                stillOurs = await MessageClaims.TryRenewAsync(
-                    documentStore, messageId, MessageClaims.NodeId, Options.ClaimTtl, cancellationToken);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-            catch (Exception ex)
-            {
-                // A transient failure to renew is not a lost claim: try again next interval, while
-                // the TTL still has most of its length to run. Letting it escape faulted this task,
-                // which ended renewal for the rest of the handler's run and then rethrew from the
-                // `finally` in ProcessWithClaimRenewalAsync — replacing the processing outcome, so
-                // a message that had been handled successfully was logged as a pump failure.
-                logger.LogWarning(ex,
-                    "Could not renew the claim on message {MessageId}; retrying in {Interval}",
-                    messageId, Options.ClaimRenewInterval);
-                continue;
-            }
-
-            if (!stillOurs)
-            {
-                // A renewal that lands just after the processor saved the outcome also fails; that
-                // is the normal end of processing, and warning about it would be a false alarm.
-                try
-                {
-                    if (!await MessageClaims.WasReclaimedAsync(documentStore, messageId, MessageClaims.NodeId, cancellationToken))
-                        return;
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    return;
-                }
-                catch (Exception)
-                {
-                    // Could not tell. Report the loss: a spurious warning costs less than hiding a
-                    // real double-processing window.
-                }
-
-                // The claim was reclaimed while we were working. We cannot un-run the handlers
-                // already invoked, but we can say so loudly: this is the window in which a message
-                // can be processed twice, and it means ClaimTtl is too short for this handler.
-                logger.LogWarning(
-                    "Lost the claim on message {MessageId} while still processing it — it has been "
-                    + "requeued and may be handled twice. Increase SparkMessagingOptions.ClaimTtl.",
-                    messageId);
-                return;
-            }
-        }
     }
 
     /// <summary>

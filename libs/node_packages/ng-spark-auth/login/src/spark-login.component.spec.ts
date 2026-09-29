@@ -92,8 +92,18 @@ describe('SparkLoginComponent', () => {
     await component.onSubmit();
     await navigated;
 
-    expect(auth.login).toHaveBeenCalledWith('a@b.c', 'pw');
+    expect(auth.login).toHaveBeenCalledWith('a@b.c', 'pw', false);
     expect(TestBed.inject(Router).url).toBe('/dashboard');
+  });
+
+  it('passes a checked "Remember me" to auth.login', async () => {
+    const { auth, harness } = await setup();
+    const component = await harness.navigateByUrl('/login', SparkLoginComponent);
+    component.form.setValue({ email: 'a@b.c', password: 'pw', rememberMe: true });
+
+    await component.onSubmit();
+
+    expect(auth.login).toHaveBeenCalledWith('a@b.c', 'pw', true);
   });
 
   it('navigates to the returnUrl query param when present', async () => {

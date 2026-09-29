@@ -4,7 +4,7 @@ using System.Text.Json.Serialization;
 
 namespace MintPlayer.Spark.Abstractions;
 
-public sealed class PersistentObject
+public sealed class PersistentObject : IDisablable
 {
     private readonly List<PersistentObjectAttribute> _attributes = [];
 
@@ -51,41 +51,26 @@ public sealed class PersistentObject
     private List<string>? _disabledActions;
 
     /// <summary>
-    /// Custom actions withheld for THIS object, by name. Null or empty means every action the
-    /// caller has the right to is offered.
+    /// Actions withheld for THIS object, by name — built-in (<c>Edit</c>, <c>Save</c>,
+    /// <c>Delete</c>) and custom alike. Null or empty means every action the caller has the right to
+    /// is offered.
     /// <para>
-    /// <c>GET /spark/actions/{objectTypeId}</c> is a type-level catalogue — it is never told which
-    /// row is open — so an action that only applies to some rows cannot be filtered there. This is
-    /// where the per-row answer travels instead: the actions hook decides while it has the entity
-    /// in hand, and the client simply does not render what is listed here.
+    /// <c>POST /spark/actions/list</c> is a type-level catalogue — it is never told which row is
+    /// open — so an action that only applies to some rows cannot be filtered there. This is where
+    /// the per-row answer travels instead. It is filled by the actions class's
+    /// <c>OnDisableActionsAsync</c> hook when the page loads (#460, D13), and the same hook is asked
+    /// again when an action is submitted: a disabled action is refused with <c>403</c>, so this is
+    /// no longer only an affordance.
     /// </para>
     /// </summary>
-    /// <remarks>
-    /// Withholding an action is an affordance, not a permission. The action's own handler must
-    /// still refuse, because a client is free to ignore this and the endpoint is still reachable.
-    /// What it buys is that a destructive action stops being <em>offered</em> where it cannot
-    /// apply — Coverage showed an irreversible "Delete data" button on every repository page,
-    /// healthy ones included, and only admitted it would refuse after the confirmation prompt.
-    /// </remarks>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<string>? DisabledActions => _disabledActions;
 
     /// <summary>
-    /// Withholds one or more custom actions for this object. Idempotent, and additive across
-    /// calls, so separate concerns can each withhold what they own without coordinating.
+    /// Deliberately an explicit implementation: the only caller is the framework, handing this object
+    /// to <c>OnDisableActionsAsync</c>. See <see cref="IDisablable"/>.
     /// </summary>
-    /// <example>
-    /// <code>
-    /// public override async Task&lt;PersistentObject?&gt; OnLoadAsync(string id, PersistentObject? parent)
-    /// {
-    ///     var obj = await base.OnLoadAsync(id, parent);
-    ///     if (obj is not null &amp;&amp; entity.Connection != RepositoryConnection.Disconnected)
-    ///         obj.DisableActions("DeleteData");
-    ///     return obj;
-    /// }
-    /// </code>
-    /// </example>
-    public void DisableActions(params string[] actionNames)
+    void IDisablable.DisableActions(params string[] actionNames)
     {
         if (actionNames is null || actionNames.Length == 0)
             return;

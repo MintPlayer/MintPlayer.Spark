@@ -1,64 +1,33 @@
-using System.Diagnostics;
-using System.Net;
-using System.Net.Http.Json;
-using System.Net.Sockets;
-using Microsoft.AspNetCore.Identity;
-using MintPlayer.Spark.Authorization.Identity;
-using MintPlayer.Spark.Replication.Abstractions.Configuration;
+using System.Text.Json.Nodes;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
+using MintPlayer.Spark.Replication.Abstractions.Configuration;
 using MintPlayer.Spark.Replication.Abstractions.Models;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Operations;
-using Raven.Client.ServerWide;
 using Raven.Client.ServerWide.Operations;
 
 namespace MintPlayer.Spark.E2E.Tests._Infrastructure;
 
 /// <summary>
-/// Spins up a real Fleet demo app instance backed by an embedded RavenDB, so Playwright
-/// can drive a full Angular SPA + ASP.NET Core stack end-to-end. Owns the lifetime of
-/// (1) the embedded Raven server, (2) the Fleet dotnet subprocess, and (3) seeded users.
+/// Runs the Fleet demo app on <see cref="SparkAppTestHost"/>. Adds what only Fleet needs: the shared
+/// SparkModules database and replication settings, the OIDC issuer (with a generated signing key) and
+/// JWT audience, and the seeding helpers for modules and machine clients.
 /// </summary>
-public sealed class FleetTestHost : IAsyncLifetime
+public sealed class FleetTestHost : SparkAppTestHost
 {
-    /// <summary>
-    /// The ASP.NET environment this host runs as, which also names its <c>appsettings.{Env}.json</c>
-    /// override. Parameterised so two hosts with different replication settings can run in the same
-    /// test session — they would otherwise fight over one override file in the Fleet project
-    /// directory, each deleting the other's on dispose.
-    /// <para>
-    /// Must never be <c>Development</c>: <c>SparkReplicationCertificateMode.Auto</c> resolves to
-    /// Development there, which would silently relax the certificate requirement the default host
-    /// exists to prove.
-    /// </para>
-    /// </summary>
-    public string EnvironmentName { get; init; } = "E2E";
+    public static readonly SparkAppDescriptor Fleet = new(
+        AppName: "Fleet",
+        ProjectDirectory: Path.Combine("apps", "Fleet", "Fleet"),
+        ProjectFileName: "Fleet.csproj",
+        DatabasePrefix: "SparkFleetE2E",
+        CoverageSlug: "fleet")
+    {
+        UsesMailPickup = true,
+    };
 
-    /// <summary>
-    /// Requests per window the E2E host allows, written into its generated settings and read back
-    /// by the one test that deliberately exceeds it.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The production default is 150 per 10 seconds, which this suite cannot live inside. It is not
-    /// too small on average — 88 serialized tests make ~600-900 requests at roughly 2-5 per second
-    /// against a 15 per second allowance — it is too small for BURSTS: about 25 fast API tests at
-    /// ~6 requests each fill a window between them, and one browser boot is a dozen or more
-    /// <c>/spark</c> calls on its own. The repository had already recorded this independently, in
-    /// <c>ViewerTimezoneRenderingTests</c>, where adding a single extra browser test pushed
-    /// unrelated tests into 429s.
-    /// </para>
-    /// <para>
-    /// ⚠ <b>Raised, never disabled.</b> The limiter stays wired at the same pipeline position and
-    /// still returns 429, so <c>RateLimitTests</c> keeps proving that the shipped demo app really is
-    /// rate limited. Turning it off would delete the only end-to-end evidence of that, and would put
-    /// a security control into the one state <c>AddRateLimiter</c> otherwise throws to prevent:
-    /// present but doing nothing.
-    /// </para>
-    /// </remarks>
-    public const int RateLimitPermits = 1000;
+    public FleetTestHost() : base(Fleet) { }
 
     /// <summary>
     /// Cross-module certificate enforcement. Defaults to <c>Production</c> — the strict setting, so
@@ -66,162 +35,78 @@ public sealed class FleetTestHost : IAsyncLifetime
     /// exercise what happens <i>after</i> authentication succeeds sets <c>Development</c>, which
     /// accepts any caller naming a registered module.
     /// </summary>
+    /// <remarks>
+    /// <see cref="SparkAppTestHost.EnvironmentName"/> must not be <c>Development</c> for the same reason:
+    /// <c>SparkReplicationCertificateMode.Auto</c> resolves to Development there, which would silently
+    /// relax the certificate requirement the default host exists to prove.
+    /// </remarks>
     public SparkReplicationCertificateMode CertificateMode { get; init; } = SparkReplicationCertificateMode.Production;
 
-    private readonly string _suffix = Guid.NewGuid().ToString("N")[..8];
-    private readonly string _password = GeneratePassword();
-    private string TestDatabase => $"SparkFleetE2E-{_suffix}";
-    private string TestModulesDatabase => $"SparkModulesE2E-{_suffix}";
-    private string AdminUserName => $"admin-{_suffix}";
-    private string AdminEmail => $"admin-{_suffix}@e2e.local";
-    private string AdminPassword => _password;
+    private string TestModulesDatabase => $"SparkModulesE2E-{Suffix}";
 
-    /// <summary>
-    /// Per-fixture random password that satisfies ASP.NET Identity's default validator
-    /// (1 lowercase, 1 uppercase, 1 digit, 1 non-alphanumeric, 6+ chars). Randomizing
-    /// per run keeps static-analysis scanners from flagging the source as a leaked secret.
-    /// </summary>
-    private static string GeneratePassword()
-    {
-        var token = Convert.ToBase64String(Guid.NewGuid().ToByteArray()).TrimEnd('=');
-        return $"Aa1!{token}";
-    }
+    /// <summary>Base URL of the running Fleet instance (HTTPS, self-signed).</summary>
+    public string FleetUrl => AppUrl;
 
-    /// <summary>
-    /// Serialises the one-time build work every host would otherwise do concurrently.
-    /// <para>
-    /// xUnit runs distinct collections in parallel, so two hosts start together — and two
-    /// <c>dotnet run</c>s racing to build Fleet produced <c>CS2012: cannot open … .dll for writing,
-    /// being used by another process</c>. Both hosts then timed out waiting for a server that never
-    /// started, which surfaced as every test in the suite failing in a millisecond.
-    /// </para>
-    /// <para>
-    /// Building once behind this gate and running with <c>--no-build</c> removes the race rather
-    /// than narrowing it: no amount of retrying makes two compilers safe on one output directory.
-    /// </para>
-    /// </summary>
-    private static readonly SemaphoreSlim BuildGate = new(1, 1);
-    private static bool _fleetBuilt;
-
-    /// <summary>
-    /// Whether to measure coverage <b>inside</b> the Fleet subprocess. Opt-in through the
-    /// <c>SPARK_E2E_HOST_COVERAGE</c> environment variable (<c>1</c> or <c>true</c>); CI sets it.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The <c>XPlat Code Coverage</c> collector instruments the test process only. Fleet runs as a
-    /// separate <c>dotnet</c> process, so every framework line the E2E suite exercises there
-    /// (certificate authentication, replication, websockets) used to count as uncovered. With this
-    /// on, Fleet runs under <c>dotnet-coverage collect</c> (a local tool, <c>.config/dotnet-tools.json</c>)
-    /// filtered to <c>MintPlayer.Spark*</c> by <c>fleet-host.coverage.xml</c>, and writes its own
-    /// cobertura report under this project's <c>coverage/</c> directory, where the upload glob
-    /// <c>tests/*/coverage/**/coverage.cobertura.xml</c> already finds it.
-    /// </para>
-    /// <para>
-    /// Off by default because it costs a slower host start and a tool restore, which a local
-    /// run of one test class has no use for.
-    /// </para>
-    /// </remarks>
-    private static readonly bool HostCoverageEnabled =
-        Environment.GetEnvironmentVariable("SPARK_E2E_HOST_COVERAGE") is { } flag
-        && (flag == "1" || flag.Equals("true", StringComparison.OrdinalIgnoreCase));
-
-    private string CoverageSessionId => $"spark-e2e-{EnvironmentName}-{_suffix}";
-    private string? _hostCoverageReport;
-
-    private SparkTestDriverHost? _raven;
-    private Process? _fleetProcess;
-    private string? _fleetUrl;
-    private string? _fleetHttpUrl;
-    private readonly List<string> _fleetLog = new();
-    private readonly object _logLock = new();
-
-    /// <summary>Base URL of the running Fleet instance (HTTPS, self-signed — use <see cref="BrowserOptions"/>).</summary>
-    public string FleetUrl => _fleetUrl ?? throw new InvalidOperationException("Host not initialized");
     /// <summary>
     /// The plain-http base URL. The OIDC issuer runs here in tests: the JWT handler fetches the
     /// discovery document from the issuer itself, and over https that means the host trusting its
     /// own development certificate — which is true on a dev machine and not on a CI runner.
     /// </summary>
-    public string FleetHttpUrl => _fleetHttpUrl ?? throw new InvalidOperationException("Host not initialized");
+    public string FleetHttpUrl => AppHttpUrl;
 
-    /// <summary>URLs of the embedded Raven server, for tests that build cross-module payloads.</summary>
-    public string[] RavenUrls => _raven?.Store.Urls ?? throw new InvalidOperationException("Host not initialized");
-    public string AdminName => AdminUserName;
-    public string AdminEmailAddress => AdminEmail;
-    public string AdminPass => AdminPassword;
+    protected override IEnumerable<string> ExtraDatabases => [TestModulesDatabase];
 
-    /// <summary>
-    /// Returns the last <paramref name="maxLines"/> lines captured from Fleet's stdout/stderr.
-    /// Useful for surfacing server-side exception details inside an assertion failure message
-    /// when the HTTP response body doesn't include them (production 500, etc.).
-    /// </summary>
-    public string RecentLog(int maxLines = 60)
+    protected override async Task ConfigureAppSettings(JsonObject settings, SparkAppHostContext context)
     {
-        lock (_logLock) return string.Join('\n', _fleetLog.TakeLast(maxLines));
+        // The provider auto-generates a signing key only in Development, and deliberately: a key
+        // that materialises on first use in production is a key nobody backed up, and it silently
+        // invalidates every token still in flight when the host restarts. Tests are not Development,
+        // so they supply one — which also means the E2E exercises the configured-key path rather
+        // than the convenience path.
+        var signingKeyFileName = $"oidc-signing-key.{EnvironmentName}.json";
+        var signingKeyFile = Path.Combine(context.ProjectDirectory, signingKeyFileName);
+        RegisterTemporaryFile(signingKeyFile);
+        await File.WriteAllTextAsync(signingKeyFile, NewSigningKeyJson());
+
+        var spark = settings["Spark"]!.AsObject();
+        spark["Replication"] = new JsonObject
+        {
+            ["ModuleName"] = "Fleet",
+            ["ModuleUrl"] = context.HttpsUrl,
+            ["SparkModulesUrls"] = new JsonArray(context.RavenUrls[0]),
+            ["SparkModulesDatabase"] = TestModulesDatabase,
+            ["ClientCertificate"] = new JsonObject { ["Mode"] = CertificateMode.ToString() },
+        };
+        spark["JwtBearer"] = new JsonObject { ["Audience"] = "fleet-api" };
+
+        settings["SparkIdentityProvider"] = new JsonObject
+        {
+            ["Issuer"] = $"http://localhost:{context.HttpPort}",
+            ["SigningKeyPath"] = signingKeyFileName,
+        };
     }
 
     /// <summary>
-    /// Registers an additional user and patches the Raven document so the user is email-confirmed
-    /// and belongs to the given group (matching a name declared in Fleet's App_Data/security.json).
-    /// Used by row-level-authz tests to seed a second non-admin account.
+    /// An RSA key in the shape <c>OidcSigningKeyService</c> reads: base64url RSA parameters.
     /// </summary>
-    /// <param name="roleName">
-    /// An ASP.NET Identity <b>role</b> to grant as well as the group claim, or null for none.
-    /// </param>
-    /// <remarks>
-    /// ⚠️ The group claim and the role are not interchangeable, and which one a rule reads is not
-    /// obvious from the outside. Fleet's <c>CarActions.CurrentUserIsAdmin</c> is
-    /// <c>CurrentUser.IsInRole("Administrators")</c> — a <b>role</b> — so a user seeded with only the
-    /// <c>group=Administrators</c> claim is still filtered down to rows they created. The symptom is
-    /// an empty grid during setup, which reads like a broken query rather than a missing role.
-    /// <c>SeedAdminUserAsync</c> grants both, which is why the admin behaves as expected.
-    /// </remarks>
-    public async Task SeedUserAsync(string email, string password, string groupName, string? roleName = null)
+    private static string NewSigningKeyJson()
     {
-        var handler = new HttpClientHandler
+        using var rsa = System.Security.Cryptography.RSA.Create(2048);
+        var p = rsa.ExportParameters(true);
+        static string B64(byte[] data) =>
+            Convert.ToBase64String(data).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+
+        return System.Text.Json.JsonSerializer.Serialize(new
         {
-            ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
-        };
-        using var client = new HttpClient(handler) { BaseAddress = new Uri(_fleetUrl!) };
-
-        var registerResp = await client.PostAsJsonAsync("/spark/auth/register", new { email, password });
-        if (!registerResp.IsSuccessStatusCode)
-        {
-            var body = await registerResp.Content.ReadAsStringAsync();
-            throw new InvalidOperationException($"Seed register for '{email}' failed ({(int)registerResp.StatusCode}): {body}");
-        }
-
-        using var appStore = new DocumentStore { Urls = _raven!.Store.Urls, Database = TestDatabase };
-        appStore.Initialize();
-
-        // Registration writes the document; finding it again goes through an index, and indexes
-        // are eventually consistent. Without this the lookup intermittently ran before the index
-        // caught up and the test failed during *setup*, reporting a seeding error for a row-level
-        // authorization case — which reads like the feature broke rather than the fixture racing.
-        //
-        // Waiting on the store rather than per-query (`WaitForNonStaleResults`) deliberately: the
-        // per-query form has to be remembered on every query anyone adds later, and is silent when
-        // forgotten. This also throws with the actual index errors if they never settle, instead
-        // of leaving a mystery failure further down.
-        await appStore.WaitForIndexingAsync(TestDatabase);
-
-        using var session = appStore.OpenAsyncSession();
-
-        var user = await session.Query<SparkUser>()
-            .FirstOrDefaultAsync(u => u.NormalizedEmail == email.ToUpperInvariant())
-            ?? throw new InvalidOperationException($"Seeded user '{email}' not visible in '{TestDatabase}' after register.");
-
-        user.EmailConfirmed = true;
-        user.UserName ??= email;
-        user.NormalizedUserName ??= email.ToUpperInvariant();
-        if (!user.Claims.Any(c => c.ClaimType == "group" && c.ClaimValue == groupName))
-            user.Claims.Add(new SparkUserClaim { ClaimType = "group", ClaimValue = groupName });
-
-        if (roleName is not null && !user.Roles.Contains(roleName))
-            user.Roles.Add(roleName);
-
-        await session.SaveChangesAsync();
+            N = B64(p.Modulus!),
+            E = B64(p.Exponent!),
+            D = B64(p.D!),
+            P = B64(p.P!),
+            Q = B64(p.Q!),
+            DP = B64(p.DP!),
+            DQ = B64(p.DQ!),
+            QI = B64(p.InverseQ!),
+        });
     }
 
     /// <summary>
@@ -237,7 +122,7 @@ public sealed class FleetTestHost : IAsyncLifetime
     /// </remarks>
     public async Task SeedModuleAsync(string moduleName, string? clientCertificateThumbprint = null)
     {
-        using var modulesStore = new DocumentStore { Urls = _raven!.Store.Urls, Database = TestModulesDatabase };
+        using var modulesStore = new DocumentStore { Urls = RavenServer.Store.Urls, Database = TestModulesDatabase };
         modulesStore.Initialize();
 
         var documentId = ModuleInformation.DocumentId(moduleName);
@@ -248,7 +133,7 @@ public sealed class FleetTestHost : IAsyncLifetime
                 AppName = moduleName,
                 AppUrl = $"https://localhost:1/{moduleName}",
                 DatabaseName = $"{moduleName}-e2e",
-                DatabaseUrls = _raven.Store.Urls,
+                DatabaseUrls = RavenServer.Store.Urls,
                 RegisteredAtUtc = DateTime.UtcNow,
                 ClientCertificateThumbprint = clientCertificateThumbprint,
             }, documentId);
@@ -272,7 +157,7 @@ public sealed class FleetTestHost : IAsyncLifetime
     /// </summary>
     public async Task<string> DescribeModulesAsync()
     {
-        using var modulesStore = new DocumentStore { Urls = _raven!.Store.Urls, Database = TestModulesDatabase };
+        using var modulesStore = new DocumentStore { Urls = RavenServer.Store.Urls, Database = TestModulesDatabase };
         modulesStore.Initialize();
         using var session = modulesStore.OpenAsyncSession();
 
@@ -283,7 +168,7 @@ public sealed class FleetTestHost : IAsyncLifetime
         // that exists somewhere other than where the lookup reads, and naming only the expected
         // database cannot tell that apart from a record that was never written.
         var elsewhere = new List<string>();
-        foreach (var name in _raven.Store.Maintenance.Server.Send(new GetDatabaseNamesOperation(0, 100)))
+        foreach (var name in RavenServer.Store.Maintenance.Server.Send(new GetDatabaseNamesOperation(0, 100)))
         {
             if (name == TestModulesDatabase) continue;
             using var other = session.Advanced.DocumentStore.OpenAsyncSession(name);
@@ -294,7 +179,7 @@ public sealed class FleetTestHost : IAsyncLifetime
                 elsewhere.Add($"{name}:[{string.Join(",", found.Select(f => other.Advanced.GetDocumentId(f)))}]");
         }
 
-        return $"db='{TestModulesDatabase}' urls=[{string.Join(",", _raven.Store.Urls)}] docs=[{string.Join(", ", ids)}]"
+        return $"db='{TestModulesDatabase}' urls=[{string.Join(",", RavenServer.Store.Urls)}] docs=[{string.Join(", ", ids)}]"
              + (elsewhere.Count > 0 ? $" ALSO-IN {string.Join(" ", elsewhere)}" : " (no module docs in any other database)");
     }
 
@@ -311,8 +196,7 @@ public sealed class FleetTestHost : IAsyncLifetime
     {
         var secret = $"S{Guid.NewGuid():N}!a";
 
-        using var appStore = new DocumentStore { Urls = _raven!.Store.Urls, Database = TestDatabase };
-        appStore.Initialize();
+        using var appStore = OpenAppStore();
         using var session = appStore.OpenAsyncSession();
 
         await session.StoreAsync(new OidcScope
@@ -344,40 +228,6 @@ public sealed class FleetTestHost : IAsyncLifetime
     }
 
     /// <summary>
-    /// Whether an ongoing RavenDB ETL task with this name exists on the app database — the real
-    /// proof that a deployment took effect, as opposed to merely being authorized.
-    /// <para>
-    /// Requires a licence that includes the ETL feature. The repository's default licence does not;
-    /// a RavenDB developer licence does. <see cref="MintPlayer.Spark.Testing.SparkTestDriver"/> reads
-    /// <c>RAVENDB_LICENSE</c> or the repo-root <c>raven-license.log</c>.
-    /// </para>
-    /// </summary>
-    public async Task<bool> EtlTaskExistsAsync(string taskName)
-    {
-        using var appStore = new DocumentStore { Urls = _raven!.Store.Urls, Database = TestDatabase };
-        appStore.Initialize();
-
-        var task = await appStore.Maintenance.SendAsync(
-            new Raven.Client.Documents.Operations.OngoingTasks.GetOngoingTaskInfoOperation(
-                taskName, Raven.Client.Documents.Operations.OngoingTasks.OngoingTaskType.RavenEtl));
-
-        return task is not null;
-    }
-
-    /// <summary>
-    /// Point-loads a document from the app database by id. Deliberately not a query: these
-    /// assertions include "this was NOT written", and an absence assertion against an
-    /// eventually-consistent index passes whether or not the property holds.
-    /// </summary>
-    public async Task<T?> LoadAsync<T>(string documentId) where T : class
-    {
-        using var appStore = new DocumentStore { Urls = _raven!.Store.Urls, Database = TestDatabase };
-        appStore.Initialize();
-        using var session = appStore.OpenAsyncSession();
-        return await session.LoadAsync<T>(documentId);
-    }
-
-    /// <summary>
     /// Rewrites one app document's CLR-type metadata to a name no assembly in this process can
     /// resolve, then waits for indexing.
     /// <para>
@@ -398,8 +248,7 @@ public sealed class FleetTestHost : IAsyncLifetime
     {
         const string ghostType = "Ghost.Fleet.Entities.Car, Ghost.Fleet";
 
-        using var appStore = new DocumentStore { Urls = _raven!.Store.Urls, Database = TestDatabase };
-        appStore.Initialize();
+        using var appStore = OpenAppStore();
 
         var status = await appStore.Operations.SendAsync(new PatchOperation(
             documentId,
@@ -426,548 +275,4 @@ public sealed class FleetTestHost : IAsyncLifetime
 
         await appStore.WaitForIndexingAsync(TestDatabase);
     }
-
-    /// <summary>
-    /// Waits for the app database's indexes to catch up.
-    /// </summary>
-    /// <remarks>
-    /// A test that writes over HTTP and then reads back through a <b>query</b> needs this: queries are
-    /// answered from indexes, and RavenDB indexes are eventually consistent, so the row is reliably
-    /// absent for a moment after the write returns 200. Reads of a single object by id do not need it —
-    /// those load the document directly.
-    /// <para>
-    /// The symptom without it is not a wrong value but a missing row, which reads like a broken query
-    /// rather than a timing problem. <c>WaitForIndexingAsync</c> polls for non-stale with a timeout, so
-    /// this is a failure bound and never a fixed sleep.
-    /// </para>
-    /// </remarks>
-    public async Task WaitForIndexingAsync()
-    {
-        using var appStore = new DocumentStore { Urls = _raven!.Store.Urls, Database = TestDatabase };
-        appStore.Initialize();
-        await appStore.WaitForIndexingAsync(TestDatabase);
-    }
-
-    public async Task InitializeAsync()
-    {
-        _raven = new SparkTestDriverHost();
-        await _raven.InitializeAsync();
-
-        var ravenUrls = _raven.Store.Urls;
-
-        // Embedded Raven may persist databases across test-process invocations — wipe + recreate
-        // so every run starts from a known-empty state.
-        DeleteIfExists(_raven.Store, TestDatabase);
-        DeleteIfExists(_raven.Store, TestModulesDatabase);
-        _raven.Store.Maintenance.Server.Send(new CreateDatabaseOperation(new DatabaseRecord(TestDatabase)));
-        _raven.Store.Maintenance.Server.Send(new CreateDatabaseOperation(new DatabaseRecord(TestModulesDatabase)));
-
-        await BuildOnceAsync();
-
-        _fleetUrl = await StartFleetAsync(ravenUrls);
-
-        // Seed the admin via the real /register endpoint (so the password hash matches whatever
-        // Identity's PasswordHasher version is configured for) and then patch the group claim
-        // directly in Raven so the user is a member of the Administrators group.
-        await SeedAdminUserAsync(ravenUrls);
-    }
-
-    public async Task DisposeAsync()
-    {
-        if (HostCoverageEnabled && _fleetProcess is { HasExited: false })
-            await StopHostCoverageAsync(_fleetProcess);
-
-        if (_fleetProcess is { HasExited: false })
-        {
-            try { _fleetProcess.Kill(entireProcessTree: true); }
-            catch { /* best-effort */ }
-
-            try { await _fleetProcess.WaitForExitAsync(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token); }
-            catch { /* best-effort */ }
-        }
-        _fleetProcess?.Dispose();
-
-        if (_overrideSettingsFile is not null && File.Exists(_overrideSettingsFile))
-        {
-            try { File.Delete(_overrideSettingsFile); }
-            catch { /* best-effort */ }
-        }
-
-        if (_signingKeyFile is not null && File.Exists(_signingKeyFile))
-        {
-            try { File.Delete(_signingKeyFile); }
-            catch { /* best-effort */ }
-        }
-
-        if (_raven is not null)
-            await _raven.DisposeAsync();
-    }
-
-    /// <summary>
-    /// Ends the coverage session so the hits Fleet has collected are written to its report.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// ⚠️ <b>A kill loses the report.</b> The hits live in the instrumented process until the
-    /// collector asks for them, and <c>Kill(entireProcessTree)</c> takes the collector down with
-    /// Fleet, so nothing is ever written. <c>dotnet-coverage shutdown</c> is the graceful path, and
-    /// it works the same on Windows and Linux, which a Ctrl+C or SIGTERM would not: Windows has no
-    /// way to send a console signal to one child without also hitting this test process.
-    /// </para>
-    /// <para>
-    /// Measured 2026-09-27: shutdown fetches the hits from the process while it is still running,
-    /// writes the report, ends the process, and the collector then exits by itself, all in about
-    /// half a second. Both waits here are failure bounds, not expected durations. If either one
-    /// runs out, the caller's kill is still the fallback, and the missing report is caught by
-    /// <c>tools/verify-coverage-paths.mjs</c>.
-    /// </para>
-    /// </remarks>
-    private async Task StopHostCoverageAsync(Process collector)
-    {
-        var psi = new ProcessStartInfo("dotnet") { WorkingDirectory = FindRepoRoot() };
-        foreach (var arg in new[] { "tool", "run", "dotnet-coverage", "shutdown", CoverageSessionId, "--nologo" })
-            psi.ArgumentList.Add(arg);
-
-        try
-        {
-            var (exitCode, output) = await RunToCompletionAsync(psi, TimeSpan.FromMinutes(2));
-            if (exitCode != 0)
-                lock (_logLock) _fleetLog.Add($"[coverage] shutdown exited {exitCode}: {output}");
-
-            await collector.WaitForExitAsync(new CancellationTokenSource(TimeSpan.FromMinutes(1)).Token);
-        }
-        catch (Exception ex)
-        {
-            lock (_logLock) _fleetLog.Add($"[coverage] graceful shutdown failed, falling back to kill: {ex.Message}");
-        }
-
-        if (_hostCoverageReport is not null && !File.Exists(_hostCoverageReport))
-            lock (_logLock) _fleetLog.Add($"[coverage] no report was written at {_hostCoverageReport}");
-    }
-
-    private async Task SeedAdminUserAsync(string[] ravenUrls)
-    {
-        // Register via the public endpoint so the password hash is compatible with whatever
-        // PasswordHasher version Fleet's Identity is configured with.
-        var handler = new HttpClientHandler
-        {
-            ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
-        };
-        using var client = new HttpClient(handler) { BaseAddress = new Uri(_fleetUrl!) };
-
-        var response = await client.PostAsJsonAsync("/spark/auth/register", new
-        {
-            email = AdminEmail,
-            password = AdminPassword,
-        });
-        if (!response.IsSuccessStatusCode)
-        {
-            var body = await response.Content.ReadAsStringAsync();
-            throw new InvalidOperationException($"Register failed ({(int)response.StatusCode}): {body}");
-        }
-
-        // Now patch the stored user: mark email confirmed + add the Administrators group claim.
-        using var appStore = new DocumentStore { Urls = ravenUrls, Database = TestDatabase };
-        appStore.Initialize();
-
-        using var session = appStore.OpenAsyncSession();
-        var user = await session.Query<SparkUser>()
-            .FirstOrDefaultAsync(u => u.NormalizedEmail == AdminEmail.ToUpperInvariant());
-
-        if (user == null)
-        {
-            var databases = _raven!.Store.Maintenance.Server.Send(new Raven.Client.ServerWide.Operations.GetDatabaseNamesOperation(0, 50));
-            string dump = "";
-            foreach (var dbName in databases)
-            {
-                using var s = _raven.Store.OpenAsyncSession(dbName);
-                var users = await s.Query<SparkUser>().Take(5).ToListAsync();
-                dump += $"\n  embedded db='{dbName}': {users.Count} user(s) [{string.Join(", ", users.Select(u => u.Email))}]";
-            }
-            throw new InvalidOperationException($"Registered user '{AdminEmail}' not found in embedded '{TestDatabase}'. Embedded URLs: [{string.Join(",", ravenUrls)}]. DBs:{dump}");
-        }
-
-        user.EmailConfirmed = true;
-        user.UserName ??= AdminUserName;
-        user.NormalizedUserName ??= AdminUserName.ToUpperInvariant();
-        if (!user.Claims.Any(c => c.ClaimType == "group" && c.ClaimValue == "Administrators"))
-            user.Claims.Add(new SparkUserClaim { ClaimType = "group", ClaimValue = "Administrators" });
-        if (!user.Roles.Contains("Administrators"))
-            user.Roles.Add("Administrators");
-
-        await session.SaveChangesAsync();
-    }
-
-    /// <summary>
-    /// Whether the built Angular bundle is older than any source that goes into it.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// ⚠️ <b>This used to ask only whether <c>dist/</c> existed and was non-empty</b> — which meant a
-    /// bundle built at any point in the past was accepted forever. That is not a stale-cache
-    /// inconvenience; it silently removes the client from the test. Every Playwright assertion then
-    /// runs the *old* frontend against the *new* server and reports whatever mismatch that produces as
-    /// a product failure.
-    /// </para>
-    /// <para>
-    /// It cost real time when the route table moved: the grid tests failed because a bundle from
-    /// earlier the same day still issued <c>GET /spark/queries/{id}/execute</c>, which no longer
-    /// exists. The symptom — a grid that renders its chrome and never its rows — looks exactly like a
-    /// broken query, and nothing anywhere said "this frontend is not the one you just changed".
-    /// </para>
-    /// <para>
-    /// The comparison is deliberately crude: newest source timestamp against oldest output timestamp,
-    /// over the client's own sources and <c>ng-spark</c>'s. Crude in the safe direction — it rebuilds
-    /// when unsure, and the alternative is being wrong in the direction that hides a regression.
-    /// </para>
-    /// </remarks>
-    private static bool IsAngularBundleStale(string repoRoot, string distPath)
-    {
-        if (!Directory.Exists(distPath))
-            return true;
-
-        var outputs = Directory.EnumerateFiles(distPath, "*", SearchOption.AllDirectories).ToArray();
-        if (outputs.Length == 0)
-            return true;
-
-        var builtAt = outputs.Min(f => File.GetLastWriteTimeUtc(f));
-
-        string[] sourceRoots =
-        [
-            Path.Combine(repoRoot, "apps", "Fleet", "Fleet", "ClientApp", "src"),
-            // The library the app consumes from SOURCE (tsconfig.base.json maps it there), so a change
-            // here reaches the browser only through a rebuild — and is exactly what went unnoticed.
-            Path.Combine(repoRoot, "libs", "node_packages", "ng-spark"),
-        ];
-
-        foreach (var root in sourceRoots)
-        {
-            if (!Directory.Exists(root))
-                continue;
-
-            foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
-            {
-                // The library's own build outputs are not inputs; including them would make every
-                // bundle look stale forever.
-                if (file.Contains($"{Path.DirectorySeparatorChar}dist{Path.DirectorySeparatorChar}", StringComparison.Ordinal) ||
-                    file.Contains($"{Path.DirectorySeparatorChar}node_modules{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
-                {
-                    continue;
-                }
-
-                if (File.GetLastWriteTimeUtc(file) > builtAt)
-                    return true;
-            }
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    /// Builds Fleet and its Angular bundle exactly once per test process, whichever host asks first.
-    /// </summary>
-    private static async Task BuildOnceAsync()
-    {
-        await BuildGate.WaitAsync();
-        try
-        {
-            if (_fleetBuilt)
-                return;
-
-            await EnsureAngularBundleAsync();
-
-            var repoRoot = FindRepoRoot();
-            var fleetProject = Path.Combine(repoRoot, "apps", "Fleet", "Fleet", "Fleet.csproj");
-            var psi = new ProcessStartInfo("dotnet", $"build \"{fleetProject}\" --configuration Debug");
-            var (exitCode, output) = await RunToCompletionAsync(psi, TimeSpan.FromMinutes(10));
-            if (exitCode != 0)
-                throw new InvalidOperationException($"Building Fleet failed (exit {exitCode}).\n{output}");
-
-            _fleetBuilt = true;
-        }
-        finally
-        {
-            BuildGate.Release();
-        }
-    }
-
-    private static async Task EnsureAngularBundleAsync()
-    {
-        var repoRoot = FindRepoRoot();
-        var distPath = Path.Combine(repoRoot, "apps", "Fleet", "Fleet", "ClientApp", "dist", "ClientApp", "browser");
-        if (!IsAngularBundleStale(repoRoot, distPath))
-            return;
-
-        var clientApp = Path.Combine(repoRoot, "apps", "Fleet", "Fleet", "ClientApp");
-        // ⚠️ On Windows npm is a .cmd, and handing its bare name to ProcessStartInfo is not the
-        // same as running it from a shell: cmd.exe ends up with a relative %0, so %~dp0 resolves to
-        // the working directory and npm.cmd then hunts for its own internals under
-        // the ClientApp's own node_modules/npm/ — which does not exist. The failure is a
-        // MODULE_NOT_FOUND for npm-prefix.js that reads like a broken install,
-        // and it takes the whole suite down in fixture startup, before a single test body runs.
-        //
-        // Route it through `cmd /c` so cmd does the PATH search and launches npm.cmd by absolute
-        // path. This is what MintPlayer.AspNetCore.SpaServices' own NodeScriptRunner does, for the
-        // same reason and with the same comment.
-        var psi = OperatingSystem.IsWindows()
-            ? new ProcessStartInfo("cmd", "/c npm run build") { WorkingDirectory = clientApp }
-            : new ProcessStartInfo("npm", "run build") { WorkingDirectory = clientApp };
-        // `npm run build` delegates to `nx run @spark-demo/fleet-demo:build`. On CI that is a
-        // NESTED nx invocation inside the outer `nx affected --target=test` process; sharing the
-        // outer run's daemon and remote cache from a test subprocess is a lock-contention hang
-        // waiting to happen, so opt this child out of both.
-        psi.Environment["NX_DAEMON"] = "false";
-        psi.Environment["NX_SELF_HOSTED_REMOTE_CACHE_SERVER"] = "";
-        psi.Environment["NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN"] = "";
-
-        var (exitCode, output) = await RunToCompletionAsync(psi, TimeSpan.FromMinutes(10));
-        if (exitCode != 0)
-            throw new InvalidOperationException($"npm run build failed (exit {exitCode}).\n{output}");
-    }
-
-    /// <summary>
-    /// Runs a process to completion, draining stdout and stderr <b>concurrently</b> and killing the
-    /// whole tree on timeout. The previous sequential <c>ReadToEndAsync</c> pattern deadlocked:
-    /// once the child filled the stderr pipe buffer while the parent was still awaiting stdout EOF,
-    /// child and parent blocked each other forever — which on CI surfaced as the test run hanging
-    /// with no output at all.
-    /// </summary>
-    private static async Task<(int ExitCode, string Output)> RunToCompletionAsync(ProcessStartInfo psi, TimeSpan timeout)
-    {
-        psi.UseShellExecute = false;
-        psi.RedirectStandardOutput = true;
-        psi.RedirectStandardError = true;
-
-        using var proc = Process.Start(psi)
-            ?? throw new InvalidOperationException($"Failed to start '{psi.FileName} {psi.Arguments}'");
-
-        var stdoutTask = proc.StandardOutput.ReadToEndAsync();
-        var stderrTask = proc.StandardError.ReadToEndAsync();
-
-        using var cts = new CancellationTokenSource(timeout);
-        try
-        {
-            await proc.WaitForExitAsync(cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            try { proc.Kill(entireProcessTree: true); }
-            catch { /* best-effort */ }
-            throw new TimeoutException(
-                $"'{psi.FileName} {psi.Arguments}' did not finish within {timeout.TotalMinutes:0} minutes.\n"
-                + $"stdout so far: {await stdoutTask}\nstderr so far: {await stderrTask}");
-        }
-
-        return (proc.ExitCode, $"stdout: {await stdoutTask}\nstderr: {await stderrTask}");
-    }
-
-    private string? _overrideSettingsFile;
-    private string? _signingKeyFile;
-
-    /// <summary>
-    /// An RSA key in the shape <c>OidcSigningKeyService</c> reads: base64url RSA parameters.
-    /// </summary>
-    private static string NewSigningKeyJson()
-    {
-        using var rsa = System.Security.Cryptography.RSA.Create(2048);
-        var p = rsa.ExportParameters(true);
-        static string B64(byte[] data) =>
-            Convert.ToBase64String(data).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-
-        return System.Text.Json.JsonSerializer.Serialize(new
-        {
-            N = B64(p.Modulus!),
-            E = B64(p.Exponent!),
-            D = B64(p.D!),
-            P = B64(p.P!),
-            Q = B64(p.Q!),
-            DP = B64(p.DP!),
-            DQ = B64(p.DQ!),
-            QI = B64(p.InverseQ!),
-        });
-    }
-
-    private async Task<string> StartFleetAsync(string[] ravenUrls)
-    {
-        var httpsPort = GetFreeTcpPort();
-        var httpPort = GetFreeTcpPort();
-        var httpsUrl = $"https://localhost:{httpsPort}";
-        _fleetHttpUrl = $"http://localhost:{httpPort}";
-
-        var repoRoot = FindRepoRoot();
-        var fleetDir = Path.Combine(repoRoot, "apps", "Fleet", "Fleet");
-        var fleetProject = Path.Combine(fleetDir, "Fleet.csproj");
-
-        // ASP.NET Core reads appsettings.{Environment}.json from the content root. By default
-        // that's `Directory.GetCurrentDirectory()` — i.e. the working directory of the Fleet
-        // process, which we set below to fleetDir (the project source dir). So the override
-        // file must sit next to fleetDir/appsettings.json. DisposeAsync cleans it up.
-        _overrideSettingsFile = Path.Combine(fleetDir, $"appsettings.{EnvironmentName}.json");
-
-        // The provider auto-generates a signing key only in Development, and deliberately: a key
-        // that materialises on first use in production is a key nobody backed up, and it silently
-        // invalidates every token still in flight when the host restarts. Tests are not Development,
-        // so they supply one — which also means the E2E exercises the configured-key path rather
-        // than the convenience path.
-        _signingKeyFile = Path.Combine(fleetDir, $"oidc-signing-key.{EnvironmentName}.json");
-        await File.WriteAllTextAsync(_signingKeyFile, NewSigningKeyJson());
-        var overrideJson = $$"""
-        {
-          "Spark": {
-            "RavenDb": {
-              "Urls": ["{{ravenUrls[0].Replace("\\", "\\\\")}}"],
-              "Database": "{{TestDatabase}}",
-              "EnsureDatabaseCreated": true
-            },
-            "Replication": {
-              "ModuleName": "Fleet",
-              "ModuleUrl": "{{httpsUrl}}",
-              "SparkModulesUrls": ["{{ravenUrls[0].Replace("\\", "\\\\")}}"],
-              "SparkModulesDatabase": "{{TestModulesDatabase}}",
-              "ClientCertificate": { "Mode": "{{CertificateMode}}" }
-            },
-            "HttpsRedirection": false,
-            "JwtBearer": { "Audience": "fleet-api" },
-            "RateLimiter": { "PermitLimit": {{RateLimitPermits}} }
-          },
-          "SparkIdentityProvider": {
-            "Issuer": "http://localhost:{{httpPort}}",
-            "SigningKeyPath": "oidc-signing-key.{{EnvironmentName}}.json"
-          }
-        }
-        """;
-        await File.WriteAllTextAsync(_overrideSettingsFile, overrideJson);
-
-        // `dotnet run` builds Fleet if needed and runs it. WorkingDirectory=fleetDir so
-        // (a) ASP.NET Core's ContentRoot resolves to the project source, making
-        // appsettings.{env}.json + ClientApp/dist/ paths work, and (b) `--no-launch-profile`
-        // keeps launchSettings.json from overriding our ASPNETCORE_URLS / ENVIRONMENT.
-        string[] runArgs = ["run", "--project", fleetProject, "--configuration", "Debug", "--no-build", "--no-launch-profile"];
-        var psi = new ProcessStartInfo("dotnet")
-        {
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            WorkingDirectory = fleetDir,
-        };
-
-        if (HostCoverageEnabled)
-        {
-            // The same `dotnet run`, wrapped. dotnet-coverage follows child processes, so the
-            // runner's Fleet child is measured too; the module filter in the settings keeps both the
-            // runner's own assemblies and Fleet's out of the report. One report per host, because
-            // two hosts run concurrently and each session ends in its own DisposeAsync.
-            var projectDir = Path.Combine(repoRoot, "tests", "MintPlayer.Spark.E2E.Tests");
-            _hostCoverageReport = Path.Combine(projectDir, "coverage", $"fleet-host-{EnvironmentName}-{_suffix}", "coverage.cobertura.xml");
-            string[] collectArgs =
-            [
-                "tool", "run", "dotnet-coverage", "collect",
-                "--session-id", CoverageSessionId,
-                "--settings", Path.Combine(projectDir, "fleet-host.coverage.xml"),
-                "--output-format", "cobertura",
-                "--output", _hostCoverageReport,
-                "--nologo",
-                "--", "dotnet",
-            ];
-            foreach (var arg in collectArgs) psi.ArgumentList.Add(arg);
-        }
-
-        foreach (var arg in runArgs) psi.ArgumentList.Add(arg);
-        psi.Environment["ASPNETCORE_ENVIRONMENT"] = EnvironmentName;
-        psi.Environment["ASPNETCORE_URLS"] = $"{httpsUrl};http://localhost:{httpPort}";
-
-        _fleetProcess = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start Fleet process");
-
-        _fleetProcess.OutputDataReceived += (_, e) =>
-        {
-            if (e.Data is not null) lock (_logLock) _fleetLog.Add("[out] " + e.Data);
-        };
-        _fleetProcess.ErrorDataReceived += (_, e) =>
-        {
-            if (e.Data is not null) lock (_logLock) _fleetLog.Add("[err] " + e.Data);
-        };
-        _fleetProcess.BeginOutputReadLine();
-        _fleetProcess.BeginErrorReadLine();
-
-        try
-        {
-            await WaitForReadyAsync(httpsUrl);
-        }
-        catch (TimeoutException ex)
-        {
-            string dump;
-            lock (_logLock) dump = string.Join('\n', _fleetLog.TakeLast(120));
-            throw new TimeoutException($"{ex.Message}\n\n--- Fleet process output (last 120 lines) ---\n{dump}", ex);
-        }
-        return httpsUrl;
-    }
-
-    private static async Task WaitForReadyAsync(string baseUrl)
-    {
-        var handler = new HttpClientHandler
-        {
-            ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator,
-        };
-        using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(3) };
-
-        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(120);
-        while (DateTime.UtcNow < deadline)
-        {
-            try
-            {
-                using var response = await client.GetAsync($"{baseUrl}/");
-                if ((int)response.StatusCode < 500)
-                    return;
-            }
-            catch
-            {
-                // Not up yet.
-            }
-            await Task.Delay(500);
-        }
-        throw new TimeoutException($"Fleet did not become ready at {baseUrl} within 120s");
-    }
-
-    private static void DeleteIfExists(IDocumentStore store, string databaseName)
-    {
-        try
-        {
-            store.Maintenance.Server.Send(new DeleteDatabasesOperation(databaseName, hardDelete: true));
-        }
-        catch
-        {
-            // Database didn't exist — ignore.
-        }
-    }
-
-    private static int GetFreeTcpPort()
-    {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
-        listener.Stop();
-        return port;
-    }
-
-    private static string FindRepoRoot()
-    {
-        var dir = AppContext.BaseDirectory;
-        for (var i = 0; i < 10 && dir is not null; i++)
-        {
-            if (File.Exists(Path.Combine(dir, "MintPlayer.Spark.slnx")))
-                return dir;
-            dir = Path.GetDirectoryName(dir);
-        }
-        throw new InvalidOperationException("Could not locate MintPlayer.Spark.slnx starting from " + AppContext.BaseDirectory);
-    }
-}
-
-/// <summary>
-/// Exposes the protected <see cref="SparkTestDriver.Store"/> so <see cref="FleetTestHost"/>
-/// can seed into the embedded Raven. Inheriting a non-test-class type keeps xUnit from
-/// picking up this file's base class.
-/// </summary>
-internal sealed class SparkTestDriverHost : SparkTestDriver
-{
-    public new IDocumentStore Store => base.Store;
 }

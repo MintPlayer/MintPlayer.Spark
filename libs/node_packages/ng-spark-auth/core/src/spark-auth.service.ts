@@ -16,6 +16,13 @@ import {
   SparkPasskeyResult,
   passkeysSupported,
   SparkUnlinkResult,
+  SparkAccountInfo,
+  SparkAccountProfile,
+  SparkAccountProfileUpdate,
+  SparkAccountResult,
+  SparkAuthenticatorUri,
+  SparkTwoFactorRequest,
+  SparkTwoFactorState,
 } from '@mintplayer/ng-spark-auth/models';
 
 /** How often the popup is checked for a manual close. */
@@ -36,17 +43,50 @@ export class SparkAuthService {
     this.checkAuth();
   }
 
-  async login(email: string, password: string): Promise<void> {
-    await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/login?useCookies=true`, { email, password }));
+  /**
+   * The credentials of a sign-in that answered `RequiresTwoFactor`, held in memory only until the
+   * second step. MapIdentityApi's `/login` is stateless per request: the 2FA step must repeat the
+   * email and password next to the code (its `LoginRequest` requires both), or it answers 400.
+   */
+  private pendingTwoFactorLogin: { email: string; password: string } | null = null;
+
+  /** Whether the pending sign-in (and its two-factor step) asked for a persistent cookie. */
+  private pendingRememberMe = true;
+
+  /**
+   * The login URL. MapIdentityApi's `/login` issues a persistent cookie for `useCookies=true`
+   * and a session cookie (no `Expires`) when `useSessionCookies=true` is added.
+   */
+  private loginUrl(rememberMe: boolean): string {
+    return `${this.config.apiBasePath}/login?useCookies=true${rememberMe ? '' : '&useSessionCookies=true'}`;
+  }
+
+  /**
+   * Signs in with a cookie. `rememberMe` (default `true`) makes the cookie persistent; `false`
+   * makes it a session cookie that ends with the browser session.
+   */
+  async login(email: string, password: string, rememberMe = true): Promise<void> {
+    this.pendingTwoFactorLogin = null;
+    this.pendingRememberMe = rememberMe;
+    try {
+      await firstValueFrom(this.http.post<void>(this.loginUrl(rememberMe), { email, password }));
+    } catch (err: any) {
+      if (err?.status === 401 && err?.error?.detail === 'RequiresTwoFactor')
+        this.pendingTwoFactorLogin = { email, password };
+      throw err;
+    }
     await this.csrfRefresh();
     await this.checkAuth();
   }
 
   async loginTwoFactor(twoFactorCode: string, twoFactorRecoveryCode?: string): Promise<void> {
-    await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/login?useCookies=true`, {
+    await firstValueFrom(this.http.post<void>(this.loginUrl(this.pendingRememberMe), {
+      ...this.pendingTwoFactorLogin,
       twoFactorCode,
       twoFactorRecoveryCode,
     }));
+    this.pendingRememberMe = true;
+    this.pendingTwoFactorLogin = null;
     await this.csrfRefresh();
     await this.checkAuth();
   }
@@ -56,6 +96,7 @@ export class SparkAuthService {
   }
 
   async logout(): Promise<void> {
+    this.pendingTwoFactorLogin = null;
     await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/logout`, {}));
     await this.csrfRefresh();
     this.currentUser.set(null);
@@ -212,6 +253,113 @@ export class SparkAuthService {
       resetCode,
       newPassword,
     }));
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Account management (#460, D16) — the endpoints behind withAccount()'s pages. Every call resolves
+  // a SparkAccountResult instead of throwing: a refusal (a wrong password, an invalid culture, a
+  // missing re-authentication) is an expected answer the page renders, not a fault.
+  // ---------------------------------------------------------------------------------------------
+
+  /** `POST /confirm-email` — the query of a mailed confirmation link (a changed email too). */
+  confirmEmail(userId: string, code: string, changedEmail?: string | null): Promise<SparkAccountResult> {
+    return this.accountCall(async () => {
+      await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/confirm-email`, {
+        userId, code, ...(changedEmail ? { changedEmail } : {}),
+      }));
+      // A signed-in user's claims carry the email; re-read them after a change.
+      if (this.isAuthenticated()) await this.checkAuth();
+    });
+  }
+
+  /** `POST /manage/password` — change it (`currentPassword` required when the account has one) or set a first one. */
+  setPassword(newPassword: string, currentPassword?: string | null): Promise<SparkAccountResult> {
+    return this.accountCall(async () => {
+      await firstValueFrom(this.http.post<void>(`${this.config.apiBasePath}/manage/password`, {
+        newPassword, ...(currentPassword ? { currentPassword } : {}),
+      }));
+    });
+  }
+
+  /** `GET /manage/info` — the email and whether it is confirmed. */
+  accountInfo(): Promise<SparkAccountResult<SparkAccountInfo>> {
+    return this.accountCall(() => firstValueFrom(this.http.get<SparkAccountInfo>(`${this.config.apiBasePath}/manage/info`)));
+  }
+
+  /**
+   * `POST /manage/info { newEmail }` — mails a confirmation link to the NEW address; nothing changes
+   * until it is followed (the confirm-email page completes it).
+   */
+  changeEmail(newEmail: string): Promise<SparkAccountResult<SparkAccountInfo>> {
+    return this.accountCall(() =>
+      firstValueFrom(this.http.post<SparkAccountInfo>(`${this.config.apiBasePath}/manage/info`, { newEmail })));
+  }
+
+  /** `GET /manage/profile`. */
+  profile(): Promise<SparkAccountResult<SparkAccountProfile>> {
+    return this.accountCall(() => firstValueFrom(this.http.get<SparkAccountProfile>(`${this.config.apiBasePath}/manage/profile`)));
+  }
+
+  /** `POST /manage/profile` — answers the saved profile, or field errors. */
+  updateProfile(update: SparkAccountProfileUpdate): Promise<SparkAccountResult<SparkAccountProfile>> {
+    return this.accountCall(async () => {
+      const saved = await firstValueFrom(this.http.post<SparkAccountProfile>(`${this.config.apiBasePath}/manage/profile`, update));
+      if (update.userName !== undefined) await this.checkAuth();
+      return saved;
+    });
+  }
+
+  /** `POST /manage/2fa` (Identity's) — an empty request reads the state and creates a key when none exists. */
+  twoFactor(request: SparkTwoFactorRequest = {}): Promise<SparkAccountResult<SparkTwoFactorState>> {
+    return this.accountCall(() =>
+      firstValueFrom(this.http.post<SparkTwoFactorState>(`${this.config.apiBasePath}/manage/2fa`, request)));
+  }
+
+  /** `GET /manage/2fa/authenticator-uri` — 409 `no_authenticator_key` until {@link twoFactor} created one. */
+  authenticatorUri(): Promise<SparkAccountResult<SparkAuthenticatorUri>> {
+    return this.accountCall(() =>
+      firstValueFrom(this.http.get<SparkAuthenticatorUri>(`${this.config.apiBasePath}/manage/2fa/authenticator-uri`)));
+  }
+
+  /** `GET /manage/personal-data` — the account and every contributor's data, as JSON. */
+  personalData(): Promise<SparkAccountResult<unknown>> {
+    return this.accountCall(() => firstValueFrom(this.http.get<unknown>(`${this.config.apiBasePath}/manage/personal-data`)));
+  }
+
+  /**
+   * `DELETE /manage/account` — re-authenticated by `password`, or by a sign-in younger than the server's
+   * `ReauthenticationMaxAge` (5 minutes) when omitted. 403 `reauthentication_required` otherwise. On
+   * success the session is gone.
+   */
+  deleteAccount(password?: string | null): Promise<SparkAccountResult> {
+    return this.accountCall(async () => {
+      await firstValueFrom(this.http.delete<void>(`${this.config.apiBasePath}/manage/account`, {
+        body: password ? { password } : {},
+      }));
+      this.currentUser.set(null);
+      // The antiforgery token was bound to the deleted identity.
+      await this.csrfRefresh().catch(() => undefined);
+    });
+  }
+
+  private async accountCall<T>(call: () => Promise<T>): Promise<SparkAccountResult<T>> {
+    try {
+      const value = await call();
+      return { success: true, value };
+    } catch (response: unknown) {
+      const http = response as { status?: number; error?: unknown };
+      const body = (http?.error ?? null) as { error?: unknown; errors?: Record<string, string[] | string> } | null;
+      const errors: Record<string, string[]> = {};
+      if (body && typeof body === 'object' && body.errors && typeof body.errors === 'object') {
+        for (const [key, value] of Object.entries(body.errors)) errors[key] = Array.isArray(value) ? value : [String(value)];
+      }
+      return {
+        success: false,
+        status: http?.status,
+        error: body && typeof body === 'object' && typeof body.error === 'string' ? body.error : undefined,
+        errors: Object.keys(errors).length ? errors : undefined,
+      };
+    }
   }
 
   // ---------------------------------------------------------------------------------------------

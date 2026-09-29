@@ -102,12 +102,15 @@ services:
       - RELAYHOST_PASSWORD=${MAIL_RELAY_PASSWORD:-}
       # The DKIM selector half of the DNS record; the key is mounted below.
       - DKIM_SELECTOR=${MAIL_DKIM_SELECTOR:-mail}
-      # ⚠️ Send over IPv4 even though coverage.mintplayer.com has an AAAA. Postfix would
-      # otherwise prefer IPv6, and the large receivers — Outlook most of all — hold IPv6
-      # senders to a stricter standard, chiefly a valid PTR for the v6 address. Hetzner
-      # sets reverse DNS per address and the v6 one is not configured, so preferring IPv6
-      # would turn delivery into a coin flip that depends on which family the recipient
-      # publishes. SPF authorises both, so this is about reputation, not authorisation.
+      # ⚠️ Send over IPv4 ONLY, never IPv6. Measured 2026-09-29, IPv6 fails on three counts:
+      #   - the VPS sends from 2a01:4f8:c0c:f87c::1, but coverage.mintplayer.com's AAAA and
+      #     its SPF name only 2a01:4f8:c0c:f87c:: (::0), so an IPv6 send fails SPF (-all);
+      #   - that ::1 address has no PTR (Hetzner sets reverse DNS per address);
+      #   - Gmail and Outlook refuse IPv6 senders without a matching PTR.
+      # IPv4 is clean: 188.245.190.60's PTR is coverage.mintplayer.com (set 2026-09-29), which
+      # matches HOSTNAME above and resolves back to the same address. inet_protocols=ipv4
+      # makes Postfix never try IPv6, not merely prefer IPv4 as smtp_address_preference did.
+      - POSTFIX_inet_protocols=ipv4
       - POSTFIX_smtp_address_preference=ipv4
     volumes:
       # ⚠️ Close to mandatory. mintplayer.com publishes DMARC sp=reject, so mail from a
@@ -130,8 +133,11 @@ services:
       - smtp-queue:/var/spool/postfix
     networks:
       - coverage-internal
+    # bash, not sh: /dev/tcp is a bash feature, and this image's sh is dash, so the sh form
+    # failed on every probe and marked a working relay "unhealthy" in production. The image is
+    # Debian-based and ships /usr/bin/bash, as the other two healthchecks here assume.
     healthcheck:
-      test: ["CMD", "sh", "-c", "exec 3<>/dev/tcp/127.0.0.1/587"]
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/587"]
       interval: 15s
       timeout: 5s
       retries: 6
@@ -163,6 +169,11 @@ services:
       - ASPNETCORE_ENVIRONMENT=Production
       - Spark__RavenDb__Urls__0=http://coverage-raven:8080
       - Spark__RavenDb__EnsureDatabaseCreated=true
+      # Data Protection key ring (auth + antiforgery cookies decrypt with it). Kept on the
+      # dataprotection-keys volume so a redeploy does not sign everyone out; Spark refuses to
+      # start in Production without a location. appsettings.json deliberately sets no
+      # Storage, because KeysPath and Storage=RavenDb together also refuse startup.
+      - Spark__DataProtection__KeysPath=/var/lib/codecoverage/dataprotection-keys
       # OIDC audience: workflows must request an id-token with this audience
       - Coverage__BaseUrl=https://coverage.mintplayer.com
       # Signs the per-pull-request badge URL the bot puts in a PR comment, so a
@@ -181,14 +192,21 @@ services:
       - GitHub__Production__ClientId=${GITHUB_APP_CLIENT_ID}
       - GitHub__Production__ClientSecret=${GITHUB_APP_CLIENT_SECRET}
       - GitHub__Production__PrivateKeyPath=/run/secrets/github-app.pem
-      # Outgoing mail. Unset Host disables it: Spark registers no transport of its own,
-      # so the app simply has no way to send, which is a supported state as long as
-      # ExternalLoginLinking is not ConfirmByEmail (startup refuses that combination
-      # rather than discarding confirmations silently).
-      - Coverage__Mail__Host=${MAIL_HOST:-coverage-smtp}
-      - Coverage__Mail__Port=${MAIL_PORT:-587}
-      - Coverage__Mail__FromAddress=${MAIL_FROM_ADDRESS:-}
-      - Coverage__Mail__FromName=${MAIL_FROM_NAME:-MintPlayer Coverage}
+      # Outgoing mail through Spark MailManager (#460 M8; was Coverage__Mail__*). The .env
+      # variables are the same ones as before. MailManager is added only when Host AND
+      # From:Address are set, so an unset MAIL_FROM_ADDRESS still means "this deployment
+      # cannot send" — supported as long as ExternalLoginLinking is not ConfirmByEmail
+      # (startup refuses that combination rather than discarding confirmations silently).
+      # Security=None: the relay is reachable only on coverage-internal and advertises
+      # STARTTLS it has no certificate for; None never sends STARTTLS (spike S-M6), exactly
+      # what the old System.Net.Mail client (EnableSsl=false) did.
+      - Spark__Mail__Smtp__Host=${MAIL_HOST:-coverage-smtp}
+      - Spark__Mail__Smtp__Port=${MAIL_PORT:-587}
+      - Spark__Mail__Smtp__Security=None
+      - Spark__Mail__From__Address=${MAIL_FROM_ADDRESS:-}
+      - Spark__Mail__From__Name=${MAIL_FROM_NAME:-MintPlayer Coverage}
+      # Links in mail are built from this, never from the request Host (#460 M5).
+      - Spark__Auth__PublicBaseUrl=https://coverage.mintplayer.com
       # Disabled | WhenSignedIn | ConfirmByEmail. Left at the Spark default (Disabled)
       # until there is a second forge worth linking to.
       - Spark__Auth__ExternalLoginLinking=${EXTERNAL_LOGIN_LINKING:-Disabled}
@@ -196,6 +214,9 @@ services:
       # GitHub App private key, downloaded from the App settings page; see
       # .env.example for the expected location.
       - ./github-app.pem:/run/secrets/github-app.pem:ro
+      # Survives `docker compose down` / image updates. Deleting this volume signs every user
+      # out once and invalidates outstanding antiforgery tokens -- nothing else is lost.
+      - dataprotection-keys:/var/lib/codecoverage/dataprotection-keys
     labels:
       - "traefik.enable=true"
       # Hardcoded like every other MintPlayer deployment: interpolating the
@@ -234,6 +255,7 @@ services:
 volumes:
   raven-data:
   smtp-queue:
+  dataprotection-keys:
 
 networks:
   web:

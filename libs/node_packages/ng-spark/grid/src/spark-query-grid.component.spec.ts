@@ -1,6 +1,6 @@
 import { Component, input } from '@angular/core';
 import { TestBed, ComponentFixture } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
@@ -28,7 +28,7 @@ const personType: EntityType = {
     {
       id: 'a-first', name: 'FirstName', dataType: 'string',
       isVisible: true, isReadOnly: false, isRequired: false,
-      order: 1, showedOn: ShowedOn.Query | ShowedOn.QueryResultItem,
+      order: 1, showedOn: ShowedOn.Query | ShowedOn.PersistentObject,
     } as any,
     {
       id: 'a-internal', name: 'Internal', dataType: 'string',
@@ -38,7 +38,7 @@ const personType: EntityType = {
     {
       id: 'a-detail-only', name: 'DetailOnly', dataType: 'string',
       isVisible: true, isReadOnly: false, isRequired: false,
-      order: 3, showedOn: ShowedOn.QueryResultItem,
+      order: 3, showedOn: ShowedOn.PersistentObject,
     } as any,
   ],
 } as any;
@@ -172,6 +172,98 @@ describe('SparkQueryGridComponent', () => {
 
     expect(service.executeQuery).toHaveBeenCalled();
     expect(service.executeQuery.mock.calls.at(-1)![1].search).toBe('alice');
+  });
+
+  describe('search (#460 M15, D17 addendum)', () => {
+    it('sends the search together with the sub-query parent', async () => {
+      const { fixture, service } = await setup({}, { parentId: 'companies/1', parentType: 'Company' });
+      service.executeQuery.mockClear();
+
+      fixture.componentRef.setInput('search', 'ali');
+      await settle(fixture);
+
+      expect(service.executeQuery.mock.calls.at(-1)![1]).toEqual(expect.objectContaining({
+        search: 'ali', parentId: 'companies/1', parentType: 'Company', skip: 0,
+      }));
+    });
+
+    it('clears the selection when the search changes, so the chip counts what is on screen', async () => {
+      const { fixture, c } = await setup();
+      c.selection.set([{ id: 'people/1', values: [] } as QueryResultItem]);
+
+      fixture.componentRef.setInput('search', 'bob');
+      await settle(fixture);
+
+      expect(c.selection()).toEqual([]);
+    });
+
+    it('lists a column filter\'s values from the searched rows only', async () => {
+      const { fixture, c, service } = await setup({}, { parentId: 'companies/1', parentType: 'Company' });
+      fixture.componentRef.setInput('search', 'ali');
+      await settle(fixture);
+
+      await (c as any).distinctsFn({ column: 'FirstName', search: 'x', signal: new AbortController().signal });
+
+      expect(service.getDistinctValues).toHaveBeenCalledWith('q-all', 'FirstName', expect.objectContaining({
+        search: 'x', querySearch: 'ali', parentId: 'companies/1', parentType: 'Company',
+      }));
+    });
+
+    it('sends no grid search to the value list when there is none', async () => {
+      const { c, service } = await setup();
+
+      await (c as any).distinctsFn({ column: 'FirstName', search: '', signal: new AbortController().signal });
+
+      expect(service.getDistinctValues.mock.calls.at(-1)![2].querySearch).toBeUndefined();
+    });
+  });
+
+  describe('soft-deletion mode (#460)', () => {
+    it('sends nothing for the default mode', async () => {
+      const { service } = await setup();
+      expect('deleted' in service.executeQuery.mock.calls[0][1]).toBe(false);
+    });
+
+    it('sends the recycle-bin mode, refetches on change and links rows with ?deleted', async () => {
+      const { fixture, c, service } = await setup();
+      service.executeQuery.mockClear();
+
+      fixture.componentRef.setInput('deleted', 'only');
+      fixture.detectChanges();
+      await settle(fixture);
+
+      expect(service.executeQuery).toHaveBeenCalled();
+      expect(service.executeQuery.mock.calls.at(-1)![1].deleted).toBe('only');
+      const link: HTMLAnchorElement | null = fixture.nativeElement.querySelector('a[href]');
+      expect(link?.getAttribute('href')).toContain('deleted=only');
+      expect(c.permissions()?.canRead).toBe(true);
+    });
+
+    it('a click anywhere on a recycle-bin row opens it, with ?deleted and the list as the return URL', async () => {
+      const { fixture, c } = await setup({}, { deleted: 'only' });
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+      const row = { id: 'people/1', values: [] } as QueryResultItem;
+      const cell = document.createElement('td');
+
+      (c as any).onRowClick({ row, rowIndex: 0, rowKey: 'people/1', originalEvent: new MouseEvent('click') });
+      expect(navigate).toHaveBeenCalledWith(['/po', c.entityType()?.alias ?? c.entityType()?.id, 'people/1'], expect.objectContaining({
+        queryParams: { deleted: 'only' },
+        state: { sparkReturnUrl: TestBed.inject(Router).url },
+      }));
+
+      // A click on a control inside the row (a vote button, the link itself) is the control's.
+      navigate.mockClear();
+      const button = document.createElement('button');
+      cell.appendChild(button);
+      (c as any).onRowClick({ row, rowIndex: 0, rowKey: 'people/1', originalEvent: { target: button } });
+      expect(navigate).not.toHaveBeenCalled();
+      fixture.destroy();
+    });
+
+    it('treats exclude as the default', async () => {
+      const { service } = await setup({}, { deleted: 'exclude' });
+      expect('deleted' in service.executeQuery.mock.calls[0][1]).toBe(false);
+    });
   });
 
   describe('where the rows come from', () => {
@@ -606,7 +698,7 @@ describe('SparkQueryGridComponent', () => {
         sortColumns: [],
       }));
 
-      c.onFilterChange({
+      c['onFilterChange']({
         mode: 'values',
         column: 'FirstName',
         selected: [{ value: 'Alice', label: 'Alice' }],
@@ -625,7 +717,7 @@ describe('SparkQueryGridComponent', () => {
       const executeQuery = vi.fn().mockResolvedValue(filterPage);
       const { c, fixture } = await setup({ executeQuery });
 
-      c.onFilterChange({
+      c['onFilterChange']({
         mode: 'values',
         column: 'FirstName',
         selected: [{ value: 'Alice', label: 'Alice' }],
@@ -643,8 +735,8 @@ describe('SparkQueryGridComponent', () => {
       const executeQuery = vi.fn().mockResolvedValue(filterPage);
       const { c, fixture } = await setup({ executeQuery });
 
-      c.onFilterChange({ mode: 'values', column: 'FirstName', selected: [{ value: 'Alice', label: 'Alice' }], inverse: false } as any);
-      c.onFilterChange({ mode: 'values', column: 'FirstName', selected: [], inverse: false } as any);
+      c['onFilterChange']({ mode: 'values', column: 'FirstName', selected: [{ value: 'Alice', label: 'Alice' }], inverse: false } as any);
+      c['onFilterChange']({ mode: 'values', column: 'FirstName', selected: [], inverse: false } as any);
       await settle(fixture);
 
       await c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
@@ -661,16 +753,36 @@ describe('SparkQueryGridComponent', () => {
         getDistinctValues,
       });
 
-      c.onFilterChange({ mode: 'values', column: 'FirstName', selected: [{ value: 'Alice', label: 'Alice' }], inverse: false } as any);
+      c['onFilterChange']({ mode: 'values', column: 'FirstName', selected: [{ value: 'Alice', label: 'Alice' }], inverse: false } as any);
       await settle(fixture);
 
       // A stable function, not a signal: it reads the filters when CALLED, which is what removes the
       // reassign-and-abort race that a per-change identity introduced.
-      await c.distinctsFn({ column: 'FirstName', search: '', signal: new AbortController().signal });
+      await c['distinctsFn']({ column: 'FirstName', search: '', signal: new AbortController().signal });
 
       // Its own filter is excluded: a panel must offer the values you could still pick, not only
       // the ones you already picked.
       expect(getDistinctValues).toHaveBeenCalledWith('q-all', 'FirstName', expect.objectContaining({ columns: [] }));
+    });
+
+    it('lists values under a deleted parent with parentDeleted: include, and only under a parent (#460)', async () => {
+      const getDistinctValues = vi.fn().mockResolvedValue({ matching: [], remaining: [], hasMore: false });
+      const request = { column: 'FirstName', search: '', signal: new AbortController().signal };
+
+      const under = await setup(
+        { executeQuery: vi.fn().mockResolvedValue(filterPage), getDistinctValues },
+        { parentId: 'companies/1', parentType: 'Company', parentDeleted: true });
+      await under.c['distinctsFn'](request);
+      expect(getDistinctValues.mock.calls.at(-1)![2]).toEqual(expect.objectContaining({
+        parentId: 'companies/1', parentType: 'Company', parentDeleted: 'include',
+      }));
+
+      TestBed.resetTestingModule();
+      const top = await setup(
+        { executeQuery: vi.fn().mockResolvedValue(filterPage), getDistinctValues },
+        { parentDeleted: true });
+      await top.c['distinctsFn'](request);
+      expect(getDistinctValues.mock.calls.at(-1)![2].parentDeleted).toBeUndefined();
     });
 
     describe('selecting < none >', () => {
@@ -755,6 +867,18 @@ describe('SparkQueryGridComponent', () => {
       executeQuery.mockResolvedValue(samplePage);
       await c.fetchFn()!({ page: 2, perPage: 10, sortColumns: [] } as any);
       expect(c.visibleCustomActions().map(a => a.name)).toEqual(['Archive', 'Other']);
+    });
+
+    it('stops offering New when the result withholds it, leaving canCreate the bare right (#460, D13)', async () => {
+      const executeQuery = vi.fn().mockResolvedValue({ ...samplePage, disabledActions: ['new'] });
+      const { c } = await setup({ executeQuery });
+
+      expect(c.canCreate()).toBe(true);
+      expect(c.offersCreate()).toBe(false);
+
+      executeQuery.mockResolvedValue(samplePage);
+      await c.fetchFn()!({ page: 2, perPage: 10, sortColumns: [] } as any);
+      expect(c.offersCreate()).toBe(true);
     });
 
     it('asks for confirmation and does nothing when it is declined', async () => {
@@ -878,6 +1002,34 @@ describe('SparkQueryGridComponent', () => {
       });
 
       expect(c.entityType()?.name).toBe('Car');
+    });
+
+    it('warns, and asks for no actions, when the query names a type that resolves to nothing (M15)', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      try {
+        const { c, service } = await setup({
+          getQuery: vi.fn().mockResolvedValue({ ...allPeopleQuery, name: 'GhostQuery', entityType: 'Ghost' }),
+        });
+
+        expect(c.entityType()).toBeFalsy();
+        expect(service.getCustomActions).not.toHaveBeenCalled();
+        const messages = warn.mock.calls.map(args => String(args[0]));
+        expect(messages.some(m => m.includes(`Query 'GhostQuery'`) && m.includes(`entity type 'Ghost'`)
+          && m.includes('offers no actions'))).toBe(true);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('does not warn when the entity type resolves', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      try {
+        await setup();
+
+        expect(warn.mock.calls.some(args => String(args[0]).includes('resolves to no type'))).toBe(false);
+      } finally {
+        warn.mockRestore();
+      }
     });
 
     it.each([

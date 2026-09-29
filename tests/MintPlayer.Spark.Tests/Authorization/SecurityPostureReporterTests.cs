@@ -124,15 +124,19 @@ public class SecurityPostureReporterTests
             .BeEquivalentTo(["Query/Company", "Read/Company"]);
     }
 
+
     /// <summary>
-    /// Replaces the DefaultBehavior=AllowAll warning. Permissiveness is data now, so the thing to
-    /// warn about is a wildcard grant — which covers resources that do not exist yet.
+    /// D3 (#460): the "floor rather than a ceiling" warning for a wildcard grant is gone with the
+    /// wildcard itself — the validator refuses <c>*</c> before the reporter runs — so the listing is
+    /// the whole anonymous surface and carries no caveat.
     /// </summary>
     [Fact]
-    public void A_wildcard_granted_to_anonymous_is_reported_as_a_floor_rather_than_a_ceiling()
+    public void The_listing_is_a_ceiling_and_carries_no_warning()
     {
-        var posture = Reporter(ConfigWithAnonymousGrants("*/*")).Describe();
+        var posture = Reporter(ConfigWithAnonymousGrants("QueryReadEditNewDelete/Company")).Describe();
 
-        posture.Warnings.Should().ContainSingle().Which.Should().Contain("*/*");
+        posture.Warnings.Should().BeEmpty();
+        posture.AnonymouslyReachable.Should().BeEquivalentTo(
+            ["Query/Company", "Read/Company", "Edit/Company", "New/Company", "Delete/Company"]);
     }
 }

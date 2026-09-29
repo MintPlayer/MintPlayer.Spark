@@ -30,8 +30,8 @@ internal static class Login
         sb.Append("h2{color:#333;margin-bottom:24px}");
         sb.Append(".form-group{margin-bottom:16px}");
         sb.Append("label{display:block;margin-bottom:4px;font-weight:500;font-size:14px}");
-        sb.Append("input[type=email],input[type=password]{width:100%;padding:8px 12px;border:1px solid #ced4da;border-radius:6px;font-size:14px;box-sizing:border-box}");
-        sb.Append("input[type=email]:focus,input[type=password]:focus{border-color:#86b7fe;outline:0;box-shadow:0 0 0 .25rem rgba(13,110,253,.25)}");
+        sb.Append("input[type=text],input[type=password]{width:100%;padding:8px 12px;border:1px solid #ced4da;border-radius:6px;font-size:14px;box-sizing:border-box}");
+        sb.Append("input[type=text]:focus,input[type=password]:focus{border-color:#86b7fe;outline:0;box-shadow:0 0 0 .25rem rgba(13,110,253,.25)}");
         sb.Append(".btn{display:block;width:100%;padding:10px;border:none;border-radius:6px;font-size:14px;cursor:pointer;box-sizing:border-box}");
         sb.Append(".btn-primary{background:#0d6efd;color:white;margin-top:8px}");
         sb.Append(".btn-primary:hover{background:#0b5ed7}");
@@ -48,8 +48,8 @@ internal static class Login
         ConnectPage.AppendAntiforgery(sb, context);
         sb.Append("<input type=\"hidden\" name=\"returnUrl\" value=\"").Append(Encode(returnUrl)).Append("\" />");
         sb.Append("<div class=\"form-group\">");
-        sb.Append("<label for=\"email\">Email</label>");
-        sb.Append("<input type=\"email\" id=\"email\" name=\"email\" required autofocus />");
+        sb.Append("<label for=\"identifier\">Email or user name</label>");
+        sb.Append("<input type=\"text\" id=\"identifier\" name=\"identifier\" autocomplete=\"username\" required autofocus />");
         sb.Append("</div>");
         sb.Append("<div class=\"form-group\">");
         sb.Append("<label for=\"password\">Password</label>");
@@ -67,12 +67,13 @@ internal static class Login
     public static async Task HandlePost(HttpContext context)
     {
         var form = await context.Request.ReadFormAsync(context.RequestAborted);
-        var email = form["email"].FirstOrDefault();
+        // "email" is the field name older copies of this page post; "identifier" is the current one.
+        var identifier = form["identifier"].FirstOrDefault() ?? form["email"].FirstOrDefault();
         var password = form["password"].FirstOrDefault();
         var returnUrl = SparkAuthenticationExtensions.SanitizeReturnUrl(form["returnUrl"].FirstOrDefault());
         var rememberMe = string.Equals(form["rememberMe"].FirstOrDefault(), "true", StringComparison.Ordinal);
 
-        if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(password))
+        if (string.IsNullOrEmpty(identifier) || string.IsNullOrEmpty(password))
         {
             RedirectWithError(context, returnUrl, "missing_fields");
             return;
@@ -89,21 +90,11 @@ internal static class Login
         }
 
         var signInManagerType = typeof(SignInManager<>).MakeGenericType(userType);
-        var userManagerType = typeof(UserManager<>).MakeGenericType(userType);
         var signInManager = context.RequestServices.GetRequiredService(signInManagerType);
-        var userManager = context.RequestServices.GetRequiredService(userManagerType);
 
-        // Find user by email
-        var findByEmailMethod = userManagerType.GetMethod("FindByEmailAsync")!;
-        var user = await (dynamic)findByEmailMethod.Invoke(userManager, [email])!;
-
-        if (user == null)
-        {
-            RedirectWithError(context, returnUrl, "invalid_credentials");
-            return;
-        }
-
-        // Attempt password sign-in.
+        // Attempt password sign-in through the string overload, which SparkSignInManager overrides:
+        // the identifier is an email or a user name, resolved by the same rule as /spark/auth/login
+        // (#460, D4). An unknown identifier fails exactly like a wrong password.
         //
         // lockoutOnFailure was false, which meant failures never reached AccessFailedAsync: an
         // unauthenticated, unthrottled endpoint would test passwords forever, and the
@@ -113,9 +104,9 @@ internal static class Login
         // isPersistent was hardcoded true, silently issuing every visitor a persistent cookie.
         // It now follows the checkbox the user actually saw.
         var passwordSignInMethod = signInManagerType.GetMethod("PasswordSignInAsync",
-            [userType, typeof(string), typeof(bool), typeof(bool)])!;
+            [typeof(string), typeof(string), typeof(bool), typeof(bool)])!;
         var result = (SignInResult)await (dynamic)passwordSignInMethod.Invoke(
-            signInManager, [user, password, rememberMe, true])!;
+            signInManager, [identifier, password, rememberMe, true])!;
 
         if (result.Succeeded)
         {

@@ -40,7 +40,6 @@ public class QueryHookReachTests
             Calls++;
             SeenParent = context.Parent;
             SeenQueryName = context.Query.Name;
-            context.DisableActions("Archive");
             return Task.CompletedTask;
         }
     }

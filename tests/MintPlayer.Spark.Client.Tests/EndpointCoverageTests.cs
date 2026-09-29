@@ -334,4 +334,22 @@ public class EndpointCoverageTests
         handler.Requests[0].Headers.GetValues("X-Spark-Timezone").Single().Should().Be("Asia/Kolkata");
         handler.Requests[1].Headers.GetValues("X-Spark-Timezone").Single().Should().Be("Asia/Kolkata");
     }
+
+    [Theory]
+    [InlineData("Romance Standard Time", "Europe/Paris")]
+    [InlineData("Pacific Standard Time (Mexico)", "America/Tijuana")]
+    [InlineData("Europe/Brussels", "Europe/Brussels")]
+    public async Task A_Windows_zone_id_is_sent_as_its_IANA_id(string configured, string sent)
+    {
+        // S-TZ4 (#460): the server refuses anything that is not IANA-shaped, and 134 of 141 Windows
+        // ids contain a space or a parenthesis. Converting here keeps such a caller working.
+        var handler = new ScriptedHttpHandler();
+        handler.Enqueue(Json("""{"languages":{"en":{"en":"English"}},"defaultLanguage":"en"}"""));
+
+        using var client = NewClient(handler);
+        client.TimeZoneId = configured;
+        await client.GetCultureAsync();
+
+        handler.Requests[0].Headers.GetValues("X-Spark-Timezone").Single().Should().Be(sent);
+    }
 }

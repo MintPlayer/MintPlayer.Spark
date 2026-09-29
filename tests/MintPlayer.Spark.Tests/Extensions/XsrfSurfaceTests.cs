@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Tests.Authorization.Extensions;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -57,6 +58,8 @@ public class XsrfSurfaceTests : SparkTestDriver
         "POST /spark/lookupref/{name}",
         "POST /spark/po/create",
         "POST /spark/po/delete",
+        // #460 M15 (D18): the bulk delete of a grid selection — state-changing, so a token.
+        "POST /spark/po/delete-many",
         "POST /spark/po/delete-row",
         "POST /spark/po/new",
         "POST /spark/po/refresh",
@@ -103,13 +106,23 @@ public class XsrfSurfaceTests : SparkTestDriver
     /// into the <em>attacker's</em> account, and everything the victim does next is captured there.
     /// </para>
     /// </summary>
+    // #460 M5: Spark maps its own account endpoints (SparkAccountEndpoints) and stamps antiforgery on
+    // every one of them — register and resendConfirmationEmail included, which MapIdentityApi's
+    // versions did not state (they were "unprotected" below). Recorded here in M8, when this test
+    // first ran against the M5 surface.
     private static readonly string[] AuthRequired =
     [
+        "DELETE /spark/auth/manage/account",
+        "POST /spark/auth/confirm-email",
         "POST /spark/auth/forgotPassword",
         "POST /spark/auth/login",
         "POST /spark/auth/logout",
         "POST /spark/auth/manage/2fa",
         "POST /spark/auth/manage/info",
+        "POST /spark/auth/manage/password",
+        "POST /spark/auth/manage/profile",
+        "POST /spark/auth/register",
+        "POST /spark/auth/resendConfirmationEmail",
         "POST /spark/auth/resetPassword",
     ];
 
@@ -125,7 +138,7 @@ public class XsrfSurfaceTests : SparkTestDriver
     ];
 
     /// <summary>
-    /// Auth endpoints that state nothing. All three are <b>anonymous</b>: the caller presents no
+    /// Auth endpoints that state nothing (only <c>refresh</c> since #460 M5 — see above). It is <b>anonymous</b>: the caller presents no
     /// ambient credential, so there is nothing for a forgery to ride and the inverted default does
     /// not fire either. Gating them would break programmatic sign-up without closing an attack —
     /// an attacker can POST these from their own server just as easily as from a victim's browser,
@@ -139,8 +152,6 @@ public class XsrfSurfaceTests : SparkTestDriver
     private static readonly string[] AuthUnprotected =
     [
         "POST /spark/auth/refresh",
-        "POST /spark/auth/register",
-        "POST /spark/auth/resendConfirmationEmail",
     ];
 
     [Fact]
@@ -224,6 +235,7 @@ public class XsrfSurfaceTests : SparkTestDriver
                 {
                     services.AddSingleton<IDocumentStore>(Store);
                     services.AddSparkAuthentication<SparkUser>();
+                    services.AddTestMailSink(); // #460 D6: registration needs a mail sender
                     services.AddAuthorization();
                     services.AddRouting();
                 })

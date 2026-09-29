@@ -35,8 +35,22 @@ public class SecurityFileAccessControlTests
         _configLoader.GetResolvedRights(Arg.Any<IReadOnlySet<Guid>>())
             .Returns(ci => RightsDecision.For(config, ci.Arg<IReadOnlySet<Guid>>()));
 
-        return new SecurityFileAccessControl(_configLoader, _groupMembership, _logger,
-            authenticated is null ? null : HttpContextFor(authenticated.Value));
+        return CreateService(authenticated, composed: []);
+    }
+
+    /// <summary>
+    /// The service over the real per-request membership snapshot, with <paramref name="composed"/>
+    /// as providers added by <c>AddGroupMembershipProvider</c> (#460, D12).
+    /// </summary>
+    private SecurityFileAccessControl CreateService(bool? authenticated, IGroupMembershipProvider[] composed)
+    {
+        var accessor = authenticated is null ? null : HttpContextFor(authenticated.Value);
+        var membership = new SparkGroupMembership(
+            _groupMembership,
+            composed.Select(p => (IComposedGroupMembershipProvider)new ComposedGroupMembershipProvider<IGroupMembershipProvider>(p)).ToList(),
+            accessor);
+
+        return new SecurityFileAccessControl(_configLoader, membership, _logger, accessor);
     }
 
     /// <summary>
@@ -89,32 +103,17 @@ public class SecurityFileAccessControlTests
     }
 
     /// <summary>
-    /// There is no DefaultBehavior switch any more: permissiveness is expressed as data, by
-    /// granting the wildcard. One way to be permissive, and it is visible in the file rather than
-    /// in a line of startup code nobody reads next to the rights it silently overrides.
-    /// </summary>
-    [Fact]
-    public async Task A_wildcard_grant_covers_a_resource_no_right_names()
-    {
-        var config = ConfigWith(
-            groups: new() { [AdminsId] = En("Admins") },
-            new Right { GroupId = AdminsId, Resource = "*/*" });
-
-        var service = CreateService(config, ["Admins"]);
-
-        (await service.IsAllowedAsync("Read/Person")).Should().BeTrue();
-        (await service.IsAllowedAsync("AnythingAtAll/Whatever")).Should().BeTrue();
-    }
-
-    /// <summary>
-    /// The half-wildcards, which are what an application reaching for "*/*" usually wanted.
+    /// D3 (#460): wildcard rights are refused when the file loads (see
+    /// <c>SecurityConfigurationValidatorTests</c>). The evaluator no longer knows the token either,
+    /// so a configuration that reached it without passing the validator still grants only what it
+    /// names — <c>*</c> is an ordinary, unmatchable character, never "everything".
     /// </summary>
     [Theory]
-    [InlineData("Read/*", "Read/Car", true)]
-    [InlineData("Read/*", "Edit/Car", false)]
-    [InlineData("*/Person", "Delete/Person", true)]
-    [InlineData("*/Person", "Delete/Car", false)]
-    public async Task A_wildcard_binds_only_the_half_it_appears_in(string granted, string requested, bool expected)
+    [InlineData("*/*", "Read/Person")]
+    [InlineData("*/*", "AnythingAtAll/Whatever")]
+    [InlineData("Read/*", "Read/Car")]
+    [InlineData("*/Person", "Delete/Person")]
+    public async Task A_wildcard_right_covers_nothing(string granted, string requested)
     {
         var config = ConfigWith(
             groups: new() { [AdminsId] = En("Admins") },
@@ -122,19 +121,19 @@ public class SecurityFileAccessControlTests
 
         var service = CreateService(config, ["Admins"]);
 
-        (await service.IsAllowedAsync(requested)).Should().Be(expected);
+        (await service.IsAllowedAsync(requested)).Should().BeFalse();
     }
 
     /// <summary>
-    /// S8: the wildcard composes with denial-first precedence rather than needing a tier of its
-    /// own. A blanket grant does not outrun a specific denial.
+    /// The replacement for <c>*/Person</c>: a combined action names every action it covers, so an
+    /// access review can read it, and it still composes with denial-first precedence.
     /// </summary>
     [Fact]
-    public async Task A_denial_survives_a_wildcard_grant()
+    public async Task A_denial_survives_a_combined_grant()
     {
         var config = ConfigWith(
             groups: new() { [AdminsId] = En("Admins") },
-            new Right { GroupId = AdminsId, Resource = "*/*" },
+            new Right { GroupId = AdminsId, Resource = "QueryReadEditNewDelete/Car" },
             new Right { GroupId = AdminsId, Resource = "Delete/Car", IsDenied = true });
 
         var service = CreateService(config, ["Admins"]);
@@ -541,5 +540,110 @@ public class SecurityFileAccessControlTests
 
             (await service.IsAllowedAsync("Query/Person")).Should().BeTrue();
         }
+    }
+
+    // ---------- #460 D12: composed providers, provider-returned ids, the per-request cache ----------
+
+    private sealed class NamesProvider(params string[] names) : IGroupMembershipProvider
+    {
+        public int Calls { get; private set; }
+
+        public Task<IEnumerable<string>> GetCurrentUserGroupsAsync(CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.FromResult<IEnumerable<string>>(names);
+        }
+    }
+
+    /// <summary>A provider that knows groups only by id — the shape earned privileges take.</summary>
+    private sealed class IdsProvider(params Guid[] ids) : IGroupMembershipProvider, IGroupIdMembershipProvider
+    {
+        public Task<IEnumerable<string>> GetCurrentUserGroupsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult(Enumerable.Empty<string>());
+
+        public Task<IEnumerable<Guid>> GetCurrentUserGroupIdsAsync(CancellationToken cancellationToken = default)
+            => Task.FromResult<IEnumerable<Guid>>(ids);
+    }
+
+    private SecurityConfiguration ComposedConfig()
+    {
+        var config = ConfigWith(
+            groups: new()
+            {
+                [AdminsId] = En("Admins"),
+                [EditorsId] = En("Editors"),
+                [AuthenticatedId] = En("Signed-in users"),
+            },
+            wellKnown: new() { ["authenticated"] = AuthenticatedId },
+            new Right { GroupId = AdminsId, Resource = "Delete/Car" },
+            new Right { GroupId = EditorsId, Resource = "Edit/Car" });
+
+        _configLoader.GetConfiguration().Returns(config);
+        _configLoader.GetResolvedRights(Arg.Any<IReadOnlySet<Guid>>())
+            .Returns(ci => RightsDecision.For(config, ci.Arg<IReadOnlySet<Guid>>()));
+        return config;
+    }
+
+    [Fact]
+    public async Task A_composed_provider_adds_to_the_primary_one_rather_than_replacing_it()
+    {
+        ComposedConfig();
+        _groupMembership.GetCurrentUserGroupsAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IEnumerable<string>>(["Admins"]));
+
+        var service = CreateService(authenticated: true, composed: [new NamesProvider("Editors")]);
+
+        (await service.IsAllowedAsync("Delete/Car")).Should().BeTrue("the primary provider's group still counts");
+        (await service.IsAllowedAsync("Edit/Car")).Should().BeTrue("the composed provider's group is merged in");
+    }
+
+    [Fact]
+    public async Task A_provider_may_name_a_group_by_id()
+    {
+        ComposedConfig();
+        _groupMembership.GetCurrentUserGroupsAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Enumerable.Empty<string>()));
+
+        var service = CreateService(authenticated: true, composed: [new IdsProvider(EditorsId)]);
+
+        (await service.IsAllowedAsync("Edit/Car")).Should().BeTrue();
+        (await service.IsAllowedAsync("Delete/Car")).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The reserved-id rule holds for ids exactly as for names: a provider cannot hand an anonymous
+    /// caller the authenticated role, and an id security.json does not declare grants nothing.
+    /// </summary>
+    [Fact]
+    public async Task A_provider_returned_id_cannot_assert_a_well_known_role()
+    {
+        var config = ComposedConfig();
+        config.Rights.Add(new Right { GroupId = AuthenticatedId, Resource = "Read/Car" });
+        _groupMembership.GetCurrentUserGroupsAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(Enumerable.Empty<string>()));
+
+        var service = CreateService(authenticated: false, composed: [new IdsProvider(AuthenticatedId, Guid.NewGuid())]);
+
+        (await service.IsAllowedAsync("Read/Car")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Every_provider_is_asked_once_per_request()
+    {
+        ComposedConfig();
+        _groupMembership.GetCurrentUserGroupsAsync(Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IEnumerable<string>>(["Admins"]));
+        var composed = new NamesProvider("Editors");
+
+        var service = CreateService(authenticated: true, composed: [composed]);
+
+        for (var i = 0; i < 5; i++)
+        {
+            await service.IsAllowedAsync("Delete/Car");
+            await service.IsAllowedAsync("Edit/Car");
+        }
+
+        composed.Calls.Should().Be(1);
+        await _groupMembership.Received(1).GetCurrentUserGroupsAsync(Arg.Any<CancellationToken>());
     }
 }

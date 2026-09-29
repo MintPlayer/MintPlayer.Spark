@@ -41,7 +41,8 @@ public interface INewInvoker
         PersistentObject? asDetailParent,
         string? asDetailAttribute,
         IReadOnlyDictionary<string, string>? parameters,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        SparkNewSubQueryContext? subQuery = null);
 
     /// <summary>
     /// Whether the entity's actions class overrides the construction hook. Lets a caller skip the
@@ -64,14 +65,18 @@ internal partial class NewInvoker : INewInvoker
         PersistentObject? asDetailParent,
         string? asDetailAttribute,
         IReadOnlyDictionary<string, string>? parameters,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        SparkNewSubQueryContext? subQuery = null)
     {
-        var method = ResolveHook(entityType);
+        // The base hook is skipped as a no-op — except for a New from a sub-query, where the base is
+        // NOT a no-op: it fills the parent reference (#460, D19, owner refinement).
+        var method = ResolveHook(entityType)
+            ?? (subQuery is not null ? ResolveBaseHook(entityType) : null);
         if (method is null)
             return;
 
         var args = CreateArgs(
-            entityType, persistentObject, parent, asDetailParent, asDetailAttribute, parameters, cancellationToken);
+            entityType, persistentObject, parent, asDetailParent, asDetailAttribute, parameters, subQuery, cancellationToken);
         var actions = actionsResolver.ResolveForType(entityType);
 
         // The hook returns Task, never Task<T>, so this cast is total. A null would mean the method
@@ -92,6 +97,7 @@ internal partial class NewInvoker : INewInvoker
         PersistentObject? asDetailParent,
         string? asDetailAttribute,
         IReadOnlyDictionary<string, string>? parameters,
+        SparkNewSubQueryContext? subQuery,
         CancellationToken cancellationToken)
     {
         // ⚠️ The key is a tuple, not a bare Type. `GetOrAdd<TKey, TValue>` is ONE dictionary per
@@ -106,7 +112,20 @@ internal partial class NewInvoker : INewInvoker
                 .Single());
 
         return ctor.Invoke(
-            [persistentObject, parent, asDetailParent, asDetailAttribute, parameters, cancellationToken]);
+            [persistentObject, parent, asDetailParent, asDetailAttribute, parameters, subQuery, cancellationToken]);
+    }
+
+    /// <summary>
+    /// The hook as the actions class exposes it, the base declaration included — for the sub-query
+    /// New, where the base fills the parent reference. Null when the class does not derive from
+    /// <see cref="DefaultPersistentObjectActions{T}"/> (an interface default has nothing to fill).
+    /// </summary>
+    private MethodInfo? ResolveBaseHook(Type entityType)
+    {
+        var actionsType = actionsResolver.ResolveForType(entityType).GetType();
+        return ReflectionCache.GetOrAdd<(string Op, Type Actions, Type Entity), MethodInfo?>(
+            ("NewInvoker.OnNewAsync.Base", actionsType, entityType),
+            static k => k.Actions.GetMethod("OnNewAsync", [typeof(SparkNewArgs<>).MakeGenericType(k.Entity)]));
     }
 
     /// <summary>

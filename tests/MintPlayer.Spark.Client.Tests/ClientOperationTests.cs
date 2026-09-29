@@ -384,20 +384,19 @@ public class ClientOperationTests
     // ------------------------------------------------------------------------------------------
 
     [Fact]
-    public void A_disableAction_operation_is_surfaced_and_does_nothing()
+    public void An_older_servers_disableAction_is_kept_as_unknown_and_does_nothing()
     {
-        // Pinned so that nobody later implements it here: disableAction is a no-op in the browser
-        // too. Note also that DisableActionsOn(po, "A", "B") emits one operation per name.
+        // The server stopped emitting `disableAction` (#460, D13) — disabled actions travel on
+        // DisabledActions and are refused at submit — so the client no longer models it. An older
+        // server's operation must still parse, not fail the response (FR10).
         var operations = SparkClientOperations.Parse(
             """
             {"operations":[
-              {"type":"disableAction","actionName":"Delete","target":{"kind":"persistentObject","objectTypeId":"x","id":"cars/1"}},
-              {"type":"disableAction","actionName":"Edit","target":{"kind":"persistentObject","objectTypeId":"x","id":"cars/1"}}]}
+              {"type":"disableAction","actionName":"Delete","target":{"kind":"persistentObject","objectTypeId":"x","id":"cars/1"}}]}
             """);
 
-        operations.OfType<SparkDisableActionOperation>().Select(o => o.ActionName)
-            .Should().BeEquivalentTo(["Delete", "Edit"]);
-        operations.OfType<SparkDisableActionOperation>().First().TargetKind.Should().Be("persistentObject");
+        operations.Should().ContainSingle().Which.Should().BeOfType<SparkUnknownOperation>()
+            .Which.Type.Should().Be("disableAction");
 
         var po = Car(Guid.NewGuid(), "cars/1");
         SparkClientOperations.Apply(po, operations).Should().Be(0);

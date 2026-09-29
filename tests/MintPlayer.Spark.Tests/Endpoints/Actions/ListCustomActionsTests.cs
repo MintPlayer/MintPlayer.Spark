@@ -62,8 +62,7 @@ public class ListCustomActionsTests
         var body = await ExecuteBodyAsync(result, context);
 
         using var doc = JsonDocument.Parse(body);
-        doc.RootElement.EnumerateArray().Select(e => e.GetProperty("name").GetString())
-            .Should().BeEquivalentTo(["Archive"]);
+        CustomActionNames(doc).Should().BeEquivalentTo(["Archive"]);
     }
 
     [Fact]
@@ -86,8 +85,7 @@ public class ListCustomActionsTests
         var body = await ExecuteBodyAsync(result, context);
 
         using var doc = JsonDocument.Parse(body);
-        doc.RootElement.EnumerateArray().Select(e => e.GetProperty("name").GetString())
-            .Should().BeEquivalentTo(["Allowed"]);
+        CustomActionNames(doc).Should().BeEquivalentTo(["Allowed"]);
     }
 
     [Fact]
@@ -110,8 +108,7 @@ public class ListCustomActionsTests
         var body = await ExecuteBodyAsync(result, context);
 
         using var doc = JsonDocument.Parse(body);
-        doc.RootElement.EnumerateArray().Select(e => e.GetProperty("name").GetString())
-            .Should().Equal("First", "Second", "Third");
+        CustomActionNames(doc).Should().Equal("First", "Second", "Third");
     }
 
     [Fact]
@@ -140,8 +137,9 @@ public class ListCustomActionsTests
         var body = await ExecuteBodyAsync(result, context);
 
         using var doc = JsonDocument.Parse(body);
-        var first = doc.RootElement[0];
+        var first = doc.RootElement.EnumerateArray().Single(e => !IsDefault(e));
         first.GetProperty("name").GetString().Should().Be("Archive");
+        first.TryGetProperty("isDefault", out _).Should().BeFalse();
         first.GetProperty("icon").GetString().Should().Be("archive");
         first.GetProperty("description").GetString().Should().Be("Move to archive");
         first.GetProperty("showedOn").GetString().Should().Be("detail");
@@ -150,6 +148,18 @@ public class ListCustomActionsTests
         first.GetProperty("confirmationMessageKey").GetString().Should().Be("confirmArchive");
         first.GetProperty("offset").GetInt32().Should().Be(42);
     }
+
+    /// <summary>
+    /// The listed custom actions, in wire order. Since #460 D18 the list also carries New and Delete
+    /// (<c>isDefault: true</c>) for a caller holding those rights, which the permissive substitute
+    /// above grants; the defaults are covered by <c>SubQueryActionsTests</c>, these cases by the
+    /// custom-action catalogue.
+    /// </summary>
+    private static string?[] CustomActionNames(JsonDocument doc) =>
+        [.. doc.RootElement.EnumerateArray().Where(e => !IsDefault(e)).Select(e => e.GetProperty("name").GetString())];
+
+    private static bool IsDefault(JsonElement action) =>
+        action.TryGetProperty("isDefault", out var flag) && flag.ValueKind == JsonValueKind.True;
 
     private ListCustomActions NewEndpoint() =>
         new(_modelLoader, _configLoader, _actionResolver, _permissions);

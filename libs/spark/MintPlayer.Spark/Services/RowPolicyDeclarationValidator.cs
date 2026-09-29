@@ -59,7 +59,8 @@ internal static class RowPolicyDeclarationValidator
 
         foreach (var right in configuration.Rights)
         {
-            // A denial cannot expose anything, and a wildcard target names no single type to check.
+            // A denial cannot expose anything. (Wildcard rights are refused at load, so every target
+            // names at most one type.)
             //
             // Note there is deliberately NO "GroupId is empty" guard. The conventional id for the
             // anonymous role is 00000000-0000-0000-0000-000000000000 — every app in this repository
@@ -71,12 +72,11 @@ internal static class RowPolicyDeclarationValidator
                 continue;
 
             var pattern = ResourcePattern.Parse(right.Resource);
-            if (pattern.Target is "*" || !byName.TryGetValue(pattern.Target, out var type))
+            if (!byName.TryGetValue(pattern.Target, out var type))
                 continue;
 
             var grantsRows = SparkCombinedActions.Expand(pattern.Action)
-                .Any(a => RowReturningActions.Contains(a, StringComparer.OrdinalIgnoreCase))
-                || pattern.Action == "*";
+                .Any(a => RowReturningActions.Contains(a, StringComparer.OrdinalIgnoreCase));
             if (!grantsRows)
                 continue;
 

@@ -1,0 +1,22 @@
+<mjml>
+  <mj-head>
+    <mj-title>{{ if changed_email }}Confirm your new email address{{ else }}Confirm your email address{{ end }}{{ if app_name }} for {{ app_name }}{{ end }}</mj-title>
+    <mj-attributes>
+      <mj-all font-family="Segoe UI, Helvetica, Arial, sans-serif" />
+      <mj-text font-size="15px" line-height="22px" color="#111827" />
+      <mj-button background-color="#2563eb" color="#ffffff" border-radius="6px" font-size="15px" />
+    </mj-attributes>
+  </mj-head>
+  <mj-body background-color="#f3f4f6">
+    <mj-section background-color="#ffffff" padding="24px 0">
+      <mj-column>
+        <mj-text font-size="20px" font-weight="600">{{ if changed_email }}Confirm your new email address{{ else }}Confirm your email address{{ end }}</mj-text>
+        <mj-text>{{ if changed_email }}Somebody asked to change the email address of {{ if app_name }}your {{ app_name }} account{{ else }}your account{{ end }} to {{ changed_email }}. If that was you, confirm it with the button below.{{ else }}Thanks for signing up{{ if app_name }} for {{ app_name }}{{ end }}. Confirm that this address is yours with the button below.{{ end }}</mj-text>
+        <mj-button href="{{ link }}">{{ if changed_email }}Confirm the new address{{ else }}Confirm my address{{ end }}</mj-button>
+        <mj-text font-size="13px" color="#4b5563">If the button does not work, open this link: <a href="{{ link }}">{{ link }}</a></mj-text>
+        <mj-text font-size="13px" color="#4b5563">The link stops working after {{ valid_for_hours }} hours. If it was not you, do nothing: nothing changes.</mj-text>
+      </mj-column>
+    </mj-section>
+    <mj-include path="_Footer.mjml" />
+  </mj-body>
+</mjml>

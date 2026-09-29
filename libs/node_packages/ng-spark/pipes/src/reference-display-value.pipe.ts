@@ -8,7 +8,7 @@ export class ReferenceDisplayValuePipe implements PipeTransform {
 
   transform(attr: EntityAttributeDefinition, formData: Record<string, any>, referenceOptions: Record<string, QueryResultItem[]>): string {
     const selectedId = formData[attr.name];
-    if (!selectedId) return this.lang.t('notSelected');
+    if (!selectedId) return this.lang.t('common.notSelected');
 
     const options = referenceOptions[attr.name] || [];
     const selected = options.find(o => o.id === selectedId);

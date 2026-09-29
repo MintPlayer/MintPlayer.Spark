@@ -93,7 +93,8 @@ public class MessageQueueRouterTests : SparkTestDriver
         }
     }
 
-    private MessageQueueRouter NewRouter(IDocumentStore? processorStore = null, IDocumentStore? routerStore = null)
+    private MessageQueueRouter NewRouter(
+        IDocumentStore? processorStore = null, IDocumentStore? routerStore = null, SparkMessagingOptions? messagingOptions = null)
     {
         var services = new ServiceCollection();
         services.AddSingleton<IMessageTypeAllowList>(new AllowAll());
@@ -101,7 +102,7 @@ public class MessageQueueRouterTests : SparkTestDriver
         var provider = services.BuildServiceProvider();
         _cleanup.Add(provider);
 
-        var options = Options.Create(FastOptions);
+        var options = Options.Create(messagingOptions ?? FastOptions);
         var processor = new MessageProcessor(provider, processorStore ?? Store, options, NullLogger<MessageProcessor>.Instance);
         var router = new MessageQueueRouter(processor, routerStore ?? Store, options, _log);
         router.Start(CancellationToken.None);
@@ -242,6 +243,36 @@ public class MessageQueueRouterTests : SparkTestDriver
 
         release.SetResult();
         await WaitForStatusAsync(id, EMessageStatus.Completed);
+    }
+
+    [Fact]
+    public async Task A_queue_with_MaxConcurrency_runs_that_many_messages_at_once()
+    {
+        var router = NewRouter(messagingOptions: new SparkMessagingOptions
+        {
+            ClaimRenewInterval = FastOptions.ClaimRenewInterval,
+            ClaimTtl = FastOptions.ClaimTtl,
+            HandlerTimeout = FastOptions.HandlerTimeout,
+            Queues = { ["router-tests"] = new SparkQueueOptions { MaxConcurrency = 2 } },
+        });
+        var first = await SeedClaimedJobAsync();
+        var second = await SeedClaimedJobAsync();
+        var running = 0;
+        var bothRunning = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _recipient.OnHandle = async _ =>
+        {
+            if (Interlocked.Increment(ref running) == 2)
+                bothRunning.TrySetResult();
+            // Each waits for the other: with one pump this never completes and the wait below fails.
+            await bothRunning.Task.WaitAsync(Timeout);
+        };
+
+        await router.RouteAsync("router-tests", first, CancellationToken.None);
+        await router.RouteAsync("router-tests", second, CancellationToken.None);
+        await bothRunning.Task.WaitAsync(Timeout);
+        await WaitForStatusAsync(first, EMessageStatus.Completed);
+        await WaitForStatusAsync(second, EMessageStatus.Completed);
+        await router.DrainAsync(Timeout);
     }
 
     [Fact]

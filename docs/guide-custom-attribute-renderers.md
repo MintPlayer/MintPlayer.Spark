@@ -406,3 +406,27 @@ See the Fleet demo app for working examples:
 - `Demo/Fleet/Fleet/ClientApp/src/app/renderers/` -- all renderer components
 - `Demo/Fleet/Fleet/ClientApp/src/app/app.config.ts` -- registration
 - `Demo/Fleet/Fleet/App_Data/Model/Car.json` -- model JSON with `renderer` fields
+
+## Detail panels and action slots (#460)
+
+Renderers draw one attribute. To add a whole panel or a button to the pages `sparkRoutes()` routes to
+(which are created by the router and take no templates), register a component through the
+multi-provider tokens in `@mintplayer/ng-spark/panels`:
+
+| Token | Where | The component's input |
+|---|---|---|
+| `SPARK_DETAIL_PANELS` (`provideSparkDetailPanels`) | below the attributes of `po/:type/:id` | `context = input.required<SparkDetailContext>()` |
+| `SPARK_DETAIL_ACTIONS` (`provideSparkDetailActions`) | the detail page's action bar | `context = input.required<SparkDetailContext>()` |
+| `SPARK_QUERY_LIST_ACTIONS` (`provideSparkQueryListActions`) | the query page's action bar | `context = input.required<SparkQueryListContext>()` |
+
+`SparkDetailContext` carries the route's `type` and `id`, the loaded `item`, its `entityType`, the
+type-level `permissions` (`null` while loading), the `deleted` mode the row was loaded with, and
+`reload()`. `SparkQueryListContext` carries the `query`, `entityType`, `permissions`, the current
+`deleted` mode, `setDeleted(mode)` (written to the route as `?deleted=`) and `reload()`. A new context
+object is passed whenever the page changes, so read it as a value. Each component checks its own
+rights and renders nothing when it does not apply. Registering the same `id` again replaces an entry
+in its original slot. `order` (panels) and `priority` (actions, default 60) sort them.
+
+`provideSparkHistory()` (`@mintplayer/ng-spark/history`) and `provideSparkSoftDelete()`
+(`@mintplayer/ng-spark/soft-delete`) are built this way; see the History and SoftDelete package
+READMEs.

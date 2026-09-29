@@ -137,7 +137,17 @@ The hooks worth knowing:
 | `GetRowFilterAsync(action)` | row filter pushed **into the query** |
 | `GetProtectedAttributesAsync` | per-row attribute redaction |
 | `OnRefreshAsync` | reshape the form when a `triggersRefresh` attribute changes |
+| `OnDisableActionsAsync(target, context)` | **the only place** an action is disabled — asked at load and enforced at submit (403) |
 | `StreamItems` / `StreamItem` | streaming queries over WebSocket |
+
+⚠️ **Disabling an action is one hook (#460, D13).** `OnDisableActionsAsync(IDisablable target,
+DisableActionsContext context)` — call `target.DisableActions("Edit", "MyAction")`. The framework asks
+it when a detail page or query loads (the answer is `DisabledActions` on the wire) **and again at
+submit** for update (`Edit`/`Save`), delete, create (`New`/`Save`) and every custom action (the object
+it runs on, its query and each selected row — union), answering `403 { action }` after the row gate.
+Decide from `context.Entity` (the **stored** entity), the user and stored state only, or load and
+submit disagree. `PersistentObject.DisableActions`, `SparkQueryContext`/`CustomQueryArgs.DisableActions`
+and every `IClientAccessor.DisableActions*` overload are deleted. See `docs/guide-custom-actions.md`.
 
 ⚠️ **`IsAllowedAsync` runs per row; `GetRowFilterAsync` runs in the database.** Prefer the filter
 where the rule is expressible as an expression — it is the difference between reading a page and
@@ -148,6 +158,46 @@ believing it applied the rule. Use `ISparkRowRule<T>.ApplyAsync`, which applies 
 ⚠️ **Type-level rights gate row rules.** With no grant on the type at all, `GetRowFilterAsync` never
 runs and signed-in callers are denied too. To restrict a type, *move* the grant to a narrower group
 — never delete it.
+
+**Rules for many types at once** (soft deletion, tenancy, locks) are row policies and interceptors,
+not copies in every Actions class — see `docs/guide-row-security.md`:
+
+- `spark.AddSparkRowPolicy<T>()` with `RowFilterPolicy<TEntityOrInterface>` (a predicate, pushed
+  down, ANDed with `GetRowFilterAsync`) or `RowCheckPolicy<T>` (per row — switches DB paging off).
+  Write absent-field-safe predicates: `x.IsDeleted != true`, **never** `!x.IsDeleted` (measured: a
+  document without the field does not match `!x`).
+- `spark.AddPersistentObjectInterceptor<T>()` with `IPersistentObjectInterceptor` — before/after
+  save, before/after delete (`DeleteContext.Replace()` replaces the hard delete and cannot be
+  defeated by an `OnDeleteAsync` override), after load. Runs in `IDatabaseAccess` after every gate.
+- ⚠️ An `OnLoadAsync`/`OnSaveAsync` override that skips the base also skips the row gate / WITH
+  CHECK / before-save interceptors for its type — policies included.
+- **Soft deletion is a package, not hand-written** — `MintPlayer.Spark.SoftDelete`: entity implements
+  `ISoftDeletable` (four **public** properties), host calls `spark.AddSoftDelete()`, grant
+  `Restore/T`, `Purge/T`, `ViewDeleted/T` by name. Delete becomes soft, deleted rows vanish from every
+  read path, `POST /spark/po/restore` / `/spark/po/purge` are mapped (purge also deletes the
+  revisions). Do not override `OnDeleteAsync` for it, and do not write your own `IsDeleted` filter.
+  `IDatabaseAccess` gates a `Restore` save under `Restore/T` + row action `"Restore"` and a `Purge`
+  delete under `Purge/T` + `"Purge"`; the disabled-action hook refuses a restore when `Edit`/`Save`
+  is withheld and a purge when `Delete` is. README: `libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md`.
+  `/spark/po/load` takes `deleted: include|only` (honoured for `ViewDeleted/T` holders) to open a row
+  from the recycle bin; `/spark/permissions/{type}` reports `canRestore`, `canPurge`, `canViewDeleted`.
+  A sub-query of a deleted row passes `parentDeleted: exclude|include|only` on
+  `/spark/queries/execute` and `/spark/queries/distinct-values` (the mode the **parent** is resolved
+  under; honoured for `ViewDeleted/{ParentType}` holders, otherwise the missing-parent 404). Actions
+  and delete-many always resolve a live parent, and judge live rows only.
+- **History / audit is a package** — `MintPlayer.Spark.History`: `spark.AddHistory()`, entity
+  implements `IAuditable` (stamped with user **ids**; `CreatedBy` immutable), revisions come from the
+  model's `"revisions": { "enabled": true, … }` block (merged into the database at startup — never
+  call `ConfigureRevisionsOperation` by hand, it replaces the whole configuration). Grant `History/T`
+  and `Revert/T` by name. A revert is `SavePersistentObjectAsync(po, Revert)`: `Revert/T` + `Edit/T`,
+  row action `"Revert"`. README: `libs/history/MintPlayer.Spark.History/README.md`.
+- Row rules in an Actions class see the **base verb** for the package operations: `"Edit"` for a
+  restore or revert, `"Delete"` for a purge (row policies see the real name). Write rules for the
+  built-in verbs; do not special-case `"Restore"`/`"Revert"`/`"Purge"` there.
+- An add-on package mapping its own `/spark/*` endpoint answers through
+  `MintPlayer.Spark.Endpoints.SparkAddOnEndpoints` (envelope, the one refusal, 400, 403, 409) — never
+  an invented error shape (#453 oracle). Content core did not load itself (an old revision) is shown
+  through `IPersistentObjectPresenter` (breadcrumbs + redaction), never by mapping it raw.
 
 ### `OnRefreshAsync` — forms that reshape themselves
 
@@ -210,7 +260,7 @@ A right is `{action}/{target}`:
 |---|---|
 | Actions | `Query`, `Read`, `New`, `Edit`, `Delete`, plus any custom action name |
 | Combined | `QueryRead`, `ReadEdit`, `EditNew`, `NewDelete`, `EditNewDelete`, `ReadEditNew`, `QueryReadEdit`, `ReadEditNewDelete`, `QueryReadEditNew`, `QueryReadEditNewDelete` |
-| Wildcards | `*` on either half — `Read/*`, `*/Person`, `*/*` |
+| Wildcards | **none** — `*` is refused at startup and by SPARK021; name every target, use a combined action |
 
 Combined actions expand **symmetrically** — `deny EditNewDelete/Car` denies all three.
 
@@ -228,6 +278,46 @@ caller's group claims, in any translation, so display names are load-bearing.
 `"detail"`, `"query"` or `"both"`. The right is `{ActionName}/{Type}`. `customActions.json` is a flat
 map evaluated against every type, so granting an action on a type that should not offer it renders a
 stray button.
+
+**New and Delete are catalogue entries too** (#460 M15, D18). `/spark/actions/list` returns them as
+`isDefault` entries for holders of `New/T` / `Delete/T`. The defaults are: New has no rule, and
+Delete is `>0`.
+- Override their `showedOn`, rule, label or confirmation with an entry named `New` or `Delete` in
+  `customActions.json`, without a C# class.
+- Never write an `ICustomAction` with either name: it is never executed.
+- Delete on a selection is `POST /spark/po/delete-many`. It is all or nothing, uses one
+  `SaveChanges`, and SoftDelete applies to it. ⚠️ Put per-row delete logic in
+  `OnBeforeDeleteAsync`: an `OnDeleteAsync` override that saves on its own breaks the batch's
+  atomicity.
+
+**Sub-queries** are the parent type's `persistentObject.queries`. An entry is a bare alias or
+`{ "query", "selectionMode", "parentReference" }`, and `selectionMode` can also sit on the query
+itself (`auto` by default, derived from the custom actions).
+- New on a sub-query calls `OnNewAsync(SparkNewArgs<T>)` with `args.Parent` / `ParentType` / `Query`.
+- **The base fills the reference to the parent.** If you override `OnNewAsync`, call
+  `base.OnNewAsync(args)` or `args.FillParentReference()`, or the reference stays empty.
+- Name the attribute with `parentReference` when the row type references the parent more than once.
+  A wrong name fails startup.
+- A sub-query's search goes to `/spark/queries/execute` as `search` (with `parentId`/`parentType`),
+  and to `/spark/queries/distinct-values` as **`querySearch`**, applied the same way, so a column
+  filter lists only values from rows the grid shows. (`search` on distinct-values narrows the listed
+  values themselves.)
+
+**Accounts** (`spark.AddAuthentication<TUser>()`, `MintPlayer.Spark.Authorization` README has the
+route table):
+
+- Sign-in takes an **email or a user name**; a user name containing `@` must be that account's own
+  email (enforced on save). Don't read `UserName` as "the email".
+- Account mail goes through `IEmailSender<TUser>`; its links point at the SPA (`/confirm-email`,
+  `/reset-password`) and need **`Spark:Auth:PublicBaseUrl` outside Development** — without it the mail
+  is not sent (never built from the request `Host`).
+- `SparkUser.AuthenticatorKey` and token values are stored encrypted (`sdp1:`). Read them through
+  `UserManager` (`GetAuthenticatorKeyAsync`, `GetAuthenticationTokenAsync`), never from the property.
+- App fields on the profile page: `ISparkProfileContributor<TUser>`; GDPR: `ISparkPersonalDataContributor<TUser>`
+  and `ISparkAccountDeletionHandler<TUser>` (idempotent — a failed deletion is retried with every
+  handler again). Register them as scoped services.
+- External providers: use the presets (`AddGitHub`, `AddSparkGoogle`, …) — they declare whether the
+  provider's email can be trusted; a provider without a signal gets an unconfirmed account and a mail.
 
 **The startup posture report** prints what an anonymous caller can reach on every boot, including
 when that is nothing. `--spark-verify-security` compares it against a committed
@@ -254,6 +344,88 @@ error — if an index-computed field is null in a test but right in the app, sus
 **Sorting on a searchable text field needs a companion.** A field that is tokenized for search
 cannot be sorted; the pattern is a `{Name}Sort` companion with no `Index()` call. Adding `Exact` to
 the searchable field is a measured regression on both sort and equality.
+
+---
+
+## Messaging (`spark.AddMessaging()`)
+
+Publish with `IMessageBus`; every method is shorthand for `BroadcastAsync(message, BroadcastOptions
+{ DeduplicationKey, Delay, MaxAttempts, ExpiresAtUtc, Queue, ScrubPayloadOnTerminal })`. A test fake
+implements only that overload (the others are default interface methods).
+
+- **Deduplication ids are hashed and type-namespaced** (`SparkMessages/{readable}.{hash}`): two
+  message types may share a key; keys differing only in punctuation or case no longer collide. No
+  need to prefix keys per type.
+- **`Queue` must be declared** in `Spark:Messaging:Queues:{name}` (or `options.Queues` in code), or
+  the publish throws — an undeclared queue has no consumer.
+- **Per-queue options** (`SparkQueueOptions`: `MaxPerInterval`/`Interval`, `BatchSize`/
+  `MinDelayBetweenBatches`, `MaxConcurrency`, `MaxAttempts`, `Backoff`). ⚠️ Here **configuration beats
+  code**: `Spark:Messaging:Queues` (appsettings, env vars `Spark__Messaging__Queues__{name}__…`) is
+  applied over code-declared queue settings. Everywhere else in `Spark:Messaging` code wins.
+- Throttling defers an over-budget message **once** to a reserved slot (never waits in a lane).
+  `MaxPerInterval` is a rate with a burst (GCRA), not a hard per-window cap; bursts are quantised by
+  `FallbackPollInterval`. `MaxConcurrency > 1` gives up FIFO and works in `SingleSubscription` only.
+- `ExpiresAtUtc` → dead-lettered with `DeadLetterReason = Expired` instead of being handled late.
+  `DeadLetterReason` is `MaxAttempts` / `NonRetryable` / `Expired`; the status stays `DeadLettered`.
+- In a handler, inject `IMessageContext` (the message id — stable across retries) and
+  `IMessageProgress` (`IsDoneAsync`/`MarkDoneAsync` per step, so a retry skips finished steps).
+
+See `libs/messaging/MintPlayer.Spark.Messaging/README.md`.
+
+## Mail (`spark.AddMailManager()`, package `MintPlayer.Spark.MailManager`)
+
+Never send mail inline, never hand-roll SMTP or HTML. Inject `ISparkMailer` (abstractions package)
+and queue a `SparkMailRequest { Template, To, Culture?, Data, Sensitive, ExpiresAtUtc }`; campaigns go
+through `SendCampaignAsync` (one mail per recipient, never BCC).
+
+- **Everything is `Spark:Mail` configuration**: transport = one of `UseSmtpTransport()` /
+  `UseMailpitTransport()` / `UsePickupFolderTransport()` / `AddMailTransport<T>()`, or with none
+  registered `Smtp:Host` **or** `PickupFolder`; `From:Address` required, `Smtp:Security`
+  `None|Auto|StartTls|SslOnConnect` (no forced STARTTLS). Startup refuses no/two transports, no sender,
+  a template without a neutral file (warning in Development), a template that does not parse,
+  `Development:RedirectTo` in Production, and in Development a transport whose
+  `DeliversToRealRecipients` is true without `Development:RedirectTo`.
+- **Templates are files**: `Templates/Mail/{name}.{culture}.mjml` → `{name}.{language}.mjml` →
+  `{name}.mjml`, same chain for the optional `.txt` part; subject = `<mj-title>`. The app's folder wins
+  over embedded defaults **per file** (Authorization ships `SparkAuth/ConfirmEmail|PasswordReset|LinkConfirmation`
+  in `en` + `nl`). Scriban with strict variables (a missing member fails the render too); string
+  values are HTML-escaped for you — never `| html.escape` again.
+- **Culture is chosen per send**, never from the request: explicit → `ISparkMailRecipientCulture`
+  (Authorization: `SparkUser.PreferredCulture`) → `Spark:Mail:DefaultCulture`. Stored on the message.
+- **A mail with a token or link that grants something is `Sensitive = true`** (Data Protection in
+  the queue, scrubbed on terminal) **and has `ExpiresAtUtc`** before the token dies.
+- Lanes `mail-transactional` / `mail-bulk` are declared with defaults; retune them under
+  `Spark:Messaging:Queues:{name}`. A registration surface (`LocalCredentials = Full`) without a
+  transport refuses startup (D6) unless `Spark:Auth:AllowUnconfirmedRegistration=true`.
+- Test every template with `SparkMailTemplateTester.RenderAllAsync(services, sample, "en", "nl")`.
+
+See `libs/mail/MintPlayer.Spark.MailManager/README.md` and `docs/guide-outgoing-mail.md`.
+
+## Moderation (`spark.AddModeration<TUser>()`, package `MintPlayer.Spark.Moderation`)
+
+Votes, reputation, privileges, flags, locks and suspensions are a package — never hand-roll a
+`Score` field, a vote counter or an "is moderator" check.
+
+- **Opt in per entity**: implement `IModeratable { AuthorId, PostedAt }` (abstractions package).
+  Both are the framework's: stamped on create, restored on every later write. Never set them
+  yourself, never put the score on the entity (a vote would move its etag and 409 the author).
+- **Configuration is `Spark:Moderation`**, fed by `App_Data/moderation.json` as the
+  **lowest-precedence** source — env vars (`Spark__Moderation__Fraud__…`) override it. Startup
+  validates the *layered* result: unknown reputation event names, privilege groups that are missing /
+  well-known / hold a non-earnable right / have no grant, a destructive `Earnable` entry.
+- **Privileges are `security.json` groups by id**, conferred by a composed group-membership provider
+  (never a claim). `Lock`, `Suspend`, `Audit`, `Purge`, `Restore`, `Revert`, `ViewDeleted` are never
+  earnable. Rights: `Vote/T`, `Downvote/T`, `Flag/T`, `Lock/T`, `Review/Moderation`,
+  `Suspend/Moderation`, `Audit/Moderation` — by name. `--spark-init-moderation` prints the grants.
+- **All ten fraud measures are on**; tune thresholds in configuration, do not disable them in
+  code. The ledger is append-only: a correction is a compensating entry, never an edit or delete.
+- A lock refuses save / AsDetail change / custom-action write / revert / delete / restore / purge
+  with **400** for everyone without `Lock/T`; a suspension blocks writes on the **next request**
+  (document read by id) — the cookie/bearer lifetime after the stamp refresh is measured in the README.
+- New accounts over the posting quota get **429** (`SparkThrottledException`, core) — throw the same
+  exception for any business quota of your own, never a 400 or 404.
+
+See `libs/moderation/MintPlayer.Spark.Moderation/README.md` and `docs/guide-moderation.md`.
 
 ---
 

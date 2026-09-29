@@ -52,14 +52,8 @@ internal partial class SecurityPostureReporter : ISecurityPostureReporter
         granted.UnionWith(importantGranted);
         granted.ExceptWith(importantDenied);
 
-        foreach (var wildcard in granted.Where(r => r.Contains(ResourcePattern.Wildcard)))
-        {
-            warnings.Add(
-                $"The anonymous group holds the wildcard right '{wildcard}', so the list above is a "
-                + "floor rather than a ceiling: it covers resources that do not exist yet, including "
-                + "every entity type and custom action added later.");
-        }
-
+        // No "floor, not ceiling" caveat is needed: wildcard rights are refused at load, so the
+        // list is exactly the anonymous surface.
         return new SecurityPosture(
             granted.OrderBy(r => r, StringComparer.OrdinalIgnoreCase).ToList(),
             warnings);
@@ -77,12 +71,6 @@ internal partial class SecurityPostureReporter : ISecurityPostureReporter
 
             var action = right.Resource[..slash];
             var target = right.Resource[(slash + 1)..];
-
-            if (action == ResourcePattern.Wildcard)
-            {
-                result.Add(right.Resource);
-                continue;
-            }
 
             foreach (var expanded in SparkCombinedActions.Expand(action))
             {

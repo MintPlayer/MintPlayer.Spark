@@ -11,7 +11,11 @@ Detail lives in:
 - [messaging_single_subscription_PRD.md](messaging_single_subscription_PRD.md) + [plan](messaging_single_subscription_plan.md)
 - [coverage_project_automation_PRD.md](coverage_project_automation_PRD.md) + [plan](coverage_project_automation_plan.md)
 
-Neither is implemented. Branch: `feat/coverage-project-automation`.
+**Both are implemented and on master** — they landed together in #369 (commit `f5ec5068`), with the
+board-automation flags following in #377. The branch named in the original version of this line,
+`feat/coverage-project-automation`, is merged. *(Corrected 2026-09-28, #460: this line used to say
+"Neither is implemented".)* Per-queue throttling and options, which neither initiative built, came in
+#460 — see `libs/messaging/MintPlayer.Spark.Messaging/README.md`.
 
 ---
 
@@ -33,6 +37,8 @@ Neither is implemented. Branch: `feat/coverage-project-automation`.
 | **A12** | **No backward compatibility.** Default is to simplify; anything kept needs a non-compatibility reason | Owner, stated twice. Eight simplifications enumerated in messaging PRD §9b |
 | **A13** | Legacy `SparkMessaging-*` definitions deleted **by prefix**, from a migration | Nothing in the repo deletes a subscription; three stale definitions occupy the whole 3-slot budget |
 | **A14** | `@refresh` **evaluated and recorded, but not adopted** in this rework | Real and proven, but a database-wide switch with a sweep-frequency floor; the sweeper works today |
+| **A15** | ⚠️ **Superseded by A16 (M16b, same day)** for *how the order is chosen*; the priority setting, the one subscription and deferral-before-claim stand. Kept as written: **Priority lanes inside the one subscription** (#460 M16, owner 2026-09-29): `SparkQueueOptions.Priority` (`Low`/`Normal`/`High`, config beats code). The feeder reads look-ahead windows (`FeederBatchSize`, default 256), serves each window **highest priority first**, one load and one write per priority, and defers throttled messages **before** claiming them; FIFO between windows and within a queue. No starvation by construction: a window is served completely before the next is fetched | The M4 S-M3 5.8 s transactional max was one message per batch, several requests each, in etag order. A subscription per priority is rejected: it spends the Community 3-slot budget A6 exists to protect. A weighted scheduler across windows would need claims held in memory past the ack, which A11's claim-before-ack forbids. Measured before/after in the PRD §4.1 (M16) |
+| **A16** | **Hybrid sorted-query feeder** (#460 M16b, owner 2026-09-29; supersedes A15's window). The one leader-elected subscription stays the **wake-up signal and the exclusivity/claim safety** (A6, A7; query unchanged, no `now()`, never deleted). On each batch the feeder reads the top `FeederBatchSize` of the static `SparkMessages_ByPriority` index — only claimable-now messages, **`order by Priority desc, Sequence asc`** — merges the batch itself, and claims highest priority first with the existing per-message optimistic claim. `Sequence` is **server-assigned**: the `@last-modified` of the write that made the message claimable, captured once into `QueuedAtUtc` on the feeder's first write (spike S-M7, 8 concurrent producers: 0 inversions against commit order, no extra write; a compare-exchange counter cost p50 34 ms / mean 99 ms per enqueue against 7 / 10 ms, with 6.7 retries each; a document counter or a server identity inverted 11–34 % of adjacent pairs; writing the first etag back costs a second write that itself reorders delivery). `Priority` is stamped on the message at publish. **No aging:** every delivered message is served in the batch that delivers it, so `Low` waits at most for its FIFO position plus one page per batch | A15's window could not see past the 256 messages one batch held, so an urgent message behind a longer backlog still waited. Strict ordering needs a sort over the whole claimable set; a sort key on the producer's clock is what "Document-queue with per-queue leases" was rejected for (§2), so the key is the server's. The subscription backstop is what makes strict priority starvation-free without weights. Measured in the PRD §4.1 (M16b: S-M7, S-M3, S-M8, S-M9) |
 
 ## 2. Rejected — do not re-litigate
 

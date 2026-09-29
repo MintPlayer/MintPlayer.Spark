@@ -52,8 +52,23 @@ internal sealed partial class ListCustomActions : IPostEndpoint
 
         var result = new List<object>();
 
+        // The built-in actions first (#460, D18), as catalogue entries with the same shape, so a grid
+        // enables New and Delete from the selection exactly as it enables a custom action. Governed
+        // by the ordinary New/T and Delete/T rights, not by an action right of their own.
+        foreach (var defaultName in new[] { SparkDefaultActions.New, SparkDefaultActions.Delete })
+        {
+            if (!await permissionService.IsAllowedAsync(defaultName, typeName))
+                continue;
+
+            result.Add(Describe(defaultName, SparkDefaultActions.Resolve(defaultName, config), isDefault: true));
+        }
+
         foreach (var (actionName, definition) in config)
         {
+            // An entry named New or Delete overrides the default above; it is not a custom action.
+            if (SparkDefaultActions.IsDefault(actionName))
+                continue;
+
             // Only include actions that have a C# implementation
             if (!registeredActions.Contains(actionName, StringComparer.OrdinalIgnoreCase))
                 continue;
@@ -62,29 +77,50 @@ internal sealed partial class ListCustomActions : IPostEndpoint
             if (!await permissionService.IsAllowedAsync(actionName, typeName))
                 continue;
 
-            result.Add(new
-            {
-                name = actionName,
-                displayName = definition.DisplayName,
-                icon = definition.Icon,
-                description = definition.Description,
-                showedOn = definition.ShowedOn,
-                selectionRule = definition.SelectionRule,
-                refreshOnCompleted = definition.RefreshOnCompleted,
-                confirmationMessageKey = definition.ConfirmationMessageKey,
-                variant = definition.Variant,
-                offset = definition.Offset,
-            });
+            result.Add(Describe(actionName, definition, isDefault: false));
         }
 
-        // Sort by offset
-        result.Sort((a, b) =>
-        {
-            var aOffset = ((dynamic)a).offset;
-            var bOffset = ((dynamic)b).offset;
-            return aOffset.CompareTo(bOffset);
-        });
+        // By offset; stable, so equal offsets keep New and Delete ahead of the custom actions.
+        var sorted = result
+            .Select((item, index) => (item, index))
+            .OrderBy(x => ((ActionDescription)x.item).offset)
+            .ThenBy(x => x.index)
+            .Select(x => x.item)
+            .ToList();
 
-        return Results.Json(result);
+        return Results.Json(sorted);
     }
+
+    private static ActionDescription Describe(string name, Models.CustomActionDefinition definition, bool isDefault) => new(
+        name,
+        definition.DisplayName,
+        definition.Icon,
+        definition.Description,
+        definition.ShowedOn,
+        definition.SelectionRule,
+        definition.RefreshOnCompleted,
+        definition.ConfirmationMessageKey,
+        definition.Variant,
+        definition.Offset,
+        isDefault ? true : null);
+
+    /// <summary>
+    /// One listed action. Lower-case members because this is the wire shape, serialized as-is.
+    /// <c>isDefault</c> is <c>true</c> for New and Delete and omitted for a custom action.
+    /// </summary>
+#pragma warning disable IDE1006 // wire names
+    private sealed record ActionDescription(
+        string name,
+        Abstractions.TranslatedString displayName,
+        string? icon,
+        string? description,
+        string showedOn,
+        string? selectionRule,
+        bool refreshOnCompleted,
+        string? confirmationMessageKey,
+        string? variant,
+        int offset,
+        [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        bool? isDefault);
+#pragma warning restore IDE1006
 }

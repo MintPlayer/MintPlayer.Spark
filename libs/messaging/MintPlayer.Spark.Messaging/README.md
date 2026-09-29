@@ -181,11 +181,43 @@ Note that this deduplicates *enqueueing*, not handling. A duplicate arriving aft
 been processed and expired by retention is a new message again — the correct trade-off for a
 retention window measured in days.
 
-> **Removed: the queue-name override.** `BroadcastAsync(message, queueName)` is gone. The consumer
-> side derives queue names by reflecting over `IRecipient<T>` registrations and cannot see what a
-> producer passed, so an override that disagreed produced documents no worker ever selected —
-> enqueued for ever, consumed by nobody, with the application reporting itself healthy. The queue a
-> message belongs to is a property of its type; declare it with `[MessageQueue]`.
+The id is `SparkMessages/{readable}.{hash}`: the readable part is the key with every character other
+than ASCII letters, digits, `-` and `_` replaced by `_` (at most 64 characters), and the hash is the
+first 16 bytes of SHA-256 over the **versionless message type** and the **exact key**. So two message
+types may use the same key, and keys that differ only in a character an id cannot hold (`a:b`,
+`a/b`, `a_b`) or only in letter case (RavenDB ids are case-insensitive) are distinct. Before #460 the
+id was `SparkMessages/{sanitized key}`, and all of those collided — the second publish was dropped
+silently.
+
+> **Upgrade note.** Messages enqueued before this version keep their old ids. A duplicate of such a
+> message published *after* the upgrade gets a new-format id and is therefore enqueued once more.
+> The window is the retention period of the old documents (7 days by default); for webhook
+> redeliveries it only matters if GitHub re-sends a pre-upgrade delivery after the deploy.
+
+#### Broadcast options
+
+Every publish method is shorthand for `BroadcastAsync(message, BroadcastOptions)`:
+
+```csharp
+await messageBus.BroadcastAsync(new PasswordResetMail(userId, token), new BroadcastOptions
+{
+    DeduplicationKey = $"reset:{userId}:{tokenId}", // at most once (hashed, type-namespaced)
+    Delay = TimeSpan.FromSeconds(10),               // not before
+    MaxAttempts = 8,                                // overrides the queue's and the global value
+    ExpiresAtUtc = tokenExpiresAtUtc,               // never handle it after this; dead-letter as Expired
+    Queue = "mail-transactional",                   // must be declared under Spark:Messaging:Queues
+    ScrubPayloadOnTerminal = true,                  // clear PayloadJson once Completed/DeadLettered
+});
+```
+
+`ExpiresAtUtc` is checked at pickup, against the throttle slot, and before every retry: a message
+whose next retry or slot would fall after it is dead-lettered with `DeadLetterReason = Expired`
+rather than handled late.
+
+`Queue` overrides the queue the message type declares — but only onto a queue declared in
+`SparkMessagingOptions.Queues`; anything else throws at publish. An undeclared name would produce
+documents no worker ever selects, whereas a declared queue is known to both sides (in
+`SubscriptionPerQueue` mode it gets its own worker).
 
 ## How It Works
 
@@ -198,10 +230,11 @@ Internally the messaging library uses **one RavenDB data subscription for every 
    discovers all queue names from registered `IRecipient<T>` types
 2. It competes for a cluster-wide **messaging lease**; only the holder feeds
 3. The holder runs a single `MessageFeeder` on the subscription `SparkMessaging`, whose query has
-   **no `QueueName` predicate**, with `MaxDocsPerBatch = 1`
-4. The feeder **claims** each message — `Status = Processing`, `OwnerId`, `ClaimExpiresAtUtc`, saved
-   under optimistic concurrency *before* the batch is acknowledged — and routes it to a lane keyed
-   by queue name
+   **no `QueueName` predicate**, in batches of up to `FeederBatchSize`
+4. On each batch the feeder merges it with the top of the sorted `SparkMessages_ByPriority` index and
+   **claims** those messages highest priority first — `Status = Processing`, `OwnerId`,
+   `ClaimExpiresAtUtc`, saved under optimistic concurrency *before* the batch is acknowledged — and
+   routes each to a lane keyed by queue name (see *Priority lanes*)
 5. Each lane is drained by one **pump** with at most one message in flight, so within a queue
    messages are processed **one at a time in FIFO order**
 6. Lanes are independent tasks, so different queues are processed **concurrently and independently**
@@ -217,7 +250,11 @@ Internally the messaging library uses **one RavenDB data subscription for every 
 
 Set `SubscriptionMode = SubscriptionPerQueue` to get the old model back — one subscription per queue,
 one slot per queue — which is worth it only where the licence has headroom and server-side isolation
-is genuinely wanted. Both modes share `MessageProcessor`, so the per-message contract is identical.
+is genuinely wanted. Both modes share `MessageProcessor`, so the per-message contract is identical,
+and both run a claimed message under the same guards — claim renewal every `ClaimRenewInterval` and
+cancellation at `HandlerTimeout`. (Before #460 the per-queue worker had neither: a handler slower than
+`ClaimTtl` was reclaimed underneath itself and ran twice, and a hung handler held its queue for ever.)
+Queues declared in `SparkMessagingOptions.Queues` get a worker in this mode too.
 
 ### Crash recovery
 
@@ -237,6 +274,14 @@ handler runs, so a legitimately slow handler is not reclaimed underneath itself;
 long an *abandoned* message waits, not how long a handler may take. Kubernetes' default 30-second
 grace period is **not** enough for long handlers such as coverage report parsing — a pod stopped
 mid-handler would be killed before it could drain.
+
+On a **graceful** stop the feeder stops, the lanes drain, and only then is the lease released, so a
+standby takes over on its next poll (≤ 5 s) with no duplicate. A batch that is still being claimed when
+the lanes close releases the claims it could not route (`Pending`, `WakeUp`, the attempt not counted),
+so they are served by the next leader at once rather than after `ClaimTtl`. After a **crash** the
+standby takes over when the lease lapses (30 s), and the dead host's claims come back when they expire;
+a handler that finished on the dead host without recording it runs again — at most one per lane,
+which is the at-least-once window (measured in the #460 PRD §4.1, S-M8).
 
 ### Per-Handler Retry Isolation
 
@@ -314,8 +359,153 @@ spark.AddMessaging(options =>
         TimeSpan.FromMinutes(10),
         TimeSpan.FromHours(1),
     };
+    options.HandlerTimeout = TimeSpan.FromMinutes(10);        // Cancels a hung handler (both subscription modes)
 });
 ```
+
+### Per-queue options and throttling
+
+`SparkMessagingOptions.Queues` holds a `SparkQueueOptions` per queue name, bound from
+`Spark:Messaging:Queues:{name}`:
+
+| Property | Meaning |
+|---|---|
+| `MaxPerInterval` + `Interval` | Start rate N per interval — one every `Interval / N` — with a burst of N for an idle queue (GCRA). A rate, not a hard window cap: a burst plus the steady rate can put ~2N starts in one sliding interval. For no burst, state the rate alone (`1` per `3s` rather than `20` per minute). 0 = unlimited. |
+| `BatchSize` + `MinDelayBetweenBatches` | Start at most N back to back, then pause. A batch is a pacing window only; each message keeps its own status and retries. |
+| `MaxConcurrency` | Messages of this queue handled at once (default 1 = FIFO). `SingleSubscription` mode only; warned about and ignored in `SubscriptionPerQueue` mode. |
+| `MaxAttempts` | Attempts per handler for messages published to this queue. |
+| `Backoff` | Retry schedule for this queue (empty = the global `BackoffDelays`). |
+| `Priority` | `Low`, `Normal` (default) or `High` (or `-1`/`0`/`1`): the order in which the single feeder serves queues, strictly, across the whole backlog — see *Priority lanes* below. Stamped on each message at publish. `SingleSubscription` mode only. |
+
+`SparkMessagingOptions.FeederBatchSize` (default 256, `Spark:Messaging:FeederBatchSize`) is the
+feeder's page: how many messages it reads from the sorted index per wake-up, and how many one
+subscription batch may hold.
+
+```json
+"Spark": {
+  "Messaging": {
+    "Queues": {
+      "mail-transactional": { "MaxPerInterval": 600, "Backoff": [ "00:00:30", "00:05:00", "00:30:00", "02:00:00" ] },
+      "mail-bulk":          { "MaxPerInterval": 20, "Interval": "00:01:00", "BatchSize": 50, "MinDelayBetweenBatches": "00:05:00" }
+    }
+  }
+}
+```
+
+**Configuration beats code for queue settings.** A queue declared in code (`AddMessaging(o =>
+o.Queues["mail-bulk"] = …)`, or a library's own `Configure<SparkMessagingOptions>`) is a set of
+defaults; `Spark:Messaging:Queues` is applied over it afterwards, property by property, from any
+configuration source — appsettings, user secrets, or environment variables such as
+`Spark__Messaging__Queues__mail-bulk__MaxPerInterval=20`. A configured `Backoff` replaces the code
+schedule rather than being appended to it. Everything outside `Queues` keeps "code wins".
+
+**How throttling works.** Admission runs at the top of `MessageProcessor.RunHandlersAsync`, shared by
+both subscription modes — and, in `SingleSubscription` mode, once more in the feeder **before** the
+claim, so a message its queue cannot start yet is deferred in the feeder's claim write and never
+enters a lane (a message the feeder admitted keeps a due reservation, so the processor does not
+charge it a second slot). It never waits inside a lane (a sleeping lane would block the bounded
+channel, the one feeder, and every other queue). A message over budget is written back **once** —
+`Pending`, no owner, `WakeUp = false`, `NextAttemptAtUtc` = its reserved slot, `AttemptCount`
+restored — and the lane moves on; the sweeper wakes it at the slot and it starts without asking
+again. Slots are reserved GCRA-style in memory (the leader lease means one process admits for every
+queue), so each throttled message is deferred once, not once per poll. After a restart the
+reservations are gone and a deferred message is deferred once more.
+
+Accuracy: the long-run rate is exact; bursts are quantised by `FallbackPollInterval` (default 30 s),
+because due messages are woken on the sweeper's tick. The measured figures are in the #460 PRD (§4.1,
+S-M3).
+
+**Pattern for mail:** `mail-transactional` generous (it carries password resets and confirmations,
+which a user is waiting for — and give them `ExpiresAtUtc`), `mail-bulk` strict (it must never crowd
+out the relay or trip a provider's rate limit). MailManager declares exactly that, with
+`mail-transactional` at `High` priority and `mail-bulk` at `Low`.
+
+### Priority lanes
+
+Separate queues are separate lanes, so a slow bulk *handler* never delays a transactional one. But in
+`SingleSubscription` mode every queue's documents reach the process through one subscription, in
+etag order, and a feeder that follows that order must claim what is in front before it sees what is
+behind: measured in S-M3 before M16 (#460 PRD §4.1), a transactional message published behind a 1,000-message bulk backlog waited up
+to 5.8 s (9.4 s on a loaded machine), because each bulk message cost a load and a claim of its own and
+then a second write when its lane deferred it.
+
+The feeder therefore serves a **sorted page** on every wake-up (#460 M16b; M16's look-ahead window
+before it could only reorder the 256 messages one batch held):
+
+- **The subscription is the wake-up signal, not the order.** The one leader-elected `SparkMessaging`
+  subscription is unchanged: same query, no `now()`, never deleted or recreated, and still what makes
+  feeding exclusive (`WaitForFree`) and what claims are taken against.
+- **Strict priority over the whole queue.** When a batch arrives, the feeder reads the top
+  `FeederBatchSize` (default 256) claimable messages from the `SparkMessages_ByPriority` index,
+  ordered **`Priority desc, Sequence asc`**, merges them with the batch, and claims the lot highest
+  priority first: one load and one write per priority (claims and throttle deferrals together), then
+  routing. A `High` message published behind any `Low` backlog is served on the next wake-up.
+- **FIFO within a priority is server-assigned.** `Sequence` is the database server's `@last-modified`
+  of the write that made the message claimable, captured into `SparkMessage.QueuedAtUtc` on the
+  feeder's first write to it (its claim or deferral, so no extra write). Never the publisher's clock.
+  A retry, a reclaim or a throttle wake-up keeps the message's place. Ties (none measured) break by id.
+- **Nothing the index has not seen yet is skipped.** The page is read as the index stands, never
+  waited for; a message that is not indexed yet is in the subscription batch and is served from there
+  (measured index lag under a 1,000-message bulk load: tens of milliseconds, S-M7).
+- **No starvation, and no aging needed.** Every message a batch delivers is served in that batch,
+  whatever the page holds, and the subscription walks the queue in commit order. A `Low` message
+  therefore waits at most for the subscription to reach it — its FIFO position — plus one page of
+  higher-priority messages per batch pulled ahead of it. Strict priority can delay `Low`, never starve
+  it; a test keeps several pages of `High` outstanding throughout and `Low` still completes.
+- **Priority is stamped at publish.** `SparkMessage.Priority` is written from the queue's setting when
+  the message is published (an index cannot read configuration), so a changed `Priority` applies to
+  messages published after the change.
+- **Why not a subscription per priority.** Community caps a database at 3 subscriptions, one of which
+  Replication may already use.
+
+Throttling is unchanged: a message its queue cannot start yet is deferred before its claim, and a
+deferred message leaves the "pending now" set (and the index) until the sweeper wakes it at its slot.
+What it still does not do: a lane filled to its capacity (512 claimed messages) by an **unthrottled**
+slow low-priority queue back-pressures the feeder. Throttle bulk queues (MailManager's `mail-bulk` is).
+The feeder needs the index, which `AddMessaging()` deploys; without it the feeder logs one warning and
+serves each batch alone, priority first within it (M16's window). The measured figures are in the #460 PRD (§4.1, M16b).
+
+`SubscriptionPerQueue` mode is unaffected: each queue has its own subscription, delivered one message
+at a time, and nothing is shared to prioritise. The index is deployed in both modes; only the single
+feeder reads it.
+
+### Inside a handler: `IMessageContext` and `IMessageProgress`
+
+Both are scoped services a recipient can inject.
+
+- `IMessageContext` — `MessageId` (stable across retries; use it as an idempotency key, a mail
+  `Message-ID`, a VERP token), `QueueName`, `AttemptCount`, `ExpiresAtUtc`.
+- `IMessageProgress` — `IsDoneAsync(step)` / `MarkDoneAsync(step)` for handlers that do several
+  externally visible things, so a retry skips the ones that already happened. Progress lives in a
+  sidecar document `{messageId}/progress/{handlerIndex}` (collection `SparkMessageProgresses`),
+  appended by patch, never on the message itself, and gets the same `@expires` as its message when
+  the message becomes terminal. Mark a step *after* its effect: a crash in between repeats that one
+  step.
+
+```csharp
+public partial class SendCampaignRecipient : IRecipient<Campaign>
+{
+    [Inject] private readonly IMessageProgress progress;
+    [Inject] private readonly ICampaignMailer mailer;   // your own sender
+
+    public async Task HandleAsync(Campaign campaign, CancellationToken ct)
+    {
+        foreach (var address in campaign.Recipients)
+        {
+            if (await progress.IsDoneAsync(address, ct)) continue;
+            await mailer.SendAsync(address, ct);
+            await progress.MarkDoneAsync(address, ct);
+        }
+    }
+}
+```
+
+### Dead-letter reasons
+
+A dead-lettered message carries `DeadLetterReason`: `MaxAttempts` (a handler failed `MaxAttempts`
+times), `NonRetryable` (`NonRetryableException`, or an unusable message — type outside the
+allow-list, unresolvable, empty payload) or `Expired` (`ExpiresAtUtc` passed, or the next retry or
+throttle slot would have fallen after it). The status stays `DeadLettered`; there is no new status.
 
 ## RavenDB Document Model
 
@@ -336,6 +526,15 @@ Messages are stored as `SparkMessage` documents in the `SparkMessages` collectio
 | `Handlers` | `HandlerExecution[]` | Per-handler execution state (see below) |
 | `WakeUp` | `bool` | Redelivery gate: set by the sweeper when the message is due, cleared by the worker on pickup |
 | `LastWakeUpUtc` | `DateTime?` | When the sweeper last woke this message (informational) |
+| `ExpiresAtUtc` | `DateTime?` | Publish-time deadline (`BroadcastOptions.ExpiresAtUtc`) |
+| `DeadLetterReason` | `EDeadLetterReason?` | `MaxAttempts`, `NonRetryable` or `Expired`; set only with `DeadLettered` |
+| `ScrubPayloadOnTerminal` | `bool` | Clear `PayloadJson` once terminal |
+| `Priority` | `int` | The queue's `SparkQueuePriority` at publish (`-1` Low, `0` Normal, `1` High); the single feeder's sort key |
+| `QueuedAtUtc` | `DateTime?` | The server's `@last-modified` when the message became claimable, captured on the feeder's first write; its FIFO place within a priority |
+
+Two static indexes cover the collection: `SparkMessages_ByQueue` (the sweeper's due and abandoned
+messages) and `SparkMessages_ByPriority` (only the claimable-now messages, sorted
+`Priority desc, Sequence asc`, read by the single feeder).
 
 Each entry in the `Handlers` array tracks an individual recipient:
 
@@ -383,7 +582,10 @@ You can query message status directly in RavenDB Studio for observability. Compl
 
 | Type | Description |
 |------|-------------|
-| `IMessageBus` | `BroadcastAsync<T>()`, `DelayBroadcastAsync<T>()` |
+| `IMessageBus` | `BroadcastAsync<T>(message, BroadcastOptions)`; shorthands `BroadcastAsync<T>()`, `DelayBroadcastAsync<T>()`, `BroadcastOnceAsync<T>()` (default interface methods — a fake implements only the options overload) |
+| `BroadcastOptions` | `DeduplicationKey`, `Delay`, `MaxAttempts`, `ExpiresAtUtc`, `Queue`, `ScrubPayloadOnTerminal` |
+| `IMessageContext` | The message the current handler runs for (`MessageId`, `QueueName`, `AttemptCount`, `ExpiresAtUtc`) |
+| `IMessageProgress` | `IsDoneAsync(step)` / `MarkDoneAsync(step)` — per-handler progress sidecar |
 | `IRecipient<TMessage>` | `HandleAsync(TMessage, CancellationToken)` |
 | `ICheckpointRecipient<TMessage>` | Extends `IRecipient<T>` with `HandleAsync(TMessage, string checkpoint, CancellationToken)` for resume-from-checkpoint |
 | `IMessageCheckpoint` | `SaveAsync(string)` -- saves progress during handler execution |

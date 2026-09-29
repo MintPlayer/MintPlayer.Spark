@@ -204,8 +204,9 @@ public interface IPersistentObjectActions<T> where T : class
 
     /// <summary>
     /// Called when a query of this type is about to run, before its source is built and before any
-    /// row exists. Use it to withhold custom actions from the result's action bar —
-    /// <see cref="Queries.SparkQueryContext.DisableActions(string[])"/>.
+    /// row exists. What remains for it is raising a retry prompt; withholding actions moved to
+    /// <see cref="OnDisableActionsAsync(Abstractions.IDisablable, DisableActionsContext)"/> (#460, D13),
+    /// which is also enforced at submit.
     /// <para>
     /// <b>Do not filter rows here.</b> There is nothing in scope to filter: the hook runs before the
     /// queryable is built, deliberately, so that "scope the rows here" cannot be expressed at all.
@@ -231,4 +232,41 @@ public interface IPersistentObjectActions<T> where T : class
     /// called rather than dispatching here.
     /// </remarks>
     Task OnQueryAsync(Queries.SparkQueryContext context) => Task.CompletedTask;
+
+    /// <summary>
+    /// The single source of truth for which actions are disabled (#460, D13). Withhold actions on
+    /// <paramref name="target"/> with <see cref="Abstractions.IDisablable.DisableActions"/>.
+    /// <para>
+    /// The framework calls this <b>at load</b> — a detail page (<paramref name="context"/> target kind
+    /// <see cref="DisableActionsTargetKind.PersistentObject"/>) and a query execution
+    /// (<see cref="DisableActionsTargetKind.Query"/>) — and returns the answer as
+    /// <c>DisabledActions</c>; and again <b>at submit</b>, for every action: an update
+    /// (<c>Edit</c>), a delete, a create (<c>New</c>), and a custom action — for which it evaluates
+    /// the object the action runs on, the query it was invoked from and each selected row, and takes
+    /// the union. A disabled action is refused with <c>403</c> naming the action, and only after the
+    /// row gate passed: a row the caller may not see is still a <c>404</c>.
+    /// </para>
+    /// <para>
+    /// The answer must depend only on the entity, the user and stored state — see
+    /// <see cref="DisableActionsContext"/>. Not asked at submit in the system context (module
+    /// sync, background work), where no user is submitting anything.
+    /// </para>
+    /// </summary>
+    /// <remarks>
+    /// A default implementation, so hand-written implementers of this interface keep compiling. The
+    /// framework calls the batched form below, whose default calls this once per target.
+    /// </remarks>
+    Task OnDisableActionsAsync(Abstractions.IDisablable target, DisableActionsContext context) => Task.CompletedTask;
+
+    /// <summary>
+    /// The batched form of <see cref="OnDisableActionsAsync(Abstractions.IDisablable, DisableActionsContext)"/>:
+    /// every target the framework evaluates for one request, in one call — the object a custom action
+    /// runs on, its query and every selected row. Override it to answer a large selection with one
+    /// round-trip instead of one per row; the default calls the single form once per item, in order.
+    /// </summary>
+    async Task OnDisableActionsAsync(IReadOnlyList<DisableActionsItem> items)
+    {
+        foreach (var item in items)
+            await OnDisableActionsAsync(item.Target, item.Context);
+    }
 }

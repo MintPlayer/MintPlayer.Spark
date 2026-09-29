@@ -1,9 +1,9 @@
 using System.Text.RegularExpressions;
 using Fleet;
-using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Server.Kestrel.Https;
 using MintPlayer.Spark;
 using MintPlayer.Spark.Extensions;
+using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Controllers;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Replication.Authentication;
@@ -12,13 +12,6 @@ using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
-
-builder.Services.Configure<ForwardedHeadersOptions>(options =>
-{
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
-    options.KnownNetworks.Clear();
-    options.KnownProxies.Clear();
-});
 
 // Fleet owns data other modules replicate, so it has to be able to recognise them. Asking for a
 // client certificate is not the same as requiring one: AllowCertificate keeps every ordinary
@@ -70,6 +63,10 @@ builder.Services.AddSparkFull(builder.Configuration, options =>
 
     options.Configure = spark =>
     {
+        // #460 D6: registration needs somewhere to send account mail. Demo app: every mail is written
+        // as an .eml file into Spark:Mail:PickupFolder (appsettings.json) instead of being sent.
+        spark.AddMailManager();
+
         // Mounted through Spark rather than with endpoints.MapControllers(), so the controllers
         // share Spark's pipeline — its authentication schemes, its antiforgery scope, and
         // [SparkAuthorize]. A bare MapControllers() is reported by SPARK010.
@@ -152,8 +149,6 @@ if (builder.VerifySparkSecurityIfRequested(args))
     return;
 
 var app = builder.Build();
-
-app.UseForwardedHeaders();
 
 // Deployments that terminate TLS at a proxy — and the E2E host, whose issuer must be reachable
 // over plain http so the JWT handler can fetch discovery from itself without a trusted certificate

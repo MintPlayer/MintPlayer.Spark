@@ -353,6 +353,26 @@ describe('SparkQueryListComponent', () => {
       expect(c.canCreate()).toBe(false);
     });
 
+    it('the recycle bin (?deleted=only) renders none of New, Delete or the custom actions (#460)', async () => {
+      const actions = [
+        { name: 'New', displayName: { en: 'New' }, showedOn: 'both', offset: 0, isDefault: true },
+        { name: 'Delete', displayName: { en: 'Delete' }, showedOn: 'both', selectionRule: '>0', offset: 0, isDefault: true },
+        { name: 'Archive', displayName: { en: 'Archive' }, showedOn: 'query', selectionRule: '>0', offset: 0 },
+      ];
+      const shown = () => [...harness.fixture.nativeElement.querySelectorAll('.spark-actionbar [data-action]')]
+        .map((b: Element) => b.getAttribute('data-action'));
+      const { harness } = await setup({
+        getCustomActions: vi.fn().mockResolvedValue(actions),
+        getQuery: vi.fn().mockResolvedValue({ ...allPeopleQuery, selectionMode: 'multiple' }),
+      });
+
+      await navigate(harness, '/query/q-all');
+      expect(new Set(shown())).toEqual(new Set(['New', 'Delete', 'Archive']));
+
+      await navigate(harness, '/query/q-all?deleted=only');
+      expect(shown()).toEqual([]);
+    });
+
     it('shows the caption from the resolved query', async () => {
       const { harness } = await setup({
         getQuery: vi.fn().mockResolvedValue({ ...allPeopleQuery, description: { en: 'Everyone' } }),

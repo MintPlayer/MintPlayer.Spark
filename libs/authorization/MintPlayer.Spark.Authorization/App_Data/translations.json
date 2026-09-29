@@ -106,9 +106,9 @@
       "nl": "Wachtwoord resetten mislukt. De link is mogelijk verlopen."
     },
     "invalidCredentials": {
-      "en": "Invalid email or password.",
-      "fr": "E-mail ou mot de passe invalide.",
-      "nl": "Ongeldig e-mailadres of wachtwoord."
+      "en": "Invalid email/user name or password.",
+      "fr": "E-mail/nom d'utilisateur ou mot de passe invalide.",
+      "nl": "Ongeldig e-mailadres/gebruikersnaam of wachtwoord."
     },
     "invalidEmail": {
       "en": "Please enter a valid email address.",
@@ -294,6 +294,342 @@
       "en": "This account is temporarily locked. Please try again later.",
       "fr": "Ce compte est temporairement verrouillé. Veuillez réessayer plus tard.",
       "nl": "Dit account is tijdelijk vergrendeld. Probeer het later opnieuw."
+    },
+    "emailOrUserName": {
+      "en": "Email or user name",
+      "fr": "E-mail ou nom d'utilisateur",
+      "nl": "E-mail of gebruikersnaam"
+    },
+    "userName": {
+      "en": "User name",
+      "fr": "Nom d'utilisateur",
+      "nl": "Gebruikersnaam"
+    },
+    "continue": {
+      "en": "Continue",
+      "fr": "Continuer",
+      "nl": "Doorgaan"
+    },
+    "confirmEmailTitle": {
+      "en": "Confirm email address",
+      "fr": "Confirmer l'adresse e-mail",
+      "nl": "E-mailadres bevestigen"
+    },
+    "emailConfirmed": {
+      "en": "Your email address is confirmed.",
+      "fr": "Votre adresse e-mail est confirmée.",
+      "nl": "Uw e-mailadres is bevestigd."
+    },
+    "emailChanged": {
+      "en": "Your email address was changed.",
+      "fr": "Votre adresse e-mail a été modifiée.",
+      "nl": "Uw e-mailadres is gewijzigd."
+    },
+    "invalidConfirmLink": {
+      "en": "This confirmation link is invalid or has expired.",
+      "fr": "Ce lien de confirmation est invalide ou a expiré.",
+      "nl": "Deze bevestigingslink is ongeldig of verlopen."
+    },
+    "accountTitle": {
+      "en": "My account",
+      "fr": "Mon compte",
+      "nl": "Mijn account"
+    },
+    "profileTitle": {
+      "en": "Profile",
+      "fr": "Profil",
+      "nl": "Profiel"
+    },
+    "profileSaved": {
+      "en": "Your profile was saved.",
+      "fr": "Votre profil a été enregistré.",
+      "nl": "Uw profiel is opgeslagen."
+    },
+    "saveProfile": {
+      "en": "Save",
+      "fr": "Enregistrer",
+      "nl": "Opslaan"
+    },
+    "preferredCulture": {
+      "en": "Language for emails",
+      "fr": "Langue des e-mails",
+      "nl": "Taal van e-mails"
+    },
+    "preferredCultureDefault": {
+      "en": "Default",
+      "fr": "Par défaut",
+      "nl": "Standaard"
+    },
+    "preferredCultureHint": {
+      "en": "The language of the emails this application sends you.",
+      "fr": "La langue des e-mails que cette application vous envoie.",
+      "nl": "De taal van de e-mails die deze toepassing u stuurt."
+    },
+    "newEmail": {
+      "en": "New email address",
+      "fr": "Nouvelle adresse e-mail",
+      "nl": "Nieuw e-mailadres"
+    },
+    "changeEmail": {
+      "en": "Change email",
+      "fr": "Modifier l'e-mail",
+      "nl": "E-mail wijzigen"
+    },
+    "emailChangeSent": {
+      "en": "We sent a confirmation link to the new address. The change takes effect once you open it.",
+      "fr": "Nous avons envoyé un lien de confirmation à la nouvelle adresse. La modification prend effet dès que vous l'ouvrez.",
+      "nl": "We hebben een bevestigingslink naar het nieuwe adres gestuurd. De wijziging gaat in zodra u die opent."
+    },
+    "emailNotConfirmed": {
+      "en": "(not confirmed)",
+      "fr": "(non confirmée)",
+      "nl": "(niet bevestigd)"
+    },
+    "changePasswordTitle": {
+      "en": "Password",
+      "fr": "Mot de passe",
+      "nl": "Wachtwoord"
+    },
+    "currentPassword": {
+      "en": "Current password",
+      "fr": "Mot de passe actuel",
+      "nl": "Huidig wachtwoord"
+    },
+    "currentPasswordHint": {
+      "en": "Leave empty if your account has no password yet.",
+      "fr": "Laissez vide si votre compte n'a pas encore de mot de passe.",
+      "nl": "Laat leeg als uw account nog geen wachtwoord heeft."
+    },
+    "savePassword": {
+      "en": "Save password",
+      "fr": "Enregistrer le mot de passe",
+      "nl": "Wachtwoord opslaan"
+    },
+    "passwordChanged": {
+      "en": "Your password was saved.",
+      "fr": "Votre mot de passe a été enregistré.",
+      "nl": "Uw wachtwoord is opgeslagen."
+    },
+    "newPasswordRequired": {
+      "en": "Enter a new password.",
+      "fr": "Saisissez un nouveau mot de passe.",
+      "nl": "Voer een nieuw wachtwoord in."
+    },
+    "twoFactorSetupTitle": {
+      "en": "Two-factor authentication",
+      "fr": "Authentification à deux facteurs",
+      "nl": "Tweestapsverificatie"
+    },
+    "twoFactorSetupIntro": {
+      "en": "Scan the code with an authenticator app, then enter the code it shows.",
+      "fr": "Scannez le code avec une application d'authentification, puis saisissez le code affiché.",
+      "nl": "Scan de code met een authenticator-app en voer daarna de getoonde code in."
+    },
+    "qrCodeAlt": {
+      "en": "QR code for your authenticator app",
+      "fr": "Code QR pour votre application d'authentification",
+      "nl": "QR-code voor uw authenticator-app"
+    },
+    "manualKey": {
+      "en": "Or enter this key manually:",
+      "fr": "Ou saisissez cette clé manuellement :",
+      "nl": "Of voer deze sleutel handmatig in:"
+    },
+    "enableTwoFactor": {
+      "en": "Enable",
+      "fr": "Activer",
+      "nl": "Inschakelen"
+    },
+    "twoFactorEnabled": {
+      "en": "Two-factor authentication is on.",
+      "fr": "L'authentification à deux facteurs est activée.",
+      "nl": "Tweestapsverificatie staat aan."
+    },
+    "recoveryCodesLeft": {
+      "en": "Recovery codes left",
+      "fr": "Codes de récupération restants",
+      "nl": "Resterende herstelcodes"
+    },
+    "recoveryCodesShownOnce": {
+      "en": "Save these recovery codes somewhere safe. They are shown only once.",
+      "fr": "Conservez ces codes de récupération en lieu sûr. Ils ne sont affichés qu'une fois.",
+      "nl": "Bewaar deze herstelcodes op een veilige plek. Ze worden maar één keer getoond."
+    },
+    "newRecoveryCodes": {
+      "en": "Generate new recovery codes",
+      "fr": "Générer de nouveaux codes de récupération",
+      "nl": "Nieuwe herstelcodes genereren"
+    },
+    "forgetBrowser": {
+      "en": "Forget this browser",
+      "fr": "Oublier ce navigateur",
+      "nl": "Deze browser vergeten"
+    },
+    "resetAuthenticator": {
+      "en": "Reset authenticator key",
+      "fr": "Réinitialiser la clé d'authentification",
+      "nl": "Authenticator-sleutel opnieuw instellen"
+    },
+    "disableTwoFactor": {
+      "en": "Disable",
+      "fr": "Désactiver",
+      "nl": "Uitschakelen"
+    },
+    "confirmDisableTwoFactor": {
+      "en": "Disable two-factor authentication?",
+      "fr": "Désactiver l'authentification à deux facteurs ?",
+      "nl": "Tweestapsverificatie uitschakelen?"
+    },
+    "confirmResetAuthenticator": {
+      "en": "Reset the authenticator key? Two-factor authentication stays off until you enroll again.",
+      "fr": "Réinitialiser la clé ? L'authentification à deux facteurs reste désactivée jusqu'à une nouvelle inscription.",
+      "nl": "De sleutel opnieuw instellen? Tweestapsverificatie blijft uit tot u opnieuw registreert."
+    },
+    "externalLoginsTitle": {
+      "en": "Connected logins",
+      "fr": "Connexions liées",
+      "nl": "Gekoppelde aanmeldingen"
+    },
+    "externalLoginsUnavailable": {
+      "en": "Connected logins are not available in this application.",
+      "fr": "Les connexions liées ne sont pas disponibles dans cette application.",
+      "nl": "Gekoppelde aanmeldingen zijn niet beschikbaar in deze toepassing."
+    },
+    "noLinkedLogins": {
+      "en": "No logins are connected.",
+      "fr": "Aucune connexion liée.",
+      "nl": "Er zijn geen aanmeldingen gekoppeld."
+    },
+    "addLogin": {
+      "en": "Connect another login",
+      "fr": "Lier une autre connexion",
+      "nl": "Een andere aanmelding koppelen"
+    },
+    "removeLogin": {
+      "en": "Remove",
+      "fr": "Supprimer",
+      "nl": "Verwijderen"
+    },
+    "lastCredentialHint": {
+      "en": "This is your only way to sign in.",
+      "fr": "Ceci est votre seul moyen de connexion.",
+      "nl": "Dit is uw enige manier om aan te melden."
+    },
+    "personalDataTitle": {
+      "en": "Personal data",
+      "fr": "Données personnelles",
+      "nl": "Persoonsgegevens"
+    },
+    "personalDataDescription": {
+      "en": "Download a copy of the data this application holds about you.",
+      "fr": "Téléchargez une copie des données que cette application détient sur vous.",
+      "nl": "Download een kopie van de gegevens die deze toepassing over u bewaart."
+    },
+    "downloadPersonalData": {
+      "en": "Download my data",
+      "fr": "Télécharger mes données",
+      "nl": "Mijn gegevens downloaden"
+    },
+    "deleteAccountTitle": {
+      "en": "Delete account",
+      "fr": "Supprimer le compte",
+      "nl": "Account verwijderen"
+    },
+    "deleteAccountDescription": {
+      "en": "Deleting your account cannot be undone.",
+      "fr": "La suppression de votre compte est irréversible.",
+      "nl": "Het verwijderen van uw account kan niet ongedaan worden gemaakt."
+    },
+    "deletePasswordHint": {
+      "en": "Without a password, you must have signed in during the last few minutes.",
+      "fr": "Sans mot de passe, vous devez vous être connecté au cours des dernières minutes.",
+      "nl": "Zonder wachtwoord moet u zich de afgelopen minuten hebben aangemeld."
+    },
+    "deleteRecentSignIn": {
+      "en": "Your account has no password, so it can be deleted only within a few minutes of signing in. If you signed in longer ago, sign out and sign in again first.",
+      "fr": "Votre compte n'a pas de mot de passe : il ne peut être supprimé que dans les minutes qui suivent la connexion. Si vous vous êtes connecté il y a plus longtemps, déconnectez-vous puis reconnectez-vous d'abord.",
+      "nl": "Uw account heeft geen wachtwoord en kan daarom alleen binnen enkele minuten na het aanmelden worden verwijderd. Hebt u zich langer geleden aangemeld, meld u dan eerst af en opnieuw aan."
+    },
+    "deleteAccountConfirm": {
+      "en": "I understand that my account will be deleted permanently.",
+      "fr": "Je comprends que mon compte sera supprimé définitivement.",
+      "nl": "Ik begrijp dat mijn account definitief wordt verwijderd."
+    },
+    "deleteAccount": {
+      "en": "Delete my account",
+      "fr": "Supprimer mon compte",
+      "nl": "Mijn account verwijderen"
+    },
+    "accountFailed": {
+      "en": "That did not work. Please try again.",
+      "fr": "Cela n'a pas fonctionné. Veuillez réessayer.",
+      "nl": "Dat is niet gelukt. Probeer het opnieuw."
+    },
+    "accountUnavailable": {
+      "en": "This is not available for your account.",
+      "fr": "Ceci n'est pas disponible pour votre compte.",
+      "nl": "Dit is niet beschikbaar voor uw account."
+    },
+    "accountError": {
+      "reauthentication_required": {
+        "en": "Enter your password, or sign in again and retry within 5 minutes.",
+        "fr": "Saisissez votre mot de passe, ou reconnectez-vous et réessayez dans les 5 minutes.",
+        "nl": "Voer uw wachtwoord in, of meld u opnieuw aan en probeer het binnen 5 minuten opnieuw."
+      },
+      "deletion_failed": {
+        "en": "The account could not be deleted. Nothing was removed; please try again.",
+        "fr": "Le compte n'a pas pu être supprimé. Rien n'a été effacé ; veuillez réessayer.",
+        "nl": "Het account kon niet worden verwijderd. Er is niets gewist; probeer het opnieuw."
+      },
+      "no_authenticator_key": {
+        "en": "No authenticator key exists yet.",
+        "fr": "Aucune clé d'authentification n'existe encore.",
+        "nl": "Er bestaat nog geen authenticator-sleutel."
+      },
+      "invalid_request": {
+        "en": "The request was not valid.",
+        "fr": "La demande n'était pas valide.",
+        "nl": "Het verzoek was niet geldig."
+      }
+    },
+    "externalLoginError": {
+      "login_already_associated": {
+        "en": "That login is already connected to another account.",
+        "fr": "Cette connexion est déjà liée à un autre compte.",
+        "nl": "Die aanmelding is al aan een ander account gekoppeld."
+      },
+      "link_failed": {
+        "en": "The login could not be connected.",
+        "fr": "La connexion n'a pas pu être liée.",
+        "nl": "De aanmelding kon niet worden gekoppeld."
+      },
+      "popup_blocked": {
+        "en": "The browser blocked the sign-in window.",
+        "fr": "Le navigateur a bloqué la fenêtre de connexion.",
+        "nl": "De browser heeft het aanmeldvenster geblokkeerd."
+      },
+      "no_login_info": {
+        "en": "The provider did not return a login.",
+        "fr": "Le fournisseur n'a pas renvoyé de connexion.",
+        "nl": "De provider gaf geen aanmelding terug."
+      }
+    },
+    "unlinkError": {
+      "last_credential": {
+        "en": "This is your only way to sign in, so it cannot be removed.",
+        "fr": "Ceci est votre seul moyen de connexion ; il ne peut pas être supprimé.",
+        "nl": "Dit is uw enige manier om aan te melden en kan dus niet worden verwijderd."
+      },
+      "login_not_found": {
+        "en": "That login is not connected to your account.",
+        "fr": "Cette connexion n'est pas liée à votre compte.",
+        "nl": "Die aanmelding is niet aan uw account gekoppeld."
+      },
+      "unlink_failed": {
+        "en": "The login could not be removed.",
+        "fr": "La connexion n'a pas pu être supprimée.",
+        "nl": "De aanmelding kon niet worden verwijderd."
+      }
     }
   }
 }

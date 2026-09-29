@@ -16,9 +16,8 @@ namespace MintPlayer.Spark.Queries;
 /// create, streaming and breadcrumb loads) from one expression, so they cannot drift apart.
 /// </para>
 /// <para>
-/// What this hook <i>is</i> for is the per-result answer the action catalogue cannot give:
-/// <c>GET /spark/actions/{objectTypeId}</c> is type-level and is never told what an execution
-/// returned, so an action that applies to only some results can only be withheld here.
+/// Nor is it where actions are withheld any more (#460, D13): that is <c>OnDisableActionsAsync</c>
+/// with a query target, which the framework also consults when an action is submitted.
 /// </para>
 /// <para>
 /// It is deliberately a context object rather than the <see cref="SparkQuery"/> itself.
@@ -41,31 +40,7 @@ public sealed class SparkQueryContext
     /// <summary>The entity type name of the parent, null for a top-level query.</summary>
     public string? ParentType { get; init; }
 
-    private List<string>? _disabledActions;
-
-    /// <summary>Actions withheld for this result. Null when none were.</summary>
-    public IReadOnlyList<string>? DisabledActions => _disabledActions;
-
-    /// <summary>
-    /// Withholds one or more custom actions from this query's action bar. Additive and
-    /// idempotent, so separate concerns can each withhold what they own without coordinating.
-    /// </summary>
-    /// <remarks>
-    /// An affordance, not a permission. The action endpoint stays reachable and the action's own
-    /// handler must still refuse — this stops an action being <em>offered</em> where it cannot
-    /// apply.
-    /// </remarks>
-    public void DisableActions(params string[] actionNames)
-    {
-        if (actionNames is null || actionNames.Length == 0)
-            return;
-
-        _disabledActions ??= [];
-
-        foreach (var name in actionNames)
-        {
-            if (!string.IsNullOrWhiteSpace(name) && !_disabledActions.Contains(name, StringComparer.OrdinalIgnoreCase))
-                _disabledActions.Add(name);
-        }
-    }
+    // DisableActions / DisabledActions are deleted (#460, D13). Withholding an action is
+    // OnDisableActionsAsync's job now, with a Query target, because that hook is also asked when an
+    // action is submitted — an answer given only here could never be enforced.
 }

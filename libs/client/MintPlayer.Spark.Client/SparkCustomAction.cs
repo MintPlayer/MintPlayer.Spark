@@ -42,4 +42,12 @@ public sealed class SparkCustomAction
 
     /// <summary>Display order, lowest first. The endpoint already returns the list sorted by it.</summary>
     public int Offset { get; init; }
+
+    /// <summary>
+    /// True for the framework's built-in <c>New</c> and <c>Delete</c> (#460, D18), which run through
+    /// <see cref="SparkClient.NewPersistentObjectAsync(string,string?,string?,string?,IReadOnlyDictionary{string,string}?,CancellationToken,SparkRetryHandler?,SparkOperationHandler?)"/>
+    /// and <see cref="SparkClient.DeletePersistentObjectsAsync"/> rather than
+    /// <see cref="SparkClient.ExecuteActionAsync"/>.
+    /// </summary>
+    public bool IsDefault { get; init; }
 }

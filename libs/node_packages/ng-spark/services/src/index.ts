@@ -5,3 +5,4 @@ export * from './spark.service';
 export * from './spark-icon-registry';
 export * from './spark-query-actions.service';
 export * from './spark-timezone.interceptor';
+export * from './spark-return-navigation.service';

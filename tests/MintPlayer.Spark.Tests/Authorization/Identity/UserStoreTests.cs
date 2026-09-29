@@ -14,7 +14,12 @@ namespace MintPlayer.Spark.Tests.Authorization.Identity;
 /// </summary>
 public class UserStoreTests : SparkTestDriver
 {
-    private UserStore<SparkUser> CreateStore() => new(Store);
+    // #460 D5: the store protects the authenticator key and tokens, so it needs a key ring. One
+    // ephemeral ring per test class instance, shared by every store the test creates.
+    private readonly Microsoft.AspNetCore.DataProtection.IDataProtectionProvider dataProtection =
+        new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider();
+
+    private UserStore<SparkUser> CreateStore() => new(Store, dataProtection);
 
     private static SparkUser NewUser(string? userName = "alice", string? email = null)
     {

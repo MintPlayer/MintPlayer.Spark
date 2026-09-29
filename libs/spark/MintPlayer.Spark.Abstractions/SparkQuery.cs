@@ -83,6 +83,20 @@ public sealed class SparkQuery
     public bool IsStreamingQuery { get; set; }
 
     /// <summary>
+    /// Whether the grid offers row selection (#460, D17). Null — the default, and what an omitted
+    /// field means — is <see cref="SparkSelectionMode.Auto"/>: derived from the actions offered. A
+    /// sub-query entry may override it for one parent (<see cref="SparkSubQuery.SelectionMode"/>).
+    /// </summary>
+    public SparkSelectionMode? SelectionMode { get; set; }
+
+    /// <summary>
+    /// For a query used as a sub-query: the attribute of its row type that points at the parent, which
+    /// the base <c>OnNewAsync</c> fills when New is started from the sub-query (#460, D19). Needed only
+    /// when the row type references the parent's type more than once. Validated at startup.
+    /// </summary>
+    public string? ParentReference { get; set; }
+
+    /// <summary>
     /// A copy of this query with different sort columns, for per-request sort overrides.
     /// </summary>
     /// <remarks>

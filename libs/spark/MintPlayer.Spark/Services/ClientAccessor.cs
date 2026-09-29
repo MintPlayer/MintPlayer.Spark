@@ -78,34 +78,6 @@ internal sealed partial class ClientAccessor : IClientAccessor
     public void RefreshQuery(string queryId)
         => _operations.Add(new RefreshQueryOperation { QueryId = queryId });
 
-    // --- DisableAction overloads ---------------------------------------
-
-    public void DisableActionsOn(PersistentObject po, params string[] actionNames)
-    {
-        ArgumentNullException.ThrowIfNull(po);
-        if (string.IsNullOrEmpty(po.Id))
-            throw new InvalidOperationException(
-                "Cannot DisableActionsOn a PersistentObject without an Id.");
-        AddDisableForEach(actionNames, new PersistentObjectDisableTarget { ObjectTypeId = po.ObjectTypeId, Id = po.Id });
-    }
-
-    public void DisableActionsOn(Guid objectTypeId, string id, params string[] actionNames)
-        => AddDisableForEach(actionNames, new PersistentObjectDisableTarget { ObjectTypeId = objectTypeId, Id = id });
-
-    public void DisableQueryActions(string queryId, params string[] actionNames)
-        => AddDisableForEach(actionNames, new QueryDisableTarget { QueryId = queryId });
-
-    public void DisableActions(params string[] actionNames)
-        => AddDisableForEach(actionNames, new CurrentResponseDisableTarget());
-
-    public void DisableActionsForSession(params string[] actionNames)
-        => AddDisableForEach(actionNames, new SessionDisableTarget());
-
-    private void AddDisableForEach(string[] actionNames, DisableTarget target)
-    {
-        foreach (var name in actionNames)
-            _operations.Add(new DisableActionOperation { ActionName = name, Target = target });
-    }
 
     // --- Framework-internal: retry push --------------------------------
 

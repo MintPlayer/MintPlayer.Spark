@@ -17,30 +17,67 @@ rather than a measurement, it says so.
 
 | | |
 |---|---|
-| **Spark ships** | the contract (`ISparkLinkConfirmationSender<TUser>`) and the message text (`SparkLinkConfirmationMessage`) |
-| **Spark does not ship** | any transport, on purpose — see §1 |
-| **The app ships** | an implementation that hands the message to a local relay |
+| **Spark ships** | `MintPlayer.Spark.MailManager` (#460 M8): templates, queueing, SMTP / Mailpit / pickup / custom transports, suppression, bounces — all configured under `Spark:Mail` |
+| **Spark does not ship** | a default transport: with MailManager added and none configured, startup refuses — see §1 |
+| **The app ships** | its `Spark:Mail` settings and, if it wants, its own `Templates/Mail/*.mjml` |
 | **The relay ships** | queueing, retry, DKIM signing and delivery |
 
-⚠️ **The app does not talk to the internet.** It hands the message to a relay container one hop
-away and returns. This is not tidiness: the send happens *inside the external-login callback*,
-while somebody is waiting on an HTTP response. A local handoff takes milliseconds and succeeds
-whether or not the receiving mail server is reachable; a direct connection to a remote SMTP server
-would put an internet round-trip, and its timeouts, in the middle of a sign-in.
+⚠️ **The app does not talk to the internet.** A mail is queued on a Spark Messaging lane and a worker
+hands it to a relay container one hop away. The request that caused it (a sign-up, a password reset,
+an external-login callback) never waits on SMTP at all, and a relay outage delays mail instead of
+failing requests: the `mail-transactional` lane retries for about four hours, and a mail whose token
+would be dead by then expires instead of arriving late.
 
 ---
 
-## 1. Why Spark registers no default transport
+## 1. Why there is no silent default transport
 
 ASP.NET Identity `TryAdd`s a no-op `IEmailSender`, so an application with no mail configured still
 *resolves* one and every message is silently discarded. Absence is invisible; the only way to
 detect it is to recognise an internal type by name, which fails **open** the day that type is
 renamed.
 
-Spark ships no default for its own contract precisely so the guard can be a plain null check. The
-consequence you will meet: configuring `SparkExternalLoginLinking.ConfirmByEmail` **without**
-registering a sender is refused at startup, because a confirmation nobody sends is a link nobody
-makes — and the symptom would otherwise be a sign-in that appears to do nothing at all.
+Spark therefore refuses the configurations whose mail would go nowhere, at startup:
+
+- `spark.AddMailManager()` with no registered transport and neither `Spark:Mail:Smtp:Host` nor
+  `Spark:Mail:PickupFolder`, or with no `Spark:Mail:From:Address`.
+- `SparkExternalLoginLinking.ConfirmByEmail` without a link-confirmation sender (MailManager registers
+  one; without MailManager there is none): a confirmation nobody sends is a link nobody makes.
+- A registration surface (`LocalCredentials = Full`) whose account mail goes to Identity's no-op
+  (#460, D6): nobody who registers would ever get a confirmation or reset link. Opt out with
+  `Spark:Auth:AllowUnconfirmedRegistration=true`.
+
+A development or demo app that should not send real mail uses the pickup folder
+(`Spark:Mail:PickupFolder`), which writes every mail as an `.eml` file — HR and Fleet do. A staging or
+test deployment that must send through the real relay but never reach real users sets
+`Spark:Mail:Development:RedirectTo`: every mail goes to that one address (the original recipient in
+`X-Spark-Original-To`), with a warning per mail outside Development. Startup **refuses** it in the
+Production environment (`IHostEnvironment.IsProduction()`), where it would divert every user's mail.
+
+The transport is registered explicitly — `UseSmtpTransport()`, `UseMailpitTransport()`,
+`UsePickupFolderTransport()` or `AddMailTransport<T>()` after `spark.AddMailManager()` — or, with none
+registered, picked from the configuration as above (`Smtp:Host`, else `PickupFolder`). Two
+registrations refuse startup. Each transport states whether it `DeliversToRealRecipients`: SMTP does
+(unless its host is loopback), Mailpit and the pickup folder do not, a custom transport does unless it
+says otherwise.
+
+Development **fails closed**: in the Development environment a transport that delivers to real
+recipients refuses startup unless `Spark:Mail:Development:RedirectTo` is set (put it in user secrets:
+`dotnet user-secrets set "Spark:Mail:Development:RedirectTo" "you@example.com"`). To see the mail
+instead, run Mailpit — `docker run -d --name mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit` — and
+register `spark.AddMailManager().UseMailpitTransport()` (`localhost:1025`, no TLS, no auth; override
+with `Spark:Mail:Mailpit:{Host,Port,Tags}`). It sends real SMTP, so Mailpit shows the exact MIME, and
+tags each mail with its template and lane (`X-Tags`); the UI is at http://localhost:8025. Mailpit, the
+pickup folder and loopback SMTP need no redirect.
+
+Or let the app start Mailpit: `Spark:Mail:Mailpit:AutoStart=true` (Development only; ignored
+elsewhere). `Mode=Binary` (default) runs an installed `mailpit` — never downloaded; install it with
+`winget install axllent.mailpit` or `scoop install mailpit` — and `Mode=Docker` runs the pinned
+`axllent/mailpit:v1.31.3` image as container `spark-mailpit`. It never blocks startup, reuses whatever
+already listens on the SMTP port or an existing container of that name, and at shutdown stops only
+what it started. On Windows the binary is tied to the host with a kill-on-close Job Object, so it dies
+even when the host crashes; on Linux and macOS a leftover from a crash is adopted by the next run. The
+MailManager README lists every option.
 
 ---
 
@@ -116,14 +153,29 @@ coverage                    TXT   v=spf1 ip4:188.245.190.60 ip6:2a01:4f8:c0c:f87
 mail._domainkey.coverage    TXT   v=DKIM1;k=rsa;p=<public key>
 ```
 
-⚠️ **List both address families in SPF if your host has an AAAA.** Otherwise Postfix may send over
-IPv6 and fail SPF there while passing over IPv4 — an intermittent failure that depends on which
-family the *recipient* publishes.
+(The example is CodeCoverage's record as published. Its `ip6:` entry is the one mistake described
+next: it names the AAAA's address, not the one the host sends from.)
 
-⚠️ **And prefer IPv4 anyway.** The large receivers hold IPv6 senders to a stricter standard,
-chiefly a valid PTR for the v6 address, which cloud providers set per address and which is usually
-unconfigured. Pin `smtp_address_preference = ipv4`. SPF authorises both; this is about reputation,
-not authorisation.
+⚠️ **SPF must name the address you *send* from, not the address your AAAA points at.** On a host
+with IPv6, Postfix may deliver over IPv6 to any MX that publishes an AAAA, and the receiver checks
+the *source* address of that connection. Those are often different: a Hetzner server is typically
+given a /64, its AAAA points at the subnet's `::` (`…::0`), and the kernel sends from `…::1`. An
+`ip6:` entry naming `…::` then authorises an address that never sends, the real one fails `-all`,
+and the failure is intermittent, because it depends on which family each *recipient* publishes.
+Measure the source address (`ip -6 route get <an MX's IPv6>` shows the `src`), and list that
+address, or the whole /64 (`ip6:2a01:db8:1:2::/64`).
+
+⚠️ **Send over IPv4 only unless IPv6 is fully set up.** The large receivers hold IPv6 senders to a
+stricter standard: a PTR for the *sending* v6 address that forward-resolves to your HELO name, and
+SPF coverage for it. Cloud providers set PTRs per address and usually leave v6 unconfigured. When
+either is missing, set `inet_protocols = ipv4`, which makes Postfix never try IPv6.
+`smtp_address_preference = ipv4` is **not** a substitute: it only *prefers* IPv4 and still falls
+back to IPv6 when an IPv4 attempt fails, which is exactly the delivery that then fails SPF.
+
+*Measured on CodeCoverage (2026-09-29):* the host sent IPv6 from `2a01:4f8:c0c:f87c::1`, the AAAA
+and SPF named `2a01:4f8:c0c:f87c::`, and `::1` had no PTR, so every IPv6 delivery failed SPF and
+Gmail and Outlook refused it. The relay now runs with `inet_protocols=ipv4`; IPv4 has a matching
+PTR and passes.
 
 ---
 
@@ -136,7 +188,7 @@ coverage-smtp:
     - ALLOWED_SENDER_DOMAINS=coverage.mintplayer.com
     - HOSTNAME=coverage.mintplayer.com          # must match reverse DNS
     - DKIM_SELECTOR=mail
-    - POSTFIX_smtp_address_preference=ipv4
+    - POSTFIX_inet_protocols=ipv4                # never IPv6 unless its PTR + SPF are set (§3.3)
     - RELAYHOST=                                 # empty = direct to MX
   volumes:
     - ./mail-dkim:/etc/opendkim/keys:ro
@@ -204,7 +256,7 @@ harshest useful test — from a **throwaway** container, so the running stack is
 ```bash
 docker run -d --name smtp-test \
   -e ALLOWED_SENDER_DOMAINS=<domain> -e HOSTNAME=<domain> -e DKIM_SELECTOR=mail \
-  -e POSTFIX_smtp_address_preference=ipv4 \
+  -e POSTFIX_inet_protocols=ipv4 \
   -v /var/www/<app>/mail-dkim:/etc/opendkim/keys:ro \
   boky/postfix:v4.3.0
 
@@ -242,16 +294,170 @@ not grant one.
 
 ---
 
-## 8. What this does *not* cover
+## 8. Templates, bulk mail and bounces
 
-- **Inbound mail.** The relay sends only. Bounces addressed back to a `no-reply@` on a host with no
-  MX will defer and expire, which is harmless but means you never see them. Point `From` at a real
-  mailbox if you want them.
-- **Volume.** Everything here is sized for transactional mail measured in messages per day. Bulk
-  sending is a different problem with different answers, and a self-hosted relay is the wrong tool
-  for it.
-- **A mail manager.** Message bodies are plain strings today (D24 in the multi-forge PRD). A
-  templating layer is separate, future work.
+The earlier version of this section said bulk mail and a mail manager were out of scope. Both are now
+in MailManager (#460 M8); its README (`libs/mail/MintPlayer.Spark.MailManager/README.md`) is the
+reference. What matters for the relay:
+
+### 8.1 Templates
+
+MJML + Scriban files in the app's repository, one per culture with a fallback chain
+(`Name.nl-BE.mjml` → `Name.nl.mjml` → `Name.mjml`). The account mails ship as embedded defaults in
+`en` and `nl`; an app overrides one by adding a file with the same name under `Templates/Mail/`.
+
+### 8.2 Bulk mail and pacing
+
+Campaigns go through `ISparkMailer.SendCampaignAsync`: one message per recipient on the `mail-bulk`
+lane, throttled to 20 a minute by default (`Spark:Messaging:Queues:mail-bulk:MaxPerInterval` /
+`Interval`), each with one-click `List-Unsubscribe`. Never one mail with many BCCs. How lanes are
+throttled (GCRA slots, burst allowance, deferral without burning retries, `ExpiresAtUtc`) is in the
+[Messaging README § Per-queue options and throttling](../libs/messaging/MintPlayer.Spark.Messaging/README.md#per-queue-options-and-throttling);
+the lane defaults are in the [MailManager README](../libs/mail/MintPlayer.Spark.MailManager/README.md).
+
+The lane paces what the app hands to the relay; the relay paces what it sends to each receiving
+domain. For a burst to one large provider, also set Postfix's per-destination pacing (a
+recommendation, not measured here):
+
+```yaml
+# docker-compose.yml, relay service
+- POSTFIX_smtp_destination_concurrency_limit=2   # parallel connections per receiving domain
+- POSTFIX_smtp_destination_rate_delay=1s         # pause between deliveries to the same domain
+```
+
+A self-hosted relay on a fresh IP still has no sending reputation: large volumes belong on a
+provider relay (`RELAYHOST`, §7), whatever the pacing.
+
+### 8.3 Bounces — tier 1: the local relay pipes them to the app
+
+With `Spark:Mail:Bounces:VerpDomain` set, every mail's envelope sender is
+`bounces+{deliveryId}@{VerpDomain}`. When the **relay itself** fails to deliver (the receiver refuses
+with a 5xx), Postfix generates the bounce and addresses it to that envelope sender. Routing that domain
+to a pipe hands the bounce to Spark — no MX record and no inbound port 25 needed. Measured against
+`boky/postfix:v4.3.0` (spike S-M5, #460): the image has `curl` (no `wget`), sources every
+`/docker-init.db/*.sh` after its own configuration, and `postconf -M` adds the `master.cf` entry.
+
+`init/50-spark-bounces.sh`, mounted at `/docker-init.db/`:
+
+```bash
+#!/bin/bash
+postconf -e "relay_domains = ${VERP_DOMAIN}"
+postconf -e "transport_maps = inline:{ ${VERP_DOMAIN}=sparkbounce: }"
+postconf -e "recipient_delimiter = +"
+postconf -e "sparkbounce_destination_recipient_limit = 1"
+postconf -M "sparkbounce/unix=sparkbounce unix - n n - - pipe flags=Rq user=nobody argv=/usr/local/bin/spark-bounce \${original_recipient}"
+# The pipe runs with an empty environment, and the image unsets secret variables after this
+# script: URL and secret reach the pipe as files.
+printf '%s' "${SPARK_BOUNCE_URL}" > /etc/postfix/spark-bounce-url
+printf '%s' "${SPARK_BOUNCE_SECRET}" > /etc/postfix/spark-bounce-secret
+chown nobody /etc/postfix/spark-bounce-url /etc/postfix/spark-bounce-secret
+chmod 0400 /etc/postfix/spark-bounce-url /etc/postfix/spark-bounce-secret
+```
+
+`spark-bounce`, mounted at `/usr/local/bin/spark-bounce`:
+
+```sh
+#!/bin/sh
+# stdin = the bounce; $1 = the VERP address.
+# Exit 0: delivered (2xx), or dropped because the endpoint can never accept this report
+#         (400 unparseable, 413 too large, 422 unprocessable).
+# Exit 75 (EX_TEMPFAIL): anything else -- 401/403 (wrong secret), 404 (wrong URL), 429,
+#         503 (endpoint disabled),
+#         other 5xx, no answer -- so
+#         Postfix keeps the bounce queued and retries until the operator fixes the cause.
+# Postfix appends the command's output to the delivery's log line, on success too.
+recipient=$(printf '%s' "$1" | sed 's/+/%2B/g; s/@/%40/g')
+status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-time 30 \
+  -H "Authorization: Bearer $(cat /etc/postfix/spark-bounce-secret)" \
+  -H "Content-Type: message/rfc822" \
+  --data-binary @- \
+  "$(cat /etc/postfix/spark-bounce-url)?recipient=${recipient}")
+case "$status" in
+  2??) exit 0 ;;
+  400|413|422)
+    echo "spark-bounce: dropped, the endpoint answered $status and will never accept this report"
+    exit 0 ;;
+  *)
+    echo "spark-bounce: the endpoint answered ${status:-nothing}; Postfix will retry"
+    exit 75 ;;
+esac
+```
+
+| Endpoint answer | Exit | Postfix (measured, S-M5b) |
+|---|---|---|
+| 2xx | 0 | `status=sent`, queue empty |
+| 400, 413, 422 | 0 | `status=sent (… (spark-bounce: dropped, the endpoint answered 400 …))`, queue empty |
+| 401, 403, 404, 429, 500, 503 (503 = endpoint disabled) | 75 | `status=deferred (temporary failure. Command output: spark-bounce: the endpoint answered 401; …)`, kept |
+| unreachable | 75 | `status=deferred (… curl: (6) Could not resolve host … answered 000 …)`, kept |
+
+Why a dropped report exits 0 and not a permanent-failure code: exit 69 (`EX_UNAVAILABLE`) was measured
+too: Postfix logs `status=bounced (service unavailable …)` and removes the message without sending a
+notification (its sender is empty) — the same drop, logged as a delivery failure of the bounce itself.
+`postlog` is not an option for the log line: it lives in `/usr/sbin`, outside the pipe's `PATH`.
+
+A **disabled** endpoint (`Spark:Mail:Bounces:Endpoint:Enabled` false) answers **503**, so the reports
+that arrive before it is enabled stay deferred in Postfix's queue and are delivered once it is — they
+are not lost. The endpoint itself never answers 404 (a report for an unknown delivery id is accepted
+with 204, logged, and suppresses nothing); a 404 therefore means the request never reached it — a
+wrong `SPARK_BOUNCE_URL`, or an app without MailManager — a misconfiguration like a wrong secret, so the
+script defers it (exit 75) and Postfix retries until the URL is fixed (#460, M10). Check the URL
+before pointing the relay at the app.
+
+Relay environment: `VERP_DOMAIN`, `SPARK_BOUNCE_URL=http://<app>:8080/spark/mail/bounces`,
+`SPARK_BOUNCE_SECRET` (in the VPS `.env`, never in the compose file), and the VERP domain added to
+`ALLOWED_SENDER_DOMAINS`. App: `Spark__Mail__Bounces__VerpDomain`, `Spark__Mail__Bounces__Endpoint__Enabled=true`,
+`Spark__Mail__Bounces__Endpoint__Secret` (the same secret). SPF of the VERP domain must authorise the
+server, as for the `From` domain (§3).
+
+What S-M5 measured: a DSN addressed to `bounces+{id}@verp.test` reached the pipe and was POSTed with the
+bearer header, `Content-Type: message/rfc822`, the full report (720 bytes) and
+`?recipient=bounces%2B{id}%40verp.test`; the queue was then empty. With the endpoint unreachable, curl
+failed, the script exited 75 and Postfix kept the bounce **deferred** (`dsn=4.3.0, status=deferred
+(temporary failure. Command output: curl: (6) Could not resolve host …)`); once the endpoint was back,
+`postqueue -f` delivered it (204) and the queue emptied. A 401 or 403 (wrong secret) is retried until
+Postfix's queue lifetime (5 days by default) — check the app log for the 401 when bounces pile up. A
+report the endpoint can never accept (400, 413, 422) is dropped at once instead of being retried
+for five days (#460, M9).
+
+### 8.4 Bounces — tier 2: remote bounces via MX
+
+A receiver that **accepts** a mail and bounces it later sends the bounce to the VERP domain's MX. That
+needs an MX record for the VERP domain pointing at the server and inbound port 25 open to the relay,
+which this deployment deliberately does not have (§6 of the PRD: opening inbound SMTP is out of scope).
+Recipe, not done here: publish `MX 10 relay.example.` for the VERP domain, publish port 25 of the relay
+container, keep `relay_domains` limited to the VERP domain (anything else is an open relay), and the
+same pipe handles both tiers. Without tier 2, late bounces are lost; synchronous refusals (the common
+case for unknown mailboxes) are still caught by tier 1.
+
+### 8.5 Still not covered
+
+- **Inbound mail** other than bounces. Point `From` at a real mailbox if people reply.
+- **Late bounces and complaints without tier 2** — see §8.6 for complaints.
+
+### 8.6 Complaints — feedback loops (ARF, RFC 5965)
+
+A mailbox provider that runs a feedback loop (Microsoft's JMRP/SNDS, Yahoo's CFL, many ISPs) sends an
+**ARF report** — `multipart/report; report-type=feedback-report` — when one of its users marks your mail
+as spam. MailManager parses these on the **same endpoint** as bounces (`POST /spark/mail/bounces`, same
+secret, same rate limit, same 503 while disabled; #460 M16): `Feedback-Type: abuse` or `fraud` suppresses
+the recipient with `SparkMailSuppressionReason.Complaint` for every stream; `not-spam`, `virus`,
+`auth-failure` and `other` are recorded on the delivery and suppress nothing. The delivery is found
+from the report's `Original-Mail-From` (the VERP address), the original's `Return-Path`, or the
+original's `Message-ID` (`<{deliveryId}@domain>`) — the last one matters because feedback loops redact
+the recipient's address, so the address suppressed is always the one in the delivery record.
+
+**Registering the address.** Register an address **at the VERP domain** as the feedback-loop address
+with each provider, e.g. `fbl@{VERP_DOMAIN}`. §8.3's `transport_maps` already routes the whole VERP
+domain to the `sparkbounce` pipe, so nothing changes in Postfix: the pipe POSTs the report with
+`?recipient=fbl%40…` exactly as it does a bounce, and the exit-code mapping above applies unchanged —
+an unmatched complaint is answered **204** and dropped (exit 0, never retried), a malformed one **400**
+and dropped (exit 0), a disabled endpoint **503** and kept (exit 75).
+
+**It needs inbound mail.** Feedback reports come from the provider's servers, so they arrive at the VERP
+domain's MX — tier 2 (§8.4: MX record + inbound 25), which `coverage.mintplayer.com` does not have. Without
+it, register a real mailbox as the feedback-loop address instead and forward (or fetch and POST) its
+reports to the endpoint with the bearer secret and `Content-Type: message/rfc822`; the body is the report
+as received.
 
 
 ---
@@ -270,9 +476,10 @@ Requested removal of the outbound SMTP block for ports **25 and 465** from
 timeout 8 bash -c 'exec 3<>/dev/tcp/alt4.aspmx.l.google.com/25' && echo OPEN25
 ```
 
-⚠️ Still outstanding: the **PTR is unchanged** (`static.60.190.245.188.clients.your-server.de`).
-Mail delivers regardless — see §3.1 — but setting it to `coverage.mintplayer.com` is a free
-improvement and `coverage.mintplayer.com` already forward-resolves to the server.
+~~⚠️ Still outstanding: the **PTR is unchanged** (`static.60.190.245.188.clients.your-server.de`).~~
+**Done for IPv4 on 2026-09-29:** the PTR of `188.245.190.60` is now `coverage.mintplayer.com`, which
+forward-resolves to the server. The IPv6 address has no PTR, which is one reason the relay now sends
+over IPv4 only — see `apps/CodeCoverage/README.md` § Outgoing mail.
 
 ### 9.2 DNS at the registrar — two records added
 
@@ -285,8 +492,10 @@ coverage                    TXT   v=spf1 ip4:188.245.190.60 ip6:2a01:4f8:c0c:f87
 mail._domainkey.coverage    TXT   v=DKIM1;k=rsa;p=<408-character public key>
 ```
 
-The IPv6 address is included because `coverage.mintplayer.com` has an AAAA record pointing at the
-same host. Confirmed published against the authoritative server before testing:
+The IPv6 address was included because `coverage.mintplayer.com` has an AAAA record pointing at the
+same host. ⚠️ That was the wrong address to list: the AAAA is the subnet's `::`, while the host
+sends from `::1` (§3.3). It is harmless now that the relay sends over IPv4 only; re-enabling IPv6
+would first need `ip6:` to name the sending address (or the /64) and a PTR for it. Confirmed published against the authoritative server before testing:
 
 ```bash
 dig +short TXT coverage.mintplayer.com @ns10.foxxl.com
@@ -331,16 +540,22 @@ The third row is the one worth remembering: it looked like success and was not.
 ### 9.5 In the repository
 
 - `apps/CodeCoverage/docker-compose.yml` — the `coverage-smtp` service, the `smtp-queue` volume,
-  and `Coverage__Mail__*` plus `Spark__Auth__ExternalLoginLinking` on the app.
-- `apps/CodeCoverage/CodeCoverage/Services/` — `CoverageMailOptions` and
-  `SmtpLinkConfirmationSender`, registered only when `Host` and `FromAddress` are both set.
-- `apps/CodeCoverage/.env.example` — every new variable, with the delivery caveats inline.
+  and on the app `Spark__Mail__Smtp__*`, `Spark__Mail__From__*`, `Spark__Auth__PublicBaseUrl` and
+  `Spark__Auth__ExternalLoginLinking` (#460 M8: these replaced `Coverage__Mail__*`; the `.env`
+  variables are unchanged).
+- `apps/CodeCoverage/CodeCoverage/Program.cs` — `spark.AddMailManager()`, only when both
+  `Spark:Mail:Smtp:Host` and `Spark:Mail:From:Address` are set. The hand-written
+  `SmtpLinkConfirmationSender` and `CoverageMailOptions` are gone; the link-confirmation mail is the
+  shipped `SparkAuth/LinkConfirmation` MJML template.
+- `apps/CodeCoverage/.env.example` — every variable, with the delivery caveats inline.
 
 ### 9.6 Still to do before mail is live
 
 1. Deploy the updated `docker-compose.yml` (the VPS refetches it per deploy).
-2. Set `MAIL_FROM_ADDRESS` in `/var/www/code-coverage/.env`. Until then the app registers no
-   transport, which is deliberate and supported.
+2. Set `MAIL_FROM_ADDRESS` in `/var/www/code-coverage/.env`. Until then the app does not add
+   MailManager, which is deliberate and supported.
 3. Flip `EXTERNAL_LOGIN_LINKING` to `ConfirmByEmail` only when a second forge exists — with a
    single provider the situation the mode exists for cannot arise.
-4. Optionally set the PTR, per §9.1.
+4. ~~Optionally set the PTR, per §9.1.~~ Done for IPv4 on 2026-09-29.
+5. Bounces (§8.3) are not enabled for coverage.mintplayer.com; doing so needs a VERP domain in
+   `ALLOWED_SENDER_DOMAINS` and SPF, and `SPARK_BOUNCE_SECRET` in the VPS `.env`.

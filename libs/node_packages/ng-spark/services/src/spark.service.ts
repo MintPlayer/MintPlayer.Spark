@@ -1,7 +1,7 @@
 import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { CustomActionDefinition, DistinctValuesResult, EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, QueryColumnFilter, QueryResult, SparkQuery, RetryActionPayload, RetryActionResult } from '@mintplayer/ng-spark/models';
+import { CustomActionDefinition, DistinctValuesResult, EntityPermissions, EntityType, LookupReference, LookupReferenceListItem, LookupReferenceValue, PersistentObject, ProgramUnitsConfiguration, QueryColumnFilter, QueryResult, SparkDeletedFilter, SparkQuery, RetryActionPayload, RetryActionResult } from '@mintplayer/ng-spark/models';
 import { ClientOperationEnvelope, RetryOperation, SparkClientOperationDispatcher } from '@mintplayer/ng-spark/client-operations';
 import { SortColumn } from '@mintplayer/pagination';
 import { RetryActionService } from './retry-action.service';
@@ -22,6 +22,21 @@ export interface NewObjectOptions {
   parentId?: string;
   /** Free-form arguments, e.g. which variant a New menu chose. */
   parameters?: Record<string, string>;
+  /**
+   * The sub-query New was started from (#460, D19), with `parentType` and `parentId` and no
+   * `asDetailAttribute`. The server loads the parent, checks the parent's type declares this
+   * sub-query, and runs `OnNewAsync` with it — whose base fills the reference to the parent.
+   */
+  queryId?: string;
+}
+
+/** Where a bulk delete was started from; see {@link SparkService.deleteMany}. */
+export interface DeleteManyOptions {
+  /** The query the rows were selected in, for the server's `OnDisableActionsAsync`. */
+  queryId?: string;
+  /** The sub-query's container, when deleting from a sub-query. */
+  parentId?: string;
+  parentType?: string;
 }
 
 /** Context for {@link SparkService.deleteRow}. Every field is required — see `DeleteRow.cs`. */
@@ -50,7 +65,9 @@ type EnvelopeRequestBody = {
   persistentObject?: any;
   triggeredBy?: string;
   retryResults?: RetryActionResult[];
-} & Partial<NewObjectOptions> & Partial<Omit<DeleteRowOptions, 'asDetailAttribute' | 'parentType' | 'parentId'>>;
+  /** The rows of a bulk delete. */
+  ids?: string[];
+} & Partial<NewObjectOptions> & Partial<DeleteManyOptions> & Partial<Omit<DeleteRowOptions, 'asDetailAttribute' | 'parentType' | 'parentId'>>;
 
 @Injectable({ providedIn: 'root' })
 export class SparkService {
@@ -131,6 +148,10 @@ export class SparkService {
       // Per-column value filters (#431). The shape that could not be expressed as a query string,
       // and the reason these reads are a POST at all.
       columns: options?.columns?.length ? options.columns : undefined,
+      // Soft-deletion mode (#460, T2). Omitted = exclude.
+      deleted: options?.deleted,
+      // The parent's own mode (#460): a deleted parent opened from the recycle bin. Omitted = exclude.
+      parentDeleted: options?.parentDeleted,
     });
   }
 
@@ -145,18 +166,31 @@ export class SparkService {
    * are deliberately indistinguishable, so there is nothing for a caller to branch on.
    */
   async getDistinctValues(queryId: string, column: string, options?: {
+    /** Narrows the listed values themselves (the panel's own box). */
     search?: string;
+    /**
+     * The grid's search term, what `executeQuery` sends as `search` (#460 M15): the values come only
+     * from the rows it matches, so a searched grid's panel lists what the grid shows.
+     */
+    querySearch?: string;
     columns?: QueryColumnFilter[];
     parentId?: string;
     parentType?: string;
+    /** The same soft-deletion mode as the grid the panel belongs to (#460). */
+    deleted?: SparkDeletedFilter;
+    /** The same parent mode as the grid the panel belongs to (#460). */
+    parentDeleted?: SparkDeletedFilter;
   }): Promise<DistinctValuesResult> {
     return this.sendRead<DistinctValuesResult>(`${this.baseUrl}/queries/distinct-values`, {
       queryId,
       column,
       search: options?.search || undefined,
+      querySearch: options?.querySearch || undefined,
       columns: options?.columns?.length ? options.columns : undefined,
+      deleted: options?.deleted,
       parentId: options?.parentId,
       parentType: options?.parentType,
+      parentDeleted: options?.parentDeleted,
     });
   }
 
@@ -180,8 +214,13 @@ export class SparkService {
   }
 
   // Persistent Objects
-  async get(type: string, id: string): Promise<PersistentObject> {
-    return this.sendRead<PersistentObject>(`${this.baseUrl}/po/load`, { objectTypeId: type, id });
+  /**
+   * Loads one object. `options.deleted` (#460) lets a `ViewDeleted` holder open a soft-deleted row
+   * from the recycle bin (`'include'` or `'only'`); without the right the server ignores it and a
+   * deleted row stays a 404. Omitted = exclude.
+   */
+  async get(type: string, id: string, options?: { deleted?: SparkDeletedFilter }): Promise<PersistentObject> {
+    return this.sendRead<PersistentObject>(`${this.baseUrl}/po/load`, { objectTypeId: type, id, deleted: options?.deleted });
   }
 
   async create(type: string, data: Partial<PersistentObject>): Promise<PersistentObject> {
@@ -218,8 +257,10 @@ export class SparkService {
    * Asks the server to construct a new object of `type`, so `OnNewAsync` can default it.
    *
    * Writes nothing — the object comes back unsaved, and for an AsDetail row the parent still owns
-   * the save. Only called for a row type whose `serverSideRowLifecycle` is on; every other type
-   * keeps building its blank row locally, which is why switching the flag off costs no request.
+   * the save. Called by the create page for every New (#460, D19: with `parentId`/`parentType`/
+   * `queryId` when started from a sub-query, whose base hook fills the parent reference), and for an
+   * AsDetail row only when its type's `serverSideRowLifecycle` is on; every other row type keeps
+   * building its blank row locally, which is why switching the flag off costs no request.
    *
    * ⚠️ The row comes back **keyed**: the server constructs the CLR instance, so the row-key field
    * initializer runs and `po.id` carries the key. Flattening it with `nestedPoToDict` therefore
@@ -258,6 +299,19 @@ export class SparkService {
     );
   }
 
+  /**
+   * Deletes several rows of one type in one request — the default Delete action on a selection
+   * (`POST /spark/po/delete-many`, #460 D18). All or nothing: a 404 means some row is missing or not
+   * yours to delete, a 403 that the server's `OnDisableActionsAsync` withholds Delete on the query or
+   * on one of the rows, a 400 that the selection breaks the rule or the 200-row cap.
+   */
+  async deleteMany(type: string, ids: string[], options?: DeleteManyOptions): Promise<void> {
+    return this.postWithEnvelope<void>(
+      `${this.baseUrl}/po/delete-many`,
+      { objectTypeId: type, ids, ...(options ?? {}) }
+    );
+  }
+
   // Custom Actions
   async getCustomActions(objectTypeId: string): Promise<CustomActionDefinition[]> {
     return firstValueFrom(this.http.post<CustomActionDefinition[]>(`${this.baseUrl}/actions/list`, { objectTypeId }));
@@ -272,25 +326,32 @@ export class SparkService {
    *   own type with its own Read gate.
    * @param queryId The query the selection came from, so the server can re-run it narrowed to those
    *   ids and hand the action the rows the grid actually had -- index-computed columns included.
+   * @returns What the action handed to `CustomActionArgs.SetResult` (#460, T5) -- the envelope's
+   *   `result` -- or `undefined` when it set nothing. The value is the action author's to shape: it
+   *   bypasses the server's redaction. A 403 means the action is disabled for this object, query or
+   *   selection (the server's `OnDisableActionsAsync` said so), distinct from a 404 for a row the
+   *   caller cannot see.
    */
-  async executeCustomAction(
+  async executeCustomAction<T = unknown>(
     objectTypeId: string,
     actionName: string,
     parent?: PersistentObject,
     selectedItemIds?: string[],
     queryParent?: { id: string; type: string },
     queryId?: string,
-  ): Promise<void> {
+  ): Promise<T | undefined> {
     const body: {
       objectTypeId: string; actionName: string;
       parent?: PersistentObject; selectedItemIds?: string[];
       parentId?: string; parentType?: string; queryId?: string;
       retryResults?: RetryActionResult[];
     } = { objectTypeId, actionName, parent, selectedItemIds, parentId: queryParent?.id, parentType: queryParent?.type, queryId };
-    return this.postWithEnvelope<void>(
+    // A literal `null` result (the action set nothing) becomes undefined, so callers test one thing.
+    const result = await this.postWithEnvelope<T | null>(
       `${this.baseUrl}/actions/execute`,
       body as any
     );
+    return result ?? undefined;
   }
 
   // LookupReferences
@@ -317,6 +378,17 @@ export class SparkService {
     return firstValueFrom(this.http.delete<void>(
       `${this.baseUrl}/lookupref/${encodeURIComponent(name)}/${encodeURIComponent(key)}`
     ));
+  }
+
+  /**
+   * Posts to an add-on package's endpoint under the Spark base URL (`/spark` + `path`) and unwraps
+   * the `ClientOperationEnvelope` exactly like the built-in mutations: operations are dispatched and
+   * a 449 retry opens the retry modal. For the ng-spark add-on entry points (`soft-delete`,
+   * `history`, `moderation`) whose server packages answer through core's envelope helpers
+   * (`SparkAddOnEndpoints`, #460).
+   */
+  postEnvelope<T>(path: string, body: Record<string, unknown>): Promise<T> {
+    return this.postWithEnvelope<T>(`${this.baseUrl}${path}`, body as EnvelopeRequestBody);
   }
 
   // Envelope-aware HTTP helpers.
@@ -435,4 +507,16 @@ export interface ExecuteQueryOptions {
   search?: string;
   /** Per-column value filters (#431). Columns AND together; values within a column OR. */
   columns?: QueryColumnFilter[];
+  /**
+   * Soft-deletion mode (#460): `exclude` (default), `include`, `only`. Sent only when set; the server
+   * honours a widening only for callers holding `ViewDeleted` on the type.
+   */
+  deleted?: SparkDeletedFilter;
+  /**
+   * The mode the PARENT (`parentId`/`parentType`) is resolved under (#460) — `include` for a sub-query
+   * on a deleted object's page, opened from the recycle bin. Independent of `deleted`, which stays the
+   * rows' filter. Honoured only for callers holding `ViewDeleted` on the parent's type; anyone else
+   * gets the same 404 a missing parent gives.
+   */
+  parentDeleted?: SparkDeletedFilter;
 }

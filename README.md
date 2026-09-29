@@ -16,10 +16,28 @@ A low-code web application framework for .NET that eliminates boilerplate code. 
 
 | Component | Technology |
 |-----------|------------|
-| Backend | .NET 10.0 |
+| Backend | .NET 11.0 |
 | Frontend | Angular 22 |
 | Database | RavenDB 6.2+ |
 | UI Library | @mintplayer/ng-bootstrap |
+
+### RavenDB licences
+
+Spark runs on any RavenDB licence, but some features depend on the edition. **ETL** (used for
+cross-module replication, as in the Fleet demo) needs a paid licence in production.
+
+| Edition | Price | Production use | ETL |
+|---|---|---|---|
+| Developer | Free, renewed every 6 months | No (development and testing only) | Not applicable (no production use) |
+| Community | Free, renewed yearly | Yes | None |
+| Professional | Paid (quote from sales) | Yes | RavenDB ETL and SQL ETL; OLAP, Elasticsearch, Kafka and RabbitMQ need the P30+ tier |
+| Enterprise | Paid | Yes | All ETL types (OLAP, Elasticsearch, Kafka, queues, …) |
+
+Community also caps licence-gated limits that Developer does not (3 cores, 3 subscriptions, a
+36-hour minimum for document expiration and refresh), so code that passes against a Developer
+licence can still be refused in a Community production. Open-source projects could historically
+request a free licence from RavenDB; the current pricing page no longer lists that programme, so
+ask RavenDB directly. Details: [RavenDB pricing](https://ravendb.net/buy).
 
 ## Quick Start (AllFeatures)
 
@@ -136,7 +154,8 @@ MintPlayer.Spark/
 │   ├── CodeCoverage/                             # The coverage server behind coverage.mintplayer.com (a product, not a demo)
 │   ├── DemoApp/                                  # Sample ASP.NET Core + Angular application
 │   ├── Fleet/                                    # Fleet management demo (auth, messaging, replication)
-│   └── HR/                                       # HR demo (auth, messaging, replication)
+│   ├── HR/                                       # HR demo (auth, messaging, replication)
+│   └── QnA/                                      # Q&A demo (#460: moderation, soft delete, history, mail, account pages)
 └── docs/                                         # Documentation (guides, prd/, code-coverage/, codecov/)
 ```
 
@@ -162,7 +181,8 @@ MintPlayer.Spark/
 | [TranslatedString & i18n](docs/guide-translated-strings.md) | Multi-language support for labels, descriptions, and validation messages |
 | [Attribute Descriptions](docs/guide-attribute-descriptions.md) | Help text per attribute, rendered as an [i] tooltip; seeded from `[Description]` or `///` summaries on synchronize |
 | [Identity & external login](libs/authorization/MintPlayer.Spark.Authorization/README.md) | The optional identity package: RavenDB-backed ASP.NET Identity, OAuth providers, JWT bearer, and the Angular half |
-| [Authorization](docs/guide-authorization.md) | `security.json`: rights, combined actions, wildcards, the four precedence tiers, and what `Query` without `Read` does to a grid |
+| [Authorization](docs/guide-authorization.md) | `security.json`: rights, combined actions (no wildcards), the four precedence tiers, and what `Query` without `Read` does to a grid |
+| [Row Security](docs/guide-row-security.md) | Row filters and checks per type, row policies for many types, persistent-object interceptors, `WITH CHECK`, attribute redaction — and the documented override gaps |
 | [Authentication Schemes & Well-Known Groups](docs/guide-authentication-schemes.md) | Every scheme in the repo, the `anonymous`/`authenticated` groups, what an unauthenticated caller gets, and what happens when authentication fails |
 | [Passkeys (WebAuthn)](docs/guide-passkeys.md) | Turning them on, why they are gated separately from `SparkLocalCredentials`, why sign-in takes no username, pinning the relying-party id — and why the ceremony challenge must never reach the client |
 | [Controllers](docs/guide-controllers.md) | Mounting your own MVC controllers inside Spark's pipeline, CSRF on endpoints you wrote, `[SparkAuthorize]`, and reusing a row rule outside `/spark` |
@@ -170,15 +190,22 @@ MintPlayer.Spark/
 | [CORS](docs/guide-cors.md) | Which endpoints a page on another origin may read: Spark's own answer cross-origin by default, a library's and your own do not, and how each opts in or out — plus why the wildcard makes the dangerous configuration unreachable |
 | [Rate Limiting](docs/guide-rate-limiting.md) | Opting into the fixed-window limiter, metering your own path prefixes, where the middleware sits, and why a second `UseRateLimiter()` halves your budget |
 | [Durable Message Bus](libs/messaging/MintPlayer.Spark.Messaging/README.md) | RavenDB-backed messaging with per-handler retry isolation, checkpoint support, and queue isolation |
+| [Outgoing mail (MailManager)](docs/guide-outgoing-mail.md) | Transports and why none is silent, Development fail-closed and Mailpit, DNS and the relay container, templates, bulk pacing, bounces and suppression ([package README](libs/mail/MintPlayer.Spark.MailManager/README.md)) |
+| [Soft Delete](libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md) | `ISoftDeletable`: a delete becomes a mark, deleted rows hidden on every path, restore and purge, the recycle bin |
+| [History](libs/history/MintPlayer.Spark.History/README.md) | RavenDB revisions from the model, audit stamping, revision reads and revert through the save pipeline, licence limits |
+| [Moderation](docs/guide-moderation.md) | Votes, reputation, earned privileges as groups, vote-fraud defences, flags, lock/suspend ([package README](libs/moderation/MintPlayer.Spark.Moderation/README.md)) |
 | [Cross-Module Synchronization](docs/guide-cross-module-sync.md) | Entity replication between modules with write-back support |
 | [Cross-Module mTLS](docs/guide-replication-mtls.md) | Issuing and pinning the client certificates that authenticate one module to another |
 | [Subscription Workers](libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker/README.md) | RavenDB subscription-based background processing with retry handling |
 | [Cron Jobs](libs/cron/MintPlayer.Spark.Cron/README.md) | Cron-scheduled background jobs, UTC schedules, schedule overrides, multi-node compare-exchange locking |
 | [GitHub Webhooks](libs/webhooks/MintPlayer.Spark.Webhooks.GitHub/README.md) | React to GitHub events via typed messages, with smee.io and WebSocket dev tunneling |
 | [GitHub Webhooks — Dev Tunnel](libs/webhooks/MintPlayer.Spark.Webhooks.GitHub.DevTunnel/README.md) | Dev-only: receive real webhook deliveries on localhost via smee.io or WebSocket forwarding from production |
-| [Docker Deployment](docs/guide-docker-deployment.md) | Deploy with Docker Compose, RavenDB configuration, Traefik reverse proxy |
+| [Docker Deployment](docs/guide-docker-deployment.md) | Deploy with Docker Compose, RavenDB configuration, Traefik reverse proxy, and the forwarded-headers trust list Spark configures |
+| [Data Protection](docs/guide-data-protection.md) | Where the key ring lives (`Spark:DataProtection`), why an unpersisted one refuses to start outside Development, and why an unmounted key folder signs everyone out on redeploy |
 | [Testing Harness](libs/testing/MintPlayer.Spark.Testing/README.md) | Embedded RavenDB driver, in-memory Spark host factory, antiforgery-aware HTTP client, JSON fixtures, Verify defaults |
 | [Testing without a browser — `SparkClient`](libs/client/MintPlayer.Spark.Client/README.md) | Drive a real Spark backend from C# over the same protocol the Angular frontend uses: CRUD, queries, actions, auth. What it covers, what it cannot do yet, and why it will never replace browser tests |
+| [`@mintplayer/ng-spark`](libs/node_packages/ng-spark/README.md) | The Angular front end: `provideSpark()`, `sparkRoutes()` and every secondary entry point — panels, soft delete, history, moderation, renderers, client operations, `withSparkTimezone` |
+| [`@mintplayer/ng-spark-auth`](libs/node_packages/ng-spark-auth/README.md) | The Angular half of Authorization: `provideSparkAuth()`, `sparkAuthRoutes(...)` with `withLocalLogin` / `withRegistration` / `withExternalLogin` / `withPasskeys` / `withAccount()`, the guards and entry points |
 
 ### Reference
 
@@ -188,6 +215,8 @@ MintPlayer.Spark/
 - **[Messaging API](libs/messaging/MintPlayer.Spark.Messaging/README.md)** - Message bus API reference
 - **[Cron Jobs](libs/cron/MintPlayer.Spark.Cron/README.md)** - Cron-scheduled background jobs: `ISparkCronJob`, schedule overrides, multi-node compare-exchange locking
 - **[Product Requirements Document](docs/prd/PRD.md)** - Full specification and architecture
+- **[Compiler diagnostics](docs/diagnostics.md)** - Every `SPARK*` diagnostic, what raises it, and its code fix
+- **[Release notes 11.0.0-preview.91](docs/release-notes-preview-91.md)** - The #460 release: breaking changes, new packages, the operator checklist
 - **[Leftovers](docs/leftovers.md)** - What shipped work knowingly did not close: unverified paths, and deferrals with the evidence behind them
 
 ## Contributing
@@ -244,7 +273,24 @@ cd apps/DemoApp/DemoApp
 dotnet run
 ```
 
-The application will be available at `https://localhost:5001`.
+The application will be available at `https://localhost:5007` (`--launch-profile https`).
+
+The other demos run the same way, each from its own project directory:
+
+| Demo | Directory | Host | Shows |
+| --- | --- | --- | --- |
+| DemoApp | `apps/DemoApp/DemoApp` | `https://localhost:5007` | the core PersistentObject pattern |
+| Fleet | `apps/Fleet/Fleet` | `https://localhost:5003` | authentication, messaging, replication (with HR) |
+| HR | `apps/HR/HR` | `https://localhost:5005` | authentication, the identity provider, replication (with Fleet) |
+| QnA | `apps/QnA/QnA` | `https://localhost:5009` | the #460 packages: Moderation, SoftDelete, History, MailManager, the account pages — see [apps/QnA/README.md](apps/QnA/README.md) |
+
+**Docker image (DemoApp).** DemoApp is the only demo with a Dockerfile. Build it from the repository root, since it needs the whole workspace as context:
+
+```bash
+docker build -f apps/DemoApp/DemoApp/Dockerfile -t demoapp .
+```
+
+The image listens on 8080 as the non-root `app` user. Outside Development, Spark refuses to start unless the Data Protection key ring is persisted, so mount a volume at `/var/lib/demoapp/dataprotection-keys` and pass `-e Spark__DataProtection__KeysPath=/var/lib/demoapp/dataprotection-keys` (or pass `-e Spark__DataProtection__Storage=RavenDb` instead). Point it at a database with `-e Spark__RavenDb__Urls__0=http://<host>:8080`.
 
 > **RavenDB note:** the demos connect to `http://localhost:8080` (`appsettings.json` → `Spark:RavenDb:Urls`). If you point them at a **standalone/local RavenDB** instead of the Docker container above, make sure its `PublicServerUrl` is `http://localhost:8080` — *not* `http://host.docker.internal:8080`. RavenDB advertises `PublicServerUrl` through its cluster topology and the client routes **all** subsequent requests there (caching it under `apps/**/bin/**/*.raven-cluster-topology`); a `host.docker.internal` value the host can't reach makes every request fail with `ServiceUnavailable`. `host.docker.internal` is only correct when a *container* must reach a host-installed database.
 
@@ -373,6 +419,25 @@ exist.
 5. **Commit** with clear, descriptive messages
 6. **Push** to your fork
 7. **Open a Pull Request** against `master`
+
+### CI checks
+
+A pull request must pass these before merging.
+
+[`pull-request.yml`](.github/workflows/pull-request.yml), job `pull-request`:
+- **Build affected projects** — `nx affected --target=build`, .NET and Angular.
+- **Type-check the npm packages' specs** — `tsc --noEmit` on ng-spark's and ng-spark-auth's `tsconfig.spec.json` (vitest does not type-check, and ng-packagr skips specs).
+- **Verify Spark models are in sync** — `--spark-verify-model` for every app (DemoApp, HR, Fleet, QnA, CodeCoverage).
+- **Verify the anonymous surface has not widened** — `--spark-verify-security` against each app's committed `securityPosture.txt`.
+- **Verify a changed package was version-bumped** — every touched `libs/` package must carry a new version.
+- **Run tests** — `nx run-many --target=test`: all .NET test projects (including E2E) and vitest.
+- **Verify coverage report paths**, then upload coverage to coverage.mintplayer.com.
+
+`pull-request.yml`, job `coverage-upload action`: builds, verifies and smoke-tests the bundled upload action.
+
+[`code-coverage-image-check.yml`](.github/workflows/code-coverage-image-check.yml): builds the production CodeCoverage Docker image (no push) when a change could affect it, so a broken Dockerfile fails the PR instead of the production deploy.
+
+[`demo-images-check.yml`](.github/workflows/demo-images-check.yml): builds the DemoApp Docker image (no push) when a change touches DemoApp or its library closure, so the demo Dockerfile cannot silently rot. Its path filter mirrors the Dockerfile's csproj COPY list; update both together.
 
 ### Coding Standards
 

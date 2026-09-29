@@ -1,0 +1,45 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.History</PackageId>
+		<Version>11.0.0-preview.91</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Revision history for MintPlayer.Spark: RavenDB revisions configured from the model, audit stamping (IAuditable, user ids only), revision list/read with row security and redaction (History/T), revert through the save pipeline (Revert/T), and in-process revision observers. Adds POST /spark/po/revisions, /spark/po/revision and /spark/po/revert.</Description>
+		<PackageTags>history;revisions;audit;revert;ravendb;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="12.1.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+		<PackageReference Include="MintPlayer.SourceGenerators.Attributes" Version="12.1.0" GeneratePathProperty="true" />
+		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.2.0-rc.0" />
+		<PackageReference Include="RavenDB.Client" Version="7.2.6" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+	</ItemGroup>
+
+</Project>

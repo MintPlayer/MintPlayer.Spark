@@ -61,6 +61,23 @@ describe('SparkAuthService', () => {
     expect(service.user()?.email).toBe('user@example.com');
   });
 
+  it('login without rememberMe asks for a session cookie, and its 2FA step does too', async () => {
+    // MapIdentityApi: useCookies=true alone is a persistent cookie; useSessionCookies=true makes
+    // it a session cookie with no Expires.
+    const first = service.login('moduser', 'pw', false);
+    http.expectOne('/spark/auth/login?useCookies=true&useSessionCookies=true').flush(
+      { detail: 'RequiresTwoFactor' }, { status: 401, statusText: 'Unauthorized' });
+    await expect(first).rejects.toBeTruthy();
+
+    const promise = service.loginTwoFactor('123456');
+    http.expectOne('/spark/auth/login?useCookies=true&useSessionCookies=true').flush(null);
+    await flush();
+    http.expectOne('/spark/auth/csrf-refresh').flush(null);
+    await flush();
+    http.expectOne('/spark/auth/me').flush({ isAuthenticated: true, userName: 'u', email: 'u@x', roles: [] });
+    await promise;
+  });
+
   it('login propagates server errors', async () => {
     const promise = service.login('user@example.com', 'wrong');
 
@@ -87,6 +104,39 @@ describe('SparkAuthService', () => {
 
     await promise;
     expect(service.isAuthenticated()).toBe(true);
+  });
+
+  it('loginTwoFactor repeats the credentials of the login that required two-factor', async () => {
+    // MapIdentityApi's LoginRequest requires email and password on the 2FA step too; without them
+    // it answers 400 and a two-factor account could never sign in.
+    const first = service.login('moduser', 'pw');
+    http.expectOne('/spark/auth/login?useCookies=true').flush(
+      { detail: 'RequiresTwoFactor' }, { status: 401, statusText: 'Unauthorized' });
+    await expect(first).rejects.toBeTruthy();
+
+    const promise = service.loginTwoFactor('123456');
+    const req = http.expectOne('/spark/auth/login?useCookies=true');
+    expect(req.request.body).toEqual({
+      email: 'moduser', password: 'pw', twoFactorCode: '123456', twoFactorRecoveryCode: undefined,
+    });
+    req.flush(null);
+    await flush();
+    http.expectOne('/spark/auth/csrf-refresh').flush(null);
+    await flush();
+    http.expectOne('/spark/auth/me').flush({ isAuthenticated: true, userName: 'u', email: 'u@x', roles: [] });
+    await promise;
+
+    // The credentials are not kept after the second step.
+    const again = service.loginTwoFactor('654321');
+    const second = http.expectOne('/spark/auth/login?useCookies=true');
+    expect(second.request.body.email).toBeUndefined();
+    expect(second.request.body.password).toBeUndefined();
+    second.flush(null);
+    await flush();
+    http.expectOne('/spark/auth/csrf-refresh').flush(null);
+    await flush();
+    http.expectOne('/spark/auth/me').flush({ isAuthenticated: true, userName: 'u', email: 'u@x', roles: [] });
+    await again;
   });
 
   it('loginTwoFactor accepts a recovery code', async () => {

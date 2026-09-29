@@ -39,7 +39,32 @@ import { globSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-const E2E_HOST_REPORT = /^tests\/MintPlayer\.Spark\.E2E\.Tests\/coverage\/fleet-host-[^/]+\/coverage\.cobertura\.xml$/;
+// One slug per app the E2E suite hosts (SparkAppDescriptor.CoverageSlug): Fleet, and QnA since #460 M13.
+const E2E_HOST_REPORT = /^tests\/MintPlayer\.Spark\.E2E\.Tests\/coverage\/(fleet|qna)-host-[^/]+\/coverage\.cobertura\.xml$/;
+
+/**
+ * The marker SparkAppTestHost writes into a host's report directory before it starts the app under
+ * dotnet-coverage (`coverage/{slug}-host-{env}-{suffix}/host-started.txt`). It says "this host's
+ * tests ran", so a host report is required only for the apps whose tests actually ran: a CI run that
+ * filters the QnA (or Fleet) tests out with host coverage on does not fail, while a host that started
+ * and then lost its report still does.
+ */
+export const HOST_STARTED_MARKERS = 'tests/MintPlayer.Spark.E2E.Tests/coverage/*-host-*/host-started.txt';
+const HOST_STARTED_MARKER = /^tests\/MintPlayer\.Spark\.E2E\.Tests\/coverage\/([a-z0-9]+)-host-[^/]+\/host-started\.txt$/;
+
+/** The host slugs that started, from the marker paths on disk. */
+export function startedHostSlugs(markerPaths) {
+  return new Set(markerPaths.map((p) => HOST_STARTED_MARKER.exec(p)?.[1]).filter(Boolean));
+}
+
+const hostCoverageOn = (env) => /^(1|true)$/i.test(env.SPARK_E2E_HOST_COVERAGE ?? '');
+
+/**
+ * Required when host coverage is on and the host `slug` started. Without marker information
+ * (`context.startedHosts` undefined) it stays required: failing closed is the tripwire's purpose.
+ */
+const hostReportRequired = (slug) => (env, context = {}) =>
+  hostCoverageOn(env) && (context.startedHosts === undefined || context.startedHosts.has(slug));
 
 /**
  * Every report CI must produce, one per coverage-producing Nx project. A missing one
@@ -67,12 +92,21 @@ export const EXPECTED_REPORTS = [
   },
   // The Fleet hosts the E2E tests start as subprocesses, measured by dotnet-coverage
   // (FleetTestHost): one report per host session, no <source>, absolute workspace paths.
-  // Required only when CI switches host coverage on; a local E2E run does not produce it.
+  // Required only when CI switches host coverage on (a local E2E run does not produce it) and a
+  // Fleet host started (HOST_STARTED_MARKERS).
   {
     name: 'E2E host subprocess coverage',
     glob: 'tests/MintPlayer.Spark.E2E.Tests/coverage/fleet-host-*/coverage.cobertura.xml',
     match: E2E_HOST_REPORT,
-    required: (env) => /^(1|true)$/i.test(env.SPARK_E2E_HOST_COVERAGE ?? ''),
+    required: hostReportRequired('fleet'),
+  },
+  // The QnA host (QnATestHost), the same shape. A separate entry, so a run that measured Fleet but
+  // lost QnA's report still fails.
+  {
+    name: 'E2E QnA host subprocess coverage',
+    glob: 'tests/MintPlayer.Spark.E2E.Tests/coverage/qna-host-*/coverage.cobertura.xml',
+    match: E2E_HOST_REPORT,
+    required: hostReportRequired('qna'),
   },
   { name: 'MintPlayer.Spark.SourceGenerators.Tests', glob: 'tests/MintPlayer.Spark.SourceGenerators.Tests/coverage/**/coverage.cobertura.xml' },
   { name: 'MintPlayer.Spark.Client.Tests', glob: 'tests/MintPlayer.Spark.Client.Tests/coverage/**/coverage.cobertura.xml' },
@@ -251,22 +285,25 @@ export function filterEntryHits(entry, hits) {
   return hits.filter((f) => (!entry.match || entry.match.test(f)) && !(entry.exclude && entry.exclude.test(f)));
 }
 
-/** Whether an entry's absence fails the run; an entry without `required` always does. */
-export function isRequired(entry, env) {
-  return entry.required ? entry.required(env) : true;
+/**
+ * Whether an entry's absence fails the run; an entry without `required` always does.
+ * `context.startedHosts` is the set of E2E host slugs that started (see HOST_STARTED_MARKERS).
+ */
+export function isRequired(entry, env, context = {}) {
+  return entry.required ? entry.required(env, context) : true;
 }
 
 /**
  * Which expected reports are absent, and which were found but would not be uploaded.
  * Pure, so the tests can drive it without a filesystem.
  */
-export function checkExpected(expected, foundByEntry, uploaded, env = {}) {
+export function checkExpected(expected, foundByEntry, uploaded, env = {}, context = {}) {
   const uploadedSet = new Set(uploaded);
   const missing = [];
   const notUploaded = [];
   for (const entry of expected) {
     const found = foundByEntry.get(entry) ?? [];
-    if (found.length === 0 && isRequired(entry, env)) missing.push(entry);
+    if (found.length === 0 && isRequired(entry, env, context)) missing.push(entry);
     for (const f of found) if (!uploadedSet.has(f)) notUploaded.push({ entry, report: f });
   }
   return { missing, notUploaded };
@@ -300,12 +337,13 @@ function main(argv) {
 
   const reports = expand(explicit ? globs : UPLOAD_GLOBS, repoRoot);
   const foundByEntry = new Map(EXPECTED_REPORTS.map((e) => [e, filterEntryHits(e, expand([e.glob], repoRoot))]));
+  const context = { startedHosts: startedHostSlugs(expand([HOST_STARTED_MARKERS], repoRoot)) };
 
   if (dryRun) {
     if (!explicit) {
       console.log('Expected reports:');
       for (const [entry, found] of foundByEntry) {
-        const state = found.length > 0 ? 'found  ' : isRequired(entry, process.env) ? 'MISSING' : 'absent, not required';
+        const state = found.length > 0 ? 'found  ' : isRequired(entry, process.env, context) ? 'MISSING' : 'absent, not required';
         console.log(`  ${state}  ${entry.name}  (${entry.glob})`);
         for (const f of found) console.log(`             ${f}`);
       }
@@ -318,7 +356,7 @@ function main(argv) {
   let failed = false;
 
   if (!explicit) {
-    const { missing, notUploaded } = checkExpected(EXPECTED_REPORTS, foundByEntry, reports, process.env);
+    const { missing, notUploaded } = checkExpected(EXPECTED_REPORTS, foundByEntry, reports, process.env, context);
     for (const entry of missing) {
       failed = true;
       console.error(

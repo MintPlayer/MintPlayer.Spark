@@ -97,6 +97,27 @@ independently, and its entity type must match the action's type or the request i
 To act on the **entity** behind a row, materialize it -- see below. A row is deliberately weak: no
 attribute metadata, no `can` block, no etag. It is not a document and cannot be saved.
 
+### Returning a result (#460, T5)
+
+An action can hand a value back to its caller:
+
+```csharp
+public override async Task ExecuteAsync(CustomActionArgs args, CancellationToken ct = default)
+{
+    var job = await exports.StartAsync(args.SelectedItems.Select(r => r.Id), ct);
+    args.SetResult(new { jobId = job.Id, rows = args.SelectedItems.Length });
+}
+```
+
+It travels as the response envelope's `result`. In Angular,
+`sparkService.executeCustomAction<T>(...)` resolves to it (`undefined` when nothing was set); in .NET,
+`SparkActionResult.Result` holds the JSON and `GetResult<T>()` reads it typed. The last `SetResult`
+wins, and a retry prompt (449) never carries one — the attempt that completes does.
+
+⚠️ **The value bypasses redaction and row security.** The framework serializes it as given. Returning
+an entity hands the caller every field on it, including ones `GetProtectedAttributesAsync` hides on
+every read path — return a purpose-built shape.
+
 ### SparkCustomAction vs ICustomAction
 
 You can either extend `SparkCustomAction` (convenience base class) or implement `ICustomAction` directly. Both approaches work identically. The base class currently provides the same abstract method, but in a future phase it will add helper methods for navigation and notifications (same mechanism as PersistentObject Actions classes).
@@ -208,6 +229,164 @@ re-loaded through the row-gated read path before the action runs, and that load 
 type-level `Read` right first. So granting `CarCopy/Car` alone is not sufficient for an action that
 receives a parent or a selection — the caller needs `Read/Car` too. An action that names no rows (a
 pure command) has no such requirement.
+
+## Default actions, selection and sub-queries (#460, M15)
+
+An action is defined once per type, and every query of that type offers it, whether the query is a
+top-level list or a sub-query on a parent's detail page. That is the Vidyano model. M15 adds the
+parts that were missing: the built-in `New` and `Delete` as catalogue entries, a declared selection
+mode, and a toolbar and row menu shared by both grids.
+
+### New and Delete are catalogue entries (D18)
+
+`/spark/actions/list` now also returns the framework's two built-in actions. Each is marked
+`"isDefault": true` and appears only when the caller holds the ordinary right, `New/T` or `Delete/T`:
+
+| Name | `showedOn` | `selectionRule` | Runs through |
+|---|---|---|---|
+| `New` | `both` | none | the create page → `POST /spark/po/new` → `POST /spark/po/create` |
+| `Delete` | `both` | `>0` | `POST /spark/po/delete-many` |
+
+**To override either one**, add an entry with the same name to `customActions.json`. It needs no C#
+class, and it may leave `displayName` out; a custom action may not.
+- A field the entry states replaces the default. A field it leaves out keeps the default.
+- `showedOn` and `offset` always come from the entry. Their file defaults equal the built-in ones.
+- To drop Delete's rule, write `"selectionRule": ""`.
+
+```json
+{
+  "Delete": { "selectionRule": "=1", "confirmationMessageKey": "DeleteOneAnswer" }
+}
+```
+
+An `ICustomAction` class named `New` or `Delete` is never executed: `/spark/actions/execute` answers
+404 for both names.
+
+### The bulk Delete
+
+```
+POST /spark/po/delete-many
+{ "objectTypeId": "Answer", "ids": ["answers/1-A", "answers/2-A"],
+  "queryId": "question-answers", "parentId": "questions/1-A", "parentType": "Question" }
+```
+
+One request runs every row through the ordinary delete pipeline, in this order:
+1. The **200-row cap** and the `Delete` entry's **rule** are checked first. Either failure is a 400,
+   and nothing touches the database.
+2. The `Delete/T` right.
+3. The sub-query's container, loaded through its own gated read.
+4. The collection guard and the row gate, on every row.
+5. `OnDisableActionsAsync` is asked about the query target (with the parent) and about every row, in
+   one batched call. **One row that withholds `Delete` refuses the whole request with 403.**
+6. `OnBeforeDeleteAsync` and the interceptors run for each row, so a soft-deletable type is
+   soft-deleted.
+7. Every write is committed by **one `SaveChanges`**: all rows or none.
+
+A row that is missing, belongs to another collection or is denied by the row rule refuses the lot,
+with the same answer a missing row gets. The server never deletes 198 of 200 and says nothing.
+
+⚠️ The base `OnDeleteAsync` defers its own `SaveChanges` while a bulk delete is open. An override that
+saves on its own commits its row early and breaks the guarantee. That is the D1 override gap: it is
+logged as a warning, not prevented. Put per-row logic in `OnBeforeDeleteAsync` instead.
+
+There is no bulk Purge. A purge deletes revisions with an admin operation that cannot join the
+transaction, so it stays one row at a time through `/spark/po/purge`.
+
+### Selection mode (D17)
+
+A query declares `"selectionMode": "auto" | "none" | "single" | "multiple"`. The parent type's
+`queries` entry can override it for one parent:
+
+```json
+"persistentObject": {
+  "name": "Question",
+  "queries": [
+    "question-tags",
+    { "query": "question-answers", "selectionMode": "multiple" }
+  ]
+}
+```
+
+- An entry is a bare alias, as before, or an object.
+- Model sync writes a bare alias back for an entry without overrides, so existing model files do not
+  change.
+- `auto`, the default, derives the mode from the **custom** actions offered, exactly as before:
+  - checkboxes appear only when some action has a rule;
+  - `single` when every rule wants exactly one row.
+- The default Delete does not widen `auto`, so selection is opt-in.
+- Selection is presentation only. Every action that takes rows still enforces its own rule at submit.
+
+### The toolbar, the chip and the row menu
+
+The grid builds one toolbar model, and both hosts render it: the sub-query card's header and the
+query-list page's action bar.
+- **Toolbar:** `New`, `Delete` and the custom actions. Each is enabled live from the selection count.
+  - `New` needs the right, and a result that does not withhold `New`.
+  - `Delete` is shown only while rows can be selected.
+  - The card puts its caption on the left and the actions on the right, with the overflow in the
+    priority nav under the translated "More" label (`common.more`), as on the list and detail pages.
+- **Selection bar:** an "N selected" chip while rows are selected. There is no select-all (with
+  paged, lazy or virtual-scrolled rows it could only tick the loaded rows); the datatable's header
+  checkbox is the deselect-all, shown only while a row is selected. Single selection has no
+  checkbox column, so there the chip carries a ⊗ that clears the selection.
+- **Row menu (`⋮`):** every offered action whose rule accepts exactly one row, including Delete. It
+  runs on that row only and leaves the checkbox selection alone. An action without a rule acts on the
+  query, not on a row, so it is not in the menu.
+- **Search box:** the card's header ends with `<spark-search-box>` (`@mintplayer/ng-spark/grid`), the
+  same component the query-list page uses (300 ms debounce, clear button, Escape clears). It feeds the
+  grid's `search`, which `/spark/queries/execute` applies together with `parentId`/`parentType`. The
+  column filters' value lists get the same term as `querySearch` on `/spark/queries/distinct-values`,
+  so they only list values from rows the grid shows. A new term clears the selection.
+  `[searchable]="false"` hides the box.
+- **Recycle bin:** while the grid lists `deleted: 'only'`, or sits under a deleted parent (the card's
+  `[parentDeleted]`, set by the detail page for a row opened with `?deleted=only`), the toolbar and
+  the row menu are empty: no New, no Delete, no custom action. The recycle bin offers only Restore and
+  Purge. The server agrees: `/spark/po/delete-many` and `/spark/actions/execute` judge live rows only,
+  so an action aimed at a deleted row is a 404.
+- **`parentDeleted`:** a sub-query under a deleted parent sends `parentDeleted: 'include'`
+  (`exclude | include | only`) on execute and distinct-values, the mode the *parent* is resolved
+  under. Only a holder of `ViewDeleted/{ParentType}` gets the widening; anyone else gets the same 404
+  as a missing parent. The rows' own `deleted` is independent. Actions and delete-many always resolve
+  their parent as a live row.
+
+### New from a sub-query: `OnNewAsync` (D19)
+
+Pressing New on a sub-query opens the create page and passes the parent along as query parameters:
+`?parentId=…&parentType=…&queryId=…`. The parent therefore survives the navigation and a reload of
+the page. The create page asks the server for its blank object:
+
+```
+POST /spark/po/new
+{ "objectTypeId": "Answer", "parentId": "questions/1-A", "parentType": "Question", "queryId": "question-answers" }
+```
+
+- The parent is loaded through its gated read.
+- The query must be one of the parent type's `queries`, and must list the type being created.
+  Otherwise the request is refused, like a missing row.
+- The Actions class's existing `OnNewAsync(SparkNewArgs<T> args)` then receives `args.Parent`,
+  `args.ParentType`, `args.Query` and `args.ParentReference`.
+
+**The base `OnNewAsync` fills the parent reference** through `args.FillParentReference()`:
+- It looks for the one `Reference` attribute of the new object whose target is the parent's type.
+- If there is exactly one, it is set to the parent's id.
+- If there are none, or several, nothing is filled, and that is logged at Debug.
+- When a type references the parent more than once, name the attribute with `"parentReference"` on
+  the query or on the sub-query entry. A name that does not exist, or that references another type,
+  fails at startup and in `--spark-verify-model`.
+
+```csharp
+public override async Task OnNewAsync(SparkNewArgs<Answer> args)
+{
+    await base.OnNewAsync(args);                 // keeps the auto-fill
+    args.PersistentObject[nameof(Answer.Body)].SetOriginalValue("Thanks for asking!");
+}
+```
+
+⚠️ An override that does not call `base.OnNewAsync` loses the auto-fill, which is intended: the hook
+then owns the initialisation. Call `args.FillParentReference()` to keep the auto-fill without calling
+base.
+
+A standalone New and an `AsDetail` row get no auto-fill. An embedded row's parent owns the save.
 
 ## REST API
 
@@ -324,6 +503,77 @@ See the Fleet demo app for a working example:
 - `MintPlayer.Spark/Services/CustomActionResolver.cs` -- action discovery
 - `MintPlayer.Spark/Endpoints/Actions/ListCustomActions.cs` -- list endpoint
 - `MintPlayer.Spark/Endpoints/Actions/ExecuteCustomAction.cs` -- execute endpoint
+
+## Disabling actions: `OnDisableActionsAsync` (#460, D13)
+
+The action catalogue (`POST /spark/actions/list`) and `security.json` are per **type**. Whether an
+action applies to *this* repository, *this* query or *this* selection is answered by one hook on the
+entity's Actions class — the only place in Spark that can disable an action:
+
+```csharp
+public override Task OnDisableActionsAsync(IDisablable target, DisableActionsContext context)
+{
+    // context.Entity is the STORED entity for an object target; null for a query or a create.
+    if (context.TargetKind == DisableActionsTargetKind.PersistentObject
+        && context.Entity is Repository { Connection: not RepositoryConnection.Disconnected })
+    {
+        target.DisableActions("DeleteData");
+    }
+
+    if (context.TargetKind == DisableActionsTargetKind.Query && context.Query?.Name == "ArchivedRepositories")
+        target.DisableActions("Resync", "New");
+
+    return Task.CompletedTask;
+}
+```
+
+The framework asks it twice, and the two answers are meant to be the same:
+
+| When | Targets | What happens |
+|---|---|---|
+| **Load** — `POST /spark/po/load`, `POST /spark/queries/execute` | the object; the query | the answer is returned as `disabledActions`; ng-spark hides those custom actions, and `Edit`/`Save`/`Delete` (detail) and `New` (query) |
+| **Submit** — update, delete, create, every custom action | update/delete: the stored object; create: an object with no entity; custom action: the object it runs on, the query it was invoked from, and **each selected row** | a disabled action is refused with **403** `{ result: { error, action } }` |
+
+Names at submit: an update is refused when `Edit` or `Save` is disabled, a create when `New` or
+`Save` is, a delete when `Delete` is, a custom action when its own name is — on **any** evaluated
+target (the union).
+
+⚠️ **403 only after the row gate.** A row the caller may not see is still a 404 — the hook is never
+asked about it, so a 403 never confirms that a hidden row exists.
+
+⚠️ **Decide from the entity, the user and stored state only.** `context.Entity` at submit is what is
+stored, never what the client posted; a hook that looked at anything the load had and the submit does
+not would offer a button that then refuses. Two consequences:
+
+- `New` has no entity and a create names no query, so a hook that withholds `New` only for one query
+  hides the button but cannot enforce it. Decide `New` on the user and stored state.
+- There are no rows in scope for a query target (the hook runs before the query does), so "hide the
+  action when the result is empty" cannot be expressed — deliberately, because it could never be
+  re-derived at submit.
+
+For a large selection, override the **batched** form `OnDisableActionsAsync(IReadOnlyList<DisableActionsItem>)`
+— every target of one request in one call — to answer with one round-trip instead of one per row. The
+default calls the single form per item.
+
+Not asked at submit in the system context (module sync, background work). A write an action makes
+through `IDatabaseAccess` on an object whose own hook disables that write is refused the same way
+(403), so an action that must edit a locked row writes through the session instead.
+
+### Migrating from the old entry points
+
+These are **deleted** (breaking, 11.0.0-preview): they emitted answers nothing enforced, and the
+`IClientAccessor` ones rode a client operation no client honoured and the detail path dropped.
+
+| Removed | Instead |
+|---|---|
+| `PersistentObject.DisableActions(...)` in `OnLoadAsync` | `OnDisableActionsAsync`, object target, `context.Entity` |
+| `SparkQueryContext.DisableActions(...)` in `OnQueryAsync` | `OnDisableActionsAsync`, query target, `context.Query` / `context.Parent` |
+| `CustomQueryArgs.DisableActions(...)` in a custom query | `OnDisableActionsAsync`, query target (no rows in scope, see above) |
+| `IClientAccessor.DisableActionsOn` / `DisableQueryActions` / `DisableActions` / `DisableActionsForSession` | `OnDisableActionsAsync`; for session-wide rules, `security.json` |
+| the `disableAction` client operation (ng-spark `DisableActionOperation`, `SparkDisableActionOperation`) | `disabledActions` on the object / result, and the 403 at submit |
+
+`PersistentObject` still implements `IDisablable` — explicitly, so only the framework (handing the
+object to the hook at load) calls it. `disabledActions` on the wire is unchanged.
 
 ## Row-level security: nothing an action receives came from the browser (#236, #327)
 

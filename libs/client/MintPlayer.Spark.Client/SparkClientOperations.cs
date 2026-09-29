@@ -60,6 +60,29 @@ public static class SparkClientOperations
     }
 
     /// <summary>
+    /// The envelope's <c>result</c> — what a custom action handed to <c>CustomActionArgs.SetResult</c>
+    /// (#460, T5) — or null when it is absent, JSON <c>null</c>, or the body is not an envelope.
+    /// </summary>
+    internal static JsonElement? ParseResult(string? envelopeJson)
+    {
+        if (string.IsNullOrWhiteSpace(envelopeJson)) return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(envelopeJson);
+            return doc.RootElement.ValueKind == JsonValueKind.Object
+                   && doc.RootElement.TryGetProperty("result", out var result)
+                   && result.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined)
+                ? result.Clone()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Applies every <c>refreshAttribute</c> operation addressed to <paramref name="target"/>, in
     /// emission order. Returns the number applied.
     /// </summary>
@@ -162,15 +185,6 @@ public static class SparkClientOperations
                 ObjectTypeId = String(op, "objectTypeId"),
                 Id = String(op, "id"),
                 RouteName = String(op, "routeName"),
-            },
-            "disableAction" => new SparkDisableActionOperation
-            {
-                Type = type,
-                Raw = raw,
-                ActionName = String(op, "actionName"),
-                TargetKind = op.TryGetProperty("target", out var target) && target.ValueKind == JsonValueKind.Object
-                    ? String(target, "kind")
-                    : null,
             },
             "retry" => new SparkRetryOperation
             {

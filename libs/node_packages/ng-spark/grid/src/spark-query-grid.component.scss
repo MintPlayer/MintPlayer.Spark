@@ -1,0 +1,25 @@
+// A selected row's links and its `⋮` menu toggle must stay readable.
+//
+// <bs-datatable> (mp-datatable, ng-bootstrap) paints a selected row with
+// `--mp-datatable-row-selected-bg` (the list-group active background, i.e. the primary colour) and
+// sets the row's `color` to `--mp-datatable-row-selected-color`. A link and a `.btn-link` do not
+// inherit `color` — they take `--bs-link-color` / `--bs-btn-color`, which are the same primary blue
+// — so on a selected row they rendered blue on blue. The datatable's own rule stops at the row; this
+// override hands its contrast colour down to them. Both variables come from the theme (Bootstrap
+// redefines `--bs-list-group-active-color` under `[data-bs-theme=dark]`), so no colour is
+// hard-coded here and light and dark follow alike.
+//
+// `::ng-deep` because the row is rendered by the datatable and the links by <spark-grid-cell>, not
+// by this component's template; `:host` keeps the rule inside this grid.
+:host ::ng-deep tbody tr[data-selected='true'] {
+  a:not(.btn),
+  .spark-row-menu-toggle {
+    color: var(--mp-datatable-row-selected-color);
+  }
+
+  .spark-row-menu-toggle {
+    --bs-btn-color: var(--mp-datatable-row-selected-color);
+    --bs-btn-hover-color: var(--mp-datatable-row-selected-color);
+    --bs-btn-active-color: var(--mp-datatable-row-selected-color);
+  }
+}

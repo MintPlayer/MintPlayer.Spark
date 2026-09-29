@@ -134,23 +134,66 @@ internal sealed partial class MessagingLeaseManager
     }
 
     /// <summary>
+    /// The failure bound on <see cref="ReleaseAsync"/>: two small compare-exchange requests, which
+    /// take milliseconds against a reachable store. It bounds a stop against an unreachable one; it
+    /// is never waited out on the normal path.
+    /// </summary>
+    public static readonly TimeSpan ReleaseTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>
     /// Releases the lease if it is still ours, so a standby can take over immediately instead of
     /// waiting out the TTL.
+    /// <para>
+    /// Deliberately not cancellable by the caller. Its callers are stopping, and a stop token is
+    /// often cancelled already (the host's shutdown timeout, or the stopping token itself), which
+    /// would cancel the release before it reached RavenDB and leave every standby waiting out the
+    /// TTL. It runs on its own token, bounded by <see cref="ReleaseTimeout"/> instead. A release
+    /// that cannot happen — the store is disposed or unreachable — is expected, not an error: the
+    /// lease simply lapses at its TTL, which is the crash path the standby already handles.
+    /// </para>
     /// </summary>
-    public async Task ReleaseAsync(CancellationToken cancellationToken)
+    /// <returns>Whether the lease was released by this call.</returns>
+    public async Task<bool> ReleaseAsync()
     {
-        var current = await GetAsync(cancellationToken);
+        // A disposed store cannot send anything: RavenDB throws OperationCanceledException from its
+        // context pool (or ObjectDisposedException), which is what S-M8's crashed host logged as
+        // "Error releasing the messaging lease" on teardown.
+        if (documentStore.WasDisposed)
+        {
+            logger.LogDebug("Not releasing the messaging lease: the document store is disposed; it lapses at its TTL");
+            return false;
+        }
 
-        // Guarded on identity: an unconditional delete would drop a lease another host had already
-        // taken over, which is the bug the migration runner's release has.
-        if (current is null || current.Value.NodeId != MessageClaims.NodeId)
-            return;
+        using var bound = new CancellationTokenSource(ReleaseTimeout);
+        try
+        {
+            var current = await GetAsync(bound.Token);
 
-        var deleted = await documentStore.Operations.SendAsync(
-            new DeleteCompareExchangeValueOperation<MessagingLease>(LeaseKey, current.Index), token: cancellationToken);
+            // Guarded on identity: an unconditional delete would drop a lease another host had already
+            // taken over, which is the bug the migration runner's release has.
+            if (current is null || current.Value.NodeId != MessageClaims.NodeId)
+                return false;
 
-        if (deleted.Successful)
-            logger.LogInformation("Released the messaging lease");
+            var deleted = await documentStore.Operations.SendAsync(
+                new DeleteCompareExchangeValueOperation<MessagingLease>(LeaseKey, current.Index), token: bound.Token);
+
+            if (deleted.Successful)
+                logger.LogInformation("Released the messaging lease (fence {Fence})", current.Value.Fence);
+
+            return deleted.Successful;
+        }
+        catch (Exception ex) when (documentStore.WasDisposed && ex is OperationCanceledException or ObjectDisposedException)
+        {
+            logger.LogDebug("Not releasing the messaging lease: the document store was disposed during the release; it lapses at its TTL");
+            return false;
+        }
+        catch (OperationCanceledException) when (bound.IsCancellationRequested)
+        {
+            logger.LogWarning(
+                "Releasing the messaging lease did not complete within {Timeout}; it lapses at its TTL ({Ttl}), "
+                + "so a standby takes over after that instead of at once", ReleaseTimeout, Ttl);
+            return false;
+        }
     }
 
     private async Task<CompareExchangeValue<MessagingLease>?> GetAsync(CancellationToken cancellationToken)

@@ -99,6 +99,18 @@ public static class SparkExtensions
         // Ensure HttpContextAccessor is available (needed for RequestCultureResolver)
         services.AddHttpContextAccessor();
 
+        // Forwarded headers (#460, D15) — trusted from private ranges by default, placed at the
+        // front of the pipeline by a startup filter. An application no longer configures or calls
+        // UseForwardedHeaders() itself; see SparkForwardedHeadersOptions.
+        services.AddSparkForwardedHeaders();
+
+        // Data Protection (#460, D5) — always on, key ring persisted per Spark:DataProtection; an
+        // unpersisted ring outside Development is refused by UseSpark(). See SparkDataProtectionOptions.
+        services.AddSparkDataProtection();
+
+        // Viewer timezone (#460, item 7): header, then the spark-timezone cookie, then UTC.
+        services.AddSparkConfigurationSection<SparkTimeZoneOptions>(SparkTimeZoneOptions.SectionName);
+
         // Register the Spark services
         services.AddSparkServices();
 
@@ -106,6 +118,11 @@ public static class SparkExtensions
         // here. It is the seam an application reaches for to apply an entity's row rule from its own
         // controllers and jobs (#301).
         services.AddScoped(typeof(Abstractions.Authorization.ISparkRowRule<>), typeof(Services.SparkRowRule<>));
+
+        // The per-request group-membership snapshot SecurityFileAccessControl and the
+        // [SparkAuthorize] group handler share (#460, D12). A concrete class, which the [Register]
+        // generator does not register as itself, so it is wired here too.
+        Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddScoped<Services.SparkGroupMembership>(services);
 
         // The model synchronizer rewrites App_Data/Model/*.json from the entity classes. It is a
         // build-time tool, so outside Development it is not in the container at all — there is
@@ -234,6 +251,12 @@ public static class SparkExtensions
     /// </summary>
     public static IApplicationBuilder UseSpark(this IApplicationBuilder app)
     {
+        // #460 D5: a key ring that would not survive a redeploy is refused here, at startup, rather
+        // than discovered as every user being signed out after the next deploy.
+        SparkDataProtection.Validate(
+            app.ApplicationServices.GetRequiredService<Microsoft.Extensions.Options.IOptions<SparkDataProtectionOptions>>().Value,
+            app.ApplicationServices.GetRequiredService<IHostEnvironment>());
+
         var registry = app.ApplicationServices.GetRequiredService<SparkModuleRegistry>();
 
         // Middleware that must reject a request before the cost of authenticating it is paid — a rate
@@ -647,7 +670,15 @@ public static class SparkExtensions
         // duplicate alias would otherwise surface as a 500 on whichever request first needed a
         // query — in an unrelated place, long after the mistake. Here it is a startup failure that
         // names both queries.
-        app.ApplicationServices.GetRequiredService<IQueryLoader>().GetQueries();
+        var queries = app.ApplicationServices.GetRequiredService<IQueryLoader>().GetQueries();
+
+        // A parentReference that names nothing, or names a reference to another type, would make a
+        // sub-query New silently fill nothing (#460, D19). Refused here, naming every offender.
+        var parentReferenceProblems = SparkSubQueries.ValidateParentReferences(
+            app.ApplicationServices.GetRequiredService<IModelLoader>().GetEntityTypes(), queries);
+        if (parentReferenceProblems.Count > 0)
+            throw new InvalidOperationException(
+                "Invalid sub-query parentReference: " + string.Join(" ", parentReferenceProblems));
     }
 
     /// <summary>
@@ -673,7 +704,8 @@ public static class SparkExtensions
         var problems = RowPolicyDeclarationValidator.Validate(
             configuration,
             [.. modelLoader.GetEntityTypes()],
-            type => ResolveClrType(type) is { } clr && rowSecurity.HasRowRule(clr),
+            type => ResolveClrType(type) is { } clr
+                && rowSecurity.GetRowRuleKinds(clr).DecidesVisibility(),
             type => ResolveClrType(type) is { } clr
                 ? TryResolve(() => actionsResolver.ResolveForType(clr))
                 : TryResolve(() => actionsResolver.ResolveByEntityName(type.Name)));

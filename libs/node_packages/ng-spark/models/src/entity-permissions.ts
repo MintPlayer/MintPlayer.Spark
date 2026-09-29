@@ -10,4 +10,15 @@ export interface EntityPermissions {
   canCreate: boolean;
   canEdit: boolean;
   canDelete: boolean;
+  /**
+   * SoftDelete (#460): `Restore/T`, `Purge/T` and `ViewDeleted/T` (the recycle bin — query and load
+   * with `deleted: 'include' | 'only'`). Type-level only; a row may still refuse. Optional because a
+   * server older than 11.0.0-preview.91 does not send them — treat absent as `false`.
+   */
+  canRestore?: boolean;
+  canPurge?: boolean;
+  canViewDeleted?: boolean;
+  /** History (#460): `History/T` (list and read revisions) and `Revert/T` together with `Edit/T`. */
+  canViewHistory?: boolean;
+  canRevert?: boolean;
 }

@@ -30,6 +30,32 @@
     here: `fetchFn` is left null whenever `data` is bound. See the class comment for why rows can
     arrive from outside at all (streaming must not put a websocket in every detail page's bundle).
   -->
+  <!--
+    The selection bar (#460, M15): the "N selected" chip, only while rows are selected, and part
+    of the grid rather than of a host, so the query card and the query-list page show the same
+    thing. There is deliberately no select-all (owner decision, 2026-09-29): with paged, lazy or
+    virtual-scrolled rows it could only tick the rows loaded so far. Deselect-all is the
+    datatable's own header checkbox, which it shows only while a row is selected; the chip does
+    not repeat it. Single selection has no checkbox column, so no header checkbox either, and a
+    row click only ever selects: there the chip's ⊗ is the deselect. The bar keeps its height
+    while empty, so ticking the first row does not push the table down under the pointer.
+  -->
+  @if (selectionMode() !== 'none') {
+    <div class="spark-selection-bar d-flex align-items-center gap-2 mb-2" style="min-height: 1.5rem">
+      @if (selection().length) {
+        <bs-badge [type]="colors.primary" class="spark-selection-chip">
+          {{ selection().length }} {{ 'common.selected' | t }}
+          @if (selectionMode() === 'single') {
+            <button type="button" class="spark-selection-clear"
+                    [attr.aria-label]="'common.clearSelection' | t" (click)="clearSelection()">
+              <spark-icon name="x-circle" />
+            </button>
+          }
+        </bs-badge>
+      }
+    </div>
+  }
+
   <bs-datatable
       [selectionMode]="selectionMode()"
       [(selection)]="selection"
@@ -40,6 +66,8 @@
       [fetch]="fetchFn()"
       [distincts]="distinctsFn"
       (filterChange)="onFilterChange($event)"
+      (rowClick)="onRowClick($event)"
+      (rowDblClick)="onRowDblClick($event)"
       [(settings)]="settings">
     @for (col of visibleColumns(); track col.name) {
       <!--
@@ -70,6 +98,12 @@
         }
       </div>
     }
+    @if (rowActions().length) {
+      <!-- The per-row ⋮ menu's column: no header, never sorted or filtered. -->
+      <div *bsDatatableColumn="'__sparkRowActions'; sortable: false; filterable: false">
+        <span class="visually-hidden">{{ 'common.actions' | t }}</span>
+      </div>
+    }
 
     <ng-container *bsRowTemplate="let item">
       @let row = $any(item);
@@ -90,7 +124,7 @@
                     from it cannot make a row clickable that `canRead()` withheld, and returning
                     null from it suppresses the link for that one row. -->
             @if (first && canRead() && rowRouteFor(row); as route) {
-              <a [routerLink]="route"
+              <a [routerLink]="route" [queryParams]="rowQueryParams()" [state]="rowLinkState()"
                  (click)="rowClicked.emit(row)">
                 <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, col: col }"></ng-container>
               </a>
@@ -99,6 +133,36 @@
             }
           } @else {
             &nbsp;
+          }
+        </td>
+      }
+      @if (rowActions().length) {
+        <!-- The row menu: every action whose rule accepts one row, run on THIS row only. The
+             checkbox selection is left alone (runRowAction never reads or writes it). -->
+        <td class="spark-row-actions text-end" (click)="$event.stopPropagation()" (dblclick)="$event.stopPropagation()">
+          @if (row) {
+            <button type="button" cdkOverlayOrigin #rowMenuOrigin="cdkOverlayOrigin" #rowMenuToggle
+                    class="btn btn-sm btn-link spark-row-menu-toggle"
+                    aria-haspopup="menu" [attr.aria-expanded]="openRowMenu() === row.id"
+                    [attr.aria-label]="'common.actions' | t" (click)="toggleRowMenu(row)">
+              <spark-icon name="three-dots-vertical" />
+            </button>
+            <ng-template cdkConnectedOverlay
+                         [cdkConnectedOverlayOrigin]="rowMenuOrigin"
+                         [cdkConnectedOverlayOpen]="openRowMenu() === row.id"
+                         [cdkConnectedOverlayPositions]="rowMenuPositions"
+                         (overlayOutsideClick)="onRowMenuOutsideClick($event, rowMenuToggle, row.id)"
+                         (overlayKeydown)="$event.key === 'Escape' && closeRowMenu(row.id)"
+                         (detach)="closeRowMenu(row.id)">
+              <bs-dropdown-menu class="spark-row-menu">
+                @for (action of rowActions(); track action.name) {
+                  <li bsDropdownItem class="spark-row-action" [attr.data-action]="action.name"
+                      (click)="chooseRowAction(action, row)">
+                    {{ action.definition.displayName | resolveTranslation }}
+                  </li>
+                }
+              </bs-dropdown-menu>
+            </ng-template>
           }
         </td>
       }

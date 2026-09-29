@@ -101,10 +101,32 @@ public partial class SparkClient
         => NewPersistentObjectCoreAsync(
             aliasOrName, asDetailAttribute, parentType, parentId, parameters, onRetry, onOperation, cancellationToken);
 
+    /// <summary>
+    /// Scaffolds an unsaved object for a New started from a sub-query on a parent's detail page
+    /// (#460, D19): the server loads the parent through its gated read, runs <c>OnNewAsync</c> with it —
+    /// whose base fills the reference to the parent — and returns the object.
+    /// </summary>
+    /// <param name="aliasOrName">The type being created (the sub-query's row type).</param>
+    /// <param name="parentType">The parent's type.</param>
+    /// <param name="parentId">The parent's id.</param>
+    /// <param name="queryId">The sub-query, by id or alias; the parent's type must declare it.</param>
+    public Task<PersistentObject> NewPersistentObjectFromSubQueryAsync(
+        string aliasOrName,
+        string parentType,
+        string parentId,
+        string queryId,
+        IReadOnlyDictionary<string, string>? parameters = null,
+        CancellationToken cancellationToken = default,
+        SparkRetryHandler? onRetry = null,
+        SparkOperationHandler? onOperation = null)
+        => NewPersistentObjectCoreAsync(
+            aliasOrName, asDetailAttribute: null, parentType, parentId, parameters, onRetry, onOperation, cancellationToken, queryId);
+
     private Task<PersistentObject> NewPersistentObjectCoreAsync(
         string objectTypeId, string? asDetailAttribute, string? parentType, string? parentId,
         IReadOnlyDictionary<string, string>? parameters,
-        SparkRetryHandler? onRetry, SparkOperationHandler? onOperation, CancellationToken cancellationToken)
+        SparkRetryHandler? onRetry, SparkOperationHandler? onOperation, CancellationToken cancellationToken,
+        string? queryId = null)
         => PostConversationAsync(
             "/spark/po/new",
             new Dictionary<string, object?>
@@ -113,6 +135,7 @@ public partial class SparkClient
                 ["asDetailAttribute"] = asDetailAttribute,
                 ["parentType"] = parentType,
                 ["parentId"] = parentId,
+                ["queryId"] = queryId,
                 ["parameters"] = parameters,
             },
             requiresAntiforgery: true,

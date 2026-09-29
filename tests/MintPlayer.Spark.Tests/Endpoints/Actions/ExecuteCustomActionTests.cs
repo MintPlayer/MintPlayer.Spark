@@ -624,7 +624,32 @@ public class ExecuteCustomActionTests
     private readonly IQueryExecutor _queryExecutor = Substitute.For<IQueryExecutor>();
 
     private ExecuteCustomAction NewEndpoint() =>
-        new(_modelLoader, _rowSecurity, _typeResolver, _actionResolver, _permissions, _retryAccessor, _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance, _databaseAccess, _session, _configLoader, _queryLoader, _queryExecutor);
+        new(_modelLoader, _rowSecurity, _typeResolver, _actionResolver, _permissions, _retryAccessor, _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance, _databaseAccess, _session, _configLoader, _queryLoader, _queryExecutor, new NothingDisabled());
+
+    /// <summary>
+    /// These tests exercise dispatch, not the D13 gate (#460), which has its own tests against the
+    /// real route table (<c>DisableActionsTests</c>): nothing is ever disabled here.
+    /// </summary>
+    private sealed class NothingDisabled : IDisabledActionsEvaluator
+    {
+        public Task ApplyOnLoadAsync(MintPlayer.Spark.Abstractions.PersistentObject obj) => Task.CompletedTask;
+
+        public Task<IReadOnlyList<string>?> EvaluateQueryOnLoadAsync(
+            object? actions, MintPlayer.Spark.Abstractions.SparkQuery query,
+            MintPlayer.Spark.Abstractions.PersistentObject? parent, string? parentType)
+            => Task.FromResult<IReadOnlyList<string>?>(null);
+
+        public Task<IReadOnlySet<string>> EvaluateAsync(object? actions, IReadOnlyList<MintPlayer.Spark.Actions.DisableActionsItem> items)
+            => Task.FromResult<IReadOnlySet<string>>(new HashSet<string>());
+
+        public Task EnsureEnabledAsync(Type entityType, string actionName, IReadOnlyList<string> refusedBy, string? id, object? entity)
+            => Task.CompletedTask;
+
+        public Task<IReadOnlyDictionary<string, object>> LoadEntitiesAsync(Type entityType, IReadOnlyCollection<string> ids)
+            => Task.FromResult<IReadOnlyDictionary<string, object>>(new Dictionary<string, object>());
+
+        public object? ResolveActions(Type? clrType, string entityName) => null;
+    }
 
     private static DefaultHttpContext NewContext(
         string objectTypeId,

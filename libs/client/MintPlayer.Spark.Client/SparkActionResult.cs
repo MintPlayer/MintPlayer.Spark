@@ -45,19 +45,37 @@ public sealed class SparkActionResult
     /// </remarks>
     public IReadOnlyList<SparkClientOperation> Operations { get; }
 
+    /// <summary>
+    /// What the action returned through <c>CustomActionArgs.SetResult</c> (#460, T5): the response
+    /// envelope's <c>result</c>, as raw JSON. Null when the action set nothing, and always null on a
+    /// prompt — a 449 carries no result; the attempt that completes does.
+    /// </summary>
+    /// <remarks>Read it typed with <see cref="GetResult{T}"/>.</remarks>
+    public System.Text.Json.JsonElement? Result { get; }
+
+    /// <summary>
+    /// <see cref="Result"/> deserialized as <typeparamref name="T"/> with the client's web defaults
+    /// (camelCase, case-insensitive); <c>default</c> when the action returned nothing.
+    /// </summary>
+    public T? GetResult<T>()
+        => Result is { } json ? System.Text.Json.JsonSerializer.Deserialize<T>(json, SparkClient.JsonOptions) : default;
+
     private SparkActionResult(
         int statusCode, RetryActionPayload? retry, Dictionary<string, object?>? body,
-        IReadOnlyList<object>? answers, IReadOnlyList<SparkClientOperation>? operations)
+        IReadOnlyList<object>? answers, IReadOnlyList<SparkClientOperation>? operations,
+        System.Text.Json.JsonElement? result = null)
     {
         StatusCode = statusCode;
         Retry = retry;
         Body = body;
         Answers = answers ?? [];
         Operations = operations ?? [];
+        Result = result;
     }
 
-    internal static SparkActionResult ForSuccess(int statusCode, IReadOnlyList<SparkClientOperation>? operations = null)
-        => new(statusCode, retry: null, body: null, answers: null, operations);
+    internal static SparkActionResult ForSuccess(
+        int statusCode, IReadOnlyList<SparkClientOperation>? operations = null, System.Text.Json.JsonElement? result = null)
+        => new(statusCode, retry: null, body: null, answers: null, operations, result);
 
     internal static SparkActionResult ForRetry(
         RetryActionPayload payload, Dictionary<string, object?> body, IReadOnlyList<object> answers,

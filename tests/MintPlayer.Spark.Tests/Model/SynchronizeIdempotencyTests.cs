@@ -296,6 +296,52 @@ public class SynchronizeIdempotencyTests : IDisposable
     }
 
     [Fact]
+    public void Sub_query_entries_and_a_selection_mode_reach_a_fixed_point_in_both_shapes()
+    {
+        // #460 M15 (D17): a bare alias stays a bare alias, an entry with overrides stays an object,
+        // and a query's selectionMode survives — run after run, byte for byte.
+        Seed("IdemProbe.json", """
+        {
+          "persistentObject": {
+            "id": "12345678-1234-1234-1234-123456789abd",
+            "name": "IdemProbe",
+            "clrType": "MintPlayer.Spark.Tests.Model.IdemProbe",
+            "attributes": [],
+            "queries": [
+              "idem-bare",
+              { "query": "idem-rich", "selectionMode": "multiple", "parentReference": "OwnerId" }
+            ]
+          },
+          "queries": [
+            {
+              "id": "12345678-1234-1234-1234-1234567890ab",
+              "name": "GetIdemProbes",
+              "source": "Database.IdemProbes",
+              "entityType": "IdemProbe",
+              "selectionMode": "none"
+            }
+          ]
+        }
+        """);
+
+        Synchronize();
+        var first = Snapshot();
+
+        Synchronize();
+        Synchronize();
+
+        ((object)Snapshot()).Should().BeEquivalentTo(first);
+        var file = JsonSerializer.Deserialize<EntityTypeFile>(first["IdemProbe.json"],
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        file.PersistentObject.Queries.Select(e => e.Query).Should().Equal("idem-bare", "idem-rich");
+        file.PersistentObject.Queries[0].IsBare.Should().BeTrue();
+        file.PersistentObject.Queries[1].SelectionMode.Should().Be(SparkSelectionMode.Multiple);
+        file.PersistentObject.Queries[1].ParentReference.Should().Be("OwnerId");
+        file.Queries.Single(q => q.Name == "GetIdemProbes").SelectionMode.Should().Be(SparkSelectionMode.None);
+        first["IdemProbe.json"].Should().Contain("\"idem-bare\"");
+    }
+
+    [Fact]
     public void A_hand_trimmed_showedOn_on_a_projected_entity_reaches_a_fixed_point()
     {
         // #274: Name is on both IdemProbe and its projection, so synchronize derives

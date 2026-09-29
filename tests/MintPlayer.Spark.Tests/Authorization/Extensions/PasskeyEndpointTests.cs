@@ -35,6 +35,7 @@ public class PasskeyEndpointTests : SparkTestDriver
                 {
                     services.AddSingleton<IDocumentStore>(Store);
                     services.AddSparkAuthentication<SparkUser>();
+                    services.AddTestMailSink(); // #460 D6: registration needs a mail sender
                     services.Configure<SparkAuthenticationOptions>(o =>
                     {
                         o.Passkeys = passkeys;

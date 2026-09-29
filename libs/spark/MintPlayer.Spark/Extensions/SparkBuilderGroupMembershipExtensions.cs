@@ -1,5 +1,7 @@
 using MintPlayer.Spark.Abstractions.Authorization;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.Spark.Services;
 
 namespace MintPlayer.Spark.Extensions;
 
@@ -33,6 +35,40 @@ public static class SparkBuilderGroupMembershipExtensions
             builder.Services.Remove(existing);
 
         builder.Services.AddScoped<IGroupMembershipProvider, TProvider>();
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a group-membership provider whose answers are <b>merged</b> with the primary one's —
+    /// the claims provider by default, or whatever <see cref="UseGroupMembershipProvider{TProvider}"/>
+    /// installed. Use it for membership that comes from somewhere other than the sign-in, such as
+    /// privileges earned by reputation (#460, D12), without taking over claim-based groups.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A composed provider may return group <em>names</em>, and also group <em>ids</em> by
+    /// implementing <see cref="IGroupIdMembershipProvider"/>. Either way the well-known ids are
+    /// dropped: a composed provider can no more hand out <c>anonymous</c> or <c>authenticated</c>
+    /// than the primary one can.
+    /// </para>
+    /// <para>
+    /// Every provider is asked once per request; the merged answer is cached for the rest of it and
+    /// shared with <c>[SparkAuthorize(Group = …)]</c>. Adding the same provider type twice is a
+    /// no-op. The order of the calls does not matter: <c>UseGroupMembershipProvider</c> replaces only
+    /// the primary provider and leaves composed ones in place.
+    /// </para>
+    /// </remarks>
+    public static ISparkBuilder AddGroupMembershipProvider<TProvider>(this ISparkBuilder builder)
+        where TProvider : class, IGroupMembershipProvider
+    {
+        if (builder.Services.Any(d => d.ServiceType == typeof(IComposedGroupMembershipProvider)
+                && d.ImplementationType == typeof(ComposedGroupMembershipProvider<TProvider>)))
+        {
+            return builder;
+        }
+
+        builder.Services.TryAddScoped<TProvider>();
+        builder.Services.AddScoped<IComposedGroupMembershipProvider, ComposedGroupMembershipProvider<TProvider>>();
         return builder;
     }
 }

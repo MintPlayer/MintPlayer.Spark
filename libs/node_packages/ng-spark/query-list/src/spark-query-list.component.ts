@@ -2,27 +2,32 @@ import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, injec
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Subscription } from 'rxjs';
 import { CommonModule, NgTemplateOutlet } from '@angular/common';
-import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, ParamMap, Router } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
-import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
 import { BsGridComponent, BsGridRowDirective, BsGridColumnDirective } from '@mintplayer/ng-bootstrap/grid';
-import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { BsPriorityNavComponent, BsPriorityNavItemDirective } from '@mintplayer/ng-bootstrap/priority-nav';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { HttpErrorResponse } from '@angular/common/http';
 import { SparkService, SparkStreamingService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { TranslateKeyPipe, ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
-import { SparkQueryGridComponent } from '@mintplayer/ng-spark/grid';
+import { SparkQueryGridComponent, SparkQueryToolbarAction, SparkSearchBoxComponent, sparkActionClass } from '@mintplayer/ng-spark/grid';
 import {
   CustomActionDefinition,
   StreamingMessage,
   QueryColumn,
   QueryResultItem,
+  SparkDeletedFilter,
 } from '@mintplayer/ng-spark/models';
+import { NgComponentOutlet } from '@angular/common';
+import {
+  SPARK_QUERY_LIST_ACTIONS,
+  SparkQueryListContext,
+  orderSparkExtensions,
+  parseSparkDeletedParam,
+} from '@mintplayer/ng-spark/panels';
 
 /**
  * The routed query page: chrome around one {@link SparkQueryGridComponent}.
@@ -43,7 +48,7 @@ import {
  */
 @Component({
   selector: 'spark-query-list',
-  imports: [BsBadgeComponent, CommonModule, NgTemplateOutlet, FormsModule, BsAlertComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsInputGroupComponent, BsPriorityNavComponent, BsPriorityNavItemDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryGridComponent, ResolveTranslationPipe, TranslateKeyPipe],
+  imports: [BsBadgeComponent, CommonModule, NgTemplateOutlet, NgComponentOutlet, BsAlertComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryGridComponent, SparkSearchBoxComponent, ResolveTranslationPipe, TranslateKeyPipe],
   templateUrl: './spark-query-list.component.html',
   styleUrl: './spark-query-list.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -90,10 +95,47 @@ export class SparkQueryListComponent {
   protected readonly query = computed(() => this.grid()?.query() ?? null);
   protected readonly entityType = computed(() => this.grid()?.entityType() ?? null);
   protected readonly customActions = computed(() => this.grid()?.customActions() ?? []);
-  protected readonly canCreate = computed(() => this.grid()?.canCreate() ?? false);
+  protected readonly canCreate = computed(() => this.grid()?.offersCreate() ?? false);
   protected readonly resultCount = computed(() => this.grid()?.resultCount() ?? null);
   protected readonly isVirtualScrolling = computed(() => this.grid()?.isVirtualScrolling() ?? false);
   protected readonly gridError = computed(() => this.grid()?.errorMessage() ?? null);
+  protected readonly permissions = computed(() => this.grid()?.permissions() ?? null);
+
+  /** Add-on buttons for the action bar (#460, `SPARK_QUERY_LIST_ACTIONS`), e.g. the Deleted toggle. */
+  protected readonly listActions = orderSparkExtensions(inject(SPARK_QUERY_LIST_ACTIONS, { optional: true }), a => a.priority ?? 60);
+
+  /**
+   * The soft-deletion mode (#460, T2), read from the route's `?deleted=` so the recycle bin survives
+   * a reload and the back button from a row opened in it. `exclude` unless the route says otherwise.
+   */
+  protected readonly deletedMode = signal<SparkDeletedFilter>('exclude');
+
+  /** Bumped by `context.reload()`; the grid treats any new value as "re-run the query". */
+  private readonly reloadToken = signal(0);
+
+  protected readonly listContext = computed((): SparkQueryListContext | null => {
+    const query = this.query();
+    if (!query) return null;
+    return {
+      query,
+      entityType: this.entityType(),
+      permissions: this.permissions(),
+      deleted: this.deletedMode(),
+      setDeleted: (mode: SparkDeletedFilter) => this.setDeleted(mode),
+      reload: () => this.reloadToken.update(n => n + 1),
+    };
+  });
+
+  protected readonly gridReloadToken = this.reloadToken.asReadonly();
+
+  private setDeleted(mode: SparkDeletedFilter): void {
+    this.router.navigate([], {
+      relativeTo: this.route,
+      queryParams: { deleted: mode === 'exclude' ? null : mode },
+      queryParamsHandling: 'merge',
+      replaceUrl: true,
+    });
+  }
 
   /** Whether an action's selection rule is satisfied. Delegated: the grid holds the selection. */
   /** @see SparkPoDetailComponent.customActionClass — same allow-list, same default. */
@@ -109,6 +151,27 @@ export class SparkQueryListComponent {
       default:
         return 'btn btn-outline-primary';
     }
+  }
+
+  /** The grid's toolbar model (#460, M15), the same list the sub-query card renders. */
+  protected readonly toolbarActions = computed(() => this.grid()?.toolbarActions() ?? []);
+
+  protected toolbarActionClass(action: SparkQueryToolbarAction): string {
+    // New keeps its solid primary look; the rest follow their variant.
+    return action.kind === 'new' ? 'btn btn-primary' : sparkActionClass(action.definition);
+  }
+
+  protected isToolbarActionEnabled(action: SparkQueryToolbarAction): boolean {
+    return this.grid()?.isToolbarActionEnabled(action) ?? false;
+  }
+
+  protected runToolbarAction(action: SparkQueryToolbarAction): void {
+    if (action.kind === 'new') {
+      // Through this page's own onCreate, so `createClicked` fires exactly as it always has.
+      this.onCreate();
+      return;
+    }
+    void this.grid()?.runToolbarAction(action);
   }
 
   protected isActionEnabled(action: CustomActionDefinition): boolean {
@@ -141,6 +204,11 @@ export class SparkQueryListComponent {
       // fetch path ever reached.
       this.onParamsChange(params).catch((e: unknown) => this.reportLoadFailure(e as HttpErrorResponse));
     });
+
+    // Separate from paramMap: switching the recycle bin on changes only the query string, and must
+    // not re-resolve the query (which would reset page, sort and filters for nothing).
+    this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe(query =>
+      this.deletedMode.set(parseSparkDeletedParam(query.get('deleted')) ?? 'exclude'));
 
     this.destroyRef.onDestroy(() => this.disconnectStreaming());
 

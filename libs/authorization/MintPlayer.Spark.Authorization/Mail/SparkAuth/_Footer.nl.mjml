@@ -1,0 +1,8 @@
+<mj-section padding="0 0 24px 0">
+  <mj-column>
+    <mj-divider border-width="1px" border-color="#e5e7eb" />
+    <mj-text font-size="12px" color="#6b7280">
+      Dit is een automatisch bericht{{ if app_name }} van {{ app_name }}{{ end }}. Je krijgt het omdat iemand dit adres bij het account gebruikte. Antwoorden is niet nodig.
+    </mj-text>
+  </mj-column>
+</mj-section>

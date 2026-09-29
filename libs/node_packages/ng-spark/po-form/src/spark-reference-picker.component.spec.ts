@@ -4,13 +4,13 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { SparkReferencePickerComponent } from './spark-reference-picker.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
-import { EntityType, PersistentObject } from '@mintplayer/ng-spark/models';
+import { EntityType, QueryResultItem } from '@mintplayer/ng-spark/models';
 
 const companyType: EntityType = { id: 't-company', name: 'Company', clrType: 'Test.Company', attributes: [] };
 
-const companies: PersistentObject[] = [
-  { id: 'companies/1', breadcrumb: 'Acme Corp', values: [] } as any,
-  { id: 'companies/2', values: [{ key: 'Name', value: 'Globex' }] } as any,
+const companies: QueryResultItem[] = [
+  { id: 'companies/1', breadcrumb: 'Acme Corp', values: [] },
+  { id: 'companies/2', values: [{ key: 'Name', value: 'Globex' }] },
 ];
 
 function createComponent(serviceOverrides: Partial<SparkService> = {}) {
@@ -46,7 +46,7 @@ describe('SparkReferencePickerComponent', () => {
     expect(component.displayValue()).toBe('companies/missing');
 
     fixture.componentRef.setInput('value', null);
-    expect(component.displayValue()).toBe('notSelected');
+    expect(component.displayValue()).toBe('common.notSelected');
   });
 
   it('open lazily loads the target entity type for the grid columns and seeds pagination', async () => {

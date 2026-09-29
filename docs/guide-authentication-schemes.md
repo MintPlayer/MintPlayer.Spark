@@ -526,9 +526,15 @@ endpoint only asks it earlier. The E2E test that pinned the old 400 now asserts 
 
 ## Choosing how much of the local-credential surface to mount
 
-`spark.AddAuthentication<TUser>()` mounts ASP.NET Core Identity's endpoint family under
-`/spark/auth`. An application that signs users in exclusively through an external provider does not
-want most of it, and `SparkLocalCredentials` chooses how much is mapped:
+`spark.AddAuthentication<TUser>()` mounts the local-credential endpoint family under `/spark/auth`.
+Since #460 M5 most of it is **Spark's own** (`SparkAccountEndpoints`): `register`,
+`resendConfirmationEmail`, `confirmEmail`, `forgotPassword`, `resetPassword` and `POST manage/info`
+are filtered out of `MapIdentityApi` and mapped by Spark with the same contracts, alongside the
+account routes `MapIdentityApi` never had (`confirm-email`, `manage/password`, `manage/profile`,
+`manage/2fa/authenticator-uri`, `manage/personal-data`, `DELETE manage/account`). Only `login`,
+`refresh`, `manage/2fa` and `GET manage/info` are still Microsoft's. An application that signs users
+in exclusively through an external provider does not want most of it, and `SparkLocalCredentials`
+chooses how much is mapped:
 
 ```csharp
 spark.AddAuthentication<SparkUser>(
@@ -536,11 +542,29 @@ spark.AddAuthentication<SparkUser>(
     configureProviders: identity => identity.AddGitHub(options => { /* … */ }));
 ```
 
-| Mode | Mapped | Not mapped |
-|---|---|---|
-| `Full` (default) | everything below | — |
-| `SignInOnly` | `login`, `refresh`, `forgotPassword`, `resetPassword`, `confirmEmail`, `manage/2fa`, `GET|POST manage/info` | `register`, `resendConfirmationEmail` |
-| `Disabled` | `manage/2fa`, `GET manage/info` | `register`, `login`, `refresh`, `confirmEmail`, `resendConfirmationEmail`, `forgotPassword`, `resetPassword`, `POST manage/info` |
+| Route (under `/spark/auth`) | Method | Owner | `Full` (default) | `SignInOnly` | `Disabled` |
+|---|---|---|:-:|:-:|:-:|
+| `register` | POST | Spark | ✓ | — | — |
+| `resendConfirmationEmail` | POST | Spark | ✓ | — | — |
+| `login` | POST | Identity | ✓ | ✓ | — |
+| `refresh` | POST | Identity | ✓ | ✓ | — |
+| `forgotPassword` | POST | Spark | ✓ | ✓ | — |
+| `resetPassword` | POST | Spark | ✓ | ✓ | — |
+| `manage/info` | POST | Spark | ✓ | ✓ | — |
+| `manage/password` | POST | Spark | ✓ | ✓ | — |
+| `confirmEmail` | GET | Spark | ✓ | ✓ | ✓ |
+| `confirm-email` | POST | Spark | ✓ | ✓ | ✓ |
+| `manage/info` | GET | Identity | ✓ | ✓ | ✓ |
+| `manage/2fa` | POST | Identity | ✓ | ✓ | ✓ |
+| `manage/profile` | GET, POST | Spark | ✓ | ✓ | ✓ |
+| `manage/2fa/authenticator-uri` | GET | Spark | ✓ | ✓ | ✓ |
+| `manage/personal-data` | GET | Spark | ✓ | ✓ | ✓ |
+| `manage/account` | DELETE | Spark | ✓ | ✓ | ✓ |
+
+The confirm routes are mapped in every mode because an external sign-up from a provider without a
+verified-email signal is confirmed by mail (D7) whatever the local-credential setting. The
+classification lives in `SparkAccountEndpoints.Map` and `LocalCredentialEndpointFilter`, and
+`AccountRouteClassificationTests` pins it for every route.
 
 `/spark/auth/me`, `/spark/auth/logout`, `/spark/auth/csrf-refresh`, `/spark/auth/external-login` and
 `/spark/auth/external-login-callback` are mapped in **every** mode. **External login providers are

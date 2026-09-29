@@ -20,6 +20,7 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
     [Inject] private readonly MessagingLeaseManager leaseManager;
     [Inject] private readonly LegacySubscriptionCleanup legacyCleanup;
     [Inject] private readonly MessageQueueRouter router;
+    [Inject] private readonly MessageProcessor processor;
 
     private readonly List<MessageSubscriptionWorker> perQueueWorkers = new();
     private MessageFeeder? feeder;
@@ -27,8 +28,20 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
     private CancellationTokenSource? leaseLifetime;
     private volatile bool isLeader;
 
+    /// <summary>
+    /// Cancelled first thing in <see cref="StopAsync"/>, to end the lease loop before the teardown
+    /// runs. The host's stopping token only fires in <c>base.StopAsync</c>, after the drain, so on
+    /// its own it leaves the loop running through the whole drain: a renewal falling due there saw
+    /// <c>isLeader == false</c>, re-acquired its own lease and started a second feeder on a host
+    /// that was stopping.
+    /// </summary>
+    private readonly CancellationTokenSource stopRequested = new();
+
     /// <summary>Whether this host currently holds the messaging lease. For tests and diagnostics.</summary>
     internal bool IsLeader => isLeader;
+
+    /// <summary>The running feeder, while this host leads in <see cref="ESubscriptionMode.SingleSubscription"/> mode. For spikes and diagnostics.</summary>
+    internal MessageFeeder? Feeder => feeder;
 
     private SparkMessagingOptions Options => options.Value;
 
@@ -37,9 +50,28 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
         // Prune first, and in this method rather than a migration or the middleware registry: the
         // prune and the create that follows it are then straight-line async code with no blocking
         // call and no ordering argument to defend. See LegacySubscriptionCleanup.
-        await legacyCleanup.RunAsync(stoppingToken);
+        using var loop = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, stopRequested.Token);
+        var loopToken = loop.Token;
 
-        var queueNames = DiscoverQueueNames(serviceProvider).ToList();
+        await legacyCleanup.RunAsync(loopToken);
+
+        // Declared queues count too: a BroadcastOptions.Queue override may only name a declared queue,
+        // and in per-queue mode a queue with no worker is a queue nobody drains.
+        var queueNames = DiscoverQueueNames(serviceProvider)
+            .Union(Options.Queues.Keys.Where(Services.QueueNames.IsValid), StringComparer.Ordinal)
+            .ToList();
+
+        if (Options.SubscriptionMode == ESubscriptionMode.SubscriptionPerQueue)
+        {
+            foreach (var (name, queue) in Options.Queues)
+            {
+                if (queue.MaxConcurrency > 1)
+                    logger.LogWarning(
+                        "Queue '{QueueName}' sets MaxConcurrency = {MaxConcurrency}, which only applies in "
+                        + "SingleSubscription mode; in SubscriptionPerQueue mode it is handled one message at a time",
+                        name, queue.MaxConcurrency);
+            }
+        }
         if (queueNames.Count == 0)
         {
             logger.LogWarning(
@@ -51,12 +83,19 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
             "MessageSubscriptionManager discovered {Count} queue(s) in {Mode} mode: {Queues}",
             queueNames.Count, Options.SubscriptionMode, string.Join(", ", queueNames));
 
-        while (!stoppingToken.IsCancellationRequested)
+        // The delays wake on loopToken, so a stop ends the loop at once. The lease requests run on
+        // stoppingToken, which StopAsync does not cancel until the loop has exited: an acquire that is
+        // in flight when the stop arrives completes, and the check below hands its lease to the
+        // teardown's release instead of starting anything.
+        while (!loopToken.IsCancellationRequested)
         {
             if (!isLeader)
             {
                 if (await leaseManager.TryAcquireAsync(stoppingToken))
                 {
+                    if (loopToken.IsCancellationRequested)
+                        break; // Stopping: StopAsync releases the lease we just took.
+
                     isLeader = true;
                     leaseManager.IsHeld = true;
                     await StartMessagingAsync(queueNames, stoppingToken);
@@ -67,16 +106,20 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
                     // itself would tolerate a second worker — WaitForFree parks it — but N sweepers
                     // patching the same documents and N hosts deploying the same indexes are worth
                     // avoiding.
-                    await SafeDelayAsync(MessagingLeaseManager.StandbyPollInterval, stoppingToken);
+                    await SafeDelayAsync(MessagingLeaseManager.StandbyPollInterval, loopToken);
                     continue;
                 }
             }
 
-            await SafeDelayAsync(MessagingLeaseManager.RenewInterval, stoppingToken);
-            if (stoppingToken.IsCancellationRequested)
+            await SafeDelayAsync(MessagingLeaseManager.RenewInterval, loopToken);
+            if (loopToken.IsCancellationRequested)
                 break;
 
-            if (!await leaseManager.TryRenewAsync(stoppingToken))
+            var renewed = await leaseManager.TryRenewAsync(stoppingToken);
+            if (loopToken.IsCancellationRequested)
+                break; // Stopping: StopAsync tears down and releases; a failed renewal here is not an eviction.
+
+            if (!renewed)
             {
                 // Evicted, or the lease lapsed while we were busy. Tear down immediately rather
                 // than keep feeding without a lease: the new holder is already starting, and while
@@ -97,7 +140,7 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
         if (Options.SubscriptionMode == ESubscriptionMode.SingleSubscription)
         {
             router.Start(leaseLifetime.Token);
-            feeder = new MessageFeeder(router, documentStore, options, loggerFactory);
+            feeder = new MessageFeeder(router, processor.Admission, documentStore, options, loggerFactory);
             feederTask = feeder.StartAsync(leaseLifetime.Token);
             await feederTask;
             logger.LogInformation(
@@ -158,8 +201,10 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
         //    drain times out it is reclaimed by the sweeper rather than lost.
         await router.DrainAsync(Options.ClaimTtl);
 
-        // 3. Now release the lease.
-        try { await leaseManager.ReleaseAsync(CancellationToken.None); }
+        // 3. Now release the lease. Not on cancellationToken: the release bounds itself, and a
+        //    cancelled stop token must not cost every standby the TTL. A release that cannot happen
+        //    (store disposed or unreachable) is handled inside; what reaches this catch is unexpected.
+        try { await leaseManager.ReleaseAsync(); }
         catch (Exception ex) { logger.LogWarning(ex, "Error releasing the messaging lease"); }
 
         if (Interlocked.Exchange(ref leaseLifetime, null) is { } lifetime)
@@ -173,11 +218,28 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
     {
         logger.LogInformation("MessageSubscriptionManager stopping");
 
+        // Not leading from the moment the stop begins, before any await: the sweeper reads IsHeld,
+        // and callers observe IsLeader. Safe ahead of the cancel below, because the loop re-checks
+        // loopToken after every lease request before it acts on the answer.
         isLeader = false;
         leaseManager.IsHeld = false;
+
+        // End the lease loop before tearing down, so nothing re-acquires or restarts behind the
+        // teardown. It exits at once (its delays wake on stopRequested); an in-flight lease request
+        // completes first. Bounded by the caller's token, like base.StopAsync.
+        await stopRequested.CancelAsync();
+        if (ExecuteTask is { } loop)
+            await Task.WhenAny(loop, Task.Delay(Timeout.Infinite, cancellationToken));
+
         await StopMessagingAsync(cancellationToken);
         await router.DisposeAsync();
         await base.StopAsync(cancellationToken);
+    }
+
+    public override void Dispose()
+    {
+        stopRequested.Dispose();
+        base.Dispose();
     }
 
     private static async Task SafeDelayAsync(TimeSpan delay, CancellationToken cancellationToken)

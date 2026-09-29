@@ -7,6 +7,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Exceptions;
+using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Services;
 using Po = MintPlayer.Spark.Abstractions.PersistentObject;
 
@@ -38,6 +39,8 @@ internal sealed partial class NewPersistentObject : IPostEndpoint
     [Inject] private readonly INewInvoker newInvoker;
     [Inject] private readonly ISparkTypeResolver typeResolver;
     [Inject] private readonly IRetryAccessor retryAccessor;
+    [Inject] private readonly IQueryLoader queryLoader;
+    [Inject] private readonly ILogger<NewPersistentObject> logger;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -79,9 +82,38 @@ internal sealed partial class NewPersistentObject : IPostEndpoint
         var typeName = entityType.ClrType?.Split('.').Last() ?? entityType.Name;
         await permissionService.EnsureAuthorizedAsync("New", typeName);
 
+        // A New started from a sub-query on a parent's detail page (#460, D19). All three fields or
+        // none; each is verified rather than trusted, and every mismatch is refused exactly like a
+        // missing row, so none of them answers "does this parent / query exist".
+        Po? parent = null;
+        SparkNewSubQueryContext? subQuery = null;
+        if (request.ParentId is { Length: > 0 } || request.ParentType is { Length: > 0 } || request.QueryId is { Length: > 0 })
+        {
+            if (request.ParentId is not { Length: > 0 } || request.ParentType is not { Length: > 0 } || request.QueryId is not { Length: > 0 })
+                return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
+
+            var parentType = modelLoader.ResolveEntityType(request.ParentType);
+            var query = queryLoader.ResolveQuery(request.QueryId);
+            var entry = parentType is null || query is null ? null : SparkSubQueries.FindEntry(parentType, query);
+
+            // The query must be one the parent's type declares as a sub-query, and must list the type
+            // being constructed — otherwise a caller could hand any object any "parent".
+            if (parentType is null || query is null || entry is null
+                || !string.Equals(query.EntityType, entityType.Name, StringComparison.OrdinalIgnoreCase))
+                return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
+
+            // Through the gated read: a parent the caller may not see refuses the request.
+            parent = await databaseAccess.GetPersistentObjectAsync(parentType.Id, request.ParentId);
+            if (parent is null)
+                return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
+
+            subQuery = new SparkNewSubQueryContext(
+                entityType, parentType, query, entry.ParentReference ?? query.ParentReference, logger);
+        }
+
         var clrType = typeResolver.Resolve(entityType.ClrType);
         var po = Scaffold(entityType, clrType);
-        await InvokeHookAsync(clrType, po, parent: null, asDetailParent: null, request, httpContext);
+        await InvokeHookAsync(clrType, po, parent, asDetailParent: null, request, httpContext, subQuery);
         return ClientResult.Envelope(clientAccessor, po, StatusCodes.Status200OK);
     }
 
@@ -229,7 +261,8 @@ internal sealed partial class NewPersistentObject : IPostEndpoint
         Po? parent,
         Po? asDetailParent,
         NewPersistentObjectRequest request,
-        HttpContext httpContext)
+        HttpContext httpContext,
+        SparkNewSubQueryContext? subQuery = null)
     {
         if (clrType is null)
             return;
@@ -241,7 +274,8 @@ internal sealed partial class NewPersistentObject : IPostEndpoint
             asDetailParent,
             request.AsDetailAttribute,
             request.Parameters,
-            httpContext.RequestAborted);
+            httpContext.RequestAborted,
+            subQuery);
     }
 }
 
@@ -256,8 +290,18 @@ internal sealed class NewPersistentObjectRequest : ISparkTypedRequest, IRetryabl
     /// <summary>Name of the parent's <c>AsDetail</c> attribute the row is for; absent for a standalone New.</summary>
     public string? AsDetailAttribute { get; set; }
 
-    /// <summary>The parent's entity type — required whenever <see cref="AsDetailAttribute"/> is set.</summary>
+    /// <summary>
+    /// The parent's entity type — required whenever <see cref="AsDetailAttribute"/> is set, and for a
+    /// New started from a sub-query (with <see cref="ParentId"/> and <see cref="QueryId"/>, #460 D19).
+    /// </summary>
     public string? ParentType { get; set; }
+
+    /// <summary>
+    /// The sub-query New was started from, by id or alias; with <see cref="ParentType"/> and
+    /// <see cref="ParentId"/> and no <see cref="AsDetailAttribute"/> (#460, D19). The parent's type must
+    /// declare it among its <c>Queries</c>, and it must list the type being constructed.
+    /// </summary>
+    public string? QueryId { get; set; }
 
     /// <summary>
     /// The parent's id, or absent when the parent is itself unsaved. A present id is re-loaded

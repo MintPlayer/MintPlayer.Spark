@@ -40,7 +40,7 @@ public partial class SparkClient : IDisposable
     private readonly Dictionary<string, string> _cookies = new(StringComparer.Ordinal);
     private string? _xsrfToken;
 
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    internal static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     /// <summary>
     /// Answers retry prompts for calls that do not pass their own <c>onRetry</c>. Null by default, so
@@ -84,6 +84,11 @@ public partial class SparkClient : IDisposable
     /// ⚠️ <b>The server falls back to UTC silently</b> when the header is absent, blank or names a
     /// zone it does not know — no error, no log. So a test asserting viewer-zone behaviour through
     /// this client is asserting the fallback until this is set, and it passes either way.
+    /// <para>
+    /// The server accepts IANA ids only (#460: a strict shape check before any lookup), so a Windows
+    /// id such as <c>"Romance Standard Time"</c> is converted to its IANA id (<c>"Europe/Paris"</c>)
+    /// before it is sent; one that cannot be converted is sent as given, and the server falls back.
+    /// </para>
     /// </remarks>
     public string? TimeZoneId { get; set; }
 
@@ -203,10 +208,18 @@ public partial class SparkClient : IDisposable
     /// defaults would leak this client's settings into everything else using it.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// A Windows zone id converted to IANA; anything else unchanged. S-TZ4 (#460): the conversion
+    /// works on Windows and Linux alike (ICU), and 134 of 141 Windows ids contain a space or a
+    /// parenthesis the server's shape check refuses.
+    /// </summary>
+    internal static string ToIanaId(string id)
+        => TimeZoneInfo.TryConvertWindowsIdToIanaId(id, out var iana) ? iana : id;
+
     private void ApplyViewerHeaders(HttpRequestMessage request)
     {
         if (!string.IsNullOrWhiteSpace(TimeZoneId))
-            request.Headers.TryAddWithoutValidation("X-Spark-Timezone", TimeZoneId);
+            request.Headers.TryAddWithoutValidation("X-Spark-Timezone", ToIanaId(TimeZoneId.Trim()));
         if (!string.IsNullOrWhiteSpace(AcceptLanguage))
             request.Headers.TryAddWithoutValidation("Accept-Language", AcceptLanguage);
     }
@@ -228,9 +241,14 @@ public partial class SparkClient : IDisposable
     // --------------------------------------------------------------------------------
 
     /// <summary>Returns the PersistentObject with its <see cref="PersistentObject.Etag"/> populated, or null on 404.</summary>
+    /// <remarks>
+    /// <paramref name="deleted"/> (#460): <c>Include</c> / <c>Only</c> lets a <c>ViewDeleted</c> holder
+    /// open a soft-deleted row; without that right the server ignores it and a deleted row is null.
+    /// </remarks>
     public Task<PersistentObject?> GetPersistentObjectAsync(
-        Guid objectTypeId, string id, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null)
-        => GetPersistentObjectCoreAsync(objectTypeId.ToString(), id, onRetry, onOperation, cancellationToken);
+        Guid objectTypeId, string id, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null,
+        SparkDeletedFilter? deleted = null)
+        => GetPersistentObjectCoreAsync(objectTypeId.ToString(), id, onRetry, onOperation, deleted, cancellationToken);
 
     // ⚠️ Every method below posts a JSON body to a literal path. Nothing is escaped into a URL any
     // more, which removes a whole class of bug rather than moving it: a Raven id contains slashes,
@@ -244,18 +262,19 @@ public partial class SparkClient : IDisposable
     /// denied — the endpoint conflates these per security audit M-3).
     /// </summary>
     public Task<PersistentObject?> GetPersistentObjectAsync(
-        string aliasOrName, string id, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null)
-        => GetPersistentObjectCoreAsync(aliasOrName, id, onRetry, onOperation, cancellationToken);
+        string aliasOrName, string id, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null,
+        SparkDeletedFilter? deleted = null)
+        => GetPersistentObjectCoreAsync(aliasOrName, id, onRetry, onOperation, deleted, cancellationToken);
 
     private Task<PersistentObject?> GetPersistentObjectCoreAsync(
-        string objectTypeId, string id, SparkRetryHandler? onRetry, SparkOperationHandler? onOperation, CancellationToken cancellationToken)
+        string objectTypeId, string id, SparkRetryHandler? onRetry, SparkOperationHandler? onOperation, SparkDeletedFilter? deleted, CancellationToken cancellationToken)
         // A read can prompt too: OnLoadAsync is one of the nine hooks that may call Retry.Action, and
         // making reads POST is what bought the body this needs. ⚠️ A prompt from OnLoadAsync fires on
         // EVERY read of the type, so a handler that answers unconditionally is answering far more
         // often than a caller tends to expect.
         => PostConversationAsync<PersistentObject?>(
             "/spark/po/load",
-            new Dictionary<string, object?> { ["objectTypeId"] = objectTypeId, ["id"] = id },
+            WithDeleted(new Dictionary<string, object?> { ["objectTypeId"] = objectTypeId, ["id"] = id }, deleted),
             // A read needs no antiforgery token, and /spark/po/load carries an explicit exemption
             // saying so — which is what keeps this false now that the framework default gates
             // ambient-credentialed POSTs. Warming up here would cost every reading client a round
@@ -278,9 +297,10 @@ public partial class SparkClient : IDisposable
     /// <remarks>
     /// The Create endpoint returns the new <c>ClientOperationEnvelope</c> wire shape
     /// (<c>{ result, operations }</c>); this method unwraps the envelope and returns just the
-    /// <see cref="PersistentObject"/>. Any client operations emitted by server-side action code
-    /// (notify / navigate / refresh / disableAction) are currently dropped by this SDK — see
-    /// docs/prd/PRD-ClientOperations.md.
+    /// <see cref="PersistentObject"/>. Client operations emitted by server-side action code
+    /// (notify / navigate / refresh) are passed to <paramref name="onOperation"/> (or the client-wide
+    /// handler); with neither, they are dropped. An operation this SDK does not know — including
+    /// an older server's removed <c>disableAction</c> — arrives as <see cref="SparkUnknownOperation"/>.
     /// </remarks>
     public Task<PersistentObject> CreatePersistentObjectAsync(
         PersistentObject obj, CancellationToken cancellationToken = default, SparkRetryHandler? onRetry = null, SparkOperationHandler? onOperation = null)
@@ -322,6 +342,47 @@ public partial class SparkClient : IDisposable
             onOperation,
             cancellationToken);
 
+    /// <summary>
+    /// Deletes several objects of one type in one request — the default <c>Delete</c> action on a
+    /// query's selection (<c>POST /spark/po/delete-many</c>, #460 D18). All or nothing: one row that is
+    /// missing, denied or whose hook withholds Delete refuses the lot.
+    /// </summary>
+    /// <param name="queryId">The query the rows were selected in, for the disabled-action hook.</param>
+    /// <param name="parentId">The sub-query's container, when deleting from a sub-query.</param>
+    /// <param name="parentType">The container's type.</param>
+    public Task DeletePersistentObjectsAsync(
+        Guid objectTypeId,
+        IReadOnlyList<string> ids,
+        string? queryId = null,
+        string? parentId = null,
+        string? parentType = null,
+        CancellationToken cancellationToken = default,
+        SparkRetryHandler? onRetry = null,
+        SparkOperationHandler? onOperation = null)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        return PostConversationAsync<object?>(
+            "/spark/po/delete-many",
+            new Dictionary<string, object?>
+            {
+                ["objectTypeId"] = objectTypeId.ToString(),
+                ["ids"] = ids,
+                ["queryId"] = queryId,
+                ["parentId"] = parentId,
+                ["parentType"] = parentType,
+            },
+            requiresAntiforgery: true,
+            async (response, ct) =>
+            {
+                await SparkClientException.ThrowIfNotSuccessAsync(response, ct);
+                await ReadEnvelopeResultAsync<object>(response, onOperation, ct);
+                return null;
+            },
+            onRetry,
+            onOperation,
+            cancellationToken);
+    }
+
     // ListPersistentObjectsAsync is gone, with the GET /spark/po/{type} endpoint it called. That was
     // a second list pipeline with no paging, no search, no sort and no take cap, beside a
     // /queries/{id}/execute that clamps take for exactly that reason. Use ExecuteQueryAsync against
@@ -342,8 +403,10 @@ public partial class SparkClient : IDisposable
         QueryColumnFilter[]? columns = null,
         CancellationToken cancellationToken = default,
         SparkRetryHandler? onRetry = null,
-        SparkOperationHandler? onOperation = null)
-        => ExecuteQueryCoreAsync(queryId.ToString(), skip, take, search, parentId, parentType, sortColumns, columns, onRetry, onOperation, cancellationToken);
+        SparkOperationHandler? onOperation = null,
+        SparkDeletedFilter? deleted = null,
+        SparkDeletedFilter? parentDeleted = null)
+        => ExecuteQueryCoreAsync(queryId.ToString(), skip, take, search, parentId, parentType, sortColumns, columns, onRetry, onOperation, cancellationToken, deleted, parentDeleted);
 
     /// <summary>Executes a query by its alias (e.g. <c>"allpeople"</c>) instead of by Guid.</summary>
     public Task<QueryResult> ExecuteQueryAsync(
@@ -357,18 +420,21 @@ public partial class SparkClient : IDisposable
         QueryColumnFilter[]? columns = null,
         CancellationToken cancellationToken = default,
         SparkRetryHandler? onRetry = null,
-        SparkOperationHandler? onOperation = null)
-        => ExecuteQueryCoreAsync(queryAlias, skip, take, search, parentId, parentType, sortColumns, columns, onRetry, onOperation, cancellationToken);
+        SparkOperationHandler? onOperation = null,
+        SparkDeletedFilter? deleted = null,
+        SparkDeletedFilter? parentDeleted = null)
+        => ExecuteQueryCoreAsync(queryAlias, skip, take, search, parentId, parentType, sortColumns, columns, onRetry, onOperation, cancellationToken, deleted, parentDeleted);
 
     private Task<QueryResult> ExecuteQueryCoreAsync(
         string queryId, int skip, int take, string? search, string? parentId, string? parentType,
         SortColumn[]? sortColumns, QueryColumnFilter[]? columns,
-        SparkRetryHandler? onRetry, SparkOperationHandler? onOperation, CancellationToken cancellationToken)
+        SparkRetryHandler? onRetry, SparkOperationHandler? onOperation, CancellationToken cancellationToken,
+        SparkDeletedFilter? deleted, SparkDeletedFilter? parentDeleted)
         // OnQueryAsync can prompt, so a list is a conversation too. ⚠️ Like OnLoadAsync, a prompt here
         // fires on every execution of the query — including the ones a grid issues while paging.
         => PostConversationAsync(
             "/spark/queries/execute",
-            new Dictionary<string, object?>
+            WithDeleted(new Dictionary<string, object?>
             {
                 ["queryId"] = queryId,
                 ["skip"] = skip,
@@ -378,7 +444,7 @@ public partial class SparkClient : IDisposable
                 ["parentType"] = parentType,
                 ["sortColumns"] = sortColumns,
                 ["columns"] = columns,
-            },
+            }, deleted, parentDeleted),
             // false for the same reason as /spark/po/load above: a read, explicitly exempt.
             requiresAntiforgery: false,
             async (response, ct) =>
@@ -402,6 +468,12 @@ public partial class SparkClient : IDisposable
     /// An empty result means either "nothing matches" or "you may not enumerate this column", and the
     /// two are deliberately indistinguishable.
     /// </para>
+    /// <para>
+    /// <paramref name="search"/> narrows the listed values themselves (the panel's own box);
+    /// <paramref name="querySearch"/> is the grid's search, the <c>search</c> of
+    /// <c>ExecuteQueryAsync</c>,
+    /// so the values come only from the rows that search matches.
+    /// </para>
     /// </remarks>
     public Task<DistinctValuesResult> GetDistinctValuesAsync(
         Guid queryId,
@@ -410,10 +482,13 @@ public partial class SparkClient : IDisposable
         QueryColumnFilter[]? columns = null,
         string? parentId = null,
         string? parentType = null,
-        CancellationToken cancellationToken = default)
-        => GetDistinctValuesCoreAsync(queryId.ToString(), column, search, columns, parentId, parentType, cancellationToken);
+        CancellationToken cancellationToken = default,
+        SparkDeletedFilter? deleted = null,
+        string? querySearch = null,
+        SparkDeletedFilter? parentDeleted = null)
+        => GetDistinctValuesCoreAsync(queryId.ToString(), column, search, columns, parentId, parentType, cancellationToken, deleted, querySearch, parentDeleted);
 
-    /// <summary>Alias-based overload for <see cref="GetDistinctValuesAsync(Guid,string,string?,QueryColumnFilter[]?,string?,string?,CancellationToken)"/>.</summary>
+    /// <summary>Alias-based overload for <see cref="GetDistinctValuesAsync(Guid,string,string?,QueryColumnFilter[]?,string?,string?,CancellationToken,SparkDeletedFilter?,string?,SparkDeletedFilter?)"/>.</summary>
     public Task<DistinctValuesResult> GetDistinctValuesAsync(
         string queryAlias,
         string column,
@@ -421,15 +496,29 @@ public partial class SparkClient : IDisposable
         QueryColumnFilter[]? columns = null,
         string? parentId = null,
         string? parentType = null,
-        CancellationToken cancellationToken = default)
-        => GetDistinctValuesCoreAsync(queryAlias, column, search, columns, parentId, parentType, cancellationToken);
+        CancellationToken cancellationToken = default,
+        SparkDeletedFilter? deleted = null,
+        string? querySearch = null,
+        SparkDeletedFilter? parentDeleted = null)
+        => GetDistinctValuesCoreAsync(queryAlias, column, search, columns, parentId, parentType, cancellationToken, deleted, querySearch, parentDeleted);
 
     private async Task<DistinctValuesResult> GetDistinctValuesCoreAsync(
         string queryId, string column, string? search, QueryColumnFilter[]? columns,
-        string? parentId, string? parentType, CancellationToken cancellationToken)
+        string? parentId, string? parentType, CancellationToken cancellationToken, SparkDeletedFilter? deleted,
+        string? querySearch, SparkDeletedFilter? parentDeleted)
     {
         var content = JsonContent.Create(
-            new { queryId, column, search, columns, parentId, parentType }, options: JsonOptions);
+            WithDeleted(new Dictionary<string, object?>
+            {
+                ["queryId"] = queryId,
+                ["column"] = column,
+                ["search"] = search,
+                ["columns"] = columns,
+                ["parentId"] = parentId,
+                ["parentType"] = parentType,
+                // The grid's own search (#460 M15), so the values match the rows the grid shows.
+                ["querySearch"] = querySearch,
+            }, deleted, parentDeleted), options: JsonOptions);
 
         using var response = await SendAsync(
             HttpMethod.Post, "/spark/queries/distinct-values", content, cancellationToken: cancellationToken);
@@ -438,6 +527,23 @@ public partial class SparkClient : IDisposable
 
         return await response.Content.ReadFromJsonAsync<DistinctValuesResult>(JsonOptions, cancellationToken)
             ?? throw new SparkClientException(response.StatusCode, responseBody: null, "Empty distinct-values response body.");
+    }
+
+    /// <summary>
+    /// Adds the query request's <c>deleted</c> field (#460, T2) only when the caller set it — the
+    /// shape ng-spark sends. Absent means <c>exclude</c> on the server, and a widening
+    /// (<c>include</c> / <c>only</c>) is honoured only for callers holding <c>ViewDeleted</c> on the type.
+    /// <c>parentDeleted</c> is the same, for the sub-query's parent (<c>parentId</c>/<c>parentType</c>)
+    /// rather than for the rows: a deleted parent without <c>ViewDeleted</c> on its type is a 404.
+    /// </summary>
+    private static Dictionary<string, object?> WithDeleted(
+        Dictionary<string, object?> body, SparkDeletedFilter? deleted, SparkDeletedFilter? parentDeleted = null)
+    {
+        if (deleted is { } mode)
+            body["deleted"] = mode;
+        if (parentDeleted is { } parentMode)
+            body["parentDeleted"] = parentMode;
+        return body;
     }
 
     /// <summary>
@@ -573,7 +679,19 @@ public partial class SparkClient : IDisposable
                 async (response, ct) =>
                 {
                     await SparkClientException.ThrowIfNotSuccessAsync(response, ct);
-                    return SparkActionResult.ForSuccess((int)response.StatusCode);
+
+                    // The completed attempt's envelope: its operations, surfaced as the single-attempt
+                    // path surfaces them, and the action's result (#460, T5). Both used to be dropped
+                    // on this path — a conversation ended in a bare status code.
+                    var text = await response.Content.ReadAsStringAsync(ct);
+                    var operations = SparkClientOperations.Parse(text);
+                    var sink = onOperation ?? OperationHandler;
+                    if (sink is not null)
+                        foreach (var operation in operations)
+                            sink(operation);
+
+                    return SparkActionResult.ForSuccess(
+                        (int)response.StatusCode, operations, SparkClientOperations.ParseResult(text));
                 },
                 onRetry, onOperation, cancellationToken);
         }
@@ -675,16 +793,16 @@ public partial class SparkClient : IDisposable
 
         await SparkClientException.ThrowIfNotSuccessAsync(response, cancellationToken);
 
-        // The success body is an envelope too, and carries whatever the action asked the client to
-        // do. ⚠️ Its `result` is always null today (ExecuteCustomAction envelopes a literal null),
-        // so `operations` is the only part of it worth reading.
+        // The success body is an envelope too: the operations the action asked the client to perform,
+        // and its `result` — whatever it handed to CustomActionArgs.SetResult (#460, T5), null otherwise.
         var successBody = await response.Content.ReadAsStringAsync(cancellationToken);
         var successOperations = SparkClientOperations.Parse(successBody);
         if (sink is not null)
             foreach (var operation in successOperations)
                 sink(operation);
 
-        return SparkActionResult.ForSuccess((int)response.StatusCode, successOperations);
+        return SparkActionResult.ForSuccess(
+            (int)response.StatusCode, successOperations, SparkClientOperations.ParseResult(successBody));
     }
 
     // --------------------------------------------------------------------------------

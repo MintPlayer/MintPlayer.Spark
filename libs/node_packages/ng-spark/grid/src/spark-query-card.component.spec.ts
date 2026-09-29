@@ -6,7 +6,9 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
+import { By } from '@angular/platform-browser';
 import { SparkQueryCardComponent } from './spark-query-card.component';
+import { SparkSearchBoxComponent } from './spark-search-box.component';
 import {
   SparkQueryActionsDirective,
   SparkQueryCaptionDirective,
@@ -109,6 +111,21 @@ describe('SparkQueryCardComponent', () => {
       const { text } = await bare([exportAction]);
 
       expect(text()).toContain('Export');
+    });
+
+    it('labels the overflow with the translated "more", as the list and detail pages do', async () => {
+      const { fixture } = await bare([exportAction]);
+
+      const label = fixture.nativeElement.querySelector('bs-priority-nav .priority-nav-more-label');
+      expect(label?.textContent?.trim()).toBe('common.more');
+    });
+
+    it('renders the header action buttons with square corners', async () => {
+      const { fixture } = await bare([exportAction]);
+
+      const buttons = Array.from(fixture.nativeElement.querySelectorAll('bs-card-header button[data-action]')) as HTMLElement[];
+      expect(buttons.length).toBeGreaterThan(0);
+      for (const b of buttons) expect(b.classList).toContain('rounded-0');
     });
 
     it('renders no action bar when the type declares none', async () => {
@@ -241,33 +258,132 @@ describe('SparkQueryCardComponent', () => {
     /** Where each element sits in the header, left to right. */
     function headerOrder(fixture: ComponentFixture<unknown>): string[] {
       const header = (fixture.nativeElement as HTMLElement).querySelector('bs-card-header div')!;
-      return Array.from(header.children).map(el =>
-        el.tagName.toLowerCase() === 'bs-priority-nav' ? 'actions' : 'caption');
+      return Array.from(header.children).map(el => {
+        switch (el.tagName.toLowerCase()) {
+          case 'bs-priority-nav': return 'actions';
+          case 'spark-search-box': return 'search';
+          default: return 'caption';
+        }
+      });
     }
 
-    it('renders the actions before the caption', async () => {
+    function caption(fixture: ComponentFixture<unknown>): HTMLElement {
+      return (fixture.nativeElement as HTMLElement).querySelector('.spark-query-card-caption')!;
+    }
+
+    // #460 M15 moved the caption to the leading edge, as query-grid-card-PRD.md always specified and
+    // Vidyano's sub-query tabs have it; these cases asserted the old actions-first order.
+    it('renders the caption, then the actions, then the search box', async () => {
       const { fixture } = await bare([exportAction]);
 
-      expect(headerOrder(fixture)).toEqual(['actions', 'caption']);
+      expect(headerOrder(fixture)).toEqual(['caption', 'actions', 'search']);
     });
 
-    it('pushes the caption to the trailing edge when there are actions', async () => {
+    it('pushes the actions and the search to the trailing edge', async () => {
       const { fixture } = await bare([exportAction]);
-      const caption = (fixture.nativeElement as HTMLElement).querySelector('bs-card-header > div > span')!;
 
-      expect(caption.classList.contains('ms-auto')).toBe(true);
-      expect(caption.classList.contains('me-auto')).toBe(false);
+      expect(caption(fixture).classList.contains('me-auto')).toBe(true);
+      expect(caption(fixture).classList.contains('ms-auto')).toBe(false);
     });
 
-    it('leaves an action-less card exactly as it was', async () => {
-      // The reason the auto margin is conditional. A fixed ms-auto would have right-aligned the
-      // caption of every query card without actions, in every app - a change nobody asked for.
+    it('keeps the search box on a card without actions', async () => {
       const { fixture } = await bare();
-      const caption = (fixture.nativeElement as HTMLElement).querySelector('bs-card-header > div > span')!;
 
-      expect(headerOrder(fixture)).toEqual(['caption']);
-      expect(caption.classList.contains('me-auto')).toBe(true);
-      expect(caption.classList.contains('ms-auto')).toBe(false);
+      expect(headerOrder(fixture)).toEqual(['caption', 'search']);
+      expect(caption(fixture).classList.contains('me-auto')).toBe(true);
+    });
+  });
+
+  describe('search box (#460 M15, D17 addendum)', () => {
+    function searchBox(fixture: ComponentFixture<unknown>): SparkSearchBoxComponent {
+      return fixture.debugElement.query(By.directive(SparkSearchBoxComponent)).componentInstance;
+    }
+
+    function lastExecute(service: any): any {
+      return service.executeQuery.mock.calls.at(-1)?.[1];
+    }
+
+    it('sends the typed term to the grid, together with the parent', async () => {
+      const { fixture, service } = await bare();
+      fixture.componentRef.setInput('parentId', 'companies/1');
+      fixture.componentRef.setInput('parentType', 'Company');
+      await settle(fixture);
+
+      searchBox(fixture).term.set('ali');
+      await settle(fixture);
+
+      expect(lastExecute(service)).toEqual(expect.objectContaining({
+        search: 'ali', parentId: 'companies/1', parentType: 'Company',
+      }));
+    });
+
+    it('sends parentDeleted: include when its parent is deleted, and leaves the rows\' deleted alone (#460)', async () => {
+      const { fixture, service } = await bare();
+      fixture.componentRef.setInput('parentId', 'companies/1');
+      fixture.componentRef.setInput('parentType', 'Company');
+      fixture.componentRef.setInput('parentDeleted', true);
+      await settle(fixture);
+
+      const body = lastExecute(service);
+      expect(body).toEqual(expect.objectContaining({
+        parentId: 'companies/1', parentType: 'Company', parentDeleted: 'include',
+      }));
+      expect(body).not.toHaveProperty('deleted');
+    });
+
+    it('sends no parentDeleted under a live parent', async () => {
+      const { fixture, service } = await bare();
+      fixture.componentRef.setInput('parentId', 'companies/1');
+      fixture.componentRef.setInput('parentType', 'Company');
+      await settle(fixture);
+
+      expect(lastExecute(service)).toEqual(expect.objectContaining({ parentId: 'companies/1' }));
+      expect(lastExecute(service)).not.toHaveProperty('parentDeleted');
+    });
+
+    it('clearing the box searches for nothing again', async () => {
+      const { fixture, service } = await bare();
+      searchBox(fixture).term.set('ali');
+      await settle(fixture);
+
+      searchBox(fixture).clear();
+      await settle(fixture);
+
+      expect(lastExecute(service).search).toBeUndefined();
+    });
+
+    it('starts from the host search input', async () => {
+      const service = configure();
+      const fixture = TestBed.createComponent(SparkQueryCardComponent);
+      fixture.componentRef.setInput('queryId', 'q-cars');
+      fixture.componentRef.setInput('search', 'bob');
+      fixture.detectChanges();
+      await settle(fixture);
+
+      expect(searchBox(fixture).term()).toBe('bob');
+      expect(lastExecute(service).search).toBe('bob');
+    });
+
+    it('is absent when the host opts out', async () => {
+      configure();
+      const fixture = TestBed.createComponent(SparkQueryCardComponent);
+      fixture.componentRef.setInput('queryId', 'q-cars');
+      fixture.componentRef.setInput('searchable', false);
+      fixture.detectChanges();
+      await settle(fixture);
+
+      expect(fixture.nativeElement.querySelector('spark-search-box')).toBeNull();
+    });
+
+    it('is absent over bound data, which the grid never refetches', async () => {
+      configure();
+      const fixture = TestBed.createComponent(SparkQueryCardComponent);
+      fixture.componentRef.setInput('queryId', 'q-cars');
+      fixture.componentRef.setInput('data', []);
+      fixture.detectChanges();
+      await settle(fixture);
+
+      expect(fixture.nativeElement.querySelector('spark-search-box')).toBeNull();
     });
   });
 

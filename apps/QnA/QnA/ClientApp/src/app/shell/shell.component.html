@@ -1,0 +1,17 @@
+<spark-shell title="Spark QnA">
+  <!-- The menu is server-driven (programUnits.json). The topbar adds the signed-in user's own
+       reputation (with the not-yet-credited part beside it), the review queue and the account pages. -->
+  <ng-container *sparkShellTopbarEnd>
+    <spark-language-selector />
+    @if (auth.isAuthenticated()) {
+      <span class="qna-my-reputation" [attr.title]="'app.yourReputation' | t">
+        <spark-reputation-badge />
+      </span>
+      <!-- Only for someone who may review (a moderator, or earned): anyone else gets 404s there. -->
+      <spark-review-queue-link linkClass="btn btn-sm btn-link qna-review-link" />
+      <a class="btn btn-sm btn-link qna-account-link" routerLink="/account">{{ 'app.account' | t }}</a>
+    }
+    <spark-auth-bar />
+  </ng-container>
+  <router-outlet />
+</spark-shell>

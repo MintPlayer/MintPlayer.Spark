@@ -136,6 +136,9 @@ public static class ActionDogfoodHarness
         start.Environment["ASPNETCORE_URLS"] = baseUrl;
         start.Environment["Spark__RavenDb__Urls__0"] = store.Urls[0];
         start.Environment["Spark__RavenDb__Database"] = store.Database;
+        // Production refuses to start without a key-ring location; production itself uses a
+        // KeysPath on a mounted volume, the test host keeps the ring in the test database.
+        start.Environment["Spark__DataProtection__Storage"] = "RavenDb";
         // The OIDC audience the server validates. Irrelevant on the token path, but a mismatch here
         // is the sort of thing that only shows up much later.
         start.Environment["Coverage__BaseUrl"] = baseUrl;

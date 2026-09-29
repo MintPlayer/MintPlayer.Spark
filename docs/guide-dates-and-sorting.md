@@ -290,13 +290,66 @@ definite instant. What you should know:
 
 ### The viewer's timezone on the server
 
-The client sends `X-Spark-Timezone: Europe/Brussels` on every same-origin request, and
-`IRequestTimeZoneResolver` reads it.
+With `provideHttpClient(...withSparkTimezone())`, the browser app sends `X-Spark-Timezone:
+Europe/Brussels` on every same-origin request and keeps a `spark-timezone` cookie holding the same id.
+`IRequestTimeZoneResolver` reads them in this order:
+
+1. the `X-Spark-Timezone` header, when it is valid;
+2. the cookie named by `Spark:TimeZone:CookieName` (default `spark-timezone`), when it is valid;
+3. UTC.
+
+An invalid header falls through to the cookie. The cookie is for requests the browser makes before
+any script runs — the server-side render of a page, a link opened from a mail — which carry cookies
+but no header. Outside a request (a background job, a mail worker) the resolver answers UTC.
+
+**Validation.** Both values are checked before `TimeZoneInfo.FindSystemTimeZoneById` sees them: at
+most 64 characters and IANA-shaped (`^[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){0,2}$`). No dots,
+spaces, backslashes or empty segments. .NET 11 already refuses `..` and absolute paths, but on Linux it
+resolves `Europe//Brussels` by reading the file, and the check keeps anything path-shaped away from it
+(spike S-TZ1, #460). A malformed value is ignored and never logged verbatim; the log names the source
+(`header` / `cookie`) at Debug level. The server never writes or echoes either value.
+
+**Windows ids are refused.** `Romance Standard Time` fails the shape check (134 of the 141 Windows ids
+contain a space or a parenthesis). `SparkClient.TimeZoneId` converts a Windows id to its IANA id before
+sending it, so a .NET caller can keep passing `TimeZoneInfo.Local.Id` on Windows.
+
+**Configuration.** `Spark:TimeZone:CookieName` renames the cookie; an empty value
+(`Spark__TimeZone__CookieName=`) turns it off, and then only the header counts. Use the same name on
+the client: `withSparkTimezone({ cookieName: 'tz' })`, or `{ cookieName: false }` to write none.
+
+**The cookie** is written by the browser only, on the first request the app makes and again only
+when the zone changed: `spark-timezone=Europe/Brussels; Path=/; Max-Age=31536000; SameSite=Lax`, plus
+`Secure` on https. It is not `HttpOnly`, because script writes it. `SameSite=Lax` so a link from a mail
+still carries it.
+
+⚠️ **On the server platform the interceptor does nothing.** During a server-side render `Intl` names
+the Node process's zone (`UTC` in a container), and a header carrying it would beat the viewer's
+cookie on the server (spike S-TZ3). So the interceptor neither sends the header nor writes the cookie
+there.
+
+⚠️ **A first visit renders in UTC.** Nothing has written the cookie before the first page is served,
+so the first server-side render uses UTC; every later one uses the viewer's zone.
+
+⚠️ **The cookie reaches .NET, not Angular's DatePipe.** In an app that prerenders in Node with the
+data supplied by ASP.NET Core (MintPlayer's `OnSupplyData`, spike S-TZ2), the cookie arrives on the
+ASP.NET Core request, so `IRequestTimeZoneResolver` sees it — no forwarding helper is needed. But a
+`| date` inside the Node render formats in the Node process's zone: Angular's `formatDate` ignores an
+IANA id as its timezone argument and falls back silently (measured: `'Europe/Brussels'` and
+`'Asia/Tokyo'` both rendered `12:00 Z` for 12:00Z under `TZ=UTC`; only an offset like `'+0200'` is
+honoured). Format such values in .NET with the resolved zone and pass them in the supplied data, or
+keep them out of the server render.
+
+**Mail.** MailManager renders in a queue worker, where there is no request and the resolver answers
+UTC. Resolve the zone while handling the request that queues the mail, convert the value there
+(`timeZones.ToViewerDateTimeOffset(...)` or `TimeZoneInfo.ConvertTime(instant, zone)`), and put the
+converted value in the template data. A date in template data renders as the clock time it was
+written with (Scriban's `date.to_string` cannot take a `DateTimeOffset`, S-M4), so an instant still
+in UTC renders in UTC.
 
 ```csharp
 [Inject] private readonly IRequestTimeZoneResolver timeZones;
 
-var zone = timeZones.GetViewerTimeZone();                              // TimeZoneInfo, UTC if unknown
+var zone = timeZones.GetViewerTimeZone();                              // header → cookie → UTC
 var starts = timeZones.ToViewerDateTimeOffset(new DateTime(2026, 7, 4, 9, 0, 0));
 ```
 

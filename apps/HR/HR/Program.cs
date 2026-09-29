@@ -1,6 +1,5 @@
 using System.Text.RegularExpressions;
 using HR;
-using Microsoft.AspNetCore.HttpOverrides;
 using MintPlayer.AspNetCore.SpaServices.Extensions;
 using MintPlayer.Spark;
 using MintPlayer.Spark.Extensions;
@@ -9,17 +8,11 @@ using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.IdentityProvider.Extensions;
+using MintPlayer.Spark.MailManager;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Replication;
 
 var builder = WebApplication.CreateBuilder(args);
-
-builder.Services.Configure<ForwardedHeadersOptions>(options =>
-{
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
-    options.KnownNetworks.Clear();
-    options.KnownProxies.Clear();
-});
 
 builder.Services.AddSpark(builder.Configuration, spark =>
 {
@@ -56,6 +49,9 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     });
 
     spark.AddMessaging();
+    // #460 D6: registration needs somewhere to send account mail. Demo app: every mail is written
+    // as an .eml file into Spark:Mail:PickupFolder (appsettings.json) instead of being sent.
+    spark.AddMailManager();
 
     // Everything else comes from the `Spark:Replication` section, bound by AddReplication.
     // Assemblies are the one setting configuration cannot express.
@@ -88,8 +84,6 @@ if (builder.VerifySparkSecurityIfRequested(args))
     return;
 
 var app = builder.Build();
-
-app.UseForwardedHeaders();
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();

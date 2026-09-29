@@ -2,7 +2,6 @@ import { type EnvironmentProviders, inject, makeEnvironmentProviders } from '@an
 import { Router } from '@angular/router';
 import type {
     ClientOperation,
-    DisableActionOperation,
     NavigateOperation,
     NotifyOperation,
     RefreshAttributeOperation,
@@ -24,8 +23,9 @@ import { SparkQueryRefreshService } from './query-refresh.service';
  * That happened twice more before anyone noticed. `refreshAttribute` and `navigate` were both
  * declared wire types with no handler anywhere in the repository: every
  * `IClientAccessor.RefreshAttribute` and `Navigate` call in every Spark application was
- * computed, serialised, sent and discarded. Both are registered below. The remaining gap is
- * `disableAction`, registered purely to log so that it stays visible rather than invisible.
+ * computed, serialised, sent and discarded. Both are registered below. The last gap,
+ * `disableAction`, was closed by deleting it (#460, D13): disabled actions travel on the object's
+ * or result's `disabledActions` and are enforced by the server at submit.
  *
  * The lesson worth keeping: a wire type in `operations.ts` is not a feature. Adding one without
  * a handler here produces a server API that appears to work and does nothing.
@@ -110,22 +110,6 @@ export function provideSparkClientOperations(): EnvironmentProviders {
                     },
                 };
             },
-            multi: true,
-        },
-        {
-            provide: SPARK_CLIENT_OPERATION_HANDLERS,
-            useFactory: () => ({
-                type: 'disableAction',
-                handler: (operation: ClientOperation) => {
-                    // Deliberately a no-op with a warning, not silence. The server's
-                    // IClientAccessor.DisableQueryActions presumes a client that honours it;
-                    // nothing renders the disabled state yet, and a silently dropped operation
-                    // reads as "the server did not send it" when debugging.
-                    const disable = operation as DisableActionOperation;
-                    console.warn(
-                        `[spark] disableAction('${disable.actionName}') is not implemented by this client; the action stays enabled.`);
-                },
-            }),
             multi: true,
         },
     ]);

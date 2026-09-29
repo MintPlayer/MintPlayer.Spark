@@ -26,7 +26,7 @@ public class OidcLocalCredentialModeTests : SparkTestDriver
             configureSpark: spark =>
             {
                 spark.AddAuthentication<SparkUser>(
-                    configure: auth => auth.LocalCredentials = mode,
+                    configure: auth => { auth.LocalCredentials = mode; auth.AllowUnconfirmedRegistration = true; },
                     // Disabled mode requires an external provider — an application nobody can sign
                     // into is rejected at startup, which is itself covered by LocalCredentialModeTests.
                     configureProviders: identity => identity.Services

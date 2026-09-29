@@ -10,6 +10,7 @@ using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Endpoints.ExternalLogin;
 using MintPlayer.Spark.Authorization.Identity;
 using System.Security.Claims;
+using MintPlayer.Spark.MailManager;
 
 namespace MintPlayer.Spark.Authorization.Extensions;
 
@@ -53,7 +54,13 @@ internal static class SparkAuthenticationExtensions
             {
                 configureIdentity?.Invoke(options);
             })
-            .AddRoles<SparkRole>();
+            .AddRoles<SparkRole>()
+            // #460 D4: sign in with email or user name, one resolver for every password sign-in
+            // (MapIdentityApi's /login and the OIDC /connect/login page both call the string
+            // overload), plus the user-name rule that keeps the two namespaces from colliding.
+            .AddSignInManager<SparkSignInManager<TUser>>()
+            .AddUserManager<SparkUserManager<TUser>>()
+            .AddUserValidator<SparkUserNameValidator<TUser>>();
 
         builder.Services.AddScoped<IUserStore<TUser>, UserStore<TUser>>();
         builder.Services.AddScoped<IRoleStore<SparkRole>, RoleStore>();
@@ -63,10 +70,45 @@ internal static class SparkAuthenticationExtensions
         // "the link expired" is testable without waiting an hour for it.
         builder.Services.TryAddSingleton(TimeProvider.System);
 
+        // #460 D5 / item 6: protect legacy plaintext secrets and fill CreatedAtUtc, once, after start.
+        builder.Services.TryAddSingleton<SparkUserBackfill<TUser>>();
+        builder.Services.AddHostedService<SparkUserBackfillHostedService<TUser>>();
+
+        // #460 D16: where mailed confirmation/reset links point (the SPA's pages, not the server's
+        // plain-text confirmEmail). Replaceable.
+        builder.Services.TryAddSingleton<ISparkAuthLinkBuilder, SparkAuthLinkBuilder>();
+        builder.Services.TryAddSingleton<SparkQrCodeRenderer>();
+        builder.Services.TryAddScoped<SparkAccountMail<TUser>>();
+
+        // #460 M8: account mail through MailManager. Identity's AddIdentityApiEndpoints TryAdds its no-op
+        // DefaultMessageEmailSender, so it is REPLACED here — but only that one: an app that registered
+        // its own IEmailSender<TUser> first keeps it (and one registered later wins anyway).
+        var emailSender = builder.Services.LastOrDefault(d => d.ServiceType == typeof(IEmailSender<TUser>));
+        if (emailSender is null || IsIdentityNoOpSender(emailSender.ImplementationType))
+            // Transient, like the default it replaces: MapIdentityApi resolves the sender from the ROOT
+            // provider at mapping time, and a scoped one is refused there. Resolved in a request, its
+            // IServiceProvider is the request scope, so the (scoped) ISparkMailer is the request's.
+            builder.Services.Replace(ServiceDescriptor.Transient<IEmailSender<TUser>, SparkMailEmailSender<TUser>>());
+        // Only while MailManager is present: the ConfirmByEmail guard tests for a registered sender.
+        builder.Services.TryAddScoped<ISparkLinkConfirmationSender<TUser>>(sp =>
+            sp.GetService<MailManager.ISparkMailer>() is { } mailer
+                ? new SparkMailLinkConfirmationSender<TUser>(mailer, sp.GetRequiredService<TimeProvider>())
+                : null!);
+        builder.Services.TryAddEnumerable(ServiceDescriptor.Scoped<MailManager.ISparkMailRecipientCulture, SparkUserMailCulture<TUser>>());
+        // The account mails' default templates; an app's Templates/Mail/SparkAuth/*.mjml overrides them.
+        builder.Services.AddSparkMailTemplates(typeof(SparkUser).Assembly, "SparkMail/");
+
         services.AddAntiforgery(options => options.HeaderName = "X-XSRF-TOKEN");
 
         return builder;
     }
+
+    /// <summary>
+    /// Identity's own sender, which discards every mail. Internal to Identity, so only recognisable by
+    /// name (measured 2026-09-20: it is the resolved sender whether or not a transport exists).
+    /// </summary>
+    internal static bool IsIdentityNoOpSender(Type? type)
+        => type is not null && type.Namespace == "Microsoft.AspNetCore.Identity" && type.Name.StartsWith("DefaultMessageEmailSender", StringComparison.Ordinal);
 
     /// <summary>
     /// Maps Spark's authentication endpoints under the <c>/spark/auth</c> route prefix.
@@ -250,6 +292,13 @@ internal static class SparkAuthenticationExtensions
         /// signed in.
         /// </remarks>
         public const string LinkConfirmationSent = "link_confirmation_sent";
+
+        /// <summary>
+        /// An account was created from a provider without a reliable verified-email signal (#460,
+        /// D7) and <c>RequireConfirmedEmail</c> is on: a confirmation link was mailed, nobody is
+        /// signed in yet. Like <see cref="LinkConfirmationSent"/>, not an error.
+        /// </summary>
+        public const string ConfirmEmailSent = "confirm_email_sent";
 
         /// <summary>
         /// The provider identity is already attached to an account — possibly this one, possibly

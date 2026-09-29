@@ -124,6 +124,40 @@ public class SparkMessagingOptions
     /// </para>
     /// </summary>
     public TimeSpan HandlerTimeout { get; set; } = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// Per-queue settings — throttling, concurrency, attempts, backoff — keyed by queue name
+    /// (<c>Spark:Messaging:Queues:{name}</c>). A queue with no entry behaves exactly as before.
+    /// Declaring a queue here also makes it a valid <c>BroadcastOptions.Queue</c> target and, in
+    /// <see cref="ESubscriptionMode.SubscriptionPerQueue"/> mode, gives it a worker.
+    /// <para>
+    /// Empty by default (a dictionary is merged by the binder, so an initializer would be kept, not
+    /// replaced). Configuration is applied over code for this property; see <see cref="SparkQueueOptions"/>.
+    /// </para>
+    /// </summary>
+    public Dictionary<string, SparkQueueOptions> Queues { get; set; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The single feeder's page size (#460, M16/M16b): on each subscription wake-up the feeder reads
+    /// this many claimable messages from the sorted index (<c>Priority desc, Sequence asc</c>), merges
+    /// them with the subscription batch (also at most this many), and claims the lot highest priority
+    /// first, deferring messages a throttled queue cannot start yet without routing them, in one write
+    /// per priority. Default 256; clamped to 1–4096. Up to twice this many claims are taken per wake-up,
+    /// so it should stay well below what the lanes drain within <see cref="ClaimTtl"/>.
+    /// <see cref="ESubscriptionMode.SingleSubscription"/> only.
+    /// </summary>
+    public int FeederBatchSize { get; set; } = DefaultFeederBatchSize;
+
+    /// <summary>The page size used when nothing is configured.</summary>
+    public const int DefaultFeederBatchSize = 256;
+
+    /// <summary>The settings for <paramref name="queueName"/>, or null when the queue has none.</summary>
+    public SparkQueueOptions? QueueOptionsFor(string queueName)
+        => Queues.TryGetValue(queueName, out var queue) ? queue : null;
+
+    /// <summary>The priority of <paramref name="queueName"/>: its setting, or <see cref="SparkQueuePriority.Normal"/>.</summary>
+    public SparkQueuePriority PriorityFor(string queueName)
+        => QueueOptionsFor(queueName)?.Priority ?? SparkQueuePriority.Normal;
 }
 
 /// <summary>

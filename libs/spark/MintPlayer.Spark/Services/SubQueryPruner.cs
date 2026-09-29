@@ -38,12 +38,12 @@ internal static class SubQueryPruner
         if (entityType.Queries.Length == 0)
             return entityType;
 
-        var kept = new List<string>(entityType.Queries.Length);
+        var kept = new List<SparkSubQuery>(entityType.Queries.Length);
 
-        foreach (var alias in entityType.Queries)
+        foreach (var entry in entityType.Queries)
         {
-            if (await MayRunAsync(alias, queryLoader, permissionService, logger, cancellationToken))
-                kept.Add(alias);
+            if (await MayRunAsync(entry.Query, queryLoader, permissionService, logger, cancellationToken))
+                kept.Add(entry);
         }
 
         if (kept.Count == entityType.Queries.Length)

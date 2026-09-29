@@ -1,0 +1,255 @@
+{
+  "wellKnown": {
+    "anonymous": "00000000-0000-0000-0000-000000000000",
+    "authenticated": "4e130000-0000-4000-8000-00000000000f"
+  },
+  "groups": {
+    "00000000-0000-0000-0000-000000000000": {
+      "en": "Anonymous visitors",
+      "fr": "Visiteurs anonymes",
+      "nl": "Anonieme bezoekers"
+    },
+    "4e130000-0000-4000-8000-00000000000f": {
+      "en": "Signed-in users",
+      "fr": "Utilisateurs connectés",
+      "nl": "Aangemelde gebruikers"
+    },
+    "4e130000-0000-4000-8000-000000000001": {
+      "en": "Moderators",
+      "fr": "Modérateurs",
+      "nl": "Moderatoren"
+    },
+    "4e130000-0000-4000-8000-000000000002": {
+      "en": "Voters",
+      "fr": "Votants",
+      "nl": "Stemmers"
+    },
+    "4e130000-0000-4000-8000-000000000003": {
+      "en": "Downvoters",
+      "fr": "Votants négatifs",
+      "nl": "Negatieve stemmers"
+    },
+    "4e130000-0000-4000-8000-000000000004": {
+      "en": "Flaggers",
+      "fr": "Signaleurs",
+      "nl": "Melders"
+    },
+    "4e130000-0000-4000-8000-000000000005": {
+      "en": "Reviewers",
+      "fr": "Relecteurs",
+      "nl": "Beoordelaars"
+    }
+  },
+  "rights": [
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000001",
+      "resource": "QueryRead/Question",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000002",
+      "resource": "QueryRead/Answer",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000003",
+      "resource": "QueryReadEditNewDelete/Question",
+      "groupId": "4e130000-0000-4000-8000-00000000000f",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000004",
+      "resource": "QueryReadEditNewDelete/Answer",
+      "groupId": "4e130000-0000-4000-8000-00000000000f",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000005",
+      "resource": "History/Question",
+      "groupId": "4e130000-0000-4000-8000-00000000000f",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000006",
+      "resource": "History/Answer",
+      "groupId": "4e130000-0000-4000-8000-00000000000f",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000007",
+      "resource": "CloseQuestion/Question",
+      "groupId": "4e130000-0000-4000-8000-00000000000f",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000008",
+      "resource": "ReopenQuestion/Question",
+      "groupId": "4e130000-0000-4000-8000-00000000000f",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000035",
+      "resource": "DuplicateAnswer/Answer",
+      "groupId": "4e130000-0000-4000-8000-00000000000f",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000009",
+      "resource": "Vote/Question",
+      "groupId": "4e130000-0000-4000-8000-000000000002",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000010",
+      "resource": "Vote/Answer",
+      "groupId": "4e130000-0000-4000-8000-000000000002",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000011",
+      "resource": "Downvote/Question",
+      "groupId": "4e130000-0000-4000-8000-000000000003",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000012",
+      "resource": "Downvote/Answer",
+      "groupId": "4e130000-0000-4000-8000-000000000003",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000013",
+      "resource": "Flag/Question",
+      "groupId": "4e130000-0000-4000-8000-000000000004",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000014",
+      "resource": "Flag/Answer",
+      "groupId": "4e130000-0000-4000-8000-000000000004",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000015",
+      "resource": "Review/Moderation",
+      "groupId": "4e130000-0000-4000-8000-000000000005",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000016",
+      "resource": "Lock/Question",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000017",
+      "resource": "Restore/Question",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000018",
+      "resource": "Purge/Question",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000019",
+      "resource": "ViewDeleted/Question",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000020",
+      "resource": "Revert/Question",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000021",
+      "resource": "Vote/Question",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000022",
+      "resource": "Downvote/Question",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000023",
+      "resource": "Flag/Question",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000024",
+      "resource": "Lock/Answer",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000025",
+      "resource": "Restore/Answer",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000026",
+      "resource": "Purge/Answer",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000027",
+      "resource": "ViewDeleted/Answer",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000028",
+      "resource": "Revert/Answer",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000029",
+      "resource": "Vote/Answer",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000030",
+      "resource": "Downvote/Answer",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000031",
+      "resource": "Flag/Answer",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000032",
+      "resource": "Review/Moderation",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000033",
+      "resource": "Suspend/Moderation",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000034",
+      "resource": "Audit/Moderation",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    }
+  ]
+}

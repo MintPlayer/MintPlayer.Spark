@@ -76,6 +76,7 @@ public class LocalCredentialModeTests : SparkTestDriver
                 {
                     services.AddSingleton<IDocumentStore>(Store);
                     services.AddSparkAuthentication<SparkUser>();
+                    services.AddTestMailSink(); // #460 D6: registration needs a mail sender
 
                     if (withExternalProvider)
                     {
@@ -138,7 +139,9 @@ public class LocalCredentialModeTests : SparkTestDriver
         "/spark/auth/register",
         "/spark/auth/login",
         "/spark/auth/refresh",
-        "/spark/auth/confirmEmail",
+        // Not /confirmEmail: since #460 (D7) it is mapped in every mode, because an external sign-up
+        // from a provider without a verified-email signal is confirmed by mail even when local
+        // credentials are Disabled. AccountRouteClassificationTests pins the full table.
         "/spark/auth/resendConfirmationEmail",
         "/spark/auth/forgotPassword",
         "/spark/auth/resetPassword",
@@ -216,7 +219,6 @@ public class LocalCredentialModeTests : SparkTestDriver
         routes.Should().Contain(r => r.EndsWith(" /spark/auth/login", StringComparison.OrdinalIgnoreCase));
         routes.Should().Contain(r => r.EndsWith(" /spark/auth/forgotPassword", StringComparison.OrdinalIgnoreCase));
         routes.Should().Contain(r => r.EndsWith(" /spark/auth/resetPassword", StringComparison.OrdinalIgnoreCase));
-        routes.Should().Contain(r => r.EndsWith(" /spark/auth/confirmEmail", StringComparison.OrdinalIgnoreCase));
         routes.Should().Contain("POST /spark/auth/manage/info");
     }
 

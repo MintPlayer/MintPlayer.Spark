@@ -100,6 +100,16 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint
         {
             return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, 400);
         }
+        catch (SparkActionDisabledException ex)
+        {
+            // After the row gate (#460, D13): the caller can see this row, so naming the action hides nothing.
+            return ClientResult.ActionDisabled(clientAccessor, ex);
+        }
+        catch (SparkThrottledException ex)
+        {
+            // A business quota (Moderation's new-account throttle, #460 M12): 429, not 404 or 400.
+            return ClientResult.Throttled(clientAccessor, httpContext, ex);
+        }
         catch (SparkAccessDeniedException)
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
