@@ -298,7 +298,14 @@ in the app's `ProjectReference` closure (`libs/spark/MintPlayer.Spark`, `…Abst
 `libs/subscription_worker/…Abstractions`, `libs/source_generators/…SourceGenerators` +
 `…LibraryGenerators`, `libs/socket_extensions/…`); `libs/node_packages/ng-spark/**` and
 `ng-spark-auth/**`; `package.json`, `package-lock.json`, `nx.json`, `tsconfig.base.json`. ⚠️
-Hand-maintained: a new Spark dependency must be added here or its changes will not deploy.
+Hand-maintained: a new Spark dependency of CodeCoverage goes in **three** places, or it breaks
+silently:
+1. this deploy filter, or its changes will not deploy;
+2. the same filter in `code-coverage-image-check.yml` (below), or a pull request that breaks the
+   image through it is not checked;
+3. the csproj `COPY` list before `dotnet restore` in `apps/CodeCoverage/CodeCoverage/Dockerfile`,
+   which must be the full transitive `ProjectReference` closure, or the restore fails inside the
+   image.
 
 **Secrets, by name**
 
@@ -335,6 +342,15 @@ and a model mismatch refuses to start in Production anyway.
    keep the two in step.
 
 The directory `/var/www/code-coverage` is hard-coded in the script.
+
+**Pull-request image check.** [`.github/workflows/code-coverage-image-check.yml`](../../.github/workflows/code-coverage-image-check.yml)
+builds the same Dockerfile, with the same context, on every pull request whose changes match the
+deploy's path filter (mirrored, plus the two workflow files). Before it existed a broken Dockerfile
+(a missing `COPY` for a new `ProjectReference`, a stage that no longer builds) surfaced first as a
+failed production deploy. It has `contents: read` only, never logs in to a registry, never pushes
+(`push: false`) and never deploys. It reads the GHA layer cache the master deploy writes
+(`cache-from: type=gha`) but never writes to it, so nothing a pull request builds can be replayed
+into a production image. Timeout 30 min; concurrency cancels a superseded run on the same branch.
 
 ## 8. The upload action
 
@@ -402,6 +418,12 @@ Found while writing this reference (2026-09-29), and fixed in the same pull requ
   (referenced by `MintPlayer.Spark.Abstractions`) and `libs/source_generators/MintPlayer.Spark.LibraryGenerators`
   (an analyzer reference of `CodeCoverage` and `CodeCoverage.Library`). It now lists exactly the
   computed closure, 22 projects. The deploy path filter already covered both.
+- **A redundant `dotnet build` in the Dockerfile.** The template's `dotnet build -o /app/build` wrote
+  output nothing ever copied, and `dotnet publish` then compiled the whole closure again. It is
+  removed; the `publish` stage sets its own `WORKDIR`. Measured locally: the .NET steps went from
+  58.8 s to 40.8 s, and the image holds the same 95 files in `/app`.
+- **No image build before merge.** The Dockerfile was built only by the post-merge deploy; the new
+  `code-coverage-image-check.yml` builds it on pull requests (§7).
 - **`.env.example`** pointed to "README 'Deployment' step 2" for the key fingerprint check; it now
   names [§3 step 4](../../apps/CodeCoverage/README.md#3-the-server-docker-and-traefik).
 - **Stale RavenDB-licence history.** The README used to say running unlicensed "is what this

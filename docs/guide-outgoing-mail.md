@@ -153,14 +153,29 @@ coverage                    TXT   v=spf1 ip4:188.245.190.60 ip6:2a01:4f8:c0c:f87
 mail._domainkey.coverage    TXT   v=DKIM1;k=rsa;p=<public key>
 ```
 
-⚠️ **List both address families in SPF if your host has an AAAA.** Otherwise Postfix may send over
-IPv6 and fail SPF there while passing over IPv4 — an intermittent failure that depends on which
-family the *recipient* publishes.
+(The example is CodeCoverage's record as published. Its `ip6:` entry is the one mistake described
+next: it names the AAAA's address, not the one the host sends from.)
 
-⚠️ **And prefer IPv4 anyway.** The large receivers hold IPv6 senders to a stricter standard,
-chiefly a valid PTR for the v6 address, which cloud providers set per address and which is usually
-unconfigured. Pin `smtp_address_preference = ipv4`. SPF authorises both; this is about reputation,
-not authorisation.
+⚠️ **SPF must name the address you *send* from, not the address your AAAA points at.** On a host
+with IPv6, Postfix may deliver over IPv6 to any MX that publishes an AAAA, and the receiver checks
+the *source* address of that connection. Those are often different: a Hetzner server is typically
+given a /64, its AAAA points at the subnet's `::` (`…::0`), and the kernel sends from `…::1`. An
+`ip6:` entry naming `…::` then authorises an address that never sends, the real one fails `-all`,
+and the failure is intermittent, because it depends on which family each *recipient* publishes.
+Measure the source address (`ip -6 route get <an MX's IPv6>` shows the `src`), and list that
+address, or the whole /64 (`ip6:2a01:db8:1:2::/64`).
+
+⚠️ **Send over IPv4 only unless IPv6 is fully set up.** The large receivers hold IPv6 senders to a
+stricter standard: a PTR for the *sending* v6 address that forward-resolves to your HELO name, and
+SPF coverage for it. Cloud providers set PTRs per address and usually leave v6 unconfigured. When
+either is missing, set `inet_protocols = ipv4`, which makes Postfix never try IPv6.
+`smtp_address_preference = ipv4` is **not** a substitute: it only *prefers* IPv4 and still falls
+back to IPv6 when an IPv4 attempt fails, which is exactly the delivery that then fails SPF.
+
+*Measured on CodeCoverage (2026-09-29):* the host sent IPv6 from `2a01:4f8:c0c:f87c::1`, the AAAA
+and SPF named `2a01:4f8:c0c:f87c::`, and `::1` had no PTR, so every IPv6 delivery failed SPF and
+Gmail and Outlook refused it. The relay now runs with `inet_protocols=ipv4`; IPv4 has a matching
+PTR and passes.
 
 ---
 
@@ -173,7 +188,7 @@ coverage-smtp:
     - ALLOWED_SENDER_DOMAINS=coverage.mintplayer.com
     - HOSTNAME=coverage.mintplayer.com          # must match reverse DNS
     - DKIM_SELECTOR=mail
-    - POSTFIX_smtp_address_preference=ipv4
+    - POSTFIX_inet_protocols=ipv4                # never IPv6 unless its PTR + SPF are set (§3.3)
     - RELAYHOST=                                 # empty = direct to MX
   volumes:
     - ./mail-dkim:/etc/opendkim/keys:ro
@@ -241,7 +256,7 @@ harshest useful test — from a **throwaway** container, so the running stack is
 ```bash
 docker run -d --name smtp-test \
   -e ALLOWED_SENDER_DOMAINS=<domain> -e HOSTNAME=<domain> -e DKIM_SELECTOR=mail \
-  -e POSTFIX_smtp_address_preference=ipv4 \
+  -e POSTFIX_inet_protocols=ipv4 \
   -v /var/www/<app>/mail-dkim:/etc/opendkim/keys:ro \
   boky/postfix:v4.3.0
 
@@ -453,8 +468,10 @@ coverage                    TXT   v=spf1 ip4:188.245.190.60 ip6:2a01:4f8:c0c:f87
 mail._domainkey.coverage    TXT   v=DKIM1;k=rsa;p=<408-character public key>
 ```
 
-The IPv6 address is included because `coverage.mintplayer.com` has an AAAA record pointing at the
-same host. Confirmed published against the authoritative server before testing:
+The IPv6 address was included because `coverage.mintplayer.com` has an AAAA record pointing at the
+same host. ⚠️ That was the wrong address to list: the AAAA is the subnet's `::`, while the host
+sends from `::1` (§3.3). It is harmless now that the relay sends over IPv4 only; re-enabling IPv6
+would first need `ip6:` to name the sending address (or the /64) and a PTR for it. Confirmed published against the authoritative server before testing:
 
 ```bash
 dig +short TXT coverage.mintplayer.com @ns10.foxxl.com

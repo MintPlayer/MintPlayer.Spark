@@ -412,6 +412,23 @@ exist.
 6. **Push** to your fork
 7. **Open a Pull Request** against `master`
 
+### CI checks
+
+A pull request must pass these before merging.
+
+[`pull-request.yml`](.github/workflows/pull-request.yml), job `pull-request`:
+- **Build affected projects** — `nx affected --target=build`, .NET and Angular.
+- **Type-check the npm packages' specs** — `tsc --noEmit` on ng-spark's and ng-spark-auth's `tsconfig.spec.json` (vitest does not type-check, and ng-packagr skips specs).
+- **Verify Spark models are in sync** — `--spark-verify-model` for every app (DemoApp, HR, Fleet, QnA, CodeCoverage).
+- **Verify the anonymous surface has not widened** — `--spark-verify-security` against each app's committed `securityPosture.txt`.
+- **Verify a changed package was version-bumped** — every touched `libs/` package must carry a new version.
+- **Run tests** — `nx run-many --target=test`: all .NET test projects (including E2E) and vitest.
+- **Verify coverage report paths**, then upload coverage to coverage.mintplayer.com.
+
+`pull-request.yml`, job `coverage-upload action`: builds, verifies and smoke-tests the bundled upload action.
+
+[`code-coverage-image-check.yml`](.github/workflows/code-coverage-image-check.yml): builds the production CodeCoverage Docker image (no push) when a change could affect it, so a broken Dockerfile fails the PR instead of the production deploy.
+
 ### Coding Standards
 
 - Follow [C# coding conventions](https://docs.microsoft.com/en-us/dotnet/csharp/fundamentals/coding-style/coding-conventions)
