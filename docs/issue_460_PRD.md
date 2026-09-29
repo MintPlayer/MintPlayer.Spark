@@ -270,7 +270,7 @@ Specified in full by D15 (`AddSparkForwardedHeaders`, private-range default, `Pr
 
 The reference is Vidyano, measured in a real app. An action is defined once per type, and every
 query of that type offers it, whether top-level or sub-query. Each sub-query tab has its own toolbar,
-with pinned actions and a `…` overflow. Rows have checkboxes and a per-row `⋮` menu, and a
+with pinned actions and an overflow. Rows have checkboxes and a per-row `⋮` menu, and a
 "N selected ⊗" chip clears the selection (the demo measured has `selectAll.isAvailable = false`: no
 select-all). Actions enable and disable live from the
 selection count.
@@ -292,7 +292,19 @@ selection count.
 - `/spark/po/new` sub-query context (`parentId`, `parentType`, `queryId`) and `SparkNewArgs`
   `ParentType`/`Query`/`ParentReference`/`FillParentReference()`. The base `OnNewAsync` auto-fills.
   `NewInvoker` invokes the base hook when the context is a sub-query.
-- `SparkClient.DeletePersistentObjectsAsync`, and `NewPersistentObjectAsync(..., queryId)`.
+- `SparkClient.DeletePersistentObjectsAsync`, and `NewPersistentObjectFromSubQueryAsync`.
+- **`parentDeleted` (17f35fd3).** `/spark/queries/execute` and `/spark/queries/distinct-values`
+  take an optional `parentDeleted` (`exclude | include | only`), the mode the *parent* is resolved
+  under, scoped to the parent's type. Core only carries it to the row policies (`SubQueryParent`);
+  the SoftDelete policy honours a widening only for holders of `ViewDeleted/{ParentType}`, as on
+  `/spark/po/load`. Everyone else, and every request without the field, gets the same 404 a missing
+  parent gives, byte-identical (#453). The rows' own `deleted` is independent. `/spark/actions/execute`
+  and `/spark/po/delete-many` keep resolving their parent as a live row, so a smuggled
+  `parentDeleted` widens nothing. `SparkClient.ExecuteQueryAsync` and `GetDistinctValuesAsync` take
+  it as their last optional parameter.
+- **Actions on deleted rows (1632dfe4).** `/spark/po/delete-many` and `/spark/actions/execute` judge
+  live rows only, so a hand-made request aimed at a deleted row is the same 404 as a hidden row, even
+  with a `deleted` field in the body. A SoftDelete test pins that, with a live control.
 
 **ng-spark**
 - `SparkSelectionModeSetting = 'auto' | SparkSelectionMode` (the rendered `SparkSelectionMode` stays `none|single|multiple`, which is what `<bs-datatable>` binds). `selectionModeFor(actions, declared)` returns the declared
@@ -305,8 +317,22 @@ selection count.
     runs on that row only and leaves the checkbox selection alone.
   - bulk Delete, which asks for confirmation.
   - New, which navigates to the create page and carries the parent.
-- The card renders the caption on the left and the actions on the right, through the priority nav's
-  `…`. The query-list page renders the same `toolbarActions()`. Neither forks the grid.
+- The card renders the caption on the left and the actions on the right, through the priority nav,
+  whose overflow label is the translated `common.more`, as on the list and detail pages (40e07b86).
+  The header buttons are square (`rounded-0`), since they sit edge to edge (cbf1045e). The
+  query-list page renders the same `toolbarActions()`. Neither forks the grid.
+- **Recycle-bin toolbar rule (1632dfe4).** While the grid lists `deleted: 'only'`, or sits under a
+  deleted parent (the card's `parentDeleted` input, set by the detail page for a row opened with
+  `?deleted=only`), `toolbarActions()` and `rowActions()` are empty and `offersCreate()` is false:
+  New, Delete and custom actions are hidden and the recycle bin offers only Restore and Purge. The
+  card forwards a `deleted` input to its grid. Under a deleted parent the grid sends
+  `parentDeleted: 'include'` on execute and distinct-values (6a2a6a46); the rows' `deleted` is left
+  alone.
+- **Found in the browser check:** opening a second row's `⋮` menu while one was open closed it at
+  once, because both overlays called an unscoped `closeRowMenu()`; it is now scoped to its row
+  (726ba3f9). A selected row's links and menu toggle rendered primary on primary; a scoped override
+  in `spark-query-grid.component.scss` hands the datatable's `--mp-datatable-row-selected-color`
+  down to them (75ab0395). The chip's ⊗ in single mode (8b545062) is recorded under D17 below.
 - The detail page reads normalised `Queries` entries and passes the entry's `selectionMode` to the
   card.
 - The create page asks `/po/new`, and forwards the query parameters `parentId`, `parentType` and
@@ -397,7 +423,14 @@ unlinked JIT test run that imported the grid (7 ng-spark suites and CodeCoverage
 in CI run `a1b47012`) failed at import with "Cannot access 'BsDropdownDirective' before
 initialization". The menu now uses `cdkConnectedOverlay` directly, with ng-bootstrap's
 `<bs-dropdown-menu>`/`bsDropdownItem` inside. The upstream fix is for the toggle to
-`inject(forwardRef(() => BsDropdownDirective))`, as `BsDropdownMenuDirective` already does.
+`inject(forwardRef(() => BsDropdownDirective))`, as `BsDropdownMenuDirective` already does; it is
+filed as [ng-bootstrap issue #419](https://github.com/MintPlayer/mintplayer-ng-bootstrap/issues/419),
+and the menu can move back to the dropdown once that ships.
+
+**Spec type-check (59070c6f, b911f804).** vitest strips TypeScript without checking it and
+ng-packagr excludes the specs, so spec type errors were reported nowhere (ten in ng-spark, one a
+fixture silently `undefined`). They are fixed, and `pull-request.yml` now runs `tsc --noEmit` on
+both packages' `tsconfig.spec.json`.
 
 ## 4. Spikes
 
@@ -1097,7 +1130,8 @@ address is envelope-only. `StartTlsWhenAvailable` sends STARTTLS and the connect
   starts and sends nothing. `implicitDependencies` needed no entry (Nx infers project references).
 - *Found (M5 left it):* `XsrfSurfaceTests.Auth_surface_…` still pinned MapIdentityApi's surface; M5's account endpoints (incl. `register`, `resendConfirmationEmail`, `manage/account`, `manage/password`, `manage/profile`, `confirm-email`) all require antiforgery — the pinned lists were updated to the measured surface.
 - *Not built:* VERP tier 2 (MX + inbound 25) is a recipe only (§6 out of scope); complaint (ARF)
-  parsing; a UI for `PreferredCulture` (M10 profile page can expose it).
+  parsing. (A `PreferredCulture` UI exists: `spark-account-profile.component.ts` in
+  `@mintplayer/ng-spark-auth/account`.)
 
 **S-TZ1 — `FindSystemTimeZoneById` on path-shaped ids (M9, 2026-09-28).**
 *Question:* what does .NET 11 do with path-shaped zone ids on Windows and Linux — is the regex the
@@ -1536,6 +1570,24 @@ Reruns: the failed tests, then Spark.Tests (3198/3198) and E2E (120/120) in full
   .NET tests passed (45/45), and CI runs the suites. The other test projects, vitest, the QnA E2E specs
   and `--spark-verify-*` for the other apps were not run locally. QnA's verify-model (after the
   resync) and verify-security pass.
+- **The recycle bin offers only Restore and Purge (1632dfe4).** With `deleted=only` (or under a
+  deleted parent) the grid hides New, Delete and custom actions, in the toolbar and the row menu. The
+  server needed no change: delete-many and actions/execute already judge live rows only, so another
+  action aimed at a deleted row is a 404. Verified in the browser with a fresh moderator.
+- **A deleted parent's sub-queries were all 404 (17f35fd3, 6a2a6a46).** Execute and distinct-values
+  resolved the parent as a live row, so a deleted row opened from the recycle bin listed no
+  sub-query. They now take `parentDeleted` (`exclude|include|only`), gated by
+  `ViewDeleted/{ParentType}`, with the same 404 as a missing parent otherwise. Actions and
+  delete-many stay live-only.
+- **Browser check (10/10 on QnA and DemoApp) found three bugs, all fixed:** the second row menu
+  closing at once (726ba3f9), no way to clear a single selection without the chip's ⊗ (8b545062),
+  and selected-row links rendered primary on primary (75ab0395). Also from the owner's review: the
+  card's overflow label is the translated `common.more` (40e07b86), and the header buttons are
+  square (cbf1045e).
+- **Row menu on the CDK overlay** because of the ng-bootstrap dropdown's initialisation order,
+  [ng-bootstrap issue #419](https://github.com/MintPlayer/mintplayer-ng-bootstrap/issues/419); see §3.15.
+- **Spec type errors were reported nowhere.** Ten in ng-spark were fixed (59070c6f) and CI now runs
+  `tsc --noEmit` on both packages' spec configs (b911f804).
 
 
 ---
@@ -1554,7 +1606,8 @@ Reruns: the failed tests, then Spark.Tests (3198/3198) and E2E (120/120) in full
 10. **E2E host refactor** in known-flaky infrastructure can block CI for the whole PR.
 11. **Moderation age gates fail closed** (M12): accounts whose `CreatedAtUtc` the M5 backfill could not
     find pass no `MinAccountAgeDays` gate. Count them before the MintPlayer cutover; backfill from
-    another source or accept it.
+    another source or accept it. The count is a task in the plan's MintPlayer cutover list
+    (`docs/issue_460_plan.md`).
 
 ## 6. Out of scope (genuinely not being done)
 
