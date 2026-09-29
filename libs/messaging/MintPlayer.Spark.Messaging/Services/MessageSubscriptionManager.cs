@@ -20,6 +20,7 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
     [Inject] private readonly MessagingLeaseManager leaseManager;
     [Inject] private readonly LegacySubscriptionCleanup legacyCleanup;
     [Inject] private readonly MessageQueueRouter router;
+    [Inject] private readonly MessageProcessor processor;
 
     private readonly List<MessageSubscriptionWorker> perQueueWorkers = new();
     private MessageFeeder? feeder;
@@ -113,7 +114,7 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
         if (Options.SubscriptionMode == ESubscriptionMode.SingleSubscription)
         {
             router.Start(leaseLifetime.Token);
-            feeder = new MessageFeeder(router, documentStore, options, loggerFactory);
+            feeder = new MessageFeeder(router, processor.Admission, documentStore, options, loggerFactory);
             feederTask = feeder.StartAsync(leaseLifetime.Token);
             await feederTask;
             logger.LogInformation(

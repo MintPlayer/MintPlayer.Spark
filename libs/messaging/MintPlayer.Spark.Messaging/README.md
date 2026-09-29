@@ -366,6 +366,10 @@ spark.AddMessaging(options =>
 | `MaxConcurrency` | Messages of this queue handled at once (default 1 = FIFO). `SingleSubscription` mode only; warned about and ignored in `SubscriptionPerQueue` mode. |
 | `MaxAttempts` | Attempts per handler for messages published to this queue. |
 | `Backoff` | Retry schedule for this queue (empty = the global `BackoffDelays`). |
+| `Priority` | `Low`, `Normal` (default) or `High` (or `-1`/`0`/`1`): the order in which the single feeder claims queues inside each look-ahead window — see *Priority lanes* below. `SingleSubscription` mode only. |
+
+`SparkMessagingOptions.FeederBatchSize` (default 256, `Spark:Messaging:FeederBatchSize`) is that
+window: how many messages one subscription batch may hold.
 
 ```json
 "Spark": {
@@ -386,7 +390,10 @@ configuration source — appsettings, user secrets, or environment variables suc
 schedule rather than being appended to it. Everything outside `Queues` keeps "code wins".
 
 **How throttling works.** Admission runs at the top of `MessageProcessor.RunHandlersAsync`, shared by
-both subscription modes, and it never waits inside a lane (a sleeping lane would block the bounded
+both subscription modes — and, in `SingleSubscription` mode, once more in the feeder **before** the
+claim, so a message its queue cannot start yet is deferred in the feeder's window write and never
+enters a lane (a message the feeder admitted keeps a due reservation, so the processor does not
+charge it a second slot). It never waits inside a lane (a sleeping lane would block the bounded
 channel, the one feeder, and every other queue). A message over budget is written back **once** —
 `Pending`, no owner, `WakeUp = false`, `NextAttemptAtUtc` = its reserved slot, `AttemptCount`
 restored — and the lane moves on; the sweeper wakes it at the slot and it starts without asking
@@ -400,8 +407,39 @@ S-M3).
 
 **Pattern for mail:** `mail-transactional` generous (it carries password resets and confirmations,
 which a user is waiting for — and give them `ExpiresAtUtc`), `mail-bulk` strict (it must never crowd
-out the relay or trip a provider's rate limit). Separate queues are separate lanes, so a bulk backlog
-never delays a transactional mail.
+out the relay or trip a provider's rate limit). MailManager declares exactly that, with
+`mail-transactional` at `High` priority and `mail-bulk` at `Low`.
+
+### Priority lanes
+
+Separate queues are separate lanes, so a slow bulk *handler* never delays a transactional one. But in
+`SingleSubscription` mode every queue's documents reach the process through one subscription, in
+etag order, and the feeder must claim what is in front before it sees what is behind: measured in
+S-M3 (#460 PRD §4.1), a transactional message published behind a 1,000-message bulk backlog waited up
+to 5.8 s (9.4 s on a loaded machine), because each bulk message cost a load and a claim of its own and
+then a second write when its lane deferred it.
+
+The feeder therefore works in **look-ahead windows** (`FeederBatchSize`, one subscription batch):
+
+- **Strict priority inside a window.** The window's messages are grouped by their queue's `Priority`
+  and served highest first: one load and one write per group (claims and throttle deferrals
+  together), then routing. A full low-priority lane can no longer hold up a high-priority message the
+  feeder already has.
+- **FIFO between windows, and within a queue.** A queue has one priority, and each group keeps
+  delivery order.
+- **No starvation, by construction.** Every message of a window is claimed or deferred before the next
+  window is fetched, so a low-priority message is overtaken by at most `FeederBatchSize − 1` others,
+  whatever the traffic. This bounded window is the aging scheme: no weights to tune, and a
+  `Low` queue under sustained `High` traffic still advances one window at a time.
+- **Why not a subscription per priority.** Community caps a database at 3 subscriptions, one of which
+  Replication may already use; the feeder's own subscription is unchanged (same query, no `now()`, never
+  deleted or recreated), so nothing about its lifecycle moved.
+
+What it does not do: see past the window. A backlog larger than the window is still crossed a window at
+a time — fast now, because a window costs a few requests instead of several per message — and a lane
+filled to its capacity (512 claimed messages) by an **unthrottled** slow low-priority queue still
+back-pressures the feeder. Throttle bulk queues (MailManager's `mail-bulk` is); the measured before and
+after figures are in the #460 PRD (§4.1, M16).
 
 ### Inside a handler: `IMessageContext` and `IMessageProgress`
 

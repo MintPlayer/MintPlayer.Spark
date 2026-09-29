@@ -137,9 +137,27 @@ public class SparkMessagingOptions
     /// </summary>
     public Dictionary<string, SparkQueueOptions> Queues { get; set; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// The single feeder's look-ahead window (#460, M16): how many messages one subscription batch may
+    /// hold. Inside a window the feeder claims higher-priority queues first
+    /// (<see cref="SparkQueueOptions.Priority"/>), defers messages a throttled queue cannot start yet
+    /// without routing them, and writes all of it in one request per priority. Default 256; clamped to
+    /// 1–4096. A larger window lets an urgent message overtake more of a backlog; every claim in it is
+    /// taken at once, so it should stay well below what the lanes drain within
+    /// <see cref="ClaimTtl"/>. <see cref="ESubscriptionMode.SingleSubscription"/> only.
+    /// </summary>
+    public int FeederBatchSize { get; set; } = DefaultFeederBatchSize;
+
+    /// <summary>The window used when nothing is configured.</summary>
+    public const int DefaultFeederBatchSize = 256;
+
     /// <summary>The settings for <paramref name="queueName"/>, or null when the queue has none.</summary>
     public SparkQueueOptions? QueueOptionsFor(string queueName)
         => Queues.TryGetValue(queueName, out var queue) ? queue : null;
+
+    /// <summary>The priority of <paramref name="queueName"/>: its setting, or <see cref="SparkQueuePriority.Normal"/>.</summary>
+    public SparkQueuePriority PriorityFor(string queueName)
+        => QueueOptionsFor(queueName)?.Priority ?? SparkQueuePriority.Normal;
 }
 
 /// <summary>

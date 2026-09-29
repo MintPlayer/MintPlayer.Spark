@@ -37,6 +37,7 @@ board-automation flags following in #377. The branch named in the original versi
 | **A12** | **No backward compatibility.** Default is to simplify; anything kept needs a non-compatibility reason | Owner, stated twice. Eight simplifications enumerated in messaging PRD §9b |
 | **A13** | Legacy `SparkMessaging-*` definitions deleted **by prefix**, from a migration | Nothing in the repo deletes a subscription; three stale definitions occupy the whole 3-slot budget |
 | **A14** | `@refresh` **evaluated and recorded, but not adopted** in this rework | Real and proven, but a database-wide switch with a sweep-frequency floor; the sweeper works today |
+| **A15** | **Priority lanes inside the one subscription** (#460 M16, owner 2026-09-29): `SparkQueueOptions.Priority` (`Low`/`Normal`/`High`, config beats code). The feeder reads look-ahead windows (`FeederBatchSize`, default 256), serves each window **highest priority first**, one load and one write per priority, and defers throttled messages **before** claiming them; FIFO between windows and within a queue. No starvation by construction: a window is served completely before the next is fetched | The M4 S-M3 5.8 s transactional max was one message per batch, several requests each, in etag order. A subscription per priority is rejected: it spends the Community 3-slot budget A6 exists to protect. A weighted scheduler across windows would need claims held in memory past the ack, which A11's claim-before-ack forbids. Measured before/after in the PRD §4.1 (M16) |
 
 ## 2. Rejected — do not re-litigate
 

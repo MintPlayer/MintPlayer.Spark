@@ -71,6 +71,37 @@ public class SparkQueueOptions
     /// <summary>This queue's schedule, or <paramref name="global"/> when none is set.</summary>
     public TimeSpan[] ResolveBackoff(TimeSpan[] global) => Backoff.Length > 0 ? Backoff : global;
 
+    /// <summary>
+    /// Which queues the single feeder serves first (#460, M16). Default <see cref="SparkQueuePriority.Normal"/>.
+    /// <para>
+    /// Inside each look-ahead window — one subscription batch of up to
+    /// <see cref="SparkMessagingOptions.FeederBatchSize"/> messages — the feeder claims and routes the
+    /// higher-priority messages first; between windows it stays FIFO. Every window is claimed completely
+    /// before the next one is fetched, so a lower-priority message is overtaken by at most
+    /// <c>FeederBatchSize − 1</c> others and is never starved. Within one queue the order is unchanged
+    /// (a queue has one priority). <see cref="ESubscriptionMode.SingleSubscription"/> only: in
+    /// <see cref="ESubscriptionMode.SubscriptionPerQueue"/> mode each queue has its own subscription
+    /// and nothing is shared to prioritise.
+    /// </para>
+    /// </summary>
+    public SparkQueuePriority Priority { get; set; } = SparkQueuePriority.Normal;
+
     /// <summary>Whether any admission limit is configured.</summary>
     internal bool IsThrottled => (MaxPerInterval > 0 && Interval > TimeSpan.Zero) || BatchSize > 0;
+}
+
+/// <summary>
+/// A queue's priority in the single feeder (<see cref="SparkQueueOptions.Priority"/>). Bound by name or
+/// number from <c>Spark:Messaging:Queues:{name}:Priority</c>.
+/// </summary>
+public enum SparkQueuePriority
+{
+    /// <summary>Served after the other priorities in each window: bulk and campaign traffic.</summary>
+    Low = -1,
+
+    /// <summary>The default for a queue without a setting.</summary>
+    Normal = 0,
+
+    /// <summary>Served first in each window: a message somebody is waiting for (password reset, confirmation).</summary>
+    High = 1,
 }

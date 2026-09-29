@@ -78,6 +78,21 @@ internal sealed class QueueAdmission
         return AdmissionDecision.Defer(slot);
     }
 
+    /// <summary>
+    /// <see cref="Decide"/> for the single feeder, which decides <b>before</b> claiming (#460, M16): a
+    /// deferred message is written back at once and never enters a lane. An admitted message of a
+    /// throttled queue keeps a due reservation, so the processor's own <see cref="Decide"/> after the
+    /// claim admits it without taking a second slot.
+    /// </summary>
+    public AdmissionDecision DecideBeforeClaim(
+        string queueName, string messageId, SparkQueueOptions? options, DateTime now, DateTime? expiresAtUtc)
+    {
+        var decision = Decide(queueName, messageId, options, now, expiresAtUtc);
+        if (decision.Kind == AdmissionKind.Admit && options is { IsThrottled: true })
+            reservations[messageId] = now;
+        return decision;
+    }
+
     /// <summary>Forgets a reservation whose message will not start (dead-lettered, deleted).</summary>
     public void Forget(string messageId) => reservations.TryRemove(messageId, out _);
 
