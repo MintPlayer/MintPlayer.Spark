@@ -344,6 +344,24 @@ describe('query toolbar (#460 M15)', () => {
       expect(c.openRowMenu()).toBeNull();
     });
 
+    it("opening another row's menu while one is open leaves the new one open", async () => {
+      const { c, fixture } = await grid([duplicateAction]);
+      const toggles = fixture.nativeElement.querySelectorAll('.spark-row-menu-toggle') as NodeListOf<HTMLButtonElement>;
+
+      toggles[0].click();
+      await settle(fixture);
+      expect(document.querySelectorAll('.spark-row-menu').length).toBe(1);
+
+      // The first overlay reports this click as an outside click, and then detaches: neither may
+      // close the menu the click has just opened.
+      toggles[2].click();
+      await settle(fixture);
+
+      expect(c.openRowMenu()).toBe('answers/3');
+      expect(document.querySelectorAll('.spark-row-menu').length).toBe(1);
+      expect(toggles[2].getAttribute('aria-expanded')).toBe('true');
+    });
+
     it('renders a menu column only when some action takes one row', async () => {
       const { fixture } = await grid([newAction]);
       expect(fixture.componentInstance.rowActions()).toEqual([]);

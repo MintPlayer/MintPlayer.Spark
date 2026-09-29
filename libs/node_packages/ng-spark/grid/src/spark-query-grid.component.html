@@ -144,9 +144,9 @@
                          [cdkConnectedOverlayOrigin]="rowMenuOrigin"
                          [cdkConnectedOverlayOpen]="openRowMenu() === row.id"
                          [cdkConnectedOverlayPositions]="rowMenuPositions"
-                         (overlayOutsideClick)="onRowMenuOutsideClick($event, rowMenuToggle)"
-                         (overlayKeydown)="$event.key === 'Escape' && closeRowMenu()"
-                         (detach)="closeRowMenu()">
+                         (overlayOutsideClick)="onRowMenuOutsideClick($event, rowMenuToggle, row.id)"
+                         (overlayKeydown)="$event.key === 'Escape' && closeRowMenu(row.id)"
+                         (detach)="closeRowMenu(row.id)">
               <bs-dropdown-menu class="spark-row-menu">
                 @for (action of rowActions(); track action.name) {
                   <li bsDropdownItem class="spark-row-action" [attr.data-action]="action.name"

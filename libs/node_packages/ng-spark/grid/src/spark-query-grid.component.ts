@@ -421,7 +421,13 @@ export class SparkQueryGridComponent {
     this.openRowMenu.update(open => open === row.id ? null : row.id);
   }
 
-  closeRowMenu(): void {
+  /**
+   * Closes the open row menu. With a `rowId`, only when that row's menu is the open one: a row's
+   * overlay reports its outside click and its detach AFTER another row's toggle has already opened
+   * that row's menu, and an unscoped close there shut the menu the user had just opened.
+   */
+  closeRowMenu(rowId?: string): void {
+    if (rowId !== undefined && this.openRowMenu() !== rowId) return;
     this.openRowMenu.set(null);
   }
 
@@ -429,9 +435,9 @@ export class SparkQueryGridComponent {
    * A click outside the open menu closes it — except on its own toggle, whose click handler toggles
    * it; closing here as well would reopen it at once.
    */
-  onRowMenuOutsideClick(event: MouseEvent, toggle: HTMLElement): void {
+  onRowMenuOutsideClick(event: MouseEvent, toggle: HTMLElement, rowId: string): void {
     if (event.target instanceof Node && toggle.contains(event.target)) return;
-    this.closeRowMenu();
+    this.closeRowMenu(rowId);
   }
 
   /** Runs the chosen row-menu item and closes the menu. */
