@@ -1,10 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { Location } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ActivatedRoute, Router } from '@angular/router';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
-import { SparkLanguageService } from '@mintplayer/ng-spark/services';
+import { SPARK_RETURN_URL_STATE_KEY, SparkLanguageService, SparkReturnNavigationService } from '@mintplayer/ng-spark/services';
 import { SparkDetailContext } from '@mintplayer/ng-spark/panels';
 import { SparkSoftDeleteService } from './spark-soft-delete.service';
 
@@ -45,7 +44,7 @@ export class SparkSoftDeleteActionsComponent {
   private readonly softDelete = inject(SparkSoftDeleteService);
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
-  private readonly location = inject(Location);
+  private readonly returnNavigation = inject(SparkReturnNavigationService);
   private readonly lang = inject(SparkLanguageService);
 
   context = input.required<SparkDetailContext>();
@@ -63,11 +62,14 @@ export class SparkSoftDeleteActionsComponent {
     await this.run(async () => {
       await this.softDelete.restore(ctx.type, ctx.id);
       // Same page, live mode: dropping `?deleted` makes the detail page re-read the row normally.
+      // The list this row was opened from travels on: a later Delete still returns there.
+      const returnUrl = this.returnNavigation.recordedReturnUrl();
       await this.router.navigate([], {
         relativeTo: this.route,
         queryParams: { deleted: null },
         queryParamsHandling: 'merge',
         replaceUrl: true,
+        ...(returnUrl ? { state: { [SPARK_RETURN_URL_STATE_KEY]: returnUrl } } : {}),
       });
     });
   }
@@ -78,8 +80,9 @@ export class SparkSoftDeleteActionsComponent {
     const ctx = this.context();
     await this.run(async () => {
       await this.softDelete.purge(ctx.type, ctx.id);
-      // The row no longer exists; back to where it was opened from (the recycle bin, normally).
-      this.location.back();
+      // The row no longer exists: back to the recycle bin it was opened from — the recorded list, else
+      // the type's list in `?deleted=only`. Never "the previous page", which may be anything.
+      await this.returnNavigation.returnToList(ctx.entityType?.name, { deletedView: true });
     });
   }
 

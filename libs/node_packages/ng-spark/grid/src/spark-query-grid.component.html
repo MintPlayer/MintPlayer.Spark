@@ -40,6 +40,8 @@
       [fetch]="fetchFn()"
       [distincts]="distinctsFn"
       (filterChange)="onFilterChange($event)"
+      (rowClick)="onRowClick($event)"
+      (rowDblClick)="onRowDblClick($event)"
       [(settings)]="settings">
     @for (col of visibleColumns(); track col.name) {
       <!--
@@ -90,7 +92,7 @@
                     from it cannot make a row clickable that `canRead()` withheld, and returning
                     null from it suppresses the link for that one row. -->
             @if (first && canRead() && rowRouteFor(row); as route) {
-              <a [routerLink]="route" [queryParams]="rowQueryParams()"
+              <a [routerLink]="route" [queryParams]="rowQueryParams()" [state]="rowLinkState()"
                  (click)="rowClicked.emit(row)">
                 <ng-container *ngTemplateOutlet="cellContent; context: { $implicit: row, col: col }"></ng-container>
               </a>

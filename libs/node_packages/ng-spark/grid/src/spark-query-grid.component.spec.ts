@@ -1,6 +1,6 @@
 import { Component, input } from '@angular/core';
 import { TestBed, ComponentFixture } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
@@ -193,6 +193,27 @@ describe('SparkQueryGridComponent', () => {
       const link: HTMLAnchorElement | null = fixture.nativeElement.querySelector('a[href]');
       expect(link?.getAttribute('href')).toContain('deleted=only');
       expect(c.permissions()?.canRead).toBe(true);
+    });
+
+    it('a click anywhere on a recycle-bin row opens it, with ?deleted and the list as the return URL', async () => {
+      const { fixture, c } = await setup({}, { deleted: 'only' });
+      const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+      const row = { id: 'people/1', values: [] } as QueryResultItem;
+      const cell = document.createElement('td');
+
+      (c as any).onRowClick({ row, rowIndex: 0, rowKey: 'people/1', originalEvent: new MouseEvent('click') });
+      expect(navigate).toHaveBeenCalledWith(['/po', c.entityType()?.alias ?? c.entityType()?.id, 'people/1'], expect.objectContaining({
+        queryParams: { deleted: 'only' },
+        state: { sparkReturnUrl: TestBed.inject(Router).url },
+      }));
+
+      // A click on a control inside the row (a vote button, the link itself) is the control's.
+      navigate.mockClear();
+      const button = document.createElement('button');
+      cell.appendChild(button);
+      (c as any).onRowClick({ row, rowIndex: 0, rowKey: 'people/1', originalEvent: { target: button } });
+      expect(navigate).not.toHaveBeenCalled();
+      fixture.destroy();
     });
 
     it('treats exclude as the default', async () => {

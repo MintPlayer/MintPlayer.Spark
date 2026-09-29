@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, provideRouter } from '@angular/router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { SparkLanguageService, SparkService } from '@mintplayer/ng-spark/services';
+import { SPARK_RETURN_URL_STATE_KEY, SparkLanguageService, SparkReturnNavigationService, SparkService } from '@mintplayer/ng-spark/services';
 import { SPARK_DETAIL_ACTIONS, SPARK_QUERY_LIST_ACTIONS, SparkDetailContext, SparkQueryListContext } from '@mintplayer/ng-spark/panels';
 import { SparkSoftDeleteService } from './spark-soft-delete.service';
 import { SparkDeletedToggleComponent } from './spark-deleted-toggle.component';
@@ -131,8 +131,9 @@ describe('soft-delete entry point (#460)', () => {
       }));
     });
 
-    it('Purge asks first, then posts and goes back', async () => {
+    it('Purge asks first, then posts and returns to the recycle bin, not the previous page', async () => {
       const back = vi.spyOn(TestBed.inject(Location), 'back').mockImplementation(() => undefined);
+      const returnToList = vi.spyOn(TestBed.inject(SparkReturnNavigationService), 'returnToList').mockResolvedValue(undefined);
       const fixture = render(detailContext());
 
       confirmSpy.mockReturnValueOnce(false);
@@ -141,7 +142,26 @@ describe('soft-delete entry point (#460)', () => {
 
       await fixture.componentInstance.purge();
       expect(spark.postEnvelope).toHaveBeenCalledWith('/po/purge', { objectTypeId: 'person', id: 'people/1' });
-      expect(back).toHaveBeenCalled();
+      expect(returnToList).toHaveBeenCalledWith('Person', { deletedView: true });
+      expect(back).not.toHaveBeenCalled();
+    });
+
+    it('returns to the list a row link recorded, else to the type\'s list in the recycle bin', async () => {
+      const router = TestBed.inject(Router);
+      const navigateByUrl = vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
+      const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+      const returns = TestBed.inject(SparkReturnNavigationService);
+      (spark as any).getQueries = vi.fn().mockResolvedValue([{ id: 'q-people', alias: 'people', entityType: 'Person' }]);
+      (spark as any).getProgramUnits = vi.fn().mockResolvedValue({ programUnitGroups: [] });
+
+      history.replaceState({ [SPARK_RETURN_URL_STATE_KEY]: '/query/people?deleted=only' }, '');
+      await returns.returnToList('Person', { deletedView: true });
+      expect(navigateByUrl).toHaveBeenCalledWith('/query/people?deleted=only', { replaceUrl: true });
+
+      history.replaceState({ [SPARK_RETURN_URL_STATE_KEY]: '//elsewhere.example' }, '');
+      await returns.returnToList('Person', { deletedView: true });
+      expect(navigate).toHaveBeenCalledWith(['/query', 'people'], { replaceUrl: true, queryParams: { deleted: 'only' } });
+      history.replaceState(null, '');
     });
 
     it('surfaces a refusal inline', async () => {

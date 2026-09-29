@@ -13,7 +13,7 @@ import { BsPriorityNavComponent, BsPriorityNavItemDirective } from '@mintplayer/
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
 import { BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective } from '@mintplayer/ng-bootstrap/tab-control';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
-import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
+import { SparkService, SparkLanguageService, SparkReturnNavigationService } from '@mintplayer/ng-spark/services';
 import { SparkAttributePatch, SparkAttributeRefreshService, SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import {
   TranslateKeyPipe,
@@ -65,6 +65,7 @@ export class SparkPoDetailComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
+  private readonly returnNavigation = inject(SparkReturnNavigationService);
   private readonly queryRefresh = inject(SparkQueryRefreshService);
   private readonly attributeRefresh = inject(SparkAttributeRefreshService);
   protected readonly lang = inject(SparkLanguageService);
@@ -508,7 +509,8 @@ export class SparkPoDetailComponent {
     if (confirm(this.lang.t('common.confirmDelete'))) {
       await this.sparkService.delete(this.type, this.id);
       this.deleted.emit();
-      this.router.navigate(['/']);
+      // Back to the list the row was opened from (else the type's list), not the start page.
+      await this.returnNavigation.returnToList(this.entityType()?.name);
     }
   }
 

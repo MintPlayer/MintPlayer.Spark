@@ -73,6 +73,7 @@ const customActionRefresh: CustomActionDefinition = {
 const routes: Routes = [
   { path: 'po/:type/:id', component: SparkPoDetailComponent },
   { path: 'po/:type/:id/edit', component: StubComponent },
+  { path: 'query/:alias', component: StubComponent },
   { path: '', component: StubComponent },
 ];
 
@@ -260,6 +261,21 @@ describe('SparkPoDetailComponent', () => {
     expect(service.delete).toHaveBeenCalledWith('person', 'people/1');
     expect(deleted).toHaveBeenCalled();
     expect(TestBed.inject(Router).url).toBe('/');
+  });
+
+  it('onDelete returns to the type\'s list, not the start page, when no list recorded where it came from', async () => {
+    const { harness } = await setup({
+      getQueries: vi.fn().mockResolvedValue([{ id: 'q-people', alias: 'people', entityType: 'Person' }]),
+      getProgramUnits: vi.fn().mockResolvedValue({ programUnitGroups: [{ programUnits: [{ type: 'query', queryId: 'q-people', alias: 'people', order: 1 }] }] }),
+    } as any);
+    const c = await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await harness.fixture.whenStable();
+
+    const navigated = nextNavigationEnd();
+    await c.onDelete();
+    await navigated;
+
+    expect(TestBed.inject(Router).url).toBe('/query/people');
   });
 
   it('onDelete is a no-op when confirm returns false', async () => {

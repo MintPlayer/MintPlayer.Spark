@@ -1,16 +1,18 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, model, output, signal, untracked, Type } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { RouterModule } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { NavigationEnd, Router, RouterModule } from '@angular/router';
+import { filter, map } from 'rxjs';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
-import { BsDatatableComponent, BsDatatableColumnDirective, BsDatatableFilterPanelDirective, BsRowTemplateDirective, DatatableSettings, type BsDatatableFetch, type DatatableDistincts, type FilterChangeDetail } from '@mintplayer/ng-bootstrap/datatable';
+import { BsDatatableComponent, BsDatatableColumnDirective, BsDatatableFilterPanelDirective, BsRowTemplateDirective, DatatableSettings, type BsDatatableFetch, type BsDatatableRowEvent, type DatatableDistincts, type FilterChangeDetail } from '@mintplayer/ng-bootstrap/datatable';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkQueryRefreshService } from '@mintplayer/ng-spark/client-operations';
 import { cellValue } from '@mintplayer/ng-spark/renderers';
 import { QueryCellValuePipe, QueryReferenceChipsPipe, ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
-import { SparkLanguageService, SparkService } from '@mintplayer/ng-spark/services';
+import { SPARK_RETURN_URL_STATE_KEY, SparkLanguageService, SparkService } from '@mintplayer/ng-spark/services';
 import { SparkColumnFilterPanelComponent } from '@mintplayer/ng-spark/column-filter';
 import {
   CustomActionDefinition,
@@ -147,6 +149,45 @@ export class SparkQueryGridComponent {
     const mode = this.effectiveDeleted();
     return mode ? { deleted: mode } : null;
   });
+
+  private readonly router = inject(Router);
+  private readonly currentUrl = toSignal(
+    this.router.events.pipe(filter(e => e instanceof NavigationEnd), map(() => this.router.url)),
+    { initialValue: this.router.url });
+
+  /**
+   * Navigation state for a row link: this page's URL, so the detail page can return to this list
+   * (with its `?deleted=` mode) once the row is deleted or purged. See SparkReturnNavigationService.
+   */
+  protected readonly rowLinkState = computed(() => ({ [SPARK_RETURN_URL_STATE_KEY]: this.currentUrl() }));
+
+  /**
+   * A click anywhere on a row opens it, like its first-column link — the link used to be the only
+   * target, so a row whose first column was empty ("—") could not be opened at all. While rows are
+   * selectable a click selects instead, and a double-click opens. Clicks on the link itself or on an
+   * interactive element inside the row (a vote button, a checkbox) are theirs, not the row's; a
+   * modified click (Ctrl, ⌘, Shift, middle) is left to the browser.
+   */
+  protected onRowClick(event: BsDatatableRowEvent<unknown>): void {
+    if (this.selectionMode() === 'none') this.openRow(event);
+  }
+
+  protected onRowDblClick(event: BsDatatableRowEvent<unknown>): void {
+    if (this.selectionMode() !== 'none') this.openRow(event);
+  }
+
+  private openRow(event: BsDatatableRowEvent<unknown>): void {
+    const row = event.row as QueryResultItem | null;
+    const original = event.originalEvent as MouseEvent | undefined;
+    const target = original?.target as Element | null | undefined;
+    if (target?.closest?.('a, button, input, select, textarea, label, [role="button"]')) return;
+    if (original && (original.ctrlKey || original.metaKey || original.shiftKey || original.button === 1)) return;
+    if (!row || !this.canRead()) return;
+    const route = this.rowRouteFor(row);
+    if (!route) return;
+    this.rowClicked.emit(row);
+    void this.router.navigate(route, { queryParams: this.rowQueryParams() ?? undefined, state: this.rowLinkState() });
+  }
 
   /**
    * Paging and sorting. Two-way, so a host driving `data` can sort those rows by whatever the
