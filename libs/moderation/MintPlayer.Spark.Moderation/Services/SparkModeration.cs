@@ -64,7 +64,9 @@ internal sealed partial class SparkModeration : ISparkModeration
         {
             try
             {
-                return await WriteVoteAsync(voterId, voter, target, direction, cancellationToken);
+                var state = await WriteVoteAsync(voterId, voter, target, direction, cancellationToken);
+                var (canUp, canDown) = await VoteRightsAsync(target.TypeName, cancellationToken);
+                return WithRights(state, canUp, canDown);
             }
             catch (ConcurrencyException) when (attempt < MaxAttempts)
             {
@@ -251,6 +253,8 @@ internal sealed partial class SparkModeration : ISparkModeration
             return [];
 
         var voterId = currentUser.IsAuthenticated ? currentUser.Id : null;
+        // One type per request (objectTypeId), so the caller's rights are asked once, not per id.
+        var (canUp, canDown) = await VoteRightsAsync(visible[0].TypeName, cancellationToken);
         using var session = documentStore.OpenAsyncSession();
         var tallies = await session.LoadAsync<ModerationTally>(visible.Select(t => ModerationIds.Tally(t.Id)), cancellationToken);
         var locks = await session.LoadAsync<ModerationLock>(visible.Select(t => ModerationIds.Lock(t.Id)), cancellationToken);
@@ -258,15 +262,34 @@ internal sealed partial class SparkModeration : ISparkModeration
             ? new Dictionary<string, ModerationVote>()
             : await session.LoadAsync<ModerationVote>(visible.Select(t => ModerationIds.Vote(voterId, t.Id)), cancellationToken);
 
-        return visible.Select(t => State(
+        return visible.Select(t => WithRights(State(
             t.Id,
             tallies.GetValueOrDefault(ModerationIds.Tally(t.Id)) ?? new ModerationTally { TargetId = t.Id },
             voterId is null ? 0 : votes.GetValueOrDefault(ModerationIds.Vote(voterId, t.Id))?.Direction ?? 0,
-            locks.GetValueOrDefault(ModerationIds.Lock(t.Id)) is not null)).ToList();
+            locks.GetValueOrDefault(ModerationIds.Lock(t.Id)) is not null), canUp, canDown)).ToList();
     }
 
     private static ModerationVoteState State(string id, ModerationTally tally, int mine, bool locked)
         => new() { Id = id, Up = tally.Up, Down = tally.Down, Score = tally.Score, MyVote = mine, Locked = locked };
+
+    private static ModerationVoteState WithRights(ModerationVoteState state, bool canUpvote, bool canDownvote)
+        => new()
+        {
+            Id = state.Id, Up = state.Up, Down = state.Down, Score = state.Score, MyVote = state.MyVote, Locked = state.Locked,
+            CanUpvote = canUpvote, CanDownvote = canDownvote,
+        };
+
+    /// <summary>
+    /// Whether the caller holds <c>Vote</c> / <c>Downvote</c> on <paramref name="typeName"/> — what the
+    /// widget needs to disable an arrow it would otherwise offer and have refused. Anonymous: neither.
+    /// </summary>
+    private async Task<(bool Up, bool Down)> VoteRightsAsync(string typeName, CancellationToken cancellationToken)
+    {
+        if (!currentUser.IsAuthenticated)
+            return (false, false);
+        return (await permissions.IsAllowedAsync(ModerationRights.Vote, typeName, cancellationToken),
+                await permissions.IsAllowedAsync(ModerationRights.Downvote, typeName, cancellationToken));
+    }
 
     // ---- flags ---------------------------------------------------------------------------------
 

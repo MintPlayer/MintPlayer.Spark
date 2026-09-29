@@ -97,6 +97,26 @@ public class ModerationVoteTests : SparkTestDriver
     }
 
     [Fact]
+    public async Task The_vote_state_says_which_arrows_the_caller_holds_the_right_for()
+    {
+        // The widget disables an arrow instead of offering a click the server refuses with 404.
+        await using var host = await StartAsync(o =>
+            o.Privileges["Downvote"] = new ModerationPrivilegeOptions { GroupId = MoSecurity.Downvoters, Rep = 125, Grants = ["Downvote"] });
+        var post = await host.SeedPostAsync(Alice);
+
+        var (status, body) = await host.SendAsync("/spark/moderation/votes", Wire.Typed(MoHost.PostTypeId, new { ids = new[] { post } }), Bob);
+        var (voted, votedBody) = await host.VoteAsync(Bob, post, 1);
+
+        status.Should().Be(HttpStatusCode.OK);
+        var state = body.GetProperty("result")[0];
+        state.GetProperty("canUpvote").GetBoolean().Should().BeTrue("Upvote needs no reputation here");
+        state.GetProperty("canDownvote").GetBoolean().Should().BeFalse("Downvote needs 125 reputation");
+        voted.Should().Be(HttpStatusCode.OK);
+        votedBody.GetProperty("result").GetProperty("canUpvote").GetBoolean().Should().BeTrue("a vote's answer carries the rights too");
+        votedBody.GetProperty("result").GetProperty("canDownvote").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Voting_on_your_own_post_is_refused()
     {
         await using var host = await StartAsync();

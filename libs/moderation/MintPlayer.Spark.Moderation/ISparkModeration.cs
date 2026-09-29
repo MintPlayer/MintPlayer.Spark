@@ -61,6 +61,16 @@ public sealed class ModerationVoteState
     /// <summary>The caller's vote: +1, −1 or 0.</summary>
     public int MyVote { get; init; }
     public bool Locked { get; init; }
+
+    /// <summary>
+    /// Whether the caller holds <c>Vote</c> on the target's type (an earned privilege or a group
+    /// grant), so a widget can disable the arrow instead of offering a click the server refuses. Not
+    /// a promise the vote is accepted: an own post, a lock or a suspension still refuse it.
+    /// </summary>
+    public bool CanUpvote { get; init; }
+
+    /// <summary>As <see cref="CanUpvote"/>, for <c>Downvote</c>.</summary>
+    public bool CanDownvote { get; init; }
 }
 
 /// <summary>A user's reputation as shown on a badge.</summary>
