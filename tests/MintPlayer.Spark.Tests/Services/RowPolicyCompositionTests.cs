@@ -256,6 +256,28 @@ public class RowPolicyCompositionTests : SparkTestDriver
     }
 
     [Fact]
+    public async Task The_deleted_mode_applies_only_to_the_type_it_was_asked_for()
+    {
+        // A deleted answer opened from the recycle bin (deleted: only) resolves its live question in
+        // the same request; the mode must not hide that question.
+        var soft = new SoftDeletePolicy();
+        var mapper = new EntityMapper(Substitute.For<IModelLoader>());
+        var resolver = Substitute.For<IActionsResolver>();
+        resolver.ResolveForType(typeof(RpCar)).Returns(new RpCarActions(mapper));
+        resolver.ResolveForType(typeof(RpTag)).Returns(new DefaultPersistentObjectActions<RpTag>(mapper));
+        var state = new RowPolicyRequestState { Deleted = SparkDeletedFilter.Include, DeletedScopeClrType = typeof(RpCar).FullName };
+        var rowSecurity = new RowSecurity(resolver, rowPolicies: [soft], requestState: state);
+
+        (await rowSecurity.IsAllowedAsync(typeof(RpCar), "Read", new RpCar { LicensePlate = "A", IsDeleted = true }))
+            .Should().BeTrue("the scoped type sees the request's deleted=include");
+        soft.LastContext!.Deleted.Should().Be(SparkDeletedFilter.Include);
+
+        (await rowSecurity.IsAllowedAsync(typeof(RpTag), "Read", new RpTag { IsDeleted = true }))
+            .Should().BeFalse("another type in the same request sees live rows only");
+        soft.LastContext!.Deleted.Should().Be(SparkDeletedFilter.Exclude);
+    }
+
+    [Fact]
     public void S5_row_rule_kinds_tell_visibility_decisions_from_other_filters()
     {
         var rowSecurity = Build([new SoftDeletePolicy(), new TenantPolicy(), new LockPolicy()]);

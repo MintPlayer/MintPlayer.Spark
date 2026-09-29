@@ -69,6 +69,10 @@ internal sealed partial class DistinctValues : IPostEndpoint
             return Results.Json(new { error = $"Query '{id}' not found" }, statusCode: 404);
         }
 
+        // Scoped to the query's own type, as in Execute.cs.
+        if (query.EntityType is not null)
+            rowPolicyRequestState.DeletedScopeClrType = modelLoader.ResolveEntityType(query.EntityType)?.ClrType;
+
         if (query.EntityType is not null &&
             !await permissionService.IsAllowedAsync("Query", query.EntityType, httpContext.RequestAborted))
         {

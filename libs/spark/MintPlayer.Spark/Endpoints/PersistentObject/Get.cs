@@ -57,7 +57,9 @@ internal sealed partial class GetPersistentObject : IPostEndpoint
 
         // T2 on the load side (#460, M7): a ViewDeleted holder opening a row from the recycle bin.
         // Set before anything asks row security, because row filters are memoized per request.
+        // Only for this type: the row's references (a live question of a deleted answer) stay live.
         rowPolicyRequestState.Deleted = request.Deleted ?? SparkDeletedFilter.Exclude;
+        rowPolicyRequestState.DeletedScopeClrType = entityType.ClrType;
 
         try
         {

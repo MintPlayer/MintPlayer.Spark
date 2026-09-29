@@ -76,6 +76,12 @@ internal sealed partial class ExecuteQuery : IPostEndpoint
             return Results.Json(new { error = $"Query '{id}' not found" }, statusCode: 404);
         }
 
+        // The deleted mode is for the query's own rows; their references (the live question of a
+        // deleted answer) are resolved as live. A query without a declared type keeps the old,
+        // request-wide scope.
+        if (query.EntityType is not null)
+            rowPolicyRequestState.DeletedScopeClrType = modelLoader.ResolveEntityType(query.EntityType)?.ClrType;
+
         // Only when the query declares its entity type. A query that leaves it unset has its type
         // inferred downstream, and QueryExecutor authorizes there — refusing here would break
         // every such query rather than protect it. The catch below gives that path the same

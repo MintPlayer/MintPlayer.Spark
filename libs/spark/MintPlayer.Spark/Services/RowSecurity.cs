@@ -309,7 +309,9 @@ internal partial class RowSecurity : IRowSecurity
     {
         EntityType = entityType,
         Action = action,
-        Deleted = requestState?.Deleted ?? SparkDeletedFilter.Exclude,
+        // Scoped to the type the request asked about: a reference or breadcrumb of another type
+        // resolved in the same request sees live rows only.
+        Deleted = requestState?.DeletedFor(entityType) ?? SparkDeletedFilter.Exclude,
         IsSystemContext = systemContext,
         User = httpContextAccessor?.HttpContext?.User,
     };
