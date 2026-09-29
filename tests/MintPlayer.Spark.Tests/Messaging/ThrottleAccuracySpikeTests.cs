@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Messaging;
 using MintPlayer.Spark.Messaging.Abstractions;
@@ -7,6 +8,13 @@ using MintPlayer.Spark.Messaging.Models;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Operations.Revisions;
+using Raven.Client.Documents.Operations.Indexes;
+using Raven.Client.Documents.Indexes;
+using Raven.Client.Documents.Conventions;
+using Raven.Client.Http;
+using Raven.Client.ServerWide.Operations;
+using Sparrow.Json;
+using MintPlayer.Spark.Messaging.Indexes;
 using Xunit.Abstractions;
 
 namespace MintPlayer.Spark.Tests.Messaging;
@@ -68,22 +76,69 @@ public class ThrottleAccuracySpikeTests(ITestOutputHelper output) : SparkTestDri
         }
     }
 
-    [Fact]
-    public async Task S_M3_throttle_accuracy_alongside_transactional_traffic()
-    {
-        var bulkCount = int.TryParse(Environment.GetEnvironmentVariable("SPARK_SPIKE_SM3_BULK"), out var n) ? n : 100;
+    private static int BulkCount => int.TryParse(Environment.GetEnvironmentVariable("SPARK_SPIKE_SM3_BULK"), out var n) ? n : 100;
 
-        await Store.Maintenance.SendAsync(new ConfigureRevisionsOperation(new RevisionsConfiguration
+    [Fact]
+    public Task S_M3_throttle_accuracy_alongside_transactional_traffic() => RunAsync(BulkCount, measureWrites: true);
+
+    /// <summary>
+    /// Spike <b>S-M9</b> (#460, M16b): the feeder and the S-M3 load under the <b>Community</b> licence —
+    /// the design stays inside the 3-subscription cap, and the sort index deploys and serves. Opt-in
+    /// (<c>SPARK_SPIKE_SM9=1</c>, with <c>RAVENDB_LICENSE</c> pointing at a Community licence). Writes per
+    /// message are not measured here: that needs revisions kept far beyond Community's 2.
+    /// </summary>
+    [Fact]
+    public async Task S_M9_the_feeder_and_the_S_M3_load_under_the_Community_licence()
+    {
+        if (Environment.GetEnvironmentVariable("SPARK_SPIKE_SM9") != "1")
         {
-            Collections = new Dictionary<string, RevisionsCollectionConfiguration>
+            output.WriteLine("S-M9 skipped: set SPARK_SPIKE_SM9=1 and RAVENDB_LICENSE to a Community licence.");
+            return;
+        }
+
+        // The licence is applied a moment after the server starts: until then the server reports AGPL.
+        (string? Type, string? Status) licence = default;
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(60);
+        while (DateTime.UtcNow < deadline)
+        {
+            licence = await Store.Maintenance.Server.SendAsync(new LicenceStatusOperation());
+            if (!string.Equals(licence.Type, "AGPL", StringComparison.OrdinalIgnoreCase) && licence.Type is not null)
+                break;
+            await Task.Delay(500);
+        }
+        output.WriteLine($"S-M9 licence: Type={licence.Type} Status={licence.Status}");
+        licence.Type.Should().Be("Community", "S-M9 must run under the Community licence, not a fallback to AGPL");
+
+        await RunAsync(BulkCount, measureWrites: false, afterDrain: async () =>
+        {
+            var subscriptions = await Store.Subscriptions.GetSubscriptionsAsync(0, 16);
+            var stats = await Store.Maintenance.SendAsync(new GetIndexStatisticsOperation(new SparkMessages_ByPriority().IndexName));
+            var errors = await Store.Maintenance.SendAsync(new GetIndexErrorsOperation([new SparkMessages_ByPriority().IndexName]));
+            output.WriteLine($"S-M9 subscriptions on the database: {subscriptions.Count} [{string.Join(", ", subscriptions.Select(s => s.SubscriptionName))}]; "
+                + $"{nameof(SparkMessages_ByPriority)} state={stats.State} entries={stats.EntriesCount} errors={errors.Sum(e => e.Errors.Length)}");
+
+            subscriptions.Select(s => s.SubscriptionName).Should().Equal([MintPlayer.Spark.Messaging.Services.MessageFeeder.SubscriptionNameConstant], "one subscription, well inside Community's 3");
+            stats.State.Should().Be(IndexState.Normal);
+            errors.Sum(e => e.Errors.Length).Should().Be(0);
+        });
+    }
+
+    private async Task RunAsync(int bulkCount, bool measureWrites, Func<Task>? afterDrain = null)
+    {
+        if (measureWrites)
+        {
+            await Store.Maintenance.SendAsync(new ConfigureRevisionsOperation(new RevisionsConfiguration
             {
-                ["SparkMessages"] = new() { Disabled = false, MinimumRevisionsToKeep = 1000 },
-            },
-        }));
+                Collections = new Dictionary<string, RevisionsCollectionConfiguration>
+                {
+                    ["SparkMessages"] = new() { Disabled = false, MinimumRevisionsToKeep = 1000 },
+                },
+            }));
+        }
 
         var recorder = new Recorder();
         var services = new ServiceCollection();
-        services.AddLogging();
+        services.AddLogging(b => b.AddProvider(new TestOutputLoggerProvider(output)));
         services.AddSingleton(Store);
         services.AddSingleton(recorder);
         services.AddSparkMessaging(o =>
@@ -145,8 +200,15 @@ public class ThrottleAccuracySpikeTests(ITestOutputHelper output) : SparkTestDri
             await AsyncWait.UntilAsync(() => recorder.TransactionalLatencies.Count >= transactionalSent,
                 "every transactional message to be handled", TimeSpan.FromSeconds(30));
 
+            var feeder = hosted.OfType<MintPlayer.Spark.Messaging.Services.MessageSubscriptionManager>().Single().Feeder;
+            if (feeder is not null)
+                output.WriteLine($"S-M3 feeder merge: pulledAhead={feeder.PulledAheadCount} (from the sorted page, not in the batch) "
+                    + $"batchOnly={feeder.BatchOnlyCount} (from the batch, not in the page: not indexed yet, or beyond it) pageUnavailable={feeder.PageUnavailableCount}");
+
             await Store.WaitForIndexingAsync();
-            var writes = await WritesPerMessageAsync();
+            if (afterDrain is not null)
+                await afterDrain();
+            var writes = measureWrites ? await WritesPerMessageAsync() : null;
 
             var starts = recorder.BulkStarts.OrderBy(t => t).ToList();
             var steadyRate = starts.Count > MaxPerInterval
@@ -161,6 +223,8 @@ public class ThrottleAccuracySpikeTests(ITestOutputHelper output) : SparkTestDri
             var baseline = recorder.BaselineLatencies.OrderBy(t => t).ToList();
             output.WriteLine($"S-M3 baseline (no backlog) n={baseline.Count} p50={baseline[baseline.Count / 2].TotalMilliseconds:F0}ms p95={baseline[(int)Math.Ceiling(baseline.Count * 0.95) - 1].TotalMilliseconds:F0}ms max={baseline[^1].TotalMilliseconds:F0}ms");
             output.WriteLine($"S-M3 transactional n={latencies.Count} p50={latencies[latencies.Count / 2].TotalMilliseconds:F0}ms p95={p95.TotalMilliseconds:F0}ms max={latencies[^1].TotalMilliseconds:F0}ms");
+            if (writes is null)
+                return;
             foreach (var (queue, perMessage) in writes)
                 output.WriteLine($"S-M3 writes {queue}: {string.Join(", ", perMessage.GroupBy(w => w).OrderBy(g => g.Key).Select(g => $"{g.Key} writes x{g.Count()}"))}");
 
@@ -174,6 +238,31 @@ public class ThrottleAccuracySpikeTests(ITestOutputHelper output) : SparkTestDri
         {
             foreach (var service in hosted.AsEnumerable().Reverse())
                 await service.StopAsync(CancellationToken.None);
+        }
+    }
+
+    /// <summary><c>GET /license/status</c> → its <c>Type</c> and <c>Status</c>, and nothing else.</summary>
+    private sealed class LicenceStatusOperation : IServerOperation<(string? Type, string? Status)>
+    {
+        public RavenCommand<(string? Type, string? Status)> GetCommand(DocumentConventions conventions, JsonOperationContext context) => new Command();
+
+        private sealed class Command : RavenCommand<(string? Type, string? Status)>
+        {
+            public override bool IsReadRequest => true;
+
+            public override HttpRequestMessage CreateRequest(JsonOperationContext ctx, ServerNode node, out string url)
+            {
+                url = $"{node.Url}/license/status";
+                return new HttpRequestMessage { Method = HttpMethod.Get };
+            }
+
+            public override void SetResponse(JsonOperationContext context, BlittableJsonReaderObject? response, bool fromCache)
+            {
+                if (response is null) return;
+                response.TryGet("Type", out string? type);
+                response.TryGet("Status", out string? status);
+                Result = (type, status);
+            }
         }
     }
 
