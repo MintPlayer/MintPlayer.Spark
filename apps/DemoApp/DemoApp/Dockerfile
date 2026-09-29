@@ -15,12 +15,13 @@ WORKDIR /src
 COPY ["apps/DemoApp/DemoApp.csproj", "apps/DemoApp/"]
 RUN dotnet restore "./apps/DemoApp/DemoApp.csproj"
 COPY . .
-WORKDIR "/src/apps/DemoApp"
-RUN dotnet build "./DemoApp.csproj" -c $BUILD_CONFIGURATION -o /app/build
 
 # This stage is used to publish the service project to be copied to the final stage
 FROM build AS publish
 ARG BUILD_CONFIGURATION=Release
+WORKDIR "/src/apps/DemoApp"
+# No separate `dotnet build` step: publish compiles the app itself. The template's
+# `dotnet build -o /app/build` wrote output nothing ever copied, so every image compiled twice.
 RUN dotnet publish "./DemoApp.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
 
 # This stage is used in production or when running from VS in regular mode (Default when not using the Debug configuration)
