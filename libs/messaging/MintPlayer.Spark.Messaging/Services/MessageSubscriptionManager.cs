@@ -115,7 +115,11 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
             if (loopToken.IsCancellationRequested)
                 break;
 
-            if (!await leaseManager.TryRenewAsync(stoppingToken))
+            var renewed = await leaseManager.TryRenewAsync(stoppingToken);
+            if (loopToken.IsCancellationRequested)
+                break; // Stopping: StopAsync tears down and releases; a failed renewal here is not an eviction.
+
+            if (!renewed)
             {
                 // Evicted, or the lease lapsed while we were busy. Tear down immediately rather
                 // than keep feeding without a lease: the new holder is already starting, and while
@@ -214,6 +218,12 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
     {
         logger.LogInformation("MessageSubscriptionManager stopping");
 
+        // Not leading from the moment the stop begins, before any await: the sweeper reads IsHeld,
+        // and callers observe IsLeader. Safe ahead of the cancel below, because the loop re-checks
+        // loopToken after every lease request before it acts on the answer.
+        isLeader = false;
+        leaseManager.IsHeld = false;
+
         // End the lease loop before tearing down, so nothing re-acquires or restarts behind the
         // teardown. It exits at once (its delays wake on stopRequested); an in-flight lease request
         // completes first. Bounded by the caller's token, like base.StopAsync.
@@ -221,8 +231,6 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
         if (ExecuteTask is { } loop)
             await Task.WhenAny(loop, Task.Delay(Timeout.Infinite, cancellationToken));
 
-        isLeader = false;
-        leaseManager.IsHeld = false;
         await StopMessagingAsync(cancellationToken);
         await router.DisposeAsync();
         await base.StopAsync(cancellationToken);

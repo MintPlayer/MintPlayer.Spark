@@ -207,8 +207,9 @@ public class MessageSubscriptionManagerLifecycleTests : SparkTestDriver
         // second feeder on a host that was stopping. A handler held open makes the drain outlast
         // RenewInterval, so the renewal is certain to fall due inside it.
         var gate = new HoldGate();
+        var log = new System.Collections.Concurrent.ConcurrentQueue<(LogLevel Level, string Category, string Message)>();
         var services = new ServiceCollection();
-        services.AddLogging();
+        services.AddLogging(b => b.AddProvider(new RecordingLoggerProvider(log)));
         services.AddSingleton(Store);
         services.AddSingleton(gate);
         services.AddSparkMessaging(o => o.ClaimTtl = TimeSpan.FromMinutes(2));
@@ -221,16 +222,27 @@ public class MessageSubscriptionManagerLifecycleTests : SparkTestDriver
         await AsyncWait.UntilAsync(() => hosted.IsLeader, "the manager to take the lease", TimeSpan.FromSeconds(30));
         using (var scope = provider.CreateScope())
             await scope.ServiceProvider.GetRequiredService<MintPlayer.Spark.Messaging.Abstractions.IMessageBus>().BroadcastAsync(new TestHold());
-        await gate.Started.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        // A failure bound, not a wait: delivery takes milliseconds, but a feeder whose first connect
+        // fails on a starved runner retries after 30 s, so the bound must clear one retry.
+        try { await gate.Started.Task.WaitAsync(TimeSpan.FromSeconds(90)); }
+        catch (TimeoutException)
+        {
+            throw new TimeoutException("The held message was never handled. Warnings: "
+                + string.Join(" | ", log.Where(e => e.Level >= LogLevel.Warning).Select(e => $"{e.Category}: {e.Message}")));
+        }
 
+        var original = hosted.Feeder;
+        original.Should().NotBeNull();
         var stop = hosted.StopAsync(CancellationToken.None);
         try
         {
-            // Either the loop has ended (fixed), or it re-leads once its renewal falls due (the bug).
+            // Hold the drain open until one of the two outcomes is observable: the lease loop has
+            // ended (fixed), or its renewal fell due inside the drain and started a feeder that is
+            // not the one being drained (the bug). Not IsLeader: that flag says nothing about which
+            // of the two happened (CI read it before StopAsync had cleared it, #460 M16b).
             await AsyncWait.UntilAsync(
-                () => hosted.IsLeader || hosted.ExecuteTask!.IsCompleted,
-                "the lease loop to end or to re-acquire", MessagingLeaseManager.RenewInterval * 3);
-            hosted.IsLeader.Should().BeFalse("a stopping host must not re-acquire its lease and restart messaging");
+                () => hosted.ExecuteTask!.IsCompleted || hosted.Feeder is { } f && !ReferenceEquals(f, original),
+                "the lease loop to end, or to restart messaging behind the drain", MessagingLeaseManager.RenewInterval * 3);
         }
         finally
         {
@@ -238,6 +250,7 @@ public class MessageSubscriptionManagerLifecycleTests : SparkTestDriver
             await stop;
         }
 
+        hosted.IsLeader.Should().BeFalse("a stopping host must not re-acquire its lease and restart messaging");
         hosted.Feeder.Should().BeNull("no feeder may survive the stop");
         (await ReadLeaseAsync()).Should().BeNull("the stop still releases the lease");
     }
