@@ -44,6 +44,7 @@ internal sealed partial class DistinctValues : IPostEndpoint
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IRowPolicyRequestState rowPolicyRequestState;
+    [Inject] private readonly IRowSecurity rowSecurity;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -115,7 +116,8 @@ internal sealed partial class DistinctValues : IPostEndpoint
         var parentEntityType = modelLoader.ResolveEntityType(request.ParentType);
         var parent = parentEntityType is null
             ? null
-            : await databaseAccess.GetPersistentObjectAsync(parentEntityType.Id, request.ParentId);
+            : await SubQueryParent.ResolveAsync(databaseAccess, rowPolicyRequestState, rowSecurity,
+                parentEntityType, request.ParentId, request.ParentDeleted);
 
         // Raised rather than returned, so the caller's catch turns it into the same 404 every other
         // refusal on this endpoint gives.

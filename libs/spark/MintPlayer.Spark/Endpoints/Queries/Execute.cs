@@ -37,6 +37,7 @@ internal sealed partial class ExecuteQuery : IPostEndpoint
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IClientAccessor clientAccessor;
     [Inject] private readonly IRowPolicyRequestState rowPolicyRequestState;
+    [Inject] private readonly IRowSecurity rowSecurity;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -185,11 +186,14 @@ internal sealed partial class ExecuteQuery : IPostEndpoint
                 var parentEntityType = modelLoader.ResolveEntityType(parentType);
                 if (parentEntityType != null)
                 {
-                    parent = await databaseAccess.GetPersistentObjectAsync(parentEntityType.Id, parentId);
+                    // Under the parent's own deleted mode (parentDeleted), not the rows' (deleted).
+                    parent = await SubQueryParent.ResolveAsync(databaseAccess, rowPolicyRequestState, rowSecurity,
+                        parentEntityType, parentId, request.ParentDeleted);
                 }
                 // Parent was asked for but we couldn't resolve or couldn't authorize it.
                 // Return 404 rather than silently running the query unscoped — that would
-                // leak data the caller shouldn't see (H-3).
+                // leak data the caller shouldn't see (H-3). A deleted parent asked for without
+                // ViewDeleted on its type lands here too, with the same body (#453).
                 if (parent is null)
                     return Results.Json(new { error = "Parent not found" }, statusCode: 404);
             }

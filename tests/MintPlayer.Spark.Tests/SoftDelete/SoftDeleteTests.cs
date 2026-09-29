@@ -14,6 +14,7 @@ using MintPlayer.Spark.Services;
 using MintPlayer.Spark.SoftDelete;
 using MintPlayer.Spark.Testing;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Operations.Revisions;
 using Raven.Client.Documents.Session;
 
@@ -35,6 +36,7 @@ public class SoftDeleteTests : SparkTestDriver
     private static readonly Guid PersonTypeId = Guid.Parse("46020000-0000-4000-8000-000000000002");
     private static readonly Guid SlugTypeId = Guid.Parse("46020000-0000-4000-8000-000000000003");
     private static readonly Guid NotesQueryId = Guid.Parse("46020000-0000-4000-8000-000000000011");
+    private static readonly Guid NotesByAuthorQueryId = Guid.Parse("46020000-0000-4000-8000-000000000012");
 
     private readonly List<IAsyncDisposable> factories = [];
 
@@ -490,6 +492,140 @@ public class SoftDeleteTests : SparkTestDriver
         host.Recorder.Events.Should().Equal($"Touched:{live.Id}", $"Deleted:{live.Id}");
     }
 
+    // ---- a sub-query on a deleted parent (parentDeleted) ------------------------------------------
+
+    [Fact]
+    public async Task A_ViewDeleted_holder_lists_the_sub_query_of_a_deleted_parent_with_parentDeleted()
+    {
+        var host = await StartAsync();
+        var (author, live, _) = await SeedDeletedAuthorAsync();
+
+        var (status, body) = await host.SendAsync("/spark/queries/execute", SubQuery(author.Id!, parentDeleted: "include"));
+
+        status.Should().Be(HttpStatusCode.OK);
+        ItemIds(body).Should().Equal(live.Id!);
+    }
+
+    [Fact]
+    public async Task ParentDeleted_leaves_the_rows_own_deleted_filter_alone()
+    {
+        var host = await StartAsync();
+        var (author, live, gone) = await SeedDeletedAuthorAsync();
+
+        var (includeStatus, include) = await host.SendAsync("/spark/queries/execute", SubQuery(author.Id!, parentDeleted: "include", deleted: "include"));
+        var (onlyStatus, only) = await host.SendAsync("/spark/queries/execute", SubQuery(author.Id!, parentDeleted: "include", deleted: "only"));
+
+        includeStatus.Should().Be(HttpStatusCode.OK);
+        onlyStatus.Should().Be(HttpStatusCode.OK);
+        ItemIds(include).Should().BeEquivalentTo([live.Id!, gone.Id!]);
+        ItemIds(only).Should().Equal(gone.Id!);
+    }
+
+    [Fact]
+    public async Task Without_parentDeleted_a_deleted_parent_is_still_a_404_even_when_the_rows_ask_for_deleted()
+    {
+        var host = await StartAsync();
+        var (author, _, _) = await SeedDeletedAuthorAsync();
+
+        var (plain, _) = await host.SendAsync("/spark/queries/execute", SubQuery(author.Id!));
+        var (rowsOnly, _) = await host.SendAsync("/spark/queries/execute", SubQuery(author.Id!, deleted: "include"));
+        var (distinct, _) = await host.SendAsync("/spark/queries/distinct-values", SubQueryDistinct(author.Id!));
+
+        plain.Should().Be(HttpStatusCode.NotFound);
+        rowsOnly.Should().Be(HttpStatusCode.NotFound, "`deleted` is the rows' filter, never the parent's");
+        distinct.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Without_ViewDeleted_on_the_parent_type_a_deleted_parent_is_the_same_404_as_a_missing_one()
+    {
+        var host = await StartAsync(SparkTestSecurity.Permissive.Denying("ViewDeleted/SdPerson"));
+        var (author, _, _) = await SeedDeletedAuthorAsync();
+
+        var (deletedStatus, deletedBody) = await host.SendAsync("/spark/queries/execute", SubQuery(author.Id!, parentDeleted: "include"));
+        var (missingStatus, missingBody) = await host.SendAsync("/spark/queries/execute", SubQuery("SdPeople/missing", parentDeleted: "include"));
+        var (distinctDeleted, distinctDeletedBody) = await host.SendAsync("/spark/queries/distinct-values", SubQueryDistinct(author.Id!, parentDeleted: "include"));
+        var (distinctMissing, distinctMissingBody) = await host.SendAsync("/spark/queries/distinct-values", SubQueryDistinct("SdPeople/missing", parentDeleted: "include"));
+
+        deletedStatus.Should().Be(HttpStatusCode.NotFound);
+        missingStatus.Should().Be(HttpStatusCode.NotFound);
+        deletedBody.GetRawText().Should().Be(missingBody.GetRawText(), "missing and forbidden look the same (#453)");
+        distinctDeleted.Should().Be(HttpStatusCode.NotFound);
+        distinctMissing.Should().Be(HttpStatusCode.NotFound);
+        distinctDeletedBody.GetRawText().Should().Be(distinctMissingBody.GetRawText());
+
+        // Control: the right that is denied is the PARENT's, not the rows'.
+        var holder = await StartAsync(SparkTestSecurity.Permissive.Denying("ViewDeleted/SdNote"));
+        var (holderStatus, _) = await holder.SendAsync("/spark/queries/execute", SubQuery(author.Id!, parentDeleted: "include"));
+        holderStatus.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task A_ViewDeleted_holder_gets_the_distinct_values_of_a_deleted_parents_sub_query()
+    {
+        var host = await StartAsync();
+        var (author, _, _) = await SeedDeletedAuthorAsync();
+
+        var (status, body) = await host.SendAsync("/spark/queries/distinct-values", SubQueryDistinct(author.Id!, parentDeleted: "include"));
+
+        status.Should().Be(HttpStatusCode.OK);
+        body.GetProperty("matching").EnumerateArray().Select(v => v.GetProperty("value").GetString()).Should().Equal("by the deleted author");
+    }
+
+    /// <summary>
+    /// Actions and bulk delete resolve their sub-query parent as a LIVE row, always: the recycle bin
+    /// offers no actions under a deleted object, so a smuggled <c>parentDeleted</c> widens nothing.
+    /// </summary>
+    [Fact]
+    public async Task A_custom_action_and_delete_many_under_a_deleted_parent_are_refused_even_with_parentDeleted()
+    {
+        var host = await StartAsync(services: s =>
+        {
+            s.AddScoped<SdTouchAction>();
+            s.AddSingleton<ICustomActionsConfigurationLoader>(new SdCustomActions(SdTouchAction.Name));
+            s.AddScoped<ICustomActionResolver>(sp => new SdActionResolver(SdTouchAction.Name, sp.GetRequiredService<SdTouchAction>()));
+        });
+        var (author, live, _) = await SeedDeletedAuthorAsync();
+
+        object ActionUnder(string parentId) => Wire.Action(NoteTypeId, SdTouchAction.Name, new
+        {
+            selectedItemIds = new[] { live.Id },
+            queryId = NotesByAuthorQueryId.ToString(),
+            parentId,
+            parentType = "SdPerson",
+            parentDeleted = "include",
+        });
+        object DeleteManyUnder(string parentId) => Wire.Typed(NoteTypeId, new
+        {
+            ids = new[] { live.Id },
+            queryId = NotesByAuthorQueryId.ToString(),
+            parentId,
+            parentType = "SdPerson",
+            parentDeleted = "include",
+        });
+
+        var (actionStatus, _) = await host.SendAsync("/spark/actions/execute", ActionUnder(author.Id!));
+        var (deleteStatus, _) = await host.SendAsync("/spark/po/delete-many", DeleteManyUnder(author.Id!));
+
+        actionStatus.Should().Be(HttpStatusCode.NotFound);
+        deleteStatus.Should().Be(HttpStatusCode.NotFound);
+        host.Recorder.Events.Should().BeEmpty("neither ran under the deleted parent");
+        (await LoadAsync<SdNote>(live.Id!))!.IsDeleted.Should().NotBe(true);
+
+        // Control: the same requests under a live parent go through.
+        var liveAuthor = await SeedPersonAsync("live author");
+        var liveNote = await SeedNoteAsync("by the live author", authorId: liveAuthor.Id);
+        var (liveAction, _) = await host.SendAsync("/spark/actions/execute", Wire.Action(NoteTypeId, SdTouchAction.Name, new
+        {
+            selectedItemIds = new[] { liveNote.Id },
+            queryId = NotesByAuthorQueryId.ToString(),
+            parentId = liveAuthor.Id,
+            parentType = "SdPerson",
+        }));
+        liveAction.Should().Be(HttpStatusCode.OK);
+        host.Recorder.Events.Should().Equal($"Touched:{liveNote.Id}");
+    }
+
     // ---- startup ---------------------------------------------------------------------------------
 
     [Fact]
@@ -522,6 +658,35 @@ public class SoftDeleteTests : SparkTestDriver
         await session.SaveChangesAsync();
         return person;
     }
+
+    /// <summary>A deleted person with one live and one deleted note, plus a live note by someone else.</summary>
+    private async Task<(SdPerson Author, SdNote Live, SdNote Gone)> SeedDeletedAuthorAsync()
+    {
+        var author = await SeedPersonAsync("deleted author", deleted: true);
+        var other = await SeedPersonAsync("other author");
+        var live = await SeedNoteAsync("by the deleted author", authorId: author.Id);
+        var gone = await SeedNoteAsync("deleted, by the deleted author", deleted: true, authorId: author.Id);
+        await SeedNoteAsync("by someone else", authorId: other.Id);
+        return (author, live, gone);
+    }
+
+    private static System.Text.Json.Nodes.JsonNode SubQuery(string parentId, string? parentDeleted = null, string? deleted = null)
+    {
+        var body = Wire.Query(NotesByAuthorQueryId, new { parentId, parentType = "SdPerson" });
+        if (parentDeleted is not null) body["parentDeleted"] = parentDeleted;
+        if (deleted is not null) body["deleted"] = deleted;
+        return body;
+    }
+
+    private static System.Text.Json.Nodes.JsonNode SubQueryDistinct(string parentId, string? parentDeleted = null)
+    {
+        var body = Wire.Query(NotesByAuthorQueryId, new { column = "Title", parentId, parentType = "SdPerson" });
+        if (parentDeleted is not null) body["parentDeleted"] = parentDeleted;
+        return body;
+    }
+
+    private static IReadOnlyList<string> ItemIds(JsonElement body)
+        => body.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("id").GetString()!).OrderBy(i => i).ToList();
 
     private async Task<T?> LoadAsync<T>(string id) where T : class
     {
@@ -570,7 +735,11 @@ public class SoftDeleteTests : SparkTestDriver
                 new() { Id = Guid.NewGuid(), Name = "IsDeleted", DataType = "bool", IsVisible = true },
             ],
         },
-        Queries = [new SparkQuery { Id = NotesQueryId, Name = "SdNotes", Source = "Database.Notes", EntityType = "SdNote" }],
+        Queries =
+        [
+            new SparkQuery { Id = NotesQueryId, Name = "SdNotes", Source = "Database.Notes", EntityType = "SdNote" },
+            new SparkQuery { Id = NotesByAuthorQueryId, Name = "SdNotesByAuthor", Source = "Custom.NotesByAuthor", EntityType = "SdNote" },
+        ],
     };
 
     private static EntityTypeFile PersonModel() => new()
@@ -681,8 +850,15 @@ public sealed class SdRecorder
 }
 
 /// <summary>Withholds Edit on a row titled "frozen" and Delete on one titled "keep"; records OnDeleteAsync.</summary>
-public class SdNoteActions(IEntityMapper mapper, SdRecorder recorder) : DefaultPersistentObjectActions<SdNote>(mapper)
+public class SdNoteActions(IEntityMapper mapper, SdRecorder recorder, IAsyncDocumentSession session) : DefaultPersistentObjectActions<SdNote>(mapper)
 {
+    /// <summary>The sub-query on a person's page: the notes they wrote.</summary>
+    public IRavenQueryable<SdNote> NotesByAuthor(MintPlayer.Spark.Queries.CustomQueryArgs args)
+    {
+        ArgumentNullException.ThrowIfNull(args.Parent);
+        return session.Query<SdNote>().Where(n => n.AuthorId == args.Parent!.Id);
+    }
+
     /// <summary>A rule written for the built-in verbs only: a row titled "not-mine" may not be edited or deleted.</summary>
     public override Task<System.Linq.Expressions.Expression<Func<SdNote, bool>>?> GetRowFilterAsync(string action)
         => Task.FromResult<System.Linq.Expressions.Expression<Func<SdNote, bool>>?>(

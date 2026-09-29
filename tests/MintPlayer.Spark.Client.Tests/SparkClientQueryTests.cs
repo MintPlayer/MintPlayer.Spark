@@ -67,6 +67,34 @@ public class SparkClientQueryTests
     }
 
     [Fact]
+    public async Task ParentDeleted_travels_only_when_set_on_execute_and_distinct_values()
+    {
+        var (client, handler) = NewClient();
+        handler.Enqueue(EmptyQueryResult());
+        handler.Enqueue(EmptyQueryResult());
+        handler.Enqueue(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new DistinctValuesResult { Matching = [], HasMore = false }, options: JsonOptions),
+        });
+        List<JsonElement> bodies = [];
+        using (client)
+        {
+            await client.ExecuteQueryAsync("notes", parentId: "people/1", parentType: "Person", parentDeleted: SparkDeletedFilter.Include);
+            bodies.Add(handler.LastBody());
+            await client.ExecuteQueryAsync("notes", parentId: "people/1", parentType: "Person");
+            bodies.Add(handler.LastBody());
+            await client.GetDistinctValuesAsync("notes", "Title", parentId: "people/1", parentType: "Person", parentDeleted: SparkDeletedFilter.Include);
+            bodies.Add(handler.LastBody());
+        }
+
+        // The parent's mode, independent of the rows' `deleted`, which stays absent.
+        bodies[0].GetProperty("parentDeleted").GetString().Should().Be("include");
+        bodies[0].TryGetProperty("deleted", out _).Should().BeFalse();
+        bodies[1].TryGetProperty("parentDeleted", out _).Should().BeFalse("absent means exclude, the shape ng-spark sends");
+        bodies[2].GetProperty("parentDeleted").GetString().Should().Be("include");
+    }
+
+    [Fact]
     public async Task An_alias_with_a_slash_travels_in_the_body_unescaped()
     {
         var (client, handler) = NewClient();

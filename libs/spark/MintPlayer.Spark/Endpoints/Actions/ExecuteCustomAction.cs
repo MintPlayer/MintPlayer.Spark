@@ -200,6 +200,9 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint
                     return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
                 }
 
+                // Live rows only, deliberately (#460). The query reads take a `parentDeleted` mode so a
+                // deleted object opened from the recycle bin can list its sub-queries; this endpoint
+                // does not, because that page offers no actions — a deleted container is refused here.
                 queryParent = await databaseAccess.GetPersistentObjectAsync(parentTypeDefinition.Id, request.ParentId);
                 if (queryParent is null)
                 {

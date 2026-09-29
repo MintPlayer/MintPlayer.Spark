@@ -99,6 +99,8 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint
                 if (parentType is null)
                     return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
 
+                // Live rows only, deliberately (#460): no `parentDeleted` here, unlike the query
+                // reads. The recycle bin offers no delete on a deleted object's sub-queries.
                 parent = await databaseAccess.GetPersistentObjectAsync(parentType.Id, request.ParentId);
                 if (parent is null)
                     return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);

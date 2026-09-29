@@ -404,8 +404,9 @@ public partial class SparkClient : IDisposable
         CancellationToken cancellationToken = default,
         SparkRetryHandler? onRetry = null,
         SparkOperationHandler? onOperation = null,
-        SparkDeletedFilter? deleted = null)
-        => ExecuteQueryCoreAsync(queryId.ToString(), skip, take, search, parentId, parentType, sortColumns, columns, onRetry, onOperation, cancellationToken, deleted);
+        SparkDeletedFilter? deleted = null,
+        SparkDeletedFilter? parentDeleted = null)
+        => ExecuteQueryCoreAsync(queryId.ToString(), skip, take, search, parentId, parentType, sortColumns, columns, onRetry, onOperation, cancellationToken, deleted, parentDeleted);
 
     /// <summary>Executes a query by its alias (e.g. <c>"allpeople"</c>) instead of by Guid.</summary>
     public Task<QueryResult> ExecuteQueryAsync(
@@ -420,14 +421,15 @@ public partial class SparkClient : IDisposable
         CancellationToken cancellationToken = default,
         SparkRetryHandler? onRetry = null,
         SparkOperationHandler? onOperation = null,
-        SparkDeletedFilter? deleted = null)
-        => ExecuteQueryCoreAsync(queryAlias, skip, take, search, parentId, parentType, sortColumns, columns, onRetry, onOperation, cancellationToken, deleted);
+        SparkDeletedFilter? deleted = null,
+        SparkDeletedFilter? parentDeleted = null)
+        => ExecuteQueryCoreAsync(queryAlias, skip, take, search, parentId, parentType, sortColumns, columns, onRetry, onOperation, cancellationToken, deleted, parentDeleted);
 
     private Task<QueryResult> ExecuteQueryCoreAsync(
         string queryId, int skip, int take, string? search, string? parentId, string? parentType,
         SortColumn[]? sortColumns, QueryColumnFilter[]? columns,
         SparkRetryHandler? onRetry, SparkOperationHandler? onOperation, CancellationToken cancellationToken,
-        SparkDeletedFilter? deleted)
+        SparkDeletedFilter? deleted, SparkDeletedFilter? parentDeleted)
         // OnQueryAsync can prompt, so a list is a conversation too. ⚠️ Like OnLoadAsync, a prompt here
         // fires on every execution of the query — including the ones a grid issues while paging.
         => PostConversationAsync(
@@ -442,7 +444,7 @@ public partial class SparkClient : IDisposable
                 ["parentType"] = parentType,
                 ["sortColumns"] = sortColumns,
                 ["columns"] = columns,
-            }, deleted),
+            }, deleted, parentDeleted),
             // false for the same reason as /spark/po/load above: a read, explicitly exempt.
             requiresAntiforgery: false,
             async (response, ct) =>
@@ -482,10 +484,11 @@ public partial class SparkClient : IDisposable
         string? parentType = null,
         CancellationToken cancellationToken = default,
         SparkDeletedFilter? deleted = null,
-        string? querySearch = null)
-        => GetDistinctValuesCoreAsync(queryId.ToString(), column, search, columns, parentId, parentType, cancellationToken, deleted, querySearch);
+        string? querySearch = null,
+        SparkDeletedFilter? parentDeleted = null)
+        => GetDistinctValuesCoreAsync(queryId.ToString(), column, search, columns, parentId, parentType, cancellationToken, deleted, querySearch, parentDeleted);
 
-    /// <summary>Alias-based overload for <see cref="GetDistinctValuesAsync(Guid,string,string?,QueryColumnFilter[]?,string?,string?,CancellationToken,SparkDeletedFilter?,string?)"/>.</summary>
+    /// <summary>Alias-based overload for <see cref="GetDistinctValuesAsync(Guid,string,string?,QueryColumnFilter[]?,string?,string?,CancellationToken,SparkDeletedFilter?,string?,SparkDeletedFilter?)"/>.</summary>
     public Task<DistinctValuesResult> GetDistinctValuesAsync(
         string queryAlias,
         string column,
@@ -495,13 +498,14 @@ public partial class SparkClient : IDisposable
         string? parentType = null,
         CancellationToken cancellationToken = default,
         SparkDeletedFilter? deleted = null,
-        string? querySearch = null)
-        => GetDistinctValuesCoreAsync(queryAlias, column, search, columns, parentId, parentType, cancellationToken, deleted, querySearch);
+        string? querySearch = null,
+        SparkDeletedFilter? parentDeleted = null)
+        => GetDistinctValuesCoreAsync(queryAlias, column, search, columns, parentId, parentType, cancellationToken, deleted, querySearch, parentDeleted);
 
     private async Task<DistinctValuesResult> GetDistinctValuesCoreAsync(
         string queryId, string column, string? search, QueryColumnFilter[]? columns,
         string? parentId, string? parentType, CancellationToken cancellationToken, SparkDeletedFilter? deleted,
-        string? querySearch)
+        string? querySearch, SparkDeletedFilter? parentDeleted)
     {
         var content = JsonContent.Create(
             WithDeleted(new Dictionary<string, object?>
@@ -514,7 +518,7 @@ public partial class SparkClient : IDisposable
                 ["parentType"] = parentType,
                 // The grid's own search (#460 M15), so the values match the rows the grid shows.
                 ["querySearch"] = querySearch,
-            }, deleted), options: JsonOptions);
+            }, deleted, parentDeleted), options: JsonOptions);
 
         using var response = await SendAsync(
             HttpMethod.Post, "/spark/queries/distinct-values", content, cancellationToken: cancellationToken);
@@ -529,11 +533,16 @@ public partial class SparkClient : IDisposable
     /// Adds the query request's <c>deleted</c> field (#460, T2) only when the caller set it — the
     /// shape ng-spark sends. Absent means <c>exclude</c> on the server, and a widening
     /// (<c>include</c> / <c>only</c>) is honoured only for callers holding <c>ViewDeleted</c> on the type.
+    /// <c>parentDeleted</c> is the same, for the sub-query's parent (<c>parentId</c>/<c>parentType</c>)
+    /// rather than for the rows: a deleted parent without <c>ViewDeleted</c> on its type is a 404.
     /// </summary>
-    private static Dictionary<string, object?> WithDeleted(Dictionary<string, object?> body, SparkDeletedFilter? deleted)
+    private static Dictionary<string, object?> WithDeleted(
+        Dictionary<string, object?> body, SparkDeletedFilter? deleted, SparkDeletedFilter? parentDeleted = null)
     {
         if (deleted is { } mode)
             body["deleted"] = mode;
+        if (parentDeleted is { } parentMode)
+            body["parentDeleted"] = parentMode;
         return body;
     }
 

@@ -71,6 +71,24 @@ Opening a row by id (`POST /spark/po/load`) takes the same field: `{ objectTypeI
 everyone else, and without the field, a deleted row is a 404. The loaded row's `can.edit` is false
 (an edit still hides deleted rows — restore first).
 
+**Sub-queries on a deleted row's page.** A sub-query names its parent (`parentId`, `parentType`), and
+the parent is resolved as a row too — so on a deleted row's page it would be a 404 ("Parent not
+found"). `POST /spark/queries/execute` and `/spark/queries/distinct-values` take a second field for
+that, `parentDeleted`, with the same values as `deleted` and the same gate, on the **parent's** type:
+
+| request | holder of `ViewDeleted/{ParentType}` | everyone else |
+|---|---|---|
+| deleted parent, no `parentDeleted` | 404 | 404 |
+| deleted parent, `parentDeleted: "include"` | the parent's rows | 404, the same body as a missing parent |
+
+The two fields are independent: `parentDeleted` says how the parent is found, `deleted` still says
+which of its rows are listed (a deleted parent's live children by default). ng-spark sends
+`parentDeleted: "include"` from `<spark-query-card [parentDeleted]>`, which the detail page sets for a
+row opened with `?deleted=only`; `SparkClient.ExecuteQueryAsync(…, parentDeleted: …)` and
+`GetDistinctValuesAsync(…, parentDeleted: …)` take it too. `/spark/actions/execute` and
+`/spark/po/delete-many` do **not**: their sub-query parent is always a live row, so an action or bulk
+delete under a deleted parent is a 404 whatever the body says (the recycle bin offers neither).
+
 `GET /spark/permissions/{type}` reports `canRestore`, `canPurge` and `canViewDeleted` alongside the
 built-in rights, so a UI knows whether to offer the recycle bin.
 

@@ -60,6 +60,20 @@ internal sealed class ExecuteQueryRequest : IRetryableRequest
     /// </summary>
     public SparkDeletedFilter? Deleted { get; set; }
 
+    /// <summary>
+    /// The soft-deletion mode the PARENT (<see cref="ParentId"/>) is resolved under (#460) — set to
+    /// <c>include</c> by a sub-query on a detail page opened from the recycle bin. Independent of
+    /// <see cref="Deleted"/>, which stays the rows' own filter. Like <see cref="Deleted"/> it is only
+    /// carried to the row policies: the SoftDelete package honours it for holders of
+    /// <c>ViewDeleted/{ParentType}</c>, and everyone else gets the same 404 a missing parent gives.
+    /// </summary>
+    /// <remarks>
+    /// Only the two query reads take it. <c>/spark/actions/execute</c> and <c>/spark/po/delete-many</c>
+    /// resolve their sub-query parent as a live row, always: the recycle bin offers no actions on a
+    /// deleted object's page, so a deleted parent there is refused, not widened.
+    /// </remarks>
+    public SparkDeletedFilter? ParentDeleted { get; set; }
+
     /// <inheritdoc />
     public RetryResult[]? RetryResults { get; set; }
 }
@@ -100,4 +114,7 @@ internal sealed class DistinctValuesRequest
 
     /// <summary>The same soft-deletion mode as the grid the panel belongs to (#460, T2).</summary>
     public SparkDeletedFilter? Deleted { get; set; }
+
+    /// <inheritdoc cref="ExecuteQueryRequest.ParentDeleted" />
+    public SparkDeletedFilter? ParentDeleted { get; set; }
 }

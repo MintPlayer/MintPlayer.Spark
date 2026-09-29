@@ -338,6 +338,13 @@ result synchronously must await it. `sparkAuthenticatedGuard` is an alias.
 - `deleted: exclude | include | only` on query execute and `/spark/po/load` (honoured for
   `ViewDeleted/T` holders); the permissions endpoint reports `canRestore`, `canPurge`,
   `canViewDeleted`, `canViewHistory`, `canRevert`.
+- `parentDeleted` on query execute and distinct-values: the mode a sub-query's **parent** is
+  resolved under, so a deleted row opened from the recycle bin can list its sub-queries (it was a
+  404, "Parent not found"). Honoured only for holders of `ViewDeleted/{ParentType}`; everyone else,
+  and every request without the field, keeps the byte-identical 404 a missing parent gives. The
+  rows' own `deleted` is unaffected. `/spark/actions/execute` and `/spark/po/delete-many` keep
+  resolving their parent as a live row. ng-spark's query card sends it (`[parentDeleted]`), and
+  `SparkService`/`SparkClient` take it (`parentDeleted`, appended as the last optional parameter).
 - **Custom actions return data** — `CustomActionArgs.SetResult<T>()`, envelope `result`,
   ng-spark `executeCustomAction<T>()`, `SparkActionResult.Result`.
 - `ISparkCurrentUser`; `AddGroupMembershipProvider<T>()` **composes** providers (ids allowed via

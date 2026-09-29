@@ -123,7 +123,9 @@ internal interface IRowSecurity
     /// re-authorization tick: a scoped memo on a socket would otherwise freeze the row filter for
     /// the whole connection, so a caller whose allow-list shrinks would keep seeing revoked rows
     /// until they disconnect — a liveness bug that is also a security bug. Clearing on the same tick
-    /// the type-level re-check already runs bounds staleness to that interval. No-op off a stream.
+    /// the type-level re-check already runs bounds staleness to that interval. Also called after a
+    /// sub-query's parent is read under its own soft-deletion mode (#460, <c>parentDeleted</c>), so
+    /// the filters memoized for the parent are not reused for the rows.
     /// </summary>
     void ResetRequestFilterCache();
 
