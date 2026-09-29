@@ -147,7 +147,8 @@ export class SparkQueryCardComponent {
   protected readonly toolbarActions = computed(() => this.grid()?.toolbarActions() ?? []);
 
   protected actionClass(action: SparkQueryToolbarAction): string {
-    return sparkActionClass(action.definition, 'sm');
+    // Square corners in the card header (owner, 2026-09-29): the buttons sit edge to edge there.
+    return `${sparkActionClass(action.definition, 'sm')} rounded-0`;
   }
 
   protected isEnabled(action: SparkQueryToolbarAction): boolean {

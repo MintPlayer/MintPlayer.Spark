@@ -120,6 +120,14 @@ describe('SparkQueryCardComponent', () => {
       expect(label?.textContent?.trim()).toBe('common.more');
     });
 
+    it('renders the header action buttons with square corners', async () => {
+      const { fixture } = await bare([exportAction]);
+
+      const buttons = Array.from(fixture.nativeElement.querySelectorAll('bs-card-header button[data-action]')) as HTMLElement[];
+      expect(buttons.length).toBeGreaterThan(0);
+      for (const b of buttons) expect(b.classList).toContain('rounded-0');
+    });
+
     it('renders no action bar when the type declares none', async () => {
       const { fixture } = await bare([]);
 
