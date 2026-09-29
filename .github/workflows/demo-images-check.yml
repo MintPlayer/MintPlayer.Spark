@@ -1,0 +1,72 @@
+name: demo-images-check
+
+# Builds the demo apps' Docker images on a pull request, without pushing them.
+#
+# Nothing deploys the demo images, so a broken demo Dockerfile used to go unnoticed: DemoApp's
+# stayed broken from the Demo/ -> apps/ rename (e748eee5) until #460, because nothing ever built it.
+# This job builds each demo Dockerfile with the repository root as context whenever a change could
+# break it. It never pushes, never logs in to a registry, and never deploys. The CodeCoverage image,
+# which does deploy, has its own check: code-coverage-image-check.yml.
+#
+# Only DemoApp has a Dockerfile today (HR, Fleet and QnA have none).
+#
+# Keeping the filter in sync: the libs/ entries below are DemoApp's transitive ProjectReference
+# closure, the same list as the csproj COPY lines in apps/DemoApp/DemoApp/Dockerfile, plus the npm
+# packages its ClientApp imports. When DemoApp takes a new ProjectReference (directly or through a
+# library), add it to BOTH the Dockerfile's COPY list and this filter. When another demo gains a
+# Dockerfile, add its closure here and a job for it below (and switch to per-job filtering, e.g.
+# dorny/paths-filter, if building every demo image on each other's changes becomes too slow).
+
+on:
+  pull_request:
+    paths:
+      - 'apps/DemoApp/**'
+      - 'libs/spark/MintPlayer.Spark/**'
+      - 'libs/spark/MintPlayer.Spark.Abstractions/**'
+      - 'libs/attributes/MintPlayer.Spark.Attributes/**'
+      - 'libs/controllers/MintPlayer.Spark.Controllers/**'
+      - 'libs/cron/MintPlayer.Spark.Cron/**'
+      - 'libs/messaging/MintPlayer.Spark.Messaging/**'
+      - 'libs/messaging/MintPlayer.Spark.Messaging.Abstractions/**'
+      - 'libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker.Abstractions/**'
+      - 'libs/source_generators/MintPlayer.Spark.SourceGenerators/**'
+      - 'libs/source_generators/MintPlayer.Spark.LibraryGenerators/**'
+      - 'libs/node_packages/ng-spark/**'
+      - 'Directory.Build.props'
+      - 'Directory.Build.targets'
+      - 'global.json'
+      - '.dockerignore'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'nx.json'
+      - 'tsconfig.base.json'
+      - '.github/workflows/demo-images-check.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  demoapp-image:
+    name: Build the DemoApp image (no push)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v4
+
+    # cache-from only: a pull request may READ cached layers but never writes to the cache.
+    - name: Build the image
+      uses: docker/build-push-action@v7
+      with:
+        context: .
+        file: ./apps/DemoApp/DemoApp/Dockerfile
+        push: false
+        cache-from: type=gha

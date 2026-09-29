@@ -284,6 +284,14 @@ The other demos run the same way, each from its own project directory:
 | HR | `apps/HR/HR` | `https://localhost:5005` | authentication, the identity provider, replication (with Fleet) |
 | QnA | `apps/QnA/QnA` | `https://localhost:5009` | the #460 packages: Moderation, SoftDelete, History, MailManager, the account pages — see [apps/QnA/README.md](apps/QnA/README.md) |
 
+**Docker image (DemoApp).** DemoApp is the only demo with a Dockerfile. Build it from the repository root, since it needs the whole workspace as context:
+
+```bash
+docker build -f apps/DemoApp/DemoApp/Dockerfile -t demoapp .
+```
+
+The image listens on 8080 as the non-root `app` user. Outside Development, Spark refuses to start unless the Data Protection key ring is persisted, so mount a volume at `/var/lib/demoapp/dataprotection-keys` and pass `-e Spark__DataProtection__KeysPath=/var/lib/demoapp/dataprotection-keys` (or pass `-e Spark__DataProtection__Storage=RavenDb` instead). Point it at a database with `-e Spark__RavenDb__Urls__0=http://<host>:8080`.
+
 > **RavenDB note:** the demos connect to `http://localhost:8080` (`appsettings.json` → `Spark:RavenDb:Urls`). If you point them at a **standalone/local RavenDB** instead of the Docker container above, make sure its `PublicServerUrl` is `http://localhost:8080` — *not* `http://host.docker.internal:8080`. RavenDB advertises `PublicServerUrl` through its cluster topology and the client routes **all** subsequent requests there (caching it under `apps/**/bin/**/*.raven-cluster-topology`); a `host.docker.internal` value the host can't reach makes every request fail with `ServiceUnavailable`. `host.docker.internal` is only correct when a *container* must reach a host-installed database.
 
 #### Running multiple modules together (SlnLaunch)
@@ -428,6 +436,8 @@ A pull request must pass these before merging.
 `pull-request.yml`, job `coverage-upload action`: builds, verifies and smoke-tests the bundled upload action.
 
 [`code-coverage-image-check.yml`](.github/workflows/code-coverage-image-check.yml): builds the production CodeCoverage Docker image (no push) when a change could affect it, so a broken Dockerfile fails the PR instead of the production deploy.
+
+[`demo-images-check.yml`](.github/workflows/demo-images-check.yml): builds the DemoApp Docker image (no push) when a change touches DemoApp or its library closure, so the demo Dockerfile cannot silently rot. Its path filter mirrors the Dockerfile's csproj COPY list; update both together.
 
 ### Coding Standards
 
