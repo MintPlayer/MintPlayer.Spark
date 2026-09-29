@@ -13,8 +13,8 @@ namespace MintPlayer.Spark.Services;
 /// <c>SaveChangesAsync</c> itself is not stopped by it (that is the D1 override gap; the bulk delete
 /// logs it).
 /// </remarks>
-[Register(typeof(SparkWriteBatch), ServiceLifetime.Scoped)]
-internal sealed class SparkWriteBatch
+[Register(typeof(ISparkWriteBatch), ServiceLifetime.Scoped)]
+internal sealed partial class SparkWriteBatch : ISparkWriteBatch
 {
     /// <summary>Whether a batch is open, and the base hooks must not save.</summary>
     public bool IsDeferring { get; private set; }
@@ -32,4 +32,11 @@ internal sealed class SparkWriteBatch
     {
         public void Dispose() => batch.IsDeferring = false;
     }
+}
+
+/// <summary>The contract of <see cref="SparkWriteBatch"/>, for its registration.</summary>
+internal interface ISparkWriteBatch
+{
+    bool IsDeferring { get; }
+    IDisposable Begin();
 }

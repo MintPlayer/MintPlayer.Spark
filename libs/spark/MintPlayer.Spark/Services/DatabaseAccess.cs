@@ -627,7 +627,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var interceptors = interceptorPipeline.For(entityType);
         var syncInterceptor = serviceProvider.GetService<ISyncActionInterceptor>();
         var replicated = syncInterceptor != null && syncInterceptor.IsReplicated(entityType);
-        var batch = serviceProvider.GetRequiredService<SparkWriteBatch>();
+        var batch = serviceProvider.GetRequiredService<ISparkWriteBatch>();
         var actionsInstance = actionsResolver.ResolveForType(entityType);
 
         // One batched load into the request session: every later per-row load is an identity-map hit,

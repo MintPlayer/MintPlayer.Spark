@@ -340,7 +340,7 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
 
             // A bulk delete commits every row with ONE SaveChanges (#460, D18), so while its batch is
             // open the save is the caller's. An override that saves here itself breaks that guarantee.
-            if (serviceProvider?.GetService<SparkWriteBatch>() is not { IsDeferring: true })
+            if (serviceProvider?.GetService<ISparkWriteBatch>() is not { IsDeferring: true })
                 await session.SaveChangesAsync();
         }
     }
