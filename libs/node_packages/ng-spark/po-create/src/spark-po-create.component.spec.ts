@@ -48,6 +48,7 @@ async function setup(serviceOverrides: Partial<SparkService> = {}) {
   const service: any = {
     getEntityTypes: vi.fn().mockResolvedValue([personType]),
     create: vi.fn().mockResolvedValue({ id: 'people/new-1', name: 'Created' }),
+    newObject: vi.fn().mockResolvedValue({ name: 'Person', attributes: [] }),
     ...serviceOverrides,
   };
   TestBed.configureTestingModule({
@@ -179,5 +180,46 @@ describe('SparkPoCreateComponent', () => {
     expect(errors).toHaveLength(1);
     expect(errors[0].attributeName).toBe('');
     expect(c.generalErrors()).toEqual(errors);
+  });
+
+  describe('the blank object comes from the server (#460 M15, D19)', () => {
+    it('asks /po/new with the sub-query parent from the query parameters and seeds the form', async () => {
+      const newObject = vi.fn().mockResolvedValue({
+        name: 'Person',
+        attributes: [{ name: 'FirstName', value: 'from the hook' }, { name: 'Reason', value: 'hidden' }],
+      });
+      const { harness } = await setup({ newObject } as any);
+
+      const c = await harness.navigateByUrl(
+        '/po/person/new?parentId=companies%2F1&parentType=Company&queryId=company-people', SparkPoCreateComponent);
+      await harness.fixture.whenStable();
+
+      expect(newObject).toHaveBeenCalledWith('person', { parentId: 'companies/1', parentType: 'Company', queryId: 'company-people' });
+      expect(c.formData()['FirstName']).toBe('from the hook');
+      expect(c.formData()['Reason']).toBeUndefined();
+    });
+
+    it('asks /po/new without a parent for a standalone New', async () => {
+      const newObject = vi.fn().mockResolvedValue({ name: 'Person', attributes: [] });
+      const { harness } = await setup({ newObject } as any);
+
+      await harness.navigateByUrl('/po/person/new', SparkPoCreateComponent);
+      await harness.fixture.whenStable();
+
+      expect(newObject).toHaveBeenCalledWith('person', undefined);
+    });
+
+    it('shows a refused New and keeps the blank form usable', async () => {
+      const newObject = vi.fn().mockRejectedValue(new HttpErrorResponse({ status: 404, statusText: 'Not Found' }));
+      const { harness } = await setup({ newObject } as any);
+
+      const c = await harness.navigateByUrl(
+        '/po/person/new?parentId=companies%2Fgone&parentType=Company&queryId=company-people', SparkPoCreateComponent);
+      await harness.fixture.whenStable();
+
+      expect(c.entityType()?.name).toBe('Person');
+      expect(c.formData()['FirstName']).toBe('');
+      expect(c.generalErrors()).toHaveLength(1);
+    });
   });
 });
