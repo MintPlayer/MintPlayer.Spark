@@ -28,7 +28,7 @@ const personType: EntityType = {
     {
       id: 'a-first', name: 'FirstName', dataType: 'string',
       isVisible: true, isReadOnly: false, isRequired: false,
-      order: 1, showedOn: ShowedOn.Query | ShowedOn.QueryResultItem,
+      order: 1, showedOn: ShowedOn.Query | ShowedOn.PersistentObject,
     } as any,
     {
       id: 'a-internal', name: 'Internal', dataType: 'string',
@@ -38,7 +38,7 @@ const personType: EntityType = {
     {
       id: 'a-detail-only', name: 'DetailOnly', dataType: 'string',
       isVisible: true, isReadOnly: false, isRequired: false,
-      order: 3, showedOn: ShowedOn.QueryResultItem,
+      order: 3, showedOn: ShowedOn.PersistentObject,
     } as any,
   ],
 } as any;
@@ -698,7 +698,7 @@ describe('SparkQueryGridComponent', () => {
         sortColumns: [],
       }));
 
-      c.onFilterChange({
+      c['onFilterChange']({
         mode: 'values',
         column: 'FirstName',
         selected: [{ value: 'Alice', label: 'Alice' }],
@@ -717,7 +717,7 @@ describe('SparkQueryGridComponent', () => {
       const executeQuery = vi.fn().mockResolvedValue(filterPage);
       const { c, fixture } = await setup({ executeQuery });
 
-      c.onFilterChange({
+      c['onFilterChange']({
         mode: 'values',
         column: 'FirstName',
         selected: [{ value: 'Alice', label: 'Alice' }],
@@ -735,8 +735,8 @@ describe('SparkQueryGridComponent', () => {
       const executeQuery = vi.fn().mockResolvedValue(filterPage);
       const { c, fixture } = await setup({ executeQuery });
 
-      c.onFilterChange({ mode: 'values', column: 'FirstName', selected: [{ value: 'Alice', label: 'Alice' }], inverse: false } as any);
-      c.onFilterChange({ mode: 'values', column: 'FirstName', selected: [], inverse: false } as any);
+      c['onFilterChange']({ mode: 'values', column: 'FirstName', selected: [{ value: 'Alice', label: 'Alice' }], inverse: false } as any);
+      c['onFilterChange']({ mode: 'values', column: 'FirstName', selected: [], inverse: false } as any);
       await settle(fixture);
 
       await c.fetchFn()!({ page: 1, perPage: 10, sortColumns: [] } as any);
@@ -753,16 +753,36 @@ describe('SparkQueryGridComponent', () => {
         getDistinctValues,
       });
 
-      c.onFilterChange({ mode: 'values', column: 'FirstName', selected: [{ value: 'Alice', label: 'Alice' }], inverse: false } as any);
+      c['onFilterChange']({ mode: 'values', column: 'FirstName', selected: [{ value: 'Alice', label: 'Alice' }], inverse: false } as any);
       await settle(fixture);
 
       // A stable function, not a signal: it reads the filters when CALLED, which is what removes the
       // reassign-and-abort race that a per-change identity introduced.
-      await c.distinctsFn({ column: 'FirstName', search: '', signal: new AbortController().signal });
+      await c['distinctsFn']({ column: 'FirstName', search: '', signal: new AbortController().signal });
 
       // Its own filter is excluded: a panel must offer the values you could still pick, not only
       // the ones you already picked.
       expect(getDistinctValues).toHaveBeenCalledWith('q-all', 'FirstName', expect.objectContaining({ columns: [] }));
+    });
+
+    it('lists values under a deleted parent with parentDeleted: include, and only under a parent (#460)', async () => {
+      const getDistinctValues = vi.fn().mockResolvedValue({ matching: [], remaining: [], hasMore: false });
+      const request = { column: 'FirstName', search: '', signal: new AbortController().signal };
+
+      const under = await setup(
+        { executeQuery: vi.fn().mockResolvedValue(filterPage), getDistinctValues },
+        { parentId: 'companies/1', parentType: 'Company', parentDeleted: true });
+      await under.c['distinctsFn'](request);
+      expect(getDistinctValues.mock.calls.at(-1)![2]).toEqual(expect.objectContaining({
+        parentId: 'companies/1', parentType: 'Company', parentDeleted: 'include',
+      }));
+
+      TestBed.resetTestingModule();
+      const top = await setup(
+        { executeQuery: vi.fn().mockResolvedValue(filterPage), getDistinctValues },
+        { parentDeleted: true });
+      await top.c['distinctsFn'](request);
+      expect(getDistinctValues.mock.calls.at(-1)![2].parentDeleted).toBeUndefined();
     });
 
     describe('selecting < none >', () => {

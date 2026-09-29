@@ -28,7 +28,7 @@ describe('provideSparkClientOperations', () => {
 
   function registeredTypes(): string[] {
     configure();
-    const handlers = TestBed.inject(SPARK_CLIENT_OPERATION_HANDLERS) as { type: string }[];
+    const handlers = TestBed.inject(SPARK_CLIENT_OPERATION_HANDLERS);
     return handlers.map(h => h.type).sort();
   }
 
