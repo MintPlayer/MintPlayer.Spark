@@ -64,10 +64,43 @@ collection and every setting the model does not express are kept, and nothing is
 collections already match (a restart writes nothing). Removing the block does not disable revisions —
 it leaves the collection to whoever owns the database.
 
+### Revision limits from configuration (#460 M16)
+
+The limits can also come from `Spark:History` — appsettings, environment variables, user secrets — and
+there **configuration beats code** (re-applied after the `AddHistory` delegate):
+
+```json
+"Spark": {
+  "History": {
+    "Revisions": { "MinimumRevisionsToKeep": null, "MinimumRevisionAgeToKeep": "30.00:00:00", "PurgeOnDelete": false },
+    "Types": {
+      "Question": { "MinimumRevisionsToKeep": 2 },
+      "AuditEntry": { "Enabled": true, "MinimumRevisionAgeToKeep": "45.00:00:00" }
+    }
+  }
+}
+```
+
+Each setting is taken from the first source that sets it: `Spark:History:Types:{type}` (the model
+type's `name`, case-insensitive; `Spark__History__Types__Question__MinimumRevisionsToKeep=2`) → the
+model's `revisions` block → `Spark:History:Revisions`. A type is configured when its model has a block or
+`Types:{type}:Enabled` is set (which also overrides the model's `enabled`); a `Types` key naming no model
+type is warned about. `0` / `00:00:00` mean "no limit". The model's `purgeOnDelete: false` cannot be told
+from "unset", so it defers to the default; only `true` in the model is explicit.
+
+**Defaults:** revisions are kept **30 days** (`MinimumRevisionAgeToKeep`), with no count limit and no
+purge on delete. Chosen to fit the Community licence and to bound how long revisions keep personal data
+(account deletion does not rewrite them, D8). RavenDB deletes a revision only once it is past **both**
+limits, and only when the document is written again — a document nobody edits keeps its old revisions.
+Set `Spark:History:Revisions:MinimumRevisionAgeToKeep=00:00:00` for unlimited history.
+
 ⚠️ **Licence limits.** RavenDB caps what a collection may ask for. Measured on a **Community**
 licence (7.2): at most **2** `minimumRevisionsToKeep`, at most **45 days** `minimumRevisionAgeToKeep`,
-and no *enabled* `Default` configuration (a disabled one is accepted). A model asking for more refuses
-startup with RavenDB's reason. Configuring revisions is a **database-admin** operation; the read is
+and no *enabled* `Default` configuration (a disabled one is accepted). When `GET /license/status` reports
+`Community`, History checks the merged limits **before** sending anything and refuses startup naming
+every type, setting and source (`Question (Questions): MinimumRevisionsToKeep = 10 (from
+Spark:History:Types:Question)`) and the way out; on any other licence, a refusal is RavenDB's own reason.
+Configuring revisions is a **database-admin** operation; the read is
 `GET /databases/{db}/revisions/config`. When an operator manages revisions by hand, or the app's
 certificate may not, set `Spark:History:ConfigureRevisions = false`.
 

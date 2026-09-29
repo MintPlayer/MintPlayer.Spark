@@ -213,6 +213,17 @@ public class HistorySpikeTests(ITestOutputHelper output) : SparkTestDriver
         body.Should().Contain(Others);
     }
 
+    /// <summary>#460 M16: the configurator's licence read returns <c>/license/status</c>'s <c>Type</c> through the client.</summary>
+    [Fact]
+    public async Task The_configurators_licence_read_is_the_status_Type()
+    {
+        var type = await Store.Maintenance.Server.SendAsync(new MintPlayer.Spark.History.RevisionsConfigurator.GetLicenceTypeOperation());
+        output.WriteLine($"licence type read by the configurator: {type}");
+
+        type.Should().NotBeNullOrEmpty();
+        (await LicenceTypeAsync()).Should().Contain($"Type={type}");
+    }
+
     private async Task<string> LicenceTypeAsync()
     {
         using var http = new HttpClient();

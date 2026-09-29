@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Abstractions.Authentication;
@@ -45,7 +46,7 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         await base.DisposeAsync();
     }
 
-    private async Task<Host> StartAsync(string? userId = Alice, SparkTestSecurity? security = null)
+    private async Task<Host> StartAsync(string? userId = Alice, SparkTestSecurity? security = null, Action<SparkHistoryOptions>? history = null)
     {
         var factory = new SparkEndpointFactory<HiContext>(
             Store,
@@ -59,7 +60,7 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
             configureSpark: spark =>
             {
                 spark.AddSoftDelete();
-                spark.AddHistory();
+                spark.AddHistory(history);
                 spark.AddRevisionObserver<HiObserver>();
                 spark.AddHistoryUserNameResolver<HiNames>();
             },
@@ -88,8 +89,37 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         config.Default!.MinimumRevisionsToKeep.Should().Be(1, "the default is kept");
 
         // Idempotent: the same model again changes nothing, and sends nothing.
-        var changed = await RevisionsConfigurator.ApplyAsync(Store, host.Factory.GetService<IModelLoader>(), NullLogger.Instance);
+        var changed = await RevisionsConfigurator.ApplyAsync(Store, host.Factory.GetService<IModelLoader>(), host.Factory.GetService<IOptions<SparkHistoryOptions>>().Value, NullLogger.Instance);
         changed.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Startup_merges_the_configured_revision_limits_and_keeps_every_other_collection()
+    {
+        await Store.Maintenance.SendAsync(new ConfigureRevisionsOperation(new RevisionsConfiguration
+        {
+            Default = new RevisionsCollectionConfiguration { Disabled = true, MinimumRevisionsToKeep = 1 },
+            Collections = new() { ["HiOthers"] = new() { Disabled = false, MinimumRevisionsToKeep = 2, MinimumRevisionAgeToKeep = TimeSpan.FromDays(3) } },
+        }));
+
+        var host = await StartAsync(history: o =>
+        {
+            o.Revisions.PurgeOnDelete = true;
+            o.Types["hinote"] = new SparkRevisionTypeOptions { MinimumRevisionsToKeep = 2 };
+        });
+
+        var notes = (await ReadRevisionsConfigAsync()).Collections[NotesCollection];
+        notes.Disabled.Should().BeFalse();
+        notes.MinimumRevisionsToKeep.Should().Be(2, "the per-type limit (case-insensitive type name)");
+        notes.MinimumRevisionAgeToKeep.Should().Be(SparkHistoryOptions.DefaultMinimumRevisionAgeToKeep, "the model sets no age, so the default applies");
+        notes.PurgeOnDelete.Should().BeTrue("the model's purgeOnDelete false defers to the default");
+        var config = await ReadRevisionsConfigAsync();
+        config.Collections["HiOthers"].MinimumRevisionsToKeep.Should().Be(2, "a collection no model type configures is kept");
+        config.Collections["HiOthers"].MinimumRevisionAgeToKeep.Should().Be(TimeSpan.FromDays(3));
+        config.Default!.MinimumRevisionsToKeep.Should().Be(1, "the default is kept");
+
+        (await RevisionsConfigurator.ApplyAsync(Store, host.Factory.GetService<IModelLoader>(), host.Factory.GetService<IOptions<SparkHistoryOptions>>().Value, NullLogger.Instance))
+            .Should().BeEmpty("the same options again send nothing");
     }
 
     // ---- stamping ----------------------------------------------------------------------------------

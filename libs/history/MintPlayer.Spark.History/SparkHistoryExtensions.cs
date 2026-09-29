@@ -36,6 +36,9 @@ public static class SparkHistoryExtensions
             section?.Bind(options);
             configure?.Invoke(options);
         });
+        // Revision limits: configuration beats code (D14, M16) — re-applied after every Configure.
+        if (section is not null)
+            builder.Services.PostConfigure<SparkHistoryOptions>(options => ApplyRevisionConfiguration(section, options));
 
         builder.Services.AddPersistentObjectInterceptor<HistoryInterceptor>();
         builder.Services.TryAddScoped<HistoryRequestState>();
@@ -44,17 +47,34 @@ public static class SparkHistoryExtensions
         builder.Registry.AddMiddleware(app =>
         {
             var services = app.ApplicationServices;
-            if (!services.GetRequiredService<IOptions<SparkHistoryOptions>>().Value.ConfigureRevisions)
+            var options = services.GetRequiredService<IOptions<SparkHistoryOptions>>().Value;
+            if (!options.ConfigureRevisions)
                 return;
             RevisionsConfigurator.Apply(
                 services.GetRequiredService<IDocumentStore>(),
                 services.GetRequiredService<IModelLoader>(),
+                options,
                 services.GetRequiredService<ILoggerFactory>().CreateLogger(typeof(RevisionsConfigurator).FullName!));
         });
         // The per-library method the Endpoints generator emits for this assembly (AssemblyInfo.cs).
         builder.Registry.AddEndpoints(endpoints => endpoints.MapSparkHistoryEndpoints());
 
         return builder;
+    }
+
+    /// <summary>
+    /// Layers <c>Spark:History:Revisions</c> and <c>Spark:History:Types:{type}</c> over whatever code set,
+    /// property by property (unset configuration keys leave the code value alone).
+    /// </summary>
+    internal static void ApplyRevisionConfiguration(IConfigurationSection historySection, SparkHistoryOptions options)
+    {
+        historySection.GetSection(nameof(SparkHistoryOptions.Revisions)).Bind(options.Revisions);
+        foreach (var typeSection in historySection.GetSection(nameof(SparkHistoryOptions.Types)).GetChildren())
+        {
+            if (!options.Types.TryGetValue(typeSection.Key, out var type))
+                options.Types[typeSection.Key] = type = new SparkRevisionTypeOptions();
+            typeSection.Bind(type);
+        }
     }
 
     /// <summary>Adds an <see cref="ISparkRevisionObserver"/>. Scoped, multi-registered; adding the same type twice is a no-op.</summary>
