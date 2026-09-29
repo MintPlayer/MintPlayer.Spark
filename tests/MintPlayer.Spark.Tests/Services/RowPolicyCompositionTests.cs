@@ -1,6 +1,7 @@
 using System.Linq.Expressions;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Authorization;
@@ -275,6 +276,21 @@ public class RowPolicyCompositionTests : SparkTestDriver
         (await rowSecurity.IsAllowedAsync(typeof(RpTag), "Read", new RpTag { IsDeleted = true }))
             .Should().BeFalse("another type in the same request sees live rows only");
         soft.LastContext!.Deleted.Should().Be(SparkDeletedFilter.Exclude);
+    }
+
+    [Fact]
+    public void An_add_on_endpoint_scopes_the_deleted_mode_to_its_own_type()
+    {
+        // The History endpoints load a deleted row's revision; its live references must still resolve.
+        IRowPolicyRequestState state = new RowPolicyRequestState();
+        var services = new ServiceCollection().AddSingleton(state).BuildServiceProvider();
+        var context = new DefaultHttpContext { RequestServices = services };
+
+        MintPlayer.Spark.Endpoints.SparkAddOnEndpoints.UseDeletedFilter(context, SparkDeletedFilter.Only,
+            new EntityTypeDefinition { Id = Guid.NewGuid(), Name = "RpCar", ClrType = typeof(RpCar).FullName });
+
+        state.DeletedFor(typeof(RpCar)).Should().Be(SparkDeletedFilter.Only);
+        state.DeletedFor(typeof(RpTag)).Should().Be(SparkDeletedFilter.Exclude);
     }
 
     [Fact]

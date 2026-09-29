@@ -76,7 +76,7 @@ internal sealed partial class ListRevisions : IPostEndpoint
             return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
 
         // Before the current-row gate asks row security (row filters are memoized per request).
-        SparkAddOnEndpoints.UseDeletedFilter(httpContext, request.Deleted);
+        SparkAddOnEndpoints.UseDeletedFilter(httpContext, request.Deleted, entityType);
 
         try
         {
@@ -114,7 +114,7 @@ internal sealed partial class GetRevision : IPostEndpoint
         if (request is null || entityType is null || string.IsNullOrEmpty(request.Id) || string.IsNullOrEmpty(request.ChangeVector))
             return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
 
-        SparkAddOnEndpoints.UseDeletedFilter(httpContext, request.Deleted);
+        SparkAddOnEndpoints.UseDeletedFilter(httpContext, request.Deleted, entityType);
 
         try
         {

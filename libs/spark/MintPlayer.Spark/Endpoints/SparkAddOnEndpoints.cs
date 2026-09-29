@@ -76,6 +76,23 @@ public static class SparkAddOnEndpoints
     /// memoized per request. Core filters nothing on it; the SoftDelete package honours it only for
     /// holders of <c>ViewDeleted/T</c>, so an add-on passes the flag through and gates nothing itself.
     /// </summary>
+    /// <remarks>
+    /// Without an entity type the mode applies to every type the request touches. Pass the type the
+    /// request is about (<see cref="UseDeletedFilter(HttpContext, SparkDeletedFilter?, EntityTypeDefinition?)"/>)
+    /// so a deleted row's live references (a deleted answer's question) still resolve.
+    /// </remarks>
     public static void UseDeletedFilter(HttpContext httpContext, SparkDeletedFilter? deleted)
         => httpContext.RequestServices.GetRequiredService<IRowPolicyRequestState>().Deleted = deleted ?? SparkDeletedFilter.Exclude;
+
+    /// <summary>
+    /// As <see cref="UseDeletedFilter(HttpContext, SparkDeletedFilter?)"/>, scoped to
+    /// <paramref name="entityType"/>: every other type in the request (a reference's label, a
+    /// breadcrumb) sees live rows only, as on <c>/spark/po/load</c>.
+    /// </summary>
+    public static void UseDeletedFilter(HttpContext httpContext, SparkDeletedFilter? deleted, EntityTypeDefinition? entityType)
+    {
+        var state = httpContext.RequestServices.GetRequiredService<IRowPolicyRequestState>();
+        state.Deleted = deleted ?? SparkDeletedFilter.Exclude;
+        state.DeletedScopeClrType = entityType?.ClrType;
+    }
 }
