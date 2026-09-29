@@ -106,9 +106,9 @@
       "nl": "Wachtwoord resetten mislukt. De link is mogelijk verlopen."
     },
     "invalidCredentials": {
-      "en": "Invalid email or password.",
-      "fr": "E-mail ou mot de passe invalide.",
-      "nl": "Ongeldig e-mailadres of wachtwoord."
+      "en": "Invalid email/user name or password.",
+      "fr": "E-mail/nom d'utilisateur ou mot de passe invalide.",
+      "nl": "Ongeldig e-mailadres/gebruikersnaam of wachtwoord."
     },
     "invalidEmail": {
       "en": "Please enter a valid email address.",

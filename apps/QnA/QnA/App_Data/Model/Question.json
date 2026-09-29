@@ -49,7 +49,7 @@
         "description": {
           "en": "The question itself: what you tried and what you expected."
         },
-        "dataType": "string",
+        "dataType": "MultiLineString",
         "isRequired": true,
         "isVisible": true,
         "isReadOnly": false,
