@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SparkLanguageService, SparkService } from '@mintplayer/ng-spark/services';
@@ -10,6 +10,7 @@ import { SparkFlagButtonComponent } from './spark-flag-button.component';
 import { SparkModeratorPanelComponent } from './spark-moderator-panel.component';
 import { provideSparkModeration, sparkModerationRenderers, sparkModerationRoutes } from './provide-spark-moderation';
 import { SparkReviewQueueComponent } from './spark-review-queue.component';
+import { SparkReputationBadgeComponent } from './spark-reputation-badge.component';
 
 function detailContext(overrides: Partial<SparkDetailContext> = {}): SparkDetailContext {
   return {
@@ -133,6 +134,94 @@ describe('moderation entry point (#460)', () => {
     moderator.detectChanges();
     expect(moderator.nativeElement.querySelector('.spark-unlock')).not.toBeNull();
     expect(moderator.nativeElement.querySelector('.spark-open-flags').textContent).toContain('2');
+  });
+
+  it('the vote widget disables an arrow the caller holds no right for, but not the active one', async () => {
+    spark.postEnvelope.mockResolvedValue([
+      { id: 'questions/1', score: 2, up: 2, down: 0, myVote: 1, locked: false, canUpvote: false, canDownvote: false },
+    ]);
+    const fixture = TestBed.createComponent(SparkVoteComponent);
+    fixture.componentRef.setInput('item', { id: 'questions/1', objectTypeId: 'question' });
+    fixture.detectChanges();
+    await flush();
+    await flush();
+    fixture.detectChanges();
+
+    // The active arrow withdraws, which needs no right; the other one would be refused.
+    expect((fixture.nativeElement.querySelector('.spark-vote-up') as HTMLButtonElement).disabled).toBe(false);
+    expect((fixture.nativeElement.querySelector('.spark-vote-down') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('the vote widget keeps both arrows for a server that does not report the rights', async () => {
+    spark.postEnvelope.mockResolvedValue([{ id: 'questions/1', score: 0, up: 0, down: 0, myVote: 0, locked: false }]);
+    const fixture = TestBed.createComponent(SparkVoteComponent);
+    fixture.componentRef.setInput('item', { id: 'questions/1', objectTypeId: 'question' });
+    fixture.detectChanges();
+    await flush();
+    await flush();
+    fixture.detectChanges();
+
+    expect((fixture.nativeElement.querySelector('.spark-vote-up') as HTMLButtonElement).disabled).toBe(false);
+    expect((fixture.nativeElement.querySelector('.spark-vote-down') as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('the own reputation badge re-reads after a navigation and after the caller votes', async () => {
+    let total = 10;
+    spark.postEnvelope.mockImplementation((path: string) => Promise.resolve(path === '/moderation/reputation'
+      ? { userId: 'u', total, pending: 0, privileges: [], suspended: false }
+      : { id: 'questions/1', score: 1, up: 1, down: 0, myVote: 1, locked: false }));
+    const fixture = TestBed.createComponent(SparkReputationBadgeComponent);
+    fixture.detectChanges();
+    await flush();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('10');
+
+    total = 20;
+    await TestBed.inject(Router).navigateByUrl('/');
+    fixture.detectChanges();
+    await flush();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('20');
+
+    total = 19;
+    await TestBed.inject(SparkModerationService).vote('question', 'questions/1', -1);
+    fixture.detectChanges();
+    await flush();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('19');
+  });
+
+  it('the own reputation badge signs the pending part, positive or negative', async () => {
+    let pending = 10;
+    spark.postEnvelope.mockImplementation(() => Promise.resolve({ userId: 'u', total: 5, pending, privileges: [], suspended: false }));
+    const fixture = TestBed.createComponent(SparkReputationBadgeComponent);
+    fixture.detectChanges();
+    await flush();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.spark-reputation-pending').textContent.trim()).toBe('(+10 moderation.pending)');
+
+    pending = -2;
+    await TestBed.inject(Router).navigateByUrl('/');
+    fixture.detectChanges();
+    await flush();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.spark-reputation-pending').textContent.trim()).toBe('(-2 moderation.pending)');
+  });
+
+  it('the review queue names each case by its post and links to it', async () => {
+    spark.postEnvelope.mockResolvedValue([
+      { id: 'ModerationCases/flag/questions/1', kind: 'flag', status: 'open', targetId: 'questions/1', targetType: 'Question', accountIds: [], flagCount: 1, voteCount: 0, summary: 'Spam', openedAtUtc: '2026-09-29T05:00:00Z' },
+    ]);
+    (spark as any).getEntityTypes = vi.fn().mockResolvedValue([{ id: 'qt', name: 'Question', alias: 'question' }]);
+    (spark as any).get = vi.fn().mockResolvedValue({ id: 'questions/1', name: 'Question', breadcrumb: 'How do I revert?' });
+    const fixture = TestBed.createComponent(SparkReviewQueueComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await flush();
+    fixture.detectChanges();
+
+    expect((spark as any).get).toHaveBeenCalledWith('question', 'questions/1');
+    expect(fixture.nativeElement.querySelector('.spark-case-target').textContent.trim()).toBe('How do I revert?');
   });
 
   it('describes a validation refusal, a quota and a plain error', () => {

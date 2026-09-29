@@ -1,4 +1,4 @@
-import { inject, Injectable } from '@angular/core';
+import { inject, Injectable, signal } from '@angular/core';
 import { SparkService } from '@mintplayer/ng-spark/services';
 import {
   ModerationAuditEntry,
@@ -26,9 +26,16 @@ export class SparkModerationService {
   private readonly pending = new Map<string, Map<string, ((state: ModerationVoteState | null) => void)[]>>();
   private flushScheduled = false;
 
+  readonly #votesCast = signal(0);
+
+  /** Counts the caller's accepted votes, so the own reputation badge re-reads (a downvote costs reputation). */
+  readonly votesCast = this.#votesCast.asReadonly();
+
   /** Casts (+1 / −1) or withdraws (0) the caller's vote; resolves to the target's new state. */
-  vote(type: string, id: string, direction: -1 | 0 | 1): Promise<ModerationVoteState> {
-    return this.spark.postEnvelope<ModerationVoteState>('/moderation/vote', { objectTypeId: type, id, direction });
+  async vote(type: string, id: string, direction: -1 | 0 | 1): Promise<ModerationVoteState> {
+    const state = await this.spark.postEnvelope<ModerationVoteState>('/moderation/vote', { objectTypeId: type, id, direction });
+    this.#votesCast.update(n => n + 1);
+    return state;
   }
 
   /**

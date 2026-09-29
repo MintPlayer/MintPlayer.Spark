@@ -7,6 +7,13 @@ export interface ModerationVoteState {
   /** +1, −1 or 0. */
   myVote: -1 | 0 | 1;
   locked: boolean;
+  /**
+   * Whether the caller holds the right to upvote / downvote this type (an earned privilege or a
+   * group grant). Not a promise the vote is accepted: an own post, a lock or a suspension still
+   * refuse it. Absent from an older server, which the widget reads as "may".
+   */
+  canUpvote?: boolean;
+  canDownvote?: boolean;
 }
 
 /** A user's reputation. Someone else's carries only `userId` and `total`. */

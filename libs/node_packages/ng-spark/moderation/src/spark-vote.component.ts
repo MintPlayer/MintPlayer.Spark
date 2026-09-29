@@ -12,6 +12,10 @@ import { ModerationVoteState } from './spark-moderation.models';
  * `/spark/moderation/votes` (batched per page), never from the document, so a vote never moves the
  * row's etag.
  *
+ * An arrow the caller holds no right for (`canUpvote` / `canDownvote` false on the state) is
+ * disabled, so a user without the privilege sees the score but is not offered a click that the server
+ * refuses — except the active arrow, since withdrawing a vote needs no right.
+ *
  * On the detail page the entity type is the object's. In a query grid a row carries no type, so the
  * column needs `"rendererOptions": { "type": "<entity type id or alias>" }`.
  */
@@ -23,10 +27,10 @@ import { ModerationVoteState } from './spark-moderation.models';
     @if (state(); as s) {
       <span class="spark-vote d-inline-flex align-items-center gap-1" [class.spark-vote-locked]="s.locked">
         <button type="button" class="btn btn-sm spark-vote-up" [class.btn-primary]="s.myVote === 1" [class.btn-outline-secondary]="s.myVote !== 1"
-                [disabled]="busy() || s.locked" [attr.aria-pressed]="s.myVote === 1" [attr.aria-label]="'moderation.upvote' | t" (click)="cast(1)">▲</button>
+                [disabled]="busy() || s.locked || (s.canUpvote === false && s.myVote !== 1)" [attr.aria-pressed]="s.myVote === 1" [attr.aria-label]="'moderation.upvote' | t" (click)="cast(1)">▲</button>
         <span class="spark-vote-score fw-bold" [attr.aria-label]="'moderation.score' | t">{{ s.score }}</span>
         <button type="button" class="btn btn-sm spark-vote-down" [class.btn-danger]="s.myVote === -1" [class.btn-outline-secondary]="s.myVote !== -1"
-                [disabled]="busy() || s.locked" [attr.aria-pressed]="s.myVote === -1" [attr.aria-label]="'moderation.downvote' | t" (click)="cast(-1)">▼</button>
+                [disabled]="busy() || s.locked || (s.canDownvote === false && s.myVote !== -1)" [attr.aria-pressed]="s.myVote === -1" [attr.aria-label]="'moderation.downvote' | t" (click)="cast(-1)">▼</button>
         @if (error(); as message) {
           <span class="text-danger small spark-vote-error" role="alert">{{ message }}</span>
         }

@@ -1,8 +1,10 @@
 import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { DatePipe } from '@angular/common';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
+import { EntityType } from '@mintplayer/ng-spark/models';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
+import { SparkService } from '@mintplayer/ng-spark/services';
 import { SparkModerationService } from './spark-moderation.service';
 import { ModerationCaseDetail, ModerationCaseSummary } from './spark-moderation.models';
 import { describeModerationError } from './spark-vote.component';
@@ -18,7 +20,7 @@ import { describeModerationError } from './spark-vote.component';
  */
 @Component({
   selector: 'spark-review-queue',
-  imports: [BsCardComponent, BsCardHeaderComponent, TranslateKeyPipe, DatePipe],
+  imports: [BsCardComponent, BsCardHeaderComponent, RouterLink, TranslateKeyPipe, DatePipe],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="container-fluid spark-review-queue">
@@ -31,6 +33,7 @@ import { describeModerationError } from './spark-vote.component';
                     [class.active]="selected()?.case?.id === c.id" (click)="open(c.id)">
               <strong>{{ c.kind }}</strong>
               @if (c.flagCount) { <span class="badge bg-warning text-dark ms-1">{{ c.flagCount }}</span> }
+              @if (targets()[c.id]?.title; as title) { <div class="small fw-semibold text-truncate spark-case-target">{{ title }}</div> }
               <div class="small">{{ c.summary }}</div>
               <div class="small text-muted">{{ c.openedAtUtc | date: 'short' }}</div>
             </button>
@@ -43,6 +46,12 @@ import { describeModerationError } from './spark-vote.component';
             <bs-card class="d-block spark-case-detail">
               <bs-card-header>{{ 'moderation.rule' | t }}: {{ d.case.kind }} — {{ d.case.summary }}</bs-card-header>
               <div class="p-3">
+                @if (targets()[d.case.id]; as target) {
+                  <p class="spark-case-target-link">
+                    @if (target.link) { <a [routerLink]="target.link">{{ target.title ?? d.case.targetId }}</a> }
+                    @else { {{ target.title ?? d.case.targetId }} }
+                  </p>
+                }
                 @if (d.accounts.length) {
                   <h2 class="h6">{{ 'moderation.accounts' | t }}</h2>
                   <table class="table table-sm spark-case-accounts">
@@ -103,7 +112,11 @@ export class SparkReviewQueueComponent implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
 
+  private readonly spark = inject(SparkService);
+
   protected readonly cases = signal<ModerationCaseSummary[]>([]);
+  /** Per case id: the target post's title and route, once resolved. */
+  protected readonly targets = signal<Record<string, { title: string | null; link: string[] | null }>>({});
   protected readonly selected = signal<ModerationCaseDetail | null>(null);
   protected readonly busy = signal(false);
   protected readonly error = signal<string | null>(null);
@@ -133,6 +146,38 @@ export class SparkReviewQueueComponent implements OnInit {
 
   private async load(): Promise<void> {
     await this.run(async () => this.cases.set(await this.moderation.cases('open')));
+    void this.resolveTargets(this.cases());
+  }
+
+  /**
+   * Names each case's post: its title (the object's breadcrumb) and a link to it. A case carries only
+   * the target's id and type name; without this the queue listed "flag · Spam" with no way to tell
+   * which post it was about. A target the caller cannot open (purged, hidden) keeps just its id.
+   */
+  private async resolveTargets(cases: ModerationCaseSummary[]): Promise<void> {
+    const pending = cases.filter(c => c.targetId && c.targetType && !(c.id in this.targets()));
+    if (!pending.length) return;
+    let types: EntityType[] = [];
+    try {
+      types = await this.spark.getEntityTypes();
+    } catch {
+      return;
+    }
+    await Promise.all(pending.map(async c => {
+      const type = types.find(t => t.name === c.targetType || t.id === c.targetType || t.alias === c.targetType);
+      const route = type ? type.alias || type.id : null;
+      let title: string | null = null;
+      if (route) {
+        try {
+          const po = await this.spark.get(route, c.targetId!);
+          title = po.breadcrumb || null;
+        } catch {
+          // Not visible to the caller (or gone): the id stays the label, without a link.
+        }
+      }
+      const link = route && title ? ['/po', route, c.targetId!] : null;
+      this.targets.update(t => ({ ...t, [c.id]: { title, link } }));
+    }));
   }
 
   private async run(work: () => Promise<void>): Promise<void> {
