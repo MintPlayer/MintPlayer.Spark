@@ -1,7 +1,4 @@
 import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
-import { NavigationEnd, Router } from '@angular/router';
-import { EMPTY, filter } from 'rxjs';
 import { TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkModerationService } from './spark-moderation.service';
 import { ModerationReputation } from './spark-moderation.models';
@@ -32,25 +29,19 @@ import { ModerationReputation } from './spark-moderation.models';
 })
 export class SparkReputationBadgeComponent {
   private readonly moderation = inject(SparkModerationService);
-  private readonly router = inject(Router, { optional: true });
 
   userId = input<string | null | undefined>();
 
   protected readonly reputation = signal<ModerationReputation | null>(null);
 
-  private readonly navigated = toSignal(
-    this.router?.events.pipe(filter(e => e instanceof NavigationEnd)) ?? EMPTY,
-    { initialValue: null });
-
   constructor() {
     effect(() => {
       const userId = this.userId() ?? undefined;
       // The own badge only: someone else's total does not move because the viewer navigated.
-      if (!userId) {
-        this.navigated();
-        this.moderation.votesCast();
-      }
-      this.moderation.reputation(userId).then(r => this.reputation.set(r), () => this.reputation.set(null));
+      const read = userId
+        ? this.moderation.reputation(userId)
+        : (this.moderation.ownReputationChanged(), this.moderation.ownReputation());
+      read.then(r => this.reputation.set(r), () => this.reputation.set(null));
     });
   }
 }

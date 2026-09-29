@@ -11,6 +11,7 @@ import { SparkModeratorPanelComponent } from './spark-moderator-panel.component'
 import { provideSparkModeration, sparkModerationRenderers, sparkModerationRoutes } from './provide-spark-moderation';
 import { SparkReviewQueueComponent } from './spark-review-queue.component';
 import { SparkReputationBadgeComponent } from './spark-reputation-badge.component';
+import { SparkReviewQueueLinkComponent } from './spark-review-queue-link.component';
 
 function detailContext(overrides: Partial<SparkDetailContext> = {}): SparkDetailContext {
   return {
@@ -206,6 +207,26 @@ describe('moderation entry point (#460)', () => {
     await flush();
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.spark-reputation-pending').textContent.trim()).toBe('(-2 moderation.pending)');
+  });
+
+  it('the review-queue link shows only for a caller who may review, and shares the badge request', async () => {
+    let canReview = false;
+    spark.postEnvelope.mockImplementation(() => Promise.resolve({ userId: 'u', total: 0, pending: 0, privileges: [], suspended: false, canReview }));
+    const link = TestBed.createComponent(SparkReviewQueueLinkComponent);
+    const badge = TestBed.createComponent(SparkReputationBadgeComponent);
+    link.detectChanges();
+    badge.detectChanges();
+    await flush();
+    link.detectChanges();
+    expect(link.nativeElement.querySelector('a')).toBeNull();
+    expect(spark.postEnvelope).toHaveBeenCalledTimes(1);
+
+    canReview = true;
+    await TestBed.inject(Router).navigateByUrl('/');
+    link.detectChanges();
+    await flush();
+    link.detectChanges();
+    expect(link.nativeElement.querySelector('a')?.getAttribute('href')).toBe('/moderation/review');
   });
 
   it('the review queue names each case by its post and links to it', async () => {

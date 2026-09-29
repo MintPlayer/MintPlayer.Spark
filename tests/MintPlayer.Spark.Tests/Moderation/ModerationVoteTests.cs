@@ -270,6 +270,24 @@ public class ModerationVoteTests : SparkTestDriver
         withdrawn.GetProperty("result").GetProperty("pending").GetInt32().Should().Be(0, "the withdrawal nets the pending entry to zero");
     }
 
+    [Fact]
+    public async Task The_own_reputation_says_whether_the_caller_may_review_and_someone_elses_never_does()
+    {
+        // The client shows the review-queue link from this flag; a moderator holds Review by group.
+        await using var host = await StartAsync();
+        await host.SeedUserAsync("users/mod");
+
+        var (_, moderator) = await host.ModeratorAsync("/spark/moderation/reputation", new { });
+        var (_, plain) = await host.SendAsync("/spark/moderation/reputation", new { }, Bob);
+        var (_, other) = await host.ModeratorAsync("/spark/moderation/reputation", new { userId = "users/mod" }, user: "users/mod");
+        var (_, asked) = await host.SendAsync("/spark/moderation/reputation", new { userId = "users/mod" }, Bob);
+
+        moderator.GetProperty("result").GetProperty("canReview").GetBoolean().Should().BeTrue();
+        plain.GetProperty("result").GetProperty("canReview").GetBoolean().Should().BeFalse("Review needs 1000 reputation here");
+        other.GetProperty("result").GetProperty("canReview").GetBoolean().Should().BeTrue("naming yourself is still your own reputation");
+        asked.GetProperty("result").GetProperty("canReview").GetBoolean().Should().BeFalse("someone else's badge carries the number only");
+    }
+
     // ---- fraud measure 2: diversity --------------------------------------------------------------
 
     [Fact]

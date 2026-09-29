@@ -6,4 +6,5 @@ export * from './spark-flag-button.component';
 export * from './spark-moderator-panel.component';
 export * from './spark-reputation-badge.component';
 export * from './spark-review-queue.component';
+export * from './spark-review-queue-link.component';
 export * from './provide-spark-moderation';

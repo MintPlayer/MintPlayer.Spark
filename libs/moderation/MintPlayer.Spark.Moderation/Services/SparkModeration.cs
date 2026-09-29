@@ -464,7 +464,8 @@ internal sealed partial class SparkModeration : ISparkModeration
     public async Task<ModerationReputation> GetReputationAsync(string userId, CancellationToken cancellationToken = default)
     {
         // The caller's own read goes through the request snapshot, which also records today's activity.
-        var snapshot = currentUser.IsAuthenticated && currentUser.Id == userId
+        var own = currentUser.IsAuthenticated && currentUser.Id == userId;
+        var snapshot = own
             ? (await userState.GetCurrentAsync())!
             : await userState.ReadAsync(userId);
         return new ModerationReputation
@@ -475,6 +476,7 @@ internal sealed partial class SparkModeration : ISparkModeration
             Pending = await ledger.ReadPendingAsync(userId, cancellationToken),
             Privileges = ModerationPrivilegeProvider.Earned(snapshot, options.Value).Select(p => p.Key).ToList(),
             Suspended = snapshot.IsSuspended,
+            CanReview = own && await permissions.IsAllowedAsync(ModerationRights.Review, ModerationRights.Target, cancellationToken),
         };
     }
 

@@ -1,4 +1,7 @@
-import { inject, Injectable, signal } from '@angular/core';
+import { computed, inject, Injectable, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { NavigationEnd, Router } from '@angular/router';
+import { EMPTY, filter } from 'rxjs';
 import { SparkService } from '@mintplayer/ng-spark/services';
 import {
   ModerationAuditEntry,
@@ -26,10 +29,36 @@ export class SparkModerationService {
   private readonly pending = new Map<string, Map<string, ((state: ModerationVoteState | null) => void)[]>>();
   private flushScheduled = false;
 
+  private readonly router = inject(Router, { optional: true });
+
   readonly #votesCast = signal(0);
 
   /** Counts the caller's accepted votes, so the own reputation badge re-reads (a downvote costs reputation). */
   readonly votesCast = this.#votesCast.asReadonly();
+
+  private readonly navigated = toSignal(
+    this.router?.events.pipe(filter(e => e instanceof NavigationEnd)) ?? EMPTY,
+    { initialValue: null });
+
+  /**
+   * Changes whenever the caller's own reputation may have changed: after every navigation (a
+   * sign-in, a sign-out, another page) and after the caller's own votes. The own badge and the
+   * review-queue link read it to re-fetch {@link ownReputation}; a component in the app shell lives
+   * for the whole session and would otherwise show the first answer until a full reload.
+   */
+  // A fresh object each time: returning the vote count alone would compare equal after a navigation
+  // and notify nobody.
+  readonly ownReputationChanged = computed(() => ({ navigation: this.navigated(), votes: this.#votesCast() }));
+
+  #ownInFlight: Promise<ModerationReputation> | null = null;
+
+  /**
+   * The caller's own reputation, shared by every caller in flight at once: the badge and the
+   * review-queue link both re-read on the same navigation and cost one request.
+   */
+  ownReputation(): Promise<ModerationReputation> {
+    return this.#ownInFlight ??= this.reputation().finally(() => this.#ownInFlight = null);
+  }
 
   /** Casts (+1 / −1) or withdraws (0) the caller's vote; resolves to the target's new state. */
   async vote(type: string, id: string, direction: -1 | 0 | 1): Promise<ModerationVoteState> {

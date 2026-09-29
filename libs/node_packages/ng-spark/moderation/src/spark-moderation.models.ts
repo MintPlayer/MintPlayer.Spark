@@ -23,6 +23,8 @@ export interface ModerationReputation {
   pending: number;
   privileges: string[];
   suspended: boolean;
+  /** The caller's own only: whether they may open the review queue (earned or granted). */
+  canReview?: boolean;
 }
 
 export interface ModerationReputationLine {

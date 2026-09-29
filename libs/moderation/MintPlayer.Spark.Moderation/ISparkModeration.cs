@@ -81,4 +81,11 @@ public sealed class ModerationReputation
     public int Pending { get; init; }
     public IReadOnlyList<string> Privileges { get; init; } = [];
     public bool Suspended { get; init; }
+
+    /// <summary>
+    /// Whether the caller holds <c>Review/Moderation</c> — earned or granted (a moderator) — so a
+    /// client shows the review-queue link only to someone the queue will not refuse. Set on the
+    /// caller's own reputation only; someone else's badge never carries it.
+    /// </summary>
+    public bool CanReview { get; init; }
 }
