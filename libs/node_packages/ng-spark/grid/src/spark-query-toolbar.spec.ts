@@ -398,6 +398,51 @@ describe('query toolbar (#460 M15)', () => {
     });
   });
 
+  /**
+   * #460: in the recycle bin nothing but the SoftDelete entry point's Restore/Purge applies, as on
+   * the detail page of a row opened with `?deleted=only`. The rule lives in the grid once, so the
+   * query-list page and the sub-query card cannot disagree.
+   */
+  describe('recycle bin', () => {
+    const everything = [newAction, deleteAction, duplicateAction, exportAction];
+
+    it("deleted: 'only' offers no New, no Delete and no custom action in the toolbar or the row menu", async () => {
+      const { c, fixture } = await grid(everything, { selectionModeSetting: 'multiple', deleted: 'only' });
+
+      expect(c.toolbarActions()).toEqual([]);
+      expect(c.rowActions()).toEqual([]);
+      expect(c.offersCreate()).toBe(false);
+      expect(c.visibleCustomActions()).toEqual([]);
+      expect(fixture.nativeElement.querySelector('.spark-row-menu-toggle')).toBeNull();
+    });
+
+    it("deleted: 'include' and 'exclude' keep the normal toolbar", async () => {
+      for (const deleted of ['include', 'exclude'] as const) {
+        TestBed.resetTestingModule();
+        const { c } = await grid(everything, { selectionModeSetting: 'multiple', deleted });
+        expect(c.toolbarActions().map(a => a.name)).toEqual(['New', 'Delete', 'DuplicateAnswer', 'Export']);
+        expect(c.rowActions().map(a => a.name)).toEqual(['Delete', 'DuplicateAnswer']);
+      }
+    });
+
+    it('a grid under a deleted parent offers nothing either, without changing what it fetches', async () => {
+      const { c } = await grid(everything, { selectionModeSetting: 'multiple', parentDeleted: true });
+
+      expect(c.toolbarActions()).toEqual([]);
+      expect(c.rowActions()).toEqual([]);
+    });
+
+    it("a card in the recycle bin renders no action buttons and no row menu", async () => {
+      for (const inputs of [{ deleted: 'only' }, { parentDeleted: true, parentId: 'questions/1', parentType: 'Question' }]) {
+        TestBed.resetTestingModule();
+        const { el } = await card(everything, { selectionMode: 'multiple', ...inputs });
+
+        expect(el.querySelectorAll('bs-card-header [data-action]').length).toBe(0);
+        expect(el.querySelector('.spark-row-menu-toggle')).toBeNull();
+      }
+    });
+  });
+
   describe('card header', () => {
     it('puts the caption first and the actions after it', async () => {
       const { el } = await card([newAction, duplicateAction]);

@@ -441,7 +441,15 @@ Two fixes landed at the end of this PR:
     value lists as `querySearch`;
   - `SparkSelectionModeSetting`, `subQueriesOf()`, `defaultQueryActions()` and
     `filterDetailActions()`;
-  - the built-in icons `three-dots-vertical` and `x-circle`.
+  - the built-in icons `three-dots-vertical` and `x-circle`;
+  - **the recycle bin offers only Restore and Purge.** While a grid lists `deleted: 'only'`, or sits
+    on the detail page of a row opened with `?deleted=only` (`<spark-query-card [parentDeleted]>`,
+    which the detail page sets), its toolbar and row menu offer no New, no default Delete and no
+    custom action, the same rule as the detail page's M10 rule for a deleted row. The rule lives in
+    the grid (`recycleBin()`), so the query-list page and the sub-query card agree. The card also
+    gained a `deleted` input, which it forwards to its grid. On the server nothing changed:
+    `/spark/po/delete-many` and `/spark/actions/execute` already answered 404 for a deleted row,
+    as for a hidden one, even with a `deleted` field in the body. A test now covers this.
 - `@mintplayer/ng-spark-auth` 22.14.0: `withAccount()` — account overview, confirm-email, profile
   (app fields via `SPARK_ACCOUNT_PROFILE_FIELDS`, mail language), password, two-factor, connected
   logins, passkeys, personal data + deletion — each also a standalone component; `twitterProvider()`,

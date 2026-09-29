@@ -230,6 +230,7 @@
       <!-- The entry's selectionMode overrides the query's own for this parent (#460, D17). -->
       <spark-query-card [queryId]="subQuery.query" [parentId]="currentItem.id!" [parentType]="et.name"
                         [selectionMode]="subQuery.selectionMode ?? null"
+                        [parentDeleted]="isDeletedView()"
                         [iconTemplate]="queryIconTemplate()" [captionTemplate]="queryCaptionTemplate()"
                         [actionsTemplate]="queryActionsTemplate()" />
     }

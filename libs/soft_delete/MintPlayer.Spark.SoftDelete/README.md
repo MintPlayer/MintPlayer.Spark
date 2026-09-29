@@ -130,6 +130,14 @@ and `SPARK_DETAIL_ACTIONS` tokens from `@mintplayer/ng-spark/panels`:
   Delete and custom actions are hidden, since they judge live rows only. After a Restore the page
   drops `?deleted` and re-reads the row as a live one. After a Purge it goes back.
 
+**The recycle bin offers nothing else.** The query-list toolbar, a sub-query card and the row `⋮`
+menu show no New, no default Delete and no custom action while the grid lists `deleted: "only"`, or
+while it sits on the detail page of a row opened with `?deleted=only` (the card's `parentDeleted`).
+The rule lives once in the grid (`recycleBin()`), so the list page and the card cannot disagree. The
+server refuses the same requests anyway: `/spark/po/delete-many` and `/spark/actions/execute` judge
+live rows only, so a hand-made request that aims either at a deleted row is the same 404 as a hidden
+row, and a `deleted` field in its body widens nothing.
+
 Core ng-spark understands `?deleted=` on both pages even without this entry point: the entry point
 only adds the controls. The server stays the gate, and a widening from a non-holder is ignored.
 

@@ -1,5 +1,6 @@
 import { Component, effect, input } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { provideRouter, Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
@@ -12,6 +13,7 @@ import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/service
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
 import { EntityType, PersistentObject, ShowedOn } from '@mintplayer/ng-spark/models';
 import { SparkDetailContext, provideSparkDetailActions, provideSparkDetailPanels } from '@mintplayer/ng-spark/panels';
+import { SparkQueryCardComponent } from '@mintplayer/ng-spark/grid';
 import { settle, StubComponent } from '../../src/test-utils';
 
 const personType: EntityType = {
@@ -101,6 +103,27 @@ describe('SparkPoDetailComponent — SPARK_DETAIL_PANELS / SPARK_DETAIL_ACTIONS 
     expect(c.canDelete()).toBe(false);
     expect(c.customActions()).toEqual([]);
     expect(seen.at(-1)?.deleted).toBe('only');
+  });
+
+  it('tells its sub-query cards the parent is deleted, so they offer no New, Delete or custom action', async () => {
+    const { harness, service } = await setup();
+    const withAnswers = { ...personType, queries: ['person-notes'] };
+    service.getEntityTypes.mockResolvedValue([withAnswers]);
+    Object.assign(service, {
+      getQueries: vi.fn().mockResolvedValue([]),
+      getQuery: vi.fn().mockResolvedValue(null),
+      executeQuery: vi.fn().mockResolvedValue({ columns: [], items: [], totalItems: 0, skip: 0, take: 50 }),
+    });
+
+    await harness.navigateByUrl('/po/person/people%2F1?deleted=only', SparkPoDetailComponent);
+    await settle(harness.fixture);
+    const cards = () => harness.fixture.debugElement.queryAll(By.directive(SparkQueryCardComponent))
+      .map(d => (d.componentInstance as SparkQueryCardComponent).parentDeleted());
+    expect(cards()).toEqual([true]);
+
+    await harness.navigateByUrl('/po/person/people%2F1', SparkPoDetailComponent);
+    await settle(harness.fixture);
+    expect(cards()).toEqual([false]);
   });
 
   it('keeps the plain two-argument load for a normal page and for ?deleted=exclude', async () => {

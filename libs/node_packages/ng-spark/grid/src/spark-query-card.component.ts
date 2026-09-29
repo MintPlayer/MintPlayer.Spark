@@ -6,7 +6,7 @@ import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap
 import { BsPriorityNavComponent, BsPriorityNavItemDirective } from '@mintplayer/ng-bootstrap/priority-nav';
 import { ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
-import { CustomActionDefinition, PersistentObject, QueryResultItem, type SparkSelectionModeSetting } from '@mintplayer/ng-spark/models';
+import { CustomActionDefinition, PersistentObject, QueryResultItem, type SparkDeletedFilter, type SparkSelectionModeSetting } from '@mintplayer/ng-spark/models';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkQueryToolbarAction, sparkActionClass } from './spark-query-toolbar';
 import { inject } from '@angular/core';
@@ -81,6 +81,14 @@ export class SparkQueryCardComponent {
    * sub-query entry's. `null` defers to the query (absent there = `'auto'`).
    */
   selectionMode = input<SparkSelectionModeSetting | null>(null);
+
+  /**
+   * Soft-deletion mode and deleted parent (#460), forwarded to the grid. In the recycle bin — the
+   * grid lists `deleted: 'only'`, or its parent row was opened with `?deleted=only` — the card offers
+   * no New, Delete or custom action, exactly as the query-list page does. See `recycleBin`.
+   */
+  deleted = input<SparkDeletedFilter | null | undefined>(null);
+  parentDeleted = input(false);
 
   /**
    * Slots forwarded from a host that cannot project content — see the class comment. A card

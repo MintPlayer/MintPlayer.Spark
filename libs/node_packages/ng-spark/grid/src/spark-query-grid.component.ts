@@ -158,6 +158,22 @@ export class SparkQueryGridComponent {
     return mode && mode !== 'exclude' ? mode : undefined;
   });
 
+  /**
+   * The rows' parent is soft-deleted (#460): the detail page it sits on was opened from the recycle
+   * bin with `?deleted=only`. Nothing may be created, deleted or run under a deleted row, so the grid
+   * offers no actions — the same rule as {@link recycleBin}. The fetch is unchanged.
+   */
+  parentDeleted = input(false);
+
+  /**
+   * The recycle-bin rule (#460), applied here once for every host: while the grid lists `?deleted=only`
+   * (or sits under a deleted parent), it offers no New, no default Delete and no custom action, in
+   * the toolbar or the row menu — as the detail page does for a row opened from the recycle bin. The
+   * server would refuse them anyway: every action judges live rows, and a deleted row is a 404 to it.
+   * Restore and Purge are the SoftDelete entry point's own actions, on the row's detail page.
+   */
+  readonly recycleBin = computed(() => this.effectiveDeleted() === 'only' || this.parentDeleted());
+
   /** Query parameters for the row links; null keeps a plain link. */
   protected readonly rowQueryParams = computed(() => {
     const mode = this.effectiveDeleted();
@@ -303,12 +319,13 @@ export class SparkQueryGridComponent {
    * `canCreate` stays the bare right, since hosts read it as exactly that.
    */
   offersCreate = computed(() => {
-    if (!this.canCreate()) return false;
+    if (!this.canCreate() || this.recycleBin()) return false;
     const withheld = this.disabledActions().map(name => name.toLowerCase());
     return !withheld.includes('new') && !withheld.includes('save');
   });
 
   visibleCustomActions = computed(() => {
+    if (this.recycleBin()) return [];
     const withheld = this.disabledActions();
     if (!withheld.length) return this.customActions();
 
@@ -348,6 +365,7 @@ export class SparkQueryGridComponent {
    * - Delete: likewise with `Delete/T` and `Delete`, and only while rows can be selected (otherwise
    *   it could never be enabled — the row menu offers it per row instead).
    * - Custom: `visibleCustomActions()`.
+   * - In the recycle bin ({@link recycleBin}) none of the three: the list is empty.
    */
   toolbarActions = computed((): SparkQueryToolbarAction[] => {
     const actions: SparkQueryToolbarAction[] = [];
@@ -357,7 +375,7 @@ export class SparkQueryGridComponent {
       const name = definition.name.toLowerCase();
       if (name === 'new' && this.offersCreate()) {
         actions.push({ kind: 'new', name: definition.name, definition, priority: 1 + definition.offset });
-      } else if (name === 'delete' && !withheld.has('delete') && this.selectionMode() !== 'none') {
+      } else if (name === 'delete' && this.offersDelete(withheld) && this.selectionMode() !== 'none') {
         actions.push({ kind: 'delete', name: definition.name, definition, priority: 5 + definition.offset });
       }
     }
@@ -380,7 +398,7 @@ export class SparkQueryGridComponent {
 
     const actions: SparkQueryToolbarAction[] = [];
     for (const definition of this.defaultActions()) {
-      if (definition.name.toLowerCase() === 'delete' && !withheld.has('delete') && rowTaking(definition))
+      if (definition.name.toLowerCase() === 'delete' && this.offersDelete(withheld) && rowTaking(definition))
         actions.push({ kind: 'delete', name: definition.name, definition, priority: 5 + definition.offset });
     }
     for (const definition of this.visibleCustomActions()) {
@@ -389,6 +407,11 @@ export class SparkQueryGridComponent {
     }
     return actions;
   });
+
+  /** The default Delete: not withheld by the result, and never in the recycle bin. */
+  private offersDelete(withheld: Set<string>): boolean {
+    return !this.recycleBin() && !withheld.has('delete');
+  }
 
   /** Whether a toolbar action can run with the current selection. The server checks again. */
   isToolbarActionEnabled(action: SparkQueryToolbarAction): boolean {

@@ -9,6 +9,7 @@ using MintPlayer.Spark.Abstractions.Actions;
 using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Extensions;
+using MintPlayer.Spark.Models;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.SoftDelete;
 using MintPlayer.Spark.Testing;
@@ -439,6 +440,56 @@ public class SoftDeleteTests : SparkTestDriver
         stored!.IsDeleted.Should().BeTrue();
     }
 
+    // ---- nothing but Restore and Purge reaches a deleted row -------------------------------------
+
+    /// <summary>
+    /// The recycle bin offers only Restore and Purge (#460). A hand-made request that aims the default
+    /// Delete or a custom action at a deleted row is the same 404 as a hidden row — both judge live
+    /// rows only — and a <c>deleted</c> field smuggled into the body widens nothing. The live control
+    /// proves the refusal is about the row, not the request.
+    /// </summary>
+    [Fact]
+    public async Task The_default_Delete_and_a_custom_action_on_a_deleted_row_are_404()
+    {
+        var host = await StartAsync(services: s =>
+        {
+            s.AddScoped<SdTouchAction>();
+            s.AddSingleton<ICustomActionsConfigurationLoader>(new SdCustomActions(SdTouchAction.Name));
+            s.AddScoped<ICustomActionResolver>(sp => new SdActionResolver(SdTouchAction.Name, sp.GetRequiredService<SdTouchAction>()));
+        });
+        var live = await SeedNoteAsync("live");
+        var gone = await SeedNoteAsync("gone", deleted: true);
+
+        object ActionOn(string id, bool smuggleDeleted) => smuggleDeleted
+            ? Wire.Action(NoteTypeId, SdTouchAction.Name, new { selectedItemIds = new[] { id }, queryId = NotesQueryId.ToString(), deleted = "only" })
+            : Wire.Action(NoteTypeId, SdTouchAction.Name, new { selectedItemIds = new[] { id }, queryId = NotesQueryId.ToString() });
+        object DeleteMany(string id, bool smuggleDeleted) => smuggleDeleted
+            ? Wire.Typed(NoteTypeId, new { ids = new[] { id }, queryId = NotesQueryId.ToString(), deleted = "only" })
+            : Wire.Typed(NoteTypeId, new { ids = new[] { id }, queryId = NotesQueryId.ToString() });
+
+        var (actionStatus, _) = await host.SendAsync("/spark/actions/execute", ActionOn(gone.Id!, smuggleDeleted: false));
+        var (smuggledActionStatus, _) = await host.SendAsync("/spark/actions/execute", ActionOn(gone.Id!, smuggleDeleted: true));
+        var (deleteStatus, _) = await host.SendAsync("/spark/po/delete-many", DeleteMany(gone.Id!, smuggleDeleted: false));
+        var (smuggledDeleteStatus, _) = await host.SendAsync("/spark/po/delete-many", DeleteMany(gone.Id!, smuggleDeleted: true));
+
+        actionStatus.Should().Be(HttpStatusCode.NotFound);
+        smuggledActionStatus.Should().Be(HttpStatusCode.NotFound);
+        deleteStatus.Should().Be(HttpStatusCode.NotFound);
+        smuggledDeleteStatus.Should().Be(HttpStatusCode.NotFound);
+        host.Recorder.Events.Should().BeEmpty("neither the action nor a second delete ran on the deleted row");
+        var stored = await LoadAsync<SdNote>(gone.Id!);
+        stored!.IsDeleted.Should().BeTrue();
+        stored.DeletedAt.HasValue.Should().BeFalse("a second soft delete would have stamped it");
+
+        // Control: the same requests on a live row go through.
+        var (liveAction, _) = await host.SendAsync("/spark/actions/execute", ActionOn(live.Id!, smuggleDeleted: false));
+        var (liveDelete, _) = await host.SendAsync("/spark/po/delete-many", DeleteMany(live.Id!, smuggleDeleted: false));
+
+        liveAction.Should().Be(HttpStatusCode.OK);
+        liveDelete.Should().Be(HttpStatusCode.NoContent);
+        host.Recorder.Events.Should().Equal($"Touched:{live.Id}", $"Deleted:{live.Id}");
+    }
+
     // ---- startup ---------------------------------------------------------------------------------
 
     [Fact]
@@ -668,6 +719,40 @@ internal sealed class SdRefusingRevisions : ISoftDeleteRevisions
     public Task EnsureCanDeleteAsync() => throw new InvalidOperationException("Purge refused: the probe was not allowed.");
 
     public Task<long> DeleteAsync(string id) => throw new InvalidOperationException("Must not be reached: the probe refused.");
+}
+
+/// <summary>A custom action that records the rows it ran on.</summary>
+public sealed class SdTouchAction(SdRecorder recorder) : ICustomAction
+{
+    public const string Name = "SdTouch";
+
+    public Task ExecuteAsync(CustomActionArgs args, CancellationToken cancellationToken = default)
+    {
+        foreach (var item in args.SelectedItems)
+            recorder.Events.Enqueue($"Touched:{item.Id}");
+        return Task.CompletedTask;
+    }
+}
+
+internal sealed class SdCustomActions(params string[] names) : ICustomActionsConfigurationLoader
+{
+    public CustomActionsConfiguration GetConfiguration()
+    {
+        var configuration = new CustomActionsConfiguration();
+        foreach (var name in names)
+            configuration[name] = new CustomActionDefinition { DisplayName = TranslatedString.Create(name), ShowedOn = "both" };
+        return configuration;
+    }
+
+    public void InvalidateCache() { }
+}
+
+internal sealed class SdActionResolver(string name, ICustomAction action) : ICustomActionResolver
+{
+    public ICustomAction? Resolve(string actionName)
+        => string.Equals(actionName, name, StringComparison.OrdinalIgnoreCase) ? action : null;
+
+    public IReadOnlyList<string> GetRegisteredActionNames() => [name];
 }
 
 public sealed class SdObserver(SdRecorder recorder) : ISoftDeleteObserver
