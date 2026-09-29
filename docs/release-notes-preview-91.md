@@ -273,7 +273,10 @@ result synchronously must await it. `sparkAuthenticatedGuard` is an alias.
 - **ng-spark.**
   - The card's header puts the caption on the left and the actions on the right. It was the other
     way round.
-  - The priority nav's overflow label is `…`, where it used to be `common.more`.
+  - The priority nav's overflow label is the translated "More" (`common.more`), on the card as on the
+    list and detail pages.
+  - The card's header buttons (New, Delete and the custom actions) have square corners
+    (`rounded-0`), since they sit edge to edge in the priority nav.
   - Both the card and the query page render `New`, `Delete` and the custom actions from the grid's
     `toolbarActions()`. The query page's New still emits `createClicked`.
   - The create page calls `/spark/po/new` for every New: one extra request, and it runs the type's
@@ -457,6 +460,13 @@ Two fixes landed at the end of this PR:
     gained a `deleted` input, which it forwards to its grid. On the server nothing changed:
     `/spark/po/delete-many` and `/spark/actions/execute` already answered 404 for a deleted row,
     as for a hidden one, even with a `deleted` field in the body. A test now covers this.
+  - **a selected row's links and `⋮` toggle stay readable.** They rendered primary on primary,
+    because a link and a `.btn-link` do not inherit the datatable's selected-row colour. A scoped
+    rule in `spark-query-grid.component.scss` hands `--mp-datatable-row-selected-color` down to
+    them; no colour is hard-coded, so both themes follow;
+  - **square header buttons:** the card's header actions carry `rounded-0`;
+  - **opening a second row menu works.** With one row's menu open, clicking another row's toggle
+    used to close the new menu at once; `closeRowMenu(rowId)` now closes only its own row's menu.
 - `@mintplayer/ng-spark-auth` 22.14.0: `withAccount()` — account overview, confirm-email, profile
   (app fields via `SPARK_ACCOUNT_PROFILE_FIELDS`, mail language), password, two-factor, connected
   logins, passkeys, personal data + deletion — each also a standalone component; `twitterProvider()`,
@@ -489,3 +499,14 @@ From the plan's pre-merge checklist (`docs/issue_460_plan.md`), the items a depl
 - [ ] **security.json** has no `*` left (SPARK021 fails the build first).
 - [ ] **History on Community**: the model's revision limits fit the licence, and the database
   certificate has database-admin, or `Spark:History:ConfigureRevisions=false`.
+
+## Ops notes (CodeCoverage and CI)
+
+- **The CodeCoverage Dockerfile no longer runs a separate `dotnet build`.** The template's
+  `dotnet build -o /app/build` wrote output nothing ever copied, and `dotnet publish` compiled the
+  whole closure again. Measured locally: the .NET steps went from 58.8 s to 40.8 s, and the image
+  holds the same 95 files in `/app`. The DemoApp Dockerfile drops the same step.
+- **New PR check `code-coverage-image-check.yml`.** It builds the production CodeCoverage image on
+  every pull request that could change it (the deploy's path filter), so a broken Dockerfile fails
+  the PR instead of the production deploy. It never logs in or pushes, and reads the gha layer cache
+  without writing to it.

@@ -26,7 +26,7 @@
         <ng-container *ngTemplateOutlet="tpl; context: { $implicit: customActions(), actions: toolbarActions(), selection: selection(), query: query() }"></ng-container>
       } @else if (toolbarActions().length) {
         <!-- The default: New, Delete and the custom actions the server offers this caller, with the
-             overflow in the priority nav's "…". The nav renders only when there are any.
+             overflow in the priority nav under the translated "More" (common.more). The nav renders only when there are any.
 
              Disabled, not hidden: hiding makes the affordance undiscoverable and reflows the
              priority nav on every selection change. The server enforces the same rules. -->

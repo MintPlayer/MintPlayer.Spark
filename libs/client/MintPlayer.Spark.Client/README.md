@@ -93,12 +93,13 @@ anti-forgery gate and no useful message.
 | `DeletePersistentObjectAsync(type, id)` | `POST /spark/po/delete` |
 | `DeletePersistentObjectsAsync(type, ids, queryId, parentId, parentType)` | `POST /spark/po/delete-many` |
 | `ExecuteQueryAsync(query, skip, take, search, parentId, parentType, sortColumns, columns)` | `POST /spark/queries/execute` |
-| `GetDistinctValuesAsync(query, column, search, columns, parentId, parentType)` | `POST /spark/queries/distinct-values` |
+| `GetDistinctValuesAsync(query, column, search, columns, parentId, parentType, …, deleted, querySearch, parentDeleted)` | `POST /spark/queries/distinct-values` (`search` narrows the listed values; `querySearch` is the grid's search, applied as `/execute` applies `search`) |
 | `GetQueryAsync(query)` / `ListQueriesAsync()` | `POST /spark/queries/get`, `GET /spark/queries` |
 | `ExecuteActionAsync(type, name, parent, selectedItemIds, parentId, parentType, queryId, …)` | `POST /spark/actions/execute` |
 | `ContinueAsync(result, option, persistentObject)` | the same endpoint, one answer further |
 | `RefreshPersistentObjectAsync(obj, triggeredBy)` | `POST /spark/po/refresh` |
 | `NewPersistentObjectAsync(type, asDetailAttribute, parentType, parentId, parameters)` | `POST /spark/po/new` |
+| `NewPersistentObjectFromSubQueryAsync(type, parentType, parentId, queryId, parameters)` | `POST /spark/po/new` (sub-query context: the base `OnNewAsync` fills the reference to the parent) |
 | `DeleteRowAsync(type, asDetailAttribute, parentType, parentId, rowKey)` | `POST /spark/po/delete-row` |
 | `ListEntityTypesAsync()` / `GetEntityTypeAsync(type)` | `GET /spark/types`, `GET /spark/types/{id}` |
 | `ListAliasesAsync()` | `GET /spark/aliases` |
@@ -265,7 +266,11 @@ All four throw `SparkClientException`; switch on `StatusCode`.
 
 Query calls take `deleted:` (`SparkDeletedFilter.Exclude` / `Include` / `Only`, #460 T2) on
 `ExecuteQueryAsync` and `GetDistinctValuesAsync`; it is sent only when set, and a widening is
-honoured only for callers holding `ViewDeleted` on the type.
+honoured only for callers holding `ViewDeleted` on the type. Both also take `parentDeleted:` (their
+last optional parameter), the mode a sub-query's **parent** is resolved under: pass `Include` to list
+the sub-queries of a deleted row. It is honoured only for holders of `ViewDeleted/{ParentType}`;
+anyone else gets the same 404 as a missing parent. The rows' own `deleted:` is independent, and
+`ExecuteActionAsync` / `DeletePersistentObjectsAsync` always resolve a live parent.
 
 ⚠️ **An operation type this client has never heard of is ignored, not thrown on.** It arrives as
 `SparkUnknownOperation` with its payload intact. That is the point of the contract: a newer server

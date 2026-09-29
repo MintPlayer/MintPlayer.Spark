@@ -104,7 +104,8 @@ replaces the first.
 The grid (`/grid`) owns one toolbar model, `SparkQueryGridComponent.toolbarActions()`. It holds the
 server's default `New` and `Delete` (`isDefault` entries from `/spark/actions/list`) and the custom
 actions, each enabled from the live selection count. The sub-query card's header renders it on the
-right, with the overflow in `…`, and the query page's action bar renders it too.
+right, with the overflow under the translated "More" label (`common.more`), and the query page's
+action bar renders it too.
 
 The grid also renders:
 - an "N selected" chip while rows are selected. There is no select-all: with paged, lazy or
@@ -112,7 +113,10 @@ The grid also renders:
   own header checkbox, shown only while a row is selected. Single selection has no checkbox
   column, so there the chip carries a ⊗ that clears the selection;
 - a per-row `⋮` menu of the actions whose rule accepts one row. A menu item runs on that row only and
-  leaves the checkbox selection alone.
+  leaves the checkbox selection alone. The menu is a CDK connected overlay with ng-bootstrap's
+  `<bs-dropdown-menu>` inside, not `@mintplayer/ng-bootstrap/dropdown`, pending
+  [ng-bootstrap #419](https://github.com/MintPlayer/mintplayer-ng-bootstrap/issues/419) (the
+  dropdown fesm fails to initialise in unlinked JIT test runs).
 
 - **Selection** follows `selectionMode` (`'auto' | 'none' | 'single' | 'multiple'`).
   - It is set on the query, or on the parent type's `queries` entry, which `<spark-query-card
@@ -132,6 +136,12 @@ The grid also renders:
   server searches the sub-query's rows (with `parentId`/`parentType`), and to the column filters'
   value lists as `querySearch`. **A new term clears the selection.** The card's `search` input is the
   starting term; `[searchable]="false"` hides the box, and a card over bound `data` has none.
+- **Recycle bin.** While the grid lists `deleted: 'only'`, or sits under a deleted parent, its
+  toolbar and row menu are empty (no New, no Delete, no custom action): the recycle bin offers only
+  Restore and Purge. `<spark-query-card>` takes `[deleted]` (the rows' mode, forwarded to its grid)
+  and `[parentDeleted]` (the parent is a deleted row; the detail page sets it for a row opened with
+  `?deleted=only`). Under a deleted parent the grid sends `parentDeleted: 'include'` on execute and
+  distinct-values, which the server honours only for holders of `ViewDeleted/{ParentType}`.
 
 ```html
 <spark-search-box [(term)]="term" />

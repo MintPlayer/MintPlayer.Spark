@@ -181,6 +181,10 @@ not copies in every Actions class — see `docs/guide-row-security.md`:
   is withheld and a purge when `Delete` is. README: `libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md`.
   `/spark/po/load` takes `deleted: include|only` (honoured for `ViewDeleted/T` holders) to open a row
   from the recycle bin; `/spark/permissions/{type}` reports `canRestore`, `canPurge`, `canViewDeleted`.
+  A sub-query of a deleted row passes `parentDeleted: exclude|include|only` on
+  `/spark/queries/execute` and `/spark/queries/distinct-values` (the mode the **parent** is resolved
+  under; honoured for `ViewDeleted/{ParentType}` holders, otherwise the missing-parent 404). Actions
+  and delete-many always resolve a live parent, and judge live rows only.
 - **History / audit is a package** — `MintPlayer.Spark.History`: `spark.AddHistory()`, entity
   implements `IAuditable` (stamped with user **ids**; `CreatedBy` immutable), revisions come from the
   model's `"revisions": { "enabled": true, … }` block (merged into the database at startup — never
@@ -294,6 +298,10 @@ itself (`auto` by default, derived from the custom actions).
   `base.OnNewAsync(args)` or `args.FillParentReference()`, or the reference stays empty.
 - Name the attribute with `parentReference` when the row type references the parent more than once.
   A wrong name fails startup.
+- A sub-query's search goes to `/spark/queries/execute` as `search` (with `parentId`/`parentType`),
+  and to `/spark/queries/distinct-values` as **`querySearch`**, applied the same way, so a column
+  filter lists only values from rows the grid shows. (`search` on distinct-values narrows the listed
+  values themselves.)
 
 **Accounts** (`spark.AddAuthentication<TUser>()`, `MintPlayer.Spark.Authorization` README has the
 route table):

@@ -324,7 +324,7 @@ query-list page's action bar.
   - `New` needs the right, and a result that does not withhold `New`.
   - `Delete` is shown only while rows can be selected.
   - The card puts its caption on the left and the actions on the right, with the overflow in the
-    priority nav's `…`.
+    priority nav under the translated "More" label (`common.more`), as on the list and detail pages.
 - **Selection bar:** an "N selected" chip while rows are selected. There is no select-all (with
   paged, lazy or virtual-scrolled rows it could only tick the loaded rows); the datatable's header
   checkbox is the deselect-all, shown only while a row is selected. Single selection has no
@@ -332,6 +332,22 @@ query-list page's action bar.
 - **Row menu (`⋮`):** every offered action whose rule accepts exactly one row, including Delete. It
   runs on that row only and leaves the checkbox selection alone. An action without a rule acts on the
   query, not on a row, so it is not in the menu.
+- **Search box:** the card's header ends with `<spark-search-box>` (`@mintplayer/ng-spark/grid`), the
+  same component the query-list page uses (300 ms debounce, clear button, Escape clears). It feeds the
+  grid's `search`, which `/spark/queries/execute` applies together with `parentId`/`parentType`. The
+  column filters' value lists get the same term as `querySearch` on `/spark/queries/distinct-values`,
+  so they only list values from rows the grid shows. A new term clears the selection.
+  `[searchable]="false"` hides the box.
+- **Recycle bin:** while the grid lists `deleted: 'only'`, or sits under a deleted parent (the card's
+  `[parentDeleted]`, set by the detail page for a row opened with `?deleted=only`), the toolbar and
+  the row menu are empty: no New, no Delete, no custom action. The recycle bin offers only Restore and
+  Purge. The server agrees: `/spark/po/delete-many` and `/spark/actions/execute` judge live rows only,
+  so an action aimed at a deleted row is a 404.
+- **`parentDeleted`:** a sub-query under a deleted parent sends `parentDeleted: 'include'`
+  (`exclude | include | only`) on execute and distinct-values, the mode the *parent* is resolved
+  under. Only a holder of `ViewDeleted/{ParentType}` gets the widening; anyone else gets the same 404
+  as a missing parent. The rows' own `deleted` is independent. Actions and delete-many always resolve
+  their parent as a live row.
 
 ### New from a sub-query: `OnNewAsync` (D19)
 
