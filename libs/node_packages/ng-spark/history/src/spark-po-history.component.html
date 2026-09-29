@@ -69,7 +69,7 @@
 
         @if (selectedLoading()) {
           <div class="text-center p-2"><bs-spinner /></div>
-        } @else if (selectedObject(); as revisionObject) {
+        } @else if (selectedObject()) {
           @if (view() === 'diff') {
             @if (changes().length === 0) {
               <p class="text-muted spark-history-nochanges">{{ 'history.noChanges' | t }}</p>
@@ -83,11 +83,17 @@
                   </tr>
                 </thead>
                 <tbody>
-                  @for (change of changes(); track change.attribute.name) {
+                  @for (row of changeCells(); track row.change.attribute.name) {
                     <tr class="spark-history-change">
-                      <th scope="row">{{ change.attribute.label | resolveTranslation:change.attribute.name }}</th>
-                      <td class="spark-history-old">{{ change.attribute.name | attributeValue:revisionObject:entityType():{}:[] }}</td>
-                      <td class="spark-history-new">{{ change.attribute.name | attributeValue:current():entityType():{}:[] }}</td>
+                      <th scope="row">{{ row.change.attribute.label | resolveTranslation:row.change.attribute.name }}</th>
+                      <td class="spark-history-old">
+                        <spark-grid-cell [column]="row.old.column" [display]="row.old.display" [rendererValue]="row.old.rendererValue"
+                                         [item]="selectedObject()" [chips]="row.old.chips" />
+                      </td>
+                      <td class="spark-history-new">
+                        <spark-grid-cell [column]="row.now.column" [display]="row.now.display" [rendererValue]="row.now.rendererValue"
+                                         [item]="current()" [chips]="row.now.chips" />
+                      </td>
                     </tr>
                   }
                 </tbody>
@@ -95,9 +101,12 @@
             }
           } @else {
             <dl class="spark-history-view">
-              @for (attribute of attributes(); track attribute.name) {
-                <dt>{{ attribute.label | resolveTranslation:attribute.name }}</dt>
-                <dd>{{ attribute.name | attributeValue:revisionObject:entityType():{}:[] }}</dd>
+              @for (entry of viewCells(); track entry.attribute.name) {
+                <dt>{{ entry.attribute.label | resolveTranslation:entry.attribute.name }}</dt>
+                <dd>
+                  <spark-grid-cell [column]="entry.cell.column" [display]="entry.cell.display" [rendererValue]="entry.cell.rendererValue"
+                                   [item]="selectedObject()" [chips]="entry.cell.chips" />
+                </dd>
               }
             </dl>
           }

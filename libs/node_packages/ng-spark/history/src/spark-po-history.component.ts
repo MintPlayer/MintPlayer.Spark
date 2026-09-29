@@ -6,13 +6,29 @@ import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsBadgeComponent } from '@mintplayer/ng-bootstrap/badge';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { BsTableComponent } from '@mintplayer/ng-bootstrap/table';
-import { AttributeValuePipe, ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
+import { SparkGridCellComponent, SparkGridRenderers } from '@mintplayer/ng-spark/grid';
+import { QueryCellValuePipe, QueryReferenceChipsPipe, ReferenceChip, ResolveTranslationPipe, TranslateKeyPipe } from '@mintplayer/ng-spark/pipes';
+import { cellValue } from '@mintplayer/ng-spark/renderers';
 import { SparkLanguageService } from '@mintplayer/ng-spark/services';
-import { EntityPermissions, EntityType, PersistentObject, SparkDeletedFilter } from '@mintplayer/ng-spark/models';
+import {
+  EntityAttributeDefinition, EntityPermissions, EntityType, LookupReference, PersistentObject, QueryColumn, QueryResultItem,
+  SparkDeletedFilter, valueFor,
+} from '@mintplayer/ng-spark/models';
 import { SparkHistoryService, SparkRevision } from './spark-history.service';
 import { diffRevision, revisionAttributes } from './revision-diff';
 
 type HistoryView = 'view' | 'diff';
+
+/** One attribute of one object, ready for `<spark-grid-cell>`. */
+interface HistoryCell {
+  column: QueryColumn;
+  display: unknown;
+  rendererValue: unknown;
+  chips: ReferenceChip[];
+}
+
+const cellValuePipe = new QueryCellValuePipe();
+const chipsPipe = new QueryReferenceChipsPipe();
 
 /**
  * A row's revision history (#460, History package): the revision list, a read-only view of one
@@ -28,7 +44,7 @@ type HistoryView = 'view' | 'diff';
  */
 @Component({
   selector: 'spark-po-history',
-  imports: [DatePipe, BsAlertComponent, BsBadgeComponent, BsSpinnerComponent, BsTableComponent, AttributeValuePipe, ResolveTranslationPipe, TranslateKeyPipe],
+  imports: [DatePipe, BsAlertComponent, BsBadgeComponent, BsSpinnerComponent, BsTableComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe],
   templateUrl: './spark-po-history.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -68,6 +84,31 @@ export class SparkPoHistoryComponent {
   protected readonly attributes = computed(() => revisionAttributes(this.entityType()));
   protected readonly changes = computed(() => diffRevision(this.entityType(), this.selectedObject(), this.current()));
 
+  private readonly gridRenderers = inject(SparkGridRenderers);
+  /** Lookup-reference labels for the shown attributes, so a lookup value reads as its label. */
+  private readonly lookupOptions = signal<Record<string, LookupReference>>({});
+
+  /**
+   * The read-only view: every shown attribute of the selected revision, rendered by the same
+   * `<spark-grid-cell>` (and custom renderers) as a query grid — a reference as its label, a date in
+   * the viewer's culture and zone, a boolean as a checkbox — instead of the raw wire value.
+   */
+  protected readonly viewCells = computed(() => {
+    const revision = this.selectedObject();
+    return revision ? this.attributes().map(a => ({ attribute: a, cell: this.cell(a, revision) })) : [];
+  });
+
+  /** The diff rows, both sides rendered like {@link viewCells}. */
+  protected readonly changeCells = computed(() => {
+    const revision = this.selectedObject();
+    const current = this.current();
+    return this.changes().map(change => ({
+      change,
+      old: this.cell(change.attribute, revision),
+      now: this.cell(change.attribute, current),
+    }));
+  });
+
   protected readonly canRevertSelected = computed(() => {
     const revision = this.selected();
     return !!revision
@@ -79,6 +120,13 @@ export class SparkPoHistoryComponent {
   });
 
   constructor() {
+    effect(() => {
+      const attributes = this.attributes();
+      untracked(() => {
+        this.gridRenderers.loadLookupOptions(attributes).then(o => this.lookupOptions.set(o), () => this.lookupOptions.set({}));
+      });
+    });
+
     // (Re)load the list when the row, its mode or the rights change. A revert emits a new `current`
     // but keeps the id, so it is not in this effect; `refresh()` reloads explicitly.
     effect(() => {
@@ -162,6 +210,23 @@ export class SparkPoHistoryComponent {
     } finally {
       this.reverting.set(false);
     }
+  }
+
+  /**
+   * One attribute of `po` for `<spark-grid-cell>`. A persistent object is a row the grid pipes read
+   * (`valueFor` understands both shapes), so the value resolution is the grid's, not a copy of it.
+   */
+  private cell(attribute: EntityAttributeDefinition, po: PersistentObject | null): HistoryCell {
+    const column = attribute as unknown as QueryColumn;
+    const row = po as unknown as QueryResultItem | null;
+    const display = cellValuePipe.transform(column, row, this.lookupOptions());
+    return {
+      column,
+      // The detail page's placeholder for an empty value; a boolean keeps null (an indeterminate box).
+      display: attribute.dataType !== 'boolean' && (display == null || display === '') ? '-' : display,
+      rendererValue: cellValue(valueFor(row, attribute.name)),
+      chips: chipsPipe.transform(column, row),
+    };
   }
 
   protected who(revision: SparkRevision): string {

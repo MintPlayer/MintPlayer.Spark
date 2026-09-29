@@ -141,6 +141,48 @@ describe('history entry point (#460)', () => {
     expect(view.textContent).not.toContain('Hidden');
   });
 
+  it('renders values like the detail page: reference labels, formatted dates, checkboxes, a dash for empty', async () => {
+    const typed: EntityType = {
+      ...entityType,
+      attributes: [
+        { id: 'b1', name: 'Question', dataType: 'Reference', referenceType: 'Test.Question', isVisible: true, order: 1, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'b2', name: 'PostedAt', dataType: 'datetime', isVisible: true, order: 2, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'b3', name: 'IsDeleted', dataType: 'boolean', isVisible: true, order: 3, showedOn: ShowedOn.PersistentObject } as any,
+        { id: 'b4', name: 'Reason', dataType: 'string', isVisible: true, order: 4, showedOn: ShowedOn.PersistentObject } as any,
+      ],
+    } as any;
+    const revision = {
+      id: 'docs/1', name: 'Doc', objectTypeId: 't-doc',
+      attributes: [
+        { id: 'q', name: 'Question', dataType: 'Reference', value: 'Questions/1', breadcrumb: 'How do I revert?' },
+        { id: 'p', name: 'PostedAt', dataType: 'datetime', value: '2026-09-29T05:39:08.6735907+00:00' },
+        { id: 'd', name: 'IsDeleted', dataType: 'boolean', value: false },
+        { id: 'r', name: 'Reason', dataType: 'string', value: null },
+      ],
+    } as any;
+    spark.postEnvelope.mockImplementation(async (path: string) => path === '/po/revisions' ? revisions : revision);
+    const fixture = TestBed.createComponent(SparkPoHistoryComponent);
+    fixture.componentRef.setInput('type', 'doc');
+    fixture.componentRef.setInput('id', 'docs/1');
+    fixture.componentRef.setInput('entityType', typed);
+    fixture.componentRef.setInput('current', revision);
+    fixture.componentRef.setInput('permissions', { canViewHistory: true });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await fixture.componentInstance.select(revisions[1]);
+    fixture.componentInstance['view'].set('view');
+    fixture.detectChanges();
+
+    const values = [...fixture.nativeElement.querySelectorAll('.spark-history-view dd')] as HTMLElement[];
+    expect(values[0].textContent!.trim()).toBe('How do I revert?');
+    expect(values[1].textContent).not.toContain('2026-09-29T');
+    expect(values[1].textContent).toMatch(/\d/);
+    const box = values[2].querySelector('input[type=checkbox]') as HTMLInputElement;
+    expect(box).not.toBeNull();
+    expect(box.checked).toBe(false);
+    expect(values[3].textContent!.trim()).toBe('-');
+  });
+
   it('offers Revert only with canRevert, never for the current or a delete revision, nor from the recycle bin', async () => {
     const without = await render({ canViewHistory: true, canRevert: false });
     await without.componentInstance.select(revisions[1]);
