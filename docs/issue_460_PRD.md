@@ -1458,6 +1458,34 @@ ids) is the owner's.
   local run waited ~15 min for EOF; builds now use `--disable-build-servers`, output drain bounded.
 Reruns: the failed tests, then Spark.Tests (3198/3198) and E2E (120/120) in full.
 ---
+#### M15 — deviations and findings
+
+- **`OnNewAsync` already existed.** It is `OnNewAsync(SparkNewArgs<T>)`, behind `POST /spark/po/new`,
+  added for AsDetail rows. The pre-M15 audit said there was no such hook, and that was wrong. The
+  existing hook was extended rather than joined by a second `OnNewAsync(obj, NewContext)`:
+  `SparkNewArgs` gained `ParentType`, `Query`, `ParentReference` and `FillParentReference()`, and
+  `INewInvoker` gained an optional `SparkNewSubQueryContext`.
+  - The auto-fill runs for a New started from a sub-query only. An AsDetail row's parent owns the
+    save.
+  - `NewInvoker` still skips a base hook that is not overridden, except for a sub-query New, where the
+    base does work.
+- **`auto` does not count the default Delete.** Counting it would have turned every deletable grid
+  into click-to-select. Selection stays opt-in, and without it Delete sits in the row `⋮` menu.
+- **The type is `SparkSelectionModeSetting`.** The `'auto'` value lives on
+  `SparkSelectionModeSetting = 'auto' | SparkSelectionMode`, because the rendered mode is what
+  `<bs-datatable>` binds.
+- **An `ICustomAction` named `New` or `Delete` is never executed** (404), instead of failing at
+  startup: the loader is lazy.
+- **No bulk Purge.** A purge deletes revisions with an admin operation that cannot join the
+  transaction.
+- **Found by the new tests:** `[Register(typeof(Self))]` registers nothing (the generator maps a
+  service type only when it differs from the implementation), so the write batch got an internal
+  interface.
+- **Not run locally.** At the owner's request (2026-09-29) the full sweep was stopped after the new
+  .NET tests passed (45/45), and CI runs the suites. The other test projects, vitest, the QnA E2E specs
+  and `--spark-verify-*` for the other apps were not run locally. QnA's verify-model (after the
+  resync) and verify-security pass.
+
 
 ## 5. Risks
 
