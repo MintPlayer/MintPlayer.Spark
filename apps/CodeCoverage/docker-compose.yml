@@ -133,8 +133,11 @@ services:
       - smtp-queue:/var/spool/postfix
     networks:
       - coverage-internal
+    # bash, not sh: /dev/tcp is a bash feature, and this image's sh is dash, so the sh form
+    # failed on every probe and marked a working relay "unhealthy" in production. The image is
+    # Debian-based and ships /usr/bin/bash, as the other two healthchecks here assume.
     healthcheck:
-      test: ["CMD", "sh", "-c", "exec 3<>/dev/tcp/127.0.0.1/587"]
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/587"]
       interval: 15s
       timeout: 5s
       retries: 6
