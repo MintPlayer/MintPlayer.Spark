@@ -1561,6 +1561,7 @@ Reruns: the failed tests, then Spark.Tests (3198/3198) and E2E (120/120) in full
 - Rewriting the overridable core pipeline (D1 — owner decision, documented gaps instead).
 - Moderation: suggested edits, accepted answers/bounties, close votes, badges, notifications, device fingerprinting, ML Sybil detection, vote fuzzing, shadow bans, automatic suspension.
 - Opening inbound SMTP on the VPS (tier-2 bounces are a documented recipe, D9).
+- System dark mode (`prefers-color-scheme`), tracked in #462, was left out by the owner on 2026-09-29. It needs an ng-bootstrap release first, for theme switching and theme-aware datatable and component variables. The planned order is ng-bootstrap, then its release, then Spark. The #460 selected-row contrast fix already uses the datatable's theme variable, so it carries over unchanged.
 - Absorbing the MintPlayer repository into `apps/MintPlayer`: **decided, as the next step after this PR merges**, then the old repository is archived and this one pinned (see the plan).
 - MintPlayer's own upgrade (tracked in the MintPlayer repo) — but its ForwardedHeaders and soft-delete overrides are called out for it.
 - Deprecating SocketExtensions 10.0.0 on nuget.org (manual account step).
