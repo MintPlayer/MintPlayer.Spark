@@ -113,6 +113,13 @@ describe('SparkQueryCardComponent', () => {
       expect(text()).toContain('Export');
     });
 
+    it('labels the overflow with the translated "more", as the list and detail pages do', async () => {
+      const { fixture } = await bare([exportAction]);
+
+      const label = fixture.nativeElement.querySelector('bs-priority-nav .priority-nav-more-label');
+      expect(label?.textContent?.trim()).toBe('common.more');
+    });
+
     it('renders no action bar when the type declares none', async () => {
       const { fixture } = await bare([]);
 
