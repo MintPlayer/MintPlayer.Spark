@@ -389,43 +389,6 @@ export class SparkQueryGridComponent {
     return actions;
   });
 
-  /** The rows of the page on screen, for the select-all box. */
-  private readonly pageRows = signal<QueryResultItem[]>([]);
-
-  /** Every row of the current page is selected. */
-  allPageRowsSelected = computed(() => {
-    const rows = this.visiblePageRows();
-    if (!rows.length) return false;
-    const selected = new Set(this.selection().map(r => r.id));
-    return rows.every(r => selected.has(r.id));
-  });
-
-  /** Some, but not all, rows of the current page are selected. */
-  somePageRowsSelected = computed(() => {
-    const selected = new Set(this.selection().map(r => r.id));
-    const rows = this.visiblePageRows();
-    const count = rows.filter(r => selected.has(r.id)).length;
-    return count > 0 && count < rows.length;
-  });
-
-  private readonly visiblePageRows = computed(() => this.data() ?? this.pageRows());
-
-  /** Ticks every row of the page on screen, or clears the selection when they already are. */
-  toggleSelectAll(): void {
-    if (this.allPageRowsSelected()) {
-      this.clearSelection();
-      return;
-    }
-    const byId = new Map(this.selection().map(r => [r.id, r] as const));
-    for (const row of this.visiblePageRows()) byId.set(row.id, row);
-    this.selection.set([...byId.values()]);
-  }
-
-  /** The "N selected ⊗" chip's clear button. */
-  clearSelection(): void {
-    this.selection.set([]);
-  }
-
   /** Whether a toolbar action can run with the current selection. The server checks again. */
   isToolbarActionEnabled(action: SparkQueryToolbarAction): boolean {
     return this.isActionEnabled(action.definition);
@@ -891,7 +854,6 @@ export class SparkQueryGridComponent {
     this.permissions.set(null);
     this.customActions.set([]);
     this.defaultActions.set([]);
-    this.pageRows.set([]);
     this.resultCount.set(null);
     // Ids from the previous query are meaningless against the next one, and would be POSTed as
     // though they belonged to it.
@@ -994,7 +956,6 @@ export class SparkQueryGridComponent {
       this.setFetchedColumns(r.columns ?? []);
       // Per-result, so it is re-read on every page rather than latched from the first.
       this.disabledActions.set(r.disabledActions ?? []);
-      this.pageRows.set(r.items ?? []);
       return {
         data: r.items,
         totalRecords: r.totalItems,

@@ -104,11 +104,14 @@ Three structural directives, projected by the host, each collected with `content
 
 **Header side (#460 M15):** the caption comes first, with `me-auto`, and the actions sit on the
 trailing edge, as this table always said. Until M15 the card rendered them the other way round,
-with the actions on the left and the caption pushed right. The priority nav's overflow label is
-`…`. The actions slot's context gains `actions`, the full toolbar model, beside `$implicit`, which is
-still the custom actions only. See `guide-custom-actions.md`, "Default actions, selection and
-sub-queries", for the toolbar, the "N selected ⊗" chip, the select-all box and the per-row `⋮` menu.
-The grid owns all of them, so the query-list page shows the same ones.
+with the actions on the left and the caption pushed right. The priority nav's overflow label is the
+translated `common.more`, as on the list and detail pages. The actions slot's context gains
+`actions`, the full toolbar model, beside `$implicit`, which is still the custom actions only. See
+`guide-custom-actions.md`, "Default actions, selection and sub-queries", for the toolbar, the
+"N selected" chip and the per-row `⋮` menu. The grid owns all of them, so the query-list page shows
+the same ones. There is no select-all (owner decision, 2026-09-29): with lazy or virtual-scrolled
+rows it could only select the loaded rows. Deselect-all is the datatable's own header checkbox,
+shown only while a row is selected.
 
 Each takes an **optional query alias or id as its value** — `*sparkQueryIcon="'cars'"`. A detail
 page renders one card per entry in `EntityTypeDefinition.Queries`, so a bare slot would decorate

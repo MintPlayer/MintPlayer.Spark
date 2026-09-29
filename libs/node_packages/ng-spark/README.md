@@ -107,8 +107,9 @@ actions, each enabled from the live selection count. The sub-query card's header
 right, with the overflow in `…`, and the query page's action bar renders it too.
 
 The grid also renders:
-- a select-all box for the page on screen;
-- an "N selected ⊗" chip;
+- an "N selected" chip while rows are selected. There is no select-all: with paged, lazy or
+  virtual-scrolled rows it could only tick the rows loaded so far. Deselect-all is the datatable's
+  own header checkbox, shown only while a row is selected;
 - a per-row `⋮` menu of the actions whose rule accepts one row. A menu item runs on that row only and
   leaves the checkbox selection alone.
 

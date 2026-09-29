@@ -8,7 +8,8 @@ namespace MintPlayer.Spark.E2E.Tests.QnA;
 
 /// <summary>
 /// #460 M15 — sub-query selection &amp; actions on a question's Answers card: row checkboxes (the entry
-/// declares <c>selectionMode: multiple</c>), the select-all box and the "N selected" chip, the bulk
+/// declares <c>selectionMode: multiple</c>), the "N selected" chip and the datatable's deselect-all
+/// (there is no select-all), the bulk
 /// Delete (soft, all or nothing), the <c>=1</c> Duplicate enabled from the selection and offered in
 /// the row menu, and New carrying the question to the create page, where the base <c>OnNewAsync</c>
 /// fills <c>Answer.QuestionId</c>.
@@ -127,6 +128,20 @@ public class QnASubQueryTests
         chip.Filter(new() { HasTextRegex = new System.Text.RegularExpressions.Regex($@"\b{count}\b") })
             .WaitForAsync(new() { Timeout = 15_000 });
 
+    /// <summary>Ticks the checkbox of the first <paramref name="count"/> rows (there is no select-all).</summary>
+    private static async Task TickAsync(ILocator rows, int count)
+    {
+        for (var i = 0; i < count; i++)
+            await rows.Nth(i).Locator("td.checkbox-cell mp-checkbox").ClickAsync();
+    }
+
+    /// <summary>
+    /// Clears the selection with the datatable's header checkbox — its built-in deselect-all, shown
+    /// only while a row is selected.
+    /// </summary>
+    private static Task DeselectAllAsync(ILocator card) =>
+        card.Locator("thead th.checkbox-cell mp-checkbox").ClickAsync();
+
     /// <summary>
     /// Polls <see cref="IPage.Url"/> rather than using <c>WaitForURLAsync</c>, which waits for a
     /// navigation event: the Angular router's same-document navigations were intermittently not seen
@@ -174,16 +189,19 @@ public class QnASubQueryTests
             foreach (var action in new[] { "New", "Delete", "DuplicateAnswer" })
                 (await CardAction(card, action).CountAsync()).Should().Be(1, $"'{action}' is shown once in the card header");
 
-            // Select all -> "3 selected"; Duplicate (=1) is disabled with three.
-            await card.Locator(".spark-select-all-input").ClickAsync();
+            // No select-all (owner decision): with lazy or virtual rows it could only tick the loaded ones.
+            (await card.Locator(".spark-select-all").CountAsync()).Should().Be(0);
+
+            // Tick all three -> "3 selected"; Duplicate (=1) is disabled with three.
+            await TickAsync(rows, 3);
             var chip = card.Locator(".spark-selection-chip");
             await chip.WaitForAsync(new() { Timeout = 15_000 });
             await WaitForChipAsync(chip, 3);
             (await CardAction(card, "DuplicateAnswer").IsDisabledAsync()).Should().BeTrue();
             (await CardAction(card, "Delete").IsDisabledAsync()).Should().BeFalse();
 
-            // The chip clears the selection.
-            await card.Locator(".spark-selection-clear").ClickAsync();
+            // The datatable's header checkbox is the deselect-all.
+            await DeselectAllAsync(card);
             await chip.WaitForAsync(new() { State = WaitForSelectorState.Detached, Timeout = 15_000 });
             (await CardAction(card, "Delete").IsDisabledAsync()).Should().BeTrue("Delete is '>0'");
 
@@ -229,7 +247,7 @@ public class QnASubQueryTests
             await rows.First.WaitForAsync(new() { Timeout = 15_000 });
             await WaitForRowCountAsync(rows, 3);
 
-            await card.Locator(".spark-select-all-input").ClickAsync();
+            await TickAsync(rows, 3);
             var chip = card.Locator(".spark-selection-chip");
             await chip.WaitForAsync(new() { Timeout = 15_000 });
 

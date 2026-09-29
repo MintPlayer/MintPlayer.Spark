@@ -428,7 +428,9 @@ Two fixes landed at the end of this PR:
   Also added in M15:
   - the grid's shared toolbar model (`toolbarActions()`, `SparkQueryToolbarAction`,
     `sparkActionClass`);
-  - the selection bar (a select-all box and the "N selected ⊗" chip);
+  - the selection bar: an "N selected" chip. There is no select-all, since with lazy or
+    virtual-scrolled rows it could only select the loaded ones; the datatable's header checkbox
+    is the deselect-all, shown only while a row is selected;
   - the per-row `⋮` menu;
   - `SparkService.deleteMany()`;
   - **a search box in the `<spark-query-card>` header** (the owner's D17 addendum), on the trailing

@@ -270,8 +270,9 @@ Specified in full by D15 (`AddSparkForwardedHeaders`, private-range default, `Pr
 
 The reference is Vidyano, measured in a real app. An action is defined once per type, and every
 query of that type offers it, whether top-level or sub-query. Each sub-query tab has its own toolbar,
-with pinned actions and a `…` overflow. Rows have checkboxes, there is a select-all box and a per-row
-`⋮` menu, and a "N selected ⊗" chip clears the selection. Actions enable and disable live from the
+with pinned actions and a `…` overflow. Rows have checkboxes and a per-row `⋮` menu, and a
+"N selected ⊗" chip clears the selection (the demo measured has `selectAll.isAvailable = false`: no
+select-all). Actions enable and disable live from the
 selection count.
 
 **Server**
@@ -298,7 +299,8 @@ selection count.
   mode unless it is `'auto'`. `filterQueryActions` compares `showedOn` case-insensitively.
 - The grid owns the shared toolbar model, `toolbarActions()`: New, Delete and custom actions, with
   enablement read live from the selection. It also owns:
-  - the selection bar (a select-all box for the page, and the "N selected ⊗" chip);
+  - the selection bar: the "N selected" chip. No select-all, and the datatable's header checkbox
+    is the deselect-all (see the owner decision below);
   - the per-row `⋮` menu, which lists the actions whose rule accepts exactly one row. A menu item
     runs on that row only and leaves the checkbox selection alone.
   - bulk Delete, which asks for confirmation.
@@ -346,6 +348,19 @@ Three latent defects in that chain are fixed:
 - vitest: selection modes, the chip, action enablement, the row menu, header order, and the create
   page's parent round-trip.
 - E2E (QnA): sub-query checkboxes, bulk soft Delete, and New with the parent.
+
+**Owner decision on D17 (2026-09-29): no select-all, only deselect-all**
+- The grid offers **no select-all**, on the sub-query card and the query-list page alike. With
+  paged, lazy-loaded or virtual-scrolled rows it is not a meaningful action: it could only select the
+  rows loaded so far, and a bulk action would then silently skip the rest. Vidyano's demo has
+  `selectAll.isAvailable = false` for the same reason.
+- **Deselect-all is `<bs-datatable>`'s own header checkbox.** The datatable already renders it in
+  the checkbox column's header, visible only while at least one row is selected, and clicking it
+  clears the selection (its selection model flows back through `[(selection)]`). Spark adds no
+  control of its own, so the "N selected" chip shows the count only: a ⊗ on it would duplicate the
+  header checkbox.
+- Removed: the grid's select-all box and its `toggleSelectAll()` / `allPageRowsSelected()` /
+  `somePageRowsSelected()`, and the chip's clear button with `clearSelection()`.
 
 **Owner's addendum to D17 (2026-09-29): the sub-query search box**
 - A search box on the right of the `<spark-query-card>` header, after the actions, as in Vidyano.

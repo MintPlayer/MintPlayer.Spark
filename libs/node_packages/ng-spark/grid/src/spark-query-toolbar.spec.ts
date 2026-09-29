@@ -4,6 +4,8 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { By } from '@angular/platform-browser';
+import { BsDatatableComponent } from '@mintplayer/ng-bootstrap/datatable';
 
 import { SparkQueryGridComponent } from './spark-query-grid.component';
 import { SparkQueryCardComponent } from './spark-query-card.component';
@@ -230,8 +232,10 @@ describe('query toolbar (#460 M15)', () => {
   });
 
   describe('selection bar', () => {
-    it('shows the chip with the count, and its button clears the selection', async () => {
+    it('shows the chip with the count while rows are selected, and no clear button of its own', async () => {
       const { fixture, c } = await grid([deleteAction], { selectionModeSetting: 'multiple' });
+      expect(fixture.nativeElement.querySelector('.spark-selection-chip')).toBeNull();
+
       c.selection.set([rows[0], rows[1]]);
       fixture.detectChanges();
       await settle(fixture);
@@ -240,37 +244,32 @@ describe('query toolbar (#460 M15)', () => {
       expect(chip).not.toBeNull();
       expect(chip.textContent).toContain('2');
       expect(chip.textContent).toContain('common.selected');
-
-      (fixture.nativeElement.querySelector('.spark-selection-clear') as HTMLButtonElement).click();
-      expect(c.selection()).toEqual([]);
+      // Deselect-all is the datatable's header checkbox; the chip does not repeat it.
+      expect(chip.querySelector('button')).toBeNull();
     });
 
-    it('select-all ticks the page, and a second press clears it', async () => {
-      const { c } = await grid([deleteAction], { selectionModeSetting: 'multiple' });
-
-      c.toggleSelectAll();
-      expect(c.selection().map(r => r.id)).toEqual(['answers/1', 'answers/2', 'answers/3']);
-      expect(c.allPageRowsSelected()).toBe(true);
-
-      c.toggleSelectAll();
-      expect(c.selection()).toEqual([]);
+    it('offers no select-all: with lazy or virtual rows it could only tick the loaded ones', async () => {
+      const { fixture } = await grid([deleteAction], { selectionModeSetting: 'multiple' });
+      expect(fixture.nativeElement.querySelector('.spark-selection-bar input[type="checkbox"]')).toBeNull();
+      expect(fixture.nativeElement.querySelector('.spark-select-all')).toBeNull();
     });
 
-    it('reports a partial page selection as indeterminate', async () => {
-      const { c } = await grid([deleteAction], { selectionModeSetting: 'multiple' });
-      c.selection.set([rows[1]]);
-      expect(c.somePageRowsSelected()).toBe(true);
-      expect(c.allPageRowsSelected()).toBe(false);
+    it("the datatable's deselect-all clears the grid's selection", async () => {
+      const { fixture, c } = await grid([deleteAction], { selectionModeSetting: 'multiple' });
+      c.selection.set([rows[0], rows[1]]);
+      fixture.detectChanges();
+      await settle(fixture);
+
+      const table = fixture.debugElement.query(By.directive(BsDatatableComponent)).componentInstance as BsDatatableComponent<QueryResultItem>;
+      expect(table.selection().length).toBe(2);
+      table.selection.set([]);
+
+      expect(c.selection()).toEqual([]);
     });
 
     it('renders no selection bar when rows cannot be selected', async () => {
       const { fixture } = await grid([deleteAction], { selectionModeSetting: 'none' });
       expect(fixture.nativeElement.querySelector('.spark-selection-bar')).toBeNull();
-    });
-
-    it('renders the select-all box only for multiple selection', async () => {
-      const { fixture } = await grid([duplicateAction], { selectionModeSetting: 'single' });
-      expect(fixture.nativeElement.querySelector('.spark-select-all')).toBeNull();
     });
   });
 

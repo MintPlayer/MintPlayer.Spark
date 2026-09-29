@@ -27,6 +27,6 @@ public enum SparkSelectionMode
     /// <summary>At most one selected row.</summary>
     [JsonStringEnumMemberName("single")] Single,
 
-    /// <summary>Any number of selected rows, with a select-all box.</summary>
+    /// <summary>Any number of selected rows, ticked one by one; there is no select-all.</summary>
     [JsonStringEnumMemberName("multiple")] Multiple,
 }

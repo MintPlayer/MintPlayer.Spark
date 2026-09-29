@@ -31,30 +31,19 @@
     arrive from outside at all (streaming must not put a websocket in every detail page's bundle).
   -->
   <!--
-    The selection bar (#460, M15): a select-all box for the page on screen, and the
-    "N selected ⊗" chip that clears the selection. Only while rows are selectable, and part of the
-    grid rather than of a host, so the query card and the query-list page show the same thing. The
-    datatable's own header checkbox only deselects — it cannot know the rows outside its page — so
-    selecting the page is this box's job.
+    The selection bar (#460, M15): the "N selected" chip, only while rows are selected, and part
+    of the grid rather than of a host, so the query card and the query-list page show the same
+    thing. There is deliberately no select-all (owner decision, 2026-09-29): with paged, lazy or
+    virtual-scrolled rows it could only tick the rows loaded so far. Deselect-all is the
+    datatable's own header checkbox, which it shows only while a row is selected; the chip does
+    not repeat it. The bar keeps its height while empty, so ticking the first row does not push
+    the table down under the pointer.
   -->
   @if (selectionMode() !== 'none') {
-    <div class="spark-selection-bar d-flex align-items-center gap-2 mb-2">
-      @if (selectionMode() === 'multiple') {
-        <label class="spark-select-all d-inline-flex align-items-center gap-1 mb-0">
-          <input type="checkbox" class="spark-select-all-input"
-                 [checked]="allPageRowsSelected()" [indeterminate]="somePageRowsSelected()"
-                 [attr.aria-label]="'common.selectAll' | t"
-                 (change)="toggleSelectAll()">
-          <span>{{ 'common.selectAll' | t }}</span>
-        </label>
-      }
+    <div class="spark-selection-bar d-flex align-items-center gap-2 mb-2" style="min-height: 1.5rem">
       @if (selection().length) {
         <bs-badge [type]="colors.primary" class="spark-selection-chip">
           {{ selection().length }} {{ 'common.selected' | t }}
-          <button type="button" class="spark-selection-clear"
-                  [attr.aria-label]="'common.clearSelection' | t" (click)="clearSelection()">
-            <spark-icon name="x-circle" />
-          </button>
         </bs-badge>
       }
     </div>

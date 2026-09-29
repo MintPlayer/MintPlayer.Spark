@@ -325,8 +325,9 @@ query-list page's action bar.
   - `Delete` is shown only while rows can be selected.
   - The card puts its caption on the left and the actions on the right, with the overflow in the
     priority nav's `…`.
-- **Selection bar:** a select-all box for the page on screen, and an "N selected ⊗" chip that clears
-  the selection.
+- **Selection bar:** an "N selected" chip while rows are selected. There is no select-all (with
+  paged, lazy or virtual-scrolled rows it could only tick the loaded rows); the datatable's header
+  checkbox is the deselect-all, shown only while a row is selected.
 - **Row menu (`⋮`):** every offered action whose rule accepts exactly one row, including Delete. It
   runs on that row only and leaves the checkbox selection alone. An action without a rule acts on the
   query, not on a row, so it is not in the menu.
