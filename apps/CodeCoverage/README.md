@@ -305,7 +305,7 @@ against this VPS on 2026-09-21, and every step of it was necessary:
 | | |
 |---|---|
 | Hetzner blocks outbound **25 and 465** on all Cloud Servers | Request an unblock from the Hetzner console (Limits page). 587 is open by default, so relaying through a provider needs no request. |
-| Reverse DNS must match the HELO name | Set the PTR to `coverage.mintplayer.com` in the Hetzner console. It forward-resolves to the server, which is what receivers check. |
+| Reverse DNS must match the HELO name | Set the PTR to `coverage.mintplayer.com` in the Hetzner console. It forward-resolves to the server, which is what receivers check. **Done for IPv4 on 2026-09-29**. The IPv6 address has no PTR, which is why the relay is IPv4-only (below). |
 | `mintplayer.com` publishes DMARC **`sp=reject`** | Every subdomain inherits it. Mail that fails alignment is **rejected**, not junked — measured: `550 5.7.509 ... does not pass DMARC verification and has a DMARC policy of reject`. |
 
 Two DNS records make it pass, both on `mintplayer.com`'s zone:
@@ -315,11 +315,18 @@ coverage                    TXT   v=spf1 ip4:188.245.190.60 ip6:2a01:4f8:c0c:f87
 mail._domainkey.coverage    TXT   v=DKIM1;k=rsa;p=<public key>
 ```
 
-⚠️ The SPF record lists **both** address families. `coverage.mintplayer.com` has an AAAA,
-so Postfix would otherwise be free to send over IPv6 and fail SPF there. The compose file
-additionally pins `smtp_address_preference=ipv4`, because the large receivers hold IPv6
-senders to a stricter standard — chiefly a valid PTR for the v6 address, which Hetzner
-sets per address and which is not configured here.
+⚠️ **The relay sends over IPv4 only** (`POSTFIX_inet_protocols=ipv4` in the compose file).
+IPv6 fails, as measured on 2026-09-29:
+- **SPF:** the VPS sends IPv6 from `2a01:4f8:c0c:f87c::1`, but the SPF record's `ip6:` term and the
+  AAAA both name `2a01:4f8:c0c:f87c::`, which is `::0`, a different address. So an IPv6 send
+  fails SPF.
+- **Reverse DNS:** `::1` has no PTR, and Gmail and Outlook refuse IPv6 senders without one.
+
+`smtp_address_preference=ipv4` alone was not enough, because it only prefers IPv4.
+
+To re-enable IPv6 later, all three have to change together: the SPF term must become
+`ip6:2a01:4f8:c0c:f87c::/64` (or `::1`), the address needs a PTR to `coverage.mintplayer.com`,
+and the AAAA must name the sending address.
 
 Generating the DKIM key, on the VPS:
 
