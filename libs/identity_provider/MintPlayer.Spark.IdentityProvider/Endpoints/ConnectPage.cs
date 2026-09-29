@@ -32,8 +32,9 @@ internal static class ConnectPage
     public static string? ErrorMessage(string? code) => code switch
     {
         null or "" => null,
-        "missing_fields" => "Email and password are required.",
-        "invalid_credentials" => "Invalid email or password.",
+        "missing_fields" => "Email or user name, and password, are required.",
+        // The field takes an email or a user name (D4), so the message names both.
+        "invalid_credentials" => "Invalid email/user name or password.",
         "locked_out" => "Account is locked out. Please try again later.",
         "missing_code" => "Please enter your authentication code.",
         "missing_recovery_code" => "Please enter a recovery code.",

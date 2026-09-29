@@ -296,7 +296,7 @@ Source: `Endpoints/{Login,TwoFactor,Logout,ConnectPage}.cs`, `SparkAuthenticatio
 | L-L1 | `Login_engages_lockout_after_the_configured_failures` | after N wrong passwords, the lockout message appears — **and a subsequent attempt with the correct password is also refused** | **O4** — previously unreachable code |
 | L-L2 | `Login_lockout_message_does_not_reveal_password_correctness` | locked-out + right password and locked-out + wrong password produce the same text | the intended asymmetry is locked-vs-not, nothing finer |
 | L-L3 | `Login_lockout_precedes_the_two_factor_step` | a locked-out 2FA user submitting the **correct** password lands on the lockout error, not `/connect/two-factor` | inferred from stock `SignInManager.PreSignInCheck` — **verify empirically, this is not Spark's own code** |
-| L-L4 | `Login_unknown_and_wrong_password_return_identical_text` | both `Invalid email or password.` | confirmed by reading — no message oracle |
+| L-L4 | `Login_unknown_and_wrong_password_return_identical_text` | both `Invalid email/user name or password.` | confirmed by reading — no message oracle |
 | L-L5 | **[CHARACTERIZATION]** `Login_unknown_email_responds_faster_than_a_wrong_password` | unknown short-circuits before PBKDF2; known runs it | **O27**, accepted risk — see the findings entry. Keep the test informational, never CI-gating: wall-clock assertions over HTTP are too noisy to gate on |
 
 ### L.4 Two-factor integrity
