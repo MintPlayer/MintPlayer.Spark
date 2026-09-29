@@ -15,7 +15,7 @@ on:
     paths:
       - 'apps/CodeCoverage/**'
       # The upload action lives here but is not part of the server image: it is
-      # consumed by consumers from a git ref, and `coverage-action.yml` rebuilds
+      # consumed by consumers from a git ref, and `coverage-action-publish.yml` rebuilds
       # and republishes its bundle. Without this exclusion every action-only
       # commit would build an image and SSH-deploy the VPS for a change the image
       # does not contain. The old standalone repo guarded the same way
@@ -146,7 +146,8 @@ jobs:
 
     name: Deploy to VPS
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # Room for pull + restart plus the 660s readiness bound below.
+    timeout-minutes: 25
     needs: build-and-push
     if: github.ref == 'refs/heads/master'
 
@@ -195,14 +196,20 @@ jobs:
 
           # Readiness that can actually fail. /health only proves the process answers;
           # /health/ready round-trips the GitHub App JWT to GitHub, so a wrong github-app.pem fails
-          # THIS deploy instead of surfacing hours later inside check-runs. Budget matches the
-          # compose healthcheck's start_period (60s) plus probe slack.
-          for i in $(seq 1 18); do
+          # THIS deploy instead of surfacing hours later inside check-runs.
+          #
+          # The bound is a FAILURE bound, not a wait: the loop exits on the first 200 (or 503), so an
+          # ordinary deploy spends seconds here. It matches coverage-app's healthcheck start_period
+          # in docker-compose.yml (600s, sized for startup migrations that run before the app
+          # listens) plus one minute of probe slack — 66 probes 10s apart. A shorter bound would fail
+          # a deploy whose container is still doing exactly what it was asked to, and then turns
+          # healthy on its own. Keep the two in step if either changes.
+          for i in $(seq 1 66); do
             sleep 10
             code=$(docker compose --env-file .env exec -T coverage-app bash -c "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health/ready HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && head -1 <&3" | grep -o '[0-9][0-9][0-9]' | head -1 || echo 000)
             echo "readiness attempt $i: HTTP $code"
             if [ "$code" = "200" ]; then exit 0; fi
             if [ "$code" = "503" ]; then echo "::error::/health/ready reports the GitHub App key is unusable — verify github-app.pem against the App's fingerprint (see apps/CodeCoverage/README.md, Deployment)"; exit 1; fi
           done
-          echo "::error::service did not become ready within 180s"
+          echo "::error::service did not become ready within 660s"
           exit 1
