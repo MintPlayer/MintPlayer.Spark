@@ -62,6 +62,9 @@ Locked with the owner. Do not re-litigate without new evidence.
 | D17 | **Selection is opt-in per query (M15, owner 2026-09-29).** `selectionMode: auto \| none \| single \| multiple` on the query definition (`SparkQuery.SelectionMode`, omitted = `auto`), overridable per sub-query entry in the parent type's `Queries`. `auto` is today's behaviour exactly — derived from the **custom** actions offered; the default Delete does not widen it (selection is opt-in, so no existing grid changes its click behaviour), and without selection Delete is reachable per row through the `⋮` menu. A `Queries` entry is either the bare alias (unchanged, and what model sync writes back when the entry has no override) or `{ "query", "selectionMode", "parentReference" }`; `EntityTypeDefinition.Queries` is `SparkSubQuery[]` (implicit from `string`). Presentation only: every row-taking action still enforces its own rule server-side. |
 | D18 | **New and Delete are catalogue entries with rules (M15, owner 2026-09-29).** Built-in defaults: `New` (no rule) and `Delete` (`>0`, danger), both `showedOn: both`; an app overrides `showedOn`, `selectionRule`, label, icon, offset, variant and confirmation by adding an entry of the same name to `customActions.json` (no C# class; an `ICustomAction` class with either name is never executed — `/actions/execute` answers 404 for both names; an override entry may omit `displayName`, a custom action may not). `/spark/actions/list` returns them with `isDefault: true` when the caller holds `New/T` or `Delete/T`. **Bulk Delete:** `POST /spark/po/delete-many { objectTypeId, ids, queryId?, parentId?, parentType? }` runs every row through the normal delete pipeline — Delete right, collection guard, row gate, `OnDisableActionsAsync` (query target with the parent, plus every row; union; 403 after the row gate), `OnBeforeDeleteAsync`, interceptors (SoftDelete turns it into a soft delete, History keeps revisions) — with the writes deferred to **one `SaveChanges`**: all rows or none. The rule and the 200-row cap are enforced exactly as for custom actions (400). Offered on top-level lists and sub-queries alike. Bulk **Purge** is not offered: a purge deletes revisions with an admin operation that cannot join the transaction. |
 | D19 | **New from a sub-query goes through the server hook (M15, owner 2026-09-29).** The hook already existed — `OnNewAsync(SparkNewArgs<T>)` behind `POST /spark/po/new` — so it is extended rather than duplicated: `SparkNewArgs` gains `ParentType`, `Query` and `ParentReference`, set when New is invoked from a sub-query (`/po/new` with `parentId`, `parentType`, `queryId` and no `asDetailAttribute`; the parent is loaded through the gated read, the query must be declared as a sub-query of the parent's type and produce the constructed type, else refused like a missing row). The ng-spark create page now always asks `/po/new` for its blank object, and the sub-query card carries `parentId`/`parentType`/`queryId` to the create page as query parameters, so the parent survives navigation. **Owner refinement (2026-09-29): the base `DefaultPersistentObjectActions<T>.OnNewAsync` auto-fills the parent reference** through the reusable `args.FillParentReference()`: the reference attribute of the new object whose target is the parent's type; exactly one → set to the parent's id, zero or several → nothing, logged at Debug. An explicit `parentReference` on the query or the sub-query entry names the attribute when there are several, and a name that does not exist or does not reference the parent's type fails at startup. D1 caveat, intended: an override that does not call base loses the auto-fill (the hook then owns initialisation) and may call `args.FillParentReference()` itself. The auto-fill applies to a sub-query New only, never to an `AsDetail` row (whose parent owns the save). |
+| D20 | **Messaging priority lanes (M16, owner 2026-09-29).** Fixes the M4-measured 5.8 s transactional max behind a bulk backlog. `SparkQueueOptions.Priority` (`Low`/`Normal`/`High`; `Spark:Messaging:Queues:{name}:Priority`, config beats code, D14). The single feeder reads **look-ahead windows** (`SparkMessagingOptions.FeederBatchSize`, default 256) and serves each window highest priority first, one load and one write per priority, deferring a throttled message **before** claiming it; FIFO between windows and within a queue. **No starvation by construction**: a window is served completely before the next is fetched (a message is overtaken by at most `FeederBatchSize − 1`). The existing single subscription is kept (same query, no `now()`, never deleted); a subscription per priority is rejected (Community's 3-slot cap, decision register A15). MailManager declares `mail-transactional` High and `mail-bulk` Low, so apps get it with no code. |
+| D21 | **ARF complaint parsing (M16, owner 2026-09-29).** RFC 5965 feedback reports go to the existing bounce endpoint (same secret, rate limit, 503-when-disabled) and the default parser: delivery from `Original-Mail-From` (VERP) → original `Return-Path` → original `Message-ID` → envelope recipient; `abuse`/`fraud` suppress the **delivery record's** address for every stream with `SparkMailSuppressionReason.Complaint` and mark the delivery `Complained`; `not-spam` and other types are recorded only. Unmatched → logged, 204 (dropped, not retried); malformed → 400 (dropped). Feedback-loop address on the VERP domain, same pipe (guide §8.6). |
+| D22 | **Configurable revision limits (M16, owner 2026-09-29).** `SparkHistoryOptions.Revisions` (default) and `Types[{type}]` (with `Enabled`), bound from `Spark:History:Revisions` / `Spark:History:Types:{type}`, config beats code. Per setting: type options → model block → default; `0` = no limit. **Default: 30 days, no count limit, no purge on delete** (fits Community; bounds personal data in revisions, risk 9). `RevisionsConfigurator` keeps H4 (read, merge, send only on change); when `/license/status` says `Community`, the merged limits are checked against 2 revisions / 45 days **before** sending, and startup refuses naming type, setting and source, with `Spark:History:ConfigureRevisions=false` as the escape hatch. |
 
 ### Technical decisions (made by Claude, reasons recorded; owner may override)
 
@@ -123,6 +126,7 @@ Locked with the owner. Do not re-litigate without new evidence.
 ### 3.3 History (item 3) — `libs/history/MintPlayer.Spark.History`
 
 - Revisions per entity from the model (T10), merged into the database record idempotently.
+- **Revision limits from configuration (D22, M16):** `Spark:History:Revisions` (default 30 days) and `Spark:History:Types:{type}` over the model block, config beats code; Community pre-check before sending.
 - `IAuditable { CreatedBy, CreatedAt, ModifiedBy, ModifiedAt }` stamped by an interceptor from `ISparkCurrentUser` — **ids only** (D8). `CreatedBy` immutable after create (reputation theft otherwise).
 - Service `ISparkHistory { ListAsync, GetAsync(cv), RevertAsync(cv) }` + endpoints (T1). Reads gated on the **current** document's row check + `History/T`, and run through `RedactAsync` (field-level redaction must hold on old revisions). Revert: load revision, verify id + collection, `IEntityMapper.ToPersistentObject`, save through `IDatabaseAccess.SavePersistentObjectAsync` with the current etag (Edit right, row gate, WITH CHECK, protected attributes, stamping, lock interceptor with operation = `Revert`); requires `Revert/T`. Only model attributes revert; soft-delete and audit fields excluded; AsDetail row-identity caveat documented.
 - `ISparkRevisionObserver.OnRevisionCreatedAsync({EntityType, Id, ChangeVector, PreviousChangeVector, UserId, Kind, ChangedAttributes})` — in-process, multi-registered; fires only for writes through the Spark pipeline. History does not depend on Messaging.
@@ -165,6 +169,7 @@ in `$(SpaRoot)package.json` is warning `SPARK030` (`docs/diagnostics.md`; M5 dev
 - Failure classification: synchronous SMTP 5xx / invalid address → `NonRetryableException` **logged loudly** (a 553 from `ALLOWED_SENDER_DOMAINS` would otherwise dead-letter everything silently); 4xx / connection errors → retry.
 - VERP `bounces+{deliveryId}@{VerpDomain}` with compact `DeliveryId` (UUIDv5 of campaign + email for fan-out); `SparkMailDeliveries/{id}` record, 30-day retention; `Message-ID: <{deliveryId}@domain>` (at-least-once duplicates identifiable — documented, not "fixed").
 - Bounce endpoint: raw DSN body, shared bearer secret compared in constant time, **stated** `DisableAntiforgery()` exemption, rate limited; MimeKit DSN parse; failed + 5.x.x → suppress.
+- **ARF complaints (D21, M16):** the same endpoint parses RFC 5965 feedback reports; `abuse`/`fraud` → `Complaint` suppression of the delivery's address; `not-spam` recorded only; unmatched 204, malformed 400.
 - Suppression: `SparkMailSuppressions/{sha256(normalizedEmail)}` {Reason, Scope}; suppressed → delivery record "Suppressed", message Completed (no new `EMessageStatus`).
 - Bulk: one campaign message fans out via `BroadcastOnceAsync(…, "{campaignId}:{recipient}")` (with the fixed, hashed dedup key); never one mail with many BCCs.
 - Dev mode per D9. Rewrite `guide-outgoing-mail.md` §8 (bulk no longer out of scope) instead of contradicting it; add Postfix per-domain pacing notes (`smtp_destination_rate_delay`, `smtp_destination_concurrency_limit`).
@@ -224,6 +229,7 @@ in `$(SpaRoot)package.json` is warning `SPARK030` (`docs/diagnostics.md`; M5 dev
 - Accuracy documented: long-run rate exact, bursts quantised by `FallbackPollInterval` (30 s).
 - Optional `IMessageProgress`: sidecar `SparkMessages/{id}/progress/{handlerIndex}` in its own collection, appended by patch, **same `@expires` as its message**; `IsDoneAsync`/`MarkDoneAsync`. Not an array on `SparkMessage`.
 - Pattern documented: `mail-transactional` generous, `mail-bulk` strict.
+- **Priority lanes (D20, M16):** `SparkQueueOptions.Priority`, `FeederBatchSize`; the feeder serves each look-ahead window highest priority first and defers throttled messages before the claim; no starvation (window bound). Measured in §4.1 (M16).
 
 ### 3.12 Moderation (item 12) — `libs/moderation/MintPlayer.Spark.Moderation` (+ `.Abstractions`) — D11, D12, D14, T6
 
@@ -719,7 +725,7 @@ wake-up patch, the re-claim. No message was deferred twice.
 - *Transactional max 5.8 s during the bulk publish.* The p95 (153 ms) is fine, but the single feeder
   claims in etag order, so transactional messages written while 1000 bulk documents are in front of
   them wait for those claims. A lane cannot help here; it is the one-subscription trade-off (A6), not
-  the throttle. Recorded, not fixed.
+  the throttle. **Fixed in M16 (owner decision D20, 2026-09-29):** priority lanes in look-ahead windows; the same S-M3 run now measures a 52 ms max (§4.1, M16).
 - *Configuration beats code for `Queues` only.* D14 asks for operator-overridable thresholds; code
   winning (the rest of `Spark:Messaging`) would make a library-declared queue default unoverridable.
   `Spark:Messaging:Queues` is re-applied in a `PostConfigure`, property by property; a configured
@@ -998,7 +1004,7 @@ History's interceptor) gave `Title v1`, `Label {"en":"one"}`, `DueAt 2026-01-01T
   Validation rules are not re-run on a revert (the revision was valid when written); documented.
 - *Revisions read at the database level* (H4), not via `GetDatabaseRecordOperation`; a model limit
   beyond the licence (Community: 2 revisions / 45 days / no enabled default) refuses startup with
-  RavenDB's reason; `Spark:History:ConfigureRevisions=false` opts out.
+  RavenDB's reason; `Spark:History:ConfigureRevisions=false` opts out. **M16 (D22):** on Community the merged limits are now checked before sending, naming type, setting and source.
 - *No `.Abstractions` for History.* §3.3 names one package; `IAuditable` lives in
   `MintPlayer.Spark.History` (a Domain project that implements it references the package).
 - *Names at read time.* D8's "resolved to a name at read time" needs an id → name source core does
@@ -1129,9 +1135,9 @@ address is envelope-only. `StartTlsWhenAvailable` sends STARTTLS and the connect
   `From:Address` are set (the old `IsConfigured` rule), so production with no `MAIL_FROM_ADDRESS` still
   starts and sends nothing. `implicitDependencies` needed no entry (Nx infers project references).
 - *Found (M5 left it):* `XsrfSurfaceTests.Auth_surface_…` still pinned MapIdentityApi's surface; M5's account endpoints (incl. `register`, `resendConfirmationEmail`, `manage/account`, `manage/password`, `manage/profile`, `confirm-email`) all require antiforgery — the pinned lists were updated to the measured surface.
-- *Not built:* VERP tier 2 (MX + inbound 25) is a recipe only (§6 out of scope); complaint (ARF)
-  parsing. (A `PreferredCulture` UI exists: `spark-account-profile.component.ts` in
-  `@mintplayer/ng-spark-auth/account`.)
+- *Not built:* VERP tier 2 (MX + inbound 25) is a recipe only (§6 out of scope). Complaint (ARF)
+  parsing: **built in M16 (owner decision D21, 2026-09-29)**. (A `PreferredCulture` UI exists:
+  `spark-account-profile.component.ts` in `@mintplayer/ng-spark-auth/account`.)
 
 **S-TZ1 — `FindSystemTimeZoneById` on path-shaped ids (M9, 2026-09-28).**
 *Question:* what does .NET 11 do with path-shaped zone ids on Windows and Linux — is the regex the
@@ -1589,6 +1595,53 @@ Reruns: the failed tests, then Spark.Tests (3198/3198) and E2E (120/120) in full
 - **Spec type errors were reported nowhere.** Ten in ng-spark were fixed (59070c6f) and CI now runs
   `tsc --noEmit` on both packages' spec configs (b911f804).
 
+#### M16 — priority lanes, ARF complaints, revision limits (owner decisions D20–D22, 2026-09-29)
+
+**S-M3 re-run — transactional latency behind the bulk backlog (M16, 2026-09-29).**
+*Method:* unchanged from M4: `ThrottleAccuracySpikeTests.S_M3_…` with `SPARK_SPIKE_SM3_BULK=1000`,
+×20 time compression (20 per 3 s, 1.5 s sweeper tick), a `spike-transactional` message every 250 ms
+while 1,000 `spike-bulk` messages drain, revisions on `SparkMessages`, Developer licence. The spike's
+queues declare no priority (both `Normal`), so the gain measured is the window mechanism itself; mail
+lanes add High/Low on top. "Before" ran from a clean worktree at `c62fa88e` immediately before "after"
+at the M16 code, same machine.
+*Answer:*
+
+| | Before (c62fa88e) | After (M16) |
+|---|---|---|
+| Transactional during backlog, p50 / p95 / **max** | 9 ms / 50 ms / **5,235 ms** (n = 566) | 9 ms / 21 ms / **52 ms** (n = 564) |
+| Baseline, no backlog, p50 / p95 / max | 19 / 34 / 34 ms | 13 / 33 / 37 ms |
+| Bulk steady rate / drain | 19.94 per interval / 147.6 s | 19.96 per interval / 147.5 s |
+| Most starts in one sliding 3 s window | 61 | 32 |
+| Writes per deferred bulk message | 8 (×979) | **7** (×980) — the lane-side claim is gone |
+
+A first "before" run on a loaded machine (another agent building) measured p95 3,491 ms / max 9,410 ms
+and failed the kept assertion (some bulk messages at 9–11 writes, i.e. deferred more than once); the
+clean runs above passed it. The M4 figure was max 5,788 ms. The throttle is unchanged (rate, drain);
+the lower burst figure follows from deferrals now being written in window batches.
+
+**Deviations and findings (M16).**
+- *Priority is a bounded look-ahead, not a cross-window scheduler.* The subscription delivers in etag
+  order and A11 requires a claim before the ack, so the feeder cannot hold claims in memory to reorder
+  across windows; strict priority inside a window plus a window served whole is the aging scheme, and
+  it makes starvation impossible rather than unlikely. The latency fix comes as much from the window
+  being cheap (one load and one write per priority, deferral before the claim) as from the order.
+  Remaining limit, documented in the Messaging README: an **unthrottled** slow low-priority queue that
+  fills its lane (512) still back-pressures the feeder.
+- *Admission moved ahead of the claim in `SingleSubscription` mode.* The processor still decides
+  (per-queue mode, and as a check); a feeder-admitted message keeps a due reservation so it is not
+  charged twice (unit test). The feeder uses `OptimisticConcurrencyMode.Writes`, the non-obsolete form.
+- *ARF matching by `Message-ID`* is what makes redacted feedback-loop reports usable; the address
+  suppressed is always the delivery record's. Complaints suppress every stream (not only the mailed
+  one): continuing to mail a complainer harms the sender's reputation for all its mail; the app can lift
+  it. Fixtures are hand-built on RFC 5965 Appendix B with reserved example domains.
+- *Community pre-check.* `/license/status` `Type` read through a small server operation (measured:
+  `Community` under `raven-community-license.log`, `Developer` under the Developer licence); only the
+  Community caps are known, so other tiers fall back to RavenDB's own refusal. The model's
+  `purgeOnDelete: false` cannot be told from unset (a non-nullable `bool` in Abstractions, left
+  unchanged), so it defers to the default.
+- *Libraries only.* No app code changed: MailManager declares the lane priorities, ARF lives in its
+  bounce pipeline, the limits in History's options and configurator. QnA (the only History user) gets
+  the 30-day default with no change.
 
 ---
 
@@ -1602,7 +1655,7 @@ Reruns: the failed tests, then Spark.Tests (3198/3198) and E2E (120/120) in full
 6. **History bypassing redaction/row security** on old revisions.
 7. **Wildcard removal and DisableActions removal** break unknown third-party consumers — accepted (preview), release notes.
 8. **Vote fraud**: a patient attacker still farms slowly; thresholds are visible config. Bounded by "only reversible privileges are earnable".
-9. **Revisions keep personal data**; no storage quota exists.
+9. **Revisions keep personal data** — **mitigated in M16 (D22, 2026-09-29):** revisions are kept 30 days by default (`Spark:History:Revisions`), per type overridable; RavenDB still has no storage quota, and a revision is only purged when its document is written again.
 10. **E2E host refactor** in known-flaky infrastructure can block CI for the whole PR.
 11. **Moderation age gates fail closed** (M12): accounts whose `CreatedAtUtc` the M5 backfill could not
     find pass no `MinAccountAgeDays` gate. Count them before the MintPlayer cutover; backfill from

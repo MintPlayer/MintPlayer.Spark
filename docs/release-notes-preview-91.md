@@ -236,6 +236,15 @@ result synchronously must await it. `sparkAuthenticatedGuard` is an alias.
   confirmation mail) belongs in the new `ISparkAccountDeletedHandler<TUser>.OnAccountDeletedAsync`,
   which runs after `UserManager.DeleteAsync` succeeded; keep clean-up that must succeed first (and may
   stop the deletion) in `ISparkAccountDeletionHandler<TUser>`.
+- **History keeps revisions 30 days by default (M16).** A type with `"revisions": { "enabled": true }` and
+  no age limit used to keep revisions for ever; the default is now `Spark:History:Revisions:MinimumRevisionAgeToKeep`
+  = 30 days (no count limit). Set it to `00:00:00` for unlimited history. On a Community server, limits
+  above 2 revisions / 45 days now refuse startup **before** anything is sent, naming each type, setting
+  and source.
+- **The single messaging feeder claims in windows (M16).** `SingleSubscription` mode reads up to
+  `Spark:Messaging:FeederBatchSize` (256) messages per subscription batch and claims them a priority at
+  a time; a throttled message is deferred before it is claimed. A test that counted writes per deferred
+  message sees 7, not 8.
 
 ### 11. Sub-query selection & actions (M15, D17–D19)
 
@@ -371,6 +380,10 @@ Revisions configured on the model (`revisions` on the entity type, merged into t
 `/revert` (rights `History/T`, `Revert/T`; reads redacted; revert through the full save pipeline),
 `ISparkRevisionObserver`. [README](../libs/history/MintPlayer.Spark.History/README.md)
 
+**Revision limits (M16):** `Spark:History:Revisions` (default 30 days) and `Spark:History:Types:{type}`
+(`Enabled`, `MinimumRevisionsToKeep`, `MinimumRevisionAgeToKeep`, `PurgeOnDelete`) over the model block,
+configuration beating code, with a Community-licence check before anything is sent.
+
 ### `MintPlayer.Spark.MailManager` (+ `.Abstractions`)
 
 `spark.AddMailManager()` with explicit transports (`UseSmtpTransport`, `UseMailpitTransport` with an
@@ -381,6 +394,11 @@ stored on the message, token-bearing payloads encrypted and scrubbed, VERP bounc
 (`POST /spark/mail/bounces`, opt-in, bearer secret checked before parsing), a suppression list,
 one-click `List-Unsubscribe`, campaigns fanned out one message per recipient. Authorization's account
 mail uses it with shipped English + Dutch templates.
+
+**Complaints and priorities (M16):** RFC 5965 ARF feedback reports are parsed on the bounce endpoint
+(`abuse`/`fraud` → `Complaint` suppression, `not-spam` recorded only, unmatched 204, malformed 400;
+feedback-loop recipe in [guide-outgoing-mail.md § 8.6](guide-outgoing-mail.md)), and `mail-transactional`
+is `High` priority, `mail-bulk` `Low`.
 [README](../libs/mail/MintPlayer.Spark.MailManager/README.md) ·
 [guide-outgoing-mail.md](guide-outgoing-mail.md)
 
@@ -392,6 +410,11 @@ per-queue `SparkQueueOptions` (`Spark:Messaging:Queues:{name}`: `MaxPerInterval`
 that never waits inside a lane, `DeadLetterReason` (`MaxAttempts` / `NonRetryable` / `Expired`),
 `IMessageContext`, `IMessageProgress`. `SubscriptionPerQueue` gained the handler timeout and claim
 renewal. [README § Per-queue options and throttling](../libs/messaging/MintPlayer.Spark.Messaging/README.md#per-queue-options-and-throttling)
+
+**Priority lanes (M16):** `SparkQueueOptions.Priority` (`Low`/`Normal`/`High`, `Spark:Messaging:Queues:{name}:Priority`)
+and `FeederBatchSize`. The single feeder serves each look-ahead window highest priority first, without
+starving lower priorities; measured, a transactional message behind a 1,000-message bulk backlog now waits
+at most 52 ms instead of 5.2 s. [README § Priority lanes](../libs/messaging/MintPlayer.Spark.Messaging/README.md#priority-lanes)
 
 ### `MintPlayer.Spark.Moderation` (+ `.Abstractions`)
 
