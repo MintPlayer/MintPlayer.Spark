@@ -121,7 +121,7 @@ public class SubQueryPruningTests : SparkTestDriver
         // reason goes in BeEquivalentTo's overload rather than as a trailing string — which would
         // quietly become a second expected element.
         factory.GetService<IModelLoader>()
-            .GetEntityTypes().Single().Queries.Should().BeEquivalentTo(
+            .GetEntityTypes().Single().Queries.Select(q => q.Query).Should().BeEquivalentTo(
                 ["childdocs"],
                 because: "the pruner must copy per request, never filter the shared definition in place");
     }

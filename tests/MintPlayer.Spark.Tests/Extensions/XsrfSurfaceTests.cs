@@ -58,6 +58,8 @@ public class XsrfSurfaceTests : SparkTestDriver
         "POST /spark/lookupref/{name}",
         "POST /spark/po/create",
         "POST /spark/po/delete",
+        // #460 M15 (D18): the bulk delete of a grid selection — state-changing, so a token.
+        "POST /spark/po/delete-many",
         "POST /spark/po/delete-row",
         "POST /spark/po/new",
         "POST /spark/po/refresh",

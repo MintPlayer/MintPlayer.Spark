@@ -303,6 +303,7 @@ The `MapSpark()` extension creates these REST endpoints:
 | `/spark/po/create` | POST | Create entity — body: `objectTypeId`, `persistentObject` |
 | `/spark/po/update` | POST | Update entity — body: `objectTypeId`, `id`, `persistentObject` |
 | `/spark/po/delete` | POST | Delete entity — body: `objectTypeId`, `id` |
+| `/spark/po/delete-many` | POST | Delete a query selection, all or nothing — body: `objectTypeId`, `ids`, `queryId`, `parentId`, `parentType` |
 | `/spark/po/new` | POST | Construct an unsaved object or AsDetail row |
 | `/spark/po/refresh` | POST | Reshape an in-progress object after a trigger changed |
 | `/spark/po/delete-row` | POST | Ask whether a stored AsDetail row may be removed |

@@ -91,6 +91,7 @@ anti-forgery gate and no useful message.
 | `CreatePersistentObjectAsync(obj)` | `POST /spark/po/create` |
 | `UpdatePersistentObjectAsync(obj)` | `POST /spark/po/update` |
 | `DeletePersistentObjectAsync(type, id)` | `POST /spark/po/delete` |
+| `DeletePersistentObjectsAsync(type, ids, queryId, parentId, parentType)` | `POST /spark/po/delete-many` |
 | `ExecuteQueryAsync(query, skip, take, search, parentId, parentType, sortColumns, columns)` | `POST /spark/queries/execute` |
 | `GetDistinctValuesAsync(query, column, search, columns, parentId, parentType)` | `POST /spark/queries/distinct-values` |
 | `GetQueryAsync(query)` / `ListQueriesAsync()` | `POST /spark/queries/get`, `GET /spark/queries` |
