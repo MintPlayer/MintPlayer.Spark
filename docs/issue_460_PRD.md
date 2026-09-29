@@ -358,9 +358,11 @@ Three latent defects in that chain are fixed:
   the checkbox column's header, visible only while at least one row is selected, and clicking it
   clears the selection (its selection model flows back through `[(selection)]`). Spark adds no
   control of its own, so the "N selected" chip shows the count only: a ⊗ on it would duplicate the
-  header checkbox.
+  header checkbox. **Single selection is the exception:** it has no checkbox column, so no header
+  checkbox, and a row click there only ever selects. The chip keeps its ⊗ in `single` mode only,
+  as the one way to clear (found in the browser check).
 - Removed: the grid's select-all box and its `toggleSelectAll()` / `allPageRowsSelected()` /
-  `somePageRowsSelected()`, and the chip's clear button with `clearSelection()`.
+  `somePageRowsSelected()`, and the chip's clear button outside `single` mode.
 
 **Owner's addendum to D17 (2026-09-29): the sub-query search box**
 - A search box on the right of the `<spark-query-card>` header, after the actions, as in Vidyano.

@@ -36,14 +36,21 @@
     thing. There is deliberately no select-all (owner decision, 2026-09-29): with paged, lazy or
     virtual-scrolled rows it could only tick the rows loaded so far. Deselect-all is the
     datatable's own header checkbox, which it shows only while a row is selected; the chip does
-    not repeat it. The bar keeps its height while empty, so ticking the first row does not push
-    the table down under the pointer.
+    not repeat it. Single selection has no checkbox column, so no header checkbox either, and a
+    row click only ever selects: there the chip's ⊗ is the deselect. The bar keeps its height
+    while empty, so ticking the first row does not push the table down under the pointer.
   -->
   @if (selectionMode() !== 'none') {
     <div class="spark-selection-bar d-flex align-items-center gap-2 mb-2" style="min-height: 1.5rem">
       @if (selection().length) {
         <bs-badge [type]="colors.primary" class="spark-selection-chip">
           {{ selection().length }} {{ 'common.selected' | t }}
+          @if (selectionMode() === 'single') {
+            <button type="button" class="spark-selection-clear"
+                    [attr.aria-label]="'common.clearSelection' | t" (click)="clearSelection()">
+              <spark-icon name="x-circle" />
+            </button>
+          }
         </bs-badge>
       }
     </div>

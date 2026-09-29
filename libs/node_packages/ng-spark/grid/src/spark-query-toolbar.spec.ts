@@ -248,6 +248,19 @@ describe('query toolbar (#460 M15)', () => {
       expect(chip.querySelector('button')).toBeNull();
     });
 
+    it('single selection has no header checkbox, so the chip carries the clear button', async () => {
+      const { fixture, c } = await grid([duplicateAction], { selectionModeSetting: 'single' });
+      c.selection.set([rows[1]]);
+      fixture.detectChanges();
+      await settle(fixture);
+
+      const clear = fixture.nativeElement.querySelector('.spark-selection-chip .spark-selection-clear') as HTMLButtonElement;
+      expect(clear).not.toBeNull();
+      clear.click();
+
+      expect(c.selection()).toEqual([]);
+    });
+
     it('offers no select-all: with lazy or virtual rows it could only tick the loaded ones', async () => {
       const { fixture } = await grid([deleteAction], { selectionModeSetting: 'multiple' });
       expect(fixture.nativeElement.querySelector('.spark-selection-bar input[type="checkbox"]')).toBeNull();

@@ -109,7 +109,8 @@ right, with the overflow in `…`, and the query page's action bar renders it to
 The grid also renders:
 - an "N selected" chip while rows are selected. There is no select-all: with paged, lazy or
   virtual-scrolled rows it could only tick the rows loaded so far. Deselect-all is the datatable's
-  own header checkbox, shown only while a row is selected;
+  own header checkbox, shown only while a row is selected. Single selection has no checkbox
+  column, so there the chip carries a ⊗ that clears the selection;
 - a per-row `⋮` menu of the actions whose rule accepts one row. A menu item runs on that row only and
   leaves the checkbox selection alone.
 

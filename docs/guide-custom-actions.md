@@ -327,7 +327,8 @@ query-list page's action bar.
     priority nav's `…`.
 - **Selection bar:** an "N selected" chip while rows are selected. There is no select-all (with
   paged, lazy or virtual-scrolled rows it could only tick the loaded rows); the datatable's header
-  checkbox is the deselect-all, shown only while a row is selected.
+  checkbox is the deselect-all, shown only while a row is selected. Single selection has no
+  checkbox column, so there the chip carries a ⊗ that clears the selection.
 - **Row menu (`⋮`):** every offered action whose rule accepts exactly one row, including Delete. It
   runs on that row only and leaves the checkbox selection alone. An action without a rule acts on the
   query, not on a row, so it is not in the menu.

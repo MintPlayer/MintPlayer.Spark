@@ -408,6 +408,14 @@ export class SparkQueryGridComponent {
     }
   }
 
+  /**
+   * The chip's ⊗, offered only for single selection: there the datatable renders no checkbox
+   * column, so it has no header deselect-all, and a row click never deselects.
+   */
+  clearSelection(): void {
+    this.selection.set([]);
+  }
+
   /** The id of the row whose `⋮` menu is open; at most one is. */
   readonly openRowMenu = signal<string | null>(null);
 

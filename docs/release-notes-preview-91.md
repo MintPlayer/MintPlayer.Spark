@@ -430,7 +430,8 @@ Two fixes landed at the end of this PR:
     `sparkActionClass`);
   - the selection bar: an "N selected" chip. There is no select-all, since with lazy or
     virtual-scrolled rows it could only select the loaded ones; the datatable's header checkbox
-    is the deselect-all, shown only while a row is selected;
+    is the deselect-all, shown only while a row is selected (single selection, which has no
+    checkbox column, clears with a ⊗ on the chip);
   - the per-row `⋮` menu;
   - `SparkService.deleteMany()`;
   - **a search box in the `<spark-query-card>` header** (the owner's D17 addendum), on the trailing
