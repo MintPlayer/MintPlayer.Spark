@@ -275,6 +275,26 @@ caller's group claims, in any translation, so display names are load-bearing.
 map evaluated against every type, so granting an action on a type that should not offer it renders a
 stray button.
 
+**New and Delete are catalogue entries too** (#460 M15, D18). `/spark/actions/list` returns them as
+`isDefault` entries for holders of `New/T` / `Delete/T`. The defaults are: New has no rule, and
+Delete is `>0`.
+- Override their `showedOn`, rule, label or confirmation with an entry named `New` or `Delete` in
+  `customActions.json`, without a C# class.
+- Never write an `ICustomAction` with either name: it is never executed.
+- Delete on a selection is `POST /spark/po/delete-many`. It is all or nothing, uses one
+  `SaveChanges`, and SoftDelete applies to it. ⚠️ Put per-row delete logic in
+  `OnBeforeDeleteAsync`: an `OnDeleteAsync` override that saves on its own breaks the batch's
+  atomicity.
+
+**Sub-queries** are the parent type's `persistentObject.queries`. An entry is a bare alias or
+`{ "query", "selectionMode", "parentReference" }`, and `selectionMode` can also sit on the query
+itself (`auto` by default, derived from the custom actions).
+- New on a sub-query calls `OnNewAsync(SparkNewArgs<T>)` with `args.Parent` / `ParentType` / `Query`.
+- **The base fills the reference to the parent.** If you override `OnNewAsync`, call
+  `base.OnNewAsync(args)` or `args.FillParentReference()`, or the reference stays empty.
+- Name the attribute with `parentReference` when the row type references the parent more than once.
+  A wrong name fails startup.
+
 **Accounts** (`spark.AddAuthentication<TUser>()`, `MintPlayer.Spark.Authorization` README has the
 route table):
 

@@ -99,6 +99,35 @@ Each component declares `context = input.required<SparkDetailContext>()` (query-
 `SparkQueryListContext`) and does its own permission checks. A second registration with the same `id`
 replaces the first.
 
+### Query toolbar, selection and sub-queries
+
+The grid (`/grid`) owns one toolbar model, `SparkQueryGridComponent.toolbarActions()`. It holds the
+server's default `New` and `Delete` (`isDefault` entries from `/spark/actions/list`) and the custom
+actions, each enabled from the live selection count. The sub-query card's header renders it on the
+right, with the overflow in `…`, and the query page's action bar renders it too.
+
+The grid also renders:
+- a select-all box for the page on screen;
+- an "N selected ⊗" chip;
+- a per-row `⋮` menu of the actions whose rule accepts one row. A menu item runs on that row only and
+  leaves the checkbox selection alone.
+
+- **Selection** follows `selectionMode` (`'auto' | 'none' | 'single' | 'multiple'`).
+  - It is set on the query, or on the parent type's `queries` entry, which `<spark-query-card
+    [selectionMode]>` and `<spark-query-grid [selectionModeSetting]>` take.
+  - `'auto'` derives it from the custom actions, as before.
+- **Delete** posts the selection to `SparkService.deleteMany()` (`/spark/po/delete-many`). One
+  request deletes all the rows or none.
+- **New** on a sub-query navigates to the create page with `parentId`, `parentType` and `queryId`.
+  The create page always asks `SparkService.newObject()` (`/spark/po/new`) for its blank object, so
+  the server's `OnNewAsync` sets the defaults. For a sub-query, its base fills the reference to the
+  parent.
+- Read `EntityType.queries` with `subQueriesOf(type)`. An entry is a bare alias or
+  `{ query, selectionMode?, parentReference? }`.
+
+See [guide-custom-actions.md](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-custom-actions.md)
+for the server side of this.
+
 ### Soft delete, history and moderation
 
 ```ts

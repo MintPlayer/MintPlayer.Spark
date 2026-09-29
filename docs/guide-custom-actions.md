@@ -230,6 +230,146 @@ type-level `Read` right first. So granting `CarCopy/Car` alone is not sufficient
 receives a parent or a selection — the caller needs `Read/Car` too. An action that names no rows (a
 pure command) has no such requirement.
 
+## Default actions, selection and sub-queries (#460, M15)
+
+An action is defined once per type, and every query of that type offers it, whether the query is a
+top-level list or a sub-query on a parent's detail page. That is the Vidyano model. M15 adds the
+parts that were missing: the built-in `New` and `Delete` as catalogue entries, a declared selection
+mode, and a toolbar and row menu shared by both grids.
+
+### New and Delete are catalogue entries (D18)
+
+`/spark/actions/list` now also returns the framework's two built-in actions. Each is marked
+`"isDefault": true` and appears only when the caller holds the ordinary right, `New/T` or `Delete/T`:
+
+| Name | `showedOn` | `selectionRule` | Runs through |
+|---|---|---|---|
+| `New` | `both` | none | the create page → `POST /spark/po/new` → `POST /spark/po/create` |
+| `Delete` | `both` | `>0` | `POST /spark/po/delete-many` |
+
+**To override either one**, add an entry with the same name to `customActions.json`. It needs no C#
+class, and it may leave `displayName` out; a custom action may not.
+- A field the entry states replaces the default. A field it leaves out keeps the default.
+- `showedOn` and `offset` always come from the entry. Their file defaults equal the built-in ones.
+- To drop Delete's rule, write `"selectionRule": ""`.
+
+```json
+{
+  "Delete": { "selectionRule": "=1", "confirmationMessageKey": "DeleteOneAnswer" }
+}
+```
+
+An `ICustomAction` class named `New` or `Delete` is never executed: `/spark/actions/execute` answers
+404 for both names.
+
+### The bulk Delete
+
+```
+POST /spark/po/delete-many
+{ "objectTypeId": "Answer", "ids": ["answers/1-A", "answers/2-A"],
+  "queryId": "question-answers", "parentId": "questions/1-A", "parentType": "Question" }
+```
+
+One request runs every row through the ordinary delete pipeline, in this order:
+1. The **200-row cap** and the `Delete` entry's **rule** are checked first. Either failure is a 400,
+   and nothing touches the database.
+2. The `Delete/T` right.
+3. The sub-query's container, loaded through its own gated read.
+4. The collection guard and the row gate, on every row.
+5. `OnDisableActionsAsync` is asked about the query target (with the parent) and about every row, in
+   one batched call. **One row that withholds `Delete` refuses the whole request with 403.**
+6. `OnBeforeDeleteAsync` and the interceptors run for each row, so a soft-deletable type is
+   soft-deleted.
+7. Every write is committed by **one `SaveChanges`**: all rows or none.
+
+A row that is missing, belongs to another collection or is denied by the row rule refuses the lot,
+with the same answer a missing row gets. The server never deletes 198 of 200 and says nothing.
+
+⚠️ The base `OnDeleteAsync` defers its own `SaveChanges` while a bulk delete is open. An override that
+saves on its own commits its row early and breaks the guarantee. That is the D1 override gap: it is
+logged as a warning, not prevented. Put per-row logic in `OnBeforeDeleteAsync` instead.
+
+There is no bulk Purge. A purge deletes revisions with an admin operation that cannot join the
+transaction, so it stays one row at a time through `/spark/po/purge`.
+
+### Selection mode (D17)
+
+A query declares `"selectionMode": "auto" | "none" | "single" | "multiple"`. The parent type's
+`queries` entry can override it for one parent:
+
+```json
+"persistentObject": {
+  "name": "Question",
+  "queries": [
+    "question-tags",
+    { "query": "question-answers", "selectionMode": "multiple" }
+  ]
+}
+```
+
+- An entry is a bare alias, as before, or an object.
+- Model sync writes a bare alias back for an entry without overrides, so existing model files do not
+  change.
+- `auto`, the default, derives the mode from the **custom** actions offered, exactly as before:
+  - checkboxes appear only when some action has a rule;
+  - `single` when every rule wants exactly one row.
+- The default Delete does not widen `auto`, so selection is opt-in.
+- Selection is presentation only. Every action that takes rows still enforces its own rule at submit.
+
+### The toolbar, the chip and the row menu
+
+The grid builds one toolbar model, and both hosts render it: the sub-query card's header and the
+query-list page's action bar.
+- **Toolbar:** `New`, `Delete` and the custom actions. Each is enabled live from the selection count.
+  - `New` needs the right, and a result that does not withhold `New`.
+  - `Delete` is shown only while rows can be selected.
+  - The card puts its caption on the left and the actions on the right, with the overflow in the
+    priority nav's `…`.
+- **Selection bar:** a select-all box for the page on screen, and an "N selected ⊗" chip that clears
+  the selection.
+- **Row menu (`⋮`):** every offered action whose rule accepts exactly one row, including Delete. It
+  runs on that row only and leaves the checkbox selection alone. An action without a rule acts on the
+  query, not on a row, so it is not in the menu.
+
+### New from a sub-query: `OnNewAsync` (D19)
+
+Pressing New on a sub-query opens the create page and passes the parent along as query parameters:
+`?parentId=…&parentType=…&queryId=…`. The parent therefore survives the navigation and a reload of
+the page. The create page asks the server for its blank object:
+
+```
+POST /spark/po/new
+{ "objectTypeId": "Answer", "parentId": "questions/1-A", "parentType": "Question", "queryId": "question-answers" }
+```
+
+- The parent is loaded through its gated read.
+- The query must be one of the parent type's `queries`, and must list the type being created.
+  Otherwise the request is refused, like a missing row.
+- The Actions class's existing `OnNewAsync(SparkNewArgs<T> args)` then receives `args.Parent`,
+  `args.ParentType`, `args.Query` and `args.ParentReference`.
+
+**The base `OnNewAsync` fills the parent reference** through `args.FillParentReference()`:
+- It looks for the one `Reference` attribute of the new object whose target is the parent's type.
+- If there is exactly one, it is set to the parent's id.
+- If there are none, or several, nothing is filled, and that is logged at Debug.
+- When a type references the parent more than once, name the attribute with `"parentReference"` on
+  the query or on the sub-query entry. A name that does not exist, or that references another type,
+  fails at startup and in `--spark-verify-model`.
+
+```csharp
+public override async Task OnNewAsync(SparkNewArgs<Answer> args)
+{
+    await base.OnNewAsync(args);                 // keeps the auto-fill
+    args.PersistentObject[nameof(Answer.Body)].SetOriginalValue("Thanks for asking!");
+}
+```
+
+⚠️ An override that does not call `base.OnNewAsync` loses the auto-fill, which is intended: the hook
+then owns the initialisation. Call `args.FillParentReference()` to keep the auto-fill without calling
+base.
+
+A standalone New and an `AsDetail` row get no auto-fill. An embedded row's parent owns the save.
+
 ## REST API
 
 Spark exposes two endpoints for custom actions under the `/spark/actions` prefix:

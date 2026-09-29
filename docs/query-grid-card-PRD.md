@@ -84,7 +84,15 @@ Three structural directives, projected by the host, each collected with `content
 |---|---|---|
 | `*sparkQueryIcon` | header, left | nothing |
 | `*sparkQueryCaption` | header, centre | `query.description \| resolveTranslation` &#124;&#124; `query.name` |
-| `*sparkQueryActions` | header, right | the `bs-priority-nav` of server-declared custom actions |
+| `*sparkQueryActions` | header, right | the `bs-priority-nav` of the grid's toolbar actions: New, Delete and the custom actions (#460 M15) |
+
+**Header side (#460 M15):** the caption comes first, with `me-auto`, and the actions sit on the
+trailing edge, as this table always said. Until M15 the card rendered them the other way round,
+with the actions on the left and the caption pushed right. The priority nav's overflow label is
+`…`. The actions slot's context gains `actions`, the full toolbar model, beside `$implicit`, which is
+still the custom actions only. See `guide-custom-actions.md`, "Default actions, selection and
+sub-queries", for the toolbar, the "N selected ⊗" chip, the select-all box and the per-row `⋮` menu.
+The grid owns all of them, so the query-list page shows the same ones.
 
 Each takes an **optional query alias or id as its value** — `*sparkQueryIcon="'cars'"`. A detail
 page renders one card per entry in `EntityTypeDefinition.Queries`, so a bare slot would decorate

@@ -237,11 +237,75 @@ result synchronously must await it. `sparkAuthenticatedGuard` is an alias.
   which runs after `UserManager.DeleteAsync` succeeded; keep clean-up that must succeed first (and may
   stop the deletion) in `ISparkAccountDeletionHandler<TUser>`.
 
+### 11. Sub-query selection & actions (M15, D17–D19)
+
+- **`EntityTypeDefinition.Queries` is `SparkSubQuery[]`**, no longer `string[]`.
+  - An entry is still a bare alias in the model file, so no model file changes. It may now also be
+    `{ "query", "selectionMode", "parentReference" }`, and model sync writes a bare alias back when an
+    entry has no override.
+  - Assigning strings (`Queries = ["a"]`) still compiles, through an implicit conversion.
+  - Code that **compares** entries with strings must read `.Query`. `SubQueryPruner`, the executor's
+    sub-query check and `--spark-verify-model` were migrated.
+  - On the wire, `EntityType.queries` is `(string | SparkSubQuery)[]`. Read it with ng-spark's
+    `subQueriesOf(type)`.
+- **`/spark/actions/list` also returns `New` and `Delete`** (`"isDefault": true`) for a caller holding
+  `New/T` or `Delete/T`.
+  - A client that renders the list as-is shows two more entries. ng-spark's `filterQueryActions` and
+    `filterDetailActions` leave them out; `defaultQueryActions` returns them.
+  - `/spark/actions/execute` answers 404 for both names. An `ICustomAction` class named `New` or
+    `Delete` is no longer reachable.
+  - An entry named `New` or `Delete` in `customActions.json` now overrides the default's
+    presentation and rule.
+- **`CustomActionDefinition.DisplayName` is no longer `required`.** The loader still refuses a custom
+  action without one, and only an override entry for New or Delete may omit it.
+- **The base `OnNewAsync` is no longer empty.** For a New started from a sub-query, it fills the
+  reference to the parent (`args.FillParentReference()`). An override that does not call base keeps
+  today's behaviour, and nothing changes for a standalone New or an `AsDetail` row.
+  - `INewInvoker.InvokeAsync` gained an optional `SparkNewSubQueryContext` parameter.
+  - `SparkNewArgs<T>`'s internal constructor gained a parameter. Only a test that constructs it by
+    reflection is affected.
+- **The base `OnDeleteAsync` skips its `SaveChanges`** while a bulk delete is open, and the bulk delete
+  commits once. An override that saves on its own still works but breaks the all-or-nothing
+  guarantee, and is logged.
+- **`startup` refuses a `parentReference`** that names no attribute of the query's row type, or names
+  one that is not a single `Reference` to the parent's type. `--spark-verify-model` reports the same
+  problem.
+- **ng-spark.**
+  - The card's header puts the caption on the left and the actions on the right. It was the other
+    way round.
+  - The priority nav's overflow label is `…`, where it used to be `common.more`.
+  - Both the card and the query page render `New`, `Delete` and the custom actions from the grid's
+    `toolbarActions()`. The query page's New still emits `createClicked`.
+  - The create page calls `/spark/po/new` for every New: one extra request, and it runs the type's
+    `OnNewAsync`.
+  - `showedOn` is compared case-insensitively.
+  - `selectionModeFor(actions, declared?)` gained its second parameter.
+  - `SparkService.newObject()` accepts `queryId`.
+
 ---
 
 ## New
 
 ### Core (`MintPlayer.Spark`, `.Abstractions`)
+
+- **Sub-query selection & actions (M15, Vidyano parity)**, described in
+  [guide-custom-actions.md](guide-custom-actions.md), "Default actions, selection and sub-queries".
+  - `selectionMode` (`auto` / `none` / `single` / `multiple`) on a query, overridable per sub-query
+    entry.
+  - `New` and `Delete` are catalogue entries: they have a rule, a `showedOn` and rights, and an app
+    can override them in `customActions.json`.
+  - **`POST /spark/po/delete-many`** runs every row through the delete pipeline and commits with
+    one `SaveChanges`, all or nothing.
+    - It enforces the `Delete` rule and the 200-row cap, as custom actions do.
+    - `OnDisableActionsAsync` is asked about the query, with its parent, and about each row.
+    - SoftDelete turns it into a soft delete.
+  - **`POST /spark/po/new` takes `parentId` / `parentType` / `queryId`** for a New started from a
+    sub-query.
+    - `SparkNewArgs<T>` gains `ParentType`, `Query`, `ParentReference` and `FillParentReference()`.
+    - The base `OnNewAsync` fills the single reference to the parent. `parentReference` names it
+      when there are several, and startup validates that name.
+  - `SparkClient` gains `DeletePersistentObjectsAsync` and `NewPersistentObjectFromSubQueryAsync`, and
+    `SparkCustomAction` gains `IsDefault`.
 
 - **Row policies** — `IRowFilterPolicy` / `IRowCheckPolicy` (typed helpers `RowFilterPolicy<T>`,
   `RowCheckPolicy<T>`), `spark.AddSparkRowPolicy<T>()`: one rule for many types, composed with the
@@ -344,6 +408,15 @@ Two fixes landed at the end of this PR:
   `/moderation` (vote widget, flag button, review queue, reputation badge, moderator panel) and
   `/panels` (`SPARK_DETAIL_PANELS`, `SPARK_DETAIL_ACTIONS`, `SPARK_QUERY_LIST_ACTIONS`);
   `withSparkTimezone({ cookieName })` writes the zone cookie and never sends the header during SSR.
+  Also added in M15:
+  - the grid's shared toolbar model (`toolbarActions()`, `SparkQueryToolbarAction`,
+    `sparkActionClass`);
+  - the selection bar (a select-all box and the "N selected ⊗" chip);
+  - the per-row `⋮` menu;
+  - `SparkService.deleteMany()`;
+  - `SparkSelectionModeSetting`, `subQueriesOf()`, `defaultQueryActions()` and
+    `filterDetailActions()`;
+  - the built-in icons `three-dots-vertical` and `x-circle`.
 - `@mintplayer/ng-spark-auth` 22.14.0: `withAccount()` — account overview, confirm-email, profile
   (app fields via `SPARK_ACCOUNT_PROFILE_FIELDS`, mail language), password, two-factor, connected
   logins, passkeys, personal data + deletion — each also a standalone component; `twitterProvider()`,

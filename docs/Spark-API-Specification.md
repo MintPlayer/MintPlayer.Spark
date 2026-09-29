@@ -99,7 +99,15 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
 
 **`POST /spark/po/new`** — `Endpoints/PersistentObject/New.cs`
 
-- **Request body**: `{ objectTypeId, asDetailAttribute?, parentType?, parentId?, parameters?, retryResults? }`
+- **Request body**: `{ objectTypeId, asDetailAttribute?, parentType?, parentId?, queryId?, parameters?, retryResults? }`
+  - Without `asDetailAttribute`, `parentType` + `parentId` + `queryId` (all three) mean **a New
+    started from a sub-query** (#460 M15, D19).
+  - The parent is loaded through its gated read.
+  - The query must be a sub-query of the parent's type and must list the constructed type;
+    otherwise the answer is 404.
+  - `OnNewAsync` receives `Parent`, `ParentType`, `Query` and `ParentReference`, and the base fills
+    the reference to the parent.
+  - The ng-spark create page calls this for every New.
 - **Response shapes**:
   - `200 OK` — the constructed, unsaved `PersistentObject`, enveloped
   - `400 Bad Request` — `{ "errors": [...] }` when `OnNewAsync` refuses
@@ -147,6 +155,23 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
   - `401` / `403` on auth failure
 - **Auth**: XSRF-TOKEN required; permission check on delete access
 - **Notes**: a delete always carries a body now. It used to be a `DELETE` that attached one *only* once there were retry answers to send, with the server sniffing `Content-Type` to decide whether to read it; that conditional went with the verb.
+
+#### Delete a selection (bulk)
+
+**`POST /spark/po/delete-many`**, implemented in `Endpoints/PersistentObject/DeleteMany.cs` (#460 M15, D18)
+
+- **Request body**: `{ objectTypeId, ids: string[], queryId?, parentId?, parentType?, retryResults? }`
+- **Response shapes**:
+  - `204 No Content`: every row was deleted, by one `SaveChanges`.
+  - `400 Bad Request`: more than 200 ids, or the `Delete` entry's selection rule refuses the count
+    (default `>0`), or a hook refused with `{ "errors": [...] }`.
+  - `403 Forbidden` `{ error, action: "Delete" }`: `OnDisableActionsAsync` withholds Delete on the
+    query target or on one row.
+  - `404 Not Found`: a row is missing, foreign or denied, or the parent is. The request is refused
+    whole.
+  - `449` on retry.
+- **Auth**: XSRF-TOKEN required, and `Delete/T`.
+- **Notes**: all or nothing. A soft-deletable type is soft-deleted. There is no bulk Purge.
 
 #### Delete AsDetail Row
 
