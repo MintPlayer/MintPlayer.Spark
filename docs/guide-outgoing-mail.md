@@ -437,9 +437,10 @@ Requested removal of the outbound SMTP block for ports **25 and 465** from
 timeout 8 bash -c 'exec 3<>/dev/tcp/alt4.aspmx.l.google.com/25' && echo OPEN25
 ```
 
-⚠️ Still outstanding: the **PTR is unchanged** (`static.60.190.245.188.clients.your-server.de`).
-Mail delivers regardless — see §3.1 — but setting it to `coverage.mintplayer.com` is a free
-improvement and `coverage.mintplayer.com` already forward-resolves to the server.
+~~⚠️ Still outstanding: the **PTR is unchanged** (`static.60.190.245.188.clients.your-server.de`).~~
+**Done for IPv4 on 2026-09-29:** the PTR of `188.245.190.60` is now `coverage.mintplayer.com`, which
+forward-resolves to the server. The IPv6 address has no PTR, which is one reason the relay now sends
+over IPv4 only — see `apps/CodeCoverage/README.md` § Outgoing mail.
 
 ### 9.2 DNS at the registrar — two records added
 
@@ -514,6 +515,6 @@ The third row is the one worth remembering: it looked like success and was not.
    MailManager, which is deliberate and supported.
 3. Flip `EXTERNAL_LOGIN_LINKING` to `ConfirmByEmail` only when a second forge exists — with a
    single provider the situation the mode exists for cannot arise.
-4. Optionally set the PTR, per §9.1.
+4. ~~Optionally set the PTR, per §9.1.~~ Done for IPv4 on 2026-09-29.
 5. Bounces (§8.3) are not enabled for coverage.mintplayer.com; doing so needs a VERP domain in
    `ALLOWED_SENDER_DOMAINS` and SPF, and `SPARK_BOUNCE_SECRET` in the VPS `.env`.
