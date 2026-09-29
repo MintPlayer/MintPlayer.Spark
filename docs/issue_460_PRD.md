@@ -59,6 +59,9 @@ Locked with the owner. Do not re-litigate without new evidence.
 | D14 | **All 10 vote-fraud measures in v1** (§3.12). `moderation.json` is an `IConfiguration` source bound to `Spark:Moderation` — every threshold overridable via appsettings/env vars/user secrets; group-id and earnable validation runs **after** layering. |
 | D15 | **Forwarded headers configured by Spark.** Default trust: loopback + private ranges (10/8, 172.16/12, 192.168/16, fc00::/7); override `Spark:ForwardedHeaders:KnownNetworks`/`KnownProxies`; `ForwardLimit` = `Spark:ForwardedHeaders:ProxyHops` (default 1, **never null**); `X-Forwarded-Proto` same trust; **`X-Forwarded-Host` not forwarded by default** — opt-in `Spark:ForwardedHeaders:ForwardHost=true`, which is refused at startup while `AllowedHosts` is `*` (every app's appsettings has `"*"` today, so checking against it would do nothing). Outside Development, a trust-everyone configuration is a startup error. Effective trust list logged at startup. Hand-written blocks in CodeCoverage (`Program.cs:35-70`, plus the comment at `:371-374`), DemoApp, HR and Fleet deleted (MintPlayer, a separate repo, removes its own). Deployment guide: entry proxy should *overwrite* XFF (nginx `$remote_addr`, Traefik `trustedIPs`, never `insecure`). **Pre-merge: verify what fronts coverage.mintplayer.com and MintPlayer** (a CDN needs its ranges added, or the whole site shares one rate-limit bucket). |
 | D16 | **ng-spark-auth `withAccount()`**: confirm-email, change/set-password, profile, 2FA enrollment + recovery regeneration, connected logins, passkeys, personal data/delete — each also a standalone component. Profile accepts app-contributed fields (`SPARK_ACCOUNT_PROFILE_FIELDS`), validated server-side via `ISparkProfileContributor<TUser>`. Email change goes through confirmation. QR code server-rendered SVG. Test enumerates every `/manage/*` route for `SparkLocalCredentials` classification + antiforgery stamp. |
+| D17 | **Selection is opt-in per query (M15, owner 2026-09-29).** `selectionMode: auto \| none \| single \| multiple` on the query definition (`SparkQuery.SelectionMode`, omitted = `auto`), overridable per sub-query entry in the parent type's `Queries`. `auto` is today's behaviour — derived from the actions offered, now including the default Delete (`>0`), so a grid whose caller may delete gets checkboxes. A `Queries` entry is either the bare alias (unchanged, and what model sync writes back when the entry has no override) or `{ "query", "selectionMode", "parentReference" }`; `EntityTypeDefinition.Queries` is `SparkSubQuery[]` (implicit from `string`). Presentation only: every row-taking action still enforces its own rule server-side. |
+| D18 | **New and Delete are catalogue entries with rules (M15, owner 2026-09-29).** Built-in defaults: `New` (no rule) and `Delete` (`>0`, danger), both `showedOn: both`; an app overrides `showedOn`, `selectionRule`, label, icon, offset, variant and confirmation by adding an entry of the same name to `customActions.json` (no C# class; a C# `ICustomAction` with either name is a startup error). `/spark/actions/list` returns them with `isDefault: true` when the caller holds `New/T` or `Delete/T`. **Bulk Delete:** `POST /spark/po/delete-many { objectTypeId, ids, queryId?, parentId?, parentType? }` runs every row through the normal delete pipeline — Delete right, collection guard, row gate, `OnDisableActionsAsync` (query target with the parent, plus every row; union; 403 after the row gate), `OnBeforeDeleteAsync`, interceptors (SoftDelete turns it into a soft delete, History keeps revisions) — with the writes deferred to **one `SaveChanges`**: all rows or none. The rule and the 200-row cap are enforced exactly as for custom actions (400). Offered on top-level lists and sub-queries alike. Bulk **Purge** is not offered: a purge deletes revisions with an admin operation that cannot join the transaction. |
+| D19 | **New from a sub-query goes through the server hook (M15, owner 2026-09-29).** The hook already existed — `OnNewAsync(SparkNewArgs<T>)` behind `POST /spark/po/new` — so it is extended rather than duplicated: `SparkNewArgs` gains `ParentType`, `Query` and `ParentReference`, set when New is invoked from a sub-query (`/po/new` with `parentId`, `parentType`, `queryId` and no `asDetailAttribute`; the parent is loaded through the gated read, the query must be declared as a sub-query of the parent's type and produce the constructed type, else refused like a missing row). The ng-spark create page now always asks `/po/new` for its blank object, and the sub-query card carries `parentId`/`parentType`/`queryId` to the create page as query parameters, so the parent survives navigation. **Owner refinement (2026-09-29): the base `DefaultPersistentObjectActions<T>.OnNewAsync` auto-fills the parent reference** through the reusable `args.FillParentReference()`: the reference attribute of the new object whose target is the parent's type; exactly one → set to the parent's id, zero or several → nothing, logged at Debug. An explicit `parentReference` on the query or the sub-query entry names the attribute when there are several, and a name that does not exist or does not reference the parent's type fails at startup. D1 caveat, intended: an override that does not call base loses the auto-fill (the hook then owns initialisation) and may call `args.FillParentReference()` itself. The auto-fill applies to a sub-query New only, never to an `AsDetail` row (whose parent owns the save). |
 
 ### Technical decisions (made by Claude, reasons recorded; owner may override)
 
@@ -262,6 +265,87 @@ Specified in full by D15 (`AddSparkForwardedHeaders`, private-range default, `Pr
 - Update `tools/verify-coverage-paths.mjs` only if a test project is added (none planned).
 
 ---
+
+### 3.15 Sub-query selection & actions, Vidyano parity (M15) — D17, D18, D19
+
+The reference is Vidyano, measured in a real app. An action is defined once per type, and every
+query of that type offers it, whether top-level or sub-query. Each sub-query tab has its own toolbar,
+with pinned actions and a `…` overflow. Rows have checkboxes, there is a select-all box and a per-row
+`⋮` menu, and a "N selected ⊗" chip clears the selection. Actions enable and disable live from the
+selection count.
+
+**Server**
+- `SparkQuery.SelectionMode` / `ParentReference`; `EntityTypeDefinition.Queries: SparkSubQuery[]`,
+  where a bare string or an object is accepted and a bare string is written back when there is no
+  override. Model sync is a fixed point for both shapes.
+- Startup validation: an explicit `parentReference` must name a `Reference` attribute of the query's
+  row type whose `referenceType` is the parent's CLR type. `--spark-verify-model` reports the same
+  problem.
+- Default `New`/`Delete` catalogue entries, overridable in `customActions.json`, listed with
+  `isDefault: true` when the caller holds the right.
+- `POST /spark/po/delete-many`. It enforces the rule, the cap, the right, the gated parent, the
+  collection guard, the row gate, `OnDisableActionsAsync` (query plus rows, union) and the
+  interceptors, then commits with one `SaveChanges`, all or nothing.
+  - The base `OnDeleteAsync` defers its `SaveChanges` while a batch is open.
+  - An override that saves on its own breaks atomicity. That is documented as a D1 gap.
+- `/spark/po/new` sub-query context (`parentId`, `parentType`, `queryId`) and `SparkNewArgs`
+  `ParentType`/`Query`/`ParentReference`/`FillParentReference()`. The base `OnNewAsync` auto-fills.
+  `NewInvoker` invokes the base hook when the context is a sub-query.
+- `SparkClient.DeletePersistentObjectsAsync`, and `NewPersistentObjectAsync(..., queryId)`.
+
+**ng-spark**
+- `SparkSelectionMode` gains `'auto'`. `selectionModeFor(actions, declared)` returns the declared
+  mode unless it is `'auto'`. `filterQueryActions` compares `showedOn` case-insensitively.
+- The grid owns the shared toolbar model, `toolbarActions()`: New, Delete and custom actions, with
+  enablement read live from the selection. It also owns:
+  - the selection bar (a select-all box for the page, and the "N selected ⊗" chip);
+  - the per-row `⋮` menu, which lists the actions whose rule accepts exactly one row. A menu item
+    runs on that row only and leaves the checkbox selection alone.
+  - bulk Delete, which asks for confirmation.
+  - New, which navigates to the create page and carries the parent.
+- The card renders the caption on the left and the actions on the right, through the priority nav's
+  `…`. The query-list page renders the same `toolbarActions()`. Neither forks the grid.
+- The detail page reads normalised `Queries` entries and passes the entry's `selectionMode` to the
+  card.
+- The create page asks `/po/new`, and forwards the query parameters `parentId`, `parentType` and
+  `queryId`.
+
+**Why the owner saw no actions on sub-queries (root cause, M15 investigation).** No code path hid
+them. The configuration had none to show, and New and Delete were never rendered on a sub-query:
+- **QnA:** the only sub-query is `question-answers`, which lists Answers. Answer had no custom
+  actions; `CloseQuestion` and `ReopenQuestion` are `showedOn: "detail"` on Question.
+- **Fleet:** no sub-queries at all. Its query actions, `CarCopy` and `ScatterRegistrationOffsets`,
+  sit on the top-level Car lists.
+- **DemoApp:** `company-cars` is the only sub-query whose row type has a query action
+  (`CopyCarsToCompany`, `both`, `>=1`, granted to everyone). The chain there is intact.
+- **HR and CodeCoverage:** no query-level custom actions.
+- Every card lacked New and Delete, which the card had never rendered (`offersCreate` was computed
+  and unused), so a card looked action-less even for a caller who could create or delete.
+
+Three latent defects in that chain are fixed:
+- `showedOn` was compared case-sensitively (`"Both"` rendered nowhere).
+- The query-list page ignored the result's `disabledActions`, which the card honoured.
+- A query whose entity type did not resolve skipped the action lookup without a word.
+
+**QnA demo**
+- `Question.queries` = `{ "query": "question-answers", "selectionMode": "multiple" }`.
+- A new `DuplicateAnswer` custom action (`showedOn: "query"`, `=1`).
+- Bulk Delete of answers is soft (SoftDelete).
+- A New from the card relies on the base auto-fill for `Answer.QuestionId`, with no custom code
+  (QnA README).
+
+**Tests**
+- .NET:
+  - the bulk delete: its rule, all-or-nothing, SoftDelete, the 200 cap, and one refused row refusing
+    the lot;
+  - `OnNewAsync`: it receives the parent; the auto-fill cases (one candidate, zero, several,
+    explicit name, an override without base, an override calling the helper); startup validation of
+    `parentReference`;
+  - the `selectionMode` overrides and JSON shapes, and the model-sync fixed point;
+  - default catalogue entries in the list endpoint.
+- vitest: selection modes, the chip, action enablement, the row menu, header order, and the create
+  page's parent round-trip.
+- E2E (QnA): sub-query checkboxes, bulk soft Delete, and New with the parent.
 
 ## 4. Spikes
 

@@ -1,6 +1,6 @@
 # Plan — Issue #460 (one pull request)
 
-Requirements, decisions (D1–D16, T1–T10) and spikes live in [issue_460_PRD.md](issue_460_PRD.md). This
+Requirements, decisions (D1–D19, T1–T10) and spikes live in [issue_460_PRD.md](issue_460_PRD.md). This
 file is the order of work.
 
 **Rules for executing this plan**
@@ -123,6 +123,16 @@ Dependencies flow downward. Items in the same milestone are independent.
 - [ ] Open the PR (closes #283, #285, #299, #432, #460); reply on #460 re SocketExtensions; check CI, not only local.
 
 ---
+
+### M15 — Sub-query selection & actions, Vidyano parity (D17–D19, PRD §3.15; owner decision 2026-09-29: same PR)
+- [ ] PRD D17–D19 + §3.15 recorded before coding; root cause of the "no actions on sub-queries" report investigated.
+- [ ] **D17** `SparkSelectionMode`, `SparkQuery.SelectionMode`/`ParentReference`, `SparkSubQuery` entries (bare string or object), consumers updated, startup + verify-model validation of `parentReference`.
+- [ ] **D18** default `New`/`Delete` catalogue entries (overridable in `customActions.json`, `isDefault` on the wire); `POST /spark/po/delete-many` (rule, 200 cap, row gate, `OnDisableActionsAsync`, interceptors, one `SaveChanges`); `SparkClient.DeletePersistentObjectsAsync`.
+- [ ] **D19** `/spark/po/new` sub-query context, `SparkNewArgs.ParentType`/`Query`/`ParentReference`/`FillParentReference()`, base auto-fill (owner refinement), `SparkClient` `queryId`.
+- [ ] ng-spark: grid toolbar model, selection bar + chip + select-all, row `⋮` menu, bulk Delete, New carrying the parent; card header (caption left, actions right); query-list page on the same model; detail page reads entries; create page via `/po/new`; case-insensitive `showedOn`.
+- [ ] QnA: Answers sub-query with checkboxes, soft bulk Delete, `DuplicateAnswer` (`=1`), New relying on the auto-fill; model sync + security posture.
+- [ ] Tests: .NET, vitest, QnA E2E (PRD §3.15). Docs: `guide-custom-actions.md`, `query-grid-card-PRD.md`, ng-spark README, release notes, AGENTS.md.
+- [ ] Full sweep: all 5 test projects, vitest (ng-spark, ng-spark-auth, QnA), verify model + security for every app.
 
 ## Pre-merge checklist (merge auto-publishes packages and redeploys coverage.mintplayer.com)
 
