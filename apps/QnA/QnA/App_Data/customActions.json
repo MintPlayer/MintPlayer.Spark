@@ -12,5 +12,12 @@
     "description": "Reopens a closed question, so it takes answers again.",
     "showedOn": "detail",
     "refreshOnCompleted": true
+  },
+  "DuplicateAnswer": {
+    "displayName": { "en": "Duplicate", "fr": "Dupliquer", "nl": "Dupliceren" },
+    "description": "Copies one answer under the same question. Needs exactly one answer selected; also in each row's menu.",
+    "showedOn": "query",
+    "selectionRule": "=1",
+    "refreshOnCompleted": true
   }
 }

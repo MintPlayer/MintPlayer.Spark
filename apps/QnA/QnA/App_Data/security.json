@@ -90,6 +90,12 @@
       "isDenied": false
     },
     {
+      "id": "4e13ffff-0000-4000-8000-000000000035",
+      "resource": "DuplicateAnswer/Answer",
+      "groupId": "4e130000-0000-4000-8000-00000000000f",
+      "isDenied": false
+    },
+    {
       "id": "4e13ffff-0000-4000-8000-000000000009",
       "resource": "Vote/Question",
       "groupId": "4e130000-0000-4000-8000-000000000002",

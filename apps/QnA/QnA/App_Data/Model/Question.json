@@ -344,7 +344,10 @@
       }
     ],
     "queries": [
-      "question-answers"
+      {
+        "query": "question-answers",
+        "selectionMode": "multiple"
+      }
     ]
   },
   "queries": [
