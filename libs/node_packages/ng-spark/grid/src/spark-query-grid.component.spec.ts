@@ -1004,6 +1004,34 @@ describe('SparkQueryGridComponent', () => {
       expect(c.entityType()?.name).toBe('Car');
     });
 
+    it('warns, and asks for no actions, when the query names a type that resolves to nothing (M15)', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      try {
+        const { c, service } = await setup({
+          getQuery: vi.fn().mockResolvedValue({ ...allPeopleQuery, name: 'GhostQuery', entityType: 'Ghost' }),
+        });
+
+        expect(c.entityType()).toBeFalsy();
+        expect(service.getCustomActions).not.toHaveBeenCalled();
+        const messages = warn.mock.calls.map(args => String(args[0]));
+        expect(messages.some(m => m.includes(`Query 'GhostQuery'`) && m.includes(`entity type 'Ghost'`)
+          && m.includes('offers no actions'))).toBe(true);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('does not warn when the entity type resolves', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      try {
+        await setup();
+
+        expect(warn.mock.calls.some(args => String(args[0]).includes('resolves to no type'))).toBe(false);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
     it.each([
       ['Database.Vehicles', 'Vehicle'],
       ['Database.Roles', 'Role'],
