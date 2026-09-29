@@ -132,7 +132,10 @@ Dependencies flow downward. Items in the same milestone are independent.
 - [x] ng-spark: grid toolbar model, selection bar + chip + select-all, row `⋮` menu, bulk Delete, New carrying the parent; card header (caption left, actions right); query-list page on the same model; detail page reads entries; create page via `/po/new`; case-insensitive `showedOn`.
 - [x] QnA: Answers sub-query with checkboxes, soft bulk Delete, `DuplicateAnswer` (`=1`), New relying on the auto-fill; model sync + security posture.
 - [x] Tests: .NET, vitest, QnA E2E (PRD §3.15). Docs: `guide-custom-actions.md`, `query-grid-card-PRD.md`, ng-spark README, release notes, AGENTS.md.
-- [ ] Full sweep: all 5 test projects, vitest (ng-spark, ng-spark-auth, QnA), verify model + security for every app.
+- [ ] **Sub-query search box (owner, 2026-09-29, D17 addendum):** a search box on the right of the `<spark-query-card>` header, next to the actions, as in Vidyano. Reuse the query-list page's box (debounce, clear button) via a shared component so both surfaces behave identically. It feeds the card's existing `search` input, so the grid sends `Search` together with `parentId`/`parentType` to `/spark/queries/execute`, which already does server-side search (#210). Check that `/spark/queries/distinct-values` also takes the search, so a column filter's value list matches, and add it if it doesn't. Add vitest specs and a QnA E2E step.
+- [ ] Fix whatever CI run `a1b47012` breaks (expected: exact `/actions/list` counts, the old card-header order in specs, `SparkService` mocks without `newObject`, E2E selectors).
+- [ ] Full sweep: all 5 test projects, vitest (ng-spark, ng-spark-auth, QnA), verify model + security for every app. CI serves as the sweep, at the owner's instruction.
+- [ ] Browser check on QnA: checkboxes, select-all, the chip, rule-driven enabling, the `⋮` menu, New pre-filling the Question, the header layout, the search box. On DemoApp, check that `company-cars` shows `CopyCarsToCompany`.
 
 ## Pre-merge checklist (merge auto-publishes packages and redeploys coverage.mintplayer.com)
 
