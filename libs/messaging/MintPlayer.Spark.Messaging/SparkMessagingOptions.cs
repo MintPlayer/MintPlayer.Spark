@@ -138,13 +138,13 @@ public class SparkMessagingOptions
     public Dictionary<string, SparkQueueOptions> Queues { get; set; } = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// The single feeder's look-ahead window (#460, M16): how many messages one subscription batch may
-    /// hold. Inside a window the feeder claims higher-priority queues first
-    /// (<see cref="SparkQueueOptions.Priority"/>), defers messages a throttled queue cannot start yet
-    /// without routing them, and writes all of it in one request per priority. Default 256; clamped to
-    /// 1–4096. A larger window lets an urgent message overtake more of a backlog; every claim in it is
-    /// taken at once, so it should stay well below what the lanes drain within
-    /// <see cref="ClaimTtl"/>. <see cref="ESubscriptionMode.SingleSubscription"/> only.
+    /// The single feeder's page size (#460, M16/M16b): on each subscription wake-up the feeder reads
+    /// this many claimable messages from the sorted index (<c>Priority desc, Sequence asc</c>), merges
+    /// them with the subscription batch (also at most this many), and claims the lot highest priority
+    /// first, deferring messages a throttled queue cannot start yet without routing them, in one write
+    /// per priority. Default 256; clamped to 1–4096. Up to twice this many claims are taken per wake-up,
+    /// so it should stay well below what the lanes drain within <see cref="ClaimTtl"/>.
+    /// <see cref="ESubscriptionMode.SingleSubscription"/> only.
     /// </summary>
     public int FeederBatchSize { get; set; } = DefaultFeederBatchSize;
 

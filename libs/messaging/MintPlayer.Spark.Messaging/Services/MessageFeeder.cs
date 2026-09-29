@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Options;
+using MintPlayer.Spark.Messaging.Indexes;
 using MintPlayer.Spark.Messaging.Models;
 using MintPlayer.Spark.SubscriptionWorker;
 using Raven.Client.Documents;
@@ -40,14 +41,25 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
     protected override string SubscriptionName => SubscriptionNameConstant;
 
     /// <summary>
-    /// The look-ahead window (#460, M16). It was one document per batch, and that is what made a
-    /// bulk backlog delay urgent mail (S-M3: a transactional message waited up to 5.8 s behind 1,000
-    /// bulk messages): the subscription delivers in etag order, and every message in front cost a
-    /// load and a claim write of its own, then a second write in its lane when the throttle deferred
-    /// it. A window is claimed a priority at a time, with one load and one write per priority, and a
+    /// Both the subscription batch and the sorted page (#460, M16/M16b). One document per batch is what
+    /// made a bulk backlog delay urgent mail in M4 (S-M3: up to 5.8 s behind 1,000 bulk messages); a
+    /// batch is now claimed a priority at a time, with one load and one write per priority, and a
     /// message its throttled queue cannot start yet is deferred right here instead of being claimed.
     /// </summary>
-    protected override int MaxDocsPerBatch => Math.Clamp(options.FeederBatchSize, 1, 4096);
+    protected override int MaxDocsPerBatch => PageSize;
+
+    private int PageSize => Math.Clamp(options.FeederBatchSize, 1, 4096);
+
+    private int missingIndexLogged;
+
+    /// <summary>Messages served from the sorted page that the subscription batch did not carry. For the spike and diagnostics.</summary>
+    internal long PulledAheadCount;
+
+    /// <summary>Messages served from the batch that the sorted page did not contain (not indexed yet, or beyond the page). For the spike and diagnostics.</summary>
+    internal long BatchOnlyCount;
+
+    /// <summary>Wake-ups whose sorted page could not be read (index missing), served from the batch alone.</summary>
+    internal long PageUnavailableCount;
 
     // Hand-written ctor: this worker is constructed by MessageSubscriptionManager rather than
     // resolved from DI, because it only exists while this host holds the messaging lease.
@@ -64,20 +76,58 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
         this.options = options.Value;
     }
 
+    /// <summary>A message the feeder may serve on this wake-up, with its sort key.</summary>
+    internal readonly record struct Candidate(string Id, string QueueName, int Priority, DateTime Sequence);
+
     /// <summary>
-    /// The order in which one window is served: priority groups, highest first, each in delivery
-    /// (etag) order. Every message of the window is in exactly one group — a lower priority is served
-    /// later in the window, never dropped from it — which is the no-starvation bound: nothing waits
-    /// behind more than the window's other messages.
+    /// The order in which one wake-up is served (#460, M16b): the sorted page and the subscription
+    /// batch merged, each message once, in priority groups, highest first, each group by
+    /// <c>Sequence</c> (then id, for ties). Two properties follow and are what the tests pin:
+    /// <list type="bullet">
+    /// <item><b>Strict priority beyond the batch.</b> The page is the top of the whole claimable set
+    /// by <c>Priority desc, Sequence asc</c>, so a High message enqueued behind any backlog is served
+    /// on the next wake-up, ahead of every Low one.</item>
+    /// <item><b>No starvation.</b> Every message the subscription delivered is in the result, whatever
+    /// the page holds. The subscription walks the queue in commit order and each message is claimed or
+    /// deferred in the batch that delivers it, so a Low message waits at most for the subscription to
+    /// reach it, plus one page per batch pulled ahead of it: never indefinitely, and no aging is needed.
+    /// A message the index has not caught up with yet is served from the batch the same way.</item>
+    /// </list>
     /// </summary>
-    internal static IReadOnlyList<IReadOnlyList<SparkMessage>> PriorityWindow(
-        IEnumerable<SparkMessage> window, Func<string, SparkQueuePriority> priorityOf)
-        => window
-            .Where(m => m.Id is not null)
-            .GroupBy(m => priorityOf(m.QueueName))
-            .OrderByDescending(g => g.Key)
-            .Select(g => (IReadOnlyList<SparkMessage>)g.ToList())
+    internal static IReadOnlyList<IReadOnlyList<Candidate>> ServeOrder(IEnumerable<Candidate> page, IEnumerable<Candidate> batch)
+    {
+        var merged = new Dictionary<string, Candidate>(StringComparer.Ordinal);
+        foreach (var candidate in page.Concat(batch))
+            merged.TryAdd(candidate.Id, candidate);
+
+        return merged.Values
+            .OrderByDescending(c => c.Priority)
+            .ThenBy(c => c.Sequence)
+            .ThenBy(c => c.Id, StringComparer.Ordinal)
+            .GroupBy(c => c.Priority)
+            .Select(g => (IReadOnlyList<Candidate>)g.ToList())
             .ToList();
+    }
+
+    /// <summary>The subscription's predicate, re-checked on the loaded document: the page may be stale.</summary>
+    internal static bool IsClaimableNow(SparkMessage message)
+        => (message.Status == EMessageStatus.Pending && (message.NextAttemptAtUtc is null || message.WakeUp))
+            || (message.Status == EMessageStatus.Failed && message.WakeUp);
+
+    /// <summary>
+    /// The sort key the index computes, for a document in hand: the captured
+    /// <see cref="SparkMessage.QueuedAtUtc"/>, else the server's <c>@last-modified</c>.
+    /// </summary>
+    internal static DateTime SequenceOf(SparkMessage message, IMetadataDictionary? metadata)
+        => message.QueuedAtUtc ?? LastModifiedOf(metadata) ?? DateTime.MaxValue;
+
+    private static DateTime? LastModifiedOf(IMetadataDictionary? metadata)
+        => metadata is not null
+            && metadata.TryGetValue(Raven.Client.Constants.Documents.Metadata.LastModified, out var value)
+            && value is string text
+            && DateTime.TryParse(text, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var parsed)
+                ? parsed.ToUniversalTime()
+                : null;
 
     protected override SubscriptionCreationOptions ConfigureSubscription()
     {
@@ -95,11 +145,65 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
         };
     }
 
+    /// <summary>
+    /// One wake-up (#460, M16b). The subscription stays the wake-up signal and the backstop; what is
+    /// served is the sorted page of every claimable message merged with the batch — see
+    /// <see cref="ServeOrder"/>.
+    /// </summary>
     protected override async Task ProcessBatchAsync(SubscriptionBatch<SparkMessage> batch, CancellationToken cancellationToken)
     {
-        // GroupBy keeps the source order inside each group, so a queue's messages stay in etag order.
-        foreach (var group in PriorityWindow(batch.Items.Select(i => i.Result), options.PriorityFor))
-            await FeedGroupAsync(batch, group, cancellationToken);
+        var page = await ReadPageAsync(cancellationToken);
+        var delivered = batch.Items
+            .Where(i => i.Result?.Id is not null)
+            .Select(i => new Candidate(i.Result.Id!, i.Result.QueueName, i.Result.Priority, SequenceOf(i.Result, i.Metadata)))
+            .ToList();
+
+        var inPage = page.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
+        var inBatch = delivered.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
+        Interlocked.Add(ref PulledAheadCount, inPage.Count(id => !inBatch.Contains(id)));
+        Interlocked.Add(ref BatchOnlyCount, inBatch.Count(id => !inPage.Contains(id)));
+
+        // Store sessions, never batch.OpenAsyncSession(): RavenDB allows ONE session per subscription
+        // batch and throws on the second, and a wake-up opens several (the page, one per priority, the
+        // conflict fallback). M16 opened one per priority from the batch, so every batch that mixed
+        // priorities threw, and the subscriber-error retry stalled the feeder 30 s each time (found by
+        // the M16b pipeline tests). The batch's own tracking is not needed: everything is re-loaded.
+        foreach (var group in ServeOrder(page, delivered))
+            await FeedGroupAsync(group, cancellationToken);
+    }
+
+    /// <summary>
+    /// The top <see cref="SparkMessagingOptions.FeederBatchSize"/> claimable messages by
+    /// <c>Priority desc, Sequence asc</c>, read from the index as it stands: never waiting for it to
+    /// catch up, because whatever it has not indexed yet is in the subscription batch. A missing index
+    /// (an application that never deployed it) degrades to the batch alone rather than stopping the feeder.
+    /// </summary>
+    private async Task<IReadOnlyList<Candidate>> ReadPageAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var session = DocumentStore.OpenAsyncSession();
+            var entries = await session.Query<SparkMessages_ByPriority.Entry, SparkMessages_ByPriority>()
+                .OrderByDescending(e => e.Priority)
+                .ThenBy(e => e.Sequence)
+                .Take(PageSize)
+                .ProjectInto<SparkMessages_ByPriority.Entry>()
+                .ToListAsync(cancellationToken);
+            return entries
+                .Where(e => e.Id is not null)
+                .Select(e => new Candidate(e.Id!, e.QueueName, e.Priority, e.Sequence))
+                .ToList();
+        }
+        catch (Raven.Client.Exceptions.Documents.Indexes.IndexDoesNotExistException)
+        {
+            Interlocked.Increment(ref PageUnavailableCount);
+            if (Interlocked.Exchange(ref missingIndexLogged, 1) == 0)
+                Logger.LogWarning(
+                    "The {Index} index does not exist, so messages are served in delivery order only; call AddMessaging() "
+                    + "through the Spark builder (it deploys the index) or deploy it with the messaging assembly's indexes",
+                    nameof(SparkMessages_ByPriority));
+            return [];
+        }
     }
 
     /// <summary>
@@ -107,13 +211,13 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
     /// deferral, then routing. A conflict on that write (another feeder, or the sweeper, touched one of
     /// the messages) fails it as a whole, and the group is then fed one message at a time.
     /// </summary>
-    private async Task FeedGroupAsync(SubscriptionBatch<SparkMessage> batch, IReadOnlyList<SparkMessage> group, CancellationToken cancellationToken)
+    private async Task FeedGroupAsync(IReadOnlyList<Candidate> group, CancellationToken cancellationToken)
     {
-        var ids = group.Select(m => m.Id!).ToArray();
+        var ids = group.Select(c => c.Id).ToArray();
         var decisions = new Dictionary<string, AdmissionDecision>(StringComparer.Ordinal);
         var toRoute = new List<SparkMessage>();
 
-        using (var session = batch.OpenAsyncSession())
+        using (var session = DocumentStore.OpenAsyncSession())
         {
             // Without this the claim is last-write-wins, and two feeders would both believe they
             // claimed the same message and both run its handlers.
@@ -123,12 +227,15 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
             var now = DateTime.UtcNow;
             foreach (var id in ids)
             {
-                if (loaded.GetValueOrDefault(id) is not { } tracked || tracked.Status == EMessageStatus.Processing)
+                // The full predicate, not just "not Processing": a page entry can be stale, and a
+                // message finished, deferred or parked since it was indexed must not be claimed again.
+                if (loaded.GetValueOrDefault(id) is not { } tracked || !IsClaimableNow(tracked))
                 {
-                    Logger.LogDebug("Message {MessageId} is gone or already claimed; skipping", id);
+                    Logger.LogDebug("Message {MessageId} is gone, already claimed or no longer due; skipping", id);
                     continue;
                 }
 
+                CaptureQueuedAt(session, tracked);
                 var decision = Decide(tracked, now);
                 decisions[id] = decision;
                 if (decision.Kind == AdmissionKind.Defer)
@@ -159,7 +266,7 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
             toRoute = [];
             foreach (var (id, decision) in decisions)
             {
-                if (await FeedOneAsync(batch, id, decision, cancellationToken) is { } claimed)
+                if (await FeedOneAsync(id, decision, cancellationToken) is { } claimed)
                     toRoute.Add(claimed);
             }
         }
@@ -173,9 +280,9 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
     }
 
     /// <summary>The fallback for a conflicting group write: the decision already taken, one message at a time.</summary>
-    private async Task<SparkMessage?> FeedOneAsync(SubscriptionBatch<SparkMessage> batch, string id, AdmissionDecision decision, CancellationToken cancellationToken)
+    private async Task<SparkMessage?> FeedOneAsync(string id, AdmissionDecision decision, CancellationToken cancellationToken)
     {
-        using var session = batch.OpenAsyncSession();
+        using var session = DocumentStore.OpenAsyncSession();
         session.Advanced.OptimisticConcurrencyMode = OptimisticConcurrencyMode.Writes;
 
         var tracked = await session.LoadAsync<SparkMessage>(id, cancellationToken);
@@ -183,13 +290,14 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
         // Already claimed by someone else, or no longer eligible. The subscription can deliver a
         // document more than once (a reconnect replays an unacknowledged batch), so this is an
         // ordinary occurrence, not an error.
-        if (tracked is null || tracked.Status == EMessageStatus.Processing)
+        if (tracked is null || !IsClaimableNow(tracked))
         {
             if (decision.Kind != AdmissionKind.Defer)
                 admission.Forget(id);
             return null;
         }
 
+        CaptureQueuedAt(session, tracked);
         if (decision.Kind == AdmissionKind.Defer)
         {
             Defer(tracked, decision.Slot);
@@ -218,6 +326,18 @@ internal sealed class MessageFeeder : SparkSubscriptionWorker<SparkMessage>
             return AdmissionDecision.Admit;
         var decision = admission.DecideBeforeClaim(message.QueueName, message.Id!, options.QueueOptionsFor(message.QueueName), now, message.ExpiresAtUtc);
         return decision.Kind == AdmissionKind.Expired ? AdmissionDecision.Admit : decision;
+    }
+
+    /// <summary>
+    /// Fixes the message's place in its priority on the first write the feeder makes to it (S-M7): the
+    /// server's <c>@last-modified</c> as loaded, which is the commit time of the write that made it
+    /// claimable. Part of the claim or deferral write, so it costs nothing extra; afterwards a retry,
+    /// a reclaim or a throttle wake-up (each of which moves <c>@last-modified</c>) keeps the place.
+    /// </summary>
+    private static void CaptureQueuedAt(IAsyncDocumentSession session, SparkMessage message)
+    {
+        if (message.QueuedAtUtc is null && LastModifiedOf(session.Advanced.GetMetadataFor(message)) is { } lastModified)
+            message.QueuedAtUtc = lastModified;
     }
 
     /// <summary>The claim <see cref="MessageClaims.TryClaimAsync"/> writes, without the save.</summary>

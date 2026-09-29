@@ -31,6 +31,9 @@ internal sealed partial class MessageSubscriptionManager : BackgroundService
     /// <summary>Whether this host currently holds the messaging lease. For tests and diagnostics.</summary>
     internal bool IsLeader => isLeader;
 
+    /// <summary>The running feeder, while this host leads in <see cref="ESubscriptionMode.SingleSubscription"/> mode. For spikes and diagnostics.</summary>
+    internal MessageFeeder? Feeder => feeder;
+
     private SparkMessagingOptions Options => options.Value;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

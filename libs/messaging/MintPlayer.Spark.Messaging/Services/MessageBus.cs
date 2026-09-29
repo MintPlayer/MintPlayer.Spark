@@ -54,6 +54,7 @@ internal partial class MessageBus : IMessageBus
             PayloadJson = JsonConvert.SerializeObject(message),
             CreatedAtUtc = now,
             NextAttemptAtUtc = broadcastOptions.Delay is { } delay ? now + delay : null,
+            Priority = (int)Options.PriorityFor(queueName),
             AttemptCount = 0,
             MaxAttempts = broadcastOptions.MaxAttempts ?? queueOptions?.MaxAttempts ?? Options.MaxAttempts,
             Status = EMessageStatus.Pending,

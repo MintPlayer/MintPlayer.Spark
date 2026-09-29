@@ -71,7 +71,14 @@ internal sealed partial class MessageQueueRouter : IAsyncDisposable
             this).Value;
 
         await lane.Channel.Writer.WriteAsync(messageId, cancellationToken);
+        Routed?.Invoke(queueName, messageId);
     }
+
+    /// <summary>
+    /// Raised after a message is accepted into its lane, in the order the feeder served it. For tests
+    /// and spikes that pin the feeder's serve order; lanes run concurrently, so handler start times cannot.
+    /// </summary>
+    internal event Action<string, string>? Routed;
 
     private Lane CreateLane(string queueName)
     {

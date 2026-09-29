@@ -20,7 +20,16 @@ internal static class MessageClaims
     /// concurrently with whatever the sweeper decides to do about them.
     /// </para>
     /// </summary>
-    public static readonly string NodeId = $"{Environment.MachineName}/{Guid.NewGuid():N}";
+    public static string NodeId => HostScope.Value ?? ProcessNodeId;
+
+    private static readonly string ProcessNodeId = $"{Environment.MachineName}/{Guid.NewGuid():N}";
+
+    /// <summary>
+    /// A per-host identity for tests and spikes that run two messaging hosts in one process (S-M8,
+    /// leader handover): set it before starting a host's services, and every task that host starts
+    /// inherits it. Unset in an application, where one process is one host.
+    /// </summary>
+    internal static readonly AsyncLocal<string?> HostScope = new();
 
     /// <summary>
     /// Marks the message as claimed by <paramref name="ownerId"/> and saves immediately, before any

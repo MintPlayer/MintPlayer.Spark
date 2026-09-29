@@ -230,10 +230,11 @@ Internally the messaging library uses **one RavenDB data subscription for every 
    discovers all queue names from registered `IRecipient<T>` types
 2. It competes for a cluster-wide **messaging lease**; only the holder feeds
 3. The holder runs a single `MessageFeeder` on the subscription `SparkMessaging`, whose query has
-   **no `QueueName` predicate**, with `MaxDocsPerBatch = 1`
-4. The feeder **claims** each message — `Status = Processing`, `OwnerId`, `ClaimExpiresAtUtc`, saved
-   under optimistic concurrency *before* the batch is acknowledged — and routes it to a lane keyed
-   by queue name
+   **no `QueueName` predicate**, in batches of up to `FeederBatchSize`
+4. On each batch the feeder merges it with the top of the sorted `SparkMessages_ByPriority` index and
+   **claims** those messages highest priority first — `Status = Processing`, `OwnerId`,
+   `ClaimExpiresAtUtc`, saved under optimistic concurrency *before* the batch is acknowledged — and
+   routes each to a lane keyed by queue name (see *Priority lanes*)
 5. Each lane is drained by one **pump** with at most one message in flight, so within a queue
    messages are processed **one at a time in FIFO order**
 6. Lanes are independent tasks, so different queues are processed **concurrently and independently**
@@ -366,10 +367,11 @@ spark.AddMessaging(options =>
 | `MaxConcurrency` | Messages of this queue handled at once (default 1 = FIFO). `SingleSubscription` mode only; warned about and ignored in `SubscriptionPerQueue` mode. |
 | `MaxAttempts` | Attempts per handler for messages published to this queue. |
 | `Backoff` | Retry schedule for this queue (empty = the global `BackoffDelays`). |
-| `Priority` | `Low`, `Normal` (default) or `High` (or `-1`/`0`/`1`): the order in which the single feeder claims queues inside each look-ahead window — see *Priority lanes* below. `SingleSubscription` mode only. |
+| `Priority` | `Low`, `Normal` (default) or `High` (or `-1`/`0`/`1`): the order in which the single feeder serves queues, strictly, across the whole backlog — see *Priority lanes* below. Stamped on each message at publish. `SingleSubscription` mode only. |
 
-`SparkMessagingOptions.FeederBatchSize` (default 256, `Spark:Messaging:FeederBatchSize`) is that
-window: how many messages one subscription batch may hold.
+`SparkMessagingOptions.FeederBatchSize` (default 256, `Spark:Messaging:FeederBatchSize`) is the
+feeder's page: how many messages it reads from the sorted index per wake-up, and how many one
+subscription batch may hold.
 
 ```json
 "Spark": {
@@ -419,27 +421,45 @@ S-M3 (#460 PRD §4.1), a transactional message published behind a 1,000-message 
 to 5.8 s (9.4 s on a loaded machine), because each bulk message cost a load and a claim of its own and
 then a second write when its lane deferred it.
 
-The feeder therefore works in **look-ahead windows** (`FeederBatchSize`, one subscription batch):
+The feeder therefore serves a **sorted page** on every wake-up (#460 M16b; M16's look-ahead window
+before it could only reorder the 256 messages one batch held):
 
-- **Strict priority inside a window.** The window's messages are grouped by their queue's `Priority`
-  and served highest first: one load and one write per group (claims and throttle deferrals
-  together), then routing. A full low-priority lane can no longer hold up a high-priority message the
-  feeder already has.
-- **FIFO between windows, and within a queue.** A queue has one priority, and each group keeps
-  delivery order.
-- **No starvation, by construction.** Every message of a window is claimed or deferred before the next
-  window is fetched, so a low-priority message is overtaken by at most `FeederBatchSize − 1` others,
-  whatever the traffic. This bounded window is the aging scheme: no weights to tune, and a
-  `Low` queue under sustained `High` traffic still advances one window at a time.
+- **The subscription is the wake-up signal, not the order.** The one leader-elected `SparkMessaging`
+  subscription is unchanged: same query, no `now()`, never deleted or recreated, and still what makes
+  feeding exclusive (`WaitForFree`) and what claims are taken against.
+- **Strict priority over the whole queue.** When a batch arrives, the feeder reads the top
+  `FeederBatchSize` (default 256) claimable messages from the `SparkMessages_ByPriority` index,
+  ordered **`Priority desc, Sequence asc`**, merges them with the batch, and claims the lot highest
+  priority first: one load and one write per priority (claims and throttle deferrals together), then
+  routing. A `High` message published behind any `Low` backlog is served on the next wake-up.
+- **FIFO within a priority is server-assigned.** `Sequence` is the database server's `@last-modified`
+  of the write that made the message claimable, captured into `SparkMessage.QueuedAtUtc` on the
+  feeder's first write to it (its claim or deferral, so no extra write). Never the publisher's clock.
+  A retry, a reclaim or a throttle wake-up keeps the message's place. Ties (none measured) break by id.
+- **Nothing the index has not seen yet is skipped.** The page is read as the index stands, never
+  waited for; a message that is not indexed yet is in the subscription batch and is served from there
+  (measured index lag under a 1,000-message bulk load: tens of milliseconds, S-M7).
+- **No starvation, and no aging needed.** Every message a batch delivers is served in that batch,
+  whatever the page holds, and the subscription walks the queue in commit order. A `Low` message
+  therefore waits at most for the subscription to reach it — its FIFO position — plus one page of
+  higher-priority messages per batch pulled ahead of it. Strict priority can delay `Low`, never starve
+  it; a test keeps several pages of `High` outstanding throughout and `Low` still completes.
+- **Priority is stamped at publish.** `SparkMessage.Priority` is written from the queue's setting when
+  the message is published (an index cannot read configuration), so a changed `Priority` applies to
+  messages published after the change.
 - **Why not a subscription per priority.** Community caps a database at 3 subscriptions, one of which
-  Replication may already use; the feeder's own subscription is unchanged (same query, no `now()`, never
-  deleted or recreated), so nothing about its lifecycle moved.
+  Replication may already use.
 
-What it does not do: see past the window. A backlog larger than the window is still crossed a window at
-a time — fast now, because a window costs a few requests instead of several per message — and a lane
-filled to its capacity (512 claimed messages) by an **unthrottled** slow low-priority queue still
-back-pressures the feeder. Throttle bulk queues (MailManager's `mail-bulk` is); the measured before and
-after figures are in the #460 PRD (§4.1, M16).
+Throttling is unchanged: a message its queue cannot start yet is deferred before its claim, and a
+deferred message leaves the "pending now" set (and the index) until the sweeper wakes it at its slot.
+What it still does not do: a lane filled to its capacity (512 claimed messages) by an **unthrottled**
+slow low-priority queue back-pressures the feeder. Throttle bulk queues (MailManager's `mail-bulk` is).
+The feeder needs the index, which `AddMessaging()` deploys; without it the feeder logs one warning and
+serves the batch alone, in delivery order. The measured figures are in the #460 PRD (§4.1, M16b).
+
+`SubscriptionPerQueue` mode is unaffected: each queue has its own subscription, delivered one message
+at a time, and nothing is shared to prioritise. The index is deployed in both modes; only the single
+feeder reads it.
 
 ### Inside a handler: `IMessageContext` and `IMessageProgress`
 
@@ -501,6 +521,12 @@ Messages are stored as `SparkMessage` documents in the `SparkMessages` collectio
 | `ExpiresAtUtc` | `DateTime?` | Publish-time deadline (`BroadcastOptions.ExpiresAtUtc`) |
 | `DeadLetterReason` | `EDeadLetterReason?` | `MaxAttempts`, `NonRetryable` or `Expired`; set only with `DeadLettered` |
 | `ScrubPayloadOnTerminal` | `bool` | Clear `PayloadJson` once terminal |
+| `Priority` | `int` | The queue's `SparkQueuePriority` at publish (`-1` Low, `0` Normal, `1` High); the single feeder's sort key |
+| `QueuedAtUtc` | `DateTime?` | The server's `@last-modified` when the message became claimable, captured on the feeder's first write; its FIFO place within a priority |
+
+Two static indexes cover the collection: `SparkMessages_ByQueue` (the sweeper's due and abandoned
+messages) and `SparkMessages_ByPriority` (only the claimable-now messages, sorted
+`Priority desc, Sequence asc`, read by the single feeder).
 
 Each entry in the `Handlers` array tracks an individual recipient:
 

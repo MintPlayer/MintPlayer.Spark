@@ -72,14 +72,15 @@ public class SparkQueueOptions
     public TimeSpan[] ResolveBackoff(TimeSpan[] global) => Backoff.Length > 0 ? Backoff : global;
 
     /// <summary>
-    /// Which queues the single feeder serves first (#460, M16). Default <see cref="SparkQueuePriority.Normal"/>.
+    /// Which queues the single feeder serves first (#460, M16/M16b). Default <see cref="SparkQueuePriority.Normal"/>.
     /// <para>
-    /// Inside each look-ahead window — one subscription batch of up to
-    /// <see cref="SparkMessagingOptions.FeederBatchSize"/> messages — the feeder claims and routes the
-    /// higher-priority messages first; between windows it stays FIFO. Every window is claimed completely
-    /// before the next one is fetched, so a lower-priority message is overtaken by at most
-    /// <c>FeederBatchSize − 1</c> others and is never starved. Within one queue the order is unchanged
-    /// (a queue has one priority). <see cref="ESubscriptionMode.SingleSubscription"/> only: in
+    /// Strict across the whole queue: on each wake-up the feeder takes the top
+    /// <see cref="SparkMessagingOptions.FeederBatchSize"/> claimable messages by priority, then by
+    /// server-assigned enqueue order, so a High message published behind any Low backlog is served on
+    /// the next wake-up. Low is never starved: every message the subscription delivers is served in
+    /// that batch too, so a Low message waits at most for the subscription to reach it. Stamped on the
+    /// message at publish, so a changed setting applies to messages published after it.
+    /// <see cref="ESubscriptionMode.SingleSubscription"/> only: in
     /// <see cref="ESubscriptionMode.SubscriptionPerQueue"/> mode each queue has its own subscription
     /// and nothing is shared to prioritise.
     /// </para>

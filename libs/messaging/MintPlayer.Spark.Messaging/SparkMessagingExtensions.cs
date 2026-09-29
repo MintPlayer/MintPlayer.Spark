@@ -59,6 +59,9 @@ internal static class SparkMessagingExtensions
     {
         var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
         new SparkMessages_ByQueue().Execute(documentStore);
+        // The single feeder's sorted page (#460, M16b). Until it is built the feeder serves the
+        // subscription batch alone, so a slow first build delays nothing.
+        new SparkMessages_ByPriority().Execute(documentStore);
 
         // Enable RavenDB document expiration so @expires metadata is honored.
         //
