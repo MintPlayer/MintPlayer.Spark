@@ -383,6 +383,29 @@ public class AccountFlowTests : SparkTestDriver
         body.Should().Contain("\"email\":\"export@example.com\"").And.Contain("\"notes\":[\"note of exporter\"]");
         body.Should().NotContain(raw.PasswordHash!).And.NotContain("gho_secret-token").And.NotContain(raw.AuthenticatorKey!)
             .And.NotContain("sdp1:").And.NotContain("securityStamp");
+        body.Should().Contain("\"hasPassword\":true", "the deletion form asks for the password only when there is one");
+    }
+
+    [Fact]
+    public async Task Personal_data_says_when_the_account_has_no_password()
+    {
+        await using var host = await AccountTestHost.StartAsync(Store);
+        await host.CreateUserAsync("nopass", "nopass@example.com");
+        using var client = host.Client();
+        var cookie = await host.CookieSignInAsync(client, "nopass@example.com");
+        await host.WithScopeAsync(async sp =>
+        {
+            var users = sp.GetRequiredService<UserManager<SparkUser>>();
+            var user = (await users.FindByEmailAsync("nopass@example.com"))!;
+            (await users.RemovePasswordAsync(user)).Succeeded.Should().BeTrue();
+            return true;
+        });
+
+        var response = await AccountTestHost.SendAsync(client, HttpMethod.Get, "/spark/auth/manage/personal-data", cookie);
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK, body);
+        body.Should().Contain("\"hasPassword\":false");
     }
 
     [Fact]

@@ -444,6 +444,9 @@ internal static class SparkAccountEndpoints
                 phoneNumber = user.PhoneNumber,
                 phoneNumberConfirmed = user.PhoneNumberConfirmed,
                 twoFactorEnabled = user.TwoFactorEnabled,
+                // Whether a password exists — never the hash. The deletion form asks for the password
+                // only when there is one, and otherwise explains the recent-sign-in rule.
+                hasPassword = await userManager.HasPasswordAsync(user),
                 createdAtUtc = user.CreatedAtUtc,
                 registrationMethod = user.RegistrationMethod,
                 preferredCulture = user.PreferredCulture,

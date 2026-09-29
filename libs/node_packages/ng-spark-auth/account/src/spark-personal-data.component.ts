@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, OnInit, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { Color } from '@mintplayer/ng-bootstrap';
@@ -16,7 +16,8 @@ import { accountMessages } from './account-messages';
  * Personal data (#460, D8/D16): download everything the account and the application's
  * `ISparkPersonalDataContributor`s hold as JSON, and delete the account.
  *
- * Deletion needs re-authentication: the current password, or — for an account without one — a sign-in
+ * Deletion needs re-authentication: the current password (the field shows only when the account has
+ * one, from `account.hasPassword`), or — for an account without one — a sign-in
  * younger than the server's `ReauthenticationMaxAge` (5 minutes). A 403 `reauthentication_required`
  * says which is missing; the page then asks to sign in again. Handlers run first and the account is
  * removed last, so a failure (500 `deletion_failed`) leaves the account intact and retryable.
@@ -48,11 +49,15 @@ import { accountMessages } from './account-messages';
           }
           <bs-form>
             <form [formGroup]="form" (ngSubmit)="deleteAccount()">
-              <div class="mb-3">
-                <label for="deletePassword" class="form-label">{{ 'auth.password' | t }}</label>
-                <input type="password" id="deletePassword" formControlName="password" autocomplete="current-password" />
-                <small class="text-muted">{{ 'auth.deletePasswordHint' | t }}</small>
-              </div>
+              @if (hasPassword() !== false) {
+                <div class="mb-3">
+                  <label for="deletePassword" class="form-label">{{ 'auth.password' | t }}</label>
+                  <input type="password" id="deletePassword" formControlName="password" autocomplete="current-password" />
+                  <small class="text-muted">{{ 'auth.deletePasswordHint' | t }}</small>
+                </div>
+              } @else {
+                <p class="text-muted spark-delete-recent-sign-in">{{ 'auth.deleteRecentSignIn' | t }}</p>
+              }
               <div class="mb-3">
                 <bs-checkbox [type]="'checkbox'" formControlName="confirm" [name]="'confirmDelete'">{{ 'auth.deleteAccountConfirm' | t }}</bs-checkbox>
               </div>
@@ -67,7 +72,7 @@ import { accountMessages } from './account-messages';
     </div>
   `,
 })
-export class SparkPersonalDataComponent {
+export class SparkPersonalDataComponent implements OnInit {
   private readonly auth = inject(SparkAuthService);
   private readonly router = inject(Router);
   private readonly config = inject(SPARK_AUTH_CONFIG);
@@ -81,6 +86,21 @@ export class SparkPersonalDataComponent {
   readonly busy = signal(false);
   readonly downloadMessages = signal<string[]>([]);
   readonly deleteMessages = signal<string[]>([]);
+  /**
+   * Whether the account has a password (`account.hasPassword` of the personal data). Null while
+   * unknown — an older server, or the read failed — which keeps the password field, as before.
+   */
+  readonly hasPassword = signal<boolean | null>(null);
+
+  async ngOnInit(): Promise<void> {
+    try {
+      const result = await this.auth.personalData();
+      const flag = result.success ? (result.value as { account?: { hasPassword?: unknown } } | null)?.account?.hasPassword : undefined;
+      this.hasPassword.set(typeof flag === 'boolean' ? flag : null);
+    } catch {
+      this.hasPassword.set(null);
+    }
+  }
 
   async download(): Promise<void> {
     this.busy.set(true);

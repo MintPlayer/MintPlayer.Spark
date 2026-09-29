@@ -309,6 +309,23 @@ describe('SparkPersonalDataComponent', () => {
     expect(click).toHaveBeenCalled();
   });
 
+  it('asks for the password only when the account has one, and otherwise explains the recent sign-in', async () => {
+    configure({ personalData: vi.fn().mockResolvedValue({ success: true, value: { account: { hasPassword: false } } }) });
+    const without = await render(TestBed.createComponent(SparkPersonalDataComponent));
+    await without.whenStable();
+    without.detectChanges();
+    expect(without.nativeElement.querySelector('#deletePassword')).toBeNull();
+    expect(without.nativeElement.querySelector('.spark-delete-recent-sign-in')?.textContent).toContain('auth.deleteRecentSignIn');
+
+    TestBed.resetTestingModule();
+    configure({ personalData: vi.fn().mockResolvedValue({ success: true, value: { account: { hasPassword: true } } }) });
+    const withPassword = await render(TestBed.createComponent(SparkPersonalDataComponent));
+    await withPassword.whenStable();
+    withPassword.detectChanges();
+    expect(withPassword.nativeElement.querySelector('#deletePassword')).not.toBeNull();
+    expect(withPassword.nativeElement.querySelector('.spark-delete-recent-sign-in')).toBeNull();
+  });
+
   it('deletes only after the checkbox, shows reauthentication_required, then navigates home on success', async () => {
     const deleteAccount = vi.fn()
       .mockResolvedValueOnce({ success: false, status: 403, error: 'reauthentication_required' })

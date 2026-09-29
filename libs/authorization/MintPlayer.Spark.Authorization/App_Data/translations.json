@@ -545,6 +545,11 @@
       "fr": "Sans mot de passe, vous devez vous être connecté au cours des dernières minutes.",
       "nl": "Zonder wachtwoord moet u zich de afgelopen minuten hebben aangemeld."
     },
+    "deleteRecentSignIn": {
+      "en": "Your account has no password, so it can be deleted only within a few minutes of signing in. If you signed in longer ago, sign out and sign in again first.",
+      "fr": "Votre compte n'a pas de mot de passe : il ne peut être supprimé que dans les minutes qui suivent la connexion. Si vous vous êtes connecté il y a plus longtemps, déconnectez-vous puis reconnectez-vous d'abord.",
+      "nl": "Uw account heeft geen wachtwoord en kan daarom alleen binnen enkele minuten na het aanmelden worden verwijderd. Hebt u zich langer geleden aangemeld, meld u dan eerst af en opnieuw aan."
+    },
     "deleteAccountConfirm": {
       "en": "I understand that my account will be deleted permanently.",
       "fr": "Je comprends que mon compte sera supprimé définitivement.",
