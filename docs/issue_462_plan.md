@@ -26,6 +26,10 @@ Requirements, decisions (G1–G8 from the owner, D1–D14) and spikes are in
 
 ## Part A — `mintplayer-ng-bootstrap`
 
+Tracked as **[MintPlayer/mintplayer-ng-bootstrap#420](https://github.com/MintPlayer/mintplayer-ng-bootstrap/issues/420)**,
+which contains the full spec. It is implemented in a session running in that repo, because this
+session's hook refuses cross-repo edits.
+
 ### NB0 — Spikes
 - [x] **S6** Record `BsThemeService` behaviour. Answered: Auto is live, an explicit mode is sticky,
   there's no `storage` listener, and the value is a plain string.

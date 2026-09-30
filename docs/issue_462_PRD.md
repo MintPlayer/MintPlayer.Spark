@@ -1,6 +1,7 @@
 # PRD — Issue #462: dark mode (`prefers-color-scheme`) in the Spark frontend
 
-The order of work is in [issue_462_plan.md](issue_462_plan.md).
+The order of work is in [issue_462_plan.md](issue_462_plan.md). The ng-bootstrap half is
+[MintPlayer/mintplayer-ng-bootstrap#420](https://github.com/MintPlayer/mintplayer-ng-bootstrap/issues/420).
 
 **Goal:** every Spark app follows the OS colour scheme out of the box. The visitor can switch the theme
 **at any moment**, from the app or by changing the OS dark-mode setting (owner hard requirement,
