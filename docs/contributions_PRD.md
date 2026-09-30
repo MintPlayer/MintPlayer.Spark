@@ -634,8 +634,12 @@ only):
 - The materialize hook runs once per entity *instance*, not per document id.
 
 **Open items:**
-- **M1c "Changed by" fallback, awaiting the owner:** when no name can be resolved, show the raw user id
-  (current behaviour) or nothing. Claude recommends nothing.
+- ~~M1c "Changed by" fallback~~ **→ decided (owner, 2026-09-30): configurable.**
+  `SparkConfig.conflictDialog.showChangedBy`, default `false`.
+  - **`false`:** no History lookup and no user shown.
+  - **`true`:** the History-resolved name, only for `History/T` holders, and only when it matches this
+    version; otherwise nothing.
+  - **The raw user id is never shown.** The `ModifiedAt` time is shown in both modes.
 - **Unrun tests** (all run in the M7 sweep): the existing `ConcurrentWriteRaceTests` after F6 changed
   eviction, the M1c E2E selectors (`input#Model`, `.spark-conflict-dialog`), and every whole suite.
 - **The version gate:** check whether CI expects every `libs/` csproj bumped in lockstep. Past PRs
