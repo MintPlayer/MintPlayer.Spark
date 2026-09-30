@@ -67,7 +67,7 @@ Requirements, decisions (C1–C10, T1–T7), spikes and open questions are in
 - [ ] Use a `ForAttributeWithMetadataName` pipeline on `[Contribution]` properties. Unwrap
   `T`/`T[]`/`List<T>`/`IList<T>`/`IReadOnlyList<T>`/`ICollection<T>`/`IEnumerable<T>` and read the
   `[ContributionSlot]` properties from symbols (works across assemblies).
-- [ ] Emit `{Element}Contribution`, `{Element}Current`, the metadata class and the registration.
+- [ ] Emit `{Target}{Property}Contribution`, `{Target}{Property}Current` (Q9: always target+property, no override), the metadata class and the registration.
 - [ ] Add the analyzer rules from T4, with code fixes: add `[JsonIgnore]`, change a slot type (a
   cross-project edit is allowed).
 - [ ] Add Verify snapshots to `tests/MintPlayer.Spark.SourceGenerators.Tests`, plus diagnostic tests.

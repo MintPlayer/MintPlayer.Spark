@@ -172,17 +172,17 @@ in this repository; see §7.
     refused; a `/` would shift the id structure.
 - **T3 — Generated code, per `[Contribution]` property.** Shown here for `Song.Lyrics` with element
   `Lyrics`:
-  - `partial class LyricsContribution : IContribution`: the element's value properties, the slots,
+  - `partial class SongLyricsContribution : IContribution`: the element's value properties, the slots,
     `TargetId`, `ContributorId`, `UpdatedAt`, and a static `GetId(targetId, slots…, userId)` with an
     explicit `IHasNaturalId` member.
-  - `partial class LyricsCurrent : ICurrentContribution`: the value properties, the slots,
+  - `partial class SongLyricsCurrent : ICurrentContribution`: the value properties, the slots,
     `ContributorId`, `ContributionId`, `UpdatedAt`, and a static `GetId(targetId, slots…)`.
   - A metadata class holding slot accessors, prefixes, the element ↔ contribution ↔ current mapping,
     and a lazy-load helper. There is no reflection at runtime.
   - **Registration:** `spark.AddContributions()` picks up every generated contribution in the
     assembly.
   - Both types are `partial`, so the app can add `IModeratable` or `ISoftDeletable` itself
-    (`partial class LyricsContribution : IModeratable { … }`).
+    (`partial class SongLyricsContribution : IModeratable { … }`).
   - Both are ordinary persistent objects with model JSON (via synchronize) and `security.json` rights.
 - **T4 — Analyzer rules:**
   - a slot type outside T2
@@ -431,7 +431,7 @@ in this repository; see §7.
     `RebuildCurrentAsync` runs once for that type at startup.
 
 - **Q7 → A: moderation runs through generated standard screens.**
-  - A generated `{Element}Contributions` query over the contribution type is filtered by target and
+  - A generated `{Target}{Property}Contributions` query over the contribution type is filtered by target and
     slot. It has the row actions `Delete`/`Restore`/`RevertContribution` and a `ViewDeleted` toggle
     via SoftDelete.
   - It is reached from the row's "History (n)" link, and optionally as a sub-query on the target
@@ -452,8 +452,13 @@ in this repository; see §7.
     the original's language updates `Song.OriginalLyrics` in the same save (MintPlayer validator).
   - The migration asserts one text per song, so no `und/Latn` collision is possible.
 
-### Still open
-- **Q9:** names of the generated types.
+- **Q9 → B: names always come from the target plus the property, with no override.** For example
+  `SongLyricsContribution`, `SongLyricsCurrent`, and the query `SongLyricsContributions`.
+  - They are unique by construction, even when two targets share an element type.
+  - These names become RavenDB collection names and `security.json` rights, so they are stored data.
+    Documented: renaming the target or the property later means migrating collections and grants.
+
+All grilling questions are resolved (2026-09-30).
 
 ## 5b. Earlier open question (resolved)
 
