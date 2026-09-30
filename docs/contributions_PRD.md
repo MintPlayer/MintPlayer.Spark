@@ -416,8 +416,21 @@ in this repository; see §7.
     version, the old version stays and reappears; the form says so.
 - **Q5 → A** (MintPlayer): `Song.OriginalLyrics` (see §9.5).
 
+- **Q6 → A: attribution is the app developer's choice, per declaration.**
+  - It is set with `[Contribution(Attribution = ContributionAttribution.Contributor | UpdatedAt | History)]`.
+    The default is `None`: nothing extra is stored, loaded or shown.
+  - The generator emits only what's asked for:
+    - the read-only, shielded row attributes `ContributorName` / `UpdatedAt` / `ContributionCount`,
+      marked with a `contributionAttribution` rendering hint
+    - the count on the current document (only with `History`)
+    - a batched name lookup in the same lazy request (only with `Contributor`); names are resolved at
+      read time, never copied
+  - **An ng-spark AsDetail row renderer** shows "by *Alice* · 3 days ago · History (4)", where History
+    opens the slot's contributions query. MintPlayer enables it; other apps may not.
+  - The generator emits a shape hash. When it changes (e.g. `History` is turned on later),
+    `RebuildCurrentAsync` runs once for that type at startup.
+
 ### Still open
-- **Q6:** what the form shows per version (contributor and date, a link to the history).
 - **Q7:** where moderators review a slot's contributions.
 - **Q8:** attribution when migrating MintPlayer's existing lyrics.
 - **Q9:** names of the generated types.
@@ -564,6 +577,24 @@ None of this is planned work yet. It lands in MintPlayer after the Contributions
 - **Result:** per-line `{ index, startMs, endMs, confidence }` plus, where applicable, a segment map.
   It is written as a **contribution by a system "aligner" user**, so it goes through the same review,
   revert and moderation as human timings.
+
+**Audio source (owner, 2026-09-30): pluggable, with `yt-dlp` as an opt-in.**
+- The worker takes its audio from an `IAudioSource`:
+  - **`UploadedFile`** is the default.
+  - **`YtDlp`** is **off by default** and enabled in configuration at the owner's discretion. The
+    Align dialog then also offers the song's YouTube media.
+- `YtDlp` fetches the audio stream only, into a temporary folder that is deleted after the job (or
+  after a short retry window). Only timings are kept.
+- A failed download fails the job **visibly** ("download failed, upload the audio instead") and never
+  falls back silently.
+- It is a MintPlayer-only worker component, never part of a Spark package.
+- **Kept on record:**
+  - YouTube's Terms of Service and Developer Policies prohibit downloading or separating audio without
+    permission, so the realistic risk is YouTube blocking the server or account.
+  - Datacenter IPs regularly hit bot checks, so the step will break from time to time.
+  - Keeping copyrighted audio briefly adds exposure.
+- **Benefit:** a YouTube video's own audio is aligned directly, so its prelude and interlude come out
+  right without anchors.
 
 **The owner's "Align" flow (2026-09-30):**
 1. The user triggers an **`Align` custom action** on the song. Its right is `Align/Song`, declared
