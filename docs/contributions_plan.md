@@ -100,6 +100,22 @@ Requirements, decisions (C1–C10, T1–T7), spikes and open questions are in
   - a slot value that fails validation
 - [ ] An E2E test on the demo form: add a version, edit it, remove it.
 
+### Later — MintPlayer lyrics timings (look-ahead only, NOT scheduled; see PRD §9)
+Recorded so that the Contributions design covers it. It is executed in the MintPlayer repository
+after this library ships, and after MintPlayer's F9 messaging.
+- [ ] Stable `Guid` ids and a stored duration for media, replacing URL-keyed timings.
+- [ ] Canonical timeline (in ms, on a reference medium, timed on the original version), a segment
+  time map per medium, and sparse overrides. All of them are contributions (PRD §9.2).
+- [ ] Manual tooling:
+  - tap mode, playback rate, nudge, shift-from-here, latency compensation, preview/loop, undo, LRC
+    import/export
+  - a public `seek`/`setRate` in `@mintplayer/ng-video-player`
+- [ ] Anchor alignment for additional media (2–3 taps → segment map).
+- [ ] LRCLIB seed lookup, after the licence question (L6) is settled.
+- [ ] Spikes L1–L6, then decide on the optional `mintplayer-aligner` worker (Demucs + WhisperX or
+  similar, audio uploaded by an admin and deleted after processing, results stored as system-user
+  contributions for human review).
+
 ### M7 — Full sweep, docs, PR
 - [ ] Write `docs/guide-contributions.md` (API, ids, the current-document cache, rights, moderation
   integration), and add the library to the README.

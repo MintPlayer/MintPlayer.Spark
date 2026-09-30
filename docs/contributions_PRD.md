@@ -411,6 +411,136 @@ in this repository; see §7.
 
   It is sequenced after this library is published.
 
+## 9. Look-ahead: lyrics timings across several recordings (MintPlayer, NOT yet scheduled)
+
+Investigated on 2026-09-30 at the owner's request, so that the design already covers these cases.
+None of this is planned work yet. It lands in MintPlayer after the Contributions library.
+
+### 9.1 The problem, and what MintPlayer has today (`C:\Repos\MintPlayer`)
+- **The problem:** one song has several media, e.g. the official music video with a ~30 s
+  prelude/interlude, and the continuous official audio. Line timings therefore differ per medium, and
+  timing every line by hand is tedious.
+- **Media** (`MintPlayer.Domain/Entities/Medium.cs:11-21`) are embedded `{ Value (URL), TypeId }`.
+  They have **no stable id, no duration, no official flag**, and the platform is derived from the URL.
+  Media hang off `Subject` (songs, artists, people).
+- **Timings** (`LyricsTiming.cs:57-62`) are `{ MediumUrl, List<double?> StartTimes }`, in seconds and
+  parallel to the lines. They are **keyed by the exact URL string**, so a changed URL orphans the
+  timing. There is no offset, no sharing between media, and every medium is timed from scratch.
+- **Today's manual sync** (`lyrics/song-lyrics.ts`): a per-line "Set" button stamps
+  `progress().currentTime` while the song plays.
+  - It has no keyboard shortcuts, nudging, playback rate or latency compensation.
+  - Seeking goes through a private adapter hack (`player-card.ts:109-120`).
+  - Progress is polled every 50 ms.
+- **Data volume:** 141 songs, 254 media, 127 with lyrics, only ~20 with timings
+  (`PRD-Spark-Completion.md:52`).
+- **Infrastructure:** a single Hetzner VPS with Docker Compose (RavenDB, Postfix, app). There is **no
+  worker container and no Python**, and no background jobs yet; Spark Messaging is planned (F9).
+
+### 9.2 Timing model (recommended)
+- **One canonical timeline** per song: line start times in **milliseconds**, against a **reference
+  medium** (usually the official audio).
+  - It is timed on the **original** version and shared by every language/script version by line index.
+    C4 makes this work, and it is why an "original" version is needed (Q5, still open).
+- **A time map per medium:** piecewise segments `[{ fromMs, toMs, shiftMs }]`. One segment is a plain
+  offset; a prelude or interlude is an extra segment. Lines inside an unmatched stretch are flagged.
+- **Sparse per-line overrides** per medium, for stragglers.
+- **Media need a stable id** (a `Guid`) instead of URL keys, and should store their duration when
+  first timed.
+- **The Contributions library fits this** (a direction, not decided):
+  - the canonical timeline as a zero-slot `[Contribution]` on the song (one current per song)
+  - each medium's map as a `[Contribution] List<MediumSync>` with the slot `[ContributionSlot] Guid MediumId`
+    (a `Guid` slot is allowed by T2)
+  
+  Timings then get the same per-user ownership, latest-wins, revert and moderation as the lyrics.
+
+### 9.3 Getting timings — from cheapest to most automated
+1. **Better manual tools** (free, and the biggest win), modelled on lrc-tap
+   (https://github.com/retrokidworks/lrc-tap):
+   - **Tap mode:** Space stamps the next line, Backspace un-stamps and seeks back ~3 s.
+   - **Playback rate** 0.25–2× through the player (`setPlaybackRate`; react to `onPlaybackRateChange`).
+     Timestamps stay in media time.
+   - **Nudge** ±50/100 ms (Alt+←/→), **shift everything from line N by Δ**, and a global offset.
+   - **Tap-latency compensation** (~100–200 ms, calibrated by a tap-along test, unverified).
+   - **Preview and loop** (click a line to seek 1 s before it), undo/redo, and LRC import/export
+     (including Enhanced/A2 word-level LRC).
+   - **Player adapter:** add `seek`/`setRate` to `@mintplayer/ng-video-player` as public API, replacing
+     the private hack, with rAF interpolation for highlighting. YouTube, Vimeo and SoundCloud are
+     precise enough; Spotify is not a usable sync target.
+   - **A waveform is impossible for iframe media** (no audio access); it works only for self-hosted
+     files.
+2. **Anchor alignment for additional media** (free, needs no audio). On a new medium, tap 2–3
+   anchor lines (first line, the first line after an interlude, the last chorus). The segment time map
+   is derived from them, and the stragglers get fixed. That takes about 30 s instead of re-tapping
+   every line, and it is safe for YouTube, since nothing is downloaded.
+3. **Seed from LRCLIB** (https://lrclib.net/docs — free, no key, MIT code, DB dumps):
+   - `GET /api/get?track_name=&artist_name=&album_name=&duration=` returns LRC `syncedLyrics`, only
+     within **±2 s of the duration**, which guards against a different master. It is timed to the
+     album track, so the result becomes the canonical timeline on the official-audio medium.
+   - **Caveats:** the data has **no stated licence**, since the lyrics are copyrighted (settle that
+     before public display), and K-pop coverage is unverified; measure it on MintPlayer's own song list.
+   - **Not usable:** Musixmatch (paid), NetEase/QQ (unofficial endpoints), YouTube captions
+     (`captions.download` requires owning the video), Spotify and Apple (no public lyrics API).
+4. **Automatic forced alignment** (free software, CPU, an optional worker):
+   - **Pipeline:** Demucs vocal separation (the maintained fork https://github.com/adefossez/demucs,
+     since the facebookresearch repo was archived in 2025), then a CTC forced alignment of the
+     **original-script** text to the vocals, done in one pass for the whole song. The output is the
+     start/end and a confidence per line.
+   - **Candidates:**
+     - **WhisperX** (BSD-2; Korean uses `kresnik/wav2vec2-large-xlsr-korean`, and ja/zh/ru/uk models
+       exist)
+     - **torchaudio MMS_FA / ctc-forced-aligner** (1,100+ languages through uroman, but **the model
+       weights are CC-BY-NC**, which blocks commercial use)
+     - **lyric-align** (MIT, built for CJK singing, very young)
+     - Not recommended: stable-ts (paused), NeMo NFA (heavy, tested on English), MFA, aeneas and
+       Gentle (built for speech)
+   - **Cost (estimated, unmeasured):** ~2–5 CPU-minutes and ~2–3 GB RAM per 4-minute song. The
+     backlog is small (127 songs with lyrics).
+   - **Known failure:** repeated choruses assigned to the wrong repeat. That's why a human review
+     stays mandatory:
+     - low-confidence, too short or long, out-of-order or unmatched lines shown in amber
+     - play-from-here and nudge
+     - manually confirmed lines never overwritten by a re-run
+5. **Automatic transfer between media** (only where both audios are legitimately available):
+   - Fingerprint/correlation anchors: audfprint, audalign or BBC audio-offset-finder (avoid Panako,
+     which is AGPL).
+   - Merge them into offset segments, treating unmatched stretches as inserted, and optionally refine
+     with chroma DTW (synctoolbox (MIT), libfmp or librosa).
+   - The output is exactly the §9.2 segment map.
+   - `ffsubsync` and `alass` are not usable directly: they rely on speech-VAD, which fails on music,
+     and need the medium's audio. Their piecewise-shift *model* is what §9.2 adopts.
+
+### 9.4 Audio source and legal position
+- **yt-dlp works technically,** but YouTube's Terms of Service and Developer Policies prohibit
+  downloading or separating audio without permission, and a datacenter VPS routinely gets "confirm
+  you're not a bot" (PO-token) walls, so expect constant breakage. Storing copyrighted audio adds
+  copyright exposure.
+- **The lower-risk route:** an admin uploads the **official audio file**, the worker aligns it, stores
+  **only timings**, and deletes the audio (a ≤24 h TTL for retries). YouTube and other embedded
+  media then get their timings through **anchor alignment** (§9.3.2), never through a download.
+
+### 9.5 Architecture, if and when automation is built
+- **.NET:** a Spark Messaging job `{ songId, mediumId, audioRef, originalLines, language }`, running
+  after MintPlayer's planned F9 messaging.
+- **Worker:** a new `mintplayer-aligner` service in `deploy/docker-compose.yml`. It runs Python 3.11
+  with pinned CPU torch, demucs, WhisperX (or ctc-forced-aligner), audfprint/synctoolbox and ffmpeg,
+  with the models baked into the image (~1.5–3 GB). It uses single-slot concurrency to cap RAM.
+- **Result:** per-line `{ index, startMs, endMs, confidence }` plus, where applicable, a segment map.
+  It is written as a **contribution by a system "aligner" user**, so it goes through the same review,
+  revert and moderation as human timings.
+
+### 9.6 Spikes to run when this is scheduled
+- **L1 — Aligner accuracy:** 5 songs (including 2 K-pop and 1 with a skit), aligned with WhisperX-ko,
+  MMS and lyric-align after Demucs, and scored against hand-made timings (median and p90 error per
+  line).
+- **L2 — CPU runtime and RAM** on the production VPS size.
+- **L3 — LRCLIB coverage** of MintPlayer's song list (hit rate at ±2 s).
+- **L4 — Model licences:** `kresnik/wav2vec2-large-xlsr-korean`, `jonatasgrosman/*`, the MFA Korean
+  model.
+- **L5 — Anchor alignment UX:** how many anchors a typical music video needs, and the error remaining
+  after deriving the segments.
+- **L6 — The legal position** on displaying lyrics from LRCLIB, and on user-contributed lyrics
+  generally.
+
 ## 8. Out of scope (genuinely not being done)
 
 - **Auto-hiding a contribution when a flag is upheld** (a possible Moderation addition later).
