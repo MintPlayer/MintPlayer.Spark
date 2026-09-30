@@ -7,6 +7,7 @@ import { Color } from '@mintplayer/ng-bootstrap';
 import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsContainerComponent } from '@mintplayer/ng-bootstrap/container';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
+import { SPARK_CONFIG } from '@mintplayer/ng-spark';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SparkPoFormComponent } from '@mintplayer/ng-spark/po-form';
 import { TranslateKeyPipe, ResolveTranslationPipe } from '@mintplayer/ng-spark/pipes';
@@ -54,6 +55,8 @@ export class SparkPoEditComponent {
   private readonly router = inject(Router);
   private readonly sparkService = inject(SparkService);
   private readonly language = inject(SparkLanguageService);
+  /** `SparkConfig.conflictDialog.showChangedBy`: whether the conflict notice may name a user at all. */
+  private readonly showChangedBy = inject(SPARK_CONFIG, { optional: true })?.conflictDialog?.showChangedBy === true;
 
   saved = output<PersistentObject>();
   cancelled = output<void>();
@@ -90,7 +93,8 @@ export class SparkPoEditComponent {
   protected readonly pendingConflicts = computed(() => this.pendingConflict()?.result.conflicts ?? []);
   /**
    * The name History resolved for whoever wrote the version with `etag`, or null. Only ever set from
-   * the revision list, so it is there only for a caller holding `History/T` (see {@link lookUpChangedBy}).
+   * the revision list, so it is there only when `SparkConfig.conflictDialog.showChangedBy` is true and
+   * the caller holds `History/T` (see {@link lookUpChangedBy}).
    */
   private readonly changedByName = signal<{ etag: string | undefined; name: string } | null>(null);
   private readonly form = viewChild(SparkPoFormComponent);
@@ -357,7 +361,9 @@ export class SparkPoEditComponent {
       return; // The concurrency message stays; there is nothing to merge against.
     }
     // Not awaited: the merge and the dialog never wait on, or fail because of, the name.
-    void this.lookUpChangedBy(theirs);
+    // Opt-in: without showChangedBy no History request is made at all.
+    this.changedByName.set(null);
+    if (this.showChangedBy) void this.lookUpChangedBy(theirs);
 
     const attributes = this.getEditableAttributes();
     const baseForm = this.formDataFrom(base);
@@ -402,7 +408,8 @@ export class SparkPoEditComponent {
    *
    * Rights: asked only with `History/T` (the endpoint refuses anyone else anyway), so a caller who may
    * not read the history never sees a name from it. Without History installed, or on any failure,
-   * nothing is set and the line falls back to what the object itself shows.
+   * nothing is set and the line names no user. Called only when `SparkConfig.conflictDialog.showChangedBy`
+   * is true.
    */
   private async lookUpChangedBy(theirs: PersistentObject): Promise<void> {
     this.changedByName.set(null);
@@ -472,14 +479,15 @@ export class SparkPoEditComponent {
   /**
    * "Changed by X at T" for an `IAuditable` target. History stamps `ModifiedBy`/`ModifiedAt` on the
    * entity, and they reach this page only when the model declares them as attributes. `ModifiedBy` is
-   * a user id (History stores ids, never names): X is the name History resolved for this version when
-   * the caller may read History ({@link lookUpChangedBy}), else that id — which the caller can read on
-   * the object anyway. Either half is shown alone when only it is present, and nothing when neither is.
+   * a user id (History stores ids, never names), and that id is never shown. X is the name History
+   * resolved for exactly this version ({@link lookUpChangedBy}), which is only looked up when
+   * `SparkConfig.conflictDialog.showChangedBy` is true; with no resolved name there is no user part.
+   * Either half is shown alone when only it is present, and nothing when neither is.
    */
   private auditLine(po: PersistentObject): string | null {
     const resolved = this.changedByName();
     const at = po.attributes.find(a => a.name === 'ModifiedAt')?.value;
-    const user = resolved && resolved.etag === po.etag ? resolved.name : modifiedBy(po);
+    const user = this.showChangedBy && resolved && resolved.etag === po.etag ? resolved.name : null;
     let time: string | null = null;
     if (at) {
       try { time = formatDate(at, 'medium', this.locale); } catch { time = String(at); }

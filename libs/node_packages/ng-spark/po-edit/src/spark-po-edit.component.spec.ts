@@ -5,6 +5,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { HttpErrorResponse } from '@angular/common/http';
 import { describe, expect, it, vi } from 'vitest';
 
+import { SPARK_CONFIG, SparkConfig } from '@mintplayer/ng-spark';
 import { SparkPoEditComponent } from './spark-po-edit.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { EntityType, PersistentObject, ShowedOn } from '@mintplayer/ng-spark/models';
@@ -54,7 +55,7 @@ const routes: Routes = [
   { path: 'po/:type/:id', component: StubComponent },
 ];
 
-async function setup(serviceOverrides: Partial<SparkService> = {}) {
+async function setup(serviceOverrides: Partial<SparkService> = {}, config?: SparkConfig) {
   const service: any = {
     getEntityTypes: vi.fn().mockResolvedValue([personType]),
     get: vi.fn().mockResolvedValue(existingItem),
@@ -66,8 +67,9 @@ async function setup(serviceOverrides: Partial<SparkService> = {}) {
       provideNoopAnimations(),
       provideRouter(routes),
       { provide: SparkService, useValue: service },
-      // Echoes the key; the "changed by" keys also keep their {user} slot, so tests can see who.
-      { provide: SparkLanguageService, useValue: { t: (k: string) => k.startsWith('common.conflictChangedBy') ? `${k}({user})` : k, resolve: (ts: any) => ts?.en ?? '' } },
+      // Echoes the key; the "changed by"/"changed at" keys also {user} and {time} slots so tests can see who and whether a time was shown.
+      { provide: SparkLanguageService, useValue: { t: (k: string) => k === 'common.conflictChangedByAt' ? `${k}({user}|{time})` : k.startsWith('common.conflictChangedBy') ? `${k}({user})` : k === 'common.conflictChangedAt' ? `${k}({time})` : k, resolve: (ts: any) => ts?.en ?? '' } },
+      ...(config ? [{ provide: SPARK_CONFIG, useValue: config }] : []),
     ],
   });
   const harness = await RouterTestingHarness.create();
@@ -248,10 +250,10 @@ describe('SparkPoEditComponent', () => {
       };
     }
 
-    async function editAndHitConflict(theirs: PersistentObject, overrides: Record<string, any> = {}) {
+    async function editAndHitConflict(theirs: PersistentObject, overrides: Record<string, any> = {}, config?: SparkConfig) {
       const get = vi.fn().mockResolvedValueOnce(existingItem).mockResolvedValue(theirs);
       const update = vi.fn().mockRejectedValueOnce(conflict).mockResolvedValue({ id: 'people/1', name: 'Updated' });
-      const { harness, service } = await setup({ get, update, ...overrides } as any);
+      const { harness, service } = await setup({ get, update, ...overrides } as any, config);
       const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
       await harness.fixture.whenStable();
       c.formData.set({ ...c.formData(), FirstName: 'Alicia' });
@@ -262,14 +264,16 @@ describe('SparkPoEditComponent', () => {
       return { c, service, harness };
     }
 
-    function audited(etag = 'A:13-def') {
+    function audited(etag = 'A:13-def', modifiedAt?: string) {
       const theirs = theirVersion({ LastName: 'Jones' });
       theirs.etag = etag;
       theirs.attributes.push({ id: 'a-mb', name: 'ModifiedBy', value: 'users/42' } as any);
+      if (modifiedAt) theirs.attributes.push({ id: 'a-ma', name: 'ModifiedAt', value: modifiedAt } as any);
       return theirs;
     }
 
     const bob = { changeVector: 'A:13-def', userId: 'users/42', userName: 'Bob', isCurrent: true };
+    const showChangedBy: SparkConfig = { baseUrl: '/spark', conflictDialog: { showChangedBy: true } };
 
     it('merges disjoint edits, says what they changed, and saves nothing by itself', async () => {
       const { c, service } = await editAndHitConflict(theirVersion({ LastName: 'Jones' }));
@@ -338,45 +342,70 @@ describe('SparkPoEditComponent', () => {
       expect(c.validationErrors()[0].errorMessage.en).toBe('common.concurrencyConflict');
     });
 
-    it('shows who changed it, as the id, when History is not asked', async () => {
-      const { c } = await editAndHitConflict(audited());
-      expect(c.conflictNotice()).toBe('common.conflictMerged common.conflictChangedBy(users/42)');
-    });
-
-    it('resolves who changed it to a name through the newest revision, for a History/T holder', async () => {
+    it('by default names no user and asks History nothing, but still shows the time', async () => {
       const postEnvelope = vi.fn().mockResolvedValue([bob]);
       const getPermissions = vi.fn().mockResolvedValue({ canViewHistory: true });
-      const { c } = await editAndHitConflict(audited(), { postEnvelope, getPermissions });
+      const { c } = await editAndHitConflict(audited('A:13-def', '2026-09-30T10:00:00Z'), { postEnvelope, getPermissions });
+
+      expect(postEnvelope).not.toHaveBeenCalled();
+      expect(getPermissions).not.toHaveBeenCalled();
+      const notice = c.conflictNotice()!;
+      expect(notice.startsWith('common.conflictMerged common.conflictChangedAt(')).toBe(true);
+      expect(notice).not.toContain('conflictChangedBy');
+      expect(notice).not.toContain('users/42');
+      expect(notice).not.toContain('Bob');
+    });
+
+    it('never shows the ModifiedBy id by default', async () => {
+      const { c } = await editAndHitConflict(audited());
+      expect(c.conflictNotice()).toBe('common.conflictMerged');
+    });
+
+    it('with showChangedBy, resolves who changed it to a name through the newest revision, for a History/T holder', async () => {
+      const postEnvelope = vi.fn().mockResolvedValue([bob]);
+      const getPermissions = vi.fn().mockResolvedValue({ canViewHistory: true });
+      const { c } = await editAndHitConflict(audited(), { postEnvelope, getPermissions }, showChangedBy);
 
       expect(getPermissions).toHaveBeenCalledWith('t-person');
       expect(postEnvelope).toHaveBeenCalledWith('/po/revisions', { objectTypeId: 't-person', id: 'people/1', take: 1 });
       expect(c.conflictNotice()).toBe('common.conflictMerged common.conflictChangedBy(Bob)');
     });
 
-    it('never asks History without History/T', async () => {
-      const postEnvelope = vi.fn().mockResolvedValue([bob]);
-      const { c } = await editAndHitConflict(audited(), { postEnvelope, getPermissions: vi.fn().mockResolvedValue({ canViewHistory: false }) });
-
-      expect(postEnvelope).not.toHaveBeenCalled();
-      expect(c.conflictNotice()).toBe('common.conflictMerged common.conflictChangedBy(users/42)');
+    it('with showChangedBy, shows the name and the time together', async () => {
+      const { c } = await editAndHitConflict(audited('A:13-def', '2026-09-30T10:00:00Z'), {
+        postEnvelope: vi.fn().mockResolvedValue([bob]),
+        getPermissions: vi.fn().mockResolvedValue({ canViewHistory: true }),
+      }, showChangedBy);
+      expect(c.conflictNotice()!.startsWith('common.conflictMerged common.conflictChangedByAt(Bob|')).toBe(true);
     });
 
-    it('keeps the conflict flow when History is not installed or refuses', async () => {
+    it('with showChangedBy, never asks History without History/T, and shows no user', async () => {
+      const postEnvelope = vi.fn().mockResolvedValue([bob]);
+      const { c } = await editAndHitConflict(audited(), { postEnvelope, getPermissions: vi.fn().mockResolvedValue({ canViewHistory: false }) }, showChangedBy);
+
+      expect(postEnvelope).not.toHaveBeenCalled();
+      expect(c.conflictNotice()).toBe('common.conflictMerged');
+    });
+
+    it('with showChangedBy, keeps the conflict flow when History is not installed or refuses, and shows no user', async () => {
       const refused = new HttpErrorResponse({ status: 404 });
       const { c } = await editAndHitConflict(audited(), {
         postEnvelope: vi.fn().mockRejectedValue(refused),
         getPermissions: vi.fn().mockResolvedValue({ canViewHistory: true }),
-      });
+      }, showChangedBy);
       expect(c.formData()).toMatchObject({ FirstName: 'Alicia', LastName: 'Jones' });
-      expect(c.conflictNotice()).toBe('common.conflictMerged common.conflictChangedBy(users/42)');
+      expect(c.conflictNotice()).toBe('common.conflictMerged');
     });
 
-    it('does not take a name from a revision other than the version merged against', async () => {
-      const { c } = await editAndHitConflict(audited('A:14-xyz'), {
+    it('with showChangedBy, takes no name from a revision other than the version merged against, and never the id', async () => {
+      const { c } = await editAndHitConflict(audited('A:14-xyz', '2026-09-30T10:00:00Z'), {
         postEnvelope: vi.fn().mockResolvedValue([bob]),
         getPermissions: vi.fn().mockResolvedValue({ canViewHistory: true }),
-      });
-      expect(c.conflictNotice()).toBe('common.conflictMerged common.conflictChangedBy(users/42)');
+      }, showChangedBy);
+      const notice = c.conflictNotice()!;
+      expect(notice.startsWith('common.conflictMerged common.conflictChangedAt(')).toBe(true);
+      expect(notice).not.toContain('users/42');
+      expect(notice).not.toContain('Bob');
     });
 
     it('gives the dialog the reference labels of both reads', async () => {
