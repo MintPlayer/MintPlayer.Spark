@@ -253,8 +253,28 @@ public static class SparkDevelopmentExtensions
     }
 
     /// <summary>
-    /// Refuses a model declaring <c>triggersRefresh</c> on a type whose actions class has no
-    /// <c>OnRefreshAsync</c> override.
+    /// Reports attributes whose on-disk <c>description.en</c> is not what C# would seed (#348).
+    /// Descriptions are deliberately outside the structural hash — translating one must never refuse
+    /// startup — so this is the check that keeps the English text from going stale after a
+    /// <c>///</c> summary or <c>[Description]</c> changes. Returns <see langword="true"/> when drift was found.
+    /// </summary>
+    private static bool VerifyAttributeDescriptionsAreCurrent(Type contextType, string contentRootPath)
+    {
+        var drift = ModelSynchronizer.DescribeDescriptionDrift(contextType, contentRootPath);
+        if (drift.Count == 0)
+            return false;
+
+        Console.Error.WriteLine("Spark attribute descriptions are out of date:");
+        foreach (var line in drift)
+            Console.Error.WriteLine("  " + line);
+        Console.Error.WriteLine();
+        return true;
+    }
+
+    /// <summary>
+    /// Refuses a model declaring a <c>triggersRefresh</c> other than <c>"None"</c> on a type whose
+    /// actions class has no <c>OnRefreshAsync</c> override, and warns (without failing) about
+    /// <c>"Blur"</c> declared on a discrete editor, where it behaves as <c>"ValueChanged"</c>.
     /// </summary>
     /// <remarks>
     /// The flag is a promise to the user that changing this field does something. Unimplemented, it
@@ -277,25 +297,6 @@ public static class SparkDevelopmentExtensions
     /// <c>ActionsResolver</c> uses, because there is no service provider in the builder phase.
     /// </para>
     /// </remarks>
-    /// <summary>
-    /// Reports attributes whose on-disk <c>description.en</c> is not what C# would seed (#348).
-    /// Descriptions are deliberately outside the structural hash — translating one must never refuse
-    /// startup — so this is the check that keeps the English text from going stale after a
-    /// <c>///</c> summary or <c>[Description]</c> changes. Returns <see langword="true"/> when drift was found.
-    /// </summary>
-    private static bool VerifyAttributeDescriptionsAreCurrent(Type contextType, string contentRootPath)
-    {
-        var drift = ModelSynchronizer.DescribeDescriptionDrift(contextType, contentRootPath);
-        if (drift.Count == 0)
-            return false;
-
-        Console.Error.WriteLine("Spark attribute descriptions are out of date:");
-        foreach (var line in drift)
-            Console.Error.WriteLine("  " + line);
-        Console.Error.WriteLine();
-        return true;
-    }
-
     private static void VerifyRefreshTriggersAreImplemented(string contentRootPath)
     {
         var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
@@ -303,6 +304,7 @@ public static class SparkDevelopmentExtensions
             return;
 
         var offenders = new List<string>();
+        var blurOnDiscrete = new List<string>();
 
         foreach (var file in Directory.EnumerateFiles(modelPath, "*.json"))
         {
@@ -323,8 +325,12 @@ public static class SparkDevelopmentExtensions
             if (definition is null)
                 continue;
 
+            blurOnDiscrete.AddRange(definition.Attributes
+                .Where(a => a.TriggersRefresh == ERefreshTrigger.Blur && IsDiscreteEditor(a))
+                .Select(a => $"{definition.Name}.{a.Name}"));
+
             var triggers = definition.Attributes
-                .Where(a => a.TriggersRefresh == true)
+                .Where(a => a.TriggersRefresh is not null and not ERefreshTrigger.None)
                 .Select(a => a.Name)
                 .ToArray();
 
@@ -339,6 +345,17 @@ public static class SparkDevelopmentExtensions
                           $"(no OnRefreshAsync override on {entityName}Actions)");
         }
 
+        // A warning, not a failure: the declaration still works, it just does not mean what it says.
+        if (blurOnDiscrete.Count > 0)
+        {
+            Console.Error.WriteLine("Spark model warning: \"triggersRefresh\": \"Blur\" on a discrete editor behaves as \"ValueChanged\":");
+            foreach (var attribute in blurOnDiscrete)
+                Console.Error.WriteLine("  " + attribute);
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("A lookup, reference, boolean, date, datetime, enum or color editor commits on every change and has no meaningful blur. Declare \"Auto\" or \"ValueChanged\" instead.");
+            Console.Error.WriteLine();
+        }
+
         if (offenders.Count == 0)
             return;
 
@@ -346,9 +363,32 @@ public static class SparkDevelopmentExtensions
         foreach (var offender in offenders)
             Console.Error.WriteLine("  " + offender);
         Console.Error.WriteLine();
-        Console.Error.WriteLine("Override OnRefreshAsync on the entity's actions class, or remove \"triggersRefresh\" from the model.");
+        Console.Error.WriteLine("Override OnRefreshAsync on the entity's actions class, or set \"triggersRefresh\" to \"None\" (or remove it) in the model.");
 
         Environment.ExitCode = ExitDrift;
+    }
+
+    /// <summary>
+    /// Whether the attribute renders as an editor where every change is a committed one, so a refresh
+    /// fires on change whatever the trigger says.
+    /// </summary>
+    /// <remarks>
+    /// ⚠️ Mirrors <c>isDiscreteEditor</c> in ng-spark's <c>po-form/src/refresh-coordinator.ts</c> —
+    /// keep the two in step. It asks how the attribute is <b>rendered</b>: a lookup carries the data
+    /// type of its key (<c>"string"</c>), so <see cref="EntityAttributeDefinition.LookupReferenceType"/>
+    /// decides before <see cref="EntityAttributeDefinition.DataType"/> does.
+    /// </remarks>
+    internal static bool IsDiscreteEditor(EntityAttributeDefinition attribute)
+    {
+        if (!string.IsNullOrEmpty(attribute.LookupReferenceType))
+            return true;
+
+        return (attribute.DataType ?? string.Empty).ToLowerInvariant() switch
+        {
+            "reference" or "lookupreference" or "boolean" or "bool" or "date" or "datetime"
+                or "dateonly" or "enum" or "color" => true,
+            _ => false,
+        };
     }
 
     /// <summary>

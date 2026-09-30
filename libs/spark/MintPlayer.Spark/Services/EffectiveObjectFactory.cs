@@ -18,7 +18,8 @@ public interface IEffectiveObjectFactory
     PersistentObject Build(EntityTypeDefinition entityType, PersistentObject? submitted);
 
     /// <summary>
-    /// The attributes of <paramref name="entityType"/> that declare <c>triggersRefresh</c>, in model
+    /// The attributes of <paramref name="entityType"/> that declare a <c>triggersRefresh</c> other than
+    /// <see cref="ERefreshTrigger.None"/>, in model
     /// order. Empty for the overwhelming majority of types, which is what makes it cheap to ask.
     /// </summary>
     IReadOnlyList<string> TriggeringAttributeNames(EntityTypeDefinition entityType);
@@ -61,7 +62,7 @@ internal partial class EffectiveObjectFactory : IEffectiveObjectFactory
 
     public IReadOnlyList<string> TriggeringAttributeNames(EntityTypeDefinition entityType) =>
         [.. entityType.Attributes
-            .Where(a => a.TriggersRefresh == true)
+            .Where(a => a.TriggersRefresh is not null and not ERefreshTrigger.None)
             .OrderBy(a => a.Order)
             .Select(a => a.Name)];
 }

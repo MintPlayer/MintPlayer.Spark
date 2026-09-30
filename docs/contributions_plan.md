@@ -24,20 +24,20 @@ Requirements, decisions (C1–C10, T1–T7), spikes and open questions are in
   409 envelope without leaking change vectors.
 
 ### M1 — `TriggersRefresh` enum (C9)
-- [ ] `ERefreshTrigger { None, Auto, ValueChanged, Blur }` with `JsonStringEnumConverter`.
+- [x] `ERefreshTrigger { None, Auto, ValueChanged, Blur }` with `JsonStringEnumConverter`.
   `EntityTypeDefinition.TriggersRefresh` becomes `ERefreshTrigger?`.
-- [ ] C#: in `EffectiveObjectFactory.cs:64` and `SparkDevelopmentExtensions.cs:327`, the check becomes
+- [x] C#: in `EffectiveObjectFactory.cs:64` and `SparkDevelopmentExtensions.cs:327`, the check becomes
   `!= None`. Add a verify-model warning for `Blur` on a discrete editor. Update the XML docs.
-- [ ] TS:
+- [x] TS:
   - `entity-type.ts:50` becomes a string union.
   - `refresh-coordinator.ts` gets `effectiveTrigger(attr)`, with `Auto` keeping today's type switch.
   - Add a debounce in `RefreshCoordinator` (300 ms; blur and save flush it).
   - Update the 5 reads in `spark-po-form.component.ts`.
-- [ ] Rewrite `Car.json:403`, `CarreerJob.json:76` and `GateSettings.json:118` to `"Auto"`.
-- [ ] Tests: `RefreshEndpointTests`, `NestedRefreshEndpointTests`, `SparkModelVerifyChecksTests`,
+- [x] Rewrite `Car.json:403`, `CarreerJob.json:76` and `GateSettings.json:118` to `"Auto"`.
+- [x] Tests: `RefreshEndpointTests`, `NestedRefreshEndpointTests`, `SparkModelVerifyChecksTests`,
   `TriggersRefreshPreservationTests`, and the po-form specs. Add a `refresh-coordinator` spec for
   debounce and flush.
-- [ ] Docs: `AGENTS.md:139,204,243`, `docs/guide-triggers-refresh.md`, `docs/Spark-API-Specification.md`.
+- [x] Docs: `AGENTS.md:139,204,243`, `docs/guide-triggers-refresh.md`, `docs/Spark-API-Specification.md`.
 
 ### M2 — Framework seams (F1–F6)
 - [ ] **F1:** `OnAfterMaterializeAsync(MaterializeContext)` (default no-op, idempotent) at the

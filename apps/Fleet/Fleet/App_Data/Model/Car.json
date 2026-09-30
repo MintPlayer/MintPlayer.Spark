@@ -400,7 +400,7 @@
         "isReadOnly": false,
         "order": 6,
         "isArray": false,
-        "triggersRefresh": true,
+        "triggersRefresh": "Auto",
         "lookupReferenceType": "CarStatus",
         "showedOn": "Query, PersistentObject",
         "rules": []

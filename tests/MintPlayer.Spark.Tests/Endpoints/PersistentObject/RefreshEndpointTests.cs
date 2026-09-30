@@ -303,7 +303,7 @@ public static class RefreshTestModels
                 new EntityAttributeDefinition
                 {
                     Id = Guid.NewGuid(), Name = "Status", DataType = "string", Order = 1,
-                    TriggersRefresh = true,
+                    TriggersRefresh = ERefreshTrigger.Auto,
                 },
                 new EntityAttributeDefinition
                 {

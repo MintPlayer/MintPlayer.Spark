@@ -14,6 +14,20 @@ export enum EReferenceDisplayType {
   Modal = 'Modal',
 }
 
+/**
+ * When changing an attribute asks the server to reshape the object (mirrors the .NET
+ * `ERefreshTrigger`, serialized PascalCase like {@link EReferenceDisplayType}).
+ *
+ * - `None` — no refresh; the same as absent.
+ * - `Auto` — free text refreshes on blur; discrete editors (lookup, reference, boolean, date,
+ *   datetime, enum, color) refresh immediately.
+ * - `ValueChanged` — refreshes on every change; free text is debounced (300 ms) and flushed by
+ *   blur or save.
+ * - `Blur` — refreshes on blur. A discrete editor never blurs meaningfully, so there it acts as
+ *   `ValueChanged` (and `--spark-verify-model` warns).
+ */
+export type RefreshTrigger = 'None' | 'Auto' | 'ValueChanged' | 'Blur';
+
 export interface EntityAttributeDefinition {
   id: string;
   name: string;
@@ -42,12 +56,13 @@ export interface EntityAttributeDefinition {
   /** For array AsDetail attributes: when true, rows can be drag-reordered (order = array position) */
   isSortable?: boolean;
   /**
-   * When true, changing this attribute's value posts the in-progress object to
-   * `/spark/po/{objectTypeId}/refresh` and applies the reshaped result as an overlay.
+   * When set (and not `'None'`), changing this attribute's value posts the in-progress object to
+   * `/spark/po/{objectTypeId}/refresh` and applies the reshaped result as an overlay; the value
+   * decides when (see {@link RefreshTrigger}). Absent means no refresh.
    * Schema-only by design — it never travels on a PersistentObjectAttribute, so a client
    * cannot claim a trigger the model did not declare.
    */
-  triggersRefresh?: boolean;
+  triggersRefresh?: RefreshTrigger;
   /** For LookupReference attributes, specifies the lookup reference type name */
   lookupReferenceType?: string;
   /**

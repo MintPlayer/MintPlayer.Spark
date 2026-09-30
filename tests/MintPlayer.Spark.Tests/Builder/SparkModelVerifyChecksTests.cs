@@ -27,18 +27,19 @@ public class SparkModelVerifyChecksTests
     // --- the shape of a planted model file --------------------------------
 
     private static JsonObject Attribute(string name, string showedOn = "Query, PersistentObject", bool isArray = false,
-        bool? canSort = null, bool? triggersRefresh = null)
+        bool? canSort = null, string? triggersRefresh = null, string dataType = "string", string? lookupReferenceType = null)
     {
         var attribute = new JsonObject
         {
             ["id"] = Guid.NewGuid().ToString(),
             ["name"] = name,
-            ["dataType"] = "string",
+            ["dataType"] = dataType,
             ["isArray"] = isArray,
             ["showedOn"] = showedOn,
         };
         if (canSort is not null) attribute["canSort"] = canSort;
         if (triggersRefresh is not null) attribute["triggersRefresh"] = triggersRefresh;
+        if (lookupReferenceType is not null) attribute["lookupReferenceType"] = lookupReferenceType;
         return attribute;
     }
 
@@ -84,7 +85,7 @@ public class SparkModelVerifyChecksTests
         using var scratch = new ScratchContentRoot();
 
         var (exitCode, reported) = VerifyWith(scratch, () =>
-            Plant(scratch, "VerifyUnrefreshedProbe", [Attribute("Title", triggersRefresh: true)]));
+            Plant(scratch, "VerifyUnrefreshedProbe", [Attribute("Title", triggersRefresh: "Auto")]));
 
         exitCode.Should().Be(3);
         reported.Should().Contain("declares refresh triggers that nothing implements");
@@ -99,7 +100,7 @@ public class SparkModelVerifyChecksTests
         using var scratch = new ScratchContentRoot();
 
         var (exitCode, reported) = VerifyWith(scratch, () =>
-            Plant(scratch, nameof(VerifyInheritedRefreshProbe), [Attribute("Title", triggersRefresh: true)]));
+            Plant(scratch, nameof(VerifyInheritedRefreshProbe), [Attribute("Title", triggersRefresh: "Auto")]));
 
         exitCode.Should().Be(3);
         reported.Should().Contain("no OnRefreshAsync override on VerifyInheritedRefreshProbeActions");
@@ -111,9 +112,48 @@ public class SparkModelVerifyChecksTests
         using var scratch = new ScratchContentRoot();
 
         var (exitCode, reported) = VerifyWith(scratch, () =>
-            Plant(scratch, nameof(VerifyRefreshedProbe), [Attribute("Title", triggersRefresh: true)]));
+            Plant(scratch, nameof(VerifyRefreshedProbe), [Attribute("Title", triggersRefresh: "Auto")]));
 
         exitCode.Should().Be(0, reported);
+    }
+
+    [Fact]
+    public void A_None_refresh_trigger_is_no_trigger_and_needs_no_OnRefreshAsync()
+    {
+        // `None` is the same statement as leaving the field out, so a type with no actions class at
+        // all must verify. A check that asked `is not null` instead of `!= None` would exit 3 here.
+        using var scratch = new ScratchContentRoot();
+
+        var (exitCode, reported) = VerifyWith(scratch, () =>
+            Plant(scratch, "VerifyNoneTriggerProbe", [Attribute("Title", triggersRefresh: "None")]));
+
+        exitCode.Should().Be(0, reported);
+        reported.Should().NotContain("declares refresh triggers that nothing implements");
+    }
+
+    [Fact]
+    public void Blur_on_a_discrete_editor_warns_that_it_behaves_as_ValueChanged_but_verifies()
+    {
+        using var scratch = new ScratchContentRoot();
+
+        var (exitCode, reported) = VerifyWith(scratch, () =>
+            Plant(scratch, nameof(VerifyRefreshedProbe),
+            [
+                Attribute("Mode", dataType: "boolean", triggersRefresh: "Blur"),
+                // A lookup carries its key's data type; the lookup type is what makes it a select.
+                Attribute("Status", lookupReferenceType: "CarStatus", triggersRefresh: "Blur"),
+                // Free text: Blur means what it says, so no warning.
+                Attribute("Title", triggersRefresh: "Blur"),
+                // Discrete, but not Blur: nothing to warn about.
+                Attribute("When", dataType: "date", triggersRefresh: "ValueChanged"),
+            ]));
+
+        exitCode.Should().Be(0, reported);
+        reported.Should().Contain("\"Blur\" on a discrete editor behaves as \"ValueChanged\"");
+        reported.Should().Contain("VerifyRefreshedProbe.Mode");
+        reported.Should().Contain("VerifyRefreshedProbe.Status");
+        reported.Should().NotContain("VerifyRefreshedProbe.Title");
+        reported.Should().NotContain("VerifyRefreshedProbe.When");
     }
 
     // --- collection columns ------------------------------------------------

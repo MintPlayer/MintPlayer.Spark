@@ -432,7 +432,7 @@ public static class NestedRefreshModels
                 new EntityAttributeDefinition
                 {
                     Id = Guid.NewGuid(), Name = "Name", DataType = "string", Order = 1,
-                    TriggersRefresh = true,
+                    TriggersRefresh = ERefreshTrigger.Auto,
                 },
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Summary", DataType = "string", Order = 2 },
                 new EntityAttributeDefinition
@@ -461,7 +461,7 @@ public static class NestedRefreshModels
                 new EntityAttributeDefinition
                 {
                     Id = Guid.NewGuid(), Name = "Mode", DataType = "string", Order = 1,
-                    TriggersRefresh = true,
+                    TriggersRefresh = ERefreshTrigger.Auto,
                 },
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Target", DataType = "decimal", Order = 2 },
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Threshold", DataType = "decimal", Order = 3 },
@@ -482,7 +482,7 @@ public static class NestedRefreshModels
                 new EntityAttributeDefinition
                 {
                     Id = Guid.NewGuid(), Name = "Kind", DataType = "string", Order = 1,
-                    TriggersRefresh = true,
+                    TriggersRefresh = ERefreshTrigger.Auto,
                 },
                 new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Note", DataType = "string", Order = 2 },
             ],

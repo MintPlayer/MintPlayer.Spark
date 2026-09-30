@@ -201,7 +201,10 @@ not copies in every Actions class — see `docs/guide-row-security.md`:
 
 ### `OnRefreshAsync` — forms that reshape themselves
 
-Mark an attribute `"triggersRefresh": true` in the model JSON (hand-set; synchronize preserves it).
+Mark an attribute `"triggersRefresh": "Auto"` in the model JSON (hand-set; synchronize preserves it).
+The value is an `ERefreshTrigger`: `None` (same as absent), `Auto` (free text on blur, discrete
+editors immediately), `ValueChanged` (every change; free text debounced 300 ms, flushed by blur or
+save) or `Blur` (on blur; a discrete editor acts as `ValueChanged` and verify-model warns).
 When its value changes the client posts the in-progress object to
 `/spark/po/refresh`, and the hook may toggle `IsRequired` / `IsReadOnly` /
 `IsVisible`, rewrite `Rules`, replace an attribute's `Options`, or set a dependent value.
@@ -240,7 +243,7 @@ context). Authorization still uses the owning type from the route — nested AsD
 per-row.
 
 ⚠️ `args.Attribute` is **nullable**: a stale client can name an attribute the model no longer
-declares. `--spark-verify-model` fails (exit 3) if a model declares `triggersRefresh` on a type whose
+declares. `--spark-verify-model` fails (exit 3) if a model declares a `triggersRefresh` other than `None` on a type whose
 actions class has no override — including a nested AsDetail type, which needs its own actions class.
 That check cannot be an analyzer, because the flag lives in JSON outside the compilation.
 

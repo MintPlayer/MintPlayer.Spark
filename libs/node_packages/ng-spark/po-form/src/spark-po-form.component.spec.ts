@@ -684,9 +684,11 @@ describe('SparkPoFormComponent', () => {
   describe('nested form triggers (triggerPathPrefix)', () => {
     // An embedded form never issues its own refresh: only the parent knows the object and holds the
     // right the server authorizes against, so the embedded one reports the path upward instead.
-    const gate = attr({ id: 'g-mode', name: 'ProjectMode', dataType: 'boolean', triggersRefresh: true });
-    const notes = attr({ id: 'g-notes', name: 'Notes', triggersRefresh: true });
+    const gate = attr({ id: 'g-mode', name: 'ProjectMode', dataType: 'boolean', triggersRefresh: 'Auto' });
+    const notes = attr({ id: 'g-notes', name: 'Notes', triggersRefresh: 'Auto' });
     const plain = attr({ id: 'g-plain', name: 'Plain' });
+    const live = attr({ id: 'g-live', name: 'Live', triggersRefresh: 'ValueChanged' });
+    const off = attr({ id: 'g-off', name: 'Off', triggersRefresh: 'None' });
 
     async function nested() {
       const refresh = vi.fn();
@@ -707,11 +709,15 @@ describe('SparkPoFormComponent', () => {
       component.onFieldChange(gate);
       component.onFieldChange(notes);
       component.onFieldChange(plain);
+      component.onFieldChange(live);
+      component.onFieldChange(off);
 
       expect(requested).toEqual([
-        { path: 'Gate.ProjectMode', immediate: true },
+        { path: 'Gate.ProjectMode', dispatch: 'immediate' },
         // Free text only marks pending; the parent sends on blur.
-        { path: 'Gate.Notes', immediate: false },
+        { path: 'Gate.Notes', dispatch: 'blur' },
+        // ValueChanged free text: the parent debounces, exactly as for an editor of its own.
+        { path: 'Gate.Live', dispatch: 'debounced' },
       ]);
       expect(refresh).not.toHaveBeenCalled();
     });
@@ -743,7 +749,7 @@ describe('SparkPoFormComponent', () => {
       await setEntityType(fixture, personType);
       expect(component.referenceOptions()['Company']).toEqual(allCompanies);
 
-      component.onFieldChange({ ...company, triggersRefresh: true });
+      component.onFieldChange({ ...company, triggersRefresh: 'Auto' });
       await flush();
 
       expect(refresh).toHaveBeenCalledTimes(1);

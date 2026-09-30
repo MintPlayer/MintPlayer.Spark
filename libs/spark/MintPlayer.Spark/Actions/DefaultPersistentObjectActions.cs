@@ -561,7 +561,8 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     public virtual Task OnBeforeDeleteAsync(T entity) => Task.CompletedTask;
 
     /// <summary>
-    /// Called when the value of an attribute declaring <c>"triggersRefresh": true</c> changes, so the
+    /// Called when the value of an attribute declaring <c>"triggersRefresh": "Auto"</c> (or any other
+    /// trigger but <c>"None"</c>) changes, so the
     /// form can be reshaped in response. Mutate <c>args.PersistentObject</c>: toggle
     /// <see cref="PersistentObjectAttribute.IsRequired"/>, <see cref="PersistentObjectAttribute.IsReadOnly"/>
     /// and <see cref="PersistentObjectAttribute.IsVisible"/>, rewrite
