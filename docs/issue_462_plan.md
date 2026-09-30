@@ -3,6 +3,16 @@
 Requirements, decisions (G1–G8 from the owner, D1–D14) and spikes are in
 [issue_462_PRD.md](issue_462_PRD.md). This file is the order of work.
 
+**Status (2026-09-30):**
+- **Part A (ng-bootstrap)** is specified in MintPlayer/mintplayer-ng-bootstrap#420, including the
+  calendar-header regression from #393. It is implemented in a session running in that repository,
+  because this session's hook refuses cross-repo edits.
+- **Part B (Spark)** waits for ng-bootstrap 22.20.0.
+- **The same Spark branch also carries the Contributions / attribute-rights / concurrency work**
+  ([contributions_plan.md](contributions_plan.md)). Owner decision: everything stays on
+  `feat/462-dark-mode`, in one PR.
+- Spikes S1–S6 and the browser sweep are done (PRD §4.1).
+
 **Rules for executing this plan**
 - **Branches.** One branch per repository, landed together:
   - `feat/462-dark-mode` in `C:\Repos\mintplayer-ng-bootstrap`

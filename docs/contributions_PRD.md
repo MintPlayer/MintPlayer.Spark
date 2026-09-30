@@ -386,7 +386,7 @@ in this repository; see §7.
   attributes flagged `IsSatellite`/non-stored are never posted by revert or sync.
 - **F3:** Row-key registration comes from the Contributions generator, and SPARK017 accepts
   `[Contribution]` element types.
-- **F4:** A contribute-only save path. When the caller lacks `Edit/T` but holds `Contribute/T`, and
+- **F4 (SUPERSEDED by attribute-level rights, see §5; kept for history):** A contribute-only save path. When the caller lacks `Edit/T` but holds `Contribute/T`, and
   `T` has `[Contribution]` properties, the save is allowed with **every non-contribution attribute
   shielded** (stored values restored, reusing `ShieldProtectedAttributesAsync`, with the list supplied
   by a registry and not only by the Actions class). The row gate and the disabled-action gate judge
@@ -402,7 +402,7 @@ in this repository; see §7.
 
 ## 5. Owner decisions from the second grilling round (2026-09-30)
 
-- **Q1 → A:** a contribute-only save (F4). `Contribute/<Target>` without `Edit/<Target>` is allowed,
+- **Q1 → A (SUPERSEDED by Q11–Q13: no `Contribute` verb; contributors hold `Edit/Song` plus attribute denies):** a contribute-only save (F4). `Contribute/<Target>` without `Edit/<Target>` is allowed,
   with every non-contribution attribute shielded. A reflection-driven test asserts that every
   attribute stays unchanged.
 - **Q2 → A:** reserved verbs. `[assembly: SparkReservedActions(typeof(XRights))]` points at a class of
@@ -416,7 +416,7 @@ in this repository; see §7.
   whose version is now shown. Removing a whole version is `Delete` on the generated current type
   (moderators).
 - **Q4 — verbs:**
-  - **New:** `Contribute` (on the target) and `RevertContribution` (on the contribution type: make it
+  - **New:** ~~`Contribute`~~ (dropped, see Q11–Q13) and `RevertContribution` (on the contribution type: make it
     current by hiding every newer non-hidden contribution in its slot, atomically and audited, never
     re-attributing).
   - **Reused:** `Query`/`Read` (history), `Delete` (hide), `Restore`, `ViewDeleted`, `Purge` on the
@@ -585,9 +585,61 @@ All grilling questions are resolved (2026-09-30).
 
 ## 5b. Earlier open question (resolved)
 
-- **Q1 — Who may contribute?** This depends on S-C1. Recommended: contributing to `Song.Lyrics` must
-  **not** require `Edit/Song`. Instead a `Contribute/Lyrics` right (or `New`/`Edit` on the contribution
-  type) gates it, and Moderation's reputation groups grant that right.
+- **Q1 — Who may contribute?** (SUPERSEDED by Q11–Q13.) Originally: contributing to `Song.Lyrics`
+  should not require `Edit/Song`; a `Contribute/Lyrics` right, granted by Moderation's reputation
+  groups, would gate it. Final: the type right is required, so contributors hold `Edit/Song` plus
+  attribute-level denies. Moderation's reputation groups can grant exactly that combination.
+
+## 5c. Implementation status, breaking changes and open items (kept current)
+
+**Commits on `feat/462-dark-mode`** (the owner keeps everything on this branch in one PR, including
+the dark-mode work, whose ng-bootstrap half is tracked in MintPlayer/mintplayer-ng-bootstrap#420):
+- `7014143a` **M1:** the `ERefreshTrigger` enum. `6663391e` adds a loud startup failure for a stale
+  boolean `triggersRefresh`.
+- `6660f8b9` **M1b / F7:** saves write with the checked change vector, and RavenDB
+  `ConcurrencyException` → 409 (red → green: `ConcurrentWriteRaceTests`).
+- `98ab4641`, `aefc353a` **M1c:** three-way conflict resolution, plus its follow-up (names via History,
+  reference labels, row cells).
+- `c81060d7` **M2a / F1, F2, F3, F5:** the materialize hook, satellite attributes skipped by revert
+  and sync, SPARK017, interceptor `Order`.
+- `a8ac860e` **M2b / F6, Q2:** eviction of interceptor writes on refusal (`SessionWriteSnapshot`), the
+  reserved-verbs registry (SPARK023, startup check).
+- **M2c-1 in progress:** the attribute-rights foundation.
+
+**Breaking changes for the release notes** (no backward compatibility, preview; minor version bumps
+only):
+- `TriggersRefresh` is `ERefreshTrigger { None, Auto, ValueChanged, Blur }`. JSON `true` → `"Auto"`,
+  and a stale `true` stops startup.
+- ng-spark `NestedTriggerRequest` now carries `dispatch: RefreshDispatch` instead of
+  `immediate: boolean`.
+- **Racing writes return 409 instead of last-write-wins:** saves without an etag, replication syncs,
+  and restores/soft deletes. Create, Delete, DeleteMany and SoftDelete restore now return 409.
+- **Interceptor order is `Order`-based** (SoftDelete -300, History -200, Moderation -100, default 0,
+  Contributions +100). App interceptors registered before the built-ins now run after them.
+- **SPARK023:** a custom action named like a reserved verb is a build error, and a startup error.
+- **SPARK011** now flags SoftDelete or History rights in an app that doesn't reference those packages.
+- **`security.json`:** the three-segment attribute rights `{verb}/{Type}/{Attr}` (SPARK014 validates
+  them instead of refusing).
+- **Per-row redaction** blanks indistinguishably (no `IsVisible` flip).
+- **Moderation.Abstractions** now references Spark.Abstractions.
+- **Dark mode** (the other half of this PR): `sidebarTheme` is removed. ng-bootstrap's theme is stored
+  in a cookie instead of localStorage, so stored choices reset.
+
+**Known limitations (documented, not fixed):**
+- **Hard deletes** are not concurrency-checked: RavenDB 7.2.6 ignores the check on `Delete(entity)`.
+- A no-op save sends no write, so it gets no conflict check.
+- F6 can't take back `session.Advanced.Defer` commands, or `Delete(id)` on a document that was never
+  loaded.
+- Satellite detection keys on the Newtonsoft `[JsonIgnore]`, not System.Text.Json's.
+- The materialize hook runs once per entity *instance*, not per document id.
+
+**Open items:**
+- **M1c "Changed by" fallback, awaiting the owner:** when no name can be resolved, show the raw user id
+  (current behaviour) or nothing. Claude recommends nothing.
+- **Unrun tests** (all run in the M7 sweep): the existing `ConcurrentWriteRaceTests` after F6 changed
+  eviction, the M1c E2E selectors (`input#Model`, `.spark-conflict-dialog`), and every whole suite.
+- **The version gate:** check whether CI expects every `libs/` csproj bumped in lockstep. Past PRs
+  bumped 23–29 of 30, while this branch bumps only the touched ones.
 
 ## 6. Risks
 
@@ -766,7 +818,7 @@ Because all versions share the line structure (C4), timings from any aligned ver
 index to every version. The chosen version affects accuracy only.
 
 **Q5 (owner, 2026-09-30): A.** `Song.OriginalLyrics` holds the original's slot key. Only `Edit/Song`
-may change it, not `Contribute`. The line count is validated against it, and switching the original
+may change it (a contributor holds `Edit/Song` but is denied `Edit/Song/OriginalLyrics`). The line count is validated against it, and switching the original
 is refused unless the line counts match.
 
 ### 9.6 Spikes to run when this is scheduled
