@@ -83,6 +83,8 @@
     <ProjectReference Include="..\..\libs\migrations\MintPlayer.Spark.Migrations\MintPlayer.Spark.Migrations.csproj" />
     <ProjectReference Include="..\..\libs\messaging\MintPlayer.Spark.Messaging.Abstractions\MintPlayer.Spark.Messaging.Abstractions.csproj" />
     <ProjectReference Include="..\..\libs\authorization\MintPlayer.Spark.Authorization\MintPlayer.Spark.Authorization.csproj" />
+    <!-- Declares [assembly: SparkReservedActions(typeof(ModerationRights))]: the SPARK011 tests hand it to the analyzer. -->
+    <ProjectReference Include="..\..\libs\moderation\MintPlayer.Spark.Moderation.Abstractions\MintPlayer.Spark.Moderation.Abstractions.csproj" />
   </ItemGroup>
 
   <!--

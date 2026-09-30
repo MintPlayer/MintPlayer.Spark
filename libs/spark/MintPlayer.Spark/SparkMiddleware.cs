@@ -431,6 +431,8 @@ public static class SparkExtensions
 
         VerifySparkSecurityConfiguration(app);
 
+        VerifySparkReservedActions();
+
         ReportSecurityPosture(app);
 
         // Run module-specific middleware/startup tasks
@@ -654,6 +656,17 @@ public static class SparkExtensions
     /// and the generator that fixes it takes one command.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Refuses to start when a custom action is named like a reserved verb (#460 contributions, Q2):
+    /// the action would share that verb's right. SPARK023 reports the same at build time for the
+    /// application's own compilation; this catches an action shipped by a referenced library, and an
+    /// application built without the analyzer.
+    /// </summary>
+    private static void VerifySparkReservedActions()
+        => SparkReservedActionRegistry.EnsureNoCollisions(
+            CustomActionResolver.DiscoveredActionTypes.Select(kv => (kv.Key, kv.Value)),
+            SparkReservedActionRegistry.All);
+
     private static void VerifySparkSecurityConfiguration(IApplicationBuilder app)
     {
         // The command that writes the file must not be blocked by the check that requires it.

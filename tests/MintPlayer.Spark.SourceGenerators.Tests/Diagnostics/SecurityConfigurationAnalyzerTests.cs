@@ -22,6 +22,14 @@ public class SecurityConfigurationAnalyzerTests
     // The harness matches on the SIMPLE type name.
     private const string AnalyzerName = "SecurityConfigurationAnalyzer";
 
+    /// <summary>
+    /// The assemblies whose [assembly: SparkReservedActions] declarations the analyzer reads as the verbs
+    /// Spark asks for (Q2): core's (with the combined verbs) and Moderation's — what an app referencing
+    /// Spark and Moderation compiles against.
+    /// </summary>
+    internal static readonly Type[] ReservedVerbSources =
+        [typeof(MintPlayer.Spark.Abstractions.Authorization.SparkCoreActions), typeof(MintPlayer.Spark.Moderation.ModerationRights)];
+
     private const string ModelJson = """
         {
           "persistentObject": {
@@ -54,6 +62,7 @@ public class SecurityConfigurationAnalyzerTests
         => GeneratorHarness.RunAnalyzerAsync(
             AnalyzerName,
             [source],
+            referenceTypes: ReservedVerbSources,
             additionalTexts:
             [
                 ("C:\\app\\App_Data\\security.json", SecurityJson(resource, groupId)),
@@ -213,9 +222,46 @@ public class SecurityConfigurationAnalyzerTests
         var diagnostics = await GeneratorHarness.RunAnalyzerAsync(
             AnalyzerName,
             ["class Placeholder { }"],
+            referenceTypes: ReservedVerbSources,
             additionalTexts: [("C:\\app\\App_Data\\security.json", SecurityJson("QueryRead/Anything"))]);
 
         diagnostics.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// Q2: the verbs Spark asks for are read from the referenced assemblies' reserved-verb
+    /// declarations, not a hand-kept list — so a package's verb is known where the package is
+    /// referenced, and unknown where it is not.
+    /// </summary>
+    [Fact]
+    public async Task A_verb_declared_by_a_referenced_package_is_not_reported()
+    {
+        var package = GeneratorHarness.CompileToMetadataReference(
+            "Acme.Spark.Package",
+            [ReservedActionNameAnalyzerTests.StubPackageSource],
+            [typeof(MintPlayer.Spark.Abstractions.Authorization.SparkReservedActionsAttribute)]);
+
+        var diagnostics = await GeneratorHarness.RunAnalyzerAsync(
+            AnalyzerName,
+            ["class Placeholder { }"],
+            referenceTypes: ReservedVerbSources,
+            additionalTexts:
+            [
+                ("C:\\app\\App_Data\\security.json", SecurityJson("Frobnicate/Person")),
+                ("C:\\app\\App_Data\\Model\\Person.json", ModelJson),
+            ],
+            additionalReferences: [package]);
+
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_verb_of_a_package_that_is_not_referenced_is_reported()
+    {
+        // Restore is SoftDelete's; this compilation references core and Moderation only.
+        var diagnostics = await RunAsync("Restore/Person");
+
+        diagnostics.Should().ContainSingle().Which.Id.Should().Be("SPARK011");
     }
 
     /// <summary>A project with no security.json at all gets silence, not a diagnostic.</summary>

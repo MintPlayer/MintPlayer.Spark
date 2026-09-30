@@ -65,6 +65,9 @@ internal partial class CustomActionResolver : ICustomActionResolver
         return actionTypes.Value.Keys.ToList();
     }
 
+    /// <summary>Every discovered custom action, name → class: what the startup reserved-verb check judges.</summary>
+    internal static IReadOnlyDictionary<string, Type> DiscoveredActionTypes => actionTypes.Value;
+
     private static Dictionary<string, Type> DiscoverActionTypes()
     {
         var result = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase);

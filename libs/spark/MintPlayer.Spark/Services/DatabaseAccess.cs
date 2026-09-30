@@ -375,6 +375,9 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // Pass PO directly to actions — entity mapping happens inside the actions pipeline
         object savedEntity;
         var beforeHooksRan = false;
+        // Everything the request session tracks before the Actions class and the before-hooks run, so
+        // a refusal can take back what they wrote besides the target (contributions F6).
+        var sessionBefore = SessionWriteSnapshot.Take(session);
         try
         {
             savedEntity = await SaveEntityViaActionsAsync(session, entityType, persistentObject);
@@ -387,6 +390,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
             // SaveChangesAsync — another save, a custom action's own write — would commit the refused
             // change. Evicted, the next load in this request reads what is stored.
             await EvictTrackedAsync(entityType, persistentObject.Id);
+            // Not only the target (contributions F6): a before-hook that stored a side document (a
+            // contribution, an audit row) before WITH CHECK refused would otherwise have it committed
+            // by that same next SaveChangesAsync, orphaned from the save that was refused.
+            sessionBefore.EvictWrittenSince();
 
             // The write found the document changed since it was loaded (contributions F7): the same
             // conflict the etag check above answers, caught one step later, so the same 409. RavenDB's
@@ -483,10 +490,24 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var syncInterceptor = serviceProvider.GetService<ISyncActionInterceptor>();
         var replicated = syncInterceptor != null && syncInterceptor.IsReplicated(entityType);
 
+        // Everything the request session tracks before any delete hook runs, so a refusal can take back
+        // what the hooks wrote besides the target (contributions F6).
+        var sessionBefore = SessionWriteSnapshot.Take(session);
+
         if (interceptors.Count == 0)
         {
             // Delete locally first (includes before hook)
-            await DeleteEntityViaActionsAsync(session, entityType, id);
+            try
+            {
+                await DeleteEntityViaActionsAsync(session, entityType, id);
+            }
+            catch
+            {
+                // An Actions OnBeforeDeleteAsync that wrote a side document and then refused (or a
+                // failed commit) must not leave that write for the request's next SaveChangesAsync.
+                sessionBefore.EvictWrittenSince();
+                throw;
+            }
 
             // If this is a replicated entity, also notify the owner module
             if (replicated)
@@ -512,6 +533,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         catch
         {
             session.Advanced.Evict(entity);
+            sessionBefore.EvictWrittenSince();
             throw;
         }
         interceptorPipeline.MarkBeforeDeleteHandled(entity);
@@ -556,6 +578,9 @@ internal partial class DatabaseAccess : IDatabaseAccess
             // action's own write — would otherwise commit the half-made change (#460, M6 finding).
             // Evicted, the next load in this request reads what is stored.
             session.Advanced.Evict(entity);
+            // And every other document a before-hook stored, changed or deleted on the way — the
+            // contribution recompute's current document, say — or a later save commits it (F6).
+            sessionBefore.EvictWrittenSince();
             if (ex is Raven.Client.Exceptions.ConcurrencyException)
                 throw new SparkConcurrencyException(ex);
             throw;
@@ -650,9 +675,13 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var batch = serviceProvider.GetRequiredService<ISparkWriteBatch>();
         var actionsInstance = actionsResolver.ResolveForType(entityType);
 
+        // Before the batch touches the request session (contributions F6), so a refusal evicts what
+        // the hooks stored besides the rows themselves.
+        var sessionBefore = SessionWriteSnapshot.Take(session);
+
         // One batched load into the request session: every later per-row load is an identity-map hit,
         // so 200 rows cost one request rather than blowing the session's request budget.
-        var tracked = await RowSecurity.LoadBaseDocumentsAsync(session, entityType, distinct);
+        var tracked =await RowSecurity.LoadBaseDocumentsAsync(session, entityType, distinct);
         var expectedChangeVectors = tracked.ToDictionary(
             pair => pair.Key, pair => session.Advanced.GetChangeVectorFor(pair.Value), StringComparer.OrdinalIgnoreCase);
         var contexts = new List<(DeleteContext Context, object Entity)>(distinct.Length);
@@ -715,6 +744,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
             // marked soft-deleted, or queued for deletion — is evicted, so it reads as stored again.
             foreach (var entity in tracked.Values)
                 session.Advanced.Evict(entity);
+            sessionBefore.EvictWrittenSince();
             if (ex is Raven.Client.Exceptions.ConcurrencyException)
                 throw new SparkConcurrencyException(ex);
             throw;

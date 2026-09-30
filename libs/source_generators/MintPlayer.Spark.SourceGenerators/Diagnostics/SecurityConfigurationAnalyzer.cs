@@ -83,30 +83,12 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics =>
         [UnknownActionRule, UnknownTargetRule, DanglingGroupRule, ThreeSegmentResourceRule, WildcardRightRule];
 
-    /// <summary>The verbs the framework itself asks for. Anything else must be a declared custom action.</summary>
-    /// <remarks>
-    /// <c>Restore</c>, <c>Purge</c> and <c>ViewDeleted</c> are asked for by core on behalf of the
-    /// SoftDelete package (#460): core gates a restore and a purge under their own names, and the
-    /// soft-delete row policy asks <c>ViewDeleted</c> before honouring a query's <c>deleted</c> mode.
-    /// <c>History</c> and <c>Revert</c> are the History package's (M7): core gates a revert under
-    /// <c>Revert</c>, the package gates revision reads under <c>History</c>.
-    /// <c>Vote</c>, <c>Downvote</c>, <c>Flag</c>, <c>Lock</c>, <c>Review</c>, <c>Suspend</c> and
-    /// <c>Audit</c> are the Moderation package's (M12, <c>ModerationRights</c>): it asks for them in code
-    /// through <c>IPermissionService</c>, not through <c>[SparkAuthorize]</c>, so the analyzer cannot
-    /// harvest them from a referenced assembly — the first app to grant them (QnA, M13) got a SPARK011 per
-    /// right.
-    /// </remarks>
-    private static readonly string[] BuiltInActions =
-    [
-        "Query", "Read", "New", "Edit", "Delete", "Replicate", "Restore", "Purge", "ViewDeleted", "History", "Revert",
-        "Vote", "Downvote", "Flag", "Lock", "Review", "Suspend", "Audit",
-    ];
-
-    private static readonly string[] CombinedActions =
-    [
-        "EditNew", "EditNewDelete", "NewDelete", "QueryRead", "QueryReadEdit", "QueryReadEditNew",
-        "QueryReadEditNewDelete", "ReadEdit", "ReadEditNew", "ReadEditNewDelete",
-    ];
+    // The verbs Spark asks for are no longer a hand-kept list here (#460 contributions, Q2): core,
+    // SoftDelete, History and Moderation each declare theirs with [assembly: SparkReservedActions(...)],
+    // and ReservedActionsReader reads them from the compilation's references. A package's verbs are
+    // therefore known exactly where the package is referenced — the Moderation verbs no longer read as
+    // SPARK011 because a list here forgot them (QnA, M13), and a Restore right in an app without
+    // SoftDelete is now reported, since nothing there ever asks for it.
 
     /// <summary>Targets the framework owns, which have no model file.</summary>
     /// <remarks><c>Moderation</c>: the Moderation package's own surface (<c>Review</c>, <c>Suspend</c>, <c>Audit</c>), T6.</remarks>
@@ -127,6 +109,11 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
         // Fail-soft on purpose: a project that has not wired security.json as an AdditionalFile gets
         // no diagnostics rather than a false one. spark.targets wires it for every consumer.
         if (security is null) return;
+
+        var reserved = ReservedActionsReader.Read(context.Compilation);
+        var builtInActions = reserved.Where(r => !r.IsCombined).Select(r => r.Verb)
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var knownActions = new HashSet<string>(reserved.Select(r => r.Verb), StringComparer.OrdinalIgnoreCase);
 
         // [SparkAuthorize("Manage", "UploadToken")] declares a resource that exists nowhere in the
         // model: the action is a verb the application invented and the target names a controller's
@@ -179,10 +166,10 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
                     continue;
                 }
 
-                if (!IsKnownAction(action, customActions) && !authorized.ContainsKey(action))
+                if (!knownActions.Contains(action) && !customActions.Contains(action) && !authorized.ContainsKey(action))
                 {
                     end.ReportDiagnostic(Diagnostic.Create(
-                        UnknownActionRule, location, right.Resource, action, string.Join(", ", BuiltInActions)));
+                        UnknownActionRule, location, right.Resource, action, string.Join(", ", builtInActions)));
                 }
 
                 // Only when the model is actually visible: an application that has not wired its
@@ -232,11 +219,6 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
                 targets.TryAdd(target, 0);
         }
     }
-
-    private static bool IsKnownAction(string action, ISet<string> customActions)
-        => BuiltInActions.Contains(action, StringComparer.OrdinalIgnoreCase)
-           || CombinedActions.Contains(action, StringComparer.OrdinalIgnoreCase)
-           || customActions.Contains(action);
 
     private static bool IsNamed(string path, string fileName)
         => path.EndsWith("\\" + fileName, StringComparison.OrdinalIgnoreCase)

@@ -81,13 +81,29 @@ Requirements, decisions (C1–C10, T1–T7), spikes and open questions are in
 - [ ] **F4 (per Q1):** the contribute-only save path, with shielding supplied by a registry and the
   row and disabled-action gates judging `Contribute`. Tests: a contributor can't change the title,
   tampered `IsValueChanged` flags are ignored.
+  - F4 on hold — being redesigned as attribute-level rights.
 - [x] **F5:** interceptor ordering (`Order` or a startup check).
   - As built: `int Order` default-implemented on the interface; scale in
     `PersistentObjectInterceptorOrder` (SoftDelete -300, History -200, Moderation -100, default 0,
     Contributions +100); ties keep registration order. Satellite (F2) = Newtonsoft `[JsonIgnore]`,
     `ReflectedTypeExtensions.IsSparkSatelliteProperty` / `GetSparkSatellitePropertyNames`.
-- [ ] **F6:** evict interceptor-stored documents when a save or delete is refused. Test: a refused
+- [x] **F6:** evict interceptor-stored documents when a save or delete is refused. Test: a refused
   save followed by a second save in the same request commits no orphaned documents.
+  - As built: `SessionWriteSnapshot` records the request session's tracked entities (and which were
+    already dirty or deleted) before the Actions class and the before-hooks run, and a refusal or a
+    `ConcurrencyException` evicts every entity tracked, changed or deleted since — on save, single
+    delete (with and without interceptors) and bulk delete. Changes pending before the operation are
+    left alone. Not covered: raw deferred commands and `Delete(id)` of an unloaded document. Tests:
+    `RefusedWriteEvictionTests`.
+- [x] **Reserved verbs (Q2):** `[assembly: SparkReservedActions(typeof(X))]` (Abstractions), declared
+  by core (`SparkCoreActions` + `SparkCombinedActions`), SoftDelete, History and Moderation
+  (`[SparkNotAnAction]` excludes `ModerationRights.Target`). SPARK023 (error) refuses a custom action
+  named like a reserved verb, read from the compilation and its references; SPARK011's built-in and
+  combined lists are derived from the same declarations; `UseSpark()` refuses the same collision at
+  startup (`SparkReservedActionRegistry`). Moderation's `DefaultEarnable` uses core's constants and
+  `--spark-init-moderation`'s per-type verb list comes from the registry. `Contribute` is not declared
+  yet (F4 on hold). Tests: `ReservedActionNameAnalyzerTests`, `SecurityConfigurationAnalyzerTests`,
+  `SparkReservedActionRegistryTests`.
 
 ### M3 — Library skeleton and packaging (C5, C7)
 - [ ] Create `libs/contributions/MintPlayer.Spark.Contributions` and `.Abstractions`: the

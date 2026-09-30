@@ -13,18 +13,34 @@ namespace MintPlayer.Spark.Abstractions.Authorization;
 /// </remarks>
 public static class SparkCombinedActions
 {
+    // The combined verbs, as constants: reserved verbs (SparkReservedActionsAttribute), read from here
+    // by the analyzers and the startup check.
+    public const string EditNew = "EditNew";
+    public const string EditNewDelete = "EditNewDelete";
+    public const string NewDelete = "NewDelete";
+    public const string QueryRead = "QueryRead";
+    public const string QueryReadEdit = "QueryReadEdit";
+    public const string QueryReadEditNew = "QueryReadEditNew";
+    public const string QueryReadEditNewDelete = "QueryReadEditNewDelete";
+    public const string ReadEdit = "ReadEdit";
+    public const string ReadEditNew = "ReadEditNew";
+    public const string ReadEditNewDelete = "ReadEditNewDelete";
+
+    private const string Query = SparkCoreActions.Query, Read = SparkCoreActions.Read, New = SparkCoreActions.New,
+        Edit = SparkCoreActions.Edit, Delete = SparkCoreActions.Delete;
+
     private static readonly Dictionary<string, string[]> Table = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["EditNew"] = ["Edit", "New"],
-        ["EditNewDelete"] = ["Edit", "New", "Delete"],
-        ["NewDelete"] = ["New", "Delete"],
-        ["QueryRead"] = ["Query", "Read"],
-        ["QueryReadEdit"] = ["Query", "Read", "Edit"],
-        ["QueryReadEditNew"] = ["Query", "Read", "Edit", "New"],
-        ["QueryReadEditNewDelete"] = ["Query", "Read", "Edit", "New", "Delete"],
-        ["ReadEdit"] = ["Read", "Edit"],
-        ["ReadEditNew"] = ["Read", "Edit", "New"],
-        ["ReadEditNewDelete"] = ["Read", "Edit", "New", "Delete"],
+        [EditNew] = [Edit, New],
+        [EditNewDelete] = [Edit, New, Delete],
+        [NewDelete] = [New, Delete],
+        [QueryRead] = [Query, Read],
+        [QueryReadEdit] = [Query, Read, Edit],
+        [QueryReadEditNew] = [Query, Read, Edit, New],
+        [QueryReadEditNewDelete] = [Query, Read, Edit, New, Delete],
+        [ReadEdit] = [Read, Edit],
+        [ReadEditNew] = [Read, Edit, New],
+        [ReadEditNewDelete] = [Read, Edit, New, Delete],
     };
 
     /// <summary>Every recognised combined action name.</summary>
