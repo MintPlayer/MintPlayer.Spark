@@ -12,6 +12,24 @@ Requirements, decisions (G1–G8 from the owner, D1–D14) and spikes are in
   ([contributions_plan.md](contributions_plan.md)). Owner decision: everything stays on
   `feat/462-dark-mode`, in one PR.
 - Spikes S1–S6 and the browser sweep are done (PRD §4.1).
+- **ng-bootstrap PR MintPlayer/mintplayer-ng-bootstrap#421** implements #420, with argued deviations.
+  It was reviewed on 2026-09-30, and the review comment is
+  https://github.com/MintPlayer/mintplayer-ng-bootstrap/pull/421#issuecomment-5916913690.
+  **Part B must use the API the PR actually ships, not #420's original text:**
+  - **Pre-boot script:** `@mintplayer/web-components/theming/bs-theme-preboot.js` (owner: keep that
+    path). The Spark apps' assets glob copies it from `node_modules/@mintplayer/web-components/theming/`.
+  - **New peer dependency: `@mintplayer/web-components ^2.17.0`.** Add it to the Spark workspace and
+    to ng-spark's peer dependencies.
+  - **`provideBsTheme` takes only `cookieDomain`.** The default mode is set with
+    `<meta name="bs-theme-default-mode" content="auto">` in each app's `index.html`.
+  - **The toggle takes a `modes` array input,** not `autoLabel`/`lightLabel`/`darkLabel`, so
+    `spark-shell` passes translated labels through `modes`. An `<mp-theme-toggle>` web component
+    also exists.
+  - **Shadow-DOM dark fixes use CSS style queries** (`@container style(--mp-color-mode: dark)`).
+    Engines without them keep light carets and knobs.
+  - **Open review items** (must-fix 2 and 3 in the comment) are the agreement-test skip, and a
+    host-only cookie shadowing a `Domain` cookie. Spark's M3 cookie test (S7) should include the
+    `cookieDomain` case.
 
 **Rules for executing this plan**
 - **Branches.** One branch per repository, landed together:
