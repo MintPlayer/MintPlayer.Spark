@@ -363,6 +363,21 @@ in this repository; see §7.
 - A missing target: 1 request, `null`.
 - About 62.6 K characters of JSON for 21 versions of ~3 KB each.
 
+**F7 as implemented (M1b, `6660f8b9`), red → green through `ConcurrentWriteRaceTests`:**
+- **Before the fix,** 3 of 5 tests returned 200/204 and silently overwrote a concurrent write: saves
+  with and without an etag, and a replaced (soft) delete.
+- **Saves of existing documents** write with `StoreAsync(entity, expectedCv, id)`, where the expected
+  change vector is the client's etag, or otherwise the version this save loaded. A RavenDB
+  `ConcurrencyException` becomes `SparkConcurrencyException` → 409 in `DatabaseAccess`. Create,
+  Delete, DeleteMany and SoftDelete restore map it too.
+- **The early etag check is kept.** It gives a fast 409, and it protects `OnSaveAsync` overrides that
+  never call the base.
+- **Behaviour change:** saves without an etag, replication syncs and restores that race a write now
+  get a **409 instead of last-write-wins**; Spark Messaging retries the sync.
+- **Still unprotected: hard deletes.** The RavenDB 7.2.6 client ignores the check mode on
+  `Delete(entity)`, and `Delete(id, cv)` leaves a deferred command behind after a failure.
+  - A save that changes nothing sends no write, so it gets no check.
+
 ### 4.2 Framework additions the spikes require (same unit of work)
 
 - **F1:** `OnAfterMaterializeAsync(MaterializeContext)`, idempotent, called at the four S-C2 sites,
