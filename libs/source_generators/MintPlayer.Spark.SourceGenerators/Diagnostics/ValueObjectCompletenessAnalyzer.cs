@@ -48,6 +48,7 @@ public sealed partial class ValueObjectCompletenessAnalyzer : DiagnosticAnalyzer
     private const string SparkContextFullName = "MintPlayer.Spark.SparkContext";
     private const string RavenQueryableMetadataName = "Raven.Client.Documents.Linq.IRavenQueryable`1";
     private const string ValueObjectAttributeFullName = "MintPlayer.Spark.Abstractions.ValueObjectAttribute";
+    private const string ContributionAttributeFullName = "MintPlayer.Spark.Contributions.ContributionAttribute";
 
     /// <summary>
     /// Diagnostic property carrying the offending type's metadata name, so the code fix can resolve
@@ -249,6 +250,7 @@ public sealed partial class ValueObjectCompletenessAnalyzer : DiagnosticAnalyzer
         var queue = new Queue<(INamedTypeSymbol Type, Location? SeedLocation)>();
         var unmarked = new Dictionary<string, (INamedTypeSymbol Offender, Location? SeedLocation)>(
             System.StringComparer.Ordinal);
+        var contributionElements = new HashSet<string>(System.StringComparer.Ordinal);
 
         foreach (var (root, seedLocation) in roots)
         {
@@ -276,6 +278,13 @@ public sealed partial class ValueObjectCompletenessAnalyzer : DiagnosticAnalyzer
                 if (EmbeddedTypeOf(property.Type, out var isCollectionElement) is not { } embedded)
                     continue;
 
+                // A [Contribution] collection's element gets its row key — and its
+                // SparkValueObjects registration — from the Contributions generator, not from
+                // [ValueObject] (contributions F3, PRD §4.1 S-C3: [ValueObject] would mint a Guid key per
+                // load). The key belongs to the type, so it is accepted wherever else it appears too.
+                if (isCollectionElement && IsContributionProperty(property))
+                    contributionElements.Add(embedded.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat));
+
                 // Report before the visited check: the same type can be a single member in one place
                 // and a row in another, and it is the row usage that decides.
                 if (isCollectionElement && !IsMarked(embedded))
@@ -290,8 +299,20 @@ public sealed partial class ValueObjectCompletenessAnalyzer : DiagnosticAnalyzer
             }
         }
 
-        return unmarked.OrderBy(x => x.Key, System.StringComparer.Ordinal).Select(x => x.Value);
+        return unmarked
+            .Where(x => !contributionElements.Contains(x.Key))
+            .OrderBy(x => x.Key, System.StringComparer.Ordinal)
+            .Select(x => x.Value);
     }
+
+    /// <summary>
+    /// Whether <paramref name="property"/> carries <c>[Contribution]</c>. Matched by metadata name:
+    /// the attribute lives in the optional <c>MintPlayer.Spark.Contributions</c> package, which this
+    /// analyzer does not reference.
+    /// </summary>
+    private static bool IsContributionProperty(IPropertySymbol property)
+        => property.GetAttributes().Any(a =>
+            a.AttributeClass?.ToDisplayString() == ContributionAttributeFullName);
 
     /// <summary>
     /// The complex type a property embeds — itself, or its collection element — or

@@ -4,6 +4,7 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
 using MintPlayer.Spark.Abstractions.Interceptors;
+using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
@@ -91,6 +92,7 @@ internal sealed partial class SparkHistory : ISparkHistory
         var revision = await LoadRevisionOfAsync(definition, entityType, id, changeVector);
 
         var mapped = entityMapper.ToPersistentObject(revision, objectTypeId);
+        var satellites = entityType.GetSparkSatellitePropertyNames();
         var po = new PersistentObject
         {
             Id = id,
@@ -98,8 +100,10 @@ internal sealed partial class SparkHistory : ISparkHistory
             ObjectTypeId = objectTypeId,
             // The row as it is NOW is what the revert replaces: a concurrent edit is a 409, not overwritten.
             Etag = current.Etag,
-            // Audit fields are the stamping's, never the revision's.
-            Attributes = [.. mapped.Attributes.Where(a => !AuditFields.Contains(a.Name))],
+            // Audit fields are the stamping's, never the revision's. Satellite attributes
+            // (contributions F2) were never stored, so a revision holds no value for them: posting
+            // its empty value would withdraw every row an interceptor supplies. They are left as they are.
+            Attributes = [.. mapped.Attributes.Where(a => !AuditFields.Contains(a.Name) && !satellites.Contains(a.Name))],
         };
         foreach (var attribute in po.Attributes)
             attribute.IsValueChanged = true;

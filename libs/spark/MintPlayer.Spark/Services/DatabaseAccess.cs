@@ -303,6 +303,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
             var rowAction = isRestore ? "Restore" : isRevert ? "Revert" : "Edit";
             using var checkSession = documentStore.OpenAsyncSession();
             var existing = await LoadEntityAsync(checkSession, entityType, persistentObject.Id);
+            // Hydrated like every other load (contributions F1), in the side session it came from,
+            // so the row gates and SaveContext.Before see the satellite rows as they are stored.
+            if (existing is not null)
+                await interceptorPipeline.RunAfterMaterializeAsync(entityType, checkSession, [existing], MaterializeReason.Before);
             if (existing is null && (isRestore || isRevert))
                 throw new SparkRowLevelAccessDeniedException($"{rowAction}/{entityTypeDefinition.Name}");
             if (existing is not null)
@@ -786,6 +790,15 @@ internal partial class DatabaseAccess : IDatabaseAccess
             "without calling the base implementation. That override takes over before-save interceptors " +
             "along with WITH CHECK (#460, D1). After-save interceptors still run.",
             entityType.Name);
+
+        // The same bypass skips the save reload's materialize hook (contributions F1): the override
+        // merges the posted values onto an entity whose satellite properties were never filled.
+        if (interceptorPipeline.HasMaterializeHooks(entityType))
+            logger?.LogWarning(
+                "Materialize interceptors did not run on the save reload for {EntityType}: its Actions class " +
+                "overrides OnSaveAsync without calling the base implementation, so satellite properties an " +
+                "interceptor fills in OnAfterMaterializeAsync are not hydrated before the posted values are merged.",
+                entityType.Name);
     }
 
     /// <summary>

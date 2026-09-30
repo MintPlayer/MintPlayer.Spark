@@ -167,6 +167,43 @@ public static class ReflectedTypeExtensions
     }
 
     /// <summary>
+    /// Whether <paramref name="property"/> is a <b>satellite</b>: modelled, but not stored in the
+    /// entity's own document — its CLR property carries Newtonsoft's <c>[JsonIgnore]</c>, the
+    /// non-stored marker RavenDB's serializer honours (contributions PRD §4.1, S-C2). Its value is
+    /// supplied by something else, typically an interceptor's <c>OnAfterMaterializeAsync</c> reading
+    /// side documents.
+    /// <para>
+    /// A stored revision or a replicated payload therefore never holds a satellite's value, so a
+    /// write that replays one — a History revert, a full replication sync — must not post it: an
+    /// empty value there would read as "remove every row" (contributions F2). Matched by metadata
+    /// name, so Abstractions takes no dependency on Newtonsoft.
+    /// </para>
+    /// </summary>
+    public static bool IsSparkSatelliteProperty(this PropertyInfo property)
+    {
+        ArgumentNullException.ThrowIfNull(property);
+        return ReflectionCache.GetOrAdd<(string Op, PropertyInfo Property), bool>(
+            ("ReflectedType.IsSatellite", property),
+            static k => k.Property.GetCustomAttributes(inherit: true)
+                .Any(a => a.GetType().FullName == "Newtonsoft.Json.JsonIgnoreAttribute"));
+    }
+
+    /// <summary>
+    /// The names of <paramref name="type"/>'s satellite model properties
+    /// (<see cref="IsSparkSatelliteProperty"/>) — the attributes a replayed write must drop.
+    /// </summary>
+    public static IReadOnlySet<string> GetSparkSatellitePropertyNames(this Type type)
+    {
+        ArgumentNullException.ThrowIfNull(type);
+        return ReflectionCache.GetOrAdd<(string Op, Type Type), IReadOnlySet<string>>(
+            ("ReflectedType.SatelliteNames", type),
+            static k => k.Type.GetSparkModelProperties()
+                .Where(p => p.IsSparkSatelliteProperty())
+                .Select(p => p.Name)
+                .ToHashSet(StringComparer.Ordinal));
+    }
+
+    /// <summary>
     /// Reads <c>Task&lt;T&gt;.Result</c> reflectively using a cached
     /// <see cref="PropertyInfo"/> + compiled getter. Use this when a non-generic
     /// <see cref="Task"/> reference was produced via reflection (e.g.

@@ -42,6 +42,9 @@ internal sealed partial class ModerationInterceptor : IPersistentObjectIntercept
     [Inject] private readonly ILogger<ModerationInterceptor> logger;
 
     /// <summary>Every type: the suspension write block is not limited to moderatable content.</summary>
+    /// <summary>After SoftDelete and History (contributions F5), before Contributions.</summary>
+    public int Order => PersistentObjectInterceptorOrder.Moderation;
+
     public bool AppliesTo(Type entityType) => true;
 
     private DateTime UtcNow => timeProvider.GetUtcNow().UtcDateTime;

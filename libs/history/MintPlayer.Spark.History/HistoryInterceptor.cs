@@ -30,6 +30,9 @@ internal sealed partial class HistoryInterceptor : IPersistentObjectInterceptor
 
     private DateTimeOffset Now => (timeProvider ?? TimeProvider.System).GetUtcNow();
 
+    /// <summary>After SoftDelete, before Moderation (contributions F5).</summary>
+    public int Order => PersistentObjectInterceptorOrder.History;
+
     public bool AppliesTo(Type entityType)
         => typeof(IAuditable).IsAssignableFrom(entityType) || RevisionsEnabled(entityType);
 

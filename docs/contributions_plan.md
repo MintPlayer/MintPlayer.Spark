@@ -67,16 +67,25 @@ Requirements, decisions (C1–C10, T1–T7), spikes and open questions are in
   - [ ] Run the never-executed E2E selectors (`input#Model`, `.spark-conflict-dialog`) in M7.
 
 ### M2 — Framework seams (F1–F6)
-- [ ] **F1:** `OnAfterMaterializeAsync(MaterializeContext)` (default no-op, idempotent) at the
+- [x] **F1:** `OnAfterMaterializeAsync(MaterializeContext)` (default no-op, idempotent) at the
   `LoadManyAsync` site (after `:121`), the save reload (`:260`) and the `Before` load
   (`DatabaseAccess.cs:305`). Add the bypass warning for app `OnSaveAsync` overrides. One test per path.
-- [ ] **F2:** History revert and full sync never post satellite (`[Contribution]`) attributes. Add
+  - As built: the pipeline hooks each entity *instance* once per request (reference set), so the
+    Update pre-read's instance is not hooked again by the save reload; the `Before` side-session copy
+    is a separate instance and is hooked. `MaterializeContext.Session` is typed `object`
+    (Abstractions has no RavenDB reference; `GetSession()` in core returns it typed). Tests:
+    `MaterializeInterceptorTests`.
+- [x] **F2:** History revert and full sync never post satellite (`[Contribution]`) attributes. Add
   tests proving a revert or a sync does not withdraw contributions.
-- [ ] **F3:** Change SPARK017 to accept `[Contribution]` element types.
+- [x] **F3:** Change SPARK017 to accept `[Contribution]` element types.
 - [ ] **F4 (per Q1):** the contribute-only save path, with shielding supplied by a registry and the
   row and disabled-action gates judging `Contribute`. Tests: a contributor can't change the title,
   tampered `IsValueChanged` flags are ignored.
-- [ ] **F5:** interceptor ordering (`Order` or a startup check).
+- [x] **F5:** interceptor ordering (`Order` or a startup check).
+  - As built: `int Order` default-implemented on the interface; scale in
+    `PersistentObjectInterceptorOrder` (SoftDelete -300, History -200, Moderation -100, default 0,
+    Contributions +100); ties keep registration order. Satellite (F2) = Newtonsoft `[JsonIgnore]`,
+    `ReflectedTypeExtensions.IsSparkSatelliteProperty` / `GetSparkSatellitePropertyNames`.
 - [ ] **F6:** evict interceptor-stored documents when a save or delete is refused. Test: a refused
   save followed by a second save in the same request commits no orphaned documents.
 

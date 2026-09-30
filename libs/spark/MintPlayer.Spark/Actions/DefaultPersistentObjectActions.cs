@@ -120,6 +120,12 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
 
         var loaded = await MaterializeAsync(requested);
 
+        // Materialize interceptors (contributions F1) fill satellite properties before any gate or
+        // the mapper reads the entities. Here rather than inside the virtual MaterializeAsync, so an
+        // override of how entities are found cannot skip them.
+        if (services.GetService<IPersistentObjectInterceptorPipeline>() is { } pipeline)
+            await pipeline.RunAfterMaterializeAsync(typeof(T), session, loaded.Values.Where(e => e is not null).Cast<object>(), Abstractions.Interceptors.MaterializeReason.Load);
+
         var collectionGuard = services.GetRequiredService<ICollectionGuard>();
         var rowSecurity = services.GetRequiredService<IRowSecurity>();
 
@@ -270,6 +276,11 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
                 expectedChangeVector = !string.IsNullOrEmpty(obj.Etag)
                     ? obj.Etag
                     : session.Advanced.GetChangeVectorFor(existing);
+                // Satellite properties are filled before the posted values are merged (contributions
+                // F1), so an edited hydrated row maps as an Edit, not a New plus a Delete. Idempotent:
+                // an instance the Update pre-read already hooked is not hooked again.
+                if (serviceProvider?.GetService<IPersistentObjectInterceptorPipeline>() is { } materializePipeline)
+                    await materializePipeline.RunAfterMaterializeAsync(typeof(T), session, [existing], Abstractions.Interceptors.MaterializeReason.SaveReload);
                 await ShieldProtectedAttributesAsync(obj, existing);
                 await entityMapper.PopulateObjectValuesAsync(obj, existing, session);
                 entity = existing;

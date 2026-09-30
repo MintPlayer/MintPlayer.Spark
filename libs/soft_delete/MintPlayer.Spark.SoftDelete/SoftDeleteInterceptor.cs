@@ -41,6 +41,9 @@ internal sealed partial class SoftDeleteInterceptor : IPersistentObjectIntercept
     [Inject] private readonly ILogger<SoftDeleteInterceptor> logger;
     [Inject] private readonly TimeProvider? timeProvider;
 
+    /// <summary>First (contributions F5): a delete becomes a replacement before any other interceptor sees it.</summary>
+    public int Order => PersistentObjectInterceptorOrder.SoftDelete;
+
     public bool AppliesTo(Type entityType) => typeof(ISoftDeletable).IsAssignableFrom(entityType);
 
     private DateTimeOffset Now => (timeProvider ?? TimeProvider.System).GetUtcNow();
