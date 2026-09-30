@@ -50,6 +50,12 @@ internal sealed partial class DeletePersistentObject : IPostEndpoint
             await databaseAccess.DeletePersistentObjectAsync(entityType.Id, request.Id);
             return ClientResult.Envelope(clientAccessor, null, 204);
         }
+        catch (SparkConcurrencyException)
+        {
+            // A replaced (soft) delete is a write, and it met a concurrent edit (contributions F7).
+            // Generic body, as in Update (R2-M1): the exception carries change vectors.
+            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor);
+        }
         catch (SparkValidationException ex)
         {
             // A delete can be refused for a business reason too — "this client still has live

@@ -118,6 +118,12 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint
             });
             return ClientResult.Envelope(clientAccessor, null, StatusCodes.Status204NoContent);
         }
+        catch (SparkConcurrencyException)
+        {
+            // A replaced (soft) delete in the batch met a concurrent edit; the batch is atomic, so
+            // nothing was written (contributions F7). Generic body, as in Update (R2-M1).
+            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor);
+        }
         catch (SparkValidationException ex)
         {
             return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, StatusCodes.Status400BadRequest);

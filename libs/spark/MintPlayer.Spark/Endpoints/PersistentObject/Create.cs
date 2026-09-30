@@ -96,6 +96,12 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint
             var result = await databaseAccess.SavePersistentObjectAsync(obj);
             return ClientResult.Envelope(clientAccessor, result, 201);
         }
+        catch (SparkConcurrencyException)
+        {
+            // A creation whose natural id is already held becomes a save of that row, and that
+            // write can meet a concurrent one (contributions F7). Generic body, as in Update (R2-M1).
+            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor);
+        }
         catch (SparkValidationException ex)
         {
             return ClientResult.Envelope(clientAccessor, new { errors = new[] { ex.ToError() } }, 400);

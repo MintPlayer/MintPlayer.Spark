@@ -17,10 +17,10 @@ Requirements, decisions (C1–C10, T1–T7), spikes and open questions are in
 - [x] S-C1 to S-C6
 - [ ] Second grilling round (owner Q1 onwards), then amend C/T decisions
 
-### M1b — Core concurrency fixes (F7)
-- [ ] Add an HTTP regression test first: a concurrent PO save, and what a raw `ConcurrencyException`
+### M1b — Core concurrency fixes (F7) ✅
+- [x] Add an HTTP regression test first: a concurrent PO save, and what a raw `ConcurrencyException`
   returns.
-- [ ] Make the PO save write with the checked change vector, and map `ConcurrencyException` to the
+- [x] Make the PO save write with the checked change vector, and map `ConcurrencyException` to the
   409 envelope without leaking change vectors.
 
 ### M1 — `TriggersRefresh` enum (C9)

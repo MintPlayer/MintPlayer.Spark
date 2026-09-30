@@ -255,11 +255,21 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         // (Id is null/empty, or Raven returned null for an unknown Id) falls through to
         // ToEntity which builds a fresh instance from the PO.
         T entity;
+        // The change vector the write must still find (contributions F7). The etag check in
+        // DatabaseAccess compares in a side session and cannot see a write that lands after it, so
+        // the write itself carries the expectation: the client's etag when it posted one, otherwise
+        // the version this session loaded. A concurrent write in between fails SaveChangesAsync with
+        // RavenDB's ConcurrencyException, which DatabaseAccess turns into the 409.
+        // Null for a create — New keeps its semantics, including a create under a caller-chosen id.
+        string? expectedChangeVector = null;
         if (!string.IsNullOrEmpty(obj.Id))
         {
             var existing = await session.LoadAsync<T>(obj.Id);
             if (existing is not null)
             {
+                expectedChangeVector = !string.IsNullOrEmpty(obj.Etag)
+                    ? obj.Etag
+                    : session.Advanced.GetChangeVectorFor(existing);
                 await ShieldProtectedAttributesAsync(obj, existing);
                 await entityMapper.PopulateObjectValuesAsync(obj, existing, session);
                 entity = existing;
@@ -280,7 +290,10 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         if (serviceProvider?.GetService<IPersistentObjectInterceptorPipeline>() is { } pipeline)
             await pipeline.RunBeforeSaveAsync(obj, entity);
         await EnsureRowSaveAllowedAsync(obj, entity);
-        await session.StoreAsync(entity);
+        if (expectedChangeVector is not null)
+            await session.StoreAsync(entity, expectedChangeVector, session.Advanced.GetDocumentId(entity));
+        else
+            await session.StoreAsync(entity);
         await session.SaveChangesAsync();
         await OnAfterSaveAsync(obj, entity);
         return entity;

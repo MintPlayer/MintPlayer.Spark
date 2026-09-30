@@ -316,7 +316,11 @@ internal partial class DatabaseAccess : IDatabaseAccess
                 if (!collectionGuard.BelongsToAuthorizedCollection(checkSession, existing, entityType))
                     throw new SparkRowLevelAccessDeniedException($"{rowAction}/{entityTypeDefinition.Name}");
 
-                // Concurrency check folds into the same side session — see R2-M7 / M-7.
+                // Concurrency check folds into the same side session — see R2-M7 / M-7. It is the
+                // fast refusal, not the guarantee: a stale etag answers 409 before any hook or
+                // interceptor runs (and for an OnSaveAsync override that never reaches the base).
+                // The guarantee is the base OnSaveAsync writing with the expected change vector
+                // (contributions F7), which also closes the window between this check and the write.
                 if (!string.IsNullOrEmpty(persistentObject.Etag))
                 {
                     var currentEtag = checkSession.Advanced.GetChangeVectorFor(existing);
@@ -371,7 +375,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         {
             savedEntity = await SaveEntityViaActionsAsync(session, entityType, persistentObject);
         }
-        catch
+        catch (Exception ex)
         {
             // The twin of the refused-delete eviction below (#460, M7 finding): the base OnSaveAsync
             // loads the row into the REQUEST session and maps the posted values onto it before WITH
@@ -379,6 +383,12 @@ internal partial class DatabaseAccess : IDatabaseAccess
             // SaveChangesAsync — another save, a custom action's own write — would commit the refused
             // change. Evicted, the next load in this request reads what is stored.
             await EvictTrackedAsync(entityType, persistentObject.Id);
+
+            // The write found the document changed since it was loaded (contributions F7): the same
+            // conflict the etag check above answers, caught one step later, so the same 409. RavenDB's
+            // message carries change vectors; it stays in the inner exception, for logs only.
+            if (ex is Raven.Client.Exceptions.ConcurrencyException)
+                throw new SparkConcurrencyException(ex);
             throw;
         }
         finally
@@ -487,6 +497,9 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var actions = actionsResolver.ResolveForType(entityType);
         var entity = await LoadEntityAsync(session, entityType, id);
         if (entity is null) return;
+        // A replacement is a write of this entity: it must still find the version loaded here, or a
+        // concurrent edit that landed after the gate is overwritten (contributions F7).
+        var expectedChangeVector = session.Advanced.GetChangeVectorFor(entity);
 
         try
         {
@@ -519,6 +532,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
                 // The entity is tracked by the request session, so whatever the interceptors set on it
                 // is what gets written. Replication must forward that save — a hard delete sent for a
                 // soft one would destroy the owner module's copy.
+                await session.StoreAsync(entity, expectedChangeVector, session.Advanced.GetDocumentId(entity));
                 await session.SaveChangesAsync();
                 if (replicated)
                     await syncInterceptor!.HandleSaveAsync(entity, id);
@@ -530,7 +544,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
                     await syncInterceptor!.HandleDeleteAsync(entityType, id);
             }
         }
-        catch
+        catch (Exception ex)
         {
             // A refusal after an earlier hook already changed the entity (SoftDelete marks it deleted,
             // then a later interceptor says no) must leave nothing behind. The entity is tracked by the
@@ -538,6 +552,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
             // action's own write — would otherwise commit the half-made change (#460, M6 finding).
             // Evicted, the next load in this request reads what is stored.
             session.Advanced.Evict(entity);
+            if (ex is Raven.Client.Exceptions.ConcurrencyException)
+                throw new SparkConcurrencyException(ex);
             throw;
         }
         finally
@@ -633,6 +649,8 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // One batched load into the request session: every later per-row load is an identity-map hit,
         // so 200 rows cost one request rather than blowing the session's request budget.
         var tracked = await RowSecurity.LoadBaseDocumentsAsync(session, entityType, distinct);
+        var expectedChangeVectors = tracked.ToDictionary(
+            pair => pair.Key, pair => session.Advanced.GetChangeVectorFor(pair.Value), StringComparer.OrdinalIgnoreCase);
         var contexts = new List<(DeleteContext Context, object Entity)>(distinct.Length);
         var savedEarly = false;
         void OnEarlySave(object? sender, AfterSaveChangesEventArgs e) => savedEarly = true;
@@ -672,6 +690,10 @@ internal partial class DatabaseAccess : IDatabaseAccess
                     // single SaveChanges below; otherwise the Actions class deletes, deferred.
                     if (!deleteContext.WasReplaced)
                         await DeleteEntityViaActionsAsync(session, entityType, id);
+                    else
+                        // Written with the version loaded above, as the single-row delete does
+                        // (contributions F7): a concurrent edit refuses the whole batch with a 409.
+                        await session.StoreAsync(entity, expectedChangeVectors[id], session.Advanced.GetDocumentId(entity));
                 }
             }
 
@@ -683,12 +705,14 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
             await session.SaveChangesAsync();
         }
-        catch
+        catch (Exception ex)
         {
             // Nothing half-made may reach a later save in this request: every row this batch touched —
             // marked soft-deleted, or queued for deletion — is evicted, so it reads as stored again.
             foreach (var entity in tracked.Values)
                 session.Advanced.Evict(entity);
+            if (ex is Raven.Client.Exceptions.ConcurrencyException)
+                throw new SparkConcurrencyException(ex);
             throw;
         }
         finally
