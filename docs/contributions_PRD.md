@@ -505,7 +505,83 @@ in this repository; see §7.
   - Reuses the normalization in History's `revision-diff.ts`. Lives in `@mintplayer/ng-spark` (no new
     package).
 
-All grilling questions are resolved (2026-09-30).
+### Attribute-level rights, replacing F4 (grilled 2026-09-30, Q11–Q14)
+Background:
+- Vidyano semantics were read from its decompiled server source (`C:\Repos\Vidyano.Service\...\SecurityScope.cs`,
+  `Repository\VidyanoModelContext.cs`) and ~175 real `security.json` files.
+- A read-path audit of Spark was done, and the Spark security model was mapped (see the investigation
+  notes in the session).
+- **F4's `Contribute/T` verb is dropped:** editing a `[Contribution]` attribute *is* contributing.
+
+- **Q11 → the full basket in this PR:** Query, Read and Edit (and New) per attribute, in **Spark
+  core**, because enforcement must sit in every read path and all of them are core. Contributions,
+  Moderation, History and SoftDelete *respect* it through the shared redaction and shielding.
+- **Q12 → Vidyano's three-segment syntax:** `Edit/Song/Lyrics`, `QueryRead/Employee/Salary`.
+  - It is valid only for Query, Read, Edit, New and the combined verbs made of them, which expand
+    as prefixes.
+  - AsDetail row attributes target the row type (`Edit/Lyrics/Text`), with no clash with dotted
+    `Parent.Child` paths.
+  - SPARK014 turns from "refused" into the validator: the attribute must exist in that type's model,
+    checked against the generated `AttributeNames`. The runtime validator also refuses an unknown
+    type or attribute at startup.
+  - A custom-action right with a third segment is refused. No backward compatibility.
+- **Q13 → the type right is REQUIRED, and attribute rights compose over it** (owner's rule: start
+  from the PO right, compose attribute rights over it; the result is the effective right).
+  - **Per (type, attribute, verb, caller):** if any attribute-level right mentions the attribute,
+    the combined type+attribute chain decides with Spark's tiers: important-deny > important-allow >
+    deny > allow. Otherwise the attribute inherits the type decision.
+  - **No unlocking** (unlike Vidyano): an attribute grant without the type grant does nothing. A lyrics
+    contributor therefore holds `Edit/Song` plus denies on the other Song attributes, and
+    `Edit/Lyrics/...` on the row type as needed.
+  - Delete and custom actions stay type-level.
+  - **Mitigation for the stale-deny trap:** an analyzer warning and a security-posture report line
+    when a group restricts some attributes of a type for a verb but not a newly added one ("group X
+    restricts 7 of 8 attributes of Song for Edit; `Genre` is editable — intended?").
+  - The effective table is computed once per request per type and cached, never per row.
+- **Q14 → static attribute rights REMOVE the attribute; the per-row hook blanks indistinguishably.**
+  - **No Read right:** the attribute is absent from the PO and from that caller's entity-type
+    definition (`EntityTypes/Get|List` prune per caller, which the forms already honour).
+  - **No Query right:** the column is absent from queries, and search fields, sort, filter and
+    distincts ignore the attribute as if it didn't exist.
+  - **No Edit right** (or **no New right** on a create): the attribute is read-only in the prune,
+    and the server shields it. The mapper only writes present, allowed attributes.
+  - **The per-row `GetProtectedAttributesAsync` hook** keeps the attribute (the column can't vary per
+    row), but its value becomes a **plain empty value indistinguishable from "no value"**: no
+    `IsVisible` flip, no redaction marker.
+  - Both forms get every leak fix below.
+- **Existing leaks found by the audit, fixed here (reproduce each with a failing test first):**
+  1. **Search pushdown** (`QueryExecutor.cs:966, 2017-2100`) searches every readable string property
+     (hidden ones too) with `*word*` wildcards, which is a substring oracle. Limit it to readable,
+     queryable attributes, including their `Search`/`Sort` companions.
+  2. **The Update response echoes shielded stored values** (`DefaultPersistentObjectActions.cs:284` →
+     `Update.cs:77`), a direct leak read independently by two agents. Re-present or redact the save
+     response.
+  3. **Breadcrumbs and `po.Name`** render raw fields (`BreadcrumbResolver.cs:204-245`,
+     `EntityMapper.cs:224-285`), for the row itself and for reference targets. Blank denied or
+     protected tokens.
+  4. **Sort, filter, distincts and counts** are gated only by `ShowedOn` and the app's `canSort`/
+     `canFilter`/`canListDistincts` flags. Also gate them by the effective attribute rights, and
+     check the declared name before companion redirection (as #295 does).
+  5. **Index-derived and projection columns** escape name-based redaction (Q15, open).
+  6. **The shield only covers scalars:** it overwrites `attribute.Value`, which is useless for
+     AsDetail/`Objects`, and it skips dotted names. It must cover every attribute kind, proven by a
+     reflection-driven test that exists in tests only; runtime uses model metadata.
+  7. **Create has no shield:** posted values for non-New attributes are dropped, so the CLR default
+     or initializer stays. The save is not refused, because refusing would reveal which attributes
+     exist.
+- **Technical decisions following from the above** (Claude's; the owner may override):
+  - **Refresh:** values set by server hooks (`OnRefreshAsync`) are trusted. Only *client-posted*
+    values for non-editable attributes are dropped.
+  - **Custom-action results:** POs returned in a result or retry are presented through the same
+    removal and redaction.
+  - **System context** (sync, replication) bypasses attribute rights, as it bypasses the shield today.
+  - **History:** a revert restores only attributes the caller may edit, and the response says it was
+    partial. Revisions are presented with removal for Read.
+  - **The M1c conflict dialog** is correct once the definition is pruned (`conflict-merge.ts:145`
+    already makes read-only attributes theirs-wins). A test pins that a removed attribute never
+    appears.
+
+All grilling questions are resolved (2026-09-30) except Q15.
 
 ## 5b. Earlier open question (resolved)
 

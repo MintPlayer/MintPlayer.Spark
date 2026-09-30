@@ -78,10 +78,40 @@ Requirements, decisions (C1–C10, T1–T7), spikes and open questions are in
 - [x] **F2:** History revert and full sync never post satellite (`[Contribution]`) attributes. Add
   tests proving a revert or a sync does not withdraw contributions.
 - [x] **F3:** Change SPARK017 to accept `[Contribution]` element types.
-- [ ] **F4 (per Q1):** the contribute-only save path, with shielding supplied by a registry and the
-  row and disabled-action gates judging `Contribute`. Tests: a contributor can't change the title,
-  tampered `IsValueChanged` flags are ignored.
-  - F4 on hold — being redesigned as attribute-level rights.
+- [~] **F4:** superseded by attribute-level rights, **M2c** below (PRD §5, "Attribute-level rights,
+  replacing F4"). No `Contribute` verb.
+
+### M2c — Attribute-level rights in core (PRD §5 Q11–Q15) and the audit's leak fixes
+Order: reproduce the existing leaks first (red tests), then build.
+- [ ] **Red tests** for leaks 1–4 and 6–7 in the PRD list: search oracle on a hidden string, Update
+  echo of a protected value, breadcrumb token leak (own row and reference), sort/filter/distinct/count
+  oracles, the shield on AsDetail/nested attributes, the create path.
+- [ ] **Syntax:** parse `{verb}/{Type}/{Attr}` everywhere rights are parsed. The combined verbs expand
+  as prefixes. Custom-action rights with a third segment are refused.
+  - The runtime validator refuses an unknown type or attribute at startup.
+  - SPARK014 validates the attribute against the generated `AttributeNames`.
+- [ ] **Evaluation:** compose type → type/attr with the four tiers into an effective (type, attr,
+  verb) table, cached per request per type. The type right is required (no unlocking).
+- [ ] **Enforcement — removal for static rights:**
+  - PO GET/Refresh/New/custom-action results, and History presentation
+  - the per-caller entity-type definition prune (`EntityTypes/Get|List`)
+  - query columns (`QueryResultProjector.BuildColumns`)
+  - search fields, sort, filter, distinct values, counts
+- [ ] **Enforcement — write:**
+  - a shield covering every attribute kind (scalars, references, multi-references, AsDetail,
+    nested), driven by the effective table and the per-row hook
+  - create drops posted non-New values
+  - the Update response is re-presented (fixes the echo)
+  - a History revert is partial and reported
+- [ ] **Per-row hook:** blanking indistinguishable from empty (drop the `IsVisible` flip), plus
+  breadcrumb/`po.Name` token blanking for own and reference targets.
+- [ ] **Stale-deny warning** in the analyzer and the security-posture report.
+- [ ] **Tests:**
+  - a reflection-driven "every attribute kind" test (test-only)
+  - a verb matrix: Query/Read/Edit/New × type/attr × allow/deny/important, with Delete and custom
+    actions staying type-level
+  - the M1c dialog never shows a removed attribute
+  - the contributor scenario: `Edit/Song` plus denies, and `Edit/Lyrics/Text`
 - [x] **F5:** interceptor ordering (`Order` or a startup check).
   - As built: `int Order` default-implemented on the interface; scale in
     `PersistentObjectInterceptorOrder` (SoftDelete -300, History -200, Moderation -100, default 0,
