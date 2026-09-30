@@ -54,12 +54,17 @@ Requirements, decisions (C1–C10, T1–T7), spikes and open questions are in
   - a po-edit spec for 409 → re-fetch → dialog → rebase → save
   - an E2E test where two browser contexts edit the same PO
 - [x] Translations for the dialog texts (the existing `common.concurrencyConflict` key family).
-- [ ] Follow-up (review of `98ab4641`):
-  - "Changed by" shows a user id. Resolve it to a name through History's existing
+- Follow-up (review of `98ab4641`):
+  - [x] "Changed by" shows a user id. Resolve it to a name through History's existing
     `AddHistoryUserNameResolver` hook (a small server read, e.g. the last revision's resolved name).
-  - Render references by their label, not their id, in the dialog.
-  - Render row conflicts with cells instead of a one-line summary.
-  - Run the never-executed E2E selectors (`input#Model`, `.spark-conflict-dialog`) in M7.
+    Done with no server change: the newest revision from `POST /spark/po/revisions` (take 1), asked
+    only with `canViewHistory`, and taken only when it is the version merged against; the id stays as
+    the fallback (the caller can read `ModifiedBy` anyway), and a failed lookup never blocks the flow.
+  - [x] Render references by their label, not their id, in the dialog (an id → label map from both
+    reads and the form's picker candidates, `po-edit/src/reference-labels.ts`).
+  - [x] Render row conflicts with cells instead of a one-line summary (the row's visible attributes
+    as `<spark-grid-cell>`s, mine beside theirs, differing ones marked; a removed side reads "(removed)").
+  - [ ] Run the never-executed E2E selectors (`input#Model`, `.spark-conflict-dialog`) in M7.
 
 ### M2 — Framework seams (F1–F6)
 - [ ] **F1:** `OnAfterMaterializeAsync(MaterializeContext)` (default no-op, idempotent) at the

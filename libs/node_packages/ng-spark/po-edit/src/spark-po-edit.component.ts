@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, LOCALE_ID, computed, inject, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, LOCALE_ID, computed, inject, output, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { CommonModule, formatDate } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -29,9 +29,12 @@ import {
 } from '@mintplayer/ng-spark/models';
 import { ConflictSide, MergeResult, MergeSchema, TheirChange, mergeThreeWay } from './conflict-merge';
 import { SparkPoConflictDialogComponent } from './spark-po-conflict-dialog.component';
+import { ReferenceLabels, addReferenceLabelsOf, addReferenceLabelsOfOptions } from './reference-labels';
 
 /** A 409 whose merge found true conflicts: everything needed to re-run it with the user's choices. */
 interface PendingConflict {
+  /** The object as loaded, for its reference labels. */
+  loaded: PersistentObject;
   theirs: PersistentObject;
   base: Record<string, any>;
   mine: Record<string, any>;
@@ -73,10 +76,24 @@ export class SparkPoEditComponent {
   private allEntityTypes = signal<EntityType[]>([]);
   generalErrors = computed(() => this.validationErrors().filter(e => !e.attributeName));
   /** After a 409 was merged: what they changed, and that nothing has been saved yet. */
-  conflictNotice = signal<string | null>(null);
+  private readonly conflictNoticeText = signal<string | null>(null);
+  /** The notice with its "Changed by X at T", which fills in the name once History resolved it. */
+  readonly conflictNotice = computed(() => {
+    const text = this.conflictNoticeText();
+    if (!text) return null;
+    const item = this.item();
+    const audit = item ? this.auditLine(item) : null;
+    return audit ? `${text} ${audit}` : text;
+  });
   /** A 409 whose merge has true conflicts, waiting on the dialog. */
   pendingConflict = signal<PendingConflict | null>(null);
   protected readonly pendingConflicts = computed(() => this.pendingConflict()?.result.conflicts ?? []);
+  /**
+   * The name History resolved for whoever wrote the version with `etag`, or null. Only ever set from
+   * the revision list, so it is there only for a caller holding `History/T` (see {@link lookUpChangedBy}).
+   */
+  private readonly changedByName = signal<{ etag: string | undefined; name: string } | null>(null);
+  private readonly form = viewChild(SparkPoFormComponent);
   private readonly locale = inject(LOCALE_ID);
 
   constructor() {
@@ -196,7 +213,7 @@ export class SparkPoEditComponent {
     if (!this.entityType() || !currentItem) return;
 
     this.validationErrors.set([]);
-    this.conflictNotice.set(null);
+    this.conflictNoticeText.set(null);
     this.isSaving.set(true);
 
     const resolver = this.resolveEntityType();
@@ -339,6 +356,8 @@ export class SparkPoEditComponent {
     } catch {
       return; // The concurrency message stays; there is nothing to merge against.
     }
+    // Not awaited: the merge and the dialog never wait on, or fail because of, the name.
+    void this.lookUpChangedBy(theirs);
 
     const attributes = this.getEditableAttributes();
     const baseForm = this.formDataFrom(base);
@@ -351,7 +370,57 @@ export class SparkPoEditComponent {
       this.rebase(theirs, result.merged, result.theirChanges, 'common.conflictMerged');
       return;
     }
-    this.pendingConflict.set({ theirs, base: baseForm, mine, theirsForm, schema, result });
+    this.pendingConflict.set({ loaded: base, theirs, base: baseForm, mine, theirsForm, schema, result });
+  }
+
+  /**
+   * Reference labels for the dialog, by id. The form keeps only ids; the labels are on the two reads
+   * (theirs first: it is the fresher) and, for a reference the user just picked, in the candidate
+   * lists the form's pickers choose from — top-level and per AsDetail column.
+   */
+  protected readonly conflictReferenceLabels = computed<ReferenceLabels>(() => {
+    const pending = this.pendingConflict();
+    if (!pending) return {};
+    const labels: ReferenceLabels = {};
+    addReferenceLabelsOf(pending.theirs, labels);
+    addReferenceLabelsOf(pending.loaded, labels);
+    const form = this.form();
+    if (form) {
+      addReferenceLabelsOfOptions(Object.values(form.referenceOptions()), labels);
+      for (const columns of Object.values(form.asDetailReferenceOptions())) {
+        addReferenceLabelsOfOptions(Object.values(columns), labels);
+      }
+    }
+    return labels;
+  });
+
+  /**
+   * Resolves who wrote their version to a display name, through History: the newest revision from
+   * `POST /spark/po/revisions` (page size 1) carries the name the app's `IHistoryUserNameResolver`
+   * gave it. Taken only when that revision is the version the merge ran against, and — when the
+   * object has `ModifiedBy` — written by that same user.
+   *
+   * Rights: asked only with `History/T` (the endpoint refuses anyone else anyway), so a caller who may
+   * not read the history never sees a name from it. Without History installed, or on any failure,
+   * nothing is set and the line falls back to what the object itself shows.
+   */
+  private async lookUpChangedBy(theirs: PersistentObject): Promise<void> {
+    this.changedByName.set(null);
+    const typeId = this.entityType()?.id;
+    if (!typeId) return;
+    try {
+      const permissions = await this.sparkService.getPermissions(typeId);
+      if (permissions?.canViewHistory !== true) return;
+      const revisions = await this.sparkService.postEnvelope<ChangedByRevision[]>('/po/revisions', { objectTypeId: typeId, id: this.id, take: 1 });
+      const latest = Array.isArray(revisions) ? revisions[0] : undefined;
+      if (!latest || typeof latest.userName !== 'string' || latest.userName === '') return;
+      if (latest.isCurrent !== true || (theirs.etag && latest.changeVector !== theirs.etag)) return;
+      const by = modifiedBy(theirs);
+      if (by && latest.userId && latest.userId !== by) return;
+      this.changedByName.set({ etag: theirs.etag, name: latest.userName });
+    } catch {
+      // No name: the conflict flow goes on without it.
+    }
   }
 
   /** The dialog's choices, applied on top of the merge. */
@@ -383,8 +452,7 @@ export class SparkPoEditComponent {
     const text = fields.length > 0
       ? this.language.t(noticeKey).replace('{fields}', fields.join(', '))
       : this.language.t(`${noticeKey}NoFields`);
-    const audit = this.auditLine(theirs);
-    this.conflictNotice.set(audit ? `${text} ${audit}` : text);
+    this.conflictNoticeText.set(text);
   }
 
   /** The dialog's "they also changed" line, or null when the merge took nothing of theirs. */
@@ -404,13 +472,14 @@ export class SparkPoEditComponent {
   /**
    * "Changed by X at T" for an `IAuditable` target. History stamps `ModifiedBy`/`ModifiedAt` on the
    * entity, and they reach this page only when the model declares them as attributes. `ModifiedBy` is
-   * a user id (History stores ids, never names), so that id is what is shown; either half is shown
-   * alone when only it is present, and nothing when neither is.
+   * a user id (History stores ids, never names): X is the name History resolved for this version when
+   * the caller may read History ({@link lookUpChangedBy}), else that id — which the caller can read on
+   * the object anyway. Either half is shown alone when only it is present, and nothing when neither is.
    */
   private auditLine(po: PersistentObject): string | null {
-    const by = po.attributes.find(a => a.name === 'ModifiedBy')?.value;
+    const resolved = this.changedByName();
     const at = po.attributes.find(a => a.name === 'ModifiedAt')?.value;
-    const user = typeof by === 'string' && by !== '' ? by : null;
+    const user = resolved && resolved.etag === po.etag ? resolved.name : modifiedBy(po);
     let time: string | null = null;
     if (at) {
       try { time = formatDate(at, 'medium', this.locale); } catch { time = String(at); }
@@ -420,4 +489,18 @@ export class SparkPoEditComponent {
     if (time) return this.language.t('common.conflictChangedAt').replace('{time}', time);
     return null;
   }
+}
+
+/** The fields of a `/spark/po/revisions` row this page reads (`SparkRevision` in the History entry point). */
+interface ChangedByRevision {
+  changeVector?: string;
+  userId?: string | null;
+  userName?: string | null;
+  isCurrent?: boolean;
+}
+
+/** The `ModifiedBy` user id on an audited object, or null. */
+function modifiedBy(po: PersistentObject): string | null {
+  const by = po.attributes.find(a => a.name === 'ModifiedBy')?.value;
+  return typeof by === 'string' && by !== '' ? by : null;
 }

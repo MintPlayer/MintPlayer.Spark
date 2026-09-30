@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
 import { Color } from '@mintplayer/ng-bootstrap';
 import { BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective } from '@mintplayer/ng-bootstrap/modal';
 import { BsButtonTypeDirective } from '@mintplayer/ng-bootstrap/button-type';
@@ -10,7 +11,6 @@ import {
   EntityAttributeDefinition,
   LookupReference,
   PersistentObject,
-  PersistentObjectAttribute,
   QueryColumn,
   QueryResultItem,
   formValuesEqual,
@@ -20,8 +20,12 @@ import {
   valueFor,
 } from '@mintplayer/ng-spark/models';
 import { ConflictSide, MergeConflict } from './conflict-merge';
+import { ReferenceLabels } from './reference-labels';
 
-/** One side of a conflict, ready for `<spark-grid-cell>`, or as plain text for a whole row. */
+/**
+ * One side of a conflict: ready for `<spark-grid-cell>`, or, for a whole row or embedded object, its
+ * attributes cell by cell (`fields`), or plain text (a removed row, or a value with no type to show).
+ */
 interface ConflictCell {
   column: QueryColumn;
   display: unknown;
@@ -29,6 +33,14 @@ interface ConflictCell {
   chips: ReferenceChip[];
   item: PersistentObject;
   text?: string;
+  fields?: ConflictField[];
+}
+
+/** One attribute of a row on one side, and whether the other side holds something else there. */
+interface ConflictField {
+  attribute: EntityAttributeDefinition;
+  cell: ConflictCell;
+  differs: boolean;
 }
 
 interface ConflictGroup {
@@ -50,7 +62,7 @@ const chipsPipe = new QueryReferenceChipsPipe();
  */
 @Component({
   selector: 'spark-po-conflict-dialog',
-  imports: [BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsButtonTypeDirective, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe],
+  imports: [NgTemplateOutlet, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsButtonTypeDirective, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe],
   template: `
     <bs-modal [isOpen]="conflicts().length > 0" (isOpenChange)="!$event && cancelled.emit()">
       <div *bsModal>
@@ -93,28 +105,18 @@ const chipsPipe = new QueryReferenceChipsPipe();
                           {{ entry.conflict.attribute.label | resolveTranslation:entry.conflict.attribute.name }}
                         }
                       </th>
-                      <td>
+                      <td class="spark-conflict-mine-value">
                         <label class="d-flex gap-2 align-items-start">
                           <input type="radio" class="form-check-input spark-conflict-mine" [name]="entry.conflict.path"
                                  [checked]="choices()[entry.conflict.path] === 'mine'" (change)="choose(entry.conflict.path, 'mine')" />
-                          <span>
-                            @if (entry.mine.text !== undefined) { {{ entry.mine.text }} } @else {
-                              <spark-grid-cell [column]="entry.mine.column" [display]="entry.mine.display" [rendererValue]="entry.mine.rendererValue"
-                                               [item]="entry.mine.item" [chips]="entry.mine.chips" />
-                            }
-                          </span>
+                          <ng-container [ngTemplateOutlet]="side" [ngTemplateOutletContext]="{ $implicit: entry.mine }" />
                         </label>
                       </td>
-                      <td>
+                      <td class="spark-conflict-theirs-value">
                         <label class="d-flex gap-2 align-items-start">
                           <input type="radio" class="form-check-input spark-conflict-theirs" [name]="entry.conflict.path"
                                  [checked]="choices()[entry.conflict.path] === 'theirs'" (change)="choose(entry.conflict.path, 'theirs')" />
-                          <span>
-                            @if (entry.theirs.text !== undefined) { {{ entry.theirs.text }} } @else {
-                              <spark-grid-cell [column]="entry.theirs.column" [display]="entry.theirs.display" [rendererValue]="entry.theirs.rendererValue"
-                                               [item]="entry.theirs.item" [chips]="entry.theirs.chips" />
-                            }
-                          </span>
+                          <ng-container [ngTemplateOutlet]="side" [ngTemplateOutletContext]="{ $implicit: entry.theirs }" />
                         </label>
                       </td>
                     </tr>
@@ -132,6 +134,32 @@ const chipsPipe = new QueryReferenceChipsPipe();
         </div>
       </div>
     </bs-modal>
+
+    <!-- One side's value. A row is its attributes cell by cell, the ones the other side differs in marked. -->
+    <ng-template #side let-cell>
+      @if (cell.fields) {
+        <table class="table table-sm table-borderless mb-0 spark-conflict-row-cells">
+          <tbody>
+            @for (field of cell.fields; track field.attribute.name) {
+              <tr [class.spark-conflict-differs]="field.differs" [attr.data-attribute]="field.attribute.name">
+                <th scope="row" class="fw-normal text-muted pe-2">{{ field.attribute.label | resolveTranslation:field.attribute.name }}</th>
+                <td [class.fw-bold]="field.differs">
+                  <ng-container [ngTemplateOutlet]="value" [ngTemplateOutletContext]="{ $implicit: field.cell }" />
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      } @else {
+        <span><ng-container [ngTemplateOutlet]="value" [ngTemplateOutletContext]="{ $implicit: cell }" /></span>
+      }
+    </ng-template>
+    <ng-template #value let-cell>
+      @if (cell.text !== undefined) { {{ cell.text }} } @else {
+        <spark-grid-cell [column]="cell.column" [display]="cell.display" [rendererValue]="cell.rendererValue"
+                         [item]="cell.item" [chips]="cell.chips" />
+      }
+    </ng-template>
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -141,9 +169,12 @@ export class SparkPoConflictDialogComponent {
 
   /** The true conflicts; the dialog is open while there are any. */
   conflicts = input<MergeConflict[]>([]);
-  /** The object as loaded and as re-fetched: sources of the reference labels the form does not keep. */
-  base = input<PersistentObject | null>(null);
-  theirs = input<PersistentObject | null>(null);
+  /**
+   * Reference labels by id — the form keeps only ids. Built by the edit page from the object as
+   * loaded, the re-fetched one, and the form's reference candidates (see `reference-labels.ts`).
+   * An id without a label shows as the id.
+   */
+  referenceLabels = input<ReferenceLabels>({});
   /** "Changed by X at T", when the object is audited. */
   audit = input<string | null>(null);
   /** "They also changed: …", the changes merged without a conflict. */
@@ -163,7 +194,7 @@ export class SparkPoConflictDialogComponent {
 
   protected readonly groups = computed<ConflictGroup[]>(() => {
     const lookups = this.lookupOptions();
-    const sources = [this.theirs(), this.base()].filter((p): p is PersistentObject => !!p).flatMap(p => p.attributes ?? []);
+    const labels = this.referenceLabels();
     const groups = new Map<string, ConflictGroup>();
     for (const conflict of this.conflicts()) {
       // A row conflict sits in its row's group, so it heads the same block as its attribute conflicts.
@@ -175,11 +206,10 @@ export class SparkPoConflictDialogComponent {
           : { key, attribute: conflict.rootAttribute, rowLabel: conflict.kind === 'row' ? undefined : conflict.rowLabel, entries: [] };
         groups.set(key, group);
       }
-      const rootLevel = conflict.group === '';
       group.entries.push({
         conflict,
-        mine: this.cell(conflict, conflict.mine, rootLevel ? sources : [], lookups),
-        theirs: this.cell(conflict, conflict.theirs, rootLevel ? sources : [], lookups),
+        mine: this.sideCell(conflict, conflict.mine, conflict.theirs, labels, lookups),
+        theirs: this.sideCell(conflict, conflict.theirs, conflict.mine, labels, lookups),
       });
     }
     return [...groups.values()];
@@ -191,7 +221,7 @@ export class SparkPoConflictDialogComponent {
       const conflicts = this.conflicts();
       untracked(() => {
         this.choices.set({});
-        const attributes = conflicts.filter(c => c.kind === 'value').map(c => c.attribute);
+        const attributes = conflicts.flatMap(c => [...(c.kind === 'value' ? [c.attribute] : []), ...(c.rowAttributes ?? [])]);
         this.gridRenderers.loadLookupOptions(attributes).then(o => this.lookupOptions.set(o), () => this.lookupOptions.set({}));
       });
     });
@@ -212,24 +242,61 @@ export class SparkPoConflictDialogComponent {
     this.resolved.emit(this.choices());
   }
 
-  private cell(conflict: MergeConflict, value: unknown, sources: PersistentObjectAttribute[], lookups: Record<string, LookupReference>): ConflictCell {
-    const attribute = conflict.attribute;
+  /**
+   * One side of a conflict. A whole row (or an embedded object, when its type resolved) is shown
+   * attribute by attribute with the same cells as a scalar, marking where `other` — the other side —
+   * holds something else; a row absent on this side is "(removed)", which is what choosing it means.
+   */
+  private sideCell(conflict: MergeConflict, value: unknown, other: unknown, labels: ReferenceLabels, lookups: Record<string, LookupReference>): ConflictCell {
+    const rowShaped = conflict.kind === 'row' || conflict.attribute.dataType === 'AsDetail';
+    if (!rowShaped) return this.cell(conflict.attribute, value, labels, lookups);
+
+    const cell = this.cell(conflict.attribute, undefined, labels, lookups);
+    if (value === undefined || value === null) {
+      cell.text = value === undefined && conflict.kind === 'row' ? this.language.t('common.conflictRowRemoved') : '-';
+      return cell;
+    }
+    if (!conflict.rowAttributes || typeof value !== 'object' || Array.isArray(value)) {
+      cell.text = summarize(value) || '-';
+      return cell;
+    }
+    const row = value as Record<string, unknown>;
+    const otherRow = typeof other === 'object' && other !== null && !Array.isArray(other) ? other as Record<string, unknown> : undefined;
+    cell.fields = conflict.rowAttributes
+      .filter(a => a.isVisible !== false)
+      .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+      .map(attribute => ({
+        attribute,
+        cell: this.cell(attribute, row[attribute.name], labels, lookups),
+        differs: otherRow !== undefined && !formValuesEqual(row[attribute.name], otherRow[attribute.name]),
+      }));
+    return cell;
+  }
+
+  /** One attribute's value, in the form's shape, as a `<spark-grid-cell>`. */
+  private cell(attribute: EntityAttributeDefinition, value: unknown, labels: ReferenceLabels, lookups: Record<string, LookupReference>): ConflictCell {
     const column = attribute as unknown as QueryColumn;
     const wire = isDateDataType(attribute.dataType) ? fromDateInputValue(attribute.dataType, value) : value;
-    // The form keeps a reference's id, not its label; the label is on whichever read holds that id.
-    const source = sources.find(a => a.name === attribute.name && formValuesEqual(a.value, wire));
+    // The form keeps a reference's id, not its label; the label comes from the map by id.
+    const isReference = attribute.dataType === 'Reference';
+    const breadcrumb = isReference && typeof wire === 'string' ? labels[wire] : undefined;
+    const breadcrumbs = isReference && Array.isArray(wire)
+      ? Object.fromEntries(wire.filter((id): id is string => typeof id === 'string' && id in labels).map(id => [id, labels[id]]))
+      : undefined;
     const item: PersistentObject = {
       id: '', name: '', objectTypeId: '',
       attributes: [{
         id: attribute.id, name: attribute.name, dataType: attribute.dataType, isArray: attribute.isArray,
         isRequired: false, isVisible: true, isReadOnly: true, order: 0, rules: [],
-        value: wire, breadcrumb: source?.breadcrumb, breadcrumbs: source?.breadcrumbs,
+        value: wire, breadcrumb, breadcrumbs,
       }],
     };
     const cell: ConflictCell = { column, display: '', rendererValue: null, chips: [], item };
 
-    if (conflict.kind === 'row' || attribute.dataType === 'AsDetail' || (typeof value === 'object' && value !== null && !Array.isArray(value))) {
-      cell.text = value === undefined ? this.language.t('common.conflictRowRemoved') : summarize(value) || '-';
+    if (value === undefined && attribute.dataType === 'AsDetail') return cell;
+    if (attribute.dataType === 'AsDetail' || (typeof value === 'object' && value !== null && !Array.isArray(value))) {
+      // A nested embedded object inside a row: one line, which is as deep as the dialog goes.
+      cell.text = summarize(value) || '-';
       return cell;
     }
 

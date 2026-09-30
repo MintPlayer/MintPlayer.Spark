@@ -14,8 +14,7 @@
 
   <spark-po-conflict-dialog
     [conflicts]="pendingConflicts()"
-    [base]="item()"
-    [theirs]="pendingConflict()?.theirs ?? null"
+    [referenceLabels]="conflictReferenceLabels()"
     [audit]="conflictAudit()"
     [theyChanged]="theyChanged()"
     (resolved)="onConflictResolved($event)"

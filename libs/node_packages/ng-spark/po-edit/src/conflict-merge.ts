@@ -47,6 +47,13 @@ export interface MergeConflict {
   group: string;
   /** A readable name for the row this sits in, when it is inside one. */
   rowLabel?: string;
+  /**
+   * For a row conflict, or a value conflict on an embedded (AsDetail) object: the row type's
+   * attributes, so the values can be shown cell by cell. Absent when the row type did not resolve.
+   */
+  rowAttributes?: EntityAttributeDefinition[];
+  /** The row type's name, to filter the server's type-name breadcrumb placeholder. */
+  rowTypeName?: string;
   /** The values, in the form's shape. For a row conflict, the row dict, or `undefined` when absent. */
   base: unknown;
   mine: unknown;
@@ -129,6 +136,8 @@ interface Location {
   rootAttribute: EntityAttributeDefinition;
   group: string;
   rowLabel: string | undefined;
+  /** Set where the values are rows or embedded objects of a resolved type. */
+  rowType?: { attributes: EntityAttributeDefinition[]; name: string };
 }
 
 function mergeAttribute(at: Location, base: unknown, mine: unknown, theirs: unknown, ctx: MergeContext): unknown {
@@ -138,14 +147,16 @@ function mergeAttribute(at: Location, base: unknown, mine: unknown, theirs: unkn
   if (at.attribute.dataType === 'AsDetail' && at.attribute.asDetailType) {
     const rowType = ctx.resolve(at.attribute.asDetailType);
     if (rowType) {
+      const typed: Location = { ...at, rowType: { attributes: rowType.attributes ?? [], name: rowType.name } };
       if (at.attribute.isArray) {
-        return mergeRows(at, rowType.attributes ?? [], rowType.name, asRows(base), asRows(mine), asRows(theirs), ctx);
+        return mergeRows(typed, rowType.attributes ?? [], rowType.name, asRows(base), asRows(mine), asRows(theirs), ctx);
       }
       // A single embedded object changed on both sides merges per attribute, like a row.
       if (isPlainObject(base) && isPlainObject(mine) && isPlainObject(theirs)
         && !formValuesEqual(mine, base) && !formValuesEqual(theirs, base)) {
         return mergeObject(rowType.attributes ?? [], base, mine, theirs, at.path, at.rootAttribute, at.rowLabel, ctx);
       }
+      return mergeValue(typed, 'value', base, mine, theirs, ctx);
     }
   }
 
@@ -167,7 +178,9 @@ function mergeValue(at: Location, kind: MergeConflict['kind'], base: unknown, mi
 function conflict(at: Location, kind: MergeConflict['kind'], base: unknown, mine: unknown, theirs: unknown, ctx: MergeContext): unknown {
   ctx.conflicts.push({
     path: at.path, kind, attribute: at.attribute, rootAttribute: at.rootAttribute,
-    group: at.group, rowLabel: at.rowLabel, base, mine, theirs,
+    group: at.group, rowLabel: at.rowLabel,
+    ...(at.rowType ? { rowAttributes: at.rowType.attributes, rowTypeName: at.rowType.name } : {}),
+    base, mine, theirs,
   });
   return ctx.choices[at.path] === 'mine' ? mine : theirs;
 }
