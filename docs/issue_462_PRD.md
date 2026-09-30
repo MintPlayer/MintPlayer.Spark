@@ -351,6 +351,81 @@ do not change.
 
 Browser checks go through the `playwright_node` MCP. It is connected again as of the grilling session.
 
+### 4.1 Spike results (measured)
+
+**S1 — ✅ confirmed (2026-09-30).** Read in the installed `@mintplayer/ng-bootstrap` `fesm2022`.
+- Component styles ship as compiled CSS strings. Most are `:host ::ng-deep .x{…}`, because each
+  component `@import`s Bootstrap partials.
+- Colours are overwhelmingly `var(--bs-*)`:
+  - modal has 2 literals (backdrop `#000`) vs 92 `var(--bs-`
+  - datatable, select, card and navbar have 0 of either (layout only; colour comes from the app's
+    global Bootstrap CSS)
+- The literals are mostly compiled defaults of component custom properties (e.g. `.table-dark` and
+  `--bs-list-group-active-bg: #0d6efd`) and brand colours that don't change with the theme, such as
+  the form focus colour `#86b7fe`.
+- **No sampled component emits a `[data-bs-theme=dark]` block.** The only such selectors are in close,
+  code-snippet and theming. In `close`, the `:host ::ng-deep [data-bs-theme=dark]` form does NOT
+  match an `<html>` ancestor; only its `:host-context([data-bs-theme=dark])` rule does.
+- **Conclusion:** D2 holds. A Sass `$*-dark` override never reaches component CSS, while CSS custom
+  properties on `<html>` do. The exceptions are component-level `--bs-<component>-*` properties
+  declared with literals on the component's own element; those need a more specific override.
+
+**S4 — ✅ read (2026-09-30).** `apps/ng-bootstrap-demo/src/app/components/theme-toggle/`.
+- **It is a single cycle button, not a dropdown.** It steps Auto → Light → Dark
+  (`theme-toggle.component.ts:67-72`), is rendered as `<button class="nav-link …">` with an
+  `[innerHTML]` icon, and takes no inputs or outputs.
+- **Labels** are hard-coded English (`LABELS`, `.ts:15-19`) and must become inputs.
+- **Icons** are loaded with a dynamic `import('bootstrap-icons/icons/*.svg')` through a demo-only SVG
+  loader and typings. The library has neither, so the three icon paths must be inlined as constants.
+  `bootstrap-icons` is already a peer dependency.
+- **Decision (G1 refined):** export it as a cycle button, which matches the demo and is one click per
+  step. It gets a `mode` label per state, plus an `aria-label` describing the next state.
+- **Shipping `bs-theme-preboot.js`:** ng-packagr honours `assets` only in the **primary**
+  `ng-package.json`, which already globs `./src/assets/**`, `./src/styles/**` and `./_bootstrap.scss`.
+  Add `"./theming/bs-theme-preboot.js"` there. It publishes as
+  `node_modules/@mintplayer/ng-bootstrap/theming/bs-theme-preboot.js`, which is the path each Spark
+  app's assets glob copies.
+- **The demo's current pre-boot script** is inline in `apps/ng-bootstrap-demo/src/index.html:9-31`
+  and reads localStorage. It is replaced in NB2.
+
+**S2 — ❌ both broken (measured 2026-09-30 in the demo, `data-bs-theme=dark`).**
+- **The `mp-select` caret** keeps the light stroke `%23343a40` on a `rgb(33,37,41)` background. This
+  also affects every page using `mp-select` (query builder, datatable).
+- **The `mp-checkbox` switch knob** keeps the light `rgba(0,0,0,.25)` fill.
+- **Cause:** the shadow sheets are built from Bootstrap's `color-mode(dark)` mixin, which emits
+  ancestor selectors that can never match from inside a shadow root:
+  - `_styles/form-select.styles.ts:64` (from `form-select.styles.scss:13`)
+  - `_styles/form-check.styles.ts:133` (from `form-check.styles.scss:17`)
+- **The same dead pattern appears in** `navbar.styles.ts:425` (toggler icon) and `carousel.styles.ts:205`
+  (indicator colours).
+- **Fix: use the repo's own accordion pattern** (`accordion.styles.scss:100-112`, verified to follow the
+  theme). Paint the icon as a `currentColor` / `var(--bs-*)` **mask**, so no dark-specific selector is
+  needed. The caret needs a pseudo-element or wrapper, because the select's own background is its
+  fill. Rejected: re-emitting under `:host-context([data-bs-theme=dark])`, which is Chromium-only.
+
+**S3 — dark sweep (measured 2026-09-30).**
+- **OK:** datatable, modal, offcanvas, toast, dropdown-wc, datepicker, sparkline, trend and hierarchy
+  charts, progress, card, accordion, navbar.
+- **Problems:**
+  - Scheduler scrollbar (`scheduler.styles.scss:1575,1579,1584`) → use `scrollbar-color` with `--bs-*`.
+  - Code-snippet "Copied!" toast (`code-snippet.styles.scss:286`, `color: var(--bs-body-bg)` on
+    success green) has weak contrast in dark → `var(--bs-white)`.
+  - Dropdown overlay pane with a calendar inside is transparent over the page content. Not
+    dark-specific, but worse in dark → give it a `var(--bs-body-bg)` surface and a border.
+  - Demo only: tab-control glyph `border-bottom: 10px solid black`
+    (`apps/ng-bootstrap-demo/.../tab-control/tab-control.component.scss:6`) → `var(--bs-body-color)`.
+
+**Calendar header lost its padding (owner report, 2026-09-30) — a pre-existing regression, not dark mode.**
+- It happens in light mode too.
+- **Cause: ec05bfaf (#393, a11y, 2026-07-29).** That commit moved the month nav out of the table, from
+  40px `td` cells to a flex `div.calendar-nav` (`mp-calendar.element.ts:415`). The new element has no
+  height, padding or border (`mp-calendar.element.scss:71-86`), so the header collapsed from ~40px to
+  25px and lost the table's side borders. Measured: `.calendar-nav` padding 0, height 25px.
+- **Fix, in the same ng-bootstrap release:** at `mp-calendar.element.scss:71`, give `.calendar-nav`
+  `min-height: $cell-size`, `padding: 0 .25rem`, `background-color: var(--bs-body-bg)`,
+  `border: 1px solid var(--bs-border-color)` and `border-bottom: 0`. Consider sizing `.chevron-btn` to
+  a `$cell-size` square.
+
 ---
 
 ## 5. Open questions for the owner

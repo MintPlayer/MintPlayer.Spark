@@ -77,9 +77,19 @@ Requirements, decisions (G1–G8 from the owner, D1–D14) and spikes are in
   `rgba(var(--bs-emphasis-color-rgb), .04)`.
 - [ ] Card fallbacks (`card-global.styles.scss:32-33,39-40`, `mp-card.element.scss:87`): convert to
   `--bs-*` tokens.
-- [ ] If S2 confirms the problem: add dark variants of the form-select caret and form-switch in shadow
-  roots, using `:host-context([data-bs-theme=dark])`.
-- [ ] Fix every S3 finding.
+- [ ] S2 (confirmed broken): repaint the `mp-select` caret and the `mp-checkbox` switch knob as masks
+  coloured with `currentColor` / `var(--bs-*)`, following the accordion pattern
+  (`accordion.styles.scss:100-112`). Apply the same to the navbar toggler (`navbar.styles.ts:425`) and
+  the carousel indicators (`carousel.styles.ts:205`). Delete the dead `[data-bs-theme=dark]`
+  shadow-sheet rules.
+- [ ] S3 findings:
+  - scheduler scrollbar → `scrollbar-color`
+  - code-snippet "Copied!" colour → `var(--bs-white)`
+  - dropdown overlay pane → give it a `var(--bs-body-bg)` surface and a border
+  - demo tab-control glyph → `var(--bs-body-color)`
+- [ ] Calendar header regression from #393: add height, padding, background and border to
+  `.calendar-nav` (`mp-calendar.element.scss:71`).
+- [ ] Verify each fix in the demo in both themes through the MCP.
 
 ### NB5 — Release
 - [ ] Add a CHANGELOG entry: the storage is now a cookie (breaking: stored choices reset), plus
