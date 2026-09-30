@@ -443,8 +443,16 @@ in this repository; see §7.
     deliberately unlike `ng-spark-auth`. The Contributions library is server-side only.
   - Test: hidden contributions and their text are visible only with `ViewDeleted` and `Read`.
 
+- **Q8 → A, attributed to the owner.** Each migrated `Song.Lyrics` text becomes a contribution by a
+  configurable **migration author id**, set to the owner's `MintPlayerUsers/{guid}`, since the owner
+  added all existing lyrics. It falls back to a system "Migration" user when unset.
+  - **The slot is `und/Latn`:** all existing lyrics are Latin script, and the language is
+    undetermined (BCP 47 `und`).
+  - The owner fixes the language later by a normal contribution (withdraw-old plus add-new). Changing
+    the original's language updates `Song.OriginalLyrics` in the same save (MintPlayer validator).
+  - The migration asserts one text per song, so no `und/Latn` collision is possible.
+
 ### Still open
-- **Q8:** attribution when migrating MintPlayer's existing lyrics.
 - **Q9:** names of the generated types.
 
 ## 5b. Earlier open question (resolved)
