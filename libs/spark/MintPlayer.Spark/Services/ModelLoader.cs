@@ -84,6 +84,15 @@ internal partial class ModelLoader : IModelLoader
                     }
                 }
             }
+            catch (JsonException ex) when (ex.Path?.Contains("triggersRefresh", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                // The boolean form was removed when TriggersRefresh became ERefreshTrigger. Degrading
+                // to a message here would drop the whole type and leave it unroutable, so a stale
+                // `"triggersRefresh": true` must stop the process and say how to fix it.
+                throw new InvalidOperationException(
+                    $"Model file {file}: '{ex.Path}' must be one of \"None\", \"Auto\", \"ValueChanged\" or \"Blur\". " +
+                    "The boolean form was removed; replace true with \"Auto\".", ex);
+            }
             catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException)
             {
                 // Narrow on purpose. This used to catch everything, which quietly defeated the

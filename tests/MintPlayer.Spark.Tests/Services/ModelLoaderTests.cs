@@ -145,6 +145,31 @@ public sealed class ModelLoaderTests : IDisposable
     }
 
     [Fact]
+    public void A_boolean_triggersRefresh_stops_the_process_instead_of_dropping_the_type()
+    {
+        // TriggersRefresh became ERefreshTrigger (contributions M1) with no converter for the old
+        // boolean. Degrading like An_unreadable_model_file_still_degrades_to_a_message would drop
+        // the type and leave it unroutable, so the stale form must fail loudly and say how to fix it.
+        WriteModel("Car.json", """
+            {
+              "persistentObject": {
+                "id": "11111111-1111-1111-1111-111111111111",
+                "name": "Car",
+                "clrType": "Demo.Car",
+                "attributes": [ { "name": "Brand", "dataType": "string", "triggersRefresh": true } ]
+              },
+              "queries": []
+            }
+            """);
+        var loader = CreateLoader();
+
+        var act = () => loader.GetEntityTypeByName("Car");
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*triggersRefresh*replace true with \"Auto\"*");
+    }
+
+    [Fact]
     public void GetEntityType_finds_by_id()
     {
         var id = Guid.Parse("11111111-1111-1111-1111-111111111111");
