@@ -536,6 +536,14 @@ None of this is planned work yet. It lands in MintPlayer after the Contributions
 - **L3 — LRCLIB coverage** of MintPlayer's song list (hit rate at ±2 s).
 - **L4 — Model licences:** `kresnik/wav2vec2-large-xlsr-korean`, `jonatasgrosman/*`, the MFA Korean
   model.
+  - **Owner, 2026-09-30:** MintPlayer is **non-commercial**, so MMS (CC-BY-NC 4.0) is usable, with
+    three conditions:
+    - Credit the MMS model and its licence in MintPlayer's credits.
+    - The aligner stays a MintPlayer-only container and is **never** a Spark package default, since
+      other Spark apps may be commercial.
+    - Re-check if MintPlayer ever takes ads, paid tiers or sponsorship.
+  - The licence status of *outputs* (timings) was not established; it doesn't matter under
+    non-commercial use.
 - **L5 — Anchor alignment UX:** how many anchors a typical music video needs, and the error remaining
   after deriving the segments.
 - **L6 — The legal position** on displaying lyrics from LRCLIB, and on user-contributed lyrics
