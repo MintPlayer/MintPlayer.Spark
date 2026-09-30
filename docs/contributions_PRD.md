@@ -385,7 +385,44 @@ in this repository; see §7.
   (`StoreAsync(entity, cv, id)`) to close the race, and a RavenDB `ConcurrencyException` maps to the
   existing 409 envelope, with an HTTP regression test.
 
-## 5. Open questions for the owner
+## 5. Owner decisions from the second grilling round (2026-09-30)
+
+- **Q1 → A:** a contribute-only save (F4). `Contribute/<Target>` without `Edit/<Target>` is allowed,
+  with every non-contribution attribute shielded. A reflection-driven test asserts that every
+  attribute stays unchanged.
+- **Q2 → A:** reserved verbs. `[assembly: SparkReservedActions(typeof(XRights))]` points at a class of
+  `const string` verbs (read by the analyzer from referenced assemblies through
+  `IFieldSymbol.ConstantValue`, and by a startup check through reflection).
+  - A custom action named like a reserved verb is an **error**.
+  - `SecurityConfigurationAnalyzer.BuiltInActions` (`:99-103`) and Moderation's two hand-kept copies
+    (`ModerationRights.cs:49`, `ModerationInitCommand.cs:21`) are replaced by this.
+  - Core, SoftDelete, History, Moderation and Contributions each declare their own verbs.
+- **Q3 → A:** removing a row withdraws only **your own** contribution for that slot. The form reports
+  whose version is now shown. Removing a whole version is `Delete` on the generated current type
+  (moderators).
+- **Q4 — verbs:**
+  - **New:** `Contribute` (on the target) and `RevertContribution` (on the contribution type: make it
+    current by hiding every newer non-hidden contribution in its slot, atomically and audited, never
+    re-attributing).
+  - **Reused:** `Query`/`Read` (history), `Delete` (hide), `Restore`, `ViewDeleted`, `Purge` on the
+    contribution type, and `Delete` on the current type (remove a version).
+  - The generated contribution type is `ISoftDeletable` when SoftDelete is referenced; the analyzer
+    warns otherwise.
+- **Corrections vs new versions** (confirmed): the list holds one row per slot (the current version).
+  Editing a row's text upserts **your** contribution for that slot, and the previous author's stays in
+  the history. Adding a row with a new slot creates a version. Unchanged rows write nothing (the diff
+  is by value against the hydrated `Before`).
+  - Editing a row's *slot* (its language or script) is withdraw-old plus add-new. So on someone else's
+    version, the old version stays and reappears; the form says so.
+- **Q5 → A** (MintPlayer): `Song.OriginalLyrics` (see §9.5).
+
+### Still open
+- **Q6:** what the form shows per version (contributor and date, a link to the history).
+- **Q7:** where moderators review a slot's contributions.
+- **Q8:** attribution when migrating MintPlayer's existing lyrics.
+- **Q9:** names of the generated types.
+
+## 5b. Earlier open question (resolved)
 
 - **Q1 — Who may contribute?** This depends on S-C1. Recommended: contributing to `Song.Lyrics` must
   **not** require `Edit/Song`. Instead a `Contribute/Lyrics` right (or `New`/`Edit` on the contribution
@@ -527,6 +564,31 @@ None of this is planned work yet. It lands in MintPlayer after the Contributions
 - **Result:** per-line `{ index, startMs, endMs, confidence }` plus, where applicable, a segment map.
   It is written as a **contribution by a system "aligner" user**, so it goes through the same review,
   revert and moderation as human timings.
+
+**The owner's "Align" flow (2026-09-30):**
+1. The user triggers an **`Align` custom action** on the song. Its right is `Align/Song`, declared
+   in MintPlayer's `[SparkReservedActions]` constants.
+2. The backend answers with a **retry action** (`IRetryAccessor.Action(...)`) showing a dropdown of the
+   song's versions. Only versions that pass **both** filters are offered:
+   - **The same language as the original.** It must be what's sung: `ko/Kore` and `ko/Latn` qualify,
+     a translation such as `en/Latn` never does.
+   - **Supported by the configured aligner.** The worker's capabilities (e.g. `ko/Kore`, `ko/Latn`,
+     `ja/Jpan`) come from configuration, not from asking the worker. So an aligner without Hangul
+     support can still align the romanized version.
+   
+   If nothing qualifies, the action says so. The dialog also picks the **audio** (an uploaded
+   official-audio file, per §9.4).
+3. The user picks a version.
+4. A job is **enqueued on Spark Messaging** and processed when it is dequeued. Its result is written
+   as a **system-"aligner" contribution** of the canonical timeline, which never overwrites lines a
+   human has confirmed.
+
+Because all versions share the line structure (C4), timings from any aligned version apply by line
+index to every version. The chosen version affects accuracy only.
+
+**Q5 (owner, 2026-09-30): A.** `Song.OriginalLyrics` holds the original's slot key. Only `Edit/Song`
+may change it, not `Contribute`. The line count is validated against it, and switching the original
+is refused unless the line counts match.
 
 ### 9.6 Spikes to run when this is scheduled
 - **L1 — Aligner accuracy:** 5 songs (including 2 K-pop and 1 with a skit), aligned with WhisperX-ko,
