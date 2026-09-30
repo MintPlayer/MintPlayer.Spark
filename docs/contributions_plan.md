@@ -54,6 +54,12 @@ Requirements, decisions (C1–C10, T1–T7), spikes and open questions are in
   - a po-edit spec for 409 → re-fetch → dialog → rebase → save
   - an E2E test where two browser contexts edit the same PO
 - [x] Translations for the dialog texts (the existing `common.concurrencyConflict` key family).
+- [ ] Follow-up (review of `98ab4641`):
+  - "Changed by" shows a user id. Resolve it to a name through History's existing
+    `AddHistoryUserNameResolver` hook (a small server read, e.g. the last revision's resolved name).
+  - Render references by their label, not their id, in the dialog.
+  - Render row conflicts with cells instead of a one-line summary.
+  - Run the never-executed E2E selectors (`input#Model`, `.spark-conflict-dialog`) in M7.
 
 ### M2 — Framework seams (F1–F6)
 - [ ] **F1:** `OnAfterMaterializeAsync(MaterializeContext)` (default no-op, idempotent) at the
@@ -89,6 +95,9 @@ Requirements, decisions (C1–C10, T1–T7), spikes and open questions are in
 - [ ] Add Verify snapshots to `tests/MintPlayer.Spark.SourceGenerators.Tests`, plus diagnostic tests.
 
 ### M5 — Runtime (T6)
+- [ ] M1c integration: in the conflict merge, contribution rows (the `[Contribution]` property) only
+  conflict between two edits by the same user. Another user's change to a slot is theirs-wins with a
+  notice, because it is their own contribution document.
 - [ ] `ContributionsInterceptor`:
   - Hydrate (F1), with a lazy prefix load ending in `/` and an explicit `pageSize`.
   - Diff before-save by slot, and upsert or withdraw only the current user's own documents.
