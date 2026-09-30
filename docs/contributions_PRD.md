@@ -430,8 +430,20 @@ in this repository; see §7.
   - The generator emits a shape hash. When it changes (e.g. `History` is turned on later),
     `RebuildCurrentAsync` runs once for that type at startup.
 
+- **Q7 → A: moderation runs through generated standard screens.**
+  - A generated `{Element}Contributions` query over the contribution type is filtered by target and
+    slot. It has the row actions `Delete`/`Restore`/`RevertContribution` and a `ViewDeleted` toggle
+    via SoftDelete.
+  - It is reached from the row's "History (n)" link, and optionally as a sub-query on the target
+    page. Opening a contribution shows a line diff against the current text.
+  - Flags go to Moderation's existing review queue, because the contribution type is `IModeratable`.
+  - **No new npm package and no extra Angular routes for consumers.** The generated query uses the
+    existing `sparkRoutes()` query routes. The two new client pieces (the attribution row renderer and
+    the line-diff renderer) live **in `@mintplayer/ng-spark`**, selected by rendering hints. This is
+    deliberately unlike `ng-spark-auth`. The Contributions library is server-side only.
+  - Test: hidden contributions and their text are visible only with `ViewDeleted` and `Read`.
+
 ### Still open
-- **Q7:** where moderators review a slot's contributions.
 - **Q8:** attribution when migrating MintPlayer's existing lyrics.
 - **Q9:** names of the generated types.
 
