@@ -562,7 +562,7 @@ Background:
   4. **Sort, filter, distincts and counts** are gated only by `ShowedOn` and the app's `canSort`/
      `canFilter`/`canListDistincts` flags. Also gate them by the effective attribute rights, and
      check the declared name before companion redirection (as #295 does).
-  5. **Index-derived and projection columns** escape name-based redaction (Q15, open).
+  5. **Index-derived and projection columns** are ordinary attributes (synchronize makes the PO's attributes the union of collection and index properties, hidden via `ShowedOn`). **Q15 → B:** no inheritance and no `[DerivedFrom]`; the developer denies each derived attribute (e.g. `SalaryBand`) explicitly. Name-based enforcement covers them once denied.
   6. **The shield only covers scalars:** it overwrites `attribute.Value`, which is useless for
      AsDetail/`Objects`, and it skips dotted names. It must cover every attribute kind, proven by a
      reflection-driven test that exists in tests only; runtime uses model metadata.
@@ -581,7 +581,7 @@ Background:
     already makes read-only attributes theirs-wins). A test pins that a removed attribute never
     appears.
 
-All grilling questions are resolved (2026-09-30) except Q15.
+All grilling questions are resolved (2026-09-30).
 
 ## 5b. Earlier open question (resolved)
 

@@ -82,6 +82,7 @@ Requirements, decisions (C1–C10, T1–T7), spikes and open questions are in
   replacing F4"). No `Contribute` verb.
 
 ### M2c — Attribute-level rights in core (PRD §5 Q11–Q15) and the audit's leak fixes
+Split into two sequential steps: **M2c-1** foundation (syntax, validator, SPARK014, effective table, stale-deny warning) and **M2c-2** enforcement plus leak fixes (red tests first).
 Order: reproduce the existing leaks first (red tests), then build.
 - [ ] **Red tests** for leaks 1–4 and 6–7 in the PRD list: search oracle on a hidden string, Update
   echo of a protected value, breadcrumb token leak (own row and reference), sort/filter/distinct/count
