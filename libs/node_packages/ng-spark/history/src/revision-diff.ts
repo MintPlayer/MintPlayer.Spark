@@ -1,4 +1,4 @@
-import { EntityAttributeDefinition, EntityType, PersistentObject, PersistentObjectAttribute, ShowedOn, hasShowedOnFlag } from '@mintplayer/ng-spark/models';
+import { EntityAttributeDefinition, EntityType, PersistentObject, PersistentObjectAttribute, ShowedOn, comparableValue, hasShowedOnFlag } from '@mintplayer/ng-spark/models';
 
 /** One attribute that differs between a revision and the current object. */
 export interface SparkRevisionChange {
@@ -18,27 +18,9 @@ export function revisionAttributes(entityType: EntityType | null | undefined): E
     .sort((a, b) => a.order - b.order);
 }
 
-/**
- * A comparable form of an attribute's content.
- *
- * Nested objects (AsDetail rows, references rendered as objects) are reduced to their attributes'
- * values: their envelopes carry per-read fields (etags, breadcrumbs, row keys) that differ between two
- * reads of identical content and would report every AsDetail attribute as changed.
- */
-export function comparableValue(attribute: PersistentObjectAttribute | undefined): string {
-  if (!attribute) return '\u0000absent';
-  return JSON.stringify({
-    v: attribute.value ?? null,
-    o: attribute.object ? nestedValues(attribute.object) : null,
-    os: attribute.objects ? attribute.objects.map(nestedValues) : null,
-  });
-}
-
-function nestedValues(po: PersistentObject): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const a of po.attributes ?? []) result[a.name] = comparableValue(a);
-  return result;
-}
+// The normalizer lives in models since po-edit's conflict merge needs the same answer; re-exported
+// here so History's public surface is unchanged.
+export { comparableValue };
 
 /** The shown attributes whose content differs between `revision` and `current`, in display order. */
 export function diffRevision(

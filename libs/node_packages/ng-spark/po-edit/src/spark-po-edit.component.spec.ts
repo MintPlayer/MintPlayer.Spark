@@ -66,7 +66,7 @@ async function setup(serviceOverrides: Partial<SparkService> = {}) {
       provideNoopAnimations(),
       provideRouter(routes),
       { provide: SparkService, useValue: service },
-      { provide: SparkLanguageService, useValue: { t: (k: string) => k } },
+      { provide: SparkLanguageService, useValue: { t: (k: string) => k, resolve: (ts: any) => ts?.en ?? '' } },
     ],
   });
   const harness = await RouterTestingHarness.create();
@@ -219,7 +219,9 @@ describe('SparkPoEditComponent', () => {
       status: 409,
       error: { result: { error: 'Concurrency conflict' }, operations: [] },
     });
-    const { harness } = await setup({ update: vi.fn().mockRejectedValue(error) } as any);
+    // The re-fetch the conflict merge needs fails, so there is nothing to merge against.
+    const get = vi.fn().mockResolvedValueOnce(existingItem).mockRejectedValue(new Error('offline'));
+    const { harness } = await setup({ update: vi.fn().mockRejectedValue(error), get } as any);
     const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
     await harness.fixture.whenStable();
 
@@ -232,6 +234,103 @@ describe('SparkPoEditComponent', () => {
     // The typing is not thrown away — the user can retry or copy their values out.
     expect(c.formData()['FirstName']).toBe('Alice');
     expect(c.isSaving()).toBe(false);
+  });
+
+  describe('a 409 merged three-way against a re-fetch', () => {
+    const conflict = new HttpErrorResponse({ status: 409, error: { result: { error: 'Concurrency conflict' }, operations: [] } });
+
+    function theirVersion(values: Record<string, any>): PersistentObject {
+      return {
+        ...existingItem,
+        etag: 'A:13-def',
+        attributes: existingItem.attributes.map(a => (a.name in values ? { ...a, value: values[a.name] } : a)),
+      };
+    }
+
+    async function editAndHitConflict(theirs: PersistentObject) {
+      const get = vi.fn().mockResolvedValueOnce(existingItem).mockResolvedValue(theirs);
+      const update = vi.fn().mockRejectedValueOnce(conflict).mockResolvedValue({ id: 'people/1', name: 'Updated' });
+      const { harness, service } = await setup({ get, update } as any);
+      const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+      await harness.fixture.whenStable();
+      c.formData.set({ ...c.formData(), FirstName: 'Alicia' });
+      await c.onSave();
+      return { c, service };
+    }
+
+    it('merges disjoint edits, says what they changed, and saves nothing by itself', async () => {
+      const { c, service } = await editAndHitConflict(theirVersion({ LastName: 'Jones' }));
+
+      expect(service.get).toHaveBeenCalledTimes(2);
+      expect(service.update).toHaveBeenCalledOnce();
+      expect(c.pendingConflict()).toBeNull();
+      expect(c.formData()).toMatchObject({ FirstName: 'Alicia', LastName: 'Jones' });
+      expect(c.validationErrors()).toEqual([]);
+      expect(c.conflictNotice()).toBe('common.conflictMerged');
+
+      const navigated = nextNavigationEnd();
+      await c.onSave();
+      await navigated;
+
+      const [, , payload] = service.update.mock.calls[1];
+      // Rebased: the next save carries their token, so it does not 409 again.
+      expect(payload.etag).toBe('A:13-def');
+      const first = payload.attributes.find((a: any) => a.name === 'FirstName');
+      const last = payload.attributes.find((a: any) => a.name === 'LastName');
+      expect(first).toMatchObject({ value: 'Alicia', isValueChanged: true });
+      // Their value, compared against their version: not sent as a change of mine.
+      expect(last).toMatchObject({ value: 'Jones', isValueChanged: false });
+    });
+
+    it('opens the dialog on a true conflict, applies the choice, rebases, and the next save sends the fresh etag', async () => {
+      const { c, service } = await editAndHitConflict(theirVersion({ FirstName: 'Alex', LastName: 'Jones' }));
+
+      const pending = c.pendingConflict();
+      expect(pending?.result.conflicts.map(x => x.path)).toEqual(['FirstName']);
+      // Until the user decides, nothing moves: the form is as typed and the message stays.
+      expect(c.formData()['FirstName']).toBe('Alicia');
+      expect(c.validationErrors()[0].errorMessage.en).toBe('common.concurrencyConflict');
+
+      c.onConflictResolved({ FirstName: 'mine' });
+
+      expect(c.pendingConflict()).toBeNull();
+      expect(c.formData()).toMatchObject({ FirstName: 'Alicia', LastName: 'Jones' });
+      expect(c.item()?.etag).toBe('A:13-def');
+      expect(c.validationErrors()).toEqual([]);
+      expect(service.update).toHaveBeenCalledOnce();
+
+      const navigated = nextNavigationEnd();
+      await c.onSave();
+      await navigated;
+
+      const [, , payload] = service.update.mock.calls[1];
+      expect(payload.etag).toBe('A:13-def');
+      expect(payload.attributes.find((a: any) => a.name === 'FirstName')).toMatchObject({ value: 'Alicia', isValueChanged: true });
+      expect(payload.attributes.find((a: any) => a.name === 'LastName')).toMatchObject({ value: 'Jones', isValueChanged: false });
+    });
+
+    it('takes their value when chosen, so nothing of mine is sent for it', async () => {
+      const { c } = await editAndHitConflict(theirVersion({ FirstName: 'Alex' }));
+      c.onConflictResolved({ FirstName: 'theirs' });
+      expect(c.formData()['FirstName']).toBe('Alex');
+    });
+
+    it('cancelling the dialog keeps the form and the conflict message', async () => {
+      const { c } = await editAndHitConflict(theirVersion({ FirstName: 'Alex' }));
+      c.onConflictCancelled();
+
+      expect(c.pendingConflict()).toBeNull();
+      expect(c.formData()['FirstName']).toBe('Alicia');
+      expect(c.item()?.etag).toBe('A:12-abc');
+      expect(c.validationErrors()[0].errorMessage.en).toBe('common.concurrencyConflict');
+    });
+
+    it('shows who changed it and when, for an audited object', async () => {
+      const theirs = theirVersion({ LastName: 'Jones' });
+      theirs.attributes.push({ id: 'a-mb', name: 'ModifiedBy', value: 'users/42' } as any);
+      const { c } = await editAndHitConflict(theirs);
+      expect(c.conflictNotice()).toBe('common.conflictMerged common.conflictChangedBy');
+    });
   });
 
   describe('a nested AsDetail type absent from the catalogue', () => {

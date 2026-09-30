@@ -39,21 +39,21 @@ Requirements, decisions (C1–C10, T1–T7), spikes and open questions are in
   debounce and flush.
 - [x] Docs: `AGENTS.md:139,204,243`, `docs/guide-triggers-refresh.md`, `docs/Spark-API-Specification.md`.
 
-### M1c — Generic three-way conflict resolution (PRD §5 Q10)
-- [ ] ng-spark `po-edit`: on a 409, re-fetch the PO and build a three-way per-attribute classification
+### M1c — Generic three-way conflict resolution (PRD §5 Q10) ✅
+- [x] ng-spark `po-edit`: on a 409, re-fetch the PO and build a three-way per-attribute classification
   (base/mine/theirs). AsDetail lists are compared per row by `[ValueKey]`, recursing into rows changed
   on both sides. Row order follows theirs, with rows only I added appended.
-- [ ] A conflict dialog listing only true conflicts: Mine/Theirs per attribute with the normal
+- [x] A conflict dialog listing only true conflicts: Mine/Theirs per attribute with the normal
   renderers, keep-all-mine and take-all-theirs, who/when for `IAuditable`, and a "they changed …"
   list.
-- [ ] Rebase onto the fresh etag, with no auto-save.
-- [ ] Reuse or extract the normalization from History's `revision-diff.ts`.
-- [ ] Specs:
+- [x] Rebase onto the fresh etag, with no auto-save.
+- [x] Reuse or extract the normalization from History's `revision-diff.ts`.
+- [x] Specs:
   - a pure merge function tested on the full matrix: scalar and AsDetail row cases, including
     delete-vs-edit and add-same-key
   - a po-edit spec for 409 → re-fetch → dialog → rebase → save
   - an E2E test where two browser contexts edit the same PO
-- [ ] Translations for the dialog texts (the existing `common.concurrencyConflict` key family).
+- [x] Translations for the dialog texts (the existing `common.concurrencyConflict` key family).
 
 ### M2 — Framework seams (F1–F6)
 - [ ] **F1:** `OnAfterMaterializeAsync(MaterializeContext)` (default no-op, idempotent) at the

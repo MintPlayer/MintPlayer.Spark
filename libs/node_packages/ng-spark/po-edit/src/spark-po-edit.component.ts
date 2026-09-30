@@ -1,6 +1,6 @@
-import { ChangeDetectionStrategy, Component, computed, inject, output, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, LOCALE_ID, computed, inject, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { CommonModule } from '@angular/common';
+import { CommonModule, formatDate } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Color } from '@mintplayer/ng-bootstrap';
@@ -27,10 +27,22 @@ import {
   RefreshOverlay,
   applyOverlay,
 } from '@mintplayer/ng-spark/models';
+import { ConflictSide, MergeResult, MergeSchema, TheirChange, mergeThreeWay } from './conflict-merge';
+import { SparkPoConflictDialogComponent } from './spark-po-conflict-dialog.component';
+
+/** A 409 whose merge found true conflicts: everything needed to re-run it with the user's choices. */
+interface PendingConflict {
+  theirs: PersistentObject;
+  base: Record<string, any>;
+  mine: Record<string, any>;
+  theirsForm: Record<string, any>;
+  schema: MergeSchema;
+  result: MergeResult;
+}
 
 @Component({
   selector: 'spark-po-edit',
-  imports: [CommonModule, BsAlertComponent, BsContainerComponent, BsSpinnerComponent, SparkPoFormComponent, ResolveTranslationPipe, TranslateKeyPipe],
+  imports: [CommonModule, BsAlertComponent, BsContainerComponent, BsSpinnerComponent, SparkPoFormComponent, SparkPoConflictDialogComponent, ResolveTranslationPipe, TranslateKeyPipe],
   templateUrl: './spark-po-edit.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush
 })
@@ -60,6 +72,12 @@ export class SparkPoEditComponent {
   // nested type schemas when rebuilding the nested PO wire shape from the flat form dict.
   private allEntityTypes = signal<EntityType[]>([]);
   generalErrors = computed(() => this.validationErrors().filter(e => !e.attributeName));
+  /** After a 409 was merged: what they changed, and that nothing has been saved yet. */
+  conflictNotice = signal<string | null>(null);
+  /** A 409 whose merge has true conflicts, waiting on the dialog. */
+  pendingConflict = signal<PendingConflict | null>(null);
+  protected readonly pendingConflicts = computed(() => this.pendingConflict()?.result.conflicts ?? []);
+  private readonly locale = inject(LOCALE_ID);
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
@@ -91,8 +109,16 @@ export class SparkPoEditComponent {
   }
 
   initFormData(): void {
+    this.formData.set(this.formDataFrom(this.item()));
+  }
+
+  /**
+   * The form's flat-dict shape of `currentItem`. Also how a conflict merge brings the object as
+   * loaded and as re-fetched into the form's shape, so all three sides went through the same
+   * coercions and only real edits differ.
+   */
+  private formDataFrom(currentItem: PersistentObject | null): Record<string, any> {
     const data: Record<string, any> = {};
-    const currentItem = this.item();
     this.getEditableAttributes().forEach(attr => {
       const itemAttr = currentItem?.attributes.find(a => a.name === attr.name);
       if (attr.dataType === 'Reference') {
@@ -121,7 +147,7 @@ export class SparkPoEditComponent {
         data[attr.name] = itemAttr?.value ?? '';
       }
     });
-    this.formData.set(data);
+    return data;
   }
 
   /**
@@ -170,6 +196,7 @@ export class SparkPoEditComponent {
     if (!this.entityType() || !currentItem) return;
 
     this.validationErrors.set([]);
+    this.conflictNotice.set(null);
     this.isSaving.set(true);
 
     const resolver = this.resolveEntityType();
@@ -270,12 +297,14 @@ export class SparkPoEditComponent {
         // Somebody saved this record between the load and this save. The server's own body says
         // only "Concurrency conflict" -- deliberately, since the real message carries the change
         // vector -- which is accurate, untranslated, and tells the user nothing to do about it.
-        // The form keeps its values, so the typing is not lost.
+        // The form keeps its values, so the typing is not lost, and the message stays up until the
+        // conflict is resolved (a failed re-fetch or a cancelled dialog leaves it there).
         this.validationErrors.set([{
           attributeName: '',
           errorMessage: { en: this.language.t('common.concurrencyConflict') },
           ruleType: 'error'
         }]);
+        await this.resolveConcurrencyConflict();
       } else {
         this.validationErrors.set([{
           attributeName: '',
@@ -292,5 +321,103 @@ export class SparkPoEditComponent {
   onCancel(): void {
     this.cancelled.emit();
     this.router.navigate(['/po', this.type, this.id]);
+  }
+
+  /**
+   * After a 409: re-fetch the object (a normal read, so read rights and row security apply) and
+   * merge this form onto it, three-way against the object as loaded (contributions PRD §5, Q10).
+   * Disjoint edits merge silently and the page says what they changed; true conflicts open the
+   * dialog. Either way the form is rebased onto the fresh etag and **nothing is saved** — the user
+   * reviews and saves, and the server's validation and business rules run again on the result.
+   */
+  private async resolveConcurrencyConflict(): Promise<void> {
+    const base = this.item();
+    if (!base) return;
+    let theirs: PersistentObject;
+    try {
+      theirs = await this.sparkService.get(this.type, this.id);
+    } catch {
+      return; // The concurrency message stays; there is nothing to merge against.
+    }
+
+    const attributes = this.getEditableAttributes();
+    const baseForm = this.formDataFrom(base);
+    const theirsForm = this.formDataFrom(theirs);
+    const mine = structuredClone(this.formData());
+    const schema: MergeSchema = { attributes, resolve: this.resolveEntityType() };
+    const result = mergeThreeWay(baseForm, mine, theirsForm, schema);
+
+    if (result.conflicts.length === 0) {
+      this.rebase(theirs, result.merged, result.theirChanges, 'common.conflictMerged');
+      return;
+    }
+    this.pendingConflict.set({ theirs, base: baseForm, mine, theirsForm, schema, result });
+  }
+
+  /** The dialog's choices, applied on top of the merge. */
+  onConflictResolved(choices: Record<string, ConflictSide>): void {
+    const pending = this.pendingConflict();
+    if (!pending) return;
+    const result = mergeThreeWay(pending.base, pending.mine, pending.theirsForm, pending.schema, choices);
+    this.pendingConflict.set(null);
+    this.rebase(pending.theirs, result.merged, result.theirChanges, 'common.conflictResolved');
+  }
+
+  /** Closing the dialog changes nothing: the form keeps its values and the conflict message. */
+  onConflictCancelled(): void {
+    this.pendingConflict.set(null);
+  }
+
+  /**
+   * Makes `theirs` the object this page edits: its etag is what the next save sends, and it is the
+   * base a second conflict is merged against. `isValueChanged` is computed against it on save, so
+   * only what differs from their version is sent as changed.
+   */
+  private rebase(theirs: PersistentObject, merged: Record<string, any>, theirChanges: TheirChange[], noticeKey: string): void {
+    this.item.set(theirs);
+    this.formData.set(structuredClone(merged));
+    this.validationErrors.set([]);
+
+    const fields = [...new Map(theirChanges.map(c => [c.rootAttribute.name, c.rootAttribute])).values()]
+      .map(a => this.language.resolve(a.label) || a.name);
+    const text = fields.length > 0
+      ? this.language.t(noticeKey).replace('{fields}', fields.join(', '))
+      : this.language.t(`${noticeKey}NoFields`);
+    const audit = this.auditLine(theirs);
+    this.conflictNotice.set(audit ? `${text} ${audit}` : text);
+  }
+
+  /** The dialog's "they also changed" line, or null when the merge took nothing of theirs. */
+  protected readonly theyChanged = computed(() => {
+    const pending = this.pendingConflict();
+    if (!pending || pending.result.theirChanges.length === 0) return null;
+    const fields = [...new Map(pending.result.theirChanges.map(c => [c.rootAttribute.name, c.rootAttribute])).values()]
+      .map(a => this.language.resolve(a.label) || a.name);
+    return this.language.t('common.conflictTheyChanged').replace('{fields}', fields.join(', '));
+  });
+
+  protected readonly conflictAudit = computed(() => {
+    const pending = this.pendingConflict();
+    return pending ? this.auditLine(pending.theirs) : null;
+  });
+
+  /**
+   * "Changed by X at T" for an `IAuditable` target. History stamps `ModifiedBy`/`ModifiedAt` on the
+   * entity, and they reach this page only when the model declares them as attributes. `ModifiedBy` is
+   * a user id (History stores ids, never names), so that id is what is shown; either half is shown
+   * alone when only it is present, and nothing when neither is.
+   */
+  private auditLine(po: PersistentObject): string | null {
+    const by = po.attributes.find(a => a.name === 'ModifiedBy')?.value;
+    const at = po.attributes.find(a => a.name === 'ModifiedAt')?.value;
+    const user = typeof by === 'string' && by !== '' ? by : null;
+    let time: string | null = null;
+    if (at) {
+      try { time = formatDate(at, 'medium', this.locale); } catch { time = String(at); }
+    }
+    if (user && time) return this.language.t('common.conflictChangedByAt').replace('{user}', user).replace('{time}', time);
+    if (user) return this.language.t('common.conflictChangedBy').replace('{user}', user);
+    if (time) return this.language.t('common.conflictChangedAt').replace('{time}', time);
+    return null;
   }
 }
