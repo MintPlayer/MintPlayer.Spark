@@ -267,6 +267,15 @@ A right is `{action}/{target}`:
 
 Combined actions expand **symmetrically** — `deny EditNewDelete/Car` denies all three.
 
+**Attribute rights** are `{verb}/{Type}/{Attr}` (`Edit/Song/Lyrics`), for `Query`/`Read`/`Edit`/`New`
+and the combined verbs made only of them; anything else with a third segment, an unknown type or an
+unknown attribute refuses startup (SPARK014 at build). **The type right is required** — an attribute
+right never unlocks it; a mentioned attribute is decided by the type+attribute chain over the same
+four tiers, an unmentioned one inherits the type decision. SPARK024 / a posture note flag a group
+that restricts some attributes of a type but leaves others on the type grant. Consume via
+`IAttributeRights` (scoped, once per request per type and verb; system context unrestricted).
+[Details](../../../docs/guide-authorization.md#attribute-level-rights-verbtypeattribute).
+
 **Precedence**, each tier evaluated across the caller's whole group set before the next:
 important-denial → important-grant → denial → grant → refuse. **A denial is absolute** unless an
 important right overrides it; it cannot be granted around by adding a group, so a denial on

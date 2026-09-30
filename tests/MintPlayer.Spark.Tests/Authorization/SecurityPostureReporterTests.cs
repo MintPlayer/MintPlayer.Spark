@@ -25,7 +25,7 @@ public class SecurityPostureReporterTests
         var loader = Substitute.For<ISecurityConfigurationLoader>();
         loader.GetConfiguration().Returns(config);
 
-        return new SecurityPostureReporter(loader);
+        return new SecurityPostureReporter(loader, Substitute.For<IModelLoader>());
     }
 
     private static SecurityConfiguration ConfigWithAnonymousGrants(params string[] resources)
@@ -138,5 +138,81 @@ public class SecurityPostureReporterTests
         posture.Warnings.Should().BeEmpty();
         posture.AnonymouslyReachable.Should().BeEquivalentTo(
             ["Query/Company", "Read/Company", "Edit/Company", "New/Company", "Delete/Company"]);
+    }
+
+    // ---------- M2c-1: attribute-level rights ----------
+
+    private static IModelLoader SongModel()
+    {
+        var model = Substitute.For<IModelLoader>();
+        var song = new EntityTypeDefinition
+        {
+            Id = Guid.NewGuid(),
+            Name = "Song",
+            Attributes =
+            [
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Title" },
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Lyrics" },
+                new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Genre" },
+            ],
+        };
+        model.GetEntityTypeByName(Arg.Any<string>())
+            .Returns(ci => string.Equals(ci.Arg<string>(), "Song", StringComparison.OrdinalIgnoreCase) ? song : null);
+        return model;
+    }
+
+    private static SecurityPosture DescribeWithModel(SecurityConfiguration config)
+    {
+        var loader = Substitute.For<ISecurityConfigurationLoader>();
+        loader.GetConfiguration().Returns(config);
+        return new SecurityPostureReporter(loader, SongModel()).Describe();
+    }
+
+    private static Right AdminRight(string resource, bool denied = false)
+        => new() { Id = Guid.NewGuid(), GroupId = AdminsId, Resource = resource, IsDenied = denied };
+
+    /// <summary>
+    /// The stale-deny trap (PRD §5 Q13): a group restricts Edit on some attributes of Song, and Genre
+    /// — mentioned by none of its attribute rights — still inherits the type-level grant. Reported as
+    /// an information-level note, never in the fingerprint.
+    /// </summary>
+    [Fact]
+    public void A_partial_attribute_restriction_is_noted()
+    {
+        var config = ConfigWithAnonymousGrants();
+        config.Rights.Add(AdminRight("Edit/Song/Title", denied: true));
+        config.Rights.Add(AdminRight("Edit/Song/Lyrics", denied: true));
+
+        var posture = DescribeWithModel(config);
+
+        posture.Notes.Should().ContainSingle().Which.Should().Be(
+            "Group 'Admins' restricts Edit on 2 of 3 attributes of 'Song'; 'Genre' is still editable through the type-level right — intended?");
+        posture.Warnings.Should().BeEmpty();
+        posture.Fingerprint.Should().NotContain("Song");
+    }
+
+    [Fact]
+    public void An_attribute_restriction_that_mentions_every_attribute_is_not_noted()
+    {
+        var config = ConfigWithAnonymousGrants();
+        config.Rights.Add(AdminRight("Edit/Song/Title", denied: true));
+        config.Rights.Add(AdminRight("Edit/Song/Lyrics", denied: true));
+        config.Rights.Add(AdminRight("Edit/Song/Genre"));
+
+        DescribeWithModel(config).Notes.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// An attribute grant never unlocks what its type right withholds, so the anonymous surface lists
+    /// it only when the type-level right is reachable too.
+    /// </summary>
+    [Fact]
+    public void An_anonymous_attribute_grant_without_the_type_grant_reaches_nothing()
+    {
+        var withoutType = DescribeWithModel(ConfigWithAnonymousGrants("Read/Song/Lyrics"));
+        withoutType.AnonymouslyReachable.Should().BeEmpty();
+
+        var withType = DescribeWithModel(ConfigWithAnonymousGrants("Read/Song", "Read/Song/Lyrics"));
+        withType.AnonymouslyReachable.Should().Contain("Read/Song").And.Contain("Read/Song/Lyrics");
     }
 }

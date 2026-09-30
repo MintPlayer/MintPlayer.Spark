@@ -780,6 +780,9 @@ public static class SparkExtensions
 
         foreach (var warning in posture.Warnings)
             logger.LogWarning("Spark security: {Warning}", warning);
+
+        foreach (var note in posture.Notes ?? [])
+            logger.LogInformation("Spark security: {Note}", note);
     }
 
     private static void CreateSparkIndexes(IApplicationBuilder app, IReadOnlyList<Assembly> assemblies)

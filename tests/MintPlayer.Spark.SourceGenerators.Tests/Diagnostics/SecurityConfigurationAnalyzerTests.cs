@@ -95,17 +95,146 @@ public class SecurityConfigurationAnalyzerTests
         diagnostics.Should().ContainSingle().Which.Id.Should().Be("SPARK013");
     }
 
+    // ---------- SPARK014: the attribute-level right validator (M2c-1) ----------
+
+    [Theory]
+    [InlineData("Edit/Person/Brand")]
+    [InlineData("queryread/person/brand")]
+    [InlineData("QueryReadEditNew/Person/Brand")]
+    [InlineData("EditNew/Person/Brand")]
+    public async Task A_valid_attribute_right_is_not_reported(string resource)
+    {
+        (await RunAsync(resource)).Should().BeEmpty();
+    }
+
     /// <summary>
-    /// Three segments parse and can never match: the resource splits on the FIRST slash, so the
-    /// target becomes "Person/Salary". Per-attribute rights are not expressed this way, and someone
-    /// reaching for that syntax gets silence instead of an error.
+    /// Every shape the host refuses at startup, reported at build as an error with the reason.
+    /// </summary>
+    [Theory]
+    [InlineData("Edit/Person/Salary", "does not declare")]
+    [InlineData("Delete/Person/Brand", "no attribute-level form")]
+    [InlineData("EditNewDelete/Person/Brand", "no attribute-level form")]
+    [InlineData("QueryReadEditNewDelete/Person/Brand", "no attribute-level form")]
+    [InlineData("Approve/Person/Brand", "no attribute-level form")]
+    [InlineData("Edit/Persno/Brand", "not a persistent object")]
+    [InlineData("Read/LookupReferences/Brand", "not a persistent object")]
+    [InlineData("Edit/Person/Brand/Name", "never with a longer path")]
+    public async Task An_invalid_attribute_right_is_an_error(string resource, string reason)
+    {
+        var diagnostics = await RunAsync(resource);
+
+        var diagnostic = diagnostics.Should().ContainSingle().Which;
+        diagnostic.Id.Should().Be("SPARK014");
+        diagnostic.Severity.Should().Be(Microsoft.CodeAnalysis.DiagnosticSeverity.Error);
+        diagnostic.GetMessage().Should().Contain(reason);
+    }
+
+    /// <summary>
+    /// The model is one build behind: a property added in this build is an attribute the next
+    /// synchronize writes, so the CLR type's properties count too — the build synchronize needs must
+    /// not be blocked by the model it has yet to write.
     /// </summary>
     [Fact]
-    public async Task A_three_segment_resource_is_reported()
+    public async Task An_attribute_the_CLR_type_declares_but_the_model_does_not_yet_is_not_reported()
     {
-        var diagnostics = await RunAsync("Edit/Person/Salary");
+        const string source = """
+            namespace App.Entities
+            {
+                public class Person
+                {
+                    public string Brand { get; set; }
+                    public decimal Salary { get; set; }
+                }
+            }
+            """;
 
-        diagnostics.Should().ContainSingle().Which.Id.Should().Be("SPARK014");
+        (await RunAsync("Edit/Person/Salary", source: source)).Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// The latent false negative: the old name regex matched every <c>"name"</c> in a model file, so
+    /// an attribute name (Brand) counted as a known TYPE target.
+    /// </summary>
+    [Fact]
+    public async Task An_attribute_name_is_not_a_known_type_target()
+    {
+        var diagnostics = await RunAsync("QueryRead/Brand");
+
+        diagnostics.Should().ContainSingle().Which.Id.Should().Be("SPARK012");
+    }
+
+    // ---------- SPARK024: the stale-deny warning ----------
+
+    private const string SongModelJson = """
+        {
+          "persistentObject": {
+            "id": "33333333-3333-3333-3333-333333333333",
+            "name": "Song",
+            "tabs": [ { "id": "44444444-4444-4444-4444-444444444444", "name": "General" } ],
+            "attributes": [
+              { "name": "Title" },
+              { "name": "Lyrics" },
+              { "name": "Genre" }
+            ]
+          }
+        }
+        """;
+
+    private static Task<IReadOnlyList<Microsoft.CodeAnalysis.Diagnostic>> RunRightsAsync(params (string Resource, bool Denied)[] rights)
+    {
+        var entries = string.Join(",\n", rights.Select((r, i) =>
+            $$"""{ "id": "22222222-2222-2222-2222-00000000000{{i}}", "resource": "{{r.Resource}}", "groupId": "00000000-0000-0000-0000-000000000001", "isDenied": {{(r.Denied ? "true" : "false")}} }"""));
+        var security = $$"""
+            {
+              "wellKnown": { "authenticated": "00000000-0000-0000-0000-000000000001" },
+              "groups": { "00000000-0000-0000-0000-000000000001": { "en": "Signed-in users" } },
+              "rights": [
+                {{entries}}
+              ]
+            }
+            """;
+
+        return GeneratorHarness.RunAnalyzerAsync(
+            AnalyzerName,
+            ["class Placeholder { }"],
+            referenceTypes: ReservedVerbSources,
+            additionalTexts:
+            [
+                ("C:\\app\\App_Data\\security.json", security),
+                ("C:\\app\\App_Data\\Model\\Song.json", SongModelJson),
+            ]);
+    }
+
+    [Fact]
+    public async Task A_partial_attribute_restriction_is_a_warning_naming_what_is_left()
+    {
+        var diagnostics = await RunRightsAsync(
+            ("QueryReadEdit/Song", false), ("Edit/Song/Title", true), ("Edit/Song/Lyrics", true));
+
+        var diagnostic = diagnostics.Should().ContainSingle().Which;
+        diagnostic.Id.Should().Be("SPARK024");
+        diagnostic.Severity.Should().Be(Microsoft.CodeAnalysis.DiagnosticSeverity.Warning);
+        diagnostic.GetMessage().Should().Be(
+            "Group 'Signed-in users' restricts Edit on 2 of 3 attributes of 'Song'; 'Genre' is still editable through the type-level right — intended?");
+    }
+
+    [Fact]
+    public async Task A_restriction_that_mentions_every_attribute_is_not_reported()
+    {
+        var diagnostics = await RunRightsAsync(
+            ("QueryReadEdit/Song", false), ("Edit/Song/Title", true), ("Edit/Song/Lyrics", true), ("Edit/Song/Genre", false));
+
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_combined_deny_is_reported_per_verb()
+    {
+        var diagnostics = await RunRightsAsync(("QueryReadEdit/Song", false), ("QueryRead/Song/Lyrics", true));
+
+        diagnostics.Select(d => d.GetMessage()).Should().HaveCount(2)
+            .And.Contain(m => m.Contains("restricts Query on 1 of 3") && m.Contains("'Genre', 'Title' are still queryable"))
+            .And.Contain(m => m.Contains("restricts Read on 1 of 3"));
     }
 
     /// <summary>

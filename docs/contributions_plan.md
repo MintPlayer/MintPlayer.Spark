@@ -87,12 +87,30 @@ Order: reproduce the existing leaks first (red tests), then build.
 - [ ] **Red tests** for leaks 1–4 and 6–7 in the PRD list: search oracle on a hidden string, Update
   echo of a protected value, breadcrumb token leak (own row and reference), sort/filter/distinct/count
   oracles, the shield on AsDetail/nested attributes, the create path.
-- [ ] **Syntax:** parse `{verb}/{Type}/{Attr}` everywhere rights are parsed. The combined verbs expand
+- [x] **Syntax:** parse `{verb}/{Type}/{Attr}` everywhere rights are parsed. The combined verbs expand
   as prefixes. Custom-action rights with a third segment are refused.
   - The runtime validator refuses an unknown type or attribute at startup.
   - SPARK014 validates the attribute against the generated `AttributeNames`.
-- [ ] **Evaluation:** compose type → type/attr with the four tiers into an effective (type, attr,
+  - As built (M2c-1): `SparkAttributeRights` (Abstractions) — `IsAttributeAction` (Query/Read/Edit/New
+    and combined verbs made only of them), `TrySplit`. `ResourcePattern.Parse` is unchanged: split on the
+    first slash, an attribute right indexes as target `TYPE/ATTR`, so type-level probes are untouched.
+    `SecurityConfigurationValidator.Validate(config, IModelLoader)` (the loader injects `IModelLoader`,
+    which depends only on `IHostEnvironment` — no cycle) refuses a disallowed verb, a 4th segment, an
+    unknown type (by name; aliases/reserved targets refused) or attribute. Hot reload: same path, so a
+    bad edit throws on every read until fixed (fail closed, as for every rule — the previous file is
+    not kept). SPARK014 is now an error; it checks the model JSON attributes ∪ the CLR type's public
+    properties (the model is one build behind; a type with no model file yet is judged by its class).
+    SPARK012 reads model files by position (`ModelNamesReader`), so an attribute/tab name is no longer
+    a known type target.
+- [x] **Evaluation:** compose type → type/attr with the four tiers into an effective (type, attr,
   verb) table, cached per request per type. The type right is required (no unlocking).
+  - As built (M2c-1): `RightsDecision.ForAttributes(verb, type)` → `EffectiveAttributeRights`
+    (`TypeAllowed`, `IsAllowed(attr)`, `Attributes` = mentioned attributes composed, `DeniedAttributes`,
+    `IsUnrestricted`); a tier fires when it covers the type OR the attribute pattern. Exposed through
+    `IAccessControl.GetAttributeRightsAsync` (default interface method: type decision inherited — test
+    doubles keep working; `SecurityFileAccessControl` and the permissive test baseline override) and
+    the scoped `IAttributeRights.GetEffectiveAsync(definition|name, verb)`, memoised per (type, verb),
+    system context unrestricted. Tests: `AttributeRightsTests`.
 - [ ] **Enforcement — removal for static rights:**
   - PO GET/Refresh/New/custom-action results, and History presentation
   - the per-caller entity-type definition prune (`EntityTypes/Get|List`)
@@ -106,7 +124,11 @@ Order: reproduce the existing leaks first (red tests), then build.
   - a History revert is partial and reported
 - [ ] **Per-row hook:** blanking indistinguishable from empty (drop the `IsVisible` flip), plus
   breadcrumb/`po.Name` token blanking for own and reference targets.
-- [ ] **Stale-deny warning** in the analyzer and the security-posture report.
+- [x] **Stale-deny warning** in the analyzer and the security-posture report.
+  - As built (M2c-1): SPARK024 (warning) and `SecurityPosture.Notes` (logged at Information) via
+    `StaleAttributeDenials`: per (group, verb, type) with ≥1 attribute denial, the attributes no
+    attribute right of that group mentions for that verb. The anonymous surface no longer lists an
+    attribute grant whose type right is unreachable.
 - [ ] **Tests:**
   - a reflection-driven "every attribute kind" test (test-only)
   - a verb matrix: Query/Read/Edit/New × type/attr × allow/deny/important, with Delete and custom

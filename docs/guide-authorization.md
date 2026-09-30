@@ -69,6 +69,38 @@ existed until #460; the posture report's "floor rather than a ceiling" warning w
 
 ---
 
+## Attribute-level rights: `{verb}/{Type}/{Attribute}`
+
+A third segment scopes a right to one attribute: `Edit/Song/Lyrics`, `QueryRead/Employee/Salary`.
+
+- **Verbs:** only `Query`, `Read`, `Edit`, `New` and the combined verbs made solely of them
+  (`QueryRead`, `QueryReadEdit`, `QueryReadEditNew`, `ReadEdit`, `ReadEditNew`, `EditNew`), which
+  expand as prefixes. `Delete`, `*Delete` combinations, `Replicate`, package verbs and custom actions
+  stay type-level, and a third segment on them refuses the file.
+- **Targets:** the type by its **name** (not an alias, a query or a reserved target such as
+  `LookupReferences`), and an attribute that type's model declares. An AsDetail row's attributes
+  target the row type (`Edit/Lyrics/Text`). Names are case-insensitive. An unknown type or
+  attribute refuses startup (and a hot reload), and the build reports it first as **SPARK014** (an
+  error).
+- **The type right is required.** An attribute right composes over its type right and never
+  unlocks it: `Edit/Song/Lyrics` without `Edit/Song` allows nothing. For an attribute that some
+  attribute right mentions, the type right and the attribute right together are ranked with the
+  four tiers of [Precedence](#precedence) across all groups; an attribute no right mentions inherits
+  the type decision. `Read` ⇒ `Query` applies to attribute grants exactly as to type grants.
+- **The contributor pattern:** grant `Edit/Song`, deny `Edit/Song/{each other attribute}`.
+- **The stale-deny trap:** an attribute added later is mentioned by none of those denials and
+  inherits the type grant. **SPARK024** (a warning) and a startup posture note
+  (information) name it: *"Group 'X' restricts Edit on 2 of 3 attributes of 'Song'; 'Genre' is still
+  editable through the type-level right — intended?"* Index-derived and projection columns are
+  ordinary attributes and are denied the same way, one by one.
+- System context (module sync, replication) is not restricted by attribute rights.
+
+Evaluated once per request per (type, verb) by `IAttributeRights`. What a denied attribute does —
+removed from the persistent object, the query columns and the searchable/sortable fields, and
+shielded on save — lands with the enforcement step of #460 contributions (M2c-2).
+
+---
+
 ## `Query` without `Read`: the pair worth knowing
 
 The difference is visible in the UI:

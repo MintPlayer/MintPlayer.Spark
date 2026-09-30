@@ -17,11 +17,71 @@ internal static class SecurityConfigurationValidator
     /// <summary>The token deleted in preview.60, kept here only so its use can be diagnosed.</summary>
     private const string RemovedEveryoneName = "Everyone";
 
-    public static void Validate(SecurityConfiguration config)
+    public static void Validate(SecurityConfiguration config) => Validate(config, model: null);
+
+    /// <param name="model">
+    /// The loaded model, against which an attribute-level right's type and attribute are checked.
+    /// Null skips only that lookup (the syntax of an attribute right is still checked) — the loader
+    /// always passes it.
+    /// </param>
+    public static void Validate(SecurityConfiguration config, IModelLoader? model)
     {
         ValidateEveryoneIsGone(config);
         ValidateWellKnown(config);
         ValidateRights(config);
+        ValidateAttributeRights(config, model);
+    }
+
+    /// <summary>
+    /// <c>{verb}/{Type}/{Attr}</c> rights (PRD §5 Q12): a verb with an attribute form, a type the
+    /// model declares (by name — resources name types by name, never by alias), and an attribute
+    /// that type declares. Anything else is refused rather than left to match nothing: before
+    /// attribute rights existed a three-segment right loaded and silently granted nothing, which is
+    /// exactly the failure this validator exists to refuse.
+    /// </summary>
+    private static void ValidateAttributeRights(SecurityConfiguration config, IModelLoader? model)
+    {
+        foreach (var right in config.Rights)
+        {
+            if (!SparkAttributeRights.TrySplit(right.Resource, out var action, out var type, out var attribute))
+                continue;
+
+            if (type.Length == 0 || attribute.Length == 0 || attribute.Contains('/'))
+            {
+                throw new SparkSecurityConfigurationException(
+                    $"security.json declares a right with resource '{right.Resource}', which is not in the "
+                    + "form '<verb>/<Type>/<Attribute>' (for example 'Edit/Song/Lyrics'). An attribute of an "
+                    + "AsDetail row is targeted on the row type ('Edit/Lyrics/Text'), never with a longer path.");
+            }
+
+            if (!SparkAttributeRights.IsAttributeAction(action))
+            {
+                throw new SparkSecurityConfigurationException(
+                    $"security.json declares a right with resource '{right.Resource}', but '{action}' has no "
+                    + $"attribute-level form. Only {string.Join(", ", SparkAttributeRights.Verbs)} and the combined "
+                    + $"verbs made solely of them ({string.Join(", ", SparkAttributeRights.CombinedAttributeActions)}) "
+                    + "take a third segment. Delete, custom actions and every other verb stay type-level: write "
+                    + $"'{action}/{type}'.");
+            }
+
+            if (model is null)
+                continue;
+
+            var definition = model.GetEntityTypeByName(type)
+                ?? throw new SparkSecurityConfigurationException(
+                    $"security.json declares a right with resource '{right.Resource}', but no persistent object "
+                    + $"named '{type}' exists in App_Data/Model. An attribute right must name the type by its "
+                    + "name (not its alias, a query or a reserved target such as LookupReferences).");
+
+            if (!definition.Attributes.Any(a => string.Equals(a.Name, attribute, StringComparison.OrdinalIgnoreCase)))
+            {
+                var known = string.Join(", ", definition.Attributes.Select(a => a.Name).Take(20));
+                throw new SparkSecurityConfigurationException(
+                    $"security.json declares a right with resource '{right.Resource}', but '{definition.Name}' "
+                    + $"declares no attribute '{attribute}' (its attributes: {known}). The right would match "
+                    + "nothing.");
+            }
+        }
     }
 
     /// <summary>

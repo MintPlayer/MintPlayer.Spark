@@ -36,7 +36,16 @@ public sealed class SecurityConfigurationLoaderTests : IDisposable
         }
     }
 
-    private SecurityConfigurationLoader CreateLoader() => new(_hostEnv, _logger);
+    private SecurityConfigurationLoader CreateLoader() => new(_hostEnv, _logger, new ModelLoader(_hostEnv));
+
+    private void WriteModel(string name, params string[] attributes)
+    {
+        var dir = Path.Combine(_tempDir, "App_Data", "Model");
+        Directory.CreateDirectory(dir);
+        var attrs = string.Join(",", attributes.Select(a => $$"""{ "id": "{{Guid.NewGuid()}}", "name": "{{a}}" }"""));
+        File.WriteAllText(Path.Combine(dir, name + ".json"),
+            $$"""{ "persistentObject": { "id": "{{Guid.NewGuid()}}", "name": "{{name}}", "attributes": [{{attrs}}] } }""");
+    }
 
     private void WriteConfig(string json) =>
         File.WriteAllText(Path.Combine(_tempDir, _securityFilePath), json);
@@ -233,5 +242,69 @@ public sealed class SecurityConfigurationLoaderTests : IDisposable
         loader.InvalidateCache();
 
         loader.GetResolvedRights(new HashSet<Guid> { AdminsId }).Allows("Read/Person").Should().BeFalse();
+    }
+
+    private static string AttributeRightJson(string resource) => $$"""
+        {
+          "groups": { "11111111-1111-1111-1111-111111111111": { "en": "Admins" } },
+          "rights": [
+            { "id": "aaaa0000-0000-0000-0000-000000000001", "resource": "Edit/Song", "groupId": "11111111-1111-1111-1111-111111111111" },
+            { "id": "aaaa0000-0000-0000-0000-000000000002", "resource": "{{resource}}", "groupId": "11111111-1111-1111-1111-111111111111", "isDenied": true }
+          ]
+        }
+        """;
+
+    /// <summary>
+    /// M2c-1: the loader hands the validator the loaded model, so an attribute right naming an
+    /// attribute the type does not declare refuses startup — it used to load and match nothing.
+    /// </summary>
+    [Theory]
+    [InlineData("Edit/Song/Lyricz", "declares no attribute 'Lyricz'")]
+    [InlineData("Edit/Sogn/Lyrics", "no persistent object named 'Sogn'")]
+    public void An_attribute_right_the_model_does_not_declare_refuses_startup(string resource, string expected)
+    {
+        WriteModel("Song", "Title", "Lyrics");
+        WriteConfig(AttributeRightJson(resource));
+        using var loader = CreateLoader();
+
+        var act = () => loader.GetConfiguration();
+
+        act.Should().Throw<SparkSecurityConfigurationException>().Which.Message.Should().Contain(expected);
+    }
+
+    [Fact]
+    public void An_attribute_right_the_model_declares_loads()
+    {
+        WriteModel("Song", "Title", "Lyrics");
+        WriteConfig(AttributeRightJson("Edit/song/lyrics"));
+        using var loader = CreateLoader();
+
+        loader.GetConfiguration().Rights.Should().HaveCount(2);
+    }
+
+    /// <summary>
+    /// Hot reload is held to the startup standard, as for every other validation rule: an edit that
+    /// introduces an unknown attribute is refused on the next read, and never silently replaces the
+    /// file that was valid. (As for every rule, the refusal surfaces on each read until the file is
+    /// fixed — fail closed — rather than keeping the previous rights.) Fixing the file recovers.
+    /// </summary>
+    [Fact]
+    public void A_hot_reload_introducing_an_unknown_attribute_is_refused_and_a_fix_recovers()
+    {
+        WriteModel("Song", "Title", "Lyrics");
+        WriteConfig(AttributeRightJson("Edit/Song/Lyrics"));
+        using var loader = CreateLoader();
+        loader.GetConfiguration();
+
+        WriteConfig(AttributeRightJson("Edit/Song/Genre"));
+        loader.InvalidateCache();
+
+        var act = () => loader.GetConfiguration();
+        act.Should().Throw<SparkSecurityConfigurationException>().Which.Message.Should().Contain("'Genre'");
+
+        WriteConfig(AttributeRightJson("Edit/Song/Title"));
+        loader.InvalidateCache();
+
+        loader.GetConfiguration().Rights.Should().Contain(r => r.Resource == "Edit/Song/Title");
     }
 }

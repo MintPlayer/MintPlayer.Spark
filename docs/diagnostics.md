@@ -35,7 +35,7 @@ the diagnostic guarding the generated row key — reached no external consumer a
 | SPARK011 | Warning | Security right names an action Spark never asks for | `SecurityConfigurationAnalyzer` | — |
 | SPARK012 | Warning | Security right names a type no model file declares | `SecurityConfigurationAnalyzer` | — |
 | SPARK013 | Warning | Security right is granted to an undeclared group | `SecurityConfigurationAnalyzer` | — |
-| SPARK014 | Warning | Security resource has three segments and can never match | `SecurityConfigurationAnalyzer` | — |
+| SPARK014 | Error | Attribute-level right (`{verb}/{Type}/{Attr}`) is refused at startup: a verb with no attribute form, an unknown type or an unknown attribute ([guide](guide-authorization.md#attribute-level-rights-verbtypeattribute)) | `SecurityConfigurationAnalyzer` | — |
 | SPARK015 | — | **Unallocated.** Never used; do not reuse without checking release notes | — | — |
 | SPARK016 | Error | Value object must be partial | `ValueObjectKeyReporter` (a *generator*, not an analyzer) | ✅ Declare the value object 'partial' |
 | SPARK017 | Error | Embedded type is missing `[ValueObject]` | `ValueObjectCompletenessAnalyzer` | ✅ Make this a value object |
@@ -44,6 +44,7 @@ the diagnostic guarding the generated row key — reached no external consumer a
 | SPARK020 | Error | `[Authorize]` or `.RequireAuthorization(…)` with a policy name or roles does not work under Spark — use `[SparkAuthorize]` / `.RequireAuthorization(new SparkAuthorizeAttribute(…))` ([why](guide-controllers.md#what-does-not-work)) | `AuthorizeAttributeAnalyzer` | — |
 | SPARK021 | Error | Security right uses a wildcard (`*`), which is refused at startup | `SecurityConfigurationAnalyzer` | — |
 | SPARK022 | Warning | `!x.IsDeleted` / `x.IsDeleted == false` on an `ISoftDeletable` in a translated expression drops every document without the field — use `x.IsDeleted != true` ([why](../libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md#startup-checks)) | `SoftDeleteFilterAnalyzer` | — |
+| SPARK024 | Warning | A group restricts a verb on some attributes of a type (attribute-level denials) and leaves others on the type-level right — the stale-deny trap; also a startup posture note ([guide](guide-authorization.md#attribute-level-rights-verbtypeattribute)) | `SecurityConfigurationAnalyzer` | — |
 | SPARK030 | Warning | The app's `$(SpaRoot)package.json` does not declare `@mintplayer/ng-spark-auth`, which the generated `spark-auth.setup.ts` imports — add it with the major matching your Angular major, or set `EnableSparkAuthSpa=false` for a project without the Spark SPA ([why](../libs/authorization/MintPlayer.Spark.Authorization/README.md#npm-dependency-and-the-generated-setup-file)) | MSBuild target `SparkAuthCheckNpmDependency` (`spark-authorization.targets`, MintPlayer.Spark.Authorization) | — |
 
 SPARK030 is an **MSBuild** warning, not a Roslyn diagnostic: it is raised before `Build` in a project
