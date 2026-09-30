@@ -458,6 +458,38 @@ in this repository; see §7.
   - These names become RavenDB collection names and `security.json` rights, so they are stored data.
     Documented: renaming the target or the property later means migrating collections and grants.
 
+- **Q10 → A: generic three-way conflict resolution in ng-spark (M1c).** The owner raised it after M1b.
+  - **Legacy MintPlayer**
+    (`legacy/MintPlayer.Data/Entities/Subject.cs:21-23`, `Repositories/SongRepository.cs:224-228`,
+    `pages/song/edit/edit.component.ts:137-140`):
+    - a `rowversion` compared by hand, with a race
+    - a 409 carrying the full server DTO
+    - an inline banner with "Current database value: X" per scalar field, and no merge
+    - a bug: it never adopted the new stamp, so saving again gave a 409 every time
+    - no coverage of lists
+  - **Spark today** (`ng-spark/po-edit/src/spark-po-edit.component.ts:269-278`) only shows "Concurrency
+    conflict" and keeps the form values.
+  - **Design.** On a 409, ng-spark re-fetches the PO (a normal GET, so read rights and row security
+    apply; the server keeps its bare 409 with no change vectors). It then compares **base** (as
+    loaded), **mine** and **theirs**:
+    - **Scalar attributes:** changed only by me → keep mine; changed only by them → take theirs; both
+      changed to different values → a **true conflict**.
+    - **AsDetail lists are compared per row, keyed by the required `[ValueKey]`:**
+      - A row added, removed or changed on one side only is taken from that side.
+      - A row added on both sides with the same key, or removed on one side and edited on the other,
+        is a true conflict (keep or remove).
+      - A row changed on both sides recurses with the same per-attribute rule.
+      - Row order follows *theirs*, with rows only I added appended.
+    - **Contribution rows** only conflict between two tabs of the same user.
+  - **The dialog lists only true conflicts:** Mine / Theirs per attribute (grouped by row), rendered
+    with the normal attribute renderers, plus "keep all mine" and "take all theirs". It shows who and
+    when if the target is `IAuditable`, and lists what *they* changed.
+  - **After resolving:** the form is rebased onto the fresh etag (fixing legacy's re-409 bug).
+    **Nothing is saved automatically;** the user reviews and saves, and server validation and business
+    rules run again (the guard against cross-field combinations).
+  - Reuses the normalization in History's `revision-diff.ts`. Lives in `@mintplayer/ng-spark` (no new
+    package).
+
 All grilling questions are resolved (2026-09-30).
 
 ## 5b. Earlier open question (resolved)
