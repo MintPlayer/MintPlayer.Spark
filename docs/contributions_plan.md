@@ -13,15 +13,15 @@ Requirements, decisions (C1–C10, T1–T7), spikes and open questions are in
 
 ---
 
-### M0 — Spikes (answer before M2)
-- [ ] **S-C1** Rights: can a user save only the contribution property without `Edit/<Target>`? Then
-  owner **Q1**.
-- [ ] **S-C2** List every entity-load path used for persistent-object work.
-- [ ] **S-C3** AsDetail row identity for a slot-keyed element type.
-- [ ] **S-C4** Optimistic concurrency in Spark's request session.
-- [ ] **S-C5** Interceptor ordering with SoftDelete and Moderation.
-- [ ] **S-C6** Measure that lazy `Load` + `LoadStartingWith` is one request.
-- [ ] Record the results in the PRD (§4.1) and amend T5 and T6 where they differ.
+### M0 — Spikes ✅ (2026-09-30; results in PRD §4.1, required additions F1–F7 in §4.2)
+- [x] S-C1 to S-C6
+- [ ] Second grilling round (owner Q1 onwards), then amend C/T decisions
+
+### M1b — Core concurrency fixes (F7)
+- [ ] Add an HTTP regression test first: a concurrent PO save, and what a raw `ConcurrencyException`
+  returns.
+- [ ] Make the PO save write with the checked change vector, and map `ConcurrencyException` to the
+  409 envelope without leaking change vectors.
 
 ### M1 — `TriggersRefresh` enum (C9)
 - [ ] `ERefreshTrigger { None, Auto, ValueChanged, Blur }` with `JsonStringEnumConverter`.
@@ -39,10 +39,19 @@ Requirements, decisions (C1–C10, T1–T7), spikes and open questions are in
   debounce and flush.
 - [ ] Docs: `AGENTS.md:139,204,243`, `docs/guide-triggers-refresh.md`, `docs/Spark-API-Specification.md`.
 
-### M2 — Framework seam (T5)
-- [ ] `IPersistentObjectInterceptor.OnAfterMaterializeAsync(MaterializeContext)` with a default
-  no-op. Call it on every S-C2 path.
-- [ ] Add one test per path proving the hook ran and that AsDetail row rights see the hydrated rows.
+### M2 — Framework seams (F1–F6)
+- [ ] **F1:** `OnAfterMaterializeAsync(MaterializeContext)` (default no-op, idempotent) at the
+  `LoadManyAsync` site (after `:121`), the save reload (`:260`) and the `Before` load
+  (`DatabaseAccess.cs:305`). Add the bypass warning for app `OnSaveAsync` overrides. One test per path.
+- [ ] **F2:** History revert and full sync never post satellite (`[Contribution]`) attributes. Add
+  tests proving a revert or a sync does not withdraw contributions.
+- [ ] **F3:** Change SPARK017 to accept `[Contribution]` element types.
+- [ ] **F4 (per Q1):** the contribute-only save path, with shielding supplied by a registry and the
+  row and disabled-action gates judging `Contribute`. Tests: a contributor can't change the title,
+  tampered `IsValueChanged` flags are ignored.
+- [ ] **F5:** interceptor ordering (`Order` or a startup check).
+- [ ] **F6:** evict interceptor-stored documents when a save or delete is refused. Test: a refused
+  save followed by a second save in the same request commits no orphaned documents.
 
 ### M3 — Library skeleton and packaging (C5, C7)
 - [ ] Create `libs/contributions/MintPlayer.Spark.Contributions` and `.Abstractions`: the
@@ -64,8 +73,16 @@ Requirements, decisions (C1–C10, T1–T7), spikes and open questions are in
 - [ ] Add Verify snapshots to `tests/MintPlayer.Spark.SourceGenerators.Tests`, plus diagnostic tests.
 
 ### M5 — Runtime (T6)
-- [ ] `ContributionsInterceptor`: hydrate after materialize, diff and upsert or withdraw before save,
-  recompute current on hide, delete or unhide, and retry on concurrency.
+- [ ] `ContributionsInterceptor`:
+  - Hydrate (F1), with a lazy prefix load ending in `/` and an explicit `pageSize`.
+  - Diff before-save by slot, and upsert or withdraw only the current user's own documents.
+  - Check Moderation suspension and locks itself, because its documents aren't PO saves.
+  - Recompute in **before-delete** (registered after SoftDelete) and on Restore in before-save, never
+    after-commit.
+  - Pin the current document's change vector (update: cv, create: `""`, delete: cv). Retry up to 3
+    times, then return 409.
+- [ ] Generator: emit the get-only `[ValueKey] Key` built from the slot tuple, plus its
+  `SparkValueObjects.Register` module initializer (F3).
 - [ ] `IContributions.RebuildCurrentAsync(targetId)`.
 - [ ] Add `AddContributions()` and wire it into AllFeatures, if AllFeatures lists every feature.
 

@@ -260,6 +260,131 @@ in this repository; see §7.
 - **S-C6 — Lazy batching.** Confirm that lazy `Load` + lazy `LoadStartingWith` really is one request
   (`NumberOfRequests == 1`), and check the payload at 20 versions.
 
+### 4.1 Spike results (measured or read, 2026-09-30)
+
+**S-C1 Rights: ❌ not possible today.**
+- Every Song save first demands `Edit/Song` (`DatabaseAccess.cs:212-220`, called at `:280`). Only then
+  do the row Edit gate (`:327`) and the disabled-action gate (`:345`) run.
+- There are no per-attribute rights. `IsWritableBySchema` (`EntityMapper.cs:574-583`) only uses static
+  model flags.
+- The only per-caller write limit is the virtual `GetProtectedAttributesAsync` plus
+  `ShieldProtectedAttributesAsync` (`DefaultPersistentObjectActions.cs:520-552`). It puts stored values
+  back, but only on the Actions class, and only after `Edit/Song` has already passed.
+- **The element side is already correct.** `Edit`, `New` and `Delete` on the element type are
+  enforced per row (`EntityMapper.cs:720-753`).
+- **Any verb can already be granted:** a right is just `"{action}/{target}"` (`PermissionService.cs:37-39`),
+  so `Contribute/Song` needs no schema change.
+- **Rejected alternatives:**
+  - A custom action plus a modal: its save still needs `Edit/Song`, or runs as the system context,
+    which skips Moderation, WITH CHECK and the row gates.
+  - Contributions as their own PO in a sub-query: its authorization is correct, but it drops C6.
+- **Result → framework addition F4.**
+
+**S-C2 Load paths: 16 sites, 4 need hydration.**
+- **Needs hydration:**
+  - `LoadManyAsync` right after `DefaultPersistentObjectActions.cs:121`. **Not** inside the virtual
+    `MaterializeAsync`, because an app override would skip it. All 14 endpoint callers go through it
+    (Get, Refresh, Update pre-read, Delete, SubQueryParent, New parent, DeleteMany, DeleteRow parent,
+    CustomAction parent and query parent, History, SoftDelete, ModerationTargets).
+  - `GetPersistentObjectsByIdAsync` (batched).
+  - The save reload (`:260`).
+  - The `Before` side-session load (`DatabaseAccess.cs:305`).
+- **Must be idempotent.** `Update.cs:43` pre-reads in the same session, so `:260` gets back the tracked,
+  already-hydrated instance.
+- **Warn** when an app's `OnSaveAsync` override skips `:260`, following the `AnnounceBeforeSaveBypass`
+  pattern.
+- **❗ Two paths would silently withdraw contributions:**
+  - **History revert** (`SparkHistory.cs:93`) posts every attribute of a revision, and its `Lyrics` is
+    empty because it was never stored.
+  - **A full replication sync** (`SyncActionHandler.cs:46/:113`) turns a missing `Lyrics` into `[]`
+    (`EntityMapper.cs:704`).
+  
+  **Both must drop `[Contribution]` attributes** (framework addition F2), as partial sync already does
+  (`:120`).
+- **Queries** (`RowSecurityGate.cs:211`) need no hydration as long as the property isn't a grid column.
+
+**S-C3 Row identity.**
+- A key is required, but it doesn't have to be settable or a Guid. Registration only needs a getter
+  (`SparkValueObjects.cs:35`), and `TryWriteId` (`EntityMapper.cs:585-597`) skips read-only keys.
+- **It must be deterministic:** `[ValueKey] public string Key => $"{slot1}/{slot2}"` (get-only). A Guid
+  initializer would mint a new key per load, so every save would become New+Delete (the trap in the
+  memory note `reference_raven_nested_id_initializer`).
+- **Changing a slot on an existing row** is an Edit in the mapper and withdraw-old plus add-new in the
+  contributions diff, which is correct. Two rows landing on one slot are refused.
+- **Generators can't see each other's output,** so the element must NOT rely on `[ValueObject]`: its
+  generator would emit and register a Guid `Id`. The Contributions generator emits the key **and** its
+  `SparkValueObjects.Register(...)` module initializer itself, and SPARK017 accepts `[Contribution]`
+  elements (framework addition F3).
+
+**S-C4 Concurrency.**
+- The request session is plain `OpenAsyncSession()` (`SparkMiddleware.cs:183-184`), which is
+  **last-write-wins**. Measured: 20 parallel read-modify-writes lost 19 updates. With a change vector
+  and a retry, all 20 landed.
+- **A change vector scoped to the current document works.**
+  - Update: `StoreAsync(current, cv, id)`.
+  - Create: `StoreAsync(current, "", id)`.
+  - Delete: `Delete(id, cv)`.
+  
+  A contribution plus a stale current document in one `SaveChanges` rolls back both (atomic), so the
+  whole unit can be retried (≤3 attempts). Session-wide optimistic concurrency is not used; it would
+  change every other save in the request.
+- **❗ Core bugs found along the way (F7):**
+  - The PO save's etag check compares in a separate session, then writes **without** a change vector
+    (`DatabaseAccess.cs:319-325`, `DefaultPersistentObjectActions.cs:283-284`). That's a race window,
+    and the check is skipped entirely without an etag.
+  - A raw `Raven.Client.Exceptions.ConcurrencyException` is caught nowhere in core, so it most likely
+    becomes a 500 instead of the 409 envelope (`Update.cs:79-86`). This is inferred; an HTTP test
+    settles it.
+  - The RavenDB messages contain change vectors, so they must never reach the client.
+
+**S-C5 Interceptor ordering.**
+- There is no `Order`: before-hooks run in DI registration order and after-hooks in reverse
+  (`PersistentObjectInterceptorPipeline.cs:50-84`). QnA registers SoftDelete → History → Moderation.
+- **Required:** SoftDelete → History → Moderation → **Contributions last**, so a suspension or lock
+  refuses the Song save before anything is written. This is enforced (F5).
+- **The documents Contributions writes are not PO saves,** so Moderation never sees them.
+  **Contributions checks suspension and locks itself** through the Moderation integration.
+- **A soft delete of a contribution** fires `OnAfterDeleteAsync` with `WasReplaced`, but that happens
+  after the commit, so it isn't atomic. **Recompute in before-delete instead,** registered after
+  SoftDelete and treating the soon-deleted document as hidden, so the current document commits with
+  the delete (`DatabaseAccess.cs:517-522`). Restore is a save with `Operation == Restore`, so it is
+  recomputed in before-save.
+- **❗ A refused save leaves interceptor-stored documents tracked.** WITH CHECK
+  (`DefaultPersistentObjectActions.cs:282`) runs after the before-hooks, but on refusal only the target
+  is evicted (`DatabaseAccess.cs:374-382`, `:541`). The next `SaveChangesAsync` in that request would
+  commit the orphaned contribution and current documents (F6).
+
+**S-C6 Lazy batching: ✅.**
+- A lazy `Load` plus a lazy `LoadStartingWith` was **1 request**. Awaiting `.Value` without
+  `ExecuteAllPending` also batches.
+- The `Songs/1/Lyrics/` prefix returned exactly the current documents: 0 contributions and 0 from
+  `Songs/10`. Without the trailing `/` it returned 221 or 243.
+- The default page size is 25, so an explicit `pageSize` is needed.
+- A missing target: 1 request, `null`.
+- About 62.6 K characters of JSON for 21 versions of ~3 KB each.
+
+### 4.2 Framework additions the spikes require (same unit of work)
+
+- **F1:** `OnAfterMaterializeAsync(MaterializeContext)`, idempotent, called at the four S-C2 sites,
+  with a bypass warning for app `OnSaveAsync` overrides. Replaces T5's placement.
+- **F2:** History revert and full replication sync drop `[Contribution]` attributes. Generic form:
+  attributes flagged `IsSatellite`/non-stored are never posted by revert or sync.
+- **F3:** Row-key registration comes from the Contributions generator, and SPARK017 accepts
+  `[Contribution]` element types.
+- **F4:** A contribute-only save path. When the caller lacks `Edit/T` but holds `Contribute/T`, and
+  `T` has `[Contribution]` properties, the save is allowed with **every non-contribution attribute
+  shielded** (stored values restored, reusing `ShieldProtectedAttributesAsync`, with the list supplied
+  by a registry and not only by the Actions class). The row gate and the disabled-action gate judge
+  `Contribute`. Client `IsValueChanged` flags are never trusted. Element-type New/Edit/Delete stay as
+  they are. **Depends on Q1.**
+- **F5:** An ordering mechanism for interceptors (`Order`, or a startup check that Contributions is
+  registered after SoftDelete and Moderation).
+- **F6:** On a refused save or delete, `DatabaseAccess` evicts every document an interceptor stored
+  during that operation, not only the target. The alternative is an "on failure" hook.
+- **F7:** Core concurrency fixes. The PO save writes with the checked change vector
+  (`StoreAsync(entity, cv, id)`) to close the race, and a RavenDB `ConcurrencyException` maps to the
+  existing 409 envelope, with an HTTP regression test.
+
 ## 5. Open questions for the owner
 
 - **Q1 — Who may contribute?** This depends on S-C1. Recommended: contributing to `Song.Lyrics` must
