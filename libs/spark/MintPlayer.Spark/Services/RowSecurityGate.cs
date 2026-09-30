@@ -111,6 +111,8 @@ internal sealed partial class RowSecurityGate : IRowSecurityGate
     // Optional so the test sites that construct the gate by hand keep compiling; when absent,
     // restoration does not run and rows keep the value RavenDB projected.
     [Inject] private readonly IProjectedOffsetRestorer? projectedOffsetRestorer;
+    // Optional for the same reason; DI always supplies it. Without it no attribute is removed.
+    [Inject] private readonly IAttributeRightsEnforcement? attributeRights = null;
 
     /// <summary>
     /// Rows that have been through the gate, and the only thing the result shapes accept.
@@ -205,7 +207,7 @@ internal sealed partial class RowSecurityGate : IRowSecurityGate
         projectedOffsetRestorer?.Restore(kept);
 
         var breadcrumbs = await breadcrumbResolver.ResolveAsync(
-            context.Session, kept, context.Definition, context.CancellationToken);
+            context.Session, kept, context.Definition, context.CancellationToken, context.Action);
 
         var mapped = kept
             .Select(e => (Po: entityMapper.ToPersistentObject(e, context.Definition.Id, breadcrumbs), Row: e))
@@ -216,6 +218,12 @@ internal sealed partial class RowSecurityGate : IRowSecurityGate
             await rowSecurity.RedactAsync(
                 context.Session, mapped, context.EntityType!, context.ResultType!, context.Action, context.CancellationToken);
         }
+
+        // Static attribute rights (contributions M2c-2a): an attribute the caller may not exercise
+        // the gate's verb on is removed from every row, composed rows included — a static right does
+        // not depend on a stored document, so DelegatedToActions is no reason to skip it.
+        if (attributeRights is not null)
+            await attributeRights.PresentAsync(mapped.Select(m => m.Po), context.Action, cancellationToken: context.CancellationToken);
 
         IEnumerable<PersistentObject> result = mapped.Select(m => m.Po);
 

@@ -84,9 +84,11 @@ Requirements, decisions (C1–C10, T1–T7), spikes and open questions are in
 ### M2c — Attribute-level rights in core (PRD §5 Q11–Q15) and the audit's leak fixes
 Split into two sequential steps: **M2c-1** foundation (syntax, validator, SPARK014, effective table, stale-deny warning) and **M2c-2** enforcement plus leak fixes (red tests first).
 Order: reproduce the existing leaks first (red tests), then build.
-- [ ] **Red tests** for leaks 1–4 and 6–7 in the PRD list: search oracle on a hidden string, Update
+- [~] **Red tests** for leaks 1–4 and 6–7 in the PRD list: search oracle on a hidden string, Update
   echo of a protected value, breadcrumb token leak (own row and reference), sort/filter/distinct/count
   oracles, the shield on AsDetail/nested attributes, the create path.
+  - Read side done (M2c-2a): leaks 1, 3 and 4 in `AttributeRightsEnforcementTests` (15 red → green).
+    Leaks 2, 6 and 7 are write side (M2c-2b).
 - [x] **Syntax:** parse `{verb}/{Type}/{Attr}` everywhere rights are parsed. The combined verbs expand
   as prefixes. Custom-action rights with a third segment are refused.
   - The runtime validator refuses an unknown type or attribute at startup.
@@ -111,19 +113,41 @@ Order: reproduce the existing leaks first (red tests), then build.
     doubles keep working; `SecurityFileAccessControl` and the permissive test baseline override) and
     the scoped `IAttributeRights.GetEffectiveAsync(definition|name, verb)`, memoised per (type, verb),
     system context unrestricted. Tests: `AttributeRightsTests`.
-- [ ] **Enforcement — removal for static rights:**
+- [x] **Enforcement — removal for static rights:**
   - PO GET/Refresh/New/custom-action results, and History presentation
   - the per-caller entity-type definition prune (`EntityTypes/Get|List`)
   - query columns (`QueryResultProjector.BuildColumns`)
   - search fields, sort, filter, distinct values, counts
+  - As built (M2c-2a): `IAttributeRightsEnforcement` (scoped; denied sets memoised per (type,
+    verb) over `IAttributeRights`; only *mentioned* attributes are ever removed). `PresentAsync`
+    removes Read/Query-denied attributes (recursing into AsDetail rows by the row type's rights) and
+    marks Edit/New-denied read-only — called by `po/load`, `po/refresh` (root and nested row; a
+    nested row inside a Read-denied attribute is a 404), `po/new` (both paths), a custom action's
+    PO result, `PersistentObjectPresenter` (History) and `RowSecurityGate` (every query path,
+    streaming included). Not in `DatabaseAccess.GetPersistentObjectAsync`: that is the server-side
+    read the write paths start from. `ForQueryAsync` gives the caller's query surface (a copy without
+    Query-denied attributes) and `QueryExecutor` uses it for filters, search, sort, the in-memory
+    sort, columns and distincts on both branches (and strips denied filters from a custom query's
+    `args.Columns`); streaming builds its columns from it. `ForFormAsync` prunes `types/{id}` and
+    `types` (Read-denied removed, Edit-denied `IsReadOnly` on a copied attribute —
+    `EntityAttributeDefinition.ShallowCopy`), `DetailTypes` by their own rights.
+    **Search narrowed** to attributes on the query surface (`ShowedOn.Query`, not Query-denied;
+    `TranslatedString` `_lang` fan-out and `{Name}Search` companions kept), pushdown and in-memory
+    fallback alike.
 - [ ] **Enforcement — write:**
   - a shield covering every attribute kind (scalars, references, multi-references, AsDetail,
     nested), driven by the effective table and the per-row hook
   - create drops posted non-New values
   - the Update response is re-presented (fixes the echo)
   - a History revert is partial and reported
-- [ ] **Per-row hook:** blanking indistinguishable from empty (drop the `IsVisible` flip), plus
+- [~] **Per-row hook:** blanking indistinguishable from empty (drop the `IsVisible` flip), plus
   breadcrumb/`po.Name` token blanking for own and reference targets.
+  - Token blanking done (M2c-2a): `BreadcrumbResolver` renders a token empty when a static right
+    refuses it (roots under the gate's verb, references under Read, AsDetail row types under their
+    owner's) or the per-row hook protects it on that document (`IRowSecurity.GetProtectedAttributesAsync`;
+    projected roots judged on their base document, one batched load; missing → no field token).
+    `BreadcrumbResult.DeniedTokensByType` carries the static half to `EmbeddedBreadcrumbRenderer`.
+    The `IsVisible` flip is write-side M2c-2b.
 - [x] **Stale-deny warning** in the analyzer and the security-posture report.
   - As built (M2c-1): SPARK024 (warning) and `SecurityPosture.Notes` (logged at Information) via
     `StaleAttributeDenials`: per (group, verb, type) with ≥1 attribute denial, the attributes no
@@ -133,7 +157,8 @@ Order: reproduce the existing leaks first (red tests), then build.
   - a reflection-driven "every attribute kind" test (test-only)
   - a verb matrix: Query/Read/Edit/New × type/attr × allow/deny/important, with Delete and custom
     actions staying type-level
-  - the M1c dialog never shows a removed attribute
+  - the M1c dialog never shows a removed attribute (M2c-2a: pinned server side — the dialog's
+    re-fetch is `po/load`, and `Get_omits_a_Read_denied_attribute` asserts the payload omits it)
   - the contributor scenario: `Edit/Song` plus denies, and `Edit/Lyrics/Text`
 - [x] **F5:** interceptor ordering (`Order` or a startup check).
   - As built: `int Order` default-implemented on the interface; scale in

@@ -604,7 +604,10 @@ the dark-mode work, whose ng-bootstrap half is tracked in MintPlayer/mintplayer-
   and sync, SPARK017, interceptor `Order`.
 - `a8ac860e` **M2b / F6, Q2:** eviction of interceptor writes on refusal (`SessionWriteSnapshot`), the
   reserved-verbs registry (SPARK023, startup check).
-- **M2c-1 in progress:** the attribute-rights foundation.
+- `1cabdff2` **M2c-1:** the attribute-rights foundation.
+- **M2c-2a:** read-side enforcement — removal (PO presentations, per-caller definitions, query
+  columns), query operations (search, sort, filter, distincts, counts), breadcrumb/`po.Name` token
+  blanking. **M2c-2b** (write side) pending.
 
 **Breaking changes for the release notes** (no backward compatibility, preview; minor version bumps
 only):
@@ -621,6 +624,11 @@ only):
 - **`security.json`:** the three-segment attribute rights `{verb}/{Type}/{Attr}` (SPARK014 validates
   them instead of refusing).
 - **Per-row redaction** blanks indistinguishably (no `IsVisible` flip).
+- **Search is narrowed to the caller's query surface** (M2c-2a): only attributes shown on the query
+  (`ShowedOn.Query`) and not `Query`-denied are searched, pushdown and in-memory alike. Hidden
+  string properties, and properties that belong to no model attribute, no longer match.
+- **Static attribute rights remove attributes** from persistent objects, per-caller definitions and
+  query columns/rows; breadcrumb tokens for refused or per-row protected attributes render empty.
 - **Moderation.Abstractions** now references Spark.Abstractions.
 - **Dark mode** (the other half of this PR): `sidebarTheme` is removed. ng-bootstrap's theme is stored
   in a cookie instead of localStorage, so stored choices reset.

@@ -47,6 +47,7 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint
     [Inject] private readonly IEffectiveObjectFactory effectiveObjectFactory;
     [Inject] private readonly IRefreshInvoker refreshInvoker;
     [Inject] private readonly ISparkTypeResolver typeResolver;
+    [Inject] private readonly IAttributeRightsEnforcement attributeRights;
     // The request-scoped session — the same instance IDatabaseAccess uses, so a scope opened here
     // covers the row-gated load below as well as anything the hook does.
     [Inject] private readonly Raven.Client.Documents.Session.IAsyncDocumentSession session;
@@ -147,7 +148,14 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint
             if (existing is not null && IsRedacted(existing, entityType, nested.Attribute))
                 return ClientResult.Envelope(clientAccessor, new { errors = new[] { "Not found." } }, StatusCodes.Status404NotFound);
 
+            // The same answer when a static attribute right removes the owning attribute (M2c-2a):
+            // a caller who may not read Gate cannot refresh a row inside it.
+            var unreadable = await attributeRights.GetDeniedAsync(entityType, "Read", httpContext.RequestAborted);
+            if (unreadable.Contains(nested.Attribute))
+                return ClientResult.Envelope(clientAccessor, new { errors = new[] { "Not found." } }, StatusCodes.Status404NotFound);
+
             await InvokeFor(row.EntityType, row.Object, nested.Column, isNew, httpContext);
+            await attributeRights.PresentAsync([row.Object], "Read", isNew ? "New" : "Edit", httpContext.RequestAborted);
             return ClientResult.Envelope(clientAccessor, row.Object, StatusCodes.Status200OK);
         }
 
@@ -157,6 +165,10 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint
         {
             ApplyRedactionOf(existing, entityType, effective);
         }
+
+        // Static attribute rights (M2c-2a): after the hook, so a value a server hook wrote onto a
+        // Read-denied attribute is removed with it rather than shipped.
+        await attributeRights.PresentAsync([effective], "Read", isNew ? "New" : "Edit", httpContext.RequestAborted);
 
         return ClientResult.Envelope(clientAccessor, effective, StatusCodes.Status200OK);
     }

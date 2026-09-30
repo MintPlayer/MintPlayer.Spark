@@ -347,6 +347,14 @@ public sealed class EntityAttributeDefinition
     /// Example: { "width": 480, "height": 270, "autoplay": false }
     /// </summary>
     public Dictionary<string, object>? RendererOptions { get; set; }
+
+    /// <summary>
+    /// A member-wise copy, for a per-caller view of the attribute (attribute rights mark an
+    /// Edit-denied attribute read-only for one caller). Shallow, like
+    /// <see cref="EntityTypeDefinition.ShallowCopy"/>: the loader hands definitions out by reference
+    /// from a singleton, so a per-caller change is made on a copy and never through the original.
+    /// </summary>
+    public EntityAttributeDefinition ShallowCopy() => (EntityAttributeDefinition)MemberwiseClone();
 }
 
 public sealed class AttributeTab

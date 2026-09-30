@@ -150,6 +150,21 @@ internal interface IRowSecurity
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Whether <paramref name="entityType"/>'s actions class overrides
+    /// <c>GetProtectedAttributesAsync</c> and the caller is not in system context — so a caller can
+    /// skip loading anything to ask it (contributions M2c-2a: breadcrumb token blanking).
+    /// </summary>
+    bool HasProtectedAttributesHook(Type entityType) => false;
+
+    /// <summary>
+    /// The attributes the per-row hook protects on <paramref name="entity"/> for this caller, or null
+    /// when it protects none or does not apply (no override, system context). <paramref name="entity"/>
+    /// must be an instance of <paramref name="entityType"/> — the hook is typed on the entity.
+    /// </summary>
+    Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(Type entityType, string action, object entity)
+        => Task.FromResult<IReadOnlyCollection<string>?>(null);
+
+    /// <summary>
     /// The type's filter expression for this caller and action, straight from the hook, or null when
     /// the type declares none or the override returns null for this caller.
     /// <para>
@@ -556,6 +571,22 @@ internal partial class RowSecurity : IRowSecurity
             foreach (var name in names)
                 RedactAttribute(po, name);
         }
+    }
+
+    public bool HasProtectedAttributesHook(Type entityType)
+        => IsOverridden(ResolveProtectedHook(entityType))
+           && !Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor);
+
+    public async Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(Type entityType, string action, object entity)
+    {
+        if (!HasProtectedAttributesHook(entityType) || !entityType.IsInstanceOfType(entity))
+            return null;
+
+        var hook = ResolveProtectedHook(entityType)!;
+        var actions = actionsResolver.ResolveForType(entityType);
+        var task = (Task)hook.Invoke(actions, HookInvoke, binder: null, parameters: [action, entity], culture: null)!;
+        await task;
+        return (IReadOnlyCollection<string>?)task.GetCompletedTaskResult();
     }
 
     /// <summary>

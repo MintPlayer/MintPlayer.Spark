@@ -78,6 +78,32 @@ internal partial class QueryExecutor : IQueryExecutor
     [Inject] private readonly Microsoft.Extensions.Logging.ILogger<QueryExecutor>? logger = null;
 
     /// <summary>
+    /// Optional so the test sites that construct the executor by hand keep compiling. DI always
+    /// supplies it; without it the query surface is the whole definition.
+    /// </summary>
+    [Inject] private readonly IAttributeRightsEnforcement? attributeRights = null;
+
+    /// <summary>The caller's query surface: <paramref name="definition"/> minus its Query-denied attributes.</summary>
+    private async Task<EntityTypeDefinition> QuerySurfaceAsync(EntityTypeDefinition definition, CancellationToken cancellationToken)
+        => attributeRights is null ? definition : await attributeRights.ForQueryAsync(definition, cancellationToken);
+
+    /// <summary>
+    /// The column filters handed to a custom query's author, minus those naming a Query-denied
+    /// attribute — the author filtering on one would be the same equality oracle the framework's own
+    /// filter refuses. Filters on anything else, the query surface or not, reach the author as before.
+    /// </summary>
+    private static IReadOnlyList<QueryColumnFilter>? WithoutRefusedColumns(
+        IReadOnlyList<QueryColumnFilter>? filters, EntityTypeDefinition definition, EntityTypeDefinition surface)
+    {
+        if (filters is not { Count: > 0 } || ReferenceEquals(definition, surface))
+            return filters;
+
+        var kept = new HashSet<string>(surface.Attributes.Select(a => a.Name), StringComparer.OrdinalIgnoreCase);
+        return [.. filters.Where(f => kept.Contains(f.Name)
+            || !definition.Attributes.Any(a => string.Equals(a.Name, f.Name, StringComparison.OrdinalIgnoreCase)))];
+    }
+
+    /// <summary>
     /// Queries whose paging decision has been reported, so the log states it once rather than per
     /// request. Same shape as RowSecurity's announcement dictionary, and for the same reason: this is
     /// a fact about a query's shape, not an event.
@@ -272,7 +298,7 @@ internal partial class QueryExecutor : IQueryExecutor
                 skip: 0, take: MaxDistinctScanRows, cancellationToken);
 
         var rows = searchTerm != null && !source.SearchPushedDown
-            ? NarrowBySearch(source.Rows, querySearch!)
+            ? NarrowBySearch(source.Rows, querySearch!, source.Definition)
             : source.Rows;
 
         return (rows.Rows, source.Definition);
@@ -379,7 +405,7 @@ internal partial class QueryExecutor : IQueryExecutor
         // SecuredRows.Narrow is an instance method: you must already hold a secured set to get
         // another one.
         if (searchTerm != null && !searchPushedDown)
-            allResults = NarrowBySearch(allResults, search!);
+            allResults = NarrowBySearch(allResults, search!, definition);
 
         // Counted after filtering and before paging, either way — which is what keeps
         // TotalItems search-aware now that the filter may have run in the database.
@@ -896,6 +922,13 @@ internal sealed record DatabasePage(int TotalItems);
 
         await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
 
+        // The caller's query surface (contributions M2c-2a): the definition minus its Query-denied
+        // attributes. Every query operation below — filter, search, sort — and the columns and
+        // distincts built from the result consult this copy, so a refused attribute is treated as
+        // if it did not exist rather than checked for at each site. The gate still maps against the
+        // full definition; it removes the same attributes from the rows it returns.
+        var surface = await QuerySurfaceAsync(entityTypeDefinition, cancellationToken);
+
         Type resultType = entityType;
 
         // Declared-only resolution (issue #279): the query names its index; a query without one
@@ -953,7 +986,7 @@ internal sealed record DatabasePage(int TotalItems);
         // search group adjacent exactly as the comment below requires.
         if (columnFilters is { Count: > 0 })
         {
-            queryable = ApplyColumnFilters(queryable, sortType, columnFilters, entityTypeDefinition, query);
+            queryable = ApplyColumnFilters(queryable, sortType, columnFilters, surface, query);
         }
 
         // After the row filter and before sorting. The position matters for one reason: RavenDB
@@ -963,7 +996,7 @@ internal sealed record DatabasePage(int TotalItems);
         var searchPushedDown = false;
         if (searchTerm != null)
         {
-            (queryable, searchPushedDown) = ApplySearch(queryable, sortType, searchTerm, ResolveIndexedSearchFields(queryable));
+            (queryable, searchPushedDown) = ApplySearch(queryable, sortType, searchTerm, ResolveIndexedSearchFields(queryable), surface);
         }
 
         if (restrictToIds is { Count: > 0 })
@@ -981,7 +1014,7 @@ internal sealed record DatabasePage(int TotalItems);
 
         if (query.SortColumns.Length > 0)
         {
-            queryable = ApplySorting(queryable, sortType, query.SortColumns, entityTypeDefinition, query);
+            queryable = ApplySorting(queryable, sortType, query.SortColumns, surface, query);
         }
 
         // Paging pushdown (#431 M14). Four conditions, and every one of them is about the same
@@ -1083,7 +1116,7 @@ internal sealed record DatabasePage(int TotalItems);
         //
         // It now travels as DedupeById on the context above rather than as a call here, so the
         // decision is made where the difference between the two paths is visible.
-        return new QuerySourceResult(secured, entityTypeDefinition, searchPushedDown, Page: databasePage, SortType: sortType, IndexedFields: ResolveIndexedSearchFields(queryable));
+        return new QuerySourceResult(secured, surface, searchPushedDown, Page: databasePage, SortType: sortType, IndexedFields: ResolveIndexedSearchFields(queryable));
     }
 
     #endregion
@@ -1109,6 +1142,9 @@ internal sealed record DatabasePage(int TotalItems);
                       + $"'--spark-synchronize-model' if the type is new.");
 
         await permissionService.EnsureAuthorizedAsync("Query", entityTypeDefinition.Name);
+
+        // The caller's query surface, as on the database branch.
+        var surface = await QuerySurfaceAsync(entityTypeDefinition, cancellationToken);
 
         // A composed query: the model type declares no clrType, so there is no entity class to
         // resolve actions over, no document behind a row, and nothing for row security to judge.
@@ -1183,7 +1219,7 @@ internal sealed record DatabasePage(int TotalItems);
             Skip = skip,
             Take = take,
             Search = search,
-            Columns = columnFilters,
+            Columns = WithoutRefusedColumns(columnFilters, entityTypeDefinition, surface),
         };
 
         object? result;
@@ -1284,7 +1320,7 @@ internal sealed record DatabasePage(int TotalItems);
             if (isQueryable)
             {
                 result = ApplyColumnFilters(
-                    result, methodInfo.ResultElementType, columnFilters, entityTypeDefinition, query);
+                    result, methodInfo.ResultElementType, columnFilters, surface, query);
             }
             else if (result is System.Collections.IEnumerable sequence)
             {
@@ -1295,7 +1331,7 @@ internal sealed record DatabasePage(int TotalItems);
                 // on a shape the caller cannot see. One predicate, one semantic, every shape.
                 result = ApplyColumnFilters(
                     AsQueryable(sequence, methodInfo.ResultElementType), methodInfo.ResultElementType,
-                    columnFilters, entityTypeDefinition, query);
+                    columnFilters, surface, query);
 
                 // isQueryable stays false on purpose. EnumerableQuery<T> is also IEnumerable, so
                 // materialization still takes the sequence branch, and sorting keeps behaving as it
@@ -1330,13 +1366,13 @@ internal sealed record DatabasePage(int TotalItems);
         var searchPushedDown = false;
         if (searchTerm != null && isRavenQueryable)
         {
-            (result, searchPushedDown) = ApplySearch(result, methodInfo.ResultElementType, searchTerm, indexedFields);
+            (result, searchPushedDown) = ApplySearch(result, methodInfo.ResultElementType, searchTerm, indexedFields, surface);
         }
 
         // Apply sorting if the result is IQueryable
         if (isQueryable && query.SortColumns.Length > 0)
         {
-            result = ApplySorting(result, methodInfo.ResultElementType, query.SortColumns, entityTypeDefinition, query);
+            result = ApplySorting(result, methodInfo.ResultElementType, query.SortColumns, surface, query);
         }
 
         // Materialize results
@@ -1431,13 +1467,13 @@ internal sealed record DatabasePage(int TotalItems);
             Action = "Query",
             DedupeById = isRavenQueryable,
             OrderRows = needsInMemorySort
-                ? rows => SortMappedRows(rows, query.SortColumns, entityTypeDefinition, query)
+                ? rows => SortMappedRows(rows, query.SortColumns, surface, query)
                 : null,
             CancellationToken = cancellationToken,
         });
 
         return new QuerySourceResult(
-            secured, entityTypeDefinition, searchPushedDown, authorPage?.TotalItems, SortType: methodInfo.ResultElementType, IndexedFields: indexedFields);
+            secured, surface, searchPushedDown, authorPage?.TotalItems, SortType: methodInfo.ResultElementType, IndexedFields: indexedFields);
     }
 
     /// <summary>
@@ -1902,14 +1938,30 @@ internal sealed record DatabasePage(int TotalItems);
     /// breadcrumb or any attribute's display text contains the term. Shared by <c>/execute</c> and
     /// the distinct pass, so a filter panel lists exactly the rows the searched grid shows.
     /// </summary>
-    private static RowSecurityGate.SecuredRows NarrowBySearch(RowSecurityGate.SecuredRows secured, string search)
+    /// <remarks>
+    /// Only attributes on the caller's query surface are matched (contributions M2c-2a) — the same
+    /// fields the pushdown searches. A hidden attribute still rides on the mapped row, and matching
+    /// it would make the search a substring oracle on a value no column shows. The name and
+    /// breadcrumb are matched as rendered, which blanks refused and protected tokens.
+    /// </remarks>
+    private static RowSecurityGate.SecuredRows NarrowBySearch(
+        RowSecurityGate.SecuredRows secured, string search, EntityTypeDefinition? surface)
     {
         var term = search.ToLowerInvariant();
+        var searchable = surface is null
+            ? null
+            : surface.Attributes
+                .Where(a => a.ShowedOn.HasFlag(EShowedOn.Query))
+                .Select(a => a.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         return secured.Narrow(rows => rows.Where(po =>
             (po.Name != null && po.Name.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
             (po.Breadcrumb != null && po.Breadcrumb.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
             po.Attributes.Any(attr =>
             {
+                if (searchable is not null && !searchable.Contains(attr.Name))
+                    return false;
                 var value = attr.Breadcrumb ?? attr.Value?.ToString();
                 return value != null && value.Contains(term, StringComparison.OrdinalIgnoreCase);
             })));
@@ -2012,9 +2064,13 @@ internal sealed record DatabasePage(int TotalItems);
     /// row filter, which goes through no redirect at all. <c>search()</c> over a non-analyzed field
     /// returns <b>0 rows with HTTP 200</b>, so getting this substitution wrong loses full-text search
     /// silently rather than loudly.
+    /// <para>
+    /// Each entry keeps the name of the property it was derived from (<c>Base</c>) so the caller can
+    /// decide which attribute it belongs to before the companion substitution hides that.
+    /// </para>
     /// </remarks>
-    private static PropertyInfo[] ResolveSearchableProperties(Type sortType)
-        => ReflectionCache.GetOrAdd<(string Op, Type Type), PropertyInfo[]>(
+    private static (string Base, PropertyInfo Property)[] ResolveSearchableProperties(Type sortType)
+        => ReflectionCache.GetOrAdd<(string Op, Type Type), (string Base, PropertyInfo Property)[]>(
             ("QueryExecutor.SearchableProperties", sortType),
             static k =>
             {
@@ -2026,11 +2082,26 @@ internal sealed record DatabasePage(int TotalItems);
                         && p.GetIndexParameters().Length == 0
                         && !string.Equals(p.Name, "Id", StringComparison.Ordinal)
                         && !p.IsIgnoredForSparkModel())
-                    .Select(p => Array.Find(all, c =>
+                    .Select(p => (p.Name, Array.Find(all, c =>
                         string.Equals(c.Name, p.Name + SearchCompanionSuffix, StringComparison.Ordinal)
-                        && c.PropertyType == typeof(string)) ?? p)
+                        && c.PropertyType == typeof(string)) ?? p))
                     .ToArray();
             });
+
+    /// <summary>
+    /// Whether a string field named <paramref name="field"/> belongs to an attribute on the caller's
+    /// query surface: the attribute itself, or a <c>TranslatedString</c> attribute's
+    /// <c>{Prop}_{lang}</c> fan-out.
+    /// </summary>
+    private static bool IsOnSearchSurface(EntityTypeDefinition surface, string field)
+    {
+        if (ColumnCapabilities.FindQuerySurfaceAttribute(surface, field) is not null)
+            return true;
+
+        var underscore = field.LastIndexOf('_');
+        return underscore > 0
+            && ColumnCapabilities.FindQuerySurfaceAttribute(surface, field[..underscore]) is { DataType: "TranslatedString" };
+    }
 
     /// <summary>Kept in lockstep with <c>IndexNaming.SearchCompanion</c>.</summary>
     private const string SearchCompanionSuffix = "Search";
@@ -2047,11 +2118,23 @@ internal sealed record DatabasePage(int TotalItems);
     /// </para>
     /// <para>Every argument is passed explicitly because <see cref="MethodInfo.Invoke"/> does not apply
     /// optional parameter defaults.</para>
+    /// <para>
+    /// <b>Only attributes on the caller's query surface are searched</b> (contributions M2c-2a):
+    /// shown on the query (<c>ShowedOn.Query</c>) and not <c>Query</c>-denied. This used to be every
+    /// readable string property of the row type, hidden ones included, and a <c>*word*</c> term over
+    /// a field no column shows is a substring oracle on it — the matching row and <c>TotalItems</c>
+    /// confirm the value one guess at a time. A property that belongs to no model attribute is not
+    /// searched either.
+    /// </para>
     /// </summary>
     private static (object Queryable, bool Applied) ApplySearch(
-        object queryable, Type elementType, string term, IReadOnlySet<string>? indexedFields)
+        object queryable, Type elementType, string term, IReadOnlySet<string>? indexedFields,
+        EntityTypeDefinition surface)
     {
-        var properties = ResolveSearchableProperties(elementType);
+        var properties = ResolveSearchableProperties(elementType)
+            .Where(p => IsOnSearchSurface(surface, p.Base))
+            .Select(p => p.Property)
+            .ToArray();
 
         // Restricted to what the bound index actually declares. RavenDB rejects a query naming a
         // field a static index does not emit — "The field 'X' is not indexed in 'Idx', cannot

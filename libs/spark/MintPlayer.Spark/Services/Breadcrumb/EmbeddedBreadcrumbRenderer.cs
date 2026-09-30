@@ -53,6 +53,11 @@ internal static class EmbeddedBreadcrumbRenderer
                     sb.Append(literal.Text);
                     break;
 
+                // Refused for this caller by a static attribute right on the row's own type: renders
+                // as nothing, exactly as the resolver renders it (contributions M2c-2a).
+                case FieldToken field when breadcrumbs.IsTokenDenied(def, field.AttributeName):
+                    break;
+
                 case FieldToken field:
                     var attr = def.Attributes.FirstOrDefault(a => a.Name == field.AttributeName);
                     if (attr is { DataType: "Reference" } && !string.IsNullOrEmpty(attr.ReferenceType))

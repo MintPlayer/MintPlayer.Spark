@@ -318,8 +318,10 @@ public class SearchPushdownTests : SparkTestDriver
             "ResolveSearchableProperties",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
 
-        return ((System.Reflection.PropertyInfo[])method.Invoke(null, [type])!)
-            .Select(p => p.Name)
+        // Each entry pairs the property with the base name it was derived from (M2c-2a), so the
+        // executor can match it to a query-surface attribute before companion substitution.
+        return (((string Base, System.Reflection.PropertyInfo Property)[])method.Invoke(null, [type])!)
+            .Select(p => p.Property.Name)
             .ToArray();
     }
 

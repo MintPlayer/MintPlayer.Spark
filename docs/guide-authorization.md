@@ -95,9 +95,50 @@ A third segment scopes a right to one attribute: `Edit/Song/Lyrics`, `QueryRead/
   ordinary attributes and are denied the same way, one by one.
 - System context (module sync, replication) is not restricted by attribute rights.
 
-Evaluated once per request per (type, verb) by `IAttributeRights`. What a denied attribute does —
-removed from the persistent object, the query columns and the searchable/sortable fields, and
-shielded on save — lands with the enforcement step of #460 contributions (M2c-2).
+Evaluated once per request per (type, verb) by `IAttributeRights`, then applied to every row — never
+asked per row.
+
+### What a denied attribute does (read side)
+
+A static attribute right **removes** the attribute; it does not blank it. *Absent* means the
+attribute is not in the payload at all — no name, no value, no metadata — for that caller:
+
+| Refused | Effect |
+|---|---|
+| `Read` | Absent from the persistent object on every presentation: `po/load`, `po/refresh`, `po/new`, a persistent object a custom action returns, and History's revision view. Absent from that caller's `types/{id}` and `types` definition, so the form never draws it (and the M1c conflict dialog, which re-fetches with `po/load`, can never show it). |
+| `Query` | Absent from the query's `columns` and from every row's values, streaming included. Search, sort, column filters and distinct values treat it **as if it did not exist**: a search does not match it, a sort on it is ignored, a filter on it is ignored (silently, like any non-filterable column), its distinct list is empty — so `totalItems` is unaffected by it. |
+| `Edit` | Read-only in the caller's definition and on the loaded object. (`New` does the same on `po/new`.) |
+
+Removal is safe to do statically because it does not vary per row: every row of the type lacks the
+same attribute for the same caller, so the absence says nothing about any one row. That is exactly
+why the per-row `GetProtectedAttributesAsync` hook is different — it keeps the attribute and empties
+its value, since a per-row absence would itself be the signal.
+
+**Breadcrumbs and `po.Name`** render a token for a refused attribute (static `Read`, or `Query` on a
+grid row) or for an attribute the per-row hook protects on that row as **empty** — the same output an
+empty value produces. This holds for the row's own breadcrumb and for every reference target's,
+judged by the target type's own rights and hook, and for an embedded AsDetail row's breadcrumb.
+
+Only attributes an attribute right **mentions** are removed; the type right itself is decided before
+any of this. An AsDetail row type is judged by its own attribute rights (`Read/Lyrics/Text`); an
+attribute no right mentions is never removed, even though the row type usually holds no type right of
+its own. When it holds none for the verb, a mention there — allow or deny — counts as a refusal,
+because attribute rights never unlock.
+
+**⚠️ Search narrowed to shown, queryable columns.** Search used to match every readable string
+property of the row type, hidden ones included, with `*word*` wildcards — a substring oracle on
+values no column shows. It now matches only attributes on the caller's query surface:
+`showedOn` includes `Query`, and not `Query`-denied (their `{Name}Search` companion is still what is
+searched). A property of the row type that belongs to no model attribute is no longer searched
+either. The in-memory search fallback follows the same rule, plus the rendered name/breadcrumb.
+
+What the per-row hook still cannot close: a value it protects on an attribute that **is** a shown,
+queryable column remains searchable, sortable and filterable, for the reason given
+[below](#️-redacting-an-attribute-is-not-enough-also-set-canfilter-false). Use a static
+attribute right when the rule does not depend on the row.
+
+The write side — the save shield for every attribute kind, the create path and the save response —
+lands with the next step of #460 contributions (M2c-2b).
 
 ---
 

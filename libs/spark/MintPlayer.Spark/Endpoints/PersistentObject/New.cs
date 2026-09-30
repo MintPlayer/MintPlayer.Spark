@@ -40,6 +40,7 @@ internal sealed partial class NewPersistentObject : IPostEndpoint
     [Inject] private readonly ISparkTypeResolver typeResolver;
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IQueryLoader queryLoader;
+    [Inject] private readonly IAttributeRightsEnforcement attributeRights;
     [Inject] private readonly ILogger<NewPersistentObject> logger;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
@@ -114,6 +115,9 @@ internal sealed partial class NewPersistentObject : IPostEndpoint
         var clrType = typeResolver.Resolve(entityType.ClrType);
         var po = Scaffold(entityType, clrType);
         await InvokeHookAsync(clrType, po, parent, asDetailParent: null, request, httpContext, subQuery);
+        // Static attribute rights (M2c-2a): Read-denied absent, New-denied read-only — after the hook,
+        // so a value it wrote onto a removed attribute goes with it.
+        await attributeRights.PresentAsync([po], "Read", "New", httpContext.RequestAborted);
         return ClientResult.Envelope(clientAccessor, po, StatusCodes.Status200OK);
     }
 
@@ -207,6 +211,7 @@ internal sealed partial class NewPersistentObject : IPostEndpoint
         // Both references, and deliberately the same instance: they differ in meaning, not identity.
         // AsDetailParent is the narrow one that says the parent owns the save.
         await InvokeHookAsync(clrType, po, parent, asDetailParent: parent, request, httpContext);
+        await attributeRights.PresentAsync([po], "Read", "New", httpContext.RequestAborted);
         return ClientResult.Envelope(clientAccessor, po, StatusCodes.Status200OK);
     }
 
