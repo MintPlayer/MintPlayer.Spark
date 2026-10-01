@@ -104,7 +104,9 @@ public class QnAContributionsBrowserTests
             await BrowserSignIn.SignInAsync(moderatorPage, host.AppUrl, host.AdminEmailAddress, host.AdminPass);
             await moderatorPage.GotoAsync($"/po/questiontranslationscontribution/{Encoded(translatorsVersion)}");
             await moderatorPage.Locator("spark-line-diff").First.WaitForAsync(new() { Timeout = Timeout });
-            var revert = moderatorPage.Locator("button.spark-revert-contribution").First;
+            // The one on screen: bs-priority-nav stamps each action-bar item more than once (the bar,
+            // the overflow menu, a measuring copy), and only one of them is visible.
+            var revert = moderatorPage.Locator("button.spark-revert-contribution").Filter(new() { Visible = true }).First;
             await revert.WaitForAsync(new() { Timeout = Timeout });
             await revert.ClickAsync();
             await AsyncWaitFor(async () => (await host.LoadAsync<StoredTranslation>(currentId))?.ContributorId == translator.Id);
