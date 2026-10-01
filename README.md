@@ -178,6 +178,7 @@ MintPlayer.Spark/
 | [TriggersRefresh & OnRefreshAsync](docs/guide-triggers-refresh.md) | Forms that reshape themselves: toggling required/read-only/visible, rewriting rules, replacing dropdown options as the user types — and why the hook must be idempotent |
 | [PO/Query Aliases](docs/guide-aliases.md) | Friendly URLs for entities and queries (`/po/car` instead of `/po/{guid}`) |
 | [Program Units & spark-shell](docs/guide-program-units.md) | The server-driven menu (`programUnits.json`, rights-filtered per caller), JSON-only composed virtual PO pages, and the shipped `spark-shell` with its slots |
+| [Theming (light / dark / Auto)](docs/guide-theming.md) | The pre-boot script and `<head>` order per app, Auto following the OS live vs a sticky Light/Dark choice, the `bs-theme-mode` cookie and `cookieDomain`, and recolouring through `--spark-shell-*` and `--bs-*` custom properties (not Sass `$*-dark`) |
 | [TranslatedString & i18n](docs/guide-translated-strings.md) | Multi-language support for labels, descriptions, and validation messages |
 | [Attribute Descriptions](docs/guide-attribute-descriptions.md) | Help text per attribute, rendered as an [i] tooltip; seeded from `[Description]` or `///` summaries on synchronize |
 | [Identity & external login](libs/authorization/MintPlayer.Spark.Authorization/README.md) | The optional identity package: RavenDB-backed ASP.NET Identity, OAuth providers, JWT bearer, and the Angular half |

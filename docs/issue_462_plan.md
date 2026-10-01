@@ -9,8 +9,9 @@ Requirements, decisions (G1–G8 from the owner, D1–D14) and spikes are in
   because this session's hook refuses cross-repo edits.
 - **Part B (Spark)**: ng-bootstrap 22.20.0 and web-components 2.17.0 are on npm. **B-1 is done**
   (2026-10-01): dependencies, shell toggle and service (M2), D7 fixes and app wiring (M3), CodeCoverage
-  tints and the badge pin, and the identity-provider pages (M4). **B-2** is left: the shell palette
-  (M1, `--spark-shell-*` tokens, removing `sidebarTheme`, CodeCoverage's shell overrides), then M5–M6.
+  tints and the badge pin, and the identity-provider pages (M4). **B-2 is done** (64c8816b): the shell palette
+  (M1, `--spark-shell-*` tokens, removing `sidebarTheme`, CodeCoverage's shell overrides). **M5 is
+  done** (S5/S7 ticked, Fleet dark-mode E2E written but not run, theming guide). Left: M6.
 - **The same Spark branch also carries the Contributions / attribute-rights / concurrency work**
   ([contributions_plan.md](contributions_plan.md)). Owner decision: everything stays on
   `feat/462-dark-mode`, in one PR.
@@ -205,12 +206,22 @@ M1–M5 can be built against a local ng-bootstrap build (`npm pack`) while NB5 i
   - Add the `color-scheme` meta and the two `theme-color` metas, plus
     `<meta name="bs-theme-default-mode" content="auto">` **before** the script, which reads it
     synchronously.
-- [ ] **S5** Check the order and the copied file in the built output.
+- [x] **S5** Check the order and the copied file in the built output. *(Verified in B-2 against the
+  served app: `index.html` has `<base>` → default-mode meta → `bs-theme-preboot.js` → stylesheets, and
+  `/bs-theme-preboot.js` answers 200 with the script on a deep link.)*
 - [x] Add a test over every app: the built output contains `bs-theme-preboot.js`, and `index.html`
   references it before any stylesheet `<link>`. *(B-1: `ng-spark/shell/src/apps-theme-preboot-wiring.spec.ts`
   checks the sources — `index.html` order and attributes, the `project.json` asset entry, and that the
   file exists in `node_modules` — not a built output; S5 still checks one real build.)*
-- [ ] **S7** Check that the cookie write works through the dev proxy and under the https profile.
+- [x] **S7** Check that the cookie write works through the dev proxy and under the https profile.
+  *(Measured 2026-10-01 in DemoApp through the MCP, both launch profiles, read with `cookieStore.get`
+  and the context's cookie jar. Auto → click → `light` → click → `dark`; the attribute is `dark` at
+  `DOMContentLoaded` after a reload and on a deep link. `https` profile (`https://localhost:5007`;
+  its http URL 307s to https, so plain http is unreachable there): `Path=/`, `SameSite=Lax`,
+  `Secure`, host-only, ~1-year expiry. `http` profile (`http://localhost:5008`): the same without
+  `Secure`. The `cookieDomain` case was not measured: no Spark app sets it, and on `localhost` a
+  `Domain` cookie is not meaningful; the shipped writer deletes the host-only cookie first when a
+  domain is set (read in `theming/index.mjs`).)*
 
 ### M4 — CodeCoverage and identity-provider pages (D10, D11)
 - [x] CodeCoverage:
@@ -237,16 +248,21 @@ M1–M5 can be built against a local ng-bootstrap build (`npm pack`) while NB5 i
 - [x] Bump the identity-provider csproj version *(preview number: 11.0.0-preview.92)*.
 
 ### M5 — E2E and docs
-- [ ] Add a `ColorScheme? colorScheme` parameter to `PageFactory.NewPageAsync`, following the timezone
-  pattern.
-- [ ] Add a Fleet `DarkModeTests` class covering R7:
+- [x] Add a `ColorScheme? colorScheme` parameter to `PageFactory.NewPageAsync`, following the timezone
+  pattern. *(Plus `NewContextAsync`, for case 4's two pages in one context.)*
+- [x] Add a Fleet `DarkModeTests` class covering R7: *(`tests/MintPlayer.Spark.E2E.Tests/DarkModeTests.cs`,
+  four tests for the six checks, to keep Angular boots down in the shared rate-limit bucket: the
+  first two checks share one page, cases 2 and 3 share one. The toggle is
+  `spark-shell bs-theme-toggle button` (open shadow root). Built, not yet run — the run is M6.)*
   - The attribute is present at `DOMContentLoaded` (init script).
   - The main area's computed background is dark.
   - R2 matrix case 1: in Auto, `EmulateMediaAsync(Light)` turns the page light with no reload.
   - Case 2: toggle Dark, and it is dark at once and after a reload (cookie).
   - Case 3: toggle Dark, then `EmulateMediaAsync(Light)`, and it stays dark.
   - Case 4: two pages in one context, a toggle in A re-themes B.
-- [ ] Write `docs/guide-theming.md`:
+- [x] Write `docs/guide-theming.md`: *(linked from README; also covers the `<head>` order, the
+  toggle's `themeToggle` input, the action bar, the identity-provider pages and the style-query
+  limit)*
   - setup (the assets glob, the script line, the metas)
   - the sticky-choice rule
   - the cookie and `cookieDomain`
@@ -254,7 +270,7 @@ M1–M5 can be built against a local ng-bootstrap build (`npm pack`) while NB5 i
     component CSS
   - the `--spark-shell-*` tokens
   - the badge exception
-- [ ] Update memory.
+- [x] Update memory.
 
 ### M6 — Full sweep, browser check, PR
 - [ ] Switch to the published `@mintplayer/ng-bootstrap@^22.20.0` and run `npm install` from the repo
