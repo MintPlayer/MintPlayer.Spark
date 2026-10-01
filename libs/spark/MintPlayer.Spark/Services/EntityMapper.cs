@@ -127,6 +127,7 @@ internal partial class EntityMapper : IEntityMapper
     [Inject] private readonly Abstractions.ClientOperations.IClientAccessor? clientAccessor;
 
     private static readonly ICollectionGuard DefaultCollectionGuard = new CollectionGuard();
+    private static readonly IReadOnlySet<string> NoTokens = new HashSet<string>();
 
     public T ToEntity<T>(PersistentObject persistentObject) where T : class
         => (T)ToEntity(persistentObject);
@@ -200,6 +201,14 @@ internal partial class EntityMapper : IEntityMapper
     }
 
     public void PopulateAttributeValues(PersistentObject po, object entity, BreadcrumbResult? breadcrumbs = null)
+        => PopulateAttributeValues(po, entity, breadcrumbs, blanked: null);
+
+    /// <param name="blanked">
+    /// Breadcrumb tokens to render empty on this object's embedded rows, relative to it — what the owning
+    /// document's per-row hook protects under a dotted name (<c>Jobs.Salary</c>, contributions M2c-2b).
+    /// Null on a document, which reads its own set from <paramref name="breadcrumbs"/> by id.
+    /// </param>
+    private void PopulateAttributeValues(PersistentObject po, object entity, BreadcrumbResult? breadcrumbs, IReadOnlySet<string>? blanked)
     {
         var entityType = entity.GetType();
 
@@ -227,8 +236,11 @@ internal partial class EntityMapper : IEntityMapper
             var def = modelLoader.GetEntityTypeByClrType(entityType.FullName ?? entityType.Name);
             breadcrumb = EmbeddedBreadcrumbRenderer.Render(
                 entity, def, breadcrumbs, options?.Breadcrumb.ReferenceSeparator ?? ", ",
-                modelLoader.GetEntityTypeByClrType);
+                modelLoader.GetEntityTypeByClrType, blanked);
         }
+
+        // A document's own blanked tokens, for its embedded rows below; a row inherits its owner's.
+        blanked ??= breadcrumbs?.BlankedFor(po.Id);
         if (string.IsNullOrWhiteSpace(breadcrumb))
             breadcrumb = entityType.Name;
         po.Name = breadcrumb;
@@ -252,7 +264,7 @@ internal partial class EntityMapper : IEntityMapper
             // Value; delegate to the recursive populator.
             if (attribute is PersistentObjectAttributeAsDetail asDetail)
             {
-                PopulateAsDetail(asDetail, raw, property.PropertyType, breadcrumbs);
+                PopulateAsDetail(asDetail, raw, property.PropertyType, breadcrumbs, BreadcrumbResult.Relative(blanked, attribute.Name));
                 continue;
             }
 
@@ -295,8 +307,10 @@ internal partial class EntityMapper : IEntityMapper
     /// scaffold would poison the wire value.
     /// </summary>
     private void PopulateAsDetail(PersistentObjectAttributeAsDetail attr, object? raw, Type propertyType,
-        BreadcrumbResult? breadcrumbs)
+        BreadcrumbResult? breadcrumbs, IReadOnlySet<string>? blanked)
     {
+        // Never null for a row: an empty set stops the row reading a document's set by its row key.
+        blanked ??= NoTokens;
         attr.Value = null; // AsDetail no longer carries a flat Value.
 
         if (attr.IsArray)
@@ -321,7 +335,7 @@ internal partial class EntityMapper : IEntityMapper
                 {
                     var child = ScaffoldFrom(elementDef);
                     if (item is not null)
-                        PopulateAttributeValues(child, item, breadcrumbs);
+                        PopulateAttributeValues(child, item, breadcrumbs, blanked);
                     children.Add(child);
                 }
             }
@@ -344,7 +358,7 @@ internal partial class EntityMapper : IEntityMapper
         }
 
         var nested = ScaffoldFrom(childDefSingle);
-        PopulateAttributeValues(nested, raw, breadcrumbs);
+        PopulateAttributeValues(nested, raw, breadcrumbs, blanked);
         attr.Object = nested;
     }
 

@@ -49,7 +49,12 @@ internal sealed partial class HistoryInterceptor : IPersistentObjectInterceptor
             return ValueTask.CompletedTask;
 
         if (context.Operation == PersistentObjectOperation.Revert && state.RevertSource is { } source && source.GetType() == context.Entity.GetType())
+        {
             MakeRevertExact(context, source);
+            // An attribute the caller may not edit was kept out of the save (contributions M2c-2b):
+            // when the revision holds something else there, the revert is partial, and says so.
+            state.RevertPartial |= context.UnwritableAttributes.Any(path => !SameAt(path, source, context.Entity));
+        }
 
         if (context.Entity is IAuditable audited)
         {
@@ -152,6 +157,31 @@ internal sealed partial class HistoryInterceptor : IPersistentObjectInterceptor
             var reverted = (TranslatedString?)property.GetValue(source);
             property.SetValue(context.Entity, reverted is null ? null : Copy(reverted));
         }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="path"/> (<c>Title</c>, or <c>Lines.Text</c> for an AsDetail row
+    /// attribute) holds the same value on both entities, compared as JSON. A row attribute compares the
+    /// sequence of that column across the rows.
+    /// </summary>
+    private static bool SameAt(string path, object revision, object entity)
+        => JsonSerializer.Serialize(ValueAt(path, revision)) == JsonSerializer.Serialize(ValueAt(path, entity));
+
+    private static object? ValueAt(string path, object? target)
+    {
+        if (target is null)
+            return null;
+
+        var dot = path.IndexOf('.');
+        var head = dot < 0 ? path : path[..dot];
+        var value = target.GetType().GetProperty(head, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase)?.GetValue(target);
+        if (dot < 0)
+            return value;
+
+        var rest = path[(dot + 1)..];
+        return value is System.Collections.IEnumerable rows and not string
+            ? rows.Cast<object?>().Select(row => ValueAt(rest, row)).ToList()
+            : ValueAt(rest, value);
     }
 
     private static TranslatedString Copy(TranslatedString value)

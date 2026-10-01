@@ -35,6 +35,34 @@ public sealed class BreadcrumbResult
     /// </summary>
     internal IReadOnlyDictionary<Guid, IReadOnlySet<string>>? DeniedTokensByType { get; init; }
 
+    /// <summary>
+    /// Per rendered document id, every token that rendered empty on it — static refusals and what the
+    /// per-row hook protects on that row, dotted names (<c>Jobs.Salary</c>) included. Carried so an
+    /// embedded AsDetail row's own breadcrumb blanks the column its owner's hook protects
+    /// (contributions M2c-2b). Null when nothing is blanked.
+    /// </summary>
+    internal IReadOnlyDictionary<string, IReadOnlySet<string>>? BlankedTokensById { get; init; }
+
+    /// <summary>The tokens blanked on document <paramref name="id"/>, or null.</summary>
+    internal IReadOnlySet<string>? BlankedFor(string? id)
+        => id is not null && BlankedTokensById is not null && BlankedTokensById.TryGetValue(id, out var blanked) ? blanked : null;
+
+    /// <summary>The names under <c>{attribute}.</c>, relative to it (<c>Jobs.Salary</c> → <c>Salary</c>), or null.</summary>
+    internal static IReadOnlySet<string>? Relative(IReadOnlySet<string>? names, string attribute)
+    {
+        if (names is not { Count: > 0 })
+            return null;
+
+        var lead = attribute + ".";
+        HashSet<string>? result = null;
+        foreach (var name in names)
+        {
+            if (name.Length > lead.Length && name.StartsWith(lead, StringComparison.OrdinalIgnoreCase))
+                (result ??= new(StringComparer.OrdinalIgnoreCase)).Add(name[lead.Length..]);
+        }
+        return result;
+    }
+
     /// <summary>Whether a <c>{<paramref name="attributeName"/>}</c> token of <paramref name="definition"/> renders empty.</summary>
     internal bool IsTokenDenied(EntityTypeDefinition? definition, string attributeName)
         => definition is not null
@@ -211,6 +239,7 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
         return new BreadcrumbResult(result)
         {
             DeniedTokensByType = deniedByType.Count == 0 ? null : deniedByType,
+            BlankedTokensById = blankedById.Count == 0 ? null : blankedById,
         };
     }
 

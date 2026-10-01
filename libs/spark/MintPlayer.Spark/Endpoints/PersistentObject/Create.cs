@@ -27,6 +27,7 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IClientAccessor clientAccessor;
     [Inject] private readonly IPermissionService permissionService;
+    [Inject] private readonly ISaveResponsePresenter saveResponse;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -48,7 +49,7 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint
         // permission service memoises per request.
         try
         {
-            await permissionService.EnsureAuthorizedAsync("New", entityType.ClrType?.Split('.').Last() ?? entityType.Name);
+            await permissionService.EnsureAuthorizedAsync("New", entityType.Name);
         }
         catch (SparkAccessDeniedException)
         {
@@ -93,8 +94,14 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint
                 return ClientResult.Envelope(clientAccessor, new { errors = validationResult.Errors }, 400);
             }
 
+            // Values for attributes the caller may not set on a create are dropped inside the save
+            // (contributions M2c-2b, leak 7): the CLR default or initializer stays, and the save is not
+            // refused, because a refusal would say which attributes exist.
             var result = await databaseAccess.SavePersistentObjectAsync(obj);
-            return ClientResult.Envelope(clientAccessor, result, 201);
+
+            // Re-presented as a load presents it, as Update does (leak 2).
+            var presented = await saveResponse.PresentAsync(entityType, result, isNew: true, httpContext.RequestAborted);
+            return ClientResult.Envelope(clientAccessor, presented, 201);
         }
         catch (SparkConcurrencyException)
         {

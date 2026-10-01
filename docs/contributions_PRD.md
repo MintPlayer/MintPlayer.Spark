@@ -607,7 +607,13 @@ the dark-mode work, whose ng-bootstrap half is tracked in MintPlayer/mintplayer-
 - `1cabdff2` **M2c-1:** the attribute-rights foundation.
 - **M2c-2a:** read-side enforcement — removal (PO presentations, per-caller definitions, query
   columns), query operations (search, sort, filter, distincts, counts), breadcrumb/`po.Name` token
-  blanking. **M2c-2b** (write side) pending.
+  blanking.
+- **M2c-2b:** write-side enforcement — `IAttributeWriteShield` in `IDatabaseAccess` drops every posted
+  attribute the caller may not write (static Edit/New per type and per AsDetail row type, plus the
+  per-row hook on the stored row, dotted names included) for every attribute kind; create drops
+  non-New values; `po/create`/`po/update` answer with the row re-read and presented like `po/load`;
+  a History revert is partial and says so; per-row blanking is indistinguishable; retry prompts are
+  presented; endpoints name rights by the definition's `Name` (nested classes).
 
 **Breaking changes for the release notes** (no backward compatibility, preview; minor version bumps
 only):
@@ -630,6 +636,21 @@ only):
 - **Static attribute rights remove attributes** from persistent objects, per-caller definitions and
   query columns/rows; breadcrumb tokens for refused or per-row protected attributes render empty.
 - **Moderation.Abstractions** now references Spark.Abstractions.
+- **The save shield drops instead of restoring** (M2c-2b): a refused attribute is removed from the
+  posted object before `OnBeforeSaveAsync`, the interceptors and the mapper — hooks that read
+  `obj["X"]` for a refused `X` no longer find the stored value there. It now also covers static
+  `Edit`/`New` rights, AsDetail rows and embedded objects, references and reference arrays, and dotted
+  per-row names; a value the hook protects only for `Read` is dropped unless `isValueChanged`.
+- **A create drops values for `New`-denied attributes** (no refusal; the CLR default stays).
+- **`po/create` and `po/update` return the row as `po/load` presents it**, not the posted object
+  (fresh etag, breadcrumb, per-row blanking, attribute removal, disabled actions).
+- **A partial History revert** answers 200 with a warning notification in `operations`.
+- **`SaveContext.UnwritableAttributes`** (new): what static rights kept out of the save.
+- **Rights for a nested entity class** are named by its definition `Name` in every endpoint
+  (`Create`, `New`, `Refresh`, `DeleteRow`, custom actions), as `IDatabaseAccess` already did — not by
+  the CLR name's last dotted segment (`Outer+Inner`).
+- **Refresh** asks the per-row hook for the redacted names instead of reading an `IsVisible` delta,
+  and a refreshed protected attribute is blanked the same indistinguishable way.
 - **Dark mode** (the other half of this PR): `sidebarTheme` is removed. ng-bootstrap's theme is stored
   in a cookie instead of localStorage, so stored choices reset.
 
@@ -650,6 +671,11 @@ only):
 - F6 can't take back `session.Advanced.Defer` commands, or `Delete(id)` on a document that was never
   loaded.
 - Satellite detection keys on the Newtonsoft `[JsonIgnore]`, not System.Text.Json's.
+- **Validation runs on the posted values, before the shield** (M2c-2b): a *required* attribute the
+  per-row hook blanks is posted back empty and fails `required` although the save would have kept
+  the stored value. Pre-existing (the old redaction nulled too); not fixed here.
+- The natural-id collision probe maps the posted object before the shield, so a `New`-denied
+  attribute can still influence the derived id (it never reaches the stored document).
 - The materialize hook runs once per entity *instance*, not per document id.
 
 **Open items:**
@@ -661,6 +687,8 @@ only):
   - **The raw user id is never shown.** The `ModifiedAt` time is shown in both modes.
 - **Unrun tests** (all run in the M7 sweep): the existing `ConcurrentWriteRaceTests` after F6 changed
   eviction, the M1c E2E selectors (`input#Model`, `.spark-conflict-dialog`), and every whole suite.
+  (M2c-2b, 2026-10-01: `ConcurrentWriteRaceTests`, `RefusedWriteEvictionTests` and the
+  PersistentObject endpoint, SoftDelete, Moderation, History, Refresh and redaction classes ran green.)
 - **The version gate:** check whether CI expects every `libs/` csproj bumped in lockstep. Past PRs
   bumped 23–29 of 30, while this branch bumps only the touched ones.
 

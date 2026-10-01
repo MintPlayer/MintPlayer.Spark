@@ -32,6 +32,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly ISparkTypeResolver typeResolver;
     [Inject] private readonly IPersistentObjectInterceptorPipeline interceptorPipeline;
     [Inject] private readonly IDisabledActionsEvaluator disabledActions;
+    [Inject] private readonly IAttributeWriteShield attributeWriteShield;
     [Inject] private readonly Microsoft.AspNetCore.Http.IHttpContextAccessor? httpContextAccessor;
     [Inject] private readonly Microsoft.Extensions.Logging.ILogger<DatabaseAccess>? logger;
 
@@ -352,6 +353,13 @@ internal partial class DatabaseAccess : IDatabaseAccess
         if (SubmittedAction(operation) is { } submitted)
             await disabledActions.EnsureEnabledAsync(entityType, submitted.Name, submitted.RefusedBy, persistentObject.Id, before);
 
+        // Attribute-level write rights (contributions M2c-2b): drop every posted attribute the caller
+        // may not write — static Edit (New on a create) refusals on every attribute kind, and what the
+        // per-row hook protects on the stored row — before anything maps, hooks or intercepts the
+        // object. After every gate, so a refused save never consults the hook; judged on the STORED
+        // row (`before`), like the disabled-action gate. Never refuses: that would name the attributes.
+        var unwritable = await attributeWriteShield.ApplyAsync(persistentObject, entityTypeDefinition, entityType, before);
+
         // Interceptors (#460, D1): registered here, after every gate, so an interceptor only ever sees
         // a save the caller was allowed to make. The before-hooks run inside the base OnSaveAsync
         // (after mapping and OnBeforeSaveAsync, before WITH CHECK and the write); the after-hooks run
@@ -366,6 +374,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
                 Operation = operation,
                 PersistentObject = persistentObject,
                 Before = before,
+                UnwritableAttributes = unwritable,
                 User = httpContextAccessor?.HttpContext?.User,
                 IsSystemContext = Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor),
             };

@@ -3,6 +3,7 @@ using System.Reflection;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Services;
@@ -25,6 +26,10 @@ internal sealed partial class SparkHistory : ISparkHistory
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly HistoryRequestState state;
     [Inject] private readonly IHistoryUserNameResolver? userNames;
+    [Inject] private readonly IClientAccessor? clientAccessor;
+
+    /// <summary>The warning a partial revert answers with (contributions M2c-2b).</summary>
+    internal const string PartialRevertMessage = "Reverted partially: some attributes you may not edit kept their current values.";
 
     public async Task<IReadOnlyList<SparkRevision>> ListAsync(Guid objectTypeId, string id, int skip = 0, int take = 50, CancellationToken cancellationToken = default)
     {
@@ -109,6 +114,8 @@ internal sealed partial class SparkHistory : ISparkHistory
             attribute.IsValueChanged = true;
 
         state.RevertSource = revision;
+        state.RevertPartial = false;
+        bool partial;
         try
         {
             await databaseAccess.SavePersistentObjectAsync(po, PersistentObjectOperation.Revert);
@@ -116,7 +123,15 @@ internal sealed partial class SparkHistory : ISparkHistory
         finally
         {
             state.RevertSource = null;
+            partial = state.RevertPartial;
+            state.RevertPartial = false;
         }
+
+        // Attributes the caller may not edit keep their current values (contributions M2c-2b). The
+        // save succeeded, so a silent partial revert would read as a complete one: say so, in the
+        // envelope's operations, the channel every Spark client already shows.
+        if (partial)
+            clientAccessor?.Notify(PartialRevertMessage, NotificationKind.Warning);
 
         return await databaseAccess.GetPersistentObjectAsync(objectTypeId, id)
             ?? throw new SparkRowLevelAccessDeniedException($"{HistoryRights.Revert}/{definition.Name}");

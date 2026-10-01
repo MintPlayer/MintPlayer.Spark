@@ -80,7 +80,7 @@ internal sealed partial class NewPersistentObject : IPostEndpoint
     private async Task<IResult> HandleStandaloneAsync(
         HttpContext httpContext, EntityTypeDefinition entityType, NewPersistentObjectRequest request)
     {
-        var typeName = entityType.ClrType?.Split('.').Last() ?? entityType.Name;
+        var typeName = entityType.Name;
         await permissionService.EnsureAuthorizedAsync("New", typeName);
 
         // A New started from a sub-query on a parent's detail page (#460, D19). All three fields or
@@ -190,7 +190,7 @@ internal sealed partial class NewPersistentObject : IPostEndpoint
 
         // The row type's own right — New/PhoneNumber, not New/Person. Matches the button the client
         // renders, which is gated on the detail type's permissions.
-        var rowTypeName = entityType.ClrType?.Split('.').Last() ?? entityType.Name;
+        var rowTypeName = entityType.Name;
         await permissionService.EnsureAuthorizedAsync("New", rowTypeName);
 
         Po? parent = null;

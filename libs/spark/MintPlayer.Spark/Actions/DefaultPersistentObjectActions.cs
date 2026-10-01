@@ -281,7 +281,11 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
                 // an instance the Update pre-read already hooked is not hooked again.
                 if (serviceProvider?.GetService<IPersistentObjectInterceptorPipeline>() is { } materializePipeline)
                     await materializePipeline.RunAfterMaterializeAsync(typeof(T), session, [existing], Abstractions.Interceptors.MaterializeReason.SaveReload);
-                await ShieldProtectedAttributesAsync(obj, existing);
+                // Through the framework, IDatabaseAccess already dropped every attribute the caller may
+                // not write (contributions M2c-2b, IAttributeWriteShield). Constructed by hand, outside
+                // it, the class's own per-row hook is all there is to honour.
+                if (serviceProvider is null)
+                    await ShieldProtectedAttributesAsync(obj, existing);
                 await entityMapper.PopulateObjectValuesAsync(obj, existing, session);
                 entity = existing;
             }
@@ -533,8 +537,11 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// updates. Null or empty means nothing is redacted — the default, costing nothing.
     ///
     /// A dotted name ("Jobs.Salary") redacts a column inside an AsDetail attribute's embedded
-    /// rows — the one place a row filter can't reach, since embedded rows aren't rows. Write-back
-    /// shielding applies to top-level names; dotted names are read-side redaction only.
+    /// rows — the one place a row filter can't reach, since embedded rows aren't rows. A protected
+    /// attribute is blanked indistinguishably from an empty one (no visibility flag, no marker), and
+    /// its posted value is dropped on save — dotted names included (contributions M2c-2b): asked with
+    /// <c>"Edit"</c> it is always dropped, asked with <c>"Read"</c> it is dropped unless the client
+    /// marked it changed, so posting the blank back never wipes the stored value.
     ///
     /// The canonical case: a secret only managers of this row may view —
     /// <c>CanManage(entity) ? null : ["BadgeToken"]</c>. Redaction is per row and per caller;
@@ -545,11 +552,13 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         => Task.FromResult<IReadOnlyCollection<string>?>(null);
 
     /// <summary>
-    /// Write-back safety for redaction: a client that received a redacted (nulled) attribute and
-    /// submits the form back would silently clobber the stored secret — and a malicious client
-    /// could overwrite it deliberately. Before the merge, protected attributes get the existing
-    /// entity's current value restored, so the merge writes the secret back to itself. Skipped
-    /// for the system context (sync replicates full values).
+    /// Write-back safety for redaction when the class is constructed by hand, outside the framework
+    /// (through it, <c>IAttributeWriteShield</c> in <c>IDatabaseAccess</c> covers every attribute kind
+    /// and static rights too): a client that received a blanked attribute and submits the form back
+    /// would silently clobber the stored secret — and a malicious client could overwrite it
+    /// deliberately. Protected top-level attributes are dropped from the posted object before the
+    /// merge, so the merge leaves the stored value alone (and nothing echoes it back). Skipped for the
+    /// system context (sync replicates full values).
     /// </summary>
     private async Task ShieldProtectedAttributesAsync(PersistentObject obj, T existing)
     {
@@ -560,19 +569,8 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         if (protectedNames is not { Count: > 0 })
             return;
 
-        foreach (var name in protectedNames)
-        {
-            if (name.Contains('.'))
-                continue; // AsDetail child columns: read-side redaction only (documented).
-
-            var attribute = obj.Attributes.FirstOrDefault(a => a.Name == name);
-            var property = typeof(T).GetProperty(name);
-            if (attribute is null || property is null || !property.CanRead)
-                continue;
-
-            attribute.Value = property.GetValue(existing);
-            attribute.IsValueChanged = false;
-        }
+        var drop = new HashSet<string>(protectedNames, StringComparer.OrdinalIgnoreCase);
+        obj.RetainAttributes(a => !drop.Contains(a.Name));
     }
 
     /// <inheritdoc />

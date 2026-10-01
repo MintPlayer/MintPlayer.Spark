@@ -649,9 +649,15 @@ internal partial class RowSecurity : IRowSecurity
         return baseDocuments;
     }
 
-    /// <summary>Redact = value gone, attribute invisible — not omitted. A dotted name reaches
-    /// into an AsDetail attribute's embedded rows ("Jobs.Salary").</summary>
-    private static void RedactAttribute(Abstractions.PersistentObject po, string name)
+    /// <summary>
+    /// Redact = a plain empty value, indistinguishable from "no value" (PRD §5 Q14, contributions
+    /// M2c-2b): the attribute stays, its flags stay exactly as the model sets them — no
+    /// <c>IsVisible</c> flip, no marker — so its JSON is the JSON of a genuinely empty attribute and a
+    /// caller cannot tell "protected on this row" from "empty on this row". Not omitted either: a
+    /// per-row absence would itself be the signal. A dotted name reaches into an AsDetail attribute's
+    /// embedded rows ("Jobs.Salary").
+    /// </summary>
+    internal static void RedactAttribute(Abstractions.PersistentObject po, string name)
     {
         var dot = name.IndexOf('.');
         if (dot < 0)
@@ -663,7 +669,6 @@ internal partial class RowSecurity : IRowSecurity
             attribute.Value = null;
             attribute.Breadcrumb = null;
             attribute.Breadcrumbs = null;
-            attribute.IsVisible = false;
             if (attribute is Abstractions.PersistentObjectAttributeAsDetail detail)
             {
                 detail.Object = null;

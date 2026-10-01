@@ -48,6 +48,7 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint
     [Inject] private readonly IRefreshInvoker refreshInvoker;
     [Inject] private readonly ISparkTypeResolver typeResolver;
     [Inject] private readonly IAttributeRightsEnforcement attributeRights;
+    [Inject] private readonly IRowSecurity rowSecurity;
     // The request-scoped session — the same instance IDatabaseAccess uses, so a scope opened here
     // covers the row-gated load below as well as anything the hook does.
     [Inject] private readonly Raven.Client.Documents.Session.IAsyncDocumentSession session;
@@ -70,7 +71,7 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint
         }
 
         var isNew = string.IsNullOrEmpty(submitted.Id);
-        var typeName = entityType.ClrType?.Split('.').Last() ?? entityType.Name;
+        var typeName = entityType.Name;
 
         // Vidyano maps a refresh onto New for a new object and Read for an existing one, and that is
         // the right vocabulary: a refresh reveals what the form would look like, which is a read of
@@ -96,6 +97,7 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint
         using var _ = session.IgnoreMaxRequests(RefreshRequestBudget, logger);
 
         Po? existing = null;
+        IReadOnlyCollection<string> redactedOnLoad = [];
         if (!isNew)
         {
             // Row security for an existing row. The load is the gate: GetPersistentObjectAsync runs
@@ -118,6 +120,8 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint
             {
                 return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
             }
+
+            redactedOnLoad = await RedactedOnLoadAsync(entityType, existing.Id ?? submitted.Id!);
         }
 
         var effective = effectiveObjectFactory.Build(entityType, submitted);
@@ -145,7 +149,7 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint
             // IsVisible — hands back what the load refused. The root path is already protected by
             // ApplyRedactionOf below; this is the same intersection at the granularity redaction
             // actually has.
-            if (existing is not null && IsRedacted(existing, entityType, nested.Attribute))
+            if (redactedOnLoad.Contains(nested.Attribute, StringComparer.Ordinal))
                 return ClientResult.Envelope(clientAccessor, new { errors = new[] { "Not found." } }, StatusCodes.Status404NotFound);
 
             // The same answer when a static attribute right removes the owning attribute (M2c-2a):
@@ -161,10 +165,7 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint
 
         await InvokeFor(entityType, effective, request.TriggeredBy, isNew, httpContext);
 
-        if (existing is not null)
-        {
-            ApplyRedactionOf(existing, entityType, effective);
-        }
+        ApplyRedactionOf(redactedOnLoad, effective);
 
         // Static attribute rights (M2c-2a): after the hook, so a value a server hook wrote onto a
         // Read-denied attribute is removed with it rather than shipped.
@@ -279,55 +280,39 @@ internal sealed partial class RefreshPersistentObject : IPostEndpoint
     /// Without this, refresh is a way to read around <c>GetProtectedAttributesAsync</c>.
     /// </para>
     /// <para>
-    /// A redacted attribute is identified as the delta between the model and the load: the model
-    /// declares it visible and the loaded object does not. That is exact, and it costs nothing —
-    /// the alternative, calling <c>RedactAsync</c> again, needs the row entity and so a second
-    /// database round trip on the hottest endpoint in <c>/spark/po</c>.
+    /// The redacted names are asked of the per-row hook directly, on the row the load just read (a
+    /// session identity-map hit, not a second round trip). They used to be read off the load as the
+    /// delta between the model's <c>IsVisible</c> and the loaded object's, but redaction no longer
+    /// flips <c>IsVisible</c> (contributions M2c-2b: blanking is indistinguishable from empty), so
+    /// there is no delta left to read.
     /// </para>
     /// <para>
     /// Applied <em>after</em> the hook, and as an intersection rather than an assignment: a hook may
     /// legitimately hide an attribute, and must never be able to reveal one.
     /// </para>
     /// </summary>
-    /// <summary>
-    /// Whether the load withheld <paramref name="attributeName"/> — the same delta
-    /// <see cref="ApplyRedactionOf"/> computes, asked about one attribute.
-    /// </summary>
-    private static bool IsRedacted(Po existing, EntityTypeDefinition entityType, string attributeName)
+    private static void ApplyRedactionOf(IReadOnlyCollection<string> redacted, Po effective)
     {
-        var declaredVisible = entityType.Attributes
-            .Any(a => a.IsVisible && string.Equals(a.Name, attributeName, StringComparison.Ordinal));
-
-        if (!declaredVisible)
-            return false;
-
-        return existing.Attributes
-            .Any(a => !a.IsVisible && string.Equals(a.Name, attributeName, StringComparison.Ordinal));
+        foreach (var name in redacted)
+            RowSecurity.RedactAttribute(effective, name);
     }
 
-    private static void ApplyRedactionOf(Po existing, EntityTypeDefinition entityType, Po effective)
+    /// <summary>
+    /// What the per-row hook protects for <c>Read</c> on the stored row — the names the load blanked.
+    /// Empty for a type without the hook (and in system context); every attribute when the row cannot
+    /// be loaded to ask (unverifiable is not shown, as in redaction).
+    /// </summary>
+    private async Task<IReadOnlyCollection<string>> RedactedOnLoadAsync(EntityTypeDefinition entityType, string id)
     {
-        var declaredVisible = entityType.Attributes
-            .Where(a => a.IsVisible)
-            .Select(a => a.Name)
-            .ToHashSet(StringComparer.Ordinal);
+        var clrType = typeResolver.Resolve(entityType.ClrType);
+        if (clrType is null || !rowSecurity.HasProtectedAttributesHook(clrType))
+            return [];
 
-        var redacted = existing.Attributes
-            .Where(a => !a.IsVisible && declaredVisible.Contains(a.Name))
-            .Select(a => a.Name)
-            .ToHashSet(StringComparer.Ordinal);
+        var documents = await RowSecurity.LoadBaseDocumentsAsync(session, clrType, [id], CancellationToken.None);
+        if (!documents.TryGetValue(id, out var document))
+            return [.. entityType.Attributes.Select(a => a.Name)];
 
-        if (redacted.Count == 0)
-            return;
-
-        foreach (var attribute in effective.Attributes)
-        {
-            if (!redacted.Contains(attribute.Name))
-                continue;
-
-            attribute.Value = null;
-            attribute.IsVisible = false;
-        }
+        return await rowSecurity.GetProtectedAttributesAsync(clrType, "Read", document) ?? [];
     }
 }
 

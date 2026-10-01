@@ -137,8 +137,44 @@ queryable column remains searchable, sortable and filterable, for the reason giv
 [below](#️-redacting-an-attribute-is-not-enough-also-set-canfilter-false). Use a static
 attribute right when the rule does not depend on the row.
 
-The write side — the save shield for every attribute kind, the create path and the save response —
-lands with the next step of #460 contributions (M2c-2b).
+### What a denied attribute does (write side)
+
+A save never refuses because of an attribute right — a refusal would tell the caller which attributes
+exist and which they may not write. Instead the server **drops** every posted attribute the caller may
+not write, before anything maps, hooks or intercepts the object (`OnBeforeSaveAsync`, the
+before-save interceptors and an `OnSaveAsync` override all see the shielded object):
+
+| Save | Dropped | What the entity keeps |
+|---|---|---|
+| Update | `Edit`-denied attributes of the type; inside AsDetail rows, the row type's `Edit`-denied attributes on a row that claims a stored row by its key, its `New`-denied ones on any other row; what the per-row hook protects on the stored row (dotted names reach into rows: `Jobs.Salary`) | The stored value — of every kind: scalars, references and reference arrays, TranslatedStrings, whole AsDetail collections, embedded objects, and each stored row's own value |
+| Create | `New`-denied attributes (rows: the row type's `New` denials) | The CLR default or the field initializer |
+
+`isValueChanged` does not matter for a refused attribute: it is dropped however the client flags it.
+The per-row hook is asked on the **stored** row: what it protects for `Edit` is always dropped; what it
+protects only for `Read` is dropped unless the client marked it changed — the caller was shown a blank,
+so posting the blank back never wipes the value, while a deliberate new value for a write-only field
+still lands. Adding and removing AsDetail rows stays governed by the row type's type-level `New` and
+`Delete` rights, and editing an existing row by its `Edit` right (an attribute grant on the row type
+never unlocks it). System context (sync, replication) is not shielded.
+
+**The save response is re-presented.** `po/create` and `po/update` answer with the saved row exactly
+as `po/load` presents it to that caller — row gate, per-row blanking, breadcrumbs, disabled actions,
+`Read`-denied attributes removed and `Edit`-denied ones read-only, and the fresh etag — never the
+posted object. (The old shield restored a protected stored value into the posted object, and the
+response echoed it.) A caller who may save but not read the row gets the saved object back with its
+`Read`-denied attributes removed: its id and etag, and only values it posted.
+
+**A History revert is partial.** It restores only attributes the caller may edit. When an
+`Edit`-denied attribute holds a different value in the revision, the revert still succeeds, keeps the
+current value there, and the response carries a warning notification ("Reverted partially: …") in the
+envelope's `operations` — the channel every Spark client already shows. Per-row protection never
+triggers the warning: whether a row protects an attribute is what that hook hides.
+
+**The per-row hook blanks indistinguishably.** A protected attribute keeps its place and its model
+flags; only its value (and a reference's breadcrumb, an AsDetail attribute's rows) is emptied. There is
+no `isVisible: false` and no marker, so its JSON is byte-identical to a genuinely empty attribute's —
+the form renders it as an empty field. A persistent object in a **retry prompt** is presented the same
+way (static removal, then per-row blanking when it is a stored row).
 
 ---
 

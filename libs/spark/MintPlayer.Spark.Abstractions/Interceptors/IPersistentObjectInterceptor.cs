@@ -166,8 +166,21 @@ public sealed class SaveContext : PersistentObjectInterceptorContext
     /// <summary><see cref="PersistentObjectOperation.Save"/>, <see cref="PersistentObjectOperation.New"/>, or the explicit kind the caller passed (Revert, Restore, Sync).</summary>
     public required PersistentObjectOperation Operation { get; init; }
 
-    /// <summary>The object as the client submitted it.</summary>
+    /// <summary>
+    /// The object as the client submitted it, minus every attribute the caller may not write
+    /// (contributions M2c-2b): those were dropped before any hook or interceptor runs, so an absent
+    /// attribute keeps its stored value (its default on a create).
+    /// </summary>
     public required PersistentObject PersistentObject { get; init; }
+
+    /// <summary>
+    /// The attributes a static attribute right kept out of this save (<c>Edit</c>, or <c>New</c> on a
+    /// create or a new AsDetail row), as paths — <c>Title</c>, or <c>Lines.Text</c> for an AsDetail
+    /// row attribute. Empty in system context. Per-row protection
+    /// (<c>GetProtectedAttributesAsync</c>) is deliberately not listed: whether a row protects an
+    /// attribute is what that hook hides. History uses this to report a partial revert.
+    /// </summary>
+    public IReadOnlyList<string> UnwritableAttributes { get; init; } = [];
 
     /// <summary>The stored entity before this save, loaded from a separate session (so it is not the instance being saved). Null for a creation.</summary>
     public object? Before { get; init; }

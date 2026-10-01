@@ -294,6 +294,45 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         (await LoadAsync<HiNote>(note.Id!))!.Title.Should().Be("frozen");
     }
 
+    /// <summary>
+    /// W4 (contributions M2c-2b): an attribute the caller may not edit is not reverted, the rest is,
+    /// and the response says the revert was partial — a warning in the envelope's operations. A revert
+    /// that the denial does not affect says nothing.
+    /// </summary>
+    [Fact]
+    public async Task A_revert_restores_only_what_the_caller_may_edit_and_reports_it_was_partial()
+    {
+        var host = await StartAsync(security: SparkTestSecurity.Permissive.Granting("Edit/HiNote").Denying("Edit/HiNote/Secret"));
+        var note = await SeedNoteAsync("v1", secret: "s1");
+        var v1 = await CurrentChangeVectorAsync(note.Id!);
+        await UpdateRawAsync(note.Id!, n => { n.Title = "v2"; n.Secret = "s2"; });
+        var v2 = await CurrentChangeVectorAsync(note.Id!);
+
+        var (status, body) = await host.SendAsync("/spark/po/revert", Wire.Typed(NoteTypeId, new { changeVector = v1 }, note.Id));
+
+        status.Should().Be(HttpStatusCode.OK);
+        var reverted = await LoadAsync<HiNote>(note.Id!);
+        reverted!.Title.Should().Be("v1", "Title may be edited, so it reverts");
+        reverted.Secret.Should().Be("s2", "Secret may not be edited, so it keeps its current value");
+        Notifications(body).Should().ContainSingle(m => m.Contains("partially"));
+
+        // Back to v2's Title: Secret is s2 in both, so nothing was held back.
+        await UpdateRawAsync(note.Id!, n => n.Title = "v3");
+        var (again, quiet) = await host.SendAsync("/spark/po/revert", Wire.Typed(NoteTypeId, new { changeVector = v2 }, note.Id));
+
+        again.Should().Be(HttpStatusCode.OK);
+        (await LoadAsync<HiNote>(note.Id!))!.Title.Should().Be("v2");
+        Notifications(quiet).Should().BeEmpty("the denied attribute already held the revision's value");
+    }
+
+    private static IEnumerable<string> Notifications(JsonElement envelope)
+        => envelope.TryGetProperty("operations", out var operations) && operations.ValueKind == JsonValueKind.Array
+            ? operations.EnumerateArray()
+                .Where(o => o.TryGetProperty("type", out var type) && type.GetString() == "notify")
+                .Select(o => o.GetProperty("message").GetString() ?? "")
+                .ToList()
+            : [];
+
     [Fact]
     public async Task Revert_is_judged_by_the_Actions_classs_Edit_rule()
     {

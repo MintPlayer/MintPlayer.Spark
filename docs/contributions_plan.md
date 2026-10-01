@@ -84,11 +84,11 @@ Requirements, decisions (C1–C10, T1–T7), spikes and open questions are in
 ### M2c — Attribute-level rights in core (PRD §5 Q11–Q15) and the audit's leak fixes
 Split into two sequential steps: **M2c-1** foundation (syntax, validator, SPARK014, effective table, stale-deny warning) and **M2c-2** enforcement plus leak fixes (red tests first).
 Order: reproduce the existing leaks first (red tests), then build.
-- [~] **Red tests** for leaks 1–4 and 6–7 in the PRD list: search oracle on a hidden string, Update
+- [x] **Red tests** for leaks 1–4 and 6–7 in the PRD list: search oracle on a hidden string, Update
   echo of a protected value, breadcrumb token leak (own row and reference), sort/filter/distinct/count
   oracles, the shield on AsDetail/nested attributes, the create path.
   - Read side done (M2c-2a): leaks 1, 3 and 4 in `AttributeRightsEnforcementTests` (15 red → green).
-    Leaks 2, 6 and 7 are write side (M2c-2b).
+    Leaks 2, 6 and 7 are write side: done in M2c-2b (`AttributeWriteEnforcementTests`, red → green).
 - [x] **Syntax:** parse `{verb}/{Type}/{Attr}` everywhere rights are parsed. The combined verbs expand
   as prefixes. Custom-action rights with a third segment are refused.
   - The runtime validator refuses an unknown type or attribute at startup.
@@ -134,26 +134,45 @@ Order: reproduce the existing leaks first (red tests), then build.
     **Search narrowed** to attributes on the query surface (`ShowedOn.Query`, not Query-denied;
     `TranslatedString` `_lang` fan-out and `{Name}Search` companions kept), pushdown and in-memory
     fallback alike.
-- [ ] **Enforcement — write:**
+- [x] **Enforcement — write:**
   - a shield covering every attribute kind (scalars, references, multi-references, AsDetail,
     nested), driven by the effective table and the per-row hook
   - create drops posted non-New values
   - the Update response is re-presented (fixes the echo)
   - a History revert is partial and reported
-- [~] **Per-row hook:** blanking indistinguishable from empty (drop the `IsVisible` flip), plus
+  - As built (M2c-2b): `IAttributeWriteShield` (scoped), called by `IDatabaseAccess.SavePersistentObjectAsync`
+    after every gate and before the interceptors, drops from the posted object every attribute the
+    caller may not write: static `Edit` (`New` on a create) denials of the type, AsDetail rows by the
+    row type's rights (`Edit` for a row claiming a stored row by key, `New` otherwise, recursing
+    into embedded objects), and the per-row hook on the stored row (`Edit` always, `Read`-only unless
+    `isValueChanged`; dotted names relative per AsDetail level). Dropped rather than restored: the
+    mapper writes only present attributes, so the stored value (or the CLR default) stays for every
+    kind without converting a stored value back to the wire — and no hook, interceptor or
+    `OnSaveAsync` override sees a tampered value. The base `OnSaveAsync` keeps the per-row fallback
+    only when constructed by hand. Static drops reach interceptors as `SaveContext.UnwritableAttributes`;
+    History compares those paths between the revision and the entity and answers a partial revert
+    with a warning notification. `ISaveResponsePresenter` makes `po/create`/`po/update` answer with
+    the row re-read through `GetPersistentObjectAsync` plus the page-load presentation (falls back to
+    the shielded posted object, Read-denied removed, when the caller may save but not read).
+    Retry prompts are presented in the middleware's 449 path (`RetryPresentation`). Tests:
+    `AttributeWriteEnforcementTests`, `AttributeVerbMatrixTests`, `HistoryTests` (partial revert).
+- [x] **Per-row hook:** blanking indistinguishable from empty (drop the `IsVisible` flip), plus
   breadcrumb/`po.Name` token blanking for own and reference targets.
   - Token blanking done (M2c-2a): `BreadcrumbResolver` renders a token empty when a static right
     refuses it (roots under the gate's verb, references under Read, AsDetail row types under their
     owner's) or the per-row hook protects it on that document (`IRowSecurity.GetProtectedAttributesAsync`;
     projected roots judged on their base document, one batched load; missing → no field token).
     `BreadcrumbResult.DeniedTokensByType` carries the static half to `EmbeddedBreadcrumbRenderer`.
-    The `IsVisible` flip is write-side M2c-2b.
+    The `IsVisible` flip is dropped (M2c-2b): `RowSecurity.RedactAttribute` only empties the value, so a
+    blanked attribute serialises exactly like an empty one; `po/refresh` asks the hook for the names
+    instead of reading the old `IsVisible` delta; an embedded row's own breadcrumb blanks a column its
+    owner's hook protects under a dotted name (`BreadcrumbResult.BlankedTokensById`).
 - [x] **Stale-deny warning** in the analyzer and the security-posture report.
   - As built (M2c-1): SPARK024 (warning) and `SecurityPosture.Notes` (logged at Information) via
     `StaleAttributeDenials`: per (group, verb, type) with ≥1 attribute denial, the attributes no
     attribute right of that group mentions for that verb. The anonymous surface no longer lists an
     attribute grant whose type right is unreachable.
-- [ ] **Tests:**
+- [x] **Tests:**
   - a reflection-driven "every attribute kind" test (test-only)
   - a verb matrix: Query/Read/Edit/New × type/attr × allow/deny/important, with Delete and custom
     actions staying type-level

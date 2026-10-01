@@ -26,6 +26,7 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IClientAccessor clientAccessor;
+    [Inject] private readonly ISaveResponsePresenter saveResponse;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -74,7 +75,11 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint
             }
 
             var result = await databaseAccess.SavePersistentObjectAsync(obj);
-            return ClientResult.Envelope(clientAccessor, result, 200);
+
+            // Re-presented as a load presents it (contributions M2c-2b, leak 2): never the posted
+            // object, which is the client's values plus whatever the save hooks wrote into it.
+            var presented = await saveResponse.PresentAsync(entityType, result, isNew: false, httpContext.RequestAborted);
+            return ClientResult.Envelope(clientAccessor, presented, 200);
         }
         catch (SparkConcurrencyException)
         {

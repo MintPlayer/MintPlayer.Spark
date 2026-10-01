@@ -414,6 +414,15 @@ public static class SparkExtensions
                 // rides along in the same envelope, so notifications raised before the prompt are
                 // not lost.
                 var client = context.RequestServices.GetRequiredService<IClientAccessor>();
+
+                // A persistent object shown in the prompt is a presentation like any other
+                // (contributions M2c-2b): Read-denied attributes removed, Edit-denied read-only, and
+                // the per-row hook's blanking when it is a stored row.
+                var prompt = ex.PersistentObject
+                    ?? client.Operations.OfType<Abstractions.ClientOperations.RetryOperation>().FirstOrDefault()?.PersistentObject;
+                if (prompt is not null)
+                    await Services.RetryPresentation.PresentAsync(context.RequestServices, prompt, context.RequestAborted);
+
                 await ClientResult.Retry(client, ex).ExecuteAsync(context);
             }
         });
