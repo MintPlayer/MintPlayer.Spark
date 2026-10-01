@@ -18,6 +18,10 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// JWT dropped it at the next issuance while introspection kept vouching for it, for as long as the
 /// refresh token lived.
 /// </para>
+/// <para>
+/// Per case, not per class (M8 item 11): the cases disable scopes, <c>openid</c> among them, and
+/// every client in a database shares those <c>OidcScope</c> documents.
+/// </para>
 /// </summary>
 public class OidcScopeIntegrityTests : OidcTestHost
 {

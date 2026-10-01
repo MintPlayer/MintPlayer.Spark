@@ -9,10 +9,10 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// <summary>
 /// <c>/connect/token</c> — all three grants, success and refusal. Case ids refer to §T.
 /// </summary>
-public class OidcTokenSecurityTests : OidcTestHost
+public class OidcTokenSecurityTests(OidcSharedHost host) : OidcTestHost(host), IClassFixture<OidcSharedHost>
 {
     private const string Secret = "s3cret-value-for-tests";
-    private const string Email = "alice@test.local";
+    private string Email => UserEmail("alice");
 
     private Task<HttpResponseMessage> TokenAsync(Dictionary<string, string> form)
         => Client.PostAsync("/connect/token", new FormUrlEncodedContent(form));
@@ -41,7 +41,7 @@ public class OidcTokenSecurityTests : OidcTestHost
     [Fact]
     public async Task Code_redemption_issues_access_and_id_tokens()
     {
-        var app = await SeedApplicationAsync("webapp");
+        var app = await SeedApplicationAsync(ClientId("webapp"));
         await SeedUserAsync(Email);
         var code = await ObtainCodeAsync(app, Email, ["openid"]);
 
@@ -59,7 +59,7 @@ public class OidcTokenSecurityTests : OidcTestHost
     [Fact]
     public async Task Code_redemption_issues_no_refresh_token_without_offline_access()
     {
-        var app = await SeedApplicationAsync("webapp");
+        var app = await SeedApplicationAsync(ClientId("webapp"));
         await SeedUserAsync(Email);
         var code = await ObtainCodeAsync(app, Email, ["openid"]);
 
@@ -73,7 +73,7 @@ public class OidcTokenSecurityTests : OidcTestHost
     [Fact]
     public async Task Code_redemption_issues_no_id_token_without_openid()
     {
-        var app = await SeedApplicationAsync("webapp", allowedScopes: ["profile"]);
+        var app = await SeedApplicationAsync(ClientId("webapp"), allowedScopes: ["profile"]);
         await SeedUserAsync(Email);
         var code = await ObtainCodeAsync(app, Email, ["profile"]);
 
@@ -88,7 +88,7 @@ public class OidcTokenSecurityTests : OidcTestHost
     public async Task Code_redemption_succeeds_with_a_correct_pkce_verifier()
     {
         var (verifier, challenge) = Pkce();
-        var app = await SeedApplicationAsync("webapp", requirePkce: true);
+        var app = await SeedApplicationAsync(ClientId("webapp"), requirePkce: true);
         await SeedUserAsync(Email);
         var code = await ObtainCodeAsync(app, Email, ["openid"], challenge);
 
@@ -103,8 +103,8 @@ public class OidcTokenSecurityTests : OidcTestHost
     [Fact]
     public async Task Code_cannot_be_redeemed_by_a_different_client()
     {
-        var owner = await SeedApplicationAsync("webapp");
-        var other = await SeedApplicationAsync("otherapp");
+        var owner = await SeedApplicationAsync(ClientId("webapp"));
+        var other = await SeedApplicationAsync(ClientId("otherapp"));
         await SeedUserAsync(Email);
         var code = await ObtainCodeAsync(owner, Email, ["openid"]);
 
@@ -125,20 +125,28 @@ public class OidcTokenSecurityTests : OidcTestHost
     [Fact]
     public async Task Replayed_code_is_refused_and_revokes_the_issued_tokens()
     {
-        var app = await SeedApplicationAsync("webapp",
+        var app = await SeedApplicationAsync(ClientId("webapp"),
             allowedScopes: ["openid", "offline_access"],
             grantTypes: ["authorization_code", "refresh_token"]);
         await SeedUserAsync(Email);
         var code = await ObtainCodeAsync(app, Email, ["openid", "offline_access"]);
 
         (await RedeemAsync(app, code)).StatusCode.Should().Be(HttpStatusCode.OK);
+
+        // The teardown finds the issued tokens through an index, best-effort by design (see
+        // Token.RevokeAuthorizationChainAsync), so a token issued moments before the replay may be
+        // missed. The wait pins what this case is about: a chain the index can see is torn down.
+        // On a fresh database per case the index had almost nothing to catch up on; on the class's
+        // shared database it carries every earlier case's tokens, and the race showed (1 failure in
+        // a full run, M8 item 11).
+        await Store.WaitForIndexingAsync();
         var replay = await RedeemAsync(app, code);
 
         replay.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
         await Store.WaitForIndexingAsync();
         using var session = Store.OpenAsyncSession();
-        var issued = await session.Query<OidcToken>().Where(t => t.Type != "authorization_code").ToListAsync();
+        var issued = (await CaseTokensAsync(session)).Where(t => t.Type != "authorization_code").ToList();
         issued.Should().NotBeEmpty();
         issued.Should().OnlyContain(t => t.Status == "revoked",
             "a code presented twice means the value leaked, so everything derived from it is suspect");
@@ -150,7 +158,7 @@ public class OidcTokenSecurityTests : OidcTestHost
     [InlineData("wrong-secret")]
     public async Task Code_redemption_requires_the_right_client_secret(string? secret)
     {
-        var app = await SeedApplicationAsync("webapp");
+        var app = await SeedApplicationAsync(ClientId("webapp"));
         await SeedUserAsync(Email);
         var code = await ObtainCodeAsync(app, Email, ["openid"]);
 
@@ -164,7 +172,7 @@ public class OidcTokenSecurityTests : OidcTestHost
     [Fact]
     public async Task A_client_type_with_whitespace_still_requires_authentication()
     {
-        var app = await SeedApplicationAsync("webapp", secret: null, clientType: " public");
+        var app = await SeedApplicationAsync(ClientId("webapp"), secret: null, clientType: " public");
         await SeedUserAsync(Email);
         var code = await ObtainCodeAsync(app, Email, ["openid"]);
 
@@ -178,7 +186,7 @@ public class OidcTokenSecurityTests : OidcTestHost
     [Fact]
     public async Task A_public_client_with_no_secrets_may_omit_the_secret()
     {
-        var app = await SeedApplicationAsync("webapp", secret: null, clientType: "public");
+        var app = await SeedApplicationAsync(ClientId("webapp"), secret: null, clientType: "public");
         await SeedUserAsync(Email);
         var code = await ObtainCodeAsync(app, Email, ["openid"]);
 
@@ -192,7 +200,7 @@ public class OidcTokenSecurityTests : OidcTestHost
     public async Task Code_redemption_rejects_a_missing_or_wrong_verifier()
     {
         var (_, challenge) = Pkce();
-        var app = await SeedApplicationAsync("webapp", requirePkce: true);
+        var app = await SeedApplicationAsync(ClientId("webapp"), requirePkce: true);
         await SeedUserAsync(Email);
 
         var missing = await RedeemAsync(app, await ObtainCodeAsync(app, Email, ["openid"], challenge));
@@ -206,7 +214,7 @@ public class OidcTokenSecurityTests : OidcTestHost
     [Fact]
     public async Task Code_redemption_rejects_a_mismatched_redirect_uri()
     {
-        var app = await SeedApplicationAsync("webapp", redirectUris: ["https://webapp.test/cb", "https://webapp.test/other"]);
+        var app = await SeedApplicationAsync(ClientId("webapp"), redirectUris: ["https://webapp.test/cb", "https://webapp.test/other"]);
         await SeedUserAsync(Email);
         var code = await ObtainCodeAsync(app, Email, ["openid"], redirectUri: "https://webapp.test/cb");
 
@@ -220,7 +228,7 @@ public class OidcTokenSecurityTests : OidcTestHost
     [Fact]
     public async Task Code_redemption_rejects_an_expired_code()
     {
-        var app = await SeedApplicationAsync("webapp");
+        var app = await SeedApplicationAsync(ClientId("webapp"));
         await SeedUserAsync(Email);
         var code = await ObtainCodeAsync(app, Email, ["openid"]);
 
@@ -241,7 +249,7 @@ public class OidcTokenSecurityTests : OidcTestHost
     [Fact]
     public async Task Token_endpoint_rejects_malformed_requests()
     {
-        await SeedApplicationAsync("webapp");
+        await SeedApplicationAsync(ClientId("webapp"));
 
         var unsupported = await TokenAsync(new Dictionary<string, string> { ["grant_type"] = "password" });
         (await BodyAsync(unsupported)).GetProperty("error").GetString().Should().Be("unsupported_grant_type");
@@ -268,7 +276,7 @@ public class OidcTokenSecurityTests : OidcTestHost
     [Fact]
     public async Task Refresh_rotates_the_token_and_retires_the_old_one()
     {
-        var app = await SeedApplicationAsync("webapp",
+        var app = await SeedApplicationAsync(ClientId("webapp"),
             allowedScopes: ["openid", "offline_access"], grantTypes: ["authorization_code", "refresh_token"]);
         var refresh = await ObtainRefreshTokenAsync(app);
 
@@ -289,7 +297,7 @@ public class OidcTokenSecurityTests : OidcTestHost
     [Fact]
     public async Task Reused_refresh_token_is_refused_and_revokes_the_chain()
     {
-        var app = await SeedApplicationAsync("webapp",
+        var app = await SeedApplicationAsync(ClientId("webapp"),
             allowedScopes: ["openid", "offline_access"], grantTypes: ["authorization_code", "refresh_token"]);
         var refresh = await ObtainRefreshTokenAsync(app);
 
@@ -302,6 +310,10 @@ public class OidcTokenSecurityTests : OidcTestHost
         };
 
         var rotated = (await BodyAsync(await TokenAsync(form))).GetProperty("refresh_token").GetString()!;
+
+        // The successor is found through an index, best-effort by design — see the same wait in
+        // Replayed_code_is_refused_and_revokes_the_issued_tokens.
+        await Store.WaitForIndexingAsync();
         var reuse = await TokenAsync(form);
 
         reuse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -322,7 +334,7 @@ public class OidcTokenSecurityTests : OidcTestHost
     [Fact]
     public async Task Refresh_grant_is_refused_for_a_client_not_registered_for_it()
     {
-        var issuing = await SeedApplicationAsync("webapp",
+        var issuing = await SeedApplicationAsync(ClientId("webapp"),
             allowedScopes: ["openid", "offline_access"], grantTypes: ["authorization_code", "refresh_token"]);
         var refresh = await ObtainRefreshTokenAsync(issuing);
 
@@ -351,7 +363,7 @@ public class OidcTokenSecurityTests : OidcTestHost
     [Fact]
     public async Task Client_credentials_issues_an_access_token_only()
     {
-        var app = await SeedApplicationAsync("machine",
+        var app = await SeedApplicationAsync(ClientId("machine"),
             allowedScopes: ["api.read", "api.write"], grantTypes: ["client_credentials"]);
 
         var response = await TokenAsync(new Dictionary<string, string>
@@ -373,7 +385,7 @@ public class OidcTokenSecurityTests : OidcTestHost
     [Fact]
     public async Task Client_credentials_requires_an_explicit_scope()
     {
-        var app = await SeedApplicationAsync("machine",
+        var app = await SeedApplicationAsync(ClientId("machine"),
             allowedScopes: ["api.read", "api.admin"], grantTypes: ["client_credentials"]);
 
         var response = await TokenAsync(new Dictionary<string, string>
@@ -391,7 +403,7 @@ public class OidcTokenSecurityTests : OidcTestHost
     [Fact]
     public async Task Client_credentials_rejects_a_scope_outside_the_allowed_set()
     {
-        var app = await SeedApplicationAsync("machine",
+        var app = await SeedApplicationAsync(ClientId("machine"),
             allowedScopes: ["api.read"], grantTypes: ["client_credentials"]);
 
         var response = await TokenAsync(new Dictionary<string, string>
@@ -410,7 +422,7 @@ public class OidcTokenSecurityTests : OidcTestHost
     [Fact]
     public async Task Client_credentials_is_refused_for_a_client_not_registered_for_it()
     {
-        var app = await SeedApplicationAsync("webapp", grantTypes: ["authorization_code"]);
+        var app = await SeedApplicationAsync(ClientId("webapp"), grantTypes: ["authorization_code"]);
 
         var response = await TokenAsync(new Dictionary<string, string>
         {
@@ -428,7 +440,7 @@ public class OidcTokenSecurityTests : OidcTestHost
     [Fact]
     public async Task An_expired_client_secret_is_refused()
     {
-        var app = await SeedApplicationAsync("machine",
+        var app = await SeedApplicationAsync(ClientId("machine"),
             allowedScopes: ["api.read"], grantTypes: ["client_credentials"]);
 
         using (var session = Store.OpenAsyncSession())
@@ -453,7 +465,7 @@ public class OidcTokenSecurityTests : OidcTestHost
     [Fact]
     public async Task Either_secret_authenticates_during_rotation()
     {
-        var app = await SeedApplicationAsync("machine",
+        var app = await SeedApplicationAsync(ClientId("machine"),
             allowedScopes: ["api.read"], grantTypes: ["client_credentials"]);
 
         using (var session = Store.OpenAsyncSession())

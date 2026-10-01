@@ -11,10 +11,10 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// grant, missing parameters, unknown credentials, and a user who disappears between issuance
 /// and redemption.
 /// </summary>
-public class OidcTokenEndpointGuardTests : OidcTestHost
+public class OidcTokenEndpointGuardTests(OidcSharedHost host) : OidcTestHost(host), IClassFixture<OidcSharedHost>
 {
     private const string Secret = "s3cret-value-for-tests";
-    private const string Email = "grace@test.local";
+    private string Email => UserEmail("grace");
 
     private Task<HttpResponseMessage> TokenAsync(Dictionary<string, string> form)
         => Client.PostAsync("/connect/token", new FormUrlEncodedContent(form));
@@ -24,12 +24,12 @@ public class OidcTokenEndpointGuardTests : OidcTestHost
 
     private async Task<(OidcApplication WebApp, OidcApplication Machine)> SeedClientsAsync()
     {
-        var webapp = await SeedApplicationAsync("webapp",
+        var webapp = await SeedApplicationAsync(ClientId("webapp"),
             allowedScopes: ["openid", "profile", "offline_access"],
             grantTypes: ["authorization_code", "refresh_token"]);
-        var machine = await SeedApplicationAsync("machine",
+        var machine = await SeedApplicationAsync(ClientId("machine"),
             allowedScopes: ["api.read"], grantTypes: ["client_credentials"]);
-        await SeedApplicationAsync("disabled",
+        await SeedApplicationAsync(ClientId("disabled"),
             grantTypes: ["authorization_code", "refresh_token", "client_credentials"], enabled: false);
         return (webapp, machine);
     }
@@ -57,14 +57,15 @@ public class OidcTokenEndpointGuardTests : OidcTestHost
     {
         await SeedClientsAsync();
 
+        // The rows name clients unscoped; SeedClientsAsync seeded them through ClientId(...).
         var form = new Dictionary<string, string>
         {
             ["grant_type"] = grantType,
-            ["client_id"] = clientId,
+            ["client_id"] = ClientId(clientId),
         };
         if (secret != null) form["client_secret"] = secret;
         if (parameter != null) form[parameter] = value!;
-        if (grantType == "authorization_code") form["redirect_uri"] = "https://webapp.test/cb";
+        if (grantType == "authorization_code") form["redirect_uri"] = $"https://{ClientId("webapp")}.test/cb";
 
         var response = await TokenAsync(form);
 
@@ -155,7 +156,7 @@ public class OidcTokenEndpointGuardTests : OidcTestHost
     public async Task Another_clients_refresh_token_is_refused()
     {
         var (webapp, _) = await SeedClientsAsync();
-        var other = await SeedApplicationAsync("other", grantTypes: ["authorization_code", "refresh_token"]);
+        var other = await SeedApplicationAsync(ClientId("other"), grantTypes: ["authorization_code", "refresh_token"]);
         var user = await SeedUserAsync(Email);
         var refresh = await SeedRefreshTokenAsync(other, user.Id!);
 

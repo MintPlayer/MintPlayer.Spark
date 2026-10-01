@@ -9,7 +9,7 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// <c>/connect/introspect</c> — caller authentication and, above all, token <em>ownership</em>.
 /// Case ids refer to docs/idp-e2e-test-matrix.md §R.
 /// </summary>
-public class OidcIntrospectionSecurityTests : OidcTestHost
+public class OidcIntrospectionSecurityTests(OidcSharedHost host) : OidcTestHost(host), IClassFixture<OidcSharedHost>
 {
     private async Task<string> SeedRefreshTokenAsync(OidcApplication app, string subject, string[]? scopes = null)
     {
@@ -30,10 +30,11 @@ public class OidcIntrospectionSecurityTests : OidcTestHost
         return value;
     }
 
+    // clientId is the unscoped name the case seeded through ClientId(...), e.g. "resource-a".
     private Task<HttpResponseMessage> IntrospectAsync(string clientId, string secret, string token)
         => Client.PostAsync("/connect/introspect", new FormUrlEncodedContent(new Dictionary<string, string>
         {
-            ["client_id"] = clientId,
+            ["client_id"] = ClientId(clientId),
             ["client_secret"] = secret,
             ["token"] = token,
         }));
@@ -47,7 +48,7 @@ public class OidcIntrospectionSecurityTests : OidcTestHost
     [Fact]
     public async Task Introspect_reports_its_own_valid_refresh_token_active()
     {
-        var app = await SeedApplicationAsync("resource-a");
+        var app = await SeedApplicationAsync(ClientId("resource-a"));
         var token = await SeedRefreshTokenAsync(app, "SparkUsers/alice");
 
         var body = await BodyAsync(await IntrospectAsync("resource-a", Secret, token));
@@ -63,8 +64,8 @@ public class OidcIntrospectionSecurityTests : OidcTestHost
     [Fact]
     public async Task Introspect_refuses_another_clients_refresh_token()
     {
-        var owner = await SeedApplicationAsync("resource-a");
-        await SeedApplicationAsync("resource-b");
+        var owner = await SeedApplicationAsync(ClientId("resource-a"));
+        await SeedApplicationAsync(ClientId("resource-b"));
         var token = await SeedRefreshTokenAsync(owner, "SparkUsers/alice", ["openid", "profile", "billing"]);
 
         var response = await IntrospectAsync("resource-b", Secret, token);
@@ -83,8 +84,8 @@ public class OidcIntrospectionSecurityTests : OidcTestHost
     [Fact]
     public async Task Introspect_cannot_distinguish_not_yours_from_never_issued()
     {
-        var owner = await SeedApplicationAsync("resource-a");
-        await SeedApplicationAsync("resource-b");
+        var owner = await SeedApplicationAsync(ClientId("resource-a"));
+        await SeedApplicationAsync(ClientId("resource-b"));
         var foreignToken = await SeedRefreshTokenAsync(owner, "SparkUsers/alice");
 
         var foreign = await (await IntrospectAsync("resource-b", Secret, foreignToken)).Content.ReadAsStringAsync();
@@ -105,7 +106,7 @@ public class OidcIntrospectionSecurityTests : OidcTestHost
     public async Task A_resource_server_may_introspect_a_token_minted_for_its_audience()
     {
         var (app, accessToken) = await IssueAccessTokenForAudienceAsync("billing-api");
-        await SeedApplicationAsync("billing-api");
+        await SeedApplicationAsync(ClientId("billing-api"));
 
         var body = await BodyAsync(await IntrospectAsync("billing-api", Secret, accessToken));
 
@@ -119,8 +120,8 @@ public class OidcIntrospectionSecurityTests : OidcTestHost
     public async Task An_unrelated_client_still_cannot_introspect_by_audience()
     {
         var (_, accessToken) = await IssueAccessTokenForAudienceAsync("billing-api");
-        await SeedApplicationAsync("billing-api");
-        await SeedApplicationAsync("unrelated");
+        await SeedApplicationAsync(ClientId("billing-api"));
+        await SeedApplicationAsync(ClientId("unrelated"));
 
         var body = await BodyAsync(await IntrospectAsync("unrelated", Secret, accessToken));
 
@@ -133,7 +134,7 @@ public class OidcIntrospectionSecurityTests : OidcTestHost
     public async Task A_gateway_may_opt_out_of_the_audience_restriction()
     {
         var (_, accessToken) = await IssueAccessTokenForAudienceAsync("billing-api");
-        var gateway = await SeedApplicationAsync("gateway");
+        var gateway = await SeedApplicationAsync(ClientId("gateway"));
 
         using (var session = Store.OpenAsyncSession())
         {
@@ -151,17 +152,17 @@ public class OidcIntrospectionSecurityTests : OidcTestHost
     /// <summary>Issues an access token whose granted scope declares <paramref name="audience"/>.</summary>
     private async Task<(OidcApplication App, string AccessToken)> IssueAccessTokenForAudienceAsync(string audience)
     {
-        var app = await SeedApplicationAsync("webapp", allowedScopes: ["openid", "api.read"]);
+        var app = await SeedApplicationAsync(ClientId("webapp"), allowedScopes: ["openid", "api.read"]);
 
         using (var session = Store.OpenAsyncSession())
         {
             var scope = await session.LoadAsync<OidcScope>("OidcScopes/api.read");
-            scope.Audiences = [audience];
+            scope.Audiences = [ClientId(audience)];
             await session.SaveChangesAsync();
         }
 
-        await SeedUserAsync("alice@test.local");
-        var code = await ObtainCodeAsync(app, "alice@test.local", ["openid", "api.read"]);
+        await SeedUserAsync(UserEmail("alice"));
+        var code = await ObtainCodeAsync(app, UserEmail("alice"), ["openid", "api.read"]);
 
         var body = await BodyAsync(await Client.PostAsync("/connect/token", new FormUrlEncodedContent(
             new Dictionary<string, string>
@@ -190,8 +191,8 @@ public class OidcIntrospectionSecurityTests : OidcTestHost
     [Fact]
     public async Task Introspect_rejects_unknown_client_and_wrong_secret_alike()
     {
-        await SeedApplicationAsync("resource-a");
-        var token = await SeedRefreshTokenAsync(await SeedApplicationAsync("resource-c"), "SparkUsers/bob");
+        await SeedApplicationAsync(ClientId("resource-a"));
+        var token = await SeedRefreshTokenAsync(await SeedApplicationAsync(ClientId("resource-c")), "SparkUsers/bob");
 
         var unknown = await IntrospectAsync("no-such-client", Secret, token);
         var wrongSecret = await IntrospectAsync("resource-a", "wrong-secret", token);
@@ -207,7 +208,7 @@ public class OidcIntrospectionSecurityTests : OidcTestHost
     [Fact]
     public async Task Introspect_reports_a_revoked_token_inactive()
     {
-        var app = await SeedApplicationAsync("resource-a");
+        var app = await SeedApplicationAsync(ClientId("resource-a"));
         var token = await SeedRefreshTokenAsync(app, "SparkUsers/alice");
 
         using (var session = Store.OpenAsyncSession())
@@ -228,7 +229,7 @@ public class OidcIntrospectionSecurityTests : OidcTestHost
     [InlineData("completely-made-up-value")]
     public async Task Introspect_reports_unrecognised_tokens_inactive(string token)
     {
-        await SeedApplicationAsync("resource-a");
+        await SeedApplicationAsync(ClientId("resource-a"));
 
         var response = await IntrospectAsync("resource-a", Secret, token);
 

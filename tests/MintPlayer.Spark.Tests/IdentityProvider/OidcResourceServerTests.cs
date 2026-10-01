@@ -11,10 +11,10 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// Revocation, UserInfo, discovery and JWKS — what a resource server relies on. Case ids refer
 /// to §R.
 /// </summary>
-public class OidcResourceServerTests : OidcTestHost
+public class OidcResourceServerTests(OidcSharedHost host) : OidcTestHost(host), IClassFixture<OidcSharedHost>
 {
     private const string Secret = "s3cret-value-for-tests";
-    private const string Email = "alice@test.local";
+    private string Email => UserEmail("alice");
 
     private static async Task<JsonElement> BodyAsync(HttpResponseMessage r)
         => JsonDocument.Parse(await r.Content.ReadAsStringAsync()).RootElement;
@@ -22,7 +22,7 @@ public class OidcResourceServerTests : OidcTestHost
     /// <summary>Runs the full flow and returns the issued access token.</summary>
     private async Task<(OidcApplication App, string AccessToken)> IssueAccessTokenAsync(string[]? scopes = null)
     {
-        var app = await SeedApplicationAsync("webapp", allowedScopes: ["openid", "profile", "offline_access"]);
+        var app = await SeedApplicationAsync(ClientId("webapp"), allowedScopes: ["openid", "profile", "offline_access"]);
         await SeedUserAsync(Email);
         var code = await ObtainCodeAsync(app, Email, scopes ?? ["openid", "profile"]);
 
@@ -100,9 +100,9 @@ public class OidcResourceServerTests : OidcTestHost
     public async Task Revoking_another_clients_token_returns_200_but_does_not_revoke()
     {
         var (owner, accessToken) = await IssueAccessTokenAsync();
-        await SeedApplicationAsync("otherapp");
+        await SeedApplicationAsync(ClientId("otherapp"));
 
-        var response = await RevokeAsync("otherapp", accessToken);
+        var response = await RevokeAsync(ClientId("otherapp"), accessToken);
         response.StatusCode.Should().Be(HttpStatusCode.OK, "RFC 7009 forbids revealing the failure");
 
         (await BodyAsync(await IntrospectAsync(owner.ClientId, accessToken)))
@@ -124,7 +124,7 @@ public class OidcResourceServerTests : OidcTestHost
     [Fact]
     public async Task Revoking_a_refresh_token_cascades_to_its_access_tokens()
     {
-        var app = await SeedApplicationAsync("webapp",
+        var app = await SeedApplicationAsync(ClientId("webapp"),
             allowedScopes: ["openid", "offline_access"],
             grantTypes: ["authorization_code", "refresh_token"]);
         await SeedUserAsync(Email);
@@ -184,7 +184,7 @@ public class OidcResourceServerTests : OidcTestHost
     [InlineData("eyJhbGciOiJub25lIn0.eyJzdWIiOiJhdHRhY2tlciJ9.")]
     public async Task UserInfo_rejects_anything_that_is_not_a_live_access_token(string token)
     {
-        await SeedApplicationAsync("webapp");
+        await SeedApplicationAsync(ClientId("webapp"));
 
         var request = new HttpRequestMessage(HttpMethod.Get, "/connect/userinfo");
         if (token.Length > 0)
@@ -199,7 +199,7 @@ public class OidcResourceServerTests : OidcTestHost
     [Fact]
     public async Task UserInfo_rejects_an_id_token_presented_as_an_access_token()
     {
-        var app = await SeedApplicationAsync("webapp");
+        var app = await SeedApplicationAsync(ClientId("webapp"));
         await SeedUserAsync(Email);
         var code = await ObtainCodeAsync(app, Email, ["openid"]);
 
