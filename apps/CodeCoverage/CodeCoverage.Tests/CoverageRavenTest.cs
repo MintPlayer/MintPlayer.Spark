@@ -68,19 +68,24 @@ public abstract class CoverageRavenTest : RavenTestDriver
     }
 
     /// <summary>
-    /// Creates every index in the Coverage assembly on each test store, which is
-    /// what <c>UseSpark()</c> does at startup.
+    /// Whether each test store gets every index in the Coverage assembly, which is what
+    /// <c>UseSpark()</c> does at startup. Off by default; a class whose code under test
+    /// queries an index overrides it to <c>true</c>.
     ///
-    /// Queries name their index explicitly now that most run through a generated
-    /// one, so a store without them does not silently fall back to an auto-index —
-    /// it throws IndexDoesNotExistException. Doing it here rather than per test
-    /// class means a new test cannot miss it, and a newly added index reaches every
-    /// existing test without touching any of them.
+    /// Opt-in because deploying them was about half of this suite's run time
+    /// (measured 2026-10-01, alone on the owner's laptop: 172 s with indexes on every store,
+    /// 88 s without), while only 30 of 73 classes query an index. Forgetting the override
+    /// cannot pass silently: queries name their index explicitly, so a store without it
+    /// throws IndexDoesNotExistException rather than falling back to an auto-index. All
+    /// 206 failures of the run without indexes were exactly that exception.
     /// </summary>
+    protected virtual bool DeployIndexes => false;
+
     protected override void SetupDatabase(IDocumentStore documentStore)
     {
         base.SetupDatabase(documentStore);
-        IndexCreation.CreateIndexes(typeof(Commits_ByRepository).Assembly, documentStore);
+        if (DeployIndexes)
+            IndexCreation.CreateIndexes(typeof(Commits_ByRepository).Assembly, documentStore);
     }
 
     /// <summary>

@@ -23,6 +23,8 @@ namespace CodeCoverage.Tests.Services;
 /// </summary>
 public class RepositoryVisibilityParityTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private static Repository Repo(long id, string owner, string name, bool isPrivate) => new()
     {
         GitHubId = id,

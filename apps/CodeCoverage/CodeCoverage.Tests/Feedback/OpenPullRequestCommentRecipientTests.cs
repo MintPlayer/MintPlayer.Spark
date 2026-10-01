@@ -17,6 +17,8 @@ namespace CodeCoverage.Tests.Feedback;
 /// </summary>
 public class OpenPullRequestCommentRecipientTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const long RepoId = 204431316;
     private const long AccountId = 42;
     private const int Pr = 79;

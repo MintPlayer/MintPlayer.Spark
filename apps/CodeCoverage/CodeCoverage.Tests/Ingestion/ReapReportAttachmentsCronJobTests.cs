@@ -17,6 +17,8 @@ namespace CodeCoverage.Tests.Ingestion;
 /// </summary>
 public class ReapReportAttachmentsCronJobTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const long RepoId = 204431316;
     private const string Sha = "67262d58656fa932d363bcb3287e60c7542665ea";
 

@@ -18,6 +18,8 @@ namespace CodeCoverage.Tests.Controllers;
 /// </summary>
 public class MeControllerTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private static MeController CreateController(IAsyncDocumentSession session, GitHubVisibility visibility)
     {
         var services = new ServiceCollection();

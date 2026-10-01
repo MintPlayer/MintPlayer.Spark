@@ -28,6 +28,8 @@ namespace CodeCoverage.Tests.Actions;
 /// </remarks>
 public class RemainingActionsTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     /// <summary>Builds <typeparamref name="T"/>, taking each constructor argument from <paramref name="deps"/> when one fits.</summary>
     private static T Create<T>(params object[] deps)
     {

@@ -25,6 +25,8 @@ namespace CodeCoverage.Tests.Services;
 /// </summary>
 public class RepositoryResolverTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private static (RepositoryResolver Resolver, StubGitHub GitHub) CreateResolver(IAsyncDocumentSession session)
     {
         // Never consulted in these tests: resolution must not reach GitHub when we already know,

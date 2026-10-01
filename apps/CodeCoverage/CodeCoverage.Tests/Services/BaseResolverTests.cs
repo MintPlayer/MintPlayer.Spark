@@ -15,6 +15,8 @@ namespace CodeCoverage.Tests.Services;
 /// </summary>
 public class BaseResolverTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const long RepoGitHubId = 42;
 
     private static Repository Repo(string? defaultBranch = "master") => new()

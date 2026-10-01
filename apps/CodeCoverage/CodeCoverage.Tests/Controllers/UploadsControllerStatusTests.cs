@@ -27,6 +27,8 @@ namespace CodeCoverage.Tests.Controllers;
 /// </summary>
 public class UploadsControllerStatusTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const long RepoId = 4242;
     private const string RepoName = "acme/widgets";
     private const string Sha = "1111111111111111111111111111111111111111";

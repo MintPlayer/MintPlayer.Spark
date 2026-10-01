@@ -35,6 +35,8 @@ namespace CodeCoverage.Tests.Controllers;
 /// </summary>
 public class RepositoryExistenceParityTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const long PrivateRepoId = 4530;
     private const long PublicRepoId = 4531;
 

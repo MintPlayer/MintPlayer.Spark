@@ -22,6 +22,8 @@ namespace CodeCoverage.Tests.Ingestion;
 /// </remarks>
 public class IngestionJobsTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const long RepoId = 55501;
 
     private static string CommitId(string sha) => Commit.DocumentId(EForgeProvider.GitHub, RepoId, sha);

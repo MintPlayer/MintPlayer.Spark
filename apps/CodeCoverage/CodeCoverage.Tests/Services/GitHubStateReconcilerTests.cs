@@ -24,6 +24,8 @@ namespace CodeCoverage.Tests.Services;
 /// </summary>
 public class GitHubStateReconcilerTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const long AccountId = 42;
     private const long InstallationId = 7;
     private const long KeptRepoId = 100;

@@ -25,6 +25,8 @@ namespace CodeCoverage.Tests.Controllers;
 /// </summary>
 public class BadgeControllerTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const string SigningKey = "test-badge-signing-key-not-a-real-secret";
 
     private static BadgeController CreateController(IAsyncDocumentSession session, bool withSigningKey = true)

@@ -25,6 +25,8 @@ namespace CodeCoverage.Tests.CustomActions;
 /// </remarks>
 public class BoardAndResyncActionTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const string BoardId = "GitHubProjects/PVT_sync";
 
     private sealed record Harness(SyncColumnsAction Action, IClientAccessor Client, IInstallationProjects Projects, IDatabaseAccess Database);
