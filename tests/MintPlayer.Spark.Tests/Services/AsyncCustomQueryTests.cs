@@ -7,6 +7,7 @@ using Raven.Client.Documents;
 using Raven.Client.Documents.Indexes;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Tests._Infrastructure;
 
 namespace MintPlayer.Spark.Tests.Services;
 
@@ -24,8 +25,15 @@ namespace MintPlayer.Spark.Tests.Services;
 /// is no post-materialization fallback at all — so a row-order assertion would pass for the wrong
 /// reason the moment someone added one.
 /// </para>
+/// <para>
+/// The crews, their index and the host are set up once per class (<see cref="SeededCrews"/>, M8 item
+/// 11): every case queries the same documents and none writes. The executor still comes from a scope
+/// per case, as in <c>SortColumnDisclosureTests</c>, so each case's <see cref="RqlRecorder"/> sees its
+/// queries.
+/// </para>
 /// </remarks>
-public class AsyncCustomQueryTests : SparkTestDriver
+public class AsyncCustomQueryTests(AsyncCustomQueryTests.SeededCrews host)
+    : SparkSharedTestDriver(host), IClassFixture<AsyncCustomQueryTests.SeededCrews>, IDisposable
 {
     private static readonly Guid CrewTypeId = Guid.Parse("cccc3333-cccc-cccc-cccc-cccc33333333");
     private static readonly Guid SquadTypeId = Guid.Parse("dddd4444-dddd-dddd-dddd-dddd44444444");
@@ -148,38 +156,38 @@ public class AsyncCustomQueryTests : SparkTestDriver
         },
     };
 
-    private SparkEndpointFactory<TestContext> _factory = null!;
-
-    public override async Task InitializeAsync()
+    /// <summary>The class's database with the squad and its three crews indexed, and the host.</summary>
+    public sealed class SeededCrews : SharedSparkHost<TestContext>
     {
-        await base.InitializeAsync();
-        await new Crews_Overview().ExecuteAsync(Store);
-        _factory = new SparkEndpointFactory<TestContext>(Store, [CrewModel(), SquadModel()],
-            configureIndexCatalog: catalog =>
-            {
-                catalog.RegisterIndex(typeof(Crews_Overview));
-                catalog.RegisterProjection(typeof(VCrew), typeof(Crews_Overview));
-            });
-    }
-
-    public override async Task DisposeAsync()
-    {
-        await _factory.DisposeAsync();
-        await base.DisposeAsync();
-    }
-
-    private async Task SeedAsync()
-    {
-        var squad = new Squad { Name = "Engineering" };
-        await base.SeedAsync(async session =>
+        protected override async Task BeforeHostAsync()
         {
-            await session.StoreAsync(squad);
-            await session.StoreAsync(new Crew { FirstName = "Ada", LastName = "Lovelace", Squad = squad.Id });
-            await session.StoreAsync(new Crew { FirstName = "Grace", LastName = "Hopper", Squad = squad.Id });
-            await session.StoreAsync(new Crew { FirstName = "Linus", LastName = "Torvalds", Squad = squad.Id });
-        });
-        await Store.WaitForIndexingAsync();
+            await new Crews_Overview().ExecuteAsync(Store);
+
+            using (var session = Store.OpenAsyncSession())
+            {
+                var squad = new Squad { Name = "Engineering" };
+                await session.StoreAsync(squad);
+                await session.StoreAsync(new Crew { FirstName = "Ada", LastName = "Lovelace", Squad = squad.Id });
+                await session.StoreAsync(new Crew { FirstName = "Grace", LastName = "Hopper", Squad = squad.Id });
+                await session.StoreAsync(new Crew { FirstName = "Linus", LastName = "Torvalds", Squad = squad.Id });
+                await session.SaveChangesAsync();
+            }
+
+            await Store.WaitForIndexingAsync();
+        }
+
+        protected override SparkEndpointFactory<TestContext> CreateFactory() =>
+            new(Store, [CrewModel(), SquadModel()],
+                configureIndexCatalog: catalog =>
+                {
+                    catalog.RegisterIndex(typeof(Crews_Overview));
+                    catalog.RegisterProjection(typeof(VCrew), typeof(Crews_Overview));
+                });
     }
+
+    private Microsoft.Extensions.DependencyInjection.IServiceScope? _scope;
+
+    public void Dispose() => _scope?.Dispose();
 
     private static SparkQuery Query(string method, SortColumn[]? sortColumns = null) => new()
     {
@@ -197,7 +205,11 @@ public class AsyncCustomQueryTests : SparkTestDriver
     private (IQueryExecutor Executor, RqlRecorder Rql) Capture()
     {
         var recorder = RqlRecorder.Attach(Store);
-        return (_factory.GetService<IQueryExecutor>(), recorder);
+        // A scope per case, like a request: a root-resolved executor shared across the class would
+        // hold a session taken before this case's recorder was attached.
+        _scope = host.Factory.CreateScope();
+        return (Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+            .GetRequiredService<IQueryExecutor>(_scope.ServiceProvider), recorder);
     }
 
     [Fact]
@@ -205,7 +217,6 @@ public class AsyncCustomQueryTests : SparkTestDriver
     {
         // RED before the fix: the gate is skipped, and there is no post-materialization sort
         // anywhere, so the declared column is simply discarded.
-        await SeedAsync();
         var (executor, rql) = Capture();
         using var _rql = rql;
 
@@ -221,7 +232,6 @@ public class AsyncCustomQueryTests : SparkTestDriver
     {
         // Before the fix this threw: it failed the flag test on the Raven branch and fell into a
         // blocking ToList() over an async session, which RavenDB rejects.
-        await SeedAsync();
         var (executor, _) = Capture();
 
         var result = await executor.ExecuteQueryAsync(Query(nameof(CrewActions.AsyncRaven)));
@@ -232,7 +242,6 @@ public class AsyncCustomQueryTests : SparkTestDriver
     [Fact]
     public async Task An_async_custom_query_pushes_the_search_into_the_query()
     {
-        await SeedAsync();
         var (executor, rql) = Capture();
         using var _rql = rql;
 
@@ -247,7 +256,6 @@ public class AsyncCustomQueryTests : SparkTestDriver
     {
         // FullName exists only in the index. Without the projection gate RavenDB loads the full
         // document, and the computed field comes back empty — no error, no warning.
-        await SeedAsync();
         var (executor, _) = Capture();
 
         var result = await executor.ExecuteQueryAsync(Query(nameof(CrewActions.AsyncProjection)));
@@ -264,7 +272,6 @@ public class AsyncCustomQueryTests : SparkTestDriver
         // The discriminator between inferring from the runtime result and merely deleting !isAsync.
         // Signature inference gives this IsQueryable but not IsRavenQueryable, so it would still miss
         // search pushdown and still materialize through the blocking path.
-        await SeedAsync();
         var (executor, rql) = Capture();
         using var _rql = rql;
 
@@ -279,7 +286,6 @@ public class AsyncCustomQueryTests : SparkTestDriver
     public async Task A_sync_custom_query_declared_as_IQueryable_but_backed_by_Raven_uses_the_async_path()
     {
         // The same gap, without async. Pre-existing, and closed by the same change.
-        await SeedAsync();
         var (executor, rql) = Capture();
         using var _rql = rql;
 
@@ -295,7 +301,6 @@ public class AsyncCustomQueryTests : SparkTestDriver
     {
         // The boundary !isAsync was holding by accident: an already-materialized result must not be
         // handed to the Raven path, and a declared sort must not silently appear to work.
-        await SeedAsync();
         var (executor, rql) = Capture();
         using var _rql = rql;
 
@@ -310,7 +315,6 @@ public class AsyncCustomQueryTests : SparkTestDriver
     public async Task A_ValueTask_custom_query_reports_an_accurate_diagnostic()
     {
         // Before the fix: "not found", for a method that plainly exists.
-        await SeedAsync();
         var (executor, _) = Capture();
 
         var act = () => executor.ExecuteQueryAsync(Query(nameof(CrewActions.ValueTaskQuery)));

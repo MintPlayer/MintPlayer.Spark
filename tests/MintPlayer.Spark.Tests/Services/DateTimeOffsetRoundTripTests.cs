@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Queries;
 using MintPlayer.Spark.Services;
@@ -7,6 +8,7 @@ using Raven.Client.Documents.Indexes;
 using Raven.Client.Documents.Linq;
 using Raven.Client.Documents.Queries;
 using Raven.Client.Documents.Session;
+using MintPlayer.Spark.Tests._Infrastructure;
 
 namespace MintPlayer.Spark.Tests.Services;
 
@@ -30,8 +32,13 @@ namespace MintPlayer.Spark.Tests.Services;
 /// A value nested inside a complex object is stored as an opaque sub-document and never decomposed,
 /// so it survives intact — that is the mechanism the fix rests on, and it is pinned here too.
 /// </para>
+/// <para>
+/// The three meetings, their index and the query host are set up once per class
+/// (<see cref="SeededMeetings"/>, M8 item 11): every case reads the same documents and none writes.
+/// </para>
 /// </summary>
-public class DateTimeOffsetRoundTripTests : SparkTestDriver
+public class DateTimeOffsetRoundTripTests(DateTimeOffsetRoundTripTests.SeededMeetings host)
+    : SparkSharedTestDriver(host), IClassFixture<DateTimeOffsetRoundTripTests.SeededMeetings>
 {
     private static readonly Guid MeetingTypeId = Guid.Parse("dddd4444-dddd-dddd-dddd-dddd44444444");
 
@@ -113,16 +120,30 @@ public class DateTimeOffsetRoundTripTests : SparkTestDriver
         public IRavenQueryable<Meeting> Meetings => Session.Query<Meeting>();
     }
 
-    private async Task SeedAsync()
+    /// <summary>The class's database with the three meetings indexed, and the host the executor cases query.</summary>
+    public sealed class SeededMeetings : SharedSparkHost<TestContext>
     {
-        using var session = Store.OpenAsyncSession();
-        await session.StoreAsync(new Meeting { Title = "Positive", Starts = Positive, MaybeEnds = Positive, PlainUtc = UtcKind, PlainUnspecified = UnspecifiedKind }, "meetings/1");
-        await session.StoreAsync(new Meeting { Title = "Negative", Starts = Negative, MaybeEnds = null }, "meetings/2");
-        await session.StoreAsync(new Meeting { Title = "Utc", Starts = Utc, MaybeEnds = Utc }, "meetings/3");
-        await session.SaveChangesAsync();
+        protected override async Task BeforeHostAsync()
+        {
+            using (var session = Store.OpenAsyncSession())
+            {
+                await session.StoreAsync(new Meeting { Title = "Positive", Starts = Positive, MaybeEnds = Positive, PlainUtc = UtcKind, PlainUnspecified = UnspecifiedKind }, "meetings/1");
+                await session.StoreAsync(new Meeting { Title = "Negative", Starts = Negative, MaybeEnds = null }, "meetings/2");
+                await session.StoreAsync(new Meeting { Title = "Utc", Starts = Utc, MaybeEnds = Utc }, "meetings/3");
+                await session.SaveChangesAsync();
+            }
 
-        await new Meetings_Overview().ExecuteAsync(Store);
-        await RavenIndexHelper.WaitForNonStaleAsync(Store);
+            await new Meetings_Overview().ExecuteAsync(Store);
+            await RavenIndexHelper.WaitForNonStaleAsync(Store);
+        }
+
+        protected override SparkEndpointFactory<TestContext> CreateFactory() =>
+            new(Store, [MeetingModel()],
+                configureIndexCatalog: catalog =>
+                {
+                    catalog.RegisterIndex(typeof(Meetings_Overview));
+                    catalog.RegisterProjection(typeof(VMeeting), typeof(Meetings_Overview));
+                });
     }
 
     // --- RavenDB behaviour: these pin the defect itself -------------------------------------
@@ -132,8 +153,6 @@ public class DateTimeOffsetRoundTripTests : SparkTestDriver
     [Fact]
     public async Task Session_load_preserves_the_offset()
     {
-        await SeedAsync();
-
         using var session = Store.OpenAsyncSession();
         var loaded = await session.LoadAsync<Meeting>("meetings/1");
 
@@ -144,8 +163,6 @@ public class DateTimeOffsetRoundTripTests : SparkTestDriver
     [Fact]
     public async Task Projecting_a_scalar_field_from_a_stored_index_destroys_the_offset()
     {
-        await SeedAsync();
-
         using var session = Store.OpenAsyncSession();
         var projected = await session.Query<VMeeting, Meetings_Overview>()
             .Where(v => v.Title == "Positive")
@@ -162,8 +179,6 @@ public class DateTimeOffsetRoundTripTests : SparkTestDriver
     [Fact]
     public async Task The_shift_follows_each_documents_own_offset_not_the_machine_timezone()
     {
-        await SeedAsync();
-
         using var session = Store.OpenAsyncSession();
         var negative = await session.Query<VMeeting, Meetings_Overview>()
             .Where(v => v.Title == "Negative")
@@ -187,8 +202,6 @@ public class DateTimeOffsetRoundTripTests : SparkTestDriver
     [Fact]
     public async Task Projecting_a_plain_DateTime_from_a_stored_index_preserves_its_ticks()
     {
-        await SeedAsync();
-
         using var session = Store.OpenAsyncSession();
         var projected = await session.Query<VMeeting, Meetings_Overview>()
             .Where(v => v.Title == "Positive")
@@ -209,8 +222,6 @@ public class DateTimeOffsetRoundTripTests : SparkTestDriver
     [Fact]
     public async Task Projecting_a_plain_DateTime_preserves_its_Kind()
     {
-        await SeedAsync();
-
         using var session = Store.OpenAsyncSession();
         var projected = await session.Query<VMeeting, Meetings_Overview>()
             .Where(v => v.Title == "Positive")
@@ -238,8 +249,6 @@ public class DateTimeOffsetRoundTripTests : SparkTestDriver
     [Fact]
     public async Task ProjectionBehavior_FromDocument_recovers_the_offset_by_reading_the_document()
     {
-        await SeedAsync();
-
         // ⚠️ Order matters, and a session per query is not enough to make it not matter. The client's
         // query cache does not appear to key on ProjectionBehavior: run the FromDocument query first and
         // the *default* query is then served its cached response, reporting an intact offset. That is a
@@ -289,8 +298,6 @@ public class DateTimeOffsetRoundTripTests : SparkTestDriver
     [Fact]
     public async Task QueryExecutor_returns_the_original_offset()
     {
-        await SeedAsync();
-
         var rows = await QueryMeetingsAsync();
         var actual = (DateTimeOffset)RowValue(rows, "Positive", "Starts")!;
 
@@ -302,8 +309,6 @@ public class DateTimeOffsetRoundTripTests : SparkTestDriver
     [Fact]
     public async Task QueryExecutor_returns_the_original_offset_for_a_negative_offset()
     {
-        await SeedAsync();
-
         var rows = await QueryMeetingsAsync();
         var actual = (DateTimeOffset)RowValue(rows, "Negative", "Starts")!;
 
@@ -315,8 +320,6 @@ public class DateTimeOffsetRoundTripTests : SparkTestDriver
     [Fact]
     public async Task QueryExecutor_leaves_a_zero_offset_value_untouched()
     {
-        await SeedAsync();
-
         var rows = await QueryMeetingsAsync();
         var actual = (DateTimeOffset)RowValue(rows, "Utc", "Starts")!;
 
@@ -327,8 +330,6 @@ public class DateTimeOffsetRoundTripTests : SparkTestDriver
     [Fact]
     public async Task QueryExecutor_round_trips_a_nullable_offset_and_its_null()
     {
-        await SeedAsync();
-
         var rows = await QueryMeetingsAsync();
 
         ((DateTimeOffset)RowValue(rows, "Positive", "MaybeEnds")!).EqualsExact(Positive).Should().BeTrue();
@@ -339,14 +340,9 @@ public class DateTimeOffsetRoundTripTests : SparkTestDriver
 
     private async Task<List<Abstractions.QueryResultItem>> QueryMeetingsAsync()
     {
-        await using var factory = new SparkEndpointFactory<TestContext>(Store, [MeetingModel()],
-            configureIndexCatalog: catalog =>
-            {
-                catalog.RegisterIndex(typeof(Meetings_Overview));
-                catalog.RegisterProjection(typeof(VMeeting), typeof(Meetings_Overview));
-            });
-
-        var executor = factory.GetService<IQueryExecutor>();
+        // A fresh scope, because IQueryExecutor is scoped like a request.
+        using var scope = host.Factory.CreateScope();
+        var executor = scope.ServiceProvider.GetRequiredService<IQueryExecutor>();
         var result = await executor.ExecuteQueryAsync(new SparkQuery
         {
             Id = Guid.NewGuid(),

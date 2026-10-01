@@ -25,8 +25,13 @@ namespace MintPlayer.Spark.Tests.Services;
 /// upgrade changes the default analyzer, the generated companions stop working and this fails — which is the
 /// point. Nothing else in the suite would notice.
 /// </para>
+/// <para>
+/// The cars and <see cref="Cars_Overview"/> are seeded once per class (<see cref="SeededCars"/>, M8 item 11):
+/// every case orders the same documents and none writes.
+/// </para>
 /// </summary>
-public class SortCompanionRedirectTests : SparkTestDriver
+public class SortCompanionRedirectTests(SortCompanionRedirectTests.SeededCars cars)
+    : SparkSharedTestDriver(cars), IClassFixture<SortCompanionRedirectTests.SeededCars>
 {
     public class Car
     {
@@ -79,15 +84,23 @@ public class SortCompanionRedirectTests : SparkTestDriver
         "ZZ Top",
     ];
 
-    private async Task SeedAsync()
+    /// <summary>The class's database: <see cref="Models"/> stored and <see cref="Cars_Overview"/> caught up.</summary>
+    public sealed class SeededCars : SparkSharedDatabase
     {
-        using var session = Store.OpenAsyncSession();
-        foreach (var model in Models)
-            await session.StoreAsync(new Car { Model = model, Trim = model });
-        await session.SaveChangesAsync();
+        public override async Task InitializeAsync()
+        {
+            await base.InitializeAsync();
 
-        await new Cars_Overview().ExecuteAsync(Store);
-        await RavenIndexHelper.WaitForNonStaleAsync(Store);
+            using (var session = Store.OpenAsyncSession())
+            {
+                foreach (var model in Models)
+                    await session.StoreAsync(new Car { Model = model, Trim = model });
+                await session.SaveChangesAsync();
+            }
+
+            await new Cars_Overview().ExecuteAsync(Store);
+            await RavenIndexHelper.WaitForNonStaleAsync(Store);
+        }
     }
 
     private async Task<List<string>> OrderByAnalyzedFieldAsync()
@@ -119,8 +132,6 @@ public class SortCompanionRedirectTests : SparkTestDriver
     [Fact]
     public async Task Ordering_by_an_analyzed_field_does_not_sort_correctly()
     {
-        await SeedAsync();
-
         var actual = await OrderByAnalyzedFieldAsync();
         var expected = Models.OrderBy(m => m, StringComparer.OrdinalIgnoreCase).ToList();
 
@@ -130,8 +141,6 @@ public class SortCompanionRedirectTests : SparkTestDriver
     [Fact]
     public async Task Ordering_by_the_undeclared_companion_sorts_correctly_and_case_insensitively()
     {
-        await SeedAsync();
-
         var actual = await OrderByCompanionAsync();
 
         // Case-insensitive: "alfa romeo spider" sorts between "Audi A4"'s neighbours by letter, not after
@@ -151,8 +160,6 @@ public class SortCompanionRedirectTests : SparkTestDriver
     [Fact]
     public async Task The_companion_supports_exact_and_prefix_matching()
     {
-        await SeedAsync();
-
         using var session = Store.OpenAsyncSession();
 
         var exact = await session.Query<VCar, Cars_Overview>()
@@ -183,8 +190,6 @@ public class SortCompanionRedirectTests : SparkTestDriver
     [Fact]
     public async Task A_plain_string_field_with_no_companion_sorts_correctly()
     {
-        await SeedAsync();
-
         using var session = Store.OpenAsyncSession();
         var results = await session.Query<VCar, Cars_Overview>()
             .OrderBy(v => v.Trim)
@@ -206,8 +211,6 @@ public class SortCompanionRedirectTests : SparkTestDriver
     [Fact]
     public async Task A_plain_string_field_sorts_the_same_as_an_analyzed_field_plus_its_companion()
     {
-        await SeedAsync();
-
         var viaCompanion = await OrderByCompanionAsync();
 
         using var session = Store.OpenAsyncSession();
@@ -227,8 +230,6 @@ public class SortCompanionRedirectTests : SparkTestDriver
     [Fact]
     public async Task StoreAllFields_is_what_makes_the_companion_readable()
     {
-        await SeedAsync();
-
         using var session = Store.OpenAsyncSession();
         var all = await session.Query<VCar, Cars_Overview>().ProjectInto<VCar>().ToListAsync();
 
