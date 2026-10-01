@@ -456,7 +456,52 @@ Decided (owner, 2026-10-01):
 - [x] (2) + (4) done (`npm run test:affected` via `tools/test-local.mjs`, `-c local` coverage-off configs, `RavenDatabaseDeletion` zero-wait in all three RavenTestDriver bases, opt-in `SPARK_E2E_SKIP_APP_BUILD`). Measured: 21m49s incl. E2E, all green; Spark.Tests 18m20s (was 21m21s serial). See PRD §5d item 8.
 - [ ] (5) **IN PROGRESS: batch 1 (no-write classes + per-class hosts) is being implemented.** Migrate classes to `SparkSharedDatabase`, smallest risk first. The investigation counted 181
   driver classes:
-  1. the 45 that never write (incl. the OIDC classes: one host per class instead of per test)
+  1. [x] **Batch 1 (2026-10-01): 41 classes migrated**, the ones whose cases write nothing a sibling
+     can observe. Evidence in PRD §5d.
+     - **One host per class as well** (18), through the new `_Infrastructure/SharedSparkHost<TContext>`
+       class fixture (one database + one booted `SparkEndpointFactory`; `BeforeHostAsync` for indexes
+       a host must find at boot): GetQueryEndpoint, ComposedQuery (its three sources became three
+       queries on one type), XsrfSurface (core host + auth host), AsDetailRowIdentityRoundTrip,
+       StandaloneNewEndpoint, EmbeddedDetailType, NestedRefreshEndpoint, RefreshEndpoint,
+       RetryFromEveryHook (antiforgery pair minted once), StringPresentationColumn,
+       KeyedEmbeddedBreadcrumbColumn, OidcPageTheme (new `OidcSharedHost`), and, with the
+       identical per-case seed moved to class setup, ExecuteQueryRequestValidation,
+       DistinctValuesEndpoint, AttributeRightsEnforcement, ColumnFilterDisclosure,
+       CustomQueryColumnFilter, SortColumnDisclosure. Cases that need different rights or models
+       still boot their own host on the shared database.
+     - **Database per class only** (23; every case boots a differently configured host, or none):
+       AsDetailRowRights, AsDetailStoredRowMerge, VirtualObjectEndpoint, InterceptorOrder,
+       ListQueriesEndpoint, SparkDenialPredicate, GetProgramUnitsEndpoint, SubQueryPruning,
+       RateLimiterPlacement, AccountRouteClassification, MessageTypeAllowList,
+       MessageRecipientRegistry, GitHubChallengeShape, ConfirmByEmailStartupGuard,
+       MapSparkIdentityApi, AuthCapabilities, LocalCredentialMode, ModuleRegistrationService,
+       SparkExternalLoginLinker, EmailSenderRegistration, OidcLocalCredentialMode,
+       AddSparkDocumentStoreFactory, DistinctValuesDisclosure (seed in class setup).
+     - Measured: per-class runs 27–47 s → 14–17 s for the host-sharing classes, but the whole project
+       run alone is unchanged (513 s → 511 s, 3510 green); the wall is set by the classes not yet
+       migrated. Numbers in PRD §5d.
+     - Every migrated class passed default, reversed and two seeded shuffles (`SPARK_TEST_ORDER`,
+       `_Infrastructure/ShuffledTestCaseOrderer`; unset = xUnit's own order, so CI is unchanged).
+     - **Not migrated, with the reason:**
+       - The 11 writing `OidcTestHost` classes (Authorize, Consent, ConsentWithdrawal,
+         Introspection, Login, ResourceServer, ScopeIntegrity, TokenEndpointGuard, TokenForgery,
+         TokenSecurity, TwoFactor) plus OidcCorsScope/OidcAdminRoute: they seed fixed client ids
+         (`"webapp"` up to 23× per class) and a fixed `Email`, and the endpoints write tokens,
+         authorizations and consents keyed on them. They need per-case client ids and e-mails →
+         batch 2.
+       - OidcAdminRegistration: the synchronizer writes model files into the host's content root,
+         so a shared host would let `File.Exists` pass on a sibling's file.
+       - Seeding per case with fixed ids or unscoped counts → batch 2/3: GetEndpoint,
+         SparkClientAliasAndAction, UpdateEndpoint(Concurrency), DeleteEndpoint, CreateEndpoint
+         (`Query<Person>().ToListAsync()`), JsonSeededReflectionCache, LookupReferenceService
+         (`LookupReferences/CarBrand`), QueryExecutor(Advanced)Integration, SparkRowRule,
+         DisableActions (`HaveCount(4)` over all probes), QueryIdRestriction, ExecuteQueryEndpoint.
+       - Writes through the code under test → batch 2/3: MessageBus, QueuePriority, MessageClaims,
+         MessageProcessor, MessageQueueRouter, ExternalProviderPolicy (sign-up creates users),
+         PasskeyCloneDetection, SparkDataProtection (key ring in the database).
+       - ModerationConfiguration: asserts on index errors (database-wide).
+       - Single-case classes (AsDetailFailClosed, RuntimeQueryableInference, UseSparkOptions,
+         AntiforgerySecurity): a database per class IS a database per case; nothing to gain.
   2. the 67 that only need ids scoped via `Id(...)`
   3. the 53 that need unscoped count assertions scoped
   - The 28 with database-wide state stay per-test: subscriptions enumeration, fixed compare-exchange

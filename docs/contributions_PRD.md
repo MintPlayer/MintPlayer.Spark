@@ -937,6 +937,32 @@ sweep therefore has to be practical locally, and CI's behaviour stays exactly as
      compare-exchange values and revisions behind, and background writers race the reset.
    - **Never deleting databases:** measured 17% slower.
    - **Restoring from a template:** indexing is the cost, not creation.
+   **Batch 1 measured (2026-10-01, this machine, Developer licence, `dotnet test --no-build`, no
+   coverage):** 41 classes migrated (list and the not-migrated reasons in plan M8).
+   - **Per class, each in its own `dotnet test --filter` process:** the host-sharing classes dropped
+     sharply, e.g. AttributeRightsEnforcement 47.2 → 15.2 s, AsDetailRowIdentityRoundTrip 38.0 → 14.0 s,
+     RetryFromEveryHook 37.0 → 14.6 s, ExecuteQueryRequestValidation 35.6 → 14.6 s,
+     NestedRefreshEndpoint 34.5 → 14.8 s, RefreshEndpoint 34.5 → 14.5 s, ColumnFilterDisclosure
+     34.3 → 15.2 s, DistinctValuesEndpoint 33.0 → 15.1 s, GetProgramUnitsEndpoint 31.9 → 16.1 s,
+     ComposedQuery 29.4 → 15.1 s, OidcPageTheme 27.3 → 14.2 s. Database-only classes moved 1–3 s
+     (e.g. SparkExternalLoginLinker 14.9 → 8.7 s). About 8 s of every figure is process start plus
+     the embedded server, and the first host boot in a process pays the JIT, so these numbers
+     overstate what the same change saves inside a full run.
+   - **Whole project, run alone, same command before and after: 513 s → 511 s, 3510/3510 green both
+     times.** No measurable wall-time gain. The before run is the same branch with the batch-1 test
+     changes stashed (`git stash -- tests/MintPlayer.Spark.Tests`), so nothing else differed. Batch 1
+     touches ~310 of 3,510 cases, and the run's wall is set by the classes still on per-case
+     databases and hosts; the 18m20s / 21m21s figures above were measured under contention with the
+     other suites (parallel `test:affected`) and with coverage (serial), not alone, which is why
+     both runs here are far below them.
+   - **Order independence:** all 41 classes passed reversed, seed 1 and seed 2 shuffles and the
+     default order (313 cases per run). The orderer demonstrably reorders: the TRX start times of
+     ComposedQueryTests differ in all three modes. The shuffle caught one real defect: the shared
+     SortColumnDisclosure host resolved `IQueryExecutor` from the root provider, so one Raven session
+     spanned the class and the `RqlRecorder` that later cases attach to the store never saw their
+     queries (3 of 4 failed in every order, the first-run case passed). Fixed by resolving the
+     executor from a scope per case, the way a request does; the same pattern is used in the other
+     shared executor classes.
 6. **Keep the `RavenTestDriver` implementations; no external `localhost:8080` server for tests.** The
    gain would be small (one embedded-server start per process) against the risk to the dev databases,
    the switch from memory to disk, and leftover cleanup.
