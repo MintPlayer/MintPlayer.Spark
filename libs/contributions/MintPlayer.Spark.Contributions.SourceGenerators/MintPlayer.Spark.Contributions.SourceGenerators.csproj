@@ -31,4 +31,16 @@
       <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" PrivateAssets="all" />
       <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0" PrivateAssets="all" />
     </ItemGroup>
+
+    <!--
+    The code fixes in CodeFixes/ derive from CodeFixProvider (Microsoft.CodeAnalysis.Workspaces).
+    ExcludeAssets="runtime" satisfies the compiler and ships nothing: the IDE host supplies Workspaces,
+    and csc never loads a fix provider. ⚠️ Reflecting over this assembly with GetTypes() without
+    Workspaces present throws for the whole assembly — the generator test project references
+    Workspaces for exactly that reason (same note as LibraryGenerators.csproj).
+    -->
+    <ItemGroup>
+      <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0"
+                        PrivateAssets="all" ExcludeAssets="runtime" />
+    </ItemGroup>
 </Project>

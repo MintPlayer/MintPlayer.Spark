@@ -246,14 +246,59 @@ Order: reproduce the existing leaks first (red tests), then build.
 - Test: `ContributionsGeneratorTests` (the generator runs over a `[Contribution]` property with no
   output and no diagnostics).
 
-### M4 — Generator and analyzer (T2, T3, T4)
-- [ ] Use a `ForAttributeWithMetadataName` pipeline on `[Contribution]` properties. Unwrap
+### M4 — Generator and analyzer (T2, T3, T4) ✅
+- [x] Use a `ForAttributeWithMetadataName` pipeline on `[Contribution]` properties. Unwrap
   `T`/`T[]`/`List<T>`/`IList<T>`/`IReadOnlyList<T>`/`ICollection<T>`/`IEnumerable<T>` and read the
   `[ContributionSlot]` properties from symbols (works across assemblies).
-- [ ] Emit `{Target}{Property}Contribution`, `{Target}{Property}Current` (Q9: always target+property, no override), the metadata class and the registration.
-- [ ] Add the analyzer rules from T4, with code fixes: add `[JsonIgnore]`, change a slot type (a
+  **As built:** one `ContributionInspector` reads a declaration for both the generator and the
+  analyzer (base-type properties first, declaration order; a value property is any public instance
+  property with a getter and a `set`/`init`). The generator reports nothing and emits nothing for a
+  declaration with a blocking error. The owner need not be `partial` (nothing is added to it); the
+  element must be, whenever the generator adds something (slots → `Key`, or attribution), and must be
+  in the **same compilation** — an element from another assembly is SPARK032 and generates nothing,
+  because a generator can only add members to its own compilation.
+- [x] Emit `{Target}{Property}Contribution`, `{Target}{Property}Current` (Q9: always target+property, no override), the metadata class and the registration.
+  **As built:** both documents are `partial`, carry `string? Id` and implement `IHasNaturalId`
+  explicitly over a static `GetId`. `Current` also carries `TargetId` (its explicit `GetId()` needs
+  it; T3 did not list it). `ContributionCount` is on `Current` only with `History`. The contribution
+  type is `ISoftDeletable` (public members) when `MintPlayer.Spark.SoftDelete.ISoftDeletable`
+  resolves, unless the app's own partial already implements it. The metadata class
+  `{Target}{Property}ContributionMetadata` derives from the new `ContributionDescriptor<TTarget,
+  TElement, TContribution, TCurrent>` (Abstractions): prefixes, slot keys, `FindInvalidSlot`, ids,
+  row get/set, the element ↔ contribution ↔ current mappings, `Shape` (FNV-1a 64 over target,
+  property, element, slots, values, attribution and soft delete) and `QueryName`. **Registration:**
+  one `[ModuleInitializer]` per assembly (`{RootNamespace}.SparkContributionsRegistration`) calls
+  `SparkValueObjects.Register(typeof(E), "Key", …)` per collection element and
+  `ContributionRegistry.Register(…Metadata.Instance)` per declaration; M5's `AddContributions()`
+  reads `ContributionRegistry.Descriptors` (no scanning; it must make sure the declaring assemblies
+  are loaded, e.g. through the model's entity types). The element partial (once per element, the
+  attribution unioned over its declarations) carries the get-only `[ValueKey] Key` (S-C3 / F3 — the
+  M5 item below is therefore done here) and the read-only attribution properties over `internal`
+  fields that `CreateRow` sets. Slot formatting is the shared `ContributionSlotFormat` (Abstractions):
+  invariant integers, enum names, `Guid` as `N` (32 chars — `D` would exceed the 32-character segment),
+  `bool` as `true`/`false`, null as empty (refused by `IsValid`). The lazy-load helper of T3 is
+  **not** generated: the descriptor lives in domain projects that need not reference the RavenDB
+  client, so M5 does the lazy prefix load generically from `CurrentPrefix` and `CurrentType`. The
+  `contributionAttribution` rendering hint is a constant (`ContributionDescriptor.AttributionRenderingHint`)
+  plus `AttributionAttributeNames`; a C# property cannot set a model renderer, so M5 applies it to
+  the model.
+- [x] Add the analyzer rules from T4, with code fixes: add `[JsonIgnore]`, change a slot type (a
   cross-project edit is allowed).
-- [ ] Add Verify snapshots to `tests/MintPlayer.Spark.SourceGenerators.Tests`, plus diagnostic tests.
+  **As built:** SPARK025 slot type (error), SPARK026 cardinality (error), SPARK027 no values (error),
+  SPARK028 owner without a public `string Id` (warning — the detectable "PO entity" rule), SPARK029
+  no Newtonsoft `[JsonIgnore]` (error, **fix**), SPARK031 element not partial (error, **fix**, also
+  makes containing types partial, resolved solution-wide by metadata name), SPARK032 element in
+  another assembly (warning), SPARK033 SoftDelete not referenced (warning), SPARK034 unsupported
+  shape (error), SPARK035 clash with generated members / `[ValueKey]` / `[ValueObject]` (error).
+  SPARK030 stays the Authorization MSBuild warning. **No slot-type fix:** there is no type to pick for
+  the author.
+- [x] Add Verify snapshots to `tests/MintPlayer.Spark.SourceGenerators.Tests`, plus diagnostic tests.
+  **As built:** `ContributionsGeneratorTests` (4 snapshots: Song/Lyrics with attribution None and no
+  SoftDelete, with all attribution and SoftDelete, int/enum/Guid/bool slots on an array, single-valued
+  without slots; record element; app-owned `ISoftDeletable`; blocked declaration; compile-and-run of
+  the PRD ids, key, registry and mappings, invariant formatting under `sv-SE`) and
+  `ContributionsAnalyzerTests` (every rule, both fixes, the analyzer silent on generated members).
+  The test project now references `MintPlayer.Spark.SoftDelete.Abstractions`.
 
 ### M5 — Runtime (T6)
 - [ ] M1c integration: in the conflict merge, contribution rows (the `[Contribution]` property) only
@@ -267,8 +312,8 @@ Order: reproduce the existing leaks first (red tests), then build.
     after-commit.
   - Pin the current document's change vector (update: cv, create: `""`, delete: cv). Retry up to 3
     times, then return 409.
-- [ ] Generator: emit the get-only `[ValueKey] Key` built from the slot tuple, plus its
-  `SparkValueObjects.Register` module initializer (F3).
+- [x] Generator: emit the get-only `[ValueKey] Key` built from the slot tuple, plus its
+  `SparkValueObjects.Register` module initializer (F3). **Done in M4.**
 - [ ] `IContributions.RebuildCurrentAsync(targetId)`.
 - [ ] Add `AddContributions()` and wire it into AllFeatures, if AllFeatures lists every feature.
 

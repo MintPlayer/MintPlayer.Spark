@@ -13,6 +13,7 @@ gets a diagnostic (and its code fix) from an analyzer it references.
 |---|---|---|
 | `MintPlayer.Spark.SourceGenerators` | apps, entity libraries, most `libs/**` | `MintPlayer.Spark.AllFeatures` |
 | `MintPlayer.Spark.LibraryGenerators` | apps and entity libraries | `MintPlayer.Spark.AllFeatures` |
+| `MintPlayer.Spark.Contributions.SourceGenerators` | projects that reference `MintPlayer.Spark.Contributions` (in-repo: its `spark-contributions.targets`) | `MintPlayer.Spark.Contributions` (embedded, never a package of its own) |
 
 ⚠️ `LibraryGenerators` was packed into **no** package before `10.0.0-preview.80`, so SPARK016 —
 the diagnostic guarding the generated row key — reached no external consumer at all.
@@ -44,8 +45,19 @@ the diagnostic guarding the generated row key — reached no external consumer a
 | SPARK020 | Error | `[Authorize]` or `.RequireAuthorization(…)` with a policy name or roles does not work under Spark — use `[SparkAuthorize]` / `.RequireAuthorization(new SparkAuthorizeAttribute(…))` ([why](guide-controllers.md#what-does-not-work)) | `AuthorizeAttributeAnalyzer` | — |
 | SPARK021 | Error | Security right uses a wildcard (`*`), which is refused at startup | `SecurityConfigurationAnalyzer` | — |
 | SPARK022 | Warning | `!x.IsDeleted` / `x.IsDeleted == false` on an `ISoftDeletable` in a translated expression drops every document without the field — use `x.IsDeleted != true` ([why](../libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md#startup-checks)) | `SoftDeleteFilterAnalyzer` | — |
+| SPARK023 | Error | A custom action is named like a reserved action verb (`[assembly: SparkReservedActions]`); also a startup error | `ReservedActionNameAnalyzer` | — |
 | SPARK024 | Warning | A group restricts a verb on some attributes of a type (attribute-level denials) and leaves others on the type-level right — the stale-deny trap; also a startup posture note ([guide](guide-authorization.md#attribute-level-rights-verbtypeattribute)) | `SecurityConfigurationAnalyzer` | — |
+| SPARK025 | Error | `[ContributionSlot]` type has no stable text form (allowed: `string`, an enum, the integral types, `Guid`, `bool`, and their nullable forms — PRD T2) | `ContributionsAnalyzer` (MintPlayer.Spark.Contributions) | — |
+| SPARK026 | Error | `[Contribution]` cardinality does not match the slots: a single-valued property whose element has slots, or a collection whose element has none | `ContributionsAnalyzer` | — |
+| SPARK027 | Error | Contribution element has no value (non-slot, public settable) properties | `ContributionsAnalyzer` | — |
+| SPARK028 | Warning | `[Contribution]` on a type with no public `string Id` — not a document Spark loads as a persistent object (code is still generated) | `ContributionsAnalyzer` | — |
+| SPARK029 | Error | `[Contribution]` property without Newtonsoft `[JsonIgnore]` (System.Text.Json's does not count): its rows would be stored on the target | `ContributionsAnalyzer` | ✅ Add `[Newtonsoft.Json.JsonIgnore]` |
 | SPARK030 | Warning | The app's `$(SpaRoot)package.json` does not declare `@mintplayer/ng-spark-auth`, which the generated `spark-auth.setup.ts` imports — add it with the major matching your Angular major, or set `EnableSparkAuthSpa=false` for a project without the Spark SPA ([why](../libs/authorization/MintPlayer.Spark.Authorization/README.md#npm-dependency-and-the-generated-setup-file)) | MSBuild target `SparkAuthCheckNpmDependency` (`spark-authorization.targets`, MintPlayer.Spark.Authorization) | — |
+| SPARK031 | Error | Contribution element (or a type containing it) is not `partial`, so the row key / attribution properties cannot be added; nothing is generated | `ContributionsAnalyzer` | ✅ Declare the contribution element 'partial' |
+| SPARK032 | Warning | Contribution element is declared in another assembly; a generator cannot add members there, so nothing is generated | `ContributionsAnalyzer` | — |
+| SPARK033 | Warning | MintPlayer.Spark.SoftDelete is not referenced, so contributions are hard-deleted (PRD Q4) | `ContributionsAnalyzer` | — |
+| SPARK034 | Error | Unsupported `[Contribution]` declaration: owner generic or not a class; static/indexer property; unknown collection type; no setter on a non-`List`/`IList`/`ICollection` property; element not a non-abstract, non-generic class/record with a parameterless constructor; slot without a public getter and setter | `ContributionsAnalyzer` | — |
+| SPARK035 | Error | Contribution element clashes with generated members: a reserved name (`Key`, `Id`, `TargetId`, `ContributorId`, `ContributionId`, `UpdatedAt`, `ContributionCount`, `ContributorName`, the `ISoftDeletable` members), `[ValueKey]`, or `[ValueObject]` | `ContributionsAnalyzer` | — |
 
 SPARK030 is an **MSBuild** warning, not a Roslyn diagnostic: it is raised before `Build` in a project
 that references `MintPlayer.Spark.Authorization`, has `EnableSparkAuthSpa=true` and a
@@ -78,7 +90,15 @@ to check if that error ever appears.
 
 ## Code fixes
 
-Both fixes live in `MintPlayer.Spark.LibraryGenerators`, alongside the generator that raises
+The contributions fixes (SPARK029, SPARK031) live in `MintPlayer.Spark.Contributions.SourceGenerators`
+next to `ContributionsAnalyzer`. Every contributions rule is reported on the `[Contribution]`
+property; SPARK031's fix finds the element by the metadata name in the `SparkContributionElement`
+diagnostic property and edits its declaration (and any non-partial containing type) wherever the
+solution declares it. A slot-type fix is not offered: there is no type to pick for the author.
+The contributions generator and analyzer read a declaration through one shared inspector, so a
+declaration with a blocking error generates nothing, and one without always generates.
+
+The two value-object fixes live in `MintPlayer.Spark.LibraryGenerators`, alongside the generator that raises
 SPARK016. They are an **IDE affordance**: `dotnet build` gains nothing, and the error severity
 remains the enforcement.
 

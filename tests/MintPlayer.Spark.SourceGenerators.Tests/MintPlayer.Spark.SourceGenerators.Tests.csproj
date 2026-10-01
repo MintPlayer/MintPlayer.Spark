@@ -79,6 +79,8 @@
                       SkipGetTargetFrameworkProperties="true" />
     <!-- [Contribution] / [ContributionSlot] for the contributions generator's test inputs. -->
     <ProjectReference Include="..\..\libs\contributions\MintPlayer.Spark.Contributions.Abstractions\MintPlayer.Spark.Contributions.Abstractions.csproj" />
+    <!-- ISoftDeletable: the contributions generator makes the contribution type ISoftDeletable when it is referenced (PRD Q4). -->
+    <ProjectReference Include="..\..\libs\soft_delete\MintPlayer.Spark.SoftDelete.Abstractions\MintPlayer.Spark.SoftDelete.Abstractions.csproj" />
 
     <!-- Abstractions are needed to compile the test input sources (DefaultPersistentObjectActions, etc). -->
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />

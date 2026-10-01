@@ -640,6 +640,24 @@ the dark-mode work, whose ng-bootstrap half is tracked in MintPlayer/mintplayer-
   `buildTransitive/MintPlayer.Spark.Contributions.targets` that adds the analyzer reference in-repo
   only. AllFeatures is unchanged, because it does not list every optional feature. All three start at
   `11.0.0-preview.92`.
+- **M4:** the generator and analyzer. Per `[Contribution]` property: `{T}{P}Contribution`
+  (`IContribution`, `IHasNaturalId`, `ISoftDeletable` when SoftDelete is referenced) and `{T}{P}Current`
+  (`ICurrentContribution`, `IHasNaturalId`; it also carries `TargetId`, which its explicit `GetId()`
+  needs), both `partial`, with static `GetId`s producing exactly
+  `Songs/1234/LyricsContributions/ko/Kore/User/MintPlayerUsers/abc` and `Songs/1234/Lyrics/ko/Kore`;
+  `{T}{P}ContributionMetadata : ContributionDescriptor<…>` (new in Abstractions, with
+  `ContributionRegistry` and `ContributionSlotFormat`); on the element, the get-only
+  `[ValueKey] Key` (`ko/Kore`) and the read-only attribution properties; one module initializer per
+  assembly registering the keys with `SparkValueObjects` and the descriptors with
+  `ContributionRegistry` (what `AddContributions()` will read). Rules SPARK025–SPARK029 and
+  SPARK031–SPARK035 (`docs/diagnostics.md`), with fixes for SPARK029 and SPARK031. Generator and
+  analyzer share one inspector: a blocked declaration generates nothing.
+  - **Deviations:** no lazy-load helper is generated (domain projects need not reference the RavenDB
+    client; M5 loads generically from the descriptor); the rendering hint is metadata
+    (`AttributionRenderingHint`, `AttributionAttributeNames`) that M5 applies to the model, because a C#
+    property cannot set a renderer; an element from another assembly is a warning (SPARK032) that
+    generates nothing; no slot-type code fix; `Guid` slots format as `N` (the `D` form is 36
+    characters, over the 32 T2 allows).
 
 **Breaking changes for the release notes** (no backward compatibility, preview; minor version bumps
 only):
