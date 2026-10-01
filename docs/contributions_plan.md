@@ -453,8 +453,8 @@ Decided (owner, 2026-10-01):
   xUnit's equivalent of [OneTimeSetUp]/[OneTimeTearDown]). This is the same mode on CI and locally.
 - **(6) Keep the RavenTestDriver implementations.** No external `localhost:8080` server for tests.
 
-- [ ] (2) + (4) are being implemented, then one measured run.
-- [ ] (5) Migrate classes to `SparkSharedDatabase`, smallest risk first. The investigation counted 181
+- [x] (2) + (4) done (`npm run test:affected` via `tools/test-local.mjs`, `-c local` coverage-off configs, `RavenDatabaseDeletion` zero-wait in all three RavenTestDriver bases, opt-in `SPARK_E2E_SKIP_APP_BUILD`). Measured: 21m49s incl. E2E, all green; Spark.Tests 18m20s (was 21m21s serial). See PRD §5d item 8.
+- [ ] (5) **IN PROGRESS: batch 1 (no-write classes + per-class hosts) is being implemented.** Migrate classes to `SparkSharedDatabase`, smallest risk first. The investigation counted 181
   driver classes:
   1. the 45 that never write (incl. the OIDC classes: one host per class instead of per test)
   2. the 67 that only need ids scoped via `Id(...)`

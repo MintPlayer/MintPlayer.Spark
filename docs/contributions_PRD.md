@@ -940,6 +940,26 @@ sweep therefore has to be practical locally, and CI's behaviour stays exactly as
 6. **Keep the `RavenTestDriver` implementations; no external `localhost:8080` server for tests.** The
    gain would be small (one embedded-server start per process) against the risk to the dev databases,
    the switch from memory to disk, and leftover cleanup.
+7. **CI already skips unaffected test projects; no workflow change** (owner question, 2026-10-01;
+   answered by measurement).
+   - **How:** CI runs `nx run-many -t test`, deliberately not `affected` (`pull-request.yml:245-257`).
+     Unaffected projects are restored from the remote Nx cache, with their coverage reports, instead
+     of being re-run. `affected` would drop their coverage reports. PR #377 uploaded 1 report of 8
+     that way and read as 35.1% against an 81.8% base.
+   - **Measured** with `nx show projects --affected --files=<f> --withTarget=test`:
+     - a change in `apps/CodeCoverage/…/Program.cs` affects only `CodeCoverage.Tests`
+     - a change in `libs/spark/…/DatabaseAccess.cs` affects all five .NET test projects
+     - a change in `package.json` affects everything (shared input)
+   - **Caveats:**
+     - Shared-input changes (`package.json`, `nx.json`, root props) invalidate everything once.
+     - The cache hits only when master ran with the same inputs.
+     - `run-many --target=build` of the five apps (`pull-request.yml:132`, for the model-verify loop)
+       runs on every PR regardless of what changed. Left as is unless the owner asks.
+8. **Measured result of (2) + (4)** (2026-10-01, `--skip-nx-cache`, Developer licence):
+   `npm run test:affected` took **21m49s including E2E**, all 13 projects green, against the old
+   serial sweep's 26.2 min *without* E2E. MintPlayer.Spark.Tests went from 21m21s to **18m20s** and
+   remains the critical path. So the licence was not the suspected 4× factor: per-test setup and
+   teardown is, which is what (5) targets. Details are in the repo `CLAUDE.md`, "The local sweep".
 
 ## 6. Risks
 
