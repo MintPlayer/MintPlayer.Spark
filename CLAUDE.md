@@ -34,14 +34,15 @@ Every app (`apps/CodeCoverage`, `apps/DemoApp`, `apps/Fleet`, `apps/HR`) hosts i
 The host prints the dev server's own port (`➜ Local: http://localhost:NNNNN/`) once it is ready;
 that is the signal the app is actually serviceable, not `Now listening on:`.
 
-## Running the test suites: let GitHub Actions do it
+## Running the test suites
 
 **Local test runs take over 30 minutes; test runs on GitHub Actions take 17 minutes.** The local run
 is serial (RavenDB tests starve each other's CPU when run in parallel) and usually skips E2E, while
 CI runs everything, E2E included, in parallel with its Nx cache and the Developer RavenDB licence.
 
-- For a full sweep, push the feature branch and let CI run it.
-- When CI is red, read the failure from its log first:
+- **CI runs cost money: never push just to get a test run.** The sweep runs locally. Making it fast
+  is tracked work (see `docs/contributions_PRD.md` §5c).
+- When CI is red anyway (after a push that was asked for), read the failure from its log first:
   `gh run view <run> --job <job> --log-failed`, grepping for `Failed` and `Error Message`.
 - Locally, re-run only the single failing test class while fixing it.
 - A local-only failure may come from the machine's environment rather than the code. For example,
