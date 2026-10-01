@@ -54,15 +54,29 @@ internal interface IAttributeWriteShield
     /// Drops from <paramref name="posted"/> every attribute the caller may not write.
     /// <paramref name="stored"/> is the document as it is stored, or null for a create.
     /// </summary>
-    /// <returns>
-    /// The attributes a <b>static</b> right kept out, as paths (<c>Title</c>, <c>Lines.Text</c>),
-    /// distinct. Per-row protection is deliberately not reported: whether a row protects an attribute
-    /// is itself what the hook hides.
-    /// </returns>
-    Task<IReadOnlyList<string>> ApplyAsync(
+    /// <remarks>
+    /// Idempotent: applying it again to an already shielded object with the same <paramref name="stored"/>
+    /// drops nothing more. A natural-id create is shielded before its collision probe (contributions
+    /// M2d), with no stored row, so a refused value never chooses the derived id.
+    /// </remarks>
+    Task<AttributeWriteShieldResult> ApplyAsync(
         PersistentObject posted, EntityTypeDefinition definition, Type entityType, object? stored,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>What <see cref="IAttributeWriteShield.ApplyAsync"/> kept out of a save.</summary>
+/// <param name="Refused">
+/// The attributes a <b>static</b> right kept out, as paths (<c>Title</c>, <c>Lines.Text</c>), distinct.
+/// Per-row protection is deliberately not reported: whether a row protects an attribute is itself
+/// what the hook hides. This is what <c>SaveContext.UnwritableAttributes</c> carries.
+/// </param>
+/// <param name="Unwritable">
+/// The object's own (top-level) attributes whose value the save does not take from the caller — a
+/// static refusal, the per-row hook's <c>Edit</c> protection, or its <c>Read</c> protection on an
+/// attribute the client did not change — whether or not the client posted them. Internal only: save
+/// validation skips them (contributions M2d), because the value that is kept is not the caller's.
+/// </param>
+internal sealed record AttributeWriteShieldResult(IReadOnlyList<string> Refused, IReadOnlySet<string> Unwritable);
 
 [Register(typeof(IAttributeWriteShield), ServiceLifetime.Scoped)]
 internal sealed partial class AttributeWriteShield : IAttributeWriteShield
@@ -76,18 +90,25 @@ internal sealed partial class AttributeWriteShield : IAttributeWriteShield
     /// <summary>AsDetail nests; a cycle of row types is stopped by the depth, as in the mapper.</summary>
     private const int MaxDepth = 8;
 
-    public async Task<IReadOnlyList<string>> ApplyAsync(
+    public async Task<AttributeWriteShieldResult> ApplyAsync(
         PersistentObject posted, EntityTypeDefinition definition, Type entityType, object? stored,
         CancellationToken cancellationToken = default)
     {
         var (always, unlessChanged) = await PerRowAsync(entityType, stored);
+        var verb = stored is null ? SparkCoreActions.New : SparkCoreActions.Edit;
 
         var refused = new List<string>();
         await ShieldAsync(
-            posted, definition, stored, stored is null ? SparkCoreActions.New : SparkCoreActions.Edit,
+            posted, definition, stored, verb,
             always, unlessChanged, prefix: string.Empty, refused, depth: 0, cancellationToken);
 
-        return [.. refused.Distinct(StringComparer.OrdinalIgnoreCase)];
+        // After the drop: a Read-protected attribute the client changed is still there, and is the
+        // caller's to write; one it did not change (or never posted) keeps the stored value.
+        var unwritable = new HashSet<string>(await attributeRights.GetDeniedAsync(definition, verb, cancellationToken), StringComparer.OrdinalIgnoreCase);
+        unwritable.UnionWith(always.Where(n => !n.Contains('.')));
+        unwritable.UnionWith(unlessChanged.Where(n => !n.Contains('.') && posted.Attributes.All(a => !string.Equals(a.Name, n, StringComparison.OrdinalIgnoreCase))));
+
+        return new([.. refused.Distinct(StringComparer.OrdinalIgnoreCase)], unwritable);
     }
 
     /// <summary>

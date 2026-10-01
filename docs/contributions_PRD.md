@@ -614,6 +614,20 @@ the dark-mode work, whose ng-bootstrap half is tracked in MintPlayer/mintplayer-
   non-New values; `po/create`/`po/update` answer with the row re-read and presented like `po/load`;
   a History revert is partial and says so; per-row blanking is indistinguishable; retry prompts are
   presented; endpoints name rights by the definition's `Name` (nested classes).
+- **M2d:** the natural-id probe and save validation see only values the caller may write. A
+  natural-id create is shielded (static `New` rights, no per-row hook — there is no row) before the
+  collision probe, so a `New`-denied key can neither choose the derived id (rewriting the row that
+  holds it) nor turn the collision answer into an existence oracle; the id then derives from the CLR
+  default, exactly as for a create that posts no key (`WvItems/` → RavenDB completes it). The shield
+  after the gates stays before the interceptors (idempotent; on a collision it adds the `Edit` rules
+  on the stored row). An update never moves a natural id: the loaded document is written under its
+  own id (RavenDB ids are immutable), so a changed key only changes the field. `po/create` and
+  `po/update` validation now runs inside the save via `ISaveValidation`, right after the shield, and
+  skips the attributes the caller may not write (static refusal, per-row `Edit`, per-row `Read` not
+  changed): they keep the stored value (CLR default on a create). The refresh hook sees the stored
+  values for them; validating those values was rejected (a rule failing on a hidden value is an
+  oracle, and an error the caller can't fix). Tests: `AttributeWriteProbeAndValidationTests`
+  (red → green).
 
 **Breaking changes for the release notes** (no backward compatibility, preview; minor version bumps
 only):
@@ -649,6 +663,12 @@ only):
 - **Rights for a nested entity class** are named by its definition `Name` in every endpoint
   (`Create`, `New`, `Refresh`, `DeleteRow`, custom actions), as `IDatabaseAccess` already did — not by
   the CLR name's last dotted segment (`Outer+Inner`).
+- **Save validation moved into the save** (M2d): `po/create`/`po/update` validate after every gate
+  (row Edit gate, collection guard, etag check, disabled actions, write shield), so an invalid
+  payload against a row the caller may not edit is a 404 (stale etag 409, disabled action 403) rather
+  than a 400; and an attribute the caller may not write is no longer validated.
+- **A `New`-denied natural key no longer chooses the id** (M2d): the create gets the id the CLR
+  default derives, instead of colliding with (and, with `Edit`, rewriting) the row the posted key names.
 - **Refresh** asks the per-row hook for the redacted names instead of reading an `IsVisible` delta,
   and a refreshed protected attribute is blanked the same indistinguishable way.
 - **Dark mode** (the other half of this PR): `sidebarTheme` is removed. ng-bootstrap's theme is stored
@@ -671,11 +691,6 @@ only):
 - F6 can't take back `session.Advanced.Defer` commands, or `Delete(id)` on a document that was never
   loaded.
 - Satellite detection keys on the Newtonsoft `[JsonIgnore]`, not System.Text.Json's.
-- **Validation runs on the posted values, before the shield** (M2c-2b): a *required* attribute the
-  per-row hook blanks is posted back empty and fails `required` although the save would have kept
-  the stored value. Pre-existing (the old redaction nulled too); not fixed here.
-- The natural-id collision probe maps the posted object before the shield, so a `New`-denied
-  attribute can still influence the derived id (it never reaches the stored document).
 - The materialize hook runs once per entity *instance*, not per document id.
 
 **Open items:**

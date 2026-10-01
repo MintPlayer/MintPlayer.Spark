@@ -203,13 +203,16 @@ Order: reproduce the existing leaks first (red tests), then build.
   `SparkReservedActionRegistryTests`.
 
 ### M2d — Follow-ups from the M2c-2b review (`07c62c54`)
-- [ ] **Natural-id probe sees New-denied posted values** (`DatabaseAccess` natural-id probe ~:257
+- [x] **Natural-id probe sees New-denied posted values** (`DatabaseAccess` natural-id probe ~:257
   runs before the write shield). A caller can influence a natural id derived from an attribute they
   may not set, and the collision answer is an existence oracle. Fix: run the shield (or at least drop
   New/Edit-denied values) before the probe and before `ToEntity` for the probe. Start with a red test.
-- [ ] Decide whether validation should run on the shielded values. Today a *required* attribute
+- [x] Decide whether validation should run on the shielded values. Today a *required* attribute
   blanked by the per-row hook fails "required" on save; it was documented as a known limitation in
   M2c-2b. Fix it if it's cheap, since validation of values the user can't set is meaningless.
+  **Done:** validation runs inside the save after the shield (`ISaveValidation`) and skips what the
+  caller may not write; the create shield runs before the natural-id probe. An update never moves a
+  natural id. Tests: `AttributeWriteProbeAndValidationTests`.
 
 ### M3 — Library skeleton and packaging (C5, C7)
 - [ ] Create `libs/contributions/MintPlayer.Spark.Contributions` and `.Abstractions`: the

@@ -33,6 +33,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
     [Inject] private readonly IPersistentObjectInterceptorPipeline interceptorPipeline;
     [Inject] private readonly IDisabledActionsEvaluator disabledActions;
     [Inject] private readonly IAttributeWriteShield attributeWriteShield;
+    [Inject] private readonly ISaveValidation saveValidation;
     [Inject] private readonly Microsoft.AspNetCore.Http.IHttpContextAccessor? httpContextAccessor;
     [Inject] private readonly Microsoft.Extensions.Logging.ILogger<DatabaseAccess>? logger;
 
@@ -252,9 +253,21 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // then checks "Edit", not "New"). A caller with only New rights can no longer rewrite an
         // existing document by replaying its natural key.
         var naturalIdCollision = false;
+        IReadOnlyList<string> refusedBeforeProbe = [];
         if (string.IsNullOrEmpty(persistentObject.Id)
             && typeof(IHasNaturalId).IsAssignableFrom(entityType))
         {
+            // The probe maps what the create will write, not what was posted (contributions M2d): a
+            // value for a New-denied attribute is dropped first, so it can neither choose the derived
+            // id — rewriting the row that holds it — nor make the collision answer an existence
+            // oracle for it. This is the create shield (no stored row, so static New rights only; the
+            // per-row hook is not consulted), applied to the object itself so the probe, the gates and
+            // the save all see the same values. Before the type-level New gate below, which is safe:
+            // it never refuses, so it answers nothing. The shield call after the gates stays where it
+            // is, before the interceptors; it is idempotent, and on a collision it adds the Edit rules
+            // judged on the stored row.
+            refusedBeforeProbe = (await attributeWriteShield.ApplyAsync(persistentObject, entityTypeDefinition, entityType, stored: null)).Refused;
+
             var probe = entityMapper.ToEntity(persistentObject) as IHasNaturalId;
             var derivedId = probe?.GetId();
             if (!string.IsNullOrEmpty(derivedId))
@@ -358,7 +371,14 @@ internal partial class DatabaseAccess : IDatabaseAccess
         // per-row hook protects on the stored row — before anything maps, hooks or intercepts the
         // object. After every gate, so a refused save never consults the hook; judged on the STORED
         // row (`before`), like the disabled-action gate. Never refuses: that would name the attributes.
-        var unwritable = await attributeWriteShield.ApplyAsync(persistentObject, entityTypeDefinition, entityType, before);
+        var shield = await attributeWriteShield.ApplyAsync(persistentObject, entityTypeDefinition, entityType, before);
+        IReadOnlyList<string> unwritable = refusedBeforeProbe.Count == 0
+            ? shield.Refused
+            : [.. refusedBeforeProbe.Concat(shield.Refused).Distinct(StringComparer.OrdinalIgnoreCase)];
+
+        // Validation the endpoint asked for (contributions M2d): on the shielded values, skipping what
+        // the caller may not write, after every gate and before anything hooks, intercepts or writes.
+        await saveValidation.ValidateAsync(persistentObject, entityTypeDefinition, before, shield.Unwritable);
 
         // Interceptors (#460, D1): registered here, after every gate, so an interceptor only ever sees
         // a save the caller was allowed to make. The before-hooks run inside the base OnSaveAsync
