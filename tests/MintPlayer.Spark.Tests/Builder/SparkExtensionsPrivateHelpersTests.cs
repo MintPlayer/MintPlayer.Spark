@@ -94,7 +94,7 @@ public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
         var emptyAssembly = typeof(string).Assembly; // mscorlib has no AbstractIndexCreationTask types
 
         var method = PrivateMethod("CreateSparkIndexes");
-        var act = () => method.Invoke(null, [app, (IReadOnlyList<Assembly>)[emptyAssembly]]);
+        var act = () => method.Invoke(null, [app, (IReadOnlyList<Assembly>)[emptyAssembly], null]);
 
         act.Should().NotThrow();
         // Zero index/projection types found → registry untouched.
@@ -109,7 +109,7 @@ public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
         var app = BuildAppBuilder(Store, indexCatalog);
         var thisAssembly = typeof(SparkExtensionsPrivateHelpersTests).Assembly;
 
-        PrivateMethod("CreateSparkIndexes").Invoke(null, [app, (IReadOnlyList<Assembly>)[thisAssembly]]);
+        PrivateMethod("CreateSparkIndexes").Invoke(null, [app, (IReadOnlyList<Assembly>)[thisAssembly], null]);
 
         // Every fixture-local index must have been registered, including the two whose collection type
         // is not derivable. Registering them is the point: a multi-map or map-reduce index that is not
@@ -127,7 +127,7 @@ public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
         var app = BuildAppBuilder(Store, indexCatalog);
         var thisAssembly = typeof(SparkExtensionsPrivateHelpersTests).Assembly;
 
-        PrivateMethod("CreateSparkIndexes").Invoke(null, [app, (IReadOnlyList<Assembly>)[thisAssembly]]);
+        PrivateMethod("CreateSparkIndexes").Invoke(null, [app, (IReadOnlyList<Assembly>)[thisAssembly], null]);
 
         indexCatalog.Received().RegisterProjection(typeof(ProbeProjection), typeof(SimpleProbeIndex));
     }
@@ -146,11 +146,32 @@ public class SparkExtensionsPrivateHelpersTests : SparkTestDriver
         var thisAssembly = typeof(SparkExtensionsPrivateHelpersTests).Assembly;
 
         var method = PrivateMethod("CreateSparkIndexes");
-        var act = () => method.Invoke(null, [app, (IReadOnlyList<Assembly>)[thisAssembly]]);
+        var act = () => method.Invoke(null, [app, (IReadOnlyList<Assembly>)[thisAssembly], null]);
 
         // The catch block swallows; reflection wraps any *unswallowed* exception in
         // TargetInvocationException. Either way the call must not propagate.
         act.Should().NotThrow();
+    }
+
+    [Fact]
+    public async Task CreateSparkIndexes_with_a_deployment_filter_deploys_only_what_it_accepts_but_still_registers_everything()
+    {
+        // The filter narrows deployment, never discovery: the catalog (and so the model hash) must
+        // mean the same thing with or without it, while the database receives only the accepted index.
+        var indexCatalog = Substitute.For<IIndexCatalog>();
+        var app = BuildAppBuilder(Store, indexCatalog);
+        var thisAssembly = typeof(SparkExtensionsPrivateHelpersTests).Assembly;
+        Func<Type, bool> filter = t => t == typeof(SimpleProbeIndex);
+
+        PrivateMethod("CreateSparkIndexes").Invoke(null, [app, (IReadOnlyList<Assembly>)[thisAssembly], filter]);
+
+        indexCatalog.Received().RegisterIndex(typeof(SimpleProbeIndex));
+        indexCatalog.Received().RegisterIndex(typeof(MultiMapProbeIndex));
+        indexCatalog.Received().RegisterIndex(typeof(MapReduceProbeIndex));
+
+        var deployed = await Store.Maintenance.SendAsync(
+            new Raven.Client.Documents.Operations.Indexes.GetIndexNamesOperation(0, int.MaxValue));
+        deployed.Should().BeEquivalentTo([nameof(SimpleProbeIndex)]);
     }
 
     // --- helpers --------------------------------------------------------

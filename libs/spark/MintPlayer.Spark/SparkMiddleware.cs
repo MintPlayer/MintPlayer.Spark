@@ -427,10 +427,8 @@ public static class SparkExtensions
             }
         });
 
-        app.UseMiddleware<SparkMiddleware>();
-
         // Create RavenDB indexes
-        CreateSparkIndexes(app, registry.ResolveIndexAssemblies());
+        CreateSparkIndexes(app, registry.ResolveIndexAssemblies(), registry.IndexDeploymentFilter);
 
         // After CreateSparkIndexes, because the projection type and index name feed the model hash
         // and the index registry is populated there. Before any request is served: a drifted model
@@ -794,7 +792,10 @@ public static class SparkExtensions
             logger.LogInformation("Spark security: {Note}", note);
     }
 
-    private static void CreateSparkIndexes(IApplicationBuilder app, IReadOnlyList<Assembly> assemblies)
+    private static void CreateSparkIndexes(
+        IApplicationBuilder app,
+        IReadOnlyList<Assembly> assemblies,
+        Func<Type, bool>? deploymentFilter)
     {
         var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
 
@@ -826,12 +827,32 @@ public static class SparkExtensions
 
         // Deployment is best-effort, but per assembly: one unreachable or broken module must not
         // cost every other module its indexes, which is what a single surrounding catch did.
+        //
+        // A deployment filter (SparkModuleRegistry.IndexDeploymentFilter, set by test hosts) narrows
+        // only this loop. The catalog above was populated from every index regardless, so the model
+        // hash and query resolution mean the same thing with or without it.
         foreach (var assembly in assemblies)
         {
             try
             {
-                IndexCreation.CreateIndexes(assembly, documentStore);
-                Console.WriteLine($"RavenDB indexes created/updated from assembly: {assembly.GetName().Name}");
+                if (deploymentFilter is null)
+                {
+                    IndexCreation.CreateIndexes(assembly, documentStore);
+                    Console.WriteLine($"RavenDB indexes created/updated from assembly: {assembly.GetName().Name}");
+                    continue;
+                }
+
+                var candidates = DeployableIndexTypes(assembly);
+                var tasks = candidates
+                    .Where(deploymentFilter)
+                    .Select(t => (IAbstractIndexCreationTask)Activator.CreateInstance(t)!)
+                    .ToList();
+
+                if (tasks.Count > 0)
+                    IndexCreation.CreateIndexes(tasks, documentStore);
+                Console.WriteLine(
+                    $"RavenDB indexes created/updated from assembly: {assembly.GetName().Name} " +
+                    $"({tasks.Count} of {candidates.Count}, deployment filter set)");
             }
             catch (Exception ex)
             {
@@ -853,21 +874,24 @@ public static class SparkExtensions
     /// </remarks>
     private static bool IsAbstractIndexCreationTask(Type type) => RavenIndexHierarchy.IsIndex(type);
 
-}
+    /// <summary>
+    /// The types <c>IndexCreation.CreateIndexes(assembly, store)</c> would deploy from
+    /// <paramref name="assembly"/>, by RavenDB's own criterion, so a filtered deployment is a strict
+    /// subset of the unfiltered one rather than a second opinion about what an index is.
+    /// </summary>
+    /// <remarks>
+    /// RavenDB 7.2 (<c>IndexCreation.GetAllInstancesOfType</c>): a non-abstract class implementing
+    /// <see cref="IAbstractIndexCreationTask"/>, instantiated with <see cref="Activator.CreateInstance(Type)"/>
+    /// — so a type without a public parameterless constructor fails the same way in both paths.
+    /// Deliberately not <see cref="RavenIndexHierarchy.IsIndex"/>: that is Spark's discovery gate and
+    /// covers only <c>AbstractIndexCreationTask</c>, while RavenDB also deploys JavaScript, counters
+    /// and time-series index tasks.
+    /// </remarks>
+    private static IReadOnlyList<Type> DeployableIndexTypes(Assembly assembly)
+        => ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
+            ("SparkMiddleware.DeployableIndexTypes", assembly),
+            static k => GetLoadableTypes(k.Asm)
+                .Where(t => t.IsClass && !t.IsAbstract && typeof(IAbstractIndexCreationTask).IsAssignableFrom(t))
+                .ToArray());
 
-public partial class SparkMiddleware
-{
-    [Inject] private readonly RequestDelegate next;
-
-    public async Task InvokeAsync(HttpContext context)
-    {
-        // Pre-processing logic
-        Console.WriteLine("Before the next middleware");
-
-        // Call the next middleware in the pipeline
-        await next(context);
-
-        // Post-processing logic
-        Console.WriteLine("After the next middleware");
-    }
 }
