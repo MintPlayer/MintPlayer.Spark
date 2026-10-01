@@ -12,6 +12,7 @@ using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using MintPlayer.Spark.Testing;
+using MintPlayer.Spark.Tests._Infrastructure;
 using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
@@ -37,9 +38,15 @@ public abstract class OidcTestHost : SparkTestDriver
 
     private SparkEndpointFactory<OidcTestContext>? _factory;
 
-    protected SparkEndpointFactory<OidcTestContext> Factory =>
-        _factory ??= new SparkEndpointFactory<OidcTestContext>(
-            Store,
+    protected SparkEndpointFactory<OidcTestContext> Factory => _factory ??= CreateFactory(Store);
+
+    /// <summary>
+    /// The provider host every OIDC test boots. Shared with <see cref="OidcSharedHost"/>, which
+    /// boots it once per class for the classes that write nothing.
+    /// </summary>
+    internal static SparkEndpointFactory<OidcTestContext> CreateFactory(IDocumentStore store) =>
+        new SparkEndpointFactory<OidcTestContext>(
+            store,
             models: [],
             configureSpark: spark =>
             {
@@ -541,4 +548,19 @@ public abstract class OidcTestHost : SparkTestDriver
 /// <summary>Minimal context: these tests exercise <c>/connect/*</c>, not persistent objects.</summary>
 public sealed class OidcTestContext : SparkContext
 {
+}
+
+/// <summary>
+/// The same provider host as <see cref="OidcTestHost"/>, booted once per test CLASS (M8 item 5).
+/// </summary>
+/// <remarks>
+/// Only for classes that seed nothing and whose requests write nothing: every other OIDC class
+/// seeds a fixed client id (<c>"webapp"</c>) and a fixed e-mail per case, and the endpoints
+/// themselves write tokens, authorizations and consents keyed on them, so two cases sharing a
+/// database would find each other's records. Those stay on <see cref="OidcTestHost"/> until their
+/// identifiers are scoped per case.
+/// </remarks>
+public sealed class OidcSharedHost : SharedSparkHost<OidcTestContext>
+{
+    protected override SparkEndpointFactory<OidcTestContext> CreateFactory() => OidcTestHost.CreateFactory(Store);
 }
