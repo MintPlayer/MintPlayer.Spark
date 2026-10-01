@@ -437,6 +437,36 @@ after this library ships, and after MintPlayer's F9 messaging.
   similar, audio uploaded by an admin and deleted after processing, results stored as system-user
   contributions for human review).
 
+### M8 — Faster test runs (owner decisions, 2026-10-01; CI behaviour unchanged)
+Background:
+- Local runs measured 2–2.4× slower than CI per RavenDB-backed suite, and 57% of local test time is
+  setup/teardown (per-test databases, an OIDC host booted per test).
+- CI runs cost money, so the local sweep must become practical.
+
+Decided (owner, 2026-10-01):
+- **(1) Licence:** done by the owner. `RAVENDB_LICENSE` points at the Developer file.
+- **(2) One `package.json` script:** affected tests, unit and E2E together.
+- **(3) The Nx remote cache stays exactly as it is.**
+- **(4) Zero-wait deletion in every `RavenTestDriver` base class,** plus the opt-in
+  `SPARK_E2E_SKIP_APP_BUILD`.
+- **(5) A database per test class through xUnit class fixtures** (`IClassFixture<SparkSharedDatabase>`,
+  xUnit's equivalent of [OneTimeSetUp]/[OneTimeTearDown]). This is the same mode on CI and locally.
+- **(6) Keep the RavenTestDriver implementations.** No external `localhost:8080` server for tests.
+
+- [ ] (2) + (4) are being implemented, then one measured run.
+- [ ] (5) Migrate classes to `SparkSharedDatabase`, smallest risk first. The investigation counted 181
+  driver classes:
+  1. the 45 that never write (incl. the OIDC classes: one host per class instead of per test)
+  2. the 67 that only need ids scoped via `Id(...)`
+  3. the 53 that need unscoped count assertions scoped
+  - The 28 with database-wide state stay per-test: subscriptions enumeration, fixed compare-exchange
+    keys, revisions config, stop-indexing, background writers.
+  - Each migrated class first passes a shuffled-order run (xUnit doesn't guarantee order).
+  - CodeCoverage.Tests' `CoverageRavenTest` (458 inline `GetDocumentStore()` calls) follows the same
+    pattern.
+- [ ] Measure before/after per suite, locally and in the next CI run that happens anyway (never push
+  just to measure).
+
 ### M7 — Full sweep, docs, PR
 - [ ] Write `docs/guide-contributions.md` (API, ids, the current-document cache, rights, moderation
   integration), and add the library to the README.
