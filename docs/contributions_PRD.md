@@ -901,6 +901,21 @@ proper parallelism is essential. The owner is willing to build a tool for it. A 
 investigation (profiling, RavenDB test infra, CI sharding, test impact analysis, host boot cost) is
 running; its ranked findings will be recorded here as item 10.
 
+**Owner decision (2026-10-01): test databases run in memory by default, configurable.** The
+RavenTestDriver bases in `MintPlayer.Spark.Testing` keep test databases in memory instead of on
+disk unless configured otherwise; developers with less RAM can switch persistence to disk. Evidence
+for the gain is pending (the RavenDB agent's report and a measurement). Today no driver sets
+`RunInMemory` or `DataDirectory` (grep of `libs/testing`, 2026-10-01). The configuration surface and
+the RavenDB setting are to be chosen from that report.
+
+**Measured: xUnit uses half the cores.** `tests/MintPlayer.Spark.Tests/xunit.runner.json:3` sets
+`"maxParallelThreads": "0.5x"`: 2 threads on CI's 4-vCPU runner (the CI agent saw 2) and 4 on the
+owner's 8-thread laptop. Raising it (2x/4x, `parallelAlgorithm: aggressive`) is the first experiment
+once the profiler shows whether the CPU is idle during a run. The owner proposed 16 lanes, cores × 4,
+pipelined like CPU instructions. The recommendation is to build that as a database pool with a
+background producer, teardown in the background and longest-first scheduling inside the existing
+xUnit and driver stack, not as a new test runner.
+
 **Measured evidence (2026-10-01):**
 
 | Suite | Local (serial sweep) | CI (run 36884431200) | Ratio |
