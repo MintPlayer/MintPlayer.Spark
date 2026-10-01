@@ -193,17 +193,14 @@ internal static class ConnectedApplications
         context.Response.ContentType = "text/html; charset=utf-8";
 
         var sb = new StringBuilder();
-        sb.Append("<!DOCTYPE html><html><head>");
-        sb.Append("<title>Connected applications</title>");
-        sb.Append("<style>");
-        sb.Append("body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:560px;margin:60px auto;padding:0 20px}");
-        sb.Append("h2{color:#333}");
-        sb.Append(".app{padding:16px 0;border-bottom:1px solid #eee;display:flex;align-items:flex-start;gap:16px}");
+        ConnectPageTheme.AppendDocumentStart(sb, context, "Connected applications");
+        sb.Append("body{max-width:560px;margin:60px auto;padding:0 20px}");
+        sb.Append(".app{padding:16px 0;border-bottom:1px solid var(--idp-border);display:flex;align-items:flex-start;gap:16px}");
         sb.Append(".app-body{flex:1}.app-name{font-weight:600}");
-        sb.Append(".scopes{color:#666;font-size:13px;margin-top:4px}");
-        sb.Append(".btn{padding:8px 16px;border:none;border-radius:6px;font-size:14px;cursor:pointer;background:#dc3545;color:white}");
-        sb.Append(".notice{background:#d1e7dd;color:#0f5132;padding:10px 14px;border-radius:6px;margin-bottom:20px}");
-        sb.Append(".empty{color:#666}.footnote{color:#666;font-size:13px;margin-top:24px}");
+        sb.Append(".scopes{color:var(--idp-muted);font-size:13px;margin-top:4px}");
+        sb.Append(".btn{padding:8px 16px;border:none;border-radius:6px;font-size:14px;cursor:pointer;background:var(--idp-danger);color:#fff}");
+        sb.Append(".notice{background:var(--idp-notice-bg);color:var(--idp-notice-color);padding:10px 14px;border-radius:6px;margin-bottom:20px}");
+        sb.Append(".empty{color:var(--idp-muted)}.footnote{color:var(--idp-muted);font-size:13px;margin-top:24px}");
         sb.Append("</style></head><body>");
         sb.Append("<h2>Connected applications</h2>");
 

@@ -7,7 +7,10 @@ Requirements, decisions (G1–G8 from the owner, D1–D14) and spikes are in
 - **Part A (ng-bootstrap)** is specified in MintPlayer/mintplayer-ng-bootstrap#420, including the
   calendar-header regression from #393. It is implemented in a session running in that repository,
   because this session's hook refuses cross-repo edits.
-- **Part B (Spark)** waits for ng-bootstrap 22.20.0.
+- **Part B (Spark)**: ng-bootstrap 22.20.0 and web-components 2.17.0 are on npm. **B-1 is done**
+  (2026-10-01): dependencies, shell toggle and service (M2), D7 fixes and app wiring (M3), CodeCoverage
+  tints and the badge pin, and the identity-provider pages (M4). **B-2** is left: the shell palette
+  (M1, `--spark-shell-*` tokens, removing `sidebarTheme`, CodeCoverage's shell overrides), then M5–M6.
 - **The same Spark branch also carries the Contributions / attribute-rights / concurrency work**
   ([contributions_plan.md](contributions_plan.md)). Owner decision: everything stays on
   `feat/462-dark-mode`, in one PR.
@@ -24,7 +27,10 @@ Requirements, decisions (G1–G8 from the owner, D1–D14) and spikes are in
     `<meta name="bs-theme-default-mode" content="auto">` in each app's `index.html`.
   - **The toggle takes a `modes` array input,** not `autoLabel`/`lightLabel`/`darkLabel`, so
     `spark-shell` passes translated labels through `modes`. An `<mp-theme-toggle>` web component
-    also exists.
+    also exists. *(Measured in 22.20.0: it is a button that cycles auto → light → dark, not a
+    dropdown; each entry is `{ mode, label, announcement, icon }`, where `label` names the NEXT
+    mode's action and `announcement` the current one. The pre-boot script reads the default-mode
+    meta with `querySelector` while `<head>` is still parsing, so the meta must come before it.)*
   - **Shadow-DOM dark fixes use CSS style queries** (`@container style(--mp-color-mode: dark)`).
     Engines without them keep light carets and knobs.
   - **Open review items** (must-fix 2 and 3 in the comment) are the agreement-test skip, and a
@@ -145,48 +151,67 @@ M1–M5 can be built against a local ng-bootstrap build (`npm pack`) while NB5 i
   `spark-program-units.component.scss:13,27,31`) → `rgba(var(--bs-emphasis-color-rgb), …)` (D6).
 - [ ] **Remove `sidebarTheme`** (G8): the input, the binding at `spark-shell.component.html:23-25`, and
   the spec at `:195-200`. Re-check `spark-program-units.component.scss:8`.
-- [ ] `spark-auth-bar`: change `btn-outline-light` to theme-aware buttons.
+- [x] `spark-auth-bar`: change `btn-outline-light` to theme-aware buttons. *(B-1: a
+  `spark-auth-bar-btn` outline drawn in `currentColor`, hover/active via `color-mix`, so it reads on
+  whatever topbar B-2 settles on.)*
 - [ ] Tune the palette in DemoApp through the MCP, in both themes and at phone width. Check WCAG AA
   for text, links, hover and active.
 - [ ] **Show light and dark screenshots to the owner, and commit only after approval.**
 
 ### M2 — Theme wiring in the shell (G6, D3)
-- [ ] `spark-shell` injects `BsThemeService`, so Auto is live even with the toggle hidden.
-- [ ] Add the `themeToggle` input (default `true`). It renders `bs-theme-toggle` in the topbar, with
-  labels from the Spark translations.
-- [ ] Spec: the toggle renders or hides with the input, and the service is instantiated either way.
-- [ ] Bump the `@mintplayer/ng-bootstrap` dependency in ng-spark and ng-spark-auth to `^22.20.0`, and
-  bump both packages' minor versions.
+- [x] `spark-shell` injects `BsThemeService`, so Auto is live even with the toggle hidden.
+- [x] Add the `themeToggle` input (default `true`). It renders `bs-theme-toggle` in the topbar, with
+  labels from the Spark translations. *(Shipped API: the toggle is a cycling button whose `modes`
+  input takes `{ mode, label, announcement, icon }[]`; the shell maps `BS_THEME_DEFAULT_MODES` and
+  overrides `label` ← `theme.switchTo{Auto,Light,Dark}` and `announcement` ← `theme.{auto,light,dark}`,
+  new keys in `App_Data/translations.json`. The toggle sits outside the trailing-edge `@if`, so an app
+  that replaces `*sparkShellTopbarEnd` keeps it.)*
+- [x] Spec: the toggle renders or hides with the input, and the service is instantiated either way.
+- [x] Bump the `@mintplayer/ng-bootstrap` dependency in ng-spark and ng-spark-auth to `^22.20.0`, and
+  bump both packages' minor versions. *(Also `@mintplayer/web-components ^2.17.0`: root dependency
+  and an ng-spark peer dependency. ng-spark 22.25.0, ng-spark-auth 22.15.0.)*
 
 ### M3 — Library colour fixes and apps wiring (D5, D7, G2)
-- [ ] Toasts, query-list hover, reputation badge and review-queue (D7).
-- [ ] In the four apps:
-  - Add the `project.json` assets glob for `bs-theme-preboot.js`.
-  - In `index.html`, add `<script src="bs-theme-preboot.js">` before the stylesheets.
-  - Add the `color-scheme` meta and the two `theme-color` metas.
+- [x] Toasts, query-list hover, reputation badge and review-queue (D7).
+- [x] In the four apps *(five: QnA too)*:
+  - Add the `project.json` assets glob for `bs-theme-preboot.js`
+    (`node_modules/@mintplayer/web-components/theming` → `/`).
+  - In `index.html`, add `<script src="bs-theme-preboot.js">` before the stylesheets. *(After
+    `<base href>`, because the src is relative: before `<base>` a deep link would resolve it against
+    its own path and get the SPA fallback.)*
+  - Add the `color-scheme` meta and the two `theme-color` metas, plus
+    `<meta name="bs-theme-default-mode" content="auto">` **before** the script, which reads it
+    synchronously.
 - [ ] **S5** Check the order and the copied file in the built output.
-- [ ] Add a test over every app: the built output contains `bs-theme-preboot.js`, and `index.html`
-  references it before any stylesheet `<link>`.
+- [x] Add a test over every app: the built output contains `bs-theme-preboot.js`, and `index.html`
+  references it before any stylesheet `<link>`. *(B-1: `ng-spark/shell/src/apps-theme-preboot-wiring.spec.ts`
+  checks the sources — `index.html` order and attributes, the `project.json` asset entry, and that the
+  file exists in `node_modules` — not a built output; S5 still checks one real build.)*
 - [ ] **S7** Check that the cookie write works through the dev proxy and under the https profile.
 
 ### M4 — CodeCoverage and identity-provider pages (D10, D11)
 - [ ] CodeCoverage:
-  - Delete `shell/shell.component.scss:14-16,23` and `sidebarTheme="dark"`.
-  - Line tints → `--bs-*-bg-subtle`.
-  - `bg-light` → `bg-body-tertiary`, and `text-bg-light` → `text-bg-secondary`.
-  - Add a `BadgeRendererTests` pin: the output has no `prefers-color-scheme`, `<style` or
+  - [ ] Delete `shell/shell.component.scss:14-16,23` and `sidebarTheme="dark"`. *(Left for B-2, with
+    the palette.)*
+  - [x] Line tints → `--bs-*-bg-subtle`.
+  - [x] `bg-light` → `bg-body-tertiary`, and `text-bg-light` → `text-bg-secondary`.
+  - [x] Add a `BadgeRendererTests` pin: the output has no `prefers-color-scheme`, `<style` or
     `currentColor`.
-- [ ] Identity-provider pages:
+- [x] Identity-provider pages:
   - Put the page CSS into one shared C# constant, with light values, a `[data-bs-theme=dark]` block,
     `@media (prefers-color-scheme: dark) { :root:not([data-bs-theme=light]) {…} }`, and
-    `color-scheme: light dark`.
+    `color-scheme: light dark`. *(`Endpoints/ConnectPageTheme.cs`: `--idp-*` tokens, one dark-token
+    string used by both blocks; the pages keep their layout rules, written against the tokens.
+    Consent's inline emphasised-scope colours became a class.)*
   - Each endpoint reads the `bs-theme-mode` cookie and renders `data-bs-theme` for `light` or `dark`.
-  - The QR code stays white.
-- [ ] Identity-provider tests:
+  - The QR code stays white. *(There is no QR code on these four pages; the enrolment QR is in
+    ng-spark-auth's account pages. Logout's two bare messages are not themed.)*
+- [x] Identity-provider tests (`tests/MintPlayer.Spark.Tests/IdentityProvider/OidcPageThemeTests.cs`,
+  over `/connect/login` and `/connect/two-factor`, plus `ExplicitTheme` unit cases):
   - Cookie `dark` → `data-bs-theme="dark"` is rendered.
   - No cookie → no attribute, and the media block is present.
   - A garbage cookie value → no attribute. Never echo the value into the HTML.
-- [ ] Bump the identity-provider csproj version (minor).
+- [x] Bump the identity-provider csproj version *(preview number: 11.0.0-preview.92)*.
 
 ### M5 — E2E and docs
 - [ ] Add a `ColorScheme? colorScheme` parameter to `PageFactory.NewPageAsync`, following the timezone

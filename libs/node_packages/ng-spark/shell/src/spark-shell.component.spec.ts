@@ -1,5 +1,7 @@
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { BsThemeService, BsThemeToggleComponent } from '@mintplayer/ng-bootstrap/theming';
 import { provideRouter } from '@angular/router';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
@@ -198,5 +200,55 @@ describe('SparkShellComponent', () => {
 
     const light = await render(`<spark-shell sidebarTheme="light"><div class="routed"></div></spark-shell>`);
     expect(light.nativeElement.querySelector('nav')?.getAttribute('data-bs-theme')).toBe('light');
+  });
+
+  describe('theme toggle', () => {
+    let themeServicesCreated = 0;
+
+    beforeEach(() => {
+      themeServicesCreated = 0;
+      TestBed.overrideProvider(BsThemeService, {
+        useFactory: () => {
+          themeServicesCreated++;
+          return { mode: signal('auto'), effectiveMode: signal('light'), setMode: vi.fn() };
+        },
+      });
+    });
+
+    it('renders bs-theme-toggle in the topbar by default, with Spark-translated modes', async () => {
+      const fixture = await render(`<spark-shell><div class="routed"></div></spark-shell>`);
+      const toggle = fixture.debugElement.query(By.directive(BsThemeToggleComponent));
+
+      expect(toggle).toBeTruthy();
+      expect((toggle.nativeElement as HTMLElement).closest('.spark-topbar')).toBeTruthy();
+      // No translations are loaded in the test, so SparkLanguageService.t() echoes the key: what
+      // is pinned here is that every label and announcement goes through the theme.* keys.
+      const modes = (toggle.componentInstance as BsThemeToggleComponent).modes();
+      expect(modes.map(m => [m.mode, m.label, m.announcement])).toEqual([
+        ['auto', 'theme.switchToAuto', 'theme.auto'],
+        ['light', 'theme.switchToLight', 'theme.light'],
+        ['dark', 'theme.switchToDark', 'theme.dark'],
+      ]);
+      expect(themeServicesCreated).toBe(1);
+    });
+
+    it('[themeToggle]="false" hides the toggle but still instantiates BsThemeService', async () => {
+      const fixture = await render(`<spark-shell [themeToggle]="false"><div class="routed"></div></spark-shell>`);
+
+      expect(fixture.debugElement.query(By.directive(BsThemeToggleComponent))).toBeNull();
+      expect(fixture.nativeElement.querySelector('bs-theme-toggle')).toBeNull();
+      expect(themeServicesCreated).toBe(1);
+    });
+
+    it('keeps the toggle when the host replaces the trailing topbar edge', async () => {
+      const fixture = await render(`
+        <spark-shell>
+          <span *sparkShellTopbarEnd class="custom-end">me</span>
+          <div class="routed"></div>
+        </spark-shell>`);
+
+      expect(fixture.nativeElement.querySelector('.custom-end')).toBeTruthy();
+      expect(fixture.nativeElement.querySelector('bs-theme-toggle')).toBeTruthy();
+    });
   });
 });

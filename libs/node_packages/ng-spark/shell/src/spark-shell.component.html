@@ -12,6 +12,10 @@
       @if (topbarActionsTpl(); as tpl) {
         <ng-container *ngTemplateOutlet="tpl" />
       }
+      <!-- Also outside the trailing @if: replacing the end slot (e.g. with spark-auth-bar) keeps it. -->
+      @if (themeToggle()) {
+        <bs-theme-toggle [modes]="themeModes()" />
+      }
       @if (topbarEndTpl(); as tpl) {
         <ng-container *ngTemplateOutlet="tpl" />
       } @else {

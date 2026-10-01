@@ -57,6 +57,14 @@
     "confirmPurge": { "en": "Delete this item permanently, including its history? This cannot be undone.", "fr": "Supprimer définitivement cet élément, y compris son historique ? Cette action est irréversible.", "nl": "Dit item definitief verwijderen, inclusief de geschiedenis? Dit kan niet ongedaan worden gemaakt." },
     "unavailable":  { "en": "This item is not available.", "fr": "Cet élément n'est pas disponible.", "nl": "Dit item is niet beschikbaar." }
   },
+  "theme": {
+    "auto":          { "en": "Auto theme",            "fr": "Thème automatique",          "nl": "Automatisch thema" },
+    "light":         { "en": "Light theme",           "fr": "Thème clair",                "nl": "Licht thema" },
+    "dark":          { "en": "Dark theme",            "fr": "Thème sombre",               "nl": "Donker thema" },
+    "switchToAuto":  { "en": "Switch to auto theme",  "fr": "Passer au thème automatique", "nl": "Overschakelen naar automatisch thema" },
+    "switchToLight": { "en": "Switch to light theme", "fr": "Passer au thème clair",      "nl": "Overschakelen naar licht thema" },
+    "switchToDark":  { "en": "Switch to dark theme",  "fr": "Passer au thème sombre",     "nl": "Overschakelen naar donker thema" }
+  },
   "history": {
     "title":         { "en": "History",      "fr": "Historique",   "nl": "Geschiedenis" },
     "modifiedAt":    { "en": "Changed on",   "fr": "Modifié le",   "nl": "Gewijzigd op" },

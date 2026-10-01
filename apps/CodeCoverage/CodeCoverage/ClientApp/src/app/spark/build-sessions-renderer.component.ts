@@ -25,7 +25,7 @@ interface SessionView {
       <div class="small">
         {{ session.name }}
         @for (flag of session.flags; track flag) {
-          <bs-badge class="text-bg-light ms-1">{{ flag }}</bs-badge>
+          <bs-badge class="text-bg-secondary ms-1">{{ flag }}</bs-badge>
         }
         <bs-badge class="ms-1"
                   [class]="session.parseStatus === 'Parsed' ? 'text-bg-success' : session.parseStatus === 'Pending' ? 'text-bg-warning' : 'text-bg-danger'">

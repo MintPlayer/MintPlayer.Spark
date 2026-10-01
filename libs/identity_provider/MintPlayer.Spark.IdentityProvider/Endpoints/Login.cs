@@ -24,18 +24,17 @@ internal static class Login
 
         context.Response.ContentType = "text/html; charset=utf-8";
         var sb = new StringBuilder();
-        sb.Append("<!DOCTYPE html><html><head><title>Login</title>");
-        sb.Append("<style>");
-        sb.Append("body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:400px;margin:80px auto;padding:0 20px}");
-        sb.Append("h2{color:#333;margin-bottom:24px}");
+        ConnectPageTheme.AppendDocumentStart(sb, context, "Login");
+        sb.Append("body{max-width:400px;margin:80px auto;padding:0 20px}");
+        sb.Append("h2{margin-bottom:24px}");
         sb.Append(".form-group{margin-bottom:16px}");
         sb.Append("label{display:block;margin-bottom:4px;font-weight:500;font-size:14px}");
-        sb.Append("input[type=text],input[type=password]{width:100%;padding:8px 12px;border:1px solid #ced4da;border-radius:6px;font-size:14px;box-sizing:border-box}");
-        sb.Append("input[type=text]:focus,input[type=password]:focus{border-color:#86b7fe;outline:0;box-shadow:0 0 0 .25rem rgba(13,110,253,.25)}");
+        sb.Append("input[type=text],input[type=password]{width:100%;padding:8px 12px;border:1px solid var(--idp-input-border);border-radius:6px;font-size:14px;box-sizing:border-box}");
+        sb.Append("input[type=text]:focus,input[type=password]:focus{border-color:var(--idp-focus-border);outline:0;box-shadow:0 0 0 .25rem var(--idp-focus-ring)}");
         sb.Append(".btn{display:block;width:100%;padding:10px;border:none;border-radius:6px;font-size:14px;cursor:pointer;box-sizing:border-box}");
-        sb.Append(".btn-primary{background:#0d6efd;color:white;margin-top:8px}");
-        sb.Append(".btn-primary:hover{background:#0b5ed7}");
-        sb.Append(".error{color:#dc3545;background:#f8d7da;border:1px solid #f5c2c7;padding:8px 12px;border-radius:6px;margin-bottom:16px;font-size:14px}");
+        sb.Append(".btn-primary{background:var(--idp-primary);color:#fff;margin-top:8px}");
+        sb.Append(".btn-primary:hover{background:var(--idp-primary-hover)}");
+        sb.Append(".error{color:var(--idp-error-color);background:var(--idp-error-bg);border:1px solid var(--idp-error-border);padding:8px 12px;border-radius:6px;margin-bottom:16px;font-size:14px}");
         sb.Append("</style></head><body>");
         sb.Append("<h2>Login</h2>");
 

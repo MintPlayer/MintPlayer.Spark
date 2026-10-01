@@ -71,16 +71,15 @@ internal static class Consent
         context.Response.ContentType = "text/html; charset=utf-8";
 
         var sb = new StringBuilder();
-        sb.Append("<!DOCTYPE html><html><head>");
-        sb.Append("<title>Authorize ").Append(Encode(app.DisplayName)).Append("</title>");
-        sb.Append("<style>");
-        sb.Append("body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;max-width:480px;margin:60px auto;padding:0 20px}");
-        sb.Append("h2{color:#333}.scope-list{list-style:none;padding:0}");
-        sb.Append(".scope-list li{padding:8px 0;border-bottom:1px solid #eee}");
+        ConnectPageTheme.AppendDocumentStart(sb, context, "Authorize " + app.DisplayName);
+        sb.Append("body{max-width:480px;margin:60px auto;padding:0 20px}");
+        sb.Append(".scope-list{list-style:none;padding:0}");
+        sb.Append(".scope-list li{padding:8px 0;border-bottom:1px solid var(--idp-border)}");
         sb.Append(".scope-list input[type=checkbox]{margin-right:8px}");
+        sb.Append(".scope-list li.emphasized{background:var(--idp-warning-bg);padding:8px;border-radius:4px}.scope-list li.emphasized strong{color:var(--idp-warning-color)}");
         sb.Append(".buttons{margin-top:24px;display:flex;gap:12px}");
         sb.Append(".btn{padding:10px 24px;border:none;border-radius:6px;font-size:14px;cursor:pointer}");
-        sb.Append(".btn-allow{background:#0d6efd;color:white}.btn-deny{background:#6c757d;color:white}");
+        sb.Append(".btn-allow{background:var(--idp-primary);color:#fff}.btn-deny{background:var(--idp-secondary);color:#fff}");
         sb.Append("</style></head><body>");
         sb.Append("<h2>").Append(Encode(app.DisplayName)).Append(" wants to access your account</h2>");
         sb.Append("<p>This application is requesting the following permissions:</p>");
@@ -97,12 +96,12 @@ internal static class Consent
             var isEmphasized = def?.Emphasize ?? false;
 
             sb.Append("<li");
-            if (isEmphasized) sb.Append(" style=\"background:#fff3cd;padding:8px;border-radius:4px\"");
+            if (isEmphasized) sb.Append(" class=\"emphasized\"");
             sb.Append("><label>");
             sb.Append("<input type=\"checkbox\" name=\"scopes\" value=\"").Append(Encode(s)).Append("\" checked");
             if (isRequired) sb.Append(" disabled");
             sb.Append(" />");
-            if (isEmphasized) sb.Append("<strong style=\"color:#856404\">⚠ ");
+            if (isEmphasized) sb.Append("<strong>⚠ ");
             else sb.Append("<strong>");
             sb.Append(Encode(displayName));
             if (isEmphasized) sb.Append("</strong>");
