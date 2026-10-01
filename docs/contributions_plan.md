@@ -300,22 +300,56 @@ Order: reproduce the existing leaks first (red tests), then build.
   `ContributionsAnalyzerTests` (every rule, both fixes, the analyzer silent on generated members).
   The test project now references `MintPlayer.Spark.SoftDelete.Abstractions`.
 
-### M5 — Runtime (T6)
+### M5a — Runtime core (T6) ✅
+- [x] `ContributionsInterceptor` (`Order` = Contributions, +100), one typed `ContributionHandler<…>` per
+  descriptor (`ContributionCatalog`, `MakeGenericType` once per declaration):
+  - [x] Hydrate (F1) on every reason, in the materializing session: one lazy `LoadStartingWith` over
+    the current prefix (ending in `/`, `pageSize` 1024; a single-valued property is a lazy point load).
+  - [x] Diff before-save by slot (Save/New only, and only when the attribute was posted and is writable),
+    by value (JSON of the generated mapping); upsert or withdraw only the caller's own documents
+    (`ISparkCurrentUser.Id`, the id History stamps; `system` in the system context). Refused: duplicate
+    slot, invalid slot (`FindInvalidSlot`), `IContributionValidator<T>` errors, re-saving a contribution a
+    moderator hid, anonymous. The entity's rows are replaced by what is current after the write (the
+    response shows a withdrawn row's previous version).
+  - [x] Moderation through a new core contract, `ISatelliteWriteGuard` (Spark.Abstractions): the runtime
+    calls every registered guard before writing or withdrawing; Moderation registers
+    `ModerationSatelliteWriteGuard` (suspension + lock on an `IModeratable` contribution). No package
+    references between the two.
+  - [x] Recompute in **before-delete** of a contribution (after SoftDelete; the doomed document counts as
+    hidden) and in before-save of a contribution (Restore, direct edits), never after-commit.
+  - [x] Pin the current document's change vector (update: cv, create: `""`, delete: `Delete(id, cv)`).
+    **Deviation — no in-pipeline retry:** the commit is the base `OnSaveAsync`'s single
+    `SaveChangesAsync`, after every hook; nothing can re-read and re-store inside it. A conflict is the
+    409 of F7 (`ConcurrencyException` → `SparkConcurrencyException`), atomic (the contribution rolls back
+    with the current), and the client's M1c flow is the retry. `RebuildCurrentAsync` and the startup
+    rebuild, which own their sessions, retry up to 3 times.
+  - [x] Owner delete: a real delete or purge (not SoftDelete's replacement) hard-deletes every
+    contribution and current document of the target in the same commit.
+- [x] Generator: emit the get-only `[ValueKey] Key` built from the slot tuple, plus its
+  `SparkValueObjects.Register` module initializer (F3). **Done in M4.**
+- [x] `IContributions.RebuildCurrentAsync(targetId)` (own session, deletes current documents nothing
+  backs), plus the startup shape check (`ContributionShapeCheck`, an awaited `IHostedService`: marker
+  `SparkContributions/Shapes/{QueryName}`, rebuild of every target streamed from both collections in
+  batches of 64, marker written last).
+- [x] `AddContributions(params Assembly[])` replaces the placeholder: module initializers of the entry
+  assembly and its direct references that reference the Abstractions, of every model entity type's
+  assembly (startup and `AppliesTo`), and of the named assemblies. AllFeatures stays unchanged (see M3).
+- [x] Contributions references `SoftDelete.Abstractions` with `PrivateAssets="all"` (withdraw/hide),
+  so consumers keep SPARK033's meaning.
+- Tests: `ContributionsRuntimeTests` (16, real generator via the imported targets) and
+  `ModerationSatelliteWriteGuardTests` (1).
+
+### M5b — Runtime surface (next)
 - [ ] M1c integration: in the conflict merge, contribution rows (the `[Contribution]` property) only
   conflict between two edits by the same user. Another user's change to a slot is theirs-wins with a
   notice, because it is their own contribution document.
-- [ ] `ContributionsInterceptor`:
-  - Hydrate (F1), with a lazy prefix load ending in `/` and an explicit `pageSize`.
-  - Diff before-save by slot, and upsert or withdraw only the current user's own documents.
-  - Check Moderation suspension and locks itself, because its documents aren't PO saves.
-  - Recompute in **before-delete** (registered after SoftDelete) and on Restore in before-save, never
-    after-commit.
-  - Pin the current document's change vector (update: cv, create: `""`, delete: cv). Retry up to 3
-    times, then return 409.
-- [x] Generator: emit the get-only `[ValueKey] Key` built from the slot tuple, plus its
-  `SparkValueObjects.Register` module initializer (F3). **Done in M4.**
-- [ ] `IContributions.RebuildCurrentAsync(targetId)`.
-- [ ] Add `AddContributions()` and wire it into AllFeatures, if AllFeatures lists every feature.
+- [ ] The attribution rendering hint into the model and the batched contributor-name lookup
+  (`CreateRow(current, contributorName)` gets `null` today).
+- [ ] The generated `{Target}{Property}Contributions` query and the model JSON of the generated types.
+- [ ] The `RevertContribution` custom action.
+- [ ] The Q3 "withdrawn; now showing X" notice on the save response.
+- [ ] Decide `Delete` on the generated current type (Q3 "remove a whole version"): today it deletes only
+  the cache, which the next recompute or rebuild re-creates.
 
 ### M6 — Demo and tests
 - [ ] A demo consumer in an existing app (DemoApp, or the QnA sample): a target with a

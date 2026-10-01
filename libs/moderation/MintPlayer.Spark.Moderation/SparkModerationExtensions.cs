@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.Spark.Abstractions.Interceptors;
 using MintPlayer.Spark.Authorization.Identity;
 using MintPlayer.Spark.Cron;
 using MintPlayer.Spark.Extensions;
@@ -64,6 +65,9 @@ public static class SparkModerationExtensions
 
         builder.AddGroupMembershipProvider<ModerationPrivilegeProvider>();
         builder.AddPersistentObjectInterceptor<ModerationInterceptor>();
+        // The same suspension and lock checks for documents written on the caller's behalf that are not
+        // PO saves (a contribution written while the caller saves its target, contributions M5).
+        services.TryAddEnumerable(ServiceDescriptor.Scoped<ISatelliteWriteGuard, ModerationSatelliteWriteGuard>());
         builder.AddIndexesFrom(typeof(SparkModerationExtensions).Assembly);
 
         // Schedules are read at registration (the Cron registry needs them now): code, then configuration.

@@ -658,6 +658,21 @@ the dark-mode work, whose ng-bootstrap half is tracked in MintPlayer/mintplayer-
     property cannot set a renderer; an element from another assembly is a warning (SPARK032) that
     generates nothing; no slot-type code fix; `Guid` slots format as `N` (the `D` form is 36
     characters, over the 32 T2 allows).
+- **M5a:** the runtime core. `ContributionsInterceptor` (+100) with one typed handler per descriptor:
+  hydration on every materialize reason (one lazy prefix load, `pageSize` 1024); the before-save diff
+  by slot and by value (Save/New only, and only when the attribute was posted and writable) writing
+  only the caller's own contribution (`ISparkCurrentUser.Id`) and the current document with a pinned
+  change vector; withdraw = soft delete (reason `withdrawn`) or delete; recompute (latest visible
+  `UpdatedAt`, none → delete) on withdraw, on before-delete of a contribution and on its before-save
+  (restore); owner delete cascade; `RebuildCurrentAsync`; the startup shape check; `AddContributions
+  (params Assembly[])`. Moderation is reached through a new core contract, `ISatelliteWriteGuard`.
+  Tests: `ContributionsRuntimeTests` (R2–R5, races, cascade, rebuild, shape) and
+  `ModerationSatelliteWriteGuardTests`.
+  - **Deviations:** no in-pipeline retry on a conflict — the commit is the base `OnSaveAsync`'s single
+    `SaveChangesAsync`, after every hook, so a racing contributor gets the F7 409 (atomic: nothing of
+    the refused save is written) and the M1c client flow retries; only the rebuilds, which own their
+    sessions, retry (≤3). The contributor name is not resolved yet (M5b). Hydration is one request
+    per entity: a batched multi-entity load hydrates entity by entity.
 
 **Breaking changes for the release notes** (no backward compatibility, preview; minor version bumps
 only):
@@ -680,6 +695,12 @@ only):
 - **Static attribute rights remove attributes** from persistent objects, per-caller definitions and
   query columns/rows; breadcrumb tokens for refused or per-row protected attributes render empty.
 - **Moderation.Abstractions** now references Spark.Abstractions.
+- **`ISatelliteWriteGuard`** (new, Spark.Abstractions): a veto over documents written on the caller's
+  behalf that are not PO saves. `AddModeration` registers one (suspension, lock on an `IModeratable`
+  document).
+- **`AddContributions(params Assembly[])`** replaces the placeholder; `IContributions` works.
+- **Contribution saves of a contributor racing another on the same slot answer 409** (no
+  last-write-wins, no server retry).
 - **The save shield drops instead of restoring** (M2c-2b): a refused attribute is removed from the
   posted object before `OnBeforeSaveAsync`, the interceptors and the mapper — hooks that read
   `obj["X"]` for a refused `X` no longer find the stored value there. It now also covers static
@@ -722,6 +743,17 @@ only):
   loaded.
 - Satellite detection keys on the Newtonsoft `[JsonIgnore]`, not System.Text.Json's.
 - The materialize hook runs once per entity *instance*, not per document id.
+- **Contributions (M5a):**
+  - A create of a target with contribution rows stores the target before the commit to learn its id;
+    a server-assigned id convention (`Songs/` or `Songs|`) is refused with an explicit error.
+  - A withdrawal's or a recompute's `Delete(id, cv)` of a current document is a deferred command,
+    which F6 cannot take back after a later refusal in the same request (only a later
+    `SaveChangesAsync` in that request would commit it).
+  - Hydration loads at most 1024 current documents in the lazy request; more page with further
+    requests.
+  - Validator errors are reported as one validation error (messages joined, the first attribute).
+  - A contribution a moderator hid cannot be re-saved by its author (400); their own withdrawal can.
+  - The single-valued (no slots) path is exercised by the generator tests only, not by an HTTP test.
 
 **Open items:**
 - ~~M1c "Changed by" fallback~~ **→ decided (owner, 2026-09-30): configurable.**

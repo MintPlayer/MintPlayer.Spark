@@ -143,6 +143,17 @@ internal sealed partial class ModerationInterceptor : IPersistentObjectIntercept
             ((IDisablable)context.PersistentObject).DisableActions("Edit", "Delete");
     }
 
+    /// <summary>
+    /// The checks a satellite write gets (<see cref="ModerationSatelliteWriteGuard"/>): the suspension of
+    /// the caller, and a lock on the written document when its type is <see cref="IModeratable"/>. The
+    /// target's own lock was already judged by <see cref="OnBeforeSaveAsync"/> of the target's save.
+    /// </summary>
+    internal async Task EnsureMayWriteSatelliteAsync(SatelliteWriteContext context)
+    {
+        await RefuseSuspendedAsync();
+        await RefuseLockedAsync(context.DocumentType, context.DocumentId);
+    }
+
     private async Task RefuseSuspendedAsync()
     {
         if (await userState.IsCurrentUserSuspendedAsync())

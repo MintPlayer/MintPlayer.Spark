@@ -28,6 +28,14 @@
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
 		<ProjectReference Include="..\MintPlayer.Spark.Contributions.Abstractions\MintPlayer.Spark.Contributions.Abstractions.csproj" />
 		<!--
+		  Compile-time only (PrivateAssets): the runtime soft-deletes (withdraws) and hides contributions
+		  through ISoftDeletable, but must NOT make every consumer reference SoftDelete — the generator
+		  makes the contribution type ISoftDeletable exactly when the consumer references SoftDelete
+		  itself (SPARK033 otherwise). Every use sits behind ContributionDescriptor.IsSoftDeletable, which
+		  is true only when the consumer's compilation had the assembly, so it is present at run time.
+		-->
+		<ProjectReference Include="..\..\soft_delete\MintPlayer.Spark.SoftDelete.Abstractions\MintPlayer.Spark.SoftDelete.Abstractions.csproj" PrivateAssets="all" />
+		<!--
 		  Build order only: the DLL must exist in its bin/ before it is packed below. Nothing in this
 		  project's own compilation carries [Contribution].
 		-->
