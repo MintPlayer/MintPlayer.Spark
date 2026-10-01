@@ -1196,6 +1196,36 @@ xUnit and driver stack, not as a new test runner.
       per-test databases. By the per-task figures (E2E 152 s, the Angular/vitest suites ~100 s,
       builds 72 s, CodeCoverage 104 s, Spark.Tests now ~150 s), the next levers are the E2E suite and the
       vitest suites, not further database sharing.
+12. **The CPU budget of a sweep, and concurrency settings** (2026-10-02, this machine).
+    - **Method:** system-wide busy CPU-seconds from the raw `_Total` processor counter, read before and
+      after each suite run alone (no sampling, so no observer cost). The machine's background load is
+      subtracted: **~1.9 of 8 logical cores busy at rest** (60 s idle reference). VS Code, Defender for
+      Endpoint and WSL are the largest parts (per-process raw counters at rest: VS Code ~0.9 cores,
+      MsSense 0.32, MsMpEng + DLP 0.22, WSL 0.19).
+    - **Net CPU per suite run alone:**
+
+      | Suite | Wall | Net CPU-s |
+      |---|---|---|
+      | MintPlayer.Spark.Tests | 140 s | ~715 |
+      | Angular/vitest, 8 suites sequential | 209 s | ~470 |
+      | CodeCoverage.Tests | 109 s | ~427 |
+      | E2E | 92 s | ~309 |
+      | SourceGenerators.Tests | 35 s | ~154 |
+
+      Builds (72 s wall) come on top. About 2,500 CPU-s on the ~6 free cores gives a **floor of ~400 s
+      even if packed perfectly**. So the 3× target (~436 s) needs both less work and good packing.
+    - **Angular suites:** each demo app has one spec file, but `@nx/angular:unit-test` compiles the
+      whole app (`@spark-demo/demo-app`: ~29 net CPU-s for one spec). ng-spark's 1,009 tests cost ~130
+      CPU-s, and `--no-isolate` changes nothing (178 vs 167 busy CPU-s, 16.2 s either way). **Rejected.**
+    - **Concurrency, measured as full sweeps:** `maxParallelThreads` 0.25x for both heavy suites gave
+      533 s, all green, against 563/575 s at 0.5x. It is **not adopted**: it gives CI's 4-vCPU runner one
+      thread and makes single-project local runs much slower, and `xunit.runner.json` can't tell the
+      two apart. nx `--parallel=2` at 0.5x gave 540 s with 41% recoverable time (poor packing).
+      **Rejected.**
+    - **Load-sensitive tests** that fail only in a fully loaded sweep and pass alone: `S_M3` (throttle
+      deferred twice), `ModerationVoteTests.M5` (pending 0, not 10), and
+      `ComplexFieldIndexingTests.Verbatim_complex_map_faults_per_document_on_Corax` (index errors not
+      yet recorded when read). None was loosened; they need owner decisions.
 
 ## 6. Risks
 
