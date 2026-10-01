@@ -89,6 +89,9 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
     {
         // The same call production makes -- see MintPlayer.Spark.SparkStoreConfiguration.
         documentStore.ApplySparkConventions();
+        // Zero-wait hard delete on dispose, for this fixture's Store AND any inline
+        // GetDocumentStore() a test makes. See DisposeAsync and RavenDatabaseDeletion.
+        RavenDatabaseDeletion.DeleteOnDispose(documentStore);
         base.PreInitialize(documentStore);
     }
 
@@ -181,55 +184,19 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
     /// loop); and catching the timeout rather than preventing it.
     /// </para>
     /// </remarks>
-    public virtual async Task DisposeAsync()
+    public virtual Task DisposeAsync()
     {
         // Null-guarded because InitializeAsync can fail before assigning Store — a missing licence,
         // or GetDocumentStore timing out when the shared embedded server is under load. Without
         // the guard this throws a NullReferenceException that REPLACES the real failure in the
         // test output, which is what made those CI timeouts so hard to read.
-        if (Store is null)
-            return;
-
-        try
-        {
-            await Store.Maintenance.Server.SendAsync(
-                new DeleteDatabasesOperation(
-                    Store.Database,
-                    hardDelete: true,
-                    fromNode: null,
-                    timeToWaitForConfirmation: DatabaseDeletionBudget));
-        }
-        catch (DatabaseDoesNotExistException)
-        {
-            // Already gone — nothing to wait for.
-        }
-        catch (Exception)
-        {
-            // ⚠️ Never fail a test in teardown over cleanup. The database is in a temp directory on
-            // a server that dies with the process, so the worst case of swallowing this is disk we
-            // were going to reclaim anyway — whereas throwing here REPLACES the real result of the
-            // test that just ran, which is exactly the failure mode this whole change exists to fix.
-        }
-
-        Store.Dispose();
+        //
+        // The zero-wait delete itself runs inside Dispose(): PreInitialize subscribed
+        // RavenDatabaseDeletion.DeleteOnDispose to the store's BeforeDispose, which fires before the
+        // driver's own AfterDispose delete. Never throws.
+        Store?.Dispose();
+        return Task.CompletedTask;
     }
-
-    /// <summary>
-    /// ⚠️ <b>Zero, and it has to be zero</b> — this is not a short timeout, it is an instruction to
-    /// skip the confirmation wait entirely.
-    /// <para>
-    /// Server-side, <c>WaitForDeletionToComplete</c> computes <c>remaining = timeout - elapsed</c>;
-    /// with zero that is already negative, so <c>WaitForIndexNotification</c> is never entered. The
-    /// raft command is still submitted and the database is still deleted — only the acknowledgement
-    /// is skipped, and the exception is never raised rather than caught.
-    /// </para>
-    /// <para>
-    /// ⚠️ Do not "improve" this into a generous timeout. A longer budget does not make the deletion
-    /// faster; it makes teardown <em>block</em> for that long under load instead of failing at 15 s,
-    /// which trades a visible failure for an invisible stall. Waiting is the cost being removed.
-    /// </para>
-    /// </summary>
-    private static readonly TimeSpan DatabaseDeletionBudget = TimeSpan.Zero;
 
     /// <summary>
     /// Writes documents and returns only once RavenDB has indexed them — the deterministic way to

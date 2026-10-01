@@ -50,6 +50,7 @@
 		  The locator is version-agnostic — it reads the version from this project's own deps.json.
 		-->
 		<Compile Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\RavenServerLocator.cs" Link="RavenServerLocator.cs" />
+		<Compile Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\RavenDatabaseDeletion.cs" Link="RavenDatabaseDeletion.cs" />
 		<ProjectReference Include="..\CodeCoverage\CodeCoverage.csproj" />
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>

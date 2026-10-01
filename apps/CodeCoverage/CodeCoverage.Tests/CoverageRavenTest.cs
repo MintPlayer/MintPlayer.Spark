@@ -82,4 +82,17 @@ public abstract class CoverageRavenTest : RavenTestDriver
         base.SetupDatabase(documentStore);
         IndexCreation.CreateIndexes(typeof(Commits_ByRepository).Assembly, documentStore);
     }
+
+    /// <summary>
+    /// Zero-wait hard delete when each store is disposed. Tests here call
+    /// <c>GetDocumentStore()</c> inline (<c>using var store = ...</c>), and the driver runs this hook
+    /// for every one of them. Without it the driver's own delete waits the server's hard-coded 15 s
+    /// for confirmation. The helper is shared with MintPlayer.Spark.Testing's drivers and linked into
+    /// this project by the csproj.
+    /// </summary>
+    protected override void PreInitialize(IDocumentStore documentStore)
+    {
+        MintPlayer.Spark.Testing.RavenDatabaseDeletion.DeleteOnDispose(documentStore);
+        base.PreInitialize(documentStore);
+    }
 }

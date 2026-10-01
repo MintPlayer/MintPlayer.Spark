@@ -49,6 +49,42 @@ CI runs everything, E2E included, in parallel with its Nx cache and the Develope
   a `RAVENDB_LICENSE` that holds the Community licence gives a `LicenseLimitException` ("revisions
   1000 > licensed 2") that CI never sees.
 
+### The local sweep: `npm run test:affected`
+
+One script runs every **affected** test project, unit and E2E together (`tools/test-local.mjs`;
+CI never calls it). Extra arguments go to `nx affected`, e.g. `-- --skip-nx-cache`.
+
+- **Licence:** set `RAVENDB_LICENSE` to the path of the **Developer** licence file,
+  `C:\Repos\MintPlayer.Spark\.secrets\raven-license.log`. A shell started before that variable
+  changed still has the old value; set it on the command
+  (`RAVENDB_LICENSE='C:\Repos\MintPlayer.Spark\.secrets\raven-license.log' npm run test:affected`).
+- **Coverage is off locally:** every test target has a `local` configuration (`-c local`) whose
+  command drops the coverlet collector and vitest `--coverage`. The default configuration, which CI
+  runs, is unchanged, and the different command keeps local and CI cache entries apart.
+- **Parallel, like CI** (nx.json `parallel: 3`), instead of one suite after another.
+- **E2E:** when it is affected, the script first builds the apps it hosts (`Fleet`, `QnA`) through
+  nx, then sets `SPARK_E2E_SKIP_APP_BUILD=1` so `SparkAppTestHost` skips its own per-app
+  `dotnet build`. The variable is opt-in; unset (CI) the host still builds. A new E2E host app must
+  be added to `E2E_APPS` in the script.
+- Every RavenTestDriver base (`SparkTestDriver`, `SparkSharedDatabase`, `CoverageRavenTest`)
+  deletes its databases without the server's 15 s confirmation wait, through
+  `RavenDatabaseDeletion.DeleteOnDispose` in `PreInitialize`. This applies on CI as well.
+
+Measured 2026-10-01 on this machine (`--skip-nx-cache`, Developer licence, everything affected):
+**21m49s wall for everything including E2E and builds, all green.** Compare the earlier serial
+sweep, which took 26.2 min **without** E2E. Per project:
+
+| Project | Serial, coverage on | `test:affected` (parallel, no coverage) |
+|---|---|---|
+| MintPlayer.Spark.Tests (3510) | 21m21s | 18m20s (the critical path) |
+| CodeCoverage.Tests (1045) | 3m34s | ⚠️ 10m41s (CPU contention with Spark.Tests) |
+| MintPlayer.Spark.SourceGenerators.Tests | 64s | 1m20s |
+| MintPlayer.Spark.Client.Tests | 7s | 0.2s |
+| MintPlayer.Spark.E2E.Tests (138) | not run | 3m41s |
+
+The wall time is now set by `MintPlayer.Spark.Tests` alone. Running projects in parallel does not
+make a single project faster: the suites compete for the same cores.
+
 ## Versioning: major version is locked to the targeted platform
 
 The major version of every published package in this repository is **not** a semver

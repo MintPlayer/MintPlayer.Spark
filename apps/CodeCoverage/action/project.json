@@ -10,6 +10,11 @@
         "cwd": "apps/CodeCoverage/action",
         "command": "npm run test:coverage"
       },
+      "configurations": {
+        "local": {
+          "command": "npm run test"
+        }
+      },
       "outputs": ["{projectRoot}/coverage"]
     }
   }
