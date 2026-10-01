@@ -893,6 +893,14 @@ only):
 the global and repo `CLAUDE.md`. A sub-agent's unrequested push and draft PR #465 prompted it. The full
 sweep therefore has to be practical locally, and CI's behaviour stays exactly as it is.
 
+**Superseding requirement (owner, 2026-10-01, later the same day):** "CI's behaviour stays exactly
+as it is" no longer holds. Wall time must not keep growing as tests are added, **both on CI and
+locally**. Target: about 4× faster PR validation (CI ~17 min today) and the same scaling property
+locally. The owner: "I can't wait 15 minutes before I know if a pull-request is valid or not", and
+proper parallelism is essential. The owner is willing to build a tool for it. A five-agent
+investigation (profiling, RavenDB test infra, CI sharding, test impact analysis, host boot cost) is
+running; its ranked findings will be recorded here as item 10.
+
 **Measured evidence (2026-10-01):**
 
 | Suite | Local (serial sweep) | CI (run 36884431200) | Ratio |
