@@ -58,6 +58,10 @@ internal static class ContributionsEmitter
         w.Line();
         w.Line("/// <inheritdoc />");
         w.Line("public global::System.DateTime UpdatedAt { get; set; }");
+        w.Line();
+        w.Line("/// <inheritdoc />");
+        w.Line("[global::Newtonsoft.Json.JsonIgnore]");
+        w.Line("public string? ContributorName { get; set; }");
         WriteSlotAndValueProperties(w, m);
 
         if (m.IsSoftDeletable && m.EmitSoftDeleteMembers)

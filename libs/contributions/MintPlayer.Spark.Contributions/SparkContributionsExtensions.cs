@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions.Builder;
+using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.Extensions;
 
 namespace MintPlayer.Spark.Contributions;
@@ -30,7 +31,7 @@ public static class SparkContributionsExtensions
     /// </para>
     /// <para>
     /// Grant <c>RevertContribution/T</c> per generated contribution type in <c>security.json</c> (see
-    /// <see cref="ContributionRights"/>); the verb itself lands with the moderation screens (M5b).
+    /// <see cref="ContributionRights"/>), served by <c>POST /spark/po/revert-contribution</c>, which this maps.
     /// </para>
     /// </remarks>
     public static ISparkBuilder AddContributions(this ISparkBuilder builder, params Assembly[] declaringAssemblies)
@@ -42,8 +43,19 @@ public static class SparkContributionsExtensions
 
         builder.Services.TryAddSingleton<ContributionCatalog>();
         builder.Services.TryAddScoped<IContributions, SparkContributions>();
+        builder.Services.TryAddScoped<ContributionRequestState>();
         builder.AddPersistentObjectInterceptor<ContributionsInterceptor>();
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, ContributionShapeCheck>());
+
+        // The generated contribution types' actions, which serve the generated contributions query
+        // (M5b). Per declaration known now — the ones the module initializers above registered.
+        foreach (var descriptor in ContributionRegistry.Descriptors)
+            builder.Services.TryAddScoped(
+                typeof(IPersistentObjectActions<>).MakeGenericType(descriptor.ContributionType),
+                typeof(ContributionActions<>).MakeGenericType(descriptor.ContributionType));
+
+        // RevertContribution (PRD Q4) is a library verb, so it has its own route, like History's revert.
+        builder.Registry.AddEndpoints(ContributionEndpoints.Map);
         return builder;
     }
 }

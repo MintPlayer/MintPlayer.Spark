@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Builder;
 using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.History.Endpoints;
@@ -90,6 +91,9 @@ public static class SparkHistoryExtensions
         where TResolver : class, IHistoryUserNameResolver
     {
         builder.Services.Replace(ServiceDescriptor.Scoped<IHistoryUserNameResolver, TResolver>());
+        // The same names for every feature (contributions M5b): core's optional contract, unless the
+        // app registered a resolver of its own there.
+        builder.Services.TryAddScoped<ISparkUserNameResolver>(sp => new HistoryUserNames(sp.GetRequiredService<IHistoryUserNameResolver>()));
         return builder;
     }
 }

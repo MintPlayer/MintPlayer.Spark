@@ -84,6 +84,10 @@ namespace TestApp
         /// <inheritdoc />
         public global::System.DateTime UpdatedAt { get; set; }
 
+        /// <inheritdoc />
+        [global::Newtonsoft.Json.JsonIgnore]
+        public string? ContributorName { get; set; }
+
         /// <summary>Slot, copied from <see cref="global::TestApp.Lyrics.Language"/>.</summary>
         public string Language { get; set; } = "";
 

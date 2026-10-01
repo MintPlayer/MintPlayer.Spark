@@ -18,6 +18,13 @@ public interface IContribution
     /// <see cref="DateTimeOffset"/>, because index projections lose the offset.
     /// </summary>
     DateTime UpdatedAt { get; set; }
+
+    /// <summary>
+    /// The contributor's display name, filled at read time by the generated contributions query
+    /// (through <c>ISparkUserNameResolver</c>) and never stored (<c>[JsonIgnore]</c>); <see langword="null"/>
+    /// when no resolver is registered or the user is gone.
+    /// </summary>
+    string? ContributorName { get; set; }
 }
 
 /// <summary>

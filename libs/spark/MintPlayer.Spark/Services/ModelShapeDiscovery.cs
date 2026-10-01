@@ -52,6 +52,11 @@ public static class ModelShapeDiscovery
             CollectEmbedded(entityType, embedded);
             if (defaultEntry?.ProjectionType is not null)
                 CollectEmbedded(defaultEntry.ProjectionType, embedded);
+
+            // Satellites (contributions M5b) get a model file of their own, so they are entities of
+            // the model too — exactly as synchronization writes them.
+            foreach (var satellite in SparkModelSatellites.For(entityType))
+                embedded.Enqueue(satellite.ModelType);
         }
 
         while (embedded.Count > 0)

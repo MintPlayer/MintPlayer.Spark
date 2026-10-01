@@ -25,6 +25,25 @@ internal sealed class OwnerSave
     public required bool IsSystemContext { get; init; }
     public required IServiceProvider Services { get; init; }
     public ClaimsPrincipal? User { get; init; }
+
+    /// <summary>Where the save's notices wait for the commit.</summary>
+    public required ContributionRequestState State { get; init; }
+}
+
+/// <summary>A moderator's write over contributions (remove a version, revert), in the given session.</summary>
+internal sealed class ModeratorWrite
+{
+    public required IAsyncDocumentSession Session { get; init; }
+
+    /// <summary>Who hides (<c>DeletedBy</c>): the caller's id, or the system contributor.</summary>
+    public required string UserId { get; init; }
+
+    public required DateTimeOffset Now { get; init; }
+
+    /// <summary>Asked before each document is hidden (empty for the system context).</summary>
+    public required IReadOnlyList<ISatelliteWriteGuard> Guards { get; init; }
+
+    public ClaimsPrincipal? User { get; init; }
 }
 
 /// <summary>The untyped face of <see cref="ContributionHandler{TTarget, TElement, TContribution, TCurrent}"/>.</summary>
@@ -32,8 +51,24 @@ internal interface IContributionHandler
 {
     ContributionDescriptor Descriptor { get; }
 
-    /// <summary>Fills the property from the current documents (one lazy request).</summary>
-    Task HydrateAsync(object target, IAsyncDocumentSession session);
+    /// <summary>
+    /// Fills the property from the current documents (one lazy request), and — with
+    /// <paramref name="names"/> and <see cref="ContributionAttribution.Contributor"/> — the contributor
+    /// names (one batched <c>ISparkUserNameResolver</c> call).
+    /// </summary>
+    Task HydrateAsync(object target, IAsyncDocumentSession session, IServiceProvider? names);
+
+    /// <summary>A current document is being deleted (a moderator removes the whole version): hides every visible contribution of its slot.</summary>
+    Task<IReadOnlyList<string>> OnCurrentDeletingAsync(object current, string id, ModeratorWrite write);
+
+    /// <summary>Makes <paramref name="contributionId"/> current by hiding every newer visible contribution of its slot.</summary>
+    Task<(string TargetId, IReadOnlyList<string> Affected)> RevertAsync(string contributionId, ModeratorWrite write);
+
+    /// <summary>The target's contributions (every slot, hidden ones too), with names filled for the contributions query.</summary>
+    Task<IReadOnlyList<IContribution>> ContributionsOfAsync(string targetId, IAsyncDocumentSession session, IServiceProvider services);
+
+    /// <summary>The target id a current document belongs to (its id minus the property and slot segments).</summary>
+    string? TargetIdOfCurrent(string currentId);
 
     /// <summary>Diffs the save by slot and writes the caller's own contributions and the current documents.</summary>
     Task OnOwnerSaveAsync(OwnerSave save);
@@ -87,7 +122,9 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
 
     // ---- hydration ----------------------------------------------------------------------------------
 
-    public async Task HydrateAsync(object target, IAsyncDocumentSession session)
+    private bool ShowsContributor => (d.Attribution & ContributionAttribution.Contributor) != 0;
+
+    public async Task HydrateAsync(object target, IAsyncDocumentSession session, IServiceProvider? names)
     {
         var entity = (TTarget)target;
         var targetId = session.Advanced.GetDocumentId(entity);
@@ -95,7 +132,11 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
             return;
 
         var currents = await LoadCurrentsAsync(session, targetId, lazily: true);
-        d.SetRows(entity, [.. currents.Select(c => d.CreateRow(c, null))]);
+        // Names are resolved at read time, never stored (PRD Q6): one batched call per entity.
+        var resolved = names is not null && ShowsContributor && currents.Count > 0
+            ? await ContributorNames.ResolveAsync(names, currents.Select(c => c.ContributorId))
+            : null;
+        d.SetRows(entity, [.. currents.Select(c => d.CreateRow(c, resolved?.NameOf(c.ContributorId)))]);
     }
 
     /// <summary>The target's current documents, in id order — one (lazy) request up to <see cref="PageSize"/>.</summary>
@@ -253,14 +294,23 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
             finalCurrents[key] = await RecomputeAsync(session, targetId, key, new() { [id] = mine }, preferred: mine);
         }
 
+        // What the form must be told (Q3): (slot, message kind, the contributor shown now or null).
+        var notices = new List<(string Key, bool Withdrawn, string? ShownContributor)>();
+
         foreach (var key in removals)
         {
             var id = d.ContributionId(targetId, beforeByKey[key], userId);
             var mine = await session.LoadAsync<TContribution>(id);
             // Only the caller's own, visible contribution is withdrawn (Q3). Removing a row that shows
-            // someone else's version withdraws nothing, and that version stays current.
+            // someone else's version withdraws nothing, and that version stays current — and the form
+            // says so, since the row comes back (also when a changed slot left the old version in place).
             if (mine is null || IsHidden(mine))
+            {
+                var shown = await session.LoadAsync<TCurrent>(CurrentIdOf(targetId, key));
+                if (shown is not null && !string.Equals(shown.ContributorId, userId, StringComparison.Ordinal))
+                    notices.Add((key, false, shown.ContributorId));
                 continue;
+            }
             await GuardAsync(guards, id, targetId, save.User);
 
             if (d.IsSoftDeletable)
@@ -272,8 +322,13 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
             else
                 session.Delete(mine);
 
-            finalCurrents[key] = await RecomputeAsync(session, targetId, key, new() { [id] = null });
+            var now = await RecomputeAsync(session, targetId, key, new() { [id] = null });
+            finalCurrents[key] = now;
+            notices.Add((key, true, now?.ContributorId));
         }
+
+        if (notices.Count > 0 && !save.IsSystemContext)
+            await AddNoticesAsync(save, notices);
 
         // The entity shows what is current now (the property is [JsonIgnore], so the target document is
         // not rewritten): the save response then lists a withdrawn row's previous version, if any.
@@ -288,6 +343,41 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
                 rows.Add(d.CreateRow(current, null));
         }
         d.SetRows(entity, rows);
+    }
+
+    /// <summary>
+    /// The Q3 notices, queued until the commit: "your version was withdrawn; X's is shown now" (or none
+    /// is left), and "X's version is not yours to remove: it stays". The other contributor is named only
+    /// when the declaration shows contributors (<see cref="ContributionAttribution.Contributor"/>) and a
+    /// name resolves; otherwise the text is generic.
+    /// </summary>
+    private async Task AddNoticesAsync(OwnerSave save, List<(string Key, bool Withdrawn, string? ShownContributor)> notices)
+    {
+        var names = ShowsContributor
+            ? await ContributorNames.ResolveAsync(save.Services, notices.Select(n => n.ShownContributor))
+            : null;
+        foreach (var (key, withdrawn, shown) in notices)
+        {
+            var slot = key.Length == 0 ? d.PropertyName : key;
+            var name = names?.NameOf(shown);
+            string message;
+            if (withdrawn)
+            {
+                message = shown is null
+                    ? ContributionMessages.Format(save.Services, ContributionMessages.WithdrawnNoneLeft, slot)
+                    : name is null
+                        ? ContributionMessages.Format(save.Services, ContributionMessages.WithdrawnNowShowingAnother, slot)
+                        : ContributionMessages.Format(save.Services, ContributionMessages.WithdrawnNowShowing, slot, name);
+                save.State.Notices.Add((message, Abstractions.ClientOperations.NotificationKind.Info));
+            }
+            else
+            {
+                message = name is null
+                    ? ContributionMessages.Format(save.Services, ContributionMessages.NotYoursStaysAnother, slot)
+                    : ContributionMessages.Format(save.Services, ContributionMessages.NotYoursStays, slot, name);
+                save.State.Notices.Add((message, Abstractions.ClientOperations.NotificationKind.Warning));
+            }
+        }
     }
 
     private async Task GuardAsync(IReadOnlyList<ISatelliteWriteGuard> guards, string documentId, string targetId, ClaimsPrincipal? user)
@@ -403,6 +493,119 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
         // Treated as hidden whether SoftDelete replaced the delete or not: the current document commits
         // with the delete, in this session (S-C5: before-delete, never after the commit).
         await RecomputeAsync(session, c.TargetId, d.SlotKeyOfContribution(c), new() { [id] = null });
+    }
+
+    // ---- moderator writes (PRD Q4) ------------------------------------------------------------------
+
+    private int SuffixSegments => 1 + (d.IsCollection ? d.SlotNames.Count : 0);
+
+    public string? TargetIdOfCurrent(string currentId) => TargetOf(currentId, SuffixSegments);
+
+    /// <summary>
+    /// "Remove a whole version" (Delete on the current type): every visible contribution of the slot is
+    /// hidden (reason <c>version-removed</c>; deleted when the type is not soft-deletable), in the
+    /// delete's own session and commit, so the slot has no current version afterwards — the base delete
+    /// then removes the current document itself. Hidden contributions stay restorable one by one.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> OnCurrentDeletingAsync(object current, string id, ModeratorWrite write)
+    {
+        var c = (TCurrent)current;
+        var targetId = TargetIdOfCurrent(id);
+        if (targetId is null)
+            return [];
+        var session = write.Session;
+        var slotKey = d.SlotKeyOfCurrent(c);
+
+        var affected = new List<string>();
+        foreach (var contribution in await LoadPrefixAsync<TContribution>(session, SlotContributionPrefix(targetId, slotKey)))
+        {
+            if (IsHidden(contribution))
+                continue;
+            var contributionId = session.Advanced.GetDocumentId(contribution);
+            await GuardAsync(write.Guards, contributionId, targetId, write.User);
+            await HideAsync(session, contribution, contributionId, write, SoftDeleteBridge.VersionRemovedReason);
+            affected.Add(contributionId);
+        }
+        affected.Sort(StringComparer.Ordinal);
+        return affected;
+    }
+
+    /// <summary>
+    /// <c>RevertContribution</c>: makes <paramref name="contributionId"/> its slot's current version by
+    /// hiding every newer visible contribution of the slot (reason <c>reverted</c>), never rewriting or
+    /// re-attributing any text, then recomputes the current document — all in <paramref name="write"/>'s
+    /// session, so it commits atomically (pinned change vectors: a concurrent write is a 409).
+    /// </summary>
+    /// <remarks>
+    /// Refused (400): a hidden target — reverting to a hidden version means restoring it first
+    /// (<c>Restore</c>, a separate right, and the restored one is then the latest by its own date only
+    /// if nothing newer is visible); a declaration whose contributions are not soft-deletable (a revert
+    /// would have to destroy other users' versions).
+    /// </remarks>
+    public async Task<(string TargetId, IReadOnlyList<string> Affected)> RevertAsync(string contributionId, ModeratorWrite write)
+    {
+        var session = write.Session;
+        var target = await session.LoadAsync<TContribution>(contributionId)
+            ?? throw new SparkValidationException("That contribution does not exist.");
+        if (!d.IsSoftDeletable)
+            throw new SparkValidationException(
+                $"{typeof(TContribution).Name} is not soft-deletable, so a revert cannot hide the newer versions. Reference MintPlayer.Spark.SoftDelete.");
+        if (IsHidden(target))
+            throw new SparkValidationException("This version is hidden. Restore it before reverting to it.");
+
+        var targetId = target.TargetId;
+        var slotKey = d.SlotKeyOfContribution(target);
+        var targetRank = (target.UpdatedAt, contributionId);
+
+        var overrides = new Dictionary<string, TContribution?>(StringComparer.OrdinalIgnoreCase);
+        var affected = new List<string>();
+        foreach (var contribution in await LoadPrefixAsync<TContribution>(session, SlotContributionPrefix(targetId, slotKey)))
+        {
+            var id = session.Advanced.GetDocumentId(contribution);
+            if (IsHidden(contribution) || string.Equals(id, contributionId, StringComparison.OrdinalIgnoreCase))
+                continue;
+            // "Newer" in the order recompute picks by: UpdatedAt, then id (ordinal) on a tie.
+            if (Compare((contribution.UpdatedAt, id), targetRank) <= 0)
+                continue;
+            await GuardAsync(write.Guards, id, targetId, write.User);
+            await HideAsync(session, contribution, id, write, SoftDeleteBridge.RevertedReason);
+            overrides[id] = contribution;
+            affected.Add(id);
+        }
+
+        var current = await RecomputeAsync(session, targetId, slotKey, overrides);
+        if (current is null || !string.Equals(current.ContributionId, contributionId, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"Reverting to {contributionId} left {current?.ContributionId ?? "no version"} current.");
+
+        affected.Sort(StringComparer.Ordinal);
+        return (targetId, affected);
+
+        static int Compare((DateTime At, string Id) a, (DateTime At, string Id) b)
+        {
+            var byDate = DateTime.SpecifyKind(a.At, DateTimeKind.Utc).CompareTo(DateTime.SpecifyKind(b.At, DateTimeKind.Utc));
+            return byDate != 0 ? byDate : StringComparer.Ordinal.Compare(a.Id, b.Id);
+        }
+    }
+
+    private async Task HideAsync(IAsyncDocumentSession session, TContribution contribution, string id, ModeratorWrite write, string reason)
+    {
+        if (d.IsSoftDeletable)
+        {
+            var changeVector = session.Advanced.GetChangeVectorFor(contribution);
+            SoftDeleteBridge.Hide(contribution, write.UserId, write.Now, reason);
+            await session.StoreAsync(contribution, changeVector, id);
+        }
+        else
+            session.Delete(id, session.Advanced.GetChangeVectorFor(contribution));
+    }
+
+    public async Task<IReadOnlyList<IContribution>> ContributionsOfAsync(string targetId, IAsyncDocumentSession session, IServiceProvider services)
+    {
+        var contributions = await LoadPrefixAsync<TContribution>(session, d.ContributionPrefix(targetId));
+        var names = await ContributorNames.ResolveAsync(services, contributions.Select(c => c.ContributorId));
+        foreach (var c in contributions)
+            c.ContributorName = names.NameOf(c.ContributorId);
+        return contributions;
     }
 
     // ---- the owner's delete ---------------------------------------------------------------------------

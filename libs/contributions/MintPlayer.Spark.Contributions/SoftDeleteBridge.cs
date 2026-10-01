@@ -24,14 +24,24 @@ internal static class SoftDeleteBridge
            && string.Equals(d.DeletedBy, userId, StringComparison.Ordinal)
            && string.Equals(d.DeleteReason, WithdrawnReason, StringComparison.Ordinal);
 
+    /// <summary>The <c>DeleteReason</c> of a contribution a moderator hid by removing its whole version (Delete on the current type).</summary>
+    public const string VersionRemovedReason = "version-removed";
+
+    /// <summary>The <c>DeleteReason</c> of a contribution hidden because a moderator reverted its slot to an older one.</summary>
+    public const string RevertedReason = "reverted";
+
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void Withdraw(object document, string userId, DateTimeOffset now)
+    public static void Withdraw(object document, string userId, DateTimeOffset now) => Hide(document, userId, now, WithdrawnReason);
+
+    /// <summary>Soft-deletes <paramref name="document"/> by <paramref name="userId"/> with <paramref name="reason"/>.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public static void Hide(object document, string userId, DateTimeOffset now, string reason)
     {
         var d = (ISoftDeletable)document;
         d.IsDeleted = true;
         d.DeletedAt = now;
         d.DeletedBy = userId;
-        d.DeleteReason = WithdrawnReason;
+        d.DeleteReason = reason;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

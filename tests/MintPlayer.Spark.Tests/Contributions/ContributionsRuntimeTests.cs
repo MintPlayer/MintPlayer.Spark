@@ -571,7 +571,7 @@ public class CoSong
     public string? Id { get; set; }
     public string Title { get; set; } = string.Empty;
 
-    [Contribution(Attribution = ContributionAttribution.History)]
+    [Contribution(Attribution = ContributionAttribution.Contributor | ContributionAttribution.UpdatedAt | ContributionAttribution.History)]
     [Newtonsoft.Json.JsonIgnore]
     public List<CoLyrics> Lyrics { get; set; } = [];
 }

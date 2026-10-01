@@ -674,6 +674,25 @@ the dark-mode work, whose ng-bootstrap half is tracked in MintPlayer/mintplayer-
     sessions, retry (≤3). The contributor name is not resolved yet (M5b). Hydration is one request
     per entity: a batched multi-entity load hydrates entity by entity.
 
+- **M5b (server half):** the generated types are model types without app hand-work — core's
+  `SparkModelSatellites` registry (satellites of an owner type, a query minted once, renderer seeds for
+  attributes without a renderer) read by `ModelSynchronizer` and `ModelShapeDiscovery`; the
+  contributions query (`Custom.SparkContributionsOfTarget`, parent = the target, names filled); the
+  attribution renderer `contributionAttribution` with the History-link `rendererOptions`; contributor
+  names through core's optional `ISparkUserNameResolver` (History registers its resolver there);
+  `POST /spark/po/revert-contribution` (`RevertContribution`); Delete on the current type removes a
+  whole version; the Q3 notices; the moderator audit through the optional `ISatelliteAuditSink`
+  (Moderation implements it). The client contract is in the library README. Tests:
+  `ContributionsSurfaceTests`, `ContributionsModelSyncTests`.
+  - **Decisions:** a library verb gets an add-on route, not a custom action (custom actions are
+    app-declared in `customActions.json`); reverting to a hidden version is refused — restore it
+    first (two rights, two audited steps); a revert without SoftDelete is refused (it would destroy
+    other users' versions); notices and audits are sent after the commit; names are resolved per
+    hydrated entity (one batched resolver call), not inside the lazy request.
+  - **Deviations:** a refused revert is Spark's indistinguishable 404 (401 anonymous), not a 403 —
+    the add-on refusal convention (#453). The history grid shows `ContributorId` too unless the app
+    denies `Query/{Type}Contribution/ContributorId`.
+
 **Breaking changes for the release notes** (no backward compatibility, preview; minor version bumps
 only):
 - `TriggersRefresh` is `ERefreshTrigger { None, Auto, ValueChanged, Blur }`. JSON `true` → `"Auto"`,
@@ -699,6 +718,12 @@ only):
   behalf that are not PO saves. `AddModeration` registers one (suspension, lock on an `IModeratable`
   document).
 - **`AddContributions(params Assembly[])`** replaces the placeholder; `IContributions` works.
+- **Synchronize writes model files for satellite types** (`SparkModelSatellites`): an app with a
+  `[Contribution]` gets `{Target}{Property}Contribution.json` and `{Target}{Property}Current.json`, and
+  its model hash changes accordingly (re-run synchronize).
+- **`IContribution.ContributorName`** (new member; generated, `[JsonIgnore]`).
+- **New optional core contracts:** `ISparkUserNameResolver`, `ISatelliteAuditSink`.
+- **.NET client:** a `notify` operation with a null `durationMs` no longer throws.
 - **Contribution saves of a contributor racing another on the same slot answer 409** (no
   last-write-wins, no server retry).
 - **The save shield drops instead of restoring** (M2c-2b): a refused attribute is removed from the

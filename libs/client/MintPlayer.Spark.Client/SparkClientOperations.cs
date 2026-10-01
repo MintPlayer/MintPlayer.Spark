@@ -169,10 +169,11 @@ public static class SparkClientOperations
                 Type = type,
                 Raw = raw,
                 Message = String(op, "message") ?? "",
-                Kind = op.TryGetProperty("kind", out var kind) && kind.TryGetInt32(out var kindValue)
+                Kind = op.TryGetProperty("kind", out var kind) && kind.ValueKind == JsonValueKind.Number && kind.TryGetInt32(out var kindValue)
                     ? (NotificationKind)kindValue
                     : NotificationKind.Info,
-                DurationMs = op.TryGetProperty("durationMs", out var duration) && duration.TryGetInt32(out var durationValue)
+                // A notice without a duration carries "durationMs": null; TryGetInt32 throws on a non-number.
+                DurationMs = op.TryGetProperty("durationMs", out var duration) && duration.ValueKind == JsonValueKind.Number && duration.TryGetInt32(out var durationValue)
                     ? durationValue
                     : null,
             },

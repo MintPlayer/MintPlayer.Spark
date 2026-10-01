@@ -339,17 +339,44 @@ Order: reproduce the existing leaks first (red tests), then build.
 - Tests: `ContributionsRuntimeTests` (16, real generator via the imported targets) and
   `ModerationSatelliteWriteGuardTests` (1).
 
-### M5b — Runtime surface (next)
+### M5b — Runtime surface (server half ✅; client half next, against the contract in the library README)
+Server:
+- [x] The attribution rendering hint in the model and the batched contributor-name lookup: core's new
+  optional `ISparkUserNameResolver` (Spark.Abstractions), registered by `AddHistoryUserNameResolver<T>()`
+  too; one batched call per hydrated entity (not in the lazy request — the resolver is app code);
+  never stored. The renderer is seeded by synchronize (below), with the History-link options.
+- [x] The generated `{Target}{Property}Contributions` query and the model JSON of the generated types:
+  new core registry `SparkModelSatellites` (Spark.Abstractions.Model) — satellite model types per
+  owner type, with a query to mint once, and renderer seeds per (type, attribute), applied only to an
+  attribute without a renderer. `ContributionRegistry.Register` registers both generated types as
+  satellites of the target, and the seeds; `ModelSynchronizer` writes their files after the roots,
+  `ModelShapeDiscovery` hashes them. The query's source is `Custom.SparkContributionsOfTarget`, served
+  by `ContributionActions<T>` (registered as `IPersistentObjectActions<T>` per declaration): a prefix
+  load of the parent target's contributions, names filled (`IContribution.ContributorName`, generated
+  `[JsonIgnore]`), in memory so Spark composes row security, soft delete, column filters, sort and
+  paging.
+- [x] `RevertContribution`: an add-on endpoint `POST /spark/po/revert-contribution` (custom actions are
+  app-declared in `customActions.json`, so a library verb gets its own route, like History's revert).
+  Hides every newer visible contribution of the slot (`reverted`), recomputes, one commit; a hidden
+  target is refused ("restore it first"), as is a non-soft-deletable declaration.
+- [x] The Q3 notices (withdrawn → whose version is shown, or none is left; someone else's version
+  stays), queued and sent after the commit (`OnAfterSaveAsync`).
+- [x] `Delete` on the generated current type = remove a whole version: hides every visible
+  contribution of the slot (`version-removed`) in the delete's commit.
+- [x] Audit of both moderator actions through a new optional core contract `ISatelliteAuditSink`;
+  Moderation registers `ModerationSatelliteAuditSink`.
+- Tests: `ContributionsSurfaceTests` (13), `ContributionsModelSyncTests` (3, fixed point), the four
+  generator snapshots; the `CoSong` fixture now declares all attribution flags.
+- Fixed on the way: the .NET client threw on a `notify` operation with `"durationMs": null`
+  (`SparkClientOperations`).
+
+Client (ng-spark, next):
 - [ ] M1c integration: in the conflict merge, contribution rows (the `[Contribution]` property) only
   conflict between two edits by the same user. Another user's change to a slot is theirs-wins with a
   notice, because it is their own contribution document.
-- [ ] The attribution rendering hint into the model and the batched contributor-name lookup
-  (`CreateRow(current, contributorName)` gets `null` today).
-- [ ] The generated `{Target}{Property}Contributions` query and the model JSON of the generated types.
-- [ ] The `RevertContribution` custom action.
-- [ ] The Q3 "withdrawn; now showing X" notice on the save response.
-- [ ] Decide `Delete` on the generated current type (Q3 "remove a whole version"): today it deletes only
-  the cache, which the next recompute or rebuild re-creates.
+- [ ] The attribution row renderer (`contributionAttribution`) with the History link, the query-list
+  page reading `parentId`/`parentType` and the slot filters from the URL, the revert button, and the
+  line-diff renderer (contract: library README, "Client contract").
 
 ### M6 — Demo and tests
 - [ ] A demo consumer in an existing app (DemoApp, or the QnA sample): a target with a

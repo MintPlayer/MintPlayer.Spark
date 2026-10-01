@@ -1,10 +1,10 @@
 # MintPlayer.Spark.Contributions (preview)
 
-> ⚠️ **Preview.** The runtime (loading, saving, recomputing the current version, rebuild) works. Not
-> yet: the attribution rendering hint in the model and contributor-name lookup (`ContributorName` is
-> always empty), the generated contributions query and its model JSON, the `RevertContribution`
-> action, the "withdrawn; now showing X" notice, and ng-spark's conflict-merge rule for contribution
-> rows.
+> ⚠️ **Preview.** The server side works: loading, saving, recomputing the current version, rebuild,
+> the generated model and contributions query, contributor names, `RevertContribution`, removing a
+> whole version, and the save notices. Not yet: the ng-spark client pieces (the attribution row
+> renderer, the line-diff renderer, the History link, the revert button, and the conflict-merge rule
+> for contribution rows). They are built against the [client contract](#client-contract) below.
 
 Per-user contributions with **latest-wins** for MintPlayer.Spark. Mark a property of an entity with
 `[Contribution]`: every user edits their own version of each slot, the latest non-hidden version is
@@ -148,11 +148,122 @@ commits atomically with the save or delete that caused it, and a refused save wr
 - **System context** (a migration, a sync) writes as contributor `system` when there is no user, and
   skips the validators and the guards.
 
+- **Save notices** (PRD Q3), in the save response's `operations` (`notify`, sent after the commit):
+  - your row removed → "Your version of `en/Latn` was withdrawn; *Alice*'s version is shown now"
+    (info), or "…no version of it is left";
+  - a removed row (or a row whose slot you changed) that shows someone else's version → "`en/Latn`
+    shows *Alice*'s version, which only its author or a moderator can remove: it stays" (warning).
+  - The other contributor is named only with `Attribution.Contributor` and a resolved name; otherwise
+    the text says "another contributor". The slot is the row key (`en/Latn`), or the property name
+    for a single-valued declaration. Texts are English/French/Dutch built in; an app overrides one by
+    defining its key in `translations.json`: `contributions.withdrawnNowShowing` (`{0}` slot, `{1}`
+    name), `contributions.withdrawnNowShowingAnother`, `contributions.withdrawnNoneLeft`,
+    `contributions.notYoursStays` (`{0}`, `{1}`), `contributions.notYoursStaysAnother`.
+- **Contributor names** (`Attribution.Contributor`) are resolved at read time through core's optional
+  `ISparkUserNameResolver` (one batched call per loaded entity), never stored.
+  `AddHistoryUserNameResolver<T>()` registers History's resolver there too; an app without History
+  registers an `ISparkUserNameResolver` itself. Without one, `ContributorName` is empty.
+
+## Model (no app hand-work)
+
+Synchronize (`--spark-synchronize-model`) writes model files for the generated types as for any
+entity, although they are not `SparkContext` properties: each declaration registers them as
+**satellites** of the target (`SparkModelSatellites`, Spark.Abstractions), keyed by the target type.
+A context that exposes `Song` therefore gets:
+
+- `SongLyricsContribution.json` — the contribution type, with the query
+  **`SongLyricsContributions`** (alias `songlyricscontributions`), source
+  `Custom.SparkContributionsOfTarget`, sorted by `UpdatedAt` descending. Minted once; afterwards the
+  file owns it (columns, `canSort`/`canFilter`, labels), like every query.
+- `SongLyricsCurrent.json` — the current type (no query), so moderators can `Delete` a version.
+- On the element's model file (`Lyrics.json`), the attribution attributes `ContributorName`,
+  `UpdatedAt`, `ContributionCount` get `renderer: "contributionAttribution"` and the
+  `rendererOptions` below — only when the attribute has no renderer yet; an authored renderer is
+  never overwritten.
+
+Synchronize stays a fixed point, and the model hash covers the satellites. The query is served by
+the runtime's actions for the generated type (registered per declaration as
+`IPersistentObjectActions<SongLyricsContribution>`). ⚠️ An app class named
+`SongLyricsContributionActions` takes precedence and must then serve
+`SparkContributionsOfTarget(CustomQueryArgs)` itself.
+
+The query lists the contributions of its **parent** (the target, passed as `parentId`/`parentType`,
+resolved and row-checked by the query endpoint), every slot, newest first, with `ContributorName`
+filled. Without a parent of the target type it has no rows. Hidden contributions follow SoftDelete:
+only `ViewDeleted` holders see them, with `deleted=include|only`. It can also be declared as a
+sub-query on the target's model file (`"queries": [{ "query": "songlyricscontributions" }]`).
+
+## Moderator actions
+
+- **Hide / restore / purge one contribution:** `Delete`, SoftDelete's `Restore`/`Purge` on the
+  contribution type (its own PO). The slot's current version is recomputed in the same commit.
+- **Remove a whole version:** `Delete` on the current type (`POST /spark/po/delete` with the current
+  document's id, e.g. `Songs/1/Lyrics/en/Latn`). Every visible contribution of that slot is hidden
+  (reason `version-removed`; deleted when the type is not soft-deletable), and the current document
+  is deleted, in one commit. Each hidden one can be restored separately, which brings the slot back.
+- **Revert:** `POST /spark/po/revert-contribution { objectTypeId, id }` (the contribution type and the
+  contribution to make current). Every *newer* visible contribution of its slot is hidden (reason
+  `reverted`), atomically; no text is rewritten and nothing is re-attributed — the reverted-to
+  version keeps its author and date. A hidden target is refused (400, "restore it first"): reverting
+  to a hidden version is `Restore` first, then revert if something newer is still visible. A
+  declaration without SoftDelete refuses reverts (400), because a revert would have to destroy other
+  users' versions. Answers 200 with the contribution, 409 on a concurrent write, and Spark's
+  indistinguishable 404 (401 anonymous) on a missing right, row or type.
+- Both moderator actions ask every `ISatelliteWriteGuard` (Moderation: suspension, locks) before each
+  hide, and are audited after the commit through every `ISatelliteAuditSink` (Spark.Abstractions);
+  Moderation registers one that writes a `ModerationAuditEntry` (`RemoveContributionVersion` /
+  `RevertContribution`, target = the current document / the contribution, details = the target and
+  every hidden id).
+
 ## Rights
 
 Contributors hold `Edit` on the target, narrowed by attribute-level rights; there is no `Contribute`
-verb. The one new verb is `RevertContribution/<Type>Contribution`. History, hiding and restoring reuse
-`Query`/`Read`, `Delete` and SoftDelete's `Restore`/`ViewDeleted`/`Purge`.
+verb. The one new verb is `RevertContribution`. With `Song.Lyrics`:
+
+| Who | Right | For |
+|---|---|---|
+| contributors | `Edit/Song` (+ attribute denies), optionally `Edit/Lyrics/...` | adding, editing, withdrawing their own versions |
+| readers of the history | `Query/SongLyricsContribution`, `Read/SongLyricsContribution` (and `Read/Song`: the query's parent) | the History link, opening a contribution |
+| moderators | `Delete/SongLyricsContribution`, `Restore/…`, `ViewDeleted/…`, `Purge/…` | hiding, restoring, seeing and purging single contributions |
+| moderators | `RevertContribution/SongLyricsContribution` (+ `Read/…`) | revert |
+| moderators | `Read/SongLyricsCurrent` + `Delete/SongLyricsCurrent` | remove a whole version |
+
+Deny `Query/SongLyricsContribution/ContributorId` (attribute right) to keep raw user ids out of the
+history grid. The generated type names exist in the model only after synchronize; until then SPARK012
+warns about them (the attribute-level validator SPARK014 falls back to the CLR class). The runtime
+validator checks attribute rights against the model, so synchronize before granting them.
+
+## Client contract
+
+What the ng-spark client pieces implement against (the server side is done):
+
+- **Attribution row renderer.** An AsDetail row attribute with `renderer: "contributionAttribution"`
+  (`ContributionDescriptor.AttributionRenderingHint`). The row carries `ContributorName` (string or
+  null), `UpdatedAt` (UTC) and `ContributionCount` (number) — only those the declaration asked for;
+  `rendererOptions.attribution` lists which. Render "by *Alice* · 3 days ago · History (4)" once per
+  row, hiding the separate cells. `rendererOptions` (the same on each of them):
+
+  ```json
+  {
+    "contributionsQuery": "songlyricscontributions",
+    "targetType": "Song",
+    "property": "Lyrics",
+    "slots": ["Language", "Script"],
+    "attribution": ["ContributorName", "UpdatedAt", "ContributionCount"]
+  }
+  ```
+- **History link.** `/query/{contributionsQuery}?parentId={owner PO id}&parentType={targetType}` plus
+  one `{slot}={row value}` per entry of `slots` (e.g. `&Language=en&Script=Latn`). The query page
+  executes `POST /spark/queries/execute` with `parentId`, `parentType` and one column filter per slot
+  (`columns: [{ name: "Language", includes: ["en"] }, …]`). No new Angular route: `sparkRoutes()`'s
+  `query/:queryId` (the query-list page then reads these query-string parameters).
+- **Revert button** on the query's rows and the contribution page: `POST
+  /spark/po/revert-contribution { objectTypeId, id }`, shown for `RevertContribution/{type}` holders.
+- **Line diff renderer**: a contribution's value attributes against the current document
+  (`{targetId}/{Property}/{slots…}`, the current type's PO).
+- **Conflict merge** (M1c): rows of the `[Contribution]` property conflict only between two edits by
+  the same user; another user's change to a slot is theirs-wins with a notice.
+- **Notices** arrive as ordinary `notify` operations on the save response.
 
 ## Packaging
 

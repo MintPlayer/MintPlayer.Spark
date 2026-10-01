@@ -19,6 +19,34 @@ public abstract class ContributionDescriptor
     /// </summary>
     public const string AttributionRenderingHint = "contributionAttribution";
 
+    /// <summary>
+    /// The custom-query method that serves every generated <c>{Target}{Property}Contributions</c> query
+    /// (source <c>Custom.SparkContributionsOfTarget</c>): the target's contributions, given the target as
+    /// the query's parent. Served by the runtime's actions for the generated contribution type.
+    /// </summary>
+    public const string ContributionsQueryMethod = "SparkContributionsOfTarget";
+
+    /// <summary>
+    /// The <c>rendererOptions</c> written with <see cref="AttributionRenderingHint"/> on each attribution
+    /// attribute of the element (contributions M5b; the client contract is in the library README):
+    /// <c>contributionsQuery</c> (the generated query's alias), <c>targetType</c> (the target's model
+    /// name, the query's <c>parentType</c>), <c>property</c>, <c>slots</c> (the slot attribute names, in
+    /// id order — the history link's column filters) and <c>attribution</c> (the attribution attribute
+    /// names the row carries).
+    /// </summary>
+    public static IReadOnlyDictionary<string, object> AttributionRendererOptions(ContributionDescriptor descriptor)
+    {
+        ArgumentNullException.ThrowIfNull(descriptor);
+        return new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["contributionsQuery"] = global::MintPlayer.Spark.Abstractions.SparkQueryAliases.Derive(descriptor.ContributionsQueryName),
+            ["targetType"] = descriptor.TargetType.Name,
+            ["property"] = descriptor.PropertyName,
+            ["slots"] = descriptor.SlotNames.ToArray(),
+            ["attribution"] = descriptor.AttributionAttributeNames.ToArray(),
+        };
+    }
+
     /// <summary>The entity that declares the property (<c>Song</c>).</summary>
     public abstract Type TargetType { get; }
 
@@ -176,6 +204,30 @@ public static class ContributionRegistry
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         Registered[(descriptor.TargetType, descriptor.PropertyName)] = descriptor;
+        RegisterModel(descriptor);
+    }
+
+    /// <summary>
+    /// Makes the generated types part of the model without app hand-work (contributions M5b): both
+    /// are satellites of the target, so synchronization writes their model files, mints the
+    /// contributions query once, and seeds the attribution renderer on the element's attribution
+    /// attributes. Keyed by the target type, so only a context that exposes it sees them.
+    /// </summary>
+    private static void RegisterModel(ContributionDescriptor descriptor)
+    {
+        global::MintPlayer.Spark.Abstractions.Model.SparkModelSatellites.Register(new(
+            descriptor.TargetType,
+            descriptor.ContributionType,
+            new(descriptor.ContributionsQueryName, "Custom." + ContributionDescriptor.ContributionsQueryMethod,
+                nameof(IContribution.UpdatedAt), "desc")));
+        global::MintPlayer.Spark.Abstractions.Model.SparkModelSatellites.Register(new(descriptor.TargetType, descriptor.CurrentType));
+
+        if (descriptor.AttributionAttributeNames.Count == 0)
+            return;
+        var options = ContributionDescriptor.AttributionRendererOptions(descriptor);
+        foreach (var name in descriptor.AttributionAttributeNames)
+            global::MintPlayer.Spark.Abstractions.Model.SparkModelSatellites.SeedRenderer(new(
+                descriptor.ElementType, name, ContributionDescriptor.AttributionRenderingHint, options));
     }
 
     /// <summary>Every registered declaration.</summary>

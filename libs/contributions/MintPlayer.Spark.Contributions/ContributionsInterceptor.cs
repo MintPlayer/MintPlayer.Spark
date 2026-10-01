@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authentication;
 using MintPlayer.Spark.Abstractions.Interceptors;
@@ -12,28 +13,36 @@ namespace MintPlayer.Spark.Contributions;
 /// </summary>
 /// <remarks>
 /// Applies to every target type that declares a <see cref="ContributionAttribute"/> property and to
-/// every generated contribution type. Writes go into the request session, so they commit atomically
-/// with the save or delete that caused them, and a refusal evicts them (F6).
+/// every generated contribution and current type. Writes go into the request session, so they commit
+/// atomically with the save or delete that caused them, and a refusal evicts them (F6).
 /// </remarks>
 internal sealed class ContributionsInterceptor(
     ContributionCatalog catalog,
     IAsyncDocumentSession session,
     ISparkCurrentUser currentUser,
+    ContributionRequestState state,
     IServiceProvider services) : IPersistentObjectInterceptor
 {
     /// <summary>The contributor id of a system-context write (a migration, a sync) that has no user.</summary>
     internal const string SystemContributorId = "system";
 
+    /// <summary>The audit action of a removed version (Delete on the current type).</summary>
+    internal const string RemoveVersionAuditAction = "RemoveContributionVersion";
+
     public int Order => PersistentObjectInterceptorOrder.Contributions;
 
     public bool AppliesTo(Type entityType)
-        => catalog.ForTarget(entityType).Count > 0 || catalog.ForContribution(entityType) is not null;
+        => catalog.ForTarget(entityType).Count > 0
+           || catalog.ForContribution(entityType) is not null
+           || catalog.ForCurrent(entityType) is not null;
 
     public async ValueTask OnAfterMaterializeAsync(MaterializeContext context)
     {
-        // Every reason (Load, SaveReload, Before), in the session that loaded the entity.
+        // Every reason (Load, SaveReload, Before), in the session that loaded the entity. Names only
+        // for what is shown: the Before side load is diffed, never presented.
+        var names = context.Reason == MaterializeReason.Before ? null : services;
         foreach (var handler in catalog.ForTarget(context.EntityType))
-            await handler.HydrateAsync(context.Entity, context.GetSession());
+            await handler.HydrateAsync(context.Entity, context.GetSession(), names);
     }
 
     public async ValueTask OnBeforeSaveAsync(SaveContext context)
@@ -63,6 +72,7 @@ internal sealed class ContributionsInterceptor(
                     IsSystemContext = context.IsSystemContext,
                     Services = services,
                     User = context.User,
+                    State = state,
                 });
             }
         }
@@ -70,6 +80,13 @@ internal sealed class ContributionsInterceptor(
         // A contribution saved as itself — SoftDelete's restore, a moderator's edit — moves its slot's current.
         if (catalog.ForContribution(context.EntityType) is { } contributions)
             await contributions.OnContributionSavedAsync(context.Entity, context.Before, session);
+    }
+
+    /// <summary>After the commit: the Q3 notices reach the save response's <c>operations</c>.</summary>
+    public ValueTask OnAfterSaveAsync(SaveContext context)
+    {
+        state.FlushNotices(services);
+        return ValueTask.CompletedTask;
     }
 
     public async ValueTask OnBeforeDeleteAsync(DeleteContext context)
@@ -84,9 +101,42 @@ internal sealed class ContributionsInterceptor(
         // the delete's own commit.
         if (catalog.ForContribution(context.EntityType) is { } contributions)
             await contributions.OnContributionDeletingAsync(context.Entity, context.Id, session);
+
+        // A moderator removes a whole version (Delete on the current type, PRD Q3/Q4): every visible
+        // contribution of the slot is hidden in this commit, then the base delete removes the current
+        // document. Audited after the commit.
+        if (catalog.ForCurrent(context.EntityType) is { } currents)
+        {
+            var write = ModeratorWrite(context.IsSystemContext, context.User);
+            var affected = await currents.OnCurrentDeletingAsync(context.Entity, context.Id, write);
+            state.Audits.Add(new SatelliteAuditEntry
+            {
+                Action = RemoveVersionAuditAction,
+                DocumentType = currents.Descriptor.ContributionType,
+                DocumentId = context.Id,
+                AffectedDocumentIds = affected,
+                TargetType = currents.Descriptor.TargetType,
+                TargetId = currents.TargetIdOfCurrent(context.Id) ?? "",
+                Reason = currents.Descriptor.IsSoftDeletable ? SoftDeleteBridge.VersionRemovedReason : null,
+                User = context.User,
+            });
+        }
     }
 
+    public async ValueTask OnAfterDeleteAsync(DeleteContext context)
+        => await state.FlushAuditsAsync(services);
+
     private DateTimeOffset Now => (services.GetService(typeof(TimeProvider)) as TimeProvider ?? TimeProvider.System).GetUtcNow();
+
+    /// <summary>A moderator write in the request session, as the caller (guards skipped for the system context).</summary>
+    internal ModeratorWrite ModeratorWrite(bool isSystemContext, System.Security.Claims.ClaimsPrincipal? user) => new()
+    {
+        Session = session,
+        UserId = currentUser.Id is { Length: > 0 } id ? id : SystemContributorId,
+        Now = Now,
+        Guards = isSystemContext ? [] : [.. services.GetServices<ISatelliteWriteGuard>()],
+        User = user,
+    };
 
     private async Task<string> TargetIdAsync(SaveContext context)
     {

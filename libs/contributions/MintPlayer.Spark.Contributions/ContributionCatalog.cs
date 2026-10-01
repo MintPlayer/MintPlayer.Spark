@@ -51,6 +51,23 @@ internal sealed class ContributionCatalog
         return descriptor is null ? null : Get(descriptor);
     }
 
+    /// <summary>The declaration whose generated current type is <paramref name="entityType"/>, if any.</summary>
+    public IContributionHandler? ForCurrent(Type entityType)
+    {
+        EnsureInitialized(entityType);
+        var descriptor = ContributionRegistry.Descriptors.FirstOrDefault(d => d.CurrentType == entityType);
+        return descriptor is null ? null : Get(descriptor);
+    }
+
+    /// <summary>The declaration whose generated contribution type has the full name <paramref name="clrType"/> (a model file's <c>clrType</c>).</summary>
+    public IContributionHandler? ForContributionClrType(string? clrType)
+    {
+        if (string.IsNullOrEmpty(clrType))
+            return null;
+        var descriptor = ContributionRegistry.Descriptors.FirstOrDefault(d => string.Equals(d.ContributionType.FullName, clrType, StringComparison.Ordinal));
+        return descriptor is null ? null : Get(descriptor);
+    }
+
     private IContributionHandler Get(ContributionDescriptor descriptor) => handlers.GetOrAdd(descriptor, static d =>
     {
         var typed = d.GetType();
