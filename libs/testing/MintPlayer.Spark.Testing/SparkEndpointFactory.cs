@@ -166,6 +166,13 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
                         services.Remove(existing);
                         services.AddSingleton(testStore);
 
+                        // One PBKDF2 iteration instead of Identity's 100,000. Every register, sign-in
+                        // and password check in a test host otherwise burns tens of milliseconds of
+                        // CPU, on a suite that is CPU-bound. The hash records its own iteration count,
+                        // so verification is unaffected; before configureServices, so a test about
+                        // hashing can set it back.
+                        services.Configure<Microsoft.AspNetCore.Identity.PasswordHasherOptions>(o => o.IterationCount = 1);
+
                         // Before configureServices, so a test that swaps IAccessControl itself still wins.
                         security.ApplyBaseline(services);
 

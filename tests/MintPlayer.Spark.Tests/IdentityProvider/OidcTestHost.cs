@@ -60,13 +60,43 @@ public abstract class OidcTestHost : SparkTestDriver
                     // required outside Development, and pinning it here means the tests also
                     // assert the value the endpoints actually stamp.
                     options.Issuer = Issuer;
-                    options.SigningKeyPath = Path.Combine(
-                        Path.GetTempPath(), "spark-oidc-test-" + Guid.NewGuid().ToString("N") + ".json");
+                    options.SigningKeyPath = CopyOfSharedSigningKey();
                 });
             },
             // Development so the provider generates its own signing key. Production refusing to
             // do that is the correct behaviour and is covered separately by R-K1.
             environment: "Development");
+
+    /// <summary>
+    /// A fresh key-file path per host, holding a copy of one RSA key generated once per process.
+    /// <para>
+    /// Each host used to point at a missing file, so the provider generated a new RSA-2048 key on
+    /// every boot: a CPU-heavy prime search, paid once per OIDC test on a CPU-bound suite. A copy
+    /// keeps each host's file its own (the provider reads it at startup), and no test here is about
+    /// two hosts having different keys.
+    /// </para>
+    /// </summary>
+    private static string CopyOfSharedSigningKey()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "spark-oidc-test-" + Guid.NewGuid().ToString("N") + ".json");
+        File.Copy(SharedSigningKeyFile.Value, path);
+        return path;
+    }
+
+    private static readonly Lazy<string> SharedSigningKeyFile = new(() =>
+    {
+        using var rsa = System.Security.Cryptography.RSA.Create(2048);
+        var p = rsa.ExportParameters(includePrivateParameters: true);
+        static string B64(byte[] bytes) => Microsoft.IdentityModel.Tokens.Base64UrlEncoder.Encode(bytes);
+        var json = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string>
+        {
+            ["N"] = B64(p.Modulus!), ["E"] = B64(p.Exponent!), ["D"] = B64(p.D!), ["P"] = B64(p.P!),
+            ["Q"] = B64(p.Q!), ["DP"] = B64(p.DP!), ["DQ"] = B64(p.DQ!), ["QI"] = B64(p.InverseQ!),
+        });
+        var path = Path.Combine(Path.GetTempPath(), "spark-oidc-test-shared-" + Environment.ProcessId + ".json");
+        File.WriteAllText(path, json);
+        return path;
+    });
 
     protected HttpClient Client => Factory.CreateClient();
 
