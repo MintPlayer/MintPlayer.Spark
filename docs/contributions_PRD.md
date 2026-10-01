@@ -153,6 +153,20 @@ in this repository; see §7.
   - **`Blur`** on a discrete editor acts as `ValueChanged`, and verify-model warns.
   - The 3 model JSON files are hand-edited to `"Auto"`, with no converter for `true`.
   - The wire value is PascalCase, like `referenceDisplayType`.
+  - **Why an enum at all** (owner, 2026-09-30): the client already refreshes free text on blur only
+    (`refresh-coordinator.ts:108`, `spark-po-form.component.ts:646-678`), so the `bool` worked. The
+    owner chose the enum anyway "while the framework is still in preview".
+  - **A `[Flags]` enum was considered and deferred** (Claude's recommendation; the owner raised it and
+    didn't push back):
+    - `ValueChanged|Blur` equals `ValueChanged`, because a debounced change is flushed on blur anyway.
+    - A discrete editor never fires blur.
+    - `Auto` is "decide per editor", not a combination of events.
+    - Revisit when a third independent trigger exists, e.g. `EnterKey`.
+  - **Blast radius, measured:** 3 model JSON files, 2 C# readers and 5 TS reads. `triggersRefresh` is not
+    in the model hash.
+  - **As built:** `7014143a`. A stale boolean stops startup loudly (`6663391e`,
+    `ModelLoaderTests.A_boolean_triggersRefresh_stops_the_process_instead_of_dropping_the_type`).
+    Without that, `ModelLoader.cs:87-96` would have silently dropped the whole type.
 - **C10 — No backward compatibility** (the libraries are in preview).
 
 ### Technical decisions
@@ -273,7 +287,7 @@ in this repository; see §7.
 - **The element side is already correct.** `Edit`, `New` and `Delete` on the element type are
   enforced per row (`EntityMapper.cs:720-753`).
 - **Any verb can already be granted:** a right is just `"{action}/{target}"` (`PermissionService.cs:37-39`),
-  so `Contribute/Song` needs no schema change.
+  so `Contribute/Song` needs no schema change. *(The `Contribute` verb itself was later SUPERSEDED by attribute-level rights, §5 Q11–Q13.)*
 - **Rejected alternatives:**
   - A custom action plus a modal: its save still needs `Edit/Song`, or runs as the system context,
     which skips Moderation, WITH CHECK and the row gates.
@@ -872,6 +886,60 @@ only):
   PersistentObject endpoint, SoftDelete, Moderation, History, Refresh and redaction classes ran green.)
 - **The version gate:** check whether CI expects every `libs/` csproj bumped in lockstep. Past PRs
   bumped 23–29 of 30, while this branch bumps only the touched ones.
+
+## 5d. Test-run speed and CI cost (owner decisions, 2026-10-01; work tracked as M8 in the plan)
+
+**Rule: CI runs cost money, never push just to get a test run** (owner, 2026-10-01). It is recorded in
+the global and repo `CLAUDE.md`. A sub-agent's unrequested push and draft PR #465 prompted it. The full
+sweep therefore has to be practical locally, and CI's behaviour stays exactly as it is.
+
+**Measured evidence (2026-10-01):**
+
+| Suite | Local (serial sweep) | CI (run 36884431200) | Ratio |
+|---|---|---|---|
+| MintPlayer.Spark.Tests | 21m21s (4 threads) | 9m59s (2 threads, with coverage) | 2.1× |
+| CodeCoverage.Tests | 3m34s | 2m32s | 1.4× |
+| SourceGenerators.Tests | 64s | 51s | 1.25× |
+| .NET suites end to end | 26.2 min, one after another | test step ~12 min (`nx parallel: 3`) | 2.2× |
+| Whole CI job | — | ~17 min, E2E 138 tests included | — |
+
+- **Per-test thread time** was about 5,070 s locally against about 1,200 s on CI, so each test took
+  roughly 4× longer. All 4 local threads were busy for 1,257 of 1,275 s.
+- **57% of local slot time is setup and teardown** (2,897 of 5,069 s): per-test databases and per-test
+  host boots. Examples:
+  - `NestedRefreshEndpointTests`: 136 s setup for 1.7 s of test body
+  - the OIDC family: about 700 s of body time
+- **The licence:** the machine-level `RAVENDB_LICENSE` took precedence (`SparkTestDriver.cs:327-367`)
+  and behaved as the Community licence. Locally `ThrottleAccuracySpikeTests.S_M3` failed with
+  "minimum revisions 1000 exceeds the licensed one 2"; in CI, with the Developer licence, it passes.
+  Memory records Community as 3 cores, no ETL, and expired 2026-09-25.
+- **The localhost:8080 RavenDB:** measured at 7.2.6 (build 72033, the same as the client), Developer
+  licence, `MaxCores` 9. It holds about 70 real development databases.
+
+**Owner decisions, each lever (2026-10-01):**
+1. **Licence:** done by the owner. `setx RAVENDB_LICENSE "C:\Repos\MintPlayer.Spark\.secrets\raven-license.log"`;
+   the driver accepts a file path.
+2. **One `package.json` script** for the affected tests, unit and E2E together. Accepted, because nx
+   parallelism overlaps the projects as CI does.
+3. **The Nx remote cache is left as it is.** Disabling it locally, or using a read-only token, was
+   rejected by the owner. The local environment carries the `NX_SELF_HOSTED_REMOTE_CACHE_*` variables.
+4. **Zero-wait deletion in every `RavenTestDriver` base class,** plus the opt-in
+   `SPARK_E2E_SKIP_APP_BUILD`.
+   - `SparkSharedDatabase` and CodeCoverage's `CoverageRavenTest` still used the 15 s confirmation
+     wait, across 458 inline stores; that wait is the disposal trap behind earlier timeouts.
+   - The E2E host rebuilt the app redundantly (`SparkAppTestHost.cs:~609`).
+5. **A database per test class through xUnit class fixtures** (`IClassFixture<SparkSharedDatabase>`),
+   the same on CI and locally. Only 1 of 181 driver classes used it so far; the first one went from 13 s
+   to 647 ms. Rejected alternatives:
+   - **A local-only database mode:** CI would never exercise sharing, and you'd get "red only on my
+     machine".
+   - **One shared database plus cleanup:** a document delete leaves indexes, subscriptions,
+     compare-exchange values and revisions behind, and background writers race the reset.
+   - **Never deleting databases:** measured 17% slower.
+   - **Restoring from a template:** indexing is the cost, not creation.
+6. **Keep the `RavenTestDriver` implementations; no external `localhost:8080` server for tests.** The
+   gain would be small (one embedded-server start per process) against the risk to the dev databases,
+   the switch from memory to disk, and leftover cleanup.
 
 ## 6. Risks
 

@@ -150,11 +150,15 @@ The owner settled G1–G8 and D14 in a grilling session on 2026-09-30. D1, D2, D
 part) and D12 are Claude's recommendations, with reasons recorded; the owner may override them.
 
 ### Owner decisions (grilling, 2026-09-30)
-- **G1 — ng-bootstrap owns the pre-boot script AND the toggle (less duplicated code).**
+- **G1 — ng-bootstrap owns the pre-boot script AND the toggle (less duplicated code).** Basis: owner
+  preference ("I prefer less duplicated code"). *As built (§2b): a cycle button with a `modes` input,
+  not label inputs.*
   - ng-bootstrap exports `bs-theme-toggle`, promoted from the demo. Spark has **no wrapper component**:
     `spark-shell` renders `bs-theme-toggle` directly and passes its translated labels as inputs.
   - There is exactly one theme service, one script and one toggle, all in ng-bootstrap.
-- **G2 — The pre-boot script is an external, blocking file, not an inline copy.**
+- **G2 — The pre-boot script is an external, blocking file, not an inline copy.** *SUPERSEDED path (§2b):
+  it ships from `@mintplayer/web-components/theming/`, not ng-bootstrap, and must come after
+  `<base href>`, with the default-mode meta before it.*
   - ng-bootstrap ships `theming/bs-theme-preboot.js`. Each app copies it at build time through an
     `assets` glob in `project.json`. `index.html` gets one line: `<script src="bs-theme-preboot.js">`
     in `<head>`, before the stylesheets, with no `async`/`defer`.
@@ -253,9 +257,11 @@ part) and D12 are Claude's recommendations, with reasons recorded; the owner may
   - `bg-light` → `bg-body-tertiary`, and `text-bg-light` → `text-bg-secondary`.
   - **The SVG badges do not change.** A test pins that `BadgeRenderer` output contains no
     `prefers-color-scheme`, `<style` or `currentColor`.
-- **D12 — ng-bootstrap fixes (in that repo):**
+- **D12 — ng-bootstrap fixes (in that repo):** *As built in PR MintPlayer/mintplayer-ng-bootstrap#421
+  (released as 22.20.0); the deviations are in §2b.*
   - G3 cookie storage (localStorage code removed, no migration), `BroadcastChannel`, and `provideBsTheme({ cookieDomain,
-    defaultMode })`.
+    defaultMode })`. *SUPERSEDED: `provideBsTheme({ cookieDomain })` only; the default mode comes from
+    `<meta name="bs-theme-default-mode">`.*
   - SSR: on the server, read the cookie from Angular's `REQUEST` token and render `data-bs-theme` for an
     explicit mode.
   - G2 `bs-theme-preboot.js`, and G1 `bs-theme-toggle` with label inputs.
@@ -268,6 +274,75 @@ part) and D12 are Claude's recommendations, with reasons recorded; the owner may
     `@mintplayer/ng-bootstrap ^22.20.0`; ng-spark-auth is still on `^22.2.0`.
   - The identity-provider csproj gets a minor bump (CI requires one for every touched `libs/` project).
   - No major changes anywhere.
+
+### 2b. As built, accepted deviations and owner approvals (2026-10-01)
+**ng-bootstrap PR #421** (review comment
+https://github.com/MintPlayer/mintplayer-ng-bootstrap/pull/421#issuecomment-5916913690; fixes in
+`d075383b`; published 22.20.0 and web-components 2.17.0, run 36827354045, "Published: 16, failed: 0").
+The deviations were **accepted by the owner**, each argued in that repo's `docs/prd/dark-mode.md`:
+- **Pre-boot script path:** `@mintplayer/web-components/theming/bs-theme-preboot.js`. The owner kept
+  that path ("Good") over a second copy under ng-bootstrap, because one copy next to the shared
+  implementation avoids drift.
+- **Default mode** via `<meta name="bs-theme-default-mode">`. `provideBsTheme` takes only `cookieDomain`.
+- **The toggle** is a cycle button (auto → light → dark) with a `modes` input
+  `{mode, label, announcement, icon}[]`. Its selector is `spark-shell bs-theme-toggle button`, in an open
+  shadow root.
+- **Shadow-DOM caret and switch knob** use CSS style queries (`@container style(--mp-color-mode: dark)`)
+  instead of masks. They were measured working in Chromium 151, Firefox 153 and WebKit 26.5. Engines
+  without style queries keep light carets and knobs; that's documented.
+- **Card fallbacks unchanged:** PR #421 argued they never fire, because `$card-bg = var(--bs-body-bg)`.
+  **Calendar-in-dropdown:** the calendar has an opaque surface and border. A surface on the dropdown pane
+  was rejected because it would affect every dropdown (measured: the calendar fills the pane, 323×284).
+- **The review's must-fix items** are fixed in `d075383b`:
+  - the agreement test no longer skips silently (`dependsOn: ["codegen-wc"]`, and it throws when CI is
+    set)
+  - a host-only cookie is expired when `cookieDomain` is set
+- **Pre-boot bundle size:** 995 B of a 1 KB budget, so the next addition needs a budget decision.
+
+**Spark wiring (B-1 `5e0a9d9b`):** in `<head>`, the order is `<base href>`, then the default-mode meta,
+then the script, then the stylesheets.
+- **Why:** the script reads the meta synchronously, and its relative `src` would resolve against a deep
+  link's own path before `<base>`.
+- **S5, verified on the served page in B-2:** that order holds, and `/bs-theme-preboot.js` is 200
+  `text/javascript`, also on a deep link.
+- **S7, measured in DemoApp (M5 `c7b0fae6`):** the cookie is `Path=/; SameSite=Lax`, host-only, about a
+  year, with `Secure` only on the https profile.
+- The identity-provider pages (D10) have no QR code; it lives in ng-spark-auth, which keeps a white
+  background.
+
+**Palette, approved by the owner on 2026-10-01 (B-2 `64c8816b`):**
+- **Tokens:**
+  - topbar and sidebar = `--bs-tertiary-bg` (#f8f9fa light / #2b3035 dark)
+  - main = `--bs-body-bg` (#fff / #212529)
+  - text = `--bs-body-color`
+  - 1px `--bs-border-color` separators
+  - tints `rgba(var(--bs-emphasis-color-rgb), .1/.2)`
+- **Measured contrast:**
+
+  | Element | Light | Dark |
+  |---|---|---|
+  | Topbar / sidebar text | 14.63 | 10.23 |
+  | Hover | 11.68 | 7.47 |
+  | Active | 9.13 | 5.39 |
+  | Main text | 15.43 | 11.85 |
+  | Main link | 4.50 | 6.39 |
+
+  The main link is Bootstrap's own #0d6efd on white.
+- **The old palette had two real bugs,** visible in the before screenshots: the toggle was invisible in
+  light mode (#212529 on #212529), and the main area stayed light in dark mode.
+- **The action bar is on the page surface:** `.spark-actionbar` background =
+  `var(--spark-shell-main-bg, var(--bs-body-bg))`. Owner, 2026-10-01: "the action-bar appears to float
+  in the page" when it was tinted. Measured: it equals `<main>` exactly (rgb(255,255,255) /
+  rgb(33,37,41)), it is opaque when stuck, and there's no band.
+- **Found and fixed in B-2:**
+  - **The datatable header overlap at 390px (an ng-spark bug):** the grid's columns registered one
+    render after the rows, so `mp-datatable` measured only the row-actions column (163px) and gave the
+    data columns 45px each. Now the columns measure 163/212/137/129/56.
+  - **The signed-in HR topbar wrapped at phone width:** `spark-auth-bar` is now one non-wrapping line,
+    with the name hidden below `sm`.
+- **Not fixed:** in web-components 2.17.0, `thead th[data-mps=datatable]` lacks `overflow: hidden`.
+
+**Tests:** `DarkModeTests` (the 4-test R7 matrix) passed in CI run 36888101219, E2E 138/0.
 
 ---
 
@@ -384,7 +459,7 @@ Browser checks go through the `playwright_node` MCP. It is connected again as of
 - **Shipping `bs-theme-preboot.js`:** ng-packagr honours `assets` only in the **primary**
   `ng-package.json`, which already globs `./src/assets/**`, `./src/styles/**` and `./_bootstrap.scss`.
   Add `"./theming/bs-theme-preboot.js"` there. It publishes as
-  `node_modules/@mintplayer/ng-bootstrap/theming/bs-theme-preboot.js`, which is the path each Spark
+  `node_modules/@mintplayer/ng-bootstrap/theming/bs-theme-preboot.js` (*SUPERSEDED: shipped from `@mintplayer/web-components/theming/`, §2b*), which is the path each Spark
   app's assets glob copies.
 - **The demo's current pre-boot script** is inline in `apps/ng-bootstrap-demo/src/index.html:9-31`
   and reads localStorage. It is replaced in NB2.
@@ -399,7 +474,7 @@ Browser checks go through the `playwright_node` MCP. It is connected again as of
   - `_styles/form-check.styles.ts:133` (from `form-check.styles.scss:17`)
 - **The same dead pattern appears in** `navbar.styles.ts:425` (toggler icon) and `carousel.styles.ts:205`
   (indicator colours).
-- **Fix: use the repo's own accordion pattern** (`accordion.styles.scss:100-112`, verified to follow the
+- **Fix (proposed; SUPERSEDED by style queries in PR #421, §2b): use the repo's own accordion pattern** (`accordion.styles.scss:100-112`, verified to follow the
   theme). Paint the icon as a `currentColor` / `var(--bs-*)` **mask**, so no dark-specific selector is
   needed. The caret needs a pseudo-element or wrapper, because the select's own background is its
   fill. Rejected: re-emitting under `:host-context([data-bs-theme=dark])`, which is Chromium-only.

@@ -437,7 +437,7 @@ after this library ships, and after MintPlayer's F9 messaging.
   similar, audio uploaded by an admin and deleted after processing, results stored as system-user
   contributions for human review).
 
-### M8 — Faster test runs (owner decisions, 2026-10-01; CI behaviour unchanged)
+### M8 — Faster test runs (owner decisions, 2026-10-01; CI behaviour unchanged; evidence and rejected alternatives in PRD §5d)
 Background:
 - Local runs measured 2–2.4× slower than CI per RavenDB-backed suite, and 57% of local test time is
   setup/teardown (per-test databases, an OIDC host booted per test).
