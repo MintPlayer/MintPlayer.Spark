@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using MintPlayer.Spark.IdentityProvider.Endpoints;
+using MintPlayer.Spark.Testing;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
 
@@ -9,7 +10,8 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// attribute and leaves the page's <c>prefers-color-scheme</c> block in charge. The cookie is
 /// attacker-controlled, so an unrecognised value must never reach the HTML.
 /// </summary>
-public class OidcPageThemeTests : OidcTestHost
+public class OidcPageThemeTests(OidcSharedHost host)
+    : SparkSharedTestDriver(host), IClassFixture<OidcSharedHost>
 {
     private const string MediaBlock = "@media (prefers-color-scheme: dark){:root:not([data-bs-theme=light])";
 
@@ -19,7 +21,8 @@ public class OidcPageThemeTests : OidcTestHost
         if (cookieValue is not null)
             request.Headers.Add("Cookie", $"{ConnectPageTheme.CookieName}={cookieValue}");
 
-        var response = await Client.SendAsync(request);
+        using var client = host.Factory.CreateClient();
+        var response = await client.SendAsync(request);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsStringAsync();
     }

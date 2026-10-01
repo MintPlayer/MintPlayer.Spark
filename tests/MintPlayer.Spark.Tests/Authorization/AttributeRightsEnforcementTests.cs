@@ -6,6 +6,7 @@ using MintPlayer.Spark.Client;
 using MintPlayer.Spark.Models;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Testing;
+using MintPlayer.Spark.Tests._Infrastructure;
 using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.Tests.Authorization;
@@ -52,7 +53,8 @@ public class AttrVault
 /// name across the whole assembly.
 /// </para>
 /// </remarks>
-public class AttributeRightsEnforcementTests : SparkTestDriver
+public class AttributeRightsEnforcementTests(AttributeRightsEnforcementTests.Host host)
+    : SparkSharedTestDriver(host), IClassFixture<AttributeRightsEnforcementTests.Host>, IDisposable
 {
     private static readonly Guid VaultTypeId = Guid.Parse("a77a0000-0000-4000-8000-00000000a001");
     private static readonly Guid KeeperTypeId = Guid.Parse("a77a0000-0000-4000-8000-00000000a002");
@@ -60,7 +62,7 @@ public class AttributeRightsEnforcementTests : SparkTestDriver
 
     private const string Echo = "AttrVaultEcho";
 
-    private sealed class AttrContext : SparkContext
+    public sealed class AttrContext : SparkContext
     {
         public IRavenQueryable<AttrVault> Vaults => Session.Query<AttrVault>();
         public IRavenQueryable<AttrKeeper> Keepers => Session.Query<AttrKeeper>();
@@ -89,13 +91,27 @@ public class AttributeRightsEnforcementTests : SparkTestDriver
             => args.SetResult(await databaseAccess.GetPersistentObjectAsync(VaultTypeId, "vaults/1"));
     }
 
-    private SparkEndpointFactory<AttrContext> _factory = null!;
-    private SparkClient _client = null!;
-
-    public override async Task InitializeAsync()
+    /// <summary>
+    /// One host and one seed for the class (M8 item 5). Every case seeded the same keeper and three
+    /// vaults and then only read — searches, filters, loads, the echo action, the schema — so the
+    /// seed moved to class setup and the cases share it.
+    /// </summary>
+    public sealed class Host : SharedSparkHost<AttrContext>
     {
-        await base.InitializeAsync();
-        _factory = new SparkEndpointFactory<AttrContext>(
+        public override async Task InitializeAsync()
+        {
+            await base.InitializeAsync();
+
+            using var session = Store.OpenAsyncSession();
+            session.Advanced.WaitForIndexesAfterSaveChanges(RavenIndexingExtensions.DefaultTimeout, throwOnTimeout: true);
+            await session.StoreAsync(new AttrKeeper { Name = "Kay", Code = "kcode777" }, "keepers/1");
+            await session.StoreAsync(new AttrVault { Name = "Anna", Secret = "xbeta", Note = "hiddennote", Pin = "9911", Locked = true, Keeper = "keepers/1" }, "vaults/1");
+            await session.StoreAsync(new AttrVault { Name = "Bert", Secret = "xgamma", Pin = "4321" }, "vaults/2");
+            await session.StoreAsync(new AttrVault { Name = "Cleo", Secret = "xalpha" }, "vaults/3");
+            await session.SaveChangesAsync();
+        }
+
+        protected override SparkEndpointFactory<AttrContext> CreateFactory() => new(
             Store,
             [VaultModel(), KeeperModel()],
             configureServices: services =>
@@ -109,23 +125,12 @@ public class AttributeRightsEnforcementTests : SparkTestDriver
             security: SparkTestSecurity.Empty
                 .Granting("QueryReadEditNew/AttrVault", "QueryReadEditNew/AttrKeeper", $"{Echo}/AttrVault")
                 .Denying("QueryRead/AttrVault/Secret", "QueryRead/AttrKeeper/Code", "Edit/AttrVault/Note"));
-        _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
-
-        await SeedAsync(async session =>
-        {
-            await session.StoreAsync(new AttrKeeper { Name = "Kay", Code = "kcode777" }, "keepers/1");
-            await session.StoreAsync(new AttrVault { Name = "Anna", Secret = "xbeta", Note = "hiddennote", Pin = "9911", Locked = true, Keeper = "keepers/1" }, "vaults/1");
-            await session.StoreAsync(new AttrVault { Name = "Bert", Secret = "xgamma", Pin = "4321" }, "vaults/2");
-            await session.StoreAsync(new AttrVault { Name = "Cleo", Secret = "xalpha" }, "vaults/3");
-        });
     }
 
-    public override async Task DisposeAsync()
-    {
-        _client.Dispose();
-        await _factory.DisposeAsync();
-        await base.DisposeAsync();
-    }
+    private readonly SparkEndpointFactory<AttrContext> _factory = host.Factory;
+    private readonly SparkClient _client = new(host.Factory.CreateClient(), ownsClient: true);
+
+    public void Dispose() => _client.Dispose();
 
     // ---- R1: the search oracle --------------------------------------------------------------------
 

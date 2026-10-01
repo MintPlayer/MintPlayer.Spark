@@ -27,7 +27,8 @@ namespace MintPlayer.Spark.Tests.Builder;
 /// request costs no credential validation.
 /// </para>
 /// </summary>
-public class RateLimiterPlacementTests : SparkTestDriver
+public class RateLimiterPlacementTests(SparkSharedDatabase database)
+    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
 {
     private static readonly Guid PersonTypeId = Guid.Parse("66666666-eeee-eeee-eeee-666666666666");
 

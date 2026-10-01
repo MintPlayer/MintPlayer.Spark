@@ -17,7 +17,8 @@ namespace MintPlayer.Spark.Tests.Builder;
 /// server's HTTP URL — pinning the GUID id-generator wiring, the JSON converters, the
 /// "EnsureDatabaseCreated" branch, and the connection-retry short-circuit.
 /// </summary>
-public class AddSparkDocumentStoreFactoryTests : SparkTestDriver
+public class AddSparkDocumentStoreFactoryTests(SparkSharedDatabase database)
+    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
 {
     private static IConfiguration BuildConfiguration(string url, string database, bool ensureCreated, int retries = 0)
     {

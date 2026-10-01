@@ -3,6 +3,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Model;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Testing;
+using MintPlayer.Spark.Tests._Infrastructure;
 using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.Services;
@@ -24,7 +25,8 @@ namespace MintPlayer.Spark.Tests.Services;
 /// back.
 /// </para>
 /// </remarks>
-public class AsDetailRowIdentityRoundTripTests : SparkTestDriver
+public class AsDetailRowIdentityRoundTripTests(AsDetailRowIdentityRoundTripTests.Host host)
+    : SparkSharedTestDriver(host), IClassFixture<AsDetailRowIdentityRoundTripTests.Host>
 {
     private static readonly Guid OrderTypeId = Guid.Parse("5e1f0000-0000-4000-8000-5e1f00000001");
     private static readonly Guid LineTypeId = Guid.Parse("5e1f0000-0000-4000-8000-5e1f00000002");
@@ -47,7 +49,7 @@ public class AsDetailRowIdentityRoundTripTests : SparkTestDriver
         public string Note { get; set; } = string.Empty;
     }
 
-    private class OrderContext : SparkContext
+    public class OrderContext : SparkContext
     {
         public Raven.Client.Documents.Linq.IRavenQueryable<Order> Orders => Session.Query<Order>();
     }
@@ -95,13 +97,17 @@ public class AsDetailRowIdentityRoundTripTests : SparkTestDriver
         },
     };
 
-    private SparkEndpointFactory<OrderContext> _factory = null!;
-
-    public override async Task InitializeAsync()
+    /// <summary>
+    /// One host for the class (M8 item 5). Each case creates its own order under a server-assigned
+    /// id and only ever point-loads that id, so a sibling's orders are unreachable from it.
+    /// </summary>
+    public sealed class Host : SharedSparkHost<OrderContext>
     {
-        await base.InitializeAsync();
-        _factory = new SparkEndpointFactory<OrderContext>(Store, [OrderModel(), LineModel()]);
+        protected override SparkEndpointFactory<OrderContext> CreateFactory()
+            => new(Store, [OrderModel(), LineModel()]);
     }
+
+    private readonly SparkEndpointFactory<OrderContext> _factory = host.Factory;
 
     /// <summary>
     /// One save = one scope = one <c>IAsyncDocumentSession</c>, the way a real request works.
@@ -118,12 +124,6 @@ public class AsDetailRowIdentityRoundTripTests : SparkTestDriver
         using var scope = _factory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<IDatabaseAccess>();
         return await db.SavePersistentObjectAsync(po);
-    }
-
-    public override async Task DisposeAsync()
-    {
-        await _factory.DisposeAsync();
-        await base.DisposeAsync();
     }
 
     /// <summary>One embedded row on the wire. A null <paramref name="id"/> is a brand-new row.</summary>

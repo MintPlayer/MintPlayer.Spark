@@ -12,33 +12,36 @@ namespace MintPlayer.Spark.Tests.Endpoints.Queries;
 /// filter columns outside the allow-list, and a parent that does not resolve. Each happens after
 /// the query right is checked, so none of them can be used to enumerate attribute names.
 /// </summary>
-public class ExecuteQueryRequestValidationTests : SparkTestDriver
+public class ExecuteQueryRequestValidationTests(ExecuteQueryRequestValidationTests.Host host)
+    : SparkSharedTestDriver(host), IClassFixture<ExecuteQueryRequestValidationTests.Host>, IDisposable
 {
     private static readonly Guid PersonTypeId = Guid.Parse("aaaa8888-8888-8888-8888-aaaaaaaaaaaa");
     private static readonly Guid AllPeopleQueryId = Guid.Parse("bbbb8888-8888-8888-8888-bbbbbbbbbbbb");
 
-    private SparkEndpointFactory _factory = null!;
-    private SparkClient _client = null!;
-
-    public override async Task InitializeAsync()
+    /// <summary>
+    /// One host and one seed for the class (M8 item 5). Every case seeded the same two people and
+    /// then only read, so the seed moved to class setup and the cases share it.
+    /// </summary>
+    public sealed class Host : SharedSparkHost<TestSparkContext>
     {
-        await base.InitializeAsync();
-        _factory = new SparkEndpointFactory(Store, [Model()]);
-        _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
+        protected override SparkEndpointFactory<TestSparkContext> CreateFactory()
+            => new SparkEndpointFactory(Store, [Model()]);
 
-        await SeedAsync(async session =>
+        public override async Task InitializeAsync()
         {
+            await base.InitializeAsync();
+
+            using var session = Store.OpenAsyncSession();
+            session.Advanced.WaitForIndexesAfterSaveChanges(RavenIndexingExtensions.DefaultTimeout, throwOnTimeout: true);
             await session.StoreAsync(new Person { FirstName = "Alice", LastName = "Smith" }, "people/1");
             await session.StoreAsync(new Person { FirstName = "Bob", LastName = "Jones" }, "people/2");
-        });
+            await session.SaveChangesAsync();
+        }
     }
 
-    public override async Task DisposeAsync()
-    {
-        _client.Dispose();
-        await _factory.DisposeAsync();
-        await base.DisposeAsync();
-    }
+    private readonly SparkClient _client = new(host.Factory.CreateClient(), ownsClient: true);
+
+    public void Dispose() => _client.Dispose();
 
     private static EntityTypeFile Model()
     {

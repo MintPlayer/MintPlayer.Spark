@@ -11,7 +11,8 @@ namespace MintPlayer.Spark.Tests.Services;
 /// Contributions F5 — <see cref="IPersistentObjectInterceptor.Order"/>: before-hooks run by (Order,
 /// registration index), after-hooks in the reverse, whatever order the packages were registered in.
 /// </summary>
-public class InterceptorOrderTests : SparkTestDriver
+public class InterceptorOrderTests(SparkSharedDatabase database)
+    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
 {
     [Fact]
     public async Task Reversed_registration_still_yields_the_documented_order_and_equal_orders_keep_registration_order()

@@ -2,6 +2,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Queries;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Testing;
+using MintPlayer.Spark.Tests._Infrastructure;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Indexes;
 using Raven.Client.Documents.Linq;
@@ -23,7 +24,8 @@ namespace MintPlayer.Spark.Tests.Services;
 /// plausible rows while doing it.
 /// </para>
 /// </remarks>
-public class ColumnFilterDisclosureTests : SparkTestDriver
+public class ColumnFilterDisclosureTests(ColumnFilterDisclosureTests.Host host)
+    : SparkSharedTestDriver(host), IClassFixture<ColumnFilterDisclosureTests.Host>, IAsyncLifetime
 {
     private static readonly Guid CrateTypeId = Guid.Parse("cccc3333-cccc-cccc-cccc-cccc33333333");
 
@@ -101,38 +103,56 @@ public class ColumnFilterDisclosureTests : SparkTestDriver
         },
     };
 
-    private SparkEndpointFactory<TestContext>? _factory;
-
-    public override async Task InitializeAsync()
+    /// <summary>
+    /// One database, index, seed and default host for the class (M8 item 5). Every case seeded the
+    /// same three crates and then only queried, so all of that moved to class setup. Each case
+    /// still resolves its executor from a scope of its own, so no Raven session spans two cases.
+    /// </summary>
+    public sealed class Host : SharedSparkHost<TestContext>
     {
-        await base.InitializeAsync();
-        await new Crates_Overview().ExecuteAsync(Store);
-
-        await SeedAsync(async session =>
+        protected override async Task BeforeHostAsync()
         {
-            await session.StoreAsync(new Crate { Label = "one", Region = "eu", Classified = "red", Weight = 10, Tags = ["fragile", "urgent"], Rating = 5 });
-            await session.StoreAsync(new Crate { Label = "two", Region = "us", Classified = "red", Weight = 20, Tags = ["urgent"], Rating = 7 });
+            await new Crates_Overview().ExecuteAsync(Store);
 
-            // No tags at all: the field is absent from the document, so it projects as null. Every
-            // collection filter has to survive this row without throwing and without matching it.
-            await session.StoreAsync(new Crate { Label = "three", Region = "ap", Classified = "blue", Weight = 30, Tags = null, Rating = null });
-        });
-        await Store.WaitForIndexingAsync();
+            using (var session = Store.OpenAsyncSession())
+            {
+                session.Advanced.WaitForIndexesAfterSaveChanges(RavenIndexingExtensions.DefaultTimeout, throwOnTimeout: true);
+                await session.StoreAsync(new Crate { Label = "one", Region = "eu", Classified = "red", Weight = 10, Tags = ["fragile", "urgent"], Rating = 5 });
+                await session.StoreAsync(new Crate { Label = "two", Region = "us", Classified = "red", Weight = 20, Tags = ["urgent"], Rating = 7 });
+
+                // No tags at all: the field is absent from the document, so it projects as null. Every
+                // collection filter has to survive this row without throwing and without matching it.
+                await session.StoreAsync(new Crate { Label = "three", Region = "ap", Classified = "blue", Weight = 30, Tags = null, Rating = null });
+                await session.SaveChangesAsync();
+            }
+            await Store.WaitForIndexingAsync();
+        }
+
+        protected override SparkEndpointFactory<TestContext> CreateFactory() => NewFactory(Store, CrateModel());
     }
 
-    public override async Task DisposeAsync()
+    private static SparkEndpointFactory<TestContext> NewFactory(IDocumentStore store, EntityTypeFile model) => new(
+        store, [model],
+        configureIndexCatalog: catalog => catalog.RegisterIndex(typeof(Crates_Overview)));
+
+    private SparkEndpointFactory<TestContext>? _factory;
+    private Microsoft.Extensions.DependencyInjection.IServiceScope? _scope;
+
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    public async Task DisposeAsync()
     {
+        _scope?.Dispose();
         if (_factory is not null) await _factory.DisposeAsync();
-        await base.DisposeAsync();
     }
 
+    /// <summary>The class's host for the default model; a case that needs another model boots its own.</summary>
     private IQueryExecutor Executor(EntityTypeFile? model = null)
     {
-        _factory = new SparkEndpointFactory<TestContext>(
-            Store, [model ?? CrateModel()],
-            configureIndexCatalog: catalog => catalog.RegisterIndex(typeof(Crates_Overview)));
-
-        return _factory.GetService<IQueryExecutor>();
+        var factory = model is null ? host.Factory : (_factory = NewFactory(Store, model));
+        _scope = factory.CreateScope();
+        return Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+            .GetRequiredService<IQueryExecutor>(_scope.ServiceProvider);
     }
 
     private static SparkQuery Query() => new()

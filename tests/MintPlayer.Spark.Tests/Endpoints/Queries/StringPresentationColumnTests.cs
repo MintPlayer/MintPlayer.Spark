@@ -18,10 +18,21 @@ namespace MintPlayer.Spark.Tests.Endpoints.Queries;
 /// to say why.
 /// </para>
 /// </summary>
-public class StringPresentationColumnTests : SparkTestDriver
+public class StringPresentationColumnTests(StringPresentationColumnTests.Host host)
+    : SparkSharedTestDriver(host), IClassFixture<StringPresentationColumnTests.Host>
 {
     private static readonly Guid GalleryTypeId = Guid.Parse("1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d");
     private static readonly Guid GalleryQueryId = Guid.Parse("2b3c4d5e-6f7a-4b8c-9d0e-1f2a3b4c5d6e");
+
+    /// <summary>
+    /// One host for the class (M8 item 5): a composed query, so there are no documents to share.
+    /// The two cases that need another model boot their own.
+    /// </summary>
+    public sealed class Host : SharedSparkHost<TestSparkContext>
+    {
+        protected override SparkEndpointFactory<TestSparkContext> CreateFactory()
+            => new SparkEndpointFactory(Store, [GalleryModel()]);
+    }
 
     /// <summary>
     /// A composed type, so the test needs no documents and no entity class — the subject is the
@@ -65,7 +76,7 @@ public class StringPresentationColumnTests : SparkTestDriver
         ],
     };
 
-    private static async Task<QueryResult> ExecuteAsync(SparkEndpointFactory factory)
+    private static async Task<QueryResult> ExecuteAsync(SparkEndpointFactory<TestSparkContext> factory)
     {
         using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
         return await client.ExecuteQueryAsync(GalleryQueryId);
@@ -74,7 +85,7 @@ public class StringPresentationColumnTests : SparkTestDriver
     [Fact]
     public async Task The_declared_dataType_reaches_the_wire_verbatim()
     {
-        await using var factory = new SparkEndpointFactory(Store, [GalleryModel()]);
+        var factory = host.Factory;
 
         var result = await ExecuteAsync(factory);
 
@@ -88,7 +99,7 @@ public class StringPresentationColumnTests : SparkTestDriver
     [Fact]
     public async Task The_values_arrive_as_ordinary_strings_beside_them()
     {
-        await using var factory = new SparkEndpointFactory(Store, [GalleryModel()]);
+        var factory = host.Factory;
 
         var result = await ExecuteAsync(factory);
 
@@ -105,7 +116,7 @@ public class StringPresentationColumnTests : SparkTestDriver
         // The client's image and url branches both test the value and render nothing when it is
         // empty. That only works if the cell is present with a null value — a dropped key would
         // make "no image" indistinguishable from "column not in this result".
-        await using var factory = new SparkEndpointFactory(Store, [GalleryModel()]);
+        var factory = host.Factory;
 
         var result = await ExecuteAsync(factory);
 
@@ -167,7 +178,7 @@ public class StringPresentationColumnTests : SparkTestDriver
     [Fact]
     public async Task Columns_are_visible_by_default()
     {
-        await using var factory = new SparkEndpointFactory(Store, [GalleryModel()]);
+        var factory = host.Factory;
 
         var result = await ExecuteAsync(factory);
 
@@ -179,7 +190,7 @@ public class StringPresentationColumnTests : SparkTestDriver
     {
         // No special-casing crept in: these still carry their label, order and array-ness like any
         // other column, so the grid lays them out normally.
-        await using var factory = new SparkEndpointFactory(Store, [GalleryModel()]);
+        var factory = host.Factory;
 
         var result = await ExecuteAsync(factory);
 

@@ -24,11 +24,19 @@ namespace MintPlayer.Spark.Tests.Endpoints.Queries;
 /// single, keyed, on the query surface, with no renderer to bypass the pipe.
 /// </para>
 /// </remarks>
-public class KeyedEmbeddedBreadcrumbColumnTests : SparkTestDriver
+public class KeyedEmbeddedBreadcrumbColumnTests(KeyedEmbeddedBreadcrumbColumnTests.Host host)
+    : SparkSharedTestDriver(host), IClassFixture<KeyedEmbeddedBreadcrumbColumnTests.Host>
 {
     private static readonly Guid ServiceTypeId = Guid.Parse("6c1f0a52-3d94-4a1e-8b77-2f5c9d0e4a11");
     private static readonly Guid GateTypeId = Guid.Parse("7d2e1b63-4ea5-4b2f-9c88-3a6d0e1f5b22");
     private static readonly Guid ServiceQueryId = Guid.Parse("8e3f2c74-5fb6-4c3a-ad99-4b7e1f2a6c33");
+
+    /// <summary>One host for the class (M8 item 5): a composed query, so there are no documents to share.</summary>
+    public sealed class Host : SharedSparkHost<TestSparkContext>
+    {
+        protected override SparkEndpointFactory<TestSparkContext> CreateFactory()
+            => new SparkEndpointFactory(Store, [ServiceModel(), GateModel()]);
+    }
 
     /// <summary>Keyed exactly as <c>ValueObjectKeyGenerator</c> keys a <c>[ValueObject]</c>.</summary>
     public sealed class GateSnapshot
@@ -98,7 +106,7 @@ public class KeyedEmbeddedBreadcrumbColumnTests : SparkTestDriver
         ],
     };
 
-    private static async Task<QueryResult> ExecuteAsync(SparkEndpointFactory factory)
+    private static async Task<QueryResult> ExecuteAsync(SparkEndpointFactory<TestSparkContext> factory)
     {
         using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
         return await client.ExecuteQueryAsync(ServiceQueryId);
@@ -110,7 +118,7 @@ public class KeyedEmbeddedBreadcrumbColumnTests : SparkTestDriver
     [Fact]
     public async Task A_keyed_embedded_cell_ships_its_rendered_template()
     {
-        await using var factory = new SparkEndpointFactory(Store, [ServiceModel(), GateModel()]);
+        var factory = host.Factory;
 
         var result = await ExecuteAsync(factory);
 
@@ -124,7 +132,7 @@ public class KeyedEmbeddedBreadcrumbColumnTests : SparkTestDriver
     [Fact]
     public async Task The_type_name_never_reaches_the_wire_for_a_populated_row()
     {
-        await using var factory = new SparkEndpointFactory(Store, [ServiceModel(), GateModel()]);
+        var factory = host.Factory;
 
         var result = await ExecuteAsync(factory);
 
@@ -138,7 +146,7 @@ public class KeyedEmbeddedBreadcrumbColumnTests : SparkTestDriver
     {
         // The absent case has to stay absent: a cell that invented a breadcrumb for a null object
         // would render a label for something that is not there.
-        await using var factory = new SparkEndpointFactory(Store, [ServiceModel(), GateModel()]);
+        var factory = host.Factory;
 
         var result = await ExecuteAsync(factory);
 
@@ -150,7 +158,7 @@ public class KeyedEmbeddedBreadcrumbColumnTests : SparkTestDriver
     {
         // Guards against "fixing" the breadcrumb by undoing #382's key round trip — the two have to
         // hold together, since the key is what lets a save match rows at all.
-        await using var factory = new SparkEndpointFactory(Store, [ServiceModel(), GateModel()]);
+        var factory = host.Factory;
 
         var result = await ExecuteAsync(factory);
 

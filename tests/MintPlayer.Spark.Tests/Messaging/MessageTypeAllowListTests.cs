@@ -13,7 +13,8 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// deserialization gadget surface that arbitrary MessageType strings (writable
 /// pre-mTLS via /spark/sync/apply) would otherwise open.
 /// </summary>
-public class MessageTypeAllowListTests : SparkTestDriver
+public class MessageTypeAllowListTests(SparkSharedDatabase database)
+    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
 {
     public sealed class FooMessage { }
     public sealed class BarMessage { }

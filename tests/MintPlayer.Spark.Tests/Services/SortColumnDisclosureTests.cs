@@ -2,6 +2,7 @@ using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Queries;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Testing;
+using MintPlayer.Spark.Tests._Infrastructure;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Indexes;
 using Raven.Client.Documents.Linq;
@@ -27,7 +28,8 @@ namespace MintPlayer.Spark.Tests.Services;
 /// clause is unambiguous.
 /// </para>
 /// </remarks>
-public class SortColumnDisclosureTests : SparkTestDriver
+public class SortColumnDisclosureTests(SortColumnDisclosureTests.Host host)
+    : SparkSharedTestDriver(host), IClassFixture<SortColumnDisclosureTests.Host>, IDisposable
 {
     private static readonly Guid VaultTypeId = Guid.Parse("eeee5555-eeee-eeee-eeee-eeee55555555");
 
@@ -83,29 +85,36 @@ public class SortColumnDisclosureTests : SparkTestDriver
         },
     };
 
-    private SparkEndpointFactory<TestContext> _factory = null!;
-
-    public override async Task InitializeAsync()
+    /// <summary>
+    /// One database, index, seed and host for the class (M8 item 5). Every case seeded the same
+    /// three vaults and then only queried, so all of it moved to class setup.
+    /// </summary>
+    public sealed class Host : SharedSparkHost<TestContext>
     {
-        await base.InitializeAsync();
-        await new Vaults_Overview().ExecuteAsync(Store);
-        _factory = new SparkEndpointFactory<TestContext>(Store, [VaultModel()],
-            configureIndexCatalog: catalog => catalog.RegisterIndex(typeof(Vaults_Overview)));
+        protected override Task BeforeHostAsync() => new Vaults_Overview().ExecuteAsync(Store);
 
-        await SeedAsync(async session =>
+        public override async Task InitializeAsync()
         {
-            await session.StoreAsync(new Vault { Label = "beta", SecretToken = "aaa", InternalRank = 3 });
-            await session.StoreAsync(new Vault { Label = "alpha", SecretToken = "zzz", InternalRank = 1 });
-            await session.StoreAsync(new Vault { Label = "gamma", SecretToken = "mmm", InternalRank = 2 });
-        });
-        await Store.WaitForIndexingAsync();
+            await base.InitializeAsync();
+
+            using (var session = Store.OpenAsyncSession())
+            {
+                session.Advanced.WaitForIndexesAfterSaveChanges(RavenIndexingExtensions.DefaultTimeout, throwOnTimeout: true);
+                await session.StoreAsync(new Vault { Label = "beta", SecretToken = "aaa", InternalRank = 3 });
+                await session.StoreAsync(new Vault { Label = "alpha", SecretToken = "zzz", InternalRank = 1 });
+                await session.StoreAsync(new Vault { Label = "gamma", SecretToken = "mmm", InternalRank = 2 });
+                await session.SaveChangesAsync();
+            }
+            await Store.WaitForIndexingAsync();
+        }
+
+        protected override SparkEndpointFactory<TestContext> CreateFactory() => new(Store, [VaultModel()],
+            configureIndexCatalog: catalog => catalog.RegisterIndex(typeof(Vaults_Overview)));
     }
 
-    public override async Task DisposeAsync()
-    {
-        await _factory.DisposeAsync();
-        await base.DisposeAsync();
-    }
+    private Microsoft.Extensions.DependencyInjection.IServiceScope? _scope;
+
+    public void Dispose() => _scope?.Dispose();
 
     private static SparkQuery Query(params SortColumn[] sortColumns) => new()
     {
@@ -118,7 +127,12 @@ public class SortColumnDisclosureTests : SparkTestDriver
     private (IQueryExecutor Executor, RqlRecorder Rql) Capture()
     {
         var recorder = RqlRecorder.Attach(Store);
-        return (_factory.GetService<IQueryExecutor>(), recorder);
+        // A scope per case, like a request: the Raven session (and the OnBeforeQuery hook the
+        // recorder adds to the store) is taken when the scope resolves it, so a root-resolved
+        // executor shared across the class would never see this case's recorder.
+        _scope = host.Factory.CreateScope();
+        return (Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+            .GetRequiredService<IQueryExecutor>(_scope.ServiceProvider), recorder);
     }
 
     [Fact]

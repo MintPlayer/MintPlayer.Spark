@@ -54,7 +54,8 @@ using Po = Abstractions.PersistentObject;
 /// <c>Order</c> and broke seven of its tests. Give fixture entities a name no other fixture would pick.
 /// </para>
 /// </remarks>
-public class RetryFromEveryHookTests : SparkTestDriver
+public class RetryFromEveryHookTests(RetryFromEveryHookTests.Host host)
+    : SparkSharedTestDriver(host), IClassFixture<RetryFromEveryHookTests.Host>, IDisposable
 {
     private static readonly Guid ProbeTypeId = Guid.Parse("7b2d0000-0000-4000-8000-7b2d00000001");
     private static readonly Guid LineTypeId = Guid.Parse("7b2d0000-0000-4000-8000-7b2d00000002");
@@ -73,7 +74,7 @@ public class RetryFromEveryHookTests : SparkTestDriver
         public string Description { get; set; } = "";
     }
 
-    private class RetryProbeContext : SparkContext
+    public class RetryProbeContext : SparkContext
     {
         public Raven.Client.Documents.Linq.IRavenQueryable<RetryProbe> Orders => Session.Query<RetryProbe>();
         public Raven.Client.Documents.Linq.IRavenQueryable<RetryProbeRead> Reads => Session.Query<RetryProbeRead>();
@@ -206,16 +207,24 @@ public class RetryFromEveryHookTests : SparkTestDriver
         }
     }
 
-    private SparkEndpointFactory<RetryProbeContext> _factory = null!;
-    private HttpClient _client = null!;
-    private string _cookieHeader = null!;
-    private string _xsrfToken = null!;
-
-    public override async Task InitializeAsync()
+    /// <summary>
+    /// One host and one minted antiforgery pair for the class (M8 item 5). Each case seeds its own
+    /// probe under a server-assigned id and addresses only that id; the two query rows assert the
+    /// prompt and the status, never the rows, so a sibling's probes cannot change their answer.
+    /// The retry answer travels in each request body, so the host carries nothing between cases.
+    /// </summary>
+    public sealed class Host : SharedSparkHost<RetryProbeContext>
     {
-        await base.InitializeAsync();
+        public string CookieHeader { get; private set; } = null!;
+        public string XsrfToken { get; private set; } = null!;
 
-        _factory = new SparkEndpointFactory<RetryProbeContext>(
+        public override async Task InitializeAsync()
+        {
+            await base.InitializeAsync();
+            (CookieHeader, XsrfToken) = await Factory.MintAntiforgeryAsync();
+        }
+
+        protected override SparkEndpointFactory<RetryProbeContext> CreateFactory() => new(
             Store,
             [ProbeModel(), LineModel(), ReadModel()],
             configureServices: services =>
@@ -235,18 +244,13 @@ public class RetryFromEveryHookTests : SparkTestDriver
                     new StubActionResolver("RetryProbeConfirm", sp.GetRequiredService<RetryProbeConfirmAction>()));
             },
             security: SparkTestSecurity.Permissive);
-
-        _client = _factory.CreateClient();
-        (_cookieHeader, _xsrfToken) = await _factory.MintAntiforgeryAsync();
     }
 
-    public override async Task DisposeAsync()
-    {
-        _client?.Dispose();
-        if (_factory is not null)
-            await _factory.DisposeAsync();
-        await base.DisposeAsync();
-    }
+    private readonly HttpClient _client = host.Factory.CreateClient();
+    private readonly string _cookieHeader = host.CookieHeader;
+    private readonly string _xsrfToken = host.XsrfToken;
+
+    public void Dispose() => _client.Dispose();
 
     // ---- emit: does the endpoint answer 449 at all? --------------------------------------------
 

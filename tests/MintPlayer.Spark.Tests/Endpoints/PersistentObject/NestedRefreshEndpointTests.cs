@@ -27,32 +27,29 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 /// disagrees with the model must resolve to nothing rather than to the wrong row.
 /// </para>
 /// </summary>
-public class NestedRefreshEndpointTests : SparkTestDriver
+public class NestedRefreshEndpointTests(NestedRefreshEndpointTests.Host host)
+    : SparkSharedTestDriver(host), IClassFixture<NestedRefreshEndpointTests.Host>, IDisposable
 {
     private static readonly Guid PolicyTypeId = Guid.Parse("7e5f0000-0000-4000-8000-000000000101");
     private static readonly Guid GateTypeId = Guid.Parse("7e5f0000-0000-4000-8000-000000000102");
     private static readonly Guid RowTypeId = Guid.Parse("7e5f0000-0000-4000-8000-000000000103");
 
-    private SparkEndpointFactory<NestedRefreshContext> _factory = null!;
-    private SparkClient _client = null!;
-
-    public override async Task InitializeAsync()
+    /// <summary>
+    /// One host for the class (M8 item 5). A refresh writes nothing; the cases that do store a
+    /// policy get a server-assigned id and only ever load that id back.
+    /// </summary>
+    public sealed class Host : SharedSparkHost<NestedRefreshContext>
     {
-        await base.InitializeAsync();
-        _factory = new SparkEndpointFactory<NestedRefreshContext>(Store, [
+        protected override SparkEndpointFactory<NestedRefreshContext> CreateFactory() => new(Store, [
             NestedRefreshModels.Policy(PolicyTypeId),
             NestedRefreshModels.Gate(GateTypeId),
             NestedRefreshModels.Row(RowTypeId),
         ]);
-        _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
     }
 
-    public override async Task DisposeAsync()
-    {
-        _client.Dispose();
-        await _factory.DisposeAsync();
-        await base.DisposeAsync();
-    }
+    private readonly SparkClient _client = new(host.Factory.CreateClient(), ownsClient: true);
+
+    public void Dispose() => _client.Dispose();
 
     /// <summary>
     /// The root object as the form posts it: AsDetail values travel as plain JSON under

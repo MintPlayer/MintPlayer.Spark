@@ -33,7 +33,8 @@ namespace MintPlayer.Spark.Tests.Services;
 /// values", because the first is a fact about their rights.
 /// </para>
 /// </remarks>
-public class DistinctValuesDisclosureTests : SparkTestDriver
+public class DistinctValuesDisclosureTests(DistinctValuesDisclosureTests.Data data)
+    : SparkSharedTestDriver(data), IClassFixture<DistinctValuesDisclosureTests.Data>, IAsyncLifetime
 {
     private static readonly Guid DistinctVaultTypeId = Guid.Parse("dddd4444-dddd-dddd-dddd-dddd44444444");
 
@@ -94,28 +95,39 @@ public class DistinctValuesDisclosureTests : SparkTestDriver
         },
     };
 
-    private SparkEndpointFactory<TestContext>? _factory;
-
-    public override async Task InitializeAsync()
+    /// <summary>
+    /// One database, index and seed for the class (M8 item 5). Every case seeded the same four
+    /// vaults and then only queried, so that moved to class setup. The host stays per case: the
+    /// cases differ in model and row security.
+    /// </summary>
+    public sealed class Data : SparkSharedDatabase
     {
-        await base.InitializeAsync();
-        await new DistinctVaults_Overview().ExecuteAsync(Store);
-
-        await SeedAsync(async session =>
+        public override async Task InitializeAsync()
         {
-            await session.StoreAsync(new DistinctVault { Label = "beta", Region = "eu", SecretToken = "aaa" });
-            await session.StoreAsync(new DistinctVault { Label = "alpha", Region = "eu", SecretToken = "zzz" });
-            await session.StoreAsync(new DistinctVault { Label = "gamma", Region = "us", SecretToken = "mmm" });
-            // A duplicate Label, so de-duplication is actually exercised rather than assumed.
-            await session.StoreAsync(new DistinctVault { Label = "alpha", Region = "ap", SecretToken = "qqq" });
-        });
-        await Store.WaitForIndexingAsync();
+            await base.InitializeAsync();
+            await new DistinctVaults_Overview().ExecuteAsync(Store);
+
+            using (var session = Store.OpenAsyncSession())
+            {
+                session.Advanced.WaitForIndexesAfterSaveChanges(RavenIndexingExtensions.DefaultTimeout, throwOnTimeout: true);
+                await session.StoreAsync(new DistinctVault { Label = "beta", Region = "eu", SecretToken = "aaa" });
+                await session.StoreAsync(new DistinctVault { Label = "alpha", Region = "eu", SecretToken = "zzz" });
+                await session.StoreAsync(new DistinctVault { Label = "gamma", Region = "us", SecretToken = "mmm" });
+                // A duplicate Label, so de-duplication is actually exercised rather than assumed.
+                await session.StoreAsync(new DistinctVault { Label = "alpha", Region = "ap", SecretToken = "qqq" });
+                await session.SaveChangesAsync();
+            }
+            await Store.WaitForIndexingAsync();
+        }
     }
 
-    public override async Task DisposeAsync()
+    private SparkEndpointFactory<TestContext>? _factory;
+
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    public async Task DisposeAsync()
     {
         if (_factory is not null) await _factory.DisposeAsync();
-        await base.DisposeAsync();
     }
 
     private IQueryExecutor Executor(EntityTypeFile? model = null, IRowSecurity? rowSecurity = null)

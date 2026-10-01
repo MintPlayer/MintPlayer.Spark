@@ -17,7 +17,8 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// serving a password form on <c>/connect/login</c> — which is worse than having no flag at all,
 /// because the flag would be believed.
 /// </remarks>
-public class OidcLocalCredentialModeTests : SparkTestDriver
+public class OidcLocalCredentialModeTests(SparkSharedDatabase database)
+    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
 {
     private SparkEndpointFactory<OidcTestContext> CreateFactory(SparkLocalCredentials mode) =>
         new(

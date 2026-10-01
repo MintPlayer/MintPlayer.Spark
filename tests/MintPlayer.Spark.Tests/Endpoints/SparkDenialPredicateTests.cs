@@ -20,7 +20,8 @@ namespace MintPlayer.Spark.Tests.Endpoints;
 /// Fleet and HR each grant anonymous exactly one right, so both would have flipped to 404 and
 /// lost the sign-in redirect, which the client's interceptor drives off 401 alone.
 /// </remarks>
-public class SparkDenialPredicateTests : SparkTestDriver
+public class SparkDenialPredicateTests(SparkSharedDatabase database)
+    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
 {
     private static readonly Guid DocTypeId = Guid.Parse("5b5b0000-1111-2222-3333-444455556666");
 
