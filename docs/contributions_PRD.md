@@ -634,6 +634,17 @@ only):
   in a cookie instead of localStorage, so stored choices reset.
 
 **Known limitations (documented, not fixed):**
+- **Per-row oracle (owner Q16 → C, 2026-10-01).** An attribute that the per-row
+  `GetProtectedAttributesAsync` hook protects, and that is a shown, queryable column, stays
+  searchable, sortable and filterable: the value is blanked, but which rows match still leaks. The
+  app sets `canSort`/`canFilter`/`canListDistincts: false` (or doesn't show the column on the query),
+  or uses a static attribute right when the rule doesn't depend on the row.
+  Documented in `docs/guide-authorization.md`. Rejected alternatives: a
+  `GetProtectableAttributes()` declaration that disables those operations, and in-memory filtering
+  after redaction.
+- **Search scope** (M2c-2a): search covers only attributes shown on the query and not Query-denied.
+  Hidden string properties and properties without a model attribute are no longer searched. There is
+  no "searchable but not shown" opt-in (none was requested).
 - **Hard deletes** are not concurrency-checked: RavenDB 7.2.6 ignores the check on `Delete(entity)`.
 - A no-op save sends no write, so it gets no conflict check.
 - F6 can't take back `session.Advanced.Defer` commands, or `Delete(id)` on a document that was never
