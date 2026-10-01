@@ -218,6 +218,14 @@ public class CarEndpointTests : SparkTestDriver
 > cannot express — recording what was asked, and deciding by predicate — swap the service instead
 > with `services.UseSparkTestAccessControl(SparkTestAccessControl.DenyAll())`.
 
+> **Indexes the host deploys.** By default a factory host deploys every top-level index, every
+> index from a module or framework assembly, and the nested fixture indexes you arm through
+> `configureIndexCatalog`. An unarmed index nested in a test class is skipped: deploying the whole
+> test assembly's fixture indexes into every per-test database was a third of the Spark test suite's
+> time. A skipped index that a test queries fails with `IndexDoesNotExistException`; arm it, or pass
+> `deployAllIndexes: true` to deploy everything as before. The index catalog and model hash are
+> unaffected either way.
+
 `TestServer`'s `HttpClient` does not manage cookies automatically, which is why mutating requests need the antiforgery cookie + token threaded through explicitly. `SparkClient` (from `MintPlayer.Spark.Client`) does this for you; if you need the raw values, call `factory.MintAntiforgeryAsync()`.
 
 ### Snapshot tests — `VerifyDefaults`

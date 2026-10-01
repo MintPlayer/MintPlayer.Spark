@@ -183,6 +183,17 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
     /// (teardown 16-19 s → 35-47 s; a client-side queue cannot speed up the server's single apply
     /// loop); and catching the timeout rather than preventing it.
     /// </para>
+    /// <para>
+    /// ⚠️ <b>Also measured and rejected (M8, 2026-10-01): skipping the driver's second delete.</b>
+    /// That delete is most of what a dispose costs (103 of 114 ms on average): our zero-wait delete is
+    /// answered with <c>TimeoutException: … didn't get an index notification for N</c>, which means the
+    /// delete is in the Raft log but not yet applied, so the driver's delete then finds the database
+    /// still being torn down and waits for it. Recognising that answer as success and removing the
+    /// store from the driver's private <c>_documentStores</c> registry cut dispose to 16 ms — and
+    /// changed nothing in wall time (Spark.Tests 196/186 s against 199/183/167 s without it;
+    /// CodeCoverage.Tests 209/200 s against 194/152 s). On a saturated CPU the server still does the
+    /// unload; the wait was only backpressure, and without it unloads pile up concurrently.
+    /// </para>
     /// </remarks>
     public virtual Task DisposeAsync()
     {

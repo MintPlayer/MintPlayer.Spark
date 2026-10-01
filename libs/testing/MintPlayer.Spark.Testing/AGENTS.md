@@ -171,7 +171,8 @@ new SparkEndpointFactory<MyContext>(
     configureSpark:    spark    => { … },   // runs INSIDE AddSpark — the only place modules reach
     environment: "Testing",
     configureIndexCatalog: catalog => { … },
-    security: SparkTestSecurity.Permissive);
+    security: SparkTestSecurity.Permissive,
+    deployAllIndexes: false);               // the default; see "What the host deploys"
 ```
 
 It writes the model files, `modelHashes.json` and `security.json` into a private temp content root,
@@ -220,6 +221,29 @@ _factory = new SparkEndpointFactory<MyContext>(Store, [model],
 
 Arming is explicit and per fixture because fixture indexes are usually nested test classes, and an
 assembly scan that picked them up wholesale would fail every host.
+
+### What the host deploys
+
+`UseSpark()` deploys indexes on boot. By default the factory narrows that deployment (through
+`SparkModuleRegistry.IndexDeploymentFilter`) to:
+
+- every **top-level** index type, in any assembly — a consumer's real application indexes keep
+  deploying with no action on their part;
+- every index from a **module or framework** assembly (anything other than `TContext`'s assembly and
+  the entry assembly);
+- the **nested** fixture indexes the fixture **armed** through `configureIndexCatalog`.
+
+An unarmed index nested in a test class of `TContext`'s assembly is **not deployed**. Querying it fails
+loudly with RavenDB's `IndexDoesNotExistException`; arm it, or deploy it yourself as in step 1 above.
+Only deployment is narrowed: the catalog and the model hash still see every index, exactly as before.
+
+- **Why:** each host boots against a fresh database, and deploying the whole test assembly's ~37
+  fixture indexes into every one of them was 32% of `MintPlayer.Spark.Tests`' thread time. Measured
+  2026-10-01: the project went from 515 s to 167–199 s run alone (four runs) (PRD `docs/contributions_PRD.md` §5d,
+  item 10).
+- **Opt out** with `deployAllIndexes: true`, which deploys everything as every host did before. A
+  fixture can also replace or clear the filter from `configureSpark`, which runs after the factory
+  sets it.
 
 ---
 

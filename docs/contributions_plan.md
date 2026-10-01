@@ -509,6 +509,19 @@ Decided (owner, 2026-10-01):
   - Each migrated class first passes a shuffled-order run (xUnit doesn't guarantee order).
   - CodeCoverage.Tests' `CoverageRavenTest` (458 inline `GetDocumentStore()` calls) follows the same
     pattern.
+- [x] **Lever A (2026-10-01): test hosts deploy only the indexes a test can need.** Opt-in
+  `SparkModuleRegistry.IndexDeploymentFilter` (null = unchanged, so applications are unaffected);
+  `SparkEndpointFactory` sets it to top-level indexes + module/framework indexes + nested fixture
+  indexes armed through `configureIndexCatalog`; opt-out `deployAllIndexes: true`. Catalog and model
+  hash unchanged. Spark.Tests alone: **515 s → 167–199 s** (four runs: 199, 183, 167, 193), all green; no test needed arming. CodeCoverage.Tests: not the same waste (`CoverageRavenTest` deploys one real app index, `Commits_ByRepository`, which production paths under test query), left as is. Also removed
+  the `SparkMiddleware` pass-through that printed two lines per request in production. PRD §5d item 10.
+- [x] **Lever B (2026-10-01): measured and REJECTED, code reverted.** After lever A a dispose costs
+  114 ms, 103 of it in the driver's own second delete waiting for the server to unload the database
+  (our zero-wait delete is answered with a "didn't get an index notification" timeout: in the Raft log,
+  not yet applied). Skipping that second delete cut dispose to 16 ms but not the wall: Spark.Tests
+  196/186 s vs 199/183/167 s, CodeCoverage.Tests 209/200 s vs 194/152 s. On a saturated CPU the server
+  does the unload either way; the wait was backpressure. Recorded in `SparkTestDriver.DisposeAsync`'s
+  rejected list and PRD §5d item 10.
 - [ ] Measure before/after per suite, locally and in the next CI run that happens anyway (never push
   just to measure).
 

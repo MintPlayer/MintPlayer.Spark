@@ -1033,6 +1033,80 @@ xUnit and driver stack, not as a new test runner.
    - **Hardware (for reading the numbers):** i7-11370H (4 cores, 8 threads) with a Samsung 980 Pro
      NVMe. The CPU is the constraint: MintPlayer.Spark.Tests takes 511 s run alone against 18m20s
      inside the parallel `test:affected` run (item 8), and CodeCoverage.Tests 3m34s against 10m41s.
+10. **Where the time goes, and the first two levers** (2026-10-01, this machine, Developer licence,
+    `dotnet test --no-build`, no coverage, each project run alone; script `bench.sh`).
+    - **Profile (Spark.Tests, 4 xUnit threads, ~484 s wall = 1,936 thread-s)**, from stopwatches in
+      `libs/testing` and around `IndexCreation.CreateIndexes`, since reverted:
+
+      | Phase | Count | Thread-s | Mean | Share |
+      |---|---|---|---|---|
+      | Host boot (`SparkEndpointFactory` `_host.Start()`) | 719 | 826 | 1,149 ms | 43% |
+      | … of which deploying the test assembly's ~37 indexes | 643 | 619 | 963 ms | 32% |
+      | Per-test database dispose | 1,290 | 405 | 314 ms | 21% |
+      | … of which our zero-wait delete | 1,341 | 33 | 25 ms | 2% |
+      | Per-test database create | 1,290 | 114 | 88 ms | 6% |
+      | Seeding, index waits, host build, shared DBs | | ~110 | | ~5% |
+      | Test bodies and non-Raven tests | | ~480 | | ~25% |
+
+      The machine is CPU-saturated during a run (98–99% busy; ~43% busy at rest from Defender for
+      Endpoint and other background load), so wall time tracks total thread time. Raising xUnit to 8
+      threads made it slower (projected ~720 s), because each operation roughly doubled in cost.
+    - **Lever A, done: test hosts deploy only the indexes a test can need.**
+      - *Mechanism.* `SparkModuleRegistry.IndexDeploymentFilter`, an opt-in `Func<Type, bool>`: `null`
+        deploys exactly as before, so applications are unaffected. It narrows deployment only:
+        `PopulateIndexTypes`/`PopulateProjectionTypes` and the model hash still see every index, so a
+        filtered host builds the same model. With a filter, Spark instantiates the types RavenDB's own
+        `IndexCreation.GetAllInstancesOfType` would (non-abstract class implementing
+        `IAbstractIndexCreationTask`, `Activator.CreateInstance`; RavenDB.Client 7.2.6) and calls
+        `IndexCreation.CreateIndexes(tasks, store)`. Deliberately not `RavenIndexHierarchy.IsIndex`,
+        which covers only `AbstractIndexCreationTask`.
+      - *Test default.* `SparkEndpointFactory` deploys every top-level index, every index from an
+        assembly other than `TContext`'s and the entry assembly (modules, framework), and the nested
+        indexes the fixture armed through `configureIndexCatalog` (diffed from the catalog around the
+        callback). Opt-out: `deployAllIndexes: true`, or replace the filter from `configureSpark`.
+      - *Why "nested" is the rule.* A downstream consumer's `TContext` usually lives in its
+        application assembly, whose real indexes are top-level classes; they must not silently stop
+        deploying. Fixture indexes are declared inside the test class that uses them (all but one of
+        Spark.Tests' 41). A skipped index fails loudly (`IndexDoesNotExistException`).
+      - *Rejected alternatives.* Deploying nothing from the context assembly unless armed (would drop a
+        consumer's real indexes); applying the filter only when the context assembly "is a test
+        assembly" (no reliable signal: the entry assembly is `testhost` either way); caching index
+        definitions per process (saves the client-side `CreateIndexDefinition`, not the server-side
+        index creation and teardown that dominate); one shared database per process (a separate,
+        larger change; item 5 covers per-class sharing).
+      - *Measured.* Per boot, `MintPlayer.Spark.Tests (1 of 37, deployment filter set)` instead of 37.
+        **Spark.Tests 515 s → 199 / 183 / 167 / 193 s** (four runs; the last on the final committed tree), 3510/3510 green before and all green
+        after (3515–3518 with the new tests). No test needed arming: every fixture that queries an index
+        already armed it or deployed it itself. The four reflection tests on `CreateSparkIndexes`' signature were updated;
+        new tests pin the filter (`SparkEndpointFactoryIndexDeploymentTests`, and a filtered
+        `CreateSparkIndexes` test asserting the catalog still receives every index).
+      - Also removed: `SparkMiddleware`, a pass-through that wrote "Before/After the next middleware"
+        to the console on every request, in production too (and serialised parallel test workers on
+        the console lock). Nothing asserted on it.
+    - **Lever B, measured and rejected: skipping the driver's waiting delete.**
+      - *Finding.* Timestamps on each dispose phase over a full run (after lever A): mean 114 ms, of
+        which our zero-wait delete 11 ms, the store's own teardown ~0 ms, and **the driver's second
+        delete (`RavenTestDriver`'s `AfterDispose` handler) 103 ms** (p90 164 ms). Our zero-wait delete
+        is answered every time with `RavenException: System.TimeoutException: Waited for 00:00:00 but
+        didn't get an index notification for N. Last commit index is: N-1` — the delete is in the Raft
+        log, only its application is not awaited — and was swallowed as a failure. The driver's
+        delete then finds the database still being torn down and waits for it.
+      - *Tried.* Treat that answer as accepted and remove the store from the driver's private
+        `_documentStores` registry, so the driver's handler returns early. Dispose fell to 16 ms mean,
+        and a polling test confirmed the database is still deleted by the server on its own.
+      - *Measured, wall:* Spark.Tests 196 / 186 s with it against 199 / 183 / 167 s without;
+        CodeCoverage.Tests (8 threads, an index in every database) 209 / 200 s against 194 / 152 s.
+        No gain, possibly a loss. On a saturated CPU the server performs the unload either way; the
+        wait only throttled the test threads, and without it unloads pile up concurrently. Code
+        reverted; recorded in `SparkTestDriver.DisposeAsync`'s rejected list. Backgrounding the
+        dispose (already rejected in item 4's history) fails for the same reason plus the races.
+    - **CodeCoverage.Tests: not the same waste.** `CoverageRavenTest.SetupDatabase` deploys the app
+      assembly's indexes, which is one index, `Commits_ByRepository`, a real production index that the
+      code under test queries (ingestion, base resolution, browse, badges). Left as is. Measured run
+      to run on this machine: 194 s and 152 s for the same build, 1045/1045 green, so single-run
+      differences under ~40 s are noise here.
+    - **What is left** (profiler ranking, after lever A): the remaining per-boot cost (~0.25 s × ~700
+      boots) and per-test databases, which per-class sharing (item 5, batches 2–3) removes.
 
 ## 6. Risks
 
