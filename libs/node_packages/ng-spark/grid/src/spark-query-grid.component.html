@@ -98,8 +98,17 @@
         }
       </div>
     }
-    @if (rowActions().length) {
-      <!-- The per-row ⋮ menu's column: no header, never sorted or filtered. -->
+    <!--
+      The per-row ⋮ menu's column: no header, never sorted or filtered.
+
+      ⚠️ Only once the data columns exist. Those ship WITH the first page, so the rows reach the
+      datatable one render before the column templates do. The datatable sizes its columns ONCE,
+      from the first render that has both columns and rows, then switches to `table-layout: fixed`
+      and never measures again. If this column were already registered it would be the only one
+      measured; the data columns would share what it left over equally, and at phone width their
+      unclipped headers ran into each other. With no column at all the datatable waits.
+    -->
+    @if (rowActions().length && visibleColumns().length) {
       <div *bsDatatableColumn="'__sparkRowActions'; sortable: false; filterable: false">
         <span class="visually-hidden">{{ 'common.actions' | t }}</span>
       </div>

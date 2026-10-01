@@ -194,12 +194,9 @@ describe('SparkShellComponent', () => {
     expect(el.textContent).toContain('Component demos');
   });
 
-  it('sidebarTheme drives data-bs-theme on the sidebar nav', async () => {
-    const dark = await render(`<spark-shell><div class="routed"></div></spark-shell>`);
-    expect(dark.nativeElement.querySelector('nav')?.getAttribute('data-bs-theme')).toBe('dark');
-
-    const light = await render(`<spark-shell sidebarTheme="light"><div class="routed"></div></spark-shell>`);
-    expect(light.nativeElement.querySelector('nav')?.getAttribute('data-bs-theme')).toBe('light');
+  it('the sidebar sets no theme scope of its own, so it follows the page theme', async () => {
+    const fixture = await render(`<spark-shell><div class="routed"></div></spark-shell>`);
+    expect(fixture.nativeElement.querySelector('nav')?.hasAttribute('data-bs-theme')).toBe(false);
   });
 
   describe('theme toggle', () => {

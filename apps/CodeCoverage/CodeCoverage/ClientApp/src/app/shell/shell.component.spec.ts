@@ -22,7 +22,6 @@ import { ShellComponent } from './shell.component';
 class StubSparkShell {
   readonly title = input<string>();
   readonly breakpoint = input<string>();
-  readonly sidebarTheme = input<string>();
 }
 
 @Directive({ selector: '[sparkShellTopbarEnd]' })

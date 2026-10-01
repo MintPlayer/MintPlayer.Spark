@@ -903,6 +903,10 @@ export class SparkQueryGridComponent {
     // A filter belongs to the query it was applied to. Surviving a query switch would POST it
     // against the next query, where the column may not exist or may mean something else entirely.
     this.filters.set([]);
+    // The previous query's columns too: the new datatable would otherwise size its columns from
+    // them against the new query's first page, and keep those widths for column names that no
+    // longer exist (see the row-actions column in the template).
+    this.fetchedColumns.set([]);
     try {
       const [resolvedQuery, entityTypes] = await Promise.all([
         this.sparkService.getQuery(queryId),

@@ -20,6 +20,18 @@ import { TranslateKeyPipe } from '@mintplayer/ng-spark-auth/pipes';
   // whatever topbar the app has, and that is no longer guaranteed to be dark (#462). currentColor
   // follows the container in either theme; the hover tint is the same colour at low alpha.
   styles: [`
+    /* One line, always: the bar lives in a fixed-height topbar. */
+    :host {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: nowrap;
+      min-width: 0;
+    }
+
+    .spark-auth-bar-user {
+      max-width: 16rem;
+    }
+
     .spark-auth-bar-btn {
       --bs-btn-color: currentColor;
       --bs-btn-border-color: currentColor;

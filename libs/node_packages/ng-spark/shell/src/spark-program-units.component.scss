@@ -5,14 +5,19 @@
 //      scope to this menu and not to every accordion on the page. Note --bs-accordion-* would
 //      NOT work: the component re-declares those from the --bs-body-* globals in its own :host
 //      block, which beats an inherited value. The dark/light flip itself comes from
-//      data-bs-theme on an ancestor (spark-shell's sidebar <nav> sets it).
+//      the page's data-bs-theme (the sidebar no longer sets its own), and the tints below are
+//      rgba(--bs-emphasis-color-rgb) so they darken in light mode and lighten in dark mode.
 //   2. ::part() — for the one box the component exposes as a part.
 :host {
   display: block;
   // The header tint while a tab is open; the component maps its active background here.
-  --bs-primary-bg-subtle: rgba(255, 255, 255, 0.1);
+  --bs-primary-bg-subtle: rgba(var(--bs-emphasis-color-rgb), 0.1);
   // Restores the borderless look; the accordion derives its border from --bs-border-color.
   --bs-border-color: transparent;
+  // The accordion paints its items with --bs-body-bg, which would make the menu a darker card on
+  // the sidebar surface in dark mode. Give it the sidebar's own colour (opaque, not transparent,
+  // so a form control inside a host-supplied tab still gets a solid background).
+  --bs-body-bg: var(--spark-shell-sidebar-bg, var(--bs-tertiary-bg));
 }
 
 // Nav links run edge to edge — the component's own body padding would inset them.
@@ -24,10 +29,10 @@
   color: inherit;
 
   &:hover {
-    background-color: rgba(255, 255, 255, 0.1);
+    background-color: rgba(var(--bs-emphasis-color-rgb), 0.1);
   }
 
   &.active {
-    background-color: rgba(255, 255, 255, 0.2);
+    background-color: rgba(var(--bs-emphasis-color-rgb), 0.2);
   }
 }

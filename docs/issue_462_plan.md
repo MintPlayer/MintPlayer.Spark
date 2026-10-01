@@ -144,19 +144,42 @@ session's hook refuses cross-repo edits.
 M1–M5 can be built against a local ng-bootstrap build (`npm pack`) while NB5 is in flight.
 
 ### M1 — Shell palette (G7; needs owner approval before commit)
-- [ ] Define `--spark-shell-{topbar,sidebar,main}-{bg,color}` tokens under `[data-bs-theme=light]` and
+- [x] Define `--spark-shell-{topbar,sidebar,main}-{bg,color}` tokens under `[data-bs-theme=light]` and
   `[data-bs-theme=dark]`, built from Bootstrap tokens. Delete every hex value in
-  `spark-shell.component.scss`.
-- [ ] Hover and active tints (`spark-shell.component.scss:79,90,94`,
+  `spark-shell.component.scss`. *(B-2 as built: declared under `:root, [data-bs-theme=light]` and
+  `[data-bs-theme=dark]` through `::ng-deep`, same token expressions in both schemes —
+  topbar/sidebar bg `--bs-tertiary-bg` (#f8f9fa / #2b3035), their colour and main colour
+  `--bs-body-color` (#212529 / #dee2e6), main bg `--bs-body-bg` (#fff / #212529). Topbar and sidebar
+  are one chrome surface, separated from main by a `--bs-border-color` border. The `theme-color`
+  metas of all five apps follow the chrome: #f8f9fa / #2b3035.)*
+- [x] Hover and active tints (`spark-shell.component.scss:79,90,94`,
   `spark-program-units.component.scss:13,27,31`) → `rgba(var(--bs-emphasis-color-rgb), …)` (D6).
-- [ ] **Remove `sidebarTheme`** (G8): the input, the binding at `spark-shell.component.html:23-25`, and
+  *(Also: the program-units accordion's `--bs-body-bg` is set to the sidebar colour, so the menu is
+  not a darker card on the sidebar in dark mode.)*
+- [x] **Remove `sidebarTheme`** (G8): the input, the binding at `spark-shell.component.html:23-25`, and
   the spec at `:195-200`. Re-check `spark-program-units.component.scss:8`.
+- [x] Action bar (owner decision, 2026-10-01): `.spark-actionbar` paints
+  `var(--spark-shell-main-bg, var(--bs-body-bg))`, exactly the page surface — not a lighter, darker or
+  transparent bar, so it never appears to float, and the main-coloured 24px above it at rest is not a
+  band. Opaque, with its `--bs-border-color` bottom border. Measured in DemoApp at rest and stuck, both
+  schemes, query and detail page: bar bg ≡ `<main>` bg (rgb(255,255,255) / rgb(33,37,41)), the bar
+  is the top element at its own centre while content scrolls underneath.
+- [x] Found during B-2: at phone width the query grid's column headers ran into each other. The
+  datatable sizes its columns once, from the first render with both columns and rows; the grid's
+  data columns ship with the first page and so register one render after the rows, so only the
+  `__sparkRowActions` column was measured and the rest shared the leftover equally (45px each at
+  390px). Fixed in `spark-query-grid`: the row-actions column waits for the data columns, and
+  `loadData` clears the previous query's columns.
 - [x] `spark-auth-bar`: change `btn-outline-light` to theme-aware buttons. *(B-1: a
   `spark-auth-bar-btn` outline drawn in `currentColor`, hover/active via `color-mix`, so it reads on
-  whatever topbar B-2 settles on.)*
-- [ ] Tune the palette in DemoApp through the MCP, in both themes and at phone width. Check WCAG AA
+  whatever topbar B-2 settles on.)* *(B-2: measured in HR on the final topbar, 14.6:1 light /
+  10.2:1 dark for text and border. Signed in at 390px the user name pushed Passkeys/Logout onto a
+  second line below the topbar; the bar is now one non-wrapping flex line, the name is hidden below
+  `sm` and truncated (max 16rem, full name in `title`) above it.)*
+- [x] Tune the palette in DemoApp through the MCP, in both themes and at phone width. Check WCAG AA
   for text, links, hover and active.
-- [ ] **Show light and dark screenshots to the owner, and commit only after approval.**
+- [x] **Show light and dark screenshots to the owner, and commit only after approval.** *(Approved by
+  the owner 2026-10-01.)*
 
 ### M2 — Theme wiring in the shell (G6, D3)
 - [x] `spark-shell` injects `BsThemeService`, so Auto is live even with the toggle hidden.
@@ -190,9 +213,9 @@ M1–M5 can be built against a local ng-bootstrap build (`npm pack`) while NB5 i
 - [ ] **S7** Check that the cookie write works through the dev proxy and under the https profile.
 
 ### M4 — CodeCoverage and identity-provider pages (D10, D11)
-- [ ] CodeCoverage:
-  - [ ] Delete `shell/shell.component.scss:14-16,23` and `sidebarTheme="dark"`. *(Left for B-2, with
-    the palette.)*
+- [x] CodeCoverage:
+  - [x] Delete `shell/shell.component.scss:14-16,23` and `sidebarTheme="dark"`. *(Done in B-2, with
+    the palette; the toggler override went too.)*
   - [x] Line tints → `--bs-*-bg-subtle`.
   - [x] `bg-light` → `bg-body-tertiary`, and `text-bg-light` → `text-bg-secondary`.
   - [x] Add a `BadgeRendererTests` pin: the output has no `prefers-color-scheme`, `<style` or

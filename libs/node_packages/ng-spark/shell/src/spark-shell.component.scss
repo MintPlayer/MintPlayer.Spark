@@ -1,9 +1,40 @@
-// The shell's chrome palette, overridable per app on the <spark-shell> element:
-//   spark-shell { --spark-shell-sidebar-bg: #1a1a2e; --spark-shell-main-bg: #fff; }
+// The shell's chrome palette (#462 G7): one bg/colour pair per region, per colour scheme, built only
+// from Bootstrap tokens so it follows any app-level `--bs-*` customisation. Declared unscoped on the
+// theme scopes (Bootstrap's own pattern: `:root` covers a page that has not set data-bs-theme yet),
+// so the tokens resolve against the scheme in force and an app overrides them either globally
+//   [data-bs-theme=dark] { --spark-shell-sidebar-bg: #1a1a2e; }
+// or per instance, on the <spark-shell> element (an own declaration beats the inherited one):
+//   spark-shell { --spark-shell-topbar-bg: var(--bs-primary); --spark-shell-topbar-color: #fff; }
+//
+// Hierarchy: the chrome (topbar + sidebar) is one tinted surface, separated from the content by a
+// border; the main area is the page's own body background, so cards, tables and forms inside it
+// look exactly as they do on a plain Bootstrap page.
+::ng-deep {
+  :root,
+  [data-bs-theme=light] {
+    --spark-shell-topbar-bg: var(--bs-tertiary-bg);
+    --spark-shell-topbar-color: var(--bs-body-color);
+    --spark-shell-sidebar-bg: var(--bs-tertiary-bg);
+    --spark-shell-sidebar-color: var(--bs-body-color);
+    --spark-shell-main-bg: var(--bs-body-bg);
+    --spark-shell-main-color: var(--bs-body-color);
+  }
+
+  [data-bs-theme=dark] {
+    --spark-shell-topbar-bg: var(--bs-tertiary-bg);
+    --spark-shell-topbar-color: var(--bs-body-color);
+    --spark-shell-sidebar-bg: var(--bs-tertiary-bg);
+    --spark-shell-sidebar-color: var(--bs-body-color);
+    --spark-shell-main-bg: var(--bs-body-bg);
+    --spark-shell-main-color: var(--bs-body-color);
+  }
+}
+
 :host {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  --spark-shell-border-color: var(--bs-border-color);
 }
 
 bs-shell {
@@ -12,7 +43,9 @@ bs-shell {
 }
 
 .spark-topbar {
-  background-color: var(--spark-shell-topbar-bg, var(--bs-dark, #212529));
+  background-color: var(--spark-shell-topbar-bg, var(--bs-tertiary-bg));
+  color: var(--spark-shell-topbar-color, var(--bs-body-color));
+  border-bottom: var(--bs-border-width) solid var(--spark-shell-border-color);
 }
 
 // We project our own <bs-navbar-toggler> into the topbar, so hide the web component's built-in
@@ -22,10 +55,10 @@ bs-shell {
   display: none;
 }
 
-// The navbar-toggler's bars use --bs-secondary-color (dark by default); lighten it so the
-// toggler is visible against the dark topbar.
+// The navbar-toggler's bars use --bs-secondary-color; tie them to the topbar's text colour so they
+// stay visible whatever background an app gives the topbar.
 bs-navbar-toggler {
-  --bs-secondary-color: rgba(255, 255, 255, 0.85);
+  --bs-secondary-color: var(--spark-shell-topbar-color, var(--bs-body-color));
 }
 
 main {
@@ -49,7 +82,8 @@ main {
 
   height: 100%;
   padding: var(--spark-main-padding);
-  background-color: var(--spark-shell-main-bg, #f8f9fa);
+  background-color: var(--spark-shell-main-bg, var(--bs-body-bg));
+  color: var(--spark-shell-main-color, var(--bs-body-color));
   display: flex;
   flex-direction: column;
   overflow: auto;
@@ -60,12 +94,10 @@ main {
 // full-height sidebar column.
 nav.spark-sidebar {
   min-height: 100%;
-  background: var(--spark-shell-sidebar-bg, #f8f9fa);
-}
-
-nav.spark-sidebar.spark-sidebar-dark {
-  background: var(--spark-shell-sidebar-bg, #333);
-  color: #fff;
+  background: var(--spark-shell-sidebar-bg, var(--bs-tertiary-bg));
+  color: var(--spark-shell-sidebar-color, var(--bs-body-color));
+  // The page border captured on :host — the rule below makes --bs-border-color transparent in here.
+  border-inline-end: var(--bs-border-width) solid var(--spark-shell-border-color);
 }
 
 // Slot content (SidebarTop/Footer, and a *sparkShellTab body) is instantiated from the HOST's
@@ -76,7 +108,7 @@ nav.spark-sidebar.spark-sidebar-dark {
 :host ::ng-deep nav.spark-sidebar {
   // Accordion seams: custom properties inherit across the shadow boundary, ::part reaches the
   // one exposed box.
-  --bs-primary-bg-subtle: rgba(255, 255, 255, 0.1);
+  --bs-primary-bg-subtle: rgba(var(--bs-emphasis-color-rgb), 0.1);
   --bs-border-color: transparent;
 
   mp-accordion::part(content) {
@@ -87,11 +119,11 @@ nav.spark-sidebar.spark-sidebar-dark {
     color: inherit;
 
     &:hover {
-      background-color: rgba(255, 255, 255, 0.1);
+      background-color: rgba(var(--bs-emphasis-color-rgb), 0.1);
     }
 
     &.active {
-      background-color: rgba(255, 255, 255, 0.2);
+      background-color: rgba(var(--bs-emphasis-color-rgb), 0.2);
     }
   }
 }

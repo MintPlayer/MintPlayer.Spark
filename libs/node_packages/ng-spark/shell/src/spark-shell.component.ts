@@ -40,10 +40,11 @@ import {
  * listens to `statechange` to keep the toggler's icon truthful in `auto` mode and only forces
  * `show`/`hide` on explicit toggles.
  *
- * Theming: the chrome colors are CSS custom properties with the classic dark-sidebar defaults —
- * `--spark-shell-topbar-bg`, `--spark-shell-sidebar-bg`, `--spark-shell-main-bg` — overridable on
- * the `<spark-shell>` element. `sidebarTheme` flips the sidebar's `data-bs-theme` (which is what
- * recolors the accordion internals across the shadow boundary) together with its default palette.
+ * Theming: the chrome colors are CSS custom properties —
+ * `--spark-shell-{topbar,sidebar,main}-{bg,color}` — declared per colour scheme under
+ * `[data-bs-theme=light]` / `[data-bs-theme=dark]` from Bootstrap tokens, so the whole shell follows
+ * the page's theme. An app restyles it by overriding those tokens, globally per scheme or on the
+ * `<spark-shell>` element.
  *
  * Colour mode: the shell injects `BsThemeService` itself, so 'auto' follows the OS live even when
  * the topbar toggle is hidden with `[themeToggle]="false"` (an app may then place its own
@@ -68,12 +69,6 @@ export class SparkShellComponent {
 
   /** Forwarded to `bs-shell`: below it the sidebar is an overlay drawer. */
   readonly breakpoint = input<Breakpoint>('md');
-
-  /**
-   * `data-bs-theme` for the sidebar — what flips the accordion's shadow-DOM internals between
-   * palettes — plus the matching default background. `null` sets no theme (inherit the page's).
-   */
-  readonly sidebarTheme = input<'dark' | 'light' | null>('dark');
 
   /**
    * Render the Auto / Light / Dark `bs-theme-toggle` in the topbar. `false` hides it; the theme

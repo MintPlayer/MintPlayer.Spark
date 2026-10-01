@@ -1,9 +1,12 @@
 @if (authService.isAuthenticated()) {
-  <span class="me-2">{{ authService.user()?.userName }}</span>
+  <!-- Hidden below sm: at phone width the name pushed the buttons onto a second line, out of the
+       topbar. On wider screens it truncates rather than wrapping. -->
+  <span class="spark-auth-bar-user d-none d-sm-inline-block text-truncate me-2"
+        [attr.title]="authService.user()?.userName">{{ authService.user()?.userName }}</span>
   @if (showPasskeys()) {
-    <a class="btn btn-sm spark-auth-bar-btn me-2" [routerLink]="passkeysUrl">{{ 'auth.passkeysTitle' | t }}</a>
+    <a class="btn btn-sm spark-auth-bar-btn text-nowrap me-2" [routerLink]="passkeysUrl">{{ 'auth.passkeysTitle' | t }}</a>
   }
-  <button class="btn btn-sm spark-auth-bar-btn" (click)="onLogout()">{{ 'auth.logout' | t }}</button>
+  <button class="btn btn-sm spark-auth-bar-btn text-nowrap" (click)="onLogout()">{{ 'auth.logout' | t }}</button>
 } @else {
-  <a class="btn btn-sm spark-auth-bar-btn" [routerLink]="signInUrl">{{ 'auth.login' | t }}</a>
+  <a class="btn btn-sm spark-auth-bar-btn text-nowrap" [routerLink]="signInUrl">{{ 'auth.login' | t }}</a>
 }

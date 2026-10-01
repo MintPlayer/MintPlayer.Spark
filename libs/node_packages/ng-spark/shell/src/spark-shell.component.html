@@ -24,9 +24,7 @@
     </div>
   </div>
 
-  <nav bsShellSidebar class="spark-sidebar p-2"
-       [class.spark-sidebar-dark]="sidebarTheme() === 'dark'"
-       [attr.data-bs-theme]="sidebarTheme()">
+  <nav bsShellSidebar class="spark-sidebar p-2">
     @if (sidebarHeaderTpl(); as tpl) {
       <ng-container *ngTemplateOutlet="tpl" />
     } @else {

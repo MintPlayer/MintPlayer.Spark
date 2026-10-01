@@ -408,6 +408,21 @@ describe('SparkQueryGridComponent', () => {
       expect(c.allColumns().map((x: any) => x.name)).toEqual(['Name', 'IsPrivate']);
     });
 
+    it(`drops the previous query's columns as soon as another query starts loading`, async () => {
+      // The datatable sizes its columns once, from the first render with rows. Columns left over
+      // from the previous query would be the ones it measured, against the next query's rows.
+      const { fixture, c, service } = await setup();
+      expect(c.visibleColumns().map(col => col.name)).toEqual(['FirstName']);
+
+      service.getQuery.mockReturnValue(new Promise(() => { /* still loading */ }));
+      fixture.componentRef.setInput('queryId', 'q-other');
+      fixture.detectChanges();
+      await Promise.resolve();
+
+      expect(service.getQuery).toHaveBeenLastCalledWith('q-other');
+      expect(c.visibleColumns()).toEqual([]);
+    });
+
     it('treats an absent isVisible as visible', async () => {
       // A server predating the field must keep drawing everything.
       const cols = [{ name: 'Name', dataType: 'string', order: 1 }] as any;

@@ -25,7 +25,10 @@
   position: sticky;
   top: calc(-1 * var(--_bleed-block));
   z-index: 400;
-  background-color: var(--bs-tertiary-bg);
+  // The page's own surface, not a tint of it: a lighter or darker bar reads as floating above the
+  // page, and the main-coloured gap above it at rest (main's block padding) would show as a band.
+  // Opaque, so content scrolling underneath the stuck bar stays hidden. The border separates it.
+  background-color: var(--spark-shell-main-bg, var(--bs-body-bg));
   border-bottom: 1px solid var(--bs-border-color);
   margin-bottom: 1rem;
 
