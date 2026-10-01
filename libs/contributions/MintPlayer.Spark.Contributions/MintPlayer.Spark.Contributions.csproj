@@ -1,0 +1,57 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Contributions</PackageId>
+		<Version>11.0.0-preview.92</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Per-user contributions with latest-wins for MintPlayer.Spark (preview): mark a property [Contribution] and every user edits their own version of each slot, the latest non-hidden one is shown, and the history is moderatable. Ships its own source generator and analyzer.</Description>
+		<PackageTags>contributions;crowdsourcing;latest-wins;ravendb;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark\MintPlayer.Spark.csproj" />
+		<ProjectReference Include="..\MintPlayer.Spark.Contributions.Abstractions\MintPlayer.Spark.Contributions.Abstractions.csproj" />
+		<!--
+		  Build order only: the DLL must exist in its bin/ before it is packed below. Nothing in this
+		  project's own compilation carries [Contribution].
+		-->
+		<ProjectReference Include="..\MintPlayer.Spark.Contributions.SourceGenerators\MintPlayer.Spark.Contributions.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+	<!--
+	  PRD C7: the generator ships inside this package, never as a package of its own. Only its own DLL:
+	  MintPlayer.Spark.SourceGenerators.dll reaches consumers through MintPlayer.Spark's own validated
+	  reference (SPARK001-003), and packing a second copy here would run every Spark generator twice.
+	  NuGet analyzers flow to transitive consumers by default, so a host that references a Domain
+	  library that references this package still gets the generator.
+	-->
+	<ItemGroup>
+		<None Include="..\MintPlayer.Spark.Contributions.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.Contributions.SourceGenerators.dll"
+			  Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="Targets\spark-contributions.targets" Pack="true" PackagePath="buildTransitive/$(PackageId).targets" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<InternalsVisibleTo Include="MintPlayer.Spark.Tests" />
+	</ItemGroup>
+
+</Project>

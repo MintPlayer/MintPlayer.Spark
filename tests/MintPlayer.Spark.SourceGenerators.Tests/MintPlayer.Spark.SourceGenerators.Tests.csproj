@@ -74,6 +74,11 @@
     <ProjectReference Include="..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj"
                       ReferenceOutputAssembly="false"
                       SkipGetTargetFrameworkProperties="true" />
+    <ProjectReference Include="..\..\libs\contributions\MintPlayer.Spark.Contributions.SourceGenerators\MintPlayer.Spark.Contributions.SourceGenerators.csproj"
+                      ReferenceOutputAssembly="false"
+                      SkipGetTargetFrameworkProperties="true" />
+    <!-- [Contribution] / [ContributionSlot] for the contributions generator's test inputs. -->
+    <ProjectReference Include="..\..\libs\contributions\MintPlayer.Spark.Contributions.Abstractions\MintPlayer.Spark.Contributions.Abstractions.csproj" />
 
     <!-- Abstractions are needed to compile the test input sources (DefaultPersistentObjectActions, etc). -->
     <ProjectReference Include="..\..\libs\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
@@ -100,6 +105,7 @@
       <_GeneratorRuntimeAssets Include="$(MSBuildThisFileDirectory)..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.SourceGenerators.dll" />
       <_GeneratorRuntimeAssets Include="$(MSBuildThisFileDirectory)..\..\libs\all_features\MintPlayer.Spark.AllFeatures.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.AllFeatures.SourceGenerators.dll" />
       <_GeneratorRuntimeAssets Include="$(MSBuildThisFileDirectory)..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.LibraryGenerators.dll" />
+      <_GeneratorRuntimeAssets Include="$(MSBuildThisFileDirectory)..\..\libs\contributions\MintPlayer.Spark.Contributions.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.Contributions.SourceGenerators.dll" />
       <_GeneratorRuntimeAssets Include="$(PkgMintPlayer_SourceGenerators_Tools)\lib\netstandard2.0\MintPlayer.SourceGenerators.Tools.dll" />
 
       <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' "
@@ -108,6 +114,8 @@
                                Include="$(MSBuildThisFileDirectory)..\..\libs\all_features\MintPlayer.Spark.AllFeatures.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.AllFeatures.SourceGenerators.pdb" />
       <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' "
                                Include="$(MSBuildThisFileDirectory)..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.LibraryGenerators.pdb" />
+      <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' "
+                               Include="$(MSBuildThisFileDirectory)..\..\libs\contributions\MintPlayer.Spark.Contributions.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.Contributions.SourceGenerators.pdb" />
     </ItemGroup>
     <Copy SourceFiles="@(_GeneratorRuntimeAssets)"
           DestinationFolder="$(OutputPath)"

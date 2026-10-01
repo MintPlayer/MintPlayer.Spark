@@ -628,6 +628,18 @@ the dark-mode work, whose ng-bootstrap half is tracked in MintPlayer/mintplayer-
   values for them; validating those values was rejected (a rule failing on a hidden value is an
   oracle, and an error the caller can't fix). Tests: `AttributeWriteProbeAndValidationTests`
   (red → green).
+- **M3:** the library skeleton under `libs/contributions/` — `MintPlayer.Spark.Contributions.Abstractions`
+  (the attributes, `ContributionAttribution`, `IContribution`, `ICurrentContribution`,
+  `IContributions`, `IContributionValidator<T>`, `ContributionRights.RevertContribution` as a reserved
+  verb), the runtime `MintPlayer.Spark.Contributions` (`AddContributions()` registers a placeholder
+  that throws until M5) and `MintPlayer.Spark.Contributions.SourceGenerators` (an empty
+  `ForAttributeWithMetadataName` pipeline, `IsPackable=false`). The public types sit in namespace
+  `MintPlayer.Spark.Contributions` in the Abstractions assembly, which keeps SPARK017's metadata name
+  valid. The runtime nupkg embeds only `analyzers/dotnet/cs/MintPlayer.Spark.Contributions.SourceGenerators.dll`
+  (no `MintPlayer.SourceGenerators.Tools` dependency, so nothing else to embed), plus
+  `buildTransitive/MintPlayer.Spark.Contributions.targets` that adds the analyzer reference in-repo
+  only. AllFeatures is unchanged, because it does not list every optional feature. All three start at
+  `11.0.0-preview.92`.
 
 **Breaking changes for the release notes** (no backward compatibility, preview; minor version bumps
 only):

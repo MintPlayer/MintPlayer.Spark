@@ -214,15 +214,37 @@ Order: reproduce the existing leaks first (red tests), then build.
   caller may not write; the create shield runs before the natural-id probe. An update never moves a
   natural id. Tests: `AttributeWriteProbeAndValidationTests`.
 
-### M3 — Library skeleton and packaging (C5, C7)
-- [ ] Create `libs/contributions/MintPlayer.Spark.Contributions` and `.Abstractions`: the
+### M3 — Library skeleton and packaging (C5, C7) ✅
+- [x] Create `libs/contributions/MintPlayer.Spark.Contributions` and `.Abstractions`: the
   `[Contribution]` and `[ContributionSlot]` attributes, and the `IContribution`,
   `ICurrentContribution`, `IContributions` and `IContributionValidator<T>` interfaces.
-- [ ] Create `MintPlayer.Spark.Contributions.SourceGenerators` (`netstandard2.0`, `IsRoslynComponent`,
-  `IsPackable=false`, Roslyn 5.9.0 pins).
-- [ ] Pack it into `analyzers/dotnet/cs` following `AllFeatures.csproj:40-65`, and add a
-  `buildTransitive` targets file that wires the analyzer `ProjectReference` in-repo.
-- [ ] Decide whether `MintPlayer.SourceGenerators.Tools.dll` is needed at run time; if so, embed it.
+  **As built:** Abstractions is `net11.0` and references `MintPlayer.Spark.Abstractions` (for
+  `SparkReservedActions` and `ValidationError`), like Moderation.Abstractions. Every public type is in
+  namespace `MintPlayer.Spark.Contributions` although it lives in the Abstractions assembly, because
+  SPARK017 matches `MintPlayer.Spark.Contributions.ContributionAttribute` by metadata name. Also there:
+  `ContributionAttribution` (`[Flags]` None/Contributor/UpdatedAt/History, Q6) and `ContributionRights`
+  (`RevertContribution` only, declared via `[assembly: SparkReservedActions]`). `IContributions` has
+  just `RebuildCurrentAsync(targetId, ct)`; `IContributionValidator<in T>.ValidateAsync(targetId,
+  element, ct)` returns `IReadOnlyList<ValidationError>`. `AddContributions()` registers a placeholder
+  `IContributions` that throws `NotSupportedException` (runtime in M5). No AGENTS.md: no optional
+  sibling library has one.
+- [x] Create `MintPlayer.Spark.Contributions.SourceGenerators` (`netstandard2.0`, `IsRoslynComponent`,
+  `IsPackable=false`, Roslyn 5.9.0 pins). **As built:** `ContributionsGenerator` runs a
+  `ForAttributeWithMetadataName` pipeline and emits nothing yet.
+- [x] Pack it into `analyzers/dotnet/cs` following `AllFeatures.csproj:40-65`, and add a
+  `buildTransitive` targets file that wires the analyzer `ProjectReference` in-repo. **As built:**
+  `Targets/spark-contributions.targets` adds the reference only when the generator csproj exists next
+  to it, so a package consumer gets no dangling reference (MSB9008). It leaves SPARK001-003 alone: the
+  package does not carry `MintPlayer.Spark.SourceGenerators.dll`, so it must not set
+  `MintPlayerSparkSourceGeneratorsReferenceValidated`.
+- [x] Decide whether `MintPlayer.SourceGenerators.Tools.dll` is needed at run time; if so, embed it.
+  **Decided: not referenced.** The generator builds on plain Roslyn, so the nupkg embeds exactly one DLL.
+- **AllFeatures is unchanged.** It references only Spark, Authorization, Messaging, Replication, Cron and
+  Migrations, not every optional feature (SoftDelete, History and Moderation are absent), so
+  Contributions stays out as well. M5's "wire into AllFeatures if it lists every feature" therefore
+  does not apply.
+- Test: `ContributionsGeneratorTests` (the generator runs over a `[Contribution]` property with no
+  output and no diagnostics).
 
 ### M4 — Generator and analyzer (T2, T3, T4)
 - [ ] Use a `ForAttributeWithMetadataName` pipeline on `[Contribution]` properties. Unwrap

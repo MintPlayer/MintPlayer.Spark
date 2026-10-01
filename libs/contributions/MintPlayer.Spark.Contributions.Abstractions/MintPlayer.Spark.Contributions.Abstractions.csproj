@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net11.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<OutputType>Library</OutputType>
+
+		<!-- NuGet Package Metadata -->
+		<PackageId>MintPlayer.Spark.Contributions.Abstractions</PackageId>
+		<Version>11.0.0-preview.92</Version>
+		<Authors>MintPlayer</Authors>
+		<Company>MintPlayer</Company>
+		<Description>Contracts for MintPlayer.Spark contributions (preview): the [Contribution] and [ContributionSlot] attributes, the IContribution / ICurrentContribution shapes the generator implements, IContributions, the IContributionValidator&lt;T&gt; app hook and the RevertContribution right. Reference this from Domain/Library projects; the host references MintPlayer.Spark.Contributions.</Description>
+		<PackageTags>contributions;crowdsourcing;latest-wins;ravendb;spark</PackageTags>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageProjectUrl>https://github.com/MintPlayer/MintPlayer.Spark</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/MintPlayer/MintPlayer.Spark.git</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="..\MintPlayer.Spark.Contributions\README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- SparkReservedActions (RevertContribution is a reserved verb) and ValidationError (the T7 hook's result). -->
+		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
+	</ItemGroup>
+
+</Project>
