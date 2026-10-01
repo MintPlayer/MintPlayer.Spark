@@ -1107,6 +1107,95 @@ xUnit and driver stack, not as a new test runner.
       differences under ~40 s are noise here.
     - **What is left** (profiler ranking, after lever A): the remaining per-boot cost (~0.25 s × ~700
       boots) and per-test databases, which per-class sharing (item 5, batches 2–3) removes.
+11. **Item 5, batch 2: what a per-test database costs, and where sharing still pays** (2026-10-02,
+    this machine, Developer licence, `dotnet test --no-build`, no coverage, each project run alone).
+    Starting point: the full sweep at 10m07s after lever A, CodeCoverage's opt-in indexes and
+    half-core xUnit, and one OIDC signing key per process.
+    - **Measured first: one create/delete cycle on the embedded test server.** A throwaway class
+      (not committed) ran 400 cycles at 4-way parallelism per variant and read the Raven server
+      process's `TotalProcessorTime` before and after:
+
+      | Cycle | Wall (400 cycles) | Server CPU / cycle | Test-process CPU / cycle |
+      |---|---|---|---|
+      | Empty database | 10.9 s | 96 ms | 3 ms |
+      | + 5 documents and a load | 12.6 s | 115 ms | 6 ms |
+      | + a static index and a query | 25.6 s | 204 ms | 28 ms |
+
+      So an empty database is not free: about 0.1 CPU-s each, and twice that with an index. Spark.Tests
+      had ~1,290 per-test databases (~130–260 CPU-s, against the ~347 CPU-s the server used in a
+      run), plus a host booted per case in the OIDC classes. Worth doing; the saving is less CPU, which
+      on this saturated machine is the only thing that shortens a sweep.
+    - **Lazy per-case database (`SparkTestDriver.Store`).** The database is now created on the first
+      read of `Store`, not in `InitializeAsync`; `DisposeAsync` disposes the backing field. Counted
+      with a temporary counter over a full run: **76 of 1,102 cases (7%) never read `Store`**
+      (startup refusals, template rendering, culture validation). Small, but free and with no
+      isolation risk. Locked, so two tasks reading it at once cannot create two databases.
+    - **OIDC: one provider host and database per class.** `OidcTestHost` now takes an
+      `OidcSharedHost` class fixture. Each case seeds through `ClientId(name)` and `UserEmail(local)`
+      (the case's `Scope` appended), and the whole-collection `Query<OidcToken>()` /
+      `Query<OidcAuthorizationRequest>()` assertions became `CaseTokensAsync` /
+      `CaseAuthorizationRequestsAsync`. Those are filtered in memory over a collection query on
+      purpose: a `Where` would ride an auto-index, and several callers assert absence, which a stale
+      index satisfies for the wrong reason. 10 classes migrated (Authorize, Consent,
+      ConsentWithdrawal, Introspection, Login, ResourceServer, TokenEndpointGuard, TokenForgery,
+      TokenSecurity, TwoFactor; 176 cases). OidcAdminRoute boots one host per class instead of two per
+      case (its cases already used distinct client ids).
+      - *Kept per case, with the reason,* through `OidcTestHost`'s parameterless constructor (a host
+        and database per case): **OidcScopeIntegrity**, which disables shared `OidcScope` documents,
+        `openid` among them; **OidcAdminRegistration**, where the synchronizer writes model files into
+        the host's content root, so `File.Exists` could pass on a sibling's file. **OidcCorsScope**
+        stays on `SparkTestDriver`: the host snapshots every enabled application's origins at startup,
+        which is database-wide by construction.
+      - *The shuffle and a full run found one real race.* OidcTokenSecurity's two chain-revocation
+        cases (code replay, refresh-token reuse) failed once in a full run: an access token stayed
+        `valid`. `Token.RevokeAuthorizationChainAsync` finds siblings through an index and is
+        documented as best-effort. On a fresh database the index had nothing to catch up on; on the
+        shared one it carries earlier cases' tokens. The cases now wait for indexing before the
+        replay, pinning what they test: a chain the index can see is torn down. The production code
+        is unchanged.
+      - *Per class, summed TRX spans:* the OIDC classes went from ~131 s of class time to ~25 s, plus
+        one fixture boot each (~0.1 s dispose measured per fixture). The 193 OIDC cases run alone in
+        21 s of wall time, process start included.
+    - **Read-only classes seed once per class.** SearchPushdown and SortCompanionRedirect
+      (`SparkSharedDatabase` with the cars and index seeded in `InitializeAsync`), DateTimeOffsetRoundTrip
+      and AsyncCustomQuery (`SharedSparkHost`, which also boots the query host once; the executor
+      comes from a scope per case, as SortColumnDisclosure found it must, so each case's
+      `RqlRecorder` sees its own queries). The one SearchPushdown case that adds a document moved to
+      `SearchPushdownWriteTests` on a database per case: its van would have shown up in the other
+      cases' `volkswagen` searches.
+    - **Order independence:** every migrated class passed default order, `SPARK_TEST_ORDER=reverse`
+      and seeds 1 and 2 (221 cases per run for OIDC + AdminRoute + SearchPushdown, 52 for the seed
+      classes).
+    - **Measured, Spark.Tests alone:** before 191 / 181 / 178 s (the last runs of the previous
+      commits); after **161 / 139 s** (committed tree), with 156 s from an intermediate build and
+      one noisy 192 s run, all 3515 green. That is about −15%, within this machine's ±10–15% noise
+      per run but consistent across runs.
+    - **Not migrated, with the reason:**
+      - The remaining per-case classes cost little each: the DB-only ones run at 0.1–0.2 s per case
+        including their database (e.g. LookupReferenceService 35 cases in 6.6 s, BreadcrumbResolver
+        22 in 2.5 s), and nearly all reuse fixed ids (`LookupReferences/CarBrand`, `people/{i}`,
+        `users/alice`) or boot a differently configured host per case (AccountFlow, SoftDelete with
+        its revisions configuration, Moderation*, Contributions*, SubQueryActions). Scoping them saves
+        ~0.1 CPU-s per case for a hand rewrite per class; not worth it at this ceiling.
+      - **CodeCoverage.Tests: rejected on the measured ceiling.** Counted with a temporary counter
+        over a full run (113 s, 1045 green): **563 databases, 303 of them with the index.** At the
+        cycle costs above that is at most ~26 + ~62 ≈ 90 server CPU-s even if every one went away.
+        But the classes share fixed GitHub ids, owners and full names (`RepoId`, `OldOwnerId`,
+        `"acme/widgets"`) that flow into webhook payloads and into index lookups by full name, so
+        each of ~70 classes needs a careful rewrite. A realistic partial migration buys perhaps half
+        the ceiling.
+    - **Full sweep after batch 2** (`npm run test:affected -- --skip-nx-cache`, everything affected,
+      E2E included, `dotnet build-server shutdown` first): **563 s and 575 s** (nx run duration 9m01s
+      and 8m37s), against 10m07s before; all 60 tasks but one green each time. Each run had one
+      Spark.Tests failure under full load, in classes this batch did not touch:
+      `ModerationVoteTests.M5_the_badge_shows_a_new_vote_as_pending_at_once_without_any_recompute`
+      (pending 0 instead of 10; passed 3 of 3 runs alone; the reputation read already waits up to 30 s
+      for non-stale indexes, so the cause is not yet understood) and the known
+      `ThrottleAccuracySpikeTests.S_M3` (a throttled message deferred twice). Neither was loosened.
+    - **Where that leaves the ~7m15s target:** the sweep is CPU-bound, and what remains is mostly not
+      per-test databases. By the per-task figures (E2E 152 s, the Angular/vitest suites ~100 s,
+      builds 72 s, CodeCoverage 104 s, Spark.Tests now ~150 s), the next levers are the E2E suite and the
+      vitest suites, not further database sharing.
 
 ## 6. Risks
 

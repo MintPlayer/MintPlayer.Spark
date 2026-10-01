@@ -454,7 +454,7 @@ Decided (owner, 2026-10-01):
 - **(6) Keep the RavenTestDriver implementations.** No external `localhost:8080` server for tests.
 
 - [x] (2) + (4) done (`npm run test:affected` via `tools/test-local.mjs`, `-c local` coverage-off configs, `RavenDatabaseDeletion` zero-wait in all three RavenTestDriver bases, opt-in `SPARK_E2E_SKIP_APP_BUILD`). Measured: 21m49s incl. E2E, all green; Spark.Tests 18m20s (was 21m21s serial). See PRD §5d item 8.
-- [ ] (5) **IN PROGRESS: batch 1 (no-write classes + per-class hosts) is being implemented.** Migrate classes to `SparkSharedDatabase`, smallest risk first. The investigation counted 181
+- [x] (5) **Batches 1 and 2 done; the rest measured and not pursued (batch 2 entry below).** Migrate classes to `SparkSharedDatabase`, smallest risk first. The investigation counted 181
   driver classes:
   1. [x] **Batch 1 (2026-10-01): 41 classes migrated**, the ones whose cases write nothing a sibling
      can observe. Evidence in PRD §5d.
@@ -502,13 +502,32 @@ Decided (owner, 2026-10-01):
        - ModerationConfiguration: asserts on index errors (database-wide).
        - Single-case classes (AsDetailFailClosed, RuntimeQueryableInference, UseSparkOptions,
          AntiforgerySecurity): a database per class IS a database per case; nothing to gain.
-  2. the 67 that only need ids scoped via `Id(...)`
-  3. the 53 that need unscoped count assertions scoped
+  2. [x] **Batch 2 (2026-10-02), measured first** (PRD §5d item 11): one create/delete cycle costs
+     96 ms of server CPU empty, 115 ms with documents, 204 ms with an index and a query (400 cycles,
+     4-way, throwaway benchmark).
+     - `SparkTestDriver.Store` is created on first read: 76 of 1,102 cases never touch it.
+     - OIDC: `OidcTestHost` on an `OidcSharedHost` class fixture with per-case `ClientId(...)` /
+       `UserEmail(...)` and `CaseTokensAsync` / `CaseAuthorizationRequestsAsync`. 10 classes, 176 cases.
+       Two chain-revocation cases in OidcTokenSecurity now wait for indexing before the replay (a real
+       race the shared database exposed; the sweep is best-effort by design). OidcAdminRoute: one host
+       per class. Kept per case: OidcScopeIntegrity (disables shared scopes), OidcAdminRegistration
+       (model files in the content root), OidcCorsScope (startup origin snapshot of the whole database).
+     - Seed once per class: SearchPushdown (its one writing case → `SearchPushdownWriteTests`),
+       SortCompanionRedirect, DateTimeOffsetRoundTrip, AsyncCustomQuery.
+     - All migrated classes green in default, reverse, seed 1 and seed 2 order.
+     - Spark.Tests alone: 191 / 181 / 178 s → 161 / 139 s, 3515 green.
+     - Full sweep: 10m07s → 563 s / 575 s (9m23s / 9m35s). One load-only flake per run, neither in a
+       migrated class: ModerationVoteTests.M5 (new, cause open) and the known ThrottleAccuracy S_M3.
+     - **Rejected:** the remaining per-case classes (0.1–0.2 s per case including the database, fixed
+       ids or per-case host configurations everywhere; ~0.1 CPU-s saved per case for a hand rewrite)
+       and CodeCoverage.Tests (563 databases, 303 indexed, so at most ~90 server CPU-s, behind fixed
+       GitHub ids and full names in ~70 classes).
+  3. Not pursued (see the rejection above): the remaining classes that need ids or counts scoped.
   - The 28 with database-wide state stay per-test: subscriptions enumeration, fixed compare-exchange
     keys, revisions config, stop-indexing, background writers.
   - Each migrated class first passes a shuffled-order run (xUnit doesn't guarantee order).
-  - CodeCoverage.Tests' `CoverageRavenTest` (458 inline `GetDocumentStore()` calls) follows the same
-    pattern.
+  - CodeCoverage.Tests' `CoverageRavenTest` (458 inline `GetDocumentStore()` calls): measured and not
+    migrated (batch 2 above).
 - [x] **Lever A (2026-10-01): test hosts deploy only the indexes a test can need.** Opt-in
   `SparkModuleRegistry.IndexDeploymentFilter` (null = unchanged, so applications are unaffected);
   `SparkEndpointFactory` sets it to top-level indexes + module/framework indexes + nested fixture
