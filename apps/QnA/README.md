@@ -52,11 +52,23 @@ POST).
 | **M8 MailManager** | `AddMailManager()` in pickup mode, `Templates/Mail/AccountDeleted*.mjml` | The confirmation mail on registration; the goodbye mail when an account is deleted (`QnAAccountDeletionHandler`), in English or Dutch per the account's mail language. |
 | **M10 account pages** | `withAccount()` in `app.routes.ts` | **Account** in the topbar: profile (mail language), password, two-factor, personal data and account deletion. |
 | **M9 timezone** | `withSparkTimezone()` in `app.config.ts` | The browser's zone travels as `X-Spark-Timezone` and is kept in the `spark-timezone` cookie. |
+| **Contributions** (M6) | `Question.Translations` (`[Contribution]`, `QnA.Library/Entities/QuestionTranslation.cs`), `AddContributions()`, `provideSparkContributions()` + `sparkContributionRenderers` | Edit someone else's question: the form offers only **Translations**. Add a language (`nl` / `Latn`): your version is shown with "by *you* · now · History (1)". A second user's edit of the same row wins; **History** lists every version, filtered to that language (chips), and a version's page diffs it against the current one. A moderator **Reverts** to an older version or deletes the current one (removes the whole version); a version can be flagged like a post. Removing your row withdraws your version and says whose is shown now. |
 | **D5 / D15** | nothing in `Program.cs` | Data Protection keys go to a local folder in Development; forwarded headers trust loopback and private ranges. `appsettings.json` sets neither `Spark:DataProtection:Storage` nor `KeysPath` — by owner decision the base file never does; the E2E host sets `Storage=RavenDb` in its own settings. |
 
 Who may change a post: everyone signed in holds `Edit`/`Delete` on both types, and the Actions
 classes' row rule narrows it to the author — or a moderator, who is whoever holds `Lock/Question`
 (`Services/QnAAccess.cs`). No earned privilege can grant `Lock`, so moderation cannot be farmed (D12).
+
+Translations are the exception, and the reason `Edit` on a question is open to everyone signed in:
+a contribution is saved through its target's `Edit`. `QuestionActions.GetProtectedAttributesAsync`
+keeps every other attribute of the question to its author or a moderator (the save drops them), and
+`QuestionTranslatorFormInterceptor` marks them read-only on the loaded object so the form leaves them
+out. The row type needs `EditNewDelete/QuestionTranslation`; the history
+(`QueryRead/QuestionTranslationsContribution`) is public like the rest of the site; moderators hold
+`Delete`/`Restore`/`ViewDeleted`/`Purge`/`RevertContribution`/`Lock`/`Flag` on the contribution type
+and `Read`/`Delete` on `QuestionTranslationsCurrent`. Flaggers may flag a version
+(`QuestionTranslationsContribution` is `IModeratable`: its author is the translator). Voting on
+versions is deliberately not granted, although `--spark-init-moderation` lists it.
 
 ## Privileges
 

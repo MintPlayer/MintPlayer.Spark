@@ -1,4 +1,6 @@
 Query/Answer
 Query/Question
+Query/QuestionTranslationsContribution
 Read/Answer
 Read/Question
+Read/QuestionTranslationsContribution

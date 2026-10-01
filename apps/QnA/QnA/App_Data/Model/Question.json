@@ -319,6 +319,27 @@
         "rules": []
       },
       {
+        "id": "be7be3c4-869f-4813-85d3-954ae1593387",
+        "name": "Translations",
+        "label": {
+          "en": "Translations",
+          "fr": "Traductions",
+          "nl": "Vertalingen"
+        },
+        "description": {
+          "en": "The question in other languages, written by anyone signed in. Each language and script holds one version per translator; the latest one is shown, and every version stays in the history."
+        },
+        "dataType": "AsDetail",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 8,
+        "asDetailType": "QnA.Entities.QuestionTranslation",
+        "isArray": true,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
         "id": "ab1b4ad8-a414-4a62-abf6-8af709383408",
         "name": "Votes",
         "label": {

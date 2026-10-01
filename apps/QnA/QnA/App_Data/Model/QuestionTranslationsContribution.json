@@ -1,0 +1,263 @@
+{
+  "persistentObject": {
+    "id": "dd6ae74a-5a3b-4090-908c-254a56617f80",
+    "name": "QuestionTranslationsContribution",
+    "description": {
+      "en": "Translation version",
+      "fr": "Version de traduction",
+      "nl": "Versie van een vertaling"
+    },
+    "clrType": "QnA.Entities.QuestionTranslationsContribution",
+    "breadcrumb": "{Title}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "fd9d76d5-a13a-4cb6-8a52-0b3638e0523e",
+        "name": "Body",
+        "label": {
+          "en": "Body",
+          "fr": "Contenu",
+          "nl": "Inhoud"
+        },
+        "dataType": "MultiLineString",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": [],
+        "renderer": "lineDiff",
+        "rendererOptions": {
+          "compareType": "Question",
+          "compareIdPattern": "^(.+?)/TranslationsContributions/([^/]+/[^/]+)/User/.+$",
+          "compareIdReplacement": "$1",
+          "compareAttribute": "Translations",
+          "compareRowAttribute": "Body",
+          "compareRowKeyPattern": "^(.+?)/TranslationsContributions/([^/]+/[^/]+)/User/.+$",
+          "compareRowKeyReplacement": "$2"
+        }
+      },
+      {
+        "id": "0e3d57b8-bf2f-4d0b-9123-f7321c7faa11",
+        "name": "ContributorId",
+        "label": {
+          "en": "Translator id",
+          "fr": "Identifiant du traducteur",
+          "nl": "Id van de vertaler"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": false,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a5222866-9b23-49c5-b0c9-6ce9d65ef1f4",
+        "name": "ContributorName",
+        "label": {
+          "en": "Translator",
+          "fr": "Traducteur",
+          "nl": "Vertaler"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "45201b07-f304-436c-8470-dc9a98baf22e",
+        "name": "DeletedAt",
+        "label": {
+          "en": "Hidden at",
+          "fr": "Masquée le",
+          "nl": "Verborgen op"
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 10,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ca122f4b-0a17-47ad-8bb6-62e32b39c439",
+        "name": "DeletedBy",
+        "label": {
+          "en": "Hidden by",
+          "fr": "Masquée par",
+          "nl": "Verborgen door"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 11,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "9da3c690-e289-46d7-9eb9-3f6534dc70c6",
+        "name": "DeleteReason",
+        "label": {
+          "en": "Reason",
+          "fr": "Raison",
+          "nl": "Reden"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 12,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "7035ca07-f7bd-4295-85b9-cceeffcff1f1",
+        "name": "IsDeleted",
+        "label": {
+          "en": "Hidden",
+          "fr": "Masquée",
+          "nl": "Verborgen"
+        },
+        "dataType": "boolean",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "bf4a7cdf-9f6f-49c6-b329-27d11ea3f242",
+        "name": "Language",
+        "label": {
+          "en": "Language",
+          "fr": "Langue",
+          "nl": "Taal"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "a5ea3572-47be-4e8f-bbfb-162d05b7775d",
+        "name": "Script",
+        "label": {
+          "en": "Script",
+          "fr": "Écriture",
+          "nl": "Schrift"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "8455b4e5-b87f-4b3f-90b9-6e2e096219be",
+        "name": "TargetId",
+        "label": {
+          "en": "Question",
+          "fr": "Question",
+          "nl": "Vraag"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "173aac54-9c08-49fe-9d21-0293d4079fb5",
+        "name": "Title",
+        "label": {
+          "en": "Title",
+          "fr": "Titre",
+          "nl": "Titel"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "renderer": "lineDiff",
+        "rendererOptions": {
+          "compareType": "Question",
+          "compareIdPattern": "^(.+?)/TranslationsContributions/([^/]+/[^/]+)/User/.+$",
+          "compareIdReplacement": "$1",
+          "compareAttribute": "Translations",
+          "compareRowAttribute": "Title",
+          "compareRowKeyPattern": "^(.+?)/TranslationsContributions/([^/]+/[^/]+)/User/.+$",
+          "compareRowKeyReplacement": "$2"
+        }
+      },
+      {
+        "id": "997f3cb3-e9e9-4397-bb65-160961cec637",
+        "name": "UpdatedAt",
+        "label": {
+          "en": "Written",
+          "fr": "Écrite",
+          "nl": "Geschreven"
+        },
+        "dataType": "datetime",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": [
+    {
+      "id": "9fc23192-afd0-4b3d-ade2-a192f94bc192",
+      "name": "QuestionTranslationsContributions",
+      "description": {
+        "en": "Translation history",
+        "fr": "Historique des traductions",
+        "nl": "Geschiedenis van de vertalingen"
+      },
+      "source": "Custom.SparkContributionsOfTarget",
+      "sortColumns": [
+        {
+          "property": "UpdatedAt",
+          "direction": "desc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "QuestionTranslationsContribution",
+      "isStreamingQuery": false
+    }
+  ]
+}

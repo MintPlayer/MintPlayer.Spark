@@ -56,6 +56,15 @@ internal sealed partial class HistoryInterceptor : IPersistentObjectInterceptor
             state.RevertPartial |= context.UnwritableAttributes.Any(path => !SameAt(path, source, context.Entity));
         }
 
+        // An edit that changes nothing of the stored document is not a modification. The common case
+        // is a save that only wrote satellite rows (a [Contribution] property: [JsonIgnore]d, stored in
+        // side documents): stamping it would rewrite the target, give it a revision and a new etag,
+        // and name the contributor as its modifier — what Contributions promises not to do (R3).
+        // Asked of the session before stamping, so the stamp itself is not the change it detects.
+        if (context.Entity is IAuditable && context.Operation == PersistentObjectOperation.Save
+            && context.Before is not null && !HasChanged(context.Entity))
+            return ValueTask.CompletedTask;
+
         if (context.Entity is IAuditable audited)
         {
             // CreatedBy / CreatedAt are the stored values on every write but the first, whatever was
@@ -204,6 +213,17 @@ internal sealed partial class HistoryInterceptor : IPersistentObjectInterceptor
         try { return session.Advanced.GetChangeVectorFor(entity); }
         catch (InvalidOperationException) { return null; }
         catch (ArgumentException) { return null; }
+    }
+
+    /// <summary>Whether the tracked <paramref name="entity"/> differs from the document the session loaded. Untracked counts as changed.</summary>
+    private bool HasChanged(object entity)
+    {
+        // RavenDB answers false for an entity it does not track; only a tracked one can be unchanged.
+        if (ChangeVectorOf(entity) is null)
+            return true;
+        try { return session.Advanced.HasChanged(entity); }
+        catch (InvalidOperationException) { return true; }
+        catch (ArgumentException) { return true; }
     }
 
     private static string? IdOf(object entity)

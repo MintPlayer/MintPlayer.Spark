@@ -779,6 +779,32 @@ only):
 - **Dark mode** (the other half of this PR): `sidebarTheme` is removed. ng-bootstrap's theme is stored
   in a cookie instead of localStorage, so stored choices reset.
 
+- **M6:** the demo consumer — QnA's `Question.Translations` (two slots, `Language`/`Script`; full
+  attribution), wired with `AddContributions()`, `provideSparkContributions()` and
+  `sparkContributionRenderers`; the model synchronized (`QuestionTranslation`,
+  `QuestionTranslationsContribution` with its query, `QuestionTranslationsCurrent`) and labelled in
+  en/fr/nl; security.json per the README's rights table; the contribution type is `IModeratable`
+  (author = translator, posted = `UpdatedAt`). QnA's `Edit` row rule was author-only, which makes a
+  target impossible to contribute to: it is now open to every signed-in user for `Edit`, and
+  `GetProtectedAttributesAsync("Edit")` keeps everything but the translations to the author or a
+  moderator. Fixes the wiring found:
+  - History stamped `ModifiedBy`/`ModifiedAt` on every edit, so a contribution-only save rewrote an
+    `IAuditable` target — a new revision and etag, the translator named as modifier (R3). It now
+    skips a `Save` whose tracked entity the session sees unchanged.
+  - `--spark-verify-model` refused the generated `Custom.SparkContributionsOfTarget` query, since no
+    `{Type}Actions` class exists; it now also accepts the `IPersistentObjectActions<T>` a module
+    registered in DI (what the executor resolves).
+  - A well-known group's `Read` on the contribution type failed startup (no row rule), and a
+    contribution of a row the caller may not see (a QnA draft) loaded by id. `ContributionActions<T>`
+    now judges every row by `Read` on the target type and the target's row-gated load (once per
+    target per request).
+  - Rows need `New`/`Delete` on the row type (the README said "optionally `Edit/Lyrics/...`"): without
+    `New` the form shows no **Add**.
+  - The ng-spark edit form drew attributes from the type only, so per-row read-only attributes stayed
+    editable (and were dropped by the save); it now applies the loaded object's `isReadOnly`.
+  Tests: `ContributionsAuditedTargetTests` (red → green for the History fix), the QnA E2E classes
+  `QnAContributionsTests` and `QnAContributionsBrowserTests` (built; run in M7).
+
 **Known limitations (documented, not fixed):**
 - **Per-row oracle (owner Q16 → C, 2026-10-01).** An attribute that the per-row
   `GetProtectedAttributesAsync` hook protects, and that is a shown, queryable column, stays
@@ -808,6 +834,9 @@ only):
   - Validator errors are reported as one validation error (messages joined, the first attribute).
   - A contribution a moderator hid cannot be re-saved by its author (400); their own withdrawal can.
   - The single-valued (no slots) path is exercised by the generator tests only, not by an HTTP test.
+  - (M6) The save notices are in the request's culture, not the SPA's chosen language: with a Dutch
+    browser and the English UI selected, QnA showed the Dutch text.
+  - (M6) Synchronize leaves the element's generated `Key` attribute visible (QnA hides it by hand).
 
 **Open items:**
 - ~~M1c "Changed by" fallback~~ **→ decided (owner, 2026-09-30): configurable.**

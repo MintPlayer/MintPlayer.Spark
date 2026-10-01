@@ -250,6 +250,84 @@
       "resource": "Audit/Moderation",
       "groupId": "4e130000-0000-4000-8000-000000000001",
       "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000048",
+      "resource": "EditNewDelete/QuestionTranslation",
+      "groupId": "4e130000-0000-4000-8000-00000000000f",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000036",
+      "resource": "QueryRead/QuestionTranslationsContribution",
+      "groupId": "00000000-0000-0000-0000-000000000000",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000037",
+      "resource": "QueryRead/QuestionTranslationsContribution",
+      "groupId": "4e130000-0000-4000-8000-00000000000f",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000038",
+      "resource": "Flag/QuestionTranslationsContribution",
+      "groupId": "4e130000-0000-4000-8000-000000000004",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000039",
+      "resource": "Delete/QuestionTranslationsContribution",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000040",
+      "resource": "Restore/QuestionTranslationsContribution",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000041",
+      "resource": "ViewDeleted/QuestionTranslationsContribution",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000042",
+      "resource": "Purge/QuestionTranslationsContribution",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000043",
+      "resource": "RevertContribution/QuestionTranslationsContribution",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000044",
+      "resource": "Lock/QuestionTranslationsContribution",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000045",
+      "resource": "Flag/QuestionTranslationsContribution",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000046",
+      "resource": "Read/QuestionTranslationsCurrent",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
+    },
+    {
+      "id": "4e13ffff-0000-4000-8000-000000000047",
+      "resource": "Delete/QuestionTranslationsCurrent",
+      "groupId": "4e130000-0000-4000-8000-000000000001",
+      "isDenied": false
     }
   ]
 }

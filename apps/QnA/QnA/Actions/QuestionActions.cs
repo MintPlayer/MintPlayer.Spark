@@ -21,9 +21,14 @@ public partial class QuestionActions : DefaultPersistentObjectActions<Question>
 
     /// <summary>
     /// Everyone signed in holds <c>Edit/Question</c> and <c>Delete/Question</c> (security.json), so the
-    /// row decides: an author changes their own questions, a moderator any. Revert and restore are judged
-    /// as <c>Edit</c> here and purge as <c>Delete</c> (PRD §4.1 M7), which is what keeps them to the same
-    /// people. Reading is not restricted here — drafts are <see cref="Security.DraftQuestionPolicy"/>'s.
+    /// row decides. <c>Delete</c>: an author deletes their own questions, a moderator any (purge is
+    /// judged as <c>Delete</c>, PRD §4.1 M7). <c>Edit</c>: every signed-in user may open a question for
+    /// editing, because anyone may translate it (<see cref="Question.Translations"/> is a contribution:
+    /// the target's <c>Edit</c> is what lets a translator save their version) — and
+    /// <see cref="GetProtectedAttributesAsync"/> keeps everything else of the question to its author
+    /// and the moderators. Revert and restore are judged as <c>Edit</c> too, but both are
+    /// moderator-only rights in security.json. Reading is not restricted here — drafts are
+    /// <see cref="Security.DraftQuestionPolicy"/>'s.
     /// </summary>
     public override async Task<Expression<Func<Question, bool>>?> GetRowFilterAsync(string action)
     {
@@ -32,8 +37,31 @@ public partial class QuestionActions : DefaultPersistentObjectActions<Question>
         if (await access.IsModeratorAsync())
             return null;
         var userId = access.UserId;
-        return userId is null ? q => false : q => q.AuthorId == userId;
+        if (userId is null)
+            return q => false;
+        return action == "Edit" ? null : q => q.AuthorId == userId;
     }
+
+    /// <summary>
+    /// Everything of a question but its translations, for those who may not manage it: written only by
+    /// its author or a moderator. Asked with <c>Edit</c>, the framework drops these from a save (silently,
+    /// like any attribute the caller may not write), so a translator's save writes their translation and
+    /// nothing else. Every property but <see cref="Question.Translations"/>, so an attribute added later
+    /// is protected by default.
+    /// </summary>
+    public override async Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(string action, Question entity)
+    {
+        if (action != "Edit" || await access.CanManageAsync(entity.AuthorId))
+            return null;
+        return AuthorOnlyAttributes;
+    }
+
+    /// <summary>The question's attributes only its author or a moderator writes: all but the translations.</summary>
+    public static readonly IReadOnlyCollection<string> AuthorOnlyAttributes = typeof(Question)
+        .GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+        .Select(p => p.Name)
+        .Where(name => name is not (nameof(Question.Id) or nameof(Question.Translations)))
+        .ToArray();
 
     /// <summary>
     /// The single source of truth for what a question offers (#460 D13, M3), from the stored question,

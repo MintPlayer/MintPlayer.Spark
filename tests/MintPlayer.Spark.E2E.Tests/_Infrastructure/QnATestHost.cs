@@ -51,6 +51,15 @@ public sealed class QnATestHost : SparkAppTestHost
     public static readonly Guid AnswersQueryId = Guid.Parse("e4a0db0c-7ce3-4344-b273-cadccf285b10");
     public static readonly Guid QuestionAnswersQueryId = Guid.Parse("4e13a000-0000-4000-8000-000000000001");
 
+    /// <summary>
+    /// <c>Question.Translations</c> (contributions M6): the row type, the generated contribution and current
+    /// types, and the generated history query <c>QuestionTranslationsContributions</c>.
+    /// </summary>
+    public static readonly Guid TranslationTypeId = Guid.Parse("d363f757-1d6a-46d1-a1a9-2ed1c4acbcb4");
+    public static readonly Guid TranslationContributionTypeId = Guid.Parse("dd6ae74a-5a3b-4090-908c-254a56617f80");
+    public static readonly Guid TranslationCurrentTypeId = Guid.Parse("63e045da-399a-4b6e-88e6-e6a85d690891");
+    public static readonly Guid TranslationHistoryQueryId = Guid.Parse("9fc23192-afd0-4b3d-ade2-a192f94bc192");
+
     /// <summary>The privilege the tests earn: <c>Downvote</c> at 10 reputation (one credited up-vote).</summary>
     public const int DownvoteRep = 10;
 

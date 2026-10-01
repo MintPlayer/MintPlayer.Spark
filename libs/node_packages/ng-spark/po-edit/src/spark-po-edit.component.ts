@@ -64,6 +64,19 @@ export class SparkPoEditComponent {
   colors = Color;
   entityType = signal<EntityType | null>(null);
   item = signal<PersistentObject | null>(null);
+  /**
+   * The type as this form edits it: the loaded object can be stricter than the type, because a
+   * server hook may mark an attribute read-only for this row and this caller (QnA: a translator who
+   * is not the question's author edits only its translations; the server drops the rest from the
+   * save anyway). Shared by the form and {@link getEditableAttributes}, so what is drawn, what is
+   * initialised and what is saved agree. A refresh overlay can still lift it.
+   */
+  formEntityType = computed<EntityType | null>(() => {
+    const type = this.entityType();
+    const readOnlyHere = new Set((this.item()?.attributes ?? []).filter(a => a.isReadOnly).map(a => a.name));
+    if (!type || readOnlyHere.size === 0) return type;
+    return { ...type, attributes: type.attributes.map(a => readOnlyHere.has(a.name) && !a.isReadOnly ? { ...a, isReadOnly: true } : a) };
+  });
   type = '';
   id = '';
   formData = signal<Record<string, any>>({});
@@ -206,7 +219,7 @@ export class SparkPoEditComponent {
    */
   getEditableAttributes() {
     const overlay = this.refreshOverlay();
-    return this.entityType()?.attributes
+    return this.formEntityType()?.attributes
       .map(a => applyOverlay(a, overlay[a.name]))
       .filter(a => a.isVisible && !a.isReadOnly && hasShowedOnFlag(a.showedOn, ShowedOn.PersistentObject))
       .sort((a, b) => a.order - b.order) || [];

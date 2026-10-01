@@ -29,6 +29,7 @@
 		<ProjectReference Include="..\..\..\libs\soft_delete\MintPlayer.Spark.SoftDelete\MintPlayer.Spark.SoftDelete.csproj" />
 		<ProjectReference Include="..\..\..\libs\history\MintPlayer.Spark.History\MintPlayer.Spark.History.csproj" />
 		<ProjectReference Include="..\..\..\libs\moderation\MintPlayer.Spark.Moderation\MintPlayer.Spark.Moderation.csproj" />
+		<ProjectReference Include="..\..\..\libs\contributions\MintPlayer.Spark.Contributions\MintPlayer.Spark.Contributions.csproj" />
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>

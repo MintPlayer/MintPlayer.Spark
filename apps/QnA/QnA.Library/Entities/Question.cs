@@ -1,3 +1,4 @@
+using MintPlayer.Spark.Contributions;
 using MintPlayer.Spark.History;
 using MintPlayer.Spark.Moderation;
 using MintPlayer.Spark.SoftDelete;
@@ -63,4 +64,17 @@ public class Question : IModeratable, ISoftDeletable, IAuditable
 
     /// <summary>When the question was changed last. Stamped by History.</summary>
     public DateTimeOffset? ModifiedAt { get; set; }
+
+    /// <summary>
+    /// The question in other languages, written by anyone signed in. Each language and script holds one
+    /// version per translator; the latest one is shown, and every version stays in the history.
+    /// </summary>
+    /// <remarks>
+    /// A contribution (MintPlayer.Spark.Contributions): stored in <c>QuestionTranslationsContribution</c>
+    /// and <c>QuestionTranslationsCurrent</c> documents, never on the question, so a translation does
+    /// not move the question's etag or make a revision of it.
+    /// </remarks>
+    [Contribution(Attribution = ContributionAttribution.Contributor | ContributionAttribution.UpdatedAt | ContributionAttribution.History)]
+    [Newtonsoft.Json.JsonIgnore]
+    public List<QuestionTranslation> Translations { get; set; } = [];
 }

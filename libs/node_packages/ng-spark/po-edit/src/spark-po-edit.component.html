@@ -25,7 +25,7 @@
     <h2 class="mb-4">{{ 'common.edit' | t }} {{ (et.description | resolveTranslation) || et.name }}</h2>
 
     <spark-po-form
-      [entityType]="et"
+      [entityType]="formEntityType() ?? et"
       [(formData)]="formData"
       [(refreshOverlay)]="refreshOverlay"
       [objectTypeId]="type"

@@ -4,8 +4,8 @@
 > the generated model and contributions query, contributor names, `RevertContribution`, removing a
 > whole version, the save notices, and the ng-spark pieces in `@mintplayer/ng-spark/contributions`
 > (the attribution row renderer with the History link, the line-diff renderer, the revert action, and
-> the conflict-merge rule for contribution rows) — see [Client](#client-ng-spark). Not yet: a demo
-> consumer and its E2E test (M6).
+> the conflict-merge rule for contribution rows) — see [Client](#client-ng-spark). The QnA sample
+> (`apps/QnA`) is the demo consumer: `Question.Translations`.
 
 Per-user contributions with **latest-wins** for MintPlayer.Spark. Mark a property of an entity with
 `[Contribution]`: every user edits their own version of each slot, the latest non-hidden version is
@@ -223,11 +223,23 @@ verb. The one new verb is `RevertContribution`. With `Song.Lyrics`:
 
 | Who | Right | For |
 |---|---|---|
-| contributors | `Edit/Song` (+ attribute denies), optionally `Edit/Lyrics/...` | adding, editing, withdrawing their own versions |
+| contributors | `Edit/Song` (+ attribute denies, or a per-row `GetProtectedAttributesAsync("Edit")`), and `New`/`Edit`/`Delete` on the row type (`EditNewDelete/Lyrics`) | adding, editing, withdrawing their own versions: adding and removing a row are judged by `New`/`Delete` on the row type, and the form offers **Add** only with `New` |
 | readers of the history | `Query/SongLyricsContribution`, `Read/SongLyricsContribution` (and `Read/Song`: the query's parent) | the History link, opening a contribution |
 | moderators | `Delete/SongLyricsContribution`, `Restore/…`, `ViewDeleted/…`, `Purge/…` | hiding, restoring, seeing and purging single contributions |
 | moderators | `RevertContribution/SongLyricsContribution` (+ `Read/…`) | revert |
 | moderators | `Read/SongLyricsCurrent` + `Delete/SongLyricsCurrent` | remove a whole version |
+
+A target whose `Edit` is owner-only (a row rule) takes contributions from nobody else: the
+contributor needs `Edit` on the target **row**. Open the row rule for `Edit` and keep the target's own
+attributes to its owner with `GetProtectedAttributesAsync("Edit", entity)` — every attribute but the
+contribution property. The save drops them silently, and the edit form leaves out what the loaded
+object marks read-only (an `OnAfterLoadAsync` interceptor can mark them). QnA does exactly this
+(`QuestionActions`, `QuestionTranslatorFormInterceptor`).
+
+A contribution is reachable exactly when its target is: the generated actions judge every row of the
+contribution type (a load by id, the history query, a moderator's action) by `Read` on the target type
+and the target's own row rule, so the history of a row the caller may not see (a draft) stays hidden.
+That is also the row rule Spark's startup check requires before a well-known group may `Read` the type.
 
 Synchronize writes `ContributorId` on the contribution type as `showedOn: PersistentObject` and
 `isVisible: false` when it creates the attribute (the resolved `ContributorName` is shown instead), so

@@ -394,9 +394,16 @@ Client (ng-spark, new entry point `@mintplayer/ng-spark/contributions`):
 - E2E: no demo app has a `[Contribution]` target yet — written with the M6 demo consumer.
 
 ### M6 — Demo and tests
-- [ ] A demo consumer in an existing app (DemoApp, or the QnA sample): a target with a
-  `[Contribution]` list of a two-slot element.
-- [ ] Integration tests (RavenTestDriver), covering R2–R5 and R8:
+- [x] A demo consumer in an existing app (DemoApp, or the QnA sample): a target with a
+  `[Contribution]` list of a two-slot element. → QnA `Question.Translations`
+  (`QuestionTranslation { [ContributionSlot] Language, [ContributionSlot] Script, Title, Body }`,
+  attribution `Contributor | UpdatedAt | History`), the generated contribution type `IModeratable`.
+- [x] Integration tests (RavenTestDriver), covering R2–R5 and R8 — the library cases were already
+  covered by `ContributionsRuntimeTests`/`ContributionsSurfaceTests`; M6 adds what the real wiring
+  needed: `ContributionsAuditedTargetTests` (an `IAuditable` target under History + SoftDelete, a
+  per-row protected title) and, against the real QnA host, `QnAContributionsTests` (a member translates
+  but cannot retitle, the question is not rewritten, revert/remove-version are moderator-only, a flag
+  opens a review case, anonymous cannot write). Covered earlier:
   - one request on load (`NumberOfRequests`)
   - the target is unmodified when only contributions changed
   - owner-only writes, including tampering with the id or `ContributorId`
@@ -405,7 +412,14 @@ Client (ng-spark, new entry point `@mintplayer/ng-spark/contributions`):
   - withdrawing a contribution
   - rebuild
   - a slot value that fails validation
-- [ ] An E2E test on the demo form: add a version, edit it, remove it.
+- [x] An E2E test on the demo form: add a version, edit it, remove it
+  (`QnAContributionsBrowserTests`: plus the attribution line, the History link with its chips, a
+  moderator's revert from the version page, and the withdraw notice). Built; run in the M7 sweep.
+- [x] Fixed on the way (found by wiring a real app): History stamped every edit, so a contribution-only
+  save rewrote an `IAuditable` target (R3); `--spark-verify-model` refused the generated
+  `Custom.SparkContributionsOfTarget` query (no `{Type}Actions` class); a well-known group's `Read` on
+  the contribution type failed startup (no row rule) — and a contribution of a hidden target was
+  readable by id; the ng-spark edit form ignored the loaded object's per-row read-only attributes.
 
 ### Later — MintPlayer lyrics timings (look-ahead only, NOT scheduled; see PRD §9)
 Recorded so that the Contributions design covers it. It is executed in the MintPlayer repository

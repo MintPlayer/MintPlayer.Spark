@@ -187,7 +187,7 @@ public static class SparkDevelopmentExtensions
         VerifyQueryAliasesAreUnique(contentRoot);
         VerifyRefreshTriggersAreImplemented(contentRoot);
         VerifyComposedQueriesAreUsable(contentRoot);
-        VerifyCustomQueryMethodsExist(contextType, contentRoot);
+        VerifyCustomQueryMethodsExist(builder.Services, contentRoot);
         VerifySubQueriesCanBeParentScoped(contentRoot);
         VerifyProgramUnitTargetsResolve(contentRoot);
         VerifyQueryColumnOverridesResolve(contentRoot);
@@ -890,7 +890,12 @@ public static class SparkDevelopmentExtensions
     /// query, in whatever environment gets there first. CI can see it, because by the time this runs
     /// the assemblies are loaded and the model is on disk.
     /// </remarks>
-    private static void VerifyCustomQueryMethodsExist(Type contextType, string contentRootPath)
+    /// <para>
+    /// The actions class is the one named <c>{Type}Actions</c>, or else the one a module registered
+    /// in DI as <c>IPersistentObjectActions&lt;T&gt;</c> for the type — what the executor resolves
+    /// too. Contributions serves its generated query that way, from a generic class no app declares.
+    /// </para>
+    private static void VerifyCustomQueryMethodsExist(IServiceCollection services, string contentRootPath)
     {
         var modelPath = Path.Combine(contentRootPath, "App_Data", "Model");
         if (!Directory.Exists(modelPath))
@@ -923,7 +928,8 @@ public static class SparkDevelopmentExtensions
 
                 var methodName = source[7..];
                 var actionsTypeName = (query.EntityType ?? type.Name) + "Actions";
-                var actionsType = FindTypeByName(actionsTypeName);
+                var actionsType = FindTypeByName(actionsTypeName)
+                    ?? RegisteredActionsType(services, query.EntityType ?? type.Name);
 
                 if (actionsType is null)
                 {
@@ -1212,6 +1218,18 @@ public static class SparkDevelopmentExtensions
             $"indistinguishable from a missing right, because the endpoint answers the same for " +
             $"both. Fix either side: declare \"alias\": \"{alias}\" on the target, or {otherSide}.";
     }
+
+    /// <summary>
+    /// The implementation registered as <c>IPersistentObjectActions&lt;T&gt;</c> for the entity type
+    /// named <paramref name="entityTypeName"/>, or null when no module registered one by type.
+    /// </summary>
+    private static Type? RegisteredActionsType(IServiceCollection services, string entityTypeName)
+        => services
+            .Where(d => d.ServiceType.IsGenericType
+                && d.ServiceType.GetGenericTypeDefinition() == typeof(Actions.IPersistentObjectActions<>)
+                && d.ServiceType.GetGenericArguments()[0].Name == entityTypeName)
+            .Select(d => d.ImplementationType)
+            .FirstOrDefault(t => t is not null);
 
     /// <summary>The simple-name type lookup these two checks share.</summary>
     private static Type? FindTypeByName(string simpleName)
