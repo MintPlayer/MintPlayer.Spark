@@ -35,6 +35,9 @@ public sealed class SparkPermissions
 
     /// <summary><c>Revert/T</c> together with <c>Edit/T</c> (History, #460).</summary>
     public bool CanRevert { get; init; }
+
+    /// <summary><c>RevertContribution/T</c> (Contributions): make a contribution current again.</summary>
+    public bool CanRevertContribution { get; init; }
 }
 
 /// <summary>

@@ -21,4 +21,6 @@ export interface EntityPermissions {
   /** History (#460): `History/T` (list and read revisions) and `Revert/T` together with `Edit/T`. */
   canViewHistory?: boolean;
   canRevert?: boolean;
+  /** Contributions: `RevertContribution/T` (make a contribution current again; a generated contribution type only). */
+  canRevertContribution?: boolean;
 }

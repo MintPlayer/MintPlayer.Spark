@@ -47,6 +47,49 @@ public abstract class ContributionDescriptor
         };
     }
 
+    /// <summary>
+    /// The rendering hint seeded on the contribution type's string value attributes (<c>Text</c>):
+    /// ng-spark's generic line-diff renderer, which diffs the contribution's text against the slot's
+    /// current text (PRD Q7, "opening a contribution shows a line diff against the current text").
+    /// </summary>
+    public const string LineDiffRenderingHint = "lineDiff";
+
+    /// <summary>
+    /// The <c>rendererOptions</c> of <see cref="LineDiffRenderingHint"/> on <paramref name="valueName"/>
+    /// (contributions M5b client): compare against the <b>target's</b> row of the same slot, whose value is
+    /// the current version, so a reader of the history needs no right on the current type.
+    /// <c>compareType</c> (the target's model name), <c>compareIdPattern</c>/<c>compareIdReplacement</c>
+    /// (a regular expression and replacement deriving the target id from the contribution id),
+    /// <c>compareAttribute</c> (the property), and for a collection
+    /// <c>compareRowKeyPattern</c>/<c>compareRowKeyReplacement</c> (deriving the row key, the slot tuple)
+    /// and <c>compareRowAttribute</c> (the value on the row).
+    /// </summary>
+    public static IReadOnlyDictionary<string, object> LineDiffRendererOptions(ContributionDescriptor descriptor, string valueName)
+    {
+        ArgumentNullException.ThrowIfNull(descriptor);
+        ArgumentNullException.ThrowIfNull(valueName);
+        // {targetId}/{Property}Contributions/{slot}/…/User/{userId} — slots are [A-Za-z0-9-], never '/'.
+        var slots = descriptor.IsCollection && descriptor.SlotNames.Count > 0
+            ? "(" + string.Join("/", Enumerable.Repeat("[^/]+", descriptor.SlotNames.Count)) + ")/"
+            : "";
+        var pattern = "^(.+?)/" + System.Text.RegularExpressions.Regex.Escape(descriptor.PropertyName) + "Contributions/" + slots + "User/.+$";
+        var options = new Dictionary<string, object>(StringComparer.Ordinal)
+        {
+            ["compareType"] = descriptor.TargetType.Name,
+            ["compareIdPattern"] = pattern,
+            ["compareIdReplacement"] = "$1",
+            ["compareAttribute"] = descriptor.PropertyName,
+            // The value on the compared row (a collection) or on the embedded object (single-valued).
+            ["compareRowAttribute"] = valueName,
+        };
+        if (descriptor.IsCollection)
+        {
+            options["compareRowKeyPattern"] = pattern;
+            options["compareRowKeyReplacement"] = slots.Length > 0 ? "$2" : "";
+        }
+        return options;
+    }
+
     /// <summary>The entity that declares the property (<c>Song</c>).</summary>
     public abstract Type TargetType { get; }
 
@@ -221,6 +264,22 @@ public static class ContributionRegistry
             new(descriptor.ContributionsQueryName, "Custom." + ContributionDescriptor.ContributionsQueryMethod,
                 nameof(IContribution.UpdatedAt), "desc")));
         global::MintPlayer.Spark.Abstractions.Model.SparkModelSatellites.Register(new(descriptor.TargetType, descriptor.CurrentType));
+
+        // The raw contributor id stays off the history grid (and is not drawn on the page): the
+        // resolved ContributorName is shown instead. Only for a newly created attribute.
+        global::MintPlayer.Spark.Abstractions.Model.SparkModelSatellites.SeedNewAttribute(new(
+            descriptor.ContributionType, nameof(IContribution.ContributorId),
+            ShowedOn: global::MintPlayer.Spark.Abstractions.EShowedOn.PersistentObject, IsVisible: false));
+
+        // Opening a contribution shows its text diffed against the current one (PRD Q7).
+        foreach (var value in descriptor.ValueNames)
+        {
+            if (descriptor.ContributionType.GetProperty(value)?.PropertyType != typeof(string))
+                continue;
+            global::MintPlayer.Spark.Abstractions.Model.SparkModelSatellites.SeedRenderer(new(
+                descriptor.ContributionType, value, ContributionDescriptor.LineDiffRenderingHint,
+                ContributionDescriptor.LineDiffRendererOptions(descriptor, value)));
+        }
 
         if (descriptor.AttributionAttributeNames.Count == 0)
             return;

@@ -26,6 +26,7 @@ import {
   AsDetailDisplayValuePipe,
   AsDetailTypePipe,
   AsDetailColumnsPipe,
+  AsDetailRowRendererPipe,
   AsDetailCellValuePipe,
   CanCreateDetailRowPipe,
   CanEditDetailRowPipe,
@@ -61,7 +62,7 @@ import {
 } from '@mintplayer/ng-spark/models';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
-import { SPARK_ATTRIBUTE_RENDERERS, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
+import { SPARK_ATTRIBUTE_RENDERERS, SparkResolvedRowRenderer, rowRendererInputs, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import { SparkReferencePickerComponent } from './spark-reference-picker.component';
 import { SparkLookupPickerComponent } from './spark-lookup-picker.component';
 import { RefreshCoordinator, RefreshDispatch, effectiveTrigger, refreshDispatch } from './refresh-coordinator';
@@ -81,7 +82,7 @@ export interface NestedTriggerRequest {
 
 @Component({
   selector: 'spark-po-form',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPreview, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsTreeSelectComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, SparkReferencePickerComponent, SparkLookupPickerComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayTypePipe, LookupOptionsPipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, CanEditDetailRowPipe, InlineRefOptionsPipe, ErrorForAttributePipe, SparkAttributeDescriptionComponent],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPreview, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsTreeSelectComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, SparkReferencePickerComponent, SparkLookupPickerComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayTypePipe, LookupOptionsPipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, CanEditDetailRowPipe, InlineRefOptionsPipe, ErrorForAttributePipe, SparkAttributeDescriptionComponent],
   templateUrl: './spark-po-form.component.html',
   // The CDK drag placeholder is a clone of the dragged row (so it keeps the exact row
   // height). Hide its contents but keep it occupying space, so the drop gap is blank and
@@ -92,7 +93,7 @@ export interface NestedTriggerRequest {
 export class SparkPoFormComponent {
   private readonly sparkService = inject(SparkService);
   private readonly translations = inject(SparkLanguageService);
-  private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
+  protected readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
 
   entityType = input<EntityType | null>(null);
   formData = model<Record<string, any>>({});
@@ -452,6 +453,11 @@ export class SparkPoFormComponent {
   getAsDetailCellRendererComponent(col: EntityAttributeDefinition): Type<any> | null {
     if (!col.renderer) return null;
     return this.rendererRegistry.find(r => r.name === col.renderer)?.columnComponent ?? null;
+  }
+
+  /** Inputs of an AsDetail row renderer (`rowComponent`): the row and the object being edited. */
+  getRowRendererInputs(renderer: SparkResolvedRowRenderer, row: Record<string, any>): Record<string, any> {
+    return rowRendererInputs(renderer, row, this.objectId());
   }
 
   getAsDetailCellRendererInputs(component: Type<any>, row: Record<string, any>, col: EntityAttributeDefinition): Record<string, any> {

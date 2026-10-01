@@ -448,6 +448,58 @@ public class ContributionsSurfaceTests : SparkTestDriver
         ((string[])options["attribution"]).Should().Equal("ContributorName", "UpdatedAt", "ContributionCount");
     }
 
+    // ---- M5b client contract: own-row marker, revert right, revert notice ---------------------------
+
+    [Fact]
+    public async Task Each_row_says_whether_the_caller_wrote_the_version_it_shows_never_who()
+    {
+        var host = await StartAsync();
+        host.Identity.Id = Alice;
+        await AddAsync(host, "en", "Latn", "alice's text");
+        host.Identity.Id = Bob;
+        await AddAsync(host, "ko", "Kore", "bob's korean");
+
+        static bool? Own(PO row) => row.Metadata is { } metadata && metadata.TryGetValue("contribution", out var facts)
+            ? ((JsonElement)facts!).GetProperty("own").GetBoolean()
+            : null;
+
+        host.Identity.Id = Alice;
+        var rows = Lyrics(await LoadSongAsync(host)).Objects!;
+        Own(rows.Single(r => r.Id == "en/Latn")).Should().BeTrue();
+        Own(rows.Single(r => r.Id == "ko/Kore")).Should().BeFalse();
+
+        host.Identity.Id = Carol;
+        Lyrics(await LoadSongAsync(host)).Objects!.Select(Own).Where(own => own != false).Should().BeEmpty();
+
+        var raw = await (await host.Client.SendAsync(HttpMethod.Post, "/spark/po/load",
+            JsonContent.Create(new { objectTypeId = SongTypeId.ToString(), id = SongId }))).Content.ReadAsStringAsync();
+        raw.Should().Contain("\"own\"");
+        raw.Should().NotContain(Alice).And.NotContain(Bob, "the marker is a boolean; the raw contributor ids never reach the target's page");
+    }
+
+    [Fact]
+    public async Task Permissions_report_RevertContribution()
+    {
+        var granted = await StartAsync();
+        (await granted.Client.GetPermissionsAsync(ContributionTypeId.ToString()))!.CanRevertContribution.Should().BeTrue();
+
+        var denied = await StartAsync(security: SparkTestSecurity.Permissive.Denying("RevertContribution/CoSongLyricsContribution"));
+        (await denied.Client.GetPermissionsAsync(ContributionTypeId.ToString()))!.CanRevertContribution.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_revert_answers_with_a_notice_of_what_it_hid()
+    {
+        var host = await StartAsync();
+        await ThreeVersionsAsync(host);
+
+        host.Identity.Id = Moderator;
+        var (status, body) = await RevertAsync(host, ContributionId("en", "Latn", Alice));
+
+        status.Should().Be(HttpStatusCode.OK, body);
+        body.Should().Contain("\"notify\"").And.Contain("2 newer version(s) were hidden");
+    }
+
     // ---- models ---------------------------------------------------------------------------------------
 
     private static EntityTypeFile SongModel() => new()

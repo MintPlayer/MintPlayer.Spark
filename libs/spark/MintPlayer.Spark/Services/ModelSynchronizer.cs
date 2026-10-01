@@ -963,6 +963,13 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     ShowedOn = showedOn,
                     Rules = []
                 };
+                // A library's defaults for an attribute it generates (contributions M5b: the raw
+                // ContributorId off the history grid). Creation only, so the model file owns them after.
+                if (SparkModelSatellites.NewAttributeSeedFor(entityType, propertyName) is { } newSeed)
+                {
+                    if (newSeed.ShowedOn is { } seededShowedOn) newAttr.ShowedOn = seededShowedOn;
+                    if (newSeed.IsVisible is { } seededVisible) newAttr.IsVisible = seededVisible;
+                }
                 newAttributes.Add(newAttr);
             }
             order++;

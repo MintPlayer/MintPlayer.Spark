@@ -54,9 +54,10 @@ internal interface IContributionHandler
     /// <summary>
     /// Fills the property from the current documents (one lazy request), and — with
     /// <paramref name="names"/> and <see cref="ContributionAttribution.Contributor"/> — the contributor
-    /// names (one batched <c>ISparkUserNameResolver</c> call).
+    /// names (one batched <c>ISparkUserNameResolver</c> call). With <paramref name="state"/>, records
+    /// who wrote each row's version (<see cref="ContributionRequestState.RowContributors"/>).
     /// </summary>
-    Task HydrateAsync(object target, IAsyncDocumentSession session, IServiceProvider? names);
+    Task HydrateAsync(object target, IAsyncDocumentSession session, IServiceProvider? names, ContributionRequestState? state = null);
 
     /// <summary>A current document is being deleted (a moderator removes the whole version): hides every visible contribution of its slot.</summary>
     Task<IReadOnlyList<string>> OnCurrentDeletingAsync(object current, string id, ModeratorWrite write);
@@ -124,7 +125,7 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
 
     private bool ShowsContributor => (d.Attribution & ContributionAttribution.Contributor) != 0;
 
-    public async Task HydrateAsync(object target, IAsyncDocumentSession session, IServiceProvider? names)
+    public async Task HydrateAsync(object target, IAsyncDocumentSession session, IServiceProvider? names, ContributionRequestState? state = null)
     {
         var entity = (TTarget)target;
         var targetId = session.Advanced.GetDocumentId(entity);
@@ -137,6 +138,14 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
             ? await ContributorNames.ResolveAsync(names, currents.Select(c => c.ContributorId))
             : null;
         d.SetRows(entity, [.. currents.Select(c => d.CreateRow(c, resolved?.NameOf(c.ContributorId)))]);
+
+        if (state is not null)
+        {
+            var contributors = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var current in currents)
+                contributors[d.SlotKeyOfCurrent(current)] = current.ContributorId;
+            state.RowContributors[(targetId, d.PropertyName)] = contributors;
+        }
     }
 
     /// <summary>The target's current documents, in id order — one (lazy) request up to <see cref="PageSize"/>.</summary>

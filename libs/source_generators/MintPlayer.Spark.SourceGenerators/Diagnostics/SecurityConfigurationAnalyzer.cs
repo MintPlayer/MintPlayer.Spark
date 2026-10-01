@@ -297,8 +297,9 @@ public sealed class SecurityConfigurationAnalyzer : DiagnosticAnalyzer
         if (!model.Types.TryGetValue(type, out var entry))
         {
             // A type added in this very build has no model file until synchronize runs after it.
-            // Judge it by its class instead, rather than blocking the build that sync needs.
-            var declared = compilation.GetSymbolsWithName(n => string.Equals(n, type, StringComparison.Ordinal), SymbolFilter.Type)
+            // Judge it by its class instead, rather than blocking the build that sync needs. Matched
+            // ignoring case, as the runtime validator matches the model (and its satellite fallback).
+            var declared = compilation.GetSymbolsWithName(n => string.Equals(n, type, StringComparison.OrdinalIgnoreCase), SymbolFilter.Type)
                 .OfType<INamedTypeSymbol>().FirstOrDefault();
             if (declared is null)
             {

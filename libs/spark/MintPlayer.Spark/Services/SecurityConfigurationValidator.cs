@@ -67,7 +67,24 @@ internal static class SecurityConfigurationValidator
             if (model is null)
                 continue;
 
-            var definition = model.GetEntityTypeByName(type)
+            var definition = model.GetEntityTypeByName(type);
+            if (definition is null && SatelliteNamed(model, type) is { } satellite)
+            {
+                // A satellite type (a generated contribution or current type) whose model file the
+                // next synchronize writes: the model is one build behind, so it is judged by its
+                // class, like SPARK014 does at build time. Synchronize itself must be able to start
+                // with these rights already granted.
+                if (!SatelliteAttributes(satellite).Contains(attribute, StringComparer.OrdinalIgnoreCase))
+                {
+                    throw new SparkSecurityConfigurationException(
+                        $"security.json declares a right with resource '{right.Resource}', but '{satellite.Name}' "
+                        + $"declares no attribute '{attribute}' (its attributes: {string.Join(", ", SatelliteAttributes(satellite).Take(20))}). "
+                        + "The right would match nothing.");
+                }
+                continue;
+            }
+
+            definition = definition
                 ?? throw new SparkSecurityConfigurationException(
                     $"security.json declares a right with resource '{right.Resource}', but no persistent object "
                     + $"named '{type}' exists in App_Data/Model. An attribute right must name the type by its "
@@ -83,6 +100,33 @@ internal static class SecurityConfigurationValidator
             }
         }
     }
+
+    /// <summary>
+    /// The satellite type (<see cref="Abstractions.Model.SparkModelSatellites"/>) of a model type that
+    /// is named <paramref name="name"/>, or null. Only satellites of types the model declares count:
+    /// those are the ones synchronize writes model files for.
+    /// </summary>
+    private static Type? SatelliteNamed(IModelLoader model, string name)
+    {
+        foreach (var definition in model.GetEntityTypes() ?? Enumerable.Empty<Abstractions.EntityTypeDefinition>())
+        {
+            if (SparkTypeResolver.ResolveClrType(definition.ClrType) is not { } owner)
+                continue;
+            foreach (var satellite in Abstractions.Model.SparkModelSatellites.For(owner))
+            {
+                if (string.Equals(satellite.ModelType.Name, name, StringComparison.OrdinalIgnoreCase))
+                    return satellite.ModelType;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>The public instance properties of a satellite type, but <c>Id</c>: the attributes its model file will hold.</summary>
+    private static IEnumerable<string> SatelliteAttributes(Type type)
+        => type.GetProperties(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+            .Where(p => p.GetIndexParameters().Length == 0 && p.Name != "Id")
+            .Select(p => p.Name)
+            .Distinct(StringComparer.Ordinal);
 
     /// <summary>
     /// Three rules about the rights list, all about a file meaning something other than it looks

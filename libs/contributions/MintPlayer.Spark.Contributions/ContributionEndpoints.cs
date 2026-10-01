@@ -91,6 +91,8 @@ internal static class ContributionEndpoints
             await state.FlushAuditsAsync(services, httpContext.RequestAborted);
 
             var reverted = await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id);
+            // After the commit, like the save notices: the response says what the revert did.
+            client.Notify(ContributionMessages.Format(services, ContributionMessages.Reverted, affected.Count), NotificationKind.Success);
             return SparkAddOnEndpoints.Envelope(client, reverted, StatusCodes.Status200OK);
         }
         catch (ConcurrencyException)

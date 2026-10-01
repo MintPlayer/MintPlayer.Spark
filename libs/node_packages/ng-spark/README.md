@@ -174,6 +174,21 @@ Each needs its server package: [SoftDelete](https://github.com/MintPlayer/MintPl
 [Moderation](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/libs/moderation/MintPlayer.Spark.Moderation/README.md)
 ([guide](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/docs/guide-moderation.md)). `apps/QnA` uses all three.
 
+### Contributions (preview)
+
+```ts
+import { provideSparkContributions, sparkContributionRenderers } from '@mintplayer/ng-spark/contributions';
+
+providers: [
+  provideSparkContributions(),   // "Revert to this version" (row menu + contribution page)
+  provideSparkAttributeRenderers([...sparkContributionRenderers]), // attribution row line, lineDiff
+]
+```
+
+No routes of its own: the History link opens `query/:queryId` with `?parentId=&parentType=` and one
+column filter per slot, which the query page reads for any query. Needs
+[MintPlayer.Spark.Contributions](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/libs/contributions/MintPlayer.Spark.Contributions/README.md).
+
 ## More
 
 - [Repository README](https://github.com/MintPlayer/MintPlayer.Spark/blob/master/README.md) — the developer guides

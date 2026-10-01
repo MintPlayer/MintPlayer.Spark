@@ -36,6 +36,7 @@ internal sealed partial class GetPermissions : IGetEndpoint
             {
                 canQuery = false, canRead = false, canCreate = false, canEdit = false, canDelete = false,
                 canRestore = false, canPurge = false, canViewDeleted = false, canViewHistory = false, canRevert = false,
+                canRevertContribution = false,
             });
         }
 
@@ -61,11 +62,14 @@ internal sealed partial class GetPermissions : IGetEndpoint
         var canViewDeleted = await permissionService.IsAllowedAsync("ViewDeleted", target);
         var canViewHistory = await permissionService.IsAllowedAsync("History", target);
         var canRevert = canEdit && await permissionService.IsAllowedAsync("Revert", target);
+        // Contributions' moderator verb (POST /spark/po/revert-contribution) — meaningful only on a
+        // generated contribution type; the client offers it only there.
+        var canRevertContribution = await permissionService.IsAllowedAsync("RevertContribution", target);
 
         return Results.Json(new
         {
             canQuery, canRead, canCreate, canEdit, canDelete,
-            canRestore, canPurge, canViewDeleted, canViewHistory, canRevert,
+            canRestore, canPurge, canViewDeleted, canViewHistory, canRevert, canRevertContribution,
         });
     }
 }

@@ -18,6 +18,13 @@ internal sealed class ContributionRequestState
 
     public List<SatelliteAuditEntry> Audits { get; } = [];
 
+    /// <summary>
+    /// Who wrote the version each hydrated row shows, by (target id, property) and then row key (the
+    /// slot key; empty for a single-valued property). Filled by hydration, read by the after-load
+    /// decoration that tells the client which rows are the caller's own (conflict merge, M1c).
+    /// </summary>
+    public Dictionary<(string TargetId, string Property), Dictionary<string, string>> RowContributors { get; } = [];
+
     /// <summary>Sends the notices to the response's <c>operations</c>.</summary>
     public void FlushNotices(IServiceProvider services)
     {
@@ -84,8 +91,15 @@ internal static class ContributionMessages
     /// <summary><c>{0}</c> = the slot.</summary>
     public const string NotYoursStaysAnother = "contributions.notYoursStaysAnother";
 
+    /// <summary><c>{0}</c> = how many newer versions the revert hid.</summary>
+    public const string Reverted = "contributions.reverted";
+
     internal static readonly IReadOnlyDictionary<string, TranslatedString> BuiltIn = new Dictionary<string, TranslatedString>(StringComparer.Ordinal)
     {
+        [Reverted] = TranslatedString.Create(
+            "This version is current again; {0} newer version(s) were hidden.",
+            "Cette version est de nouveau la version actuelle ; {0} version(s) plus récente(s) ont été masquées.",
+            "Deze versie is opnieuw de huidige; {0} nieuwere versie(s) werden verborgen."),
         [WithdrawnNowShowing] = TranslatedString.Create(
             "Your version of {0} was withdrawn; {1}'s version is shown now.",
             "Votre version de {0} a été retirée ; la version de {1} est maintenant affichée.",

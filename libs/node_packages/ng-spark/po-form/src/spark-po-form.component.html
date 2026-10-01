@@ -109,7 +109,7 @@
             <!-- One source of truth for an inline cell, reused by the row and by the drag
                  preview. The preview is a live Angular view (not a cloneNode), so its
                  <bs-select> binds to row[col.name] and shows the value while dragging. -->
-            <ng-template #inlineDetailCell let-row="row" let-col="col" let-attr="attr" let-rowIndex="rowIndex">
+            <ng-template #inlineDetailCell let-row="row" let-col="col" let-attr="attr" let-rowIndex="rowIndex" let-rowRenderer="rowRenderer">
               <td>
                 <!-- A row the caller may not edit renders through the same read-only span as a
                      read-only column: still fully readable, just not editable. Hiding it would
@@ -202,6 +202,13 @@
                 @if (inlineErrorMessage(attr, rowIndex, col); as errorMsg) {
                   <div class="invalid-feedback d-block">{{ errorMsg }}</div>
                 }
+                <!-- Passed for the first cell only: a row renderer (rowComponent) draws its
+                     attributes once per row, under that cell, instead of as columns. -->
+                @if (rowRenderer) {
+                  <div class="spark-row-renderer">
+                    <ng-container *ngComponentOutlet="rowRenderer.component; inputs: getRowRendererInputs(rowRenderer, row)"></ng-container>
+                  </div>
+                }
               </td>
             </ng-template>
             <bs-table [isResponsive]="true" class="mb-1">
@@ -210,12 +217,13 @@
                   @if (attr.isSortable) {
                     <th style="width: 32px"></th>
                   }
-                  @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
+                  @for (col of (attr | asDetailColumns:asDetailTypes():rendererRegistry); track col.name) {
                     <th>{{ col.label | resolveTranslation:col.name }}<spark-attribute-description [description]="col.description" /></th>
                   }
                   <th style="width: 50px"></th>
                 </tr>
               </thead>
+              @let inlineRowRenderer = (attr | asDetailRowRenderer:asDetailTypes():rendererRegistry);
               <tbody class="align-middle" cdkDropList [cdkDropListDisabled]="!attr.isSortable" (cdkDropListDropped)="onAsDetailReorder(attr, $event)">
                 @for (row of formData()[attr.name] || []; track $index; let rowIndex = $index) {
                   <tr cdkDrag [cdkDragDisabled]="!attr.isSortable">
@@ -224,8 +232,8 @@
                         <spark-icon name="grip-vertical" />
                       </td>
                     }
-                    @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
-                      <ng-container *ngTemplateOutlet="inlineDetailCell; context: { row: row, col: col, attr: attr, rowIndex: rowIndex }"></ng-container>
+                    @for (col of (attr | asDetailColumns:asDetailTypes():rendererRegistry); track col.name; let firstCol = $first) {
+                      <ng-container *ngTemplateOutlet="inlineDetailCell; context: { row: row, col: col, attr: attr, rowIndex: rowIndex, rowRenderer: firstCol ? inlineRowRenderer : null }"></ng-container>
                     }
                     <td class="text-nowrap">
                       @if (attr | canDeleteDetailRow:asDetailPermissions()) {
@@ -247,7 +255,7 @@
                             @if (attr.isSortable) {
                               <td class="text-center text-muted" style="width: 32px"><spark-icon name="grip-vertical" /></td>
                             }
-                            @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
+                            @for (col of (attr | asDetailColumns:asDetailTypes():rendererRegistry); track col.name) {
                               <ng-container *ngTemplateOutlet="inlineDetailCell; context: { row: row, col: col, attr: attr, rowIndex: rowIndex }"></ng-container>
                             }
                           </tr>
@@ -257,7 +265,7 @@
                   </tr>
                 } @empty {
                   <tr>
-                    <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes()).length + (attr.isSortable ? 2 : 1)" class="text-center text-muted">
+                    <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes():rendererRegistry).length + (attr.isSortable ? 2 : 1)" class="text-center text-muted">
                       {{ 'common.noItemsFound' | t }}
                     </td>
                   </tr>
@@ -279,13 +287,14 @@
                   @if (attr.isSortable) {
                     <th style="width: 32px"></th>
                   }
-                  @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
+                  @for (col of (attr | asDetailColumns:asDetailTypes():rendererRegistry); track col.name) {
                     <th>{{ col.label | resolveTranslation:col.name }}<spark-attribute-description [description]="col.description" /></th>
                   }
                   <th style="width: 80px"></th>
                 </tr>
               </thead>
               <tbody class="align-middle" cdkDropList [cdkDropListDisabled]="!attr.isSortable" (cdkDropListDropped)="onAsDetailReorder(attr, $event)">
+                @let modalRowRenderer = (attr | asDetailRowRenderer:asDetailTypes():rendererRegistry);
                 @for (row of formData()[attr.name] || []; track $index) {
                   <tr cdkDrag [cdkDragDisabled]="!attr.isSortable">
                     @if (attr.isSortable) {
@@ -293,12 +302,17 @@
                         <spark-icon name="grip-vertical" />
                       </td>
                     }
-                    @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
+                    @for (col of (attr | asDetailColumns:asDetailTypes():rendererRegistry); track col.name; let firstCol = $first) {
                       <td>
                         @if (getAsDetailCellRendererComponent(col); as cellRenderer) {
                           <ng-container *ngComponentOutlet="cellRenderer; inputs: getAsDetailCellRendererInputs(cellRenderer, row, col)"></ng-container>
                         } @else {
                           {{ row | asDetailCellValue:attr:col:asDetailReferenceOptions() }}
+                        }
+                        @if (firstCol && modalRowRenderer) {
+                          <div class="spark-row-renderer">
+                            <ng-container *ngComponentOutlet="modalRowRenderer.component; inputs: getRowRendererInputs(modalRowRenderer, row)"></ng-container>
+                          </div>
                         }
                       </td>
                     }
@@ -317,7 +331,7 @@
                   </tr>
                 } @empty {
                   <tr>
-                    <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes()).length + (attr.isSortable ? 2 : 1)" class="text-center text-muted">
+                    <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes():rendererRegistry).length + (attr.isSortable ? 2 : 1)" class="text-center text-muted">
                       {{ 'common.noItemsFound' | t }}
                     </td>
                   </tr>

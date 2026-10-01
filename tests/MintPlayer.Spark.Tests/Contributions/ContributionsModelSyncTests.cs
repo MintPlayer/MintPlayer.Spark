@@ -88,6 +88,43 @@ public class ContributionsModelSyncTests : IDisposable
     }
 
     [Fact]
+    public void The_contribution_type_hides_the_raw_contributor_id_and_diffs_its_text_by_default_but_authored_values_win()
+    {
+        Synchronize();
+        var contribution = Read("CoSongLyricsContribution.json");
+
+        var contributorId = Attribute(contribution, "ContributorId");
+        contributorId.GetProperty("showedOn").GetString().Should().Be("PersistentObject", "not a query column: the resolved name is shown instead");
+        contributorId.GetProperty("isVisible").GetBoolean().Should().BeFalse();
+
+        var text = Attribute(contribution, "Text");
+        text.GetProperty("renderer").GetString().Should().Be(ContributionDescriptor.LineDiffRenderingHint);
+        var options = text.GetProperty("rendererOptions");
+        options.GetProperty("compareType").GetString().Should().Be("CoSong");
+        options.GetProperty("compareAttribute").GetString().Should().Be("Lyrics");
+        options.GetProperty("compareRowAttribute").GetString().Should().Be("Text");
+        Attribute(contribution, "Language").TryGetProperty("renderer", out _).Should().BeFalse("only value attributes are diffed");
+
+        // An authored ShowedOn on the existing attribute survives: the seed applies on creation only.
+        var path = Path.Combine(ModelDir, "CoSongLyricsContribution.json");
+        File.WriteAllText(path, File.ReadAllText(path).Replace("\"isVisible\": false", "\"isVisible\": true"));
+        Synchronize();
+        Attribute(Read("CoSongLyricsContribution.json"), "ContributorId").GetProperty("isVisible").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public void The_line_diff_options_derive_the_target_id_and_the_row_key_from_the_contribution_id()
+    {
+        var options = ContributionDescriptor.LineDiffRendererOptions(CoSongLyricsContributionMetadata.Instance, "Text");
+        var id = CoSongLyricsContribution.GetId("CoSongs/1", "en", "Latn", "MintPlayerUsers/abc");
+
+        System.Text.RegularExpressions.Regex.Replace(id, (string)options["compareIdPattern"], (string)options["compareIdReplacement"])
+            .Should().Be("CoSongs/1");
+        System.Text.RegularExpressions.Regex.Replace(id, (string)options["compareRowKeyPattern"], (string)options["compareRowKeyReplacement"])
+            .Should().Be("en/Latn");
+    }
+
+    [Fact]
     public void An_authored_renderer_and_a_renamed_query_survive_synchronize()
     {
         Synchronize();

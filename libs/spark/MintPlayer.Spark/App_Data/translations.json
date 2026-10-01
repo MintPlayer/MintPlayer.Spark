@@ -47,7 +47,22 @@
     "selectAll":         { "en": "Select all",     "fr": "Tout sélectionner", "nl": "Alles selecteren" },
     "clearSelection":    { "en": "Clear selection", "fr": "Effacer la sélection", "nl": "Selectie wissen" },
     "actions":           { "en": "Actions",        "fr": "Actions",          "nl": "Acties" },
-    "clearSearch":       { "en": "Clear search",   "fr": "Effacer la recherche", "nl": "Zoekopdracht wissen" }
+    "clearSearch":       { "en": "Clear search",   "fr": "Effacer la recherche", "nl": "Zoekopdracht wissen" },
+    "filteredBy":        { "en": "Filtered by",    "fr": "Filtré par",       "nl": "Gefilterd op" },
+    "clearFilter":       { "en": "Remove this filter", "fr": "Retirer ce filtre", "nl": "Deze filter verwijderen" },
+    "clearFilters":      { "en": "Clear filters",  "fr": "Effacer les filtres", "nl": "Filters wissen" },
+    "diffUnavailable":   { "en": "The version to compare with could not be loaded; the text is shown as it is.", "fr": "La version de comparaison n'a pas pu être chargée ; le texte est affiché tel quel.", "nl": "De versie om mee te vergelijken kon niet worden geladen; de tekst wordt getoond zoals hij is." },
+    "diffIdentical":     { "en": "Identical to the current version.", "fr": "Identique à la version actuelle.", "nl": "Gelijk aan de huidige versie." },
+    "diffAdded":         { "en": "Added",          "fr": "Ajouté",           "nl": "Toegevoegd" },
+    "diffRemoved":       { "en": "Removed",        "fr": "Supprimé",         "nl": "Verwijderd" }
+  },
+  "contributions": {
+    "by":            { "en": "by {name}",      "fr": "par {name}",        "nl": "door {name}" },
+    "history":       { "en": "History ({count})", "fr": "Historique ({count})", "nl": "Geschiedenis ({count})" },
+    "historyLink":   { "en": "History",        "fr": "Historique",        "nl": "Geschiedenis" },
+    "revert":        { "en": "Revert to this version", "fr": "Revenir à cette version", "nl": "Terugzetten naar deze versie" },
+    "confirmRevert": { "en": "Make this version current again? Every newer version of it is hidden (a moderator can restore them).", "fr": "Rétablir cette version comme version actuelle ? Toutes les versions plus récentes sont masquées (un modérateur peut les restaurer).", "nl": "Deze versie opnieuw de huidige maken? Elke nieuwere versie ervan wordt verborgen (een moderator kan ze terugzetten)." },
+    "theirsKept":    { "en": "Another contributor saved a newer version of {rows} meanwhile; it is shown now and your edit to it was not kept.", "fr": "Un autre contributeur a enregistré entre-temps une version plus récente de {rows} ; elle est affichée et votre modification n'a pas été conservée.", "nl": "Een andere bijdrager heeft intussen een nieuwere versie van {rows} opgeslagen; die wordt nu getoond en uw wijziging eraan werd niet behouden." }
   },
   "softDelete": {
     "deleted":      { "en": "Deleted",  "fr": "Supprimé",   "nl": "Verwijderd" },

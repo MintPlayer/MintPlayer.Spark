@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { AS_DETAIL_ROW_KEY, AS_DETAIL_SELF_BREADCRUMB_KEY, EntityAttributeDefinition, EntityType } from '@mintplayer/ng-spark/models';
-import { MergeSchema, mergeThreeWay } from './conflict-merge';
+import { AS_DETAIL_METADATA_KEY, AS_DETAIL_ROW_KEY, AS_DETAIL_SELF_BREADCRUMB_KEY, EntityAttributeDefinition, EntityType } from '@mintplayer/ng-spark/models';
+import { MergeSchema, contributionRowIsOwn, mergeThreeWay } from './conflict-merge';
 
 function attr(name: string, extra: Partial<EntityAttributeDefinition> = {}): EntityAttributeDefinition {
   return { id: name, name, dataType: 'string', isRequired: false, isVisible: true, isReadOnly: false, order: 0, rules: [], ...extra } as EntityAttributeDefinition;
@@ -197,5 +197,71 @@ describe('mergeThreeWay — AsDetail rows', () => {
     expect(r.theirChanges).toEqual([]);
     // Theirs is the frame, so the fresh per-read fields are the ones kept.
     expect(r.merged['Lyrics'][0][AS_DETAIL_SELF_BREADCRUMB_KEY]).toBe('Korean (re-read)');
+  });
+});
+
+// Contribution rows (contributions M5b, PRD Q10): the server marks each row of a [Contribution]
+// property with `metadata.contribution.own` — whether the caller wrote the version it shows.
+function contribution(key: string, values: Record<string, any>, own: boolean): Record<string, any> {
+  return { ...row(key, values), [AS_DETAIL_METADATA_KEY]: { contribution: { own } } };
+}
+
+describe('mergeThreeWay — contribution rows', () => {
+  it("takes another contributor's version over my edit of the same row, with a notice and no conflict", () => {
+    const base = form({ Lyrics: [contribution('en/Latn', { Text: 'old' }, false)] });
+    const mine = form({ Lyrics: [contribution('en/Latn', { Text: 'mine' }, false)] });
+    const theirs = form({ Lyrics: [contribution('en/Latn', { Text: 'alice' }, false)] });
+
+    const r = mergeThreeWay(base, mine, theirs, schema);
+
+    expect(r.conflicts).toEqual([]);
+    expect(r.merged['Lyrics'][0]['Text']).toBe('alice');
+    expect(r.contributionNotices.map(n => n.path)).toEqual(['Lyrics[en/Latn]']);
+    expect(r.theirChanges.map(c => c.path)).toEqual(['Lyrics[en/Latn]']);
+  });
+
+  it('is a true conflict when the newer version is my own (a second tab of the same user)', () => {
+    const base = form({ Lyrics: [contribution('en/Latn', { Text: 'old' }, false)] });
+    const mine = form({ Lyrics: [contribution('en/Latn', { Text: 'tab B' }, false)] });
+    const theirs = form({ Lyrics: [contribution('en/Latn', { Text: 'tab A' }, true)] });
+
+    const r = mergeThreeWay(base, mine, theirs, schema);
+
+    expect(r.contributionNotices).toEqual([]);
+    expect(r.conflicts.map(c => c.path)).toEqual(['Lyrics[en/Latn].Text']);
+    expect(mergeThreeWay(base, mine, theirs, schema, { 'Lyrics[en/Latn].Text': 'mine' }).merged['Lyrics'][0]['Text']).toBe('tab B');
+  });
+
+  it("takes another contributor's added row over mine on the same slot, and their removal of their own", () => {
+    const added = mergeThreeWay(
+      form(),
+      form({ Lyrics: [contribution('ko/Kore', { Text: 'mine' }, false)] }),
+      form({ Lyrics: [contribution('ko/Kore', { Text: 'bob' }, false)] }),
+      schema);
+    expect(added.conflicts).toEqual([]);
+    expect(added.merged['Lyrics'].map((l: any) => l['Text'])).toEqual(['bob']);
+
+    const removed = mergeThreeWay(
+      form({ Lyrics: [contribution('en/Latn', { Text: 'old' }, false)] }),
+      form({ Lyrics: [contribution('en/Latn', { Text: 'mine' }, false)] }),
+      form(),
+      schema);
+    expect(removed.conflicts).toEqual([]);
+    expect(removed.merged['Lyrics']).toEqual([]);
+    expect(removed.contributionNotices.length).toBe(1);
+  });
+
+  it('leaves rows only one side touched to the generic rules, and ignores the marker when comparing', () => {
+    const base = form({ Lyrics: [contribution('en/Latn', { Text: 'old' }, true)] });
+    const theirs = form({ Lyrics: [contribution('en/Latn', { Text: 'old' }, false)] });
+    const r = mergeThreeWay(base, form({ Lyrics: [contribution('en/Latn', { Text: 'mine' }, true)] }), theirs, schema);
+    expect(r.conflicts).toEqual([]);
+    expect(r.contributionNotices).toEqual([]);
+    expect(r.merged['Lyrics'][0]['Text']).toBe('mine');
+  });
+
+  it('reads the marker only from contribution rows', () => {
+    expect(contributionRowIsOwn(row('en/Latn', {}))).toBeUndefined();
+    expect(contributionRowIsOwn(contribution('en/Latn', {}, true))).toBe(true);
   });
 });

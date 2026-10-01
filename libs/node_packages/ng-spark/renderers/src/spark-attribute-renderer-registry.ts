@@ -10,6 +10,16 @@ export interface SparkAttributeRendererRegistration {
   /** Optional component for create/edit forms. Must implement SparkAttributeEditRenderer. When omitted, the default input is used. */
   editComponent?: Type<any>;
   /**
+   * A **row** renderer for AsDetail tables (the PO detail page and the edit form). Attributes of a row
+   * type that carry this renderer are not drawn as columns; instead the component is drawn ONCE per
+   * row, under the row's first cell, given all of them. Must implement {@link SparkAttributeRowRenderer}.
+   *
+   * For facts about a row rather than columns of it — contributions' "by Alice · 3 days ago ·
+   * History (4)" line collapses three read-only attributes into one. `rendererOptions` are taken from
+   * the first such attribute (a library writes the same options on each).
+   */
+  rowComponent?: Type<any>;
+  /**
    * Relabels this column's values in a filter panel (#431).
    *
    * A renderer is a component that paints arbitrary DOM, and a distinct value has no row, so it

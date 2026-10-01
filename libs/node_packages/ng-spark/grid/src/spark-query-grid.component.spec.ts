@@ -1,4 +1,4 @@
-import { Component, input } from '@angular/core';
+import { Component, inject, input } from '@angular/core';
 import { TestBed, ComponentFixture } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
@@ -10,6 +10,7 @@ import { DatatableSettings } from '@mintplayer/ng-bootstrap/datatable';
 import { SparkQueryGridComponent } from './spark-query-grid.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { SPARK_ATTRIBUTE_RENDERERS } from '@mintplayer/ng-spark/renderers';
+import { SparkQueryRowAction, provideSparkQueryRowActions } from '@mintplayer/ng-spark/panels';
 import { EntityType, QueryResultItem, ShowedOn, SparkQuery } from '@mintplayer/ng-spark/models';
 import { settle } from '../../src/test-utils';
 
@@ -1097,4 +1098,79 @@ describe('SparkQueryGridComponent', () => {
     });
   });
 
+});
+
+// Contributions M5b: preset (URL) filters and add-on row actions (SPARK_QUERY_ROW_ACTIONS).
+describe('SparkQueryGridComponent preset filters and add-on row actions', () => {
+  beforeEach(() => TestBed.resetTestingModule());
+
+  async function setupWith(rowActions: SparkQueryRowAction[], inputs: Record<string, unknown> = {}) {
+    const service = makeService();
+    TestBed.configureTestingModule({
+      providers: [
+        provideNoopAnimations(),
+        provideRouter([]),
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SparkService, useValue: service },
+        { provide: SparkLanguageService, useValue: langStub },
+        { provide: SPARK_ATTRIBUTE_RENDERERS, useValue: [] },
+        ...provideSparkQueryRowActions(...rowActions),
+      ],
+    });
+    const fixture = TestBed.createComponent(SparkQueryGridComponent);
+    fixture.componentRef.setInput('queryId', 'q-all');
+    for (const [k, v] of Object.entries(inputs)) fixture.componentRef.setInput(k, v);
+    fixture.detectChanges();
+    await settle(fixture);
+    return { fixture, c: fixture.componentInstance, service };
+  }
+
+  it('sends the preset filters that name an attribute of the type from the first fetch, and swaps them on a change', async () => {
+    const { fixture, c, service } = await setupWith([], {
+      presetFilters: [{ name: 'FirstName', includes: ['Alice'] }, { name: 'utm_source', includes: ['mail'] }],
+    });
+
+    expect(service.executeQuery.mock.calls.at(-1)[1].columns).toEqual([{ name: 'FirstName', includes: ['Alice'] }]);
+    expect(c.appliedPresetFilters()).toEqual([{ name: 'FirstName', includes: ['Alice'] }]);
+
+    fixture.componentRef.setInput('presetFilters', []);
+    fixture.detectChanges();
+    await settle(fixture);
+    expect(service.executeQuery.mock.calls.at(-1)[1].columns).toEqual([]);
+    expect(c.appliedPresetFilters()).toEqual([]);
+  });
+
+  it('offers an add-on row action where it says so, and runs it on that row in the injection context', async () => {
+    const ran: string[] = [];
+    const offered: SparkQueryRowAction = {
+      id: 'addon', labelKey: 'addon.label',
+      isOffered: scope => scope.entityType.name === 'Person',
+      run: async ctx => { inject(SparkLanguageService); ran.push(ctx.row.id); ctx.reload(); },
+    };
+    const hidden: SparkQueryRowAction = { id: 'hidden', labelKey: 'x', isOffered: () => false, run: async () => undefined };
+    const { c, service } = await setupWith([offered, hidden]);
+
+    const actions = c.rowActions();
+    expect(actions.map(a => a.name)).toEqual(['addon']);
+    expect(actions[0].kind).toBe('addon');
+    expect(actions[0].definition.displayName).toEqual({ en: 'addon.label' });
+
+    const fetches = service.executeQuery.mock.calls.length;
+    await c.runRowAction(actions[0], { id: 'people/1' } as any);
+    expect(ran).toEqual(['people/1']);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(c.errorMessage()).toBeNull();
+    expect(service.executeQuery.mock.calls.length).toBeGreaterThanOrEqual(fetches);
+  });
+
+  it("shows an add-on's failure in the grid's alert", async () => {
+    const failing: SparkQueryRowAction = {
+      id: 'failing', labelKey: 'x', isOffered: () => true,
+      run: async () => { throw { status: 400, error: { result: { errors: [{ errorMessage: { en: 'Restore it first.' } }] } } }; },
+    };
+    const { c } = await setupWith([failing]);
+    await c.runRowAction(c.rowActions()[0], { id: 'people/1' } as any);
+    expect(c.errorMessage()).toBe('Restore it first.');
+  });
 });

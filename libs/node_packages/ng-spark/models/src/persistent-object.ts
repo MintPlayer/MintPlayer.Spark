@@ -43,4 +43,9 @@ export interface PersistentObject {
    * hook again at submit and refuses a disabled action with 403.
    */
   disabledActions?: string[];
+  /**
+   * Read-side facts an add-on attached to this object on load, keyed by the add-on (e.g.
+   * `{ contribution: { own: true } }` on a contribution row). Server-written; never sent back.
+   */
+  metadata?: Record<string, any>;
 }

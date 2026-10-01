@@ -41,9 +41,49 @@ internal sealed class ContributionsInterceptor(
         // Every reason (Load, SaveReload, Before), in the session that loaded the entity. Names only
         // for what is shown: the Before side load is diffed, never presented.
         var names = context.Reason == MaterializeReason.Before ? null : services;
+        var rows = context.Reason == MaterializeReason.Before ? null : state;
         foreach (var handler in catalog.ForTarget(context.EntityType))
-            await handler.HydrateAsync(context.Entity, context.GetSession(), names);
+            await handler.HydrateAsync(context.Entity, context.GetSession(), names, rows);
     }
+
+    /// <summary>
+    /// Marks each row of a contribution property with whether the version it shows is the caller's own
+    /// (<c>metadata.contribution.own</c>), so ng-spark's conflict merge (M1c) can tell a second tab of
+    /// the same user (a true conflict) from another contributor's version (theirs wins). A boolean, never
+    /// the contributor id: the raw ids stay off the target's page.
+    /// </summary>
+    public ValueTask OnAfterLoadAsync(LoadContext context)
+    {
+        var po = context.PersistentObject;
+        if (po.Id is not { Length: > 0 } targetId)
+            return ValueTask.CompletedTask;
+        var me = currentUser.Id;
+        foreach (var handler in catalog.ForTarget(context.EntityType))
+        {
+            var property = handler.Descriptor.PropertyName;
+            if (!state.RowContributors.TryGetValue((targetId, property), out var contributors))
+                continue;
+            if (po.Attributes.FirstOrDefault(a => a.Name == property) is not PersistentObjectAttributeAsDetail attribute)
+                continue;
+            IReadOnlyList<PersistentObject> rows = attribute.Objects
+                ?? (attribute.Object is { } single ? new[] { single } : Array.Empty<PersistentObject>());
+            foreach (var row in rows)
+            {
+                var key = handler.Descriptor.IsCollection ? row.Id ?? "" : "";
+                if (!contributors.TryGetValue(key, out var contributor))
+                    continue;
+                row.Metadata ??= [];
+                row.Metadata[ContributionRowMetadataKey] = new Dictionary<string, object?>
+                {
+                    ["own"] = me is { Length: > 0 } && string.Equals(contributor, me, StringComparison.Ordinal),
+                };
+            }
+        }
+        return ValueTask.CompletedTask;
+    }
+
+    /// <summary>The <see cref="PersistentObject.Metadata"/> key of a contribution row's facts.</summary>
+    internal const string ContributionRowMetadataKey = "contribution";
 
     public async ValueTask OnBeforeSaveAsync(SaveContext context)
     {

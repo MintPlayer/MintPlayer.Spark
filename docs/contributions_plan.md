@@ -370,13 +370,28 @@ Server:
 - Fixed on the way: the .NET client threw on a `notify` operation with `"durationMs": null`
   (`SparkClientOperations`).
 
-Client (ng-spark, next):
-- [ ] M1c integration: in the conflict merge, contribution rows (the `[Contribution]` property) only
+Client (ng-spark, new entry point `@mintplayer/ng-spark/contributions`):
+- [x] M1c integration: in the conflict merge, contribution rows (the `[Contribution]` property) only
   conflict between two edits by the same user. Another user's change to a slot is theirs-wins with a
-  notice, because it is their own contribution document.
-- [ ] The attribution row renderer (`contributionAttribution`) with the History link, the query-list
-  page reading `parentId`/`parentType` and the slot filters from the URL, the revert button, and the
-  line-diff renderer (contract: library README, "Client contract").
+  notice, because it is their own contribution document. "Same user" is the server's per-row
+  `metadata.contribution.own` (new `PersistentObject.Metadata`, set by the interceptor's
+  `OnAfterLoadAsync`), not a client-side id comparison: the row carries no `ContributorId` and
+  ng-spark knows no user id, and a boolean keeps raw ids off the target's page.
+- [x] The attribution row renderer (`contributionAttribution`, a new generic `rowComponent` kind of
+  registration: drawn once per row under the first cell, its attributes dropped from the columns, on
+  po-detail and both po-form tables) with the History link; the query-list page reading
+  `parentId`/`parentType` and column filters from the URL (generic; grid `presetFilters`, chips); the
+  revert action (new generic `SPARK_QUERY_ROW_ACTIONS` grid row-menu extension + a detail action;
+  `canRevertContribution` in the permissions endpoint; a success notice); and the generic `lineDiff`
+  renderer (LCS, no dependency), compared against the target's row of the same slot.
+- [x] Server follow-ups: `ContributorId` seeded `showedOn: PersistentObject`, `isVisible: false` on
+  creation (`SparkModelSatellites.SeedNewAttribute`); `lineDiff` seeded on the contribution type's
+  string values; SPARK014 and the runtime validator accept rights on the generated type names through
+  the CLR fallback (the validator now falls back to the satellite class; SPARK014's lookup ignores
+  case like the runtime). Tests: `ContributionsHiddenVisibilityTests`,
+  `ContributionsSecurityValidationTests`, `ContributionTypeRightsAnalyzerTests`, new cases in
+  `ContributionsSurfaceTests`/`ContributionsModelSyncTests`; ng-spark specs.
+- E2E: no demo app has a `[Contribution]` target yet — written with the M6 demo consumer.
 
 ### M6 — Demo and tests
 - [ ] A demo consumer in an existing app (DemoApp, or the QnA sample): a target with a

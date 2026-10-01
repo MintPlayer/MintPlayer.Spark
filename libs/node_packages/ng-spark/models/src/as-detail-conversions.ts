@@ -46,6 +46,7 @@ export function nestedPoToDict(po: PersistentObject | null | undefined): Record<
   // offset to the viewer's on every save, even for rows nobody touched.
   const originalDates = originalDatesOf(po);
   if (originalDates) dict[AS_DETAIL_ORIGINAL_DATES_KEY] = originalDates;
+  if (po.metadata) dict[AS_DETAIL_METADATA_KEY] = po.metadata;
   return dict;
 }
 
@@ -178,7 +179,21 @@ export function isReservedAsDetailKey(key: string): boolean {
   return key === AS_DETAIL_ROW_KEY
     || key === AS_DETAIL_SELF_BREADCRUMB_KEY
     || key === AS_DETAIL_BREADCRUMBS_KEY
-    || key === AS_DETAIL_ORIGINAL_DATES_KEY;
+    || key === AS_DETAIL_ORIGINAL_DATES_KEY
+    || key === AS_DETAIL_METADATA_KEY;
+}
+
+/**
+ * Reserved key under which a flattened row keeps the {@link PersistentObject.metadata} the server
+ * attached to it on load (an add-on's read-side facts — contributions' `{ contribution: { own } }`).
+ * Never sent back: `dictToNestedPo` walks the entity type's attributes, never the dict's keys.
+ */
+export const AS_DETAIL_METADATA_KEY = '__sparkMetadata';
+
+/** The metadata the server attached to a flattened row under `key`, or undefined. */
+export function rowMetadata<T = any>(row: Record<string, any> | null | undefined, key: string): T | undefined {
+  const metadata = row?.[AS_DETAIL_METADATA_KEY];
+  return metadata && typeof metadata === 'object' ? (metadata as Record<string, any>)[key] as T : undefined;
 }
 
 /**
@@ -211,6 +226,7 @@ export function nestedPoToDisplayRow(po: PersistentObject | null | undefined): R
   if (typeof po.id === 'string' && po.id !== '') {
     dict[AS_DETAIL_ROW_KEY] = po.id;
   }
+  if (po.metadata) dict[AS_DETAIL_METADATA_KEY] = po.metadata;
   return dict;
 }
 

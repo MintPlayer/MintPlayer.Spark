@@ -18,6 +18,7 @@ import {
   CustomActionDefinition,
   StreamingMessage,
   QueryColumn,
+  QueryColumnFilter,
   QueryResultItem,
   SparkDeletedFilter,
 } from '@mintplayer/ng-spark/models';
@@ -207,8 +208,10 @@ export class SparkQueryListComponent {
 
     // Separate from paramMap: switching the recycle bin on changes only the query string, and must
     // not re-resolve the query (which would reset page, sort and filters for nothing).
-    this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe(query =>
-      this.deletedMode.set(parseSparkDeletedParam(query.get('deleted')) ?? 'exclude'));
+    this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe(query => {
+      this.deletedMode.set(parseSparkDeletedParam(query.get('deleted')) ?? 'exclude');
+      this.applyUrlScope(query);
+    });
 
     this.destroyRef.onDestroy(() => this.disconnectStreaming());
 
@@ -232,6 +235,67 @@ export class SparkQueryListComponent {
       this.allItems();
       if (this.isStreaming()) this.applyFilter();
     });
+  }
+
+  // --- URL scope: parent and column filters ----------------------------------------------------
+
+  /**
+   * The parent the URL scopes the query to (`?parentId=…&parentType=…`), sent exactly as a sub-query
+   * sends its container. Both or neither: one without the other is ignored, as the server does.
+   */
+  protected readonly urlParentId = signal('');
+  protected readonly urlParentType = signal('');
+
+  /**
+   * Column filters from the URL: every other query-string parameter, `?Language=en&Script=Latn`
+   * (repeat a name for several values). The grid applies only those naming an attribute of the
+   * query's type; the rest are ignored. This is the contributions History link's shape, and works for
+   * any query.
+   */
+  protected readonly urlFilters = signal<QueryColumnFilter[]>([]);
+
+  /** The URL filters the grid applied, as removable chips. */
+  protected readonly activeUrlFilters = computed(() => this.grid()?.appliedPresetFilters() ?? []);
+
+  /** Query-string names the page or the row links own, never column filters. */
+  private static readonly reservedParams = new Set(['deleted', 'parentId', 'parentType', 'queryId', 'parentDeleted']);
+
+  private applyUrlScope(query: ParamMap): void {
+    const parentId = query.get('parentId') ?? '';
+    const parentType = query.get('parentType') ?? '';
+    const both = !!parentId && !!parentType;
+    if (this.urlParentId() !== (both ? parentId : '')) this.urlParentId.set(both ? parentId : '');
+    if (this.urlParentType() !== (both ? parentType : '')) this.urlParentType.set(both ? parentType : '');
+
+    const filters: QueryColumnFilter[] = query.keys
+      .filter(key => !SparkQueryListComponent.reservedParams.has(key))
+      .map(key => ({ name: key, includes: query.getAll(key).filter(v => v !== '') }))
+      .filter(f => f.includes.length > 0);
+    // Only on a real change: a new array would refetch the grid for nothing (the Deleted toggle
+    // also changes the query string).
+    if (JSON.stringify(filters) !== JSON.stringify(this.urlFilters())) this.urlFilters.set(filters);
+  }
+
+  /** Drops one URL filter (its query-string parameter); the grid refetches. */
+  protected clearUrlFilter(name: string): void {
+    this.router.navigate([], { relativeTo: this.route, queryParams: { [name]: null }, queryParamsHandling: 'merge', replaceUrl: true });
+  }
+
+  /** Drops the parent and every URL filter. */
+  protected clearUrlScope(): void {
+    const queryParams: Record<string, null> = { parentId: null, parentType: null };
+    for (const filter of this.urlFilters()) queryParams[filter.name] = null;
+    this.router.navigate([], { relativeTo: this.route, queryParams, queryParamsHandling: 'merge', replaceUrl: true });
+  }
+
+  protected filterValues(filter: QueryColumnFilter): string {
+    return (filter.includes ?? []).map(v => String(v)).join(', ');
+  }
+
+  /** The column's label for a chip: the query's own column label, else the attribute's, else its name. */
+  protected filterLabel(name: string): string {
+    const attribute = this.entityType()?.attributes?.find(a => a.name === name);
+    return this.lang.resolve(attribute?.label) || name;
   }
 
   private async onParamsChange(params: ParamMap): Promise<void> {

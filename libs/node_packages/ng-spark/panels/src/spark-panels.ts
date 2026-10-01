@@ -4,6 +4,7 @@ import {
   EntityType,
   PersistentObject,
   SparkDeletedFilter,
+  QueryResultItem,
   SparkQuery,
 } from '@mintplayer/ng-spark/models';
 
@@ -94,6 +95,48 @@ export interface SparkQueryListAction {
   component: Type<unknown>;
   /** Priority in the action bar's overflow ordering; defaults to 60. */
   priority?: number;
+}
+
+/** What a grid row action (`SPARK_QUERY_ROW_ACTIONS`) is asked whether it is offered. */
+export interface SparkQueryRowActionScope {
+  query: SparkQuery;
+  entityType: EntityType;
+  permissions: EntityPermissions | null;
+  /** The grid's soft-deletion mode (null when the grid sends none). */
+  deleted: SparkDeletedFilter | null;
+}
+
+/** What a grid row action runs with: the scope, the one row, and the grid's refresh. */
+export interface SparkQueryRowActionContext extends SparkQueryRowActionScope {
+  row: QueryResultItem;
+  /** Re-runs the grid's query (page, sort and filters kept). */
+  reload(): void;
+}
+
+/**
+ * An add-on entry of a Spark grid's per-row `⋮` menu (the query page and the sub-query card): an
+ * action an add-on package serves on its own route, so it is not in the type's custom-action
+ * catalogue (e.g. Contributions' "Revert to this version").
+ *
+ * `run` executes in the grid's injection context, so it may `inject()` synchronously before its first
+ * `await`. A rejection is shown in the grid's alert (the server's message when it sent one).
+ */
+export interface SparkQueryRowAction {
+  id: string;
+  /** Translation key of the menu label. */
+  labelKey: string;
+  /** Order among the row menu's entries (custom actions are 10+); defaults to 50. */
+  priority?: number;
+  isOffered(scope: SparkQueryRowActionScope): boolean;
+  run(context: SparkQueryRowActionContext): Promise<void>;
+}
+
+/** Multi-provider: add-on entries of every Spark grid's row menu. */
+export const SPARK_QUERY_ROW_ACTIONS = new InjectionToken<SparkQueryRowAction[]>('SparkQueryRowActions');
+
+/** Registers grid row actions (multi — every call adds). */
+export function provideSparkQueryRowActions(...actions: SparkQueryRowAction[]): Provider[] {
+  return actions.map(action => ({ provide: SPARK_QUERY_ROW_ACTIONS, useValue: action, multi: true }));
 }
 
 /** Multi-provider: panels under the attributes of the routed detail page. */

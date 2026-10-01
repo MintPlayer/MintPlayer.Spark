@@ -85,6 +85,17 @@ public sealed class PersistentObject : IDisablable
     }
 
     /// <summary>
+    /// Read-side facts an add-on attaches to a loaded object (an interceptor's
+    /// <c>OnAfterLoadAsync</c>, through <see cref="Interceptors.LoadContext"/>), keyed by the add-on's
+    /// own name — e.g. Contributions marks each row of a <c>[Contribution]</c> property with
+    /// <c>{"contribution": {"own": true}}</c> when the caller wrote the version shown. Omitted when
+    /// empty. Server-written only: the framework never reads it from a posted object, and clients
+    /// never send it back (ng-spark keeps it out of the save payload).
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, object?>? Metadata { get; set; }
+
+    /// <summary>
     /// Optimistic-concurrency token. Populated by the server on read (RavenDB's change
     /// vector for the underlying entity). Clients should echo the value back on update —
     /// if the server's current change vector differs, the update is rejected with HTTP 409.

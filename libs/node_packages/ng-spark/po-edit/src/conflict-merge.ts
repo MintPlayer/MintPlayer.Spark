@@ -3,6 +3,7 @@ import {
   EntityAttributeDefinition,
   EntityTypeResolver,
   formValuesEqual,
+  rowMetadata,
   selfBreadcrumb,
 } from '@mintplayer/ng-spark/models';
 
@@ -74,6 +75,33 @@ export interface MergeResult {
   conflicts: MergeConflict[];
   /** What the other side changed that was taken over without a conflict. */
   theirChanges: TheirChange[];
+  /**
+   * Contribution rows (a `[Contribution]` property, contributions M5b) that I changed but that another
+   * contributor changed too: theirs won, my edit of them was dropped — say so.
+   */
+  contributionNotices: ContributionNotice[];
+}
+
+/** A contribution row taken from theirs over my own edit, because another contributor wrote it. */
+export interface ContributionNotice {
+  /** `Lyrics[en/Latn]`. */
+  path: string;
+  /** The list attribute. */
+  attribute: EntityAttributeDefinition;
+  /** A readable name for the row (its breadcrumb, else its key). */
+  rowLabel: string;
+}
+
+/** The key under which the server marks a contribution row (`metadata.contribution`). */
+export const CONTRIBUTION_ROW_METADATA = 'contribution';
+
+/**
+ * Whether a flattened row is a contribution row whose shown version the caller wrote: `true` / `false`
+ * for a contribution row, `undefined` for any other row (the server marks contribution rows on load).
+ */
+export function contributionRowIsOwn(row: Record<string, any> | undefined): boolean | undefined {
+  const facts = rowMetadata<{ own?: unknown }>(row, CONTRIBUTION_ROW_METADATA);
+  return facts && typeof facts.own === 'boolean' ? facts.own : undefined;
 }
 
 /**
@@ -98,9 +126,9 @@ export function mergeThreeWay(
   schema: MergeSchema,
   choices: Readonly<Record<string, ConflictSide>> = {},
 ): MergeResult {
-  const ctx: MergeContext = { resolve: schema.resolve, choices, conflicts: [], theirChanges: [] };
+  const ctx: MergeContext = { resolve: schema.resolve, choices, conflicts: [], theirChanges: [], contributionNotices: [] };
   const merged = mergeObject(schema.attributes, base ?? {}, mine ?? {}, theirs ?? {}, '', undefined, undefined, ctx);
-  return { merged, conflicts: ctx.conflicts, theirChanges: ctx.theirChanges };
+  return { merged, conflicts: ctx.conflicts, theirChanges: ctx.theirChanges, contributionNotices: ctx.contributionNotices };
 }
 
 interface MergeContext {
@@ -108,6 +136,7 @@ interface MergeContext {
   choices: Readonly<Record<string, ConflictSide>>;
   conflicts: MergeConflict[];
   theirChanges: TheirChange[];
+  contributionNotices: ContributionNotice[];
 }
 
 function mergeObject(
@@ -238,6 +267,19 @@ function mergeRow(
   theirs: Row | undefined,
   ctx: MergeContext,
 ): Row | undefined {
+  // A contribution row (contributions M5b, PRD Q10) is the caller's own contribution document, not
+  // a shared field: when both sides touched it and the version THEY show was written by another
+  // contributor, theirs wins with a notice — my save would otherwise silently supersede a version I
+  // never saw. Only a second tab of the same user (theirs is my own version) is a true conflict, and
+  // falls through to the generic rules below. Their removal of a row is judged by who wrote the
+  // version it removed (base).
+  const own = contributionRowIsOwn(theirs ?? base);
+  if (own === false && !formValuesEqual(mine, base) && !formValuesEqual(theirs, base)) {
+    ctx.theirChanges.push({ path: at.path, attribute: at.attribute, rootAttribute: at.rootAttribute });
+    ctx.contributionNotices.push({ path: at.path, attribute: at.attribute, rowLabel: at.rowLabel ?? at.path });
+    return theirs;
+  }
+
   if (base === undefined) {
     // Added. On both sides with the same key is a clash unless the content is the same.
     if (mine !== undefined && theirs !== undefined) {

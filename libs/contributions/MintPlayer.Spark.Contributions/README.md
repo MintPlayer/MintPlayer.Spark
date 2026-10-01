@@ -1,10 +1,11 @@
 # MintPlayer.Spark.Contributions (preview)
 
-> ⚠️ **Preview.** The server side works: loading, saving, recomputing the current version, rebuild,
+> ⚠️ **Preview.** Server and client work: loading, saving, recomputing the current version, rebuild,
 > the generated model and contributions query, contributor names, `RevertContribution`, removing a
-> whole version, and the save notices. Not yet: the ng-spark client pieces (the attribution row
-> renderer, the line-diff renderer, the History link, the revert button, and the conflict-merge rule
-> for contribution rows). They are built against the [client contract](#client-contract) below.
+> whole version, the save notices, and the ng-spark pieces in `@mintplayer/ng-spark/contributions`
+> (the attribution row renderer with the History link, the line-diff renderer, the revert action, and
+> the conflict-merge rule for contribution rows) — see [Client](#client-ng-spark). Not yet: a demo
+> consumer and its E2E test (M6).
 
 Per-user contributions with **latest-wins** for MintPlayer.Spark. Mark a property of an entity with
 `[Contribution]`: every user edits their own version of each slot, the latest non-hidden version is
@@ -228,14 +229,50 @@ verb. The one new verb is `RevertContribution`. With `Song.Lyrics`:
 | moderators | `RevertContribution/SongLyricsContribution` (+ `Read/…`) | revert |
 | moderators | `Read/SongLyricsCurrent` + `Delete/SongLyricsCurrent` | remove a whole version |
 
-Deny `Query/SongLyricsContribution/ContributorId` (attribute right) to keep raw user ids out of the
-history grid. The generated type names exist in the model only after synchronize; until then SPARK012
-warns about them (the attribute-level validator SPARK014 falls back to the CLR class). The runtime
-validator checks attribute rights against the model, so synchronize before granting them.
+Synchronize writes `ContributorId` on the contribution type as `showedOn: PersistentObject` and
+`isVisible: false` when it creates the attribute (the resolved `ContributorName` is shown instead), so
+raw user ids stay out of the history grid by default; an authored value in the model file wins.
+Denying `Query/SongLyricsContribution/ContributorId` also works. The generated type names exist in the
+model only after synchronize; until then SPARK012 warns about them, and both the attribute-level
+analyzer SPARK014 and the runtime validator fall back to the generated CLR class (one build behind is
+fine).
+
+## Client (ng-spark)
+
+The client pieces live in `@mintplayer/ng-spark/contributions` (no new npm package, no routes of its
+own — PRD Q7):
+
+```ts
+providers: [
+  provideSpark(...),
+  provideSparkSoftDelete(),          // the Deleted toggle, Restore/Purge of single contributions
+  provideSparkContributions(),       // "Revert to this version": row menu + contribution page
+  provideSparkAttributeRenderers([...sparkContributionRenderers, ...yourRenderers]),
+]
+```
+
+- `contributionAttribution` is an AsDetail **row** renderer (`rowComponent`, see
+  `docs/guide-custom-attribute-renderers.md`): the attribution attributes are not drawn as columns but
+  as one line under the row's first cell, on the target's detail page and in its edit form.
+- The query page (`query/:queryId`) reads `parentId`/`parentType` and the slot filters from the URL,
+  for any query, and shows them as removable chips.
+- `lineDiff` is generic; on the contribution type it compares against the **target's row of the same
+  slot** (whose value is the current version), so a history reader needs `Read/Song` — which the
+  query's parent already requires — and no right on the current type. Synchronize seeds it on the
+  contribution type's `string` value attributes (`ContributionDescriptor.LineDiffRendererOptions`:
+  the target id and the row key are derived from the contribution id by a regular expression).
+- Revert is offered for `RevertContribution/{type}` (`canRevertContribution` in
+  `GET /spark/permissions/{type}`), on a generated contributions query (source
+  `Custom.SparkContributionsOfTarget`) and its contribution pages, outside the recycle bin; it asks
+  first, and the response carries a notice ("…newer version(s) were hidden").
+- Conflict merge: each row of a `[Contribution]` property loaded through `po/load` carries
+  `metadata.contribution.own` — whether the caller wrote the version it shows (a boolean, never the
+  contributor id). After a 409, a row both sides touched whose version theirs shows is **another**
+  contributor's is theirs-wins, with a notice; only the caller's own (a second tab) is a true conflict.
 
 ## Client contract
 
-What the ng-spark client pieces implement against (the server side is done):
+What the ng-spark client pieces implement against:
 
 - **Attribution row renderer.** An AsDetail row attribute with `renderer: "contributionAttribution"`
   (`ContributionDescriptor.AttributionRenderingHint`). The row carries `ContributorName` (string or
@@ -258,11 +295,13 @@ What the ng-spark client pieces implement against (the server side is done):
   (`columns: [{ name: "Language", includes: ["en"] }, …]`). No new Angular route: `sparkRoutes()`'s
   `query/:queryId` (the query-list page then reads these query-string parameters).
 - **Revert button** on the query's rows and the contribution page: `POST
-  /spark/po/revert-contribution { objectTypeId, id }`, shown for `RevertContribution/{type}` holders.
-- **Line diff renderer**: a contribution's value attributes against the current document
-  (`{targetId}/{Property}/{slots…}`, the current type's PO).
+  /spark/po/revert-contribution { objectTypeId, id }`, shown for `RevertContribution/{type}` holders
+  (`canRevertContribution`). Answers with a `notify` saying how many newer versions it hid.
+- **Line diff renderer** (`renderer: "lineDiff"`, seeded on the contribution type's string values): a
+  contribution's text against the current version — the target's row of the same slot.
 - **Conflict merge** (M1c): rows of the `[Contribution]` property conflict only between two edits by
-  the same user; another user's change to a slot is theirs-wins with a notice.
+  the same user (`metadata.contribution.own` on each loaded row); another user's change to a slot is
+  theirs-wins with a notice.
 - **Notices** arrive as ordinary `notify` operations on the save response.
 
 ## Packaging

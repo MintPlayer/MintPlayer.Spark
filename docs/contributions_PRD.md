@@ -690,8 +690,37 @@ the dark-mode work, whose ng-bootstrap half is tracked in MintPlayer/mintplayer-
     other users' versions); notices and audits are sent after the commit; names are resolved per
     hydrated entity (one batched resolver call), not inside the lazy request.
   - **Deviations:** a refused revert is Spark's indistinguishable 404 (401 anonymous), not a 403 —
-    the add-on refusal convention (#453). The history grid shows `ContributorId` too unless the app
-    denies `Query/{Type}Contribution/ContributorId`.
+    the add-on refusal convention (#453). ~~The history grid shows `ContributorId` too unless the app
+    denies `Query/{Type}Contribution/ContributorId`.~~ (M5b client: hidden by default, below.)
+
+- **M5b (client half):** `@mintplayer/ng-spark/contributions` — `provideSparkContributions()` and
+  `sparkContributionRenderers` (the `contributionAttribution` row renderer with the History link, and
+  the generic `lineDiff` renderer); the query page reads `parentId`/`parentType` and column filters
+  from the URL for any query (grid `presetFilters`, removable chips); "Revert to this version" in the
+  contributions query's row menu and on a contribution's page; contribution-aware conflict merge.
+  Server follow-ups: `ContributorId` hidden by default, `lineDiff` seeded, a revert success notice,
+  `canRevertContribution`, the own-row marker, and the CLR fallback for rights on the generated types
+  in the runtime validator.
+  - **Decisions:** the "same user" test is the server's boolean `metadata.contribution.own` per row,
+    not a comparison of ids on the client (the row has no `ContributorId`, the client knows no user
+    id, and raw ids stay off the target page); the line diff compares with the target's row of the
+    slot rather than the current type's PO (so a history reader needs no right on the current type);
+    a row renderer is a new `rowComponent` registration kind; add-on row actions are a new
+    `SPARK_QUERY_ROW_ACTIONS` extension; revert is offered only on a generated contributions query
+    (source `Custom.SparkContributionsOfTarget`) and on types that have one.
+
+**Breaking changes (M5b client), for the release notes:**
+- `PersistentObject.Metadata` (new, server-written; ng-spark keeps it under the reserved row key
+  `__sparkMetadata`, ignored by comparisons and never posted).
+- `GET /spark/permissions/{type}` also answers `canRevertContribution`.
+- `SparkModelSatellites.SeedNewAttribute` (new); synchronize writes `ContributorId` as
+  `showedOn: PersistentObject`, `isVisible: false` and `Text`-like values with `renderer: "lineDiff"`
+  on newly synchronized contribution types (model hash changes; re-run synchronize).
+- ng-spark: `AsDetailColumnsPipe` takes the renderer registry as an optional third argument;
+  `SparkQueryToolbarAction.kind` gains `'addon'`; `MergeResult.contributionNotices` (new); the query
+  page treats unknown query-string parameters that name an attribute as column filters.
+- The runtime security validator accepts attribute rights on a satellite type that is not in the
+  model yet (CLR fallback), and SPARK014's CLR fallback ignores case.
 
 **Breaking changes for the release notes** (no backward compatibility, preview; minor version bumps
 only):

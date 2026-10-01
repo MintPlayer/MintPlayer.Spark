@@ -28,7 +28,7 @@ import {
   RefreshOverlay,
   applyOverlay,
 } from '@mintplayer/ng-spark/models';
-import { ConflictSide, MergeResult, MergeSchema, TheirChange, mergeThreeWay } from './conflict-merge';
+import { ConflictSide, ContributionNotice, MergeResult, MergeSchema, TheirChange, mergeThreeWay } from './conflict-merge';
 import { SparkPoConflictDialogComponent } from './spark-po-conflict-dialog.component';
 import { ReferenceLabels, addReferenceLabelsOf, addReferenceLabelsOfOptions } from './reference-labels';
 
@@ -373,7 +373,7 @@ export class SparkPoEditComponent {
     const result = mergeThreeWay(baseForm, mine, theirsForm, schema);
 
     if (result.conflicts.length === 0) {
-      this.rebase(theirs, result.merged, result.theirChanges, 'common.conflictMerged');
+      this.rebase(theirs, result.merged, result.theirChanges, 'common.conflictMerged', result.contributionNotices);
       return;
     }
     this.pendingConflict.set({ loaded: base, theirs, base: baseForm, mine, theirsForm, schema, result });
@@ -436,7 +436,7 @@ export class SparkPoEditComponent {
     if (!pending) return;
     const result = mergeThreeWay(pending.base, pending.mine, pending.theirsForm, pending.schema, choices);
     this.pendingConflict.set(null);
-    this.rebase(pending.theirs, result.merged, result.theirChanges, 'common.conflictResolved');
+    this.rebase(pending.theirs, result.merged, result.theirChanges, 'common.conflictResolved', result.contributionNotices);
   }
 
   /** Closing the dialog changes nothing: the form keeps its values and the conflict message. */
@@ -449,7 +449,7 @@ export class SparkPoEditComponent {
    * base a second conflict is merged against. `isValueChanged` is computed against it on save, so
    * only what differs from their version is sent as changed.
    */
-  private rebase(theirs: PersistentObject, merged: Record<string, any>, theirChanges: TheirChange[], noticeKey: string): void {
+  private rebase(theirs: PersistentObject, merged: Record<string, any>, theirChanges: TheirChange[], noticeKey: string, contributionNotices: ContributionNotice[] = []): void {
     this.item.set(theirs);
     this.formData.set(structuredClone(merged));
     this.validationErrors.set([]);
@@ -459,7 +459,12 @@ export class SparkPoEditComponent {
     const text = fields.length > 0
       ? this.language.t(noticeKey).replace('{fields}', fields.join(', '))
       : this.language.t(`${noticeKey}NoFields`);
-    this.conflictNoticeText.set(text);
+    // Contribution rows another contributor rewrote: theirs won over my edit (PRD Q10), and says so.
+    const rows = [...new Set(contributionNotices.map(n => n.rowLabel))];
+    const contributions = rows.length > 0
+      ? ' ' + this.language.t('contributions.theirsKept').replace('{rows}', rows.join(', '))
+      : '';
+    this.conflictNoticeText.set(text + contributions);
   }
 
   /** The dialog's "they also changed" line, or null when the merge took nothing of theirs. */
