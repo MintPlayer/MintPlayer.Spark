@@ -903,10 +903,24 @@ running; its ranked findings will be recorded here as item 10.
 
 **Owner decision (2026-10-01): test databases run in memory by default, configurable.** The
 RavenTestDriver bases in `MintPlayer.Spark.Testing` keep test databases in memory instead of on
-disk unless configured otherwise; developers with less RAM can switch persistence to disk. Evidence
-for the gain is pending (the RavenDB agent's report and a measurement). Today no driver sets
-`RunInMemory` or `DataDirectory` (grep of `libs/testing`, 2026-10-01). The configuration surface and
-the RavenDB setting are to be chosen from that report.
+disk unless configured otherwise; developers with less RAM can switch persistence to disk.
+~~Evidence for the gain is pending … no driver sets `RunInMemory`~~ **Superseded (2026-10-01):
+in-memory is ALREADY the behaviour.** The RavenDB test driver itself appends `--RunInMemory=true` to
+the embedded server's arguments (`RavenTestDriver.cs:342-344,366-368` in RavenDB.TestDriver 7.2.6;
+the string is confirmed in the installed DLL). The grep of `libs/testing` was a clean grep, not
+evidence. So the decision brings **no speed gain**; the work is the **opt-out** only:
+- Per-database `RunInMemory` in the database record, set in `PreConfigureDatabase`, as RavenDB's own
+  suite does (`RavenTestBase.cs:236-252`). The server-wide flag can't be turned off, because the
+  driver appends it after the caller's arguments.
+- The configuration surface: a shared helper used by `SparkTestDriver`, `SparkSharedDatabase` and
+  `CoverageRavenTest`, with `protected virtual bool RunInMemory` whose default reads the environment
+  variable `SPARK_TEST_RAVEN_PERSIST`; a subclass override wins. Not `xunit.runner.json`, which has no
+  custom keys.
+- Optionally, `DataDirectory` = `%TEMP%\spark-ravendb\<pid>`. In-memory storage still uses
+  memory-mapped temp files (deleted on close, never fsync'd), by default under the Nx-cached
+  `bin\RavenDB`.
+- Estimated memory: 5–20 MB per empty database plus 1–5 MB per index; about 1 GB peak per test
+  process today.
 
 **Measured: xUnit uses half the cores.** `tests/MintPlayer.Spark.Tests/xunit.runner.json:3` sets
 `"maxParallelThreads": "0.5x"`: 2 threads on CI's 4-vCPU runner (the CI agent saw 2) and 4 on the
