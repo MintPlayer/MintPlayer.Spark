@@ -986,6 +986,16 @@ sweep therefore has to be practical locally, and CI's behaviour stays exactly as
    serial sweep's 26.2 min *without* E2E. MintPlayer.Spark.Tests went from 21m21s to **18m20s** and
    remains the critical path. So the licence was not the suspected 4× factor: per-test setup and
    teardown is, which is what (5) targets. Details are in the repo `CLAUDE.md`, "The local sweep".
+9. **Rejected: GPU (CUDA) acceleration and Defender exclusions** (owner questions, 2026-10-01).
+   - **GPU:** nothing in these suites is GPU work. RavenDB has no GPU support (indexing, Voron
+     storage and transactions all run on the CPU), and the time goes to database setup and teardown,
+     host boot and I/O, which are latency-bound, not data-parallel.
+   - **Defender exclusions:** group policy blocks local exclusions on the owner's machine, and
+     Defender real-time protection was already off there (owner's check, 2026-10-01). So on-access
+     scanning by Defender is not a factor in the local times.
+   - **Hardware (for reading the numbers):** i7-11370H (4 cores, 8 threads) with a Samsung 980 Pro
+     NVMe. The CPU is the constraint: MintPlayer.Spark.Tests takes 511 s run alone against 18m20s
+     inside the parallel `test:affected` run (item 8), and CodeCoverage.Tests 3m34s against 10m41s.
 
 ## 6. Risks
 
