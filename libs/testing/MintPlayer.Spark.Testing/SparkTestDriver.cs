@@ -16,11 +16,15 @@ namespace MintPlayer.Spark.Testing;
 /// case</strong> — xUnit constructs a fresh instance for every <c>[Fact]</c> and every
 /// <c>[Theory]</c> row.
 /// <para>
-/// That granularity is not free: <see cref="InitializeAsync"/> creates a brand-new RavenDB
-/// database per test case (<see cref="RavenTestDriver.GetDocumentStore"/> names them
-/// <c>InitializeAsync_{N}</c> off a process-wide counter), all on one shared embedded server.
-/// Across this suite that is several hundred create/delete cycles per run, so test parallelism
-/// is capped in <c>xunit.runner.json</c> — see that file before raising it.
+/// That granularity is not free: each test case gets a brand-new RavenDB database
+/// (<see cref="RavenTestDriver.GetDocumentStore"/> names them off a process-wide counter), all on
+/// one shared embedded server. Across this suite that is several hundred create/delete cycles per
+/// run, so test parallelism is capped in <c>xunit.runner.json</c> — see that file before raising it.
+/// </para>
+/// <para>
+/// The database is created on the first read of <see cref="Store"/>, not in
+/// <see cref="InitializeAsync"/>, so a case that never touches it costs no database at all. See
+/// <see cref="Store"/> for the measurement.
 /// </para>
 ///
 /// RavenDB 7.x requires a license even for the embedded TestDriver. We load it from:
@@ -67,7 +71,33 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
     /// </summary>
     protected virtual bool RequireLicense => true;
 
-    protected IDocumentStore Store { get; private set; } = null!;
+    private IDocumentStore? _store;
+    private readonly Lock _storeLock = new();
+
+    /// <summary>
+    /// This case's own database, created on first read.
+    /// <para>
+    /// Lazy because a create/delete cycle is not free even for a database nothing is written to:
+    /// measured on the embedded test server (M8, 2026-10-02), 96 ms of server CPU per cycle for an
+    /// empty database, 115 ms with five documents, 204 ms with a static index and a query. Some
+    /// cases on this driver never touch the store at all (startup refusals, template rendering,
+    /// option validation), and they paid that cycle anyway: 76 of 1,102 in Spark.Tests (7%).
+    /// </para>
+    /// <para>
+    /// Locked rather than a plain <c>??=</c>: a case may read it from several tasks at once, and
+    /// two racing reads would each create a database.
+    /// </para>
+    /// </summary>
+    protected IDocumentStore Store
+    {
+        get
+        {
+            if (_store is { } store)
+                return store;
+            lock (_storeLock)
+                return _store ??= GetDocumentStore(database: "Store");
+        }
+    }
 
     /// <summary>
     /// Installs Spark's own document-id rules, so a test sees the ids production would assign.
@@ -114,7 +144,6 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
     {
         if (RequireLicense)
             LicenseHelper.EnsureAvailable();
-        Store = GetDocumentStore();
 
         var assemblies = IndexAssemblies as Assembly[] ?? IndexAssemblies.ToArray();
         if (assemblies.Length > 0)
@@ -197,15 +226,16 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
     /// </remarks>
     public virtual Task DisposeAsync()
     {
-        // Null-guarded because InitializeAsync can fail before assigning Store — a missing licence,
-        // or GetDocumentStore timing out when the shared embedded server is under load. Without
-        // the guard this throws a NullReferenceException that REPLACES the real failure in the
-        // test output, which is what made those CI timeouts so hard to read.
+        // The backing field, never the Store property: reading Store here would create a database
+        // just to delete it for a case that never used one. Null when the case never read Store, or
+        // when creating it failed (a missing licence, or GetDocumentStore timing out when the shared
+        // embedded server is under load); a NullReferenceException here would REPLACE the real
+        // failure in the test output, which is what made those CI timeouts so hard to read.
         //
         // The zero-wait delete itself runs inside Dispose(): PreInitialize subscribed
         // RavenDatabaseDeletion.DeleteOnDispose to the store's BeforeDispose, which fires before the
         // driver's own AfterDispose delete. Never throws.
-        Store?.Dispose();
+        _store?.Dispose();
         return Task.CompletedTask;
     }
 
