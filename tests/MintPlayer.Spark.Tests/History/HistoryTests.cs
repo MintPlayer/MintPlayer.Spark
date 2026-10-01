@@ -315,6 +315,11 @@ public class HistoryTests(ITestOutputHelper output) : SparkTestDriver
         reverted!.Title.Should().Be("v1", "Title may be edited, so it reverts");
         reverted.Secret.Should().Be("s2", "Secret may not be edited, so it keeps its current value");
         Notifications(body).Should().ContainSingle(m => m.Contains("partially"));
+        // Every language travels, so ng-spark shows the one its user picked, not the browser's.
+        var notice = body.GetProperty("operations").EnumerateArray().Single(o => o.GetProperty("type").GetString() == "notify");
+        notice.TryGetProperty("translatedMessage", out var translations).Should().BeTrue("the client resolves the notice in the app-chosen language");
+        translations.GetProperty("en").GetString().Should().Contain("partially");
+        translations.GetProperty("nl").GetString().Should().StartWith("Gedeeltelijk teruggezet");
 
         // Back to v2's Title: Secret is s2 in both, so nothing was held back.
         await UpdateRawAsync(note.Id!, n => n.Title = "v3");

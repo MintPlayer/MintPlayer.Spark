@@ -369,7 +369,7 @@ internal sealed class ContributionHandler<TTarget, TElement, TContribution, TCur
         {
             var slot = key.Length == 0 ? d.PropertyName : key;
             var name = names?.NameOf(shown);
-            string message;
+            TranslatedString message;
             if (withdrawn)
             {
                 message = shown is null

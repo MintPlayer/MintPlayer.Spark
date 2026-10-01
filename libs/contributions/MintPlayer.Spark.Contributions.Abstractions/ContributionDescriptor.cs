@@ -54,6 +54,9 @@ public abstract class ContributionDescriptor
     /// </summary>
     public const string LineDiffRenderingHint = "lineDiff";
 
+    /// <summary>The generated get-only <c>[ValueKey]</c> row key on a collection's element (the slot tuple, M4).</summary>
+    public const string RowKeyName = "Key";
+
     /// <summary>
     /// The <c>rendererOptions</c> of <see cref="LineDiffRenderingHint"/> on <paramref name="valueName"/>
     /// (contributions M5b client): compare against the <b>target's</b> row of the same slot, whose value is
@@ -270,6 +273,13 @@ public static class ContributionRegistry
         global::MintPlayer.Spark.Abstractions.Model.SparkModelSatellites.SeedNewAttribute(new(
             descriptor.ContributionType, nameof(IContribution.ContributorId),
             ShowedOn: global::MintPlayer.Spark.Abstractions.EShowedOn.PersistentObject, IsVisible: false));
+
+        // The generated row key is the slot tuple, which the slot attributes already show: identity,
+        // not content. Hidden on the element's form and rows, again only for a newly created attribute.
+        if (descriptor.SlotNames.Count > 0)
+            global::MintPlayer.Spark.Abstractions.Model.SparkModelSatellites.SeedNewAttribute(new(
+                descriptor.ElementType, ContributionDescriptor.RowKeyName,
+                ShowedOn: global::MintPlayer.Spark.Abstractions.EShowedOn.PersistentObject, IsVisible: false));
 
         // Opening a contribution shows its text diffed against the current one (PRD Q7).
         foreach (var value in descriptor.ValueNames)

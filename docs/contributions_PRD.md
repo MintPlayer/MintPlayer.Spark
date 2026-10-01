@@ -721,6 +721,10 @@ the dark-mode work, whose ng-bootstrap half is tracked in MintPlayer/mintplayer-
   page treats unknown query-string parameters that name an attribute as column filters.
 - The runtime security validator accepts attribute rights on a satellite type that is not in the
   model yet (CLR fallback), and SPARK014's CLR fallback ignores case.
+- (M6 follow-up) `IClientAccessor.Notify(TranslatedString, …)` (new overload: a `Notify(default!, …)`
+  substitute call is now ambiguous — write `default(string)!`); `NotifyOperation.TranslatedMessage`
+  (new, optional; ng-spark prefers it over `message`); synchronize writes a contribution element's
+  new `Key` attribute hidden (`showedOn: PersistentObject`, `isVisible: false`).
 
 **Breaking changes for the release notes** (no backward compatibility, preview; minor version bumps
 only):
@@ -804,6 +808,24 @@ only):
     editable (and were dropped by the save); it now applies the loaded object's `isReadOnly`.
   Tests: `ContributionsAuditedTargetTests` (red → green for the History fix), the QnA E2E classes
   `QnAContributionsTests` and `QnAContributionsBrowserTests` (built; run in M7).
+- **M6 follow-up (done):**
+  - **Notices follow the app-chosen language.** The server never learns ng-spark's language
+    (`SparkLanguageService` keeps it in `localStorage`; no header carries it), and its only culture
+    source, `IRequestCultureResolver`, reads `Accept-Language` — the browser's. ng-spark already
+    resolves server text client-side (labels, validation messages are `TranslatedString`), so notices
+    do the same: `NotifyOperation.TranslatedMessage` (new, optional) carries every language,
+    `IClientAccessor.Notify(TranslatedString, …)` (new overload) fills it and resolves `Message` in the
+    request culture as the fallback for other clients (the .NET `SparkClient` sends its own
+    `Accept-Language`), and ng-spark's `notify` handler shows the translation of `currentLanguage`.
+    Contributions' withdraw/"stays"/revert notices and History's partial-revert notice (now en/fr/nl)
+    use it; an app's `translations.json` entry overlays the built-in texts per language. Tests:
+    `ContributionsSurfaceTests.A_notice_carries_every_language_…`, the revert notice and
+    `HistoryTests.A_revert_restores_only_…` (red → green), `provide.spec.ts` "notify language" (red →
+    green).
+  - **The generated row `Key` is hidden by synchronize:** `SparkModelSatellites.SeedNewAttribute` on
+    the element (`ShowedOn: PersistentObject`, `IsVisible: false`), for a newly created attribute only,
+    like `ContributorId`. QnA's authored (hidden) `Key` is unchanged by a re-synchronize; the model
+    hash did not move. Test: `ContributionsModelSyncTests.The_generated_row_key_is_hidden_…`.
 
 **Known limitations (documented, not fixed):**
 - **Per-row oracle (owner Q16 → C, 2026-10-01).** An attribute that the per-row
@@ -834,9 +856,8 @@ only):
   - Validator errors are reported as one validation error (messages joined, the first attribute).
   - A contribution a moderator hid cannot be re-saved by its author (400); their own withdrawal can.
   - The single-valued (no slots) path is exercised by the generator tests only, not by an HTTP test.
-  - (M6) The save notices are in the request's culture, not the SPA's chosen language: with a Dutch
-    browser and the English UI selected, QnA showed the Dutch text.
-  - (M6) Synchronize leaves the element's generated `Key` attribute visible (QnA hides it by hand).
+  - ~~(M6) The save notices are in the request's culture, not the SPA's chosen language~~ and
+    ~~synchronize leaves the element's generated `Key` attribute visible~~ — fixed (M6 follow-up, above).
 
 **Open items:**
 - ~~M1c "Changed by" fallback~~ **→ decided (owner, 2026-09-30): configurable.**

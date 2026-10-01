@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.Hosting;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Contributions;
@@ -110,6 +111,26 @@ public class ContributionsModelSyncTests : IDisposable
         File.WriteAllText(path, File.ReadAllText(path).Replace("\"isVisible\": false", "\"isVisible\": true"));
         Synchronize();
         Attribute(Read("CoSongLyricsContribution.json"), "ContributorId").GetProperty("isVisible").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public void The_generated_row_key_is_hidden_on_a_new_element_attribute_but_an_authored_visible_key_survives()
+    {
+        Synchronize();
+
+        var key = Attribute(Read("CoLyrics.json"), ContributionDescriptor.RowKeyName);
+        key.GetProperty("isVisible").GetBoolean().Should().BeFalse("the row key is the slot tuple, which the slot columns already show");
+        key.GetProperty("showedOn").GetString().Should().Be("PersistentObject", "not a column of the rows either");
+
+        var path = Path.Combine(ModelDir, "CoLyrics.json");
+        var json = JsonNode.Parse(File.ReadAllText(path))!;
+        var authored = json["persistentObject"]!["attributes"]!.AsArray().Single(a => a!["name"]!.GetValue<string>() == ContributionDescriptor.RowKeyName)!;
+        authored["isVisible"] = true;
+        File.WriteAllText(path, json.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+
+        Synchronize();
+
+        Attribute(Read("CoLyrics.json"), ContributionDescriptor.RowKeyName).GetProperty("isVisible").GetBoolean().Should().BeTrue("the seed applies on creation only");
     }
 
     [Fact]

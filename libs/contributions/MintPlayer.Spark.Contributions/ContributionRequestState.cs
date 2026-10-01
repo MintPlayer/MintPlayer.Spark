@@ -14,7 +14,7 @@ namespace MintPlayer.Spark.Contributions;
 /// </summary>
 internal sealed class ContributionRequestState
 {
-    public List<(string Message, NotificationKind Kind)> Notices { get; } = [];
+    public List<(TranslatedString Message, NotificationKind Kind)> Notices { get; } = [];
 
     public List<SatelliteAuditEntry> Audits { get; } = [];
 
@@ -71,8 +71,8 @@ internal static class ContributorNames
 }
 
 /// <summary>
-/// The notices' texts (PRD Q3), in the request's language. An app overrides one by defining the same
-/// key in its <c>translations.json</c>; otherwise the built-in English, French and Dutch apply.
+/// The notices' texts (PRD Q3), in every language (the client shows its user's). An app overrides one by
+/// defining the same key in its <c>translations.json</c>; otherwise the built-in English, French and Dutch apply.
 /// </summary>
 internal static class ContributionMessages
 {
@@ -122,21 +122,23 @@ internal static class ContributionMessages
             "{0} toont de versie van een andere bijdrager, die alleen de auteur of een moderator kan verwijderen: die blijft staan."),
     };
 
-    public static string Format(IServiceProvider services, string key, params object[] arguments)
+    /// <summary>
+    /// The notice formatted in every language: the built-in texts, overlaid by the app's
+    /// <c>translations.json</c> entry for the key. Every language travels because the language the user
+    /// picked in ng-spark never reaches the server (it is not the browser's <c>Accept-Language</c>): the
+    /// client resolves it, as it does labels and validation messages.
+    /// </summary>
+    public static TranslatedString Format(IServiceProvider services, string key, params object[] arguments)
     {
-        var template = services.GetService<ITranslationsLoader>()?.Resolve(key) ?? BuiltIn[key];
-        string culture;
-        try
-        {
-            culture = services.GetService<IRequestCultureResolver>()?.GetCurrentCulture() ?? "en";
-        }
-        catch (Exception ex) when (ex is InvalidOperationException or IOException)
-        {
-            culture = "en"; // no request or no culture configuration (a background save)
-        }
-        var text = template.GetValue(culture);
-        if (string.IsNullOrEmpty(text))
-            text = BuiltIn[key].GetValue("en");
-        return string.Format(System.Globalization.CultureInfo.InvariantCulture, text, arguments);
+        var templates = new Dictionary<string, string>(BuiltIn[key].Translations, StringComparer.Ordinal);
+        if (services.GetService<ITranslationsLoader>()?.Resolve(key) is { } app)
+            foreach (var (language, text) in app.Translations)
+                if (!string.IsNullOrEmpty(text))
+                    templates[language] = text;
+
+        var formatted = new TranslatedString();
+        foreach (var (language, text) in templates)
+            formatted.Translations[language] = string.Format(System.Globalization.CultureInfo.InvariantCulture, text, arguments);
+        return formatted;
     }
 }

@@ -154,6 +154,8 @@ commits atomically with the save or delete that caused it, and a refused save wr
     (info), or "…no version of it is left";
   - a removed row (or a row whose slot you changed) that shows someone else's version → "`en/Latn`
     shows *Alice*'s version, which only its author or a moderator can remove: it stays" (warning).
+  - Every language travels (`translatedMessage`): ng-spark shows the one its user picked, not the
+    browser's `Accept-Language`, in which `message` is the fallback.
   - The other contributor is named only with `Attribution.Contributor` and a resolved name; otherwise
     the text says "another contributor". The slot is the row key (`en/Latn`), or the property name
     for a single-valued declaration. Texts are English/French/Dutch built in; an app overrides one by

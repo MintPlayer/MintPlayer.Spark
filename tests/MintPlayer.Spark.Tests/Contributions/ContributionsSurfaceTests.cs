@@ -250,6 +250,28 @@ public class ContributionsSurfaceTests : SparkTestDriver
         notices.Should().ContainSingle().Which.Message.Should().Be("Your version of en/Latn was withdrawn; another contributor's version is shown now.");
     }
 
+    /// <summary>
+    /// The browser asks for Dutch (Accept-Language) while the user picked English in the app, which
+    /// ng-spark keeps to itself: the notice must carry every language so the client can show English.
+    /// </summary>
+    [Fact]
+    public async Task A_notice_carries_every_language_so_the_app_shows_the_one_its_user_picked()
+    {
+        var host = await StartAsync();
+        await AddAsync(host, "en", "Latn", "alice's text");
+        host.Identity.Id = Bob;
+        await EditTextAsync(host, "en/Latn", "bob's text");
+        host.Client.AcceptLanguage = "nl";
+
+        var notices = await RemoveAsync(host, "en/Latn");
+
+        var notice = notices.Should().ContainSingle().Which;
+        notice.Raw.TryGetProperty("translatedMessage", out var translations).Should().BeTrue("the client resolves the notice in the app-chosen language");
+        translations.GetProperty("en").GetString().Should().Be("Your version of en/Latn was withdrawn; Alice's version is shown now.");
+        translations.GetProperty("nl").GetString().Should().Be("Uw versie van en/Latn is ingetrokken; nu wordt de versie van Alice getoond.");
+        translations.GetProperty("fr").GetString().Should().Be("Votre version de en/Latn a été retirée ; la version de Alice est maintenant affichée.");
+    }
+
     // ---- Q3/Q4: remove a whole version --------------------------------------------------------------
 
     [Fact]
@@ -498,6 +520,7 @@ public class ContributionsSurfaceTests : SparkTestDriver
 
         status.Should().Be(HttpStatusCode.OK, body);
         body.Should().Contain("\"notify\"").And.Contain("2 newer version(s) were hidden");
+        body.Should().Contain("\"translatedMessage\"").And.Contain("2 nieuwere versie(s) werden verborgen", "every language travels; the client picks");
     }
 
     // ---- models ---------------------------------------------------------------------------------------

@@ -12,6 +12,12 @@ namespace MintPlayer.Spark.Services;
 internal sealed partial class ClientAccessor : IClientAccessor
 {
     private readonly List<ClientOperation> _operations = [];
+    private readonly IRequestCultureResolver? cultureResolver;
+
+    public ClientAccessor() { }
+
+    /// <summary>The DI constructor: the culture resolves the plain text of a translated notice.</summary>
+    public ClientAccessor(IRequestCultureResolver cultureResolver) => this.cultureResolver = cultureResolver;
 
     public IReadOnlyList<ClientOperation> Operations => _operations;
 
@@ -41,6 +47,31 @@ internal sealed partial class ClientAccessor : IClientAccessor
             Kind = kind,
             DurationMs = duration is { } d ? (int)d.TotalMilliseconds : null,
         });
+
+    public void Notify(TranslatedString message, NotificationKind kind = NotificationKind.Info, TimeSpan? duration = null)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        _operations.Add(new NotifyOperation
+        {
+            Message = message.GetValue(RequestCulture()),
+            TranslatedMessage = message,
+            Kind = kind,
+            DurationMs = duration is { } d ? (int)d.TotalMilliseconds : null,
+        });
+    }
+
+    /// <summary>The request's culture for the plain message; English without a request or a culture configuration.</summary>
+    private string RequestCulture()
+    {
+        try
+        {
+            return cultureResolver?.GetCurrentCulture() ?? "en";
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or IOException)
+        {
+            return "en";
+        }
+    }
 
     // --- Refresh --------------------------------------------------------
 
