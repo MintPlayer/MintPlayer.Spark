@@ -64,7 +64,7 @@ Mounts the account pages; each is also a standalone component from `/account` (p
 |---|---|---|
 | Confirm email (public; the mail link target) | `confirm-email` | `SparkConfirmEmailComponent` |
 | Overview | `account` | `SparkAccountOverviewComponent` |
-| Profile — user name, email change, mail language, app fields | `account/profile` | `SparkAccountProfileComponent` |
+| Profile — user name, email change (only with the server's `SparkEmailChange.Enabled`), mail language, app fields | `account/profile` | `SparkAccountProfileComponent` |
 | Change / set password | `account/password` | `SparkChangePasswordComponent` |
 | Two-factor — authenticator (server-rendered QR), recovery codes | `account/two-factor` | `SparkTwoFactorSetupComponent` |
 | Connected logins | `account/logins` | `SparkExternalLoginsComponent` |
@@ -75,6 +75,16 @@ Mounts the account pages; each is also a standalone component from `/account` (p
 withAccount({ exclude: ['externalLogins', 'passkeys'] })   // drop pages the server does not support
 withAccount({ canActivate: [myGuard] })                     // default: [sparkAuthGuard]
 ```
+
+The overview (`/account`) shows who is signed in and links each mounted page. Pages behind a
+server switch are also checked against `GET /spark/auth/capabilities`: password and two-factor appear
+only when `LocalCredentials` is not `Disabled`, passkeys only when the server reports `passkeys` and
+the browser supports WebAuthn.
+
+`<spark-auth-bar>` renders **Account** and **Logout** side by side in a `<bs-button-group>` when
+`withAccount()` is mounted (the bar reads the mounted path from the router configuration, so a custom
+`account` path is followed), and Logout alone otherwise. It no longer shows the user name or a passkey
+button; both live on the account page.
 
 `confirm-email` must stay at the server's `Spark:Auth:Links:ConfirmEmailPath` (default
 `/confirm-email`). App-specific profile fields are declared with

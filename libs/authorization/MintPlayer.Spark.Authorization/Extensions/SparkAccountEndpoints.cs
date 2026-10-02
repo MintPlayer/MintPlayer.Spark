@@ -86,6 +86,9 @@ internal static class SparkAccountEndpoints
         Mutating(manage.MapDelete("/account", DeleteAccountAsync<TUser>));
     }
 
+    internal static bool EmailChangeEnabled(IServiceProvider services)
+        => services.GetService<IOptions<SparkAuthenticationOptions>>()?.Value.EmailChange == SparkEmailChange.Enabled;
+
     private static void Mutating(RouteHandlerBuilder builder)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
 
@@ -177,6 +180,18 @@ internal static class SparkAccountEndpoints
         if (await userManager.GetUserAsync(claimsPrincipal) is not { } user)
             return TypedResults.NotFound();
 
+        var changesEmail = !string.IsNullOrEmpty(request.NewEmail)
+            && !string.Equals(await userManager.GetEmailAsync(user), request.NewEmail, StringComparison.OrdinalIgnoreCase);
+
+        // Refused before the password half runs, so a request carrying both changes nothing.
+        if (changesEmail && !EmailChangeEnabled(services))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["EmailChangeDisabled"] = ["This application does not allow changing the email address."],
+            });
+        }
+
         if (!string.IsNullOrEmpty(request.NewEmail) && !EmailAddress.IsValid(request.NewEmail))
             return Problem(IdentityResult.Failed(userManager.ErrorDescriber.InvalidEmail(request.NewEmail)));
 
@@ -195,12 +210,11 @@ internal static class SparkAccountEndpoints
                 return Problem(changed);
         }
 
-        if (!string.IsNullOrEmpty(request.NewEmail)
-            && !string.Equals(await userManager.GetEmailAsync(user), request.NewEmail, StringComparison.OrdinalIgnoreCase))
+        if (changesEmail)
         {
             // Mailed to the NEW address; nothing changes until its link is followed.
             await services.GetRequiredService<SparkAccountMail<TUser>>()
-                .SendConfirmationAsync(context, user, request.NewEmail, changedEmail: request.NewEmail);
+                .SendConfirmationAsync(context, user, request.NewEmail!, changedEmail: request.NewEmail);
         }
 
         return TypedResults.Ok(new InfoResponse
@@ -238,6 +252,10 @@ internal static class SparkAccountEndpoints
             return invalid;
 
         if (await userManager.FindByIdAsync(userId) is not { } user)
+            return invalid;
+
+        // A change link minted while email change was enabled must not outlive switching it off.
+        if (!string.IsNullOrEmpty(changedEmail) && !EmailChangeEnabled(services))
             return invalid;
 
         // A change goes through SparkUserManager.ChangeEmailAsync, which moves an email-shaped user

@@ -23,7 +23,7 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 public class AuthCapabilitiesTests(SparkSharedDatabase database)
     : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
 {
-    private async Task<IHost> StartAsync(SparkLocalCredentials mode)
+    private async Task<IHost> StartAsync(SparkLocalCredentials mode, SparkEmailChange emailChange = SparkEmailChange.Disabled)
     {
         return await new HostBuilder()
             .ConfigureWebHost(webHost => webHost
@@ -32,6 +32,7 @@ public class AuthCapabilitiesTests(SparkSharedDatabase database)
                 {
                     services.AddSingleton<IDocumentStore>(Store);
                     services.AddSparkAuthentication<SparkUser>();
+                    services.Configure<SparkAuthenticationOptions>(o => o.EmailChange = emailChange);
                     services.AddTestMailSink(); // #460 D6: registration needs a mail sender
 
                     // Two providers a human can click, plus one machine-only scheme that must not
@@ -73,6 +74,21 @@ public class AuthCapabilitiesTests(SparkSharedDatabase database)
         var body = await GetCapabilitiesAsync(host);
 
         body.GetProperty("localCredentials").GetString().Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData(SparkLocalCredentials.Full, SparkEmailChange.Disabled, false)] // the default: opt-in only
+    [InlineData(SparkLocalCredentials.Full, SparkEmailChange.Enabled, true)]
+    [InlineData(SparkLocalCredentials.SignInOnly, SparkEmailChange.Enabled, true)]
+    [InlineData(SparkLocalCredentials.Disabled, SparkEmailChange.Enabled, false)] // POST manage/info is not mapped
+    public async Task Capabilities_reports_email_change_only_when_opted_in_and_mapped(
+        SparkLocalCredentials mode, SparkEmailChange emailChange, bool expected)
+    {
+        using var host = await StartAsync(mode, emailChange);
+
+        var body = await GetCapabilitiesAsync(host);
+
+        body.GetProperty("emailChange").GetBoolean().Should().Be(expected);
     }
 
     [Fact]

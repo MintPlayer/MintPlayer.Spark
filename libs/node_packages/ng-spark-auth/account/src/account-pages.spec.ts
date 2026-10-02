@@ -135,6 +135,7 @@ describe('SparkAccountProfileComponent', () => {
       accountInfo: vi.fn().mockResolvedValue({ success: true, value: { email: 'jane@example.test', isEmailConfirmed: false } }),
       updateProfile: vi.fn().mockResolvedValue({ success: true, value: profile }),
       changeEmail: vi.fn().mockResolvedValue({ success: true, value: { email: 'jane@example.test', isEmailConfirmed: true } }),
+      capabilities: vi.fn().mockResolvedValue({ localCredentials: 'Full', externalProviders: [], emailChange: true }),
       ...overrides,
     };
     configure(auth, [
@@ -211,6 +212,30 @@ describe('SparkAccountProfileComponent', () => {
     expect(auth.changeEmail).toHaveBeenCalledWith('new@example.test');
     expect(text(fixture)).toContain('auth.emailChangeSent');
   });
+
+  it('puts the new-email input and its button in one input group when the server allows a change', async () => {
+    const { fixture, http } = setup();
+    await flush();
+    http.expectOne('/spark/culture').flush({ languages: {}, defaultLanguage: 'en' });
+    await render(fixture);
+    const group = (fixture.nativeElement as HTMLElement).querySelector('bs-input-group');
+    expect(group?.querySelector('input#newEmail')).not.toBeNull();
+    expect(group?.querySelector('button[type=submit]')?.textContent).toContain('auth.changeEmail');
+  });
+
+  for (const [name, capabilities] of [
+    ['the server does not opt in', vi.fn().mockResolvedValue({ localCredentials: 'Full', externalProviders: [] })],
+    ['the capabilities call fails', vi.fn().mockRejectedValue(new Error('offline'))],
+  ] as const) {
+    it(`shows the email but offers no change when ${name}`, async () => {
+      const { fixture, http } = setup({ capabilities });
+      await flush();
+      http.expectOne('/spark/culture').flush({ languages: {}, defaultLanguage: 'en' });
+      await render(fixture);
+      expect(text(fixture)).toContain('jane@example.test');
+      expect((fixture.nativeElement as HTMLElement).querySelector('#newEmail')).toBeNull();
+    });
+  }
 });
 
 describe('SparkTwoFactorSetupComponent', () => {
@@ -351,10 +376,54 @@ describe('SparkPersonalDataComponent', () => {
 });
 
 describe('SparkAccountOverviewComponent', () => {
+  const allPages = {
+    provide: SPARK_AUTH_ROUTE_PATHS,
+    useValue: {
+      profile: '/account/profile', changePassword: '/account/password', twoFactorSetup: '/account/two-factor',
+      passkeys: '/account/passkeys', personalData: '/account/personal-data',
+    },
+  };
+  const links = (fixture: ComponentFixture<unknown>) =>
+    [...(fixture.nativeElement as HTMLElement).querySelectorAll('a.spark-account-link')].map(a => a.getAttribute('href'));
+  const capabilities = (localCredentials: string, passkeys?: boolean) =>
+    vi.fn().mockResolvedValue({ localCredentials, externalProviders: [], passkeys });
+
   it('links only the mounted pages', async () => {
-    configure({});
+    configure({ capabilities: capabilities('Full') });
     const fixture = await render(TestBed.createComponent(SparkAccountOverviewComponent));
-    const links = [...(fixture.nativeElement as HTMLElement).querySelectorAll('a.spark-account-link')].map(a => a.getAttribute('href'));
-    expect(links).toEqual(['/account/profile', '/account/personal-data']);
+    expect(links(fixture)).toEqual(['/account/profile', '/account/personal-data']);
+  });
+
+  it('offers the password and two-factor pages when the server signs in with passwords', async () => {
+    configure({ capabilities: capabilities('SignInOnly') }, [allPages]);
+    const fixture = await render(TestBed.createComponent(SparkAccountOverviewComponent));
+    expect(links(fixture)).toEqual(['/account/profile', '/account/password', '/account/two-factor', '/account/personal-data']);
+  });
+
+  it('hides the password and two-factor pages under LocalCredentials = Disabled', async () => {
+    configure({ capabilities: capabilities('Disabled', false) }, [allPages]);
+    const fixture = await render(TestBed.createComponent(SparkAccountOverviewComponent));
+    expect(links(fixture)).toEqual(['/account/profile', '/account/personal-data']);
+  });
+
+  it('hides every server-switched page when the capabilities call fails', async () => {
+    configure({ capabilities: vi.fn().mockRejectedValue(new Error('offline')) }, [allPages]);
+    const fixture = await render(TestBed.createComponent(SparkAccountOverviewComponent));
+    expect(links(fixture)).toEqual(['/account/profile', '/account/personal-data']);
+  });
+
+  // ⚠️ The passkeys *positive* case is not asserted: it also needs passkeysSupported(), which jsdom
+  // cannot satisfy without faking the browser API it checks (same reason as the auth-bar spec).
+
+  it('shows the user name, and the email only when it differs', async () => {
+    const user = { isAuthenticated: true, userName: 'jane', email: 'jane@example.test', roles: [] };
+    configure({ capabilities: capabilities('Full'), user: () => user });
+    const fixture = await render(TestBed.createComponent(SparkAccountOverviewComponent));
+    expect(text(fixture)).toContain('jane');
+    expect(text(fixture)).toContain('jane@example.test');
+
+    user.userName = user.email;
+    const same = await render(TestBed.createComponent(SparkAccountOverviewComponent));
+    expect(same.nativeElement.querySelector('.spark-account-email')).toBeNull();
   });
 });

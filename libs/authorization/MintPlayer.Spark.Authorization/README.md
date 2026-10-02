@@ -93,7 +93,7 @@ hand. They live under `/spark/auth/`:
 | `/spark/auth/resetPassword` | POST | Full, SignInOnly | Complete a reset; **confirms the email** |
 | `/spark/auth/confirmEmail` | GET | all | Legacy mailbox link (plain-text answer) |
 | `/spark/auth/confirm-email` | POST | all | `{ userId, code, changedEmail? }` — what the SPA's confirm page posts |
-| `/spark/auth/manage/info` | GET / POST | all / Full, SignInOnly | Read email + confirmed; change password (`oldPassword`) or email (link to the new address) |
+| `/spark/auth/manage/info` | GET / POST | all / Full, SignInOnly | Read email + confirmed; change password (`oldPassword`) or, with `SparkEmailChange.Enabled`, email (link to the new address) |
 | `/spark/auth/manage/password` | POST | Full, SignInOnly | `{ currentPassword?, newPassword }` — set a first password or change it |
 | `/spark/auth/manage/profile` | GET / POST | all | User name, `preferredCulture` (mail language) + app fields (`ISparkProfileContributor<TUser>`) |
 | `/spark/auth/manage/2fa` | POST | all | Microsoft's 2FA management (creates the authenticator key) |
@@ -140,6 +140,11 @@ and `{PublicBaseUrl}/reset-password?email=…&code=…` — whose components pos
 - `SparkAuthenticationOptions.RequireConfirmedEmail` (default `false`) refuses sign-in to unconfirmed
   accounts. A completed password reset confirms the email, and `forgotPassword` mails unconfirmed
   addresses, so older unconfirmed accounts can always get in.
+- **Email change is opt-in.** `SparkAuthenticationOptions.EmailChange` defaults to
+  `SparkEmailChange.Disabled`: `POST manage/info { newEmail }` answers 400 `EmailChangeDisabled` (the
+  whole request, password half included), no mail is sent, and a change link already mailed no longer
+  confirms. `SparkEmailChange.Enabled` turns it on; `/spark/auth/capabilities` reports `emailChange`,
+  and the profile page shows its form only then.
 
 #### Secrets at rest (#460 D5)
 
@@ -376,7 +381,7 @@ provideSparkAccountProfileFields(
 |---|---|---|---|
 | Confirm email (public) | `confirm-email` | `SparkConfirmEmailComponent` | `POST confirm-email { userId, code, changedEmail? }` |
 | Overview | `account` | `SparkAccountOverviewComponent` | links to the mounted pages |
-| Profile | `account/profile` | `SparkAccountProfileComponent` | `GET/POST manage/profile`; email change via `POST manage/info { newEmail }` |
+| Profile | `account/profile` | `SparkAccountProfileComponent` | `GET/POST manage/profile`; email change (opt-in, `SparkEmailChange.Enabled`) via `POST manage/info { newEmail }` |
 | Password | `account/password` | `SparkChangePasswordComponent` | `POST manage/password` |
 | Two-factor | `account/two-factor` | `SparkTwoFactorSetupComponent` | `POST manage/2fa`, `GET manage/2fa/authenticator-uri` |
 | Connected logins | `account/logins` | `SparkExternalLoginsComponent` | `GET external-logins`, link / unlink |
@@ -404,8 +409,8 @@ provideSparkAccountProfileFields(
 - **Account deletion.** It asks for the password, or accepts a sign-in younger than
   `ReauthenticationMaxAge` (5 minutes). A 403 `reauthentication_required` is explained on the page.
 - **Mode restrictions.** Under `SparkLocalCredentials.Disabled`, `manage/password` and `manage/info`
-  are not mapped. Exclude `changePassword` there; the profile page's email-change form then shows the
-  404 as "not available".
+  are not mapped. Exclude `changePassword` there (the account overview also hides it, and two-factor,
+  from `/spark/auth/capabilities`).
 - **Login label.** The login form's identifier field is labelled "Email or user name"
   (`auth.emailOrUserName`, D4).
 

@@ -27,4 +27,11 @@ export interface SparkAuthCapabilities {
    * capability must read as "no" rather than as `undefined` leaking into a template.
    */
   passkeys?: boolean;
+
+  /**
+   * Whether a signed-in user may change their email address — the server's opt-in
+   * `SparkEmailChange.Enabled`, and a local-credential mode that maps `POST manage/info`. Optional for
+   * the same reason as `passkeys`: absent reads as "no".
+   */
+  emailChange?: boolean;
 }

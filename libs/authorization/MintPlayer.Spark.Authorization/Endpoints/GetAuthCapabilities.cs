@@ -47,12 +47,18 @@ internal sealed class GetAuthCapabilities : IGetEndpoint
         // anonymous visitor sign in with a passkey", which is the question the sign-in page asks.
         var passkeys = mapped.Contains("/spark/auth/passkeys/sign-in");
 
+        // The option, AND the route that carries the change: POST manage/info is mapped only outside
+        // LocalCredentials Disabled, so the option alone would offer a form that posts into a 404.
+        var emailChange = SparkAccountEndpoints.EmailChangeEnabled(services)
+            && localCredentials != SparkLocalCredentials.Disabled;
+
         var providers = await ExternalAuthenticationSchemes.GetInteractiveAsync(services);
 
         return Results.Ok(new
         {
             localCredentials = localCredentials.ToString(),
             passkeys,
+            emailChange,
             externalProviders = providers
                 .Select(scheme => new { scheme = scheme.Name, displayName = scheme.DisplayName })
                 .ToArray(),

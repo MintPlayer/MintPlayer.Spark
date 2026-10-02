@@ -50,6 +50,32 @@ export type SparkAuthRoutePaths = Partial<Record<keyof SparkAuthRouteEntries, st
 
 export const SPARK_AUTH_ROUTE_PATHS = new InjectionToken<SparkAuthRoutePaths>('SPARK_AUTH_ROUTE_PATHS');
 
+/** The slice of an Angular `Route` the lookup below reads — kept structural so `/models` stays router-free. */
+interface RouteLike {
+  providers?: readonly unknown[];
+  children?: readonly RouteLike[];
+}
+
+/**
+ * The paths `sparkAuthRoutes()` mounted, read from the router configuration.
+ *
+ * For components that live **outside** that route subtree, such as `<spark-auth-bar>` in the
+ * application shell: `SPARK_AUTH_ROUTE_PATHS` is provided on the subtree's own route, so it is not
+ * injectable from there. Walks the eagerly declared routes only — a `sparkAuthRoutes()` behind a
+ * `loadChildren` is not loaded yet and is not found, which reads as "nothing mounted".
+ */
+export function findSparkAuthRoutePaths(routes: readonly RouteLike[] | undefined): SparkAuthRoutePaths | null {
+  for (const route of routes ?? []) {
+    for (const provider of route.providers ?? []) {
+      const p = provider as { provide?: unknown; useValue?: SparkAuthRoutePaths };
+      if (p?.provide === SPARK_AUTH_ROUTE_PATHS && p.useValue) return p.useValue;
+    }
+    const nested = findSparkAuthRoutePaths(route.children);
+    if (nested) return nested;
+  }
+  return null;
+}
+
 /**
  * Presentation for one external provider's button — an icon, a label, an ordering.
  *

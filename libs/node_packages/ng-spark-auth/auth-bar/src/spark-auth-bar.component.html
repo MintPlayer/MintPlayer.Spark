@@ -1,12 +1,13 @@
 @if (authService.isAuthenticated()) {
-  <!-- Hidden below sm: at phone width the name pushed the buttons onto a second line, out of the
-       topbar. On wider screens it truncates rather than wrapping. -->
-  <span class="spark-auth-bar-user d-none d-sm-inline-block text-truncate me-2"
-        [attr.title]="authService.user()?.userName">{{ authService.user()?.userName }}</span>
-  @if (showPasskeys()) {
-    <a class="btn btn-sm spark-auth-bar-btn text-nowrap me-2" [routerLink]="passkeysUrl">{{ 'auth.passkeysTitle' | t }}</a>
-  }
-  <button class="btn btn-sm spark-auth-bar-btn text-nowrap" (click)="onLogout()">{{ 'auth.logout' | t }}</button>
+  <!-- No user name here: an email address does not fit a topbar. The account page shows it, and
+       the account page is also where passkeys, two-factor and the rest live when they are mounted. -->
+  <bs-button-group>
+    @if (accountUrl) {
+      <a class="btn btn-sm spark-auth-bar-btn text-nowrap" [routerLink]="accountUrl"
+         [attr.title]="authService.user()?.userName">{{ 'auth.account' | t }}</a>
+    }
+    <button type="button" class="btn btn-sm spark-auth-bar-btn text-nowrap" (click)="onLogout()">{{ 'auth.logout' | t }}</button>
+  </bs-button-group>
 } @else {
   <a class="btn btn-sm spark-auth-bar-btn text-nowrap" [routerLink]="signInUrl">{{ 'auth.login' | t }}</a>
 }

@@ -1,4 +1,6 @@
 using System.Net;
+using System.Text;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.AspNetCore.Builder;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -96,7 +98,7 @@ public class AccountFlowTests : SparkTestDriver
     [Fact]
     public async Task An_email_change_is_mailed_to_the_new_address_and_completes_through_confirm_email()
     {
-        await using var host = await AccountTestHost.StartAsync(Store);
+        await using var host = await AccountTestHost.StartAsync(Store, configure: o => o.EmailChange = SparkEmailChange.Enabled);
         await host.CreateUserAsync("mover", "before@example.com");
         using var client = host.Client();
         var cookie = await host.CookieSignInAsync(client, "before@example.com");
@@ -116,6 +118,64 @@ public class AccountFlowTests : SparkTestDriver
         var moved = await host.FindByEmailAsync("after@example.com");
         moved.Should().NotBeNull();
         moved!.UserName.Should().Be("mover", "a chosen handle is not the email and stays");
+    }
+
+    [Fact]
+    public async Task By_default_an_email_change_is_refused_and_no_mail_is_sent()
+    {
+        await using var host = await AccountTestHost.StartAsync(Store);
+        await host.CreateUserAsync("stayer", "before@example.com");
+        using var client = host.Client();
+        var cookie = await host.CookieSignInAsync(client, "before@example.com");
+
+        var info = await AccountTestHost.SendAsync(client, HttpMethod.Post, "/spark/auth/manage/info", cookie,
+            new { newEmail = "after@example.com", oldPassword = AccountTestHost.Password, newPassword = "Another-horse-2" });
+
+        info.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await info.Content.ReadAsStringAsync()).Should().Contain("EmailChangeDisabled");
+        host.Mail.Sent.Should().BeEmpty();
+        (await host.FindByEmailAsync("before@example.com")).Should().NotBeNull();
+        // Refused as a whole: the password half of the same request did not run either.
+        (await host.CookieSignInAsync(client, "before@example.com")).Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public async Task By_default_a_change_link_does_not_confirm_even_with_a_valid_token()
+    {
+        // A link minted while the option was on, then the option switched off: the token is genuine.
+        await using var host = await AccountTestHost.StartAsync(Store);
+        var user = await host.CreateUserAsync("linked", "before@example.com");
+        var code = await host.WithScopeAsync(services =>
+            services.GetRequiredService<UserManager<SparkUser>>().GenerateChangeEmailTokenAsync(user, "after@example.com"));
+        using var client = host.Client();
+
+        var confirm = await client.PostAsJsonAsync("/spark/auth/confirm-email", new
+        {
+            userId = user.Id,
+            code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code)),
+            changedEmail = "after@example.com",
+        });
+
+        confirm.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await host.FindByEmailAsync("after@example.com")).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Confirming_a_plain_email_still_works_with_email_change_disabled()
+    {
+        await using var host = await AccountTestHost.StartAsync(Store);
+        var user = await host.CreateUserAsync("fresh", "fresh@example.com", confirmed: false);
+        var code = await host.WithScopeAsync(services =>
+            services.GetRequiredService<UserManager<SparkUser>>().GenerateEmailConfirmationTokenAsync(user));
+        using var client = host.Client();
+
+        var confirm = await client.PostAsJsonAsync("/spark/auth/confirm-email", new
+        {
+            userId = user.Id,
+            code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code)),
+        });
+
+        confirm.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     #endregion

@@ -52,7 +52,7 @@ describe('app routes: declaration order', () => {
 
     const authGroup = literal.find(({ route }) => route.path === '');
     expect(authGroup).toBeDefined();
-    expect(authGroup!.route.children!.map(c => c.path)).toEqual(expect.arrayContaining(['sign-in', 'passkeys']));
+    expect(authGroup!.route.children!.map(c => c.path)).toEqual(expect.arrayContaining(['sign-in', 'account', 'account/passkeys']));
 
     for (const { route, index } of literal) {
       expect(index, `route '${route.path}' must precede the :provider routes`).toBeLessThan(firstParam);
@@ -135,9 +135,14 @@ describe('app routes: navigation', () => {
 
     await harness.navigateByUrl('/sign-in');
     expect(leaf(router).routeConfig?.path).toBe('sign-in');
-    await harness.navigateByUrl('/passkeys');
-    expect(leaf(router).routeConfig?.path).toBe('passkeys');
     expect(lookups(browse)).toBe(0);
+  });
+
+  // Not navigated: the account pages sit behind sparkAuthGuard, which needs a real session check.
+  it('keeps the old /passkeys URL working by redirecting it into the account area', () => {
+    const shell = routes.find(r => r.component === ShellComponent)!;
+    const redirect = shell.children!.find(r => r.path === 'passkeys');
+    expect(redirect?.redirectTo).toBe('account/passkeys');
   });
 
   it('sends / and /home to the Home persistent object', async () => {
