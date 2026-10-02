@@ -170,7 +170,7 @@ public class EntityMapperFactoryTests
     }
 
     [Fact]
-    public void PopulateAttributeValues_SetsId_and_copies_Name_Breadcrumb_from_result()
+    public void PopulateAttributeValues_SetsId_and_copies_the_Breadcrumb_from_result_keeping_the_type_Name()
     {
         var po = _mapper.GetPersistentObject("Car");
         var car = new TestCar { Id = "cars/1", LicensePlate = "ABC-123" };
@@ -179,12 +179,14 @@ public class EntityMapperFactoryTests
         _mapper.PopulateAttributeValues(po, car, breadcrumbs);
 
         po.Id.Should().Be("cars/1");
-        po.Name.Should().Be("ABC-123", "Name/Breadcrumb are copied from the resolved result by id");
         po.Breadcrumb.Should().Be("ABC-123");
+        // Name is the entity type's — what hooks and queries identify an object by — never the
+        // display text. It used to be overwritten with the breadcrumb.
+        po.Name.Should().Be("Car");
     }
 
     [Fact]
-    public void PopulateAttributeValues_without_a_result_falls_back_to_the_type_name()
+    public void PopulateAttributeValues_without_a_result_falls_back_to_the_type_name_for_the_Breadcrumb()
     {
         var po = _mapper.GetPersistentObject("Car");
         var car = new TestCar { Id = "cars/1", LicensePlate = "ABC-123" };
@@ -192,7 +194,8 @@ public class EntityMapperFactoryTests
         _mapper.PopulateAttributeValues(po, car);
 
         po.Id.Should().Be("cars/1");
-        po.Name.Should().Be(nameof(TestCar), "no breadcrumb result → fall back to the CLR type name");
+        po.Breadcrumb.Should().Be(nameof(TestCar), "no breadcrumb result → fall back to the CLR type name");
+        po.Name.Should().Be("Car");
     }
 
     [Fact]

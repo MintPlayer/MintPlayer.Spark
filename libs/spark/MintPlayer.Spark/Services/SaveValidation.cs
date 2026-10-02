@@ -77,6 +77,13 @@ internal sealed partial class SaveValidation : ISaveValidation
             return;
         requested = null;
 
+        // The model's own write gate (EntityMapper.IsWritableBySchema) drops read-only and hidden
+        // attributes, so they are no more the caller's to supply than a rights-denied one: a
+        // server-stamped required field (ApiToken.CreatedAtUtc) failed "required" on every create.
+        unwritable = new HashSet<string>(
+            [.. unwritable, .. definition.Attributes.Where(a => a.IsReadOnly || !a.IsVisible).Select(a => a.Name)],
+            StringComparer.Ordinal);
+
         // What the refresh hook is handed: the caller's values for what they may write, the stored
         // values for what they may not (the CLR default on a create — the scaffold's empty value).
         var storedObject = stored is not null && unwritable.Count > 0 ? entityMapper.ToPersistentObject(stored, definition.Id) : null;

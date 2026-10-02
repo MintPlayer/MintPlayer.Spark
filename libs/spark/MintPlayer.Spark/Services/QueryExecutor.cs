@@ -1956,7 +1956,6 @@ internal sealed record DatabasePage(int TotalItems);
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         return secured.Narrow(rows => rows.Where(po =>
-            (po.Name != null && po.Name.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
             (po.Breadcrumb != null && po.Breadcrumb.Contains(term, StringComparison.OrdinalIgnoreCase)) ||
             po.Attributes.Any(attr =>
             {
