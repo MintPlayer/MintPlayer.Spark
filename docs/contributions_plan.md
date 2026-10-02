@@ -541,6 +541,20 @@ Decided (owner, 2026-10-01):
   196/186 s vs 199/183/167 s, CodeCoverage.Tests 209/200 s vs 194/152 s. On a saturated CPU the server
   does the unload either way; the wait was backpressure. Recorded in `SparkTestDriver.DisposeAsync`'s
   rejected list and PRD §5d item 10.
+- [x] **Item 13 (2026-10-02): less CPU per host boot and per test process.** Boot profiled per phase
+  (thread CPU and RavenDB server CPU, sequential benchmark, reverted). Done:
+  - `RowRuleLedgers_Overview`, the test assembly's only top-level index, nested: test hosts deploy no
+    index any more (58 ms of server CPU per boot, ~535 boots). The top-level deployment rule is now
+    asserted on the host's filter.
+  - No dynamic PGO in test processes (`TieredPGO=false` for `IsTestProject`, Directory.Build.targets)
+    or in the embedded RavenDB server (`DOTNET_TieredPGO=0` via
+    `RavenServerLocator.DisableServerDynamicPgo`). Spark.Tests alone: test process 172/181 → 136/142
+    CPU-s, server 255/278 → 211/246 CPU-s, wall 131/148 → 112/129 s.
+  - One Data Protection key ring per test process; no topology cache file per test database.
+  - CodeCoverage.Tests: 123/123 s → 95/86 s, all green.
+  - Rejected with numbers: value-object key short-circuit (~3 CPU-s per run), single model hash
+    (~2), lookup scan cache (<1), server GC off (no gain), RavenDB storage/monitoring options (no
+    gain), a faster CodeCoverage `WaitForIndexing` poll (wall only). PRD §5d item 13.
 - [ ] Measure before/after per suite, locally and in the next CI run that happens anyway (never push
   just to measure).
 

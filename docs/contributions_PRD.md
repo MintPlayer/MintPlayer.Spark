@@ -1226,6 +1226,89 @@ xUnit and driver stack, not as a new test runner.
       deferred twice), `ModerationVoteTests.M5` (pending 0, not 10), and
       `ComplexFieldIndexingTests.Verbatim_complex_map_faults_per_document_on_Corax` (index errors not
       yet recorded when read). None was loosened; they need owner decisions.
+13. **Less CPU work per host boot and per test process** (2026-10-02, this machine, Developer licence,
+    `dotnet test --no-build`, no coverage, each project run alone).
+    - **Method.** Stopwatches plus per-thread CPU (`GetThreadTimes`) around every phase of
+      `SparkEndpointFactory` and `UseSpark`, and the RavenDB server process's `TotalProcessorTime`
+      read before and after each phase in a sequential throwaway benchmark (one boot at a time, so
+      server CPU is attributable). Per-process CPU for whole runs from the raw WMI counters
+      (`Win32_PerfRawData_PerfProc_Process`), which also cover Defender and System, unreadable to
+      `Get-Process` without admin. All instrumentation reverted.
+    - **Boot profile, ranked by CPU** (sequential, `TestSparkContext`, means per boot; ~535 boots per
+      Spark.Tests run, counted):
+
+      | Phase | Test-process CPU | Server CPU | Note |
+      |---|---|---|---|
+      | Index deployment (`CreateSparkIndexes`) | 2 ms | **58 ms** | one index: the only top-level index of the test assembly |
+      | `_host.Start()` outside `UseSpark` (DI, Data Protection key ring, TestServer) | ~22 ms | ~0 | thread CPU unchanged by the key-ring change below |
+      | Content root files (model JSON, security.json) | 3–7 ms | – | |
+      | `UseSpark` verifiers (hash, security, reserved actions, posture) | ~6 ms | ~3 ms | |
+      | `VerifySparkValueObjectKeys` | <1 ms | ~47 ms, **but only 64 of 535 boots** have keyed collections | ~3 server CPU-s per run |
+      | Model hash written + verified again | 2.8 + 1.5 ms | – | ~2 CPU-s per run |
+      | `LookupReferenceDiscoveryService` scan | 77 ms wall | – | **10 times per run** (resolved lazily), <1 s |
+
+      A boot costs ~60 ms of test-thread CPU and, before this item, ~100 ms of server CPU, so ~535
+      boots were ~85 CPU-s of a ~715 CPU-s project. Per-test databases (1,066 disposed per run,
+      ~95 ms server + ~20 ms client each, measured as 300 sequential cycles) remain the larger cost.
+    - **Done: the test assembly has no top-level index any more.** `RowRuleLedgers_Overview` was the
+      only one, and lever A deploys every top-level index into every host's database: 58 ms of
+      server CPU per boot, for the one case that deploys it itself anyway. Now nested in
+      `SparkRowRuleTests`. The deployment test that used it as its top-level example asserts that
+      rule on the host's filter, against an abstract top-level probe, because asserting it in the
+      database needs a deployable top-level index, which would bring the cost back; the armed,
+      unarmed and `deployAllIndexes` cases still assert in the database.
+    - **Done: no dynamic PGO in test processes or the embedded server.** Found by the per-process
+      counters: dynamic PGO instruments tier-0 code and rejits it from the profile, which a test run
+      (thousands of distinct methods, a handful of calls each) pays for without using.
+      `Directory.Build.targets` sets `TieredPGO=false` for `IsTestProject` (into the runtimeconfig the
+      test host runs under; applications unaffected), and `RavenServerLocator.DisableServerDynamicPgo`
+      sets `DOTNET_TieredPGO=0`, unless already set, before the server starts (it is a child process;
+      the variable overrides RavenDB's runtimeconfig, which turns PGO on). Spark.Tests alone, 2 runs
+      each:
+
+      | | Test process CPU | RavenDB server CPU | Wall |
+      |---|---|---|---|
+      | Before (with the index change) | 172 / 181 s | 255 / 278 s | 131 / 148 s |
+      | Property only | 142 / 136 s | 279 / 287 s | 148 / 145 s |
+      | Property + variable (committed) | 136 / 142 s | 211 / 246 s | 112 / 129 s |
+
+      `DOTNET_TieredCompilation=0` gave the same CPU but one failure in its single run; not used.
+    - **Done, small: one Data Protection key ring per test process** (Data Protection creates it
+      eagerly at host start, so each boot generated a key and wrote its XML). The discriminator was
+      already `testhost` for every host, so only the key is shared. One paired run: host start 48 →
+      29 ms wall per boot, thread CPU unchanged (27.8 vs 27.6 ms). **And no topology cache file per
+      database** (`DisableTopologyCache` in every RavenTestDriver base): the client wrote one per test
+      database into `bin/` (797 in Spark.Tests' bin) for a cache only read when the server is
+      unreachable at startup.
+    - **CodeCoverage.Tests** (same commits, alternating old/new builds, 2 rounds each): test wall
+      123 / 123 s → 95 / 86 s, all 1045 green; RavenDB server 212 / 216 → 172 CPU-s (one readable
+      sample). Per case, measured sequentially: an empty database 54 ms of server CPU, plus
+      `Commits_ByRepository` +115 ms, plus a seed and `WaitForIndexing` +37 ms (and +137 ms of wall:
+      RavenTestDriver polls every 100 ms), plus a dynamic query +19 ms. The heavy classes cost more
+      because of their own work: CommitAssemblerTests ~0.78 server CPU-s per case alone (uploads with
+      attachments, parse, finalize, assemble), ReadRowFilterTests ~0.37, BadgeControllerTests ~0.42.
+      No cheap fix: the index is the real production index the code under test queries, and a
+      faster `WaitForIndexing` poll saves wall only (149 calls, ~5 s of the suite's wall at 4
+      threads), which does not shorten a CPU-bound sweep.
+    - **Measured and rejected:**
+      - *Short-circuiting `VerifySparkValueObjectKeys` on an empty database* (a core change that would
+        need its own proof): 64 boots × ~47 ms ≈ 3 server CPU-s per run.
+      - *Computing the model hash once* (factory writes it, startup recomputes it): ~2 CPU-s per run.
+      - *Caching `LookupReferenceDiscoveryService`'s scan*: 10 scans per run, under a second.
+      - *Workstation GC for the RavenDB server* (`DOTNET_gcServer=0`; its runtimeconfig uses server
+        GC): server CPU 289 / 293 s against 283 / 267 s; no gain.
+      - *RavenDB server options* `Storage.IO.Metrics.Enabled=false`, `Storage.EnablePrefetching=false`,
+        `Monitoring.OpenTelemetry.Enabled=false`: 300 create/delete cycles cost 34–35 server CPU-s
+        with or without them.
+    - **Defender for Endpoint is a real share, and not ours to switch off.** During a Spark.Tests run
+      MsSense, MsMpEng and System together use ~190 CPU-s more than at rest (real-time scanning is
+      off, item 9, but the EDR sensor still records file and process activity). Host boots raise it
+      (file writes in the content root), database cycles barely do. The two file changes above are
+      the cheap part of that; the rest is outside this repository's control.
+    - **Full sweep after item 13: not yet measured.** The first attempt (2026-10-02) was stopped by
+      the agent harness during the build phase because the machine ran low on memory (~4 GB free of
+      40 GB, with other workloads open), not by a failure. Pending: a sweep on a quiet machine,
+      compared with 533–575 s.
 
 ## 6. Risks
 
