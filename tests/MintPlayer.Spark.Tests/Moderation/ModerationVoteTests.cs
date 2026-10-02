@@ -256,16 +256,24 @@ public class ModerationVoteTests : SparkTestDriver
     {
         // M13 finding: a vote never recomputed its recipient's summary, so "+N pending" stayed stale
         // for the whole 48 h delay. No SummaryAsync / crediting here: only the vote and the badge read.
+        //
+        // "At once" means without a recompute or the credit delay, not within the badge read's own
+        // 2 s index wait: that wait is bounded on purpose (a badge serves a stale figure rather than
+        // fail), and under a fully loaded sweep the map-reduce index took longer, so the read
+        // returned 0. The test therefore waits for the pending index itself, which the vote's own
+        // transaction feeds, before reading the badge. A recompute is still never run.
         await using var host = await StartAsync(o => o.Fraud.CreditDelayHours = 48);
         var post = await host.SeedPostAsync(Alice);
 
         await host.VoteAsync(Bob, post, 1);
+        await host.WaitForPendingReputationIndexAsync();
         var (status, voted) = await host.SendAsync("/spark/moderation/reputation", new { }, Alice);
         status.Should().Be(HttpStatusCode.OK);
         voted.GetProperty("result").GetProperty("pending").GetInt32().Should().Be(10);
         voted.GetProperty("result").GetProperty("total").GetInt32().Should().Be(0);
 
         await host.VoteAsync(Bob, post, 0);
+        await host.WaitForPendingReputationIndexAsync();
         var (_, withdrawn) = await host.SendAsync("/spark/moderation/reputation", new { }, Alice);
         withdrawn.GetProperty("result").GetProperty("pending").GetInt32().Should().Be(0, "the withdrawal nets the pending entry to zero");
     }

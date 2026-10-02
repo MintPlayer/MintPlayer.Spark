@@ -308,6 +308,20 @@ public sealed class MoHost : IAsyncDisposable
             .ToListAsync();
     }
 
+    /// <summary>
+    /// Waits until the pending-reputation index has every write made so far (failure bound 60 s).
+    /// The badge read waits for it only briefly (2 s, then serves the stale figure, by design), and
+    /// on a loaded machine a map-reduce index can take longer than that.
+    /// </summary>
+    public async Task WaitForPendingReputationIndexAsync()
+    {
+        using var session = Store.OpenAsyncSession();
+        await session.Query<MintPlayer.Spark.Moderation.Indexes.Moderation_PendingReputation.Result, MintPlayer.Spark.Moderation.Indexes.Moderation_PendingReputation>()
+            .Customize(c => c.WaitForNonStaleResults(TimeSpan.FromSeconds(60)))
+            .Take(1)
+            .ToListAsync();
+    }
+
     public async Task<int> CreditAsync()
     {
         using var scope = Factory.CreateScope();

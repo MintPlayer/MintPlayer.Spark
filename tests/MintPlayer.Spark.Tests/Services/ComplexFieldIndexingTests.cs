@@ -84,22 +84,41 @@ public class ComplexFieldIndexingTests : SparkTestDriver
         await session.SaveChangesAsync();
     }
 
-    private async Task<IndexErrors[]> WaitForIndexingOutcomeAsync(string indexName)
+    // Why neither helper stops at "not stale": under load RavenDB 7.2 reports the index non-stale,
+    // with its entry count, BEFORE that batch's statistics and errors are recorded. Polled every
+    // 100 ms under 8 CPU burners: IsStale=false, EntriesCount=1, MapAttempts=0, ErrorsCount=0 and no
+    // index errors, then MapAttempts=2, MapErrors=1 and the error 0.9 s later (up to 2.6 s). The old
+    // helper returned at the first non-stale read and failed this class 3 runs in 9 under that load.
+
+    /// <summary>Polls until <paramref name="indexName"/> has recorded an error, failing at 60 s.</summary>
+    private async Task<IndexErrors[]> WaitForIndexErrorsAsync(string indexName)
     {
-        // A faulting index never goes non-stale for the faulted documents, so wait on either
-        // errors appearing or the index settling, bounded.
-        var deadline = DateTime.UtcNow.AddSeconds(30);
-        while (DateTime.UtcNow < deadline)
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        while (true)
         {
             var errors = await Store.Maintenance.SendAsync(new GetIndexErrorsOperation([indexName]));
-            if (errors.Any(e => e.Errors.Length > 0)) return errors;
-
-            var stats = await Store.Maintenance.SendAsync(new GetIndexStatisticsOperation(indexName));
-            if (!stats.IsStale) return errors;
-
-            await Task.Delay(250);
+            if (errors.Any(e => e.Errors.Length > 0) || DateTime.UtcNow >= deadline)
+                return errors;
+            await Task.Delay(100);
         }
-        return await Store.Maintenance.SendAsync(new GetIndexErrorsOperation([indexName]));
+    }
+
+    /// <summary>
+    /// Polls until <paramref name="indexName"/> is non-stale AND its statistics show a map attempt for
+    /// each of <paramref name="documents"/>, so the batch's errors, if any, are recorded (failing at 60 s).
+    /// </summary>
+    private async Task<IndexErrors[]> WaitForBatchRecordedAsync(string indexName, int documents)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        while (true)
+        {
+            var stats = await Store.Maintenance.SendAsync(new GetIndexStatisticsOperation(indexName));
+            if (!stats.IsStale && stats.MapAttempts >= documents)
+                return await Store.Maintenance.SendAsync(new GetIndexErrorsOperation([indexName]));
+            if (DateTime.UtcNow >= deadline)
+                throw new TimeoutException($"{indexName} did not record a map attempt for each of {documents} document(s) within 60 s (stale={stats.IsStale}, attempts={stats.MapAttempts}).");
+            await Task.Delay(100);
+        }
     }
 
     [Fact]
@@ -108,7 +127,7 @@ public class ComplexFieldIndexingTests : SparkTestDriver
         await SeedAsync(withComplexValues: true);
         await new People_Verbatim().ExecuteAsync(Store);
 
-        var errors = await WaitForIndexingOutcomeAsync("People/Verbatim");
+        var errors = await WaitForIndexErrorsAsync("People/Verbatim");
 
         errors.SelectMany(e => e.Errors).Should().NotBeEmpty(
             "Corax refuses to index a complex object with default options, per document");
@@ -126,7 +145,7 @@ public class ComplexFieldIndexingTests : SparkTestDriver
         await SeedAsync(withComplexValues: false);
         await new People_Verbatim().ExecuteAsync(Store);
 
-        var errors = await WaitForIndexingOutcomeAsync("People/Verbatim");
+        var errors = await WaitForBatchRecordedAsync("People/Verbatim", documents: 1);
 
         errors.SelectMany(e => e.Errors).Should().BeEmpty();
         var stats = await Store.Maintenance.SendAsync(new GetIndexStatisticsOperation("People/Verbatim"));
