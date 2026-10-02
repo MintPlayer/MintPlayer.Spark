@@ -1,4 +1,6 @@
 using System.Net;
+using System.Text;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.AspNetCore.Builder;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -96,7 +98,7 @@ public class AccountFlowTests : SparkTestDriver
     [Fact]
     public async Task An_email_change_is_mailed_to_the_new_address_and_completes_through_confirm_email()
     {
-        await using var host = await AccountTestHost.StartAsync(Store);
+        await using var host = await AccountTestHost.StartAsync(Store, configure: o => o.EmailChange = SparkEmailChange.Enabled);
         await host.CreateUserAsync("mover", "before@example.com");
         using var client = host.Client();
         var cookie = await host.CookieSignInAsync(client, "before@example.com");
@@ -116,6 +118,105 @@ public class AccountFlowTests : SparkTestDriver
         var moved = await host.FindByEmailAsync("after@example.com");
         moved.Should().NotBeNull();
         moved!.UserName.Should().Be("mover", "a chosen handle is not the email and stays");
+    }
+
+    [Fact]
+    public async Task By_default_an_email_change_is_refused_and_no_mail_is_sent()
+    {
+        await using var host = await AccountTestHost.StartAsync(Store);
+        await host.CreateUserAsync("stayer", "before@example.com");
+        using var client = host.Client();
+        var cookie = await host.CookieSignInAsync(client, "before@example.com");
+
+        var info = await AccountTestHost.SendAsync(client, HttpMethod.Post, "/spark/auth/manage/info", cookie,
+            new { newEmail = "after@example.com", oldPassword = AccountTestHost.Password, newPassword = "Another-horse-2" });
+
+        info.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await info.Content.ReadAsStringAsync()).Should().Contain("EmailChangeDisabled");
+        host.Mail.Sent.Should().BeEmpty();
+        (await host.FindByEmailAsync("before@example.com")).Should().NotBeNull();
+        // Refused as a whole: the password half of the same request did not run either.
+        (await host.CookieSignInAsync(client, "before@example.com")).Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
+    public async Task By_default_a_change_link_does_not_confirm_even_with_a_valid_token()
+    {
+        // A link minted while the option was on, then the option switched off: the token is genuine.
+        await using var host = await AccountTestHost.StartAsync(Store);
+        var user = await host.CreateUserAsync("linked", "before@example.com");
+        var code = await host.WithScopeAsync(services =>
+            services.GetRequiredService<UserManager<SparkUser>>().GenerateChangeEmailTokenAsync(user, "after@example.com"));
+        using var client = host.Client();
+
+        var confirm = await client.PostAsJsonAsync("/spark/auth/confirm-email", new
+        {
+            userId = user.Id,
+            code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code)),
+            changedEmail = "after@example.com",
+        });
+
+        confirm.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await host.FindByEmailAsync("after@example.com")).Should().BeNull();
+    }
+
+    // /me used to read the cookie's claims, a copy taken at sign-in: a renamed user kept seeing the
+    // old name until signing in again. It reads the store now.
+    [Fact]
+    public async Task Me_reflects_the_stored_user_name_without_signing_in_again()
+    {
+        await using var host = await AccountTestHost.StartAsync(Store);
+        var user = await host.CreateUserAsync("before-rename", "me@example.com");
+        using var client = host.Client();
+        var cookie = await host.CookieSignInAsync(client, "me@example.com");
+
+        await host.WithScopeAsync(async services =>
+        {
+            var users = services.GetRequiredService<UserManager<SparkUser>>();
+            var stored = await users.FindByIdAsync(user.Id!);
+            (await users.SetUserNameAsync(stored!, "after-rename")).Succeeded.Should().BeTrue();
+            return true;
+        });
+
+        var me = await AccountTestHost.SendAsync(client, HttpMethod.Get, "/spark/auth/me", cookie);
+        var body = await me.Content.ReadFromJsonAsync<JsonElement>();
+
+        me.StatusCode.Should().Be(HttpStatusCode.OK);
+        body.GetProperty("isAuthenticated").GetBoolean().Should().BeTrue();
+        body.GetProperty("userName").GetString().Should().Be("after-rename");
+        body.GetProperty("email").GetString().Should().Be("me@example.com");
+        body.GetProperty("roles").GetArrayLength().Should().Be(0, "roles come from the store too; this user has none");
+    }
+
+    [Fact]
+    public async Task Me_answers_an_anonymous_caller_as_not_authenticated()
+    {
+        await using var host = await AccountTestHost.StartAsync(Store);
+        using var client = host.Client();
+
+        var me = await AccountTestHost.SendAsync(client, HttpMethod.Get, "/spark/auth/me");
+        var body = await me.Content.ReadFromJsonAsync<JsonElement>();
+
+        me.StatusCode.Should().Be(HttpStatusCode.OK);
+        body.GetProperty("isAuthenticated").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Confirming_a_plain_email_still_works_with_email_change_disabled()
+    {
+        await using var host = await AccountTestHost.StartAsync(Store);
+        var user = await host.CreateUserAsync("fresh", "fresh@example.com", confirmed: false);
+        var code = await host.WithScopeAsync(services =>
+            services.GetRequiredService<UserManager<SparkUser>>().GenerateEmailConfirmationTokenAsync(user));
+        using var client = host.Client();
+
+        var confirm = await client.PostAsJsonAsync("/spark/auth/confirm-email", new
+        {
+            userId = user.Id,
+            code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code)),
+        });
+
+        confirm.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     #endregion

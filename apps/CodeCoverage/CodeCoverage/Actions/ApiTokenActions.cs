@@ -5,6 +5,8 @@ using Raven.Client.Documents.Linq;
 using Raven.Client.Documents;
 using System.Linq.Expressions;
 using CodeCoverage.Entities;
+using CodeCoverage.Indexes;
+using CodeCoverage.LookupReferences;
 using CodeCoverage.Services;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
@@ -40,6 +42,17 @@ namespace CodeCoverage.Actions;
 /// </remarks>
 public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>, ISparkOwnsRowSecurity
 {
+    public override async Task OnNewAsync(SparkNewArgs<ApiToken> args)
+    {
+        await base.OnNewAsync(args);
+    }
+
+    public override async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
+    {
+        var po = await base.OnLoadAsync(id, parent);
+        return po;
+    }
+
     /// <inheritdoc />
     public string RowSecurityRationale =>
         "An upload token is a credential for one account, so only that account's managers may see " +
@@ -85,10 +98,31 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
     /// </remarks>
     public override async Task<Expression<Func<ApiToken, bool>>?> GetRowFilterAsync(string action)
     {
-        var owners = await visibility.GetAllowedOwnersAsync();
+        var accountIds = await ManagedAccountIdsAsync();
         // No null guard: In() simply does not match a null field, and adding one back would
         // reintroduce the OrElse/AndAlso shape the provider chokes on.
-        return token => token.AccountOwnerKey.In(owners);
+        return token => token.Account.In(accountIds);
+    }
+
+    /// <summary>
+    /// The document ids of the accounts the caller manages: the visibility service answers in owner
+    /// keys (<c>github:acme</c>), and a token names its account by document id.
+    /// </summary>
+    /// <remarks>
+    /// An owner the caller manages but which has no Account document contributes nothing — it cannot
+    /// own a token either, since a token is only created from an account's page.
+    /// </remarks>
+    private async Task<List<string>> ManagedAccountIdsAsync()
+    {
+        var owners = await visibility.GetAllowedOwnersAsync();
+        if (owners.Length == 0)
+            return [];
+
+        var ids = await session.Query<Account, Indexes.Accounts_Overview>()
+            .Where(a => a.OwnerKey.In(owners))
+            .Select(a => a.Id)
+            .ToListAsync();
+        return [.. ids.OfType<string>()];
     }
 
     /// <summary>
@@ -112,60 +146,21 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
         // which cannot be re-derived. Everything a later request authorizes on has to be re-derived
         // here, because an edit can change which repositories a token covers AND which account it
         // claims to be.
-        await ValidateRepositoryScopeAsync(entity);
-        entity.Scope = entity.RepositoryIds.Count > 0 ? "Repository" : "Account";
+        // ⚠️ The one field that decides the owner is `Account`, and it is never a posted value. On
+        // create it is the account the New was started from: obj.Parent, which Spark resolved from
+        // the sub-query and authorized itself. The attribute is read-only, so nothing posted is
+        // written to it, and an edit keeps the stored account.
+        if (string.IsNullOrEmpty(entity.Hash))
+            entity.Account = obj.Parent is { Name: nameof(Account), Id: { Length: > 0 } parentId } ? parentId : null;
 
-        // ⚠️ `CanManageOwnerAsync` takes an owner KEY (`github:acme`), which is what its parameter
-        // name says and what `GetAllowedOwnersAsync` returns. Passing the bare login refused every
-        // single token creation — fail-closed, so no security hole, but the feature simply did not
-        // work. `AccountOwnerKey` is the field the row filter already compares.
-        var ownerKey = entity.AccountOwnerKey;
-        if (string.IsNullOrWhiteSpace(ownerKey) || !await visibility.CanManageOwnerAsync(ownerKey))
-            throw new SparkValidationException(nameof(ApiToken.AccountOwnerKey), "You do not manage that account.");
+        // Re-authorized on every save, edit included: the caller's membership of the account can
+        // have been revoked since the token was minted.
+        var account = entity.Account is { Length: > 0 } accountId ? await session.LoadAsync<Account>(accountId) : null;
+        if (account is null || !await visibility.CanManageOwnerAsync(account.OwnerKey))
+            throw new SparkValidationException(nameof(ApiToken.Account), "You do not manage that account.");
 
-        // ⚠️⚠️ EVERYTHING BELOW IS DERIVED FROM THE KEY THAT WAS JUST AUTHORIZED. Nothing reads
-        // another posted field.
-        //
-        // This authorized `AccountOwnerKey` and then resolved the account from `AccountLogin` — a
-        // SECOND, independently client-writable field that nothing validated and nothing
-        // server-assigned. Posting a key you genuinely manage together with somebody else's login
-        // minted a token stamped with THEIR account: the row filter compares the key, so the token
-        // stayed visible and editable by the attacker, while `UploadsController` authorized its
-        // uploads against the victim's repositories. Where no account matched the posted login it
-        // was worse, not better — `AccountId` stayed null, the authentication handler fell back to
-        // emitting the login as a claim, and the legacy login-comparison arm authorized every
-        // repository owned by that name.
-        //
-        // The rule the whole multi-forge design rests on: one field decides who you are, and
-        // everything else follows from it.
-        if (!ForgeOwner.TryParse(ownerKey, out var owner))
-            throw new SparkValidationException(nameof(ApiToken.AccountOwnerKey), "That is not a valid account key.");
-
-        var provider = owner.Value.Provider;
-        var ownerLogin = owner.Value.Login;
-
-        // ⚠️ Matched on provider AND login. A bare `a.Login == login` unions forges: a GitLab group
-        // and a GitHub organisation of the same name are different principals, and `FirstOrDefault`
-        // would pick whichever RavenDB returned first.
-        var account = await session.Query<Account>()
-            .FirstOrDefaultAsync(a => a.Provider == provider && a.Login == ownerLogin);
-
-        // Overwritten, not read: `AccountLogin` is display-only by its own documentation, and a
-        // posted value must never survive into a field anything authorizes on — the login fallback
-        // in `UploadsController` still reads it.
-        //
-        // ⚠️⚠️ AND THIS RUNS ON EVERY SAVE, WHICH IS THE WHOLE POINT. The first fix derived
-        // these three fields only when minting, so one PUT after creation put the token straight
-        // back into the state the fix describes as the attack: `AccountLogin` is writable, the
-        // authentication handler emits it as the account claim, and `UploadsController`'s legacy
-        // arm authorizes every repository owned by that name. Re-deriving is safe because it reads
-        // nothing but `AccountOwnerKey`, which was authorized a few lines up — and it is what binds
-        // `AccountId` to the key when an EDIT moves the key to another account the caller also
-        // manages. Leave them create-only and the token keeps authorizing against the old account
-        // for ever, including after the caller's membership of that account is revoked.
-        entity.AccountLogin = ownerLogin;
-        entity.Provider = provider;
-        entity.AccountId = account?.GitHubId;
+        await ValidateRepositoryScopeAsync(entity, account);
+        entity.Scope = entity.RepositoryIds.Count > 0 ? ApiTokenScope.Repository : ApiTokenScope.Account;
 
         if (!string.IsNullOrEmpty(entity.Hash))
             return; // An edit; the credential is already minted and cannot be re-derived.
@@ -184,21 +179,22 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
     }
 
     /// <summary>
-    /// Refuses a token scoped to a repository the caller does not manage.
+    /// Refuses a token scoped to a repository that is not the token's own account's.
     /// </summary>
     /// <remarks>
     /// ⚠️ <b>Nothing else checks this.</b> A reference ARRAY is written straight through
     /// (<c>EntityMapper</c> hands the posted value to the property and returns), bypassing the
     /// collection guard that binds a scalar reference's id to its type — so whatever ids the client
     /// posts are what get stored. And <c>EnsureRowSaveAllowedAsync</c> re-applies only the
-    /// <c>AccountLogin</c> row filter, which says nothing about repository ownership.
+    /// <c>Account</c> row filter, which says nothing about repository ownership.
     /// <para>
     /// Without this, any signed-in user could mint a token for any repository by posting its
-    /// document id. Ids are checked against the repositories the caller actually manages, not merely
-    /// against existence.
+    /// document id. Each repository must belong to <paramref name="account"/> — the account the caller
+    /// was just authorized for — which is narrower than "some account the caller manages": a token
+    /// for one account cannot reach into another, even one the same caller also manages.
     /// </para>
     /// </remarks>
-    private async Task ValidateRepositoryScopeAsync(ApiToken entity)
+    private async Task ValidateRepositoryScopeAsync(ApiToken entity, Account account)
     {
         if (entity.RepositoryIds.Count == 0)
             return;
@@ -206,22 +202,19 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
         // Distinct, because a duplicated id would otherwise mean a repeated claim on the wire.
         entity.RepositoryIds = [.. entity.RepositoryIds.Distinct(StringComparer.Ordinal)];
 
-        var owners = await visibility.GetAllowedOwnersAsync();
         var repositories = await session.LoadAsync<Repository>(entity.RepositoryIds);
 
         foreach (var id in entity.RepositoryIds)
         {
             repositories.TryGetValue(id, out var repository);
 
-            // Unknown and unauthorized are refused identically — a caller must not be able to
-            // discover which repository ids exist by comparing error messages.
-            // ⚠️ `owners` holds KEYS. `OwnerLogin` never matched one, so every repository-scoped
-            // token save was refused.
-            if (repository is null || !owners.Contains(repository.OwnerKey, StringComparer.OrdinalIgnoreCase))
+            // Unknown and foreign are refused identically — a caller must not be able to discover
+            // which repository ids exist by comparing error messages.
+            if (repository is null || !string.Equals(repository.Account, account.Id, StringComparison.Ordinal))
             {
                 throw new SparkValidationException(
                     nameof(ApiToken.RepositoryIds),
-                    "One of the selected repositories is not one you manage.");
+                    "One of the selected repositories is not one of this account's.");
             }
         }
     }
@@ -261,16 +254,15 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
     /// <see cref="GetRowFilterAsync"/> and the sort on top of what this returns — the parent scope
     /// here is about <em>which</em> account is being shown, not about who may see it.
     /// </remarks>
-    public IRavenQueryable<ApiToken> Account_UploadTokens(CustomQueryArgs args)
+    [NoInterfaceMember]
+    public IQueryable<ApiToken> Account_UploadTokens(CustomQueryArgs args)
     {
         args.EnsureParent("Account");
 
-        // Matched on login rather than the numeric id: AccountId is null on tokens issued
-        // before that field existed, and the same fallback is what ApiTokenAuthenticationHandler
-        // relies on so a deploy never invalidates a working token.
-        var login = args.Parent!.Attributes
-            .FirstOrDefault(a => a.Name == nameof(Account.Login))?.Value?.ToString();
-
-        return session.Query<ApiToken>().Where(t => t.AccountLogin == login);
+        // By document id, the field the token stores: through the index, so each row also carries
+        // the account's current login and key (VApiToken).
+        return session.Query<VApiToken, ApiTokens_Overview>()
+            .Where(t => t.Account == args.Parent!.Id)
+            .OfType<ApiToken>();
     }
 }

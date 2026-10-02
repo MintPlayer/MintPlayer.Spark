@@ -7,6 +7,7 @@ import { BsAlertComponent } from '@mintplayer/ng-bootstrap/alert';
 import { BsCardComponent, BsCardHeaderComponent } from '@mintplayer/ng-bootstrap/card';
 import { BsCheckboxComponent } from '@mintplayer/ng-bootstrap/checkbox';
 import { BsFormComponent, BsFormControlDirective } from '@mintplayer/ng-bootstrap/form';
+import { BsInputGroupComponent } from '@mintplayer/ng-bootstrap/input-group';
 import { BsSelectComponent, BsSelectOption, BsSelectValueAccessor } from '@mintplayer/ng-bootstrap/select';
 import { BsSpinnerComponent } from '@mintplayer/ng-bootstrap/spinner';
 import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
@@ -25,7 +26,8 @@ interface CultureOption {
 }
 
 /**
- * The profile page (#460, D16): user name, email (a change is confirmed from the NEW address first),
+ * The profile page (#460, D16): user name, email (changeable only under the server's opt-in
+ * `SparkEmailChange.Enabled`; a change is confirmed from the NEW address first),
  * the preferred mail language (`SparkUser.PreferredCulture`, M8) and the application's own fields
  * (`SPARK_ACCOUNT_PROFILE_FIELDS`, validated server-side by `ISparkProfileContributor<TUser>`).
  *
@@ -36,7 +38,7 @@ interface CultureOption {
   selector: 'spark-account-profile',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsCheckboxComponent, BsFormComponent, BsFormControlDirective, BsSelectComponent, BsSelectValueAccessor, BsSelectOption, BsSpinnerComponent, TranslateKeyPipe],
+  imports: [ReactiveFormsModule, BsAlertComponent, BsCardComponent, BsCardHeaderComponent, BsCheckboxComponent, BsFormComponent, BsFormControlDirective, BsInputGroupComponent, BsSelectComponent, BsSelectValueAccessor, BsSelectOption, BsSpinnerComponent, TranslateKeyPipe],
   template: `
     <div class="d-flex justify-content-center">
       <bs-card style="width: 100%; max-width: 640px;">
@@ -138,15 +140,18 @@ interface CultureOption {
             @if (emailSent()) {
               <bs-alert [type]="colors.info" class="mb-3 d-block spark-email-sent">{{ 'auth.emailChangeSent' | t }}</bs-alert>
             }
-            <bs-form>
-              <form [formGroup]="emailForm" (ngSubmit)="changeEmail()" class="d-flex gap-2 align-items-end">
-                <div class="flex-grow-1">
+            <!-- Opt-in on the server (SparkEmailChange.Enabled); hidden until it says so. -->
+            @if (emailChangeAllowed()) {
+              <bs-form>
+                <form [formGroup]="emailForm" (ngSubmit)="changeEmail()">
                   <label for="newEmail" class="form-label">{{ 'auth.newEmail' | t }}</label>
-                  <input type="email" id="newEmail" formControlName="newEmail" autocomplete="email" />
-                </div>
-                <button type="submit" class="btn btn-outline-primary" [disabled]="busy()">{{ 'auth.changeEmail' | t }}</button>
-              </form>
-            </bs-form>
+                  <bs-input-group>
+                    <input type="email" id="newEmail" formControlName="newEmail" autocomplete="email" />
+                    <button type="submit" class="btn btn-outline-primary" [disabled]="busy()">{{ 'auth.changeEmail' | t }}</button>
+                  </bs-input-group>
+                </form>
+              </bs-form>
+            }
           }
         </div>
       </bs-card>
@@ -181,6 +186,8 @@ export class SparkAccountProfileComponent {
   readonly emailConfirmed = signal<boolean | null>(null);
   readonly emailSent = signal(false);
   readonly emailMessages = signal<string[]>([]);
+  /** Off until the server reports `emailChange`, and off if the capabilities call fails. */
+  readonly emailChangeAllowed = signal(false);
 
   private readonly languages = signal<CultureOption[]>([]);
   private readonly storedCulture = signal<string | null>(null);
@@ -225,6 +232,9 @@ export class SparkAccountProfileComponent {
       this.auth.profile(),
       this.auth.accountInfo(),
       this.loadLanguages(),
+      this.auth.capabilities()
+        .then(capabilities => this.emailChangeAllowed.set(capabilities.emailChange === true))
+        .catch(() => { /* stays false */ }),
     ]);
     if (profile.success && profile.value) {
       this.apply(profile.value);

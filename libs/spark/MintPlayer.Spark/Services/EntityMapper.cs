@@ -243,7 +243,8 @@ internal partial class EntityMapper : IEntityMapper
         blanked ??= breadcrumbs?.BlankedFor(po.Id);
         if (string.IsNullOrWhiteSpace(breadcrumb))
             breadcrumb = entityType.Name;
-        po.Name = breadcrumb;
+        // Breadcrumb only: Name stays the entity type's name, which hooks and queries identify an
+        // object by (`obj.Parent?.Name == "Account"`).
         po.Breadcrumb = breadcrumb;
 
         foreach (var attribute in po.Attributes)

@@ -10,6 +10,11 @@
       "fr": "Déconnexion",
       "nl": "Uitloggen"
     },
+    "account": {
+      "en": "Account",
+      "fr": "Compte",
+      "nl": "Account"
+    },
     "register": {
       "en": "Register",
       "fr": "S'inscrire",

@@ -20,16 +20,12 @@ public class ApiTokenAuthenticationHandler : AuthenticationHandler<Authenticatio
     public const string SchemeName = "ApiToken";
 
     public const string ScopeClaim = "covt:scope";
+    /// <summary>
+    /// The owning account's document id, <c>Accounts/{provider}/{id}</c> — compared with
+    /// <c>Repository.Account</c>. Replaced the <c>covt:accountid</c> + <c>covt:provider</c> pair, which
+    /// had to be reassembled into exactly this, on 2026-10-02.
+    /// </summary>
     public const string AccountClaim = "covt:account";
-    /// <summary>The owner's numeric forge id — the stable half of <see cref="AccountClaim"/>.</summary>
-    public const string AccountIdClaim = "covt:accountid";
-    /// <summary>The forge the token authorizes against.</summary>
-    /// <remarks>
-    /// ⚠️ <b><see cref="AccountIdClaim"/> means nothing without it.</b> A numeric account id is
-    /// unique only within a forge, so a reader that assumes one — as the upload path did, as a
-    /// literal — authorizes against whichever forge it happened to pick.
-    /// </remarks>
-    public const string ProviderClaim = "covt:provider";
     public const string RepositoryClaim = "covt:repoid";
     public const string TokenHashClaim = "covt:hash";
 
@@ -83,20 +79,12 @@ public class ApiTokenAuthenticationHandler : AuthenticationHandler<Authenticatio
             new(ScopeClaim, token.Scope),
             new(TokenHashClaim, hash),
         };
-        // ⚠️ The KEY (`github:acme`), not the bare login. This is the fallback for tokens minted
-        // before `AccountId` existed, and a bare login is ambiguous the moment there is a second
-        // forge: a GitLab group and a GitHub organisation of the same name would authorize each
-        // other's uploads. `AccountOwnerKey` is server-derived on every save and read-only in the
-        // model, so unlike the login it was never a value the client could choose.
-        if (token.AccountOwnerKey is not null)
-            claims.Add(new Claim(AccountClaim, token.AccountOwnerKey));
-        if (token.AccountId is not null)
-        {
-            claims.Add(new Claim(AccountIdClaim, token.AccountId.Value.ToString()));
-            // Emitted with the id, never without it: the pair is what identifies an account, and a
-            // consumer holding one half would have to guess the other.
-            claims.Add(new Claim(ProviderClaim, token.Provider.ToCanonicalString()));
-        }
+        // The account's DOCUMENT id (`Accounts/github/48772716`): forge and numeric id in one value,
+        // so a consumer cannot pair one account's id with another forge, and a login rename or a
+        // repository transfer changes nothing. Server-assigned from the authorized parent on create
+        // and read-only in the model, so it was never a value the client could choose.
+        if (token.Account is not null)
+            claims.Add(new Claim(AccountClaim, token.Account));
         // One claim per repository. ClaimsIdentity carries repeats happily, but a reader MUST use
         // FindAll — FindFirst silently returns one of N, which would authorize a multi-repository
         // token for exactly one repository and fail closed on the rest, confusingly.

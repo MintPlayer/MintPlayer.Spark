@@ -22,8 +22,12 @@ spark.AddAuthentication<SparkUser>(configure: auth =>
 Client side, mount the management page:
 
 ```ts
-...sparkAuthRoutes(withExternalLogin(githubProvider()), withPasskeys()),
+...sparkAuthRoutes(withExternalLogin(githubProvider()), withAccount()),
 ```
+
+`withAccount()` mounts it at `/account/passkeys` and links it from the account overview, which
+`<spark-auth-bar>`'s Account button opens. `withPasskeys()` still mounts the page alone (at
+`/passkeys`) for an app without the account area, but then nothing links to it.
 
 That is the whole setup. The sign-in page grows a "Sign in with a passkey" button on its own, once
 the server reports the capability and the browser supports the ceremony.

@@ -113,7 +113,7 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
             {
                 Scope = "Repository",
                 RepositoryIds = [Repository.DocumentId(EForgeProvider.GitHub, id)],
-                AccountLogin = "acme",
+                Account = Account.DocumentId(EForgeProvider.GitHub, 1),
                 CreatedAtUtc = DateTime.UtcNow,
                 Hash = $"hash{id}",
             }, ApiToken.NewDocumentId());
@@ -301,7 +301,7 @@ public class DeleteRepositoryDataRecipientTests : CoverageRavenTest
             {
                 Scope = "Repository",
                 RepositoryIds = [Repository.DocumentId(EForgeProvider.GitHub, RepoId), Repository.DocumentId(EForgeProvider.GitHub, OtherRepoId)],
-                AccountLogin = "acme",
+                Account = Account.DocumentId(EForgeProvider.GitHub, 1),
                 CreatedAtUtc = DateTime.UtcNow,
                 Hash = "hash-multi",
             }, ApiToken.NewDocumentId());

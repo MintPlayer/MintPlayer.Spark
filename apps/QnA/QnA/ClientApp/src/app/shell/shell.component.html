@@ -9,8 +9,8 @@
       </span>
       <!-- Only for someone who may review (a moderator, or earned): anyone else gets 404s there. -->
       <spark-review-queue-link linkClass="btn btn-sm btn-link qna-review-link" />
-      <a class="btn btn-sm btn-link qna-account-link" routerLink="/account">{{ 'app.account' | t }}</a>
     }
+    <!-- Account + logout when signed in (Account appears because withAccount() is mounted). -->
     <spark-auth-bar />
   </ng-container>
   <router-outlet />

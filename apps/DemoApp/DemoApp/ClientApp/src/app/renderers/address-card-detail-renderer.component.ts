@@ -38,6 +38,6 @@ export class AddressCardDetailRendererComponent implements SparkAttributeDetailR
 
   itemName = computed(() => {
     const attrs = this.item()?.attributes ?? [];
-    return attrs.find(a => a.name === 'FirstName')?.value ?? this.item()?.name ?? '';
+    return attrs.find(a => a.name === 'FirstName')?.value ?? this.item()?.breadcrumb ?? '';
   });
 }

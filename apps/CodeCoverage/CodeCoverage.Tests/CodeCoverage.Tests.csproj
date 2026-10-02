@@ -51,6 +51,11 @@
 		-->
 		<Compile Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\RavenServerLocator.cs" Link="RavenServerLocator.cs" />
 		<Compile Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\RavenDatabaseDeletion.cs" Link="RavenDatabaseDeletion.cs" />
+		<!-- SparkTestDriver's JSON seeding, linked for the same reason: fixtures under Fixtures\. -->
+		<Compile Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\JsonFixtureImporter.cs" Link="JsonFixtureImporter.cs" />
+		<Compile Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\RavenIndexHelper.cs" Link="RavenIndexHelper.cs" />
+		<Compile Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\RavenIndexingExtensions.cs" Link="RavenIndexingExtensions.cs" />
+		<Compile Include="..\..\..\libs\testing\MintPlayer.Spark.Testing\RavenIndexDeploymentException.cs" Link="RavenIndexDeploymentException.cs" />
 		<ProjectReference Include="..\CodeCoverage\CodeCoverage.csproj" />
 		<ProjectReference Include="..\..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
 	</ItemGroup>

@@ -166,23 +166,39 @@ public partial class RepositoryActions : DefaultPersistentObjectActions<Reposito
     /// <c>ApiToken.RepositoryIds</c>.
     /// </summary>
     /// <remarks>
-    /// ⚠️ <b>Parent-free, deliberately.</b> A reference picker sends the FORM's own parent, so an
-    /// ApiToken form sends <c>parentType=ApiToken</c> — or nothing at all on the New form.
-    /// <c>Account_Repositories</c> calls <c>EnsureParent("Account")</c>, which would throw and
-    /// surface as a 500 from the picker rather than an empty dropdown. <c>ProjectColumnActions</c>
-    /// records being bitten by exactly this.
+    /// <b>A lookup query, not a card query</b> — the Vidyano split (<c>VCarDealersFromParent</c> versus
+    /// <c>Car_Changes</c>): a card's query gets its owner as parent and enforces it, a reference
+    /// picker gets whatever the form is editing and adapts to it. So this branches on the parent
+    /// instead of calling <c>EnsureParent</c>, which would surface as a 500 from the picker:
+    /// <list type="bullet">
+    /// <item><description><b>Account</b> — the New form, which forwards the Upload tokens card's parent:
+    /// that account's repositories.</description></item>
+    /// <item><description><b>ApiToken</b> — the edit form, whose parent is the token itself: the
+    /// repositories of the token's <see cref="ApiToken.Account"/>. The stored value is the current
+    /// one, since the attribute is read-only.</description></item>
+    /// <item><description>Anything else, or an account the caller does not manage: nothing.</description></item>
+    /// </list>
     /// <para>
-    /// Scoped to owners the caller manages rather than relying on the row filter: the filter's
-    /// <c>Query</c> arm is the LISTING rule, which admits public repositories, and an option list
-    /// offering repositories the caller cannot actually scope a token to would only produce a
-    /// validation error after they picked one.
+    /// The account's own repositories, not "every owner the caller manages": a token may only cover
+    /// its own account's repositories (<c>ApiTokenActions.ValidateRepositoryScopeAsync</c>), and offering
+    /// others would only produce a validation error after one was picked. The save still checks.
     /// </para>
     /// </remarks>
-    public async Task<IRavenQueryable<Repository>> ApiToken_SelectableRepositories(CustomQueryArgs args)
+    public async Task<IQueryable<Repository>> ApiToken_SelectableRepositories(CustomQueryArgs args)
     {
-        var owners = await visibility.GetAllowedOwnersAsync();
+        var accountId = args.Parent?.Name switch
+        {
+            nameof(Account) => args.Parent.Id,
+            nameof(ApiToken) => args.Parent[nameof(ApiToken.Account)].Value?.ToString(),
+            _ => null,
+        };
+
+        var account = accountId is { Length: > 0 } ? await session.LoadAsync<Account>(accountId) : null;
+        if (account is null || !await visibility.CanManageOwnerAsync(account.OwnerKey))
+            return Enumerable.Empty<Repository>().AsQueryable();
+
         return session.Query<Repository, Indexes.Repositories_Overview>()
-            .Where(r => r.OwnerKey.In(owners));
+            .Where(r => r.Account == account.Id);
     }
 
     /// <summary>BadgeToken grants badge access on private repos — managers only.</summary>

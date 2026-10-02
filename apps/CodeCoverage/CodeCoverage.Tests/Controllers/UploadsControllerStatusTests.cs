@@ -30,6 +30,7 @@ public class UploadsControllerStatusTests : CoverageRavenTest
     protected override bool DeployIndexes => true;
 
     private const long RepoId = 4242;
+    private const long AcmeAccountId = 1;
     private const string RepoName = "acme/widgets";
     private const string Sha = "1111111111111111111111111111111111111111";
     private const string BaselineSha = "2222222222222222222222222222222222222222";
@@ -57,7 +58,8 @@ public class UploadsControllerStatusTests : CoverageRavenTest
     private static ClaimsPrincipal AccountToken(string owner) => new(new ClaimsIdentity(
         [
             new Claim(ApiTokenAuthenticationHandler.ScopeClaim, "Account"),
-            new Claim(ApiTokenAuthenticationHandler.AccountClaim, ForgeOwner.KeyFromUnqualifiedLogin(owner)),
+            // The account DOCUMENT id, as the handler emits it; acme owns the seeded repository.
+            new Claim(ApiTokenAuthenticationHandler.AccountClaim, Account.DocumentId(EForgeProvider.GitHub, owner == "acme" ? AcmeAccountId : 2)),
         ], ApiTokenAuthenticationHandler.SchemeName));
 
     /// <summary>A GitHub Actions OIDC principal for a public repository.</summary>
@@ -100,6 +102,7 @@ public class UploadsControllerStatusTests : CoverageRavenTest
     {
         await session.StoreAsync(new Repository
         {
+            Account = Account.DocumentId(EForgeProvider.GitHub, AcmeAccountId),
             GitHubId = RepoId,
             Name = "widgets",
             FullName = RepoName,

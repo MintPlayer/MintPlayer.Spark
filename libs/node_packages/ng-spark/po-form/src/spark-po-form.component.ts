@@ -102,6 +102,19 @@ export class SparkPoFormComponent {
   isSaving = input(false);
   parentId = input<string | undefined>(undefined);
   parentType = input<string | undefined>(undefined);
+  /**
+   * The parent a Reference attribute's option query runs under, when it differs from
+   * `parentId`/`parentType`. Those two also name the object that owns an AsDetail row for the row
+   * round-trips (`parentTypeForWire`), so they cannot carry a create page's sub-query parent: a New
+   * opened from an Account's card must offer that account's repositories, while its detail rows still
+   * belong to the type being created. Unset, the option queries use `parentId`/`parentType` as before.
+   */
+  referenceParentId = input<string | undefined>(undefined);
+  referenceParentType = input<string | undefined>(undefined);
+
+  private readonly optionQueryParent = computed(() => this.referenceParentId() && this.referenceParentType()
+    ? { parentId: this.referenceParentId(), parentType: this.referenceParentType() }
+    : { parentId: this.parentId(), parentType: this.parentType() });
 
   save = output<void>();
   cancel = output<void>();
@@ -257,8 +270,7 @@ export class SparkPoFormComponent {
 
     effect(() => {
       const et = this.entityType();
-      const _pid = this.parentId();
-      const _ptype = this.parentType();
+      const _parent = this.optionQueryParent();
       if (et) {
         this.loadReferenceOptions();
         this.loadAsDetailTypes();
@@ -281,10 +293,7 @@ export class SparkPoFormComponent {
 
     const entries = await Promise.all(
       refAttrs.filter(a => a.query).map(async attr => {
-        const result = await this.sparkService.executeQueryByName(attr.query!, {
-          parentId: this.parentId(),
-          parentType: this.parentType(),
-        });
+        const result = await this.sparkService.executeQueryByName(attr.query!, this.optionQueryParent());
         return [attr.name, result.items] as [string, QueryResultItem[]];
       })
     );
@@ -337,6 +346,8 @@ export class SparkPoFormComponent {
     const data = { ...this.formData() };
     data[attr.name] = nodes.map(n => n.id);
     this.formData.set(data);
+    // A picked value is a discrete change: triggersRefresh fires now, as for a checkbox or a select.
+    this.noteChange(attr);
   }
 
   async loadAsDetailTypes(): Promise<void> {
@@ -371,10 +382,7 @@ export class SparkPoFormComponent {
           if (refCols.length > 0) {
             const refEntries = await Promise.all(
               refCols.filter(c => c.query).map(async col => {
-                const result = await this.sparkService.executeQueryByName(col.query!, {
-                  parentId: this.parentId(),
-                  parentType: this.parentType(),
-                });
+                const result = await this.sparkService.executeQueryByName(col.query!, this.optionQueryParent());
                 return [col.name, result.items] as [string, QueryResultItem[]];
               })
             );
@@ -422,12 +430,14 @@ export class SparkPoFormComponent {
     const data = { ...this.formData() };
     data[attr.name] = id;
     this.formData.set(data);
+    this.noteChange(attr);
   }
 
   onLookupValueChange(attr: EntityAttributeDefinition, key: string | null): void {
     const data = { ...this.formData() };
     data[attr.name] = key;
     this.formData.set(data);
+    this.noteChange(attr);
   }
 
   getEditRendererComponent(attr: EntityAttributeDefinition): Type<any> | null {
@@ -792,6 +802,23 @@ export class SparkPoFormComponent {
       }
       return next;
     });
+
+    // A multi-reference renders through <bs-tree-select>, which reads the provider and the by-id
+    // node map rather than `referenceOptions` — so a refreshed list has to be rebuilt there too, or
+    // the hook's options never reach the picker. The node map keeps the labels it already had: a
+    // selected id the new list no longer offers must still render as its chip, not as a raw id.
+    const multi = replaced.filter(([name]) => byName.get(name)?.dataType === 'Reference' && byName.get(name)?.isArray);
+    if (multi.length === 0) return;
+
+    const providers = { ...this.referenceProviders() };
+    const nodesByAttr = { ...this.referenceNodes() };
+    for (const [name, options] of multi) {
+      const nodes: TreeNode[] = (options ?? []).map(o => ({ id: o.key, label: o.label ? resolveTranslation(o.label) : o.key }));
+      providers[name] = new InMemoryTreeSelectProvider(nodes);
+      nodesByAttr[name] = { ...(nodesByAttr[name] ?? {}), ...this.toRecord(nodes.map(n => [n.id, n] as [string, TreeNode])) };
+    }
+    this.referenceProviders.set(providers);
+    this.referenceNodes.set(nodesByAttr);
   }
 
   /** Sends anything still pending, so a typed-but-never-blurred trigger is reflected before save. */

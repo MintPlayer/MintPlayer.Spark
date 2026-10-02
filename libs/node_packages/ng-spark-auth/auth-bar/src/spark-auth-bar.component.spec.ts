@@ -4,35 +4,38 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { describe, expect, it, vi } from 'vitest';
 
 import { SparkAuthBarComponent } from './spark-auth-bar.component';
-import { SparkAuthService } from '@mintplayer/ng-spark-auth/core';
+import { SparkAuthService, SparkAuthTranslationService } from '@mintplayer/ng-spark-auth/core';
 import { SPARK_AUTH_CONFIG, defaultSparkAuthConfig } from '@mintplayer/ng-spark-auth/models';
+import { sparkAuthRoutes, withAccount, withLocalLogin } from '@mintplayer/ng-spark-auth/routes';
 import { nextNavigationEnd, StubComponent } from '../../src/test-utils';
 
-const routes: Routes = [
+const baseRoutes: Routes = [
   { path: '', pathMatch: 'full', component: StubComponent },
   { path: 'somewhere', component: SparkAuthBarComponent },
 ];
 
-async function setup() {
+async function setup(extraRoutes: Routes = []) {
   const auth: any = {
     logout: vi.fn().mockResolvedValue(undefined),
     isAuthenticated: () => true,
     user: () => ({ isAuthenticated: true, userName: 'jane', email: 'jane@example.com', roles: [] }),
-    // The bar asks the server whether passkeys are offered, so the double has to answer. Passkeys
-    // off by default here: these tests are about the user/logout branch, and a double that silently
-    // enabled an unrelated feature would make them assert more than they name.
-    capabilities: vi.fn().mockResolvedValue({ localCredentials: 'Full', externalProviders: [] }),
   };
   TestBed.configureTestingModule({
     providers: [
-      provideRouter(routes),
+      // The bar sits in the shell, outside the sparkAuthRoutes() subtree — the shape these tests keep.
+      provideRouter([...baseRoutes, ...extraRoutes]),
       { provide: SparkAuthService, useValue: auth },
+      { provide: SparkAuthTranslationService, useValue: { t: (k: string) => k } },
       { provide: SPARK_AUTH_CONFIG, useValue: defaultSparkAuthConfig },
     ],
   });
   const harness = await RouterTestingHarness.create();
   return { harness, auth };
 }
+
+const buttons = (harness: RouterTestingHarness) =>
+  [...(harness.routeNativeElement as HTMLElement).querySelectorAll('bs-button-group .btn')]
+    .map(b => ({ text: b.textContent?.trim(), href: b.getAttribute('href') }));
 
 describe('SparkAuthBarComponent', () => {
   it('exposes the SparkAuthService for template use', async () => {
@@ -66,26 +69,38 @@ describe('SparkAuthBarComponent', () => {
     expect(TestBed.inject(Router).url).toBe('/');
   });
 
-  it('does not offer passkeys when the server does not report them', async () => {
-    const { harness, auth } = await setup();
-    const c = await harness.navigateByUrl('/somewhere', SparkAuthBarComponent);
-    await auth.capabilities.mock.results[0]?.value;
+  it('groups Account and Logout, Account first, when withAccount() is mounted', async () => {
+    const { harness } = await setup(sparkAuthRoutes(withLocalLogin(), withAccount()));
+    await harness.navigateByUrl('/somewhere', SparkAuthBarComponent);
+    harness.detectChanges();
 
-    expect(c.showPasskeys()).toBe(false);
+    expect(buttons(harness)).toEqual([
+      { text: 'auth.account', href: '/account' },
+      { text: 'auth.logout', href: null },
+    ]);
   });
 
-  it('does not offer passkeys when the capabilities call fails', async () => {
-    // A refused or unreachable capabilities endpoint must leave the link hidden rather than
-    // guessed: offering a credential page the server will not serve is worse than omitting it.
-    const { harness, auth } = await setup();
-    auth.capabilities = vi.fn().mockRejectedValue(new Error('offline'));
+  it('follows a custom account path, read from the router configuration', async () => {
+    const { harness } = await setup(sparkAuthRoutes(withAccount({ account: 'me' })));
     const c = await harness.navigateByUrl('/somewhere', SparkAuthBarComponent);
 
-    expect(c.showPasskeys()).toBe(false);
+    expect(c.accountUrl).toBe('/me');
   });
 
-  // ⚠️ The *positive* case is deliberately not asserted here. showPasskeys() also requires
-  // passkeysSupported(), which needs a secure context and the real PublicKeyCredential JSON helpers
-  // — jsdom has none of them, so a passing test would have to fake the browser API it is meant to be
-  // checking. That path is covered against a real browser instead.
+  it('offers logout alone when withAccount() is not mounted', async () => {
+    const { harness } = await setup(sparkAuthRoutes(withLocalLogin()));
+    const c = await harness.navigateByUrl('/somewhere', SparkAuthBarComponent);
+    harness.detectChanges();
+
+    expect(c.accountUrl).toBeUndefined();
+    expect(buttons(harness)).toEqual([{ text: 'auth.logout', href: null }]);
+  });
+
+  it('no longer renders the user name in the bar', async () => {
+    const { harness } = await setup(sparkAuthRoutes(withAccount()));
+    await harness.navigateByUrl('/somewhere', SparkAuthBarComponent);
+    harness.detectChanges();
+
+    expect((harness.routeNativeElement as HTMLElement).textContent).not.toContain('jane');
+  });
 });

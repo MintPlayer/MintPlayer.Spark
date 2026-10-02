@@ -70,8 +70,7 @@ public class UploadActionWindowsPathsTests : CoverageRavenTest
         var bundle = ActionDogfoodHarness.ActionBundle(repositoryRoot);
 
         using var store = GetDocumentStore();
-        var token = await ActionDogfoodHarness.SeedRepositoryAndTokenAsync(
-            store, RepoId, RepoName, "MintPlayer", "dogfood-windows");
+        var token = await ActionDogfoodHarness.SeedAsync(store);
 
         var port = ActionDogfoodHarness.FreePort();
         var baseUrl = $"http://127.0.0.1:{port}";
@@ -105,7 +104,7 @@ public class UploadActionWindowsPathsTests : CoverageRavenTest
                         ["INPUT_DISABLE-SEARCH"] = "true",
                     });
 
-                Assert.True(exitCode == 0, $"The action failed (exit {exitCode}):\n{log}");
+                Assert.True(exitCode == 0, $"The action failed (exit {exitCode}):\n{log}\n--- server (last 40 lines) ---\n{ActionDogfoodHarness.Tail(serverOutput, 40)}");
                 Assert.Contains("Upload accepted", log);
 
                 await AssertFileMatchedAndCounted(store);

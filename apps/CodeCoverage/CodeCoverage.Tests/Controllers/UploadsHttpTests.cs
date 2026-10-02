@@ -70,10 +70,7 @@ public class UploadsHttpTests
                 Hash = ApiTokenService.Hash(TokenValue),
                 Scope = "Account",
                 Description = "http-test",
-                AccountLogin = "http-org",
-                AccountOwnerKey = new ForgeOwner(EForgeProvider.GitHub, "http-org").ToString(),
-                AccountId = AccountGitHubId,
-                Provider = EForgeProvider.GitHub,
+                Account = Account.DocumentId(EForgeProvider.GitHub, AccountGitHubId),
                 CreatedAtUtc = DateTime.UtcNow,
             }, "ApiTokens/http-test");
             await seed.SaveChangesAsync();

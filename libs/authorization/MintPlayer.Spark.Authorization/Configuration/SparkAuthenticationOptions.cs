@@ -78,6 +78,12 @@ public class SparkAuthenticationOptions
     public SparkPasskeys Passkeys { get; set; } = SparkPasskeys.Disabled;
 
     /// <summary>
+    /// Whether a signed-in user may change their email address. Defaults to
+    /// <see cref="SparkEmailChange.Disabled"/> — see <see cref="SparkEmailChange"/>.
+    /// </summary>
+    public SparkEmailChange EmailChange { get; set; } = SparkEmailChange.Disabled;
+
+    /// <summary>
     /// The relying-party id passkeys are bound to — normally the site's registrable domain.
     /// </summary>
     /// <remarks>

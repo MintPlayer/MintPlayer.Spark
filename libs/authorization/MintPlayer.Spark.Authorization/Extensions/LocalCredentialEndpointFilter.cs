@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Primitives;
+using MintPlayer.AspNetCore.Endpoints;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Identity;
 using Microsoft.Extensions.Options;
@@ -81,7 +82,9 @@ internal static class LocalCredentialEndpointFilter
             GuardAgainstUnreachableSignIn(endpoints.ServiceProvider);
 
         var throwaway = new UnpublishedEndpointRouteBuilder(endpoints.ServiceProvider);
-        StampAntiforgery(throwaway.MapGroup("/spark/auth").MapIdentityApi<TUser>());
+        var identityApi = throwaway.MapGroup("/spark/auth").MapIdentityApi<TUser>();
+        StampAntiforgery(identityApi);
+        StampEndpointTypes(identityApi);
 
         GuardAgainstUnrecognizedIdentityRoutes(throwaway);
 
@@ -268,6 +271,31 @@ internal static class LocalCredentialEndpointFilter
             {
                 route.Metadata.Add(new RequireAntiforgeryTokenAttribute(true));
             }
+        });
+
+    /// <summary>
+    /// Gives each Microsoft endpoint Spark keeps an <see cref="EndpointTypeMetadata"/> naming its
+    /// <see cref="SparkIdentityEndpoints"/> stand-in, so "is 2FA served?" is asked by type, like every
+    /// endpoint class. The routes Spark replaces are dropped by <see cref="IsAllowed"/> and need none;
+    /// Spark's replacements are tagged where they are mapped (<see cref="SparkAccountEndpoints"/>).
+    /// </summary>
+    private static void StampEndpointTypes(IEndpointConventionBuilder convention) =>
+        convention.Add(builder =>
+        {
+            if (builder is not RouteEndpointBuilder { RoutePattern.RawText: { } raw } route)
+                return;
+
+            Type? endpointType = raw.ToLowerInvariant() switch
+            {
+                "/spark/auth/login" => typeof(SparkIdentityEndpoints.Login),
+                "/spark/auth/refresh" => typeof(SparkIdentityEndpoints.Refresh),
+                "/spark/auth/manage/2fa" => typeof(SparkIdentityEndpoints.TwoFactor),
+                "/spark/auth/manage/info" when !IsMutating(builder.Metadata) => typeof(SparkIdentityEndpoints.Info),
+                _ => null,
+            };
+
+            if (endpointType is not null)
+                route.Metadata.Add(new EndpointTypeMetadata(endpointType));
         });
 
     private static bool IsAllowed(Endpoint endpoint, SparkLocalCredentials mode)

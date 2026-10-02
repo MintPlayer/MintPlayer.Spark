@@ -62,29 +62,32 @@ internal static class SparkAccountEndpoints
 
         if (mode == SparkLocalCredentials.Full)
         {
-            Mutating(group.MapPost("/register", RegisterAsync<TUser>));
-            Mutating(group.MapPost("/resendConfirmationEmail", ResendConfirmationEmailAsync<TUser>));
+            Mutating(group.MapPost("/register", RegisterAsync<TUser>).Is<SparkIdentityEndpoints.Register>());
+            Mutating(group.MapPost("/resendConfirmationEmail", ResendConfirmationEmailAsync<TUser>).Is<SparkIdentityEndpoints.ResendConfirmationEmail>());
         }
 
         if (mode != SparkLocalCredentials.Disabled)
         {
-            Mutating(group.MapPost("/forgotPassword", ForgotPasswordAsync<TUser>));
-            Mutating(group.MapPost("/resetPassword", ResetPasswordAsync<TUser>));
-            Mutating(manage.MapPost("/info", PostInfoAsync<TUser>));
-            Mutating(manage.MapPost("/password", SetPasswordAsync<TUser>));
+            Mutating(group.MapPost("/forgotPassword", ForgotPasswordAsync<TUser>).Is<SparkIdentityEndpoints.ForgotPassword>());
+            Mutating(group.MapPost("/resetPassword", ResetPasswordAsync<TUser>).Is<SparkIdentityEndpoints.ResetPassword>());
+            Mutating(manage.MapPost("/info", PostInfoAsync<TUser>).Is<SparkIdentityEndpoints.UpdateInfo>());
+            Mutating(manage.MapPost("/password", SetPasswordAsync<TUser>).Is<SparkIdentityEndpoints.SetPassword>());
         }
 
         // A mailbox link: a plain top-level GET, no session, the single-use token is the credential
         // (same reasoning as confirm-external-link). Kept for links already sent by older versions.
-        group.MapGet("/confirmEmail", ConfirmEmailGetAsync<TUser>);
-        Mutating(group.MapPost("/confirm-email", ConfirmEmailPostAsync<TUser>));
+        group.MapGet("/confirmEmail", ConfirmEmailGetAsync<TUser>).Is<SparkIdentityEndpoints.ConfirmEmail>();
+        Mutating(group.MapPost("/confirm-email", ConfirmEmailPostAsync<TUser>).Is<SparkIdentityEndpoints.ConfirmEmail>());
 
-        manage.MapGet("/profile", GetProfileAsync<TUser>);
-        Mutating(manage.MapPost("/profile", PostProfileAsync<TUser>));
-        manage.MapGet("/2fa/authenticator-uri", GetAuthenticatorUriAsync<TUser>);
-        manage.MapGet("/personal-data", GetPersonalDataAsync<TUser>);
-        Mutating(manage.MapDelete("/account", DeleteAccountAsync<TUser>));
+        manage.MapGet("/profile", GetProfileAsync<TUser>).Is<SparkIdentityEndpoints.Profile>();
+        Mutating(manage.MapPost("/profile", PostProfileAsync<TUser>).Is<SparkIdentityEndpoints.UpdateProfile>());
+        manage.MapGet("/2fa/authenticator-uri", GetAuthenticatorUriAsync<TUser>).Is<SparkIdentityEndpoints.AuthenticatorUri>();
+        manage.MapGet("/personal-data", GetPersonalDataAsync<TUser>).Is<SparkIdentityEndpoints.PersonalData>();
+        Mutating(manage.MapDelete("/account", DeleteAccountAsync<TUser>).Is<SparkIdentityEndpoints.DeleteAccount>());
     }
+
+    internal static bool EmailChangeEnabled(IServiceProvider services)
+        => services.GetService<IOptions<SparkAuthenticationOptions>>()?.Value.EmailChange == SparkEmailChange.Enabled;
 
     private static void Mutating(RouteHandlerBuilder builder)
         => builder.WithMetadata(new RequireAntiforgeryTokenAttribute(true));
@@ -177,6 +180,18 @@ internal static class SparkAccountEndpoints
         if (await userManager.GetUserAsync(claimsPrincipal) is not { } user)
             return TypedResults.NotFound();
 
+        var changesEmail = !string.IsNullOrEmpty(request.NewEmail)
+            && !string.Equals(await userManager.GetEmailAsync(user), request.NewEmail, StringComparison.OrdinalIgnoreCase);
+
+        // Refused before the password half runs, so a request carrying both changes nothing.
+        if (changesEmail && !EmailChangeEnabled(services))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["EmailChangeDisabled"] = ["This application does not allow changing the email address."],
+            });
+        }
+
         if (!string.IsNullOrEmpty(request.NewEmail) && !EmailAddress.IsValid(request.NewEmail))
             return Problem(IdentityResult.Failed(userManager.ErrorDescriber.InvalidEmail(request.NewEmail)));
 
@@ -195,12 +210,11 @@ internal static class SparkAccountEndpoints
                 return Problem(changed);
         }
 
-        if (!string.IsNullOrEmpty(request.NewEmail)
-            && !string.Equals(await userManager.GetEmailAsync(user), request.NewEmail, StringComparison.OrdinalIgnoreCase))
+        if (changesEmail)
         {
             // Mailed to the NEW address; nothing changes until its link is followed.
             await services.GetRequiredService<SparkAccountMail<TUser>>()
-                .SendConfirmationAsync(context, user, request.NewEmail, changedEmail: request.NewEmail);
+                .SendConfirmationAsync(context, user, request.NewEmail!, changedEmail: request.NewEmail);
         }
 
         return TypedResults.Ok(new InfoResponse
@@ -238,6 +252,10 @@ internal static class SparkAccountEndpoints
             return invalid;
 
         if (await userManager.FindByIdAsync(userId) is not { } user)
+            return invalid;
+
+        // A change link minted while email change was enabled must not outlive switching it off.
+        if (!string.IsNullOrEmpty(changedEmail) && !EmailChangeEnabled(services))
             return invalid;
 
         // A change goes through SparkUserManager.ChangeEmailAsync, which moves an email-shaped user

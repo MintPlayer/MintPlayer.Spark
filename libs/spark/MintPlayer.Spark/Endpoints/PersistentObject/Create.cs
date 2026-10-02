@@ -27,6 +27,7 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint
     [Inject] private readonly IClientAccessor clientAccessor;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly ISaveResponsePresenter saveResponse;
+    [Inject] private readonly IQueryLoader queryLoader;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -72,6 +73,17 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint
         // foreign record under the POST verb, bypassing the entity-type-level "New"
         // permission and any developer mental-model of "POST = creation".
         obj.Id = null;
+
+        // The parent a sub-query card's New was started from: resolved and authorized exactly as
+        // /po/new resolved it, then handed to the save hooks as obj.Parent. A Parent in the body is the
+        // caller's claim, so it is replaced either way — never the context a hook decides on.
+        var (resolved, refused) = await SubQueryNewParent.ResolveAsync(
+            modelLoader, queryLoader, databaseAccess, entityType, request.ParentId, request.ParentType, request.QueryId);
+        if (refused)
+        {
+            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
+        }
+        obj.Parent = resolved?.Parent;
 
         try
         {

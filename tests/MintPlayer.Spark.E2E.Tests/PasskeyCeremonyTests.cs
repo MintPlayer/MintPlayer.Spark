@@ -28,9 +28,9 @@ public class PasskeyCeremonyTests
     /// <summary>Enrolls a passkey through the browser and returns its base64url credential id.</summary>
     private async Task<string> EnrollAsync(IPage page)
     {
-        await page.GotoAsync("/passkeys");
+        await page.GotoAsync("/account/passkeys");
 
-        // The page is lazy-loaded behind withPasskeys(); wait for the control rather than a timeout.
+        // The page is lazy-loaded behind withAccount(); wait for the control rather than a timeout.
         var addButton = page.GetByRole(AriaRole.Button, new() { NameString = "Add a passkey" });
         await addButton.WaitForAsync(new() { Timeout = 20_000 });
         await addButton.ClickAsync();

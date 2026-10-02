@@ -57,12 +57,8 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         var token = new ApiToken
         {
             Scope = "Account",
-            AccountLogin = "acme",
-            // ⚠️ The KEY is what the handler emits as the account claim. Every token minted since
-            // the forge qualification carries one — ApiTokenActions derives it on every save — so a
-            // fixture without it is not a legacy token, it is an impossible one.
-            AccountOwnerKey = ForgeOwner.KeyFromUnqualifiedLogin("acme"),
-            AccountId = 42,
+            // The account's DOCUMENT id is what the handler emits as the account claim.
+            Account = Account.DocumentId(EForgeProvider.GitHub, 42),
             CreatedAtUtc = DateTime.UtcNow,
             Description = "ci",
         };
@@ -145,9 +141,12 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
 
         var principal = result.Principal!;
         Assert.Equal("Account", principal.FindFirst(ApiTokenAuthenticationHandler.ScopeClaim)?.Value);
-        // ⚠️ Qualified: the claim carries `github:acme`, because a bare login unions forges.
-        Assert.Equal("github:acme", principal.FindFirst(ApiTokenAuthenticationHandler.AccountClaim)?.Value);
-        Assert.Equal("42", principal.FindFirst(ApiTokenAuthenticationHandler.AccountIdClaim)?.Value);
+        // The account document id — forge and numeric id in one value — and exactly one of it.
+        Assert.Equal("Accounts/github/42", principal.FindFirst(ApiTokenAuthenticationHandler.AccountClaim)?.Value);
+        Assert.Single(principal.FindAll(ApiTokenAuthenticationHandler.AccountClaim));
+        // The retired id/provider pair is gone: nothing may reassemble an account from halves.
+        Assert.Null(principal.FindFirst("covt:accountid"));
+        Assert.Null(principal.FindFirst("covt:provider"));
         Assert.Equal(Repository.DocumentId(EForgeProvider.GitHub, 777), principal.FindFirst(ApiTokenAuthenticationHandler.RepositoryClaim)?.Value);
 
         // The hash, never the token value: anything downstream that logs the principal must not be
@@ -203,12 +202,8 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
         using var seed = store.OpenAsyncSession();
         var value = await StoreTokenAsync(seed, t =>
         {
-            t.AccountLogin = null;
-            // ⚠️ The KEY, not the login, is what the account claim is emitted from — nulling only
-            // the login would leave the claim present and this assertion would pass for the
-            // wrong reason, or rather fail for one.
-            t.AccountOwnerKey = null;
-            t.AccountId = null;
+            // A token the migration could not resolve to an account.
+            t.Account = null;
             t.RepositoryIds = [];
         });
 
@@ -218,7 +213,6 @@ public class ApiTokenAuthenticationHandlerTests : CoverageRavenTest
 
         Assert.True(result.Succeeded, result.Failure?.Message);
         Assert.Null(result.Principal!.FindFirst(ApiTokenAuthenticationHandler.AccountClaim));
-        Assert.Null(result.Principal!.FindFirst(ApiTokenAuthenticationHandler.AccountIdClaim));
         Assert.Null(result.Principal!.FindFirst(ApiTokenAuthenticationHandler.RepositoryClaim));
     }
 }

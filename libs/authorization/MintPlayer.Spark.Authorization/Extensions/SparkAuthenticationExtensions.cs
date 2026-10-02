@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Options;
 using Microsoft.AspNetCore.WebUtilities;
 using MintPlayer.Spark.Authorization.Configuration;
+using MintPlayer.Spark.Authorization.Endpoints;
 using MintPlayer.Spark.Authorization.Endpoints.ExternalLogin;
 using MintPlayer.Spark.Authorization.Identity;
 using System.Security.Claims;
@@ -159,6 +160,9 @@ internal static class SparkAuthenticationExtensions
         // TUser is concrete. On `endpoints`, not `authGroup`: the /spark/auth prefix comes from
         // [MemberOf<SparkAuthGroup>] and mapping onto the group too would compose it twice.
         endpoints.MapEndpoint<ExternalLoginChallenge<TUser>>();
+
+        // /me reads the user through UserManager<TUser>, so it is generic and mapped here too.
+        endpoints.MapEndpoint<GetCurrentUser<TUser>>();
 
         // External login: handle the OAuth callback.
         endpoints.MapEndpoint<ExternalLoginCallback<TUser>>();

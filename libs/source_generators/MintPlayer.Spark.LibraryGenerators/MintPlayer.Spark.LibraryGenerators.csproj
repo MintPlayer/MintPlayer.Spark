@@ -11,7 +11,7 @@
 
         <!-- NuGet Package Metadata -->
         <PackageId>MintPlayer.Spark.LibraryGenerators</PackageId>
-		<Version>11.0.0-preview.92</Version>
+		<Version>11.0.0-preview.93</Version>
 		<Authors>MintPlayer</Authors>
         <Company>MintPlayer</Company>
         <Description>Source generators for a MintPlayer.Spark entity library: generates row keys for [ValueObject] types and registers them. Carries none of the index, actions or DI generators, which are application concerns.</Description>
@@ -23,9 +23,9 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="12.1.0" PrivateAssets="all" GeneratePathProperty="true" />
-        <PackageReference Include="MintPlayer.ValueComparerGenerator" Version="12.1.0" PrivateAssets="all" GeneratePathProperty="true" />
-        <PackageReference Include="MintPlayer.ValueComparerGenerator.Attributes" Version="12.1.0" PrivateAssets="all" GeneratePathProperty="true" />
+        <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="12.1.1" PrivateAssets="all" GeneratePathProperty="true" />
+        <PackageReference Include="MintPlayer.ValueComparerGenerator" Version="12.1.1" PrivateAssets="all" GeneratePathProperty="true" />
+        <PackageReference Include="MintPlayer.ValueComparerGenerator.Attributes" Version="12.1.1" PrivateAssets="all" GeneratePathProperty="true" />
     </ItemGroup>
 
     <!--
@@ -41,8 +41,7 @@
     a real Workspaces reference for exactly this reason; see its csproj.
     -->
     <ItemGroup>
-      <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0"
-                        PrivateAssets="all" ExcludeAssets="runtime" />
+      <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0" PrivateAssets="all" ExcludeAssets="runtime" />
     </ItemGroup>
 
     <ItemGroup>

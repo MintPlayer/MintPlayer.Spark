@@ -27,4 +27,23 @@ export interface SparkAuthCapabilities {
    * capability must read as "no" rather than as `undefined` leaking into a template.
    */
   passkeys?: boolean;
+
+  /**
+   * Whether the two-factor setup page is served — the server mapped `manage/2fa` and the
+   * authenticator-URI endpoint. Optional: absent reads as "no".
+   */
+  twoFactor?: boolean;
+
+  /**
+   * Whether a signed-in user may change their email address — the server's opt-in
+   * `SparkEmailChange.Enabled`, and a local-credential mode that maps `POST manage/info`. Optional for
+   * the same reason as `passkeys`: absent reads as "no".
+   */
+  emailChange?: boolean;
+
+  /**
+   * Whether the connected-logins page is served — the server's `ExternalLoginLinking` is not
+   * `Disabled`. External SIGN-IN can be on while this is off. Optional: absent reads as "no".
+   */
+  externalLogins?: boolean;
 }

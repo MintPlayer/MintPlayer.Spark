@@ -62,7 +62,7 @@ public class UploadsControllerAssemblyStatusTests : CoverageRavenTest
                 User = new ClaimsPrincipal(new ClaimsIdentity(
                 [
                     new Claim(ApiTokenAuthenticationHandler.ScopeClaim, "Account"),
-                    new Claim(ApiTokenAuthenticationHandler.AccountClaim, ForgeOwner.KeyFromUnqualifiedLogin("acme")),
+                    new Claim(ApiTokenAuthenticationHandler.AccountClaim, Account.DocumentId(EForgeProvider.GitHub, 1)),
                 ], ApiTokenAuthenticationHandler.SchemeName)),
             },
         };
@@ -83,7 +83,7 @@ public class UploadsControllerAssemblyStatusTests : CoverageRavenTest
         {
             await seed.StoreAsync(new Repository
             {
-                GitHubId = RepoId, Name = "gadgets", FullName = RepoName, OwnerLogin = "acme", IsPrivate = true, DefaultBranch = "master",
+                Account = Account.DocumentId(EForgeProvider.GitHub, 1), GitHubId = RepoId, Name = "gadgets", FullName = RepoName, OwnerLogin = "acme", IsPrivate = true, DefaultBranch = "master",
             }, Repository.DocumentId(EForgeProvider.GitHub, RepoId));
             await seed.StoreAsync(new Commit
             {
@@ -136,7 +136,7 @@ public class UploadsControllerAssemblyStatusTests : CoverageRavenTest
         {
             await seed.StoreAsync(new Repository
             {
-                GitHubId = RepoId, Name = "gadgets", FullName = RepoName, OwnerLogin = "acme", IsPrivate = true, DefaultBranch = "master",
+                Account = Account.DocumentId(EForgeProvider.GitHub, 1), GitHubId = RepoId, Name = "gadgets", FullName = RepoName, OwnerLogin = "acme", IsPrivate = true, DefaultBranch = "master",
             }, Repository.DocumentId(EForgeProvider.GitHub, RepoId));
             await seed.StoreAsync(new Commit { Sha = Sha, Repository = Repository.DocumentId(EForgeProvider.GitHub, RepoId), FirstSeenAtUtc = DateTimeOffset.UtcNow }, commitId);
             await seed.StoreAsync(new Build

@@ -1,0 +1,52 @@
+{
+  "Results": [
+    {
+      "@metadata": { "@id": "Accounts/github/1", "@collection": "Accounts" },
+      "GitHubId": 1,
+      "Login": "MintPlayer",
+      "Type": "Organization",
+      "Provider": "GitHub",
+      "OwnerKey": "github:MintPlayer",
+      "Connection": "Connected"
+    },
+    {
+      "@metadata": { "@id": "Repositories/github/909090", "@collection": "Repositories" },
+      "Account": "Accounts/github/1",
+      "GitHubId": 909090,
+      "Provider": "GitHub",
+      "Name": "dogfood",
+      "FullName": "MintPlayer/dogfood",
+      "OwnerLogin": "MintPlayer",
+      "OwnerKey": "github:MintPlayer",
+      "IsPrivate": false,
+      "DefaultBranch": "master",
+      "Connection": "Connected",
+      "PreviousFullNames": []
+    },
+    {
+      "@metadata": { "@id": "Repositories/github/909091", "@collection": "Repositories" },
+      "Account": "Accounts/github/1",
+      "GitHubId": 909091,
+      "Provider": "GitHub",
+      "Name": "dogfood-windows",
+      "FullName": "MintPlayer/dogfood-windows",
+      "OwnerLogin": "MintPlayer",
+      "OwnerKey": "github:MintPlayer",
+      "IsPrivate": false,
+      "DefaultBranch": "master",
+      "Connection": "Connected",
+      "PreviousFullNames": []
+    },
+    {
+      "@metadata": { "@id": "ApiTokens/0f3c2a1e9b8d4c7a8e6f5d4c3b2a1908", "@collection": "ApiTokens" },
+      "Scope": "Account",
+      "Account": "Accounts/github/1",
+      "RepositoryIds": [],
+      "Hash": "cd1736048895ce06a061c175bcfc0ce34672fc62d65374fc07493625ca183bac",
+      "Description": "dogfood",
+      "CreatedByUserId": "test",
+      "CreatedAtUtc": "2026-10-02T00:00:00.0000000Z",
+      "RevokedAtUtc": null
+    }
+  ]
+}
