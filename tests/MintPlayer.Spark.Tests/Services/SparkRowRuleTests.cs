@@ -207,6 +207,23 @@ public class SparkRowRuleTests : SparkTestDriver
 
         RowRuleLedgerActions.FilterInvocations.Should().Be(1);
     }
+
+    /// <remarks>
+    /// Nested, like every other fixture index, so test hosts do not deploy it (M8 item 13). It was
+    /// the test assembly's only top-level index, and a top-level index deploys into every host's
+    /// database: about 58 ms of RavenDB server CPU per boot, ~530 boots per run, for the one case
+    /// above that deploys it itself anyway.
+    /// </remarks>
+    public class RowRuleLedgers_Overview : Raven.Client.Documents.Indexes.AbstractIndexCreationTask<RowRuleLedger>
+    {
+        public RowRuleLedgers_Overview()
+        {
+            Map = ledgers => from ledger in ledgers
+                             select new { ledger.Owner, ledger.Amount };
+            StoreAllFields(Raven.Client.Documents.Indexes.FieldStorage.Yes);
+            SearchEngineType = Raven.Client.Documents.Indexes.SearchEngineType.Corax;
+        }
+    }
 }
 
 /// <summary>A filter-only rule: the half of the policy <c>GuardedDocActions</c> does not exercise.</summary>
@@ -241,18 +258,7 @@ public class RowRuleOpen
     public string Name { get; set; } = string.Empty;
 }
 
-public class RowRuleLedgers_Overview : Raven.Client.Documents.Indexes.AbstractIndexCreationTask<RowRuleLedger>
-{
-    public RowRuleLedgers_Overview()
-    {
-        Map = ledgers => from ledger in ledgers
-                         select new { ledger.Owner, ledger.Amount };
-        StoreAllFields(Raven.Client.Documents.Indexes.FieldStorage.Yes);
-        SearchEngineType = Raven.Client.Documents.Indexes.SearchEngineType.Corax;
-    }
-}
-
-[FromIndex(typeof(RowRuleLedgers_Overview))]
+[FromIndex(typeof(SparkRowRuleTests.RowRuleLedgers_Overview))]
 public class VRowRuleLedger
 {
     public string? Id { get; set; }
