@@ -1,9 +1,10 @@
+using System.Text.Json;
 using CodeCoverage.Actions;
 using CodeCoverage.Entities;
 using CodeCoverage.Forge;
 using CodeCoverage.Services;
-using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Exceptions;
 using NSubstitute;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
@@ -12,28 +13,30 @@ using Xunit;
 namespace CodeCoverage.Tests.ApiTokens;
 
 /// <summary>
-/// A token's owner is decided by ONE field, and everything else is derived from it.
+/// A token's owner is decided by ONE field, <see cref="ApiToken.Account"/> — the account document
+/// id — and the caller never chooses it.
 /// </summary>
 /// <remarks>
 /// <para>
-/// ⚠️ <b>This is a privilege-escalation regression test.</b> Token creation authorized on
-/// <c>AccountOwnerKey</c> and then resolved the account from <c>AccountLogin</c> — a second,
-/// independently client-writable field that nothing validated and nothing server-assigned. Posting
-/// a key you genuinely manage together with somebody else's login minted a token stamped with
-/// <em>their</em> account.
+/// ⚠️ <b>This is a privilege-escalation regression test.</b> Token creation used to authorize on a
+/// posted <c>AccountOwnerKey</c> and then resolve the account from a posted <c>AccountLogin</c> —
+/// two client-writable fields — so a key you managed plus somebody else's login minted a token
+/// stamped with <em>their</em> account. Both fields are gone (2026-10-02): on create the account is
+/// the one the New was started from (<c>obj.Parent</c>, resolved by Spark), it is re-authorized on
+/// every save, and it is read-only in the model so an edit keeps the stored value.
 /// </para>
 /// <para>
-/// It was invisible to the row filter, which compares the key — the field the attacker sets
-/// honestly — so the token stayed visible and editable by its creator while
-/// <c>UploadsController</c> authorized its uploads against the victim's repositories. Where no
-/// account matched the posted login it was worse: <c>AccountId</c> stayed null, and the legacy
-/// login-comparison arm authorized every repository owned by that name.
+/// The attack of posting a foreign login is therefore structurally impossible; these tests pin the
+/// guards that replaced it.
 /// </para>
 /// </remarks>
 public class ApiTokenOwnerBindingTests : CoverageRavenTest
 {
     private const string Mine = "acme";
     private const string Victim = "victim-org";
+
+    private static readonly string MyAccount = Account.DocumentId(EForgeProvider.GitHub, 7);
+    private static readonly string VictimAccount = Account.DocumentId(EForgeProvider.GitHub, 999);
 
     private static string KeyFor(string login, EForgeProvider provider = EForgeProvider.GitHub)
         => new ForgeOwner(provider, login).ToString();
@@ -68,204 +71,189 @@ public class ApiTokenOwnerBindingTests : CoverageRavenTest
         return (ApiTokenActions)ctor.Invoke(args);
     }
 
-    private static PersistentObject Po() => new() { Name = "ApiToken", ObjectTypeId = Guid.NewGuid() };
+    /// <summary>The token PO being saved, optionally started from a parent PO (what Spark resolves server-side).</summary>
+    private static PersistentObject Po(string? parentId = null, string parentName = nameof(Account)) => new()
+    {
+        Name = "ApiToken",
+        ObjectTypeId = Guid.NewGuid(),
+        Parent = parentId is null ? null : new PersistentObject { Id = parentId, Name = parentName, ObjectTypeId = Guid.NewGuid() },
+    };
 
-    private static async Task SeedVictimAccountAsync(IDocumentStore store, long id = 999)
+    private static async Task SeedAsync(IDocumentStore store)
     {
         using var session = store.OpenAsyncSession();
-        await session.StoreAsync(
-            new Account { GitHubId = id, Login = Victim, Provider = EForgeProvider.GitHub },
-            Account.DocumentId(EForgeProvider.GitHub, id));
+        await session.StoreAsync(new Account { GitHubId = 7, Login = Mine, Provider = EForgeProvider.GitHub }, MyAccount);
+        await session.StoreAsync(new Account { GitHubId = 999, Login = Victim, Provider = EForgeProvider.GitHub }, VictimAccount);
         await session.SaveChangesAsync();
     }
 
-    /// <summary>
-    /// The attack: authorize on a key I manage, name somebody else in the login field.
-    /// </summary>
+    /// <summary>The positive: a create under an account I manage is stamped with that account's document id.</summary>
     [Fact]
-    public async Task A_posted_login_cannot_steal_another_accounts_identity()
+    public async Task A_token_created_under_an_account_I_manage_references_that_account()
     {
         using var store = GetDocumentStore();
-        await SeedVictimAccountAsync(store);
-
+        await SeedAsync(store);
         using var session = store.OpenAsyncSession();
-        var entity = new ApiToken
-        {
-            Description = "ci",
-            AccountOwnerKey = KeyFor(Mine),   // genuinely mine — passes the check
-            AccountLogin = Victim,            // somebody else's
-        };
+        var entity = new ApiToken { Description = "ci" };
 
-        await CreateActions(session, KeyFor(Mine)).OnBeforeSaveAsync(Po(), entity);
+        await CreateActions(session, KeyFor(Mine)).OnBeforeSaveAsync(Po(MyAccount), entity);
 
-        // The victim's numeric id must NOT have been stamped on my token.
-        Assert.NotEqual(999, entity.AccountId);
-        // And the login is overwritten with the one the authorized key names.
-        Assert.Equal(Mine, entity.AccountLogin);
+        entity.Account.Should().Be(MyAccount);
+        entity.Hash.Should().NotBeNullOrEmpty();
     }
 
     /// <summary>
-    /// The nastier half: with no matching account the id stays null, and the upload path's legacy
-    /// arm then authorizes on the login claim — so a stolen login is worse than a stolen id.
+    /// A posted Account is never trusted on create: the parent decides, and a value smuggled onto
+    /// the entity is overwritten.
     /// </summary>
     [Fact]
-    public async Task A_posted_login_for_an_unknown_account_cannot_survive_either()
+    public async Task A_posted_account_is_overwritten_by_the_parent_on_create()
     {
         using var store = GetDocumentStore();
-        // No Account document for the victim at all.
-
+        await SeedAsync(store);
         using var session = store.OpenAsyncSession();
-        var entity = new ApiToken
-        {
-            Description = "ci",
-            AccountOwnerKey = KeyFor(Mine),
-            AccountLogin = "some-org-i-do-not-manage",
-        };
+        var entity = new ApiToken { Description = "ci", Account = VictimAccount };
 
-        await CreateActions(session, KeyFor(Mine)).OnBeforeSaveAsync(Po(), entity);
+        await CreateActions(session, KeyFor(Mine)).OnBeforeSaveAsync(Po(MyAccount), entity);
 
-        Assert.Equal(Mine, entity.AccountLogin);
+        entity.Account.Should().Be(MyAccount);
     }
 
     /// <summary>
-    /// ⚠️ The account lookup must match on provider AND login. A bare login match unions forges, so
-    /// a GitLab group of the same name would have supplied the numeric id.
+    /// A create that was not started from an Account — no parent at all, a parent of another type,
+    /// or a parent without an id — has no owner and is refused, even with an Account posted.
     /// </summary>
-    [Fact]
-    public async Task A_same_named_account_on_another_forge_does_not_supply_the_id()
+    [Theory]
+    [InlineData(null, nameof(Account))]
+    [InlineData("Repositories/github/10", "Repository")]
+    [InlineData("", nameof(Account))]
+    public async Task A_create_without_an_account_parent_is_refused(string? parentId, string parentName)
     {
         using var store = GetDocumentStore();
+        await SeedAsync(store);
+        using var session = store.OpenAsyncSession();
+        var entity = new ApiToken { Description = "ci", Account = MyAccount };
+
+        var act = async () => await CreateActions(session, KeyFor(Mine)).OnBeforeSaveAsync(Po(parentId, parentName), entity);
+
+        await act.Should().ThrowAsync<SparkValidationException>();
+        entity.Hash.Should().BeEmpty();
+    }
+
+    /// <summary>The attack in its new shape: start the New from somebody else's account page.</summary>
+    [Fact]
+    public async Task A_create_under_an_account_I_do_not_manage_is_refused()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store);
+        using var session = store.OpenAsyncSession();
+        var entity = new ApiToken { Description = "ci" };
+
+        var act = async () => await CreateActions(session, KeyFor(Mine)).OnBeforeSaveAsync(Po(VictimAccount), entity);
+
+        await act.Should().ThrowAsync<SparkValidationException>();
+        entity.Hash.Should().BeEmpty();
+    }
+
+    /// <summary>A parent id that names no Account document is refused, not stamped.</summary>
+    [Fact]
+    public async Task A_create_under_a_missing_account_is_refused()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store);
+        using var session = store.OpenAsyncSession();
+
+        var act = async () => await CreateActions(session, KeyFor(Mine))
+            .OnBeforeSaveAsync(Po(Account.DocumentId(EForgeProvider.GitHub, 12345)), new ApiToken { Description = "ci" });
+
+        await act.Should().ThrowAsync<SparkValidationException>();
+    }
+
+    /// <summary>
+    /// ⚠️ Forge-qualified: a GitLab account of the same login and number is a different owner
+    /// (<c>gitlab:acme</c>), so managing <c>github:acme</c> does not let a token be filed under it.
+    /// </summary>
+    [Fact]
+    public async Task A_same_named_account_on_another_forge_is_not_mine()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store);
+        var gitlabTwin = Account.DocumentId(EForgeProvider.GitLab, 7);
         using (var seed = store.OpenAsyncSession())
         {
-            await seed.StoreAsync(
-                new Account { GitHubId = 555, Login = Mine, Provider = EForgeProvider.GitLab },
-                Account.DocumentId(EForgeProvider.GitLab, 555));
+            await seed.StoreAsync(new Account { GitHubId = 7, Login = Mine, Provider = EForgeProvider.GitLab }, gitlabTwin);
             await seed.SaveChangesAsync();
         }
-
         using var session = store.OpenAsyncSession();
-        var entity = new ApiToken { Description = "ci", AccountOwnerKey = KeyFor(Mine), AccountLogin = Mine };
 
-        await CreateActions(session, KeyFor(Mine)).OnBeforeSaveAsync(Po(), entity);
+        var act = async () => await CreateActions(session, KeyFor(Mine)).OnBeforeSaveAsync(Po(gitlabTwin), new ApiToken { Description = "ci" });
 
-        Assert.NotEqual(555, entity.AccountId);
-        Assert.Equal(EForgeProvider.GitHub, entity.Provider);
+        await act.Should().ThrowAsync<SparkValidationException>();
     }
 
     /// <summary>
-    /// The paired positive: a token for an account I manage IS stamped, or the tests above would
-    /// pass against a version that simply never stamps anything.
+    /// An edit keeps the stored account: the parent an edit happens to carry does not move it.
     /// </summary>
     [Fact]
-    public async Task A_token_for_an_account_I_manage_is_stamped_from_the_key()
+    public async Task An_edit_ignores_the_parent_and_keeps_the_stored_account()
     {
         using var store = GetDocumentStore();
-        using (var seed = store.OpenAsyncSession())
-        {
-            await seed.StoreAsync(
-                new Account { GitHubId = 7, Login = Mine, Provider = EForgeProvider.GitHub },
-                Account.DocumentId(EForgeProvider.GitHub, 7));
-            await seed.SaveChangesAsync();
-        }
-
+        await SeedAsync(store);
         using var session = store.OpenAsyncSession();
-        var entity = new ApiToken { Description = "ci", AccountOwnerKey = KeyFor(Mine), AccountLogin = Mine };
+        var actions = CreateActions(session, KeyFor(Mine), KeyFor(Victim));
+        var entity = new ApiToken { Description = "ci" };
+        await actions.OnBeforeSaveAsync(Po(MyAccount), entity);
+        entity.Hash.Should().NotBeNullOrEmpty(); // it really is an edit from here on
 
-        await CreateActions(session, KeyFor(Mine)).OnBeforeSaveAsync(Po(), entity);
+        await actions.OnBeforeSaveAsync(Po(VictimAccount), entity);
 
-        Assert.Equal(7, entity.AccountId);
-        Assert.Equal(EForgeProvider.GitHub, entity.Provider);
-        Assert.Equal(Mine, entity.AccountLogin);
+        entity.Account.Should().Be(MyAccount);
     }
 
     /// <summary>
-    /// ⚠️ The attack again, one save later. The first fix derived identity only when minting, so
-    /// a token could be created honestly and then EDITED to carry somebody else's login.
+    /// Re-authorized on every save: once the caller no longer manages the token's account, an edit
+    /// is refused — and so is an edit whose Account somehow names an account the caller does not
+    /// manage (defence in depth behind the read-only model attribute).
     /// </summary>
-    /// <remarks>
-    /// The state that makes it bite is ordinary, not contrived: an owner key the caller genuinely
-    /// manages but for which no <c>Account</c> document exists yet leaves <c>AccountId</c> null, so
-    /// the authentication handler emits no id claim and <c>UploadsController</c> falls through to
-    /// its legacy login arm — which compares the posted login against every repository's owner.
-    /// </remarks>
     [Fact]
-    public async Task An_edit_cannot_repoint_the_login_at_another_account()
+    public async Task An_edit_of_a_token_whose_account_I_do_not_manage_is_refused()
     {
         using var store = GetDocumentStore();
-        await SeedVictimAccountAsync(store);
-
+        await SeedAsync(store);
         using var session = store.OpenAsyncSession();
-        var entity = new ApiToken { Description = "ci", AccountOwnerKey = KeyFor(Mine), AccountLogin = Mine };
+        var entity = new ApiToken { Description = "ci" };
+        await CreateActions(session, KeyFor(Mine)).OnBeforeSaveAsync(Po(MyAccount), entity);
 
-        var actions = CreateActions(session, KeyFor(Mine));
-        await actions.OnBeforeSaveAsync(Po(), entity);
-        Assert.False(string.IsNullOrEmpty(entity.Hash));   // it really is an edit from here on
+        // Membership revoked since minting.
+        var revoked = async () => await CreateActions(session, KeyFor("someone-else")).OnBeforeSaveAsync(Po(), entity);
+        await revoked.Should().ThrowAsync<SparkValidationException>();
 
-        // The edit: same key (honestly mine, so the row filter is satisfied), different login.
-        entity.AccountLogin = Victim;
-        await actions.OnBeforeSaveAsync(Po(), entity);
-
-        Assert.Equal(Mine, entity.AccountLogin);
-        Assert.NotEqual(999, entity.AccountId);
+        // Account repointed at the victim.
+        entity.Account = VictimAccount;
+        var moved = async () => await CreateActions(session, KeyFor(Mine)).OnBeforeSaveAsync(Po(), entity);
+        await moved.Should().ThrowAsync<SparkValidationException>();
     }
 
     /// <summary>
-    /// An edit that moves the key must move the numeric id with it, or the token authorizes against
-    /// an account it is no longer filed under — and keeps doing so after that membership is revoked.
+    /// The model is what makes an edit unable to move the account: Spark's EntityMapper refuses a
+    /// posted value for an attribute the schema marks read-only. Likewise for the owner columns read
+    /// from the account through ApiTokens_Overview.
     /// </summary>
-    [Fact]
-    public async Task An_edit_that_moves_the_key_rebinds_the_numeric_id()
+    [Theory]
+    [InlineData(nameof(ApiToken.Account))]
+    [InlineData("Provider")]
+    public void The_owner_attributes_are_read_only_in_the_model(string attribute)
     {
-        const string Other = "other-org";
-        using var store = GetDocumentStore();
-        using (var seed = store.OpenAsyncSession())
-        {
-            await seed.StoreAsync(new Account { GitHubId = 1, Login = Mine, Provider = EForgeProvider.GitHub },
-                Account.DocumentId(EForgeProvider.GitHub, 1));
-            await seed.StoreAsync(new Account { GitHubId = 2, Login = Other, Provider = EForgeProvider.GitHub },
-                Account.DocumentId(EForgeProvider.GitHub, 2));
-            await seed.SaveChangesAsync();
-        }
+        var dir = AppContext.BaseDirectory;
+        while (dir is not null && !File.Exists(Path.Combine(dir, "MintPlayer.Spark.slnx")))
+            dir = Path.GetDirectoryName(dir);
+        dir.Should().NotBeNull();
+        var path = Path.Combine(dir!, "apps", "CodeCoverage", "CodeCoverage", "App_Data", "Model", "ApiToken.json");
 
-        using var session = store.OpenAsyncSession();
-        var entity = new ApiToken { Description = "ci", AccountOwnerKey = KeyFor(Other) };
+        using var doc = JsonDocument.Parse(File.ReadAllText(path));
+        var definition = doc.RootElement.GetProperty("persistentObject").GetProperty("attributes").EnumerateArray()
+            .Single(a => a.GetProperty("name").GetString() == attribute);
 
-        var actions = CreateActions(session, KeyFor(Mine), KeyFor(Other));
-        await actions.OnBeforeSaveAsync(Po(), entity);
-        Assert.Equal(2, entity.AccountId);
-
-        entity.AccountOwnerKey = KeyFor(Mine);
-        await actions.OnBeforeSaveAsync(Po(), entity);
-
-        Assert.Equal(1, entity.AccountId);
-        Assert.Equal(Mine, entity.AccountLogin);
-    }
-
-    /// <summary>
-    /// The paired refusal: an edit cannot move the key to an owner the caller does not manage.
-    /// </summary>
-    [Fact]
-    public async Task An_edit_cannot_move_the_key_to_an_unmanaged_owner()
-    {
-        using var store = GetDocumentStore();
-        using var session = store.OpenAsyncSession();
-        var entity = new ApiToken { Description = "ci", AccountOwnerKey = KeyFor(Mine) };
-
-        var actions = CreateActions(session, KeyFor(Mine));
-        await actions.OnBeforeSaveAsync(Po(), entity);
-
-        entity.AccountOwnerKey = KeyFor(Victim);
-        await Assert.ThrowsAsync<SparkValidationException>(() => actions.OnBeforeSaveAsync(Po(), entity));
-    }
-
-    [Fact]
-    public async Task An_unparseable_owner_key_is_refused()
-    {
-        using var store = GetDocumentStore();
-        using var session = store.OpenAsyncSession();
-        var entity = new ApiToken { Description = "ci", AccountOwnerKey = "not-a-key", AccountLogin = Mine };
-
-        await Assert.ThrowsAsync<SparkValidationException>(
-            () => CreateActions(session, "not-a-key").OnBeforeSaveAsync(Po(), entity));
+        definition.GetProperty("isReadOnly").GetBoolean().Should().BeTrue();
     }
 }

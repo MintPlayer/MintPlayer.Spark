@@ -2,9 +2,12 @@ using CodeCoverage.Forge;
 using CodeCoverage.Actions;
 using CodeCoverage.Entities;
 using CodeCoverage.Services;
+using MintPlayer.Spark.Abstractions;
+using MintPlayer.Spark.Queries;
 using NSubstitute;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
+using Raven.Client.Documents.Session;
 using System.Linq.Expressions;
 using Xunit;
 
@@ -12,42 +15,44 @@ namespace CodeCoverage.Tests.ApiTokens;
 
 /// <summary>
 /// <see cref="ApiTokenActions.GetRowFilterAsync"/> must return a predicate RavenDB can translate,
-/// because Spark pushes it into the database query.
+/// because Spark pushes it into the database query — and it must show a caller exactly the tokens
+/// of the accounts they manage.
 /// </summary>
 /// <remarks>
 /// The gap this closes is not "ApiToken had a bug" but "nothing ever translated an ApiToken row
-/// filter". Every other ApiToken test reads the model JSON or exercises the save path — and the save
-/// path <em>compiles</em> the filter and runs it in memory, where the untranslatable form is
-/// perfectly valid. So the suite stayed green while both ApiToken query surfaces returned 500 in
-/// production:
+/// filter". The save path <em>compiles</em> the filter and runs it in memory, where an
+/// untranslatable form is perfectly valid. So the suite once stayed green while both ApiToken query
+/// surfaces returned 500 in production:
 /// <code>
 /// NotSupportedException: Could not understand expression: from 'ApiTokens'
 ///   .Where(token => ... op_Implicit(Convert(owners, String[])).Contains(token.AccountLogin))
 ///   ---> Expression type not supported: System.Linq.Expressions.TypedParameterExpression
 /// </code>
 /// <para>
-/// ⚠️ These tests call the <b>real</b> <c>GetRowFilterAsync</c> rather than restating its
-/// expression. A copy of the fixed predicate would pass whatever the actions class did, which is
-/// the same way the original defect stayed invisible — the property under test is that
-/// <em>this method's</em> output translates, not that some correct expression exists.
-/// </para>
-/// <para>
-/// <c>RepositoryVisibility</c>, <c>GitHubProjectVisibility</c> and <c>CommitActions</c> each state
-/// in a comment that <c>In()</c> rather than <c>Contains</c> is load-bearing. A comment is not a
-/// test, and the one actions class written after those comments ignored all three.
+/// ⚠️ These tests call the <b>real</b> <c>GetRowFilterAsync</c>, against a real session, rather than
+/// restating its expression. Since 2026-10-02 the filter matches <see cref="ApiToken.Account"/>
+/// (a document id) against the ids of the accounts whose owner key the caller manages, which it
+/// looks up through <c>Accounts_Overview</c> — so the lookup is under test as well.
 /// </para>
 /// </remarks>
 public class ApiTokenRowFilterIsTranslatableTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
+    private static readonly string Alice = Account.DocumentId(EForgeProvider.GitHub, 1);
+    private static readonly string Bob = Account.DocumentId(EForgeProvider.GitHub, 2);
+    /// <summary>GitLab's <c>alice</c>: same login, same number, a different owner.</summary>
+    private static readonly string AliceOnGitLab = Account.DocumentId(EForgeProvider.GitLab, 1);
+
     /// <summary>
     /// Builds the real actions class with substituted dependencies, resolving the generated
     /// constructor by parameter type so that adding an <c>[Inject]</c> field does not break this.
     /// </summary>
     /// <remarks>
-    /// <paramref name="owners"/> is given as bare logins for readability and qualified here, which
-    /// is what the production flattening now produces.
+    /// <paramref name="owners"/> is given as bare GitHub logins for readability and qualified here
+    /// (<c>github:alice</c>), which is what the real visibility service returns.
     /// </remarks>
-    private static async Task<Expression<Func<ApiToken, bool>>> RowFilterAsync(string[] owners, string action = "Query")
+    private static ApiTokenActions Actions(IAsyncDocumentSession session, string[] owners)
     {
         var visibility = Substitute.For<ISparkVisibility>();
         visibility.GetAllowedOwnersAsync().Returns(Task.FromResult(
@@ -57,83 +62,93 @@ public class ApiTokenRowFilterIsTranslatableTests : CoverageRavenTest
             .OrderByDescending(c => c.GetParameters().Length)
             .First();
 
-        // Only the visibility service participates in the row filter. Everything else is supplied
-        // as a substitute where NSubstitute can make one, and as null where it cannot — a concrete
-        // class with no parameterless constructor (UserManager<SparkUser>) cannot be proxied, and
-        // passing null is honest: if the filter ever starts using one of these, the test fails with
-        // a NullReferenceException rather than quietly passing against a stub.
+        // The visibility service and the session participate in the row filter. Everything else is
+        // a substitute where NSubstitute can make one, and null where it cannot (UserManager).
         var args = ctor.GetParameters()
             .Select(p =>
             {
                 if (p.ParameterType == typeof(ISparkVisibility)) return visibility;
+                if (p.ParameterType == typeof(IAsyncDocumentSession)) return session;
                 try { return Substitute.For([p.ParameterType], null); }
                 catch { return null; }
             })
             .ToArray();
 
-        var actions = (ApiTokenActions)ctor.Invoke(args);
+        return (ApiTokenActions)ctor.Invoke(args);
+    }
 
-        var filter = await actions.GetRowFilterAsync(action);
-        filter.Should().NotBeNull("an empty owner set must still produce a filter that matches nothing");
+    private static async Task<Expression<Func<ApiToken, bool>>> RowFilterAsync(
+        IAsyncDocumentSession session, string[] owners, string action = "Query")
+    {
+        var filter = await Actions(session, owners).GetRowFilterAsync(action);
+        filter.Should().NotBeNull(); // an empty owner set must still produce a filter that matches nothing
         return filter!;
     }
 
-    private static async Task SeedAsync(IDocumentStore store, params (string? login, string description)[] tokens)
+    private static async Task SeedAsync(IDocumentStore store, params (string? account, string description)[] tokens)
     {
         using var session = store.OpenAsyncSession();
-        foreach (var (login, description) in tokens)
+        await session.StoreAsync(new Account { GitHubId = 1, Login = "alice" }, Alice);
+        await session.StoreAsync(new Account { GitHubId = 2, Login = "bob" }, Bob);
+        await session.StoreAsync(new Account { GitHubId = 1, Login = "alice", Provider = EForgeProvider.GitLab }, AliceOnGitLab);
+        foreach (var (account, description) in tokens)
         {
             await session.StoreAsync(new ApiToken
             {
                 Scope = "Account",
-                AccountLogin = login,
-                // The row filter compares the provider-qualified key, not the bare login.
-                AccountOwnerKey = login is null ? null : ForgeOwner.KeyFromUnqualifiedLogin(login),
+                Account = account,
                 Description = description,
                 CreatedAtUtc = DateTime.UtcNow,
-            });
+            }, ApiToken.NewDocumentId());
         }
         await session.SaveChangesAsync();
     }
 
     /// <summary>
-    /// The regression. Before the fix this threw <c>NotSupportedException</c> during translation —
-    /// the query never got as far as having rows to assert on.
+    /// The regression, and the scoping: translated by RavenDB, and only the managed account's token.
     /// </summary>
     [Fact]
     public async Task The_row_filter_translates_and_scopes_the_query()
     {
         using var store = GetDocumentStore();
-        await SeedAsync(store, ("alice", "a"), ("bob", "b"));
+        await SeedAsync(store, (Alice, "a"), (Bob, "b"));
         WaitForIndexing(store);
 
         using var session = store.OpenAsyncSession();
         var rows = await session.Query<ApiToken>()
-            .Where(await RowFilterAsync(["alice"]))
+            .Where(await RowFilterAsync(session, ["alice"]))
             .ToListAsync();
 
-        rows.Select(t => t.AccountLogin).Should().Equal("alice");
+        rows.Select(t => t.Description).Should().Equal("a");
     }
 
     /// <summary>
-    /// The filter composed on top of the custom query's own predicate and its declared sort — the
-    /// exact shape of the request that failed in production.
+    /// The filter composed on top of the real <c>Account_UploadTokens</c> custom query (an index
+    /// query over <c>ApiTokens_Overview</c>) and its declared sort — the shape Spark executes.
     /// </summary>
     [Fact]
     public async Task The_filter_composes_with_the_custom_query_and_its_sort()
     {
         using var store = GetDocumentStore();
-        await SeedAsync(store, ("alice", "a"), ("bob", "b"));
+        await SeedAsync(store, (Alice, "a1"), (Alice, "a2"), (Bob, "b"));
         WaitForIndexing(store);
 
         using var session = store.OpenAsyncSession();
-        var rows = await session.Query<ApiToken>()
-            .Where(t => t.AccountLogin == "alice")        // Account_UploadTokens' own predicate
-            .Where(await RowFilterAsync(["alice", "bob"])) // the row filter Spark composes on top
-            .OrderByDescending(t => t.CreatedAtUtc)       // the query's declared sort
+        var parent = new PersistentObject { Id = Alice, Name = nameof(Account), ObjectTypeId = Guid.NewGuid() };
+        var args = new CustomQueryArgs
+        {
+            Query = new SparkQuery { Id = Guid.NewGuid(), Name = "Account_UploadTokens", Source = "Custom.Account_UploadTokens" },
+            Parent = parent,
+            ParentType = parent.Name,
+        };
+        var actions = Actions(session, ["alice", "bob"]);
+
+        var rows = await actions.Account_UploadTokens(args)
+            .Where((await actions.GetRowFilterAsync("Query"))!) // the row filter Spark composes on top
+            .OrderByDescending(t => t.CreatedAtUtc)            // the query's declared sort
             .ToListAsync();
 
-        rows.Select(t => t.AccountLogin).Should().Equal("alice");
+        rows.Select(t => t.Description).Should().BeEquivalentTo(["a1", "a2"]);
     }
 
     /// <summary>
@@ -144,31 +159,46 @@ public class ApiTokenRowFilterIsTranslatableTests : CoverageRavenTest
     public async Task An_empty_owner_set_matches_nothing()
     {
         using var store = GetDocumentStore();
-        await SeedAsync(store, ("alice", "a"));
+        await SeedAsync(store, (Alice, "a"));
         WaitForIndexing(store);
 
         using var session = store.OpenAsyncSession();
-        var rows = await session.Query<ApiToken>().Where(await RowFilterAsync([])).ToListAsync();
+        var rows = await session.Query<ApiToken>().Where(await RowFilterAsync(session, [])).ToListAsync();
 
         rows.Should().BeEmpty();
     }
 
     /// <summary>
-    /// A token with no owner is never visible. Pinned because the pre-fix filter carried an explicit
-    /// <c>AccountLogin != null</c> guard: dropping it should be a decision the tests hold, not an
-    /// incidental detail of the rewrite.
+    /// A token with no account (one the migration could not resolve) is never visible.
     /// </summary>
     [Fact]
-    public async Task A_token_with_no_owner_is_never_matched()
+    public async Task A_token_with_no_account_is_never_matched()
     {
         using var store = GetDocumentStore();
         await SeedAsync(store, (null, "orphan"));
         WaitForIndexing(store);
 
         using var session = store.OpenAsyncSession();
-        var rows = await session.Query<ApiToken>().Where(await RowFilterAsync(["alice"])).ToListAsync();
+        var rows = await session.Query<ApiToken>().Where(await RowFilterAsync(session, ["alice"])).ToListAsync();
 
         rows.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// ⚠️ Forge-qualified: managing GitHub's <c>alice</c> does not show the tokens of GitLab's
+    /// <c>alice</c>, whose document id differs only in the provider segment.
+    /// </summary>
+    [Fact]
+    public async Task A_same_named_account_on_another_forge_is_not_shown()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store, (Alice, "github"), (AliceOnGitLab, "gitlab"));
+        WaitForIndexing(store);
+
+        using var session = store.OpenAsyncSession();
+        var rows = await session.Query<ApiToken>().Where(await RowFilterAsync(session, ["alice"])).ToListAsync();
+
+        rows.Select(t => t.Description).Should().Equal("github");
     }
 
     /// <summary>
@@ -183,14 +213,14 @@ public class ApiTokenRowFilterIsTranslatableTests : CoverageRavenTest
     public async Task Every_action_gets_a_translatable_filter(string action)
     {
         using var store = GetDocumentStore();
-        await SeedAsync(store, ("alice", "a"), ("bob", "b"));
+        await SeedAsync(store, (Alice, "a"), (Bob, "b"));
         WaitForIndexing(store);
 
         using var session = store.OpenAsyncSession();
         var rows = await session.Query<ApiToken>()
-            .Where(await RowFilterAsync(["bob"], action))
+            .Where(await RowFilterAsync(session, ["bob"], action))
             .ToListAsync();
 
-        rows.Select(t => t.AccountLogin).Should().Equal("bob");
+        rows.Select(t => t.Description).Should().Equal("b");
     }
 }

@@ -39,6 +39,12 @@ public class UploadActionDogfoodTests : CoverageRavenTest
     private const string Sha = "1111111111111111111111111111111111111111";
     private const long RunId = 777;
 
+    // Fast and server-free: a fixture whose hash drifted from the token would otherwise surface as a
+    // 401 twenty seconds into a live-server run.
+    [Fact]
+    public void The_fixture_token_hash_matches_the_token()
+        => Assert.True(ActionDogfoodHarness.FixtureMatchesToken(), "Fixtures/Dogfood/dogfood.json's Hash is not SHA-256 of ActionDogfoodHarness.Token.");
+
     [Fact]
     public async Task The_committed_bundle_uploads_to_a_live_server()
     {
@@ -46,8 +52,7 @@ public class UploadActionDogfoodTests : CoverageRavenTest
         var bundle = ActionDogfoodHarness.ActionBundle(repositoryRoot);
 
         using var store = GetDocumentStore();
-        var token = await ActionDogfoodHarness.SeedRepositoryAndTokenAsync(
-            store, RepoId, RepoName, "MintPlayer", "dogfood");
+        var token = await ActionDogfoodHarness.SeedAsync(store);
 
         var port = ActionDogfoodHarness.FreePort();
         var baseUrl = $"http://127.0.0.1:{port}";
@@ -71,7 +76,7 @@ public class UploadActionDogfoodTests : CoverageRavenTest
                 var (exitCode, log) = await ActionDogfoodHarness.RunActionAsync(
                     bundle, workspace.FullName, outputFile, baseUrl, token, RepoName, Sha, RunId);
 
-                Assert.True(exitCode == 0, $"The action failed (exit {exitCode}):\n{log}");
+                Assert.True(exitCode == 0, $"The action failed (exit {exitCode}):\n{log}\n--- server (last 40 lines) ---\n{ActionDogfoodHarness.Tail(serverOutput, 40)}");
                 // Proves the server accepted the multipart body and answered the shape the action
                 // expects -- a 202 whose JSON carries buildId and sessionId.
                 Assert.Contains("Upload accepted", log);

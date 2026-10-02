@@ -1,4 +1,3 @@
-using CodeCoverage.Forge;
 using CodeCoverage.LookupReferences;
 using MintPlayer.Spark.Abstractions;
 
@@ -58,81 +57,37 @@ public class ApiToken
     public string Scope { get; set; } = ApiTokenScope.Account;
 
     /// <summary>
-    /// Owner login this token uploads for, when Scope is "Account". Display only — a login is
-    /// renameable and a repository can be transferred out from under it, so authorizing on this
-    /// string means a token keeps working for an account that no longer owns the repository, and
-    /// stops working for the one that does. <see cref="AccountId"/> is the authorization key.
-    /// </summary>
-    public string? AccountLogin { get; set; }
-
-    /// <summary>
-    /// The owning account as <c>provider:login</c> — what the row filter compares.
+    /// The account this token uploads for: the <see cref="Entities.Account"/> document id,
+    /// <c>Accounts/{provider}/{id}</c>.
     /// </summary>
     /// <remarks>
-    /// ⚠️ See <see cref="Repository.OwnerKey"/>. A token scoped to a bare login would authorise
-    /// uploads for the same-named owner on <em>any</em> forge, and an upload token is exactly the
-    /// credential where that must not be possible.
+    /// <b>The one field that decides the owner.</b> The forge and the numeric id are both in the
+    /// document id, so a token cannot name an account on one forge and a provider of another, and a
+    /// login rename or a repository transfer changes nothing here. The owner's login and
+    /// <c>provider:login</c> key are not stored on the token: <c>VApiToken</c> reads them from
+    /// this account through <c>ApiTokens_Overview</c>.
     /// <para>
-    /// Picked from <c>MyAccounts</c> — the owners the caller manages, as on Home — and still
-    /// re-authorized in <c>ApiTokenActions.OnBeforeSaveAsync</c>: a dropdown limits what is offered,
-    /// not what can be posted.
+    /// Read-only in the model and never posted: on create <c>ApiTokenActions.OnBeforeSaveAsync</c>
+    /// takes it from the account the New was started from (<c>obj.Parent</c>, resolved and authorized
+    /// by Spark), and an edit keeps it. It is re-authorized on every save.
+    /// </para>
+    /// <para>
+    /// Replaced <c>AccountLogin</c>, <c>AccountOwnerKey</c>, <c>Provider</c> and <c>AccountId</c>
+    /// on 2026-10-02 (<c>M_202610021200_ApiTokenReferencesItsAccount</c>).
     /// </para>
     /// </remarks>
-    [Reference(typeof(AccountOwner), "MyAccounts")]
-    public string? AccountOwnerKey { get; set; }
-
-    /// <summary>The forge this token uploads to.</summary>
-    /// <remarks>
-    /// ⚠️ <b>Without this, <see cref="AccountId"/> is ambiguous.</b> A numeric account id is unique
-    /// only <em>within</em> a forge — GitHub user 1234 and GitLab group 1234 are different
-    /// principals — so a token carrying an id and no forge would authorize uploads for whichever
-    /// one the reader happened to assume. The upload path assumed GitHub, as a literal, until
-    /// 2026-09-22.
-    /// <para>
-    /// Defaults to GitHub, which is correct for every token that existed before the field: it was
-    /// the only forge.
-    /// </para>
-    /// </remarks>
-    [IgnoreProperty]
-    public EForgeProvider Provider { get; set; } = EForgeProvider.GitHub;
-
-    /// <summary>
-    /// The forge's numeric id for the owner this token uploads for, when Scope is "Account".
-    /// </summary>
-    /// <remarks>
-    /// <b>The authorization key</b>, and the reason it is the numeric id rather than
-    /// <see cref="AccountOwnerKey"/>: a key is <c>provider:login</c> and therefore login-derived, so
-    /// it is wrong in both directions once a repository is transferred — the old owner's token keeps
-    /// working for a repository they no longer own, and the new owner's does not work for one they
-    /// do. A numeric id survives a rename, which is exactly what makes it safe to authorize on.
-    /// <para>
-    /// Null on tokens issued before the field existed, which fall back to comparing
-    /// <see cref="AccountLogin"/> so no working token is invalidated by a deploy.
-    /// <c>M_202609221000</c> backfills what it can and reports what it cannot; the fallback can go
-    /// once that list is empty.
-    /// </para>
-    /// <para>
-    /// ⚠️ <c>[IgnoreProperty]</c> is Spark's, not RavenDB's — the property stays on the document and
-    /// keeps being written and read; it is only absent from the <em>model</em>. It is stamped
-    /// server-side from the resolved account, so nobody should ever type it into a form.
-    /// </para>
-    /// <para>
-    /// Was <c>AccountGitHubId</c> until 2026-09-22. Renamed with <c>M_202609220950</c>, because a
-    /// name is a contract when it is the name of a stored field.
-    /// </para>
-    /// </remarks>
-    [IgnoreProperty]
-    public long? AccountId { get; set; }
+    [Reference(typeof(Account))]
+    public string? Account { get; set; }
 
     /// <summary>
     /// Document ids of the repositories this token may upload for. Empty means the token is
-    /// account-scoped and covers every repository of <see cref="AccountId"/>.
+    /// account-scoped and covers every repository of <see cref="Account"/>.
     /// </summary>
     /// <remarks>
     /// Replaces a single numeric <c>RepositoryGitHubId</c>: a token often serves several
     /// repositories, and a person should never be asked to type a GitHub id. The picker lists the
-    /// parent account's repositories (<c>Custom.Account_Repositories</c>, the Account page's card);
-    /// <c>ApiTokenActions.OnRefreshAsync</c> replaces the list when <see cref="AccountOwnerKey"/> changes.
+    /// parent account's repositories (<c>Custom.Account_Repositories</c>, the Account page's card) —
+    /// the same account as <see cref="Account"/>, which <c>OnBeforeSaveAsync</c> enforces.
     /// <para>
     /// ⚠️ <b>Document ids, not GitHub ids.</b> Every layer of the reference machinery — the
     /// synchronizer, <c>EntityMapper</c>, <c>BreadcrumbResolver</c>, <c>ReferenceResolver</c>'s

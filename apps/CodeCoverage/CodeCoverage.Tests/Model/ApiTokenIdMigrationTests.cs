@@ -26,7 +26,6 @@ public class ApiTokenIdMigrationTests : CoverageRavenTest
             new ApiToken
             {
                 Scope = "Account",
-                AccountLogin = "MintPlayer",
                 Description = description,
                 CreatedAtUtc = new DateTime(2026, 8, 13, 10, 49, 57, DateTimeKind.Utc),
             },
@@ -34,12 +33,14 @@ public class ApiTokenIdMigrationTests : CoverageRavenTest
         await session.SaveChangesAsync();
 
         // The entity now has a Hash property, which a legacy document did not — remove it so the
-        // fixture is the real pre-migration shape rather than an approximation of it.
+        // fixture is the real pre-migration shape rather than an approximation of it. The owner was
+        // a bare login then (`AccountLogin`), a field the entity no longer declares — so the patch
+        // writes it, and drops the `Account` the entity now always serializes.
         var operation = await store.Operations.SendAsync(
             new Raven.Client.Documents.Operations.PatchByQueryOperation(
                 new Raven.Client.Documents.Queries.IndexQuery
                 {
-                    Query = "from ApiTokens update { delete this.Hash; }",
+                    Query = "from ApiTokens update { delete this.Hash; delete this.Account; this.AccountLogin = 'MintPlayer'; }",
                 }));
         await operation.WaitForCompletionAsync(TimeSpan.FromMinutes(1));
     }
@@ -79,7 +80,9 @@ public class ApiTokenIdMigrationTests : CoverageRavenTest
 
         var token = (await AllAsync(store))[0];
         Assert.Equal("Account", token.Scope);
-        Assert.Equal("MintPlayer", token.AccountLogin);
+        // Read from the raw document: a later migration (M_202610021200) turns it into Account.
+        using (var raw = store.OpenAsyncSession())
+            Assert.Equal("MintPlayer", (await raw.LoadAsync<Dictionary<string, object?>>(token.Id))["AccountLogin"]?.ToString());
         Assert.Equal("MintPlayer token", token.Description);
         Assert.Equal(new DateTime(2026, 8, 13, 10, 49, 57, DateTimeKind.Utc), token.CreatedAtUtc.ToUniversalTime());
     }

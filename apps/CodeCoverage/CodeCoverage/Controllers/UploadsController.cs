@@ -608,33 +608,13 @@ public partial class UploadsController : ControllerBase
             .Select(c => c.Value)
             .ToArray();
 
-        // Account scope compares numeric owner ids when the token carries one. A login comparison
-        // is wrong in both directions once a repository is transferred: the old owner's token keeps
-        // working for a repository they no longer own, and the new owner's does not work for one
-        // they do. Tokens issued before the id existed fall back to the login, so a deploy
-        // invalidates nothing.
-        var accountId = User.FindFirst(ApiTokenAuthenticationHandler.AccountIdClaim)?.Value;
-
-        // ⚠️ The forge comes from the TOKEN, not from a literal. A numeric account id is unique only
-        // within a forge, so comparing one against a GitHub-shaped document id — which this did until
-        // 2026-09-22 — authorizes a token against whichever forge the code assumed. An unparseable or
-        // absent provider fails the match rather than defaulting, because defaulting is the bug.
-        var tokenProvider = ForgeProviders.TryParse(
-            User.FindFirst(ApiTokenAuthenticationHandler.ProviderClaim)?.Value, out var parsedProvider)
-            ? parsedProvider
-            : (EForgeProvider?)null;
-
+        // Account scope compares account DOCUMENT ids — the token's against the repository's owner.
+        // Forge and numeric id are both in the id, so a GitLab group and a GitHub organisation of the
+        // same name, or of the same number, can never match, and a login rename or a repository
+        // transfer is followed rather than outlived. A token without an account authorizes nothing.
         bool IsAuthorized(Repository repository) => scope switch
         {
-            "Account" when accountId is not null =>
-                tokenProvider is { } provider
-                && long.TryParse(accountId, out var ownerId)
-                && repository.Account == Entities.Account.DocumentId(provider, ownerId),
-            // ⚠️ `OwnerKey`, not `OwnerLogin` — both sides qualified. Comparing bare logins unions
-            // forges, so a GitLab group called `acme` would authorize uploads to GitHub's `acme`.
-            // `Repository.OwnerKey` is computed from the repository's own `Provider`, so the two
-            // sides can only match when the forge matches too.
-            "Account" => string.Equals(account, repository.OwnerKey, StringComparison.OrdinalIgnoreCase),
+            "Account" => account is not null && string.Equals(account, repository.Account, StringComparison.Ordinal),
             // Membership, not equality — the claims carry document ids, one per repository the
             // token was scoped to.
             "Repository" => repoIds.Contains(

@@ -345,17 +345,25 @@ public class RemainingActionsTests : CoverageRavenTest
     public async Task A_new_tokens_plaintext_is_shown_once_after_the_save()
     {
         using var store = GetDocumentStore();
+        var accountId = Account.DocumentId(EForgeProvider.GitHub, 1);
+        using (var seed = store.OpenAsyncSession())
+        {
+            await seed.StoreAsync(new Account { GitHubId = 1, Login = "acme" }, accountId);
+            await seed.SaveChangesAsync();
+        }
         using var session = store.OpenAsyncSession();
         var client = Substitute.For<IClientAccessor>();
         var actions = Create<ApiTokenActions>(Managing("github:acme"), session, ManagerServing(Page("ApiToken"), client));
-        var token = new ApiToken { Description = "ci", AccountOwnerKey = "github:acme" };
+        var token = new ApiToken { Description = "ci" };
         var po = Page("ApiToken");
+        po.Parent = new PersistentObject { Id = accountId, Name = nameof(Account), ObjectTypeId = Guid.NewGuid() };
 
         await actions.OnBeforeSaveAsync(po, token);
         await actions.OnAfterSaveAsync(po, token);
         await actions.OnAfterSaveAsync(po, token);
 
         token.Hash.Should().NotBeNullOrEmpty();
+        token.Account.Should().Be(accountId);
         client.Received(1).Notify(Arg.Is<string>(m => m.StartsWith("Copy this now, it is shown once: covt_")),
             NotificationKind.Success, TimeSpan.FromMinutes(10));
     }
@@ -366,8 +374,12 @@ public class RemainingActionsTests : CoverageRavenTest
         using var store = GetDocumentStore();
         using (var seed = store.OpenAsyncSession())
         {
-            await seed.StoreAsync(new ApiToken { AccountLogin = "acme", Description = "mine" }, ApiToken.NewDocumentId());
-            await seed.StoreAsync(new ApiToken { AccountLogin = "other", Description = "theirs" }, ApiToken.NewDocumentId());
+            await seed.StoreAsync(new Account { GitHubId = 1, Login = "acme" }, Account.DocumentId(EForgeProvider.GitHub, 1));
+            await seed.StoreAsync(new Account { GitHubId = 2, Login = "other" }, Account.DocumentId(EForgeProvider.GitHub, 2));
+            await seed.StoreAsync(new ApiToken { Account = Account.DocumentId(EForgeProvider.GitHub, 1), Description = "mine" }, ApiToken.NewDocumentId());
+            await seed.StoreAsync(new ApiToken { Account = Account.DocumentId(EForgeProvider.GitHub, 2), Description = "theirs" }, ApiToken.NewDocumentId());
+            // Same numeric id on another forge: matched by document id, so never listed here.
+            await seed.StoreAsync(new ApiToken { Account = Account.DocumentId(EForgeProvider.GitLab, 1), Description = "gitlab twin" }, ApiToken.NewDocumentId());
             await seed.SaveChangesAsync();
         }
         WaitForIndexing(store);

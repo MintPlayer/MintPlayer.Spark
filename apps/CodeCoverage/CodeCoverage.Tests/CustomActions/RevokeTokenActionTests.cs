@@ -66,14 +66,22 @@ public class RevokeTokenActionTests : CoverageRavenTest
         return new Harness(services.BuildServiceProvider().GetRequiredService<RevokeTokenAction>(), client);
     }
 
-    private static async Task SeedAsync(IDocumentStore store, DateTime? revokedAt = null)
+    private static readonly string OwnerAccount = Account.DocumentId(EForgeProvider.GitHub, 1);
+    private static readonly string OtherAccount = Account.DocumentId(EForgeProvider.GitHub, 2);
+
+    /// <summary>
+    /// The token names its account by document id; the action reads the account's owner KEY from
+    /// the account itself, so both accounts exist here.
+    /// </summary>
+    private static async Task SeedAsync(IDocumentStore store, DateTime? revokedAt = null, string? account = null)
     {
         using var session = store.OpenAsyncSession();
+        await session.StoreAsync(new Account { GitHubId = 1, Login = Owner }, OwnerAccount);
+        await session.StoreAsync(new Account { GitHubId = 2, Login = "someone-else" }, OtherAccount);
         await session.StoreAsync(new ApiToken
         {
             Description = "ci",
-            AccountLogin = Owner,
-            AccountOwnerKey = OwnerKey,
+            Account = account ?? OwnerAccount,
             Scope = "Account",
             RevokedAtUtc = revokedAt,
         }, TokenId);
@@ -125,16 +133,34 @@ public class RevokeTokenActionTests : CoverageRavenTest
     }
 
     /// <summary>
-    /// A token with no owner key cannot be attributed to anyone, so it cannot be revoked through
-    /// this path either — the check must not fall open on a null.
+    /// The caller manages <c>acme</c>, but the token belongs to another account: refused. The key
+    /// checked is the TOKEN's account's, read from that account, not anything the caller supplies.
     /// </summary>
     [Fact]
-    public async Task A_token_with_no_owner_key_is_refused_rather_than_allowed()
+    public async Task A_token_of_an_account_the_caller_does_not_manage_is_refused()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store, account: OtherAccount);
+
+        using (var session = store.OpenAsyncSession())
+            await CreateAction(session, canManageOwner: true).Action.ExecuteAsync(ArgsFor(TokenId));
+
+        Assert.Null(await RevokedAtAsync(store));
+    }
+
+    /// <summary>
+    /// A token with no account, or one whose account no longer exists, cannot be attributed to
+    /// anyone, so it cannot be revoked through this path either — the check must not fall open on a null.
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("Accounts/github/404")]
+    public async Task A_token_without_a_resolvable_account_is_refused_rather_than_allowed(string? account)
     {
         using var store = GetDocumentStore();
         using (var seed = store.OpenAsyncSession())
         {
-            await seed.StoreAsync(new ApiToken { Description = "orphan", AccountOwnerKey = null, Scope = "Account" }, TokenId);
+            await seed.StoreAsync(new ApiToken { Description = "orphan", Account = account, Scope = "Account" }, TokenId);
             await seed.SaveChangesAsync();
         }
 

@@ -82,38 +82,41 @@ public static class ActionDogfoodHarness
     }
 
     /// <summary>
-    /// Seeds the repository and an API token the way minting one through the API does: the token is
-    /// generated and hashed, and only the hash is stored. The value never leaves this process except
-    /// as a request header.
+    /// The upload token the fixture's <c>ApiTokens/…</c> document is minted for. A fixed test value,
+    /// not a credential: it exists only in an embedded test database, and only its hash is seeded.
     /// </summary>
-    public static async Task<string> SeedRepositoryAndTokenAsync(
-        IDocumentStore store, long repoId, string fullName, string ownerLogin, string name)
+    public const string Token = "covt_dogfood-fixture-token-not-a-credential";
+
+    /// <summary>
+    /// Seeds <c>Fixtures/Dogfood/dogfood.json</c>: the <c>MintPlayer</c> account, the
+    /// <c>MintPlayer/dogfood</c> and <c>MintPlayer/dogfood-windows</c> repositories, and an
+    /// Account-scoped token for that account. Returns the token value to send.
+    /// </summary>
+    /// <remarks>
+    /// Raw documents, as RavenDB stores them, rather than entities saved through a session: the
+    /// server under test reads what is on disk, so the fixture states that directly — and the
+    /// importer waits for indexing, so the server's first query is not answered by a stale index.
+    /// <see cref="Token"/>'s SHA-256 is the fixture's <c>Hash</c>; <see cref="FixtureMatchesToken"/>
+    /// keeps the two from drifting apart.
+    /// </remarks>
+    public static async Task<string> SeedAsync(IDocumentStore store)
     {
-        var token = ApiTokenService.GenerateTokenValue();
-        using var session = store.OpenAsyncSession();
-
-        await session.StoreAsync(new Repository
-        {
-            GitHubId = repoId,
-            Name = name,
-            FullName = fullName,
-            OwnerLogin = ownerLogin,
-            IsPrivate = false,
-            DefaultBranch = "master",
-        }, Repository.DocumentId(EForgeProvider.GitHub, repoId));
-
-        await session.StoreAsync(new ApiToken
-        {
-            Scope = "Account",
-            AccountLogin = ownerLogin,
-            Description = "dogfood",
-            CreatedByUserId = "test",
-            CreatedAtUtc = DateTime.UtcNow,
-        }, $"ApiTokens/{ApiTokenService.Hash(token)}");
-
-        await session.SaveChangesAsync();
-        return token;
+        await MintPlayer.Spark.Testing.JsonFixtureImporter.ImportAsync(store, FixturePath);
+        return Token;
     }
+
+    /// <summary>The server's last <paramref name="lines"/> lines, for a failure message: a refused upload is a bare 404 to the action.</summary>
+    public static string Tail(List<string> output, int lines)
+    {
+        lock (output)
+            return string.Join("\n", output.TakeLast(lines));
+    }
+
+    internal static string FixturePath => Path.Combine(AppContext.BaseDirectory, "Fixtures", "Dogfood", "dogfood.json");
+
+    /// <summary>Whether the fixture's token hash is <see cref="Token"/>'s.</summary>
+    internal static bool FixtureMatchesToken()
+        => File.ReadAllText(FixturePath).Contains($"\"Hash\": \"{ApiTokenService.Hash(Token)}\"", StringComparison.Ordinal);
 
     /// <summary>
     /// Starts the real server process against the test's RavenDB and returns it together with a

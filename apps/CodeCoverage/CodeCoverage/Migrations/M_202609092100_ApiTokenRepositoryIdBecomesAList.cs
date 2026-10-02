@@ -58,6 +58,11 @@ public partial class M_202609092100_ApiTokenRepositoryIdBecomesAList : ISparkMig
                     from ApiTokens as t
                     where t.RepositoryGitHubId != null
                     update {
+                        // ⚠️ The where clause is not enough: in RavenDB `!= null` also matches a
+                        // token with NO RepositoryGitHubId, which this turned into a Repository-
+                        // scoped token for "Repositories/undefined" — an Account token that then
+                        // authorized nothing. Only a token that has the field is rewritten.
+                        if (t.RepositoryGitHubId === undefined || t.RepositoryGitHubId === null) { return; }
                         t.GithubRepositories = ["Repositories/" + t.RepositoryGitHubId];
                         t.Scope = "Repository";
                         delete this.RepositoryGitHubId;

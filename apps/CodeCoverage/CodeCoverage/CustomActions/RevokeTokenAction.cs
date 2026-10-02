@@ -53,8 +53,12 @@ public partial class RevokeTokenAction : SparkCustomAction
         // ⚠️ Re-checked here, not inherited from the row filter. The filter decides what a caller
         // can see; a write must decide for itself, because a caller can post an id it was never
         // shown.
-        // ⚠️ An owner KEY, not a login — see ApiTokenActions. This refused every revoke.
-        if (token.AccountOwnerKey is null || !await visibility.CanManageOwnerAsync(token.AccountOwnerKey))
+        // The token names its account by document id; the visibility check takes the account's owner
+        // KEY (`github:acme`), read from the account itself.
+        var account = token.Account is { Length: > 0 } accountId
+            ? await session.LoadAsync<Account>(accountId, cancellationToken)
+            : null;
+        if (account is null || !await visibility.CanManageOwnerAsync(account.OwnerKey))
         {
             manager.Client.Notify("You do not manage the account this token belongs to.", NotificationKind.Error);
             return;

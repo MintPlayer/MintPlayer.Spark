@@ -18,7 +18,7 @@ namespace CodeCoverage.Tests.ApiTokens;
 /// ⚠️ <b>Nothing else enforces this.</b> A reference ARRAY is written straight through —
 /// <c>EntityMapper</c> hands the posted value to the property and returns, bypassing the collection
 /// guard that binds a scalar reference's id to its type — so whatever ids the client posts are what
-/// get stored. And <c>EnsureRowSaveAllowedAsync</c> re-applies only the <c>AccountLogin</c> row
+/// get stored. And <c>EnsureRowSaveAllowedAsync</c> re-applies only the <c>Account</c> row
 /// filter, which says nothing about repository ownership.
 /// <para>
 /// So the check in <c>OnBeforeSaveAsync</c> is the entire defence, on a production credential path.
@@ -88,33 +88,55 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         return (ApiTokenActions)ctor.Invoke(args);
     }
 
+    private const string SecondManaged = "acme-two";
+
+    private static readonly string ManagedAccount = Account.DocumentId(EForgeProvider.GitHub, 1);
+    private static readonly string SecondManagedAccount = Account.DocumentId(EForgeProvider.GitHub, 2);
+    private static readonly string ForeignAccount = Account.DocumentId(EForgeProvider.GitHub, 3);
+
+    /// <summary>
+    /// Two accounts the caller manages and one it does not, each with repositories that name their
+    /// account by document id — the field the guard compares.
+    /// </summary>
     private static async Task SeedAsync(IDocumentStore store)
     {
         using var session = store.OpenAsyncSession();
-        await session.StoreAsync(new Account { GitHubId = 1, Login = Managed }, Account.DocumentId(EForgeProvider.GitHub, 1));
+        await session.StoreAsync(new Account { GitHubId = 1, Login = Managed }, ManagedAccount);
+        await session.StoreAsync(new Account { GitHubId = 2, Login = SecondManaged }, SecondManagedAccount);
+        await session.StoreAsync(new Account { GitHubId = 3, Login = Foreign }, ForeignAccount);
         await session.StoreAsync(new Repository
         {
+            Account = ManagedAccount,
             GitHubId = 10, Name = "mine", FullName = $"{Managed}/mine", OwnerLogin = Managed, Provider = EForgeProvider.GitHub,
         }, Repository.DocumentId(EForgeProvider.GitHub, 10));
         await session.StoreAsync(new Repository
         {
+            Account = ManagedAccount,
             GitHubId = 11, Name = "also-mine", FullName = $"{Managed}/also-mine", OwnerLogin = Managed, Provider = EForgeProvider.GitHub,
         }, Repository.DocumentId(EForgeProvider.GitHub, 11));
         await session.StoreAsync(new Repository
         {
+            Account = ForeignAccount,
             GitHubId = 20, Name = "theirs", FullName = $"{Foreign}/theirs", OwnerLogin = Foreign, Provider = EForgeProvider.GitHub,
         }, Repository.DocumentId(EForgeProvider.GitHub, 20));
+        await session.StoreAsync(new Repository
+        {
+            Account = SecondManagedAccount,
+            GitHubId = 30, Name = "other-of-mine", FullName = $"{SecondManaged}/other-of-mine", OwnerLogin = SecondManaged, Provider = EForgeProvider.GitHub,
+        }, Repository.DocumentId(EForgeProvider.GitHub, 30));
         await session.SaveChangesAsync();
     }
 
-
-    /// <summary>A minimal PO; the hook under test reads the entity, not the PO.</summary>
-    private static PersistentObject Po() => new() { Name = "ApiToken", ObjectTypeId = Guid.NewGuid() };
+    /// <summary>The token PO, started from the managed account's page — the parent Spark resolves.</summary>
+    private static PersistentObject Po() => new()
+    {
+        Name = "ApiToken",
+        ObjectTypeId = Guid.NewGuid(),
+        Parent = new PersistentObject { Id = ManagedAccount, Name = nameof(Account), ObjectTypeId = Guid.NewGuid() },
+    };
 
     private static ApiToken NewToken(params string[] repositoryIds) => new()
     {
-        AccountLogin = Managed,
-        AccountOwnerKey = KeyOf(Managed),
         Description = "ci",
         RepositoryIds = [.. repositoryIds],
     };
@@ -126,7 +148,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await SeedAsync(store);
         using var session = store.OpenAsyncSession();
-        var actions = CreateActions(session, KeyOf(Managed));
+        var actions = CreateActions(session, KeyOf(Managed), KeyOf(SecondManaged));
         var token = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 20));
 
         var act = async () => await actions.OnBeforeSaveAsync(Po(), token);
@@ -144,7 +166,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await SeedAsync(store);
         using var session = store.OpenAsyncSession();
-        var actions = CreateActions(session, KeyOf(Managed));
+        var actions = CreateActions(session, KeyOf(Managed), KeyOf(SecondManaged));
         var token = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 10), Repository.DocumentId(EForgeProvider.GitHub, 20));
 
         var act = async () => await actions.OnBeforeSaveAsync(Po(), token);
@@ -162,7 +184,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await SeedAsync(store);
         using var session = store.OpenAsyncSession();
-        var actions = CreateActions(session, KeyOf(Managed));
+        var actions = CreateActions(session, KeyOf(Managed), KeyOf(SecondManaged));
 
         var unknown = await Record.ExceptionAsync(() =>
             actions.OnBeforeSaveAsync(Po(), NewToken("Repositories/999999")));
@@ -180,7 +202,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await SeedAsync(store);
         using var session = store.OpenAsyncSession();
-        var actions = CreateActions(session, KeyOf(Managed));
+        var actions = CreateActions(session, KeyOf(Managed), KeyOf(SecondManaged));
         var token = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 10), Repository.DocumentId(EForgeProvider.GitHub, 11));
 
         await actions.OnBeforeSaveAsync(Po(), token);
@@ -195,7 +217,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await SeedAsync(store);
         using var session = store.OpenAsyncSession();
-        var actions = CreateActions(session, KeyOf(Managed));
+        var actions = CreateActions(session, KeyOf(Managed), KeyOf(SecondManaged));
         var token = NewToken();
 
         await actions.OnBeforeSaveAsync(Po(), token);
@@ -210,7 +232,7 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await SeedAsync(store);
         using var session = store.OpenAsyncSession();
-        var actions = CreateActions(session, KeyOf(Managed));
+        var actions = CreateActions(session, KeyOf(Managed), KeyOf(SecondManaged));
         var token = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 10), Repository.DocumentId(EForgeProvider.GitHub, 10));
 
         await actions.OnBeforeSaveAsync(Po(), token);
@@ -229,12 +251,52 @@ public class ApiTokenRepositoryScopeTests : CoverageRavenTest
         using var store = GetDocumentStore();
         await SeedAsync(store);
         using var session = store.OpenAsyncSession();
-        var actions = CreateActions(session, KeyOf(Managed));
+        var actions = CreateActions(session, KeyOf(Managed), KeyOf(SecondManaged));
 
         var existing = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 20));
         existing.Hash = "already-minted";   // an edit: the credential exists
+        existing.Account = ManagedAccount;
 
         var act = async () => await actions.OnBeforeSaveAsync(Po(), existing);
+
+        await act.Should().ThrowAsync<SparkValidationException>();
+    }
+
+    /// <summary>
+    /// ⚠️ Narrower than "a repository the caller manages": a token belongs to ONE account, and a
+    /// repository of a second account the same caller also manages is refused — otherwise an
+    /// account-A token would upload to account B, and keep doing so after B's membership is revoked.
+    /// </summary>
+    [Fact]
+    public async Task A_repository_of_another_account_the_caller_also_manages_is_refused()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store);
+        using var session = store.OpenAsyncSession();
+        var actions = CreateActions(session, KeyOf(Managed), KeyOf(SecondManaged));
+        var token = NewToken(Repository.DocumentId(EForgeProvider.GitHub, 30));
+
+        var act = async () => await actions.OnBeforeSaveAsync(Po(), token);
+
+        await act.Should().ThrowAsync<SparkValidationException>();
+        token.Hash.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// The account check runs first: a repository list cannot be validated against an account the
+    /// caller does not manage, so a create under a foreign account is refused even with no repositories.
+    /// </summary>
+    [Fact]
+    public async Task Repositories_of_a_foreign_account_cannot_be_reached_by_starting_from_it()
+    {
+        using var store = GetDocumentStore();
+        await SeedAsync(store);
+        using var session = store.OpenAsyncSession();
+        var actions = CreateActions(session, KeyOf(Managed), KeyOf(SecondManaged));
+        var po = Po();
+        po.Parent!.Id = ForeignAccount;
+
+        var act = async () => await actions.OnBeforeSaveAsync(po, NewToken(Repository.DocumentId(EForgeProvider.GitHub, 20)));
 
         await act.Should().ThrowAsync<SparkValidationException>();
     }
