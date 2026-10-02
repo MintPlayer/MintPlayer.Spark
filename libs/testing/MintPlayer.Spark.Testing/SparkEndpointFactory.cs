@@ -33,6 +33,31 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
     private readonly IHost _host;
     private readonly string _contentRoot;
 
+    /// <summary>
+    /// The Data Protection key folder every host of this process uses.
+    /// </summary>
+    /// <remarks>
+    /// It used to be a folder in each host's content root, so every boot generated a key and wrote
+    /// its XML: Data Protection creates the key ring eagerly at host start. Shared, the first host
+    /// writes the key and the others read it. In one paired measurement (M8 item 13) host start fell
+    /// from ~48 ms to ~29 ms of wall time per boot with the same thread CPU: the saving is mostly the
+    /// blocking file write and folder churn. This is the production shape of several instances behind
+    /// one key ring, and the application discriminator was already the same for every test host (the
+    /// entry assembly, <c>testhost</c>), so only the key differs from before. Per process rather
+    /// than one fixed folder, so concurrent test projects and earlier runs never meet; deleted at
+    /// process exit, best effort.
+    /// </remarks>
+    private static readonly Lazy<string> SharedDataProtectionKeysPath = new(() =>
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"spark-endpoint-tests-dataprotection-{Environment.ProcessId}");
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            try { Directory.Delete(path, recursive: true); }
+            catch { /* Best-effort cleanup */ }
+        };
+        return path;
+    });
+
     /// <param name="testStore">The in-memory (or otherwise) document store the host should use.</param>
     /// <param name="models">Entity type definitions; serialized into <c>App_Data/Model/*.json</c>.</param>
     /// <param name="configureServices">
@@ -122,11 +147,11 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
 
         _host = new HostBuilder()
             // Test hosts run outside Development, where Spark refuses an unpersisted Data Protection
-            // key ring (#460, D5). A folder in the throwaway content root is persisted for exactly as
-            // long as the host lives, which is all a test needs.
+            // key ring (#460, D5). One folder per test process, shared by its hosts: see
+            // SharedDataProtectionKeysPath for why not one per host.
             .ConfigureAppConfiguration(configuration => configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Spark:DataProtection:KeysPath"] = Path.Combine(_contentRoot, "DataProtection-Keys"),
+                ["Spark:DataProtection:KeysPath"] = SharedDataProtectionKeysPath.Value,
             }))
             .ConfigureWebHost(webHost =>
             {

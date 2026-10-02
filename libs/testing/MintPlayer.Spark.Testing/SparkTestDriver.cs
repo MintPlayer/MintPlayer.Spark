@@ -122,6 +122,8 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
         // Zero-wait hard delete on dispose, for this fixture's Store AND any inline
         // GetDocumentStore() a test makes. See DisposeAsync and RavenDatabaseDeletion.
         RavenDatabaseDeletion.DeleteOnDispose(documentStore);
+        // No topology cache file per database. See RavenDatabaseDeletion.DisableTopologyCache.
+        RavenDatabaseDeletion.DisableTopologyCache(documentStore);
         base.PreInitialize(documentStore);
     }
 

@@ -98,6 +98,8 @@ public abstract class CoverageRavenTest : RavenTestDriver
     protected override void PreInitialize(IDocumentStore documentStore)
     {
         MintPlayer.Spark.Testing.RavenDatabaseDeletion.DeleteOnDispose(documentStore);
+        // No topology cache file per database. See RavenDatabaseDeletion.DisableTopologyCache.
+        MintPlayer.Spark.Testing.RavenDatabaseDeletion.DisableTopologyCache(documentStore);
         base.PreInitialize(documentStore);
     }
 }

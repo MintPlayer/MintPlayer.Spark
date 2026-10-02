@@ -56,6 +56,20 @@ public static class RavenDatabaseDeletion
             documentStore.BeforeDispose += (_, _) => DeleteWithoutWaiting(store);
     }
 
+    /// <summary>
+    /// Stops the client writing a topology cache file for <paramref name="store"/>'s database.
+    /// </summary>
+    /// <remarks>
+    /// Lives here because this is the one class every RavenTestDriver base already calls from
+    /// <c>PreInitialize</c>, CodeCoverage's included (linked by source). The client caches each
+    /// database's topology in <c>{database}.{hash}.raven-database-topology</c> in the application
+    /// directory, so the bin folder of a test project collected one file per test database (797 in
+    /// Spark.Tests' bin, 2026-10-02): a file write per database for a cache that is only read when the
+    /// server cannot be reached at startup, which never helps a test. M8 item 13.
+    /// </remarks>
+    public static void DisableTopologyCache(IDocumentStore store)
+        => store.Conventions.DisableTopologyCache = true;
+
     private static void DeleteWithoutWaiting(IDocumentStore store)
     {
         try

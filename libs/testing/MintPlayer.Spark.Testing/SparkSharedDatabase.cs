@@ -97,6 +97,8 @@ public class SparkSharedDatabase : RavenTestDriver, IAsyncLifetime
         documentStore.ApplySparkConventions();
         // Zero-wait hard delete on dispose — see RavenDatabaseDeletion.
         RavenDatabaseDeletion.DeleteOnDispose(documentStore);
+        // No topology cache file per database. See RavenDatabaseDeletion.DisableTopologyCache.
+        RavenDatabaseDeletion.DisableTopologyCache(documentStore);
         base.PreInitialize(documentStore);
     }
 
