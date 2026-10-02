@@ -889,6 +889,61 @@ only):
 
 ## 5d. Test-run speed and CI cost (owner decisions, 2026-10-01; work tracked as M8 in the plan)
 
+**Summary: every measure taken.** The local sweep (`npm run test:affected -- --skip-nx-cache`, all
+projects, E2E included) went from **21m49s to 7m39s (459 s), 2.85×**, on the owner's 4-core/8-thread
+laptop. Details and evidence are in the numbered items below.
+
+Adopted:
+1. **One local script, `npm run test:affected`** (`tools/test-local.mjs`): runs only the affected
+   projects, unit and E2E together. Item 2.
+2. **Coverage off locally:** a `-c local` configuration per test target drops coverlet and vitest
+   `--coverage`. CI is unchanged. Item 2.
+3. **E2E apps built once through nx**, then `SPARK_E2E_SKIP_APP_BUILD=1` skips the per-app
+   `dotnet build`. Item 4.
+4. **Zero-wait database deletes** in every RavenTestDriver base (`RavenDatabaseDeletion`). Item 4.
+5. **Test hosts deploy only the indexes a test needs.** Spark core gained an opt-in
+   `SparkModuleRegistry.IndexDeploymentFilter`; production startup is unchanged. The test-assembly
+   index that every boot still deployed was nested into its test class. Spark.Tests 515 s → about 180 s.
+   Items 10 and 13.
+6. **CodeCoverage.Tests deploys its index only in classes that query it** (opt-in `DeployIndexes`,
+   30 of 73 classes) and runs on half the cores. 172 s → 104 s. Item 10.
+7. **A database per class instead of per test** for the classes that write nothing, the OIDC classes
+   (unique client ids and emails per case) and the read-only query classes, which seed once per
+   class. Item 5 (batch 1) and item 11.
+8. **A host per class instead of per test** where the configuration is shared (`SharedSparkHost<T>`,
+   `OidcSharedHost`). Items 5 and 11.
+9. **The per-test database is created lazily**, on the first use of `Store`. Item 11.
+10. **One OIDC signing key per test process** instead of a new RSA-2048 key per host. 10–12 below
+    are cheaper per-boot work.
+11. **One PBKDF2 iteration in test hosts** instead of 100,000 (`PasswordHasherOptions`).
+12. **One Data Protection key ring per process, and no topology cache files** per test database.
+    Item 13.
+13. **Dynamic PGO off in test processes** (`TieredPGO=false` for test projects) **and in the embedded
+    RavenDB server** (`DOTNET_TieredPGO=0`), about 15% less CPU. Item 13.
+14. **`--parallel=4` for the local sweep** (CI keeps 3), so the CodeCoverage.Tests chain, the critical
+    path, gets a slot early. 557 s → 459 s. Item 14.
+15. **CodeCoverage.Tests' `WaitForIndexing` polls every 10 ms** instead of 100 ms, with the same
+    semantics. Item 14.
+16. **The leftover per-request debug `Console.WriteLine` middleware was removed** from Spark core.
+    Item 10.
+
+Measured and rejected:
+- disposal off the critical path (lever B)
+- more xUnit threads
+- `maxParallelThreads` 0.25x
+- nx `--parallel=2` and 5 (5 risked low memory)
+- all cores for CodeCoverage.Tests
+- vitest `--no-isolate`
+- workstation GC and three RavenDB server options
+- the value-object check short-circuit, a single model hash and a lookup-scan cache (each saved
+  under 3 CPU-s)
+- `DOTNET_TieredCompilation=0`
+- database pooling
+- extra embedded servers per process
+- GPU acceleration
+- Defender exclusions (blocked by group policy)
+- migrating CodeCoverage.Tests to databases per class (fixed ids; ceiling about 90 CPU-s)
+
 **Rule: CI runs cost money, never push just to get a test run** (owner, 2026-10-01). It is recorded in
 the global and repo `CLAUDE.md`. A sub-agent's unrequested push and draft PR #465 prompted it. The full
 sweep therefore has to be practical locally, and CI's behaviour stays exactly as it is.
