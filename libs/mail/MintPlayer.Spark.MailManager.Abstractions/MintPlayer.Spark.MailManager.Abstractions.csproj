@@ -7,7 +7,7 @@
 
 		<!-- NuGet Package Metadata -->
 		<PackageId>MintPlayer.Spark.MailManager.Abstractions</PackageId>
-		<Version>11.0.0-preview.92</Version>
+		<Version>11.0.0-preview.93</Version>
 		<Authors>MintPlayer</Authors>
 		<Company>MintPlayer</Company>
 		<Description>Abstractions for MintPlayer.Spark.MailManager: ISparkMailer (queue a templated mail), SparkMailRequest, ISparkMailSuppressions, template sources and the recipient-culture seam. Reference this from a library that sends mail without taking MailKit, Mjml.Net or Scriban.</Description>

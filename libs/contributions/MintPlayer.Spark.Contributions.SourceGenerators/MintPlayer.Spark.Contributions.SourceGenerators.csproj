@@ -14,7 +14,7 @@
         analyzers/dotnet/cs, so the generator always matches the runtime it generates code for.
         -->
         <IsPackable>false</IsPackable>
-        <Version>11.0.0-preview.92</Version>
+        <Version>11.0.0-preview.93</Version>
         <Authors>MintPlayer</Authors>
         <Company>MintPlayer</Company>
         <Description>Source generator and analyzer for MintPlayer.Spark.Contributions. Embedded in that package; not published on its own.</Description>
