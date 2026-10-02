@@ -29,11 +29,39 @@ public class QnAContributionsBrowserTests
     private static ILocator RowEditor(IPage page)
         => page.Locator(".modal.show, [role='dialog']").Filter(new() { HasTextString = "Edit Translations" }).Last;
 
+    /// <remarks>
+    /// <para>
+    /// The page's Save is the edit form's submit button. It used to be found as the <em>last</em>
+    /// button named "Save", but the row editor's footer has one too, later in the DOM: while that
+    /// modal was still closing on a slow runner, the click landed on the modal's Save, no save was
+    /// sent, and the test timed out waiting for the navigation (CI runs 37031951328, 37059767321).
+    /// So the row editor must be gone first, and the button is selected by being the submit.
+    /// </para>
+    /// <para>
+    /// Waits for the <c>/po/update</c> answer before the navigation, so a refused save fails with the
+    /// server's status and body instead of a navigation timeout.
+    /// </para>
+    /// </remarks>
     private static async Task SaveFormAsync(IPage page, string questionId)
     {
-        await page.GetByRole(AriaRole.Button, new() { Name = "Save", Exact = true }).Last.ClickAsync();
+        await RowEditor(page).WaitForAsync(new() { State = WaitForSelectorState.Hidden, Timeout = Timeout });
+        var saved = page.WaitForResponseAsync(
+            response => response.Request.Method == "POST" && response.Url.Contains("/po/update", StringComparison.Ordinal),
+            new() { Timeout = Timeout });
+        await FormSave(page).ClickAsync();
+
+        IResponse response;
+        try { response = await saved; }
+        catch (TimeoutException) { throw new TimeoutException($"Clicking Save sent no /po/update within {Timeout} ms."); }
+        if (!response.Ok)
+            throw new InvalidOperationException($"/po/update answered {response.Status}: {await response.TextAsync()}");
+
         await page.WaitForURLAsync(url => url.EndsWith("/po/question/" + Encoded(questionId), StringComparison.Ordinal), new() { Timeout = Timeout });
     }
+
+    /// <summary>The edit page's own Save: the form's submit button, never the row editor's footer Save.</summary>
+    private static ILocator FormSave(IPage page)
+        => page.Locator("spark-po-form button[type='submit']", new() { HasTextString = "Save" });
 
     private static ILocator Attribution(IPage page) => page.Locator("spark-contribution-attribution").First;
 
@@ -116,7 +144,7 @@ public class QnAContributionsBrowserTests
             row = page.Locator("spark-po-form tbody tr").Filter(new() { HasTextString = "Vertaalde titel" });
             await row.Locator("button.btn-outline-danger").ClickAsync();
             await row.WaitForAsync(new() { State = WaitForSelectorState.Detached, Timeout = Timeout });
-            await page.GetByRole(AriaRole.Button, new() { Name = "Save", Exact = true }).Last.ClickAsync();
+            await FormSave(page).ClickAsync();
             var toast = page.Locator(".spark-toast-container").Filter(new() { HasTextString = "nl/Latn" });
             await toast.WaitForAsync(new() { Timeout = Timeout });
             (await host.LoadAsync<StoredTranslation>(currentId)).Should().BeNull("the newer version was hidden by the revert, so nothing visible is left");
