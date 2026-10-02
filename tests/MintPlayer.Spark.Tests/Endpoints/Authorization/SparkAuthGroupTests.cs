@@ -17,7 +17,7 @@ public class SparkAuthGroupTests
     {
         // Membership is an attribute since Endpoints 11.1.0-rc.0, not an interface, and it is
         // inherited - so this asks the same question the generator does.
-        typeof(GetCurrentUser).GetCustomAttribute<MemberOfAttribute<SparkAuthGroup>>(inherit: true).Should().NotBeNull();
+        typeof(GetCurrentUser<>).GetCustomAttribute<MemberOfAttribute<SparkAuthGroup>>(inherit: true).Should().NotBeNull();
         typeof(Logout).GetCustomAttribute<MemberOfAttribute<SparkAuthGroup>>(inherit: true).Should().NotBeNull();
         typeof(CsrfRefresh).GetCustomAttribute<MemberOfAttribute<SparkAuthGroup>>(inherit: true).Should().NotBeNull();
     }
@@ -25,7 +25,7 @@ public class SparkAuthGroupTests
     [Fact]
     public void Endpoint_paths_match_the_documented_routes()
     {
-        GetCurrentUser.Path.Should().Be("/me");
+        GetCurrentUser<MintPlayer.Spark.Authorization.Identity.SparkUser>.Path.Should().Be("/me");
         Logout.Path.Should().Be("/logout");
         CsrfRefresh.Path.Should().Be("/csrf-refresh");
     }

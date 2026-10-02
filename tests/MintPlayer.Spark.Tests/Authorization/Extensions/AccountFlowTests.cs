@@ -160,6 +160,47 @@ public class AccountFlowTests : SparkTestDriver
         (await host.FindByEmailAsync("after@example.com")).Should().BeNull();
     }
 
+    // /me used to read the cookie's claims, a copy taken at sign-in: a renamed user kept seeing the
+    // old name until signing in again. It reads the store now.
+    [Fact]
+    public async Task Me_reflects_the_stored_user_name_without_signing_in_again()
+    {
+        await using var host = await AccountTestHost.StartAsync(Store);
+        var user = await host.CreateUserAsync("before-rename", "me@example.com");
+        using var client = host.Client();
+        var cookie = await host.CookieSignInAsync(client, "me@example.com");
+
+        await host.WithScopeAsync(async services =>
+        {
+            var users = services.GetRequiredService<UserManager<SparkUser>>();
+            var stored = await users.FindByIdAsync(user.Id!);
+            (await users.SetUserNameAsync(stored!, "after-rename")).Succeeded.Should().BeTrue();
+            return true;
+        });
+
+        var me = await AccountTestHost.SendAsync(client, HttpMethod.Get, "/spark/auth/me", cookie);
+        var body = await me.Content.ReadFromJsonAsync<JsonElement>();
+
+        me.StatusCode.Should().Be(HttpStatusCode.OK);
+        body.GetProperty("isAuthenticated").GetBoolean().Should().BeTrue();
+        body.GetProperty("userName").GetString().Should().Be("after-rename");
+        body.GetProperty("email").GetString().Should().Be("me@example.com");
+        body.GetProperty("roles").GetArrayLength().Should().Be(0, "roles come from the store too; this user has none");
+    }
+
+    [Fact]
+    public async Task Me_answers_an_anonymous_caller_as_not_authenticated()
+    {
+        await using var host = await AccountTestHost.StartAsync(Store);
+        using var client = host.Client();
+
+        var me = await AccountTestHost.SendAsync(client, HttpMethod.Get, "/spark/auth/me");
+        var body = await me.Content.ReadFromJsonAsync<JsonElement>();
+
+        me.StatusCode.Should().Be(HttpStatusCode.OK);
+        body.GetProperty("isAuthenticated").GetBoolean().Should().BeFalse();
+    }
+
     [Fact]
     public async Task Confirming_a_plain_email_still_works_with_email_change_disabled()
     {
