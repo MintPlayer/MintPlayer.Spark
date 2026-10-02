@@ -195,6 +195,7 @@ MintPlayer.Spark/
 | [Soft Delete](libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md) | `ISoftDeletable`: a delete becomes a mark, deleted rows hidden on every path, restore and purge, the recycle bin |
 | [History](libs/history/MintPlayer.Spark.History/README.md) | RavenDB revisions from the model, audit stamping, revision reads and revert through the save pipeline, licence limits |
 | [Moderation](docs/guide-moderation.md) | Votes, reputation, earned privileges as groups, vote-fraud defences, flags, lock/suspend ([package README](libs/moderation/MintPlayer.Spark.Moderation/README.md)) |
+| [Contributions](docs/guide-contributions.md) | Per-user versions of a property with latest-wins: `[Contribution]` / `[ContributionSlot]`, the current-document design, withdraw and revert, rights without a `Contribute` verb, moderation, the ng-spark pieces ([package README](libs/contributions/MintPlayer.Spark.Contributions/README.md)) |
 | [Cross-Module Synchronization](docs/guide-cross-module-sync.md) | Entity replication between modules with write-back support |
 | [Cross-Module mTLS](docs/guide-replication-mtls.md) | Issuing and pinning the client certificates that authenticate one module to another |
 | [Subscription Workers](libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker/README.md) | RavenDB subscription-based background processing with retry handling |
