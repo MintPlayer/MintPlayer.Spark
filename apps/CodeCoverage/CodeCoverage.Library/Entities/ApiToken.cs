@@ -1,4 +1,5 @@
 using CodeCoverage.Forge;
+using CodeCoverage.LookupReferences;
 using MintPlayer.Spark.Abstractions;
 
 namespace CodeCoverage.Entities;
@@ -53,7 +54,8 @@ public class ApiToken
     public string Hash { get; set; } = string.Empty;
 
     /// <summary>"Account" (all repos of a user/org) or "Repository" (one repo).</summary>
-    public string Scope { get; set; } = "Account";
+    [LookupReference(typeof(ApiTokenScope))]
+    public string Scope { get; set; } = ApiTokenScope.Account;
 
     /// <summary>
     /// Owner login this token uploads for, when Scope is "Account". Display only — a login is
@@ -70,7 +72,13 @@ public class ApiToken
     /// ⚠️ See <see cref="Repository.OwnerKey"/>. A token scoped to a bare login would authorise
     /// uploads for the same-named owner on <em>any</em> forge, and an upload token is exactly the
     /// credential where that must not be possible.
+    /// <para>
+    /// Picked from <c>MyAccounts</c> — the owners the caller manages, as on Home — and still
+    /// re-authorized in <c>ApiTokenActions.OnBeforeSaveAsync</c>: a dropdown limits what is offered,
+    /// not what can be posted.
+    /// </para>
     /// </remarks>
+    [Reference(typeof(AccountOwner), "MyAccounts")]
     public string? AccountOwnerKey { get; set; }
 
     /// <summary>The forge this token uploads to.</summary>
@@ -123,7 +131,8 @@ public class ApiToken
     /// <remarks>
     /// Replaces a single numeric <c>RepositoryGitHubId</c>: a token often serves several
     /// repositories, and a person should never be asked to type a GitHub id. The picker lists the
-    /// repositories the caller manages.
+    /// parent account's repositories (<c>Custom.Account_Repositories</c>, the Account page's card);
+    /// <c>ApiTokenActions.OnRefreshAsync</c> replaces the list when <see cref="AccountOwnerKey"/> changes.
     /// <para>
     /// ⚠️ <b>Document ids, not GitHub ids.</b> Every layer of the reference machinery — the
     /// synchronizer, <c>EntityMapper</c>, <c>BreadcrumbResolver</c>, <c>ReferenceResolver</c>'s
@@ -139,7 +148,7 @@ public class ApiToken
     /// posting its id.
     /// </para>
     /// </remarks>
-    [Reference(typeof(Repository), "ApiToken_SelectableRepositories")]
+    [Reference(typeof(Repository), "Account_Repositories")]
     public List<string> RepositoryIds { get; set; } = [];
 
     /// <summary>Free-text label telling you where this token is used, e.g. the CI workflow it was created for.</summary>

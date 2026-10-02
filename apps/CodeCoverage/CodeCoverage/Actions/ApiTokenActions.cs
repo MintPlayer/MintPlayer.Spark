@@ -40,6 +40,17 @@ namespace CodeCoverage.Actions;
 /// </remarks>
 public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>, ISparkOwnsRowSecurity
 {
+    public override async Task OnNewAsync(SparkNewArgs<ApiToken> args)
+    {
+        await base.OnNewAsync(args);
+    }
+
+    public override async Task<PersistentObject?> OnLoadAsync(string id, PersistentObject? parent)
+    {
+        var po = await base.OnLoadAsync(id, parent);
+        return po;
+    }
+
     /// <inheritdoc />
     public string RowSecurityRationale =>
         "An upload token is a credential for one account, so only that account's managers may see " +
@@ -181,6 +192,46 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
         entity.CreatedByUserId = creator?.Id ?? string.Empty;
         entity.CreatedAtUtc = DateTime.UtcNow;
         entity.RevokedAtUtc = null;
+    }
+
+    /// <summary>
+    /// A changed <see cref="ApiToken.AccountOwnerKey"/> re-lists <see cref="ApiToken.RepositoryIds"/>:
+    /// the repositories of the chosen owner, or none when the caller does not manage it.
+    /// </summary>
+    /// <remarks>
+    /// The picker's own query (<c>Account_Repositories</c>) runs under the page's parent account and
+    /// cannot see the form's values, so the owner picked here reaches the list only through this hook.
+    /// <para>
+    /// Read-only on purpose: the framework also runs this hook during save validation, so it must not
+    /// write anything. The list limits what is offered, not what can be posted —
+    /// <see cref="ValidateRepositoryScopeAsync"/> still checks every id on save.
+    /// </para>
+    /// </remarks>
+    public override async Task OnRefreshAsync(SparkRefreshArgs<ApiToken> args)
+    {
+        if (args.Attribute?.Name != nameof(ApiToken.AccountOwnerKey))
+            return;
+
+        var obj = args.PersistentObject;
+        var ownerKey = obj[nameof(ApiToken.AccountOwnerKey)].GetValue<string>();
+
+        // Unknown and unauthorized look the same — an empty list — so the hook is no oracle for which
+        // owners exist.
+        if (string.IsNullOrEmpty(ownerKey) || !await visibility.CanManageOwnerAsync(ownerKey))
+        {
+            obj[nameof(ApiToken.RepositoryIds)].Options = [];
+            return;
+        }
+
+        var repositories = await session.Query<Repository, Indexes.Repositories_Overview>()
+            .Where(r => r.OwnerKey == ownerKey)
+            .ToListAsync(args.CancellationToken);
+
+        obj[nameof(ApiToken.RepositoryIds)].Options = repositories
+            .Where(r => r.Id is not null)
+            .OrderBy(r => r.FullName, StringComparer.OrdinalIgnoreCase)
+            .Select(r => new PersistentObjectAttributeOption { Key = r.Id!, Label = TranslatedString.Create(r.FullName) })
+            .ToList();
     }
 
     /// <summary>

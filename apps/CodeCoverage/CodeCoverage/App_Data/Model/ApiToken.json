@@ -34,12 +34,15 @@
         "description": {
           "en": "The owning account as provider:login — what the row filter compares."
         },
-        "dataType": "string",
+        "dataType": "Reference",
         "isRequired": false,
         "isVisible": true,
         "isReadOnly": false,
         "order": 3,
+        "query": "MyAccounts",
+        "referenceType": "CodeCoverage.Entities.AccountOwner",
         "isArray": false,
+        "triggersRefresh": "Auto",
         "showedOn": "Query, PersistentObject",
         "rules": []
       },
@@ -112,7 +115,7 @@
         "isVisible": true,
         "isReadOnly": false,
         "order": 4,
-        "query": "ApiToken_SelectableRepositories",
+        "query": "Account_Repositories",
         "referenceType": "CodeCoverage.Entities.Repository",
         "isArray": true,
         "showedOn": "Query, PersistentObject",
@@ -151,6 +154,7 @@
         "isReadOnly": false,
         "order": 2,
         "isArray": false,
+        "lookupReferenceType": "ApiTokenScope",
         "showedOn": "Query, PersistentObject",
         "rules": []
       }

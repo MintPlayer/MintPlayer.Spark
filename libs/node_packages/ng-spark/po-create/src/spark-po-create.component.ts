@@ -50,6 +50,12 @@ export class SparkPoCreateComponent {
   isSaving = signal(false);
   private allEntityTypes = signal<EntityType[]>([]);
   generalErrors = computed(() => this.validationErrors().filter(e => !e.attributeName));
+  /**
+   * The parent a sub-query card's New passed in the URL (`parentId`, `parentType`, `queryId`), or
+   * null. Forwarded to the form so a Reference attribute's option query runs under the object the
+   * New was started from — the same parent `/po/new` receives.
+   */
+  subQueryParent = signal<{ parentId: string; parentType: string; queryId: string } | null>(null);
 
   constructor() {
     this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(params => this.onParamsChange(params));
@@ -76,13 +82,14 @@ export class SparkPoCreateComponent {
    */
   private async applyServerDefaults(entityType: EntityType): Promise<void> {
     const query = this.route.snapshot.queryParamMap;
-    const parentId = query.get('parentId') ?? undefined;
-    const parentType = query.get('parentType') ?? undefined;
-    const queryId = query.get('queryId') ?? undefined;
-    const fromSubQuery = !!(parentId && parentType && queryId);
+    const parentId = query.get('parentId');
+    const parentType = query.get('parentType');
+    const queryId = query.get('queryId');
+    const subQueryParent = parentId && parentType && queryId ? { parentId, parentType, queryId } : null;
+    this.subQueryParent.set(subQueryParent);
 
     try {
-      const po = await this.sparkService.newObject(this.type(), fromSubQuery ? { parentId, parentType, queryId } : undefined);
+      const po = await this.sparkService.newObject(this.type(), subQueryParent ?? undefined);
       const editable = new Map(this.getEditableAttributes(entityType).map(a => [a.name, a] as const));
       const data = { ...this.formData() };
       for (const attr of po?.attributes ?? []) {
