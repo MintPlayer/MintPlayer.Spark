@@ -11,7 +11,12 @@ Requirements, decisions (G1–G8 from the owner, D1–D14) and spikes are in
   (2026-10-01): dependencies, shell toggle and service (M2), D7 fixes and app wiring (M3), CodeCoverage
   tints and the badge pin, and the identity-provider pages (M4). **B-2 is done** (64c8816b): the shell palette
   (M1, `--spark-shell-*` tokens, removing `sidebarTheme`, CodeCoverage's shell overrides). **M5 is
-  done** (S5/S7 ticked, Fleet dark-mode E2E written but not run, theming guide). Left: M6.
+  done** (S5/S7 ticked, Fleet dark-mode E2E written but not run, theming guide). ~~Left: M6.~~
+  **Reconciled 2026-10-02:** Part A is merged and published (ng-bootstrap PR #421, merged
+  2026-10-01T06:55Z as `67244d46`; `@mintplayer/ng-bootstrap@22.20.0` and
+  `@mintplayer/web-components@2.17.0` are on npm). M6 is done except the manual browser check of
+  every app (R4/R5) and the hand-run R2 matrix, neither of which has a recorded result, and the PR
+  still being a draft. `DarkModeTests` (the automated R2/R7 matrix) ran green in CI run 36888101219.
 - **The same Spark branch also carries the Contributions / attribute-rights / concurrency work**
   ([contributions_plan.md](contributions_plan.md)). Owner decision: everything stays on
   `feat/462-dark-mode`, in one PR.
@@ -65,27 +70,38 @@ Tracked as **[MintPlayer/mintplayer-ng-bootstrap#420](https://github.com/MintPla
 which contains the full spec. It is implemented in a session running in that repo, because this
 session's hook refuses cross-repo edits.
 
-### NB0 — Spikes
+*(Reconciled 2026-10-02: all of Part A shipped in MintPlayer/mintplayer-ng-bootstrap#421, merged
+2026-10-01 as `67244d46`, published as ng-bootstrap 22.20.0 / web-components 2.17.0 (`npm view`
+confirms both; this repo's `package.json:33,43` and `package-lock.json` resolve them). Deviations
+the owner accepted are in PRD §2b; items they replace are marked superseded below.)*
+
+### NB0 — Spikes ✅
 - [x] **S6** Record `BsThemeService` behaviour. Answered: Auto is live, an explicit mode is sticky,
   there's no `storage` listener, and the value is a plain string.
-- [ ] **S1** Confirm that the component CSS is precompiled with default Sass values.
-- [ ] **S4** Check what the demo theme-toggle depends on.
-- [ ] **S2** Check the select caret and form-switch inside shadow DOM under `data-bs-theme=dark`,
-  measured in the demo through the MCP.
-- [ ] **S3** Do the dark visual sweep of the component list in PRD §4. Record findings in the PRD
-  (§4.1, "Spike results").
+- [x] **S1** Confirm that the component CSS is precompiled with default Sass values. *(done: PRD §4.1
+  "S1 — ✅ confirmed (2026-09-30)")*
+- [x] **S4** Check what the demo theme-toggle depends on. *(done: PRD §4.1 "S4 — ✅ read")*
+- [x] **S2** Check the select caret and form-switch inside shadow DOM under `data-bs-theme=dark`,
+  measured in the demo through the MCP. *(done: PRD §4.1 "S2 — ❌ both broken (measured 2026-09-30)")*
+- [x] **S3** Do the dark visual sweep of the component list in PRD §4. Record findings in the PRD
+  (§4.1, "Spike results"). *(done: PRD §4.1 "S3 — dark sweep (measured 2026-09-30)")*
 
-### NB1 — Cookie-backed theme service (G3, G4, D14)
-- [ ] `BsThemeService` reads and writes the `bs-theme-mode` cookie: not HttpOnly, `Path=/`,
+### NB1 — Cookie-backed theme service (G3, G4, D14) ✅ (ng-bootstrap #421)
+- [x] `BsThemeService` reads and writes the `bs-theme-mode` cookie: not HttpOnly, `Path=/`,
   `SameSite=Lax`, `Max-Age=31536000`, and `Secure` only on HTTPS. **Delete the localStorage code, with
-  no migration.**
-- [ ] Add `provideBsTheme({ cookieDomain?, defaultMode? })`. It is optional; without it the service
-  uses a host-only cookie and `'auto'`.
-- [ ] Cross-tab sync: post on `setMode` through `BroadcastChannel('bs-theme-mode')` and apply what
-  other tabs send.
-- [ ] SSR: on the server, read the cookie from Angular's `REQUEST` token. For an explicit mode, set
-  `data-bs-theme` on the server-rendered `<html>`.
-- [ ] Unit tests (stubbing `matchMedia`, `document.cookie` and `BroadcastChannel`):
+  no migration.** *(done: #421, document store writes `bs-theme-mode`, `Path=/`, `SameSite=Lax`, one
+  year, `Secure` on https; `BS_THEME_STORAGE_KEY` removed. Measured in Spark by S7, M3 below.)*
+- [x] Add `provideBsTheme({ cookieDomain?, defaultMode? })`. It is optional; without it the service
+  uses a host-only cookie and `'auto'`. *(done with an accepted deviation, PRD §2b: `provideBsTheme`
+  takes only `cookieDomain`; the default mode is the `<meta name="bs-theme-default-mode">`.)*
+- [x] Cross-tab sync: post on `setMode` through `BroadcastChannel('bs-theme-mode')` and apply what
+  other tabs send. *(done: #421 "Tabs stay in sync over `BroadcastChannel`"; Spark's
+  `DarkModeTests` case 4 ran green in CI run 36888101219.)*
+- [x] SSR: on the server, read the cookie from Angular's `REQUEST` token. For an explicit mode, set
+  `data-bs-theme` on the server-rendered `<html>`. *(done: #421, "On the server it reads `REQUEST` +
+  the meta and writes `data-bs-theme` synchronously".)*
+- [x] Unit tests (stubbing `matchMedia`, `document.cookie` and `BroadcastChannel`): *(done: #421,
+  web-components/ng/react/vue unit suites and the theme e2e specs green, per the PR body.)*
   - Auto + OS change re-themes.
   - Explicit + OS change has no effect.
   - A reload restores the mode from the cookie.
@@ -93,50 +109,73 @@ session's hook refuses cross-repo edits.
   - The broadcast reaches another instance.
   - SSR with a cookie renders the attribute; SSR with Auto renders none.
 
-### NB2 — `bs-theme-preboot.js` (G2)
-- [ ] Ship `theming/bs-theme-preboot.js` in the package. It is a plain ES5 IIFE with no module syntax.
-  It reads the cookie, resolves Auto with `matchMedia`, and sets `data-bs-theme`.
-- [ ] Add a jsdom test that runs the file against each cookie value and asserts the same result as the
-  service's `effectiveMode`.
-- [ ] Switch the demo to the file, using an assets glob plus `<script src>`, and delete its inline
-  copy.
+### NB2 — `bs-theme-preboot.js` (G2) ✅ (ng-bootstrap #421)
+- [x] Ship `theming/bs-theme-preboot.js` in the package. It is a plain ES5 IIFE with no module syntax.
+  It reads the cookie, resolves Auto with `matchMedia`, and sets `data-bs-theme`. *(done, accepted
+  deviation PRD §2b: shipped as `@mintplayer/web-components/theming/bs-theme-preboot.js`, generated
+  by esbuild, build fails above 1 KB or on non-ES5; Spark's apps serve it, S5 below.)*
+- [x] Add a jsdom test that runs the file against each cookie value and asserts the same result as the
+  service's `effectiveMode`. *(done: the agreement test; its silent skip was review must-fix 2, fixed
+  in `d075383b`, PRD §2b.)*
+- [x] Switch the demo to the file, using an assets glob plus `<script src>`, and delete its inline
+  copy. *(done: #421 "The shipped pre-boot script and the meta tag replace the inline scripts".)*
 
-### NB3 — `bs-theme-toggle` (G1)
-- [ ] Promote the demo toggle into `@mintplayer/ng-bootstrap/theming`: an Auto / Light / Dark dropdown,
+### NB3 — `bs-theme-toggle` (G1) ✅ (ng-bootstrap #421)
+- [x] ~~Promote the demo toggle into `@mintplayer/ng-bootstrap/theming`: an Auto / Light / Dark dropdown,
   with an icon for the effective scheme. Its labels (`autoLabel`, `lightLabel`, `darkLabel`) are
-  inputs.
-- [ ] Switch the demo to the exported component and delete its copy.
-- [ ] Add a unit test: selecting an option calls `setMode`.
+  inputs.~~ *(Superseded, accepted deviation PRD §2b: `bs-theme-toggle` wraps `<mp-theme-toggle>`, a
+  cycle button with a `modes` input `{ mode, label, announcement, icon }[]`; Spark uses it in M2.)*
+- [x] Switch the demo to the exported component and delete its copy. *(done: #421, the toggle sits in
+  each demo's navbar.)*
+- [x] Add a unit test: selecting an option calls `setMode`. *(done: #421 `theme-toggle.spec.ts` e2e in
+  all three demos plus the unit suites; Spark's `DarkModeTests` drives the toggle and ran green.)*
 
-### NB4 — Component colour fixes (D12)
-- [ ] Scheduler scrollbar (`scheduler.styles.scss:1575,1579,1584`): convert to `--bs-*` tokens.
-- [ ] Query-builder `--bs-btn-color: #646b72` (`mp-query-builder.light.scss:109`): convert to a
-  `--bs-*` token.
-- [ ] Datatable hover fallback (`datatable.light.scss:410,421,615`): use
-  `rgba(var(--bs-emphasis-color-rgb), .04)`.
-- [ ] Card fallbacks (`card-global.styles.scss:32-33,39-40`, `mp-card.element.scss:87`): convert to
-  `--bs-*` tokens.
-- [ ] S2 (confirmed broken): repaint the `mp-select` caret and the `mp-checkbox` switch knob as masks
+### NB4 — Component colour fixes (D12) ✅ (ng-bootstrap #421)
+- [x] Scheduler scrollbar (`scheduler.styles.scss:1575,1579,1584`): convert to `--bs-*` tokens.
+  *(done: ng-bootstrap master `scheduler.styles.scss:1573` `scrollbar-color: var(--bs-secondary-color)
+  var(--bs-tertiary-bg)`.)*
+- [x] Query-builder `--bs-btn-color: #646b72` (`mp-query-builder.light.scss:109`): convert to a
+  `--bs-*` token. *(done: #421 "Hard-coded light values are now tokens: scheduler, query-builder, …")*
+- [x] Datatable hover fallback (`datatable.light.scss:410,421,615`): use
+  `rgba(var(--bs-emphasis-color-rgb), .04)`. *(done: #421, "datatable/treeview hover".)*
+- [x] ~~Card fallbacks (`card-global.styles.scss:32-33,39-40`, `mp-card.element.scss:87`): convert to
+  `--bs-*` tokens.~~ *(Superseded: left unchanged, accepted deviation PRD §2b — the fallbacks never
+  fire because `--mp-card-border-color` / `--mp-card-bg` already resolve to `--bs-*` tokens.)*
+- [x] S2 (confirmed broken): repaint the `mp-select` caret and the `mp-checkbox` switch knob as masks
   coloured with `currentColor` / `var(--bs-*)`, following the accordion pattern
   (`accordion.styles.scss:100-112`). Apply the same to the navbar toggler (`navbar.styles.ts:425`) and
   the carousel indicators (`carousel.styles.ts:205`). Delete the dead `[data-bs-theme=dark]`
-  shadow-sheet rules.
-- [ ] S3 findings:
-  - scheduler scrollbar → `scrollbar-color`
-  - code-snippet "Copied!" colour → `var(--bs-white)`
-  - dropdown overlay pane → give it a `var(--bs-body-bg)` surface and a border
-  - demo tab-control glyph → `var(--bs-body-color)`
-- [ ] Calendar header regression from #393: add height, padding, background and border to
-  `.calendar-nav` (`mp-calendar.element.scss:71`).
-- [ ] Verify each fix in the demo in both themes through the MCP.
+  shadow-sheet rules. *(done with an accepted deviation, PRD §2b: CSS style queries
+  `@container style(--mp-color-mode: dark)` instead of masks, for the select caret, the
+  query-builder caret and the switch knob; every dead `[data-bs-theme` rule stripped, with a
+  conformance spec that fails the build if one returns.)*
+- [x] S3 findings:
+  - scheduler scrollbar → `scrollbar-color` *(done, above)*
+  - code-snippet "Copied!" colour → `var(--bs-white)` *(done: #421)*
+  - ~~dropdown overlay pane → give it a `var(--bs-body-bg)` surface and a border~~ *(Superseded, PRD
+    §2b: rejected because it would affect every dropdown; the calendar got its own opaque surface.)*
+  - demo tab-control glyph → `var(--bs-body-color)` *(done: #421 changes
+    `tab-control.component.scss`)*
+- [x] Calendar header regression from #393: add height, padding, background and border to
+  `.calendar-nav` (`mp-calendar.element.scss:71`). *(done: #421 "The calendar month header is
+  restored"; `.calendar-nav` at `mp-calendar.element.scss:75` on ng-bootstrap master.)*
+- [x] Verify each fix in the demo in both themes through the MCP. *(done: #421 "Manual browser pass
+  (Chromium): light, dark, nested light and forced colours on every changed surface".)*
 
-### NB5 — Release
-- [ ] Add a CHANGELOG entry: the storage is now a cookie (breaking: stored choices reset), plus
-  `provideBsTheme`, SSR, the preboot file, the toggle, and the colour fixes.
-- [ ] Bump the version to `22.20.0`.
-- [ ] Run the unit tests and build all libraries (log to file).
-- [ ] Do the demo browser check in both schemes, including the R2 matrix and a cross-tab check.
-- [ ] Open the PR, merge it, and confirm `22.20.0` is on npm before M6.
+### NB5 — Release ✅
+- [x] Add a CHANGELOG entry: the storage is now a cookie (breaking: stored choices reset), plus
+  `provideBsTheme`, SSR, the preboot file, the toggle, and the colour fixes. *(done: #421 changes
+  `CHANGELOG.md`, "Breaking changes (listed in the CHANGELOG)".)*
+- [x] Bump the version to `22.20.0`. *(done: ng-bootstrap master `libs/mintplayer-ng-bootstrap/package.json`
+  is `22.20.0`.)*
+- [x] Run the unit tests and build all libraries (log to file). *(done: #421 unit tests web-components
+  5,771, ng 1,286, React 319, Vue 242, … green.)*
+- [x] Do the demo browser check in both schemes, including the R2 matrix and a cross-tab check.
+  *(done: #421 theme e2e specs in every engine in all three demos cover the toggle cycle, cookie,
+  SSR attribute, `Vary`; plus the manual Chromium pass.)*
+- [x] Open the PR, merge it, and confirm `22.20.0` is on npm before M6. *(done: #421 merged
+  2026-10-01T06:55Z; `npm view @mintplayer/ng-bootstrap@22.20.0 version` → 22.20.0; publish run
+  36827354045 "Published: 16, failed: 0", PRD §2b.)*
 
 ---
 
@@ -253,7 +292,8 @@ M1–M5 can be built against a local ng-bootstrap build (`npm pack`) while NB5 i
 - [x] Add a Fleet `DarkModeTests` class covering R7: *(`tests/MintPlayer.Spark.E2E.Tests/DarkModeTests.cs`,
   four tests for the six checks, to keep Angular boots down in the shared rate-limit bucket: the
   first two checks share one page, cases 2 and 3 share one. The toggle is
-  `spark-shell bs-theme-toggle button` (open shadow root). Built, not yet run — the run is M6.)*
+  `spark-shell bs-theme-toggle button` (open shadow root). ~~Built, not yet run — the run is M6.~~
+  Ran green in CI run 36888101219 at `9296653b`: E2E 138 passed, 0 skipped.)*
   - The attribute is present at `DOMContentLoaded` (init script).
   - The main area's computed background is dark.
   - R2 matrix case 1: in Auto, `EmulateMediaAsync(Light)` turns the page light with no reload.
@@ -273,14 +313,31 @@ M1–M5 can be built against a local ng-bootstrap build (`npm pack`) while NB5 i
 - [x] Update memory.
 
 ### M6 — Full sweep, browser check, PR
-- [ ] Switch to the published `@mintplayer/ng-bootstrap@^22.20.0` and run `npm install` from the repo
-  root.
-- [ ] Run all five test projects of the `.slnx`, the ng-spark and ng-spark-auth vitest suites, and the
-  app specs (logs to file).
+- [x] Switch to the published `@mintplayer/ng-bootstrap@^22.20.0` and run `npm install` from the repo
+  root. *(done: `package.json:33` `^22.20.0`, `:43` web-components `^2.17.0`; `package-lock.json`
+  resolves 22.20.0 / 2.17.0.)*
+- [x] Run all five test projects of the `.slnx`, the ng-spark and ng-spark-auth vitest suites, and the
+  app specs (logs to file). *(done: CI run 36888101219 on `9296653b`, all green — Spark.Tests 3509
+  (+1 skipped), CodeCoverage 1045, SourceGenerators 523, Client 106, E2E 138, vitest ng-spark 1009,
+  ng-spark-auth 221. The later local commits (M8 test speed, docs; 28 as of `95c113b8`) passed the local
+  `npm run test:affected` sweep on HEAD, all 13 projects green, 2026-10-02; they reach CI when the
+  branch is pushed.)*
 - [ ] Browser check through the MCP of every app in light and dark, against PRD R4 (shell, program
   units, query list and grid with selected rows, column-filter overlay, PO form and detail, toasts,
   modals, moderation, auth pages) and R5 (CodeCoverage file view, README box, badges).
-- [ ] Do the R2 matrix by hand in one app.
-- [ ] Check the version diff: minor bumps only.
+  *(**Open, 2026-10-02: no recorded result.** What was measured is partial: the palette and action
+  bar in DemoApp, the auth bar in HR, the query grid at 390px (B-2, PRD §2b), and the cookie in
+  DemoApp (S7). No record covers Fleet, QnA or CodeCoverage (R5) in both themes, nor the moderation
+  components, modals and column-filter overlay.)*
+- [ ] Do the R2 matrix by hand in one app. *(Open as a manual step, no recorded result. Its four cases
+  are automated in `DarkModeTests` (R7) and ran green in CI run 36888101219, so only the by-hand
+  confirmation remains.)*
+- [x] Check the version diff: minor bumps only. *(done 2026-10-02 against `origin/master`: ng-spark
+  22.24.0 → 22.25.0, ng-spark-auth 22.14.0 → 22.15.0; the touched NuGet packages 11.0.0-preview.91 →
+  preview.92 and the three new Contributions packages at preview.92. No major changed: npm stays 22
+  (Angular 22), NuGet stays 11 (.NET 11). Untouched packages stay at preview.91.)*
 - [ ] Open the PR against `master`, with the PRD linked and the breaking changes listed (removed
-  `sidebarTheme`; stored theme choices reset).
+  `sidebarTheme`; stored theme choices reset). *(Partly: draft PR #465 is open against `master` and
+  its body lists both breaks and closes #462. Still open: it is a draft, its body links the plans and
+  `contributions_PRD.md` but not `issue_462_PRD.md`, and the head on GitHub is `9296653b`, 28+ commits
+  behind the local branch.)*

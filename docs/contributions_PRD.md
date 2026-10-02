@@ -821,7 +821,8 @@ only):
   - The ng-spark edit form drew attributes from the type only, so per-row read-only attributes stayed
     editable (and were dropped by the save); it now applies the loaded object's `isReadOnly`.
   Tests: `ContributionsAuditedTargetTests` (red → green for the History fix), the QnA E2E classes
-  `QnAContributionsTests` and `QnAContributionsBrowserTests` (built; run in M7).
+  `QnAContributionsTests` and `QnAContributionsBrowserTests` (~~built; run in M7~~ ran green in CI run
+  36888101219 on `9296653b`, E2E 138/0).
 - **M6 follow-up (done):**
   - **Notices follow the app-chosen language.** The server never learns ng-spark's language
     (`SparkLanguageService` keeps it in `localStorage`; no header carries it), and its only culture
@@ -880,12 +881,31 @@ only):
   - **`true`:** the History-resolved name, only for `History/T` holders, and only when it matches this
     version; otherwise nothing.
   - **The raw user id is never shown.** The `ModifiedAt` time is shown in both modes.
-- **Unrun tests** (all run in the M7 sweep): the existing `ConcurrentWriteRaceTests` after F6 changed
+- ~~**Unrun tests** (all run in the M7 sweep): the existing `ConcurrentWriteRaceTests` after F6 changed
   eviction, the M1c E2E selectors (`input#Model`, `.spark-conflict-dialog`), and every whole suite.
   (M2c-2b, 2026-10-01: `ConcurrentWriteRaceTests`, `RefusedWriteEvictionTests` and the
-  PersistentObject endpoint, SoftDelete, Moderation, History, Refresh and redaction classes ran green.)
-- **The version gate:** check whether CI expects every `libs/` csproj bumped in lockstep. Past PRs
-  bumped 23–29 of 30, while this branch bumps only the touched ones.
+  PersistentObject endpoint, SoftDelete, Moderation, History, Refresh and redaction classes ran green.)~~
+  **Done (2026-10-02):** every suite ran green in CI run 36888101219 on `9296653b` — Spark.Tests 3509
+  (+1 skipped), CodeCoverage 1045, SourceGenerators 523, Client 106, E2E 138 (0 skipped), vitest
+  ng-spark 1009, ng-spark-auth 221. The M1c selectors are exercised by
+  `ConcurrentEditConflictTests` (E2E). The local `npm run test:affected` sweep on HEAD (with the M8
+  commits, which CI has not seen yet) was green for all 13 projects on 2026-10-02.
+- ~~**The version gate:** check whether CI expects every `libs/` csproj bumped in lockstep. Past PRs
+  bumped 23–29 of 30, while this branch bumps only the touched ones.~~ **Resolved (2026-10-02):** no
+  lockstep gate exists. The PR workflow ran green with only the touched packages bumped, and the
+  master publish pushes with `--skip-duplicate` (`.github/workflows/dotnet-build-master.yml:155,158`),
+  so an untouched package at preview.91 is skipped, not failed. Version diff against `origin/master`:
+  only minor/preview bumps (npm 22.x, NuGet 11.0.0-preview.92), no major change, and no package with a
+  diff left unbumped. *Residual risk, owner's call:* untouched packages (e.g. Authorization,
+  Controllers, AllFeatures) stay at preview.91, built against preview.91 of Spark/Abstractions, so a
+  consumer mixing them with preview.92 relies on binary compatibility across this PR's breaking
+  changes. Past PRs' broad bumps avoided that question.
+- **Known flake, cause open (not a merge blocker):** `ModerationVoteTests.M5_…pending_at_once…` fails
+  only under full-sweep load (pending 0 instead of 10; passes alone), §5d item 11/12. It was green in
+  CI and in the 2026-10-02 local sweep.
+- **Not written yet:** `docs/guide-contributions.md` (plan M7). The library README
+  (`libs/contributions/MintPlayer.Spark.Contributions/README.md`) covers the API, ids, rights and
+  client contract, but the root `README.md` guide table does not list Contributions.
 
 ## 5d. Test-run speed and CI cost (owner decisions, 2026-10-01; work tracked as M8 in the plan)
 
@@ -1382,10 +1402,11 @@ xUnit and driver stack, not as a new test runner.
       off, item 9, but the EDR sensor still records file and process activity). Host boots raise it
       (file writes in the content root), database cycles barely do. The two file changes above are
       the cheap part of that; the rest is outside this repository's control.
-    - **Full sweep after item 13: not yet measured.** The first attempt (2026-10-02) was stopped by
+    - ~~**Full sweep after item 13: not yet measured.** The first attempt (2026-10-02) was stopped by
       the agent harness during the build phase because the machine ran low on memory (~4 GB free of
       40 GB, with other workloads open), not by a failure. Pending: a sweep on a quiet machine,
-      compared with 533–575 s.
+      compared with 533–575 s.~~ **Superseded by item 14:** full `--skip-nx-cache` sweeps after item
+      13 measured 557 s at `--parallel=3` and 459 s at 4, all green (`9db340c4`, `CLAUDE.md`).
 
 ## 6. Risks
 

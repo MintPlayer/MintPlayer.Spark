@@ -15,7 +15,9 @@ Requirements, decisions (C1–C10, T1–T7), spikes and open questions are in
 
 ### M0 — Spikes ✅ (2026-09-30; results in PRD §4.1, required additions F1–F7 in §4.2)
 - [x] S-C1 to S-C6
-- [ ] Second grilling round (owner Q1 onwards), then amend C/T decisions
+- [x] Second grilling round (owner Q1 onwards), then amend C/T decisions *(done: PRD §5 "Owner
+  decisions from the second grilling round (2026-09-30)", Q1–Q15, plus Q16 on 2026-10-01; superseded
+  answers are marked there, e.g. Q1 → no `Contribute` verb.)*
 
 ### M1b — Core concurrency fixes (F7) ✅
 - [x] Add an HTTP regression test first: a concurrent PO save, and what a raw `ConcurrencyException`
@@ -64,7 +66,10 @@ Requirements, decisions (C1–C10, T1–T7), spikes and open questions are in
     reads and the form's picker candidates, `po-edit/src/reference-labels.ts`).
   - [x] Render row conflicts with cells instead of a one-line summary (the row's visible attributes
     as `<spark-grid-cell>`s, mine beside theirs, differing ones marked; a removed side reads "(removed)").
-  - [ ] Run the never-executed E2E selectors (`input#Model`, `.spark-conflict-dialog`) in M7.
+  - [x] Run the never-executed E2E selectors (`input#Model`, `.spark-conflict-dialog`) in M7.
+    *(done: both are used by `tests/MintPlayer.Spark.E2E.Tests/Concurrency/ConcurrentEditConflictTests.cs`
+    (`:45,55,70,73,76,87,109`, plain `[Fact]`s, no skip), which ran green in CI run 36888101219 on
+    `9296653b`: E2E 138 passed, 0 skipped.)*
 
 ### M2 — Framework seams (F1–F6)
 - [x] **F1:** `OnAfterMaterializeAsync(MaterializeContext)` (default no-op, idempotent) at the
@@ -339,7 +344,7 @@ Order: reproduce the existing leaks first (red tests), then build.
 - Tests: `ContributionsRuntimeTests` (16, real generator via the imported targets) and
   `ModerationSatelliteWriteGuardTests` (1).
 
-### M5b — Runtime surface (server half ✅; client half next, against the contract in the library README)
+### M5b — Runtime surface ✅ (server half ✅; ~~client half next~~ client half ✅, against the contract in the library README)
 Server:
 - [x] The attribution rendering hint in the model and the batched contributor-name lookup: core's new
   optional `ISparkUserNameResolver` (Spark.Abstractions), registered by `AddHistoryUserNameResolver<T>()`
@@ -414,7 +419,9 @@ Client (ng-spark, new entry point `@mintplayer/ng-spark/contributions`):
   - a slot value that fails validation
 - [x] An E2E test on the demo form: add a version, edit it, remove it
   (`QnAContributionsBrowserTests`: plus the attribution line, the History link with its chips, a
-  moderator's revert from the version page, and the withdraw notice). Built; run in the M7 sweep.
+  moderator's revert from the version page, and the withdraw notice). ~~Built; run in the M7 sweep.~~
+  Ran green with `QnAContributionsTests` in CI run 36888101219 on `9296653b` (E2E 138/0; `9296653b`
+  itself fixed the browser test's revert-button locator after the red run 36884431200).
 - [x] Fixed on the way (found by wiring a real app): History stamped every edit, so a contribution-only
   save rewrote an `IAuditable` target (R3); `--spark-verify-model` refused the generated
   `Custom.SparkContributionsOfTarget` query (no `{Type}Actions` class); a well-known group's `Read` on
@@ -422,6 +429,8 @@ Client (ng-spark, new entry point `@mintplayer/ng-spark/contributions`):
   readable by id; the ng-spark edit form ignored the loaded object's per-row read-only attributes.
 
 ### Later — MintPlayer lyrics timings (look-ahead only, NOT scheduled; see PRD §9)
+*(Reconciled 2026-10-02: not part of this PR. The unchecked items below are MintPlayer-repository
+work, deliberately unscheduled; they are not open items of `feat/462-dark-mode`.)*
 Recorded so that the Contributions design covers it. It is executed in the MintPlayer repository
 after this library ships, and after MintPlayer's F9 messaging.
 - [ ] Stable `Guid` ids and a stored duration for media, replacing URL-keyed timings.
@@ -555,12 +564,29 @@ Decided (owner, 2026-10-01):
   - Rejected with numbers: value-object key short-circuit (~3 CPU-s per run), single model hash
     (~2), lookup scan cache (<1), server GC off (no gain), RavenDB storage/monitoring options (no
     gain), a faster CodeCoverage `WaitForIndexing` poll (wall only). PRD §5d item 13.
+- [x] **Item 14 (2026-10-02, `9db340c4`):** the local sweep passes `--parallel=4` (CI keeps 3) and
+  CodeCoverage.Tests' `WaitForIndexing` polls every 10 ms. Full `--skip-nx-cache` sweep 557 s → 459 s
+  (7m39s, all green), against 21m49s before M8. PRD §5d item 14, `CLAUDE.md`.
 - [ ] Measure before/after per suite, locally and in the next CI run that happens anyway (never push
-  just to measure).
+  just to measure). *(Local half done: per-suite before/after numbers are in the items above and PRD
+  §5d items 8–14. CI half open: CI's last run (36888101219, `9296653b`) predates every M8 commit, so
+  it waits for the push that lands the branch. Not a merge blocker.)*
 
 ### M7 — Full sweep, docs, PR
 - [ ] Write `docs/guide-contributions.md` (API, ids, the current-document cache, rights, moderation
-  integration), and add the library to the README.
-- [ ] Run all five test projects of the `.slnx` and the ng-spark vitest suites (logs to file).
-- [ ] Check the version diff: minor bumps only.
-- [ ] Open the PR, then hand off the MintPlayer consumer work (PRD §7).
+  integration), and add the library to the README. *(**Open, 2026-10-02:** `docs/guide-contributions.md`
+  does not exist and the root `README.md` guide table does not list Contributions. What does exist is
+  the 327-line library README `libs/contributions/MintPlayer.Spark.Contributions/README.md`, which
+  holds the client contract and the rights table.)*
+- [x] Run all five test projects of the `.slnx` and the ng-spark vitest suites (logs to file).
+  *(done: CI run 36888101219 on `9296653b`, all green — Spark.Tests 3509 (+1 skipped), CodeCoverage
+  1045, SourceGenerators 523, Client 106, E2E 138, vitest ng-spark 1009, ng-spark-auth 221; the local
+  `npm run test:affected` sweep on HEAD, all 13 projects green, 2026-10-02.)*
+- [x] Check the version diff: minor bumps only. *(done 2026-10-02 against `origin/master`: ng-spark
+  22.24.0 → 22.25.0, ng-spark-auth 22.14.0 → 22.15.0; Spark, Abstractions, Client, History,
+  IdentityProvider, Moderation(+Abstractions), SoftDelete, SourceGenerators, Testing 11.0.0-preview.91 →
+  preview.92; the three new Contributions packages start at preview.92. No major changed. Every
+  untouched `libs/` package stays at preview.91, and no package with a diff was left unbumped.)*
+- [ ] Open the PR, then hand off the MintPlayer consumer work (PRD §7). *(Partly: draft PR #465 is open
+  against `master`, but still a draft, with its GitHub head at `9296653b`, 28+ commits behind the local
+  branch. The MintPlayer hand-off comes after the packages are published (PRD §7), so after the merge.)*

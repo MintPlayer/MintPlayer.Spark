@@ -90,7 +90,8 @@ order was already recorded in `issue_460_PRD.md:1784`.
   - `card/src/mp-card.element.scss:87`: `$card-bg` literal.
   - `_styles/form-select.styles.scss:9-13` (select caret) and `_styles/form-check.styles.scss` (switch
     image): Bootstrap swaps these via `[data-bs-theme=dark] .form-select` / `.form-switch`, which
-    probably never matches inside a shadow root. **Unverified, see spike S2.**
+    probably never matches inside a shadow root. ~~**Unverified, see spike S2.**~~ Confirmed broken
+    by S2 (§4.1) and fixed in ng-bootstrap #421 with style queries (§2b).
 
 ### 1.4 Bootstrap `_variables-dark.scss` (the owner's question)
 - **What it is.** It is `node_modules/bootstrap/scss/_variables-dark.scss` in Bootstrap 5.3.8, 102
@@ -506,8 +507,15 @@ Browser checks go through the `playwright_node` MCP. It is connected again as of
 
 ## 5. Open questions for the owner
 
-None. All were resolved in the 2026-09-30 grilling, recorded as G1–G8 and D14. The one pending owner
-action is **approving the shell palette** (G7) during M2.
+None. All were resolved in the 2026-09-30 grilling, recorded as G1–G8 and D14. ~~The one pending owner
+action is **approving the shell palette** (G7) during M2.~~ Done: the owner approved the palette on
+2026-10-01 (§2b, B-2 `64c8816b`).
+
+**Status (reconciled 2026-10-02).** Everything is built. The ng-bootstrap half is merged and
+published (PR #421, 22.20.0 / 2.17.0). CI run 36888101219 on `9296653b` is green, including
+`DarkModeTests`, and the local sweep on HEAD is green. Two items have no recorded result: the
+manual browser check of every app in light and dark (R4/R5, plan M6), and the R2 matrix done by
+hand (its automated form ran green).
 
 ---
 
