@@ -278,23 +278,56 @@ public class RemainingActionsTests : CoverageRavenTest
         {
             GitHubId = 2, Name = "theirs", FullName = "other/theirs", OwnerLogin = "other", Account = Account.DocumentId(EForgeProvider.GitHub, 2),
         }, Repository.DocumentId(EForgeProvider.GitHub, 2));
+        await seed.StoreAsync(new Account { GitHubId = 1, Login = "acme" }, Account.DocumentId(EForgeProvider.GitHub, 1));
+        await seed.StoreAsync(new Account { GitHubId = 2, Login = "other" }, Account.DocumentId(EForgeProvider.GitHub, 2));
         await seed.SaveChangesAsync();
     }
 
-    /// <summary>A token can only be scoped to repositories the caller manages, so only those are offered.</summary>
-    [Fact]
-    public async Task Token_scoping_offers_only_repositories_the_caller_manages()
+    /// <summary>The token picker's options for <paramref name="parent"/>, as the caller managing only <c>github:acme</c>.</summary>
+    private async Task<List<string>> SelectableRepositoriesAsync(PersistentObject? parent)
     {
         using var store = GetDocumentStore();
         await SeedRepositoriesAsync(store);
         WaitForIndexing(store);
         using var session = store.OpenAsyncSession();
 
-        var offered = await (await Create<RepositoryActions>(Managing("github:acme"), session)
-            .ApiToken_SelectableRepositories(QueryArgs(null))).ToListAsync();
-
-        offered.Select(r => r.FullName).Should().Equal("acme/mine");
+        var offered = await Create<RepositoryActions>(Managing("github:acme"), session)
+            .ApiToken_SelectableRepositories(QueryArgs(parent));
+        // An unresolvable parent answers with an in-memory empty sequence, which RavenDB's
+        // ToListAsync cannot materialize.
+        var rows = offered is IRavenQueryable<Repository> raven ? await raven.ToListAsync() : offered.ToList();
+        return [.. rows.Select(r => r.FullName)];
     }
+
+    // The New form forwards the Upload tokens card's parent: an Account.
+    [Fact]
+    public async Task Token_picker_under_an_account_offers_that_accounts_repositories()
+        => (await SelectableRepositoriesAsync(new PersistentObject
+        {
+            Id = Account.DocumentId(EForgeProvider.GitHub, 1), Name = "Account", ObjectTypeId = Guid.NewGuid(),
+        })).Should().Equal("acme/mine");
+
+    // The edit form's parent is the token itself — the case that used to 500 through EnsureParent.
+    [Fact]
+    public async Task Token_picker_on_a_token_offers_its_accounts_repositories()
+    {
+        var token = Page("ApiToken", nameof(ApiToken.Account));
+        token.Id = "ApiTokens/1";
+        token[nameof(ApiToken.Account)].Value = Account.DocumentId(EForgeProvider.GitHub, 1);
+
+        (await SelectableRepositoriesAsync(token)).Should().Equal("acme/mine");
+    }
+
+    [Fact]
+    public async Task Token_picker_offers_nothing_for_an_account_the_caller_does_not_manage()
+        => (await SelectableRepositoriesAsync(new PersistentObject
+        {
+            Id = Account.DocumentId(EForgeProvider.GitHub, 2), Name = "Account", ObjectTypeId = Guid.NewGuid(),
+        })).Should().BeEmpty();
+
+    [Fact]
+    public async Task Token_picker_offers_nothing_without_a_parent()
+        => (await SelectableRepositoriesAsync(null)).Should().BeEmpty();
 
     [Fact]
     public async Task Account_Repositories_lists_the_repositories_of_its_parent_account()

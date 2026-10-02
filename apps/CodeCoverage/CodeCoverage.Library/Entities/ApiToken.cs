@@ -86,8 +86,8 @@ public class ApiToken
     /// <remarks>
     /// Replaces a single numeric <c>RepositoryGitHubId</c>: a token often serves several
     /// repositories, and a person should never be asked to type a GitHub id. The picker lists the
-    /// parent account's repositories (<c>Custom.Account_Repositories</c>, the Account page's card) —
-    /// the same account as <see cref="Account"/>, which <c>OnBeforeSaveAsync</c> enforces.
+    /// token's account's repositories (<c>Custom.ApiToken_SelectableRepositories</c>, which adapts to the
+    /// New form's Account parent and the edit form's ApiToken) — which <c>OnBeforeSaveAsync</c> enforces.
     /// <para>
     /// ⚠️ <b>Document ids, not GitHub ids.</b> Every layer of the reference machinery — the
     /// synchronizer, <c>EntityMapper</c>, <c>BreadcrumbResolver</c>, <c>ReferenceResolver</c>'s
@@ -103,7 +103,7 @@ public class ApiToken
     /// posting its id.
     /// </para>
     /// </remarks>
-    [Reference(typeof(Repository), "Account_Repositories")]
+    [Reference(typeof(Repository), "ApiToken_SelectableRepositories")]
     public List<string> RepositoryIds { get; set; } = [];
 
     /// <summary>Free-text label telling you where this token is used, e.g. the CI workflow it was created for.</summary>

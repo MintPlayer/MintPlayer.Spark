@@ -155,7 +155,7 @@
         "isVisible": true,
         "isReadOnly": false,
         "order": 4,
-        "query": "Account_Repositories",
+        "query": "ApiToken_SelectableRepositories",
         "referenceType": "CodeCoverage.Entities.Repository",
         "isArray": true,
         "showedOn": "Query, PersistentObject",

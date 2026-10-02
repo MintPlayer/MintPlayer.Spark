@@ -499,6 +499,25 @@
       "isStreamingQuery": false
     },
     {
+      "id": "0f4e88db-d827-46ce-8367-56259fc81cad",
+      "name": "ApiToken_SelectableRepositories",
+      "description": {
+        "en": "Selectable repositories",
+        "fr": "Dépôts sélectionnables",
+        "nl": "Selecteerbare repositories"
+      },
+      "source": "Custom.ApiToken_SelectableRepositories",
+      "sortColumns": [
+        {
+          "property": "Name",
+          "direction": "asc"
+        }
+      ],
+      "renderMode": "Pagination",
+      "entityType": "Repository",
+      "isStreamingQuery": false
+    },
+    {
       "id": "551b2212-8f16-4129-aea6-1dfe313d8edc",
       "name": "GetRepositories",
       "source": "Database.Repositories",

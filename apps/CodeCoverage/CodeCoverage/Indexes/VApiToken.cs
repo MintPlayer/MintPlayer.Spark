@@ -38,7 +38,7 @@ public partial class VApiToken
     /// <summary>The forge of the owning account.</summary>
     public EForgeProvider? Provider { get; set; }
 
-    [Reference(typeof(Repository), "Account_Repositories")]
+    [Reference(typeof(Repository), "ApiToken_SelectableRepositories")]
     public List<string> RepositoryIds { get; set; } = [];
 
     public string? Description { get; set; }

@@ -254,6 +254,7 @@ public partial class ApiTokenActions : DefaultPersistentObjectActions<ApiToken>,
     /// <see cref="GetRowFilterAsync"/> and the sort on top of what this returns — the parent scope
     /// here is about <em>which</em> account is being shown, not about who may see it.
     /// </remarks>
+    [NoInterfaceMember]
     public IQueryable<ApiToken> Account_UploadTokens(CustomQueryArgs args)
     {
         args.EnsureParent("Account");
