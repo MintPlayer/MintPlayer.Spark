@@ -86,31 +86,15 @@ internal sealed partial class NewPersistentObject : IPostEndpoint
         // A New started from a sub-query on a parent's detail page (#460, D19). All three fields or
         // none; each is verified rather than trusted, and every mismatch is refused exactly like a
         // missing row, so none of them answers "does this parent / query exist".
-        Po? parent = null;
-        SparkNewSubQueryContext? subQuery = null;
-        if (request.ParentId is { Length: > 0 } || request.ParentType is { Length: > 0 } || request.QueryId is { Length: > 0 })
-        {
-            if (request.ParentId is not { Length: > 0 } || request.ParentType is not { Length: > 0 } || request.QueryId is not { Length: > 0 })
-                return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
+        // The create that follows resolves the same parent the same way (SubQueryNewParent).
+        var (resolved, refused) = await SubQueryNewParent.ResolveAsync(
+            modelLoader, queryLoader, databaseAccess, entityType, request.ParentId, request.ParentType, request.QueryId);
+        if (refused)
+            return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
 
-            var parentType = modelLoader.ResolveEntityType(request.ParentType);
-            var query = queryLoader.ResolveQuery(request.QueryId);
-            var entry = parentType is null || query is null ? null : SparkSubQueries.FindEntry(parentType, query);
-
-            // The query must be one the parent's type declares as a sub-query, and must list the type
-            // being constructed — otherwise a caller could hand any object any "parent".
-            if (parentType is null || query is null || entry is null
-                || !string.Equals(query.EntityType, entityType.Name, StringComparison.OrdinalIgnoreCase))
-                return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
-
-            // Through the gated read: a parent the caller may not see refuses the request.
-            parent = await databaseAccess.GetPersistentObjectAsync(parentType.Id, request.ParentId);
-            if (parent is null)
-                return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
-
-            subQuery = new SparkNewSubQueryContext(
-                entityType, parentType, query, entry.ParentReference ?? query.ParentReference, logger);
-        }
+        Po? parent = resolved?.Parent;
+        SparkNewSubQueryContext? subQuery = resolved is null ? null
+            : new SparkNewSubQueryContext(entityType, resolved.ParentType, resolved.Query, resolved.ParentReference, logger);
 
         var clrType = typeResolver.Resolve(entityType.ClrType);
         var po = Scaffold(entityType, clrType);

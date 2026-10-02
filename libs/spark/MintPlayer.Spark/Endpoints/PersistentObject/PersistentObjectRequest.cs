@@ -26,9 +26,23 @@ internal sealed class PersistentObjectRequest : ISparkTypedRequest, IRetryableRe
 
     /// <inheritdoc />
     public RetryResult[]? RetryResults { get; set; }
+
+    /// <summary>
+    /// Create only: the parent the New was started from, with <see cref="ParentType"/> and
+    /// <see cref="QueryId"/> — the same three fields <c>POST /po/new</c> takes. Resolved and authorized
+    /// server-side (<c>SubQueryNewParent</c>) and handed to the save hooks as
+    /// <see cref="Abstractions.PersistentObject.Parent"/>.
+    /// </summary>
+    public string? ParentId { get; set; }
+
+    /// <inheritdoc cref="ParentId"/>
+    public string? ParentType { get; set; }
+
+    /// <inheritdoc cref="ParentId"/>
+    public string? QueryId { get; set; }
 }
 
-/// <summary>The body of <c>POST /spark/po/load</c> and <c>POST /spark/po/delete</c>.</summary>
+///<summary>The body of <c>POST /spark/po/load</c> and <c>POST /spark/po/delete</c>.</summary>
 /// <remarks>
 /// Carries no <c>PersistentObject</c>: a load has nothing to submit, and a delete names its target by
 /// id. Both are retryable — a load can prompt from <c>OnLoadAsync</c>, which is what having a body at

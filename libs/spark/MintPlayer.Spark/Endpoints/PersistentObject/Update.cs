@@ -57,6 +57,9 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint
 
             obj.Id = existingObj.Id;
             obj.ObjectTypeId = entityType.Id;
+            // Only a create resolves a parent (from a sub-query's New); a Parent in this body is the
+            // caller's claim and must never reach a save hook as context.
+            obj.Parent = null;
 
             // Authorize before validating — see the note in Create.cs (N23).
             await databaseAccess.EnsureSaveAuthorizedAsync(obj);

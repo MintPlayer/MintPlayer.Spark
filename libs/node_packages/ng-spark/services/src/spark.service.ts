@@ -223,10 +223,19 @@ export class SparkService {
     return this.sendRead<PersistentObject>(`${this.baseUrl}/po/load`, { objectTypeId: type, id, deleted: options?.deleted });
   }
 
-  async create(type: string, data: Partial<PersistentObject>): Promise<PersistentObject> {
+  /**
+   * `parent` is the sub-query the New was started from — the same `parentId`/`parentType`/`queryId`
+   * `newObject` was given. The server resolves and authorizes it again and hands it to the save hooks
+   * as `PersistentObject.Parent`.
+   */
+  async create(
+    type: string,
+    data: Partial<PersistentObject>,
+    parent?: { parentId: string; parentType: string; queryId: string },
+  ): Promise<PersistentObject> {
     return this.postWithEnvelope<PersistentObject>(
       `${this.baseUrl}/po/create`,
-      { objectTypeId: type, persistentObject: data }
+      { objectTypeId: type, persistentObject: data, ...(parent ?? {}) }
     );
   }
 

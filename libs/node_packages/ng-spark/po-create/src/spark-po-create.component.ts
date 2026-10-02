@@ -196,7 +196,7 @@ export class SparkPoCreateComponent {
     };
 
     try {
-      const result = await this.sparkService.create(this.type(), po);
+      const result = await this.sparkService.create(this.type(), po, this.subQueryParent() ?? undefined);
       this.isSaving.set(false);
       this.saved.emit(result);
       this.router.navigate(['/po', this.type(), result.id]);
