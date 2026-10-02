@@ -167,7 +167,8 @@ public class AttributeRightsEnforcementTests(AttributeRightsEnforcementTests.Hos
         po.Breadcrumb.Should().NotContain("xbeta", "Secret is Read-denied");
         po.Breadcrumb.Should().NotContain("9911", "Pin is protected on this row");
         po.Breadcrumb.Should().NotContain("kcode777", "the keeper's Code is Read-denied on its own type");
-        po.Name.Should().Be(po.Breadcrumb);
+        // Name is the type, never a copy of the breadcrumb — so it cannot carry the redacted tokens.
+        po.Name.Should().Be("AttrVault");
 
         var keeper = po.Attributes.Single(a => a.Name == "Keeper");
         keeper.Breadcrumb.Should().Be("Kay ", "the reference chip renders the target's breadcrumb with Code blanked — exactly as an empty Code renders");

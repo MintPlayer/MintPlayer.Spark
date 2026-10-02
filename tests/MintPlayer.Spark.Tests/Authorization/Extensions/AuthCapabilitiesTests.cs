@@ -23,7 +23,10 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 public class AuthCapabilitiesTests(SparkSharedDatabase database)
     : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
 {
-    private async Task<IHost> StartAsync(SparkLocalCredentials mode, SparkEmailChange emailChange = SparkEmailChange.Disabled)
+    private async Task<IHost> StartAsync(
+        SparkLocalCredentials mode,
+        SparkEmailChange emailChange = SparkEmailChange.Disabled,
+        SparkExternalLoginLinking linking = SparkExternalLoginLinking.Disabled)
     {
         return await new HostBuilder()
             .ConfigureWebHost(webHost => webHost
@@ -32,7 +35,7 @@ public class AuthCapabilitiesTests(SparkSharedDatabase database)
                 {
                     services.AddSingleton<IDocumentStore>(Store);
                     services.AddSparkAuthentication<SparkUser>();
-                    services.Configure<SparkAuthenticationOptions>(o => o.EmailChange = emailChange);
+                    services.Configure<SparkAuthenticationOptions>(o => { o.EmailChange = emailChange; o.ExternalLoginLinking = linking; });
                     services.AddTestMailSink(); // #460 D6: registration needs a mail sender
 
                     // Two providers a human can click, plus one machine-only scheme that must not
@@ -89,6 +92,22 @@ public class AuthCapabilitiesTests(SparkSharedDatabase database)
         var body = await GetCapabilitiesAsync(host);
 
         body.GetProperty("emailChange").GetBoolean().Should().Be(expected);
+    }
+
+    // External SIGN-IN (the GitHub/Google schemes registered above) is on in every case: the
+    // connected-logins page depends on LINKING, which is separate — CodeCoverage signs in with GitHub
+    // but links nothing, and its account page offered a link to a page that was not there.
+    [Theory]
+    [InlineData(SparkExternalLoginLinking.Disabled, false)]
+    [InlineData(SparkExternalLoginLinking.WhenSignedIn, true)]
+    public async Task Capabilities_reports_external_logins_only_when_linking_maps_the_page(
+        SparkExternalLoginLinking linking, bool expected)
+    {
+        using var host = await StartAsync(SparkLocalCredentials.Full, linking: linking);
+
+        var body = await GetCapabilitiesAsync(host);
+
+        body.GetProperty("externalLogins").GetBoolean().Should().Be(expected);
     }
 
     [Fact]

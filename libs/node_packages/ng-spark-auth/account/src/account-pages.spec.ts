@@ -380,7 +380,7 @@ describe('SparkAccountOverviewComponent', () => {
     provide: SPARK_AUTH_ROUTE_PATHS,
     useValue: {
       profile: '/account/profile', changePassword: '/account/password', twoFactorSetup: '/account/two-factor',
-      passkeys: '/account/passkeys', personalData: '/account/personal-data',
+      externalLogins: '/account/logins', passkeys: '/account/passkeys', personalData: '/account/personal-data',
     },
   };
   const links = (fixture: ComponentFixture<unknown>) =>
@@ -392,6 +392,18 @@ describe('SparkAccountOverviewComponent', () => {
     configure({ capabilities: capabilities('Full') });
     const fixture = await render(TestBed.createComponent(SparkAccountOverviewComponent));
     expect(links(fixture)).toEqual(['/account/profile', '/account/personal-data']);
+  });
+
+  // CodeCoverage's case: GitHub sign-in is on, ExternalLoginLinking is not, so the page is not served.
+  it('hides connected logins unless the server serves them', async () => {
+    configure({ capabilities: capabilities('Disabled') }, [allPages]);
+    const hidden = await render(TestBed.createComponent(SparkAccountOverviewComponent));
+    expect(links(hidden)).not.toContain('/account/logins');
+
+    TestBed.resetTestingModule();
+    configure({ capabilities: vi.fn().mockResolvedValue({ localCredentials: 'Disabled', externalProviders: [], externalLogins: true }) }, [allPages]);
+    const shown = await render(TestBed.createComponent(SparkAccountOverviewComponent));
+    expect(links(shown)).toContain('/account/logins');
   });
 
   it('offers the password and two-factor pages when the server signs in with passwords', async () => {

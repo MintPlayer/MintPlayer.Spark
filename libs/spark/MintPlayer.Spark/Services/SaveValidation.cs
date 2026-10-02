@@ -77,11 +77,14 @@ internal sealed partial class SaveValidation : ISaveValidation
             return;
         requested = null;
 
-        // The model's own write gate (EntityMapper.IsWritableBySchema) drops read-only and hidden
-        // attributes, so they are no more the caller's to supply than a rights-denied one: a
+        // The model's own write gate (EntityMapper.IsWritableBySchema) drops a read-only attribute's
+        // posted value, so it is no more the caller's to supply than a rights-denied one: a
         // server-stamped required field (ApiToken.CreatedAtUtc) failed "required" on every create.
+        // ⚠️ Read-only only, NOT hidden: a refresh hook can make a model-hidden attribute visible and
+        // required (RefreshEndpointTests' PoliceReport), and skipping it would let a client that never
+        // refreshed escape the rule.
         unwritable = new HashSet<string>(
-            [.. unwritable, .. definition.Attributes.Where(a => a.IsReadOnly || !a.IsVisible).Select(a => a.Name)],
+            [.. unwritable, .. definition.Attributes.Where(a => a.IsReadOnly).Select(a => a.Name)],
             StringComparer.Ordinal);
 
         // What the refresh hook is handed: the caller's values for what they may write, the stored

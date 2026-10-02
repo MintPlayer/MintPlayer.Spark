@@ -52,6 +52,10 @@ internal sealed class GetAuthCapabilities : IGetEndpoint
         var emailChange = SparkAccountEndpoints.EmailChangeEnabled(services)
             && localCredentials != SparkLocalCredentials.Disabled;
 
+        // Derived like passkeys: the connected-logins page exists only when ExternalLoginLinking mapped
+        // its endpoints, and an app with external sign-in but no linking must not link to it.
+        var externalLogins = mapped.Contains("/spark/auth/external-logins");
+
         var providers = await ExternalAuthenticationSchemes.GetInteractiveAsync(services);
 
         return Results.Ok(new
@@ -59,6 +63,7 @@ internal sealed class GetAuthCapabilities : IGetEndpoint
             localCredentials = localCredentials.ToString(),
             passkeys,
             emailChange,
+            externalLogins,
             externalProviders = providers
                 .Select(scheme => new { scheme = scheme.Name, displayName = scheme.DisplayName })
                 .ToArray(),

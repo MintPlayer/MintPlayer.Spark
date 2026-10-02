@@ -34,4 +34,10 @@ export interface SparkAuthCapabilities {
    * the same reason as `passkeys`: absent reads as "no".
    */
   emailChange?: boolean;
+
+  /**
+   * Whether the connected-logins page is served — the server's `ExternalLoginLinking` is not
+   * `Disabled`. External SIGN-IN can be on while this is off. Optional: absent reads as "no".
+   */
+  externalLogins?: boolean;
 }

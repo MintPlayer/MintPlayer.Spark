@@ -369,7 +369,8 @@ public class AttributeWriteEnforcementTests : SparkTestDriver
         var row = ((PersistentObjectAttributeAsDetail)po!["Lines"]).Objects!.Single();
         row["Label"].Value.Should().BeNull();
         row.Breadcrumb.Should().Be(" x1", "the Label token renders as an empty Label renders");
-        row.Name.Should().Be(row.Breadcrumb);
+        // Name is the row type, never a copy of the breadcrumb — so it cannot carry the blanked token.
+        row.Name.Should().Be("WrLine");
     }
 
     // ---- residual (c): nested entity classes -------------------------------------------------------

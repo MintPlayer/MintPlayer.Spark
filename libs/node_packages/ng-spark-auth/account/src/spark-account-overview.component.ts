@@ -26,7 +26,7 @@ const PAGES: { key: keyof SparkAuthRoutePaths; label: string; server?: ServerChe
   { key: 'profile', label: 'auth.profileTitle' },
   { key: 'changePassword', label: 'auth.changePasswordTitle', server: passwordSignIn },
   { key: 'twoFactorSetup', label: 'auth.twoFactorSetupTitle', server: passwordSignIn },
-  { key: 'externalLogins', label: 'auth.externalLoginsTitle' },
+  { key: 'externalLogins', label: 'auth.externalLoginsTitle', server: c => c.externalLogins === true },
   // `passkeys` reports `SparkPasskeys.Enabled`; the browser must also support the ceremony.
   { key: 'passkeys', label: 'auth.passkeysTitle', server: c => c.passkeys === true && passkeysSupported() },
   { key: 'personalData', label: 'auth.personalDataTitle' },
