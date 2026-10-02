@@ -13,7 +13,7 @@
 
 	<ItemGroup>
 		<PackageReference Include="MintPlayer.AspNetCore.SpaServices" Version="10.7.1" />
-		<PackageReference Include="MintPlayer.SourceGenerators" Version="12.1.0">
+		<PackageReference Include="MintPlayer.SourceGenerators" Version="12.1.1">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 		</PackageReference>

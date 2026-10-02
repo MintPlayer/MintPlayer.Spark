@@ -29,6 +29,12 @@ export interface SparkAuthCapabilities {
   passkeys?: boolean;
 
   /**
+   * Whether the two-factor setup page is served — the server mapped `manage/2fa` and the
+   * authenticator-URI endpoint. Optional: absent reads as "no".
+   */
+  twoFactor?: boolean;
+
+  /**
    * Whether a signed-in user may change their email address — the server's opt-in
    * `SparkEmailChange.Enabled`, and a local-credential mode that maps `POST manage/info`. Optional for
    * the same reason as `passkeys`: absent reads as "no".

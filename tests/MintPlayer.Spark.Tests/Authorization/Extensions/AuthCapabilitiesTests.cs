@@ -5,9 +5,12 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using MintPlayer.AspNetCore.Endpoints;
+using MintPlayer.Spark.Authorization;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
@@ -142,6 +145,41 @@ public class AuthCapabilitiesTests(SparkSharedDatabase database)
         schemes.Should().NotContain(IdentityConstants.ApplicationScheme);
         schemes.Should().NotContain(IdentityConstants.ExternalScheme);
         schemes.Should().NotContain(IdentityConstants.BearerScheme);
+    }
+
+    [Theory]
+    [InlineData(SparkLocalCredentials.Full)]
+    [InlineData(SparkLocalCredentials.SignInOnly)]
+    [InlineData(SparkLocalCredentials.Disabled)]
+    public async Task Capabilities_reports_two_factor_when_its_endpoints_are_mapped(SparkLocalCredentials mode)
+    {
+        // manage/2fa is Microsoft's and is kept in every mode; the client also requires password sign-in.
+        using var host = await StartAsync(mode);
+
+        var body = await GetCapabilitiesAsync(host);
+
+        body.GetProperty("twoFactor").GetBoolean().Should().BeTrue();
+    }
+
+    /// <summary>
+    /// Every account route without an endpoint class answers <c>IsEndpointMapped</c> through its
+    /// <see cref="SparkIdentityEndpoints"/> stand-in, per mode. Full maps them all, so a stand-in no
+    /// route is tagged with fails here.
+    /// </summary>
+    [Theory]
+    [InlineData(SparkLocalCredentials.Full, "Login,Refresh,TwoFactor,AuthenticatorUri,Info,UpdateInfo,SetPassword,Register,ResendConfirmationEmail,ForgotPassword,ResetPassword,ConfirmEmail,Profile,UpdateProfile,PersonalData,DeleteAccount")]
+    [InlineData(SparkLocalCredentials.SignInOnly, "Login,Refresh,TwoFactor,AuthenticatorUri,Info,UpdateInfo,SetPassword,ForgotPassword,ResetPassword,ConfirmEmail,Profile,UpdateProfile,PersonalData,DeleteAccount")]
+    [InlineData(SparkLocalCredentials.Disabled, "TwoFactor,AuthenticatorUri,Info,ConfirmEmail,Profile,UpdateProfile,PersonalData,DeleteAccount")]
+    public async Task Identity_endpoints_are_asked_by_type(SparkLocalCredentials mode, string expected)
+    {
+        using var host = await StartAsync(mode);
+        var endpoints = host.Services.GetRequiredService<EndpointDataSource>();
+
+        var mapped = typeof(SparkIdentityEndpoints).GetNestedTypes()
+            .Where(endpoints.IsEndpointMapped)
+            .Select(type => type.Name);
+
+        mapped.Should().BeEquivalentTo(expected.Split(','));
     }
 
     [Fact]

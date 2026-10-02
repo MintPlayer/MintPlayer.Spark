@@ -25,7 +25,7 @@ const passwordSignIn: ServerCheck = c => c.localCredentials !== 'Disabled';
 const PAGES: { key: keyof SparkAuthRoutePaths; label: string; server?: ServerCheck }[] = [
   { key: 'profile', label: 'auth.profileTitle' },
   { key: 'changePassword', label: 'auth.changePasswordTitle', server: passwordSignIn },
-  { key: 'twoFactorSetup', label: 'auth.twoFactorSetupTitle', server: passwordSignIn },
+  { key: 'twoFactorSetup', label: 'auth.twoFactorSetupTitle', server: c => passwordSignIn(c) && c.twoFactor === true },
   { key: 'externalLogins', label: 'auth.externalLoginsTitle', server: c => c.externalLogins === true },
   // `passkeys` reports `SparkPasskeys.Enabled`; the browser must also support the ceremony.
   { key: 'passkeys', label: 'auth.passkeysTitle', server: c => c.passkeys === true && passkeysSupported() },

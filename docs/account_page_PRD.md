@@ -35,7 +35,12 @@ Status as of 2026-10-02: implemented and pushed except `695d682b` (local). CI: S
 - **E2E flake:** `QnAContributionsBrowserTests.A_translator_adds_edits_and_withdraws_a_version_and_a_moderator_reverts_to_it` timed out (15 s save navigation) on CI run 37031951328. It passed on the previous CI run and locally (1/1). The next push re-runs it.
 - **GitGuardian:** incidents 37813615–37813617 are `modelHashes.json` false positives (see memory `reference_gitguardian_modelhashes_false_positive`). The owner dismisses them in the dashboard.
 - **Dev data:** test token "verify-create-from-account" (`ApiTokens/0de706e6-…`) on the local dev server. Its plaintext was captured in a screenshot (deleted), so revoke it.
-- **Capabilities without route strings:** MintPlayer.AspNetCore.Tools [#38](https://github.com/MintPlayer/MintPlayer.AspNetCore.Tools/issues/38) (PRD/PLAN in that repo's `docs/`, branch `feat/endpoint-type-metadata`). After it is published, bump `MintPlayer.AspNetCore.Endpoints` here and switch `GetAuthCapabilities` to `IsEndpointMapped(typeof(PasskeySignIn<>))` / `IsEndpointMapped(typeof(ListExternalLogins<>))`.
+- ~~**Capabilities without route strings.**~~ **Done (2026-10-02).**
+  - The library side shipped as MintPlayer.AspNetCore.Tools #38 / PR #39 (Endpoints 11.3.0-rc.0), and the 8 libraries now reference that version.
+  - `GetAuthCapabilities` asks every flag by type: `IsEndpointMapped(typeof(PasskeySignIn<>))` and `IsEndpointMapped(typeof(ListExternalLogins<>))`.
+  - Routes without an endpoint class (the `MapIdentityApi` routes Spark keeps, plus Spark's own account lambdas) carry stand-in types from the public `SparkIdentityEndpoints`. So any code can ask `IsEndpointMapped<SparkIdentityEndpoints.TwoFactor>()`.
+  - Capabilities now also report `twoFactor`, and the account page shows the 2FA link only when that flag is set and password sign-in is on.
+  - Evidence: `AuthCapabilitiesTests.Identity_endpoints_are_asked_by_type` (the exact set per mode) and `Capabilities_reports_two_factor_…`; the ng-spark-auth spec `hides the two-factor page unless the server serves it`.
 - **After merge:** check the production startup log for the `M_202610021200` warning that names tokens it could not resolve to an account.
 
 ## Versions on this branch (unpublished, do not bump again)

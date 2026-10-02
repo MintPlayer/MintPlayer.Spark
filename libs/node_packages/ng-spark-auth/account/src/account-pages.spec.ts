@@ -407,9 +407,15 @@ describe('SparkAccountOverviewComponent', () => {
   });
 
   it('offers the password and two-factor pages when the server signs in with passwords', async () => {
-    configure({ capabilities: capabilities('SignInOnly') }, [allPages]);
+    configure({ capabilities: vi.fn().mockResolvedValue({ localCredentials: 'SignInOnly', externalProviders: [], twoFactor: true }) }, [allPages]);
     const fixture = await render(TestBed.createComponent(SparkAccountOverviewComponent));
     expect(links(fixture)).toEqual(['/account/profile', '/account/password', '/account/two-factor', '/account/personal-data']);
+  });
+
+  it('hides the two-factor page unless the server serves it', async () => {
+    configure({ capabilities: capabilities('SignInOnly') }, [allPages]);
+    const fixture = await render(TestBed.createComponent(SparkAccountOverviewComponent));
+    expect(links(fixture)).toEqual(['/account/profile', '/account/password', '/account/personal-data']);
   });
 
   it('hides the password and two-factor pages under LocalCredentials = Disabled', async () => {

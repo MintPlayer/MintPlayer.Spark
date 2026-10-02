@@ -44,8 +44,7 @@
     compile assets through puts a second ModuleInitializerAttribute in scope and every use becomes
     ambiguous with the one in System.Runtime (CS0433).
     -->
-    <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="12.1.0"
-                      ExcludeAssets="all" GeneratePathProperty="true" />
+    <PackageReference Include="MintPlayer.SourceGenerators.Tools" Version="12.1.1" ExcludeAssets="all" GeneratePathProperty="true" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -65,18 +64,10 @@
     root below so coverlet's collector picks them up for instrumentation, and so the harness can
     Assembly.Load them at test time via the default probing path.
     -->
-    <ProjectReference Include="..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj"
-                      ReferenceOutputAssembly="false"
-                      SkipGetTargetFrameworkProperties="true" />
-    <ProjectReference Include="..\..\libs\all_features\MintPlayer.Spark.AllFeatures.SourceGenerators\MintPlayer.Spark.AllFeatures.SourceGenerators.csproj"
-                      ReferenceOutputAssembly="false"
-                      SkipGetTargetFrameworkProperties="true" />
-    <ProjectReference Include="..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj"
-                      ReferenceOutputAssembly="false"
-                      SkipGetTargetFrameworkProperties="true" />
-    <ProjectReference Include="..\..\libs\contributions\MintPlayer.Spark.Contributions.SourceGenerators\MintPlayer.Spark.Contributions.SourceGenerators.csproj"
-                      ReferenceOutputAssembly="false"
-                      SkipGetTargetFrameworkProperties="true" />
+    <ProjectReference Include="..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\MintPlayer.Spark.SourceGenerators.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
+    <ProjectReference Include="..\..\libs\all_features\MintPlayer.Spark.AllFeatures.SourceGenerators\MintPlayer.Spark.AllFeatures.SourceGenerators.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
+    <ProjectReference Include="..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\MintPlayer.Spark.LibraryGenerators.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
+    <ProjectReference Include="..\..\libs\contributions\MintPlayer.Spark.Contributions.SourceGenerators\MintPlayer.Spark.Contributions.SourceGenerators.csproj" ReferenceOutputAssembly="false" SkipGetTargetFrameworkProperties="true" />
     <!-- [Contribution] / [ContributionSlot] for the contributions generator's test inputs. -->
     <ProjectReference Include="..\..\libs\contributions\MintPlayer.Spark.Contributions.Abstractions\MintPlayer.Spark.Contributions.Abstractions.csproj" />
     <!-- ISoftDeletable: the contributions generator makes the contribution type ISoftDeletable when it is referenced (PRD Q4). -->
@@ -110,18 +101,12 @@
       <_GeneratorRuntimeAssets Include="$(MSBuildThisFileDirectory)..\..\libs\contributions\MintPlayer.Spark.Contributions.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.Contributions.SourceGenerators.dll" />
       <_GeneratorRuntimeAssets Include="$(PkgMintPlayer_SourceGenerators_Tools)\lib\netstandard2.0\MintPlayer.SourceGenerators.Tools.dll" />
 
-      <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' "
-                               Include="$(MSBuildThisFileDirectory)..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.SourceGenerators.pdb" />
-      <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' "
-                               Include="$(MSBuildThisFileDirectory)..\..\libs\all_features\MintPlayer.Spark.AllFeatures.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.AllFeatures.SourceGenerators.pdb" />
-      <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' "
-                               Include="$(MSBuildThisFileDirectory)..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.LibraryGenerators.pdb" />
-      <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' "
-                               Include="$(MSBuildThisFileDirectory)..\..\libs\contributions\MintPlayer.Spark.Contributions.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.Contributions.SourceGenerators.pdb" />
+      <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' " Include="$(MSBuildThisFileDirectory)..\..\libs\source_generators\MintPlayer.Spark.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.SourceGenerators.pdb" />
+      <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' " Include="$(MSBuildThisFileDirectory)..\..\libs\all_features\MintPlayer.Spark.AllFeatures.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.AllFeatures.SourceGenerators.pdb" />
+      <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' " Include="$(MSBuildThisFileDirectory)..\..\libs\source_generators\MintPlayer.Spark.LibraryGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.LibraryGenerators.pdb" />
+      <_GeneratorRuntimeAssets Condition=" '$(Configuration)' == 'Debug' " Include="$(MSBuildThisFileDirectory)..\..\libs\contributions\MintPlayer.Spark.Contributions.SourceGenerators\bin\$(Configuration)\netstandard2.0\MintPlayer.Spark.Contributions.SourceGenerators.pdb" />
     </ItemGroup>
-    <Copy SourceFiles="@(_GeneratorRuntimeAssets)"
-          DestinationFolder="$(OutputPath)"
-          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_GeneratorRuntimeAssets)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>
