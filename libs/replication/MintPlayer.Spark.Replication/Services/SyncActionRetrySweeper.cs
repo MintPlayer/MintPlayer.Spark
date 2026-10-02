@@ -7,6 +7,8 @@ using MintPlayer.Spark.Replication.Abstractions.Models;
 using MintPlayer.Spark.Replication.Indexes;
 using MintPlayer.Spark.Replication.Models;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Commands.Batches;
+using Raven.Client.Documents.Operations;
 
 namespace MintPlayer.Spark.Replication.Services;
 
@@ -92,17 +94,43 @@ internal sealed partial class SyncActionRetrySweeper : BackgroundService
         if (dueIds.Count == 0)
             return 0;
 
-        // Field-level server-side patches, never load-modify-save: with last-write-wins a full
-        // document save could resurrect an action the worker completed after our query ran. A patch
-        // touches only the gate and an informational timestamp; if the action reached a terminal
-        // state meanwhile, the re-evaluation this triggers simply doesn't match the query.
-        foreach (var id in dueIds)
+        // Server-side patches, never load-modify-save: with last-write-wins a full document save
+        // could resurrect an action the worker completed after our query ran. The patch re-checks
+        // the query's predicate on the document as it is now, because the ids came from an index
+        // that may be stale: an unconditional patch rewrote an action that had meanwhile completed
+        // (or been woken already) on every sweep until the index caught up, each write re-dirtying
+        // that index. MessageRetrySweeper had the same flaw, measured in S-M3 under load
+        // (contributions_PRD §5c). A document that no longer matches is left untouched.
+        var patch = new PatchRequest
         {
-            session.Advanced.Patch<SparkSyncAction, bool>(id!, a => a.WakeUp, true);
-            session.Advanced.Patch<SparkSyncAction, DateTime?>(id!, a => a.LastWakeUpUtc, now);
-        }
+            Script = """
+                if (this.Status === 'Pending'
+                    && this.NextAttemptAtUtc != null && this.NextAttemptAtUtc <= args.now
+                    && this.WakeUp !== true) {
+                    this.WakeUp = true;
+                    this.LastWakeUpUtc = args.now;
+                }
+                """,
+            // Compared as strings: chronological, because RavenDB writes a UTC DateTime in this same fixed-width form.
+            Values = { ["now"] = now.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", System.Globalization.CultureInfo.InvariantCulture) },
+        };
+        var commands = dueIds.Select(id => (ICommandData)new PatchCommandData(id!, changeVector: null, patch)).ToList();
 
-        await session.SaveChangesAsync(cancellationToken);
-        return dueIds.Count;
+        var executor = documentStore.GetRequestExecutor();
+        using (executor.ContextPool.AllocateOperationContext(out var context))
+        {
+            var command = new SingleNodeBatchCommand(documentStore.Conventions, commands);
+            await executor.ExecuteAsync(command, context, sessionInfo: null, cancellationToken);
+
+            var woken = 0;
+            foreach (var item in command.Result!.Results)
+            {
+                if (item is Sparrow.Json.BlittableJsonReaderObject result
+                    && result.TryGet(nameof(PatchStatus), out string? status)
+                    && status == nameof(PatchStatus.Patched))
+                    woken++;
+            }
+            return woken;
+        }
     }
 }

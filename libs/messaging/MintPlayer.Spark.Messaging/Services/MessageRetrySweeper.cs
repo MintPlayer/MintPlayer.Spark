@@ -4,6 +4,8 @@ using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Messaging.Indexes;
 using MintPlayer.Spark.Messaging.Models;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Commands.Batches;
+using Raven.Client.Documents.Operations;
 
 namespace MintPlayer.Spark.Messaging.Services;
 
@@ -95,19 +97,72 @@ internal sealed partial class MessageRetrySweeper : BackgroundService
         if (dueIds.Count == 0)
             return 0;
 
-        // Field-level server-side patches, never load-modify-save: with last-write-wins a
-        // full-document save could resurrect a message the worker completed after our query
-        // ran. A patch touches only the gate + an informational timestamp; if the message
-        // reached a terminal state meanwhile, the triggered re-evaluation simply doesn't
-        // match the query, and the worker clears WakeUp again on the next pickup anyway.
-        foreach (var id in dueIds)
-        {
-            session.Advanced.Patch<SparkMessage, bool>(id!, m => m.WakeUp, true);
-            session.Advanced.Patch<SparkMessage, DateTime?>(id!, m => m.LastWakeUpUtc, now);
-        }
+        // Server-side patches, never load-modify-save: with last-write-wins a full-document save
+        // could resurrect a message the worker completed after our query ran. And the patch
+        // re-checks the query's predicate on the document as it is NOW, because the ids came from
+        // an index that may be stale: under load SparkMessages_ByQueue lags by seconds, so it still
+        // lists a message as deferred after the feeder woke, claimed and completed it. An
+        // unconditional patch then rewrote that completed message on every sweep until the index
+        // caught up — 11 extra writes per message in one loaded S-M3 run (revision history in
+        // contributions_PRD §5c), each one re-dirtying the index it was waiting for — and could set
+        // WakeUp on a message Processing or parked at Failed for a later backoff. A document that no
+        // longer matches is left untouched: a no-op patch writes nothing.
+        return await PatchWhereStillMatchingAsync(dueIds!, WakeUpScript, now, cancellationToken);
+    }
 
-        await session.SaveChangesAsync(cancellationToken);
-        return dueIds.Count;
+    /// <summary>The wake-up, applied only while the document itself is still due and unwoken.</summary>
+    private const string WakeUpScript = """
+        if ((this.Status === 'Pending' || this.Status === 'Failed')
+            && this.NextAttemptAtUtc != null && this.NextAttemptAtUtc <= args.now
+            && this.WakeUp !== true) {
+            this.WakeUp = true;
+            this.LastWakeUpUtc = args.now;
+        }
+        """;
+
+    /// <summary>The reclaim, applied only while the document itself is still at Processing on a lapsed (or absent) claim.</summary>
+    private const string ReclaimScript = """
+        if (this.Status === 'Processing'
+            && (this.ClaimExpiresAtUtc == null || this.ClaimExpiresAtUtc <= args.now)) {
+            this.Status = 'Pending';
+            this.OwnerId = null;
+            this.ClaimExpiresAtUtc = null;
+            this.WakeUp = true;
+            this.LastWakeUpUtc = args.now;
+            this.AttemptCount = (this.AttemptCount || 0) + 1;
+        }
+        """;
+
+    /// <summary>
+    /// Runs <paramref name="script"/> on every id in one batch and returns how many documents it
+    /// actually changed. The script compares <c>args.now</c> with the stored dates as strings, which is
+    /// chronological because RavenDB writes a UTC <see cref="DateTime"/> in this same fixed-width form.
+    /// </summary>
+    private async Task<int> PatchWhereStillMatchingAsync(IReadOnlyList<string> ids, string script, DateTime now, CancellationToken cancellationToken)
+    {
+        var patch = new PatchRequest
+        {
+            Script = script,
+            Values = { ["now"] = now.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'", System.Globalization.CultureInfo.InvariantCulture) },
+        };
+        var commands = ids.Select(id => (ICommandData)new PatchCommandData(id, changeVector: null, patch)).ToList();
+
+        var executor = documentStore.GetRequestExecutor();
+        using (executor.ContextPool.AllocateOperationContext(out var context))
+        {
+            var command = new SingleNodeBatchCommand(documentStore.Conventions, commands);
+            await executor.ExecuteAsync(command, context, sessionInfo: null, cancellationToken);
+
+            var patched = 0;
+            foreach (var item in command.Result!.Results)
+            {
+                if (item is Sparrow.Json.BlittableJsonReaderObject result
+                    && result.TryGet(nameof(PatchStatus), out string? status)
+                    && status == nameof(PatchStatus.Patched))
+                    patched++;
+            }
+            return patched;
+        }
     }
 
     /// <summary>
@@ -163,17 +218,10 @@ internal sealed partial class MessageRetrySweeper : BackgroundService
         // AttemptCount is incremented so an abandoned message cannot cycle for ever: a message
         // that reliably kills its host is retried, backed off and eventually dead-lettered like
         // any other failure, rather than crash-looping the process that picks it up.
-        foreach (var id in abandonedIds)
-        {
-            session.Advanced.Patch<SparkMessage, EMessageStatus>(id!, m => m.Status, EMessageStatus.Pending);
-            session.Advanced.Patch<SparkMessage, string?>(id!, m => m.OwnerId, null);
-            session.Advanced.Patch<SparkMessage, DateTime?>(id!, m => m.ClaimExpiresAtUtc, null);
-            session.Advanced.Patch<SparkMessage, bool>(id!, m => m.WakeUp, true);
-            session.Advanced.Patch<SparkMessage, DateTime?>(id!, m => m.LastWakeUpUtc, now);
-            session.Advanced.Increment<SparkMessage, int>(id!, m => m.AttemptCount, 1);
-        }
-
-        await session.SaveChangesAsync(cancellationToken);
-        return abandonedIds.Count;
+        //
+        // The predicate is re-checked on the document, as in the wake-up: a stale index can still
+        // list as Processing a message that has since completed, and an unconditional patch would
+        // put that completed message back to Pending and run its handlers a second time.
+        return await PatchWhereStillMatchingAsync(abandonedIds!, ReclaimScript, now, cancellationToken);
     }
 }

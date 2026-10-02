@@ -225,14 +225,27 @@ public class ThrottleAccuracySpikeTests(ITestOutputHelper output) : SparkTestDri
             output.WriteLine($"S-M3 transactional n={latencies.Count} p50={latencies[latencies.Count / 2].TotalMilliseconds:F0}ms p95={p95.TotalMilliseconds:F0}ms max={latencies[^1].TotalMilliseconds:F0}ms");
             if (writes is null)
                 return;
-            foreach (var (queue, perMessage) in writes)
-                output.WriteLine($"S-M3 writes {queue}: {string.Join(", ", perMessage.GroupBy(w => w).OrderBy(g => g.Key).Select(g => $"{g.Key} writes x{g.Count()}"))}");
+            foreach (var (queue, histories) in writes)
+                output.WriteLine($"S-M3 writes {queue}: {string.Join(", ", histories.GroupBy(h => h.Count).OrderBy(g => g.Key).Select(g => $"{g.Key} writes x{g.Count()}"))}");
 
-            // Timing-independent invariants. An unthrottled message costs a fixed number of writes; a
-            // throttled one costs that plus exactly one deferral (defer + wake-up + re-claim).
-            var unthrottledWrites = writes[TransactionalQueue].Max();
-            writes[BulkQueue].Max().Should().BeLessThanOrEqualTo(unthrottledWrites + 3, "a throttled message is deferred at most once");
+            // Timing-independent invariants, read off each message's revision history.
+            //
+            // This used to be inferred from write counts ("at most the unthrottled count + 3"), on the
+            // assumption that every write to a message is a step of its own lifecycle. That assumption
+            // was false: the sweeper took its ids from a stale index and patched messages that had
+            // already completed, once per sweep, so under load a message deferred exactly once showed
+            // 9, 10, even 18 writes. The sweeper now re-checks on the document; the claims below are
+            // the two that inference stood for, measured directly.
+            var worst = writes.Values.SelectMany(h => h).OrderByDescending(h => h.Count).First();
+            output.WriteLine($"S-M3 most-written message ({worst.Count} writes):");
+            foreach (var revision in worst)
+                output.WriteLine($"  {revision.Status} wakeUp={revision.WakeUp} next={revision.NextAttemptAtUtc:HH:mm:ss.fff} lastWakeUp={revision.LastWakeUpUtc:HH:mm:ss.fff} attempts={revision.AttemptCount}");
+
             writes[BulkQueue].Count.Should().Be(bulkCount);
+            writes[BulkQueue].Max(Deferrals).Should().BeLessThanOrEqualTo(1, "a throttled message is deferred at most once: its slot is reserved, not re-polled");
+            writes[BulkQueue].Count(h => Deferrals(h) == 1).Should().BeGreaterThan(0, "the bulk queue is over budget, so some messages must have been deferred at all");
+            writes.Values.SelectMany(h => h).Max(WritesAfterCompletion).Should().Be(0,
+                "nothing writes to a message once it has completed — in particular not the sweeper acting on a stale index entry");
         }
         finally
         {
@@ -266,11 +279,32 @@ public class ThrottleAccuracySpikeTests(ITestOutputHelper output) : SparkTestDri
         }
     }
 
-    /// <summary>Revisions per message document, grouped by queue — one revision per write.</summary>
-    private async Task<Dictionary<string, List<int>>> WritesPerMessageAsync()
+    /// <summary>
+    /// Deferrals in one message's history: a write that parks it Pending and unwoken at a new
+    /// <see cref="SparkMessage.NextAttemptAtUtc"/> (the feeder's or the processor's throttle deferral).
+    /// </summary>
+    private static int Deferrals(IReadOnlyList<SparkMessage> history)
+        => history.Where((revision, i) => i > 0
+                && revision.Status == EMessageStatus.Pending
+                && !revision.WakeUp
+                && revision.NextAttemptAtUtc is not null
+                && revision.NextAttemptAtUtc != history[i - 1].NextAttemptAtUtc)
+            .Count();
+
+    /// <summary>Writes after the first revision at <see cref="EMessageStatus.Completed"/>.</summary>
+    private static int WritesAfterCompletion(IReadOnlyList<SparkMessage> history)
+    {
+        var completed = history.ToList().FindIndex(r => r.Status == EMessageStatus.Completed);
+        return completed < 0 ? 0 : history.Count - 1 - completed;
+    }
+
+    /// <summary>
+    /// Every message's revision history, oldest first, grouped by queue — one revision per write.
+    /// </summary>
+    private async Task<Dictionary<string, List<IReadOnlyList<SparkMessage>>>> WritesPerMessageAsync()
     {
         using var session = Store.OpenAsyncSession();
-        session.Advanced.MaxNumberOfRequestsPerSession = int.MaxValue; // one revisions count per message
+        session.Advanced.MaxNumberOfRequestsPerSession = int.MaxValue; // one revisions read per message
         var messages = new List<SparkMessage>();
         await using (var stream = await session.Advanced.StreamAsync(session.Query<SparkMessage>()))
         {
@@ -279,11 +313,13 @@ public class ThrottleAccuracySpikeTests(ITestOutputHelper output) : SparkTestDri
         }
 
         messages.Should().OnlyContain(m => m.Status == EMessageStatus.Completed);
-        var result = new Dictionary<string, List<int>> { [BulkQueue] = [], [TransactionalQueue] = [] };
+        var result = new Dictionary<string, List<IReadOnlyList<SparkMessage>>> { [BulkQueue] = [], [TransactionalQueue] = [] };
         foreach (var message in messages)
         {
-            var count = await session.Advanced.Revisions.GetCountForAsync(message.Id!);
-            result[message.QueueName].Add((int)count);
+            // Newest first from the server; the 1000 kept (see RunAsync) is far above any history here.
+            var revisions = await session.Advanced.Revisions.GetForAsync<SparkMessage>(message.Id!, start: 0, pageSize: 1000);
+            revisions.Reverse();
+            result[message.QueueName].Add(revisions);
         }
 
         return result;
