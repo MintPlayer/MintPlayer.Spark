@@ -900,9 +900,71 @@ only):
   Controllers, AllFeatures) stay at preview.91, built against preview.91 of Spark/Abstractions, so a
   consumer mixing them with preview.92 relies on binary compatibility across this PR's breaking
   changes. Past PRs' broad bumps avoided that question.
-- **Known flake, cause open (not a merge blocker):** `ModerationVoteTests.M5_…pending_at_once…` fails
+- ~~**Known flake, cause open (not a merge blocker):** `ModerationVoteTests.M5_…pending_at_once…` fails
   only under full-sweep load (pending 0 instead of 10; passes alone), §5d item 11/12. It was green in
-  CI and in the 2026-10-02 local sweep.
+  CI and in the 2026-10-02 local sweep.~~ **Resolved (2026-10-02), with the two other load-sensitive
+  tests.** Load for every figure below: 8 `node -e "for(;;){}"` burners on this 8-thread laptop,
+  test classes run back to back (`dotnet test --no-build --filter …`), logs in the session scratchpad.
+  - **CI history scan** (`gh run list --limit 100`, back to 2026-09-26; every failed `pull-request`
+    run read with `--log-failed`): 21 failed runs. 6 failed on gates or builds, not tests (missing
+    coverage reports, an unbuilt app). The test failures were deterministic and fixed in the
+    following commit (`FailOpenRegressionTests`, ×4 runs, stale test, fixed by `a09468bf`;
+    `ListCustomActionsTests`/`RouteTableCompleteness`/`XsrfSurface`/`SubQueryPruning`, a new route
+    and model type, identical in two runs on code differing only in docs; the mass E2E failures of
+    the #460 branch; `QnAContributionsBrowserTests`, a hidden button copy, `9296653b`;
+    `MessageSubscriptionManagerLifecycleTests`, 29/30 locally, `83007fd2`). Two were timing-dependent and
+    already fixed at the root in `fadd1719`: `RateLimitTests` (a burst straddling a fixed-window
+    boundary) and `EtlTaskManagerDeploymentTests` (RavenDB gives an ETL task a new id on update). **No
+    open intermittent CI failure remains besides the three below**, none of which has failed on CI.
+  - **`ThrottleAccuracySpikeTests.S_M3` was a product bug in the sweepers, not a double deferral.**
+    Revision histories of the worst messages in a loaded failing run (18 writes against a limit of
+    8) show each bulk message deferred **exactly once** (one defer, one wake-up, one claim,
+    `AttemptCount` 1), then **11 more writes after `Completed`**, one per sweep 1.6 s apart, each
+    setting `WakeUp=true` on the completed message. Cause: `MessageRetrySweeper.SweepOnceAsync` takes
+    its ids from `SparkMessages_ByQueue`, which lags under load, and patched them unconditionally, so
+    a message the index still showed as deferred was rewritten until the index caught up (and each
+    write re-dirtied that index). The same unconditional patch could set `WakeUp` on a message
+    Processing, or parked at Failed for a *new* backoff (an early retry), and in
+    `ReclaimAbandonedAsync` could put a message that had completed back to Pending and run its
+    handlers again. `SyncActionRetrySweeper` (replication) had the same flaw. **Fix:** both sweepers
+    now patch with a script that re-checks the predicate on the document itself; a no-op patch writes
+    nothing, and the returned count is the number actually patched. Pinned by
+    `MessageRetrySweeperStaleIndexTests` (7) and
+    `SyncActionRetrySweeperTests.An_action_that_completed_after_the_index_saw_it_due_is_not_written_to`,
+    which stop the index after it has seen the document to make the lag deterministic: **6 of them
+    fail on the old sweepers, all pass on the new.** "Deferred at most once" is a real guarantee
+    (`QueueAdmission` reserves the slot; the histories confirm it), so the test keeps the claim but
+    measures it directly: at most one deferral per message in its revision history, at least one
+    message deferred, and **no write after completion**. The old inference ("writes ≤ unthrottled
+    + 3") assumed every write was a lifecycle step, which the sweeper broke. Under load: **before 0/5
+    passed** (18 writes each time); **after, 9/9 passed** with every message at exactly 5 writes
+    (unthrottled) or 7 (one deferral: defer + wake-up). The test's old comment, "defer + wake-up +
+    re-claim" = 3 extra writes, was also wrong: the claim happens either way.
+  - **`ModerationVoteTests.M5` waited on the wrong bound.** `ReputationLedger.ReadPendingAsync` waits
+    **2 s** for `Moderation_PendingReputation`, then serves the stale figure by design (a badge must
+    not fail); the earlier note that the read "waits up to 30 s" was wrong. The failing runs took 2 s,
+    exactly that timeout. The test now waits for that index itself (bounded 60 s,
+    `MoHost.WaitForPendingReputationIndexAsync`) after each vote, then reads the badge. Its claim, no
+    recompute and no credit delay, is unchanged. The product's 2 s bound stays. Under load: **before
+    5/10 failed** ("expected 10, but found 0"); **after, 10/10 passed**.
+  - **`ComplexFieldIndexingTests.Verbatim_complex_map_faults_per_document_on_Corax` stopped on the
+    wrong condition.** Its helper returned at the first non-stale read. Polled every 100 ms under
+    load, RavenDB 7.2 reports the index non-stale with `EntriesCount=1` **before** the batch's
+    statistics and errors are recorded (`MapAttempts=0`, `ErrorsCount=0`, no index errors), then
+    `MapAttempts=2`, `MapErrors=1` and the error 0.9 s later, up to 2.6 s. The faulting test now polls
+    for the errors themselves (bounded 60 s, failing if none appear). The null-values test, whose
+    claim is "no errors", waits for non-stale **and** a map attempt per document, so it cannot pass
+    on a batch whose errors are not recorded yet. Under load: **before 3 of 9 runs failed**; after:
+    10/10 passed with the errors-poll (diagnostic run) and 10/10 in the final run.
+  - **Final proof under load:** S_M3, the whole `ModerationVoteTests` class, `ComplexFieldIndexingTests`,
+    `MessageRetrySweeperStaleIndexTests` and `SyncActionRetrySweeperTests` (31 tests) ran **10 times
+    in a row, all green**, with 8 burners. Every bulk message took 5 or 7 writes. Idle, the sweeper,
+    subscription-worker and invariants classes (37 tests) were green too. Commits `1611348d` (sweepers)
+    and `d491c557` (waits).
+  - **Open, unexplained:** one earlier loaded run (not the final series) ended in "Test host process
+    crashed" right after a `ModerationVoteTests` host started. Every test reported up to then had
+    passed, the Windows Application log has no .NET or WER entry for it, and it did not recur in the
+    10 final runs. Other sessions were using the machine at the time (version bumps here, a test run in another repository), which may or may not be related.
 - **Not written yet:** `docs/guide-contributions.md` (plan M7). The library README
   (`libs/contributions/MintPlayer.Spark.Contributions/README.md`) covers the API, ids, rights and
   client contract, but the root `README.md` guide table does not list Contributions.
@@ -1264,9 +1326,11 @@ xUnit and driver stack, not as a new test runner.
       and 8m37s), against 10m07s before; all 60 tasks but one green each time. Each run had one
       Spark.Tests failure under full load, in classes this batch did not touch:
       `ModerationVoteTests.M5_the_badge_shows_a_new_vote_as_pending_at_once_without_any_recompute`
-      (pending 0 instead of 10; passed 3 of 3 runs alone; the reputation read already waits up to 30 s
-      for non-stale indexes, so the cause is not yet understood) and the known
-      `ThrottleAccuracySpikeTests.S_M3` (a throttled message deferred twice). Neither was loosened.
+      (pending 0 instead of 10; passed 3 of 3 runs alone; ~~the reputation read already waits up to 30 s
+      for non-stale indexes, so the cause is not yet understood~~) and the known
+      `ThrottleAccuracySpikeTests.S_M3` (~~a throttled message deferred twice~~). Neither was loosened.
+      *Superseded (2026-10-02):* the read waits 2 s, not 30 s, and S_M3 never deferred twice; both
+      root causes and fixes are in §5c ("Resolved … load-sensitive tests").
     - **Where that leaves the ~7m15s target:** the sweep is CPU-bound, and what remains is mostly not
       per-test databases. By the per-task figures (E2E 152 s, the Angular/vitest suites ~100 s,
       builds 72 s, CodeCoverage 104 s, Spark.Tests now ~150 s), the next levers are the E2E suite and the
@@ -1300,7 +1364,9 @@ xUnit and driver stack, not as a new test runner.
     - **Load-sensitive tests** that fail only in a fully loaded sweep and pass alone: `S_M3` (throttle
       deferred twice), `ModerationVoteTests.M5` (pending 0, not 10), and
       `ComplexFieldIndexingTests.Verbatim_complex_map_faults_per_document_on_Corax` (index errors not
-      yet recorded when read). None was loosened; they need owner decisions.
+      yet recorded when read). None was loosened; ~~they need owner decisions~~. **Resolved
+      (2026-10-02, §5c):** S_M3 exposed a sweeper bug (stale-index patches, fixed in the product); M5
+      and the Corax test waited on the wrong condition (fixed in the tests).
 14. **Packing: the local default becomes `--parallel=4`** (2026-10-02, this machine, after item 13's
     changes, full `--skip-nx-cache` sweeps, all green):
 

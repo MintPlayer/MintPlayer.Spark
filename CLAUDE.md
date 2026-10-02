@@ -79,9 +79,12 @@ faster than the 21m49s below.** The gains came from:
 - no dynamic PGO in test processes or the embedded server
 - `--parallel=4`
 
-The evidence is in `docs/contributions_PRD.md` §5d items 10–14. Three tests fail only under a fully
-loaded sweep (`S_M3`, `ModerationVoteTests.M5`, `ComplexFieldIndexingTests.Verbatim_…`); they pass
-alone.
+The evidence is in `docs/contributions_PRD.md` §5d items 10–14. Three tests used to fail only under a
+fully loaded sweep (`S_M3`, `ModerationVoteTests.M5`, `ComplexFieldIndexingTests.Verbatim_…`). All
+three are fixed at the root (§5c): S_M3 exposed a real sweeper bug, stale-index patches that
+rewrote completed messages. M5 and the Corax test waited on the wrong condition. A test that fails
+only under load is a race to explain, not noise. Reproduce it with CPU burners
+(`node -e "for(;;){}"` × cores) and read the documents' revision histories before changing a wait.
 
 Measured 2026-10-01 on this machine (`--skip-nx-cache`, Developer licence, everything affected):
 **21m49s wall for everything including E2E and builds, all green.** Compare the earlier serial
