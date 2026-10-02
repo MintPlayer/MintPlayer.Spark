@@ -73,6 +73,26 @@ public class GitHubAccessServiceTests
     }
 
     [Fact]
+    public void ParseUser_reads_the_token_owners_id_and_login()
+    {
+        GitHubAccessService.ParseUser("""{ "login": "PieterjanDeClippel", "id": 9629574, "type": "User", "name": "Display" }""")
+            .Should().Be(new GitHubUser(9629574, "PieterjanDeClippel"));
+    }
+
+    [Theory]
+    [InlineData("""{ "id": 1 }""")]
+    [InlineData("""{ "login": "x" }""")]
+    [InlineData("""{ "id": "1", "login": "x" }""")]
+    [InlineData("""{ "id": 1, "login": "" }""")]
+    [InlineData("""{"message":"Bad credentials"}""")]
+    [InlineData("""[]""")]
+    [InlineData("not json")]
+    public void ParseUser_returns_null_without_a_numeric_id_and_a_login(string json)
+    {
+        GitHubAccessService.ParseUser(json).Should().BeNull();
+    }
+
+    [Fact]
     public void ParseInstallations_returns_empty_when_installations_property_is_absent()
     {
         GitHubAccessService.ParseInstallations("""{"message":"Bad credentials"}""").Should().BeEmpty();
