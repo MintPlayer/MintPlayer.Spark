@@ -61,7 +61,8 @@ CI never calls it). Extra arguments go to `nx affected`, e.g. `-- --skip-nx-cach
 - **Coverage is off locally:** every test target has a `local` configuration (`-c local`) whose
   command drops the coverlet collector and vitest `--coverage`. The default configuration, which CI
   runs, is unchanged, and the different command keeps local and CI cache entries apart.
-- **Parallel, like CI** (nx.json `parallel: 3`), instead of one suite after another.
+- **Parallel:** the script passes `--parallel=4` (CI keeps nx.json's 3). That gives the long
+  CodeCoverage.Tests chain a slot early; at 5 a sweep ran out of memory.
 - **E2E:** when it is affected, the script first builds the apps it hosts (`Fleet`, `QnA`) through
   nx, then sets `SPARK_E2E_SKIP_APP_BUILD=1` so `SparkAppTestHost` skips its own per-app
   `dotnet build`. The variable is opt-in; unset (CI) the host still builds. A new E2E host app must
@@ -69,6 +70,18 @@ CI never calls it). Extra arguments go to `nx affected`, e.g. `-- --skip-nx-cach
 - Every RavenTestDriver base (`SparkTestDriver`, `SparkSharedDatabase`, `CoverageRavenTest`)
   deletes its databases without the server's 15 s confirmation wait, through
   `RavenDatabaseDeletion.DeleteOnDispose` in `PreInitialize`. This applies on CI as well.
+
+**Now (2026-10-02): 7m39s (459 s) for everything including E2E and builds, all green, 2.85×
+faster than the 21m49s below.** The gains came from:
+- test hosts deploying only the indexes a test needs
+- CodeCoverage.Tests deploying its index only where a class queries one
+- per-class hosts and databases for the OIDC and read-only classes
+- no dynamic PGO in test processes or the embedded server
+- `--parallel=4`
+
+The evidence is in `docs/contributions_PRD.md` §5d items 10–14. Three tests fail only under a fully
+loaded sweep (`S_M3`, `ModerationVoteTests.M5`, `ComplexFieldIndexingTests.Verbatim_…`); they pass
+alone.
 
 Measured 2026-10-01 on this machine (`--skip-nx-cache`, Developer licence, everything affected):
 **21m49s wall for everything including E2E and builds, all green.** Compare the earlier serial

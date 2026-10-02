@@ -1226,6 +1226,28 @@ xUnit and driver stack, not as a new test runner.
       deferred twice), `ModerationVoteTests.M5` (pending 0, not 10), and
       `ComplexFieldIndexingTests.Verbatim_complex_map_faults_per_document_on_Corax` (index errors not
       yet recorded when read). None was loosened; they need owner decisions.
+14. **Packing: the local default becomes `--parallel=4`** (2026-10-02, this machine, after item 13's
+    changes, full `--skip-nx-cache` sweeps, all green):
+
+    | nx `--parallel` | Wall | nx recoverable time | Critical path |
+    |---|---|---|---|
+    | 3 (nx.json, CI) | 557 s | 23% | 6m57s |
+    | 4 | **459 s** | 12% | 6m25s |
+    | 5 | 445 s | 5% | 6m45s |
+    | 5, CodeCoverage.Tests at `MaxParallelThreads=1x` locally | 452 s | 3% | 7m02s |
+
+    - **Why packing mattered:** the CodeCoverage.Tests chain (its builds, then the suite) is the
+      critical path. At 3 slots it waited about 2 min for one.
+    - **4, not 5:** the next sweep at 5 was stopped by Claude Code for low memory (7–12 GB free of
+      40 GB; every heavy suite runs its own in-memory RavenDB). The gain from 4 to 5 is within noise.
+      `tools/test-local.mjs` passes `--parallel=4` unless the caller gives one. CI keeps 3.
+    - **Rejected:** giving CodeCoverage.Tests all cores locally (452 vs 445 s, noise).
+    - **Kept:** CodeCoverage.Tests' `WaitForIndexing` polls every 10 ms instead of the driver's 100 ms,
+      with the same semantics (`CoverageRavenTest`, hiding the non-virtual driver method). It's green,
+      but the gain is not separately measured: alone, 104 s is within noise of 86–95 s. Its sweep
+      measurement was stopped for low memory.
+    - **Result:** **21m49s → 7m39s (459 s) at the committed default, 2.85×; 7m25s (445 s) at 5,
+      2.94×.** A sweep with the final commit has not completed; the owner runs it.
 13. **Less CPU work per host boot and per test process** (2026-10-02, this machine, Developer licence,
     `dotnet test --no-build`, no coverage, each project run alone).
     - **Method.** Stopwatches plus per-thread CPU (`GetThreadTimes`) around every phase of

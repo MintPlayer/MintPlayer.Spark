@@ -105,4 +105,45 @@ public abstract class CoverageRavenTest : RavenTestDriver
         MintPlayer.Spark.Testing.RavenDatabaseDeletion.DisableTopologyCache(documentStore);
         base.PreInitialize(documentStore);
     }
+
+    /// <summary>
+    /// <see cref="RavenTestDriver"/>'s <c>WaitForIndexing</c>, polling every 10 ms instead of 100 ms.
+    /// <para>
+    /// Hides the driver's method rather than overriding it (it is not virtual), so every call in this
+    /// suite, about 150, binds here unchanged. The semantics are the driver's (RavenDB.TestDriver 7.2.6):
+    /// done when no enabled index is stale or side-by-side; an errored index or the timeout throws
+    /// <see cref="TimeoutException"/> carrying the index errors. Only the poll interval differs: each
+    /// wait used to round up to the next 100 ms tick, which this suite pays about 150 times per run,
+    /// and much more when a loaded machine stretches every wait.
+    /// </para>
+    /// </summary>
+    protected new void WaitForIndexing(IDocumentStore store, string? database = null, TimeSpan? timeout = null)
+    {
+        var admin = store.Maintenance.ForDatabase(database);
+        var limit = timeout ?? TimeSpan.FromMinutes(1);
+        var sp = System.Diagnostics.Stopwatch.StartNew();
+
+        while (sp.Elapsed < limit)
+        {
+            var statistics = admin.Send(new Raven.Client.Documents.Operations.GetStatisticsOperation());
+            var indexes = statistics.Indexes.Where(x => x.State != IndexState.Disabled);
+
+            if (indexes.All(x => !x.IsStale
+                && !x.Name.StartsWith(Raven.Client.Constants.Documents.Indexing.SideBySideIndexNamePrefix)))
+                return;
+
+            if (statistics.Indexes.Any(x => x.State == IndexState.Error))
+                break;
+
+            Thread.Sleep(10);
+        }
+
+        var errors = admin.Send(new Raven.Client.Documents.Operations.Indexes.GetIndexErrorsOperation());
+        var errorText = errors is { Length: > 0 }
+            ? "Indexing errors:\r\n" + string.Join("\r\n", errors.Select(e =>
+                $"Index '{e.Name}' ({e.Errors.Length} errors):\r\n" + string.Join("\r\n", e.Errors.Select(x => $"- {x}"))))
+            : string.Empty;
+
+        throw new TimeoutException($"The indexes stayed stale for more than {limit}.{errorText}");
+    }
 }

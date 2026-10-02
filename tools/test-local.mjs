@@ -9,7 +9,11 @@
 //     share a cache hash.
 //   - SPARK_E2E_SKIP_APP_BUILD=1: when the E2E project is affected, the apps it hosts are built
 //     once through nx first, so SparkAppTestHost skips its own per-app `dotnet build`.
-//   - nx's parallelism (nx.json `parallel`), like CI, instead of one suite after another.
+//   - `--parallel=4` (nx.json says 3, which CI keeps): measured 2026-10-02 on a 4-core/8-thread
+//     laptop, full `--skip-nx-cache` sweeps took 557 s at 3, 459 s at 4 and 445 s at 5. At 3, the
+//     long CodeCoverage.Tests build+test chain waited ~2 min for a free slot (nx "recoverable time"
+//     23%; 5% at 5). 4, not 5: a sweep at 5 was stopped by Claude Code for low memory (each heavy
+//     suite runs its own in-memory RavenDB). An explicit `--parallel` argument still wins.
 //
 // Extra arguments go to `nx affected`, e.g. `npm run test:affected -- --skip-nx-cache`.
 //
@@ -54,4 +58,5 @@ if (affected.includes(E2E)) {
   env.SPARK_E2E_SKIP_APP_BUILD = '1';
 }
 
-process.exit(nx(['affected', '-t', 'test', '-c', 'local', ...passthrough], { env }).status);
+const parallel = passthrough.some(a => /^--parallel\b/.test(a)) ? [] : ['--parallel=4'];
+process.exit(nx(['affected', '-t', 'test', '-c', 'local', ...parallel, ...passthrough], { env }).status);
