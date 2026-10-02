@@ -121,6 +121,13 @@ internal partial class SyncActionHandler : ISyncActionHandler
         if (propertySet is not null)
             po.RetainAttributes(a => propertySet.Contains(a.Name));
 
+        // Satellite attributes (contributions F2) are never posted by a sync, full or partial: their
+        // values live outside the replicated document, so the payload cannot carry them, and a full
+        // sync would otherwise turn the missing value into an empty collection — withdrawing every row.
+        var satellites = entityType.GetSparkSatellitePropertyNames();
+        if (satellites.Count > 0)
+            po.RetainAttributes(a => !satellites.Contains(a.Name));
+
         foreach (var attribute in po.Attributes)
         {
             var hasValue = TryGetValue(data, attribute.Name, out var value);
@@ -156,6 +163,10 @@ internal partial class SyncActionHandler : ISyncActionHandler
             // Same partial-update rule as the schema path: an attribute the sender did not name
             // must not appear at all, or the write path blanks the stored value.
             if (propertySet is not null && !propertySet.Contains(prop.Name))
+                continue;
+
+            // Nor a satellite (contributions F2): its value is not the replicated document's.
+            if (prop.IsSparkSatelliteProperty())
                 continue;
 
             var hasValue = TryGetValue(data, prop.Name, out var value);

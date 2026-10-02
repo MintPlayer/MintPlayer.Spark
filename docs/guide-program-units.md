@@ -183,12 +183,29 @@ Notes:
   header needs its own markup; `sidebarTabs` is the same thing as a data input.)
 - Every slot also exists as a `TemplateRef` input (`topbarEndTemplate`, …) for hosts that can't
   use content projection.
-- Inputs: `title`, `breakpoint` (default `md`), `sidebarTheme` (`'dark' | 'light' | null`,
-  default `'dark'`), `reloadToken` (forwarded to the menu).
-- Theming: override `--spark-shell-topbar-bg`, `--spark-shell-sidebar-bg`,
-  `--spark-shell-main-bg` on the `<spark-shell>` element. `sidebarTheme` flips the sidebar's
-  `data-bs-theme`, which is what recolors the accordion internals across the web component's
-  shadow boundary.
+- Inputs: `title`, `breakpoint` (default `md`), `themeToggle` (default `true`: the Auto / Light /
+  Dark toggle in the topbar), `reloadToken` (forwarded to the menu). The former `sidebarTheme`
+  input is **removed** (#462): the whole shell, sidebar included, follows the page's
+  `data-bs-theme`.
+- Theming: the chrome is six tokens, declared per colour scheme under `:root, [data-bs-theme=light]`
+  and `[data-bs-theme=dark]`, built only from Bootstrap tokens (so they follow any `--bs-*`
+  customisation). The defaults are the same in both schemes and resolve to that scheme's values:
+
+  | Token | Default | Light | Dark |
+  |---|---|---|---|
+  | `--spark-shell-topbar-bg` / `--spark-shell-sidebar-bg` | `var(--bs-tertiary-bg)` | `#f8f9fa` | `#2b3035` |
+  | `--spark-shell-topbar-color` / `--spark-shell-sidebar-color` | `var(--bs-body-color)` | `#212529` | `#dee2e6` |
+  | `--spark-shell-main-bg` | `var(--bs-body-bg)` | `#fff` | `#212529` |
+  | `--spark-shell-main-color` | `var(--bs-body-color)` | `#212529` | `#dee2e6` |
+
+  The topbar and sidebar form one tinted chrome surface, separated from the main area by a
+  `--bs-border-color` border; the main area is the plain page background, so cards and tables look
+  as they do on any Bootstrap page. The sticky `.spark-actionbar` uses `--spark-shell-main-bg` too
+  (opaque, with a bottom border), so it never looks like it floats above the page. Sidebar hover /
+  active tints are `rgba(var(--bs-emphasis-color-rgb), .1 / .2)`, which darken in light mode and
+  lighten in dark mode. Override a token globally per scheme
+  (`[data-bs-theme=dark] { --spark-shell-sidebar-bg: #1a1a2e; }`) or per instance on the
+  `<spark-shell>` element (`spark-shell { --spark-shell-topbar-bg: var(--bs-primary); --spark-shell-topbar-color: #fff; }`).
 
 ### Sign-in/out re-fetch
 

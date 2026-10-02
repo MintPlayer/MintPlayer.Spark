@@ -26,11 +26,12 @@ import {
   ReferenceLinkRoutePipe,
   ReferenceChipsPipe,
   ParsedDatePipe,
+  AsDetailRowRendererPipe,
 } from '@mintplayer/ng-spark/pipes';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
 import { SparkQueryCardComponent, SparkGridCellComponent } from '@mintplayer/ng-spark/grid';
-import { SPARK_ATTRIBUTE_RENDERERS, rendererValue, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
+import { SPARK_ATTRIBUTE_RENDERERS, SparkResolvedRowRenderer, rendererValue, rowRendererInputs, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import {
   AttributeGroup,
   AttributeTab,
@@ -58,7 +59,7 @@ import { combineLatest } from 'rxjs';
 
 @Component({
   selector: 'spark-po-detail',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsBadgeComponent,BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryCardComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, ReferenceChipsPipe, ParsedDatePipe, SparkAttributeDescriptionComponent],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, RouterModule, BsAlertComponent, BsBadgeComponent,BsCardComponent, BsCardHeaderComponent, BsContainerComponent, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsPriorityNavComponent, BsPriorityNavItemDirective, BsTableComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, BsSpinnerComponent, SparkIconComponent, SparkQueryCardComponent, SparkGridCellComponent, ResolveTranslationPipe, TranslateKeyPipe, AttributeValuePipe, RawAttributeValuePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailCellValuePipe, ArrayValuePipe, ReferenceLinkRoutePipe, ReferenceChipsPipe, ParsedDatePipe, SparkAttributeDescriptionComponent],
   templateUrl: './spark-po-detail.component.html',
   styleUrl: './spark-po-detail.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -71,7 +72,7 @@ export class SparkPoDetailComponent {
   private readonly queryRefresh = inject(SparkQueryRefreshService);
   private readonly attributeRefresh = inject(SparkAttributeRefreshService);
   protected readonly lang = inject(SparkLanguageService);
-  private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
+  protected readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
 
   /**
    * Add-on panels and action-bar buttons (#460, `SPARK_DETAIL_PANELS` / `SPARK_DETAIL_ACTIONS`).
@@ -353,6 +354,11 @@ export class SparkPoDetailComponent {
   getDetailRendererComponent(attr: EntityAttributeDefinition): Type<any> | null {
     if (!attr.renderer) return null;
     return this.rendererRegistry.find(r => r.name === attr.renderer)?.detailComponent ?? null;
+  }
+
+  /** Inputs of an AsDetail row renderer (`rowComponent`): the row and the object that owns it. */
+  getRowRendererInputs(renderer: SparkResolvedRowRenderer, row: Record<string, any>, item: PersistentObject): Record<string, any> {
+    return rowRendererInputs(renderer, row, item?.id);
   }
 
   getDetailRendererInputs(component: Type<any>, attr: EntityAttributeDefinition, item: PersistentObject): Record<string, any> {

@@ -469,6 +469,10 @@ The `CustomActionResolver` discovers action classes at startup by scanning all l
 
 Name matching is case-insensitive.
 
+The resolved name may not be a reserved verb (`Edit`, `Delete`, `Restore`, `RevertContribution`, …):
+the action would share that verb's right. SPARK023 refuses it at build time and `UseSpark()` at
+startup; see [reserved verbs](guide-authorization.md#reserved-verbs).
+
 The JSON key in `customActions.json` must match this resolved name. Only actions that have both a C# implementation **and** a JSON configuration entry are returned by the list endpoint.
 
 ## Angular Integration

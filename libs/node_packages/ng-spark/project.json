@@ -9,6 +9,11 @@
       "options": {
         "command": "vitest run --config vitest.config.ts --coverage",
         "cwd": "libs/node_packages/ng-spark"
+      },
+      "configurations": {
+        "local": {
+          "command": "vitest run --config vitest.config.ts"
+        }
       }
     },
     "build": {

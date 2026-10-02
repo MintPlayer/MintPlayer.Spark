@@ -26,6 +26,8 @@ namespace CodeCoverage.Tests.Controllers;
 /// </remarks>
 public class BrowseControllerRemainderTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const long PublicRepo = 8801;
     private const long PrivateRepo = 8802;
     private const string Sha = "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567";

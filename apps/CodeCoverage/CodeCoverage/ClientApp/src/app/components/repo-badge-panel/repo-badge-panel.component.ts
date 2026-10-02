@@ -33,7 +33,7 @@ import { BrowseService, RepoInfo } from '../../services/browse.service';
           </div>
 
           @if (r.canManage) {
-            <div class="border rounded p-2 mt-3 bg-light">
+            <div class="border rounded p-2 mt-3 bg-body-tertiary">
               <div class="d-flex align-items-center gap-2 mb-1">
                 <strong class="small">README badge</strong>
                 <button class="btn btn-sm btn-outline-secondary" (click)="copyBadge()">

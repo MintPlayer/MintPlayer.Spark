@@ -212,6 +212,19 @@ public sealed class SparkTestSecurity
     {
         public async Task<bool> IsAllowedAsync(string resource, CancellationToken cancellationToken = default)
             => await inner.IsAllowedAsync(resource, cancellationToken) || !security.Denies(resource);
+
+        /// <summary>
+        /// The file's attribute rights when the file grants the type; otherwise the baseline's type
+        /// decision with every attribute inheriting it (the builder expresses no attribute rights).
+        /// </summary>
+        public async Task<EffectiveAttributeRights> GetAttributeRightsAsync(
+            string verb, string entityTypeName, CancellationToken cancellationToken = default)
+        {
+            var fromFile = await inner.GetAttributeRightsAsync(verb, entityTypeName, cancellationToken);
+            return fromFile.TypeAllowed
+                ? fromFile
+                : EffectiveAttributeRights.Inherit(entityTypeName, verb, await IsAllowedAsync($"{verb}/{entityTypeName}", cancellationToken));
+        }
     }
 }
 

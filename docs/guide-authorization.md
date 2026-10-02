@@ -69,6 +69,115 @@ existed until #460; the posture report's "floor rather than a ceiling" warning w
 
 ---
 
+## Attribute-level rights: `{verb}/{Type}/{Attribute}`
+
+A third segment scopes a right to one attribute: `Edit/Song/Lyrics`, `QueryRead/Employee/Salary`.
+
+- **Verbs:** only `Query`, `Read`, `Edit`, `New` and the combined verbs made solely of them
+  (`QueryRead`, `QueryReadEdit`, `QueryReadEditNew`, `ReadEdit`, `ReadEditNew`, `EditNew`), which
+  expand as prefixes. `Delete`, `*Delete` combinations, `Replicate`, package verbs and custom actions
+  stay type-level, and a third segment on them refuses the file.
+- **Targets:** the type by its **name** (not an alias, a query or a reserved target such as
+  `LookupReferences`), and an attribute that type's model declares. An AsDetail row's attributes
+  target the row type (`Edit/Lyrics/Text`). Names are case-insensitive. An unknown type or
+  attribute refuses startup (and a hot reload), and the build reports it first as **SPARK014** (an
+  error).
+- **The type right is required.** An attribute right composes over its type right and never
+  unlocks it: `Edit/Song/Lyrics` without `Edit/Song` allows nothing. For an attribute that some
+  attribute right mentions, the type right and the attribute right together are ranked with the
+  four tiers of [Precedence](#precedence) across all groups; an attribute no right mentions inherits
+  the type decision. `Read` ⇒ `Query` applies to attribute grants exactly as to type grants.
+- **The contributor pattern:** grant `Edit/Song`, deny `Edit/Song/{each other attribute}`.
+- **The stale-deny trap:** an attribute added later is mentioned by none of those denials and
+  inherits the type grant. **SPARK024** (a warning) and a startup posture note
+  (information) name it: *"Group 'X' restricts Edit on 2 of 3 attributes of 'Song'; 'Genre' is still
+  editable through the type-level right — intended?"* Index-derived and projection columns are
+  ordinary attributes and are denied the same way, one by one.
+- System context (module sync, replication) is not restricted by attribute rights.
+
+Evaluated once per request per (type, verb) by `IAttributeRights`, then applied to every row — never
+asked per row.
+
+### What a denied attribute does (read side)
+
+A static attribute right **removes** the attribute; it does not blank it. *Absent* means the
+attribute is not in the payload at all — no name, no value, no metadata — for that caller:
+
+| Refused | Effect |
+|---|---|
+| `Read` | Absent from the persistent object on every presentation: `po/load`, `po/refresh`, `po/new`, a persistent object a custom action returns, and History's revision view. Absent from that caller's `types/{id}` and `types` definition, so the form never draws it (and the M1c conflict dialog, which re-fetches with `po/load`, can never show it). |
+| `Query` | Absent from the query's `columns` and from every row's values, streaming included. Search, sort, column filters and distinct values treat it **as if it did not exist**: a search does not match it, a sort on it is ignored, a filter on it is ignored (silently, like any non-filterable column), its distinct list is empty — so `totalItems` is unaffected by it. |
+| `Edit` | Read-only in the caller's definition and on the loaded object. (`New` does the same on `po/new`.) |
+
+Removal is safe to do statically because it does not vary per row: every row of the type lacks the
+same attribute for the same caller, so the absence says nothing about any one row. That is exactly
+why the per-row `GetProtectedAttributesAsync` hook is different — it keeps the attribute and empties
+its value, since a per-row absence would itself be the signal.
+
+**Breadcrumbs and `po.Name`** render a token for a refused attribute (static `Read`, or `Query` on a
+grid row) or for an attribute the per-row hook protects on that row as **empty** — the same output an
+empty value produces. This holds for the row's own breadcrumb and for every reference target's,
+judged by the target type's own rights and hook, and for an embedded AsDetail row's breadcrumb.
+
+Only attributes an attribute right **mentions** are removed; the type right itself is decided before
+any of this. An AsDetail row type is judged by its own attribute rights (`Read/Lyrics/Text`); an
+attribute no right mentions is never removed, even though the row type usually holds no type right of
+its own. When it holds none for the verb, a mention there — allow or deny — counts as a refusal,
+because attribute rights never unlock.
+
+**⚠️ Search narrowed to shown, queryable columns.** Search used to match every readable string
+property of the row type, hidden ones included, with `*word*` wildcards — a substring oracle on
+values no column shows. It now matches only attributes on the caller's query surface:
+`showedOn` includes `Query`, and not `Query`-denied (their `{Name}Search` companion is still what is
+searched). A property of the row type that belongs to no model attribute is no longer searched
+either. The in-memory search fallback follows the same rule, plus the rendered name/breadcrumb.
+
+What the per-row hook still cannot close: a value it protects on an attribute that **is** a shown,
+queryable column remains searchable, sortable and filterable, for the reason given
+[below](#️-redacting-an-attribute-is-not-enough-also-set-canfilter-false). Use a static
+attribute right when the rule does not depend on the row.
+
+### What a denied attribute does (write side)
+
+A save never refuses because of an attribute right — a refusal would tell the caller which attributes
+exist and which they may not write. Instead the server **drops** every posted attribute the caller may
+not write, before anything maps, hooks or intercepts the object (`OnBeforeSaveAsync`, the
+before-save interceptors and an `OnSaveAsync` override all see the shielded object):
+
+| Save | Dropped | What the entity keeps |
+|---|---|---|
+| Update | `Edit`-denied attributes of the type; inside AsDetail rows, the row type's `Edit`-denied attributes on a row that claims a stored row by its key, its `New`-denied ones on any other row; what the per-row hook protects on the stored row (dotted names reach into rows: `Jobs.Salary`) | The stored value — of every kind: scalars, references and reference arrays, TranslatedStrings, whole AsDetail collections, embedded objects, and each stored row's own value |
+| Create | `New`-denied attributes (rows: the row type's `New` denials) | The CLR default or the field initializer |
+
+`isValueChanged` does not matter for a refused attribute: it is dropped however the client flags it.
+The per-row hook is asked on the **stored** row: what it protects for `Edit` is always dropped; what it
+protects only for `Read` is dropped unless the client marked it changed — the caller was shown a blank,
+so posting the blank back never wipes the value, while a deliberate new value for a write-only field
+still lands. Adding and removing AsDetail rows stays governed by the row type's type-level `New` and
+`Delete` rights, and editing an existing row by its `Edit` right (an attribute grant on the row type
+never unlocks it). System context (sync, replication) is not shielded.
+
+**The save response is re-presented.** `po/create` and `po/update` answer with the saved row exactly
+as `po/load` presents it to that caller — row gate, per-row blanking, breadcrumbs, disabled actions,
+`Read`-denied attributes removed and `Edit`-denied ones read-only, and the fresh etag — never the
+posted object. (The old shield restored a protected stored value into the posted object, and the
+response echoed it.) A caller who may save but not read the row gets the saved object back with its
+`Read`-denied attributes removed: its id and etag, and only values it posted.
+
+**A History revert is partial.** It restores only attributes the caller may edit. When an
+`Edit`-denied attribute holds a different value in the revision, the revert still succeeds, keeps the
+current value there, and the response carries a warning notification ("Reverted partially: …") in the
+envelope's `operations` — the channel every Spark client already shows. Per-row protection never
+triggers the warning: whether a row protects an attribute is what that hook hides.
+
+**The per-row hook blanks indistinguishably.** A protected attribute keeps its place and its model
+flags; only its value (and a reference's breadcrumb, an AsDetail attribute's rows) is emptied. There is
+no `isVisible: false` and no marker, so its JSON is byte-identical to a genuinely empty attribute's —
+the form renders it as an empty field. A persistent object in a **retry prompt** is presented the same
+way (static removal, then per-row blanking when it is a stored row).
+
+---
+
 ## `Query` without `Read`: the pair worth knowing
 
 The difference is visible in the UI:
@@ -242,6 +351,105 @@ dotnet run -- --spark-synchronize-security  # accept the change, then commit the
 `security.json` is a data file: widening it is a one-line diff that reads no differently from
 narrowing it, and the consequence is invisible until someone reaches the endpoint. The baseline
 is what makes it reviewable.
+
+---
+
+## Reserved verbs
+
+A **reserved verb** is an action that Spark or a package asks `security.json` about: `Read`, `Edit`,
+SoftDelete's `Restore`, Contributions' `RevertContribution`, and so on. No custom action may share one
+of these names.
+
+The reason is how a custom action is authorized. Its right is `{ActionName}/{Type}`, and its name is
+its class name with an `Action` suffix removed ([custom actions](guide-custom-actions.md#action-name-resolution)).
+A class `RestoreAction` would therefore be authorized by `Restore/Car`, the same right that authorizes
+SoftDelete's restore. Granting one would grant both, and one endpoint would shadow the other.
+
+### Where the built-in verbs live
+
+Each owner declares its verbs once, as `public const string` fields on a static class, and points at
+that class with an assembly attribute:
+
+| Owner | Class | Verbs |
+|---|---|---|
+| Core (`MintPlayer.Spark.Abstractions`) | `SparkCoreActions` | `Query`, `Read`, `New`, `Edit`, `Delete`, `Replicate` |
+| Core (`MintPlayer.Spark.Abstractions`) | `SparkCombinedActions` | `QueryRead`, `QueryReadEdit`, `QueryReadEditNew`, `QueryReadEditNewDelete`, `ReadEdit`, `ReadEditNew`, `ReadEditNewDelete`, `EditNew`, `EditNewDelete`, `NewDelete` |
+| SoftDelete | `SoftDeleteRights` | `Restore`, `Purge`, `ViewDeleted` |
+| History | `HistoryRights` | `History`, `Revert` |
+| Moderation | `ModerationRights` | `Vote`, `Downvote`, `Flag`, `Lock`, `Review`, `Suspend`, `Audit` |
+| Contributions | `ContributionRights` | `RevertContribution` |
+
+A package's verbs are reserved only where the package is referenced. An application without SoftDelete
+may have a `RestoreAction`.
+
+There is no `Create` verb (creating is `New`), so a `CreateAction` is allowed.
+
+### Declaring your own verbs (library authors)
+
+A package that asks `security.json` about a verb of its own should declare it the same way:
+
+```csharp
+using MintPlayer.Spark.Abstractions.Authorization;
+
+[assembly: SparkReservedActions(typeof(Acme.Spark.Publishing.PublishingRights))]
+
+namespace Acme.Spark.Publishing;
+
+public static class PublishingRights
+{
+    /// <summary><c>Publish/T</c>: make a draft visible.</summary>
+    public const string Publish = "Publish";
+
+    /// <summary>A pseudo-target, not a verb.</summary>
+    [SparkNotAnAction]
+    public const string Target = "Publishing";
+}
+```
+
+- **Only `public const string` fields count.** Mark a constant that is not a verb, such as a target
+  name, with `[SparkNotAnAction]`. `ModerationRights.Target` is marked this way.
+- **The attribute may appear several times** in one assembly. Core declares both of its classes this way.
+- **Put it in an assembly that references `MintPlayer.Spark.Abstractions`.** The startup check
+  finds verbs by following references from assemblies that reference it. SoftDelete declares its verbs
+  in `MintPlayer.Spark.SoftDelete` for this reason: `SoftDelete.Abstractions` references no Spark
+  package.
+- **Use the constants in your own code** (`PublishingRights.Publish`) instead of repeating the string.
+
+The declaration does three things wherever your package is referenced:
+
+1. **SPARK023** (build error) refuses a custom action named like the verb. The analyzer reads the
+   constants from the compilation and from referenced assemblies' metadata, so it works without
+   loading your package.
+2. **`UseSpark()` refuses to start** with the same collision (see below), in case the analyzer did not
+   run.
+3. **SPARK011** knows the verb exists, so a `Publish/Article` right is not reported as an action Spark
+   never asks for. The reverse also holds: a `Restore/Car` right in an application without SoftDelete
+   *is* reported, because nothing there asks for it.
+
+### What is refused
+
+A non-abstract class implementing `ICustomAction` whose name, with an `Action` suffix removed, equals
+any reserved verb. The comparison ignores case, as rights do. For example:
+
+| Class | Name | Refused because of |
+|---|---|---|
+| `EditAction` | `Edit` | `SparkCoreActions.Edit` |
+| `deleteAction` | `delete` | `SparkCoreActions.Delete` (case-insensitive) |
+| `ReadEdit` | `ReadEdit` | `SparkCombinedActions.ReadEdit` |
+| `RevertContributionAction` | `RevertContribution` | `ContributionRights.RevertContribution`, when Contributions is referenced |
+
+At build time:
+
+```
+error SPARK023: Custom action 'EditAction' is named 'Edit', which is the reserved action verb 'Edit'
+declared by MintPlayer.Spark.Abstractions.Authorization.SparkCoreActions in 'MintPlayer.Spark.Abstractions'.
+It would share that verb's right; rename the class.
+```
+
+At startup, `UseSpark()` checks every custom action it discovered against the verbs it reads by
+reflection (`SparkReservedActionRegistry`). It throws one `InvalidOperationException` that lists every
+collision with the declaring class and assembly, and ends with "Rename the action class." The fix is
+always a rename. There is no opt-out, because a shared right cannot be made safe.
 
 ---
 

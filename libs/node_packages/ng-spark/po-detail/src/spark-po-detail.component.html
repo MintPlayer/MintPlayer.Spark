@@ -104,15 +104,16 @@
                 <bs-table [isResponsive]="true">
                   <thead>
                     <tr>
-                      @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
+                      @for (col of (attr | asDetailColumns:asDetailTypes():rendererRegistry); track col.name) {
                         <th>{{ (col.label | resolveTranslation) || col.name }}<spark-attribute-description [description]="col.description" /></th>
                       }
                     </tr>
                   </thead>
                   <tbody class="align-middle">
+                    @let rowRenderer = (attr | asDetailRowRenderer:asDetailTypes():rendererRegistry);
                     @for (row of (attr.name | arrayValue:currentItem); track $index) {
                       <tr>
-                        @for (col of (attr | asDetailColumns:asDetailTypes()); track col.name) {
+                        @for (col of (attr | asDetailColumns:asDetailTypes():rendererRegistry); track col.name; let firstCol = $first) {
                           <td>
                             <!--
                               Shared with the query grid. This cell used to hand-roll the renderer
@@ -133,12 +134,19 @@
                                 [link]="col.dataType === 'Reference' && col.referenceType
                                           ? (col.referenceType | referenceLinkRoute:row[col.name]:allEntityTypes())
                                           : null" />
+                            <!-- A row renderer (rowComponent: contributions' attribution line) draws
+                                 its attributes once, under the row's first cell, instead of as columns. -->
+                            @if (firstCol && rowRenderer) {
+                              <div class="spark-row-renderer">
+                                <ng-container *ngComponentOutlet="rowRenderer.component; inputs: getRowRendererInputs(rowRenderer, row, currentItem)"></ng-container>
+                              </div>
+                            }
                           </td>
                         }
                       </tr>
                     } @empty {
                       <tr>
-                        <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes()).length" class="text-center text-muted">
+                        <td [attr.colspan]="(attr | asDetailColumns:asDetailTypes():rendererRegistry).length" class="text-center text-muted">
                           {{ 'common.noItemsFound' | t }}
                         </td>
                       </tr>

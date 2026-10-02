@@ -22,6 +22,10 @@ internal partial class SecurityConfigurationLoader : ISecurityConfigurationLoade
     [Inject] private readonly IHostEnvironment hostEnvironment;
     [Inject] private readonly ILogger<SecurityConfigurationLoader> logger;
 
+    // Singleton over a singleton that depends only on IHostEnvironment, so no cycle: ModelLoader never
+    // asks for authorization.
+    [Inject] private readonly IModelLoader modelLoader;
+
     /// <summary>Where every Spark application's security file lives. See the remarks on the class.</summary>
     public const string FilePath = "App_Data/security.json";
 
@@ -99,7 +103,9 @@ internal partial class SecurityConfigurationLoader : ISecurityConfigurationLoade
         // Validated on the way out of the loader, so a hot reload is held to the same standard as
         // startup. A file that has drifted into meaninglessness must not quietly replace one that
         // had not.
-        SecurityConfigurationValidator.Validate(loaded);
+        // The model is consulted for attribute-level rights ({verb}/{Type}/{Attr}): an unknown type or
+        // attribute is refused here, at startup and on every hot reload alike.
+        SecurityConfigurationValidator.Validate(loaded, modelLoader);
 
         logger.LogInformation("Loaded security configuration with {GroupCount} groups and {RightCount} rights",
             loaded.Groups.Count, loaded.Rights.Count);

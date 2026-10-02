@@ -6,7 +6,8 @@ using TestModels = MintPlayer.Spark.Tests.Endpoints.PersistentObject.TestModels;
 
 namespace MintPlayer.Spark.Tests.Endpoints.Queries;
 
-public class ListQueriesEndpointTests : SparkTestDriver
+public class ListQueriesEndpointTests(SparkSharedDatabase database)
+    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
 {
     private static readonly Guid PersonTypeId = Guid.Parse("aaaa2222-2222-2222-2222-aaaaaaaaaaaa");
     private static readonly Guid AllPeopleQueryId = Guid.Parse("bbbb2222-2222-2222-2222-bbbbbbbbbbbb");

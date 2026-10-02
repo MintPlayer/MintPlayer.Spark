@@ -31,6 +31,12 @@ public interface IClientAccessor
     /// <summary>Show a toast on the frontend.</summary>
     void Notify(string message, NotificationKind kind = NotificationKind.Info, TimeSpan? duration = null);
 
+    /// <summary>
+    /// Show a toast in the user's language: every translation travels and the client picks the one of
+    /// the language its user chose; the plain message is resolved from the request's culture.
+    /// </summary>
+    void Notify(TranslatedString message, NotificationKind kind = NotificationKind.Info, TimeSpan? duration = null);
+
     // --- Refresh --------------------------------------------------------
 
     /// <summary>Patch the named attribute on the given PO if it's currently displayed.</summary>

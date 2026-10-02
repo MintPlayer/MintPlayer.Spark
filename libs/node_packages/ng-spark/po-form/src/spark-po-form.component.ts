@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, model, output, signal, effect, Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, model, output, signal, effect, Type } from '@angular/core';
 import { CommonModule, NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -26,6 +26,7 @@ import {
   AsDetailDisplayValuePipe,
   AsDetailTypePipe,
   AsDetailColumnsPipe,
+  AsDetailRowRendererPipe,
   AsDetailCellValuePipe,
   CanCreateDetailRowPipe,
   CanEditDetailRowPipe,
@@ -61,26 +62,27 @@ import {
 } from '@mintplayer/ng-spark/models';
 import { SparkIconComponent } from '@mintplayer/ng-spark/icon';
 import { SparkAttributeDescriptionComponent } from '@mintplayer/ng-spark/attribute-description';
-import { SPARK_ATTRIBUTE_RENDERERS, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
+import { SPARK_ATTRIBUTE_RENDERERS, SparkResolvedRowRenderer, rowRendererInputs, withDeclaredInputs } from '@mintplayer/ng-spark/renderers';
 import { SparkReferencePickerComponent } from './spark-reference-picker.component';
 import { SparkLookupPickerComponent } from './spark-lookup-picker.component';
-import { RefreshCoordinator, triggersImmediately } from './refresh-coordinator';
+import { RefreshCoordinator, RefreshDispatch, effectiveTrigger, refreshDispatch } from './refresh-coordinator';
 
 /**
  * A refresh a form embedded in another form is asking its host to issue on its behalf.
  *
- * `immediate` mirrors the distinction the host's own editors make: a discrete editor fires on
- * change, free text only marks itself pending and fires on blur.
+ * `dispatch` carries the decision the child's own editor made from its declared `triggersRefresh`
+ * — send now, send once typing pauses, or wait for blur — so the host applies exactly the semantics
+ * it would have applied to an editor of its own.
  */
 export interface NestedTriggerRequest {
   /** The full path the server addresses, e.g. `Gate.ProjectMode`. */
   path: string;
-  immediate: boolean;
+  dispatch: RefreshDispatch;
 }
 
 @Component({
   selector: 'spark-po-form',
-  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPreview, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsTreeSelectComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, SparkReferencePickerComponent, SparkLookupPickerComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayTypePipe, LookupOptionsPipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, CanEditDetailRowPipe, InlineRefOptionsPipe, ErrorForAttributePipe, SparkAttributeDescriptionComponent],
+  imports: [CommonModule, NgTemplateOutlet, NgComponentOutlet, FormsModule, CdkDropList, CdkDrag, CdkDragHandle, CdkDragPreview, BsCardComponent, BsCardHeaderComponent, BsFormComponent, BsFormControlDirective, BsGridComponent, BsGridRowDirective, BsGridColumnDirective, BsGridColDirective, BsColFormLabelDirective, BsButtonTypeDirective, BsInputGroupComponent, BsSelectComponent, BsSelectOption, BsTreeSelectComponent, BsModalHostComponent, BsModalDirective, BsModalHeaderDirective, BsModalBodyDirective, BsModalFooterDirective, BsTableComponent, BsCheckboxComponent, BsSpinnerComponent, BsTabControlComponent, BsTabPageComponent, BsTabPageHeaderDirective, SparkIconComponent, SparkPoFormComponent, SparkReferencePickerComponent, SparkLookupPickerComponent, TranslateKeyPipe, ResolveTranslationPipe, InputTypePipe, LookupDisplayTypePipe, LookupOptionsPipe, AsDetailDisplayValuePipe, AsDetailTypePipe, AsDetailColumnsPipe, AsDetailRowRendererPipe, AsDetailCellValuePipe, CanCreateDetailRowPipe, CanDeleteDetailRowPipe, CanEditDetailRowPipe, InlineRefOptionsPipe, ErrorForAttributePipe, SparkAttributeDescriptionComponent],
   templateUrl: './spark-po-form.component.html',
   // The CDK drag placeholder is a clone of the dragged row (so it keeps the exact row
   // height). Hide its contents but keep it occupying space, so the drop gap is blank and
@@ -91,7 +93,7 @@ export interface NestedTriggerRequest {
 export class SparkPoFormComponent {
   private readonly sparkService = inject(SparkService);
   private readonly translations = inject(SparkLanguageService);
-  private readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
+  protected readonly rendererRegistry = inject(SPARK_ATTRIBUTE_RENDERERS);
 
   entityType = input<EntityType | null>(null);
   formData = model<Record<string, any>>({});
@@ -250,6 +252,9 @@ export class SparkPoFormComponent {
   }
 
   constructor() {
+    // A `ValueChanged` debounce still waiting when the form goes must not fire against a dead form.
+    inject(DestroyRef).onDestroy(() => this.refreshCoordinator.dispose());
+
     effect(() => {
       const et = this.entityType();
       const _pid = this.parentId();
@@ -450,6 +455,11 @@ export class SparkPoFormComponent {
     return this.rendererRegistry.find(r => r.name === col.renderer)?.columnComponent ?? null;
   }
 
+  /** Inputs of an AsDetail row renderer (`rowComponent`): the row and the object being edited. */
+  getRowRendererInputs(renderer: SparkResolvedRowRenderer, row: Record<string, any>): Record<string, any> {
+    return rowRendererInputs(renderer, row, this.objectId());
+  }
+
   getAsDetailCellRendererInputs(component: Type<any>, row: Record<string, any>, col: EntityAttributeDefinition): Record<string, any> {
     return withDeclaredInputs(component, {
       value: row[col.name],
@@ -527,16 +537,13 @@ export class SparkPoFormComponent {
    */
   onInlineCellChange(attr: EntityAttributeDefinition, rowIndex: number, col: EntityAttributeDefinition): void {
     this.onFieldChange();
-    if (col.triggersRefresh !== true || !this.objectTypeId()) return;
+    const dispatch = refreshDispatch(col);
+    if (!dispatch || !this.objectTypeId()) return;
 
     const path = this.inlineErrorPath(attr, rowIndex, col);
     this.pendingNestedTrigger = { kind: 'row', attribute: attr.name, rowIndex };
 
-    if (triggersImmediately(col)) {
-      void this.refreshCoordinator.trigger(path);
-    } else {
-      this.refreshCoordinator.markPending(path);
-    }
+    void this.refreshCoordinator.dispatch(path, dispatch);
   }
 
   /**
@@ -568,11 +575,7 @@ export class SparkPoFormComponent {
     // trigger does not know which target it belongs to, so the mark is what remembers.
     this.pendingNestedTrigger = { kind: 'object', attribute: attributeName };
 
-    if (event.immediate) {
-      void this.refreshCoordinator.trigger(event.path);
-    } else {
-      this.refreshCoordinator.markPending(event.path);
-    }
+    void this.refreshCoordinator.dispatch(event.path, event.dispatch);
   }
 
   /** Blur counterpart of {@link onEmbeddedTrigger}, for the child's free-text editors. */
@@ -639,14 +642,17 @@ export class SparkPoFormComponent {
   }
 
   onInlineCellBlur(attr: EntityAttributeDefinition, rowIndex: number, col: EntityAttributeDefinition): void {
-    if (col.triggersRefresh !== true || !this.objectTypeId()) return;
+    if (effectiveTrigger(col) === 'none' || !this.objectTypeId()) return;
     void this.refreshCoordinator.blur(this.inlineErrorPath(attr, rowIndex, col));
   }
 
-  /** Blur handler for free-text editors — sends the refresh their keystrokes only marked pending. */
+  /**
+   * Blur handler for free-text editors — sends the refresh their keystrokes only marked pending, or
+   * cuts short a `ValueChanged` debounce that is still waiting.
+   */
   onFieldBlur(attr: EntityAttributeDefinition): void {
     if (this.triggerPathPrefix()) {
-      if (attr.triggersRefresh !== true) return;
+      if (effectiveTrigger(attr) === 'none') return;
       this.nestedTriggerBlurred.emit(this.nestedTriggerPath(attr));
       return;
     }
@@ -658,23 +664,18 @@ export class SparkPoFormComponent {
   private noteChange(attr: EntityAttributeDefinition): void {
     // Embedded: report upward and stop. The parent owns the request because only it knows the
     // object being edited and holds the right the server authorizes against.
+    const dispatch = refreshDispatch(attr);
     if (this.triggerPathPrefix()) {
-      if (attr.triggersRefresh !== true) return;
-      this.nestedTriggerRequested.emit({
-        path: this.nestedTriggerPath(attr),
-        immediate: triggersImmediately(attr),
-      });
+      if (!dispatch) return;
+      this.nestedTriggerRequested.emit({ path: this.nestedTriggerPath(attr), dispatch });
       return;
     }
 
-    if (!this.canRefresh(attr)) return;
+    if (!dispatch || !this.canRefresh(attr)) return;
 
-    if (triggersImmediately(attr)) {
-      void this.refreshCoordinator.trigger(attr.name);
-    } else {
-      // Free text: marking is all a keystroke earns. The request goes on blur, or on save.
-      this.refreshCoordinator.markPending(attr.name);
-    }
+    // Discrete editors send now. Free text either only marks itself pending (`Auto` / `Blur`: the
+    // request goes on blur, or on save) or waits for typing to pause (`ValueChanged`).
+    void this.refreshCoordinator.dispatch(attr.name, dispatch);
   }
 
   /** `Gate.ProjectMode` — the index-free counterpart of the inline grid's `Jobs[1].Kind`. */
@@ -683,7 +684,7 @@ export class SparkPoFormComponent {
   }
 
   private canRefresh(attr: EntityAttributeDefinition): boolean {
-    return attr.triggersRefresh === true && !!this.objectTypeId();
+    return effectiveTrigger(attr) !== 'none' && !!this.objectTypeId();
   }
 
   /**

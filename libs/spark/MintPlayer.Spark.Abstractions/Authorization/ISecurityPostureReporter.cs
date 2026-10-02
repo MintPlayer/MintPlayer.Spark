@@ -31,10 +31,17 @@ public interface ISecurityPostureReporter
 /// override. Not errors: an application is entitled to be a public API. The point is that it should
 /// be entitled to it <em>on purpose</em>.
 /// </param>
+/// <param name="Notes">
+/// Information-level observations — today the stale attribute-deny finding (a group restricts a verb
+/// on some attributes of a type, and others still inherit the type-level grant). Logged at
+/// Information, never part of the <see cref="Fingerprint"/>.
+/// </param>
 public sealed record SecurityPosture(
     IReadOnlyList<string> AnonymouslyReachable,
-    IReadOnlyList<string> Warnings)
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<string>? Notes = null)
 {
+
     /// <summary>
     /// A stable, order-independent rendering of the anonymous surface — what a CI gate compares
     /// against a committed baseline so that widening it shows up in a diff instead of in production.

@@ -120,6 +120,12 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
 
         var loaded = await MaterializeAsync(requested);
 
+        // Materialize interceptors (contributions F1) fill satellite properties before any gate or
+        // the mapper reads the entities. Here rather than inside the virtual MaterializeAsync, so an
+        // override of how entities are found cannot skip them.
+        if (services.GetService<IPersistentObjectInterceptorPipeline>() is { } pipeline)
+            await pipeline.RunAfterMaterializeAsync(typeof(T), session, loaded.Values.Where(e => e is not null).Cast<object>(), Abstractions.Interceptors.MaterializeReason.Load);
+
         var collectionGuard = services.GetRequiredService<ICollectionGuard>();
         var rowSecurity = services.GetRequiredService<IRowSecurity>();
 
@@ -255,12 +261,31 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         // (Id is null/empty, or Raven returned null for an unknown Id) falls through to
         // ToEntity which builds a fresh instance from the PO.
         T entity;
+        // The change vector the write must still find (contributions F7). The etag check in
+        // DatabaseAccess compares in a side session and cannot see a write that lands after it, so
+        // the write itself carries the expectation: the client's etag when it posted one, otherwise
+        // the version this session loaded. A concurrent write in between fails SaveChangesAsync with
+        // RavenDB's ConcurrencyException, which DatabaseAccess turns into the 409.
+        // Null for a create — New keeps its semantics, including a create under a caller-chosen id.
+        string? expectedChangeVector = null;
         if (!string.IsNullOrEmpty(obj.Id))
         {
             var existing = await session.LoadAsync<T>(obj.Id);
             if (existing is not null)
             {
-                await ShieldProtectedAttributesAsync(obj, existing);
+                expectedChangeVector = !string.IsNullOrEmpty(obj.Etag)
+                    ? obj.Etag
+                    : session.Advanced.GetChangeVectorFor(existing);
+                // Satellite properties are filled before the posted values are merged (contributions
+                // F1), so an edited hydrated row maps as an Edit, not a New plus a Delete. Idempotent:
+                // an instance the Update pre-read already hooked is not hooked again.
+                if (serviceProvider?.GetService<IPersistentObjectInterceptorPipeline>() is { } materializePipeline)
+                    await materializePipeline.RunAfterMaterializeAsync(typeof(T), session, [existing], Abstractions.Interceptors.MaterializeReason.SaveReload);
+                // Through the framework, IDatabaseAccess already dropped every attribute the caller may
+                // not write (contributions M2c-2b, IAttributeWriteShield). Constructed by hand, outside
+                // it, the class's own per-row hook is all there is to honour.
+                if (serviceProvider is null)
+                    await ShieldProtectedAttributesAsync(obj, existing);
                 await entityMapper.PopulateObjectValuesAsync(obj, existing, session);
                 entity = existing;
             }
@@ -280,7 +305,10 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         if (serviceProvider?.GetService<IPersistentObjectInterceptorPipeline>() is { } pipeline)
             await pipeline.RunBeforeSaveAsync(obj, entity);
         await EnsureRowSaveAllowedAsync(obj, entity);
-        await session.StoreAsync(entity);
+        if (expectedChangeVector is not null)
+            await session.StoreAsync(entity, expectedChangeVector, session.Advanced.GetDocumentId(entity));
+        else
+            await session.StoreAsync(entity);
         await session.SaveChangesAsync();
         await OnAfterSaveAsync(obj, entity);
         return entity;
@@ -509,8 +537,11 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     /// updates. Null or empty means nothing is redacted — the default, costing nothing.
     ///
     /// A dotted name ("Jobs.Salary") redacts a column inside an AsDetail attribute's embedded
-    /// rows — the one place a row filter can't reach, since embedded rows aren't rows. Write-back
-    /// shielding applies to top-level names; dotted names are read-side redaction only.
+    /// rows — the one place a row filter can't reach, since embedded rows aren't rows. A protected
+    /// attribute is blanked indistinguishably from an empty one (no visibility flag, no marker), and
+    /// its posted value is dropped on save — dotted names included (contributions M2c-2b): asked with
+    /// <c>"Edit"</c> it is always dropped, asked with <c>"Read"</c> it is dropped unless the client
+    /// marked it changed, so posting the blank back never wipes the stored value.
     ///
     /// The canonical case: a secret only managers of this row may view —
     /// <c>CanManage(entity) ? null : ["BadgeToken"]</c>. Redaction is per row and per caller;
@@ -521,11 +552,13 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         => Task.FromResult<IReadOnlyCollection<string>?>(null);
 
     /// <summary>
-    /// Write-back safety for redaction: a client that received a redacted (nulled) attribute and
-    /// submits the form back would silently clobber the stored secret — and a malicious client
-    /// could overwrite it deliberately. Before the merge, protected attributes get the existing
-    /// entity's current value restored, so the merge writes the secret back to itself. Skipped
-    /// for the system context (sync replicates full values).
+    /// Write-back safety for redaction when the class is constructed by hand, outside the framework
+    /// (through it, <c>IAttributeWriteShield</c> in <c>IDatabaseAccess</c> covers every attribute kind
+    /// and static rights too): a client that received a blanked attribute and submits the form back
+    /// would silently clobber the stored secret — and a malicious client could overwrite it
+    /// deliberately. Protected top-level attributes are dropped from the posted object before the
+    /// merge, so the merge leaves the stored value alone (and nothing echoes it back). Skipped for the
+    /// system context (sync replicates full values).
     /// </summary>
     private async Task ShieldProtectedAttributesAsync(PersistentObject obj, T existing)
     {
@@ -536,19 +569,8 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
         if (protectedNames is not { Count: > 0 })
             return;
 
-        foreach (var name in protectedNames)
-        {
-            if (name.Contains('.'))
-                continue; // AsDetail child columns: read-side redaction only (documented).
-
-            var attribute = obj.Attributes.FirstOrDefault(a => a.Name == name);
-            var property = typeof(T).GetProperty(name);
-            if (attribute is null || property is null || !property.CanRead)
-                continue;
-
-            attribute.Value = property.GetValue(existing);
-            attribute.IsValueChanged = false;
-        }
+        var drop = new HashSet<string>(protectedNames, StringComparer.OrdinalIgnoreCase);
+        obj.RetainAttributes(a => !drop.Contains(a.Name));
     }
 
     /// <inheritdoc />
@@ -561,7 +583,8 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
     public virtual Task OnBeforeDeleteAsync(T entity) => Task.CompletedTask;
 
     /// <summary>
-    /// Called when the value of an attribute declaring <c>"triggersRefresh": true</c> changes, so the
+    /// Called when the value of an attribute declaring <c>"triggersRefresh": "Auto"</c> (or any other
+    /// trigger but <c>"None"</c>) changes, so the
     /// form can be reshaped in response. Mutate <c>args.PersistentObject</c>: toggle
     /// <see cref="PersistentObjectAttribute.IsRequired"/>, <see cref="PersistentObjectAttribute.IsReadOnly"/>
     /// and <see cref="PersistentObjectAttribute.IsVisible"/>, rewrite

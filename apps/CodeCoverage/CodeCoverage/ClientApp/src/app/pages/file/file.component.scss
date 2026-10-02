@@ -3,15 +3,15 @@
 // decision, see docs/PLAN.md M10).
 :host ::ng-deep mp-code-snippet {
   &::part(annotation-covered) {
-    background: rgba(25, 135, 84, 0.12);
+    background: var(--bs-success-bg-subtle);
   }
 
   &::part(annotation-partial) {
-    background: rgba(255, 193, 7, 0.18);
+    background: var(--bs-warning-bg-subtle);
   }
 
   &::part(annotation-uncovered) {
-    background: rgba(220, 53, 69, 0.14);
+    background: var(--bs-danger-bg-subtle);
   }
 }
 

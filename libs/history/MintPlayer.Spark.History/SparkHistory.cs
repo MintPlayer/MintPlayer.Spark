@@ -3,7 +3,9 @@ using System.Reflection;
 using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Authorization;
+using MintPlayer.Spark.Abstractions.ClientOperations;
 using MintPlayer.Spark.Abstractions.Interceptors;
+using MintPlayer.Spark.Abstractions.Reflection;
 using MintPlayer.Spark.Services;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
@@ -24,6 +26,14 @@ internal sealed partial class SparkHistory : ISparkHistory
     [Inject] private readonly IDocumentStore documentStore;
     [Inject] private readonly HistoryRequestState state;
     [Inject] private readonly IHistoryUserNameResolver? userNames;
+    [Inject] private readonly IClientAccessor? clientAccessor;
+
+    /// <summary>The warning a partial revert answers with (contributions M2c-2b).</summary>
+    /// <summary>Every language travels; ng-spark shows the one its user picked (not the browser's).</summary>
+    internal static readonly TranslatedString PartialRevertMessage = TranslatedString.Create(
+        "Reverted partially: some attributes you may not edit kept their current values.",
+        "Restauration partielle : certains attributs que vous ne pouvez pas modifier ont gardé leur valeur actuelle.",
+        "Gedeeltelijk teruggezet: sommige attributen die u niet mag bewerken, behielden hun huidige waarde.");
 
     public async Task<IReadOnlyList<SparkRevision>> ListAsync(Guid objectTypeId, string id, int skip = 0, int take = 50, CancellationToken cancellationToken = default)
     {
@@ -91,6 +101,7 @@ internal sealed partial class SparkHistory : ISparkHistory
         var revision = await LoadRevisionOfAsync(definition, entityType, id, changeVector);
 
         var mapped = entityMapper.ToPersistentObject(revision, objectTypeId);
+        var satellites = entityType.GetSparkSatellitePropertyNames();
         var po = new PersistentObject
         {
             Id = id,
@@ -98,13 +109,17 @@ internal sealed partial class SparkHistory : ISparkHistory
             ObjectTypeId = objectTypeId,
             // The row as it is NOW is what the revert replaces: a concurrent edit is a 409, not overwritten.
             Etag = current.Etag,
-            // Audit fields are the stamping's, never the revision's.
-            Attributes = [.. mapped.Attributes.Where(a => !AuditFields.Contains(a.Name))],
+            // Audit fields are the stamping's, never the revision's. Satellite attributes
+            // (contributions F2) were never stored, so a revision holds no value for them: posting
+            // its empty value would withdraw every row an interceptor supplies. They are left as they are.
+            Attributes = [.. mapped.Attributes.Where(a => !AuditFields.Contains(a.Name) && !satellites.Contains(a.Name))],
         };
         foreach (var attribute in po.Attributes)
             attribute.IsValueChanged = true;
 
         state.RevertSource = revision;
+        state.RevertPartial = false;
+        bool partial;
         try
         {
             await databaseAccess.SavePersistentObjectAsync(po, PersistentObjectOperation.Revert);
@@ -112,7 +127,15 @@ internal sealed partial class SparkHistory : ISparkHistory
         finally
         {
             state.RevertSource = null;
+            partial = state.RevertPartial;
+            state.RevertPartial = false;
         }
+
+        // Attributes the caller may not edit keep their current values (contributions M2c-2b). The
+        // save succeeded, so a silent partial revert would read as a complete one: say so, in the
+        // envelope's operations, the channel every Spark client already shows.
+        if (partial)
+            clientAccessor?.Notify(PartialRevertMessage, NotificationKind.Warning);
 
         return await databaseAccess.GetPersistentObjectAsync(objectTypeId, id)
             ?? throw new SparkRowLevelAccessDeniedException($"{HistoryRights.Revert}/{definition.Name}");

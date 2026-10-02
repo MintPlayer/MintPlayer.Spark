@@ -12,6 +12,7 @@ using MintPlayer.Spark.IdentityProvider.Extensions;
 using MintPlayer.Spark.IdentityProvider.Models;
 using MintPlayer.Spark.IdentityProvider.Services;
 using MintPlayer.Spark.Testing;
+using MintPlayer.Spark.Tests._Infrastructure;
 using Raven.Client.Documents;
 
 namespace MintPlayer.Spark.Tests.IdentityProvider;
@@ -25,21 +26,72 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// first to exercise <c>/connect/*</c> at all.
 /// </para>
 /// <para>
-/// In-process on <c>TestServer</c> rather than a hosted demo app, so there is no subprocess,
-/// no Angular build, and no shared state between cases. Note that <c>TestServer</c>'s
-/// <c>HttpClient</c> does not manage cookies — anything cookie-driven (login, consent) must
-/// thread them explicitly.
+/// In-process on <c>TestServer</c> rather than a hosted demo app, so there is no subprocess and
+/// no Angular build. Note that <c>TestServer</c>'s <c>HttpClient</c> does not manage cookies —
+/// anything cookie-driven (login, consent) must thread them explicitly.
+/// </para>
+/// <para>
+/// ⚠️ <b>One host and one database per test CLASS</b> (M8 item 11): a derived class takes an
+/// <see cref="OidcSharedHost"/> through <c>IClassFixture&lt;OidcSharedHost&gt;</c>. Booting the
+/// provider per case was about a quarter of the suite's summed class time. The price is that the
+/// cases of a class share state, so every client id and e-mail a case seeds goes through
+/// <see cref="ClientId"/> and <see cref="UserEmail"/>, and a case asserts only on records it can
+/// trace to its own application or user, never on a whole collection. See
+/// <see cref="SparkSharedDatabase"/> for the full set of rules.
+/// </para>
+/// <para>
+/// A class that changes database-wide state (disabling a scope every client shares) uses the
+/// parameterless constructor instead, which gives each case a host and database of its own.
 /// </para>
 /// </summary>
-public abstract class OidcTestHost : SparkTestDriver
+public abstract class OidcTestHost : SparkSharedTestDriver, IAsyncLifetime
 {
+    private readonly OidcSharedHost host;
+    private readonly bool ownsHost;
+
+    /// <summary>Runs the case on the class's shared host.</summary>
+    protected OidcTestHost(OidcSharedHost host) : base(host) => this.host = host;
+
+    /// <summary>Runs the case on a host and database of its own, booted and torn down with it.</summary>
+    protected OidcTestHost() : this(new OidcSharedHost()) => ownsHost = true;
+
+    async Task IAsyncLifetime.InitializeAsync()
+    {
+        if (ownsHost)
+            await host.InitializeAsync();
+    }
+
+    async Task IAsyncLifetime.DisposeAsync()
+    {
+        if (ownsHost)
+            await host.DisposeAsync();
+    }
+
     protected const string Issuer = "https://idp.test";
 
-    private SparkEndpointFactory<OidcTestContext>? _factory;
+    /// <summary>
+    /// A client id unique to this test case: <paramref name="name"/> plus the case's
+    /// <see cref="SparkSharedTestDriver.Scope"/>. The cases of a class share one database, so two
+    /// cases both seeding <c>"webapp"</c> would leave two applications behind one client id.
+    /// The default redirect URI follows it (<c>https://{clientId}.test/cb</c>).
+    /// </summary>
+    protected string ClientId(string name) => $"{name}-{Scope}";
 
-    protected SparkEndpointFactory<OidcTestContext> Factory =>
-        _factory ??= new SparkEndpointFactory<OidcTestContext>(
-            Store,
+    /// <summary>
+    /// An e-mail address unique to this test case, for the same reason as <see cref="ClientId"/>:
+    /// a second case registering the same address would be refused as a duplicate user.
+    /// </summary>
+    protected string UserEmail(string localPart) => $"{localPart}-{Scope}@test.local";
+
+    protected SparkEndpointFactory<OidcTestContext> Factory => host.Factory;
+
+    /// <summary>
+    /// The provider host every OIDC test boots. Shared with <see cref="OidcSharedHost"/>, which
+    /// boots it once per class for the classes that write nothing.
+    /// </summary>
+    internal static SparkEndpointFactory<OidcTestContext> CreateFactory(IDocumentStore store) =>
+        new SparkEndpointFactory<OidcTestContext>(
+            store,
             models: [],
             configureSpark: spark =>
             {
@@ -53,23 +105,45 @@ public abstract class OidcTestHost : SparkTestDriver
                     // required outside Development, and pinning it here means the tests also
                     // assert the value the endpoints actually stamp.
                     options.Issuer = Issuer;
-                    options.SigningKeyPath = Path.Combine(
-                        Path.GetTempPath(), "spark-oidc-test-" + Guid.NewGuid().ToString("N") + ".json");
+                    options.SigningKeyPath = CopyOfSharedSigningKey();
                 });
             },
             // Development so the provider generates its own signing key. Production refusing to
             // do that is the correct behaviour and is covered separately by R-K1.
             environment: "Development");
 
-    protected HttpClient Client => Factory.CreateClient();
-
-    public override async Task DisposeAsync()
+    /// <summary>
+    /// A fresh key-file path per host, holding a copy of one RSA key generated once per process.
+    /// <para>
+    /// Each host used to point at a missing file, so the provider generated a new RSA-2048 key on
+    /// every boot: a CPU-heavy prime search, paid once per OIDC test on a CPU-bound suite. A copy
+    /// keeps each host's file its own (the provider reads it at startup), and no test here is about
+    /// two hosts having different keys.
+    /// </para>
+    /// </summary>
+    private static string CopyOfSharedSigningKey()
     {
-        if (_factory is not null)
-            await _factory.DisposeAsync();
-
-        await base.DisposeAsync();
+        var path = Path.Combine(Path.GetTempPath(), "spark-oidc-test-" + Guid.NewGuid().ToString("N") + ".json");
+        File.Copy(SharedSigningKeyFile.Value, path);
+        return path;
     }
+
+    private static readonly Lazy<string> SharedSigningKeyFile = new(() =>
+    {
+        using var rsa = System.Security.Cryptography.RSA.Create(2048);
+        var p = rsa.ExportParameters(includePrivateParameters: true);
+        static string B64(byte[] bytes) => Microsoft.IdentityModel.Tokens.Base64UrlEncoder.Encode(bytes);
+        var json = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, string>
+        {
+            ["N"] = B64(p.Modulus!), ["E"] = B64(p.Exponent!), ["D"] = B64(p.D!), ["P"] = B64(p.P!),
+            ["Q"] = B64(p.Q!), ["DP"] = B64(p.DP!), ["DQ"] = B64(p.DQ!), ["QI"] = B64(p.InverseQ!),
+        });
+        var path = Path.Combine(Path.GetTempPath(), "spark-oidc-test-shared-" + Environment.ProcessId + ".json");
+        File.WriteAllText(path, json);
+        return path;
+    });
+
+    protected HttpClient Client => Factory.CreateClient();
 
     /// <summary>
     /// Seeds an application. Defaults describe the ordinary case — a confidential web client
@@ -146,8 +220,28 @@ public abstract class OidcTestHost : SparkTestDriver
             }
         });
 
+        seededApplicationIds.Add(app.Id!);
         return app;
     }
+
+    private readonly List<string> seededApplicationIds = [];
+
+    /// <summary>
+    /// The <see cref="OidcToken"/> documents issued to the applications this case seeded — the
+    /// case-scoped replacement for <c>session.Query&lt;OidcToken&gt;().ToListAsync()</c>, which
+    /// on a shared database would also return the class's earlier cases' tokens.
+    /// <para>
+    /// Filtered in memory over a collection query, deliberately not with a <c>Where</c> clause: a
+    /// collection query needs no index, so it can never be stale. Several callers assert absence,
+    /// and against a stale auto-index an absence assertion passes for the wrong reason.
+    /// </para>
+    /// </summary>
+    protected async Task<List<OidcToken>> CaseTokensAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session)
+        => [.. (await session.Query<OidcToken>().ToListAsync()).Where(t => seededApplicationIds.Contains(t.ApplicationId))];
+
+    /// <summary>The <see cref="OidcAuthorizationRequest"/> counterpart of <see cref="CaseTokensAsync"/>.</summary>
+    protected async Task<List<OidcAuthorizationRequest>> CaseAuthorizationRequestsAsync(Raven.Client.Documents.Session.IAsyncDocumentSession session)
+        => [.. (await session.Query<OidcAuthorizationRequest>().ToListAsync()).Where(r => seededApplicationIds.Contains(r.ApplicationId))];
 
     protected const string Password = "Aa1!test-password";
 
@@ -541,4 +635,14 @@ public abstract class OidcTestHost : SparkTestDriver
 /// <summary>Minimal context: these tests exercise <c>/connect/*</c>, not persistent objects.</summary>
 public sealed class OidcTestContext : SparkContext
 {
+}
+
+/// <summary>
+/// The provider host, booted once per test CLASS (M8 items 5 and 11). Classes that seed records
+/// derive from <see cref="OidcTestHost"/>, which scopes their identifiers per case; classes that
+/// seed nothing and only read pages may take it directly.
+/// </summary>
+public sealed class OidcSharedHost : SharedSparkHost<OidcTestContext>
+{
+    protected override SparkEndpointFactory<OidcTestContext> CreateFactory() => OidcTestHost.CreateFactory(Store);
 }

@@ -26,6 +26,49 @@ public sealed class BreadcrumbResult
         => id is not null && BreadcrumbsById.TryGetValue(id, out var b) ? b : null;
 
     public static BreadcrumbResult Empty { get; } = new(new Dictionary<string, string>());
+
+    /// <summary>
+    /// Per entity type (by definition id), the attributes whose breadcrumb tokens render empty for
+    /// this caller because a static attribute right refuses them (contributions M2c-2a). Carried so
+    /// the in-place renderer for embedded rows (<see cref="EmbeddedBreadcrumbRenderer"/>) blanks the
+    /// same tokens the resolver did. Null when nothing is refused.
+    /// </summary>
+    internal IReadOnlyDictionary<Guid, IReadOnlySet<string>>? DeniedTokensByType { get; init; }
+
+    /// <summary>
+    /// Per rendered document id, every token that rendered empty on it — static refusals and what the
+    /// per-row hook protects on that row, dotted names (<c>Jobs.Salary</c>) included. Carried so an
+    /// embedded AsDetail row's own breadcrumb blanks the column its owner's hook protects
+    /// (contributions M2c-2b). Null when nothing is blanked.
+    /// </summary>
+    internal IReadOnlyDictionary<string, IReadOnlySet<string>>? BlankedTokensById { get; init; }
+
+    /// <summary>The tokens blanked on document <paramref name="id"/>, or null.</summary>
+    internal IReadOnlySet<string>? BlankedFor(string? id)
+        => id is not null && BlankedTokensById is not null && BlankedTokensById.TryGetValue(id, out var blanked) ? blanked : null;
+
+    /// <summary>The names under <c>{attribute}.</c>, relative to it (<c>Jobs.Salary</c> → <c>Salary</c>), or null.</summary>
+    internal static IReadOnlySet<string>? Relative(IReadOnlySet<string>? names, string attribute)
+    {
+        if (names is not { Count: > 0 })
+            return null;
+
+        var lead = attribute + ".";
+        HashSet<string>? result = null;
+        foreach (var name in names)
+        {
+            if (name.Length > lead.Length && name.StartsWith(lead, StringComparison.OrdinalIgnoreCase))
+                (result ??= new(StringComparer.OrdinalIgnoreCase)).Add(name[lead.Length..]);
+        }
+        return result;
+    }
+
+    /// <summary>Whether a <c>{<paramref name="attributeName"/>}</c> token of <paramref name="definition"/> renders empty.</summary>
+    internal bool IsTokenDenied(EntityTypeDefinition? definition, string attributeName)
+        => definition is not null
+           && DeniedTokensByType is not null
+           && DeniedTokensByType.TryGetValue(definition.Id, out var denied)
+           && denied.Contains(attributeName);
 }
 
 /// <summary>
@@ -39,8 +82,14 @@ internal interface IBreadcrumbResolver
 {
     /// <param name="roots">The page's entities (collection documents or projections).</param>
     /// <param name="rootDef">The <b>collection</b> entity-type definition whose breadcrumb template/edges apply to the roots.</param>
+    /// <param name="action">
+    /// The verb the roots are presented under — <c>Query</c> on a list, <c>Read</c> on a detail
+    /// load. Decides which static attribute rights, and which answer of the per-row hook, blank the
+    /// roots' own tokens. Referenced documents are always judged for <c>Read</c>.
+    /// </param>
     Task<BreadcrumbResult> ResolveAsync(
-        IAsyncDocumentSession session, IReadOnlyList<object> roots, EntityTypeDefinition? rootDef, CancellationToken ct = default);
+        IAsyncDocumentSession session, IReadOnlyList<object> roots, EntityTypeDefinition? rootDef, CancellationToken ct = default,
+        string action = "Read");
 }
 
 [Register(typeof(IBreadcrumbResolver), ServiceLifetime.Scoped)]
@@ -50,9 +99,16 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
     [Inject] private readonly IBreadcrumbClosure closure;
     [Inject] private readonly IRowSecurity rowSecurity;
     [Inject] private readonly SparkOptions options;
+    // Optional so the test sites that construct the resolver by hand keep compiling; DI always
+    // supplies it, and without it no token is blanked by a static attribute right.
+    [Inject] private readonly IAttributeRightsEnforcement? attributeRights = null;
+
+    /// <summary>A blanking-set entry meaning "every field token": an unverifiable row shows none.</summary>
+    private const string AllTokens = "*";
 
     public async Task<BreadcrumbResult> ResolveAsync(
-        IAsyncDocumentSession session, IReadOnlyList<object> roots, EntityTypeDefinition? rootDef, CancellationToken ct = default)
+        IAsyncDocumentSession session, IReadOnlyList<object> roots, EntityTypeDefinition? rootDef, CancellationToken ct = default,
+        string action = "Read")
     {
         if (roots.Count == 0)
             return BreadcrumbResult.Empty;
@@ -165,14 +221,182 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
             depth++;
         }
 
+        // Which tokens render empty (contributions M2c-2a): an attribute a static right refuses, and
+        // one the per-row hook protects on that row. Decided before rendering because both answers
+        // are asynchronous and rendering is not; the static half is one decision per (type, verb).
+        var rootIdSet = new HashSet<string>(rootIds, StringComparer.Ordinal);
+        var deniedByType = await ResolveDeniedTokensAsync(rootDef, action, defById.Values, ct);
+        var blankedById = await ResolveBlankedTokensAsync(
+            session, renderEntity, defById, rootIdSet, rootDef, action, deniedByType, ct);
+
         // Render every touched id purely in memory.
         var result = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var id in renderEntity.Keys)
-            result[id] = Render(id, renderEntity, defById, denied, allowReferences: true, []);
+            result[id] = Render(id, renderEntity, defById, denied, allowReferences: true, [], blankedById, deniedByType);
         foreach (var id in denied)
             result[id] = options.Breadcrumb.RedactedPlaceholder;
 
-        return new BreadcrumbResult(result);
+        return new BreadcrumbResult(result)
+        {
+            DeniedTokensByType = deniedByType.Count == 0 ? null : deniedByType,
+            BlankedTokensById = blankedById.Count == 0 ? null : blankedById,
+        };
+    }
+
+    /// <summary>
+    /// The statically refused attributes per definition that can appear in this render: the roots'
+    /// type under <paramref name="action"/>, every referenced type under <c>Read</c>, and the AsDetail
+    /// row types reachable from either (a row inherits its owner's verb).
+    /// </summary>
+    private async Task<Dictionary<Guid, IReadOnlySet<string>>> ResolveDeniedTokensAsync(
+        EntityTypeDefinition? rootDef, string action, IEnumerable<EntityTypeDefinition?> definitions, CancellationToken ct)
+    {
+        var result = new Dictionary<Guid, IReadOnlySet<string>>();
+        if (attributeRights is null)
+            return result;
+
+        var visited = new HashSet<Guid>();
+        if (rootDef is not null)
+            await CollectDeniedAsync(rootDef, action, depth: 0);
+        foreach (var definition in definitions)
+        {
+            if (definition is not null)
+                await CollectDeniedAsync(definition, "Read", depth: 0);
+        }
+        return result;
+
+        async Task CollectDeniedAsync(EntityTypeDefinition definition, string verb, int depth)
+        {
+            if (depth > options.Breadcrumb.MaxDepth || !visited.Add(definition.Id))
+                return;
+
+            var refused = await attributeRights.GetDeniedAsync(definition, verb, ct);
+            if (refused.Count > 0)
+                result[definition.Id] = refused;
+
+            foreach (var attribute in definition.Attributes)
+            {
+                if (attribute.DataType == "AsDetail" && !string.IsNullOrEmpty(attribute.AsDetailType)
+                    && modelLoader.GetEntityTypeByClrType(attribute.AsDetailType) is { } rowType)
+                {
+                    await CollectDeniedAsync(rowType, verb, depth + 1);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Per rendered id, the tokens that render empty: its type's static refusals plus what the
+    /// per-row hook protects on that very document. The hook is asked once per rendered document,
+    /// and only for a type that overrides it.
+    /// </summary>
+    /// <remarks>
+    /// The hook is typed on the entity, so a root that is an index projection is judged on its base
+    /// document, batch-loaded once (a session-cache hit wherever row security already loaded it). A
+    /// root whose base document cannot be found renders no field token at all — unverifiable is not
+    /// shown, as in redaction.
+    /// </remarks>
+    private async Task<Dictionary<string, IReadOnlySet<string>>> ResolveBlankedTokensAsync(
+        IAsyncDocumentSession session,
+        Dictionary<string, object> renderEntity,
+        Dictionary<string, EntityTypeDefinition?> defById,
+        HashSet<string> rootIds,
+        EntityTypeDefinition? rootDef,
+        string action,
+        Dictionary<Guid, IReadOnlySet<string>> deniedByType,
+        CancellationToken ct)
+    {
+        var result = new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal);
+
+        // Projected roots whose hook must be asked of the stored document, grouped by entity type.
+        var baseLoads = new Dictionary<Type, List<string>>();
+
+        foreach (var (id, entity) in renderEntity)
+        {
+            var isRoot = rootIds.Contains(id);
+            var def = isRoot ? rootDef : defById.GetValueOrDefault(id);
+            if (def is null)
+                continue;
+
+            if (deniedByType.TryGetValue(def.Id, out var staticDenied))
+                result[id] = staticDenied;
+
+            var clrType = string.IsNullOrEmpty(def.ClrType) ? null : SparkTypeResolver.ResolveClrType(def.ClrType);
+            if (clrType is null || !rowSecurity.HasProtectedAttributesHook(clrType))
+                continue;
+
+            if (clrType.IsInstanceOfType(entity))
+            {
+                var names = await rowSecurity.GetProtectedAttributesAsync(clrType, isRoot ? action : "Read", entity);
+                Merge(id, names);
+            }
+            else if (isRoot)
+            {
+                if (!baseLoads.TryGetValue(clrType, out var ids))
+                    baseLoads[clrType] = ids = [];
+                ids.Add(id);
+            }
+        }
+
+        foreach (var (clrType, ids) in baseLoads)
+        {
+            var loaded = await RowSecurity.LoadBaseDocumentsAsync(session, clrType, ids, ct);
+            foreach (var id in ids)
+            {
+                if (!loaded.TryGetValue(id, out var document))
+                {
+                    Merge(id, [AllTokens]);
+                    continue;
+                }
+
+                Merge(id, await rowSecurity.GetProtectedAttributesAsync(clrType, action, document));
+            }
+        }
+
+        return result;
+
+        void Merge(string id, IReadOnlyCollection<string>? names)
+        {
+            if (names is not { Count: > 0 })
+                return;
+
+            var merged = new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);
+            if (result.TryGetValue(id, out var existing))
+                merged.UnionWith(existing);
+            result[id] = merged;
+        }
+    }
+
+    private static bool IsBlanked(IReadOnlySet<string>? blanked, string attributeName)
+        => blanked is not null && (blanked.Contains(AllTokens) || blanked.Contains(attributeName));
+
+    /// <summary>
+    /// The owner's blanking entries that reach into the embedded value under
+    /// <paramref name="attributeName"/> (<c>Address.Street</c> → <c>Street</c>), relative to it.
+    /// </summary>
+    private static IReadOnlySet<string>? Descend(IReadOnlySet<string>? blanked, string attributeName)
+    {
+        if (blanked is null || blanked.Contains(AllTokens))
+            return blanked;
+
+        HashSet<string>? result = null;
+        var prefix = attributeName + ".";
+        foreach (var entry in blanked)
+        {
+            if (entry.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                (result ??= new(StringComparer.OrdinalIgnoreCase)).Add(entry[prefix.Length..]);
+        }
+        return result;
+    }
+
+    private static IReadOnlySet<string>? Union(IReadOnlySet<string>? a, IReadOnlySet<string>? b)
+    {
+        if (a is not { Count: > 0 }) return b;
+        if (b is not { Count: > 0 }) return a;
+
+        var merged = new HashSet<string>(a, StringComparer.OrdinalIgnoreCase);
+        merged.UnionWith(b);
+        return merged;
     }
 
     private string Render(
@@ -181,7 +405,9 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
         Dictionary<string, EntityTypeDefinition?> defById,
         HashSet<string> denied,
         bool allowReferences,
-        HashSet<string> visited)
+        HashSet<string> visited,
+        Dictionary<string, IReadOnlySet<string>> blankedById,
+        Dictionary<Guid, IReadOnlySet<string>> deniedByType)
     {
         if (denied.Contains(id))
             return options.Breadcrumb.RedactedPlaceholder;
@@ -200,6 +426,7 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
         // but suppress its reference expansion so we terminate.
         var openedScope = visited.Add(id);
         var expandReferences = allowReferences && openedScope;
+        var blanked = blankedById.GetValueOrDefault(id);
 
         var sb = new StringBuilder();
         foreach (var token in BreadcrumbTemplate.Parse(def.Breadcrumb))
@@ -208,6 +435,11 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
             {
                 case LiteralToken literal:
                     sb.Append(literal.Text);
+                    break;
+
+                // A refused or protected attribute renders as nothing — the same output as an empty
+                // value, so the breadcrumb says no more than the attribute itself would (M2c-2a).
+                case FieldToken field when IsBlanked(blanked, field.AttributeName):
                     break;
 
                 case FieldToken field:
@@ -219,7 +451,7 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
                         if (attr.IsArray)
                         {
                             var parts = ids
-                                .Select(rid => Render(rid, renderEntity, defById, denied, true, visited))
+                                .Select(rid => Render(rid, renderEntity, defById, denied, true, visited, blankedById, deniedByType))
                                 .Where(s => !string.IsNullOrEmpty(s));
                             sb.Append(string.Join(options.Breadcrumb.ReferenceSeparator, parts));
                         }
@@ -227,7 +459,7 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
                         {
                             var rid = ids.FirstOrDefault();
                             if (!string.IsNullOrEmpty(rid))
-                                sb.Append(Render(rid, renderEntity, defById, denied, true, visited));
+                                sb.Append(Render(rid, renderEntity, defById, denied, true, visited, blankedById, deniedByType));
                         }
                     }
                     else if (attr is { DataType: "AsDetail", IsArray: false } && !string.IsNullOrEmpty(attr.AsDetailType))
@@ -237,7 +469,8 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
                         // CLR type name — silently.
                         var child = ReadValue(entity, field.AttributeName);
                         if (child is not null)
-                            sb.Append(RenderEmbedded(child, 0, renderEntity, defById, denied, expandReferences, visited));
+                            sb.Append(RenderEmbedded(child, 0, renderEntity, defById, denied, expandReferences, visited,
+                                blankedById, deniedByType, Descend(blanked, field.AttributeName)));
                     }
                     else
                     {
@@ -265,7 +498,10 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
         Dictionary<string, EntityTypeDefinition?> defById,
         HashSet<string> denied,
         bool expandReferences,
-        HashSet<string> visited)
+        HashSet<string> visited,
+        Dictionary<string, IReadOnlySet<string>> blankedById,
+        Dictionary<Guid, IReadOnlySet<string>> deniedByType,
+        IReadOnlySet<string>? inherited)
     {
         if (depth >= options.Breadcrumb.MaxDepth)
             return string.Empty;
@@ -275,6 +511,9 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
 
         if (def is not null && !string.IsNullOrEmpty(def.Breadcrumb))
         {
+            // The owner's dotted protections for this value, plus the embedded type's own refusals.
+            var blanked = Union(inherited, deniedByType.GetValueOrDefault(def.Id));
+
             var sb = new StringBuilder();
             foreach (var token in BreadcrumbTemplate.Parse(def.Breadcrumb))
             {
@@ -282,6 +521,9 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
                 {
                     case LiteralToken literal:
                         sb.Append(literal.Text);
+                        break;
+
+                    case FieldToken field when IsBlanked(blanked, field.AttributeName):
                         break;
 
                     case FieldToken field:
@@ -292,7 +534,7 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
                             // Reference targets nested inside embedded values are preloaded by
                             // CollectRootReferenceIds, so the by-id render finds them in memory.
                             var parts = ExtractIds(child, field.AttributeName)
-                                .Select(rid => Render(rid, renderEntity, defById, denied, true, visited))
+                                .Select(rid => Render(rid, renderEntity, defById, denied, true, visited, blankedById, deniedByType))
                                 .Where(s => !string.IsNullOrEmpty(s));
                             sb.Append(string.Join(options.Breadcrumb.ReferenceSeparator, parts));
                         }
@@ -300,7 +542,8 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
                         {
                             var nested = ReadValue(child, field.AttributeName);
                             if (nested is not null)
-                                sb.Append(RenderEmbedded(nested, depth + 1, renderEntity, defById, denied, expandReferences, visited));
+                                sb.Append(RenderEmbedded(nested, depth + 1, renderEntity, defById, denied, expandReferences, visited,
+                                    blankedById, deniedByType, Descend(blanked, field.AttributeName)));
                         }
                         else
                         {
@@ -318,12 +561,17 @@ internal partial class BreadcrumbResolver : IBreadcrumbResolver
         if (marked is null)
             return def?.Name ?? type.Name;
 
+        var markedBlanked = Union(inherited, def is null ? null : deniedByType.GetValueOrDefault(def.Id));
+        if (IsBlanked(markedBlanked, marked.Name))
+            return string.Empty;
+
         var value = AccessorCache.GetGetter(marked)(child);
         if (value is null)
             return string.Empty;
 
         return SparkModelShape.IsComplexType(value.GetType())
-            ? RenderEmbedded(value, depth + 1, renderEntity, defById, denied, expandReferences, visited)
+            ? RenderEmbedded(value, depth + 1, renderEntity, defById, denied, expandReferences, visited,
+                blankedById, deniedByType, Descend(markedBlanked, marked.Name))
             : FormatScalar(value);
     }
 

@@ -46,7 +46,7 @@ namespace MintPlayer.Spark.Tests.Extensions;
 /// endpoint, which is why the reads below carry a written reason.
 /// </para>
 /// </remarks>
-public class XsrfSurfaceTests : SparkTestDriver
+public class XsrfSurfaceTests(XsrfSurfaceHosts hosts) : SparkSharedTestDriver(hosts), IClassFixture<XsrfSurfaceHosts>
 {
     private static readonly string[] MutatingMethods = ["POST", "PUT", "PATCH", "DELETE"];
 
@@ -155,13 +155,9 @@ public class XsrfSurfaceTests : SparkTestDriver
     ];
 
     [Fact]
-    public async Task Core_spark_surface_matches_its_declared_antiforgery_positions()
+    public void Core_spark_surface_matches_its_declared_antiforgery_positions()
     {
-        var docType = GuardedDocModel.For(Guid.Parse("5a5a0000-1111-2222-3333-444455556666"));
-        await using var factory = new SparkEndpointFactory<GuardedContext>(
-            Store, [docType], security: SparkTestSecurity.Empty);
-
-        var (required, exempt, unstated) = Classify(factory.GetService<EndpointDataSource>());
+        var (required, exempt, unstated) = Classify(hosts.CoreFactory.GetService<EndpointDataSource>());
 
         Assert.Equal(Sorted(CoreRequired), required);
         Assert.Equal(Sorted(CoreExempt), exempt);
@@ -169,9 +165,9 @@ public class XsrfSurfaceTests : SparkTestDriver
     }
 
     [Fact]
-    public async Task Auth_surface_matches_its_declared_antiforgery_positions()
+    public void Auth_surface_matches_its_declared_antiforgery_positions()
     {
-        using var host = await StartAuthHostAsync();
+        var host = hosts.AuthHost;
 
         var (required, exempt, unstated) = Classify(
             host.Services.GetRequiredService<EndpointDataSource>());
@@ -187,9 +183,9 @@ public class XsrfSurfaceTests : SparkTestDriver
     /// a failing diff of twenty routes will not necessarily see which one mattered.
     /// </summary>
     [Fact]
-    public async Task Login_requires_an_antiforgery_token()
+    public void Login_requires_an_antiforgery_token()
     {
-        using var host = await StartAuthHostAsync();
+        var host = hosts.AuthHost;
 
         var login = host.Services.GetRequiredService<EndpointDataSource>().Endpoints
             .OfType<RouteEndpoint>()
@@ -210,9 +206,9 @@ public class XsrfSurfaceTests : SparkTestDriver
     /// without a token or a client whose identity just changed can never obtain one.
     /// </summary>
     [Fact]
-    public async Task Csrf_refresh_is_explicitly_exempt()
+    public void Csrf_refresh_is_explicitly_exempt()
     {
-        using var host = await StartAuthHostAsync();
+        var host = hosts.AuthHost;
 
         var refresh = host.Services.GetRequiredService<EndpointDataSource>().Endpoints
             .OfType<RouteEndpoint>()
@@ -226,28 +222,6 @@ public class XsrfSurfaceTests : SparkTestDriver
             + "is to hand a fresh, correctly-bound token to a client whose old one just became "
             + "stale, so requiring a valid one first is a deadlock with no recovery.");
     }
-
-    private Task<IHost> StartAuthHostAsync() =>
-        new HostBuilder()
-            .ConfigureWebHost(webHost => webHost
-                .UseTestServer()
-                .ConfigureServices(services =>
-                {
-                    services.AddSingleton<IDocumentStore>(Store);
-                    services.AddSparkAuthentication<SparkUser>();
-                    services.AddTestMailSink(); // #460 D6: registration needs a mail sender
-                    services.AddAuthorization();
-                    services.AddRouting();
-                })
-                .Configure(app =>
-                {
-                    app.UseRouting();
-                    app.UseAuthentication();
-                    app.UseAuthorization();
-                    app.UseEndpoints(endpoints =>
-                        endpoints.MapSparkIdentityApi<SparkUser>(SparkLocalCredentials.Full));
-                }))
-            .StartAsync();
 
     private static (string[] Required, string[] Exempt, string[] Unstated) Classify(
         EndpointDataSource source)
@@ -273,4 +247,52 @@ public class XsrfSurfaceTests : SparkTestDriver
 
     private static string[] Sorted(IEnumerable<string> values) =>
         [.. values.Distinct(StringComparer.Ordinal).OrderBy(v => v, StringComparer.Ordinal)];
+}
+
+/// <summary>
+/// Both hosts for the class, booted once (M8 item 5): every case only reads endpoint metadata, so
+/// nothing a case does can reach a sibling.
+/// </summary>
+public sealed class XsrfSurfaceHosts : SparkSharedDatabase
+{
+    public SparkEndpointFactory<GuardedContext> CoreFactory { get; private set; } = null!;
+    public IHost AuthHost { get; private set; } = null!;
+
+    public override async Task InitializeAsync()
+    {
+        await base.InitializeAsync();
+        var docType = GuardedDocModel.For(Guid.Parse("5a5a0000-1111-2222-3333-444455556666"));
+        CoreFactory = new SparkEndpointFactory<GuardedContext>(Store, [docType], security: SparkTestSecurity.Empty);
+        AuthHost = await StartAuthHostAsync();
+    }
+
+    public override async Task DisposeAsync()
+    {
+        AuthHost?.Dispose();
+        if (CoreFactory is not null)
+            await CoreFactory.DisposeAsync();
+        await base.DisposeAsync();
+    }
+
+    private Task<IHost> StartAuthHostAsync() =>
+        new HostBuilder()
+            .ConfigureWebHost(webHost => webHost
+                .UseTestServer()
+                .ConfigureServices(services =>
+                {
+                    services.AddSingleton<IDocumentStore>(Store);
+                    services.AddSparkAuthentication<SparkUser>();
+                    services.AddTestMailSink(); // #460 D6: registration needs a mail sender
+                    services.AddAuthorization();
+                    services.AddRouting();
+                })
+                .Configure(app =>
+                {
+                    app.UseRouting();
+                    app.UseAuthentication();
+                    app.UseAuthorization();
+                    app.UseEndpoints(endpoints =>
+                        endpoints.MapSparkIdentityApi<SparkUser>(SparkLocalCredentials.Full));
+                }))
+            .StartAsync();
 }

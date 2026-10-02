@@ -13,9 +13,9 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// still displayed it.
 /// </para>
 /// </summary>
-public class OidcTwoFactorSecurityTests : OidcTestHost
+public class OidcTwoFactorSecurityTests(OidcSharedHost host) : OidcTestHost(host), IClassFixture<OidcSharedHost>
 {
-    private const string Email = "alice@test.local";
+    private string Email => UserEmail("alice");
 
     // ---------- must succeed ----------
 
@@ -60,7 +60,7 @@ public class OidcTwoFactorSecurityTests : OidcTestHost
     [Fact]
     public async Task A_completed_two_factor_sign_in_can_drive_the_authorization_flow()
     {
-        var app = await SeedApplicationAsync("webapp");
+        var app = await SeedApplicationAsync(ClientId("webapp"));
         await SeedTwoFactorUserAsync(Email);
 
         var browser = await PasswordStepAsync(Email);
@@ -85,7 +85,7 @@ public class OidcTwoFactorSecurityTests : OidcTestHost
     [Fact]
     public async Task The_partial_authentication_cookie_cannot_drive_the_authorization_flow()
     {
-        var app = await SeedApplicationAsync("webapp");
+        var app = await SeedApplicationAsync(ClientId("webapp"));
         await SeedTwoFactorUserAsync(Email);
 
         var browser = await PasswordStepAsync(Email);
@@ -104,7 +104,7 @@ public class OidcTwoFactorSecurityTests : OidcTestHost
     [Fact]
     public async Task The_partial_authentication_cookie_cannot_reach_the_consent_page()
     {
-        var app = await SeedApplicationAsync("webapp");
+        var app = await SeedApplicationAsync(ClientId("webapp"));
         await SeedTwoFactorUserAsync(Email);
         var user = await WithUserManagerAsync(async u => await u.FindByEmailAsync(Email));
         var requestId = await SeedAuthorizationRequestAsync(app, user!.Id!);
@@ -121,7 +121,7 @@ public class OidcTwoFactorSecurityTests : OidcTestHost
     [Fact]
     public async Task The_partial_authentication_cookie_cannot_post_consent()
     {
-        var app = await SeedApplicationAsync("webapp");
+        var app = await SeedApplicationAsync(ClientId("webapp"));
         await SeedTwoFactorUserAsync(Email);
         var user = await WithUserManagerAsync(async u => await u.FindByEmailAsync(Email));
         var requestId = await SeedAuthorizationRequestAsync(app, user!.Id!);
@@ -198,10 +198,10 @@ public class OidcTwoFactorSecurityTests : OidcTestHost
     public async Task Another_users_authenticator_code_is_refused()
     {
         await SeedTwoFactorUserAsync(Email);
-        await SeedTwoFactorUserAsync("bob@test.local");
+        await SeedTwoFactorUserAsync(UserEmail("bob"));
 
         var browser = await PasswordStepAsync(Email);
-        var bobsCode = await AuthenticatorCodeAsync("bob@test.local");
+        var bobsCode = await AuthenticatorCodeAsync(UserEmail("bob"));
 
         var response = await SubmitTwoFactorAsync(browser, code: bobsCode);
 
@@ -213,7 +213,7 @@ public class OidcTwoFactorSecurityTests : OidcTestHost
     public async Task Another_users_recovery_code_is_refused()
     {
         await SeedTwoFactorUserAsync(Email);
-        var bobsCodes = await SeedTwoFactorUserAsync("bob@test.local");
+        var bobsCodes = await SeedTwoFactorUserAsync(UserEmail("bob"));
 
         var browser = await PasswordStepAsync(Email);
 

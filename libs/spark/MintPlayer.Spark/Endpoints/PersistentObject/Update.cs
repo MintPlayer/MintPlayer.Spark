@@ -21,11 +21,11 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint
     }
 
     [Inject] private readonly IDatabaseAccess databaseAccess;
-    [Inject] private readonly IValidationService validationService;
-    [Inject] private readonly IRefreshInvoker refreshInvoker;
+    [Inject] private readonly ISaveValidation saveValidation;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IClientAccessor clientAccessor;
+    [Inject] private readonly ISaveResponsePresenter saveResponse;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -61,20 +61,19 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint
             // Authorize before validating — see the note in Create.cs (N23).
             await databaseAccess.EnsureSaveAuthorizedAsync(obj);
 
-            // Validate against the object as the refresh hook shapes it, not as the model declares
-            // it. A hook that makes a field required has changed the contract, and validating the
-            // raw model would enforce a different one than the user was shown. Re-deriving here —
-            // rather than trusting what the client posted — is also what stops a client from
-            // escaping the hook by never calling /refresh.
-            var effective = await refreshInvoker.BuildEffectiveAsync(entityType, obj, httpContext.RequestAborted);
-            var validationResult = validationService.ValidateEffective(effective);
-            if (!validationResult.IsValid)
-            {
-                return ClientResult.Envelope(clientAccessor, new { errors = validationResult.Errors }, 400);
-            }
+            // Validated inside the save, right after the write shield (contributions M2d): against the
+            // object as the refresh hook shapes it, not as the model declares it (a hook that makes a
+            // field required changed the contract, and re-deriving it server-side is what stops a
+            // client escaping the hook by never calling /refresh) — and only on the attributes the
+            // caller may write, since the others keep their stored value whatever was posted.
+            saveValidation.Request(obj, httpContext.RequestAborted);
 
             var result = await databaseAccess.SavePersistentObjectAsync(obj);
-            return ClientResult.Envelope(clientAccessor, result, 200);
+
+            // Re-presented as a load presents it (contributions M2c-2b, leak 2): never the posted
+            // object, which is the client's values plus whatever the save hooks wrote into it.
+            var presented = await saveResponse.PresentAsync(entityType, result, isNew: false, httpContext.RequestAborted);
+            return ClientResult.Envelope(clientAccessor, presented, 200);
         }
         catch (SparkConcurrencyException)
         {
@@ -84,6 +83,10 @@ internal sealed partial class UpdatePersistentObject : IPostEndpoint
             // attacker can use as a side channel. Return a generic 409; clients
             // know to re-fetch on 409 regardless of the body content.
             return ClientResult.Envelope(clientAccessor, new { error = "Concurrency conflict" }, 409);
+        }
+        catch (SparkSaveValidationException ex)
+        {
+            return ClientResult.Envelope(clientAccessor, new { errors = ex.Result.Errors }, 400);
         }
         catch (SparkValidationException ex)
         {

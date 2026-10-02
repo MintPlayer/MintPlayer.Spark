@@ -21,12 +21,12 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint
     }
 
     [Inject] private readonly IDatabaseAccess databaseAccess;
-    [Inject] private readonly IValidationService validationService;
-    [Inject] private readonly IRefreshInvoker refreshInvoker;
+    [Inject] private readonly ISaveValidation saveValidation;
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IRetryAccessor retryAccessor;
     [Inject] private readonly IClientAccessor clientAccessor;
     [Inject] private readonly IPermissionService permissionService;
+    [Inject] private readonly ISaveResponsePresenter saveResponse;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -48,7 +48,7 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint
         // permission service memoises per request.
         try
         {
-            await permissionService.EnsureAuthorizedAsync("New", entityType.ClrType?.Split('.').Last() ?? entityType.Name);
+            await permissionService.EnsureAuthorizedAsync("New", entityType.Name);
         }
         catch (SparkAccessDeniedException)
         {
@@ -81,20 +81,31 @@ internal sealed partial class CreatePersistentObject : IPostEndpoint
             // belongs to DatabaseAccess; this only asks it earlier.
             await databaseAccess.EnsureSaveAuthorizedAsync(obj);
 
-            // Validate against the object as the refresh hook shapes it, not as the model declares
-            // it. A hook that makes a field required has changed the contract, and validating the
-            // raw model would enforce a different one than the user was shown. Re-deriving here —
-            // rather than trusting what the client posted — is also what stops a client from
-            // escaping the hook by never calling /refresh.
-            var effective = await refreshInvoker.BuildEffectiveAsync(entityType, obj, httpContext.RequestAborted);
-            var validationResult = validationService.ValidateEffective(effective);
-            if (!validationResult.IsValid)
-            {
-                return ClientResult.Envelope(clientAccessor, new { errors = validationResult.Errors }, 400);
-            }
+            // Validated inside the save, right after the write shield (contributions M2d): against the
+            // object as the refresh hook shapes it, not as the model declares it (a hook that makes a
+            // field required changed the contract, and re-deriving it server-side is what stops a
+            // client escaping the hook by never calling /refresh) — and only on the attributes the
+            // caller may set, since a New-denied one keeps its CLR default whatever was posted.
+            saveValidation.Request(obj, httpContext.RequestAborted);
 
+            // Values for attributes the caller may not set on a create are dropped inside the save
+            // (contributions M2c-2b, leak 7): the CLR default or initializer stays, and the save is not
+            // refused, because a refusal would say which attributes exist.
             var result = await databaseAccess.SavePersistentObjectAsync(obj);
-            return ClientResult.Envelope(clientAccessor, result, 201);
+
+            // Re-presented as a load presents it, as Update does (leak 2).
+            var presented = await saveResponse.PresentAsync(entityType, result, isNew: true, httpContext.RequestAborted);
+            return ClientResult.Envelope(clientAccessor, presented, 201);
+        }
+        catch (SparkConcurrencyException)
+        {
+            // A creation whose natural id is already held becomes a save of that row, and that
+            // write can meet a concurrent one (contributions F7). Generic body, as in Update (R2-M1).
+            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor);
+        }
+        catch (SparkSaveValidationException ex)
+        {
+            return ClientResult.Envelope(clientAccessor, new { errors = ex.Result.Errors }, 400);
         }
         catch (SparkValidationException ex)
         {

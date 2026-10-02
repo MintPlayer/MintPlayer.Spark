@@ -13,6 +13,7 @@ internal sealed partial class GetEntityType : IGetEndpoint
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IQueryLoader queryLoader;
+    [Inject] private readonly IAttributeRightsEnforcement attributeRights;
     [Inject] private readonly ILogger<GetEntityType> logger;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
@@ -33,6 +34,10 @@ internal sealed partial class GetEntityType : IGetEndpoint
 
         // Same reason as List.cs: the row types an AsDetail attribute names are usually absent from
         // the catalogue, so the client cannot resolve their columns from it (#385).
-        return Results.Json(SubQueryPruner.EmbedDetailTypes(pruned, modelLoader));
+        // Per caller (contributions M2c-2a): Read-denied attributes absent, Edit-denied read-only, on
+        // the type and on each embedded detail type by its own rights. Always a copy when it changes
+        // anything — the loader's definitions are shared process-wide.
+        return Results.Json(await attributeRights.ForFormAsync(
+            SubQueryPruner.EmbedDetailTypes(pruned, modelLoader), httpContext.RequestAborted));
     }
 }

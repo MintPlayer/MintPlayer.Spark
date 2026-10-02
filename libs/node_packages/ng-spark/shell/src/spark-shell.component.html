@@ -12,6 +12,10 @@
       @if (topbarActionsTpl(); as tpl) {
         <ng-container *ngTemplateOutlet="tpl" />
       }
+      <!-- Also outside the trailing @if: replacing the end slot (e.g. with spark-auth-bar) keeps it. -->
+      @if (themeToggle()) {
+        <bs-theme-toggle [modes]="themeModes()" />
+      }
       @if (topbarEndTpl(); as tpl) {
         <ng-container *ngTemplateOutlet="tpl" />
       } @else {
@@ -20,9 +24,7 @@
     </div>
   </div>
 
-  <nav bsShellSidebar class="spark-sidebar p-2"
-       [class.spark-sidebar-dark]="sidebarTheme() === 'dark'"
-       [attr.data-bs-theme]="sidebarTheme()">
+  <nav bsShellSidebar class="spark-sidebar p-2">
     @if (sidebarHeaderTpl(); as tpl) {
       <ng-container *ngTemplateOutlet="tpl" />
     } @else {

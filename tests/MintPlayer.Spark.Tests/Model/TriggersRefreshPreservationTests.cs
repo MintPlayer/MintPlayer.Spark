@@ -60,9 +60,9 @@ public class TriggersRefreshPreservationTests : IDisposable
             .Clone();
     }
 
-    private bool? TriggersRefresh(string fileName, string attributeName) =>
+    private string? TriggersRefresh(string fileName, string attributeName) =>
         Attribute(fileName, attributeName).TryGetProperty("triggersRefresh", out var flag)
-            ? flag.GetBoolean()
+            ? flag.GetString()
             : null;
 
     [Fact]
@@ -74,7 +74,7 @@ public class TriggersRefreshPreservationTests : IDisposable
 
         Synchronize();
 
-        TriggersRefresh("TriggerProbe.json", "Status").Should().BeTrue();
+        TriggersRefresh("TriggerProbe.json", "Status").Should().Be("Auto");
     }
 
     [Fact]
@@ -89,7 +89,7 @@ public class TriggersRefreshPreservationTests : IDisposable
 
         Attribute("TriggerProbe.json", "Status").GetProperty("dataType").GetString()
             .Should().Be("string", "the precondition: synchronize must actually have rewritten this attribute");
-        TriggersRefresh("TriggerProbe.json", "Status").Should().BeTrue();
+        TriggersRefresh("TriggerProbe.json", "Status").Should().Be("Auto");
     }
 
     [Fact]
@@ -102,7 +102,7 @@ public class TriggersRefreshPreservationTests : IDisposable
 
         Attribute("TriggerProbe.json", "Status").GetProperty("order").GetInt32()
             .Should().BeGreaterThan(0, "the precondition: synchronize must actually have assigned an order");
-        TriggersRefresh("TriggerProbe.json", "Status").Should().BeTrue();
+        TriggersRefresh("TriggerProbe.json", "Status").Should().Be("Auto");
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public class TriggersRefreshPreservationTests : IDisposable
     [Fact]
     public void A_new_attribute_does_not_acquire_the_flag()
     {
-        // Absent means absent: the create branch must not materialise `triggersRefresh: false` into
+        // Absent means absent: the create branch must not materialise `triggersRefresh: "None"` into
         // every model file in the repository.
         Synchronize();
 
@@ -143,7 +143,7 @@ public class TriggersRefreshPreservationTests : IDisposable
             "name": "{{name}}",
             "dataType": "{{dataType}}",
             "order": {{order}},
-            "triggersRefresh": true
+            "triggersRefresh": "Auto"
           }
         ]
       },

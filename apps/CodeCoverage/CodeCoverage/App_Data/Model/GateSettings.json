@@ -115,7 +115,7 @@
         "isReadOnly": false,
         "order": 1,
         "isArray": false,
-        "triggersRefresh": true,
+        "triggersRefresh": "Auto",
         "lookupReferenceType": "ProjectComparison",
         "showedOn": "Query, PersistentObject",
         "rules": []

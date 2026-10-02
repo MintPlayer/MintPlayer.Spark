@@ -1,7 +1,9 @@
-import { ChangeDetectionStrategy, Component, computed, contentChild, contentChildren, input, signal, TemplateRef } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, contentChild, contentChildren, inject, input, signal, TemplateRef } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { BsShellComponent, BsShellSidebarDirective, BsShellState } from '@mintplayer/ng-bootstrap/shell';
 import { BsNavbarTogglerComponent } from '@mintplayer/ng-bootstrap/navbar-toggler';
+import { BS_THEME_DEFAULT_MODES, BsThemeService, BsThemeToggleComponent, BsThemeToggleMode } from '@mintplayer/ng-bootstrap/theming';
+import { SparkLanguageService } from '@mintplayer/ng-spark/services';
 import type { Breakpoint } from '@mintplayer/ng-bootstrap';
 import type { ShellStateChangeEventDetail } from '@mintplayer/web-components/shell';
 import { SparkProgramUnitsComponent } from './spark-program-units.component';
@@ -38,10 +40,16 @@ import {
  * listens to `statechange` to keep the toggler's icon truthful in `auto` mode and only forces
  * `show`/`hide` on explicit toggles.
  *
- * Theming: the chrome colors are CSS custom properties with the classic dark-sidebar defaults —
- * `--spark-shell-topbar-bg`, `--spark-shell-sidebar-bg`, `--spark-shell-main-bg` — overridable on
- * the `<spark-shell>` element. `sidebarTheme` flips the sidebar's `data-bs-theme` (which is what
- * recolors the accordion internals across the shadow boundary) together with its default palette.
+ * Theming: the chrome colors are CSS custom properties —
+ * `--spark-shell-{topbar,sidebar,main}-{bg,color}` — declared per colour scheme under
+ * `[data-bs-theme=light]` / `[data-bs-theme=dark]` from Bootstrap tokens, so the whole shell follows
+ * the page's theme. An app restyles it by overriding those tokens, globally per scheme or on the
+ * `<spark-shell>` element.
+ *
+ * Colour mode: the shell injects `BsThemeService` itself, so 'auto' follows the OS live even when
+ * the topbar toggle is hidden with `[themeToggle]="false"` (an app may then place its own
+ * `<bs-theme-toggle>` elsewhere). The first paint is themed by `bs-theme-preboot.js` in the app's
+ * `index.html`, not by anything here.
  */
 @Component({
   selector: 'spark-shell',
@@ -49,7 +57,7 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     NgTemplateOutlet,
-    BsShellComponent, BsShellSidebarDirective, BsNavbarTogglerComponent,
+    BsShellComponent, BsShellSidebarDirective, BsNavbarTogglerComponent, BsThemeToggleComponent,
     SparkProgramUnitsComponent, SparkLanguageSelectorComponent,
   ],
   templateUrl: './spark-shell.component.html',
@@ -63,10 +71,24 @@ export class SparkShellComponent {
   readonly breakpoint = input<Breakpoint>('md');
 
   /**
-   * `data-bs-theme` for the sidebar — what flips the accordion's shadow-DOM internals between
-   * palettes — plus the matching default background. `null` sets no theme (inherit the page's).
+   * Render the Auto / Light / Dark `bs-theme-toggle` in the topbar. `false` hides it; the theme
+   * service stays live either way.
    */
-  readonly sidebarTheme = input<'dark' | 'light' | null>('dark');
+  readonly themeToggle = input(true);
+
+  /**
+   * Instantiated here, not only through the toggle (PRD D3): without it, `[themeToggle]="false"`
+   * would leave 'auto' with no live `prefers-color-scheme` listener in Angular's view.
+   */
+  protected readonly theme = inject(BsThemeService);
+  private readonly lang = inject(SparkLanguageService);
+
+  /** The toggle's cycle with Spark's translated labels (`theme.*` keys); icons stay ng-bootstrap's. */
+  protected readonly themeModes = computed<readonly BsThemeToggleMode[]>(() =>
+    BS_THEME_DEFAULT_MODES.map(m => {
+      const name = m.mode.charAt(0).toUpperCase() + m.mode.slice(1);
+      return { ...m, label: this.lang.t(`theme.switchTo${name}`), announcement: this.lang.t(`theme.${m.mode}`) };
+    }));
 
   /** Forwarded to the menu: any changed value re-fetches the program units. */
   readonly reloadToken = input<unknown>(null);

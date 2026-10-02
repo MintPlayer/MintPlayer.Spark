@@ -96,13 +96,86 @@ public sealed class RightsDecision(IReadOnlyList<GroupRights> groups)
     /// </para>
     /// </summary>
     public bool Allows(string resource)
-    {
-        var probe = ResourcePattern.Parse(resource);
+        => Allows(ResourcePattern.Parse(resource));
 
+    private bool Allows(ResourcePattern probe)
+    {
         if (AnyMatches(static g => g.ImportantDenied, probe)) return false;
         if (AnyMatches(static g => g.ImportantAllowed, probe)) return true;
         if (AnyMatches(static g => g.Denied, probe)) return false;
         return AnyMatches(static g => g.Allowed, probe);
+    }
+
+    /// <summary>
+    /// The effective attribute rights for <paramref name="verb"/> on <paramref name="entityType"/>
+    /// (PRD §5 Q13): the type right is required, and for every attribute some attribute-level right
+    /// of these groups mentions, the combined chain — the type pattern <em>and</em> the attribute
+    /// pattern, tier by tier across all groups (important-deny &gt; important-allow &gt; deny &gt;
+    /// allow) — decides. Every other attribute inherits the type decision.
+    /// </summary>
+    /// <remarks>
+    /// Attribute resources are stored in the same index as type resources: <c>Edit/Song/Lyrics</c>
+    /// parses (split on the FIRST slash) to action <c>EDIT</c>, target <c>SONG/LYRICS</c>, so it can
+    /// never be mistaken for the type right <c>EDIT</c>/<c>SONG</c>, and combined verbs and the
+    /// Read ⇒ Query grant implication expand over it exactly as they do at type level.
+    /// <para>
+    /// Callers should memoise per request; <c>IAttributeRights</c> does.
+    /// </para>
+    /// </remarks>
+    public EffectiveAttributeRights ForAttributes(string verb, string entityType)
+    {
+        var typeProbe = new ResourcePattern(verb.ToUpperInvariant(), entityType.ToUpperInvariant());
+        var typeAllowed = Allows(typeProbe);
+
+        var prefix = typeProbe.Target + "/";
+        HashSet<string>? mentioned = null;
+
+        foreach (var group in groups)
+        {
+            Collect(group.ImportantDenied);
+            Collect(group.ImportantAllowed);
+            Collect(group.Denied);
+            Collect(group.Allowed);
+        }
+
+        if (mentioned is null)
+            return EffectiveAttributeRights.Inherit(entityType, verb, typeAllowed);
+
+        var decisions = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        foreach (var attribute in mentioned)
+        {
+            var attributeProbe = typeProbe with { Target = prefix + attribute };
+            decisions[attribute] = typeAllowed && Chain(typeProbe, attributeProbe);
+        }
+
+        return new EffectiveAttributeRights(entityType, verb, typeAllowed, decisions);
+
+        void Collect(IReadOnlySet<ResourcePattern> tier)
+        {
+            foreach (var pattern in tier)
+            {
+                if (pattern.Action == typeProbe.Action
+                    && pattern.Target.Length > prefix.Length
+                    && pattern.Target.StartsWith(prefix, StringComparison.Ordinal))
+                {
+                    (mentioned ??= new HashSet<string>(StringComparer.Ordinal)).Add(pattern.Target[prefix.Length..]);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// The four tiers over two probes at once: a tier fires when it covers either the type or the
+    /// attribute. That is what "the type → type/attribute chain" means — an important type grant
+    /// outranks an ordinary attribute denial, and an ordinary attribute denial outranks an ordinary
+    /// type grant.
+    /// </summary>
+    private bool Chain(ResourcePattern typeProbe, ResourcePattern attributeProbe)
+    {
+        if (AnyMatches(static g => g.ImportantDenied, typeProbe, attributeProbe)) return false;
+        if (AnyMatches(static g => g.ImportantAllowed, typeProbe, attributeProbe)) return true;
+        if (AnyMatches(static g => g.Denied, typeProbe, attributeProbe)) return false;
+        return AnyMatches(static g => g.Allowed, typeProbe, attributeProbe);
     }
 
     private bool AnyMatches(Func<GroupRights, IReadOnlySet<ResourcePattern>> tier, ResourcePattern probe)
@@ -110,6 +183,18 @@ public sealed class RightsDecision(IReadOnlyList<GroupRights> groups)
         foreach (var group in groups)
         {
             if (Covers(tier(group), probe))
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool AnyMatches(Func<GroupRights, IReadOnlySet<ResourcePattern>> tier, ResourcePattern first, ResourcePattern second)
+    {
+        foreach (var group in groups)
+        {
+            var patterns = tier(group);
+            if (Covers(patterns, first) || Covers(patterns, second))
                 return true;
         }
 
@@ -223,6 +308,11 @@ public readonly record struct ResourcePattern(string Action, string Target)
     /// <summary>
     /// Parses <c>{action}/{target}</c>. A string with no slash becomes the action with an empty
     /// target, which is what the old exact-equality matcher effectively did with one.
+    /// <para>
+    /// Split on the FIRST slash only, deliberately: an attribute-level resource
+    /// <c>{verb}/{Type}/{Attr}</c> becomes target <c>TYPE/ATTR</c>, which no type-level probe can
+    /// equal — see <see cref="RightsDecision.ForAttributes"/> and <see cref="SparkAttributeRights"/>.
+    /// </para>
     /// </summary>
     public static ResourcePattern Parse(string resource)
     {

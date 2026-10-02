@@ -14,6 +14,7 @@ internal sealed partial class ListEntityTypes : IGetEndpoint
     [Inject] private readonly IModelLoader modelLoader;
     [Inject] private readonly IPermissionService permissionService;
     [Inject] private readonly IQueryLoader queryLoader;
+    [Inject] private readonly IAttributeRightsEnforcement attributeRights;
     [Inject] private readonly ILogger<ListEntityTypes> logger;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
@@ -38,6 +39,10 @@ internal sealed partial class ListEntityTypes : IGetEndpoint
             // type is absent from this catalogue — which is the common case, since a row edited
             // through its parent rarely has a Query grant of its own (#385).
             pruned = SubQueryPruner.EmbedDetailTypes(pruned, modelLoader);
+
+            // Per-caller attribute rights (M2c-2a), as in Get.cs. Returns the same reference when it
+            // changes nothing, which the copy below still accounts for.
+            pruned = await attributeRights.ForFormAsync(pruned, httpContext.RequestAborted);
 
             // ⚠️ Copy if neither step did. Both return the SAME reference when they change nothing
             // — that is their documented contract, and the reason they are safe — so the comment

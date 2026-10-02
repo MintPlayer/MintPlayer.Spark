@@ -47,8 +47,9 @@ internal sealed partial class ListCustomActions : IPostEndpoint
         var config = configLoader.GetConfiguration();
         var registeredActions = actionResolver.GetRegisteredActionNames();
 
-        // Get the simple type name (e.g., "Car" from "Fleet.Entities.Car")
-        var typeName = entityType.ClrType?.Split('.').Last() ?? entityType.Name;
+        // The type as rights name it: the definition's Name, as everywhere else (a nested class's CLR
+        // name ends "Outer+Inner", which names no right).
+        var typeName = entityType.Name;
 
         var result = new List<object>();
 

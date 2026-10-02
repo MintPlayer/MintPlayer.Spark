@@ -29,6 +29,8 @@ namespace CodeCoverage.Tests.Recipients;
 /// </summary>
 public class GitHubRepositoryLifecycleTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const long RepoId = 777;
     private const long OldOwnerId = 11;
     private const long NewOwnerId = 22;

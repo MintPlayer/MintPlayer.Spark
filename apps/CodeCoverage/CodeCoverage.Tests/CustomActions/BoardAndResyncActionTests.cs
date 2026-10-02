@@ -25,6 +25,8 @@ namespace CodeCoverage.Tests.CustomActions;
 /// </remarks>
 public class BoardAndResyncActionTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const string BoardId = "GitHubProjects/PVT_sync";
 
     private sealed record Harness(SyncColumnsAction Action, IClientAccessor Client, IInstallationProjects Projects, IDatabaseAccess Database);
@@ -280,7 +282,7 @@ public class BoardAndResyncActionTests : CoverageRavenTest
         home["AccountCount"].Value.Should().Be(2);
         home["RepoCount"].Value.Should().Be(7);
         client.Received(1).RefreshQuery("my-accounts");
-        client.DidNotReceiveWithAnyArgs().Notify(default!, default);
+        client.DidNotReceiveWithAnyArgs().Notify(default(string)!, default);
     }
 
     /// <summary>A caller who manages nothing reconciles nothing, and a missing home page is simply not refreshed.</summary>

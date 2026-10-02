@@ -400,6 +400,40 @@ Spark checks for a custom renderer before applying built-in rendering:
 2. Built-in input (boolean toggle, Reference selector, etc.)
 3. Default `<input>` based on `dataType`
 
+## AsDetail row renderers (`rowComponent`)
+
+A registration can also carry a `rowComponent` (contract `SparkAttributeRowRenderer`): the attributes
+of an AsDetail row type that name that renderer are then **not** drawn as columns, and the component
+is drawn once per row, under the row's first cell, on the detail page and in both edit-form tables.
+Its inputs (all optional, filtered to what it declares): `row` (the flat row record), `attributes`
+(the row-type attributes carrying the renderer), `options` (the first one's `rendererOptions`) and
+`ownerId` (the id of the object that owns the list). Contributions' `contributionAttribution`
+("by Alice · 3 days ago · History (4)") is one; see `@mintplayer/ng-spark/contributions`.
+
+```ts
+provideSparkAttributeRenderers([
+  { name: 'row-summary', rowComponent: RowSummaryComponent },
+])
+```
+
+## Built-in renderers you register
+
+- `@mintplayer/ng-spark/contributions` → `sparkContributionRenderers`: `contributionAttribution` (row
+  renderer) and `lineDiff`, a **generic** detail renderer that diffs an attribute's text line by line
+  (LCS, no dependency) against a text of another object. Its `rendererOptions`: `compareType`; the id
+  as `compareIdAttribute` or `compareIdPattern` + `compareIdReplacement` (a regex over this object's
+  id); `compareAttribute`; for an AsDetail list `compareRowKeyPattern` + `compareRowKeyReplacement`
+  and `compareRowAttribute` (for a single AsDetail object, `compareRowAttribute` alone).
+- `@mintplayer/ng-spark/moderation` → `sparkModerationRenderers` (`spark-vote`).
+
+## Query page URL scope
+
+`query/:queryId` reads `?parentId=…&parentType=…` (both or neither) and every other query-string
+parameter as a column filter (`?Language=en&Script=Latn`; repeat a name for several values). The grid
+applies only filters that name an attribute of the query's entity type (values coerced to its type)
+and ignores the rest; `deleted`, `queryId` and `parentDeleted` are never filters. The active ones show
+as removable chips above the grid (`SparkQueryGridComponent.presetFilters` / `appliedPresetFilters`).
+
 ## Complete Example
 
 See the Fleet demo app for working examples:
@@ -418,6 +452,7 @@ multi-provider tokens in `@mintplayer/ng-spark/panels`:
 | `SPARK_DETAIL_PANELS` (`provideSparkDetailPanels`) | below the attributes of `po/:type/:id` | `context = input.required<SparkDetailContext>()` |
 | `SPARK_DETAIL_ACTIONS` (`provideSparkDetailActions`) | the detail page's action bar | `context = input.required<SparkDetailContext>()` |
 | `SPARK_QUERY_LIST_ACTIONS` (`provideSparkQueryListActions`) | the query page's action bar | `context = input.required<SparkQueryListContext>()` |
+| `SPARK_QUERY_ROW_ACTIONS` (`provideSparkQueryRowActions`) | every Spark grid's per-row `⋮` menu (query page and sub-query card) | not a component: a `SparkQueryRowAction` (`id`, `labelKey`, `isOffered(scope)`, `run(context)`; `run` executes in the grid's injection context, a rejection shows in the grid's alert) |
 
 `SparkDetailContext` carries the route's `type` and `id`, the loaded `item`, its `entityType`, the
 type-level `permissions` (`null` while loading), the `deleted` mode the row was loaded with, and

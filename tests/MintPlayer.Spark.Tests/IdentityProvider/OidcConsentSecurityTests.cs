@@ -13,21 +13,22 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// what it does with a browser that <em>is</em> authenticated.
 /// </para>
 /// </summary>
-public class OidcConsentSecurityTests : OidcTestHost
+public class OidcConsentSecurityTests(OidcSharedHost host) : OidcTestHost(host), IClassFixture<OidcSharedHost>
 {
-    private const string ClientId = "webapp";
-    private const string RedirectUri = "https://webapp.test/cb";
+    private string WebApp => ClientId("webapp");
+    private string RedirectUri => $"https://{WebApp}.test/cb";
 
     private async Task<(OidcApplication App, Browser Browser, string RequestId)> StartFlowAsync(
-        string email = "alice@test.local",
+        string? email = null,
         string[]? scopes = null)
     {
-        var app = await SeedApplicationAsync(ClientId, allowedScopes: ["openid", "profile"]);
+        email ??= UserEmail("alice");
+        var app = await SeedApplicationAsync(WebApp, allowedScopes: ["openid", "profile"]);
         await SeedUserAsync(email);
         var browser = await SignInAsync(email);
 
         var authorizeUrl =
-            $"/connect/authorize?client_id={ClientId}&redirect_uri={Uri.EscapeDataString(RedirectUri)}"
+            $"/connect/authorize?client_id={WebApp}&redirect_uri={Uri.EscapeDataString(RedirectUri)}"
           + $"&response_type=code&scope={Uri.EscapeDataString(string.Join(' ', scopes ?? ["openid", "profile"]))}&state=st-1";
 
         var response = await browser.GetAsync(authorizeUrl);
@@ -66,7 +67,7 @@ public class OidcConsentSecurityTests : OidcTestHost
 
         await Store.WaitForIndexingAsync();
         using var session = Store.OpenAsyncSession();
-        var codes = await session.Query<OidcToken>().ToListAsync();
+        var codes = await CaseTokensAsync(session);
         codes.Should().ContainSingle().Which.Type.Should().Be("authorization_code");
     }
 
@@ -111,11 +112,11 @@ public class OidcConsentSecurityTests : OidcTestHost
     [Fact]
     public async Task Consent_rejects_a_request_id_issued_to_a_different_user()
     {
-        var (_, alice, requestId) = await StartFlowAsync("alice@test.local");
+        var (_, alice, requestId) = await StartFlowAsync(UserEmail("alice"));
         var aliceToken = await ConsentTokenAsync(alice, requestId);
 
-        await SeedUserAsync("bob@test.local");
-        var bob = await SignInAsync("bob@test.local");
+        await SeedUserAsync(UserEmail("bob"));
+        var bob = await SignInAsync(UserEmail("bob"));
 
         var get = await bob.GetAsync($"/connect/consent?request_id={requestId}");
         get.StatusCode.Should().Be(HttpStatusCode.BadRequest, "the GET must not even render Alice's request to Bob");
@@ -154,7 +155,7 @@ public class OidcConsentSecurityTests : OidcTestHost
 
         await Store.WaitForIndexingAsync();
         using var session = Store.OpenAsyncSession();
-        (await session.Query<OidcToken>().ToListAsync()).Should().ContainSingle("a replay must not mint a second code");
+        (await CaseTokensAsync(session)).Should().ContainSingle("a replay must not mint a second code");
     }
 
     /// <summary>A-I4 — denial is terminal; it cannot be retried into an allow.</summary>
@@ -183,9 +184,9 @@ public class OidcConsentSecurityTests : OidcTestHost
     [Fact]
     public async Task Consent_rejects_an_expired_request()
     {
-        var app = await SeedApplicationAsync(ClientId);
-        var user = await SeedUserAsync("alice@test.local");
-        var browser = await SignInAsync("alice@test.local");
+        var app = await SeedApplicationAsync(WebApp);
+        var user = await SeedUserAsync(UserEmail("alice"));
+        var browser = await SignInAsync(UserEmail("alice"));
 
         var requestId = await SeedAuthorizationRequestAsync(
             app, user.Id!, expiresAt: DateTime.UtcNow.AddMinutes(-1));
@@ -199,9 +200,9 @@ public class OidcConsentSecurityTests : OidcTestHost
     [Fact]
     public async Task Consent_rejects_an_unknown_request_id()
     {
-        await SeedApplicationAsync(ClientId);
-        await SeedUserAsync("alice@test.local");
-        var browser = await SignInAsync("alice@test.local");
+        await SeedApplicationAsync(WebApp);
+        await SeedUserAsync(UserEmail("alice"));
+        var browser = await SignInAsync(UserEmail("alice"));
 
         var response = await browser.GetAsync("/connect/consent?request_id=never-issued-this");
 
@@ -237,9 +238,9 @@ public class OidcConsentSecurityTests : OidcTestHost
     [Fact]
     public async Task Consent_drops_scopes_that_were_never_requested()
     {
-        var app = await SeedApplicationAsync(ClientId, allowedScopes: ["openid", "profile", "admin"]);
-        var user = await SeedUserAsync("alice@test.local");
-        var browser = await SignInAsync("alice@test.local");
+        var app = await SeedApplicationAsync(WebApp, allowedScopes: ["openid", "profile", "admin"]);
+        var user = await SeedUserAsync(UserEmail("alice"));
+        var browser = await SignInAsync(UserEmail("alice"));
 
         // Requested openid only, even though 'admin' is allowed for this client.
         var requestId = await SeedAuthorizationRequestAsync(app, user.Id!, scopes: ["openid"]);
@@ -255,7 +256,7 @@ public class OidcConsentSecurityTests : OidcTestHost
 
         await Store.WaitForIndexingAsync();
         using var session = Store.OpenAsyncSession();
-        var code = (await session.Query<OidcToken>().ToListAsync()).SingleOrDefault();
+        var code = (await CaseTokensAsync(session)).SingleOrDefault();
         code?.Scopes.Should().NotContain("admin", "the grant is bounded by what authorize validated");
     }
 
@@ -281,8 +282,8 @@ public class OidcConsentSecurityTests : OidcTestHost
     [Fact]
     public async Task Consent_post_without_a_session_returns_401()
     {
-        var app = await SeedApplicationAsync(ClientId);
-        var user = await SeedUserAsync("alice@test.local");
+        var app = await SeedApplicationAsync(WebApp);
+        var user = await SeedUserAsync(UserEmail("alice"));
         var requestId = await SeedAuthorizationRequestAsync(app, user.Id!);
 
         var anonymous = NewBrowser();
@@ -304,7 +305,7 @@ public class OidcConsentSecurityTests : OidcTestHost
         // a security check that succeeds for the wrong reason and would never be noticed.
         await Store.WaitForIndexingAsync();
         using var session = Store.OpenAsyncSession();
-        var tokens = await session.Query<OidcToken>().ToListAsync();
+        var tokens = await CaseTokensAsync(session);
         tokens.Should().BeEmpty("no authorization code may exist");
     }
 }

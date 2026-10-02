@@ -97,6 +97,9 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             })
             .GroupBy(x => x.EntityType!);
 
+        // The context's entity types, in processing order: their satellites are written after them.
+        var rootTypes = new List<Type>();
+
         foreach (var group in rootsByEntityType)
         {
             var entityType = group.Key;
@@ -112,6 +115,8 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             // Find or create entity type definition (merging with projection type if present)
             var existingDef = existingEntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
             var entityTypeDef = CreateOrUpdateEntityTypeDefinition(entityType, projectionType, indexName, existingDef, entityTypeToQueryName);
+            ApplyRendererSeeds(entityTypeDef, entityType);
+            rootTypes.Add(entityType);
 
             // Collect existing inline queries for this entity type, plus create default if missing
             var queriesForType = CollectQueriesFor(existingQueries, entityType.Name);
@@ -223,6 +228,52 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             }
         }
 
+        // Satellite types (contributions M5b): documents that belong to a context entity without being
+        // a context property — a generated contribution type, say. Each gets a model file like a root,
+        // and the query registered for it is minted once (the file owns it afterwards, as for roots).
+        foreach (var satellite in rootTypes.SelectMany(SparkModelSatellites.For))
+        {
+            var satelliteType = satellite.ModelType;
+            var clrType = satelliteType.FullName ?? satelliteType.Name;
+            if (processedTypes.Contains(clrType))
+                continue;
+
+            var existingDef = existingEntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
+            var entityTypeDef = CreateOrUpdateEntityTypeDefinition(satelliteType, projectionType: null, indexName: null, existingDef, entityTypeToQueryName);
+            ApplyRendererSeeds(entityTypeDef, satelliteType);
+
+            var satelliteQueries = CollectQueriesFor(existingQueries, satelliteType.Name);
+            if (satellite.Query is { } minted && !satelliteQueries.Any(q => q.Name == minted.Name))
+            {
+                satelliteQueries.Add(new SparkQuery
+                {
+                    Id = Guid.NewGuid(),
+                    Name = minted.Name,
+                    EntityType = satelliteType.Name,
+                    Source = minted.Source,
+                    SortColumns = minted.SortProperty is { } sort
+                        ? [new SortColumn { Property = sort, Direction = minted.SortDirection }]
+                        : [],
+                });
+                Console.WriteLine($"Created query: {minted.Name} (inline in {satelliteType.Name}.json)");
+            }
+
+            var fileName = Path.Combine(modelPath, $"{satelliteType.Name}.json");
+            var entityTypeFile = new EntityTypeFile
+            {
+                PersistentObject = entityTypeDef,
+                Queries = [.. satelliteQueries
+                    .OrderBy(q => q.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(q => q.Name, StringComparer.Ordinal)]
+            };
+            File.WriteAllText(fileName, JsonSerializer.Serialize(entityTypeFile, JsonOptions));
+            writtenFiles.Add(fileName);
+            processedTypes.Add(clrType);
+            Console.WriteLine($"Synchronized model (satellite of {satellite.OwnerType.Name}): {satelliteType.Name} -> {fileName}");
+
+            CollectEmbeddedTypes(satelliteType, typesToProcess, processedTypes);
+        }
+
         // Process embedded types
         while (typesToProcess.Count > 0)
         {
@@ -234,6 +285,7 @@ internal partial class ModelSynchronizer : IModelSynchronizer
 
             var existingDef = existingEntityTypes.Values.FirstOrDefault(e => e.ClrType == clrType);
             var entityTypeDef = CreateOrUpdateEntityTypeDefinition(embeddedType, projectionType: null, indexName: null, existingDef, entityTypeToQueryName);
+            ApplyRendererSeeds(entityTypeDef, embeddedType);
 
             // Preserve any existing inline queries for this embedded type
             var embeddedQueries = CollectQueriesFor(existingQueries, embeddedType.Name).ToArray();
@@ -491,6 +543,25 @@ internal partial class ModelSynchronizer : IModelSynchronizer
             ConfigFiles = configHashes.Count > 0 ? configHashes : null,
             Entities = new SortedDictionary<string, string>(perEntity.ToDictionary(e => e.Key, e => e.Value), StringComparer.Ordinal),
         };
+    }
+
+    /// <summary>
+    /// Writes the renderer a library seeded (<see cref="SparkModelSatellites.SeedRenderer"/>) onto an
+    /// attribute that has none. Never overwrites: once written, the model file owns the renderer and
+    /// its options, so a second run reads them back unchanged (a fixed point).
+    /// </summary>
+    private static void ApplyRendererSeeds(EntityTypeDefinition definition, Type type)
+    {
+        var seeds = SparkModelSatellites.RendererSeedsFor(type);
+        if (seeds.Count == 0)
+            return;
+        foreach (var attribute in definition.Attributes)
+        {
+            if (!string.IsNullOrEmpty(attribute.Renderer) || !seeds.TryGetValue(attribute.Name, out var seed))
+                continue;
+            attribute.Renderer = seed.Renderer;
+            attribute.RendererOptions = seed.Options is null ? null : new Dictionary<string, object>(seed.Options);
+        }
     }
 
     private void CollectEmbeddedTypes(Type entityType, Queue<Type> typesToProcess, HashSet<string> processedTypes)
@@ -892,6 +963,13 @@ internal partial class ModelSynchronizer : IModelSynchronizer
                     ShowedOn = showedOn,
                     Rules = []
                 };
+                // A library's defaults for an attribute it generates (contributions M5b: the raw
+                // ContributorId off the history grid). Creation only, so the model file owns them after.
+                if (SparkModelSatellites.NewAttributeSeedFor(entityType, propertyName) is { } newSeed)
+                {
+                    if (newSeed.ShowedOn is { } seededShowedOn) newAttr.ShowedOn = seededShowedOn;
+                    if (newSeed.IsVisible is { } seededVisible) newAttr.IsVisible = seededVisible;
+                }
                 newAttributes.Add(newAttr);
             }
             order++;

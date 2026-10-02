@@ -33,6 +33,8 @@ namespace CodeCoverage.Tests.Ingestion;
 /// </remarks>
 public class ForkContributionTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const long RepoId = 77;
     private static readonly string RepositoryId = Repository.DocumentId(EForgeProvider.GitHub, RepoId);
 

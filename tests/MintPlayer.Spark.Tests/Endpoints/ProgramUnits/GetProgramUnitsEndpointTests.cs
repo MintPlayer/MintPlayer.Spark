@@ -25,7 +25,8 @@ namespace MintPlayer.Spark.Tests.Endpoints.ProgramUnits;
 /// hand-write programUnits.json into each test's content root, and stub
 /// <see cref="IPermissionService"/> so we can drive the allow/deny matrix directly.
 /// </summary>
-public class GetProgramUnitsEndpointTests : SparkTestDriver
+public class GetProgramUnitsEndpointTests(SparkSharedDatabase database)
+    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
 {
     private static readonly Guid PersonTypeId = Guid.Parse("aaaaaaaa-1111-1111-1111-111111111111");
     private static readonly Guid CompanyTypeId = Guid.Parse("bbbbbbbb-2222-2222-2222-222222222222");

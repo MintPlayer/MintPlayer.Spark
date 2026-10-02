@@ -12,6 +12,31 @@ using NSubstitute;
 namespace MintPlayer.Spark.Tests.Endpoints.Queries;
 
 /// <summary>
+/// One host for the class (M8 item 5). A composed query has no documents at all, so nothing a case
+/// does can reach a sibling. The three sources the cases need ride on one type as three queries,
+/// instead of one host per source.
+/// </summary>
+public sealed class ComposedQueryHost : SharedSparkHost<TestSparkContext>
+{
+    internal static readonly Guid DuplicateQueryId = Guid.Parse("88888888-cccc-cccc-cccc-888888888889");
+    internal static readonly Guid PagedQueryId = Guid.Parse("88888888-cccc-cccc-cccc-88888888888a");
+
+    protected override SparkEndpointFactory<TestSparkContext> CreateFactory()
+    {
+        var model = ComposedQueryTests.DashboardModel();
+        model.Queries =
+        [
+            .. model.Queries,
+            .. ComposedQueryTests.DashboardModel(source: "Custom.GetDuplicateRows", queryId: DuplicateQueryId).Queries
+                .Select(q => { q.Name = "DashboardDuplicateRows"; return q; }),
+            .. ComposedQueryTests.DashboardModel(source: "Custom.GetPagedRows", queryId: PagedQueryId).Queries
+                .Select(q => { q.Name = "DashboardPagedRows"; return q; }),
+        ];
+        return new SparkEndpointFactory(Store, [model]);
+    }
+}
+
+/// <summary>
 /// Composed queries (#327 M5): a query whose entity type declares no <c>clrType</c>. There is no
 /// entity class, no collection and no document behind a row — the rows are computed by the
 /// name-resolved <c>{Name}Actions</c> class, the same seam the virtual-type page path uses
@@ -22,16 +47,22 @@ namespace MintPlayer.Spark.Tests.Endpoints.Queries;
 /// (that check was never row-shaped).
 /// </para>
 /// </summary>
-public class ComposedQueryTests : SparkTestDriver
+public class ComposedQueryTests(ComposedQueryHost host)
+    : SparkSharedTestDriver(host), IClassFixture<ComposedQueryHost>
 {
     private static readonly Guid DashboardTypeId = Guid.Parse("77777777-cccc-cccc-cccc-777777777777");
     private static readonly Guid DashboardQueryId = Guid.Parse("88888888-cccc-cccc-cccc-888888888888");
+    private static readonly Guid DuplicateQueryId = ComposedQueryHost.DuplicateQueryId;
+    private static readonly Guid PagedQueryId = ComposedQueryHost.PagedQueryId;
+
+    /// <summary>The class's shared host: the Dashboard type with its three queries.</summary>
+    private SparkEndpointFactory<TestSparkContext> SharedFactory => host.Factory;
 
     /// <summary>
     /// The composed shape: no clrType at all, and — unlike the two virtual types in the demos —
     /// attributes that are shown on a query, because that is what gives the grid its columns.
     /// </summary>
-    private static EntityTypeFile DashboardModel(
+    internal static EntityTypeFile DashboardModel(
         string name = "Dashboard",
         Guid? typeId = null,
         Guid? queryId = null,
@@ -70,7 +101,7 @@ public class ComposedQueryTests : SparkTestDriver
         };
 
     private static async Task<QueryResult> ExecuteAsync(
-        SparkEndpointFactory factory, Guid queryId, int skip = 0, int take = 50,
+        SparkEndpointFactory<TestSparkContext> factory, Guid queryId, int skip = 0, int take = 50,
         string? search = null, SortColumn[]? sortColumns = null)
     {
         using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
@@ -80,7 +111,7 @@ public class ComposedQueryTests : SparkTestDriver
     [Fact]
     public async Task Composed_query_renders_rows_from_the_name_resolved_actions_class()
     {
-        await using var factory = new SparkEndpointFactory(Store, [DashboardModel()]);
+        var factory = SharedFactory;
 
         var result = await ExecuteAsync(factory, DashboardQueryId);
 
@@ -94,7 +125,7 @@ public class ComposedQueryTests : SparkTestDriver
     [Fact]
     public async Task Composed_rows_render_the_model_breadcrumb_template()
     {
-        await using var factory = new SparkEndpointFactory(Store, [DashboardModel()]);
+        var factory = SharedFactory;
 
         var result = await ExecuteAsync(factory, DashboardQueryId);
 
@@ -223,9 +254,9 @@ public class ComposedQueryTests : SparkTestDriver
         // In memory there is no fan-out, so DistinctBy does not run here — and must not: it treats
         // every null key as equal and would collapse the grid to one row. A repeated id is an
         // authoring bug in the actions class, and the projector refuses it.
-        await using var factory = new SparkEndpointFactory(Store, [DashboardModel(source: "Custom.GetDuplicateRows")]);
+        var factory = SharedFactory;
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => ExecuteAsync(factory, DashboardQueryId));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => ExecuteAsync(factory, DuplicateQueryId));
 
         ex.Message.Should().Contain("two rows with the id 'row/1'");
     }
@@ -233,7 +264,7 @@ public class ComposedQueryTests : SparkTestDriver
     [Fact]
     public async Task Sort_columns_are_honoured_on_a_composed_query()
     {
-        await using var factory = new SparkEndpointFactory(Store, [DashboardModel()]);
+        var factory = SharedFactory;
 
         var result = await ExecuteAsync(factory, DashboardQueryId, sortColumns: [new SortColumn { Property = "Amount", Direction = "desc" }]);
 
@@ -247,9 +278,9 @@ public class ComposedQueryTests : SparkTestDriver
     [Fact]
     public async Task SparkQueryPage_reports_the_authors_total_not_the_page_length()
     {
-        await using var factory = new SparkEndpointFactory(Store, [DashboardModel(source: "Custom.GetPagedRows")]);
+        var factory = SharedFactory;
 
-        var result = await ExecuteAsync(factory, DashboardQueryId, skip: 0, take: 2);
+        var result = await ExecuteAsync(factory, PagedQueryId, skip: 0, take: 2);
 
         result.Items.Should().HaveCount(2, "the method returned its own page");
         result.TotalItems.Should().Be(500,
@@ -261,9 +292,9 @@ public class ComposedQueryTests : SparkTestDriver
     {
         // The author already applied skip/take. Applying it a second time would silently serve the
         // first N rows of page 3 as page 3 — right count, wrong rows.
-        await using var factory = new SparkEndpointFactory(Store, [DashboardModel(source: "Custom.GetPagedRows")]);
+        var factory = SharedFactory;
 
-        var result = await ExecuteAsync(factory, DashboardQueryId, skip: 10, take: 2);
+        var result = await ExecuteAsync(factory, PagedQueryId, skip: 10, take: 2);
 
         result.Items.Should().HaveCount(2);
         result.Items.Select(i => i.Id).Should().BeEquivalentTo(["page/10", "page/11"],
@@ -276,9 +307,9 @@ public class ComposedQueryTests : SparkTestDriver
         // The binary rule's sharpest edge: sorting a page the author already trimmed would present
         // a page-local ordering as a global one — every page internally sorted, the sequence across
         // pages wrong, and nothing about the result saying so.
-        await using var factory = new SparkEndpointFactory(Store, [DashboardModel(source: "Custom.GetPagedRows")]);
+        var factory = SharedFactory;
 
-        var result = await ExecuteAsync(factory, DashboardQueryId, skip: 0, take: 3, sortColumns: [new SortColumn { Property = "Amount", Direction = "desc" }]);
+        var result = await ExecuteAsync(factory, PagedQueryId, skip: 0, take: 3, sortColumns: [new SortColumn { Property = "Amount", Direction = "desc" }]);
 
         result.Items.Select(i => i.Id).Should().ContainInOrder("page/0", "page/1", "page/2");
     }
@@ -286,9 +317,9 @@ public class ComposedQueryTests : SparkTestDriver
     [Fact]
     public async Task SparkQueryPage_keeps_its_own_result_when_the_request_carries_a_search()
     {
-        await using var factory = new SparkEndpointFactory(Store, [DashboardModel(source: "Custom.GetPagedRows")]);
+        var factory = SharedFactory;
 
-        var result = await ExecuteAsync(factory, DashboardQueryId, take: 3, search: "nothing-matches-this");
+        var result = await ExecuteAsync(factory, PagedQueryId, take: 3, search: "nothing-matches-this");
 
         result.Items.Should().HaveCount(3, "search authority transferred with the page; the method saw the term");
         result.TotalItems.Should().Be(500);

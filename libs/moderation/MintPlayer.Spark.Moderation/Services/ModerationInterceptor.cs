@@ -42,6 +42,9 @@ internal sealed partial class ModerationInterceptor : IPersistentObjectIntercept
     [Inject] private readonly ILogger<ModerationInterceptor> logger;
 
     /// <summary>Every type: the suspension write block is not limited to moderatable content.</summary>
+    /// <summary>After SoftDelete and History (contributions F5), before Contributions.</summary>
+    public int Order => PersistentObjectInterceptorOrder.Moderation;
+
     public bool AppliesTo(Type entityType) => true;
 
     private DateTime UtcNow => timeProvider.GetUtcNow().UtcDateTime;
@@ -138,6 +141,17 @@ internal sealed partial class ModerationInterceptor : IPersistentObjectIntercept
             return;
         if (await IsLockedForCallerAsync(context.EntityType, id))
             ((IDisablable)context.PersistentObject).DisableActions("Edit", "Delete");
+    }
+
+    /// <summary>
+    /// The checks a satellite write gets (<see cref="ModerationSatelliteWriteGuard"/>): the suspension of
+    /// the caller, and a lock on the written document when its type is <see cref="IModeratable"/>. The
+    /// target's own lock was already judged by <see cref="OnBeforeSaveAsync"/> of the target's save.
+    /// </summary>
+    internal async Task EnsureMayWriteSatelliteAsync(SatelliteWriteContext context)
+    {
+        await RefuseSuspendedAsync();
+        await RefuseLockedAsync(context.DocumentType, context.DocumentId);
     }
 
     private async Task RefuseSuspendedAsync()

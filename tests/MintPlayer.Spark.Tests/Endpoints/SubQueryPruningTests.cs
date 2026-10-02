@@ -20,7 +20,8 @@ namespace MintPlayer.Spark.Tests.Endpoints;
 /// single-request test passes either way, which is why the test below is order-dependent across
 /// two requests on one host.
 /// </remarks>
-public class SubQueryPruningTests : SparkTestDriver
+public class SubQueryPruningTests(SparkSharedDatabase database)
+    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
 {
     private static readonly Guid DocTypeId = Guid.Parse("6c6c0000-1111-2222-3333-444455556666");
     private static readonly Guid ChildQueryId = Guid.Parse("6c6c1111-1111-2222-3333-444455556666");

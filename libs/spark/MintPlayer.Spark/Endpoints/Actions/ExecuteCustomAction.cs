@@ -50,6 +50,9 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint
     [Inject] private readonly IQueryLoader queryLoader;
     [Inject] private readonly IQueryExecutor queryExecutor;
     [Inject] private readonly IDisabledActionsEvaluator disabledActions;
+    // Optional so the dispatch tests that construct this endpoint by hand keep compiling; DI always
+    // supplies it.
+    [Inject] private readonly IAttributeRightsEnforcement? attributeRights = null;
 
     public async Task<IResult> HandleAsync(HttpContext httpContext)
     {
@@ -67,7 +70,7 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
 
-        var typeName = entityType.ClrType?.Split('.').Last() ?? entityType.Name;
+        var typeName = entityType.Name;
 
         try
         {
@@ -323,6 +326,21 @@ internal sealed partial class ExecuteCustomAction : IPostEndpoint
             };
 
             await action.ExecuteAsync(args, httpContext.RequestAborted);
+
+            // A persistent object an action hands back is a presentation like any other (M2c-2a):
+            // the action typically loaded it server side, where nothing is removed, so the caller's
+            // static attribute rights are applied here before it reaches the wire.
+            switch (args.Result)
+            {
+                case Abstractions.PersistentObject resultObject:
+                    if (attributeRights is not null)
+                        await attributeRights.PresentAsync([resultObject], "Read", "Edit", httpContext.RequestAborted);
+                    break;
+                case IEnumerable<Abstractions.PersistentObject> resultObjects:
+                    if (attributeRights is not null)
+                        await attributeRights.PresentAsync(resultObjects, "Read", "Edit", httpContext.RequestAborted);
+                    break;
+            }
 
             // T5 (#460): whatever the action handed to SetResult, as the envelope's result. Null when
             // it set nothing, which is the shape every existing caller already reads.

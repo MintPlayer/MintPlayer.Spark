@@ -201,7 +201,10 @@ not copies in every Actions class — see `docs/guide-row-security.md`:
 
 ### `OnRefreshAsync` — forms that reshape themselves
 
-Mark an attribute `"triggersRefresh": true` in the model JSON (hand-set; synchronize preserves it).
+Mark an attribute `"triggersRefresh": "Auto"` in the model JSON (hand-set; synchronize preserves it).
+The value is an `ERefreshTrigger`: `None` (same as absent), `Auto` (free text on blur, discrete
+editors immediately), `ValueChanged` (every change; free text debounced 300 ms, flushed by blur or
+save) or `Blur` (on blur; a discrete editor acts as `ValueChanged` and verify-model warns).
 When its value changes the client posts the in-progress object to
 `/spark/po/refresh`, and the hook may toggle `IsRequired` / `IsReadOnly` /
 `IsVisible`, rewrite `Rules`, replace an attribute's `Options`, or set a dependent value.
@@ -240,7 +243,7 @@ context). Authorization still uses the owning type from the route — nested AsD
 per-row.
 
 ⚠️ `args.Attribute` is **nullable**: a stale client can name an attribute the model no longer
-declares. `--spark-verify-model` fails (exit 3) if a model declares `triggersRefresh` on a type whose
+declares. `--spark-verify-model` fails (exit 3) if a model declares a `triggersRefresh` other than `None` on a type whose
 actions class has no override — including a nested AsDetail type, which needs its own actions class.
 That check cannot be an analyzer, because the flag lives in JSON outside the compilation.
 
@@ -263,6 +266,15 @@ A right is `{action}/{target}`:
 | Wildcards | **none** — `*` is refused at startup and by SPARK021; name every target, use a combined action |
 
 Combined actions expand **symmetrically** — `deny EditNewDelete/Car` denies all three.
+
+**Attribute rights** are `{verb}/{Type}/{Attr}` (`Edit/Song/Lyrics`), for `Query`/`Read`/`Edit`/`New`
+and the combined verbs made only of them; anything else with a third segment, an unknown type or an
+unknown attribute refuses startup (SPARK014 at build). **The type right is required** — an attribute
+right never unlocks it; a mentioned attribute is decided by the type+attribute chain over the same
+four tiers, an unmentioned one inherits the type decision. SPARK024 / a posture note flag a group
+that restricts some attributes of a type but leaves others on the type grant. Consume via
+`IAttributeRights` (scoped, once per request per type and verb; system context unrestricted).
+[Details](../../../docs/guide-authorization.md#attribute-level-rights-verbtypeattribute).
 
 **Precedence**, each tier evaluated across the caller's whole group set before the next:
 important-denial → important-grant → denial → grant → refuse. **A denial is absolute** unless an

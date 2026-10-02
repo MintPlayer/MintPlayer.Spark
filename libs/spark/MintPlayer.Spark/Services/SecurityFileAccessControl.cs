@@ -30,6 +30,29 @@ internal partial class SecurityFileAccessControl : IAccessControl
 
     public async Task<bool> IsAllowedAsync(string resource, CancellationToken cancellationToken = default)
     {
+        var (decision, groups) = await ResolveDecisionAsync(cancellationToken);
+        var allowed = decision.Allows(resource);
+
+        LogAuthorizationDecision(resource, groups.Names, allowed);
+        return allowed;
+    }
+
+    /// <summary>
+    /// The attribute-level composition over the same groups <see cref="IsAllowedAsync"/> resolves —
+    /// see <see cref="RightsDecision.ForAttributes"/>. Not memoised here; <c>IAttributeRights</c> is.
+    /// </summary>
+    public async Task<EffectiveAttributeRights> GetAttributeRightsAsync(
+        string verb, string entityTypeName, CancellationToken cancellationToken = default)
+    {
+        var (decision, groups) = await ResolveDecisionAsync(cancellationToken);
+        var rights = decision.ForAttributes(verb, entityTypeName);
+
+        LogAuthorizationDecision($"{verb}/{entityTypeName}", groups.Names, rights.TypeAllowed);
+        return rights;
+    }
+
+    private async Task<(RightsDecision Decision, SparkRequestGroups Groups)> ResolveDecisionAsync(CancellationToken cancellationToken)
+    {
         var config = configLoader.GetConfiguration();
         var groups = await groupMembership.GetAsync(cancellationToken);
 
@@ -49,10 +72,7 @@ internal partial class SecurityFileAccessControl : IAccessControl
         if (ResolveWellKnownGroupId(config, role) is { } wellKnownGroupId)
             groupIds.Add(wellKnownGroupId);
 
-        var allowed = configLoader.GetResolvedRights(groupIds).Allows(resource);
-
-        LogAuthorizationDecision(resource, groups.Names, allowed);
-        return allowed;
+        return (configLoader.GetResolvedRights(groupIds), groups);
     }
 
     /// <summary>

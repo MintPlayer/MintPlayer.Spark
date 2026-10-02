@@ -289,11 +289,13 @@ public sealed class EntityAttributeDefinition
     /// </remarks>
     public bool? CanListDistincts { get; set; }
     /// <summary>
-    /// When true, changing this attribute's value asks the server to reshape the object: the client
-    /// posts the in-progress object to <c>/spark/po/{objectTypeId}/refresh</c> and the entity's
-    /// actions class receives <c>OnRefreshAsync</c>, which may toggle <see cref="IsRequired"/>,
-    /// <see cref="IsReadOnly"/> and <see cref="IsVisible"/>, rewrite <see cref="Rules"/>, replace an
-    /// attribute's selectable options, or set dependent values.
+    /// When set to anything but <see cref="ERefreshTrigger.None"/>, changing this attribute's value
+    /// asks the server to reshape the object: the client posts the in-progress object to
+    /// <c>/spark/po/{objectTypeId}/refresh</c> and the entity's actions class receives
+    /// <c>OnRefreshAsync</c>, which may toggle <see cref="IsRequired"/>, <see cref="IsReadOnly"/> and
+    /// <see cref="IsVisible"/>, rewrite <see cref="Rules"/>, replace an attribute's selectable
+    /// options, or set dependent values. The value decides <i>when</i> the client sends it — see
+    /// <see cref="ERefreshTrigger"/>. Absent (<see langword="null"/>) means <see cref="ERefreshTrigger.None"/>.
     /// <para>
     /// Hand-set in the model JSON and preserved across synchronize (like <see cref="EditMode"/> and
     /// <see cref="ReferenceDisplayType"/>). Deliberately absent from
@@ -301,7 +303,7 @@ public sealed class EntityAttributeDefinition
     /// client cannot claim a trigger the model did not declare.
     /// </para>
     /// </summary>
-    public bool? TriggersRefresh { get; set; }
+    public ERefreshTrigger? TriggersRefresh { get; set; }
     /// <summary>
     /// For LookupReference attributes, specifies the lookup reference type name.
     /// Example: "CarStatus", "CarBrand"
@@ -345,6 +347,14 @@ public sealed class EntityAttributeDefinition
     /// Example: { "width": 480, "height": 270, "autoplay": false }
     /// </summary>
     public Dictionary<string, object>? RendererOptions { get; set; }
+
+    /// <summary>
+    /// A member-wise copy, for a per-caller view of the attribute (attribute rights mark an
+    /// Edit-denied attribute read-only for one caller). Shallow, like
+    /// <see cref="EntityTypeDefinition.ShallowCopy"/>: the loader hands definitions out by reference
+    /// from a singleton, so a per-caller change is made on a copy and never through the original.
+    /// </summary>
+    public EntityAttributeDefinition ShallowCopy() => (EntityAttributeDefinition)MemberwiseClone();
 }
 
 public sealed class AttributeTab

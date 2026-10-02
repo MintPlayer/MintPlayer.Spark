@@ -1,0 +1,212 @@
+{
+  "persistentObject": {
+    "id": "d363f757-1d6a-46d1-a1a9-2ed1c4acbcb4",
+    "name": "QuestionTranslation",
+    "description": {
+      "en": "Translation",
+      "fr": "Traduction",
+      "nl": "Vertaling"
+    },
+    "clrType": "QnA.Entities.QuestionTranslation",
+    "breadcrumb": "{Title}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "864e0d61-0af7-4bd7-98b8-6d66b85a6616",
+        "name": "Body",
+        "label": {
+          "en": "Body",
+          "fr": "Contenu",
+          "nl": "Inhoud"
+        },
+        "description": {
+          "en": "The question itself in this language."
+        },
+        "dataType": "MultiLineString",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "99479382-fb90-42a6-8d95-87016976d54d",
+        "name": "ContributionCount",
+        "label": {
+          "en": "Versions",
+          "fr": "Versions",
+          "nl": "Versies"
+        },
+        "dataType": "number",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "renderer": "contributionAttribution",
+        "rendererOptions": {
+          "contributionsQuery": "questiontranslationscontributions",
+          "targetType": "Question",
+          "property": "Translations",
+          "slots": [
+            "Language",
+            "Script"
+          ],
+          "attribution": [
+            "ContributorName",
+            "UpdatedAt",
+            "ContributionCount"
+          ]
+        }
+      },
+      {
+        "id": "ebcb70c4-618f-40f4-b243-4f94299c6f27",
+        "name": "ContributorName",
+        "label": {
+          "en": "Translator",
+          "fr": "Traducteur",
+          "nl": "Vertaler"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "renderer": "contributionAttribution",
+        "rendererOptions": {
+          "contributionsQuery": "questiontranslationscontributions",
+          "targetType": "Question",
+          "property": "Translations",
+          "slots": [
+            "Language",
+            "Script"
+          ],
+          "attribution": [
+            "ContributorName",
+            "UpdatedAt",
+            "ContributionCount"
+          ]
+        }
+      },
+      {
+        "id": "7a65522b-3916-4389-a6f2-7ce8687a73b2",
+        "name": "Key",
+        "label": {
+          "en": "Key",
+          "fr": "Clé",
+          "nl": "Sleutel"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": false,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "48e18311-9037-4d41-ad48-4e2c08130a00",
+        "name": "Language",
+        "label": {
+          "en": "Language",
+          "fr": "Langue",
+          "nl": "Taal"
+        },
+        "description": {
+          "en": "The language, as an ISO 639 code: nl, fr, sr."
+        },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "905172bb-f026-4849-bf1f-e7ee2b04cf66",
+        "name": "Script",
+        "label": {
+          "en": "Script",
+          "fr": "Écriture",
+          "nl": "Schrift"
+        },
+        "description": {
+          "en": "The script, as an ISO 15924 code: Latn, Cyrl."
+        },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2c7e1843-a526-4fb6-abb4-2227be26be81",
+        "name": "Title",
+        "label": {
+          "en": "Title",
+          "fr": "Titre",
+          "nl": "Titel"
+        },
+        "description": {
+          "en": "The title in this language."
+        },
+        "dataType": "string",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": false,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e8af030b-05fb-4457-a28f-dad6774bea19",
+        "name": "UpdatedAt",
+        "label": {
+          "en": "Written",
+          "fr": "Écrite",
+          "nl": "Geschreven"
+        },
+        "dataType": "datetime",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": [],
+        "renderer": "contributionAttribution",
+        "rendererOptions": {
+          "contributionsQuery": "questiontranslationscontributions",
+          "targetType": "Question",
+          "property": "Translations",
+          "slots": [
+            "Language",
+            "Script"
+          ],
+          "attribution": [
+            "ContributorName",
+            "UpdatedAt",
+            "ContributionCount"
+          ]
+        }
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

@@ -1,0 +1,33 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+	<!--
+	  Two consumption modes, distinguished by whether the generator project exists next to this file
+	  (the same scheme as spark-allfeatures.targets).
+
+	  In-repo: analyzer ProjectReferences do not flow transitively, so an app that references
+	  MintPlayer.Spark.Contributions (or a Domain library that does) imports this file to get the
+	  generator. Import it explicitly from the app's csproj:
+	    <Import Project="..\..\..\libs\contributions\MintPlayer.Spark.Contributions\Targets\spark-contributions.targets" />
+
+	  From the NuGet package: the generator DLL already sits in the package's analyzers/dotnet/cs and
+	  flows transitively, so nothing is added. In particular no ProjectReference is emitted — inside a
+	  package layout its relative path would not exist and every build would warn MSB9008.
+
+	  SPARK001-003 (spark.targets) are unaffected either way: they validate the reference to
+	  MintPlayer.Spark.SourceGenerators, which this file neither adds nor claims to satisfy. The
+	  consumer keeps that reference exactly as for any Spark app, so this file deliberately does NOT
+	  set MintPlayerSparkSourceGeneratorsReferenceValidated (unlike AllFeatures, whose package does
+	  carry that generator).
+	-->
+
+	<PropertyGroup>
+		<_SparkContributionsInRepo Condition="Exists('$(MSBuildThisFileDirectory)..\..\MintPlayer.Spark.Contributions.SourceGenerators\MintPlayer.Spark.Contributions.SourceGenerators.csproj')">true</_SparkContributionsInRepo>
+		<_SparkContributionsInRepo Condition="'$(_SparkContributionsInRepo)' == ''">false</_SparkContributionsInRepo>
+	</PropertyGroup>
+
+	<ItemGroup Condition="'$(_SparkContributionsInRepo)' == 'true'">
+		<ProjectReference Include="$(MSBuildThisFileDirectory)..\..\MintPlayer.Spark.Contributions.SourceGenerators\MintPlayer.Spark.Contributions.SourceGenerators.csproj"
+			OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+	</ItemGroup>
+
+</Project>

@@ -150,6 +150,21 @@ internal interface IRowSecurity
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Whether <paramref name="entityType"/>'s actions class overrides
+    /// <c>GetProtectedAttributesAsync</c> and the caller is not in system context — so a caller can
+    /// skip loading anything to ask it (contributions M2c-2a: breadcrumb token blanking).
+    /// </summary>
+    bool HasProtectedAttributesHook(Type entityType) => false;
+
+    /// <summary>
+    /// The attributes the per-row hook protects on <paramref name="entity"/> for this caller, or null
+    /// when it protects none or does not apply (no override, system context). <paramref name="entity"/>
+    /// must be an instance of <paramref name="entityType"/> — the hook is typed on the entity.
+    /// </summary>
+    Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(Type entityType, string action, object entity)
+        => Task.FromResult<IReadOnlyCollection<string>?>(null);
+
+    /// <summary>
     /// The type's filter expression for this caller and action, straight from the hook, or null when
     /// the type declares none or the override returns null for this caller.
     /// <para>
@@ -558,6 +573,22 @@ internal partial class RowSecurity : IRowSecurity
         }
     }
 
+    public bool HasProtectedAttributesHook(Type entityType)
+        => IsOverridden(ResolveProtectedHook(entityType))
+           && !Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor);
+
+    public async Task<IReadOnlyCollection<string>?> GetProtectedAttributesAsync(Type entityType, string action, object entity)
+    {
+        if (!HasProtectedAttributesHook(entityType) || !entityType.IsInstanceOfType(entity))
+            return null;
+
+        var hook = ResolveProtectedHook(entityType)!;
+        var actions = actionsResolver.ResolveForType(entityType);
+        var task = (Task)hook.Invoke(actions, HookInvoke, binder: null, parameters: [action, entity], culture: null)!;
+        await task;
+        return (IReadOnlyCollection<string>?)task.GetCompletedTaskResult();
+    }
+
     /// <summary>
     /// Batch-loads the documents behind a page of projected rows, as <paramref name="entityType"/>.
     /// <para>
@@ -618,9 +649,15 @@ internal partial class RowSecurity : IRowSecurity
         return baseDocuments;
     }
 
-    /// <summary>Redact = value gone, attribute invisible — not omitted. A dotted name reaches
-    /// into an AsDetail attribute's embedded rows ("Jobs.Salary").</summary>
-    private static void RedactAttribute(Abstractions.PersistentObject po, string name)
+    /// <summary>
+    /// Redact = a plain empty value, indistinguishable from "no value" (PRD §5 Q14, contributions
+    /// M2c-2b): the attribute stays, its flags stay exactly as the model sets them — no
+    /// <c>IsVisible</c> flip, no marker — so its JSON is the JSON of a genuinely empty attribute and a
+    /// caller cannot tell "protected on this row" from "empty on this row". Not omitted either: a
+    /// per-row absence would itself be the signal. A dotted name reaches into an AsDetail attribute's
+    /// embedded rows ("Jobs.Salary").
+    /// </summary>
+    internal static void RedactAttribute(Abstractions.PersistentObject po, string name)
     {
         var dot = name.IndexOf('.');
         if (dot < 0)
@@ -632,7 +669,6 @@ internal partial class RowSecurity : IRowSecurity
             attribute.Value = null;
             attribute.Breadcrumb = null;
             attribute.Breadcrumbs = null;
-            attribute.IsVisible = false;
             if (attribute is Abstractions.PersistentObjectAttributeAsDetail detail)
             {
                 detail.Object = null;

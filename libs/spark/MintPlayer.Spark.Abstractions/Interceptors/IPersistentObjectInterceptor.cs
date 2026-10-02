@@ -15,9 +15,10 @@ namespace MintPlayer.Spark.Abstractions.Interceptors;
 /// rewrite).
 /// </para>
 /// <para>
-/// <b>Order:</b> before-hooks run <em>after</em> the Actions class's own <c>OnBefore*Async</c>, in
-/// registration order; after-hooks run after the Actions class's hook, in <em>reverse</em>
-/// registration order — so the first-registered interceptor wraps all the others.
+/// <b>Order:</b> before-hooks run <em>after</em> the Actions class's own <c>OnBefore*Async</c>,
+/// ascending by <see cref="Order"/> and, for equal orders, in registration order; after-hooks run
+/// after the Actions class's hook, in the <em>reverse</em> of that — so the first interceptor wraps
+/// all the others. <see cref="PersistentObjectInterceptorOrder"/> documents the scale the built-ins use.
 /// </para>
 /// <para>
 /// <b>Save:</b> <see cref="OnBeforeSaveAsync"/> runs inside the base <c>OnSaveAsync</c>, after mapping
@@ -47,6 +48,37 @@ public interface IPersistentObjectInterceptor
     /// the answer is cached process-wide per (interceptor type, entity type).
     /// </summary>
     bool AppliesTo(Type entityType);
+
+    /// <summary>
+    /// Where this interceptor runs among the others (contributions F5): before-hooks ascending,
+    /// after-hooks descending, registration order breaking ties. Defaults to
+    /// <see cref="PersistentObjectInterceptorOrder.Default"/>. Must be a constant of the type.
+    /// </summary>
+    int Order => PersistentObjectInterceptorOrder.Default;
+
+    /// <summary>
+    /// After an entity was loaded from RavenDB and before anything reads it (contributions F1): the
+    /// seam that fills <em>satellite</em> properties — modelled, <c>[JsonIgnore]</c>d, stored in side
+    /// documents — so the mapper, the row gates, the save merge and <see cref="SaveContext.Before"/>
+    /// all see the hydrated entity. Called for every entity-backed load path: the base
+    /// <c>LoadManyAsync</c> (every Get, Refresh, Update pre-read, parent and batched load), the base
+    /// <c>OnSaveAsync</c> reload (before the posted values are merged), and the side-session load of
+    /// <see cref="SaveContext.Before"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Idempotent by contract:</b> the framework calls this at most once per entity
+    /// <em>instance</em> per request. The Update endpoint pre-reads in the same session the save
+    /// reloads from, so the save gets the tracked, already-hydrated instance back — and is not
+    /// called again for it. Do not rely on the reason alone to decide whether to hydrate.
+    /// </para>
+    /// <para>
+    /// ⚠️ An Actions class whose <c>OnSaveAsync</c> override does not call the base skips the save
+    /// reload, so the merge sees an un-hydrated entity (a warning is logged once per type when an
+    /// interceptor implements this hook).
+    /// </para>
+    /// </remarks>
+    ValueTask OnAfterMaterializeAsync(MaterializeContext context) => ValueTask.CompletedTask;
 
     /// <summary>Before the write, after the Actions class's <c>OnBeforeSaveAsync</c>. May mutate <see cref="SaveContext.Entity"/>.</summary>
     ValueTask OnBeforeSaveAsync(SaveContext context) => ValueTask.CompletedTask;
@@ -134,8 +166,21 @@ public sealed class SaveContext : PersistentObjectInterceptorContext
     /// <summary><see cref="PersistentObjectOperation.Save"/>, <see cref="PersistentObjectOperation.New"/>, or the explicit kind the caller passed (Revert, Restore, Sync).</summary>
     public required PersistentObjectOperation Operation { get; init; }
 
-    /// <summary>The object as the client submitted it.</summary>
+    /// <summary>
+    /// The object as the client submitted it, minus every attribute the caller may not write
+    /// (contributions M2c-2b): those were dropped before any hook or interceptor runs, so an absent
+    /// attribute keeps its stored value (its default on a create).
+    /// </summary>
     public required PersistentObject PersistentObject { get; init; }
+
+    /// <summary>
+    /// The attributes a static attribute right kept out of this save (<c>Edit</c>, or <c>New</c> on a
+    /// create or a new AsDetail row), as paths — <c>Title</c>, or <c>Lines.Text</c> for an AsDetail
+    /// row attribute. Empty in system context. Per-row protection
+    /// (<c>GetProtectedAttributesAsync</c>) is deliberately not listed: whether a row protects an
+    /// attribute is what that hook hides. History uses this to report a partial revert.
+    /// </summary>
+    public IReadOnlyList<string> UnwritableAttributes { get; init; } = [];
 
     /// <summary>The stored entity before this save, loaded from a separate session (so it is not the instance being saved). Null for a creation.</summary>
     public object? Before { get; init; }
@@ -180,6 +225,60 @@ public sealed class DeleteContext : PersistentObjectInterceptorContext
             throw new InvalidOperationException($"A purge of '{Id}' cannot be replaced; it must delete the document.");
         WasReplaced = true;
     }
+}
+
+/// <summary>
+/// The <see cref="IPersistentObjectInterceptor.Order"/> scale (contributions F5). Lower runs its
+/// before-hooks first (and its after-hooks last), so a refusal by an earlier interceptor stops the
+/// write before a later one has done anything. Gaps are deliberate: an app slots its own between.
+/// </summary>
+public static class PersistentObjectInterceptorOrder
+{
+    /// <summary>SoftDelete: turns a delete into a replacement before anything else sees it.</summary>
+    public const int SoftDelete = -300;
+
+    /// <summary>History: audit stamping and revert, after SoftDelete.</summary>
+    public const int History = -200;
+
+    /// <summary>Moderation: suspensions and locks, after History.</summary>
+    public const int Moderation = -100;
+
+    /// <summary>An interceptor that declares no order.</summary>
+    public const int Default = 0;
+
+    /// <summary>Contributions: last, so a suspension or lock refuses the save before a contribution is written.</summary>
+    public const int Contributions = 100;
+}
+
+/// <summary>Why an entity was materialized (see <see cref="IPersistentObjectInterceptor.OnAfterMaterializeAsync"/>).</summary>
+public enum MaterializeReason
+{
+    /// <summary>The row-gated read path (<c>LoadManyAsync</c>): a page, a parent, a batch.</summary>
+    Load,
+
+    /// <summary>The save's reload in the base <c>OnSaveAsync</c>, before the posted values are merged.</summary>
+    SaveReload,
+
+    /// <summary>The side-session load that becomes <see cref="SaveContext.Before"/>.</summary>
+    Before,
+}
+
+/// <summary>An entity just loaded from RavenDB (see <see cref="IPersistentObjectInterceptor.OnAfterMaterializeAsync"/>).</summary>
+public sealed class MaterializeContext : PersistentObjectInterceptorContext
+{
+    /// <summary>The loaded entity; fill its satellite properties here.</summary>
+    public required object Entity { get; init; }
+
+    /// <summary>
+    /// The RavenDB <c>IAsyncDocumentSession</c> <see cref="Entity"/> was loaded in — the request
+    /// session, or for <see cref="MaterializeReason.Before"/> the side session. Load side documents
+    /// through it. Typed <see cref="object"/> because Abstractions (shared with the client library)
+    /// carries no RavenDB dependency; <c>GetSession()</c> in <c>MintPlayer.Spark</c> returns it typed.
+    /// </summary>
+    public required object Session { get; init; }
+
+    /// <summary>Which load this is.</summary>
+    public required MaterializeReason Reason { get; init; }
 }
 
 /// <summary>A load through <c>IDatabaseAccess.GetPersistentObjectAsync</c> / <c>GetPersistentObjectsByIdAsync</c>.</summary>

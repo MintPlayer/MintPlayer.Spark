@@ -19,7 +19,8 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 /// is no document to police). Entity-backed types keep the same signature with the pipeline in
 /// the base — pinned down by the ordinary Get tests.
 /// </summary>
-public class VirtualObjectEndpointTests : SparkTestDriver
+public class VirtualObjectEndpointTests(SparkSharedDatabase database)
+    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
 {
     private static readonly Guid PageTypeId = Guid.Parse("44444444-dddd-dddd-dddd-444444444444");
 

@@ -16,6 +16,33 @@ import { TranslateKeyPipe } from '@mintplayer/ng-spark-auth/pipes';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterLink, TranslateKeyPipe],
   templateUrl: './spark-auth-bar.component.html',
+  // Outline buttons drawn in the surrounding text colour, not `btn-outline-light`: the bar sits in
+  // whatever topbar the app has, and that is no longer guaranteed to be dark (#462). currentColor
+  // follows the container in either theme; the hover tint is the same colour at low alpha.
+  styles: [`
+    /* One line, always: the bar lives in a fixed-height topbar. */
+    :host {
+      display: inline-flex;
+      align-items: center;
+      flex-wrap: nowrap;
+      min-width: 0;
+    }
+
+    .spark-auth-bar-user {
+      max-width: 16rem;
+    }
+
+    .spark-auth-bar-btn {
+      --bs-btn-color: currentColor;
+      --bs-btn-border-color: currentColor;
+      --bs-btn-hover-color: currentColor;
+      --bs-btn-hover-bg: color-mix(in srgb, currentColor 15%, transparent);
+      --bs-btn-hover-border-color: currentColor;
+      --bs-btn-active-color: currentColor;
+      --bs-btn-active-bg: color-mix(in srgb, currentColor 25%, transparent);
+      --bs-btn-active-border-color: currentColor;
+    }
+  `],
 })
 export class SparkAuthBarComponent {
   readonly authService = inject(SparkAuthService);

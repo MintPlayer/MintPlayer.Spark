@@ -5,7 +5,7 @@
     "test:ng-spark": "npm --workspace @mintplayer/ng-spark run test",
     "test:ng-spark-auth": "npm --workspace @mintplayer/ng-spark-auth run test",
     "test:ng": "npm run test:ng-spark && npm run test:ng-spark-auth",
-    "test:affected": "nx affected --target=test",
+    "test:affected": "node tools/test-local.mjs",
     "test": "nx run-many --target=test"
   },
   "workspaces": [
@@ -30,7 +30,7 @@
     "@mintplayer/dailymotion-player": "^20.0.0",
     "@mintplayer/file-player": "^20.0.0",
     "@mintplayer/ng-animations": "22.1.0",
-    "@mintplayer/ng-bootstrap": "^22.19.0",
+    "@mintplayer/ng-bootstrap": "^22.20.0",
     "@mintplayer/ng-click-outside": "^22.1.0",
     "@mintplayer/ng-focus-on-load": "^22.1.0",
     "@mintplayer/ng-video-player": "^22.0.0",
@@ -40,7 +40,7 @@
     "@mintplayer/soundcloud-player": "^20.0.0",
     "@mintplayer/video-player": "^20.0.0",
     "@mintplayer/vimeo-player": "^20.0.0",
-    "@mintplayer/web-components": "^2.16.0",
+    "@mintplayer/web-components": "^2.17.0",
     "@mintplayer/youtube-player": "^20.0.0",
     "bootstrap": "5.3.8",
     "bootstrap-icons": "1.13.1",

@@ -7,9 +7,9 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// <c>/connect/login</c> and <c>/connect/logout</c> — the CSRF gate, the open-redirect gate,
 /// lockout, and enumeration. Case ids refer to §L.
 /// </summary>
-public class OidcLoginSecurityTests : OidcTestHost
+public class OidcLoginSecurityTests(OidcSharedHost host) : OidcTestHost(host), IClassFixture<OidcSharedHost>
 {
-    private const string Email = "alice@test.local";
+    private string Email => UserEmail("alice");
 
     private async Task<(Browser Browser, string Token)> LoginFormAsync(string returnUrl = "/")
     {
@@ -162,7 +162,7 @@ public class OidcLoginSecurityTests : OidcTestHost
     {
         await SeedUserAsync(Email);
 
-        var unknown = await AttemptAsync("nobody@test.local", Password);
+        var unknown = await AttemptAsync(UserEmail("nobody"), Password);
         var wrong = await AttemptAsync(Email, "Aa1!wrong-password");
 
         unknown.Should().Be(wrong, "differing text would enumerate registered addresses");
@@ -222,14 +222,14 @@ public class OidcLoginSecurityTests : OidcTestHost
     [Fact]
     public async Task Logout_honours_a_registered_post_logout_uri_and_refuses_others()
     {
-        await SeedApplicationAsync("webapp", postLogoutRedirectUris: ["https://webapp.test/done"]);
+        await SeedApplicationAsync(ClientId("webapp"), postLogoutRedirectUris: ["https://webapp.test/done"]);
 
         var ok = await NewBrowser().GetAsync(
-            "/connect/logout?client_id=webapp&post_logout_redirect_uri=" + Uri.EscapeDataString("https://webapp.test/done"));
+            $"/connect/logout?client_id={ClientId("webapp")}&post_logout_redirect_uri=" + Uri.EscapeDataString("https://webapp.test/done"));
         ok.StatusCode.Should().Be(HttpStatusCode.Redirect);
 
         var refused = await NewBrowser().GetAsync(
-            "/connect/logout?client_id=webapp&post_logout_redirect_uri=" + Uri.EscapeDataString("https://attacker.test/done"));
+            $"/connect/logout?client_id={ClientId("webapp")}&post_logout_redirect_uri=" + Uri.EscapeDataString("https://attacker.test/done"));
         refused.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
@@ -237,11 +237,11 @@ public class OidcLoginSecurityTests : OidcTestHost
     [Fact]
     public async Task Logout_refuses_another_applications_post_logout_uri()
     {
-        await SeedApplicationAsync("webapp", postLogoutRedirectUris: ["https://webapp.test/done"]);
-        await SeedApplicationAsync("otherapp", postLogoutRedirectUris: ["https://otherapp.test/done"]);
+        await SeedApplicationAsync(ClientId("webapp"), postLogoutRedirectUris: ["https://webapp.test/done"]);
+        await SeedApplicationAsync(ClientId("otherapp"), postLogoutRedirectUris: ["https://otherapp.test/done"]);
 
         var response = await NewBrowser().GetAsync(
-            "/connect/logout?client_id=webapp&post_logout_redirect_uri=" + Uri.EscapeDataString("https://otherapp.test/done"));
+            $"/connect/logout?client_id={ClientId("webapp")}&post_logout_redirect_uri=" + Uri.EscapeDataString("https://otherapp.test/done"));
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest,
             "validating across every enabled application would give anyone able to register a "
@@ -252,10 +252,10 @@ public class OidcLoginSecurityTests : OidcTestHost
     [Fact]
     public async Task Logout_appends_state_to_a_uri_that_already_has_a_query()
     {
-        await SeedApplicationAsync("webapp", postLogoutRedirectUris: ["https://webapp.test/done?tenant=1"]);
+        await SeedApplicationAsync(ClientId("webapp"), postLogoutRedirectUris: ["https://webapp.test/done?tenant=1"]);
 
         var response = await NewBrowser().GetAsync(
-            "/connect/logout?client_id=webapp&state=xyz&post_logout_redirect_uri="
+            $"/connect/logout?client_id={ClientId("webapp")}&state=xyz&post_logout_redirect_uri="
             + Uri.EscapeDataString("https://webapp.test/done?tenant=1"));
 
         var location = response.Headers.Location!.OriginalString;
@@ -269,7 +269,7 @@ public class OidcLoginSecurityTests : OidcTestHost
     {
         await SeedUserAsync(Email);
         var browser = await SignInAsync(Email);
-        await SeedApplicationAsync("webapp");
+        await SeedApplicationAsync(ClientId("webapp"));
 
         await browser.GetAsync("/connect/logout");
 

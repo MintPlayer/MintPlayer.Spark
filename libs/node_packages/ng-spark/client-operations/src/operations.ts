@@ -3,7 +3,7 @@
 // by the dispatcher (forward-compat: new types can land server-side without updating
 // older clients).
 
-import type { PersistentObject } from '@mintplayer/ng-spark/models';
+import type { PersistentObject, TranslatedString } from '@mintplayer/ng-spark/models';
 
 export enum NotificationKind {
     Info = 0,
@@ -21,7 +21,13 @@ export interface NavigateOperation {
 
 export interface NotifyOperation {
     type: 'notify';
+    /** The text in the request's language (the browser's `Accept-Language`). */
     message: string;
+    /**
+     * The text in every language, when the server has it. Shown in the language the user picked in
+     * the app (`SparkLanguageService`), which the server never learns; `message` is the fallback.
+     */
+    translatedMessage?: TranslatedString | null;
     kind: NotificationKind;
     durationMs?: number;
 }

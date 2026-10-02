@@ -20,6 +20,8 @@ namespace CodeCoverage.Tests.Services;
 /// </summary>
 public class RepositoryVisibilityTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private static Repository Repo(long id, string owner, string name, bool isPrivate = false,
         RepositoryConnection connection = RepositoryConnection.Connected,
         EForgeProvider provider = EForgeProvider.GitHub)

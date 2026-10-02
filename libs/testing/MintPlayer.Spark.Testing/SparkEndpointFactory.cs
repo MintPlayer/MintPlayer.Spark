@@ -33,6 +33,31 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
     private readonly IHost _host;
     private readonly string _contentRoot;
 
+    /// <summary>
+    /// The Data Protection key folder every host of this process uses.
+    /// </summary>
+    /// <remarks>
+    /// It used to be a folder in each host's content root, so every boot generated a key and wrote
+    /// its XML: Data Protection creates the key ring eagerly at host start. Shared, the first host
+    /// writes the key and the others read it. In one paired measurement (M8 item 13) host start fell
+    /// from ~48 ms to ~29 ms of wall time per boot with the same thread CPU: the saving is mostly the
+    /// blocking file write and folder churn. This is the production shape of several instances behind
+    /// one key ring, and the application discriminator was already the same for every test host (the
+    /// entry assembly, <c>testhost</c>), so only the key differs from before. Per process rather
+    /// than one fixed folder, so concurrent test projects and earlier runs never meet; deleted at
+    /// process exit, best effort.
+    /// </remarks>
+    private static readonly Lazy<string> SharedDataProtectionKeysPath = new(() =>
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"spark-endpoint-tests-dataprotection-{Environment.ProcessId}");
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            try { Directory.Delete(path, recursive: true); }
+            catch { /* Best-effort cleanup */ }
+        };
+        return path;
+    });
+
     /// <param name="testStore">The in-memory (or otherwise) document store the host should use.</param>
     /// <param name="models">Entity type definitions; serialized into <c>App_Data/Model/*.json</c>.</param>
     /// <param name="configureServices">
@@ -64,6 +89,29 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
     /// Runs before <c>UseSpark()</c> freezes the catalog — fixture indexes are nested test classes
     /// the assembly scan must not discover wholesale (fixtures for the catalog's own error cases
     /// would fail every host), so arming is explicit and per fixture.
+    /// <para>
+    /// Arming is also what <em>deploys</em> a fixture index: see <paramref name="deployAllIndexes"/>.
+    /// </para>
+    /// </param>
+    /// <param name="deployAllIndexes">
+    /// <c>false</c> (the default): the host deploys only the indexes this test can need — every
+    /// top-level index, every index from a module or framework assembly, and the nested fixture
+    /// indexes armed through <paramref name="configureIndexCatalog"/>. A fixture index nested in a
+    /// test class of <typeparamref name="TContext"/>'s assembly that is NOT armed is skipped.
+    /// <c>true</c>: deploy everything, as every host did before this filter existed.
+    /// <para>
+    /// Why: each host boots against a fresh database, and deploying the test assembly's ~35 fixture
+    /// indexes into every one of them was 32% of <c>MintPlayer.Spark.Tests</c>' thread time (0.96 s of
+    /// a 1.15 s boot) for indexes almost no test queried. Only the <em>deployment</em> is narrowed;
+    /// the index catalog and the model hash still see every index.
+    /// </para>
+    /// <para>
+    /// Why nested types only: a consumer whose <typeparamref name="TContext"/> lives in its
+    /// <em>application</em> assembly declares its real indexes as top-level classes, and they must
+    /// keep deploying without the consumer doing anything. Fixture indexes are declared inside the
+    /// test class that uses them. A skipped index fails loudly — RavenDB's
+    /// <c>IndexDoesNotExistException</c> — never silently.
+    /// </para>
     /// </param>
     public SparkEndpointFactory(
         IDocumentStore testStore,
@@ -72,7 +120,8 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
         Action<ISparkBuilder>? configureSpark = null,
         string environment = "Testing",
         Action<MintPlayer.Spark.Services.IIndexCatalog>? configureIndexCatalog = null,
-        SparkTestSecurity? security = null)
+        SparkTestSecurity? security = null,
+        bool deployAllIndexes = false)
     {
         ArgumentNullException.ThrowIfNull(testStore);
         ArgumentNullException.ThrowIfNull(models);
@@ -93,13 +142,16 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
         security ??= SparkTestSecurity.Permissive;
         SparkTestSecurityFile.Write(_contentRoot, security);
 
+        // Filled in Configure, from what configureIndexCatalog registers, before UseSpark deploys.
+        var armedIndexTypes = new HashSet<Type>();
+
         _host = new HostBuilder()
             // Test hosts run outside Development, where Spark refuses an unpersisted Data Protection
-            // key ring (#460, D5). A folder in the throwaway content root is persisted for exactly as
-            // long as the host lives, which is all a test needs.
+            // key ring (#460, D5). One folder per test process, shared by its hosts: see
+            // SharedDataProtectionKeysPath for why not one per host.
             .ConfigureAppConfiguration(configuration => configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Spark:DataProtection:KeysPath"] = Path.Combine(_contentRoot, "DataProtection-Keys"),
+                ["Spark:DataProtection:KeysPath"] = SharedDataProtectionKeysPath.Value,
             }))
             .ConfigureWebHost(webHost =>
             {
@@ -117,6 +169,9 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
                         services.AddSpark(spark =>
                         {
                             spark.UseContext<TContext>();
+                            // Before configureSpark, so a fixture can still replace or clear it.
+                            if (!deployAllIndexes)
+                                spark.Registry.IndexDeploymentFilter = CreateIndexDeploymentFilter(armedIndexTypes);
                             configureSpark?.Invoke(spark);
                         });
 
@@ -136,6 +191,13 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
                         services.Remove(existing);
                         services.AddSingleton(testStore);
 
+                        // One PBKDF2 iteration instead of Identity's 100,000. Every register, sign-in
+                        // and password check in a test host otherwise burns tens of milliseconds of
+                        // CPU, on a suite that is CPU-bound. The hash records its own iteration count,
+                        // so verification is unaffected; before configureServices, so a test about
+                        // hashing can set it back.
+                        services.Configure<Microsoft.AspNetCore.Identity.PasswordHasherOptions>(o => o.IterationCount = 1);
+
                         // Before configureServices, so a test that swaps IAccessControl itself still wins.
                         security.ApplyBaseline(services);
 
@@ -144,7 +206,13 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
                     .Configure(app =>
                     {
                         if (configureIndexCatalog is not null)
-                            configureIndexCatalog(app.ApplicationServices.GetRequiredService<MintPlayer.Spark.Services.IIndexCatalog>());
+                        {
+                            // Diffed rather than assumed empty: whatever the fixture added is what it armed.
+                            var catalog = app.ApplicationServices.GetRequiredService<MintPlayer.Spark.Services.IIndexCatalog>();
+                            var before = catalog.GetAllEntries().Select(e => e.IndexType).ToHashSet();
+                            configureIndexCatalog(catalog);
+                            armedIndexTypes.UnionWith(catalog.GetAllEntries().Select(e => e.IndexType).Where(t => !before.Contains(t)));
+                        }
                         app.UseRouting();
                         app.UseSpark();
                         app.UseEndpoints(endpoints => endpoints.MapSpark());
@@ -184,6 +252,27 @@ public class SparkEndpointFactory<TContext> : IAsyncDisposable
                 + $"loaded {loaded.Rights.Count} in {loaded.Groups.Count}). Every authorization "
                 + "assertion in this fixture would be meaningless.");
         }
+    }
+
+    /// <summary>
+    /// The default deployment filter: skip a nested index type of the test assemblies unless the
+    /// fixture armed it. See the <c>deployAllIndexes</c> parameter for the rationale.
+    /// </summary>
+    /// <remarks>
+    /// "The test assemblies" are <typeparamref name="TContext"/>'s assembly and the entry assembly,
+    /// the two <c>ResolveIndexAssemblies</c> contributes on behalf of the test rather than a module
+    /// (<c>testhost</c> under vstest, which declares no indexes). Nested indexes in any other assembly
+    /// still deploy: a module's internals are not this fixture's to prune.
+    /// </remarks>
+    private static Func<Type, bool> CreateIndexDeploymentFilter(IReadOnlySet<Type> armedIndexTypes)
+    {
+        var contextAssembly = typeof(TContext).Assembly;
+        var entryAssembly = System.Reflection.Assembly.GetEntryAssembly();
+
+        return indexType =>
+            indexType.DeclaringType is null
+            || (indexType.Assembly != contextAssembly && indexType.Assembly != entryAssembly)
+            || armedIndexTypes.Contains(indexType);
     }
 
     public HttpClient CreateClient() => _host.GetTestClient();

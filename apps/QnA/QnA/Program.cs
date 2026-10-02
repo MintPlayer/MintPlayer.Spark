@@ -4,6 +4,7 @@ using MintPlayer.Spark;
 using MintPlayer.Spark.Authorization.Configuration;
 using MintPlayer.Spark.Authorization.Extensions;
 using MintPlayer.Spark.Authorization.Identity;
+using MintPlayer.Spark.Contributions;
 using MintPlayer.Spark.Extensions;
 using MintPlayer.Spark.History;
 using MintPlayer.Spark.MailManager;
@@ -53,11 +54,19 @@ builder.Services.AddSpark(builder.Configuration, spark =>
     // M12: votes, reputation, earned privileges (App_Data/moderation.json), flags, the review queue,
     // locks, suspensions. After SoftDelete and History: it observes their operations.
     spark.AddModeration<SparkUser>();
+    // Contributions M6: Question.Translations — every signed-in user writes their own version of each
+    // language; the latest is shown, every version is in the history. Its interceptor is ordered after
+    // SoftDelete, History and Moderation whatever the registration order; registered last to read so.
+    // Translator names come from QnAUserNames through AddHistoryUserNameResolver above.
+    spark.AddContributions();
 
     // M2: QnA's own rules through the core seam — a row policy and two interceptors.
     spark.AddSparkRowPolicy<DraftQuestionPolicy>();
     spark.AddPersistentObjectInterceptor<QuestionTagsInterceptor>();
     spark.AddPersistentObjectInterceptor<ClosedQuestionInterceptor>();
+    // A translator who is not the question's author sees its own attributes read-only (a UI hint;
+    // QuestionActions.GetProtectedAttributesAsync is the enforcement).
+    spark.AddPersistentObjectInterceptor<QuestionTranslatorFormInterceptor>();
 });
 
 builder.Services.AddScoped<QnAAccess>();

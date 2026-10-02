@@ -39,15 +39,15 @@ import { NotificationKind } from './operations';
             cursor: pointer;
             min-width: 220px;
             max-width: 400px;
-            color: white;
+            color: var(--bs-white);
             font-size: 0.95rem;
             pointer-events: auto;
             animation: spark-toast-in 0.18s ease-out;
         }
-        .spark-toast--info { background: #0d6efd; }
-        .spark-toast--success { background: #198754; }
-        .spark-toast--warning { background: #ffc107; color: #000; }
-        .spark-toast--error { background: #dc3545; }
+        .spark-toast--info { background: var(--bs-primary); }
+        .spark-toast--success { background: var(--bs-success); }
+        .spark-toast--warning { background: var(--bs-warning); color: var(--bs-dark); }
+        .spark-toast--error { background: var(--bs-danger); }
         @keyframes spark-toast-in {
             from { opacity: 0; transform: translateX(8px); }
             to { opacity: 1; transform: translateX(0); }

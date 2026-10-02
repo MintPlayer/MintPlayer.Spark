@@ -56,6 +56,22 @@ export interface SparkAttributeColumnRenderer {
 }
 
 /**
+ * Contract for AsDetail **row** renderers (`rowComponent` of a registration): drawn once per row of an
+ * AsDetail table, on the detail page and in the edit form, for the row-type attributes carrying the
+ * renderer — which are then not drawn as columns.
+ */
+export interface SparkAttributeRowRenderer {
+  /** The row: a flat record of the row's values (reserved `__spark…` keys included). */
+  row?: InputSignal<Record<string, any>>;
+  /** The row-type attributes carrying this renderer, in model order. */
+  attributes?: InputSignal<EntityAttributeDefinition[]>;
+  /** `rendererOptions` of the first of them. */
+  options?: InputSignal<Record<string, any> | undefined>;
+  /** The id of the object that owns the AsDetail list (undefined on a create page). */
+  ownerId?: InputSignal<string | undefined>;
+}
+
+/**
  * Contract for edit-form renderers (spark-po-form on create/edit pages).
  * Replaces the default <input> for this attribute.
  */

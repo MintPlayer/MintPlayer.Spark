@@ -18,7 +18,8 @@ namespace MintPlayer.Spark.Tests.Authorization.Identity;
 /// The RavenDB store is real — the pending document's key is <em>derived</em>, and the whole reason
 /// for that (a load rather than a possibly-stale query) is invisible against an in-memory fake.
 /// </remarks>
-public class SparkExternalLoginLinkerTests : SparkTestDriver
+public class SparkExternalLoginLinkerTests(SparkSharedDatabase database)
+    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
 {
     private const string Provider = "GitLab";
     private const string ProviderKey = "gl-17";

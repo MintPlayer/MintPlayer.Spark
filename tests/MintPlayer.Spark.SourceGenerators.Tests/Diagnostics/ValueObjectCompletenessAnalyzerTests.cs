@@ -329,4 +329,133 @@ public class ValueObjectCompletenessAnalyzerTests
 
         diagnostics.Should().BeEmpty();
     }
+
+    /// <summary>
+    /// Stand-in for the attribute the (not yet existing) Contributions package will ship; the analyzer
+    /// recognises it by metadata name only (contributions F3).
+    /// </summary>
+    private const string ContributionAttributeStub = """
+        namespace MintPlayer.Spark.Contributions;
+
+        [System.AttributeUsage(System.AttributeTargets.Property)]
+        public sealed class ContributionAttribute : System.Attribute { }
+        """;
+
+    /// <summary>
+    /// A [Contribution] collection's element gets its key from the Contributions generator (a
+    /// deterministic get-only key, PRD §4.1 S-C3); [ValueObject] would mint a Guid per load, so
+    /// demanding it there would be demanding the bug.
+    /// </summary>
+    [Fact]
+    public async Task A_contribution_element_is_accepted()
+    {
+        var diagnostics = await RunAsync(ContributionAttributeStub, """
+            using System.Collections.Generic;
+            using MintPlayer.Spark;
+            using MintPlayer.Spark.Contributions;
+            using Raven.Client.Documents.Linq;
+
+            namespace TestApp;
+
+            public class AppContext : SparkContext
+            {
+                public IRavenQueryable<Song> Songs { get; set; } = null!;
+            }
+
+            public class Song
+            {
+                public string? Id { get; set; }
+
+                [Contribution]
+                public List<LyricsLine> Lyrics { get; set; } = new();
+            }
+
+            public class LyricsLine
+            {
+                public string Key => $"{Verse}/{Line}";
+                public int Verse { get; set; }
+                public int Line { get; set; }
+                public string Text { get; set; } = string.Empty;
+            }
+            """);
+
+        diagnostics.Should().BeEmpty();
+    }
+
+    /// <summary>An unrelated unmarked collection beside a contribution is still reported.</summary>
+    [Fact]
+    public async Task A_contribution_does_not_excuse_other_collections()
+    {
+        var diagnostics = await RunAsync(ContributionAttributeStub, """
+            using System.Collections.Generic;
+            using MintPlayer.Spark;
+            using MintPlayer.Spark.Contributions;
+            using Raven.Client.Documents.Linq;
+
+            namespace TestApp;
+
+            public class AppContext : SparkContext
+            {
+                public IRavenQueryable<Song> Songs { get; set; } = null!;
+            }
+
+            public class Song
+            {
+                public string? Id { get; set; }
+
+                [Contribution]
+                public List<LyricsLine> Lyrics { get; set; } = new();
+
+                public List<Credit> Credits { get; set; } = new();
+            }
+
+            public class LyricsLine
+            {
+                public string Text { get; set; } = string.Empty;
+            }
+
+            public class Credit
+            {
+                public string Name { get; set; } = string.Empty;
+            }
+            """);
+
+        diagnostics.Should().ContainSingle().Which.GetMessage().Should().Contain("Credit");
+    }
+
+    /// <summary>An attribute with the same simple name in another namespace is not the contribution marker.</summary>
+    [Fact]
+    public async Task A_lookalike_contribution_attribute_is_not_accepted()
+    {
+        var diagnostics = await RunAsync("""
+            using System.Collections.Generic;
+            using MintPlayer.Spark;
+            using Raven.Client.Documents.Linq;
+
+            namespace TestApp;
+
+            [System.AttributeUsage(System.AttributeTargets.Property)]
+            public sealed class ContributionAttribute : System.Attribute { }
+
+            public class AppContext : SparkContext
+            {
+                public IRavenQueryable<Song> Songs { get; set; } = null!;
+            }
+
+            public class Song
+            {
+                public string? Id { get; set; }
+
+                [Contribution]
+                public List<LyricsLine> Lyrics { get; set; } = new();
+            }
+
+            public class LyricsLine
+            {
+                public string Text { get; set; } = string.Empty;
+            }
+            """);
+
+        diagnostics.Should().ContainSingle().Which.Id.Should().Be("SPARK017");
+    }
 }

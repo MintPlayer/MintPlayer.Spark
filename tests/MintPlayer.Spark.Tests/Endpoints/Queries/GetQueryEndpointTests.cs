@@ -6,18 +6,14 @@ using TestModels = MintPlayer.Spark.Tests.Endpoints.PersistentObject.TestModels;
 
 namespace MintPlayer.Spark.Tests.Endpoints.Queries;
 
-public class GetQueryEndpointTests : SparkTestDriver
+/// <summary>One host for the class: every case only reads query definitions (M8 item 5).</summary>
+public sealed class GetQueryEndpointHost : SharedSparkHost<TestSparkContext>
 {
-    private static readonly Guid PersonTypeId = Guid.Parse("aaaa1111-1111-1111-1111-aaaaaaaaaaaa");
-    private static readonly Guid AllPeopleQueryId = Guid.Parse("bbbb1111-1111-1111-1111-bbbbbbbbbbbb");
+    internal static readonly Guid PersonTypeId = Guid.Parse("aaaa1111-1111-1111-1111-aaaaaaaaaaaa");
+    internal static readonly Guid AllPeopleQueryId = Guid.Parse("bbbb1111-1111-1111-1111-bbbbbbbbbbbb");
 
-    private SparkEndpointFactory _factory = null!;
-    private SparkClient _client = null!;
-
-    public override async Task InitializeAsync()
+    protected override SparkEndpointFactory<TestSparkContext> CreateFactory()
     {
-        await base.InitializeAsync();
-
         var personType = TestModels.Person(PersonTypeId);
         personType.Queries =
         [
@@ -29,16 +25,18 @@ public class GetQueryEndpointTests : SparkTestDriver
             },
         ];
 
-        _factory = new SparkEndpointFactory(Store, [personType]);
-        _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
+        return new SparkEndpointFactory(Store, [personType]);
     }
+}
 
-    public override async Task DisposeAsync()
-    {
-        _client.Dispose();
-        await _factory.DisposeAsync();
-        await base.DisposeAsync();
-    }
+public class GetQueryEndpointTests(GetQueryEndpointHost host)
+    : SparkSharedTestDriver(host), IClassFixture<GetQueryEndpointHost>, IDisposable
+{
+    private static readonly Guid AllPeopleQueryId = GetQueryEndpointHost.AllPeopleQueryId;
+
+    private readonly SparkClient _client = new(host.Factory.CreateClient(), ownsClient: true);
+
+    public void Dispose() => _client.Dispose();
 
     [Fact]
     public async Task Get_returns_null_when_query_id_unknown()

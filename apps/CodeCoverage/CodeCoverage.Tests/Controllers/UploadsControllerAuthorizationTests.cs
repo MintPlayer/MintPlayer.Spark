@@ -26,6 +26,8 @@ namespace CodeCoverage.Tests.Controllers;
 /// </summary>
 public class UploadsControllerAuthorizationTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const long RepoId = 5150;
     private const long OwnerId = 700;
     private const long OtherOwnerId = 800;

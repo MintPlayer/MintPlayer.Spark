@@ -122,4 +122,24 @@ public class BadgeRendererTests
         WidthOf(BadgeRenderer.Coverage(71.4, partial: true))
             .Should().BeGreaterThan(WidthOf(BadgeRenderer.Coverage(71.4)));
     }
+
+    /// <summary>
+    /// #462 D11: the badge does NOT follow the page's dark mode. It is embedded as
+    /// an &lt;img&gt; in READMEs on other sites, where the embedding page's theme is
+    /// unknowable, and shields.io-style badges are fixed-colour by convention. A
+    /// theme-aware SVG (a media query, an embedded stylesheet, or colours taken
+    /// from currentColor) would change how every badge in the wild renders.
+    /// </summary>
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData(0d, false)]
+    [InlineData(71.4, true)]
+    [InlineData(100d, false)]
+    public void Badge_has_fixed_colours_and_never_follows_the_colour_scheme(double? percent, bool partial)
+    {
+        var svg = BadgeRenderer.Coverage(percent, partial);
+        svg.Should().NotContain("prefers-color-scheme");
+        svg.Should().NotContain("<style");
+        svg.Should().NotContain("currentColor");
+    }
 }

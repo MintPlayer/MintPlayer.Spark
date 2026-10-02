@@ -80,8 +80,31 @@
       server-side; for a streaming query this page owns the socket and hands the filtered snapshot
       in. This used to be two near-identical <bs-datatable> blocks with a shared row template.
     -->
+    <!-- The URL's scope (#contributions M5b): a parent and column filters from the query string, as
+         the History link sends them. Shown so the narrowing is visible, and clearable. -->
+    @if (urlParentId() || activeUrlFilters().length) {
+      <div class="spark-url-filters d-flex flex-wrap align-items-center gap-2 mb-2 flex-shrink-0" [class.px-4]="isVirtualScrolling()">
+        <span class="text-muted small">{{ 'common.filteredBy' | t }}</span>
+        @for (filter of activeUrlFilters(); track filter.name) {
+          <bs-badge [type]="colors.secondary" class="spark-url-filter" [attr.data-filter]="filter.name">
+            {{ filterLabel(filter.name) }}: {{ filterValues(filter) }}
+            <button type="button" class="spark-url-filter-clear" [attr.aria-label]="'common.clearFilter' | t"
+                    (click)="clearUrlFilter(filter.name)">
+              <spark-icon name="x-circle" />
+            </button>
+          </bs-badge>
+        }
+        <button type="button" class="btn btn-sm btn-link spark-url-filters-clear" (click)="clearUrlScope()">
+          {{ 'common.clearFilters' | t }}
+        </button>
+      </div>
+    }
+
     <spark-query-grid class="flex-grow-1"
         [queryId]="qId"
+        [parentId]="urlParentId()"
+        [parentType]="urlParentType()"
+        [presetFilters]="urlFilters()"
         [data]="gridData()"
         [columns]="gridData() ? streamColumns() : null"
         [search]="searchTerm()"

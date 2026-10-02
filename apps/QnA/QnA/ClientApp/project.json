@@ -20,6 +20,11 @@
           {
             "glob": "**/*",
             "input": "apps/QnA/QnA/ClientApp/public"
+          },
+          {
+            "glob": "bs-theme-preboot.js",
+            "input": "node_modules/@mintplayer/web-components/theming",
+            "output": "/"
           }
         ],
         "styles": [

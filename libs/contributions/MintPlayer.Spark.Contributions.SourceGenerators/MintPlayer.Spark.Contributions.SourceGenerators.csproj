@@ -1,0 +1,46 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <LangVersion>14</LangVersion>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <DevelopmentDependency>true</DevelopmentDependency>
+        <IncludeBuildOutput>false</IncludeBuildOutput>
+        <IsRoslynComponent>true</IsRoslynComponent>
+        <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+
+        <!--
+        Never a package of its own (PRD C7): the DLL ships inside MintPlayer.Spark.Contributions'
+        analyzers/dotnet/cs, so the generator always matches the runtime it generates code for.
+        -->
+        <IsPackable>false</IsPackable>
+        <Version>11.0.0-preview.92</Version>
+        <Authors>MintPlayer</Authors>
+        <Company>MintPlayer</Company>
+        <Description>Source generator and analyzer for MintPlayer.Spark.Contributions. Embedded in that package; not published on its own.</Description>
+    </PropertyGroup>
+
+    <!--
+    Deliberately NOT MintPlayer.SourceGenerators.Tools. The other generators build against it with
+    PrivateAssets="all", which keeps it out of their packages too — so a generator that depends on it at
+    run time loads in this repo (where the DLL happens to sit next to it) and fails with a
+    FileNotFoundException in a consumer's compiler. Plain Roslyn is enough here; anything that would
+    need Tools gets embedded in this nupkg next to the generator instead.
+    -->
+    <ItemGroup>
+      <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" PrivateAssets="all" />
+      <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="5.9.0" PrivateAssets="all" />
+    </ItemGroup>
+
+    <!--
+    The code fixes in CodeFixes/ derive from CodeFixProvider (Microsoft.CodeAnalysis.Workspaces).
+    ExcludeAssets="runtime" satisfies the compiler and ships nothing: the IDE host supplies Workspaces,
+    and csc never loads a fix provider. ⚠️ Reflecting over this assembly with GetTypes() without
+    Workspaces present throws for the whole assembly — the generator test project references
+    Workspaces for exactly that reason (same note as LibraryGenerators.csproj).
+    -->
+    <ItemGroup>
+      <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="5.9.0"
+                        PrivateAssets="all" ExcludeAssets="runtime" />
+    </ItemGroup>
+</Project>

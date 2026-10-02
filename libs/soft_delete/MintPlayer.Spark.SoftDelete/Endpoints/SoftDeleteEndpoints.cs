@@ -63,6 +63,11 @@ internal sealed partial class RestorePersistentObject : IPostEndpoint
             var restored = await databaseAccess.GetPersistentObjectAsync(entityType.Id, request.Id);
             return SparkAddOnEndpoints.Envelope(clientAccessor, restored, StatusCodes.Status200OK);
         }
+        catch (Exception ex) when (SparkAddOnEndpoints.IsConcurrencyConflict(ex))
+        {
+            // A restore is a save, written with the version it loaded: a concurrent edit is a 409.
+            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor);
+        }
         catch (SparkValidationException ex)
         {
             return SparkAddOnEndpoints.ValidationFailed(clientAccessor, ex);

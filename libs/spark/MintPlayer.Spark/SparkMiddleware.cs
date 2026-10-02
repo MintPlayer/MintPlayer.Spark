@@ -414,14 +414,21 @@ public static class SparkExtensions
                 // rides along in the same envelope, so notifications raised before the prompt are
                 // not lost.
                 var client = context.RequestServices.GetRequiredService<IClientAccessor>();
+
+                // A persistent object shown in the prompt is a presentation like any other
+                // (contributions M2c-2b): Read-denied attributes removed, Edit-denied read-only, and
+                // the per-row hook's blanking when it is a stored row.
+                var prompt = ex.PersistentObject
+                    ?? client.Operations.OfType<Abstractions.ClientOperations.RetryOperation>().FirstOrDefault()?.PersistentObject;
+                if (prompt is not null)
+                    await Services.RetryPresentation.PresentAsync(context.RequestServices, prompt, context.RequestAborted);
+
                 await ClientResult.Retry(client, ex).ExecuteAsync(context);
             }
         });
 
-        app.UseMiddleware<SparkMiddleware>();
-
         // Create RavenDB indexes
-        CreateSparkIndexes(app, registry.ResolveIndexAssemblies());
+        CreateSparkIndexes(app, registry.ResolveIndexAssemblies(), registry.IndexDeploymentFilter);
 
         // After CreateSparkIndexes, because the projection type and index name feed the model hash
         // and the index registry is populated there. Before any request is served: a drifted model
@@ -430,6 +437,8 @@ public static class SparkExtensions
         VerifySparkModelHash(app);
 
         VerifySparkSecurityConfiguration(app);
+
+        VerifySparkReservedActions();
 
         ReportSecurityPosture(app);
 
@@ -654,6 +663,17 @@ public static class SparkExtensions
     /// and the generator that fixes it takes one command.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Refuses to start when a custom action is named like a reserved verb (#460 contributions, Q2):
+    /// the action would share that verb's right. SPARK023 reports the same at build time for the
+    /// application's own compilation; this catches an action shipped by a referenced library, and an
+    /// application built without the analyzer.
+    /// </summary>
+    private static void VerifySparkReservedActions()
+        => SparkReservedActionRegistry.EnsureNoCollisions(
+            CustomActionResolver.DiscoveredActionTypes.Select(kv => (kv.Key, kv.Value)),
+            SparkReservedActionRegistry.All);
+
     private static void VerifySparkSecurityConfiguration(IApplicationBuilder app)
     {
         // The command that writes the file must not be blocked by the check that requires it.
@@ -767,9 +787,15 @@ public static class SparkExtensions
 
         foreach (var warning in posture.Warnings)
             logger.LogWarning("Spark security: {Warning}", warning);
+
+        foreach (var note in posture.Notes ?? [])
+            logger.LogInformation("Spark security: {Note}", note);
     }
 
-    private static void CreateSparkIndexes(IApplicationBuilder app, IReadOnlyList<Assembly> assemblies)
+    private static void CreateSparkIndexes(
+        IApplicationBuilder app,
+        IReadOnlyList<Assembly> assemblies,
+        Func<Type, bool>? deploymentFilter)
     {
         var documentStore = app.ApplicationServices.GetRequiredService<IDocumentStore>();
 
@@ -801,12 +827,32 @@ public static class SparkExtensions
 
         // Deployment is best-effort, but per assembly: one unreachable or broken module must not
         // cost every other module its indexes, which is what a single surrounding catch did.
+        //
+        // A deployment filter (SparkModuleRegistry.IndexDeploymentFilter, set by test hosts) narrows
+        // only this loop. The catalog above was populated from every index regardless, so the model
+        // hash and query resolution mean the same thing with or without it.
         foreach (var assembly in assemblies)
         {
             try
             {
-                IndexCreation.CreateIndexes(assembly, documentStore);
-                Console.WriteLine($"RavenDB indexes created/updated from assembly: {assembly.GetName().Name}");
+                if (deploymentFilter is null)
+                {
+                    IndexCreation.CreateIndexes(assembly, documentStore);
+                    Console.WriteLine($"RavenDB indexes created/updated from assembly: {assembly.GetName().Name}");
+                    continue;
+                }
+
+                var candidates = DeployableIndexTypes(assembly);
+                var tasks = candidates
+                    .Where(deploymentFilter)
+                    .Select(t => (IAbstractIndexCreationTask)Activator.CreateInstance(t)!)
+                    .ToList();
+
+                if (tasks.Count > 0)
+                    IndexCreation.CreateIndexes(tasks, documentStore);
+                Console.WriteLine(
+                    $"RavenDB indexes created/updated from assembly: {assembly.GetName().Name} " +
+                    $"({tasks.Count} of {candidates.Count}, deployment filter set)");
             }
             catch (Exception ex)
             {
@@ -828,21 +874,24 @@ public static class SparkExtensions
     /// </remarks>
     private static bool IsAbstractIndexCreationTask(Type type) => RavenIndexHierarchy.IsIndex(type);
 
-}
+    /// <summary>
+    /// The types <c>IndexCreation.CreateIndexes(assembly, store)</c> would deploy from
+    /// <paramref name="assembly"/>, by RavenDB's own criterion, so a filtered deployment is a strict
+    /// subset of the unfiltered one rather than a second opinion about what an index is.
+    /// </summary>
+    /// <remarks>
+    /// RavenDB 7.2 (<c>IndexCreation.GetAllInstancesOfType</c>): a non-abstract class implementing
+    /// <see cref="IAbstractIndexCreationTask"/>, instantiated with <see cref="Activator.CreateInstance(Type)"/>
+    /// — so a type without a public parameterless constructor fails the same way in both paths.
+    /// Deliberately not <see cref="RavenIndexHierarchy.IsIndex"/>: that is Spark's discovery gate and
+    /// covers only <c>AbstractIndexCreationTask</c>, while RavenDB also deploys JavaScript, counters
+    /// and time-series index tasks.
+    /// </remarks>
+    private static IReadOnlyList<Type> DeployableIndexTypes(Assembly assembly)
+        => ReflectionCache.GetOrAdd<(string Op, Assembly Asm), IReadOnlyList<Type>>(
+            ("SparkMiddleware.DeployableIndexTypes", assembly),
+            static k => GetLoadableTypes(k.Asm)
+                .Where(t => t.IsClass && !t.IsAbstract && typeof(IAbstractIndexCreationTask).IsAssignableFrom(t))
+                .ToArray());
 
-public partial class SparkMiddleware
-{
-    [Inject] private readonly RequestDelegate next;
-
-    public async Task InvokeAsync(HttpContext context)
-    {
-        // Pre-processing logic
-        Console.WriteLine("Before the next middleware");
-
-        // Call the next middleware in the pipeline
-        await next(context);
-
-        // Post-processing logic
-        Console.WriteLine("After the next middleware");
-    }
 }

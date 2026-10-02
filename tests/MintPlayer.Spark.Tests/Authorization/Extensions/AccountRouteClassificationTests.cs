@@ -12,7 +12,8 @@ namespace MintPlayer.Spark.Tests.Authorization.Extensions;
 /// than derived from the code, and <b>every</b> <c>/spark/auth/manage/*</c> route in the route table
 /// must appear in it — a new manage route nobody classified fails here.
 /// </summary>
-public class AccountRouteClassificationTests : SparkTestDriver
+public class AccountRouteClassificationTests(SparkSharedDatabase database)
+    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
 {
     private const string Full = "F", SignInOnly = "S", Disabled = "D";
 

@@ -19,6 +19,8 @@ namespace CodeCoverage.Tests.Services;
 /// </summary>
 public class MyAccountsProviderScopeTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const string Login = "mintplayer";
 
     /// <summary>

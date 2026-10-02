@@ -21,6 +21,8 @@ namespace CodeCoverage.Tests.Recipients;
 /// </remarks>
 public class ProjectAutomationRouterTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const long OurAppId = 4567511;
 
     private const string OurCheckRun = """{"check_run":{"app":{"id":4567511}}}""";

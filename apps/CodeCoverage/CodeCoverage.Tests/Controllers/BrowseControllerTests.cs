@@ -15,6 +15,8 @@ namespace CodeCoverage.Tests.Controllers;
 
 public class BrowseControllerTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private sealed class NullContentService : IGitHubContentService
     {
         public Task<string?> GetFileContentAsync(Repository repository, long? installationId, string sha, string path, CancellationToken cancellationToken = default)

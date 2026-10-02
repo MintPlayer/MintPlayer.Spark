@@ -15,7 +15,8 @@ namespace MintPlayer.Spark.Tests.Messaging;
 /// envelope for every delivery, and every app subscribing to only one of them was paying for both.
 /// </para>
 /// </summary>
-public class MessageRecipientRegistryTests : SparkTestDriver
+public class MessageRecipientRegistryTests(SparkSharedDatabase database)
+    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
 {
     public sealed class ConsumedMessage { }
     public sealed class UnconsumedMessage { }

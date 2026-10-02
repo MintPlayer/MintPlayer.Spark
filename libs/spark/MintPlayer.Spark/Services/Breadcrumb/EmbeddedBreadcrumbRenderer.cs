@@ -23,6 +23,7 @@ internal static class EmbeddedBreadcrumbRenderer
         BreadcrumbResult breadcrumbs,
         string referenceSeparator,
         Func<string, EntityTypeDefinition?>? defByClrType = null,
+        IReadOnlySet<string>? blanked = null,
         int depth = 0)
     {
         if (depth >= 8)
@@ -35,12 +36,14 @@ internal static class EmbeddedBreadcrumbRenderer
             var marked = entity.GetType().GetBreadcrumbProperty();
             if (marked is null)
                 return null;
+            if (blanked?.Contains(marked.Name) == true)
+                return string.Empty;
             var value = AccessorCache.GetGetter(marked)(entity);
             if (value is null)
                 return string.Empty;
             return Abstractions.Model.SparkModelShape.IsComplexType(value.GetType())
                 ? Render(value, defByClrType?.Invoke(value.GetType().FullName ?? value.GetType().Name),
-                    breadcrumbs, referenceSeparator, defByClrType, depth + 1) ?? string.Empty
+                    breadcrumbs, referenceSeparator, defByClrType, blanked: null, depth: depth + 1) ?? string.Empty
                 : value.ToString() ?? string.Empty;
         }
 
@@ -51,6 +54,13 @@ internal static class EmbeddedBreadcrumbRenderer
             {
                 case LiteralToken literal:
                     sb.Append(literal.Text);
+                    break;
+
+                // Refused for this caller by a static attribute right on the row's own type: renders
+                // as nothing, exactly as the resolver renders it (contributions M2c-2a). Likewise a column
+                // the owner's per-row hook protects ("Jobs.Salary" on the owning document, M2c-2b).
+                case FieldToken field when breadcrumbs.IsTokenDenied(def, field.AttributeName)
+                    || blanked?.Contains(field.AttributeName) == true:
                     break;
 
                 case FieldToken field:
@@ -69,7 +79,8 @@ internal static class EmbeddedBreadcrumbRenderer
                         var child = ReadValue(entity, field.AttributeName);
                         if (child is not null)
                             sb.Append(Render(child, defByClrType?.Invoke(attr.AsDetailType!),
-                                breadcrumbs, referenceSeparator, defByClrType, depth + 1) ?? string.Empty);
+                                breadcrumbs, referenceSeparator, defByClrType,
+                                BreadcrumbResult.Relative(blanked, field.AttributeName), depth + 1) ?? string.Empty);
                     }
                     else
                     {

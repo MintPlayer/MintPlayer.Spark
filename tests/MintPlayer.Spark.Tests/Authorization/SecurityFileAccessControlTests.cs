@@ -542,6 +542,31 @@ public class SecurityFileAccessControlTests
         }
     }
 
+    /// <summary>
+    /// M2c-1: the attribute-level table is computed over the same resolved groups as the type-level
+    /// decision — here a claim-named group plus the authenticated role.
+    /// </summary>
+    [Fact]
+    public async Task GetAttributeRightsAsync_composes_over_the_callers_resolved_groups()
+    {
+        var config = ConfigWith(
+            groups: new() { [EditorsId] = En("Editors"), [AuthenticatedId] = En("Signed-in users") },
+            wellKnown: new() { ["authenticated"] = AuthenticatedId },
+            new Right { GroupId = AuthenticatedId, Resource = "QueryReadEdit/Song" },
+            new Right { GroupId = EditorsId, Resource = "Edit/Song/Lyrics", IsDenied = true });
+
+        var service = CreateService(config, ["Editors"], authenticated: true);
+
+        var edit = await service.GetAttributeRightsAsync("Edit", "Song");
+        edit.TypeAllowed.Should().BeTrue();
+        edit.IsAllowed("Lyrics").Should().BeFalse();
+        edit.IsAllowed("Title").Should().BeTrue();
+
+        var anonymous = await CreateService(config, [], authenticated: false).GetAttributeRightsAsync("Edit", "Song");
+        anonymous.TypeAllowed.Should().BeFalse();
+        anonymous.IsAllowed("Title").Should().BeFalse();
+    }
+
     // ---------- #460 D12: composed providers, provider-returned ids, the per-request cache ----------
 
     private sealed class NamesProvider(params string[] names) : IGroupMembershipProvider

@@ -28,7 +28,8 @@ namespace MintPlayer.Spark.Tests.Services;
 /// pass in both cases.
 /// </para>
 /// </remarks>
-public class CustomQueryColumnFilterTests : SparkTestDriver
+public class CustomQueryColumnFilterTests(CustomQueryColumnFilterTests.Host host)
+    : SparkSharedTestDriver(host), IClassFixture<CustomQueryColumnFilterTests.Host>, IDisposable
 {
     private static readonly Guid ParcelTypeId = Guid.Parse("bbbb7777-bbbb-bbbb-bbbb-bbbb77777777");
     private static readonly Guid SecuredParcelTypeId = Guid.Parse("bbbb8888-bbbb-bbbb-bbbb-bbbb88888888");
@@ -167,14 +168,19 @@ public class CustomQueryColumnFilterTests : SparkTestDriver
         },
     };
 
-    private SparkEndpointFactory<ParcelContext>? _factory;
-
-    public override async Task InitializeAsync()
+    /// <summary>
+    /// One database, seed and host for the class (M8 item 5). Every case seeded the same parcels and
+    /// then only queried, so the seed moved to class setup. Each case resolves its executor from a
+    /// scope of its own, so no Raven session spans two cases.
+    /// </summary>
+    public sealed class Host : SharedSparkHost<ParcelContext>
     {
-        await base.InitializeAsync();
-
-        await SeedAsync(async session =>
+        public override async Task InitializeAsync()
         {
+            await base.InitializeAsync();
+
+            using var session = Store.OpenAsyncSession();
+            session.Advanced.WaitForIndexesAfterSaveChanges(RavenIndexingExtensions.DefaultTimeout, throwOnTimeout: true);
             await session.StoreAsync(new Parcel { Label = "one", Region = "eu", Depot = "depots/1" });
             await session.StoreAsync(new Parcel { Label = "two", Region = "us", Depot = "depots/1" });
             await session.StoreAsync(new Parcel { Label = "three", Region = "ap", Depot = "depots/2" });
@@ -182,19 +188,22 @@ public class CustomQueryColumnFilterTests : SparkTestDriver
             await session.StoreAsync(new SecuredParcel { Label = "a-eu", Region = "eu", Owner = "alice" });
             await session.StoreAsync(new SecuredParcel { Label = "a-us", Region = "us", Owner = "alice" });
             await session.StoreAsync(new SecuredParcel { Label = "b-eu", Region = "eu", Owner = "bob" });
-        });
+            await session.SaveChangesAsync();
+        }
+
+        protected override SparkEndpointFactory<ParcelContext> CreateFactory()
+            => new(Store, [ParcelModel(), SecuredParcelModel()]);
     }
 
-    public override async Task DisposeAsync()
-    {
-        if (_factory is not null) await _factory.DisposeAsync();
-        await base.DisposeAsync();
-    }
+    private Microsoft.Extensions.DependencyInjection.IServiceScope? _scope;
+
+    public void Dispose() => _scope?.Dispose();
 
     private IQueryExecutor Executor()
     {
-        _factory = new SparkEndpointFactory<ParcelContext>(Store, [ParcelModel(), SecuredParcelModel()]);
-        return _factory.GetService<IQueryExecutor>();
+        _scope = host.Factory.CreateScope();
+        return Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions
+            .GetRequiredService<IQueryExecutor>(_scope.ServiceProvider);
     }
 
     private static SparkQuery CustomQuery(string method = "AllParcels", string entityType = "Parcel") => new()

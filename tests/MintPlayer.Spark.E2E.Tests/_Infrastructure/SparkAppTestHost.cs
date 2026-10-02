@@ -602,6 +602,17 @@ public abstract class SparkAppTestHost : IAsyncLifetime
 
             await EnsureAngularBundleAsync(app, repoRoot);
 
+            // Opt-in, LOCAL ONLY: `npm run test:local:e2e` sets this after `nx run-many -t build` has
+            // just built every app, so a second `dotnet build` per app is pure overhead. Unset (CI and
+            // a plain `nx test`) keeps the build below. Skipping with a stale bin/ runs the stale app,
+            // so set it only right after building.
+            if (Environment.GetEnvironmentVariable("SPARK_E2E_SKIP_APP_BUILD") == "1")
+            {
+                Console.Error.WriteLine($"[SparkAppTestHost] SPARK_E2E_SKIP_APP_BUILD=1: skipping `dotnet build` of {app.AppName}; using the existing bin/ output.");
+                BuiltProjects.Add(project);
+                return;
+            }
+
             // --disable-build-servers: no reused MSBuild node, compiler server or MSBuild server. Those
             // outlive `dotnet build` and inherit its redirected stdout, so the pipe never reaches EOF and
             // RunToCompletionAsync waited on it until they idled out (~15 min) — measured in M14 as a

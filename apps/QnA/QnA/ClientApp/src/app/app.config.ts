@@ -9,6 +9,7 @@ import { provideSparkClientOperations } from '@mintplayer/ng-spark/client-operat
 import { provideSparkSoftDelete } from '@mintplayer/ng-spark/soft-delete';
 import { provideSparkHistory } from '@mintplayer/ng-spark/history';
 import { provideSparkModeration, sparkModerationRenderers } from '@mintplayer/ng-spark/moderation';
+import { provideSparkContributions, sparkContributionRenderers } from '@mintplayer/ng-spark/contributions';
 
 import { routes } from './app.routes';
 import { AuthorRendererComponent } from './renderers/author-renderer.component';
@@ -30,9 +31,13 @@ export const appConfig: ApplicationConfig = {
     provideSparkHistory(),
     // #460 M12: Flag on every detail page, the moderator panel, the review-queue link.
     provideSparkModeration(),
-    // One list: the vote widget (`spark-vote`, M12) and QnA's author cell (reputation badge).
+    // Contributions M6: "Revert to this version" in the translation history (row menu and detail page).
+    provideSparkContributions(),
+    // One list: the vote widget (`spark-vote`, M12), the translation attribution line and line diff
+    // (Contributions), and QnA's author cell (reputation badge).
     provideSparkAttributeRenderers([
       ...sparkModerationRenderers,
+      ...sparkContributionRenderers,
       { name: 'qna-author', detailComponent: AuthorRendererComponent, columnComponent: AuthorRendererComponent },
     ]),
   ]

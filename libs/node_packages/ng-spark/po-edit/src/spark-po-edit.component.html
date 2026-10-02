@@ -6,12 +6,26 @@
     </bs-alert>
   }
 
+  @if (conflictNotice(); as notice) {
+    <bs-alert [type]="colors.info" class="mb-3 spark-conflict-notice">
+      {{ notice }}
+    </bs-alert>
+  }
+
+  <spark-po-conflict-dialog
+    [conflicts]="pendingConflicts()"
+    [referenceLabels]="conflictReferenceLabels()"
+    [audit]="conflictAudit()"
+    [theyChanged]="theyChanged()"
+    (resolved)="onConflictResolved($event)"
+    (cancelled)="onConflictCancelled()" />
+
   @if (entityType(); as et) {
     @if (item()) {
     <h2 class="mb-4">{{ 'common.edit' | t }} {{ (et.description | resolveTranslation) || et.name }}</h2>
 
     <spark-po-form
-      [entityType]="et"
+      [entityType]="formEntityType() ?? et"
       [(formData)]="formData"
       [(refreshOverlay)]="refreshOverlay"
       [objectTypeId]="type"

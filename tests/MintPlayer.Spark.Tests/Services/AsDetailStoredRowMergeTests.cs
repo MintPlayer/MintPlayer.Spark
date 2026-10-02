@@ -17,7 +17,8 @@ namespace MintPlayer.Spark.Tests.Services;
 /// <c>LastFiredAtUtc</c> — three fields the server owns — destroyed whenever a user edited an
 /// unrelated field on the parent board.
 /// </remarks>
-public class AsDetailStoredRowMergeTests : SparkTestDriver
+public class AsDetailStoredRowMergeTests(SparkSharedDatabase database)
+    : SparkSharedTestDriver(database), IClassFixture<SparkSharedDatabase>
 {
     private static readonly Guid ParentTypeId = Guid.Parse("d0da1100-0000-0000-0000-d0da11000002");
 

@@ -457,3 +457,43 @@ describe('SparkQueryListComponent', () => {
     });
   });
 });
+
+// The URL scope (contributions M5b): the History link opens `query/:id?parentId=…&parentType=…&Slot=…`.
+describe('SparkQueryListComponent URL scope', () => {
+  beforeEach(() => TestBed.resetTestingModule());
+
+  it('executes the query with the parent and one column filter per known attribute, ignoring the rest', async () => {
+    const { harness, service } = await setup();
+    const c = await navigate(harness, '/query/q-all?parentId=Companies%2F1&parentType=Company&FirstName=Ann&FirstName=Bo&utm_source=mail&deleted=include');
+
+    const options = service.executeQuery.mock.calls.at(-1)[1];
+    expect(options.parentId).toBe('Companies/1');
+    expect(options.parentType).toBe('Company');
+    expect(options.columns).toEqual([{ name: 'FirstName', includes: ['Ann', 'Bo'] }]);
+    expect(c.activeUrlFilters()).toEqual([{ name: 'FirstName', includes: ['Ann', 'Bo'] }]);
+  });
+
+  it('ignores a parent without its type', async () => {
+    const { harness, service } = await setup();
+    await navigate(harness, '/query/q-all?parentId=Companies%2F1');
+
+    const options = service.executeQuery.mock.calls.at(-1)[1];
+    expect(options.parentId).toBe('');
+  });
+
+  it('shows the URL filters as chips and clears one, or all with the parent', async () => {
+    const { harness, service } = await setup();
+    const c = await navigate(harness, '/query/q-all?parentId=Companies%2F1&parentType=Company&FirstName=Ann');
+    const el = harness.routeNativeElement as HTMLElement;
+    expect(el.querySelector('.spark-url-filter[data-filter="FirstName"]')?.textContent).toContain('Ann');
+
+    c.clearUrlFilter('FirstName');
+    await settle(harness.fixture, { rounds: 6 });
+    expect(TestBed.inject(Router).url).toBe('/query/q-all?parentId=Companies%2F1&parentType=Company');
+    expect(service.executeQuery.mock.calls.at(-1)[1].columns).toEqual([]);
+
+    c.clearUrlScope();
+    await settle(harness.fixture, { rounds: 6 });
+    expect(TestBed.inject(Router).url).toBe('/query/q-all');
+  });
+});

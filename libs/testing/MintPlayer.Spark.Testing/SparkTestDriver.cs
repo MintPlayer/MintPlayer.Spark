@@ -16,11 +16,15 @@ namespace MintPlayer.Spark.Testing;
 /// case</strong> — xUnit constructs a fresh instance for every <c>[Fact]</c> and every
 /// <c>[Theory]</c> row.
 /// <para>
-/// That granularity is not free: <see cref="InitializeAsync"/> creates a brand-new RavenDB
-/// database per test case (<see cref="RavenTestDriver.GetDocumentStore"/> names them
-/// <c>InitializeAsync_{N}</c> off a process-wide counter), all on one shared embedded server.
-/// Across this suite that is several hundred create/delete cycles per run, so test parallelism
-/// is capped in <c>xunit.runner.json</c> — see that file before raising it.
+/// That granularity is not free: each test case gets a brand-new RavenDB database
+/// (<see cref="RavenTestDriver.GetDocumentStore"/> names them off a process-wide counter), all on
+/// one shared embedded server. Across this suite that is several hundred create/delete cycles per
+/// run, so test parallelism is capped in <c>xunit.runner.json</c> — see that file before raising it.
+/// </para>
+/// <para>
+/// The database is created on the first read of <see cref="Store"/>, not in
+/// <see cref="InitializeAsync"/>, so a case that never touches it costs no database at all. See
+/// <see cref="Store"/> for the measurement.
 /// </para>
 ///
 /// RavenDB 7.x requires a license even for the embedded TestDriver. We load it from:
@@ -67,7 +71,33 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
     /// </summary>
     protected virtual bool RequireLicense => true;
 
-    protected IDocumentStore Store { get; private set; } = null!;
+    private IDocumentStore? _store;
+    private readonly Lock _storeLock = new();
+
+    /// <summary>
+    /// This case's own database, created on first read.
+    /// <para>
+    /// Lazy because a create/delete cycle is not free even for a database nothing is written to:
+    /// measured on the embedded test server (M8, 2026-10-02), 96 ms of server CPU per cycle for an
+    /// empty database, 115 ms with five documents, 204 ms with a static index and a query. Some
+    /// cases on this driver never touch the store at all (startup refusals, template rendering,
+    /// option validation), and they paid that cycle anyway: 76 of 1,102 in Spark.Tests (7%).
+    /// </para>
+    /// <para>
+    /// Locked rather than a plain <c>??=</c>: a case may read it from several tasks at once, and
+    /// two racing reads would each create a database.
+    /// </para>
+    /// </summary>
+    protected IDocumentStore Store
+    {
+        get
+        {
+            if (_store is { } store)
+                return store;
+            lock (_storeLock)
+                return _store ??= GetDocumentStore(database: "Store");
+        }
+    }
 
     /// <summary>
     /// Installs Spark's own document-id rules, so a test sees the ids production would assign.
@@ -89,6 +119,11 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
     {
         // The same call production makes -- see MintPlayer.Spark.SparkStoreConfiguration.
         documentStore.ApplySparkConventions();
+        // Zero-wait hard delete on dispose, for this fixture's Store AND any inline
+        // GetDocumentStore() a test makes. See DisposeAsync and RavenDatabaseDeletion.
+        RavenDatabaseDeletion.DeleteOnDispose(documentStore);
+        // No topology cache file per database. See RavenDatabaseDeletion.DisableTopologyCache.
+        RavenDatabaseDeletion.DisableTopologyCache(documentStore);
         base.PreInitialize(documentStore);
     }
 
@@ -111,7 +146,6 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
     {
         if (RequireLicense)
             LicenseHelper.EnsureAvailable();
-        Store = GetDocumentStore();
 
         var assemblies = IndexAssemblies as Assembly[] ?? IndexAssemblies.ToArray();
         if (assemblies.Length > 0)
@@ -180,56 +214,32 @@ public abstract class SparkTestDriver : RavenTestDriver, IAsyncLifetime
     /// (teardown 16-19 s → 35-47 s; a client-side queue cannot speed up the server's single apply
     /// loop); and catching the timeout rather than preventing it.
     /// </para>
+    /// <para>
+    /// ⚠️ <b>Also measured and rejected (M8, 2026-10-01): skipping the driver's second delete.</b>
+    /// That delete is most of what a dispose costs (103 of 114 ms on average): our zero-wait delete is
+    /// answered with <c>TimeoutException: … didn't get an index notification for N</c>, which means the
+    /// delete is in the Raft log but not yet applied, so the driver's delete then finds the database
+    /// still being torn down and waits for it. Recognising that answer as success and removing the
+    /// store from the driver's private <c>_documentStores</c> registry cut dispose to 16 ms — and
+    /// changed nothing in wall time (Spark.Tests 196/186 s against 199/183/167 s without it;
+    /// CodeCoverage.Tests 209/200 s against 194/152 s). On a saturated CPU the server still does the
+    /// unload; the wait was only backpressure, and without it unloads pile up concurrently.
+    /// </para>
     /// </remarks>
-    public virtual async Task DisposeAsync()
+    public virtual Task DisposeAsync()
     {
-        // Null-guarded because InitializeAsync can fail before assigning Store — a missing licence,
-        // or GetDocumentStore timing out when the shared embedded server is under load. Without
-        // the guard this throws a NullReferenceException that REPLACES the real failure in the
-        // test output, which is what made those CI timeouts so hard to read.
-        if (Store is null)
-            return;
-
-        try
-        {
-            await Store.Maintenance.Server.SendAsync(
-                new DeleteDatabasesOperation(
-                    Store.Database,
-                    hardDelete: true,
-                    fromNode: null,
-                    timeToWaitForConfirmation: DatabaseDeletionBudget));
-        }
-        catch (DatabaseDoesNotExistException)
-        {
-            // Already gone — nothing to wait for.
-        }
-        catch (Exception)
-        {
-            // ⚠️ Never fail a test in teardown over cleanup. The database is in a temp directory on
-            // a server that dies with the process, so the worst case of swallowing this is disk we
-            // were going to reclaim anyway — whereas throwing here REPLACES the real result of the
-            // test that just ran, which is exactly the failure mode this whole change exists to fix.
-        }
-
-        Store.Dispose();
+        // The backing field, never the Store property: reading Store here would create a database
+        // just to delete it for a case that never used one. Null when the case never read Store, or
+        // when creating it failed (a missing licence, or GetDocumentStore timing out when the shared
+        // embedded server is under load); a NullReferenceException here would REPLACE the real
+        // failure in the test output, which is what made those CI timeouts so hard to read.
+        //
+        // The zero-wait delete itself runs inside Dispose(): PreInitialize subscribed
+        // RavenDatabaseDeletion.DeleteOnDispose to the store's BeforeDispose, which fires before the
+        // driver's own AfterDispose delete. Never throws.
+        _store?.Dispose();
+        return Task.CompletedTask;
     }
-
-    /// <summary>
-    /// ⚠️ <b>Zero, and it has to be zero</b> — this is not a short timeout, it is an instruction to
-    /// skip the confirmation wait entirely.
-    /// <para>
-    /// Server-side, <c>WaitForDeletionToComplete</c> computes <c>remaining = timeout - elapsed</c>;
-    /// with zero that is already negative, so <c>WaitForIndexNotification</c> is never entered. The
-    /// raft command is still submitted and the database is still deleted — only the acknowledgement
-    /// is skipped, and the exception is never raised rather than caught.
-    /// </para>
-    /// <para>
-    /// ⚠️ Do not "improve" this into a generous timeout. A longer budget does not make the deletion
-    /// faster; it makes teardown <em>block</em> for that long under load instead of failing at 15 s,
-    /// which trades a visible failure for an invisible stall. Waiting is the cost being removed.
-    /// </para>
-    /// </summary>
-    private static readonly TimeSpan DatabaseDeletionBudget = TimeSpan.Zero;
 
     /// <summary>
     /// Writes documents and returns only once RavenDB has indexed them — the deterministic way to

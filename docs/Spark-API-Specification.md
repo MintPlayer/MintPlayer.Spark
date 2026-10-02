@@ -140,6 +140,9 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
     `CarreerJob.ProfessionId` reaches `CarreerJobActions.OnRefreshAsync` — and the response is the
     reshaped row, carrying its owner as `parent`. Authorization still uses the **request's**
     `objectTypeId`: nested AsDetail types are not in `security.json`.
+  - An attribute triggers a refresh when its model declares `triggersRefresh` as `"Auto"`,
+    `"ValueChanged"` or `"Blur"` (`ERefreshTrigger`); absent or `"None"` never does. The value only
+    decides when the client calls; the server treats every non-`None` trigger alike.
   - See [TriggersRefresh & OnRefreshAsync](./guide-triggers-refresh.md).
 
 #### Delete PersistentObject

@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject, input, model, output, signal, untracked, Type } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Injector, computed, effect, inject, input, model, output, runInInjectionContext, signal, untracked, Type } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -43,9 +43,11 @@ import {
   valueFor,
 } from '@mintplayer/ng-spark/models';
 import { SPARK_GRID_PAGE_SIZES, initialGridSettings, isVirtualScrollingQuery } from './spark-grid-columns';
+import { applicablePresetFilters } from './preset-filters';
 import { SparkGridRenderers } from './spark-grid-renderers';
 import { SparkGridCellComponent } from './spark-grid-cell.component';
 import { SparkQueryToolbarAction, sparkActionClass } from './spark-query-toolbar';
+import { SPARK_QUERY_ROW_ACTIONS, SparkQueryRowAction, orderSparkExtensions } from '@mintplayer/ng-spark/panels';
 
 /**
  * The one Spark grid: a `<bs-datatable>` rendering a query or a sub-query.
@@ -87,6 +89,9 @@ export class SparkQueryGridComponent {
   private readonly sparkService = inject(SparkService);
   private readonly gridRenderers = inject(SparkGridRenderers);
   private readonly queryRefresh = inject(SparkQueryRefreshService);
+  private readonly injector = inject(Injector);
+  /** Add-on row-menu entries (`SPARK_QUERY_ROW_ACTIONS`), e.g. Contributions' revert. */
+  private readonly addonRowActions = orderSparkExtensions(inject(SPARK_QUERY_ROW_ACTIONS, { optional: true }), a => a.priority ?? 50);
   readonly lang = inject(SparkLanguageService);
 
   /** Query alias or id. */
@@ -106,6 +111,18 @@ export class SparkQueryGridComponent {
    */
   parentId = input<string>('');
   parentType = input<string>('');
+
+  /**
+   * Column filters in force from the first fetch on — the query page's URL filters, e.g. the
+   * contributions History link's `?Language=en&Script=Latn`. Only those naming an attribute of the
+   * query's entity type are applied ({@link applicablePresetFilters}); see {@link appliedPresetFilters}.
+   * A change replaces the previous preset (filters the user set in a column panel on other columns
+   * stay) and refetches from page 1.
+   */
+  presetFilters = input<readonly QueryColumnFilter[]>([]);
+
+  /** The preset filters actually applied, for a host to show (and offer to clear). */
+  readonly appliedPresetFilters = signal<QueryColumnFilter[]>([]);
 
   /**
    * Rows supplied from outside. When bound, the grid renders these and runs no fetch.
@@ -405,7 +422,27 @@ export class SparkQueryGridComponent {
       if (rowTaking(definition))
         actions.push({ kind: 'custom', name: definition.name, definition, priority: 10 + definition.offset });
     }
+    const scope = this.rowActionScope();
+    if (scope) {
+      for (const addon of this.addonRowActions) {
+        if (!addon.isOffered(scope)) continue;
+        const priority = addon.priority ?? 50;
+        actions.push({
+          kind: 'addon', name: addon.id, addon, priority,
+          // The menu renders a definition's display name; an add-on has only a translation key.
+          definition: { name: addon.id, displayName: { en: this.lang.t(addon.labelKey) }, showedOn: 'query', refreshOnCompleted: true, offset: priority },
+        });
+      }
+    }
     return actions;
+  });
+
+  /** What an add-on row action is asked whether it is offered; null until the type resolved. */
+  private readonly rowActionScope = computed(() => {
+    const query = this.query();
+    const entityType = this.entityType();
+    if (!query || !entityType) return null;
+    return { query, entityType, permissions: this.permissions(), deleted: this.effectiveDeleted() ?? null };
   });
 
   /** The default Delete: not withheld by the result, and never in the recycle bin. */
@@ -487,7 +524,36 @@ export class SparkQueryGridComponent {
       await this.deleteRows([row.id], action.definition);
       return;
     }
+    if (action.kind === 'addon' && action.addon) {
+      await this.runAddonRowAction(action.addon, row);
+      return;
+    }
     await this.onCustomAction(action.definition, [row.id]);
+  }
+
+  /** An add-on row action, in this grid's injection context; a failure lands in the grid's alert. */
+  private async runAddonRowAction(addon: SparkQueryRowAction, row: QueryResultItem): Promise<void> {
+    const scope = this.rowActionScope();
+    if (!scope) return;
+    try {
+      this.errorMessage.set(null);
+      await runInInjectionContext(this.injector, () => addon.run({ ...scope, row, reload: () => this.reload() }));
+    } catch (e) {
+      const err = e as HttpErrorResponse;
+      const first = err?.error?.result?.errors?.[0];
+      const validation = typeof first?.errorMessage === 'string'
+        ? first.errorMessage
+        : first?.errorMessage ? this.lang.resolve(first.errorMessage) : '';
+      this.errorMessage.set(
+        validation
+        || first?.message
+        || err?.error?.result?.error
+        || err?.error?.error
+        || (err?.status === 404 ? this.lang.t('spark.query.unavailable') : '')
+        || err?.message
+        || this.lang.t('common.actionFailed')
+        || 'Action failed');
+    }
   }
 
   /**
@@ -628,6 +694,23 @@ export class SparkQueryGridComponent {
       untracked(() => {
         this.selection.set([]);
         this.onSearchChanged();
+      });
+    });
+
+    // New preset (URL) filters: swap them for the previous preset, keep the user's own column
+    // filters on other columns, back to page 1. Skips the first run — loadData applies the initial set.
+    let firstPreset = true;
+    effect(() => {
+      const presetFilters = this.presetFilters();
+      if (firstPreset) { firstPreset = false; return; }
+      untracked(() => {
+        const next = applicablePresetFilters(presetFilters, this.entityType());
+        const previous = new Set(this.appliedPresetFilters().map(f => f.name));
+        const replaced = new Set(next.map(f => f.name));
+        this.appliedPresetFilters.set(next);
+        this.filters.set([...this.filters().filter(f => !previous.has(f.name) && !replaced.has(f.name)), ...next]);
+        this.selection.set([]);
+        this.onFilterChanged();
       });
     });
 
@@ -903,6 +986,10 @@ export class SparkQueryGridComponent {
     // A filter belongs to the query it was applied to. Surviving a query switch would POST it
     // against the next query, where the column may not exist or may mean something else entirely.
     this.filters.set([]);
+    // The previous query's columns too: the new datatable would otherwise size its columns from
+    // them against the new query's first page, and keep those widths for column names that no
+    // longer exist (see the row-actions column in the template).
+    this.fetchedColumns.set([]);
     try {
       const [resolvedQuery, entityTypes] = await Promise.all([
         this.sparkService.getQuery(queryId),
@@ -914,6 +1001,11 @@ export class SparkQueryGridComponent {
 
       const et = this.resolveEntityType(resolvedQuery, entityTypes);
       this.entityType.set(et);
+      // The host's preset (URL) filters, now that the type can validate them. Untracked: this runs
+      // inside the loading effect, and a preset change has its own cheaper path (see the constructor).
+      const preset = applicablePresetFilters(untracked(() => this.presetFilters()), et);
+      this.appliedPresetFilters.set(preset);
+      this.filters.set([...preset]);
       if (et) {
         const [permissions, actions] = await Promise.all([
           this.sparkService.getPermissions(et.id),

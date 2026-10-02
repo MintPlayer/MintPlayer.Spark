@@ -29,6 +29,8 @@ namespace CodeCoverage.Tests.Actions;
 /// </remarks>
 public class ReadRowFilterTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const long PublicRepo = 7101;
     private const long PrivateRepo = 7102;
     private const long OthersPrivateRepo = 7103;

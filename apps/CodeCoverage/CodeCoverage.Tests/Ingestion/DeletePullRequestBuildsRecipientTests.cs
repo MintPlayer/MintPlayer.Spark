@@ -14,6 +14,8 @@ namespace CodeCoverage.Tests.Ingestion;
 /// </summary>
 public class DeletePullRequestBuildsRecipientTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const long RepoGitHubId = 99;
 
     private static async Task<string> SeedPrCommit(IDocumentStore store, string sha, string branch, int prNumber)

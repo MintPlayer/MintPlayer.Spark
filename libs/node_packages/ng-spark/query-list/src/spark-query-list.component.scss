@@ -52,7 +52,7 @@
 }
 
 tr:hover {
-  background-color: rgba(0, 0, 0, 0.05);
+  background-color: rgba(var(--bs-emphasis-color-rgb), .05);
 }
 
 td input[type="checkbox"]:disabled {
@@ -65,4 +65,13 @@ td input[type="checkbox"]:disabled {
 // badge's own em-relative font-size then follows.
 .spark-live-badge {
   font-size: 0.6em;
+}
+
+// The URL scope chips (contributions M5b): a plain, inherit-coloured clear button inside the badge.
+.spark-url-filter-clear {
+  background: none;
+  border: 0;
+  padding: 0 0 0 .25rem;
+  color: inherit;
+  line-height: 1;
 }

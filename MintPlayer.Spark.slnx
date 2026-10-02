@@ -44,6 +44,11 @@
     <Project Path="libs/client/MintPlayer.Spark.Client.Authorization/MintPlayer.Spark.Client.Authorization.csproj" />
     <Project Path="libs/client/MintPlayer.Spark.Client/MintPlayer.Spark.Client.csproj" />
   </Folder>
+  <Folder Name="/libs/contributions/">
+    <Project Path="libs/contributions/MintPlayer.Spark.Contributions.Abstractions/MintPlayer.Spark.Contributions.Abstractions.csproj" />
+    <Project Path="libs/contributions/MintPlayer.Spark.Contributions.SourceGenerators/MintPlayer.Spark.Contributions.SourceGenerators.csproj" />
+    <Project Path="libs/contributions/MintPlayer.Spark.Contributions/MintPlayer.Spark.Contributions.csproj" />
+  </Folder>
   <Folder Name="/libs/controllers/">
     <Project Path="libs/controllers/MintPlayer.Spark.Controllers/MintPlayer.Spark.Controllers.csproj" />
   </Folder>

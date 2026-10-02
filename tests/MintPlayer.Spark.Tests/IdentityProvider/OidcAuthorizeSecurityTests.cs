@@ -9,16 +9,18 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// <c>/connect/authorize</c> — the checks that run before any user is involved, so they are
 /// observable without a login. Case ids refer to docs/idp-e2e-test-matrix.md §A.
 /// </summary>
-public class OidcAuthorizeSecurityTests : OidcTestHost
+public class OidcAuthorizeSecurityTests(OidcSharedHost host) : OidcTestHost(host), IClassFixture<OidcSharedHost>
 {
-    private static string Url(
-        string clientId = "webapp",
-        string? redirectUri = "https://webapp.test/cb",
+    // Defaults to this case's "webapp" client and the redirect URI SeedApplicationAsync derives
+    // for it.
+    private string Url(
+        string? clientId = null,
+        string? redirectUri = null,
         string responseType = "code",
         string scope = "openid",
         string? extra = null)
-        => $"/connect/authorize?client_id={Uri.EscapeDataString(clientId)}"
-         + (redirectUri is null ? "" : $"&redirect_uri={Uri.EscapeDataString(redirectUri)}")
+        => $"/connect/authorize?client_id={Uri.EscapeDataString(clientId ?? ClientId("webapp"))}"
+         + $"&redirect_uri={Uri.EscapeDataString(redirectUri ?? $"https://{ClientId("webapp")}.test/cb")}"
          + $"&response_type={Uri.EscapeDataString(responseType)}"
          + $"&scope={Uri.EscapeDataString(scope)}"
          + (extra ?? "");
@@ -27,9 +29,9 @@ public class OidcAuthorizeSecurityTests : OidcTestHost
     [Fact]
     public async Task Authorize_client_id_lookup_is_case_sensitive()
     {
-        await SeedApplicationAsync("AcmeApp", redirectUris: ["https://acme.test/cb"]);
+        await SeedApplicationAsync(ClientId("AcmeApp"), redirectUris: ["https://acme.test/cb"]);
 
-        var response = await Client.GetAsync(Url("acmeapp", "https://acme.test/cb"));
+        var response = await Client.GetAsync(Url(ClientId("acmeapp"), "https://acme.test/cb"));
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest,
             "RavenDB matches strings case-insensitively by default; if the lookup does not opt "
@@ -42,9 +44,9 @@ public class OidcAuthorizeSecurityTests : OidcTestHost
     [Fact]
     public async Task Authorize_accepts_the_exactly_registered_client_id()
     {
-        await SeedApplicationAsync("AcmeApp", redirectUris: ["https://acme.test/cb"]);
+        await SeedApplicationAsync(ClientId("AcmeApp"), redirectUris: ["https://acme.test/cb"]);
 
-        var response = await Client.GetAsync(Url("AcmeApp", "https://acme.test/cb"));
+        var response = await Client.GetAsync(Url(ClientId("AcmeApp"), "https://acme.test/cb"));
 
         // Unauthenticated, so the client checks passed and it fell through to the login hop.
         response.StatusCode.Should().Be(HttpStatusCode.Redirect);
@@ -65,9 +67,9 @@ public class OidcAuthorizeSecurityTests : OidcTestHost
     [Fact]
     public async Task Authorize_rejects_disabled_application()
     {
-        await SeedApplicationAsync("disabled-app", redirectUris: ["https://disabled.test/cb"], enabled: false);
+        await SeedApplicationAsync(ClientId("disabled-app"), redirectUris: ["https://disabled.test/cb"], enabled: false);
 
-        var response = await Client.GetAsync(Url("disabled-app", "https://disabled.test/cb"));
+        var response = await Client.GetAsync(Url(ClientId("disabled-app"), "https://disabled.test/cb"));
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await response.Content.ReadAsStringAsync()).Should().Contain("invalid_client");
@@ -78,7 +80,7 @@ public class OidcAuthorizeSecurityTests : OidcTestHost
     public async Task Authorize_rejects_a_client_credentials_only_client()
     {
         var seeded = await SeedApplicationAsync(
-            "machine-only",
+            ClientId("machine-only"),
             redirectUris: ["https://machine.test/cb"],
             grantTypes: ["client_credentials"]);
 
@@ -90,7 +92,7 @@ public class OidcAuthorizeSecurityTests : OidcTestHost
             stored.AllowedGrantTypes.Should().ContainSingle().Which.Should().Be("client_credentials");
         }
 
-        var response = await Client.GetAsync(Url("machine-only", "https://machine.test/cb"));
+        var response = await Client.GetAsync(Url(ClientId("machine-only"), "https://machine.test/cb"));
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         (await response.Content.ReadAsStringAsync()).Should().Contain("unauthorized_client",
@@ -102,7 +104,7 @@ public class OidcAuthorizeSecurityTests : OidcTestHost
     [Fact]
     public async Task Authorize_rejects_an_unregistered_redirect_uri()
     {
-        await SeedApplicationAsync("webapp");
+        await SeedApplicationAsync(ClientId("webapp"));
 
         var response = await Client.GetAsync(Url(redirectUri: "https://evil.example.com/cb"));
 
@@ -114,15 +116,16 @@ public class OidcAuthorizeSecurityTests : OidcTestHost
 
     /// <summary>A-R2 — exact match, so a registered prefix is not enough.</summary>
     [Theory]
-    [InlineData("https://webapp.test/cb2")]
-    [InlineData("https://webapp.test/cb/extra")]
-    [InlineData("https://webapp.test/cb/")]
-    [InlineData("https://WebApp.test/cb")]
+    // {0} is this case's "webapp" client id, {1} the same id cased differently.
+    [InlineData("https://{0}.test/cb2")]
+    [InlineData("https://{0}.test/cb/extra")]
+    [InlineData("https://{0}.test/cb/")]
+    [InlineData("https://{1}.test/cb")]
     public async Task Authorize_rejects_near_miss_redirect_uris(string redirectUri)
     {
-        await SeedApplicationAsync("webapp");
+        await SeedApplicationAsync(ClientId("webapp"));
 
-        var response = await Client.GetAsync(Url(redirectUri: redirectUri));
+        var response = await Client.GetAsync(Url(redirectUri: string.Format(redirectUri, ClientId("webapp"), ClientId("WebApp"))));
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
@@ -134,7 +137,7 @@ public class OidcAuthorizeSecurityTests : OidcTestHost
     [InlineData("Code")]
     public async Task Authorize_rejects_unsupported_response_types(string responseType)
     {
-        await SeedApplicationAsync("webapp");
+        await SeedApplicationAsync(ClientId("webapp"));
 
         var response = await Client.GetAsync(Url(responseType: responseType));
 
@@ -146,7 +149,7 @@ public class OidcAuthorizeSecurityTests : OidcTestHost
     [Fact]
     public async Task Authorize_rejects_a_scope_the_client_may_not_hold()
     {
-        await SeedApplicationAsync("webapp", allowedScopes: ["openid"]);
+        await SeedApplicationAsync(ClientId("webapp"), allowedScopes: ["openid"]);
 
         var response = await Client.GetAsync(Url(scope: "openid admin"));
 
@@ -163,7 +166,7 @@ public class OidcAuthorizeSecurityTests : OidcTestHost
     [Fact]
     public async Task Authorize_does_not_accept_a_bearer_token_as_an_interactive_session()
     {
-        await SeedApplicationAsync("webapp");
+        await SeedApplicationAsync(ClientId("webapp"));
 
         using var client = Client;
         client.DefaultRequestHeaders.Add("Authorization", "Bearer not-an-interactive-session");
@@ -180,7 +183,7 @@ public class OidcAuthorizeSecurityTests : OidcTestHost
     [Fact]
     public async Task Authorize_writes_no_request_document_before_the_user_signs_in()
     {
-        await SeedApplicationAsync("webapp");
+        await SeedApplicationAsync(ClientId("webapp"));
 
         await Client.GetAsync(Url());
 
@@ -188,7 +191,7 @@ public class OidcAuthorizeSecurityTests : OidcTestHost
         // from the property holding, and the test passes either way.
         await Store.WaitForIndexingAsync();
         using var session = Store.OpenAsyncSession();
-        var requests = await session.Query<OidcAuthorizationRequest>().ToListAsync();
+        var requests = await CaseAuthorizationRequestsAsync(session);
 
         requests.Should().BeEmpty("the request is only persisted once there is a subject to bind it to");
     }

@@ -175,9 +175,11 @@ MintPlayer.Spark/
 | [Attribute Grouping](docs/guide-attribute-grouping.md) | Two-level Tabs and Groups layout for entity forms and detail pages |
 | [Custom Attribute Renderers](docs/guide-custom-attribute-renderers.md) | Replace default attribute display/editing with custom Angular components |
 | [Custom Actions](docs/guide-custom-actions.md) | Custom business operations on persistent objects with UI integration |
+| [Concurrent Edits & the 409 Merge](docs/guide-concurrency.md) | The change-vector check on every save, the bare 409, ng-spark's three-way merge (per row by `[ValueKey]`, a dialog for true conflicts only, keep all mine / take all theirs), `conflictDialog.showChangedBy`, no auto-save, and why contribution rows are theirs-wins |
 | [TriggersRefresh & OnRefreshAsync](docs/guide-triggers-refresh.md) | Forms that reshape themselves: toggling required/read-only/visible, rewriting rules, replacing dropdown options as the user types — and why the hook must be idempotent |
 | [PO/Query Aliases](docs/guide-aliases.md) | Friendly URLs for entities and queries (`/po/car` instead of `/po/{guid}`) |
 | [Program Units & spark-shell](docs/guide-program-units.md) | The server-driven menu (`programUnits.json`, rights-filtered per caller), JSON-only composed virtual PO pages, and the shipped `spark-shell` with its slots |
+| [Theming (light / dark / Auto)](docs/guide-theming.md) | The pre-boot script and `<head>` order per app, Auto following the OS live vs a sticky Light/Dark choice, the `bs-theme-mode` cookie and `cookieDomain`, and recolouring through `--spark-shell-*` and `--bs-*` custom properties (not Sass `$*-dark`) |
 | [TranslatedString & i18n](docs/guide-translated-strings.md) | Multi-language support for labels, descriptions, and validation messages |
 | [Attribute Descriptions](docs/guide-attribute-descriptions.md) | Help text per attribute, rendered as an [i] tooltip; seeded from `[Description]` or `///` summaries on synchronize |
 | [Identity & external login](libs/authorization/MintPlayer.Spark.Authorization/README.md) | The optional identity package: RavenDB-backed ASP.NET Identity, OAuth providers, JWT bearer, and the Angular half |
@@ -194,6 +196,7 @@ MintPlayer.Spark/
 | [Soft Delete](libs/soft_delete/MintPlayer.Spark.SoftDelete/README.md) | `ISoftDeletable`: a delete becomes a mark, deleted rows hidden on every path, restore and purge, the recycle bin |
 | [History](libs/history/MintPlayer.Spark.History/README.md) | RavenDB revisions from the model, audit stamping, revision reads and revert through the save pipeline, licence limits |
 | [Moderation](docs/guide-moderation.md) | Votes, reputation, earned privileges as groups, vote-fraud defences, flags, lock/suspend ([package README](libs/moderation/MintPlayer.Spark.Moderation/README.md)) |
+| [Contributions](docs/guide-contributions.md) | Per-user versions of a property with latest-wins: `[Contribution]` / `[ContributionSlot]`, the current-document design, withdraw and revert, rights without a `Contribute` verb, moderation, the ng-spark pieces ([package README](libs/contributions/MintPlayer.Spark.Contributions/README.md)) |
 | [Cross-Module Synchronization](docs/guide-cross-module-sync.md) | Entity replication between modules with write-back support |
 | [Cross-Module mTLS](docs/guide-replication-mtls.md) | Issuing and pinning the client certificates that authenticate one module to another |
 | [Subscription Workers](libs/subscription_worker/MintPlayer.Spark.SubscriptionWorker/README.md) | RavenDB subscription-based background processing with retry handling |

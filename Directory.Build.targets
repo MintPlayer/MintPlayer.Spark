@@ -5,6 +5,24 @@
 	</PropertyGroup>
 
 	<!--
+	  Test processes run without dynamic PGO (System.Runtime.TieredPGO=false in their
+	  runtimeconfig.json, which the test host runs under).
+
+	  Dynamic PGO instruments a method's tier-0 code to collect a profile, then recompiles it. That
+	  pays off in a long-running server whose hot methods run millions of times. A test process is
+	  the opposite case: thousands of distinct methods that each run a handful of times, so it pays
+	  for the instrumentation and the rejit and rarely uses the result. Measured 2026-10-02 on
+	  MintPlayer.Spark.Tests run alone (M8 item 13, PRD §5d): test-process CPU 172-181 s down to
+	  134-139 s, no test changed. Production applications are unaffected: only test projects get it.
+
+	  In the targets file, not the props, because IsTestProject is set by Microsoft.NET.Test.Sdk
+	  after Directory.Build.props has been read.
+	-->
+	<PropertyGroup Condition="'$(IsTestProject)' == 'true'">
+		<TieredPGO>false</TieredPGO>
+	</PropertyGroup>
+
+	<!--
 	  Keep RavenDB's 623 MB embedded server out of bin/.
 
 	  RavenDB.Embedded's own build/RavenDB.Embedded.targets copies contentFiles/any/any/**

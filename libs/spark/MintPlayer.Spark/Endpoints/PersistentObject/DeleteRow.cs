@@ -128,7 +128,7 @@ internal sealed partial class DeleteRowPersistentObject : IPostEndpoint
 
         // The row type's own right — Delete/PhoneNumber, not Delete/Person. Matches the button the
         // client renders, which is gated on the detail type's permissions.
-        var rowTypeName = entityType.ClrType?.Split('.').Last() ?? entityType.Name;
+        var rowTypeName = entityType.Name;
         await permissionService.EnsureAuthorizedAsync("Delete", rowTypeName);
 
         // Applies the parent's Read right, collection guard and row filter, so a caller who cannot

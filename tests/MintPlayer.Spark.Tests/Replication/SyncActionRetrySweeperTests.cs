@@ -149,4 +149,33 @@ public class SyncActionRetrySweeperTests : SparkTestDriver
         (await sweeper.SweepOnceAsync(CancellationToken.None)).Should().Be(0,
             "the action is already awake; the worker is what clears the gate on pickup");
     }
+
+    [Fact]
+    public async Task An_action_that_completed_after_the_index_saw_it_due_is_not_written_to()
+    {
+        // The ids come from an index, and under load the index lags: it can still list as due an
+        // action that has since been woken, sent and completed. The same flaw in MessageRetrySweeper
+        // rewrote completed messages on every sweep (contributions_PRD §5c). Stopping the index after
+        // it has seen the due action reproduces that lag deterministically.
+        var due = Action(ESyncActionStatus.Pending, DateTime.UtcNow.AddMinutes(-1));
+        await SeedAsync(session => session.StoreAsync(due));
+        await WaitForIndexesAsync();
+        await Store.Maintenance.SendAsync(new Raven.Client.Documents.Operations.Indexes.StopIndexOperation(new SparkSyncActions_ByStatus().IndexName));
+
+        string before;
+        using (var session = Store.OpenAsyncSession())
+        {
+            var action = await session.LoadAsync<SparkSyncAction>(due.Id!);
+            action.Status = ESyncActionStatus.Completed;
+            await session.SaveChangesAsync();
+            before = session.Advanced.GetChangeVectorFor(action)!;
+        }
+
+        (await NewSweeper().SweepOnceAsync(CancellationToken.None)).Should().Be(0, "the action is no longer due: it completed");
+
+        using var verify = Store.OpenAsyncSession();
+        var after = await verify.LoadAsync<SparkSyncAction>(due.Id!);
+        verify.Advanced.GetChangeVectorFor(after).Should().Be(before, "a completed action must not be written to at all");
+        after.WakeUp.Should().BeFalse();
+    }
 }

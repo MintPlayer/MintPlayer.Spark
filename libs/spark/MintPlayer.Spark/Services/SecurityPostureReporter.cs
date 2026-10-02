@@ -16,16 +16,20 @@ namespace MintPlayer.Spark.Services;
 internal partial class SecurityPostureReporter : ISecurityPostureReporter
 {
     [Inject] private readonly ISecurityConfigurationLoader configLoader;
+    [Inject] private readonly IModelLoader modelLoader;
 
     public SecurityPosture Describe()
     {
         var config = configLoader.GetConfiguration();
         var warnings = new List<string>();
 
+        // Info-level: the stale attribute-deny trap (PRD §5 Q13), for every group, not just anonymous.
+        var notes = StaleAttributeDenials.Find(config, modelLoader).Select(f => f.Message).ToList();
+
         var anonymousGroupId = ResolveAnonymousGroupId(config);
 
         if (anonymousGroupId is null)
-            return new SecurityPosture([], warnings);
+            return new SecurityPosture([], warnings, notes);
 
         // A caller who has not signed in belongs to the anonymous group and to nothing else: group
         // membership otherwise comes from claims, and an unauthenticated principal carries none that
@@ -52,11 +56,17 @@ internal partial class SecurityPostureReporter : ISecurityPostureReporter
         granted.UnionWith(importantGranted);
         granted.ExceptWith(importantDenied);
 
+        // An attribute-level grant never unlocks what its type right withholds (Q13), so one whose
+        // type-level right is not reachable reaches nothing and must not be listed.
+        granted.RemoveWhere(r => SparkAttributeRights.TrySplit(r, out var verb, out var type, out _)
+                                 && !granted.Contains($"{verb}/{type}"));
+
         // No "floor, not ceiling" caveat is needed: wildcard rights are refused at load, so the
         // list is exactly the anonymous surface.
         return new SecurityPosture(
             granted.OrderBy(r => r, StringComparer.OrdinalIgnoreCase).ToList(),
-            warnings);
+            warnings,
+            notes);
     }
 
     private static HashSet<string> Expand(IEnumerable<Right> rights, bool withImplications)

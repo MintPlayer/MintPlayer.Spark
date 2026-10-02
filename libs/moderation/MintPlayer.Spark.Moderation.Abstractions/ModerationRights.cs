@@ -1,3 +1,7 @@
+using MintPlayer.Spark.Abstractions.Authorization;
+
+[assembly: SparkReservedActions(typeof(MintPlayer.Spark.Moderation.ModerationRights))]
+
 namespace MintPlayer.Spark.Moderation;
 
 /// <summary>
@@ -8,6 +12,7 @@ namespace MintPlayer.Spark.Moderation;
 public static class ModerationRights
 {
     /// <summary>The target of the rights that are not about one entity type.</summary>
+    [SparkNotAnAction]
     public const string Target = "Moderation";
 
     /// <summary><c>Vote/T</c>: cast an up-vote on a <c>T</c>.</summary>
@@ -35,6 +40,11 @@ public static class ModerationRights
     /// Actions no reputation-earned group may ever hold (D12): each is destructive or reaches rows a
     /// normal member cannot see. Also the list the <c>earnable</c> escape hatch is checked against.
     /// </summary>
+    /// <remarks>
+    /// <c>Purge</c>, <c>Restore</c> and <c>ViewDeleted</c> are SoftDelete's verbs and <c>Revert</c> is
+    /// History's; this package references neither, so they are named here as literals. A test holds
+    /// them to those packages' reserved-verb declarations (<c>SparkReservedActions</c>).
+    /// </remarks>
     public static readonly IReadOnlySet<string> NeverEarnable = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         Lock, Suspend, "Purge", "Restore", "Revert", "ViewDeleted", Audit,
@@ -46,6 +56,6 @@ public static class ModerationRights
     /// </summary>
     public static readonly IReadOnlySet<string> DefaultEarnable = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        "Query", "Read", "New", "Edit", Vote, Downvote, Flag, Review,
+        SparkCoreActions.Query, SparkCoreActions.Read, SparkCoreActions.New, SparkCoreActions.Edit, Vote, Downvote, Flag, Review,
     };
 }

@@ -1,5 +1,6 @@
 import { type EnvironmentProviders, inject, makeEnvironmentProviders } from '@angular/core';
 import { Router } from '@angular/router';
+import { resolveTranslation } from '@mintplayer/ng-spark/models';
 import type {
     ClientOperation,
     NavigateOperation,
@@ -43,7 +44,9 @@ export function provideSparkClientOperations(): EnvironmentProviders {
                     type: 'notify',
                     handler: (operation: ClientOperation) => {
                         const notify = operation as NotifyOperation;
-                        notifications.show(notify.message, notify.kind, notify.durationMs);
+                        // The app-chosen language, not the browser's that the server resolved `message` in.
+                        const message = (notify.translatedMessage && resolveTranslation(notify.translatedMessage)) || notify.message;
+                        notifications.show(message, notify.kind, notify.durationMs);
                     },
                 };
             },

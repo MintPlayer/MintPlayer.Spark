@@ -95,6 +95,10 @@ public class SparkSharedDatabase : RavenTestDriver, IAsyncLifetime
     {
         // The same call production makes -- see MintPlayer.Spark.SparkStoreConfiguration.
         documentStore.ApplySparkConventions();
+        // Zero-wait hard delete on dispose — see RavenDatabaseDeletion.
+        RavenDatabaseDeletion.DeleteOnDispose(documentStore);
+        // No topology cache file per database. See RavenDatabaseDeletion.DisableTopologyCache.
+        RavenDatabaseDeletion.DisableTopologyCache(documentStore);
         base.PreInitialize(documentStore);
     }
 
@@ -125,6 +129,11 @@ public class SparkSharedDatabase : RavenTestDriver, IAsyncLifetime
         // Null-guarded for the same reason SparkTestDriver's is: InitializeAsync can fail before
         // assigning Store, and a NullReferenceException here would replace the real failure in the
         // test output.
+        //
+        // Dispose() runs the zero-wait delete PreInitialize subscribed (RavenDatabaseDeletion), so
+        // the driver's own AfterDispose delete no longer waits the server's hard-coded 15 s. A shared
+        // database carries a whole class's indexes and documents, which is exactly when that wait
+        // is long.
         Store?.Dispose();
         return Task.CompletedTask;
     }

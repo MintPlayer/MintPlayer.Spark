@@ -1,8 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
-import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
+import { currentLanguage } from '@mintplayer/ng-spark/models';
 
 import { provideSparkClientOperations } from './provide';
+import { SparkNotificationService } from './notification.service';
+import { NotificationKind } from './operations';
 import { SPARK_CLIENT_OPERATION_HANDLERS } from './handlers.token';
 import { SparkAttributeRefreshService } from './attribute-refresh.service';
 import { SparkClientOperationDispatcher } from './dispatcher.service';
@@ -128,5 +131,36 @@ describe('provideSparkClientOperations', () => {
 
     dispatcher.dispatch([{ type: 'navigate', routeName: '/a/MintPlayer' } as ClientOperation]);
     expect(byUrl).toHaveBeenLastCalledWith('/a/MintPlayer');
+  });
+
+  describe('notify language', () => {
+    const before = currentLanguage();
+    afterEach(() => currentLanguage.set(before));
+
+    it('shows the translated message in the language the user picked, not the browser one the server used', () => {
+      configure();
+      const dispatcher = TestBed.inject(SparkClientOperationDispatcher);
+      const show = vi.spyOn(TestBed.inject(SparkNotificationService), 'show').mockImplementation(() => undefined);
+      currentLanguage.set('en'); // SparkLanguageService's choice; the browser sent Accept-Language: nl
+
+      dispatcher.dispatch([{
+        type: 'notify',
+        message: 'Uw versie is ingetrokken.',
+        translatedMessage: { en: 'Your version was withdrawn.', nl: 'Uw versie is ingetrokken.' },
+        kind: NotificationKind.Info,
+      } as ClientOperation]);
+
+      expect(show).toHaveBeenCalledWith('Your version was withdrawn.', NotificationKind.Info, undefined);
+    });
+
+    it('falls back to the plain message without translations', () => {
+      configure();
+      const dispatcher = TestBed.inject(SparkClientOperationDispatcher);
+      const show = vi.spyOn(TestBed.inject(SparkNotificationService), 'show').mockImplementation(() => undefined);
+
+      dispatcher.dispatch([{ type: 'notify', message: 'Saved', kind: NotificationKind.Success, durationMs: 3000 } as ClientOperation]);
+
+      expect(show).toHaveBeenCalledWith('Saved', NotificationKind.Success, 3000);
+    });
   });
 });

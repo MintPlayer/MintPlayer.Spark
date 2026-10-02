@@ -176,7 +176,7 @@ public class RevokeTokenActionTests : CoverageRavenTest
             await harness.Action.ExecuteAsync(ArgsFor(TokenId));
         }
 
-        harness.Client.ReceivedWithAnyArgs().Notify(default!, default);
+        harness.Client.ReceivedWithAnyArgs().Notify(default(string)!, default);
     }
 
     [Fact]
@@ -191,6 +191,6 @@ public class RevokeTokenActionTests : CoverageRavenTest
             await harness.Action.ExecuteAsync(ArgsFor(null));
         }
 
-        harness.Client.ReceivedWithAnyArgs().Notify(default!, default);
+        harness.Client.ReceivedWithAnyArgs().Notify(default(string)!, default);
     }
 }

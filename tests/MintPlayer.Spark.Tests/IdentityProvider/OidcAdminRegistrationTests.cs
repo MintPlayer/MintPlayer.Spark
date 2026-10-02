@@ -16,6 +16,10 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// an earlier draft of the plan concluded the opposite from reading <c>ModelLoader</c> alone,
 /// and proposed a registry mechanism for a problem that does not exist.
 /// </para>
+/// <para>
+/// Per case, not per class (M8): the synchronizer writes model files into the host's content
+/// root, so on a shared host a case's <c>File.Exists</c> could pass on a sibling's file.
+/// </para>
 /// </summary>
 public class OidcAdminRegistrationTests : OidcTestHost
 {

@@ -22,26 +22,25 @@ namespace MintPlayer.Spark.Tests.Endpoints.PersistentObject;
 /// calling <c>/refresh</c> at all.
 /// </para>
 /// </summary>
-public class RefreshEndpointTests : SparkTestDriver
+public class RefreshEndpointTests(RefreshEndpointTests.Host host)
+    : SparkSharedTestDriver(host), IClassFixture<RefreshEndpointTests.Host>, IDisposable
 {
     private static readonly Guid CarTypeId = Guid.Parse("7e5f0000-0000-4000-8000-000000000001");
 
-    private SparkEndpointFactory<RefreshTestContext> _factory = null!;
-    private SparkClient _client = null!;
-
-    public override async Task InitializeAsync()
+    /// <summary>
+    /// One host for the class (M8 item 5). A refresh writes nothing; the save cases create cars
+    /// under server-assigned ids and nothing here queries the collection.
+    /// </summary>
+    public sealed class Host : SharedSparkHost<RefreshTestContext>
     {
-        await base.InitializeAsync();
-        _factory = new SparkEndpointFactory<RefreshTestContext>(Store, [RefreshTestModels.Car(CarTypeId)]);
-        _client = new SparkClient(_factory.CreateClient(), ownsClient: true);
+        protected override SparkEndpointFactory<RefreshTestContext> CreateFactory()
+            => new(Store, [RefreshTestModels.Car(CarTypeId)]);
     }
 
-    public override async Task DisposeAsync()
-    {
-        _client.Dispose();
-        await _factory.DisposeAsync();
-        await base.DisposeAsync();
-    }
+    private readonly SparkEndpointFactory<RefreshTestContext> _factory = host.Factory;
+    private readonly SparkClient _client = new(host.Factory.CreateClient(), ownsClient: true);
+
+    public void Dispose() => _client.Dispose();
 
     private static PO Car(string? status, string? policeReport = null, string? id = null) => new()
     {
@@ -303,7 +302,7 @@ public static class RefreshTestModels
                 new EntityAttributeDefinition
                 {
                     Id = Guid.NewGuid(), Name = "Status", DataType = "string", Order = 1,
-                    TriggersRefresh = true,
+                    TriggersRefresh = ERefreshTrigger.Auto,
                 },
                 new EntityAttributeDefinition
                 {

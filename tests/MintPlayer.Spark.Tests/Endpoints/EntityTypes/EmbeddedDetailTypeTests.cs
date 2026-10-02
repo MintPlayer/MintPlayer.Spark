@@ -24,8 +24,19 @@ namespace MintPlayer.Spark.Tests.Endpoints.EntityTypes;
 /// projection/query surface does not come with it.
 /// </para>
 /// </remarks>
-public class EmbeddedDetailTypeTests : SparkTestDriver
+public class EmbeddedDetailTypeTests(EmbeddedDetailTypeTests.Host host)
+    : SparkSharedTestDriver(host), IClassFixture<EmbeddedDetailTypeTests.Host>
 {
+    /// <summary>
+    /// One host for the class (M8 item 5): every case reads the entity-type catalogue, nothing
+    /// writes. The one case that needs other rights boots its own.
+    /// </summary>
+    public sealed class Host : SharedSparkHost<TestSparkContext>
+    {
+        protected override SparkEndpointFactory<TestSparkContext> CreateFactory()
+            => new SparkEndpointFactory(Store, [ProbeModel(), LineModel()], security: ParentOnly());
+    }
+
     private static readonly Guid ProbeTypeId = Guid.Parse("aa11bb22-cc33-4d44-9e55-ff6677889900");
     private static readonly Guid LineTypeId = Guid.Parse("bb22cc33-dd44-4e55-af66-001122334455");
     private static readonly Guid ProbeQueryId = Guid.Parse("cc33dd44-ee55-4f66-b077-112233445566");
@@ -88,7 +99,7 @@ public class EmbeddedDetailTypeTests : SparkTestDriver
     /// <summary>Grants the parent and nothing else — the shape that broke.</summary>
     private static SparkTestSecurity ParentOnly() => SparkTestSecurity.Empty.Granting("QueryRead/DetailProbe");
 
-    private static async Task<EntityTypeDefinition?> GetProbeTypeAsync(SparkEndpointFactory factory)
+    private static async Task<EntityTypeDefinition?> GetProbeTypeAsync(SparkEndpointFactory<TestSparkContext> factory)
     {
         using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
         var types = await client.ListEntityTypesAsync();
@@ -98,8 +109,7 @@ public class EmbeddedDetailTypeTests : SparkTestDriver
     [Fact]
     public async Task The_row_type_definition_ships_with_its_parent()
     {
-        await using var factory = new SparkEndpointFactory(
-            Store, [ProbeModel(), LineModel()], security: ParentOnly());
+        var factory = host.Factory;
 
         var order = await GetProbeTypeAsync(factory);
 
@@ -115,8 +125,7 @@ public class EmbeddedDetailTypeTests : SparkTestDriver
     public async Task The_row_type_is_still_absent_from_the_catalogue_itself()
     {
         // FR3: the Query-scoping of the catalogue is deliberate and is NOT widened by this.
-        await using var factory = new SparkEndpointFactory(
-            Store, [ProbeModel(), LineModel()], security: ParentOnly());
+        var factory = host.Factory;
 
         using var client = new SparkClient(factory.CreateClient(), ownsClient: true);
         var types = await client.ListEntityTypesAsync();
@@ -130,8 +139,7 @@ public class EmbeddedDetailTypeTests : SparkTestDriver
         // The whole authorization argument rests on this: the embedded definition must disclose
         // less than the row data already does. QueryType/IndexName/Queries/Alias are what
         // PRD-SecurityAudit names as worth withholding, and no client needs them to draw a table.
-        await using var factory = new SparkEndpointFactory(
-            Store, [ProbeModel(), LineModel()], security: ParentOnly());
+        var factory = host.Factory;
 
         var line = (await GetProbeTypeAsync(factory))!.DetailTypes!.Single(t => t.Id == LineTypeId);
 

@@ -33,10 +33,10 @@ const carType: EntityType = {
   name: 'Car',
   clrType: 'Test.Car',
   attributes: [
-    attr({ id: 'a-status', name: 'Status', order: 1, dataType: 'string', lookupReferenceType: 'CarStatus', triggersRefresh: true }),
+    attr({ id: 'a-status', name: 'Status', order: 1, dataType: 'string', lookupReferenceType: 'CarStatus', triggersRefresh: 'Auto' }),
     attr({ id: 'a-report', name: 'PoliceReport', order: 2, isVisible: false }),
     attr({ id: 'a-promo', name: 'PromoUrl', order: 3 }),
-    attr({ id: 'a-plate', name: 'LicensePlate', order: 4, triggersRefresh: true }),
+    attr({ id: 'a-plate', name: 'LicensePlate', order: 4, triggersRefresh: 'Auto' }),
     attr({ id: 'a-notes', name: 'Notes', order: 5 }),
     attr({ id: 'a-jobs', name: 'Jobs', order: 6, dataType: 'AsDetail', isArray: true, asDetailType: 'Test.Job', editMode: 'inline' }),
   ],
@@ -380,7 +380,7 @@ describe('spark-po-form — TriggersRefresh', () => {
   });
 
   describe('AsDetail row triggers', () => {
-    const col = attr({ id: 'c-kind', name: 'Kind', dataType: 'LookupReference', lookupReferenceType: 'CarStatus', triggersRefresh: true });
+    const col = attr({ id: 'c-kind', name: 'Kind', dataType: 'LookupReference', lookupReferenceType: 'CarStatus', triggersRefresh: 'Auto' });
 
     it('addresses the trigger with the same path the inline validation errors use', async () => {
       // Reusing `{attr}[{index}].{col}` rather than inventing a second addressing scheme is the
@@ -465,7 +465,7 @@ describe('spark-po-form — TriggersRefresh', () => {
       // argument, so onInlineCellChange never ran, nothing was ever marked pending, and the blur
       // handler short-circuited on an empty pending set. A triggersRefresh on a text or number
       // column produced no request, ever — invisible because the shipped sample uses a Reference.
-      const freeText = attr({ id: 'c-note', name: 'Note', dataType: 'string', triggersRefresh: true });
+      const freeText = attr({ id: 'c-note', name: 'Note', dataType: 'string', triggersRefresh: 'Auto' });
       const { fixture, component, service } = createComponent();
       await mount(fixture, { Jobs: [{ Note: 'x' }] });
 
@@ -511,7 +511,7 @@ describe('spark-po-form — TriggersRefresh', () => {
     });
     const modeCol = attr({
       id: 'c-mode', name: 'Mode', dataType: 'LookupReference', lookupReferenceType: 'CarStatus',
-      triggersRefresh: true,
+      triggersRefresh: 'Auto',
     });
 
     const gateType: any = {
@@ -546,7 +546,7 @@ describe('spark-po-form — TriggersRefresh', () => {
       await mount(fixture, { Gate: { Mode: 'InUse' } });
       await openGate(component, fixture, { Mode: 'InUse' });
 
-      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', immediate: true });
+      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', dispatch: 'immediate' });
       await flush();
 
       expect(service.refresh).toHaveBeenCalledTimes(1);
@@ -561,7 +561,7 @@ describe('spark-po-form — TriggersRefresh', () => {
       await mount(fixture, { Gate: { Mode: 'InUse' } });
       await openGate(component, fixture, { Mode: 'InUse' });
 
-      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', immediate: true });
+      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', dispatch: 'immediate' });
       await flush();
 
       expect(service.refresh.mock.calls[0][0]).toBe('t-car');
@@ -577,7 +577,7 @@ describe('spark-po-form — TriggersRefresh', () => {
       await mountWithGate(fixture, { Gate: {} });
       await openGate(component, fixture, { Mode: 'Stolen' });
 
-      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', immediate: true });
+      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', dispatch: 'immediate' });
       await flush();
 
       const posted = service.refresh.mock.calls[0][1].attributes
@@ -609,7 +609,7 @@ describe('spark-po-form — TriggersRefresh', () => {
       await mount(fixture, { Gate: { Mode: 'InUse', Target: null } });
       await openGate(component, fixture, { Mode: 'InUse', Target: null });
 
-      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', immediate: true });
+      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', dispatch: 'immediate' });
       await flush();
 
       expect((component as any).asDetailFormData()['Target']).toBe(80);
@@ -630,7 +630,7 @@ describe('spark-po-form — TriggersRefresh', () => {
       await mount(fixture, { Gate: gate });
       await openGate(component, fixture, gate);
 
-      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', immediate: true });
+      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', dispatch: 'immediate' });
       await flush();
 
       expect(component.formData()['Gate'].Target).toBeNull();
@@ -649,7 +649,7 @@ describe('spark-po-form — TriggersRefresh', () => {
       await mount(fixture, { Gate: { Mode: 'InUse' }, Status: 'InUse' });
       await openGate(component, fixture, { Mode: 'InUse' });
 
-      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', immediate: true });
+      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', dispatch: 'immediate' });
       await flush();
       fixture.detectChanges();
 
@@ -662,7 +662,7 @@ describe('spark-po-form — TriggersRefresh', () => {
       await mount(fixture, { Gate: { Mode: 'InUse' } });
       await openGate(component, fixture, { Mode: 'InUse' });
 
-      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', immediate: false });
+      component.onEmbeddedTrigger('Gate', { path: 'Gate.Mode', dispatch: 'blur' });
       await flush();
       expect(service.refresh).not.toHaveBeenCalled();
 

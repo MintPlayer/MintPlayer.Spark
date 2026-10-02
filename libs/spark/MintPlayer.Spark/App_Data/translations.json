@@ -23,6 +23,23 @@
     "resultsFound":      { "en": "results found",    "fr": "résultats trouvés", "nl": "resultaten gevonden" },
     "confirmDelete":     { "en": "Are you sure you want to delete this item?", "fr": "Êtes-vous sûr de vouloir supprimer cet élément ?", "nl": "Weet u zeker dat u dit item wilt verwijderen?" },
     "concurrencyConflict": { "en": "Somebody else changed this record while you were editing it. Reload the page to see their version.", "fr": "Quelqu'un d'autre a modifié cet enregistrement pendant que vous le modifiiez. Rechargez la page pour voir sa version.", "nl": "Iemand anders heeft dit record gewijzigd terwijl u het aan het bewerken was. Herlaad de pagina om hun versie te zien." },
+    "conflictTitle":       { "en": "Conflicting changes", "fr": "Modifications en conflit", "nl": "Conflicterende wijzigingen" },
+    "conflictIntro":       { "en": "Somebody else saved this record while you were editing it, and some of your changes clash with theirs. Choose which value to keep for each. Nothing is saved until you save the form.", "fr": "Quelqu'un d'autre a enregistré cet enregistrement pendant que vous le modifiiez, et certaines de vos modifications entrent en conflit avec les siennes. Choisissez la valeur à conserver pour chacune. Rien n'est enregistré tant que vous n'enregistrez pas le formulaire.", "nl": "Iemand anders heeft dit record opgeslagen terwijl u het aan het bewerken was, en sommige van uw wijzigingen botsen met de hunne. Kies per wijziging welke waarde u behoudt. Er wordt niets opgeslagen tot u het formulier opslaat." },
+    "conflictField":       { "en": "Field", "fr": "Champ", "nl": "Veld" },
+    "conflictMine":        { "en": "Mine", "fr": "La mienne", "nl": "Mijn versie" },
+    "conflictTheirs":      { "en": "Theirs", "fr": "La leur", "nl": "Hun versie" },
+    "conflictKeepAllMine": { "en": "Keep all mine", "fr": "Tout garder de ma version", "nl": "Alles van mij behouden" },
+    "conflictTakeAllTheirs": { "en": "Take all theirs", "fr": "Tout prendre de leur version", "nl": "Alles van hen overnemen" },
+    "conflictApply":       { "en": "Apply", "fr": "Appliquer", "nl": "Toepassen" },
+    "conflictRowRemoved":  { "en": "(removed)", "fr": "(supprimé)", "nl": "(verwijderd)" },
+    "conflictTheyChanged": { "en": "They also changed: {fields}.", "fr": "Ils ont aussi modifié : {fields}.", "nl": "Ze wijzigden ook: {fields}." },
+    "conflictChangedByAt": { "en": "Changed by {user} at {time}.", "fr": "Modifié par {user} le {time}.", "nl": "Gewijzigd door {user} op {time}." },
+    "conflictChangedBy":   { "en": "Changed by {user}.", "fr": "Modifié par {user}.", "nl": "Gewijzigd door {user}." },
+    "conflictChangedAt":   { "en": "Changed at {time}.", "fr": "Modifié le {time}.", "nl": "Gewijzigd op {time}." },
+    "conflictMerged":      { "en": "Someone else changed {fields} meanwhile; your changes were merged. Review and save.", "fr": "Quelqu'un d'autre a modifié {fields} entre-temps ; vos modifications ont été fusionnées. Vérifiez puis enregistrez.", "nl": "Iemand anders wijzigde intussen {fields}; uw wijzigingen werden samengevoegd. Controleer en sla op." },
+    "conflictMergedNoFields": { "en": "Someone else saved this record meanwhile; your changes were kept. Review and save.", "fr": "Quelqu'un d'autre a enregistré cet enregistrement entre-temps ; vos modifications ont été conservées. Vérifiez puis enregistrez.", "nl": "Iemand anders heeft dit record intussen opgeslagen; uw wijzigingen bleven behouden. Controleer en sla op." },
+    "conflictResolved":    { "en": "Your choices were applied on top of their version, which also changed {fields}. Review and save.", "fr": "Vos choix ont été appliqués sur leur version, qui a aussi modifié {fields}. Vérifiez puis enregistrez.", "nl": "Uw keuzes werden toegepast op hun versie, die ook {fields} wijzigde. Controleer en sla op." },
+    "conflictResolvedNoFields": { "en": "Your choices were applied on top of their version. Review and save.", "fr": "Vos choix ont été appliqués sur leur version. Vérifiez puis enregistrez.", "nl": "Uw keuzes werden toegepast op hun versie. Controleer en sla op." },
     "actionFailed":      { "en": "The action failed.", "fr": "L'action a échoué.", "nl": "De actie is mislukt." },
     "confirmDeleteSelected": { "en": "Are you sure you want to delete the selected items?", "fr": "Êtes-vous sûr de vouloir supprimer les éléments sélectionnés ?", "nl": "Weet u zeker dat u de geselecteerde items wilt verwijderen?" },
     "deleteRefused":     { "en": "The items could not be deleted: at least one of them is no longer available.", "fr": "Les éléments n'ont pas pu être supprimés : au moins l'un d'eux n'est plus disponible.", "nl": "De items konden niet worden verwijderd: minstens één ervan is niet meer beschikbaar." },
@@ -30,7 +47,22 @@
     "selectAll":         { "en": "Select all",     "fr": "Tout sélectionner", "nl": "Alles selecteren" },
     "clearSelection":    { "en": "Clear selection", "fr": "Effacer la sélection", "nl": "Selectie wissen" },
     "actions":           { "en": "Actions",        "fr": "Actions",          "nl": "Acties" },
-    "clearSearch":       { "en": "Clear search",   "fr": "Effacer la recherche", "nl": "Zoekopdracht wissen" }
+    "clearSearch":       { "en": "Clear search",   "fr": "Effacer la recherche", "nl": "Zoekopdracht wissen" },
+    "filteredBy":        { "en": "Filtered by",    "fr": "Filtré par",       "nl": "Gefilterd op" },
+    "clearFilter":       { "en": "Remove this filter", "fr": "Retirer ce filtre", "nl": "Deze filter verwijderen" },
+    "clearFilters":      { "en": "Clear filters",  "fr": "Effacer les filtres", "nl": "Filters wissen" },
+    "diffUnavailable":   { "en": "The version to compare with could not be loaded; the text is shown as it is.", "fr": "La version de comparaison n'a pas pu être chargée ; le texte est affiché tel quel.", "nl": "De versie om mee te vergelijken kon niet worden geladen; de tekst wordt getoond zoals hij is." },
+    "diffIdentical":     { "en": "Identical to the current version.", "fr": "Identique à la version actuelle.", "nl": "Gelijk aan de huidige versie." },
+    "diffAdded":         { "en": "Added",          "fr": "Ajouté",           "nl": "Toegevoegd" },
+    "diffRemoved":       { "en": "Removed",        "fr": "Supprimé",         "nl": "Verwijderd" }
+  },
+  "contributions": {
+    "by":            { "en": "by {name}",      "fr": "par {name}",        "nl": "door {name}" },
+    "history":       { "en": "History ({count})", "fr": "Historique ({count})", "nl": "Geschiedenis ({count})" },
+    "historyLink":   { "en": "History",        "fr": "Historique",        "nl": "Geschiedenis" },
+    "revert":        { "en": "Revert to this version", "fr": "Revenir à cette version", "nl": "Terugzetten naar deze versie" },
+    "confirmRevert": { "en": "Make this version current again? Every newer version of it is hidden (a moderator can restore them).", "fr": "Rétablir cette version comme version actuelle ? Toutes les versions plus récentes sont masquées (un modérateur peut les restaurer).", "nl": "Deze versie opnieuw de huidige maken? Elke nieuwere versie ervan wordt verborgen (een moderator kan ze terugzetten)." },
+    "theirsKept":    { "en": "Another contributor saved a newer version of {rows} meanwhile; it is shown now and your edit to it was not kept.", "fr": "Un autre contributeur a enregistré entre-temps une version plus récente de {rows} ; elle est affichée et votre modification n'a pas été conservée.", "nl": "Een andere bijdrager heeft intussen een nieuwere versie van {rows} opgeslagen; die wordt nu getoond en uw wijziging eraan werd niet behouden." }
   },
   "softDelete": {
     "deleted":      { "en": "Deleted",  "fr": "Supprimé",   "nl": "Verwijderd" },
@@ -39,6 +71,14 @@
     "purge":        { "en": "Delete permanently", "fr": "Supprimer définitivement", "nl": "Definitief verwijderen" },
     "confirmPurge": { "en": "Delete this item permanently, including its history? This cannot be undone.", "fr": "Supprimer définitivement cet élément, y compris son historique ? Cette action est irréversible.", "nl": "Dit item definitief verwijderen, inclusief de geschiedenis? Dit kan niet ongedaan worden gemaakt." },
     "unavailable":  { "en": "This item is not available.", "fr": "Cet élément n'est pas disponible.", "nl": "Dit item is niet beschikbaar." }
+  },
+  "theme": {
+    "auto":          { "en": "Auto theme",            "fr": "Thème automatique",          "nl": "Automatisch thema" },
+    "light":         { "en": "Light theme",           "fr": "Thème clair",                "nl": "Licht thema" },
+    "dark":          { "en": "Dark theme",            "fr": "Thème sombre",               "nl": "Donker thema" },
+    "switchToAuto":  { "en": "Switch to auto theme",  "fr": "Passer au thème automatique", "nl": "Overschakelen naar automatisch thema" },
+    "switchToLight": { "en": "Switch to light theme", "fr": "Passer au thème clair",      "nl": "Overschakelen naar licht thema" },
+    "switchToDark":  { "en": "Switch to dark theme",  "fr": "Passer au thème sombre",     "nl": "Overschakelen naar donker thema" }
   },
   "history": {
     "title":         { "en": "History",      "fr": "Historique",   "nl": "Geschiedenis" },

@@ -5,6 +5,7 @@ import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { HttpErrorResponse } from '@angular/common/http';
 import { describe, expect, it, vi } from 'vitest';
 
+import { SPARK_CONFIG, SparkConfig } from '@mintplayer/ng-spark';
 import { SparkPoEditComponent } from './spark-po-edit.component';
 import { SparkService, SparkLanguageService } from '@mintplayer/ng-spark/services';
 import { EntityType, PersistentObject, ShowedOn } from '@mintplayer/ng-spark/models';
@@ -54,7 +55,7 @@ const routes: Routes = [
   { path: 'po/:type/:id', component: StubComponent },
 ];
 
-async function setup(serviceOverrides: Partial<SparkService> = {}) {
+async function setup(serviceOverrides: Partial<SparkService> = {}, config?: SparkConfig) {
   const service: any = {
     getEntityTypes: vi.fn().mockResolvedValue([personType]),
     get: vi.fn().mockResolvedValue(existingItem),
@@ -66,7 +67,9 @@ async function setup(serviceOverrides: Partial<SparkService> = {}) {
       provideNoopAnimations(),
       provideRouter(routes),
       { provide: SparkService, useValue: service },
-      { provide: SparkLanguageService, useValue: { t: (k: string) => k } },
+      // Echoes the key; the "changed by"/"changed at" keys also {user} and {time} slots so tests can see who and whether a time was shown.
+      { provide: SparkLanguageService, useValue: { t: (k: string) => k === 'common.conflictChangedByAt' ? `${k}({user}|{time})` : k.startsWith('common.conflictChangedBy') ? `${k}({user})` : k === 'common.conflictChangedAt' ? `${k}({time})` : k, resolve: (ts: any) => ts?.en ?? '' } },
+      ...(config ? [{ provide: SPARK_CONFIG, useValue: config }] : []),
     ],
   });
   const harness = await RouterTestingHarness.create();
@@ -219,7 +222,9 @@ describe('SparkPoEditComponent', () => {
       status: 409,
       error: { result: { error: 'Concurrency conflict' }, operations: [] },
     });
-    const { harness } = await setup({ update: vi.fn().mockRejectedValue(error) } as any);
+    // The re-fetch the conflict merge needs fails, so there is nothing to merge against.
+    const get = vi.fn().mockResolvedValueOnce(existingItem).mockRejectedValue(new Error('offline'));
+    const { harness } = await setup({ update: vi.fn().mockRejectedValue(error), get } as any);
     const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
     await harness.fixture.whenStable();
 
@@ -232,6 +237,197 @@ describe('SparkPoEditComponent', () => {
     // The typing is not thrown away — the user can retry or copy their values out.
     expect(c.formData()['FirstName']).toBe('Alice');
     expect(c.isSaving()).toBe(false);
+  });
+
+  describe('a 409 merged three-way against a re-fetch', () => {
+    const conflict = new HttpErrorResponse({ status: 409, error: { result: { error: 'Concurrency conflict' }, operations: [] } });
+
+    function theirVersion(values: Record<string, any>): PersistentObject {
+      return {
+        ...existingItem,
+        etag: 'A:13-def',
+        attributes: existingItem.attributes.map(a => (a.name in values ? { ...a, value: values[a.name] } : a)),
+      };
+    }
+
+    async function editAndHitConflict(theirs: PersistentObject, overrides: Record<string, any> = {}, config?: SparkConfig) {
+      const get = vi.fn().mockResolvedValueOnce(existingItem).mockResolvedValue(theirs);
+      const update = vi.fn().mockRejectedValueOnce(conflict).mockResolvedValue({ id: 'people/1', name: 'Updated' });
+      const { harness, service } = await setup({ get, update, ...overrides } as any, config);
+      const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+      await harness.fixture.whenStable();
+      c.formData.set({ ...c.formData(), FirstName: 'Alicia' });
+      await c.onSave();
+      // The name lookup is not awaited by the conflict flow; let it settle.
+      await harness.fixture.whenStable();
+      await new Promise(r => setTimeout(r));
+      return { c, service, harness };
+    }
+
+    function audited(etag = 'A:13-def', modifiedAt?: string) {
+      const theirs = theirVersion({ LastName: 'Jones' });
+      theirs.etag = etag;
+      theirs.attributes.push({ id: 'a-mb', name: 'ModifiedBy', value: 'users/42' } as any);
+      if (modifiedAt) theirs.attributes.push({ id: 'a-ma', name: 'ModifiedAt', value: modifiedAt } as any);
+      return theirs;
+    }
+
+    const bob = { changeVector: 'A:13-def', userId: 'users/42', userName: 'Bob', isCurrent: true };
+    const showChangedBy: SparkConfig = { baseUrl: '/spark', conflictDialog: { showChangedBy: true } };
+
+    it('merges disjoint edits, says what they changed, and saves nothing by itself', async () => {
+      const { c, service } = await editAndHitConflict(theirVersion({ LastName: 'Jones' }));
+
+      expect(service.get).toHaveBeenCalledTimes(2);
+      expect(service.update).toHaveBeenCalledOnce();
+      expect(c.pendingConflict()).toBeNull();
+      expect(c.formData()).toMatchObject({ FirstName: 'Alicia', LastName: 'Jones' });
+      expect(c.validationErrors()).toEqual([]);
+      expect(c.conflictNotice()).toBe('common.conflictMerged');
+
+      const navigated = nextNavigationEnd();
+      await c.onSave();
+      await navigated;
+
+      const [, , payload] = service.update.mock.calls[1];
+      // Rebased: the next save carries their token, so it does not 409 again.
+      expect(payload.etag).toBe('A:13-def');
+      const first = payload.attributes.find((a: any) => a.name === 'FirstName');
+      const last = payload.attributes.find((a: any) => a.name === 'LastName');
+      expect(first).toMatchObject({ value: 'Alicia', isValueChanged: true });
+      // Their value, compared against their version: not sent as a change of mine.
+      expect(last).toMatchObject({ value: 'Jones', isValueChanged: false });
+    });
+
+    it('opens the dialog on a true conflict, applies the choice, rebases, and the next save sends the fresh etag', async () => {
+      const { c, service } = await editAndHitConflict(theirVersion({ FirstName: 'Alex', LastName: 'Jones' }));
+
+      const pending = c.pendingConflict();
+      expect(pending?.result.conflicts.map(x => x.path)).toEqual(['FirstName']);
+      // Until the user decides, nothing moves: the form is as typed and the message stays.
+      expect(c.formData()['FirstName']).toBe('Alicia');
+      expect(c.validationErrors()[0].errorMessage.en).toBe('common.concurrencyConflict');
+
+      c.onConflictResolved({ FirstName: 'mine' });
+
+      expect(c.pendingConflict()).toBeNull();
+      expect(c.formData()).toMatchObject({ FirstName: 'Alicia', LastName: 'Jones' });
+      expect(c.item()?.etag).toBe('A:13-def');
+      expect(c.validationErrors()).toEqual([]);
+      expect(service.update).toHaveBeenCalledOnce();
+
+      const navigated = nextNavigationEnd();
+      await c.onSave();
+      await navigated;
+
+      const [, , payload] = service.update.mock.calls[1];
+      expect(payload.etag).toBe('A:13-def');
+      expect(payload.attributes.find((a: any) => a.name === 'FirstName')).toMatchObject({ value: 'Alicia', isValueChanged: true });
+      expect(payload.attributes.find((a: any) => a.name === 'LastName')).toMatchObject({ value: 'Jones', isValueChanged: false });
+    });
+
+    it('takes their value when chosen, so nothing of mine is sent for it', async () => {
+      const { c } = await editAndHitConflict(theirVersion({ FirstName: 'Alex' }));
+      c.onConflictResolved({ FirstName: 'theirs' });
+      expect(c.formData()['FirstName']).toBe('Alex');
+    });
+
+    it('cancelling the dialog keeps the form and the conflict message', async () => {
+      const { c } = await editAndHitConflict(theirVersion({ FirstName: 'Alex' }));
+      c.onConflictCancelled();
+
+      expect(c.pendingConflict()).toBeNull();
+      expect(c.formData()['FirstName']).toBe('Alicia');
+      expect(c.item()?.etag).toBe('A:12-abc');
+      expect(c.validationErrors()[0].errorMessage.en).toBe('common.concurrencyConflict');
+    });
+
+    it('by default names no user and asks History nothing, but still shows the time', async () => {
+      const postEnvelope = vi.fn().mockResolvedValue([bob]);
+      const getPermissions = vi.fn().mockResolvedValue({ canViewHistory: true });
+      const { c } = await editAndHitConflict(audited('A:13-def', '2026-09-30T10:00:00Z'), { postEnvelope, getPermissions });
+
+      expect(postEnvelope).not.toHaveBeenCalled();
+      expect(getPermissions).not.toHaveBeenCalled();
+      const notice = c.conflictNotice()!;
+      expect(notice.startsWith('common.conflictMerged common.conflictChangedAt(')).toBe(true);
+      expect(notice).not.toContain('conflictChangedBy');
+      expect(notice).not.toContain('users/42');
+      expect(notice).not.toContain('Bob');
+    });
+
+    it('never shows the ModifiedBy id by default', async () => {
+      const { c } = await editAndHitConflict(audited());
+      expect(c.conflictNotice()).toBe('common.conflictMerged');
+    });
+
+    it('with showChangedBy, resolves who changed it to a name through the newest revision, for a History/T holder', async () => {
+      const postEnvelope = vi.fn().mockResolvedValue([bob]);
+      const getPermissions = vi.fn().mockResolvedValue({ canViewHistory: true });
+      const { c } = await editAndHitConflict(audited(), { postEnvelope, getPermissions }, showChangedBy);
+
+      expect(getPermissions).toHaveBeenCalledWith('t-person');
+      expect(postEnvelope).toHaveBeenCalledWith('/po/revisions', { objectTypeId: 't-person', id: 'people/1', take: 1 });
+      expect(c.conflictNotice()).toBe('common.conflictMerged common.conflictChangedBy(Bob)');
+    });
+
+    it('with showChangedBy, shows the name and the time together', async () => {
+      const { c } = await editAndHitConflict(audited('A:13-def', '2026-09-30T10:00:00Z'), {
+        postEnvelope: vi.fn().mockResolvedValue([bob]),
+        getPermissions: vi.fn().mockResolvedValue({ canViewHistory: true }),
+      }, showChangedBy);
+      expect(c.conflictNotice()!.startsWith('common.conflictMerged common.conflictChangedByAt(Bob|')).toBe(true);
+    });
+
+    it('with showChangedBy, never asks History without History/T, and shows no user', async () => {
+      const postEnvelope = vi.fn().mockResolvedValue([bob]);
+      const { c } = await editAndHitConflict(audited(), { postEnvelope, getPermissions: vi.fn().mockResolvedValue({ canViewHistory: false }) }, showChangedBy);
+
+      expect(postEnvelope).not.toHaveBeenCalled();
+      expect(c.conflictNotice()).toBe('common.conflictMerged');
+    });
+
+    it('with showChangedBy, keeps the conflict flow when History is not installed or refuses, and shows no user', async () => {
+      const refused = new HttpErrorResponse({ status: 404 });
+      const { c } = await editAndHitConflict(audited(), {
+        postEnvelope: vi.fn().mockRejectedValue(refused),
+        getPermissions: vi.fn().mockResolvedValue({ canViewHistory: true }),
+      }, showChangedBy);
+      expect(c.formData()).toMatchObject({ FirstName: 'Alicia', LastName: 'Jones' });
+      expect(c.conflictNotice()).toBe('common.conflictMerged');
+    });
+
+    it('with showChangedBy, takes no name from a revision other than the version merged against, and never the id', async () => {
+      const { c } = await editAndHitConflict(audited('A:14-xyz', '2026-09-30T10:00:00Z'), {
+        postEnvelope: vi.fn().mockResolvedValue([bob]),
+        getPermissions: vi.fn().mockResolvedValue({ canViewHistory: true }),
+      }, showChangedBy);
+      const notice = c.conflictNotice()!;
+      expect(notice.startsWith('common.conflictMerged common.conflictChangedAt(')).toBe(true);
+      expect(notice).not.toContain('users/42');
+      expect(notice).not.toContain('Bob');
+    });
+
+    it('gives the dialog the reference labels of both reads', async () => {
+      const owner = { id: 'a-owner', name: 'Owner', dataType: 'Reference', query: 'People', referenceType: 'Test.Person', isVisible: true, isReadOnly: false, order: 5, showedOn: ShowedOn.PersistentObject } as any;
+      const typed: any = { ...personType, attributes: [...personType.attributes, owner] };
+      const loaded: any = { ...existingItem, attributes: [...existingItem.attributes, { id: 'a-owner', name: 'Owner', dataType: 'Reference', value: 'people/7', breadcrumb: 'Ann' }] };
+      const theirs: any = {
+        ...loaded, etag: 'A:13-def',
+        attributes: loaded.attributes.map((a: any) => a.name === 'Owner' ? { ...a, value: 'people/8', breadcrumb: 'Tom' } : a.name === 'FirstName' ? { ...a, value: 'Alex' } : a),
+      };
+      const get = vi.fn().mockResolvedValueOnce(loaded).mockResolvedValue(theirs);
+      const { harness } = await setup({ get, getEntityTypes: vi.fn().mockResolvedValue([typed]), update: vi.fn().mockRejectedValue(conflict),
+        // The picker's candidates: where the label of a reference the user just picked comes from.
+        executeQueryByName: vi.fn().mockResolvedValue({ items: [{ id: 'people/9', breadcrumb: 'Paula', values: [] }] }),
+      } as any);
+      const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+      await harness.fixture.whenStable();
+      c.formData.set({ ...c.formData(), FirstName: 'Alicia' });
+      await c.onSave();
+
+      expect((c as any).conflictReferenceLabels()).toMatchObject({ 'people/7': 'Ann', 'people/8': 'Tom', 'people/9': 'Paula' });
+    });
   });
 
   describe('a nested AsDetail type absent from the catalogue', () => {

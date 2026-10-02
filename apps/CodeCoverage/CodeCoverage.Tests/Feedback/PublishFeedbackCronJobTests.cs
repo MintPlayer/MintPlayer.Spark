@@ -19,6 +19,8 @@ namespace CodeCoverage.Tests.Feedback;
 /// </summary>
 public class PublishFeedbackCronJobTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const long RepoId = 204431316;
 
     private sealed class RecordingBus : IMessageBus

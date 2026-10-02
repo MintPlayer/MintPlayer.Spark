@@ -17,6 +17,8 @@ namespace CodeCoverage.Tests.Controllers;
 /// <summary>The status response carries the commit's assembly next to the build's own numbers.</summary>
 public class UploadsControllerAssemblyStatusTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const long RepoId = 4343;
     private const string RepoName = "acme/gadgets";
     private const string Sha = "3333333333333333333333333333333333333333";

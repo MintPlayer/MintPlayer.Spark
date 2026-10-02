@@ -15,12 +15,22 @@ public static class SparkModerationInitExtensions
 {
     internal const string InitFlag = "--spark-init-moderation";
 
-    /// <summary>Content-type actions: granted per moderatable type (<c>Vote/Question</c>).</summary>
-    private static readonly HashSet<string> TypeActions = new(StringComparer.OrdinalIgnoreCase)
+    /// <summary>
+    /// Content-type actions: granted per moderatable type (<c>Vote/Question</c>). Every reserved verb
+    /// (<c>SparkReservedActions</c> — core's, SoftDelete's, History's, Moderation's own) except the
+    /// three that name the <see cref="ModerationRights.Target"/> pseudo-type. The earnable lists are
+    /// unioned in so a verb whose package is not loadable here still renders per type.
+    /// </summary>
+    private static readonly Lazy<HashSet<string>> typeActions = new(() =>
     {
-        "Query", "Read", "New", "Edit", "Delete", ModerationRights.Vote, ModerationRights.Downvote, ModerationRights.Flag, ModerationRights.Lock,
-        "Restore", "Purge", "ViewDeleted", "Revert", "History",
-    };
+        var actions = new HashSet<string>(Spark.Services.SparkReservedActionRegistry.All.Select(a => a.Verb), StringComparer.OrdinalIgnoreCase);
+        actions.UnionWith(ModerationRights.NeverEarnable);
+        actions.UnionWith(ModerationRights.DefaultEarnable);
+        actions.ExceptWith([ModerationRights.Review, ModerationRights.Suspend, ModerationRights.Audit]);
+        return actions;
+    });
+
+    private static HashSet<string> TypeActions => typeActions.Value;
 
     /// <summary>
     /// Handles <c>--spark-init-moderation</c>; returns <see langword="true"/> when it did and the host

@@ -45,7 +45,14 @@ internal static class SecurityJsonReader
         public int ResourceStart { get; set; }
 
         public int ResourceLength { get; set; }
+
+        /// <summary><c>"isDenied": true</c> — read for the stale attribute-deny check (SPARK024).</summary>
+        public bool IsDenied { get; set; }
     }
+
+    private static readonly Regex IsDeniedTrue = new(
+        @"""isDenied""\s*:\s*true\b",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     // A right object: any order of keys, so both are searched inside one object's braces.
     private static readonly Regex RightObject = new(
@@ -88,6 +95,7 @@ internal static class SecurityJsonReader
                 GroupId = group.Success ? group.Groups["v"].Value : string.Empty,
                 ResourceStart = body.Index + value.Index,
                 ResourceLength = value.Length,
+                IsDenied = IsDeniedTrue.IsMatch(body.Value),
             });
         }
 

@@ -15,9 +15,22 @@ preserves it, like `editMode` and `referenceDisplayType`:
   "name": "Status",
   "dataType": "string",
   "lookupReferenceType": "CarStatus",
-  "triggersRefresh": true
+  "triggersRefresh": "Auto"
 }
 ```
+
+The value is an `ERefreshTrigger` (a string on the wire, PascalCase like `referenceDisplayType`)
+and decides **when** the client sends the refresh:
+
+| Value | Free text (string, number, …) | Discrete editor (lookup, reference, boolean, date, datetime, enum, color) |
+|---|---|---|
+| absent / `"None"` | no refresh | no refresh |
+| `"Auto"` | on blur (or save) | immediately on change |
+| `"ValueChanged"` | on every change, debounced 300 ms; blur or save sends it at once | immediately on change |
+| `"Blur"` | on blur (or save) | acts as `"ValueChanged"` — and `--spark-verify-model` warns |
+
+`"Auto"` is the right answer almost always. Use `"ValueChanged"` when free text should reshape the
+form while the user is still typing.
 
 **2. Override the hook** on the entity's actions class:
 
@@ -104,7 +117,7 @@ file, exactly as you would for a top-level attribute:
 
 ```json
 // App_Data/Model/CarreerJob.json
-{ "name": "ProfessionId", "dataType": "Reference", "triggersRefresh": true }
+{ "name": "ProfessionId", "dataType": "Reference", "triggersRefresh": "Auto" }
 ```
 
 The refresh then runs against the **row's own type** — so it is `CarreerJobActions` that implements
@@ -152,7 +165,7 @@ way, with one difference: there is no row to index, so the path has no brackets.
 
 // App_Data/Model/GateSettings.json — the trigger, on the embedded type
 { "name": "ProjectMode", "dataType": "string", "lookupReferenceType": "ProjectComparison",
-  "triggersRefresh": true }
+  "triggersRefresh": "Auto" }
 ```
 
 The path is `Gate.ProjectMode`, and everything else is unchanged: the hook is
@@ -211,8 +224,9 @@ is already on the object.
 ## Client behaviour you get for free
 
 - Discrete editors (select, checkbox, date, reference, lookup) refresh **immediately**; free-text
-  fields mark pending and refresh **on blur**, so typing does not issue a request per keystroke.
-- Anything still pending is **flushed before save**.
+  fields under `"Auto"` or `"Blur"` mark pending and refresh **on blur**, so typing does not issue a
+  request per keystroke. Under `"ValueChanged"` free text refreshes once typing pauses for 300 ms.
+- Anything still pending — including a debounce still waiting — is **flushed before save**.
 - Refreshes are **serialized per form**, and a superseded response is discarded.
 - The form is **never frozen** — the user keeps typing during the round trip. A value they changed
   while a refresh was in flight is kept, unless your hook changed that same attribute.
@@ -232,10 +246,15 @@ the entity must check it first.
 ⚠️ **The flag is schema-only.** It never travels on a `PersistentObjectAttribute`, so a client cannot
 claim a trigger the model did not declare.
 
-⚠️ **`--spark-verify-model` fails (exit 3)** if a model declares `triggersRefresh` on a type whose
+⚠️ **`--spark-verify-model` fails (exit 3)** if a model declares a `triggersRefresh` other than `None` on a type whose
 actions class has no `OnRefreshAsync` override — including a nested AsDetail type, which needs its
 own actions class. This deliberately is *not* a Roslyn analyzer: the
 flag lives in JSON, outside the compilation, so an analyzer would have nothing to read.
+It also **warns** (without failing) about `"Blur"` on a discrete editor, which has no meaningful
+blur and therefore behaves as `"ValueChanged"`.
+
+⚠️ **There is no `true` any more.** The flag was a boolean before it became `ERefreshTrigger`; a
+model file still saying `"triggersRefresh": true` no longer deserializes. Write `"Auto"`.
 
 ⚠️ **Redaction still applies.** An attribute hidden by `GetProtectedAttributesAsync` stays hidden and
 valueless in a refresh response, even if your hook sets it. For a trigger addressed *inside* an

@@ -19,7 +19,7 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// to notice.
 /// </para>
 /// </summary>
-public class OidcConsentWithdrawalTests : OidcTestHost
+public class OidcConsentWithdrawalTests(OidcSharedHost host) : OidcTestHost(host), IClassFixture<OidcSharedHost>
 {
     private const string Secret = "s3cret-value-for-tests";
 
@@ -100,9 +100,9 @@ public class OidcConsentWithdrawalTests : OidcTestHost
     public async Task A_granted_application_can_refresh()
     {
         var app = await SeedRefreshableAppAsync("w-happy");
-        await SeedUserAsync("happy@test.local");
+        await SeedUserAsync(UserEmail("happy"));
 
-        var (_, tokens) = await EstablishGrantAsync(app, "happy@test.local", ["openid", "api.read", "offline_access"]);
+        var (_, tokens) = await EstablishGrantAsync(app, UserEmail("happy"), ["openid", "api.read", "offline_access"]);
 
         var refreshed = await RefreshAsync(app, tokens.GetProperty("refresh_token").GetString()!);
 
@@ -119,9 +119,9 @@ public class OidcConsentWithdrawalTests : OidcTestHost
     public async Task Withdrawing_through_the_page_stops_the_refresh_token()
     {
         var app = await SeedRefreshableAppAsync("w-seam");
-        await SeedUserAsync("seam@test.local");
+        await SeedUserAsync(UserEmail("seam"));
 
-        var (browser, tokens) = await EstablishGrantAsync(app, "seam@test.local", ["openid", "api.read", "offline_access"]);
+        var (browser, tokens) = await EstablishGrantAsync(app, UserEmail("seam"), ["openid", "api.read", "offline_access"]);
         var refreshToken = tokens.GetProperty("refresh_token").GetString()!;
 
         await WithdrawAsync(browser, app.Id!);
@@ -138,9 +138,9 @@ public class OidcConsentWithdrawalTests : OidcTestHost
     public async Task Withdrawal_makes_the_access_token_inactive_to_introspection()
     {
         var app = await SeedRefreshableAppAsync("w-introspect");
-        await SeedUserAsync("introspect@test.local");
+        await SeedUserAsync(UserEmail("introspect"));
 
-        var (browser, tokens) = await EstablishGrantAsync(app, "introspect@test.local", ["openid", "api.read", "offline_access"]);
+        var (browser, tokens) = await EstablishGrantAsync(app, UserEmail("introspect"), ["openid", "api.read", "offline_access"]);
         var accessToken = tokens.GetProperty("access_token").GetString()!;
 
         async Task<bool> ActiveAsync() =>
@@ -169,17 +169,17 @@ public class OidcConsentWithdrawalTests : OidcTestHost
     public async Task Re_consenting_does_not_restore_the_old_scope_set()
     {
         var app = await SeedRefreshableAppAsync("w-rewiden");
-        await SeedUserAsync("rewiden@test.local");
+        await SeedUserAsync(UserEmail("rewiden"));
 
-        var (browser, _) = await EstablishGrantAsync(app, "rewiden@test.local", ["openid", "api.read", "offline_access"]);
+        var (browser, _) = await EstablishGrantAsync(app, UserEmail("rewiden"), ["openid", "api.read", "offline_access"]);
         await WithdrawAsync(browser, app.Id!);
 
         // The client comes back asking for the least it can.
-        await ObtainCodeAsync(app, "rewiden@test.local", ["openid"]);
+        await ObtainCodeAsync(app, UserEmail("rewiden"), ["openid"]);
 
         using var session = Store.OpenAsyncSession();
         var grant = await session.LoadAsync<OidcAuthorization>(
-            OidcAuthorizationReferenceProbe.DocumentId(await SubjectOfAsync("rewiden@test.local"), app.Id!));
+            OidcAuthorizationReferenceProbe.DocumentId(await SubjectOfAsync(UserEmail("rewiden")), app.Id!));
 
         grant.GrantedScopes.Should().Equal(["openid"],
             "the merge only ever adds and the list was never reset, so reinstatement used to hand "
@@ -194,9 +194,9 @@ public class OidcConsentWithdrawalTests : OidcTestHost
     public async Task An_implicit_client_cannot_silently_resurrect_a_withdrawn_grant()
     {
         var app = await SeedRefreshableAppAsync("w-implicit", consentType: "implicit");
-        await SeedUserAsync("implicit@test.local");
+        await SeedUserAsync(UserEmail("implicit"));
 
-        var (browser, _) = await EstablishGrantAsync(app, "implicit@test.local", ["openid", "api.read", "offline_access"]);
+        var (browser, _) = await EstablishGrantAsync(app, UserEmail("implicit"), ["openid", "api.read", "offline_access"]);
         await WithdrawAsync(browser, app.Id!);
 
         var authorize = await browser.GetAsync(
@@ -214,9 +214,9 @@ public class OidcConsentWithdrawalTests : OidcTestHost
     public async Task Withdrawal_requires_an_antiforgery_token()
     {
         var app = await SeedRefreshableAppAsync("w-csrf");
-        await SeedUserAsync("csrf@test.local");
+        await SeedUserAsync(UserEmail("csrf"));
 
-        var (browser, tokens) = await EstablishGrantAsync(app, "csrf@test.local", ["openid", "api.read", "offline_access"]);
+        var (browser, tokens) = await EstablishGrantAsync(app, UserEmail("csrf"), ["openid", "api.read", "offline_access"]);
 
         var result = await WithdrawAsync(browser, app.Id!, includeAntiforgery: false);
         result.Should().Be("400");
@@ -232,14 +232,14 @@ public class OidcConsentWithdrawalTests : OidcTestHost
     {
         var victimApp = await SeedRefreshableAppAsync("w-idor-victim");
         var attackerApp = await SeedRefreshableAppAsync("w-idor-attacker");
-        await SeedUserAsync("victim@test.local");
-        await SeedUserAsync("attacker@test.local");
+        await SeedUserAsync(UserEmail("victim"));
+        await SeedUserAsync(UserEmail("attacker"));
 
-        var (_, victimTokens) = await EstablishGrantAsync(victimApp, "victim@test.local", ["openid", "api.read", "offline_access"]);
+        var (_, victimTokens) = await EstablishGrantAsync(victimApp, UserEmail("victim"), ["openid", "api.read", "offline_access"]);
 
         // The attacker holds a grant of their own, which is what gets them a page carrying a
         // valid antiforgery token — then they post the *victim's* application id with it.
-        var (attacker, _) = await EstablishGrantAsync(attackerApp, "attacker@test.local", ["openid", "offline_access"]);
+        var (attacker, _) = await EstablishGrantAsync(attackerApp, UserEmail("attacker"), ["openid", "offline_access"]);
         await Store.WaitForIndexingAsync();
         await WithdrawAsync(attacker, victimApp.Id!);
 
@@ -258,15 +258,15 @@ public class OidcConsentWithdrawalTests : OidcTestHost
     {
         var mine = await SeedRefreshableAppAsync("w-list-mine");
         var theirs = await SeedRefreshableAppAsync("w-list-theirs");
-        await SeedUserAsync("mine@test.local");
-        await SeedUserAsync("theirs@test.local");
+        await SeedUserAsync(UserEmail("mine"));
+        await SeedUserAsync(UserEmail("theirs"));
 
-        await EstablishGrantAsync(mine, "mine@test.local", ["openid", "offline_access"]);
-        await EstablishGrantAsync(theirs, "theirs@test.local", ["openid", "offline_access"]);
+        await EstablishGrantAsync(mine, UserEmail("mine"), ["openid", "offline_access"]);
+        await EstablishGrantAsync(theirs, UserEmail("theirs"), ["openid", "offline_access"]);
 
         await Store.WaitForIndexingAsync();
 
-        var browser = await SignInAsync("mine@test.local");
+        var browser = await SignInAsync(UserEmail("mine"));
         var html = await (await browser.GetAsync("/connect/applications")).Content.ReadAsStringAsync();
 
         html.Should().Contain("w-list-mine");
@@ -277,8 +277,8 @@ public class OidcConsentWithdrawalTests : OidcTestHost
     [Fact]
     public async Task The_page_refuses_to_be_framed()
     {
-        await SeedUserAsync("frame@test.local");
-        var browser = await SignInAsync("frame@test.local");
+        await SeedUserAsync(UserEmail("frame"));
+        var browser = await SignInAsync(UserEmail("frame"));
 
         var response = await browser.GetAsync("/connect/applications");
 
@@ -295,9 +295,9 @@ public class OidcConsentWithdrawalTests : OidcTestHost
     public async Task Withdrawing_twice_reports_success_both_times()
     {
         var app = await SeedRefreshableAppAsync("w-idempotent");
-        await SeedUserAsync("idempotent@test.local");
+        await SeedUserAsync(UserEmail("idempotent"));
 
-        var (browser, _) = await EstablishGrantAsync(app, "idempotent@test.local", ["openid", "offline_access"]);
+        var (browser, _) = await EstablishGrantAsync(app, UserEmail("idempotent"), ["openid", "offline_access"]);
 
         // Taken once, while a row still exists to render the form — and reused, which is exactly
         // what a double submit is.
@@ -321,9 +321,9 @@ public class OidcConsentWithdrawalTests : OidcTestHost
     public async Task A_post_with_no_application_changes_nothing()
     {
         var app = await SeedRefreshableAppAsync("w-empty");
-        await SeedUserAsync("empty@test.local");
+        await SeedUserAsync(UserEmail("empty"));
 
-        var (browser, tokens) = await EstablishGrantAsync(app, "empty@test.local", ["openid", "offline_access"]);
+        var (browser, tokens) = await EstablishGrantAsync(app, UserEmail("empty"), ["openid", "offline_access"]);
 
         await browser.PostFormAsync("/connect/applications/revoke", new Dictionary<string, string>
         {
@@ -353,9 +353,9 @@ public class OidcConsentWithdrawalTests : OidcTestHost
     public async Task Re_consenting_does_not_resurrect_tokens_from_before_the_withdrawal()
     {
         var app = await SeedRefreshableAppAsync("w-epoch");
-        await SeedUserAsync("epoch@test.local");
+        await SeedUserAsync(UserEmail("epoch"));
 
-        var (browser, tokens) = await EstablishGrantAsync(app, "epoch@test.local", ["openid", "api.read", "offline_access"]);
+        var (browser, tokens) = await EstablishGrantAsync(app, UserEmail("epoch"), ["openid", "api.read", "offline_access"]);
         var refreshToken = tokens.GetProperty("refresh_token").GetString()!;
 
         await WithdrawAsync(browser, app.Id!);
@@ -369,7 +369,7 @@ public class OidcConsentWithdrawalTests : OidcTestHost
         }
 
         // The user lets the application back in.
-        await ObtainCodeAsync(app, "epoch@test.local", ["openid"]);
+        await ObtainCodeAsync(app, UserEmail("epoch"), ["openid"]);
 
         var refreshed = await RefreshAsync(app, refreshToken);
 
@@ -385,11 +385,11 @@ public class OidcConsentWithdrawalTests : OidcTestHost
     [Fact]
     public async Task A_machine_token_is_unaffected_by_a_withdrawal()
     {
-        var machine = await SeedApplicationAsync("w-machine",
+        var machine = await SeedApplicationAsync(ClientId("w-machine"),
             allowedScopes: ["api.read"], grantTypes: ["client_credentials"], redirectUris: []);
 
         var interactive = await SeedRefreshableAppAsync("w-machine-user");
-        await SeedUserAsync("machine@test.local");
+        await SeedUserAsync(UserEmail("machine"));
 
         var token = await BodyAsync(await Client.PostAsync("/connect/token", new FormUrlEncodedContent(
             new Dictionary<string, string>
@@ -400,7 +400,7 @@ public class OidcConsentWithdrawalTests : OidcTestHost
                 ["scope"] = "api.read",
             })));
 
-        var (browser, _) = await EstablishGrantAsync(interactive, "machine@test.local", ["openid", "offline_access"]);
+        var (browser, _) = await EstablishGrantAsync(interactive, UserEmail("machine"), ["openid", "offline_access"]);
         await WithdrawAsync(browser, interactive.Id!);
 
         var introspection = await BodyAsync(await Client.PostAsync("/connect/introspect",
@@ -426,9 +426,9 @@ public class OidcConsentWithdrawalTests : OidcTestHost
     public async Task A_withdrawn_tokens_record_can_still_be_revoked()
     {
         var app = await SeedRefreshableAppAsync("w-revocable");
-        await SeedUserAsync("revocable@test.local");
+        await SeedUserAsync(UserEmail("revocable"));
 
-        var (browser, tokens) = await EstablishGrantAsync(app, "revocable@test.local", ["openid", "offline_access"]);
+        var (browser, tokens) = await EstablishGrantAsync(app, UserEmail("revocable"), ["openid", "offline_access"]);
         var accessToken = tokens.GetProperty("access_token").GetString()!;
 
         await WithdrawAsync(browser, app.Id!);

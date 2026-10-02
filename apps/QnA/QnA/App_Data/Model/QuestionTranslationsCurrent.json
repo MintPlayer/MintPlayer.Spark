@@ -1,0 +1,172 @@
+{
+  "persistentObject": {
+    "id": "63e045da-399a-4b6e-88e6-e6a85d690891",
+    "name": "QuestionTranslationsCurrent",
+    "description": {
+      "en": "Current translation",
+      "fr": "Traduction actuelle",
+      "nl": "Huidige vertaling"
+    },
+    "clrType": "QnA.Entities.QuestionTranslationsCurrent",
+    "breadcrumb": "{Title}",
+    "tabs": [],
+    "groups": [],
+    "attributes": [
+      {
+        "id": "65b06ebe-bc96-4d5c-8355-5cabe1fd2df3",
+        "name": "Body",
+        "label": {
+          "en": "Body",
+          "fr": "Contenu",
+          "nl": "Inhoud"
+        },
+        "dataType": "MultiLineString",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 9,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "04af5e22-ee5c-4153-a6e8-5598e1c1f18c",
+        "name": "ContributionCount",
+        "label": {
+          "en": "Versions",
+          "fr": "Versions",
+          "nl": "Versies"
+        },
+        "dataType": "number",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 5,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "c475ce89-2065-4ea4-8199-068efa2d23be",
+        "name": "ContributionId",
+        "label": {
+          "en": "Version",
+          "fr": "Version",
+          "nl": "Versie"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 3,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "6f25013a-5b23-4ce5-9832-f83879785a6b",
+        "name": "ContributorId",
+        "label": {
+          "en": "Translator id",
+          "fr": "Identifiant du traducteur",
+          "nl": "Id van de vertaler"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 2,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "3b005de9-79fa-464a-8f0a-be9987acba06",
+        "name": "Language",
+        "label": {
+          "en": "Language",
+          "fr": "Langue",
+          "nl": "Taal"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 6,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2e3ad98e-8e16-42b7-a19e-996b42faf072",
+        "name": "Script",
+        "label": {
+          "en": "Script",
+          "fr": "Écriture",
+          "nl": "Schrift"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 7,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "ae2ca47c-0b54-4bfc-85bf-b534946b94aa",
+        "name": "TargetId",
+        "label": {
+          "en": "Question",
+          "fr": "Question",
+          "nl": "Vraag"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 1,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "e3bf956a-f66c-4517-a4e6-dd9c38eb03be",
+        "name": "Title",
+        "label": {
+          "en": "Title",
+          "fr": "Titre",
+          "nl": "Titel"
+        },
+        "dataType": "string",
+        "isRequired": false,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 8,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      },
+      {
+        "id": "2507d500-9f1b-485f-ba5b-86d765041b9c",
+        "name": "UpdatedAt",
+        "label": {
+          "en": "Written",
+          "fr": "Écrite",
+          "nl": "Geschreven"
+        },
+        "dataType": "datetime",
+        "isRequired": true,
+        "isVisible": true,
+        "isReadOnly": true,
+        "order": 4,
+        "isArray": false,
+        "showedOn": "Query, PersistentObject",
+        "rules": []
+      }
+    ],
+    "queries": []
+  },
+  "queries": []
+}

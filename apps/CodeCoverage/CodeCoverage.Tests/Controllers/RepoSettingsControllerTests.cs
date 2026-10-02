@@ -22,6 +22,8 @@ namespace CodeCoverage.Tests.Controllers;
 /// </summary>
 public class RepoSettingsControllerTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const string Owner = "acme";
     private const string Name = "widget";
     private const long RepoId = 8080;

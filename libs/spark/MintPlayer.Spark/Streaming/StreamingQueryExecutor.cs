@@ -23,6 +23,8 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
     [Inject] private readonly Services.Breadcrumb.IBreadcrumbResolver breadcrumbResolver;
     [Inject] private readonly Services.IRowSecurity rowSecurity;
     [Inject] private readonly Services.IRowSecurityGate gate;
+    // Optional so the hand-constructed test site keeps compiling; DI always supplies it.
+    [Inject] private readonly Services.IAttributeRightsEnforcement? attributeRights = null;
 
     /// <summary>How often (in batches) a live stream re-checks its type-level authorization.</summary>
     private const int ReauthorizeEveryNBatches = 10;
@@ -61,7 +63,12 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
         // Filtering is refused for a streaming query inside ColumnCapabilities, so these columns
         // arrive with CanFilter/CanListDistincts already false and the grid renders no filter
         // affordance. Nothing to do here.
-        var columns = Services.QueryResultProjector.BuildColumns(entityTypeDef, query);
+        // On the caller's query surface: a Query-denied attribute is no column (M2c-2a); the gate
+        // removes it from the rows. Decided once, when the stream opens, like the columns.
+        var surface = attributeRights is null
+            ? entityTypeDef
+            : await attributeRights.ForQueryAsync(entityTypeDef, cancellationToken);
+        var columns = Services.QueryResultProjector.BuildColumns(surface, query);
 
         // Resolve CLR type and Actions class. Both failures are refused at --spark-verify-model and
         // at query-load time (SparkComposedQueries); reaching either here means the model changed

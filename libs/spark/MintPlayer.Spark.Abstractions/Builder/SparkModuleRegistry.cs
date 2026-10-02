@@ -61,6 +61,25 @@ public class SparkModuleRegistry
     }
 
     /// <summary>
+    /// Optional restriction on which index types <c>UseSpark()</c> <em>deploys</em> to RavenDB.
+    /// <c>null</c> (the default) deploys every index in every
+    /// <see cref="ResolveIndexAssemblies">resolved index assembly</see>, exactly as before the
+    /// filter existed; an application has no reason to set it.
+    /// <para>
+    /// It narrows deployment only. Discovery is unaffected: every index and projection is still
+    /// registered in the index catalog and still feeds the model hash, so a filtered host builds
+    /// the same model as an unfiltered one. An index the filter rejects simply does not exist in
+    /// the database, and querying it fails loudly with RavenDB's <c>IndexDoesNotExistException</c>.
+    /// </para>
+    /// <para>
+    /// Exists for test hosts: <c>MintPlayer.Spark.Testing</c>'s <c>SparkEndpointFactory</c> boots
+    /// one host per test against a fresh database, and deploying the whole test assembly's fixture
+    /// indexes on every boot was a third of the test suite's time.
+    /// </para>
+    /// </summary>
+    public Func<Type, bool>? IndexDeploymentFilter { get; set; }
+
+    /// <summary>
     /// Declares middleware (or a one-off startup task) that <c>UseSpark()</c> runs.
     /// <para>
     /// <paramref name="stage"/> chooses which side of <c>UseAuthentication</c> the action lands on;

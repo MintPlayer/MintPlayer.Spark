@@ -32,7 +32,7 @@ import { describeModerationError } from './spark-vote.component';
             <button type="button" class="list-group-item list-group-item-action w-100 text-start p-2 border mb-1 spark-case"
                     [class.active]="selected()?.case?.id === c.id" (click)="open(c.id)">
               <strong>{{ c.kind }}</strong>
-              @if (c.flagCount) { <span class="badge bg-warning text-dark ms-1">{{ c.flagCount }}</span> }
+              @if (c.flagCount) { <span class="badge text-bg-warning ms-1">{{ c.flagCount }}</span> }
               @if (targets()[c.id]?.title; as title) { <div class="small fw-semibold text-truncate spark-case-target">{{ title }}</div> }
               <div class="small">{{ c.summary }}</div>
               <div class="small text-muted">{{ c.openedAtUtc | date: 'short' }}</div>

@@ -19,15 +19,12 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// reach only one.
 /// </para>
 /// </summary>
-public class OidcTokenForgeryTests : OidcTestHost
+public class OidcTokenForgeryTests(OidcSharedHost host) : OidcTestHost(host), IClassFixture<OidcSharedHost>
 {
     private const string Secret = "s3cret-value-for-tests";
 
     private async Task<string> SetUpClientAsync()
-    {
-        await SeedApplicationAsync("resource-a");
-        return "resource-a";
-    }
+        => (await SeedApplicationAsync(ClientId("resource-a"))).ClientId;
 
     private async Task AssertRejectedAsync(string clientId, string token, string because)
     {
@@ -111,9 +108,9 @@ public class OidcTokenForgeryTests : OidcTestHost
     [Fact]
     public async Task A_tampered_payload_with_the_original_signature_is_refused()
     {
-        var app = await SeedApplicationAsync("webapp");
-        await SeedUserAsync("alice@test.local");
-        var code = await ObtainCodeAsync(app, "alice@test.local", ["openid"]);
+        var app = await SeedApplicationAsync(ClientId("webapp"));
+        await SeedUserAsync(UserEmail("alice"));
+        var code = await ObtainCodeAsync(app, UserEmail("alice"), ["openid"]);
 
         var issued = JsonDocument.Parse(await (await Client.PostAsync("/connect/token", new FormUrlEncodedContent(
             new Dictionary<string, string>

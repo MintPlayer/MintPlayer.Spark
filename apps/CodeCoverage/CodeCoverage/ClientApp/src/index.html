@@ -4,6 +4,15 @@
   <meta charset="utf-8">
   <title>Coverage</title>
   <base href="/">
+  <!-- Colour mode (#462). The default-mode meta must precede the pre-boot script, which reads it
+       synchronously. The script must follow <base> (its src is relative) and precede every
+       stylesheet, with no async/defer, so the first paint is already themed. The file is copied
+       from @mintplayer/web-components/theming by the assets glob in project.json. -->
+  <meta name="color-scheme" content="light dark">
+  <meta name="bs-theme-default-mode" content="auto">
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8f9fa">
+  <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#2b3035">
+  <script src="bs-theme-preboot.js"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
 </head>

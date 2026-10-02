@@ -34,6 +34,73 @@ Every app (`apps/CodeCoverage`, `apps/DemoApp`, `apps/Fleet`, `apps/HR`) hosts i
 The host prints the dev server's own port (`➜ Local: http://localhost:NNNNN/`) once it is ready;
 that is the signal the app is actually serviceable, not `Now listening on:`.
 
+## Running the test suites
+
+**Local test runs take over 30 minutes; test runs on GitHub Actions take 17 minutes.** The local run
+is serial (RavenDB tests starve each other's CPU when run in parallel) and usually skips E2E, while
+CI runs everything, E2E included, in parallel with its Nx cache and the Developer RavenDB licence.
+
+- **CI runs cost money: never push just to get a test run.** The sweep runs locally. Making it fast
+  is tracked work (see `docs/contributions_PRD.md` §5c).
+- When CI is red anyway (after a push that was asked for), read the failure from its log first:
+  `gh run view <run> --job <job> --log-failed`, grepping for `Failed` and `Error Message`.
+- Locally, re-run only the single failing test class while fixing it.
+- A local-only failure may come from the machine's environment rather than the code. For example,
+  a `RAVENDB_LICENSE` that holds the Community licence gives a `LicenseLimitException` ("revisions
+  1000 > licensed 2") that CI never sees.
+
+### The local sweep: `npm run test:affected`
+
+One script runs every **affected** test project, unit and E2E together (`tools/test-local.mjs`;
+CI never calls it). Extra arguments go to `nx affected`, e.g. `-- --skip-nx-cache`.
+
+- **Licence:** set `RAVENDB_LICENSE` to the path of the **Developer** licence file,
+  `C:\Repos\MintPlayer.Spark\.secrets\raven-license.log`. A shell started before that variable
+  changed still has the old value; set it on the command
+  (`RAVENDB_LICENSE='C:\Repos\MintPlayer.Spark\.secrets\raven-license.log' npm run test:affected`).
+- **Coverage is off locally:** every test target has a `local` configuration (`-c local`) whose
+  command drops the coverlet collector and vitest `--coverage`. The default configuration, which CI
+  runs, is unchanged, and the different command keeps local and CI cache entries apart.
+- **Parallel:** the script passes `--parallel=4` (CI keeps nx.json's 3). That gives the long
+  CodeCoverage.Tests chain a slot early; at 5 a sweep ran out of memory.
+- **E2E:** when it is affected, the script first builds the apps it hosts (`Fleet`, `QnA`) through
+  nx, then sets `SPARK_E2E_SKIP_APP_BUILD=1` so `SparkAppTestHost` skips its own per-app
+  `dotnet build`. The variable is opt-in; unset (CI) the host still builds. A new E2E host app must
+  be added to `E2E_APPS` in the script.
+- Every RavenTestDriver base (`SparkTestDriver`, `SparkSharedDatabase`, `CoverageRavenTest`)
+  deletes its databases without the server's 15 s confirmation wait, through
+  `RavenDatabaseDeletion.DeleteOnDispose` in `PreInitialize`. This applies on CI as well.
+
+**Now (2026-10-02): 7m39s (459 s) for everything including E2E and builds, all green, 2.85×
+faster than the 21m49s below.** The gains came from:
+- test hosts deploying only the indexes a test needs
+- CodeCoverage.Tests deploying its index only where a class queries one
+- per-class hosts and databases for the OIDC and read-only classes
+- no dynamic PGO in test processes or the embedded server
+- `--parallel=4`
+
+The evidence is in `docs/contributions_PRD.md` §5d items 10–14. Three tests used to fail only under a
+fully loaded sweep (`S_M3`, `ModerationVoteTests.M5`, `ComplexFieldIndexingTests.Verbatim_…`). All
+three are fixed at the root (§5c): S_M3 exposed a real sweeper bug, stale-index patches that
+rewrote completed messages. M5 and the Corax test waited on the wrong condition. A test that fails
+only under load is a race to explain, not noise. Reproduce it with CPU burners
+(`node -e "for(;;){}"` × cores) and read the documents' revision histories before changing a wait.
+
+Measured 2026-10-01 on this machine (`--skip-nx-cache`, Developer licence, everything affected):
+**21m49s wall for everything including E2E and builds, all green.** Compare the earlier serial
+sweep, which took 26.2 min **without** E2E. Per project:
+
+| Project | Serial, coverage on | `test:affected` (parallel, no coverage) |
+|---|---|---|
+| MintPlayer.Spark.Tests (3510) | 21m21s | 18m20s (the critical path) |
+| CodeCoverage.Tests (1045) | 3m34s | ⚠️ 10m41s (CPU contention with Spark.Tests) |
+| MintPlayer.Spark.SourceGenerators.Tests | 64s | 1m20s |
+| MintPlayer.Spark.Client.Tests | 7s | 0.2s |
+| MintPlayer.Spark.E2E.Tests (138) | not run | 3m41s |
+
+The wall time is now set by `MintPlayer.Spark.Tests` alone. Running projects in parallel does not
+make a single project faster: the suites compete for the same cores.
+
 ## Versioning: major version is locked to the targeted platform
 
 The major version of every published package in this repository is **not** a semver

@@ -21,8 +21,15 @@ namespace MintPlayer.Spark.Tests.Services;
 /// Every fixture value contains a space, because a space is the tokenization boundary: single-word values
 /// behave the same analyzed or not, which is what makes this class of defect invisible until it bites.
 /// </para>
+/// <para>
+/// The cars and <see cref="Cars_Search"/> are seeded once per class (<see cref="SeededCars"/>, M8 item 11):
+/// every case here searches the same five documents and none writes, so seeding and indexing them per case
+/// bought nothing but a database each. The one case that adds a document lives in
+/// <see cref="SearchPushdownWriteTests"/>, on a database of its own.
+/// </para>
 /// </summary>
-public class SearchPushdownTests : SparkTestDriver
+public class SearchPushdownTests(SearchPushdownTests.SeededCars cars)
+    : SparkSharedTestDriver(cars), IClassFixture<SearchPushdownTests.SeededCars>
 {
     public class Car
     {
@@ -76,15 +83,27 @@ public class SearchPushdownTests : SparkTestDriver
         "Skoda Octavia",
     ];
 
-    private async Task SeedAsync()
+    /// <summary>The class's database: <see cref="Models"/> stored and <see cref="Cars_Search"/> caught up.</summary>
+    public sealed class SeededCars : SparkSharedDatabase
     {
-        using var session = Store.OpenAsyncSession();
-        foreach (var model in Models)
-            await session.StoreAsync(new Car { Model = model, Trim = model, Kind = "car" });
-        await session.SaveChangesAsync();
+        public override async Task InitializeAsync()
+        {
+            await base.InitializeAsync();
+            await SeedAsync(Store);
+        }
 
-        await new Cars_Search().ExecuteAsync(Store);
-        await RavenIndexHelper.WaitForNonStaleAsync(Store);
+        internal static async Task SeedAsync(IDocumentStore store)
+        {
+            using (var session = store.OpenAsyncSession())
+            {
+                foreach (var model in Models)
+                    await session.StoreAsync(new Car { Model = model, Trim = model, Kind = "car" });
+                await session.SaveChangesAsync();
+            }
+
+            await new Cars_Search().ExecuteAsync(store);
+            await RavenIndexHelper.WaitForNonStaleAsync(store);
+        }
     }
 
     /// <summary>Applies the framework's own term shape, so these tests exercise what production emits.</summary>
@@ -148,8 +167,6 @@ public class SearchPushdownTests : SparkTestDriver
     [Fact]
     public async Task An_infix_substring_matches_as_it_did_in_memory()
     {
-        await SeedAsync();
-
         var results = await SearchAsync("olkswag");
 
         results.Should().BeEquivalentTo(["Volkswagen Golf GTI", "Volkswagen Up"]);
@@ -158,8 +175,6 @@ public class SearchPushdownTests : SparkTestDriver
     [Fact]
     public async Task A_prefix_matches()
     {
-        await SeedAsync();
-
         (await SearchAsync("skod")).Should().BeEquivalentTo(["Skoda Octavia"]);
     }
 
@@ -167,8 +182,6 @@ public class SearchPushdownTests : SparkTestDriver
     [Fact]
     public async Task A_multi_word_term_matches_regardless_of_word_order()
     {
-        await SeedAsync();
-
         var forwards = await SearchAsync("volkswagen golf");
         var backwards = await SearchAsync("golf volkswagen");
 
@@ -183,16 +196,12 @@ public class SearchPushdownTests : SparkTestDriver
     [Fact]
     public async Task Every_word_of_a_multi_word_term_must_match()
     {
-        await SeedAsync();
-
         (await SearchAsync("volkswagen octavia")).Should().BeEmpty();
     }
 
     [Fact]
     public async Task Matching_is_case_insensitive_in_both_directions()
     {
-        await SeedAsync();
-
         (await SearchAsync("VOLKSWAGEN UP")).Should().BeEquivalentTo(["Volkswagen Up"]);
         (await SearchAsync("alfa")).Should().BeEquivalentTo(["alfa romeo spider"]);
     }
@@ -200,8 +209,6 @@ public class SearchPushdownTests : SparkTestDriver
     [Fact]
     public async Task A_term_matching_nothing_returns_nothing()
     {
-        await SeedAsync();
-
         (await SearchAsync("ferrari")).Should().BeEmpty();
     }
 
@@ -213,8 +220,6 @@ public class SearchPushdownTests : SparkTestDriver
     [Fact]
     public async Task A_substring_spanning_a_space_still_matches()
     {
-        await SeedAsync();
-
         (await SearchAsync("olf GT")).Should().BeEquivalentTo(["Volkswagen Golf GTI"]);
     }
 
@@ -228,8 +233,6 @@ public class SearchPushdownTests : SparkTestDriver
     [Fact]
     public async Task Words_need_not_be_adjacent_or_in_order()
     {
-        await SeedAsync();
-
         (await SearchAsync("gti golf")).Should().BeEquivalentTo(["Volkswagen Golf GTI"]);
         (await SearchAsync("wagen olf")).Should().BeEquivalentTo(["Volkswagen Golf GTI"]);
     }
@@ -244,8 +247,6 @@ public class SearchPushdownTests : SparkTestDriver
     [Fact]
     public async Task A_field_that_was_never_declared_searchable_still_matches()
     {
-        await SeedAsync();
-
         var term = QueryExecutor.BuildSearchTerm("olkswag");
 
         using var session = Store.OpenAsyncSession();
@@ -264,8 +265,6 @@ public class SearchPushdownTests : SparkTestDriver
     [Fact]
     public async Task A_bare_word_does_not_match_an_undeclared_field()
     {
-        await SeedAsync();
-
         using var session = Store.OpenAsyncSession();
         var results = await session.Query<VCar, Cars_Search>()
             .Search(v => v.Trim, "volkswagen")
@@ -318,8 +317,10 @@ public class SearchPushdownTests : SparkTestDriver
             "ResolveSearchableProperties",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
 
-        return ((System.Reflection.PropertyInfo[])method.Invoke(null, [type])!)
-            .Select(p => p.Name)
+        // Each entry pairs the property with the base name it was derived from (M2c-2a), so the
+        // executor can match it to a query-surface attribute before companion substitution.
+        return (((string Base, System.Reflection.PropertyInfo Property)[])method.Invoke(null, [type])!)
+            .Select(p => p.Property.Name)
             .ToArray();
     }
 
@@ -350,27 +351,35 @@ public class SearchPushdownTests : SparkTestDriver
         rql.Should().Contain("and (search(Model");
         rql.Should().Contain("or search(Trim");
     }
+}
 
+/// <summary>
+/// The <see cref="SearchPushdownTests"/> case that adds a document to the seeded cars. It stays on a database per
+/// case: on the class's shared one, its van would turn up in the other cases' <c>volkswagen</c> searches.
+/// </summary>
+public class SearchPushdownWriteTests : SparkTestDriver
+{
     /// <summary>
-    /// A row filter still excludes rows the search term matches. The counterpart to the RQL assertion above,
+    /// A row filter still excludes rows the search term matches. The counterpart to the RQL assertion in
+    /// <see cref="SearchPushdownTests"/>,
     /// this time on behaviour.
     /// </summary>
     [Fact]
     public async Task A_preceding_filter_still_excludes_matching_rows()
     {
-        await SeedAsync();
+        await SearchPushdownTests.SeededCars.SeedAsync(Store);
         using (var session = Store.OpenAsyncSession())
         {
-            await session.StoreAsync(new Car { Model = "Volkswagen Crafter", Trim = "Volkswagen Crafter", Kind = "van" });
+            await session.StoreAsync(new SearchPushdownTests.Car { Model = "Volkswagen Crafter", Trim = "Volkswagen Crafter", Kind = "van" });
             await session.SaveChangesAsync();
         }
         await RavenIndexHelper.WaitForNonStaleAsync(Store);
 
         using var read = Store.OpenAsyncSession();
-        var results = await read.Query<VCar, Cars_Search>()
+        var results = await read.Query<SearchPushdownTests.VCar, SearchPushdownTests.Cars_Search>()
             .Where(v => v.Kind == "car")
             .Search(v => v.Model, "*volkswagen*", options: SearchOptions.Guess, @operator: SearchOperator.And)
-            .ProjectInto<VCar>()
+            .ProjectInto<SearchPushdownTests.VCar>()
             .ToListAsync();
 
         results.Select(v => v.Model).Should().BeEquivalentTo(["Volkswagen Golf GTI", "Volkswagen Up"]);

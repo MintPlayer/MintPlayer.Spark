@@ -36,6 +36,8 @@ namespace CodeCoverage.Tests.Controllers;
 /// </remarks>
 public class UploadsControllerGapTests : CoverageRavenTest
 {
+    protected override bool DeployIndexes => true;
+
     private const long RepoId = 6060;
     private const long OwnerId = 606;
     private const string Sha = "6060606060606060606060606060606060606060";
