@@ -25,6 +25,9 @@ internal static class SparkEmbeddedServer
 {
     static SparkEmbeddedServer()
     {
+        // Before the server starts: it inherits the variable. See the method.
+        RavenServerLocator.DisableServerDynamicPgo();
+
         // Loud on an invalid licence, tolerant of an absent one — the two halves are separable
         // because they are triggered by different conditions.
         //

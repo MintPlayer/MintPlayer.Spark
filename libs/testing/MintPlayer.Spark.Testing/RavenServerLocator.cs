@@ -57,6 +57,26 @@ public static class RavenServerLocator
     /// </remarks>
     public static string? ServerDirectory => _serverDirectory.Value;
 
+    /// <summary>
+    /// Turns dynamic PGO off for the RavenDB server process this test process is about to start.
+    /// Call before the first <c>GetDocumentStore</c>, beside <c>ConfigureServer</c>.
+    /// </summary>
+    /// <remarks>
+    /// RavenDB's own runtimeconfig enables it (<c>System.Runtime.TieredPGO: true</c>), which suits a
+    /// long-running production server. A test server lives for one test run and executes each
+    /// database's startup and teardown code a few hundred times, so the instrumentation and rejit
+    /// cost more than they return; test projects turn it off for the test process for the same
+    /// reason (Directory.Build.targets). The embedded server is a child process and inherits this
+    /// process's environment, and the <c>DOTNET_TieredPGO</c> variable takes precedence over its
+    /// runtimeconfig. Child processes the tests start later inherit it too, which is harmless for a
+    /// test. A value the developer already set is left alone. M8 item 13 (PRD §5d).
+    /// </remarks>
+    public static void DisableServerDynamicPgo()
+    {
+        if (Environment.GetEnvironmentVariable("DOTNET_TieredPGO") is null)
+            Environment.SetEnvironmentVariable("DOTNET_TieredPGO", "0");
+    }
+
     private static string? Provision()
     {
         var version = ReadEmbeddedPackageVersion();

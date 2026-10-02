@@ -32,6 +32,9 @@ public abstract class CoverageRavenTest : RavenTestDriver
 
     static CoverageRavenTest()
     {
+        // Before the server starts: it inherits the variable. See the method.
+        MintPlayer.Spark.Testing.RavenServerLocator.DisableServerDynamicPgo();
+
         var license = Environment.GetEnvironmentVariable(LicenseEnvironmentVariable);
 
         ConfigureServer(new TestServerOptions
