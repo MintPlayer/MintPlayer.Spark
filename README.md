@@ -175,6 +175,7 @@ MintPlayer.Spark/
 | [Attribute Grouping](docs/guide-attribute-grouping.md) | Two-level Tabs and Groups layout for entity forms and detail pages |
 | [Custom Attribute Renderers](docs/guide-custom-attribute-renderers.md) | Replace default attribute display/editing with custom Angular components |
 | [Custom Actions](docs/guide-custom-actions.md) | Custom business operations on persistent objects with UI integration |
+| [Concurrent Edits & the 409 Merge](docs/guide-concurrency.md) | The change-vector check on every save, the bare 409, ng-spark's three-way merge (per row by `[ValueKey]`, a dialog for true conflicts only, keep all mine / take all theirs), `conflictDialog.showChangedBy`, no auto-save, and why contribution rows are theirs-wins |
 | [TriggersRefresh & OnRefreshAsync](docs/guide-triggers-refresh.md) | Forms that reshape themselves: toggling required/read-only/visible, rewriting rules, replacing dropdown options as the user types — and why the hook must be idempotent |
 | [PO/Query Aliases](docs/guide-aliases.md) | Friendly URLs for entities and queries (`/po/car` instead of `/po/{guid}`) |
 | [Program Units & spark-shell](docs/guide-program-units.md) | The server-driven menu (`programUnits.json`, rights-filtered per caller), JSON-only composed virtual PO pages, and the shipped `spark-shell` with its slots |

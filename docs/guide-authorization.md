@@ -354,6 +354,105 @@ is what makes it reviewable.
 
 ---
 
+## Reserved verbs
+
+A **reserved verb** is an action that Spark or a package asks `security.json` about: `Read`, `Edit`,
+SoftDelete's `Restore`, Contributions' `RevertContribution`, and so on. No custom action may share one
+of these names.
+
+The reason is how a custom action is authorized. Its right is `{ActionName}/{Type}`, and its name is
+its class name with an `Action` suffix removed ([custom actions](guide-custom-actions.md#action-name-resolution)).
+A class `RestoreAction` would therefore be authorized by `Restore/Car`, the same right that authorizes
+SoftDelete's restore. Granting one would grant both, and one endpoint would shadow the other.
+
+### Where the built-in verbs live
+
+Each owner declares its verbs once, as `public const string` fields on a static class, and points at
+that class with an assembly attribute:
+
+| Owner | Class | Verbs |
+|---|---|---|
+| Core (`MintPlayer.Spark.Abstractions`) | `SparkCoreActions` | `Query`, `Read`, `New`, `Edit`, `Delete`, `Replicate` |
+| Core (`MintPlayer.Spark.Abstractions`) | `SparkCombinedActions` | `QueryRead`, `QueryReadEdit`, `QueryReadEditNew`, `QueryReadEditNewDelete`, `ReadEdit`, `ReadEditNew`, `ReadEditNewDelete`, `EditNew`, `EditNewDelete`, `NewDelete` |
+| SoftDelete | `SoftDeleteRights` | `Restore`, `Purge`, `ViewDeleted` |
+| History | `HistoryRights` | `History`, `Revert` |
+| Moderation | `ModerationRights` | `Vote`, `Downvote`, `Flag`, `Lock`, `Review`, `Suspend`, `Audit` |
+| Contributions | `ContributionRights` | `RevertContribution` |
+
+A package's verbs are reserved only where the package is referenced. An application without SoftDelete
+may have a `RestoreAction`.
+
+There is no `Create` verb (creating is `New`), so a `CreateAction` is allowed.
+
+### Declaring your own verbs (library authors)
+
+A package that asks `security.json` about a verb of its own should declare it the same way:
+
+```csharp
+using MintPlayer.Spark.Abstractions.Authorization;
+
+[assembly: SparkReservedActions(typeof(Acme.Spark.Publishing.PublishingRights))]
+
+namespace Acme.Spark.Publishing;
+
+public static class PublishingRights
+{
+    /// <summary><c>Publish/T</c>: make a draft visible.</summary>
+    public const string Publish = "Publish";
+
+    /// <summary>A pseudo-target, not a verb.</summary>
+    [SparkNotAnAction]
+    public const string Target = "Publishing";
+}
+```
+
+- **Only `public const string` fields count.** Mark a constant that is not a verb, such as a target
+  name, with `[SparkNotAnAction]`. `ModerationRights.Target` is marked this way.
+- **The attribute may appear several times** in one assembly. Core declares both of its classes this way.
+- **Put it in an assembly that references `MintPlayer.Spark.Abstractions`.** The startup check
+  finds verbs by following references from assemblies that reference it. SoftDelete declares its verbs
+  in `MintPlayer.Spark.SoftDelete` for this reason: `SoftDelete.Abstractions` references no Spark
+  package.
+- **Use the constants in your own code** (`PublishingRights.Publish`) instead of repeating the string.
+
+The declaration does three things wherever your package is referenced:
+
+1. **SPARK023** (build error) refuses a custom action named like the verb. The analyzer reads the
+   constants from the compilation and from referenced assemblies' metadata, so it works without
+   loading your package.
+2. **`UseSpark()` refuses to start** with the same collision (see below), in case the analyzer did not
+   run.
+3. **SPARK011** knows the verb exists, so a `Publish/Article` right is not reported as an action Spark
+   never asks for. The reverse also holds: a `Restore/Car` right in an application without SoftDelete
+   *is* reported, because nothing there asks for it.
+
+### What is refused
+
+A non-abstract class implementing `ICustomAction` whose name, with an `Action` suffix removed, equals
+any reserved verb. The comparison ignores case, as rights do. For example:
+
+| Class | Name | Refused because of |
+|---|---|---|
+| `EditAction` | `Edit` | `SparkCoreActions.Edit` |
+| `deleteAction` | `delete` | `SparkCoreActions.Delete` (case-insensitive) |
+| `ReadEdit` | `ReadEdit` | `SparkCombinedActions.ReadEdit` |
+| `RevertContributionAction` | `RevertContribution` | `ContributionRights.RevertContribution`, when Contributions is referenced |
+
+At build time:
+
+```
+error SPARK023: Custom action 'EditAction' is named 'Edit', which is the reserved action verb 'Edit'
+declared by MintPlayer.Spark.Abstractions.Authorization.SparkCoreActions in 'MintPlayer.Spark.Abstractions'.
+It would share that verb's right; rename the class.
+```
+
+At startup, `UseSpark()` checks every custom action it discovered against the verbs it reads by
+reflection (`SparkReservedActionRegistry`). It throws one `InvalidOperationException` that lists every
+collision with the declaring class and assembly, and ends with "Rename the action class." The fix is
+always a rename. There is no opt-out, because a shared right cannot be made safe.
+
+---
+
 ## ⚠️ Redacting an attribute is not enough: also set `canFilter: false`
 
 `GetProtectedAttributesAsync` nulls an attribute's **value in the response**. It does not change what

@@ -223,7 +223,7 @@ Every current document is written with a pinned change vector. Two contributors 
 slot: one wins, the other gets **409** and nothing of that save is written. The client's conflict flow
 is the retry: ng-spark re-fetches, merges and lets the user save again. For contribution rows, only a
 second tab of the **same** user is a real conflict; another user's change to a slot is taken
-("theirs wins") with a notice.
+("theirs wins") with a notice. The whole flow is in [concurrent edits](guide-concurrency.md).
 
 ### Deleting the target, and rebuild
 
