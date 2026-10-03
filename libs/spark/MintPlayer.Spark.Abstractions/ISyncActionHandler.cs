@@ -18,8 +18,13 @@ public interface ISyncActionHandler
     /// <param name="documentId">The document ID (null for inserts)</param>
     /// <param name="data">The entity data as a dictionary of property names to values</param>
     /// <param name="properties">Property names to update (null for full replacement)</param>
+    /// <param name="mustExist">
+    /// An Update from a replica (#467, D15): applied only to a row this module still has, at the
+    /// version it has now, so an edit of a row deleted here is refused instead of recreating it, and a
+    /// write landing meanwhile is a conflict rather than overwritten. An Insert passes false.
+    /// </param>
     /// <returns>The document ID of the saved entity</returns>
-    Task<string?> HandleSaveAsync(string collection, string? documentId, Dictionary<string, object?> data, string[]? properties = null);
+    Task<string?> HandleSaveAsync(string collection, string? documentId, Dictionary<string, object?> data, string[]? properties = null, bool mustExist = false);
 
     /// <summary>
     /// Deletes an entity from a sync action.

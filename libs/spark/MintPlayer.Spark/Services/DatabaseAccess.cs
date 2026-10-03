@@ -59,19 +59,23 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
     public async Task<T> SaveDocumentUncheckedAsync<T>(T document) where T : class
     {
+        var interceptor = serviceProvider.GetService<ISyncActionInterceptor>();
+        var replicated = interceptor != null && interceptor.IsReplicated(typeof(T));
+        var idProperty = typeof(T).GetCachedProperty("Id");
+        string? ReadId() => idProperty is not null && idProperty.CanRead
+            ? AccessorCache.GetGetter(idProperty)(document)?.ToString()
+            : null;
+
+        // Insert or Update for the owner module (#467, D15), decided before the store assigns an id.
+        var idBefore = ReadId();
+        var isNew = replicated && (string.IsNullOrEmpty(idBefore) || !await session.Advanced.ExistsAsync(idBefore));
+
         await session.StoreAsync(document);
         await session.SaveChangesAsync();
 
         // If this is a replicated entity, also broadcast the changes to the owner module
-        var interceptor = serviceProvider.GetService<ISyncActionInterceptor>();
-        if (interceptor != null && interceptor.IsReplicated(typeof(T)))
-        {
-            var idProperty = typeof(T).GetCachedProperty("Id");
-            var documentId = idProperty is not null && idProperty.CanRead
-                ? AccessorCache.GetGetter(idProperty)(document)?.ToString()
-                : null;
-            await interceptor.HandleSaveAsync(document, documentId);
-        }
+        if (replicated)
+            await interceptor!.HandleSaveAsync(document, ReadId(), isNew);
 
         return document;
     }
@@ -475,7 +479,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
         var interceptor = serviceProvider.GetService<ISyncActionInterceptor>();
         if (interceptor != null && interceptor.IsReplicated(entityType))
         {
-            await interceptor.HandleSaveAsync(entityType, persistentObject);
+            await interceptor.HandleSaveAsync(entityType, persistentObject, isNew: operation == PersistentObjectOperation.New);
         }
 
         return persistentObject;
@@ -624,7 +628,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
                 await session.StoreAsync(entity, expectedChangeVector, session.Advanced.GetDocumentId(entity));
                 await session.SaveChangesAsync();
                 if (replicated)
-                    await syncInterceptor!.HandleSaveAsync(entity, id);
+                    await syncInterceptor!.HandleSaveAsync(entity, id, isNew: false);
             }
             else
             {
@@ -932,7 +936,7 @@ internal partial class DatabaseAccess : IDatabaseAccess
             if (!replicated) break;
             var replaced = contexts.FirstOrDefault(c => string.Equals(c.Context.Id, id, StringComparison.OrdinalIgnoreCase));
             if (replaced.Context?.WasReplaced == true)
-                await syncInterceptor!.HandleSaveAsync(replaced.Entity, id);
+                await syncInterceptor!.HandleSaveAsync(replaced.Entity, id, isNew: false);
             else
                 await syncInterceptor!.HandleDeleteAsync(entityType, id);
         }

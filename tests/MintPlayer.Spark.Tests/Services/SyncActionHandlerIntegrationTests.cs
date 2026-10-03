@@ -110,6 +110,39 @@ public class SyncActionHandlerIntegrationTests : SparkTestDriver
         loaded!.Name.Should().Be("after-sync");
     }
 
+    // #467, D15: a replica's Update of a row this (owner) module deleted meanwhile — the ETL delete
+    // had not reached the replica yet — is refused, never recreated from the replica's stale copy.
+    [Fact]
+    public async Task HandleSaveAsync_update_of_a_row_deleted_here_is_refused_and_not_recreated()
+    {
+        var id = await SeedAsync(new GuardedDoc { Name = "owned", IsVisible = true });
+        using (var delete = Store.OpenAsyncSession())
+        {
+            delete.Delete(id);
+            await delete.SaveChangesAsync();
+        }
+
+        var data = new Dictionary<string, object?> { ["Name"] = "edited-on-replica", ["IsVisible"] = true };
+        var act = () => _handler.HandleSaveAsync("GuardedDocs", id, data, properties: ["Name"], mustExist: true);
+
+        await act.Should().ThrowAsync<MintPlayer.Spark.Exceptions.SparkConcurrencyException>();
+        using var session = Store.OpenAsyncSession();
+        (await session.LoadAsync<GuardedDoc>(id)).Should().BeNull("the owner's delete stands");
+    }
+
+    // An Insert under the replica's id still creates (mustExist: false).
+    [Fact]
+    public async Task HandleSaveAsync_insert_under_a_replica_id_creates()
+    {
+        const string id = "GuardedDocs/from-replica";
+        var data = new Dictionary<string, object?> { ["Name"] = "created-on-replica", ["IsVisible"] = true };
+
+        (await _handler.HandleSaveAsync("GuardedDocs", id, data, properties: null)).Should().Be(id);
+
+        using var session = Store.OpenAsyncSession();
+        (await session.LoadAsync<GuardedDoc>(id))!.Name.Should().Be("created-on-replica");
+    }
+
     // --- Collection name resolution ------------------------------------------
 
     [Fact]

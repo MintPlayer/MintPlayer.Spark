@@ -257,13 +257,13 @@ public sealed class RecordingSyncInterceptor : ISyncActionInterceptor
 
     public bool IsReplicated(Type entityType) => entityType == typeof(InterceptedNote);
 
-    public Task HandleSaveAsync(Type entityType, PersistentObject obj)
+    public Task HandleSaveAsync(Type entityType, PersistentObject obj, bool isNew)
     {
         Saves.Add(obj.Id ?? "(new)");
         return Task.CompletedTask;
     }
 
-    public Task HandleSaveAsync(object entity, string? documentId)
+    public Task HandleSaveAsync(object entity, string? documentId, bool isNew)
     {
         Saves.Add(documentId ?? "(new)");
         return Task.CompletedTask;

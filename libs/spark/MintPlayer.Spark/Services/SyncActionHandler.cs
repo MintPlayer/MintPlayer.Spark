@@ -30,7 +30,7 @@ internal partial class SyncActionHandler : ISyncActionHandler
     // Cache: collection name → CLR entity type
     private static readonly ConcurrentDictionary<string, Type?> _collectionTypeCache = new(StringComparer.OrdinalIgnoreCase);
 
-    public async Task<string?> HandleSaveAsync(string collection, string? documentId, Dictionary<string, object?> data, string[]? properties)
+    public async Task<string?> HandleSaveAsync(string collection, string? documentId, Dictionary<string, object?> data, string[]? properties, bool mustExist = false)
     {
         var entityType = ResolveEntityType(collection)
             ?? throw new InvalidOperationException($"Cannot resolve entity type for collection '{collection}'.");
@@ -38,6 +38,19 @@ internal partial class SyncActionHandler : ISyncActionHandler
         // Build a PersistentObject from the sync action data
         var po = BuildPersistentObject(entityType, documentId, data, properties);
         EnsureAuthorizable(po, collection);
+
+        // An Update from a replica edits a row this module owns (#467, D15). The replica's change
+        // vector means nothing here, so the update is applied to the version stored now: a row deleted
+        // here is refused ("deleted"), never recreated from the replica's stale copy, and a write
+        // landing between this read and the save is a conflict, not overwritten.
+        if (mustExist && !string.IsNullOrEmpty(documentId))
+        {
+            using var checkSession = documentStore.OpenAsyncSession();
+            var stored = await checkSession.LoadAsync<object>(documentId);
+            if (stored is null)
+                throw SparkConcurrencyException.DeletedSinceLoaded("sync");
+            po.Etag = checkSession.Advanced.GetChangeVectorFor(stored);
+        }
 
         // Through the same chokepoint as every other write (F4/M11). This path used to invoke the
         // actions pipeline directly, so an authenticated module could insert, update or delete any

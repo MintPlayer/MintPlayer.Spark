@@ -142,9 +142,9 @@ Where the PRD's §2 and §7 disagree, §7 wins.
       refuses too). The edit page shows `common.deletedByAnotherUser` and keeps the form. Creates unchanged.
 - [x] D16: Update requires an etag (400). Callers from S11: `Create.cs` natural-id collision → 409
       `exists` (D30d); `Update.cs`, `SparkClient.UpdatePersistentObjectAsync`, ng-spark `update()` require
-      it; OIDC overrides call the base (nothing to change). *Deviation (D30i):* `SyncActionHandler` keeps
-      the internal overwrite and may recreate (replication from the owner module), rather than "must not
-      recreate". Rewritten: `UpdateEndpointConcurrencyTests.Put_with_no_etag_is_400_and_writes_nothing`,
+      it; OIDC overrides call the base (nothing to change). `SyncActionHandler` must not recreate (D30i):
+      the replica sends Insert/Update correctly and the owner applies an Update only to a row it still
+      has. Rewritten: `UpdateEndpointConcurrencyTests.Put_with_no_etag_is_400_and_writes_nothing`,
       `ConcurrentWriteRaceTests.Internal_save_without_etag_still_protects_the_load_to_write_window`; added
       `ConcurrentWriteRaceTests.Hard_delete_refuses_a_write_that_raced_past_the_etag_check`.
 
