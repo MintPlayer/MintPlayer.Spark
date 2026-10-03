@@ -300,6 +300,7 @@
         }
       ],
       "renderMode": "Pagination",
+      "selectionMode": "none",
       "entityType": "Car",
       "isStreamingQuery": false
     },

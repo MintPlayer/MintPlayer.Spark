@@ -278,8 +278,8 @@ declares which of its groups play them, **by id**:
     "authenticated": "a1b2c3d4-0000-0000-0000-00000000000f"
   },
   "groups": {
-    "00000000-0000-0000-0000-000000000000": { "en": "Anonymous visitors", "nl": "Anonieme bezoekers" },
-    "a1b2c3d4-0000-0000-0000-00000000000f": { "en": "Signed-in users",    "nl": "Aangemelde gebruikers" }
+    "00000000-0000-0000-0000-000000000000": "Anonymous visitors",
+    "a1b2c3d4-0000-0000-0000-00000000000f": "Signed-in users"
   }
 }
 ```

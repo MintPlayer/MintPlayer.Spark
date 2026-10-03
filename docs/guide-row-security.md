@@ -150,7 +150,18 @@ The row rule also guards writes, judged against the entity's **resulting** state
 - **create** → the new row must satisfy the rule (you can't create a document stamped with someone else's owner);
 - **edit** → the *post-update* state must satisfy the rule, in addition to the pre-update check (you can't edit a row *into* someone else's scope).
 
-Denial surfaces as **403** on create and **404** on update/delete (matching the read path: an authorized-but-forbidden instance is indistinguishable from not-found).
+Denial surfaces as **403** on create and **404** on delete (matching the read path: an authorized-but-forbidden instance is indistinguishable from not-found). An **update** of a row the caller can no longer read answers **409 `deleted`**, the same answer as a row that is gone or soft-deleted (#467, D15/D30c). One answer for all three keeps it from being an existence oracle, and the form tells the user "somebody else deleted this record" instead of re-creating it.
+
+### Bulk writes go through the Read gate too (#467, D11/D12)
+
+A selection is ids the browser sent, so the server re-fetches the rows before acting on them:
+
+- `/spark/po/delete-many` and a custom action on a selection need the **`queryId`** the rows were ticked in. The rows are fetched **through that query**, with its right, filter, row filter and parent, and must each be **readable** (the `Read` right and the `Read` row rule, in the list's deleted mode).
+- A row that is missing, outside the query or unreadable refuses the **whole** request with 404, exactly like a missing id, and is never named.
+- Then each row passes its own `Delete` gates (the right and the `Delete` row rule) and `OnDisableActionsAsync`. A row that fails those is named in the refusal (D18), because it already passed the Read gate and naming it discloses nothing.
+- Every row carries the etag it was listed with; a row changed since then is a 409 (D14).
+
+So naming another query of the same type cannot widen a selection past what its own list shows. The detail is in [guide-custom-actions.md, "The bulk Delete"](./guide-custom-actions.md#the-bulk-delete).
 
 > **⚠️ Service / machine accounts and the create check.** Because the rule now runs as a `WITH CHECK` on create, a per-user ownership filter (`car => car.CreatedBy == userId`) will **reject a create by a principal that has no user id** — a machine / client-credentials token with type-level `New` rights but no `sub` claim. Such a principal has the right to create but no identity to own the row by, so a filter that returns `car => false` for "no user" blocks it. Return `null` (unrestricted) for authenticated service principals — treat "no user id but authenticated" as a machine, and reserve the deny-everything branch for a *truly anonymous* caller. Fleet's `CarActions.GetRowFilterAsync` shows the pattern.
 

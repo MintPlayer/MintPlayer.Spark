@@ -26,9 +26,9 @@ writes a starting file. It grants nothing, and it carries the whole grammar in c
     "authenticated": "a1b2c3d4-0000-0000-0000-00000000000f"
   },
   "groups": {
-    "00000000-0000-0000-0000-000000000000": { "en": "Anonymous visitors" },
-    "a1b2c3d4-0000-0000-0000-00000000000f": { "en": "Signed-in users" },
-    "a1b2c3d4-0000-0000-0000-000000000001": { "en": "Administrators" }
+    "00000000-0000-0000-0000-000000000000": "Anonymous visitors",
+    "a1b2c3d4-0000-0000-0000-00000000000f": "Signed-in users",
+    "a1b2c3d4-0000-0000-0000-000000000001": "Administrators"
   },
   "rights": [
     { "id": "…", "resource": "QueryRead/Car", "groupId": "…000000f", "isDenied": false },
@@ -36,6 +36,11 @@ writes a starting file. It grants nothing, and it carries the whole grammar in c
   ]
 }
 ```
+
+A group's value is its **name**, untranslated, and the name is its identity: group claims and
+`[SparkAuthorize(Group = …)]` match it (case-insensitively), never a translation (#467, D24). The
+label users see is the key `security.groups.{name}.label` in `translations.json`. Rights reference
+groups by id.
 
 A **right** is `{action}/{target}`.
 

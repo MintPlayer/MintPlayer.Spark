@@ -504,7 +504,6 @@ A generated model JSON file looks like this:
     {
       "id": "660e8400-e29b-41d4-a716-446655440001",
       "name": "Name",
-      "label": { "en": "Company Name", "fr": "Nom de l'entreprise", "nl": "Bedrijfsnaam" },
       "dataType": "string",
       "isRequired": true,
       "isVisible": true,
@@ -547,7 +546,6 @@ A reference attribute is represented like this:
 {
   "id": "880e8400-e29b-41d4-a716-446655440001",
   "name": "GetCompanies",
-  "description": { "en": "Companies", "fr": "Entreprises", "nl": "Bedrijven" },
   "contextProperty": "Companies",
   "sortBy": "Name",
   "sortDirection": "asc"
@@ -555,6 +553,7 @@ A reference attribute is represented like this:
 ```
 
 - `contextProperty` -- maps to the SparkContext property name
+- Labels are not in these files: they come from `translations.json` by convention (`model.{Entity}.attributes.{Attribute}.label`, `queries.{Query}.label`; see `docs/guide-translated-strings.md`, #467)
 - `sortBy` / `sortDirection` -- default sort order for list views
 
 ### Program Units (App_Data/programUnits.json)

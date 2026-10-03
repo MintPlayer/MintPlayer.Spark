@@ -317,13 +317,20 @@ answers 404 for those names.
 
 ```
 POST /spark/po/delete-many
-{ "objectTypeId": "Answer", "ids": ["answers/1-A", "answers/2-A"],
+{ "objectTypeId": "Answer",
+  "items": [{ "id": "answers/1-A", "etag": "A:12-…" }, { "id": "answers/2-A", "etag": "A:15-…" }],
   "queryId": "question-answers", "parentId": "questions/1-A", "parentType": "Question" }
 ```
 
+Each row carries the `etag` the list showed it with (#467, D14): the delete removes *that version*.
+A row someone changed or deleted since the list loaded refuses the whole request with **409**, and
+the grid asks the user to reload and tick again. A row is never removed in a version its user did
+not see. The single `/spark/po/delete` and `/spark/po/purge` take an `etag` the same way.
+
 One request runs every row through the ordinary delete pipeline, in this order:
-1. The **200-row cap**, the `Delete` entry's **rule** and a **`queryId`** are checked first. Any
-   failure is a 400, and nothing touches the database. `queryId` is required (#467, D12).
+1. The **200-row cap**, the `Delete` entry's **rule**, a **`queryId`** and an **`etag` on every row**
+   are checked first. Any failure is a 400, and nothing touches the database. `queryId` is required
+   (#467, D12).
 2. The sub-query's container, loaded through its own gated read.
 3. The rows are fetched **through the named query** — its right, filter, row filter and parent — and
    must all be **readable**: the `Read` right and the `Read` row rule (#467, D11). A row the query does
@@ -334,7 +341,8 @@ One request runs every row through the ordinary delete pipeline, in this order:
    one batched call. **One row that withholds `Delete` refuses the whole request with 403.**
 6. The delete replacement and the before-delete hooks run for each row, so a soft-deletable type is
    soft-deleted, with the request's one `reason` on every row (#467, D20).
-7. Every write is committed by **one `SaveChanges`**: all rows or none.
+7. Every write is committed by **one `SaveChanges`**, each row at the version its etag names: all
+   rows or none (a stale row is the 409 above).
 
 **One refusal names every row that failed (#467, D18).** A row the `Delete` rule refuses, a row whose
 hook withholds `Delete`, and a row a before-delete hook refuses (a Moderation lock) are listed by breadcrumb

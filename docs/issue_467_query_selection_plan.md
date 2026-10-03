@@ -1,11 +1,11 @@
 # Plan — Issue #467 (one pull request)
 
-Requirements, decisions (D1–D23 grilled 2026-10-03; D24–D34 settled during implementation and follow-up grilling) and spike results live in
+Requirements, decisions (D1–D23 grilled 2026-10-03; D24–D35 settled during implementation and follow-up grilling) and spike results live in
 [issue_467_query_selection_PRD.md](issue_467_query_selection_PRD.md) §7. This file is the order of work.
 Where the PRD's §2 and §7 disagree, §7 wins.
 
 **Rules for executing this plan**
-- One branch, one PR: `feat/467-query-selection`. Every decision D1–D34 lands in this PR; the PR also closes #482.
+- One branch, one PR: `feat/467-query-selection`. Every decision D1–D35 lands in this PR; the PR also closes #482.
 - Commit per milestone. **Do not run test suites per milestone.** Verify with a build + reading the code.
   One full sweep at the end (M9):
   `RAVENDB_LICENSE='C:\Repos\MintPlayer.Spark\.secrets\raven-license.log' npm run test:affected`.
@@ -28,7 +28,7 @@ Where the PRD's §2 and §7 disagree, §7 wins.
 - [x] Branch `feat/467-query-selection`; PRD and plan committed (`e00fd8a5`).
 - [x] Spikes S1 (upstream part), S2, S4, S5, S6, S7, S8, S9, S10, S11, S12, S13 (results in PRD §7).
 - [x] Deferred spikes written: S1 remainder (M4 spec), the custom-action halves of S4/S7 and S8's 449 retry (M5). S3 (cost of the D18 message) is measured in M9.
-- [x] Committed: M0 `d212723a`, M1 `af26aeb2`, M2 `009b4c22`, M3 `fe10392c`, M4 `393352aa`, M5 `d0782ea5`, M6 (concurrency). Next: M7.
+- [x] Committed: M0 `d212723a`, M1 `af26aeb2`, M2 `009b4c22`, M3 `fe10392c`, M4 `393352aa`, M5 `d0782ea5`, M6 `58f86b07`, M7 `fc84efc6`, M7b `3f7e2c24` (+ `7ac925fa`), M8. Next: M9.
 - [x] Found during M6: the D1 override gap (base `OnSaveAsync`/`OnDeleteAsync` own the persistence, so an override can skip guarantees). Filed as #482. Owner decisions 2026-10-03: first "not in this PR", then **reversed — #482 and the durable hooks (D17) land in this PR too** (M7, M7b; the PR closes #467 and #482). Design refined to DI-registered per-phase hooks (D31). The bug the investigation found is fixed here: the OIDC application/scope uniqueness check ran only after the commit, so a duplicate was refused with a 400 yet stayed stored — now also checked before the write.
 - [x] D29c confirmed by the owner (2026-10-03): the D20 reason stays server-side only; no framework prompt — an app prompts with `manager.Retry.Action` itself.
 
@@ -211,15 +211,19 @@ Design: issue #482, section "Hook interfaces". Lands in this PR (owner decision,
       Docs: `guide-hooks.md` §5a, the SoftDelete, History, Moderation and Messaging READMEs.
 
 ### M8 — Demo, E2E, docs
-- [ ] DemoApp / Fleet: an editor sees Edit + Delete in the strip; a read-only role sees no checkboxes.
+- [x] DemoApp / Fleet: an editor sees Edit + Delete in the strip; a read-only role sees no checkboxes.
       Note that DemoApp anonymous visitors hold full CRUD and so get checkboxes (S2); that's intended.
-- [ ] E2E: select one → Edit → edit page and back; select two → Edit disabled, Delete enabled → confirm
-      (count shown) → rows gone; cross-page selection; read-only → no checkboxes; `selectionMode: none`;
-      stale delete → 409; save after someone deleted → 409 "deleted by another user"; CodeCoverage Revoke
-      on the ApiToken card.
-- [ ] Docs: guide-custom-actions (actions.json, layering, removal, Edit, R1), guide-row-security (bulk
-      gates), translations guide (composition, keys, seeding, `""`), release notes (all breaking changes).
-      Mark issue_460_PRD D17 "superseded in part by #467".
+      *No role change needed (D35a); Fleet's `Recent_Cars` declares `selectionMode: "none"` (D35b).*
+- [x] E2E (`Selection/QuerySelectionTests`, Fleet; written, run in M9): select one → Edit → edit page and back;
+      select two → Edit disabled, Delete enabled → confirm (count shown) → rows gone; cross-page selection
+      (per page 10, chip counts the row on the other page); read-only → no checkbox cell (header, D35c);
+      `selectionMode: none`; stale delete → 409 shown, row kept; save after someone deleted → "deleted this
+      record", row not recreated. CodeCoverage Revoke on the ApiToken card: no browser host (D35d).
+- [x] Docs: guide-custom-actions (bulk Delete takes `items` + etags, 409), guide-row-security (bulk Read gate,
+      409 `deleted` on update), guide-translated-strings (keys, convention table, composition, `""`, seeding,
+      `culture.json` codes), every guide showing inline `App_Data` text (D35e), guide-authorization (D24),
+      release notes `release-notes-preview-94.md` (all breaking changes). issue_460_PRD D17 marked
+      "superseded in part by #467".
 
 ### M9 — Full verification and PR
 - [ ] Test call sites made stale by D12 (selections and delete-many without `queryId`): `ExecuteCustomActionTests` (fallback-path unit tests), `DisableActionsTests`, `ModerationToolsTests`, `SoftDeleteTests`, `SubQueryActionsTests`; and fixtures embedding pre-#467 shapes (see M2 note).

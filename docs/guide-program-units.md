@@ -12,26 +12,26 @@ comes from the file, and the menu re-fetches itself when the user signs in or ou
   "programUnitGroups": [
     {
       "id": "…guid…",
-      "name": { "en": "Fleet Management", "nl": "Wagenparkbeheer" },
+      "name": "programUnits.groups.fleetManagement",
       "icon": "bi-truck",
       "order": 1,
       "programUnits": [
         {
           // A grid: opens /query/{alias ?? queryId}. Visible iff the caller holds Query on the
           // entity type behind the query.
-          "id": "…guid…", "name": { "en": "Cars" }, "icon": "bi-car-front-fill",
+          "id": "…guid…", "name": "programUnits.cars", "icon": "bi-car-front-fill",
           "type": "query", "queryId": "…guid…", "alias": "cars", "order": 1
         },
         {
           // A page: opens /po/{alias ?? typeId}/{objectId}. Visible iff the caller holds Read
           // on the type. Without objectId it opens the type's default list instead.
-          "id": "…guid…", "name": { "en": "Start" }, "icon": "bi-house-door",
+          "id": "…guid…", "name": "programUnits.start", "icon": "bi-house-door",
           "type": "persistentObject", "persistentObjectId": "…guid…",
           "alias": "startpage", "objectId": "start", "order": 2
         },
         {
           // An external link: a plain anchor (new tab), always visible.
-          "id": "…guid…", "name": { "en": "Status page" }, "icon": "bi-activity",
+          "id": "…guid…", "name": "programUnits.statusPage", "icon": "bi-activity",
           "type": "url", "url": "https://status.example.com", "order": 3
         }
       ]
@@ -39,6 +39,10 @@ comes from the file, and the menu re-fetches itself when the user signs in or ou
   ]
 }
 ```
+
+A group's or unit's `name` is a **translation key** (#467, D25), resolved from `translations.json`;
+an untranslated key shows its last segment humanized (`programUnits.statusPage` → "Status Page").
+Inline text (`{ "en": "Cars" }`) is refused at startup.
 
 Semantics:
 

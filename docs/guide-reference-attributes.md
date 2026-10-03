@@ -62,7 +62,6 @@ Run `dotnet run --spark-synchronize-model` to update the model JSON. The synchro
 ```json
 {
   "name": "Owner",
-  "label": { "en": "Owner" },
   "dataType": "Reference",
   "isRequired": false,
   "query": "GetCompanies",
@@ -373,7 +372,6 @@ After synchronization, a lookup reference attribute in the model JSON looks like
 ```json
 {
   "name": "Status",
-  "label": { "en": "Status" },
   "dataType": "string",
   "lookupReferenceType": "CarStatus",
   "showedOn": "Query, PersistentObject"

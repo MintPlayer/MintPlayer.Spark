@@ -39,7 +39,7 @@ public class Answer : IModeratable, ISoftDeletable
 
 ## 2. Privileges are groups
 
-1. Add one group per privilege to `App_Data/security.json` (`"groups": { "<guid>": { "en": "Voters" } }`).
+1. Add one group per privilege to `App_Data/security.json` (`"groups": { "<guid>": "Voters" }`).
 2. Reference it by id in `App_Data/moderation.json`, with its gates and the actions it grants:
 
    ```json

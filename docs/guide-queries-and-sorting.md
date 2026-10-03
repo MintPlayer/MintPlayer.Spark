@@ -121,7 +121,6 @@ Run `dotnet run --spark-synchronize-model`. This generates `App_Data/Queries/Get
 {
   "id": "880e8400-e29b-41d4-a716-446655440001",
   "name": "GetCompanies",
-  "description": { "en": "Companies", "fr": "Entreprises", "nl": "Bedrijven" },
   "contextProperty": "Companies",
   "sortBy": "Name",
   "sortDirection": "asc"
@@ -138,7 +137,6 @@ After generation, you can edit the query JSON to change the default sort order, 
 {
   "id": "880e8400-e29b-41d4-a716-446655440001",
   "name": "GetCompanies",
-  "description": { "en": "Companies", "fr": "Entreprises", "nl": "Bedrijven" },
   "contextProperty": "Companies",
   "alias": "companies",
   "sortBy": "EmployeeCount",
