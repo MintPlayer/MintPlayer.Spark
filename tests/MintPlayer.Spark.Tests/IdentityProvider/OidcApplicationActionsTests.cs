@@ -15,7 +15,8 @@ namespace MintPlayer.Spark.Tests.IdentityProvider;
 /// </summary>
 public class OidcApplicationActionsTests
 {
-    private static OidcApplicationActions Actions() => new(new OidcCorsOrigins(), Substitute.For<IEntityMapper>(), null!);
+    // No session: the before-write uniqueness query is skipped, as for any hand-built actions.
+    private static OidcApplicationActions Actions() => new(corsOrigins: new OidcCorsOrigins(), requestSession: null!, entityMapper: Substitute.For<IEntityMapper>(), httpContextAccessor: null!);
 
     private static OidcApplication Valid() => new()
     {
@@ -257,7 +258,7 @@ public class OidcApplicationActionsTests
 /// <summary>Validation for the scope screen — the half that decides what a token carries.</summary>
 public class OidcScopeActionsTests
 {
-    private static OidcScopeActions Actions() => new(Substitute.For<IEntityMapper>(), null!);
+    private static OidcScopeActions Actions() => new(requestSession: null!, entityMapper: Substitute.For<IEntityMapper>(), httpContextAccessor: null!);
 
     private static async Task<Exception?> SaveAsync(OidcScope scope)
     {

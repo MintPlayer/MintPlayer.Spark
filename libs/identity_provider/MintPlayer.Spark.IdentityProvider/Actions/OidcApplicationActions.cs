@@ -31,6 +31,8 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
     /// which the injection generator cannot place before the required ones.
     /// </summary>
     [Inject] private readonly OidcCorsOrigins corsOrigins;
+    // Null only when the actions are built by hand (unit tests); the check after the write remains.
+    [Inject] private readonly IAsyncDocumentSession requestSession;
 
     public override async Task OnBeforeSaveAsync(PersistentObject obj, OidcApplication entity)
     {
@@ -43,7 +45,28 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
         ValidateGrantTypes(entity);
         HashAnyNewSecrets(entity);
 
+        // Before the write too (#467 finding): checked only afterwards, a duplicate was refused with a
+        // 400 while staying stored. This refuses the ordinary case before anything is committed; the
+        // check after the write still catches the loser of two concurrent saves.
+        if (requestSession is not null)
+            await EnsureClientIdUniqueAsync(requestSession, entity);
+
         await base.OnBeforeSaveAsync(obj, entity);
+    }
+
+    private static async Task EnsureClientIdUniqueAsync(IAsyncDocumentSession session, OidcApplication entity)
+    {
+        var clash = await session.Query<OidcApplication>()
+            .Where(a => a.ClientId == entity.ClientId, exact: true)
+            .ToListAsync();
+
+        if (clash.Any(a => !string.Equals(a.Id, entity.Id, StringComparison.Ordinal)))
+        {
+            throw new SparkValidationException(
+                $"Client id '{entity.ClientId}' is already registered. Client ids must be unique — "
+              + "the lookup that resolves them returns whichever document is found first.",
+                nameof(entity.ClientId));
+        }
     }
 
     /// <summary>
@@ -174,26 +197,18 @@ public partial class OidcApplicationActions : DefaultPersistentObjectActions<Oid
     /// client returns whichever document the index yields first — so a second application claiming
     /// an existing id is impersonation decided by ordering.
     /// <para>
-    /// Checked after the write rather than before it: a read-then-write check races, since two
-    /// concurrent saves both find nothing and both proceed. Reading afterwards catches the loser,
-    /// which then fails loudly instead of silently shadowing the original.
+    /// Checked before the write (<see cref="OnBeforeSaveAsync"/>) and again after it: a
+    /// read-then-write check races, since two concurrent saves both find nothing and both proceed.
+    /// Reading afterwards catches the loser, which then fails loudly instead of silently shadowing
+    /// the original — though its document is already stored (true uniqueness needs a
+    /// compare-exchange reservation; #482 moves this onto a pre-commit hook).
     /// </para>
     /// </summary>
     public override async Task<OidcApplication> OnSaveAsync(IAsyncDocumentSession session, PersistentObject obj)
     {
         var entity = await base.OnSaveAsync(session, obj);
 
-        var clash = await session.Query<OidcApplication>()
-            .Where(a => a.ClientId == entity.ClientId, exact: true)
-            .ToListAsync();
-
-        if (clash.Any(a => !string.Equals(a.Id, entity.Id, StringComparison.Ordinal)))
-        {
-            throw new SparkValidationException(
-                $"Client id '{entity.ClientId}' is already registered. Client ids must be unique — "
-              + "the lookup that resolves them returns whichever document is found first.",
-                nameof(entity.ClientId));
-        }
+        await EnsureClientIdUniqueAsync(session, entity);
 
         // The CORS snapshot is cached with a TTL backstop, so without this an operator adding an
         // origin would watch the screen say it saved and the browser keep refusing for minutes.

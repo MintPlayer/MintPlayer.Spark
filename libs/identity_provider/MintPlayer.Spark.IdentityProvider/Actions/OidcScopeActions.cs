@@ -1,3 +1,4 @@
+using MintPlayer.SourceGenerators.Attributes;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Actions;
 using MintPlayer.Spark.IdentityProvider.Models;
@@ -34,13 +35,26 @@ public partial class OidcScopeActions : DefaultPersistentObjectActions<OidcScope
                 throw new SparkValidationException("An audience cannot be empty.", nameof(entity.Audiences));
         }
 
+        // Before the write too (#467 finding): checked only afterwards, a duplicate was refused with a
+        // 400 while staying stored. The check after the write still catches the loser of a race.
+        if (requestSession is not null)
+            await EnsureNameUniqueAsync(requestSession, entity);
+
         await base.OnBeforeSaveAsync(obj, entity);
     }
+
+    // Null only when the actions are built by hand (unit tests); the check after the write remains.
+    [Inject] private readonly IAsyncDocumentSession requestSession;
 
     public override async Task<OidcScope> OnSaveAsync(IAsyncDocumentSession session, PersistentObject obj)
     {
         var entity = await base.OnSaveAsync(session, obj);
+        await EnsureNameUniqueAsync(session, entity);
+        return entity;
+    }
 
+    private static async Task EnsureNameUniqueAsync(IAsyncDocumentSession session, OidcScope entity)
+    {
         var clash = await session.Query<OidcScope>()
             .Where(s => s.Name == entity.Name, exact: true)
             .ToListAsync();
@@ -52,8 +66,5 @@ public partial class OidcScopeActions : DefaultPersistentObjectActions<OidcScope
               + "whichever document the lookup returns first.",
                 nameof(entity.Name));
         }
-
-        return entity;
     }
-
 }
