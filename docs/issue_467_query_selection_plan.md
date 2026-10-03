@@ -30,7 +30,7 @@ Where the PRD's §2 and §7 disagree, §7 wins.
 - [x] Deferred spikes written: S1 remainder (M4 spec), the custom-action halves of S4/S7 and S8's 449 retry (M5). S3 (cost of the D18 message) is measured in M9.
 - [x] Committed: M0 `d212723a`, M1 `af26aeb2`, M2 `009b4c22`, M3 `fe10392c`, M4 `393352aa`, M5 `d0782ea5`, M6 (concurrency). Next: M7.
 - [x] Found during M6: the D1 override gap (base `OnSaveAsync`/`OnDeleteAsync` own the persistence, so an override can skip guarantees). Owner decision 2026-10-03: **not in this PR** ("the current pull-request is already too massive"); filed as #482 (framework owns load/map/check/store/commit, base hooks empty). The bug the investigation found is fixed here: the OIDC application/scope uniqueness check ran only after the commit, so a duplicate was refused with a 400 yet stayed stored — now also checked before the write.
-- [ ] Owner to confirm D29c (D20 reason: server side only, no UI prompt or required-reason setting exists).
+- [x] D29c confirmed by the owner (2026-10-03): the D20 reason stays server-side only; no framework prompt — an app prompts with `manager.Retry.Action` itself.
 
 ---
 
