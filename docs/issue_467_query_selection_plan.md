@@ -5,7 +5,7 @@ Requirements, decisions (D1–D23 grilled 2026-10-03; D24–D29 settled during i
 Where the PRD's §2 and §7 disagree, §7 wins.
 
 **Rules for executing this plan**
-- One branch, one PR: `feat/467-query-selection`. Every decision D1–D30 lands in this PR.
+- One branch, one PR: `feat/467-query-selection`. Every decision D1–D31 lands in this PR; the PR also closes #482.
 - Commit per milestone. **Do not run test suites per milestone.** Verify with a build + reading the code.
   One full sweep at the end (M9):
   `RAVENDB_LICENSE='C:\Repos\MintPlayer.Spark\.secrets\raven-license.log' npm run test:affected`.
@@ -29,7 +29,7 @@ Where the PRD's §2 and §7 disagree, §7 wins.
 - [x] Spikes S1 (upstream part), S2, S4, S5, S6, S7, S8, S9, S10, S11, S12, S13 (results in PRD §7).
 - [x] Deferred spikes written: S1 remainder (M4 spec), the custom-action halves of S4/S7 and S8's 449 retry (M5). S3 (cost of the D18 message) is measured in M9.
 - [x] Committed: M0 `d212723a`, M1 `af26aeb2`, M2 `009b4c22`, M3 `fe10392c`, M4 `393352aa`, M5 `d0782ea5`, M6 (concurrency). Next: M7.
-- [x] Found during M6: the D1 override gap (base `OnSaveAsync`/`OnDeleteAsync` own the persistence, so an override can skip guarantees). Owner decision 2026-10-03: **not in this PR** ("the current pull-request is already too massive"); filed as #482 (framework owns load/map/check/store/commit, base hooks empty). The bug the investigation found is fixed here: the OIDC application/scope uniqueness check ran only after the commit, so a duplicate was refused with a 400 yet stayed stored — now also checked before the write.
+- [x] Found during M6: the D1 override gap (base `OnSaveAsync`/`OnDeleteAsync` own the persistence, so an override can skip guarantees). Filed as #482. Owner decisions 2026-10-03: first "not in this PR", then **reversed — #482 and the durable hooks (D17) land in this PR too** (M7, M7b; the PR closes #467 and #482). Design refined to DI-registered per-phase hooks (D31). The bug the investigation found is fixed here: the OIDC application/scope uniqueness check ran only after the commit, so a duplicate was refused with a 400 yet stayed stored — now also checked before the write.
 - [x] D29c confirmed by the owner (2026-10-03): the D20 reason stays server-side only; no framework prompt — an app prompts with `manager.Retry.Action` itself.
 
 ---
@@ -149,23 +149,46 @@ Where the PRD's §2 and §7 disagree, §7 wins.
       `ConcurrentWriteRaceTests.Internal_save_without_etag_still_protects_the_load_to_write_window`; added
       `ConcurrentWriteRaceTests.Hard_delete_refuses_a_write_that_raced_past_the_etag_check`.
 
-### M7 — Durable after-commit work (D17), per S6/S13
-- [ ] Three hook categories: **SYNC** (in-request `OnAfter*`, best-effort: log, never fail a committed
-      change; except purge's existence check and `Purged` flag), **IN-TX** (written in the data change's own
-      `SaveChanges`: Moderation audit, Contributions `FlushAuditsAsync`, replication `SparkSyncAction`),
-      **DEFERRABLE** (durable handler: SoftDelete observers, History observer notification, Moderation vote
-      reversal, DemoApp broadcasts). `ApiTokenActions.OnAfterSaveAsync` stays SYNC and **must never be
-      deferred** (plaintext token).
-- [ ] Messaging: `EnqueueAsync(IAsyncDocumentSession, msg, options)`, store only, unique id, never the
-      dedupe path. `Spark.Abstractions` seam (e.g. `ISparkAfterCommitOutbox`, session as `object`). Core
-      enqueues before each `SaveChanges` (on save: inside the base `OnSaveAsync`, or from a payload captured
-      in before-save). A recipient runs the durable hooks (#369 retries and dead-lettering).
-- [ ] Payload: type name, id, operation, `WasReplaced`/`IsPurge`, actor id + `IsSystemContext`, time,
-      previous change vector, small captured facts. Relax History `SparkRevisionEvent.ChangeVector` for
-      deferred observers.
-- [ ] **Open, decide here:** a durable hook registered without Messaging → startup error, or a synchronous
-      fallback? Server-assigned `|` ids are unknown before the commit.
-- [ ] Fix the side bug: DemoApp `PersonActions.OnBeforeDeleteAsync` broadcasts before the commit.
+### M7 — The framework owns persistence; DI-registered per-phase hooks (#482, D31)
+Design: issue #482, section "Hook interfaces". Lands in this PR (owner decision, 2026-10-03), so the PR closes #467 and #482.
+- [ ] Persister in the framework, called from `DatabaseAccess`. It runs, in this order:
+      load/construct → after-materialize → `MapAsync` → `IDeleteReplacement` (deletes only) → before-hooks (`Default`, then
+      `Finalize`) → WITH CHECK → store or delete with the expected change vector → **one commit owned by `DatabaseAccess`** →
+      replication → after-hooks (each isolated) → durable enqueue (M7b).
+      `ISparkWriteBatch.IsDeferring`, `AnnounceBeforeSaveBypass`, the `savedEarly` warning, the Mark/Consume handshake and
+      `InvokeBeforeDeleteHookAsync` are removed.
+- [ ] Hook interfaces in Abstractions:
+      - `IBeforeSave`, `IAfterSave`, `IBeforeDelete`, `IAfterDelete`, `IAfterMaterialize`, `IAfterLoad`, `INaturalIdCollision`;
+      - typed `IXxx<T>` sugar;
+      - `IDeleteReplacement`;
+      - `HookStage { Default, Finalize }`.
+
+      `IPersistentObjectInterceptor` is deleted. `spark.AddHook<T>()` registers a hook, and a `HookRegistrationGenerator`
+      emits `AddHooks`, which `AddSparkFull` calls.
+- [ ] `SparkCancelException`: write nothing, evict, no after-hooks. Answers: delete/delete-many 204, update 200 (as stored),
+      create 204. One cancel cancels a whole bulk delete. A `Retry.Action` from a hook during a bulk delete is refused.
+- [ ] The Actions class loses `OnSaveAsync`, `OnDeleteAsync`, `OnBeforeSaveAsync`, `OnAfterSaveAsync` and `OnBeforeDeleteAsync`;
+      `IPersistentObjectActions<T>` loses them too. `MapAsync(obj, existing?)` is new.
+- [ ] Migrate SoftDelete, History, Moderation, Contributions, Replication (`ISyncActionInterceptor` reads `WasReplaced`), the QnA
+      interceptors, and every app override (CodeCoverage ApiToken/GitHubProject/Repository, DemoApp Person/Company,
+      Fleet Car (prompt in `IBeforeDelete<Car>`, cancel by throwing; toast in `IAfterSave<Car>`), QnA Question, OIDC).
+      ApiToken's shown-once secret stays a **sync** `IAfterSave` and must never be durable.
+- [ ] Tests: existing ordering tests (`InterceptorOrderTests` → stages/replacement), S4 (an override cannot defeat a replacement:
+      now structural), F6 (refusal evicts side documents), F7/D14 (expected change vector), `RetryFromEveryHookTests`,
+      isolated after-hooks, cancel, generator snapshot tests. Docs: `guide-row-security`, the SoftDelete README,
+      `guide-manager-retry-actions`, the Spark README/AGENTS.md, and a new hooks guide.
+
+### M7b — Durable after-commit hooks (D17), per S6/S13
+- [ ] `IAfterSaveCommitted` / `IAfterDeleteCommitted` take a payload, never the live entity: type name, id, operation,
+      `WasReplaced`/`IsPurge`, actor id + system flag, time, previous change vector, and `Facts` filled by before-hooks.
+- [ ] Messaging: `EnqueueAsync(IAsyncDocumentSession, msg, options)`, store only, unique id, never the dedupe path. An
+      `ISparkAfterCommitOutbox` seam in Abstractions. The persister enqueues one message per row and hook in the data change's
+      own `SaveChanges`. A recipient runs the durable hooks, with #369 retries and dead-lettering.
+- [ ] **Decided (owner, 2026-10-03):** a durable hook registered without Messaging is a **startup error**. A library that ships one
+      references Messaging, so apps get it transitively (Moderation vote reversal).
+- [ ] Hooks move to the durable phase: SoftDelete observers, History observer notification (relax `SparkRevisionEvent.ChangeVector`
+      for deferred observers), Moderation vote reversal, DemoApp broadcasts. This fixes the side bug: DemoApp
+      `PersonActions.OnBeforeDeleteAsync` broadcasts before the commit.
 
 ### M8 — Demo, E2E, docs
 - [ ] DemoApp / Fleet: an editor sees Edit + Delete in the strip; a read-only role sees no checkboxes.
@@ -186,4 +209,4 @@ Where the PRD's §2 and §7 disagree, §7 wins.
 - [ ] Full local sweep (`npm run test:affected`, Developer licence), all five test projects green.
 - [ ] Versions: NuGet minor (11.x), ng-spark minor (22.x), ng-bootstrap 22.21.0. Check the diff — CI
       publishes on merge.
-- [ ] Update the #467 description, then open the PR closing #467.
+- [ ] Update the #467 and #482 descriptions, then open the PR closing #467 and #482.
