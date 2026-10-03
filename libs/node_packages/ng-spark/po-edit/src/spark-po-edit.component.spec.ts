@@ -192,6 +192,24 @@ describe('SparkPoEditComponent', () => {
     expect(c.isSaving()).toBe(false);
   });
 
+  it('a 409 for an object deleted since it was loaded says so, keeps the form and merges nothing', async () => {
+    const error = new HttpErrorResponse({
+      status: 409,
+      error: { result: { error: 'Concurrency conflict', reason: 'deleted' }, operations: [] },
+    });
+    const get = vi.fn().mockResolvedValue({ id: 'people/1', name: 'Alice', objectTypeId: 't-person', etag: 'A:1', attributes: [] });
+    const { harness } = await setup({ update: vi.fn().mockRejectedValue(error), get } as any);
+    const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);
+    await harness.fixture.whenStable();
+    get.mockClear();
+
+    await c.onSave();
+
+    expect(c.validationErrors()[0].errorMessage.en).toBe('common.deletedByAnotherUser');
+    expect(get).not.toHaveBeenCalled();
+    expect(c.isSaving()).toBe(false);
+  });
+
   it('sends back the etag it was loaded with', async () => {
     const { harness, service } = await setup();
     const c = await harness.navigateByUrl('/po/person/people%2F1/edit', SparkPoEditComponent);

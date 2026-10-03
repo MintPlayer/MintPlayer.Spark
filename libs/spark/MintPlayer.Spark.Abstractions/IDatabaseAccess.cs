@@ -56,6 +56,16 @@ public interface IDatabaseAccess
     /// </summary>
     Task EnsureSaveAuthorizedAsync(PersistentObject persistentObject);
 
+    /// <summary>
+    /// Creates (no <see cref="PersistentObject.Id"/>) or updates an object.
+    /// <para>
+    /// An update with an <see cref="PersistentObject.Etag"/> edits that version: a row changed since is
+    /// a <c>409</c>, and a row deleted since is a <c>409</c> too — never recreated (#467, D15). An
+    /// update without one overwrites what is stored, or creates the object under its id when none is:
+    /// the internal overwrite, for callers that never showed the row to anyone. Every HTTP update
+    /// requires an etag (D16), so no request reaches it.
+    /// </para>
+    /// </summary>
     Task<PersistentObject> SavePersistentObjectAsync(PersistentObject persistentObject);
 
     /// <summary>
@@ -90,7 +100,13 @@ public interface IDatabaseAccess
     /// refuses after an earlier hook changed the entity, the entity is evicted from the request
     /// session, so no later save in the request writes the half-made change.
     /// </summary>
-    Task DeletePersistentObjectAsync(Guid objectTypeId, string id, Interceptors.PersistentObjectOperation operation);
+    /// <param name="etag">
+    /// The version the caller saw (#467, D14). When given, a row changed since is refused with a 409
+    /// before any hook, and the delete is written with it, so a change landing after that check is a
+    /// 409 too. Null deletes whatever is stored: the internal overwrite, for callers that never showed
+    /// the row to anyone (a job, a sync). Every HTTP delete requires one.
+    /// </param>
+    Task DeletePersistentObjectAsync(Guid objectTypeId, string id, Interceptors.PersistentObjectOperation operation, string? etag = null);
 
     /// <summary>
     /// Deletes several objects of one type as <b>one unit of work</b> (#460, D18): all of them or none.
@@ -133,4 +149,12 @@ public sealed class SparkBulkDeleteContext
     /// <c>DeleteReason</c>; a hard delete ignores it.
     /// </summary>
     public string? Reason { get; init; }
+
+    /// <summary>
+    /// The version of each row the caller saw, by id (#467, D14). When given, it must name every row;
+    /// a row changed since refuses the batch with a 409 that names it (D18), and every delete is
+    /// written with its etag. Null deletes whatever is stored — the internal overwrite; the
+    /// <c>delete-many</c> endpoint always passes them.
+    /// </summary>
+    public IReadOnlyDictionary<string, string>? Etags { get; init; }
 }

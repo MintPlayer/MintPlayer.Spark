@@ -117,9 +117,11 @@ public sealed class QueryColumn
 /// One row: an id, a display string, and a value per column.
 /// </summary>
 /// <remarks>
-/// Deliberately too weak to act on. A row carries no attribute metadata, no <c>can</c> block and no
-/// etag, because none of those can be trusted from a projection — a computed row has no document
-/// behind it to re-judge. Anything that mutates re-loads by <see cref="Id"/> first.
+/// Deliberately too weak to act on. A row carries no attribute metadata and no <c>can</c> block,
+/// because neither can be trusted from a projection — a computed row has no document behind it to
+/// re-judge. Anything that mutates re-loads by <see cref="Id"/> first. It does carry its document's
+/// <see cref="Etag"/> (#467, D14), which is not a judgement but a version, so a delete from the grid
+/// can say which version it saw.
 /// <para>
 /// <b>Type hints</b> are an open, string-keyed presentation side-channel, merged column → item →
 /// value with later winning. There is no registry and no validation, which is the point: an
@@ -141,6 +143,13 @@ public sealed class QueryResultItem
     /// fetch.
     /// </summary>
     public string? Breadcrumb { get; init; }
+
+    /// <summary>
+    /// The change vector of the document behind this row — the document's, also for an index
+    /// projection (#467, D14). A delete from the grid sends it back; a row changed since is a 409.
+    /// Null for a row with no document behind it.
+    /// </summary>
+    public string? Etag { get; init; }
 
     public required IReadOnlyList<QueryResultItemValue> Values { get; init; }
 

@@ -101,7 +101,7 @@ internal static class ContributionEndpoints
         }
         catch (Exception ex) when (SparkAddOnEndpoints.IsConcurrencyConflict(ex))
         {
-            return SparkAddOnEndpoints.ConcurrencyConflict(client);
+            return SparkAddOnEndpoints.ConcurrencyConflict(client, ex);
         }
         catch (SparkValidationException ex)
         {

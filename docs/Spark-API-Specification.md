@@ -85,15 +85,15 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
 - **Request body**: `{ objectTypeId, id, persistentObject, retryResults? }`
 - **Response shapes**:
   - `200 OK` — updated `PersistentObject` (new `etag`)
-  - `400 Bad Request` — `{ "errors": [...] }` on validation failure
-  - `404 Not Found` — object or type not found, or denied
-  - `409 Conflict` — `{ "error": "Concurrency conflict" }` on etag mismatch. Deliberately generic: the server-side change vector is a version side channel.
+  - `400 Bad Request` — `{ "errors": [...] }` on validation failure; `{ "error" }` when `persistentObject.etag` is missing (#467, D16)
+  - `404 Not Found` — type not found, or the row is readable but not editable
+  - `409 Conflict` — `{ "error": "Concurrency conflict", "reason", "message": null }`. `reason` is `changed` on an etag mismatch and `deleted` when the object is gone, soft-deleted or no longer readable since it was loaded (#467, D15 — never a resurrection). Deliberately generic otherwise: the server-side change vector is a version side channel.
   - `449` on retry
   - `401` / `403` on auth failure
 - **Auth**: XSRF-TOKEN required; permission check on edit access
 - **Notes**:
   - The top-level `id` names the target; `persistentObject.id` and `.objectTypeId` are both overwritten from what the server loaded.
-  - `etag` on the PO body is the optimistic-concurrency token; omit to skip the check.
+  - `etag` on the PO body is the optimistic-concurrency token, and is required: the version being edited. See [the concurrency guide](./guide-concurrency.md).
 
 #### New PersistentObject (construct, unsaved)
 
@@ -149,11 +149,12 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
 
 **`POST /spark/po/delete`** — `Endpoints/PersistentObject/Delete.cs`
 
-- **Request body**: `{ objectTypeId, id, retryResults? }`
+- **Request body**: `{ objectTypeId, id, etag, retryResults? }`. `etag` is required (#467, D14): the loaded object's `etag`, the version being deleted.
 - **Response shapes**:
   - `204 No Content` — empty body
-  - `400 Bad Request` — `{ "errors": [...] }` when a hook refuses for a business reason
+  - `400 Bad Request` — `{ "errors": [...] }` when a hook refuses for a business reason; `{ "error" }` without an `etag`
   - `404 Not Found` — object or type not found, or denied
+  - `409 Conflict` — `{ "error": "Concurrency conflict", "reason": "changed" }`: the object changed since it was loaded
   - `449` on retry
   - `401` / `403` on auth failure
 - **Auth**: XSRF-TOKEN required; permission check on delete access
@@ -163,15 +164,22 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
 
 **`POST /spark/po/delete-many`**, implemented in `Endpoints/PersistentObject/DeleteMany.cs` (#460 M15, D18)
 
-- **Request body**: `{ objectTypeId, ids: string[], queryId?, parentId?, parentType?, retryResults? }`
+- **Request body**: `{ objectTypeId, items: [{ id, etag }], queryId, parentId?, parentType?, reason?, retryResults? }`
+  - `items[].etag` is the row's `etag` from the query result (#467, D14). Required.
+  - `queryId` is the query the rows were selected in (#467, D12). Required: the rows are fetched
+    through it.
+  - `reason` is recorded on every soft-deleted row (#467, D20).
 - **Response shapes**:
   - `204 No Content`: every row was deleted, by one `SaveChanges`.
-  - `400 Bad Request`: more than 200 ids, or the `Delete` entry's selection rule refuses the count
-    (default `>0`), or a hook refused with `{ "errors": [...] }`.
-  - `403 Forbidden` `{ error, action: "Delete" }`: `OnDisableActionsAsync` withholds Delete on the
-    query target or on one row.
-  - `404 Not Found`: a row is missing, foreign or denied, or the parent is. The request is refused
-    whole.
+  - `400 Bad Request`: an item without an `etag`, no `queryId`, more than 200 items, or the `Delete`
+    entry's selection rule refuses the count (default `>0`); or a hook refused with
+    `{ "errors": [...] }` naming every refused row (D18).
+  - `403 Forbidden` `{ error, action: "Delete" }`: the Delete row rule, or `OnDisableActionsAsync`
+    withholding Delete on the query target or on rows; the message names the rows (D18).
+  - `404 Not Found`: a row is missing, foreign, not readable, or not returned by the query, or the
+    parent is. The request is refused whole, and such a row is never named (M-3).
+  - `409 Conflict` `{ error, reason: "changed", message }`: rows changed since the list loaded;
+    `message` names them.
   - `449` on retry.
 - **Auth**: XSRF-TOKEN required, and `Delete/T`.
 - **Notes**: all or nothing. A soft-deletable type is soft-deleted. There is no bulk Purge.
@@ -224,7 +232,7 @@ Routes that declare `IMemberOf<SparkGroup>` directly append their Path to `/spar
   - `deleted?` — `exclude` (default) / `include` / `only`; honoured only for holders of `ViewDeleted/T` (#460, T2)
   - `retryResults?` — `OnQueryAsync` can prompt
 - **Response shapes**:
-  - `200 OK` — query result (bare): `{ columns, items, totalItems, skip, take }`
+  - `200 OK` — query result (bare): `{ columns, items, totalItems, skip, take }`. Each item is `{ id, breadcrumb?, etag?, values, typeHints? }`; `etag` is the change vector of the document behind the row — the document's, also for an index projection — which a delete from the list sends back (#467, D14). A row with no document behind it has none.
   - `400 Bad Request` — unknown sort columns
   - `404 Not Found` — query or parent not found
   - `449` on retry, enveloped

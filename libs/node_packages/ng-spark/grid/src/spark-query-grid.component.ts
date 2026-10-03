@@ -459,7 +459,7 @@ export class SparkQueryGridComponent {
         this.editRow(this.selection()[0]);
         return;
       case 'delete':
-        await this.deleteRows(this.selection().map(r => r.id), action.definition);
+        await this.deleteRows(this.selection(), action.definition);
         return;
       default:
         await this.onCustomAction(action.definition);
@@ -545,7 +545,7 @@ export class SparkQueryGridComponent {
       return;
     }
     if (action.kind === 'delete') {
-      await this.deleteRows([row.id], action.definition);
+      await this.deleteRows([row], action.definition);
       return;
     }
     if (action.kind === 'addon' && action.addon) {
@@ -600,14 +600,18 @@ export class SparkQueryGridComponent {
   }
 
   /**
-   * The default Delete on `ids`: one request, all rows or none (#460, D18). Asks first — with the
-   * entry's `confirmation` (`{count}` substituted) — then clears the selection and refreshes.
+   * The default Delete on `rows`: one request, all rows or none (#460, D18). Asks first — with the
+   * entry's `confirmation` (`{count}` substituted) — then clears the selection and refreshes. Each row
+   * goes with the `etag` it was listed with (#467, D14), so a row changed since is refused, not lost.
    */
-  async deleteRows(ids: string[], definition?: CustomActionDefinition): Promise<void> {
+  async deleteRows(rows: QueryResultItem[], definition?: CustomActionDefinition): Promise<void> {
     const type = this.entityType();
     // The server fetches the rows through the query they were ticked in (#467, D12).
     const queryId = this.query()?.id;
-    if (!type || !queryId || !ids.length) return;
+    // A row with no etag has no document behind it; nothing can delete it.
+    const items = rows.filter(r => !!r.etag).map(r => ({ id: r.id, etag: r.etag! }));
+    if (!type || !queryId || !items.length || items.length !== rows.length) return;
+    const ids = items.map(r => r.id);
 
     const message = confirmationText(definition, ids.length);
     if (message && !confirm(message)) return;
@@ -615,7 +619,7 @@ export class SparkQueryGridComponent {
     const parentId = this.parentId();
     const parentType = this.parentType();
     try {
-      await this.sparkService.deleteMany(type.id, ids, {
+      await this.sparkService.deleteMany(type.id, items, {
         queryId,
         ...(parentId && parentType ? { parentId, parentType } : {}),
       });
@@ -626,6 +630,8 @@ export class SparkQueryGridComponent {
       const err = e as HttpErrorResponse;
       this.errorMessage.set(
         err.error?.result?.errors?.[0]?.message
+        // A 409 names the rows changed since the list loaded (#467, D14/D18); reload and retick.
+        || (err.status === 409 ? (err.error?.result?.message || this.lang.t('common.concurrencyConflict')) : '')
         || err.error?.result?.error
         || err.error?.error
         || (err.status === 404 ? this.lang.t('common.deleteRefused') : '')

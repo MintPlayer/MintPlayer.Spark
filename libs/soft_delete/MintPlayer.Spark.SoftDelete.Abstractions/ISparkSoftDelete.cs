@@ -37,7 +37,11 @@ public interface ISparkSoftDelete
     /// <c>Purge/T</c>; the row must already be deleted; refused when the hook withholds <c>Purge</c>
     /// or <c>Delete</c>. Cannot be undone.
     /// </summary>
-    Task PurgeAsync(Guid objectTypeId, string id, CancellationToken cancellationToken = default);
+    /// <param name="etag">
+    /// The version the caller saw (#467, D14): a row changed since — restored and edited, say — is a
+    /// 409 instead of purged. <c>POST /spark/po/purge</c> requires it; null purges whatever is stored.
+    /// </param>
+    Task PurgeAsync(Guid objectTypeId, string id, string? etag = null, CancellationToken cancellationToken = default);
 }
 
 /// <summary>

@@ -33,9 +33,9 @@ const answersQuery = {
 } as any;
 
 const rows: QueryResultItem[] = [
-  { id: 'answers/1', values: [{ key: 'Body', value: 'one' }] },
-  { id: 'answers/2', values: [{ key: 'Body', value: 'two' }] },
-  { id: 'answers/3', values: [{ key: 'Body', value: 'three' }] },
+  { id: 'answers/1', etag: 'e1', values: [{ key: 'Body', value: 'one' }] },
+  { id: 'answers/2', etag: 'e2', values: [{ key: 'Body', value: 'two' }] },
+  { id: 'answers/3', etag: 'e3', values: [{ key: 'Body', value: 'three' }] },
 ];
 
 const columns = [{ name: 'Body', dataType: 'string', order: 1 } as any];
@@ -296,7 +296,7 @@ describe('query toolbar (#460 M15)', () => {
 
       await c.runToolbarAction(c.toolbarActions().find(a => a.kind === 'delete')!);
 
-      expect(service.deleteMany).toHaveBeenCalledWith('t-answer', ['answers/1', 'answers/3'],
+      expect(service.deleteMany).toHaveBeenCalledWith('t-answer', [{ id: 'answers/1', etag: 'e1' }, { id: 'answers/3', etag: 'e3' }],
         { queryId: 'q-answers', parentId: 'questions/1', parentType: 'Question' });
       expect(c.selection()).toEqual([]);
     });
@@ -360,7 +360,7 @@ describe('query toolbar (#460 M15)', () => {
     it('counts ticked rows on other pages, and Delete receives exactly what the chip counts', async () => {
       vi.spyOn(window, 'confirm').mockReturnValue(true);
       const { fixture, c, service } = await grid([deleteAction]);
-      const offPage = { id: 'answers/99', values: [{ key: 'Body', value: 'elsewhere' }] } as QueryResultItem;
+      const offPage = { id: 'answers/99', etag: 'e99', values: [{ key: 'Body', value: 'elsewhere' }] } as QueryResultItem;
       c.selection.set([rows[0], offPage]);
       fixture.detectChanges();
       await settle(fixture);
@@ -371,7 +371,7 @@ describe('query toolbar (#460 M15)', () => {
       expect(c.offPageCount()).toBe(1);
 
       await c.runToolbarAction(c.toolbarActions().find(a => a.kind === 'delete')!);
-      expect(service.deleteMany.mock.calls[0][1]).toEqual(['answers/1', 'answers/99']);
+      expect(service.deleteMany.mock.calls[0][1]).toEqual([{ id: 'answers/1', etag: 'e1' }, { id: 'answers/99', etag: 'e99' }]);
     });
 
     it('renders the checkbox-only datatable mode, so a row click never selects (D9)', async () => {
@@ -461,7 +461,7 @@ describe('query toolbar (#460 M15)', () => {
 
       await c.runRowAction(c.rowActions()[0], rows[2]);
 
-      expect(service.deleteMany.mock.calls[0][1]).toEqual(['answers/3']);
+      expect(service.deleteMany.mock.calls[0][1]).toEqual([{ id: 'answers/3', etag: 'e3' }]);
       expect(c.selection().map(r => r.id)).toEqual(['answers/1']);
     });
 

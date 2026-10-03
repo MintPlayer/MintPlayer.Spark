@@ -30,6 +30,12 @@ internal sealed class SoftDeleteRequest : ISparkTypedRequest
 
     /// <summary>The row's id.</summary>
     public string? Id { get; set; }
+
+    /// <summary>
+    /// <c>purge</c> only, and required there (#467, D14): the version of the deleted row the caller
+    /// saw. Ignored by <c>restore</c>.
+    /// </summary>
+    public string? Etag { get; set; }
 }
 
 /// <summary>
@@ -66,7 +72,7 @@ internal sealed partial class RestorePersistentObject : IPostEndpoint
         catch (Exception ex) when (SparkAddOnEndpoints.IsConcurrencyConflict(ex))
         {
             // A restore is a save, written with the version it loaded: a concurrent edit is a 409.
-            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor);
+            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);
         }
         catch (SparkValidationException ex)
         {
@@ -105,10 +111,20 @@ internal sealed partial class PurgePersistentObject : IPostEndpoint
         if (request is null || entityType is null || string.IsNullOrEmpty(request.Id))
             return SparkAddOnEndpoints.Refusal(clientAccessor, httpContext);
 
+        // A purge says which version it removes (#467, D14), as every delete does.
+        if (string.IsNullOrEmpty(request.Etag))
+            return SparkAddOnEndpoints.Envelope(clientAccessor,
+                new { error = "A purge must carry the etag of the version it removes." }, StatusCodes.Status400BadRequest);
+
         try
         {
-            await softDelete.PurgeAsync(entityType.Id, request.Id, httpContext.RequestAborted);
+            await softDelete.PurgeAsync(entityType.Id, request.Id, request.Etag, httpContext.RequestAborted);
             return SparkAddOnEndpoints.Envelope(clientAccessor, null, StatusCodes.Status204NoContent);
+        }
+        catch (Exception ex) when (SparkAddOnEndpoints.IsConcurrencyConflict(ex))
+        {
+            // Changed since the caller saw it — restored and edited, say: nothing was purged.
+            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);
         }
         catch (SparkValidationException ex)
         {

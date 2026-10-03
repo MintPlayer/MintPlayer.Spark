@@ -375,7 +375,7 @@ public class ContributionsRuntimeTests : SparkTestDriver
 
         // A moderator hides Bob's contribution: a soft delete through the contribution type's own PO.
         host.Identity.Id = "users/moderator";
-        await host.Client.DeletePersistentObjectAsync(ContributionTypeId, ContributionId("en", "Latn", Bob));
+        await host.Client.DeleteAsLoadedAsync(ContributionTypeId, ContributionId("en", "Latn", Bob));
 
         (await ReadAsync<CoSongLyricsContribution>(ContributionId("en", "Latn", Bob)))!.IsDeleted.Should().BeTrue();
         var current = await ReadAsync<CoSongLyricsCurrent>(CurrentId("en", "Latn"));
@@ -445,7 +445,7 @@ public class ContributionsRuntimeTests : SparkTestDriver
         await AddAsync(host, "ko", "Kore", "b");
         await RemoveAsync(host, "ko/Kore");
 
-        await host.Client.DeletePersistentObjectAsync(SongTypeId, SongId);
+        await host.Client.DeleteAsLoadedAsync(SongTypeId, SongId);
 
         (await ReadAsync<CoSong>(SongId)).Should().BeNull();
         (await IdsStartingWithAsync(SongId + "/")).Should().BeEmpty("withdrawn and live contributions and every current document go with the song");

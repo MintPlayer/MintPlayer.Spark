@@ -51,7 +51,7 @@ public class QnAContentTests
         var question = await asker.Client.AskAsync("Where did my answer go? " + Guid.NewGuid().ToString("N"));
         var answer = await answerer.Client.AnswerAsync(question.Id!);
 
-        await answerer.Client.DeletePersistentObjectAsync(AnswerTypeId, answer.Id!);
+        await answerer.Client.DeleteAsLoadedAsync(AnswerTypeId, answer.Id!);
         (await host.LoadAsync<StoredPost>(answer.Id!))!.IsDeleted.Should().BeTrue("a delete marks the document, it does not remove it");
 
         await host.WaitForIndexingAsync();
@@ -94,7 +94,7 @@ public class QnAContentTests
         var (live, _) = await moderator.PostAsync("/spark/po/purge", new { objectTypeId = AnswerTypeId.ToString(), id = answer.Id });
         live.Should().NotBe(200, "only a deleted row can be purged");
 
-        await moderator.DeletePersistentObjectAsync(AnswerTypeId, answer.Id!);
+        await moderator.DeleteAsLoadedAsync(AnswerTypeId, answer.Id!);
         await moderator.PostJsonAsync("/spark/po/purge", new { objectTypeId = AnswerTypeId.ToString(), id = answer.Id });
 
         (await host.LoadAsync<StoredPost>(answer.Id!)).Should().BeNull();
@@ -230,14 +230,14 @@ public class QnAContentTests
 
         var (_, loaded) = await author.Client.LoadRawAsync(QuestionTypeId, question.Id!);
         loaded.DisabledActions().Should().Contain("Delete");
-        var delete = async () => await author.Client.DeletePersistentObjectAsync(QuestionTypeId, question.Id!);
+        var delete = async () => await author.Client.DeleteAsLoadedAsync(QuestionTypeId, question.Id!);
         (await delete.Should().ThrowAsync<SparkClientException>()).Which.StatusCode.Should().Be(HttpStatusCode.Forbidden);
 
-        await answerer.Client.DeletePersistentObjectAsync(AnswerTypeId, answer.Id!);
+        await answerer.Client.DeleteAsLoadedAsync(AnswerTypeId, answer.Id!);
         await host.WaitForIndexingAsync();
         var (_, reloaded) = await author.Client.LoadRawAsync(QuestionTypeId, question.Id!);
         reloaded.DisabledActions().Should().NotContain("Delete", "a deleted answer does not count");
-        await author.Client.DeletePersistentObjectAsync(QuestionTypeId, question.Id!);
+        await author.Client.DeleteAsLoadedAsync(QuestionTypeId, question.Id!);
         (await host.LoadAsync<StoredPost>(question.Id!))!.IsDeleted.Should().BeTrue();
     }
 

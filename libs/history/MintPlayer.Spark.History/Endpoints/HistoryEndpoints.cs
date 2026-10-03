@@ -159,7 +159,7 @@ internal sealed partial class RevertPersistentObject : IPostEndpoint
         }
         catch (Exception ex) when (SparkAddOnEndpoints.IsConcurrencyConflict(ex))
         {
-            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor);
+            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);
         }
         catch (SparkValidationException ex)
         {

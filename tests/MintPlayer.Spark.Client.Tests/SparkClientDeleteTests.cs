@@ -24,7 +24,7 @@ public class SparkClientDeleteTests
         using (client)
         {
             var typeId = Guid.Parse("11111111-2222-3333-4444-555555555555");
-            await client.DeletePersistentObjectAsync(typeId, "people/1");
+            await client.DeletePersistentObjectAsync(typeId, "people/1", "A:1");
         }
 
         var delete = handler.Requests[^1];
@@ -37,6 +37,21 @@ public class SparkClientDeleteTests
         var body = handler.LastBody();
         body.GetProperty("objectTypeId").GetString().Should().Be("11111111-2222-3333-4444-555555555555");
         body.GetProperty("id").GetString().Should().Be("people/1");
+        // #467, D14: the version being deleted rides along.
+        body.GetProperty("etag").GetString().Should().Be("A:1");
+    }
+
+    [Fact]
+    public async Task Delete_without_an_etag_throws_before_sending()
+    {
+        var (client, handler) = NewClientWithWarmup();
+        using (client)
+        {
+            var act = async () => await client.DeletePersistentObjectAsync(Guid.NewGuid(), "people/1", "");
+            await act.Should().ThrowAsync<ArgumentException>();
+        }
+
+        handler.Requests.Should().NotContain(r => r.RequestUri!.AbsolutePath == "/spark/po/delete");
     }
 
     [Fact]
@@ -47,7 +62,7 @@ public class SparkClientDeleteTests
         using (client)
         {
             var ex = await Assert.ThrowsAsync<SparkClientException>(
-                () => client.DeletePersistentObjectAsync(Guid.NewGuid(), "id"));
+                () => client.DeletePersistentObjectAsync(Guid.NewGuid(), "id", "A:1"));
             ex.StatusCode.Should().Be(HttpStatusCode.NotFound);
         }
     }
@@ -60,7 +75,7 @@ public class SparkClientDeleteTests
         using (client)
         {
             var ex = await Assert.ThrowsAsync<SparkClientException>(
-                () => client.DeletePersistentObjectAsync(Guid.NewGuid(), "id"));
+                () => client.DeletePersistentObjectAsync(Guid.NewGuid(), "id", "A:1"));
             ex.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         }
     }

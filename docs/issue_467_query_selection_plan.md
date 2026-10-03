@@ -5,7 +5,7 @@ Requirements, decisions (D1–D23 grilled 2026-10-03; D24–D29 settled during i
 Where the PRD's §2 and §7 disagree, §7 wins.
 
 **Rules for executing this plan**
-- One branch, one PR: `feat/467-query-selection`. Every decision D1–D29 lands in this PR.
+- One branch, one PR: `feat/467-query-selection`. Every decision D1–D30 lands in this PR.
 - Commit per milestone. **Do not run test suites per milestone.** Verify with a build + reading the code.
   One full sweep at the end (M9):
   `RAVENDB_LICENSE='C:\Repos\MintPlayer.Spark\.secrets\raven-license.log' npm run test:affected`.
@@ -28,7 +28,7 @@ Where the PRD's §2 and §7 disagree, §7 wins.
 - [x] Branch `feat/467-query-selection`; PRD and plan committed (`e00fd8a5`).
 - [x] Spikes S1 (upstream part), S2, S4, S5, S6, S7, S8, S9, S10, S11, S12, S13 (results in PRD §7).
 - [x] Deferred spikes written: S1 remainder (M4 spec), the custom-action halves of S4/S7 and S8's 449 retry (M5). S3 (cost of the D18 message) is measured in M9.
-- [x] Committed: M0 `d212723a`, M1 `af26aeb2`, M2 `009b4c22`, M3 `fe10392c`, M4 `393352aa`, M5 `d0782ea5`. Next: M6.
+- [x] Committed: M0 `d212723a`, M1 `af26aeb2`, M2 `009b4c22`, M3 `fe10392c`, M4 `393352aa`, M5 `d0782ea5`, M6 (concurrency). Next: M7.
 - [ ] Owner to confirm D29c (D20 reason: server side only, no UI prompt or required-reason setting exists).
 
 ---
@@ -131,21 +131,22 @@ Where the PRD's §2 and §7 disagree, §7 wins.
       self-saving `OnDeleteAsync`.
 
 ### M6 — Concurrency (D14, D15, D16)
-- [ ] `QueryResultItem.Etag` = the document's change vector. Read it **from the query metadata**
-      (streaming, `@metadata`): `GetChangeVectorFor` throws on untracked projections (S5b).
-- [ ] D14: delete and delete-many take `(id, etag)` per row; 400 without, 409 on mismatch; the server
-      deletes with that change vector. .NET client and ng-spark. Turns `Issue467StaleDeleteTests` green.
-- [ ] D15: an Update of a deleted or soft-deleted document → 409 "deleted by another user", before any hook,
-      both over HTTP (today 404 via the `Update.cs:47` pre-read) and through `IDatabaseAccess` (today
-      **resurrects**, `DatabaseAccess.cs:322` + `ToEntity`). `OnSaveAsync` writes Updates with a
-      change vector that requires the document to exist. Creates unchanged.
-- [ ] D16: Update requires an etag (400). Fix the callers from S11: `SyncActionHandler.cs:46` (internal
-      overwrite option, unreachable over HTTP; must not recreate), `Create.cs:106` (natural-id collision →
-      Edit without an etag: refuse or 409), `Update.cs:74`, `SparkClient.cs:318`, ng-spark
-      `spark.service.ts:242`, OIDC Actions overrides. Rewrite
-      `UpdateEndpointConcurrencyTests.Put_with_no_etag_skips_concurrency_check_and_succeeds` and
-      `ConcurrentWriteRaceTests.Save_without_etag_still_protects_the_load_to_write_window`. Turns
-      `Issue467UpdateDeletedRowTests` green.
+- [x] `QueryResultItem.Etag` = the document's change vector. *Deviation (D30a):* read by one
+      metadata-only lookup per page (`RowChangeVectors`, via `QueryResultProjector.ToItemsAsync`), not
+      from each path's query metadata — `GetChangeVectorFor` throws on untracked projections (S5b).
+- [x] D14: delete and delete-many take `(id, etag)` per row (`items: [{ id, etag }]`); 400 without,
+      409 on mismatch (bulk: naming the rows); the base `OnDeleteAsync` deletes with that change vector
+      (D30g). Purge too (D30h). .NET client and ng-spark (grid, detail page, recycle bin).
+- [x] D15: an Update of a deleted, soft-deleted or no-longer-readable object → 409 `deleted` over HTTP;
+      through `IDatabaseAccess` a gone row with an etag → 409, never a resurrection (base `OnSaveAsync`
+      refuses too). The edit page shows `common.deletedByAnotherUser` and keeps the form. Creates unchanged.
+- [x] D16: Update requires an etag (400). Callers from S11: `Create.cs` natural-id collision → 409
+      `exists` (D30d); `Update.cs`, `SparkClient.UpdatePersistentObjectAsync`, ng-spark `update()` require
+      it; OIDC overrides call the base (nothing to change). *Deviation (D30i):* `SyncActionHandler` keeps
+      the internal overwrite and may recreate (replication from the owner module), rather than "must not
+      recreate". Rewritten: `UpdateEndpointConcurrencyTests.Put_with_no_etag_is_400_and_writes_nothing`,
+      `ConcurrentWriteRaceTests.Internal_save_without_etag_still_protects_the_load_to_write_window`; added
+      `ConcurrentWriteRaceTests.Hard_delete_refuses_a_write_that_raced_past_the_etag_check`.
 
 ### M7 — Durable after-commit work (D17), per S6/S13
 - [ ] Three hook categories: **SYNC** (in-request `OnAfter*`, best-effort: log, never fail a committed
@@ -178,6 +179,7 @@ Where the PRD's §2 and §7 disagree, §7 wins.
 
 ### M9 — Full verification and PR
 - [ ] Test call sites made stale by D12 (selections and delete-many without `queryId`): `ExecuteCustomActionTests` (fallback-path unit tests), `DisableActionsTests`, `ModerationToolsTests`, `SoftDeleteTests`, `SubQueryActionsTests`; and fixtures embedding pre-#467 shapes (see M2 note).
+- [ ] Test call sites made stale by D14/D16 (M6): raw posts to `/po/delete`, `/po/delete-many` (`ids` → `items`), `/po/purge` and `/po/update` without an etag — `DenyAllEndpointMirrorTests`, `DisableActionsTests`, `RetryFromEveryHookTests`, `SubQueryActionsTests`, `XsrfSurfaceTests`, `HistoryTests`, `ModerationToolsTests`, `SoftDeleteTests`, E2E `QnAContributionsTests`, `RetryActionDeleteTests`; any HTTP test asserting 404 for an update of a hidden row now gets 409 `deleted` (D30c); natural-id collision tests now get 409 `exists` (D30d). The typed client call sites already compile (they load first: `DeleteAsLoadedAsync` / `AsListedAsync` test helpers).
 - [ ] S3: measure the D18 refusal message for a 200-row batch (breadcrumbs resolve in one batched call; confirm the cost).
 - [ ] The `Spikes/Issue467` tests are all green and moved; the `Spikes` folder is gone.
 - [ ] Full local sweep (`npm run test:affected`, Developer licence), all five test projects green.

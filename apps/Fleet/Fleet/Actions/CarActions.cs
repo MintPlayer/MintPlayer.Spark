@@ -146,9 +146,8 @@ public partial class CarActions : DefaultPersistentObjectActions<Car>
             throw new InvalidOperationException(
                 $"Confirmation '{typed}' does not match license plate '{entity.LicensePlate}'.");
 
-        await OnBeforeDeleteAsync(entity);
-        session.Delete(entity);
-        await session.SaveChangesAsync();
+        // The base delete runs OnBeforeDeleteAsync and deletes with the version the user saw (#467, D14).
+        await base.OnDeleteAsync(session, id);
 
         // Demo toast — surfaces a frontend notification after the retry-confirmation flow
         // completes so the user sees explicit feedback that the deletion went through.

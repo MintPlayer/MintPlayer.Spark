@@ -283,7 +283,7 @@ public class ContributionsSurfaceTests : SparkTestDriver
         await AddAsync(host, "ko", "Kore", "untouched");
 
         host.Identity.Id = Moderator;
-        await host.Client.DeletePersistentObjectAsync(CurrentTypeId, CurrentId("en", "Latn"));
+        await host.Client.DeleteAsLoadedAsync(CurrentTypeId, CurrentId("en", "Latn"));
 
         (await ReadAsync<CoSongLyricsCurrent>(CurrentId("en", "Latn"))).Should().BeNull("the version is removed");
         foreach (var user in new[] { Alice, Bob, Carol })
@@ -317,7 +317,7 @@ public class ContributionsSurfaceTests : SparkTestDriver
         await AddAsync(host, "en", "Latn", "alice's text");
 
         host.Identity.Id = Moderator;
-        var ex = await Assert.ThrowsAsync<SparkClientException>(() => host.Client.DeletePersistentObjectAsync(CurrentTypeId, CurrentId("en", "Latn")));
+        var ex = await Assert.ThrowsAsync<SparkClientException>(() => host.Client.DeleteAsLoadedAsync(CurrentTypeId, CurrentId("en", "Latn")));
 
         ex.StatusCode.Should().Be(HttpStatusCode.NotFound, "a refusal is indistinguishable from a missing row");
         (await ReadAsync<CoSongLyricsContribution>(ContributionId("en", "Latn", Alice)))!.IsDeleted.Should().BeFalse();
@@ -402,7 +402,7 @@ public class ContributionsSurfaceTests : SparkTestDriver
         var host = await StartAsync();
         await ThreeVersionsAsync(host);
         host.Identity.Id = Moderator;
-        await host.Client.DeletePersistentObjectAsync(ContributionTypeId, ContributionId("en", "Latn", Alice));
+        await host.Client.DeleteAsLoadedAsync(ContributionTypeId, ContributionId("en", "Latn", Alice));
 
         var (status, body) = await RevertAsync(host, ContributionId("en", "Latn", Alice));
 

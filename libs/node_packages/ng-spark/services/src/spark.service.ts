@@ -44,6 +44,13 @@ export interface DeleteManyOptions {
   reason?: string;
 }
 
+/** A row and the version of it the caller saw (#467, D14): what a bulk delete names. */
+export interface SparkRowVersion {
+  id: string;
+  /** The row's `etag` from the query result. */
+  etag: string;
+}
+
 /** Context for {@link SparkService.deleteRow}. Every field is required — see `DeleteRow.cs`. */
 export interface DeleteRowOptions {
   asDetailAttribute: string;
@@ -70,8 +77,10 @@ type EnvelopeRequestBody = {
   persistentObject?: any;
   triggeredBy?: string;
   retryResults?: RetryActionResult[];
-  /** The rows of a bulk delete. */
-  ids?: string[];
+  /** The version being deleted, for a single delete. */
+  etag?: string;
+  /** The rows of a bulk delete, each with its version. */
+  items?: SparkRowVersion[];
 } & Partial<NewObjectOptions> & Partial<DeleteManyOptions> & Partial<Omit<DeleteRowOptions, 'asDetailAttribute' | 'parentType' | 'parentId'>>;
 
 @Injectable({ providedIn: 'root' })
@@ -244,7 +253,13 @@ export class SparkService {
     );
   }
 
+  /**
+   * Saves an edit. `data.etag` — the etag the object was loaded with — is required (#467, D16): it is
+   * the version being edited. A 409 means the object changed since (`reason: 'changed'`) or was
+   * deleted since (`reason: 'deleted'`).
+   */
   async update(type: string, id: string, data: Partial<PersistentObject>): Promise<PersistentObject> {
+    if (!data.etag) throw new Error(`An update of '${id}' must carry the etag it was loaded with.`);
     return this.postWithEnvelope<PersistentObject>(
       `${this.baseUrl}/po/update`,
       { objectTypeId: type, id, persistentObject: data }
@@ -306,23 +321,29 @@ export class SparkService {
     );
   }
 
-  async delete(type: string, id: string): Promise<void> {
+  /**
+   * Deletes one object. `etag` is the version being deleted — the loaded object's `etag` — and is
+   * required (#467, D14): an object changed since is a 409.
+   */
+  async delete(type: string, id: string, etag: string): Promise<void> {
     return this.postWithEnvelope<void>(
       `${this.baseUrl}/po/delete`,
-      { objectTypeId: type, id }
+      { objectTypeId: type, id, etag }
     );
   }
 
   /**
    * Deletes several rows of one type in one request — the default Delete action on a selection
-   * (`POST /spark/po/delete-many`, #460 D18). All or nothing: a 404 means some row is missing or not
-   * yours to delete, a 403 that the server's `OnDisableActionsAsync` withholds Delete on the query or
-   * on one of the rows, a 400 that the selection breaks the rule or the 200-row cap.
+   * (`POST /spark/po/delete-many`, #460 D18). Each row carries the `etag` its query result row had
+   * (#467, D14). All or nothing: a 404 means some row is missing or not yours to delete, a 403 that
+   * the server's `OnDisableActionsAsync` withholds Delete on the query or on one of the rows, a 409
+   * that rows changed since the list loaded (the body's `message` names them), a 400 that the
+   * selection breaks the rule or the 200-row cap.
    */
-  async deleteMany(type: string, ids: string[], options: DeleteManyOptions): Promise<void> {
+  async deleteMany(type: string, items: SparkRowVersion[], options: DeleteManyOptions): Promise<void> {
     return this.postWithEnvelope<void>(
       `${this.baseUrl}/po/delete-many`,
-      { objectTypeId: type, ids, ...options }
+      { objectTypeId: type, items, ...options }
     );
   }
 

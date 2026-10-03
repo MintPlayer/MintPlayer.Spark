@@ -142,8 +142,23 @@ internal static class QueryResultProjector
     /// the wire comes through here — so a new row-returning path cannot skip row security without
     /// changing this signature, which is a visible edit rather than a missing line.
     /// </param>
+    /// <summary>
+    /// <see cref="ToItems"/> with every row's document etag (#467, D14) — what every path that puts rows
+    /// on the wire calls: one metadata request per page (<see cref="RowChangeVectors"/>).
+    /// </summary>
+    public static async Task<IReadOnlyList<QueryResultItem>> ToItemsAsync(
+        Raven.Client.Documents.Session.IAsyncDocumentSession session, RowSecurityGate.SecuredRows rows,
+        IReadOnlyList<QueryColumn> columns, string queryName, CancellationToken cancellationToken = default)
+    {
+        var etags = await RowChangeVectors.ReadAsync(session, rows.Rows.Select(row => row.Id), cancellationToken);
+        return ToItems(rows, columns, queryName, etags);
+    }
+
+    /// <param name="etags">The document change vector per row id (<see cref="RowChangeVectors"/>); a row
+    /// with none (a computed row) carries no etag.</param>
     public static IReadOnlyList<QueryResultItem> ToItems(
-        RowSecurityGate.SecuredRows rows, IReadOnlyList<QueryColumn> columns, string queryName)
+        RowSecurityGate.SecuredRows rows, IReadOnlyList<QueryColumn> columns, string queryName,
+        IReadOnlyDictionary<string, string>? etags = null)
     {
         var items = new List<QueryResultItem>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -172,6 +187,7 @@ internal static class QueryResultProjector
             {
                 Id = row.Id,
                 Breadcrumb = row.Breadcrumb ?? row.Name,
+                Etag = etags is not null && etags.TryGetValue(row.Id, out var etag) ? etag : null,
                 Values = [.. columns.Select(column => ToValue(row, column))],
             });
         }

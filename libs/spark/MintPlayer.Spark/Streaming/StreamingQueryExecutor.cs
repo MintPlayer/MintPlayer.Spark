@@ -180,7 +180,7 @@ internal partial class StreamingQueryExecutor : IStreamingQueryExecutor
             // otherwise be dropped silently by the diff engine (it keys state on the id).
             yield return new StreamingQueryBatch(
                 columns,
-                Services.QueryResultProjector.ToItems(secured, columns, query.Name));
+                await Services.QueryResultProjector.ToItemsAsync(batchSession, secured, columns, query.Name, cancellationToken));
         }
     }
 

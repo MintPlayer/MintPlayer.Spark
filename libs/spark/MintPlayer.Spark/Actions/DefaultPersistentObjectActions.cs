@@ -289,6 +289,12 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
                 await entityMapper.PopulateObjectValuesAsync(obj, existing, session);
                 entity = existing;
             }
+            else if (!string.IsNullOrEmpty(obj.Etag))
+            {
+                // The caller edited a version that no longer exists (#467, D15): deleted since it was
+                // loaded. Recreating it from the posted values would undo the delete.
+                throw Exceptions.SparkConcurrencyException.DeletedSinceLoaded(obj.Etag);
+            }
             else
             {
                 entity = entityMapper.ToEntity<T>(obj);
@@ -364,11 +370,21 @@ public partial class DefaultPersistentObjectActions<T> : IPersistentObjectAction
             if (serviceProvider?.GetService<IPersistentObjectInterceptorPipeline>() is not { } pipeline
                 || !pipeline.ConsumeBeforeDeleteHandled(entity))
                 await OnBeforeDeleteAsync(entity);
-            session.Delete(entity);
+
+            // The version the caller saw (#467, D14): deleted with it, so an edit that landed after
+            // DatabaseAccess compared the etag fails the write with a 409 instead of being lost.
+            var batch = serviceProvider?.GetService<ISparkWriteBatch>();
+            if (batch?.TakeExpectedChangeVector(id) is { } expectedChangeVector)
+            {
+                session.Advanced.Evict(entity);
+                session.Delete(id, expectedChangeVector);
+            }
+            else
+                session.Delete(entity);
 
             // A bulk delete commits every row with ONE SaveChanges (#460, D18), so while its batch is
             // open the save is the caller's. An override that saves here itself breaks that guarantee.
-            if (serviceProvider?.GetService<ISparkWriteBatch>() is not { IsDeferring: true })
+            if (batch is not { IsDeferring: true })
                 await session.SaveChangesAsync();
         }
     }

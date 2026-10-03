@@ -57,9 +57,19 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint
         if (request is null || entityType is null)
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
 
-        var ids = request.Ids ?? [];
+        var items = request.Items ?? [];
+        var ids = items.Select(item => item.Id ?? string.Empty).ToArray();
 
         // Input validation first, as ExecuteCustomAction does: a violating request costs nothing.
+        // Every row says which version it removes (#467, D14): a row edited since the list loaded is
+        // a 409, not lost.
+        if (items.Any(item => string.IsNullOrEmpty(item.Etag)))
+        {
+            return ClientResult.Envelope(clientAccessor,
+                new { error = "Every row of a bulk delete must carry the etag of the version it removes." },
+                StatusCodes.Status400BadRequest);
+        }
+
         if (ids.Length > SparkDefaultActions.MaxSelectedItems)
         {
             return ClientResult.Envelope(clientAccessor,
@@ -138,14 +148,20 @@ internal sealed partial class DeleteManyPersistentObjects : IPostEndpoint
                 Parent = parent,
                 ParentType = parentTypeName,
                 Reason = request.Reason,
+                // An id named twice keeps its first etag; the rows collapse the same way.
+                Etags = items
+                    .Where(item => !string.IsNullOrEmpty(item.Id))
+                    .DistinctBy(item => item.Id, StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(item => item.Id!, item => item.Etag!, StringComparer.OrdinalIgnoreCase),
             });
             return ClientResult.Envelope(clientAccessor, null, StatusCodes.Status204NoContent);
         }
-        catch (SparkConcurrencyException)
+        catch (SparkConcurrencyException ex)
         {
-            // A replaced (soft) delete in the batch met a concurrent edit; the batch is atomic, so
-            // nothing was written (contributions F7). Generic body, as in Update (R2-M1).
-            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor);
+            // A row changed since the list loaded (#467, D14): named in the message (D18). Or a write in
+            // the batch met a concurrent edit; the batch is atomic, so nothing was written
+            // (contributions F7). Never the exception's own message, as in Update (R2-M1).
+            return SparkAddOnEndpoints.ConcurrencyConflict(clientAccessor, ex);
         }
         catch (SparkValidationException ex)
         {
@@ -176,8 +192,11 @@ internal sealed class DeleteManyRequest : ISparkTypedRequest, IRetryableRequest
     /// <inheritdoc />
     public string? ObjectTypeId { get; set; }
 
-    /// <summary>The selected rows. Raven ids contain slashes, hence the body rather than a route.</summary>
-    public string[]? Ids { get; set; }
+    /// <summary>
+    /// The selected rows, each with the etag the list showed (#467, D14). Raven ids contain slashes,
+    /// hence the body rather than a route.
+    /// </summary>
+    public DeleteManyItem[]? Items { get; set; }
 
     /// <summary>
     /// The query the rows were selected in. Required (#467, D12): the rows are fetched through it, and
@@ -196,4 +215,13 @@ internal sealed class DeleteManyRequest : ISparkTypedRequest, IRetryableRequest
 
     /// <inheritdoc />
     public RetryResult[]? RetryResults { get; set; }
+}
+
+/// <summary>One row of a <c>delete-many</c> request: its id and the version the caller saw.</summary>
+internal sealed class DeleteManyItem
+{
+    public string? Id { get; set; }
+
+    /// <summary>The row's <c>etag</c> from the query result. Required.</summary>
+    public string? Etag { get; set; }
 }

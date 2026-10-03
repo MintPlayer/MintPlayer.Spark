@@ -44,6 +44,7 @@ const personType: EntityType = {
 const existingItem: PersistentObject = {
   id: 'people/1',
   name: 'Alice',
+  etag: 'A:1',
   objectTypeId: 't-person',
   attributes: [
     { id: 'a-first', name: 'FirstName', value: 'Alice' } as any,
@@ -303,7 +304,7 @@ describe('SparkPoDetailComponent', () => {
     await c.onDelete();
     await navigated;
 
-    expect(service.delete).toHaveBeenCalledWith('person', 'people/1');
+    expect(service.delete).toHaveBeenCalledWith('person', 'people/1', 'A:1');
     expect(deleted).toHaveBeenCalled();
     expect(TestBed.inject(Router).url).toBe('/');
   });

@@ -327,6 +327,14 @@ export class SparkPoEditComponent {
       const errors = error.error?.result?.errors ?? error.error?.errors;
       if (error.status === 400 && errors) {
         this.validationErrors.set(errors);
+      } else if (error.status === 409 && error.error?.result?.reason === 'deleted') {
+        // Deleted since it was loaded (#467, D15): nothing to merge against and nothing to recreate.
+        // The form keeps its values, so the user can copy what they typed.
+        this.validationErrors.set([{
+          attributeName: '',
+          errorMessage: { en: this.language.t('common.deletedByAnotherUser') },
+          ruleType: 'error'
+        }]);
       } else if (error.status === 409) {
         // Somebody saved this record between the load and this save. The server's own body says
         // only "Concurrency conflict" -- deliberately, since the real message carries the change

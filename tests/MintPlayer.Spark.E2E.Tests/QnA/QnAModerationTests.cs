@@ -132,7 +132,7 @@ public class QnAModerationTests
         var edit = async () => await author.Client.EditAsync(QuestionTypeId, question.Id!, "Title", "Edited while locked");
         (await edit.Should().ThrowAsync<SparkClientException>()).Which.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
-        var delete = async () => await author.Client.DeletePersistentObjectAsync(QuestionTypeId, question.Id!);
+        var delete = async () => await author.Client.DeleteAsLoadedAsync(QuestionTypeId, question.Id!);
         (await delete.Should().ThrowAsync<SparkClientException>()).Which.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 
         var parent = await author.Client.GetPersistentObjectAsync(QuestionTypeId, question.Id!);

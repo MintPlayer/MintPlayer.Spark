@@ -118,12 +118,14 @@ The grid also renders:
   [ng-bootstrap #419](https://github.com/MintPlayer/mintplayer-ng-bootstrap/issues/419) (the
   dropdown fesm fails to initialise in unlinked JIT test runs).
 
-- **Selection** follows `selectionMode` (`'auto' | 'none' | 'single' | 'multiple'`).
+- **Selection** follows `selectionMode` (`'auto' | 'none' | 'multiple'`).
   - It is set on the query, or on the parent type's `queries` entry, which `<spark-query-card
     [selectionMode]>` and `<spark-query-grid [selectionModeSetting]>` take.
-  - `'auto'` derives it from the custom actions, as before.
-- **Delete** posts the selection to `SparkService.deleteMany()` (`/spark/po/delete-many`). One
-  request deletes all the rows or none.
+  - `'auto'` shows checkboxes when an action the user may run needs a selection: Edit, Delete or a
+    custom action (#467).
+- **Delete** posts the selection to `SparkService.deleteMany()` (`/spark/po/delete-many`), each row
+  with the `etag` its query row carried (#467, D14). One request deletes all the rows or none; a row
+  changed since the list loaded is a 409 that names it.
 - **New** on a sub-query navigates to the create page with `parentId`, `parentType` and `queryId`.
   The create page always asks `SparkService.newObject()` (`/spark/po/new`) for its blank object, so
   the server's `OnNewAsync` sets the defaults. For a sub-query, its base fills the reference to the

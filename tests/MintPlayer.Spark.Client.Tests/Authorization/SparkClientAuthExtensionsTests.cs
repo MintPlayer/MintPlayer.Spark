@@ -205,7 +205,7 @@ public class SparkClientAuthExtensionsTests
         using var client = NewClient(handler);
 
         await client.LogoutAsync();
-        await client.DeletePersistentObjectAsync(Guid.NewGuid(), "id");
+        await client.DeletePersistentObjectAsync(Guid.NewGuid(), "id", "A:1");
 
         // 1: warmup, 2: logout, 3: warmup again, 4: delete
         handler.Requests.Should().HaveCount(4);

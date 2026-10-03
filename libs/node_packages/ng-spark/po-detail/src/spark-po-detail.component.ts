@@ -539,9 +539,12 @@ export class SparkPoDetailComponent {
   }
 
   async onDelete(): Promise<void> {
+    // The version on screen is the one deleted (#467, D14): a row changed since is a 409.
+    const etag = this.item()?.etag;
+    if (!etag) return;
     const message = confirmationText(this.deleteAction(), 1);
     if (!message || confirm(message)) {
-      await this.sparkService.delete(this.type, this.id);
+      await this.sparkService.delete(this.type, this.id, etag);
       this.deleted.emit();
       // Back to the list the row was opened from (else the type's list), not the start page.
       await this.returnNavigation.returnToList(this.entityType()?.name);

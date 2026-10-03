@@ -12,9 +12,10 @@ namespace MintPlayer.Spark.Tests.Spikes.Issue467;
 /// hands out for a projected query result (D14 needs the document's, on <c>QueryResultItem.etag</c>).
 /// </summary>
 /// <remarks>
-/// (a) is RED by design. Neither delete request carries an etag today, so the single-delete test posts
-/// the INTENDED field (<c>etag</c>, the exact wire name is not yet decided) — the server ignores it
-/// and deletes, which demonstrates last-write-wins. (b) is a probe: it records what Raven returns.
+/// (a) was RED by design until M6: neither delete request carried an etag, so a delete was
+/// last-write-wins. Both now carry one (<c>etag</c> on <c>/po/delete</c>, <c>items[].etag</c> on
+/// <c>/po/delete-many</c>), taken from the load or the query row. (b) is a probe: it records what
+/// Raven returns.
 /// </remarks>
 public class Issue467StaleDeleteTests(ITestOutputHelper output) : SparkTestDriver
 {
@@ -81,20 +82,85 @@ public class Issue467StaleDeleteTests(ITestOutputHelper output) : SparkTestDrive
         status.Should().Be(HttpStatusCode.BadRequest, $"D14: a missing etag is a 400; body: {body}");
     }
 
-    // S5a / D14: DEMONSTRATES GAP — delete-many from a stale grid. The row was edited after the grid
-    // loaded; the request has no way to say which version it saw, so it deletes the edited row.
-    // Desired: refused (400 for the missing etag, D14) and the edit survives.
+    /// <summary>The etag of <see cref="Id"/>'s row as the grid lists it (<c>QueryResultItem.Etag</c>).</summary>
+    private async Task<string?> ListedEtagAsync()
+    {
+        var (status, body) = await _host.SendAsync("/spark/queries/execute", Wire.Query(I467Models.ItemsQueryId));
+        status.Should().Be(HttpStatusCode.OK, body);
+        using var doc = System.Text.Json.JsonDocument.Parse(body);
+        var root = doc.RootElement.TryGetProperty("result", out var result) ? result : doc.RootElement;
+        return root.GetProperty("items").EnumerateArray()
+            .Where(item => item.GetProperty("id").GetString() == Id)
+            .Select(item => item.TryGetProperty("etag", out var etag) ? etag.GetString() : null)
+            .Single();
+    }
+
+    // S5a / D14: the grid's row carries the document's change vector, so a delete from the list can
+    // say which version it saw.
     [Fact]
-    public async Task S5a_delete_many_after_a_concurrent_edit_without_etags_is_refused_and_the_edit_survives()
+    public async Task S5a_a_query_row_carries_the_documents_change_vector()
     {
         await SeedItemAsync();
         await EditConcurrentlyAsync();
 
-        var (status, body) = await _host.SendAsync("/spark/po/delete-many",
-            Wire.Typed(I467Models.ItemTypeId, new { ids = new[] { Id }, queryId = I467Models.ItemsQueryId.ToString() }));
+        string stored;
+        using (var session = Store.OpenAsyncSession())
+            stored = session.Advanced.GetChangeVectorFor(await session.LoadAsync<I467Item>(Id));
 
-        (await LoadStoredAsync()).Should().NotBeNull("D14: today this is last-write-wins — the edited row is deleted");
+        (await ListedEtagAsync()).Should().Be(stored);
+    }
+
+    // S5a / D14: delete-many from a stale grid. The row was edited after the grid loaded; the request
+    // names the version the grid showed, so it is a 409 that names the row, and the edit survives.
+    [Fact]
+    public async Task S5a_delete_many_after_a_concurrent_edit_is_409_naming_the_row_and_the_edit_survives()
+    {
+        await SeedItemAsync();
+        var listed = await ListedEtagAsync();
+        await EditConcurrentlyAsync();
+
+        var (status, body) = await _host.SendAsync("/spark/po/delete-many", Wire.Typed(I467Models.ItemTypeId, new
+        {
+            items = new[] { new { id = Id, etag = listed } },
+            queryId = I467Models.ItemsQueryId.ToString(),
+        }));
+
+        (await LoadStoredAsync())!.Remark.Should().Be("edited by A", "D14: a delete from a stale list must not remove a row edited since");
+        status.Should().Be(HttpStatusCode.Conflict, $"D14: an etag mismatch is a 409; body: {body}");
+        body.Should().Contain("item", "D18: the refusal names the changed row by its breadcrumb");
+    }
+
+    // S5a / D14: a row of a delete-many without its etag is a 400, and nothing is deleted.
+    [Fact]
+    public async Task S5a_delete_many_without_etags_is_400_and_deletes_nothing()
+    {
+        await SeedItemAsync();
+
+        var (status, body) = await _host.SendAsync("/spark/po/delete-many", Wire.Typed(I467Models.ItemTypeId, new
+        {
+            items = new[] { new { id = Id } },
+            queryId = I467Models.ItemsQueryId.ToString(),
+        }));
+
+        (await LoadStoredAsync()).Should().NotBeNull();
         status.Should().Be(HttpStatusCode.BadRequest, $"D14: a delete without per-id etags is a 400; body: {body}");
+    }
+
+    // S5a / D14: an unchanged row deletes, with the etag the list showed.
+    [Fact]
+    public async Task S5a_control_delete_many_with_the_listed_etag_deletes()
+    {
+        await SeedItemAsync();
+        var listed = await ListedEtagAsync();
+
+        var (status, body) = await _host.SendAsync("/spark/po/delete-many", Wire.Typed(I467Models.ItemTypeId, new
+        {
+            items = new[] { new { id = Id, etag = listed } },
+            queryId = I467Models.ItemsQueryId.ToString(),
+        }));
+
+        status.Should().Be(HttpStatusCode.NoContent, body);
+        (await LoadStoredAsync()).Should().BeNull();
     }
 
     // ---- S5 (b) projection probe -------------------------------------------------------------------

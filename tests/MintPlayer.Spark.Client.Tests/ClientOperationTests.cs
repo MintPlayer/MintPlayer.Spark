@@ -52,7 +52,7 @@ public class ClientOperationTests
         """{"type":"retry","step":0,"title":"Are you sure?","options":["Yes"],"defaultOption":null,"message":null,"persistentObject":null}""";
 
     private static PersistentObject Car(Guid typeId, string id, params PersistentObjectAttribute[] attributes)
-        => new() { Id = id, Name = "Car", ObjectTypeId = typeId, Attributes = attributes };
+        => new() { Id = id, Name = "Car", ObjectTypeId = typeId, Etag = "A:1", Attributes = attributes };
 
     // ------------------------------------------------------------------------------------------
     // FR8 — operations are surfaced

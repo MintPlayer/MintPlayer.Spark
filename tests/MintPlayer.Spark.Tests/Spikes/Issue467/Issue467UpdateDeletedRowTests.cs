@@ -102,11 +102,11 @@ public class Issue467UpdateDeletedRowTests : SparkTestDriver
 
         po.Etag = null;
         SetAttribute(po, "FirstName", "Alicia");
-        var ex = await Record.ExceptionAsync(() => _client.UpdatePersistentObjectAsync(po));
+        // The .NET client refuses to send it (D16), so the request goes out raw.
+        var (status, body) = await RawSparkPost.UpdateAsync(_factory, po);
 
         (await ExistsAsync()).Should().BeFalse("D15: an etag-less save of a deleted object must not recreate it either");
-        ex.Should().BeOfType<SparkClientException>("D15/D16: the save must be refused, not answered 200");
-        ((SparkClientException)ex!).StatusCode.Should().BeOneOf(HttpStatusCode.BadRequest, HttpStatusCode.Conflict);
+        status.Should().BeOneOf([HttpStatusCode.BadRequest, HttpStatusCode.Conflict], $"D15/D16: the save must be refused; body: {body}");
     }
 
     // S11 / D15 through IDatabaseAccess directly — the chokepoint every internal caller uses.
@@ -184,11 +184,11 @@ public class Issue467UpdateDeletedRowTests : SparkTestDriver
 
         po.Etag = null;
         SetAttribute(po, "FirstName", "Alicia");
-        var ex = await Record.ExceptionAsync(() => _client.UpdatePersistentObjectAsync(po));
+        // The .NET client refuses to send it (D16), so the request goes out raw.
+        var (status, body) = await RawSparkPost.UpdateAsync(_factory, po);
 
         using var session = Store.OpenAsyncSession();
         (await session.LoadAsync<Person>(Id)).FirstName.Should().Be("Alice", "D16: an etag-less update writes nothing");
-        ex.Should().BeOfType<SparkClientException>("D16: an Update without an etag is refused");
-        ((SparkClientException)ex!).StatusCode.Should().Be(HttpStatusCode.BadRequest, "D16: a missing etag is a 400");
+        status.Should().Be(HttpStatusCode.BadRequest, $"D16: a missing etag is a 400; body: {body}");
     }
 }

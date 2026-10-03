@@ -221,7 +221,7 @@ public class AttributeVerbMatrixTests : SparkTestDriver
             "-Edit/VmItem/Name", "-Edit/VmItem/Code", "-QueryRead/VmItem/Code");
 
         var action = await spark.ExecuteActionAsync(ItemTypeId, Ping);
-        await spark.DeletePersistentObjectAsync(ItemTypeId, "vmitems/1");
+        await spark.DeleteAsLoadedAsync(ItemTypeId, "vmitems/1");
 
         action.StatusCode.Should().Be(200);
         (await LoadOrNullAsync<VmItem>("vmitems/1")).Should().BeNull();
@@ -233,7 +233,7 @@ public class AttributeVerbMatrixTests : SparkTestDriver
         var spark = await StartAsync("+QueryReadEditNew/VmItem", "+Edit/VmItem/Name", "+Edit/VmItem/Code");
 
         var action = await ActionRunsAsync(spark);
-        var deleted = await SucceedsAsync(() => spark.DeletePersistentObjectAsync(ItemTypeId, "vmitems/1"));
+        var deleted = await SucceedsAsync(() => spark.DeleteAsLoadedAsync(ItemTypeId, "vmitems/1"));
 
         action.Should().BeFalse();
         deleted.Should().BeFalse();

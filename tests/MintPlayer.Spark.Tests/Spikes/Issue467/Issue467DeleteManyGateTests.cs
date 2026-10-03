@@ -39,8 +39,24 @@ public class Issue467DeleteManyGateTests : SparkTestDriver
     /// </summary>
     private Task SeedNotesAsync() => SeedFromJsonAsync("Spikes/Issue467/Data/notes.json");
 
-    private static object DeleteNotes(params string[] ids)
-        => Wire.Typed(I467Models.NoteTypeId, new { ids, queryId = I467Models.NotesQueryId.ToString() });
+    /// <summary>
+    /// The rows as a list showed them (D14): each id with its stored change vector, or an etag naming
+    /// no version for an id that names no document.
+    /// </summary>
+    private async Task<object[]> ListedAsync(params string[] ids)
+    {
+        using var session = Store.OpenAsyncSession();
+        var items = new List<object>(ids.Length);
+        foreach (var id in ids)
+        {
+            var doc = await session.LoadAsync<object>(id);
+            items.Add(new { id, etag = doc is null ? "A:0-unknown" : session.Advanced.GetChangeVectorFor(doc) });
+        }
+        return [.. items];
+    }
+
+    private async Task<object> DeleteNotesAsync(params string[] ids)
+        => Wire.Typed(I467Models.NoteTypeId, new { items = await ListedAsync(ids), queryId = I467Models.NotesQueryId.ToString() });
 
     // ---- S4 / D11 ---------------------------------------------------------------------------------
 
@@ -66,7 +82,7 @@ public class Issue467DeleteManyGateTests : SparkTestDriver
     {
         await SeedNotesAsync();
 
-        var (status, body) = await _host.SendAsync("/spark/po/delete-many", DeleteNotes("I467Notes/alice-1", "I467Notes/bob-1"));
+        var (status, body) = await _host.SendAsync("/spark/po/delete-many", await DeleteNotesAsync("I467Notes/alice-1", "I467Notes/bob-1"));
 
         (await ExistsAsync<I467Note>("I467Notes/bob-1")).Should().BeTrue("D11: a row the caller cannot read must not be deletable in bulk");
         (await ExistsAsync<I467Note>("I467Notes/alice-1")).Should().BeTrue("D11: all or nothing — the batch is refused");
@@ -81,8 +97,8 @@ public class Issue467DeleteManyGateTests : SparkTestDriver
     {
         await SeedNotesAsync();
 
-        var (hidden, hiddenBody) = await _host.SendAsync("/spark/po/delete-many", DeleteNotes("I467Notes/bob-frozen"));
-        var (missing, _) = await _host.SendAsync("/spark/po/delete-many", DeleteNotes("I467Notes/does-not-exist"));
+        var (hidden, hiddenBody) = await _host.SendAsync("/spark/po/delete-many", await DeleteNotesAsync("I467Notes/bob-frozen"));
+        var (missing, _) = await _host.SendAsync("/spark/po/delete-many", await DeleteNotesAsync("I467Notes/does-not-exist"));
 
         (await ExistsAsync<I467Note>("I467Notes/bob-frozen")).Should().BeTrue();
         missing.Should().Be(HttpStatusCode.NotFound);
@@ -147,9 +163,10 @@ public class Issue467DeleteManyGateTests : SparkTestDriver
     public async Task S8_a_retry_from_a_before_delete_hook_inside_a_batch_asks_once_then_deletes_all()
     {
         await SeedPromptsAsync();
+        var items = await ListedAsync("I467Prompts/1", "I467Prompts/2");
         object Body(object? retryResults) => Wire.Typed(I467Models.PromptTypeId, new
         {
-            ids = new[] { "I467Prompts/1", "I467Prompts/2" },
+            items,
             queryId = I467Models.PromptsQueryId.ToString(),
             retryResults,
         });
@@ -178,7 +195,7 @@ public class Issue467DeleteManyGateTests : SparkTestDriver
         await SeedTasksAsync();
 
         var (status, _) = await _host.SendAsync("/spark/po/delete-many",
-            Wire.Typed(I467Models.TaskTypeId, new { ids = new[] { "I467Tasks/locked-1" }, queryId = I467Models.LockedTasksQueryId.ToString() }));
+            Wire.Typed(I467Models.TaskTypeId, new { items = await ListedAsync("I467Tasks/locked-1"), queryId = I467Models.LockedTasksQueryId.ToString() }));
 
         status.Should().Be(HttpStatusCode.Forbidden);
         (await ExistsAsync<I467Task>("I467Tasks/locked-1")).Should().BeTrue();
@@ -192,7 +209,7 @@ public class Issue467DeleteManyGateTests : SparkTestDriver
         await SeedTasksAsync();
 
         var (status, body) = await _host.SendAsync("/spark/po/delete-many",
-            Wire.Typed(I467Models.TaskTypeId, new { ids = new[] { "I467Tasks/locked-1" } }));
+            Wire.Typed(I467Models.TaskTypeId, new { items = await ListedAsync("I467Tasks/locked-1") }));
 
         (await ExistsAsync<I467Task>("I467Tasks/locked-1")).Should().BeTrue("D12: OnDisableActionsAsync cannot be skipped by omitting queryId");
         status.Should().Be(HttpStatusCode.BadRequest, $"D12: queryId is required on bulk calls; body: {body}");
@@ -206,7 +223,7 @@ public class Issue467DeleteManyGateTests : SparkTestDriver
         await SeedTasksAsync();
 
         var (status, body) = await _host.SendAsync("/spark/po/delete-many",
-            Wire.Typed(I467Models.TaskTypeId, new { ids = new[] { "I467Tasks/locked-1" }, queryId = I467Models.OpenTasksQueryId.ToString() }));
+            Wire.Typed(I467Models.TaskTypeId, new { items = await ListedAsync("I467Tasks/locked-1"), queryId = I467Models.OpenTasksQueryId.ToString() }));
 
         (await ExistsAsync<I467Task>("I467Tasks/locked-1")).Should().BeTrue("D12: naming another query must not bypass the locked query's disable");
         status.Should().Be(HttpStatusCode.NotFound, $"D12: rows are fetched through the named query; one not in it is missing; body: {body}");

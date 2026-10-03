@@ -27,9 +27,17 @@ public class Issue467ModerationBatchTests : SparkTestDriver
         (await host.ModeratorAsync("/spark/moderation/lock", Wire.Typed(MoHost.PostTypeId, new { reason = "heated" }, locked)))
             .Status.Should().Be(HttpStatusCode.OK);
 
+        // As the list shows them after the lock (D14): each row at its stored version.
+        object[] items;
+        using (var session = Store.OpenAsyncSession())
+        {
+            var rows = await session.LoadAsync<MoPost>([free, locked]);
+            items = [.. new[] { free, locked }.Select(id => (object)new { id, etag = session.Advanced.GetChangeVectorFor(rows[id]) })];
+        }
+
         var (status, body) = await host.SendAsync("/spark/po/delete-many", Wire.Typed(MoHost.PostTypeId, new
         {
-            ids = new[] { free, locked },
+            items,
             queryId = MoHost.PostsQueryId.ToString(),
         }), Alice);
         var text = body.ValueKind == System.Text.Json.JsonValueKind.Undefined ? string.Empty : body.GetRawText();
