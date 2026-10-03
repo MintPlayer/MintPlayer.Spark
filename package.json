@@ -36,7 +36,7 @@
     "@mintplayer/ng-video-player": "^22.0.0",
     "@mintplayer/pagination": "^2.5.0",
     "@mintplayer/player-progress": "^20.0.0",
-    "@mintplayer/player-provider": "^20.0.0",
+    "@mintplayer/player-provider": "^20.1.0",
     "@mintplayer/soundcloud-player": "^20.0.0",
     "@mintplayer/video-player": "^20.0.0",
     "@mintplayer/vimeo-player": "^20.0.0",
