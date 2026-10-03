@@ -5,7 +5,7 @@ Requirements, decisions (D1–D23 grilled 2026-10-03; D24–D29 settled during i
 Where the PRD's §2 and §7 disagree, §7 wins.
 
 **Rules for executing this plan**
-- One branch, one PR: `feat/467-query-selection`. Every decision D1–D31 lands in this PR; the PR also closes #482.
+- One branch, one PR: `feat/467-query-selection`. Every decision D1–D32 lands in this PR; the PR also closes #482.
 - Commit per milestone. **Do not run test suites per milestone.** Verify with a build + reading the code.
   One full sweep at the end (M9):
   `RAVENDB_LICENSE='C:\Repos\MintPlayer.Spark\.secrets\raven-license.log' npm run test:affected`.
@@ -173,6 +173,8 @@ Design: issue #482, section "Hook interfaces". Lands in this PR (owner decision,
       interceptors, and every app override (CodeCoverage ApiToken/GitHubProject/Repository, DemoApp Person/Company,
       Fleet Car (prompt in `IBeforeDelete<Car>`, cancel by throwing; toast in `IAfterSave<Car>`), QnA Question, OIDC).
       ApiToken's shown-once secret stays a **sync** `IAfterSave` and must never be durable.
+- [ ] D32: no `StoreAsync` seam; nested value objects are written only with their parent. Replication becomes hooks. Load/query hooks stay out of scope.
+- [ ] D32(2) spike, then the guard: does RavenDB raise `OnBeforeDelete` for `session.Delete(id)` on an untracked document? Then a document-store listener refuses a raw hard delete of an `ISoftDeletable` document that the persister did not issue, unless inside `SparkRawWrites.Allow()`. Test: raw delete refused, purge allowed, opt-out allowed.
 - [ ] Tests: existing ordering tests (`InterceptorOrderTests` → stages/replacement), S4 (an override cannot defeat a replacement:
       now structural), F6 (refusal evicts side documents), F7/D14 (expected change vector), `RetryFromEveryHookTests`,
       isolated after-hooks, cancel, generator snapshot tests. Docs: `guide-row-security`, the SoftDelete README,
@@ -187,6 +189,7 @@ Design: issue #482, section "Hook interfaces". Lands in this PR (owner decision,
 - [ ] **Decided (owner, 2026-10-03):** a durable hook registered without Messaging is a **startup error**. A library that ships one
       references Messaging, so apps get it transitively (Moderation vote reversal).
 - [ ] Hooks move to the durable phase: SoftDelete observers, History observer notification (relax `SparkRevisionEvent.ChangeVector`
+- [ ] D32(4): `ISoftDeleteObserver` and `ISparkRevisionObserver` are removed; their users (libraries, tests) move to `IAfterDeleteCommitted`/`IAfterSaveCommitted` (payload: operation, id, actor, reason, changed attributes; no new change vector).
       for deferred observers), Moderation vote reversal, DemoApp broadcasts. This fixes the side bug: DemoApp
       `PersonActions.OnBeforeDeleteAsync` broadcasts before the commit.
 
