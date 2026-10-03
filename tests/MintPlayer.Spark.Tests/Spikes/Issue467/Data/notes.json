@@ -1,0 +1,31 @@
+{
+  "Results": [
+    {
+      "Title": "mine",
+      "Owner": "alice",
+      "@metadata": {
+        "@id": "I467Notes/alice-1",
+        "@collection": "I467Notes",
+        "Raven-Clr-Type": "MintPlayer.Spark.Tests.Spikes.Issue467.I467Note, MintPlayer.Spark.Tests"
+      }
+    },
+    {
+      "Title": "bobs",
+      "Owner": "bob",
+      "@metadata": {
+        "@id": "I467Notes/bob-1",
+        "@collection": "I467Notes",
+        "Raven-Clr-Type": "MintPlayer.Spark.Tests.Spikes.Issue467.I467Note, MintPlayer.Spark.Tests"
+      }
+    },
+    {
+      "Title": "frozen",
+      "Owner": "bob",
+      "@metadata": {
+        "@id": "I467Notes/bob-frozen",
+        "@collection": "I467Notes",
+        "Raven-Clr-Type": "MintPlayer.Spark.Tests.Spikes.Issue467.I467Note, MintPlayer.Spark.Tests"
+      }
+    }
+  ]
+}

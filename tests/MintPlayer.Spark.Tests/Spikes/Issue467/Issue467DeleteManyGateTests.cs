@@ -33,12 +33,11 @@ public class Issue467DeleteManyGateTests : SparkTestDriver
         return await session.LoadAsync<T>(id) is not null;
     }
 
-    private Task SeedNotesAsync() => SeedAsync(async session =>
-    {
-        await session.StoreAsync(new I467Note { Id = "I467Notes/alice-1", Title = "mine", Owner = "alice" });
-        await session.StoreAsync(new I467Note { Id = "I467Notes/bob-1", Title = "bobs", Owner = "bob" });
-        await session.StoreAsync(new I467Note { Id = "I467Notes/bob-frozen", Title = "frozen", Owner = "bob" });
-    });
+    /// <summary>
+    /// Alice's readable note, bob's note (hidden by the Read rule, allowed by the wider Delete rule)
+    /// and bob's "frozen" note (also withholds Delete), from <c>Data/notes.json</c>.
+    /// </summary>
+    private Task SeedNotesAsync() => SeedFromJsonAsync("Spikes/Issue467/Data/notes.json");
 
     private static object DeleteNotes(params string[] ids)
         => Wire.Typed(I467Models.NoteTypeId, new { ids, queryId = I467Models.NotesQueryId.ToString() });

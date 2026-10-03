@@ -1,17 +1,17 @@
 # Plan — Issue #467 (one pull request)
 
-Requirements, decisions (D1–D23, grilled 2026-10-03) and spike results live in
+Requirements, decisions (D1–D23 grilled 2026-10-03; D24–D29 settled during implementation) and spike results live in
 [issue_467_query_selection_PRD.md](issue_467_query_selection_PRD.md) §7. This file is the order of work.
 Where the PRD's §2 and §7 disagree, §7 wins.
 
 **Rules for executing this plan**
-- One branch, one PR: `feat/467-query-selection`. Every decision D1–D23 lands in this PR.
+- One branch, one PR: `feat/467-query-selection`. Every decision D1–D29 lands in this PR.
 - Commit per milestone. **Do not run test suites per milestone.** Verify with a build + reading the code.
   One full sweep at the end (M9):
   `RAVENDB_LICENSE='C:\Repos\MintPlayer.Spark\.secrets\raven-license.log' npm run test:affected`.
   While fixing, run only the affected class (`--filter "FullyQualifiedName~Issue467"` etc.).
 - **Spike tests are intentionally red** until their milestone lands:
-  `tests/MintPlayer.Spark.Tests/Spikes/Issue467/` (12 red, 4 green). Each test names its spike and decision.
+  `tests/MintPlayer.Spark.Tests/Spikes/Issue467/` (12 red and 4 green when written; M5 added the custom-action S4 half, the execute S7 half and an S8 retry). Each test names its spike and decision. None has been run since M0 — that is the M9 sweep.
   When a milestone turns them green, move them next to the related tests (e.g. `Endpoints/PersistentObject/`)
   and drop the `Spikes` folder before the PR. **Do not push the branch while they are red** (CI costs money;
   pushing would only show the known reds).
@@ -27,7 +27,9 @@ Where the PRD's §2 and §7 disagree, §7 wins.
 - [x] Investigation (four agents) and grilling, D1–D23.
 - [x] Branch `feat/467-query-selection`; PRD and plan committed (`e00fd8a5`).
 - [x] Spikes S1 (upstream part), S2, S4, S5, S6, S7, S8, S9, S10, S11, S12, S13 (results in PRD §7).
-- [ ] Deferred spikes: S1 remainder (M4), S3 (M5), the custom-action halves of S4/S7 and S8's 449 retry (M5).
+- [x] Deferred spikes written: S1 remainder (M4 spec), the custom-action halves of S4/S7 and S8's 449 retry (M5). S3 (cost of the D18 message) is measured in M9.
+- [x] Committed: M0 `d212723a`, M1 `af26aeb2`, M2 `009b4c22`, M3 `fe10392c`, M4 `393352aa`, M5 `d0782ea5`. Next: M6.
+- [ ] Owner to confirm D29c (D20 reason: server side only, no UI prompt or required-reason setting exists).
 
 ---
 
