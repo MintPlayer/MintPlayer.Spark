@@ -28,7 +28,7 @@
     "@angular/platform-browser": "22.2.0",
     "@angular/router": "22.2.0",
     "@mintplayer/dailymotion-player": "^20.0.0",
-    "@mintplayer/file-player": "^20.0.0",
+    "@mintplayer/file-player": "^20.1.0",
     "@mintplayer/ng-animations": "22.1.0",
     "@mintplayer/ng-bootstrap": "^22.20.0",
     "@mintplayer/ng-click-outside": "^22.1.0",
