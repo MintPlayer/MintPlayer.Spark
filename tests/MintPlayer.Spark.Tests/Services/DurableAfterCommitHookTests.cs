@@ -1,10 +1,14 @@
 using Microsoft.Extensions.DependencyInjection;
 using MintPlayer.Spark.Abstractions;
 using MintPlayer.Spark.Abstractions.Interceptors;
+using MintPlayer.Spark.Actions;
+using MintPlayer.Spark.Models;
 using MintPlayer.Spark.Exceptions;
 using MintPlayer.Spark.Services;
 using MintPlayer.Spark.Testing;
 using MintPlayer.Spark.Tests._Infrastructure;
+using Raven.Client.Documents;
+using Raven.Client.Documents.Linq;
 
 namespace MintPlayer.Spark.Tests.Services;
 
@@ -17,16 +21,16 @@ public class DurableAfterCommitHookTests : SparkTestDriver
 {
     private static readonly Guid NoteTypeId = Guid.Parse("46a1c7e0-4600-4600-4600-46a1c7e04682");
 
-    private SparkEndpointFactory<InterceptedContext> factory = null!;
+    private SparkEndpointFactory<DurableContext> factory = null!;
     private readonly InterceptionLog log = new();
     private readonly CommittedLog committed = new();
 
     public override async Task InitializeAsync()
     {
         await base.InitializeAsync();
-        factory = new SparkEndpointFactory<InterceptedContext>(
+        factory = new SparkEndpointFactory<DurableContext>(
             Store,
-            [InterceptedNoteModel.For(NoteTypeId)],
+            [InterceptedNoteModel.For(NoteTypeId), DurableNoteModel()],
             configureServices: services =>
             {
                 services.AddSingleton(log);
@@ -181,15 +185,136 @@ public class DurableAfterCommitHookTests : SparkTestDriver
     {
         var act = async () =>
         {
-            await using var bare = new SparkEndpointFactory<InterceptedContext>(
+            await using var bare = new SparkEndpointFactory<DurableContext>(
                 Store,
-                [InterceptedNoteModel.For(NoteTypeId)],
+                [InterceptedNoteModel.For(NoteTypeId), DurableNoteModel()],
                 configureServices: services => services.AddSingleton(log).AddSingleton(committed),
                 configureSpark: spark => spark.AddHook<RecordingCommittedHook>());
             using var _ = bare.CreateScope();
         };
 
         (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Message.Should().Contain("spark.AddMessaging()");
+    }
+
+    // ---- an Actions class as its own type's durable hook (DemoApp's Person/Company) ------------------
+
+    [Fact]
+    public async Task An_actions_class_implementing_a_durable_hook_is_run_without_registration()
+    {
+        using (var scope = factory.CreateScope())
+        {
+            var po = new PersistentObject { ObjectTypeId = DurableNoteTypeId, Name = "DurableNote" };
+            po.AddAttribute(new PersistentObjectAttribute { Name = "Title", DataType = "string", Value = "via actions", IsValueChanged = true });
+            await scope.ServiceProvider.GetRequiredService<IDatabaseAccess>().SavePersistentObjectAsync(po);
+        }
+
+        (await DrainAsync()).Should().Be(1, "the dispatcher found the Actions class by the model's type");
+        committed.Changes.Should().ContainSingle(c => c.EntityType == typeof(DurableNote).FullName && c.Facts["Actions"] == "DurableNoteActions");
+    }
+
+    [Fact]
+    public async Task An_actions_class_durable_hook_without_an_outbox_fails_at_the_write_not_silently()
+    {
+        // The startup check sees registered hooks only; an Actions class is found per type, at the write.
+        await using var bare = new SparkEndpointFactory<DurableContext>(
+            Store,
+            [InterceptedNoteModel.For(NoteTypeId), DurableNoteModel()],
+            configureServices: services => services.AddSingleton(log).AddSingleton(committed));
+
+        using var scope = bare.CreateScope();
+        var po = new PersistentObject { ObjectTypeId = DurableNoteTypeId, Name = "DurableNote" };
+        po.AddAttribute(new PersistentObjectAttribute { Name = "Title", DataType = "string", Value = "lost?", IsValueChanged = true });
+        var act = () => scope.ServiceProvider.GetRequiredService<IDatabaseAccess>().SavePersistentObjectAsync(po);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Message.Should().Contain("spark.AddMessaging()");
+        using var verify = Store.OpenAsyncSession();
+        (await verify.Query<DurableNote>().Customize(c => c.WaitForNonStaleResults()).CountAsync()).Should().Be(0, "nothing commits without its follow-up");
+    }
+
+    // ---- guards ---------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task A_server_assigned_id_cannot_carry_durable_work()
+    {
+        using var scope = factory.CreateScope();
+        var hooks = scope.ServiceProvider.GetRequiredService<ISparkHookPipeline>();
+        var context = new SaveContext
+        {
+            EntityType = typeof(InterceptedNote),
+            Operation = PersistentObjectOperation.New,
+            PersistentObject = new PersistentObject { ObjectTypeId = NoteTypeId, Name = "InterceptedNote" },
+            Entity = new InterceptedNote(),
+            Session = scope.ServiceProvider.GetRequiredService<Raven.Client.Documents.Session.IAsyncDocumentSession>(),
+        };
+
+        var act = () => hooks.EnqueueCommittedAsync(context, "InterceptedNotes|", PersistentObjectOperation.New, isDelete: false, isReplaced: false, previousChangeVector: null);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Message.Should().Contain("server-assigned");
+        Outbox.Enqueued.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task The_dispatcher_answers_false_for_a_hook_the_app_no_longer_has()
+    {
+        using var scope = factory.CreateScope();
+        var dispatcher = scope.ServiceProvider.GetRequiredService<ISparkAfterCommitDispatcher>();
+        var work = new SparkAfterCommitWork
+        {
+            HookType = "Removed.Since.TheWrite",
+            IsDelete = false,
+            Change = new SparkCommittedChange
+            {
+                EntityType = typeof(DurableNote).FullName!,
+                Id = "DurableNotes/1",
+                Operation = PersistentObjectOperation.Save,
+                OccurredAt = DateTimeOffset.UtcNow,
+            },
+        };
+
+        (await dispatcher.DispatchAsync(work, CancellationToken.None)).Should().BeFalse(
+            "neither a registered hook nor the model type's Actions class has that name");
+    }
+
+    internal static readonly Guid DurableNoteTypeId = Guid.Parse("46a1c7e0-4600-4600-4600-46a1c7e04683");
+
+    internal static EntityTypeFile DurableNoteModel() => new()
+    {
+        PersistentObject = new EntityTypeDefinition
+        {
+            Id = DurableNoteTypeId,
+            Name = "DurableNote",
+            ClrType = typeof(DurableNote).FullName!,
+            Attributes = [new EntityAttributeDefinition { Id = Guid.NewGuid(), Name = "Title", DataType = "string" }],
+        },
+    };
+}
+
+public class DurableContext : SparkContext
+{
+    public IRavenQueryable<InterceptedNote> Notes => Session.Query<InterceptedNote>();
+    public IRavenQueryable<DurableNote> DurableNotes => Session.Query<DurableNote>();
+}
+
+public class DurableNote
+{
+    public string? Id { get; set; }
+    public string Title { get; set; } = string.Empty;
+}
+
+/// <summary>An Actions class that is its type's durable hook, the way DemoApp's PersonActions is.</summary>
+public class DurableNoteActions(IEntityMapper entityMapper, CommittedLog log)
+    : DefaultPersistentObjectActions<DurableNote>(entityMapper), IBeforeSave<DurableNote>, IAfterSaveCommitted<DurableNote>
+{
+    public ValueTask OnBeforeSaveAsync(DurableNote entity, SaveContext context)
+    {
+        context.Facts["Actions"] = nameof(DurableNoteActions);
+        return ValueTask.CompletedTask;
+    }
+
+    public Task OnAfterSaveCommittedAsync(SparkCommittedChange change, CancellationToken cancellationToken)
+    {
+        log.Changes.Add(change);
+        return Task.CompletedTask;
     }
 }
 

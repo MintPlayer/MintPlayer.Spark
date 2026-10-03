@@ -201,6 +201,13 @@ Design: issue #482, section "Hook interfaces". Lands in this PR (owner decision,
       no work, a bulk delete refused on a later row takes back the earlier rows' work, startup error), `MessageBusTests`
       (`EnqueueAsync` commits with the caller's save, never before; dedupe refused). `TestAfterCommitOutbox` stores exactly as
       Messaging does and drains through the real dispatcher. SoftDelete, History and Moderation tests drain before asserting.
+      Regression guards added after review: a moderator **purge** reverses votes (`ModerationToolsTests`; the first draft
+      skipped purges); `ISparkSoftDelete.DeleteAsync`'s reason reaches the payload (`SoftDeleteTests`); an Actions class as its
+      type's durable hook runs without registration, and fails at the write (nothing committed) without Messaging; a
+      server-assigned id is refused; the dispatcher answers false for a removed hook and the recipient dead-letters it
+      (`MessageBusTests`); the payload survives Newtonsoft; and `DurableAfterCommitMessagingTests` runs one save end to end
+      through the real Messaging (outbox registration, allow-list, recipient, completed message) and checks a refused save
+      publishes nothing.
       Docs: `guide-hooks.md` §5a, the SoftDelete, History, Moderation and Messaging READMEs.
 
 ### M8 — Demo, E2E, docs

@@ -268,4 +268,65 @@ public class MessageBusTests : SparkTestDriver
         await act.Should().ThrowAsync<ArgumentException>();
         session.Advanced.UseOptimisticConcurrency.Should().BeFalse("the caller's session is left as it was");
     }
+
+    // ---- durable after-commit hooks: the recipient (#482, D17) ----------------------------------------
+
+    private sealed class FixedDispatcher(bool found) : MintPlayer.Spark.Abstractions.Interceptors.ISparkAfterCommitDispatcher
+    {
+        public Task<bool> DispatchAsync(MintPlayer.Spark.Abstractions.Interceptors.SparkAfterCommitWork work, CancellationToken cancellationToken)
+            => Task.FromResult(found);
+    }
+
+    private static MintPlayer.Spark.Abstractions.Interceptors.SparkAfterCommitWork Work() => new()
+    {
+        HookType = "Some.Hook",
+        IsDelete = true,
+        Change = new MintPlayer.Spark.Abstractions.Interceptors.SparkCommittedChange
+        {
+            EntityType = "Some.Entity",
+            Id = "Entities/1",
+            Operation = MintPlayer.Spark.Abstractions.Interceptors.PersistentObjectOperation.Delete,
+            OccurredAt = DateTimeOffset.UtcNow,
+        },
+    };
+
+    [Fact]
+    public async Task The_after_commit_recipient_dead_letters_work_for_a_hook_the_app_no_longer_has()
+    {
+        var act = () => new SparkAfterCommitRecipient(new FixedDispatcher(found: false)).HandleAsync(Work());
+
+        // Non-retryable: retrying cannot make a removed hook appear, and the message must not loop.
+        (await act.Should().ThrowAsync<NonRetryableException>()).Which.Message.Should().Contain("Some.Hook").And.Contain("Entities/1");
+    }
+
+    [Fact]
+    public async Task The_after_commit_recipient_completes_when_the_hook_ran()
+    {
+        var act = () => new SparkAfterCommitRecipient(new FixedDispatcher(found: true)).HandleAsync(Work());
+        await act.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public void A_SparkAfterCommitWork_survives_the_message_payload_round_trip()
+    {
+        // The bus serializes with Newtonsoft; the payload's facts and flags must come back intact.
+        var work = Work() with
+        {
+            Change = Work().Change with
+            {
+                IsReplaced = true,
+                PreviousChangeVector = "A:1-x",
+                Facts = new Dictionary<string, string> { ["Reason"] = "spam" },
+            },
+        };
+        var json = Newtonsoft.Json.JsonConvert.SerializeObject(work);
+        var back = Newtonsoft.Json.JsonConvert.DeserializeObject<MintPlayer.Spark.Abstractions.Interceptors.SparkAfterCommitWork>(json)!;
+
+        back.HookType.Should().Be("Some.Hook");
+        back.IsDelete.Should().BeTrue();
+        back.Change.IsReplaced.Should().BeTrue();
+        back.Change.PreviousChangeVector.Should().Be("A:1-x");
+        back.Change.Reason.Should().Be("spam");
+        back.Change.Operation.Should().Be(MintPlayer.Spark.Abstractions.Interceptors.PersistentObjectOperation.Delete);
+    }
 }

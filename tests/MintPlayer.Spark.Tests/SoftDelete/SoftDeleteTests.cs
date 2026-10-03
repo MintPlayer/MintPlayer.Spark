@@ -215,6 +215,11 @@ public class SoftDeleteTests : SparkTestDriver
             await scope.ServiceProvider.GetRequiredService<ISparkSoftDelete>().DeleteAsync(NoteTypeId, note.Id!, "spam");
 
         (await LoadAsync<SdNote>(note.Id!))!.DeleteReason.Should().Be("spam");
+
+        // The durable hooks see the reason too (#482, D34b): SoftDelete records it as a fact, since the
+        // framework only knows a reason the caller passed to a bulk delete.
+        await host.DrainAsync();
+        host.Recorder.Reasons.Should().Equal("spam");
     }
 
     // ---- restore ---------------------------------------------------------------------------------
@@ -910,6 +915,7 @@ public sealed class SdRecorder
 {
     public ConcurrentQueue<string> OnDeleteCalls { get; } = new();
     public ConcurrentQueue<string> Events { get; } = new();
+    public ConcurrentQueue<string?> Reasons { get; } = new();
 }
 
 /// <summary>Withholds Edit on a row titled "frozen" and Delete on one titled "keep"; records OnDeleteAsync.</summary>
@@ -990,7 +996,10 @@ public sealed class SdObserver(SdRecorder recorder) : IAfterDeleteCommitted<SdNo
     public Task OnAfterDeleteCommittedAsync(SparkCommittedChange change, CancellationToken cancellationToken)
     {
         if (change.IsReplaced)
+        {
             recorder.Events.Enqueue($"Deleted:{change.Id}");
+            recorder.Reasons.Enqueue(change.Reason);
+        }
         else if (change.IsPurge)
             recorder.Events.Enqueue($"Purged:{change.Id}");
         return Task.CompletedTask;

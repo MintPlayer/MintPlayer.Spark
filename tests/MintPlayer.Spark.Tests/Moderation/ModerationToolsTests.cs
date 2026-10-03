@@ -238,4 +238,27 @@ public class ModerationToolsTests : SparkTestDriver
         await host.CreditAsync();
         (await host.SummaryAsync(Alice)).Total.Should().Be(10, "the author's own delete keeps what the post earned");
     }
+
+    [Fact]
+    public async Task A_moderator_purging_someone_elses_post_reverses_its_votes()
+    {
+        // Guards a regression caught in M7b review: the reversal moved to a durable hook decided in the
+        // before-delete hook, and its first draft skipped purges. The author deletes (no reversal), then a
+        // moderator purges: that purge must reverse what the post earned.
+        await using var host = await StartAsync(o => o.Fraud.CreditDelayHours = 0);
+        var post = await host.SeedPostAsync(Alice, "purged");
+        await host.VoteAsync(Bob, post, 1);
+        (await host.SendAsync("/spark/po/delete", Wire.Typed(MoHost.PostTypeId, id: post), Alice)).Status.Should().Be(HttpStatusCode.NoContent);
+        await host.DrainAsync();
+        (await host.EventsForAsync(Alice)).Should().NotContain(e => e.Kind == ReputationEventKinds.Reversal, "the author's own delete reverses nothing");
+
+        string? etag;
+        using (var session = host.Store.OpenAsyncSession())
+            etag = session.Advanced.GetChangeVectorFor(await session.LoadAsync<MoPost>(post));
+        (await host.ModeratorAsync("/spark/po/purge", Wire.Typed(MoHost.PostTypeId, new { etag }, id: post))).Status.Should().Be(HttpStatusCode.NoContent);
+
+        await host.DrainAsync();
+        (await host.EventsForAsync(Alice)).Should().ContainSingle(e => e.Kind == ReputationEventKinds.Reversal)
+            .Which.TargetId.Should().Be(post);
+    }
 }
