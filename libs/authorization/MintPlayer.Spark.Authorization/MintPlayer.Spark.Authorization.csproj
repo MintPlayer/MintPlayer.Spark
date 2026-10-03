@@ -62,6 +62,7 @@
 		<PackageReference Include="Microsoft.AspNetCore.Authentication.MicrosoftAccount" Version="11.0.0-rc.1.26425.128" />
 		<PackageReference Include="Microsoft.AspNetCore.Authentication.Twitter" Version="11.0.0-rc.1.26425.128" />
 		<!-- #460 D16 / SP-D: server-rendered SVG QR code for authenticator enrollment. MIT, no dependencies. -->
+		<PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.23.0" />
 		<PackageReference Include="QRCoder" Version="1.8.0" />
 		<PackageReference Include="MintPlayer.AspNetCore.Endpoints" Version="11.3.0-rc.0" />
 		<ProjectReference Include="..\..\spark\MintPlayer.Spark.Abstractions\MintPlayer.Spark.Abstractions.csproj" />
