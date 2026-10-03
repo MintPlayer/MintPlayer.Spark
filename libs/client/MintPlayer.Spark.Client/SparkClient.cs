@@ -347,20 +347,26 @@ public partial class SparkClient : IDisposable
     /// query's selection (<c>POST /spark/po/delete-many</c>, #460 D18). All or nothing: one row that is
     /// missing, denied or whose hook withholds Delete refuses the lot.
     /// </summary>
-    /// <param name="queryId">The query the rows were selected in, for the disabled-action hook.</param>
+    /// <param name="queryId">
+    /// The query the rows were selected in. Required (#467, D12): the server fetches the rows through
+    /// it — a row it does not return refuses the lot — and applies its <c>OnDisableActionsAsync</c> decision.
+    /// </param>
     /// <param name="parentId">The sub-query's container, when deleting from a sub-query.</param>
     /// <param name="parentType">The container's type.</param>
+    /// <param name="reason">One reason for the whole batch, recorded on every soft-deleted row (#467, D20).</param>
     public Task DeletePersistentObjectsAsync(
         Guid objectTypeId,
         IReadOnlyList<string> ids,
-        string? queryId = null,
+        string queryId,
         string? parentId = null,
         string? parentType = null,
         CancellationToken cancellationToken = default,
         SparkRetryHandler? onRetry = null,
-        SparkOperationHandler? onOperation = null)
+        SparkOperationHandler? onOperation = null,
+        string? reason = null)
     {
         ArgumentNullException.ThrowIfNull(ids);
+        ArgumentException.ThrowIfNullOrEmpty(queryId);
         return PostConversationAsync<object?>(
             "/spark/po/delete-many",
             new Dictionary<string, object?>
@@ -370,6 +376,7 @@ public partial class SparkClient : IDisposable
                 ["queryId"] = queryId,
                 ["parentId"] = parentId,
                 ["parentType"] = parentType,
+                ["reason"] = reason,
             },
             requiresAntiforgery: true,
             async (response, ct) =>
@@ -650,6 +657,11 @@ public partial class SparkClient : IDisposable
         // resolved server-side under its own Read gate. Distinct from `parent`, which is an object
         // of this action's own type. Appended after the token so existing positional calls keep
         // compiling; every caller in the repo passes by name anyway.
+        //
+        // ⚠️ A selection requires queryId (#467, D12): the server refuses one without it with a 400,
+        // because the rows are resolved through that query and its OnDisableActionsAsync decision applies.
+        if (selectedItemIds is { Count: > 0 } && string.IsNullOrEmpty(queryId))
+            throw new ArgumentException("A selection must name the query its rows were selected in.", nameof(queryId));
         //
         // ⚠️ queryId is what makes a grid invocation reproducible. The server re-runs the named query
         // narrowed to selectedItemIds and hands the action the rows the grid actually rendered; with

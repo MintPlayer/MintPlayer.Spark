@@ -32,11 +32,16 @@ export interface NewObjectOptions {
 
 /** Where a bulk delete was started from; see {@link SparkService.deleteMany}. */
 export interface DeleteManyOptions {
-  /** The query the rows were selected in, for the server's `OnDisableActionsAsync`. */
-  queryId?: string;
+  /**
+   * The query the rows were selected in. Required (#467, D12): the server fetches the rows through it
+   * and applies its `OnDisableActionsAsync` decision; without it the call is a 400.
+   */
+  queryId: string;
   /** The sub-query's container, when deleting from a sub-query. */
   parentId?: string;
   parentType?: string;
+  /** One reason for the whole batch, recorded on every soft-deleted row (#467, D20). */
+  reason?: string;
 }
 
 /** Context for {@link SparkService.deleteRow}. Every field is required — see `DeleteRow.cs`. */
@@ -314,10 +319,10 @@ export class SparkService {
    * yours to delete, a 403 that the server's `OnDisableActionsAsync` withholds Delete on the query or
    * on one of the rows, a 400 that the selection breaks the rule or the 200-row cap.
    */
-  async deleteMany(type: string, ids: string[], options?: DeleteManyOptions): Promise<void> {
+  async deleteMany(type: string, ids: string[], options: DeleteManyOptions): Promise<void> {
     return this.postWithEnvelope<void>(
       `${this.baseUrl}/po/delete-many`,
-      { objectTypeId: type, ids, ...(options ?? {}) }
+      { objectTypeId: type, ids, ...options }
     );
   }
 

@@ -322,19 +322,29 @@ POST /spark/po/delete-many
 ```
 
 One request runs every row through the ordinary delete pipeline, in this order:
-1. The **200-row cap** and the `Delete` entry's **rule** are checked first. Either failure is a 400,
-   and nothing touches the database.
-2. The `Delete/T` right.
-3. The sub-query's container, loaded through its own gated read.
-4. The collection guard and the row gate, on every row.
+1. The **200-row cap**, the `Delete` entry's **rule** and a **`queryId`** are checked first. Any
+   failure is a 400, and nothing touches the database. `queryId` is required (#467, D12).
+2. The sub-query's container, loaded through its own gated read.
+3. The rows are fetched **through the named query** — its right, filter, row filter and parent — and
+   must all be **readable**: the `Read` right and the `Read` row rule (#467, D11). A row the query does
+   not return, or the caller cannot read, refuses the lot exactly like a missing id (404, M-3).
+   Naming another query of the same type therefore cannot dodge a query's own decisions.
+4. The `Delete/T` right, the collection guard and the `Delete` row rule.
 5. `OnDisableActionsAsync` is asked about the query target (with the parent) and about every row, in
    one batched call. **One row that withholds `Delete` refuses the whole request with 403.**
 6. `OnBeforeDeleteAsync` and the interceptors run for each row, so a soft-deletable type is
-   soft-deleted.
+   soft-deleted, with the request's one `reason` on every row (#467, D20).
 7. Every write is committed by **one `SaveChanges`**: all rows or none.
 
-A row that is missing, belongs to another collection or is denied by the row rule refuses the lot,
-with the same answer a missing row gets. The server never deletes 198 of 200 and says nothing.
+**One refusal names every row that failed (#467, D18).** A row the `Delete` rule refuses, a row whose
+hook withholds `Delete`, and a row an interceptor refuses (a Moderation lock) are listed by breadcrumb
+— with the reason, when there is one — so the user knows what to untick: "These items cannot be
+deleted: Re: pricing (This post is locked)." Every row named passed the Read gate, so naming it
+discloses nothing; a row that is missing or unreadable is never named. The server never deletes 198
+of 200 and says nothing.
+
+A custom action on a selection follows the same rules: with ids and no parent it needs `queryId`
+(400 otherwise), and its rows come through that query and must be readable.
 
 ⚠️ The base `OnDeleteAsync` defers its own `SaveChanges` while a bulk delete is open. An override that
 saves on its own commits its row early and breaks the guarantee. That is the D1 override gap: it is
@@ -624,6 +634,14 @@ not would offer a button that then refuses. Two consequences:
   action when the result is empty" cannot be expressed — deliberately, because it could never be
   re-derived at submit.
 
+**Object level or query level? (#467, D13)** Forbid an action on an *object* at the object target:
+that decision is enforced wherever the action runs. The query target controls what that *list
+offers*. For a bulk call the two coincide — delete-many and a custom action on a selection fetch their
+rows through the named query, so its decision always applies. **Edit** is the exception: it runs only
+as the object's update, where the object target decides. A query-level "Edit disabled" hides Edit
+from that list and has no execution of its own to block, so put "this row may not be edited" on the
+object target.
+
 For a large selection, override the **batched** form `OnDisableActionsAsync(IReadOnlyList<DisableActionsItem>)`
 — every target of one request in one call — to answer with one round-trip instead of one per row. The
 default calls the single form per item.
@@ -707,7 +725,7 @@ Rarely needed at all now: a readable `Id` of any type narrows without a hook, ma
 
 ### Three shapes fall back to a document load
 
-A query owning its own paging (`SparkQueryPage<T>`), a streaming query, and a request naming no query
+A query owning its own paging (`SparkQueryPage<T>`) and a streaming query
 cannot be re-run. Those selections are materialized by id instead, and **lose index-computed column
 values** -- the column is present, the value is null.
 

@@ -69,7 +69,7 @@ internal sealed partial class SoftDeleteInterceptor : IPersistentObjectIntercept
         entity.IsDeleted = true;
         entity.DeletedAt = Now;
         entity.DeletedBy = currentUser.Id;
-        entity.DeleteReason = state.PendingReason;
+        entity.DeleteReason = context.Reason ?? state.PendingReason;
         context.Replace();
     }
 

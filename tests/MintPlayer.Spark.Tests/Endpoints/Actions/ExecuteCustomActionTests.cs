@@ -663,7 +663,9 @@ public class ExecuteCustomActionTests
     private readonly IQueryExecutor _queryExecutor = Substitute.For<IQueryExecutor>();
 
     private ExecuteCustomAction NewEndpoint() =>
-        new(_modelLoader, _rowSecurity, _typeResolver, _actionResolver, _permissions, _retryAccessor, _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance, _databaseAccess, _session, _catalogueLoader, _queryLoader, _queryExecutor, new NothingDisabled());
+        new(_modelLoader, _rowSecurity, _typeResolver, _actionResolver, _permissions, _retryAccessor, _sharedClientAccessor, NullLogger<ExecuteCustomAction>.Instance, _databaseAccess, _session, _catalogueLoader, _queryLoader,
+            new SparkSelectionResolver(_queryExecutor, _databaseAccess, _permissions, _rowSecurity, _typeResolver, _session, NullLogger<SparkSelectionResolver>.Instance),
+            new NothingDisabled());
 
     /// <summary>
     /// These tests exercise dispatch, not the D13 gate (#460), which has its own tests against the

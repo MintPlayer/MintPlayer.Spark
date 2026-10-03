@@ -127,4 +127,10 @@ public sealed class SparkBulkDeleteContext
 
     /// <summary>The container's entity type name.</summary>
     public string? ParentType { get; init; }
+
+    /// <summary>
+    /// The user's reason, applied to every row (#467, D20). A soft delete records it as the row's
+    /// <c>DeleteReason</c>; a hard delete ignores it.
+    /// </summary>
+    public string? Reason { get; init; }
 }

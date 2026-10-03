@@ -113,19 +113,19 @@ Where the PRD's §2 and §7 disagree, §7 wins.
       override, click opens, checkbox selects, cross-page selection.
 
 ### M5 — Write-path gates (D11, D12, D13, D18, D20, D21)
-- [ ] D11: Read right + read row filter + the list's deleted mode on delete-many and the
+- [x] D11: Read right + read row filter + the list's deleted mode on delete-many and the
       `ExecuteCustomAction` fallback. Turns `Issue467DeleteManyGateTests` S4 green. **Write the
       custom-action half of S4 first.**
-- [ ] D12: `queryId` required for bulk calls without a parent (400); delete-many fetches the rows through
+- [x] D12: `queryId` required for bulk calls without a parent (400); delete-many fetches the rows through
       that query. `SparkClient.DeletePersistentObjectsAsync`/`ExecuteActionAsync` and ng-spark `deleteMany`
       require it. Turns S7 green. **Write the execute-without-`queryId` half first.** Fix
       `QnASubQueryTests.cs:51,68` (no `queryId`/etags).
-- [ ] D13: document object-level vs query-level `OnDisableActionsAsync` targets in the guide.
-- [ ] D18: one refusal message with the redacted breadcrumbs of every failing readable row; unreadable or
+- [x] D13: document object-level vs query-level `OnDisableActionsAsync` targets in the guide.
+- [x] D18: one refusal message with the redacted breadcrumbs of every failing readable row; unreadable or
       missing rows counted, not named. Turns S8 green. **S3** (breadcrumb cost for 200 rows). **S8's 449
       retry inside a batch.**
-- [ ] D20: one soft-delete `reason` on delete-many; required-reason types refuse an empty one.
-- [ ] D21: `SparkThrottledException` in `Delete.cs`; fix the `DeleteMany.cs:109-110` comment; document
+- [x] D20: one soft-delete `reason` on delete-many (server only; no reason input or required-reason setting exists — D29c, owner to confirm).
+- [x] D21: `SparkThrottledException` in `Delete.cs`; fix the `DeleteMany.cs:109-110` comment; document
       self-saving `OnDeleteAsync`.
 
 ### M6 — Concurrency (D14, D15, D16)
@@ -175,6 +175,8 @@ Where the PRD's §2 and §7 disagree, §7 wins.
       Mark issue_460_PRD D17 "superseded in part by #467".
 
 ### M9 — Full verification and PR
+- [ ] Test call sites made stale by D12 (selections and delete-many without `queryId`): `ExecuteCustomActionTests` (fallback-path unit tests), `DisableActionsTests`, `ModerationToolsTests`, `SoftDeleteTests`, `SubQueryActionsTests`; and fixtures embedding pre-#467 shapes (see M2 note).
+- [ ] S3: measure the D18 refusal message for a 200-row batch (breadcrumbs resolve in one batched call; confirm the cost).
 - [ ] The `Spikes/Issue467` tests are all green and moved; the `Spikes` folder is gone.
 - [ ] Full local sweep (`npm run test:affected`, Developer licence), all five test projects green.
 - [ ] Versions: NuGet minor (11.x), ng-spark minor (22.x), ng-bootstrap 22.21.0. Check the diff — CI

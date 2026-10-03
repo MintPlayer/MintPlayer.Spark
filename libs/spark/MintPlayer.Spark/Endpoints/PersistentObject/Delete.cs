@@ -76,5 +76,10 @@ internal sealed partial class DeletePersistentObject : IPostEndpoint
         {
             return ClientResult.EnvelopeRefusal(clientAccessor, httpContext);
         }
+        catch (SparkThrottledException ex)
+        {
+            // A business quota from a hook (#460, M12), answered as delete-many answers it (#467, D21).
+            return ClientResult.Throttled(clientAccessor, httpContext, ex);
+        }
     }
 }

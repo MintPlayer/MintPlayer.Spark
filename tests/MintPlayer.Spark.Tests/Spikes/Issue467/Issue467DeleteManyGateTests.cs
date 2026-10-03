@@ -90,7 +90,81 @@ public class Issue467DeleteManyGateTests : SparkTestDriver
         hidden.Should().Be(missing, $"D11/M-3: an unreadable row must be indistinguishable from a missing one; body: {hiddenBody}");
     }
 
+    // S4 / D11, custom-action half: a selection naming bob's unreadable note refuses the action like a
+    // missing row, and the action never sees either row.
+    [Fact]
+    public async Task S4_a_custom_action_on_a_selection_with_an_unreadable_row_is_404_and_never_runs()
+    {
+        await SeedNotesAsync();
+        var log = _host.Factory.GetService<I467TouchLog>();
+
+        var (status, body) = await _host.SendAsync("/spark/actions/execute", Wire.Action(I467Models.NoteTypeId, I467TouchAction.Name,
+            new { selectedItemIds = new[] { "I467Notes/alice-1", "I467Notes/bob-1" }, queryId = I467Models.NotesQueryId.ToString() }));
+
+        status.Should().Be(HttpStatusCode.NotFound, $"D11: an unreadable row counts as missing; body: {body}");
+        log.Touched.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task S4_control_a_custom_action_on_readable_rows_runs()
+    {
+        await SeedNotesAsync();
+        var log = _host.Factory.GetService<I467TouchLog>();
+
+        var (status, body) = await _host.SendAsync("/spark/actions/execute", Wire.Action(I467Models.NoteTypeId, I467TouchAction.Name,
+            new { selectedItemIds = new[] { "I467Notes/alice-1" }, queryId = I467Models.NotesQueryId.ToString() }));
+
+        status.Should().Be(HttpStatusCode.OK, body);
+        log.Touched.Should().Equal("I467Notes/alice-1");
+    }
+
     // ---- S7 / D12 ---------------------------------------------------------------------------------
+
+    // S7 / D12, execute half: a custom action on a selection without queryId is a 400 and never runs.
+    [Fact]
+    public async Task S7_a_custom_action_on_a_selection_without_queryId_is_400()
+    {
+        await SeedNotesAsync();
+        var log = _host.Factory.GetService<I467TouchLog>();
+
+        var (status, body) = await _host.SendAsync("/spark/actions/execute", Wire.Action(I467Models.NoteTypeId, I467TouchAction.Name,
+            new { selectedItemIds = new[] { "I467Notes/alice-1" } }));
+
+        status.Should().Be(HttpStatusCode.BadRequest, body);
+        log.Touched.Should().BeEmpty();
+    }
+
+    // ---- S8 retry half / D20 ----------------------------------------------------------------------
+
+    private Task SeedPromptsAsync() => SeedAsync(async session =>
+    {
+        await session.StoreAsync(new I467Prompt { Id = "I467Prompts/1", Name = "one" });
+        await session.StoreAsync(new I467Prompt { Id = "I467Prompts/2", Name = "two" });
+    });
+
+    // S8: a retry raised by OnBeforeDeleteAsync inside a batch is a 449 that writes nothing; answered,
+    // the same request deletes every row.
+    [Fact]
+    public async Task S8_a_retry_from_a_before_delete_hook_inside_a_batch_asks_once_then_deletes_all()
+    {
+        await SeedPromptsAsync();
+        object Body(object? retryResults) => Wire.Typed(I467Models.PromptTypeId, new
+        {
+            ids = new[] { "I467Prompts/1", "I467Prompts/2" },
+            queryId = I467Models.PromptsQueryId.ToString(),
+            retryResults,
+        });
+
+        var (asked, askedBody) = await _host.SendAsync("/spark/po/delete-many", Body(null));
+        ((int)asked).Should().Be(449, askedBody);
+        (await ExistsAsync<I467Prompt>("I467Prompts/1")).Should().BeTrue("nothing is written while the hook asks");
+        (await ExistsAsync<I467Prompt>("I467Prompts/2")).Should().BeTrue();
+
+        var (answered, answeredBody) = await _host.SendAsync("/spark/po/delete-many", Body(new[] { new { step = 0, option = "Yes" } }));
+        answered.Should().Be(HttpStatusCode.NoContent, answeredBody);
+        (await ExistsAsync<I467Prompt>("I467Prompts/1")).Should().BeFalse();
+        (await ExistsAsync<I467Prompt>("I467Prompts/2")).Should().BeFalse();
+    }
 
     private Task SeedTasksAsync() => SeedAsync(async session =>
     {

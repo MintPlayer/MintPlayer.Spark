@@ -208,6 +208,9 @@ public sealed class DeleteContext : PersistentObjectInterceptorContext
     /// <summary>The tracked entity about to be deleted. Mutations made by a replacing interceptor are saved.</summary>
     public required object Entity { get; init; }
 
+    /// <summary>The reason the caller gave for this delete, if any — one for a whole bulk delete (#467, D20).</summary>
+    public string? Reason { get; init; }
+
     /// <summary>Whether this delete must be permanent. A replacing interceptor must not replace a purge.</summary>
     public bool IsPurge => Operation == PersistentObjectOperation.Purge;
 

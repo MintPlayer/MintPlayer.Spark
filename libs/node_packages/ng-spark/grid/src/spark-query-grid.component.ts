@@ -605,7 +605,9 @@ export class SparkQueryGridComponent {
    */
   async deleteRows(ids: string[], definition?: CustomActionDefinition): Promise<void> {
     const type = this.entityType();
-    if (!type || !ids.length) return;
+    // The server fetches the rows through the query they were ticked in (#467, D12).
+    const queryId = this.query()?.id;
+    if (!type || !queryId || !ids.length) return;
 
     const message = confirmationText(definition, ids.length);
     if (message && !confirm(message)) return;
@@ -614,7 +616,7 @@ export class SparkQueryGridComponent {
     const parentType = this.parentType();
     try {
       await this.sparkService.deleteMany(type.id, ids, {
-        queryId: this.query()?.id,
+        queryId,
         ...(parentId && parentType ? { parentId, parentType } : {}),
       });
       const removed = new Set(ids);

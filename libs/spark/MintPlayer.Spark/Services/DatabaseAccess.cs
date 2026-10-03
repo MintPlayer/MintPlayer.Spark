@@ -624,6 +624,29 @@ internal partial class DatabaseAccess : IDatabaseAccess
             await interceptors[i].OnAfterDeleteAsync(context);
     }
 
+    /// <summary>
+    /// The one refusal message for a bulk delete (#467, D18): the breadcrumb of every row that failed,
+    /// with its reason when it has one, so the user knows which rows to untick. Every row named here
+    /// passed the Read gate (D11), so naming it discloses nothing; breadcrumbs go through the
+    /// redacting resolver, in one batched call however many rows failed.
+    /// </summary>
+    private async Task<string> BulkRefusalMessageAsync(
+        IAsyncDocumentSession resolveSession,
+        EntityTypeDefinition entityTypeDefinition,
+        IReadOnlyDictionary<string, object> entities,
+        IReadOnlyList<(string Id, string? Reason)> failures,
+        string lead)
+    {
+        var roots = failures.Select(f => entities[f.Id]).ToList();
+        var breadcrumbs = await breadcrumbResolver.ResolveAsync(resolveSession, roots, entityTypeDefinition, action: "Read");
+        var named = failures.Select(f =>
+        {
+            var name = breadcrumbs.Get(f.Id) is { Length: > 0 } breadcrumb ? breadcrumb : f.Id;
+            return f.Reason is { Length: > 0 } reason ? $"{name} ({reason.TrimEnd('.')})" : name;
+        });
+        return $"{lead} {string.Join(", ", named)}.";
+    }
+
     /// <inheritdoc />
     public async Task DeletePersistentObjectsAsync(Guid objectTypeId, IReadOnlyList<string> ids, SparkBulkDeleteContext? context = null)
     {
@@ -656,12 +679,29 @@ internal partial class DatabaseAccess : IDatabaseAccess
                     throw new SparkRowLevelAccessDeniedException($"{deleteAction}/{entityTypeDefinition.Name}");
             }
 
-            if (!await rowSecurity.AreAllowedAsync(checkSession, entityType, deleteAction, distinct))
+            // D11 (#467): every row must also be READABLE — the Read right and the Read row rule. A row
+            // the caller cannot see counts as missing (M-3), before any gate that could answer
+            // differently for it (the Delete rule, OnDisableActionsAsync's 403).
+            if (!await permissionService.IsAllowedAsync("Read", entityTypeDefinition.Name)
+                || !await rowSecurity.AreAllowedAsync(checkSession, entityType, "Read", distinct))
                 throw new SparkRowLevelAccessDeniedException($"{deleteAction}/{entityTypeDefinition.Name}");
+
+            // D18 (#467): the Delete row rule, per row, so the refusal can name the rows that failed —
+            // every one of them is readable, so naming it discloses nothing.
+            if (!await rowSecurity.AreAllowedAsync(checkSession, entityType, deleteAction, distinct))
+            {
+                var denied = new List<string>();
+                foreach (var id in distinct)
+                    if (!await rowSecurity.IsAllowedAsync(entityType, deleteAction, stored[id]))
+                        denied.Add(id);
+                throw new SparkActionDisabledException(deleteAction, await BulkRefusalMessageAsync(
+                    checkSession, entityTypeDefinition, stored, denied.Select(id => (id, (string?)null)).ToList(),
+                    "You may not delete"));
+            }
 
             // Disabled-action gate (#460, D13), after the row gate: the query target (with its parent)
             // and every row, in one batched call; the union decides, so one row whose hook withholds
-            // Delete refuses the whole request with a 403.
+            // Delete refuses the whole request with a 403 — naming the rows that withheld it (D18).
             if (!Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor))
             {
                 var actions = actionsResolver.ResolveForType(entityType);
@@ -694,7 +734,22 @@ internal partial class DatabaseAccess : IDatabaseAccess
 
                 var disabled = await disabledActions.EvaluateAsync(actions, items);
                 if (disabled.Contains(deleteAction))
-                    throw new SparkActionDisabledException(deleteAction);
+                {
+                    // The query target withholding Delete is about the list, not a row: the plain refusal.
+                    var withheldBy = items
+                        .Where(item => item.Context.TargetKind == DisableActionsTargetKind.PersistentObject
+                            && item.Target is DisabledActionSet set
+                            && set.Names.Contains(deleteAction, StringComparer.OrdinalIgnoreCase))
+                        .Select(item => item.Context.Id!)
+                        .ToList();
+                    if (withheldBy.Count == 0 || items.Any(item => item.Context.TargetKind == DisableActionsTargetKind.Query
+                            && item.Target is DisabledActionSet q && q.Names.Contains(deleteAction, StringComparer.OrdinalIgnoreCase)))
+                        throw new SparkActionDisabledException(deleteAction);
+
+                    throw new SparkActionDisabledException(deleteAction, await BulkRefusalMessageAsync(
+                        checkSession, entityTypeDefinition, stored, withheldBy.Select(id => (id, (string?)null)).ToList(),
+                        "Delete is not available for"));
+                }
             }
         }
 
@@ -720,43 +775,64 @@ internal partial class DatabaseAccess : IDatabaseAccess
         session.Advanced.OnAfterSaveChanges += OnEarlySave;
         try
         {
+            // D18 (#467): a row a hook or interceptor refuses (a Moderation lock, a required reason) is
+            // recorded and the rest are still judged, so one refusal names every row to untick. Nothing
+            // is saved: the first refusal already decides the batch fails.
+            var refused = new List<(string Id, string? Reason)>();
             using (batch.Begin())
             {
                 foreach (var id in distinct)
                 {
-                    var entity = tracked[id];
-                    if (interceptors.Count == 0)
+                    try
                     {
-                        await DeleteEntityViaActionsAsync(session, entityType, id);
-                        continue;
+                        await DeleteOneOfBatchAsync(id);
                     }
-
-                    await InvokeBeforeDeleteHookAsync(actionsInstance, entityType, entity);
-                    interceptorPipeline.MarkBeforeDeleteHandled(entity);
-
-                    var deleteContext = new DeleteContext
+                    catch (SparkValidationException ex)
                     {
-                        EntityType = entityType,
-                        Operation = PersistentObjectOperation.Delete,
-                        Id = id,
-                        Entity = entity,
-                        User = httpContextAccessor?.HttpContext?.User,
-                        IsSystemContext = Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor),
-                    };
-                    contexts.Add((deleteContext, entity));
-
-                    foreach (var interceptor in interceptors)
-                        await interceptor.OnBeforeDeleteAsync(deleteContext);
-
-                    // A replaced delete (SoftDelete) is the tracked entity's own change, written by the
-                    // single SaveChanges below; otherwise the Actions class deletes, deferred.
-                    if (!deleteContext.WasReplaced)
-                        await DeleteEntityViaActionsAsync(session, entityType, id);
-                    else
-                        // Written with the version loaded above, as the single-row delete does
-                        // (contributions F7): a concurrent edit refuses the whole batch with a 409.
-                        await session.StoreAsync(entity, expectedChangeVectors[id], session.Advanced.GetDocumentId(entity));
+                        refused.Add((id, ex.Message));
+                    }
                 }
+            }
+
+            if (refused.Count > 0)
+                throw new SparkValidationException(await BulkRefusalMessageAsync(
+                    session, entityTypeDefinition, tracked, refused, "These items cannot be deleted:"));
+
+            async Task DeleteOneOfBatchAsync(string id)
+            {
+                var entity = tracked[id];
+                if (interceptors.Count == 0)
+                {
+                    await DeleteEntityViaActionsAsync(session, entityType, id);
+                    return;
+                }
+
+                await InvokeBeforeDeleteHookAsync(actionsInstance, entityType, entity);
+                interceptorPipeline.MarkBeforeDeleteHandled(entity);
+
+                var deleteContext = new DeleteContext
+                {
+                    EntityType = entityType,
+                    Operation = PersistentObjectOperation.Delete,
+                    Id = id,
+                    Entity = entity,
+                    User = httpContextAccessor?.HttpContext?.User,
+                    IsSystemContext = Abstractions.Authentication.SparkSystemContext.IsSystemContext(httpContextAccessor),
+                    Reason = string.IsNullOrWhiteSpace(context?.Reason) ? null : context.Reason.Trim(),
+                };
+                contexts.Add((deleteContext, entity));
+
+                foreach (var interceptor in interceptors)
+                    await interceptor.OnBeforeDeleteAsync(deleteContext);
+
+                // A replaced delete (SoftDelete) is the tracked entity's own change, written by the
+                // single SaveChanges below; otherwise the Actions class deletes, deferred.
+                if (!deleteContext.WasReplaced)
+                    await DeleteEntityViaActionsAsync(session, entityType, id);
+                else
+                    // Written with the version loaded above, as the single-row delete does
+                    // (contributions F7): a concurrent edit refuses the whole batch with a 409.
+                    await session.StoreAsync(entity, expectedChangeVectors[id], session.Advanced.GetDocumentId(entity));
             }
 
             if (savedEarly)
