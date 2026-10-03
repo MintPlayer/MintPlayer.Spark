@@ -28,7 +28,7 @@ namespace MintPlayer.Spark.Generated
             var d = new Dictionary<string, TranslatedString>(System.StringComparer.Ordinal);
             d["farewell"] = new TranslatedString { Translations = new Dictionary<string, string> { ["en"] = "Bye", ["nl"] = "Tot ziens" } };
             d["greeting"] = new TranslatedString { Translations = new Dictionary<string, string> { ["en"] = "Hello", ["nl"] = "Hallo" } };
-            d["shared"] = new TranslatedString { Translations = new Dictionary<string, string> { ["en"] = "FromHost" } };
+            d["shared"] = new TranslatedString { Translations = new Dictionary<string, string> { ["en"] = "FromHost", ["nl"] = "VanLib" } };
             return d;
         }
     }

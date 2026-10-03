@@ -37,18 +37,18 @@ Where the PRD's §2 and §7 disagree, §7 wins.
 - [x] MintPlayer/mintplayer-ng-bootstrap#422 fixed by #423 (squash `aa348d4`): the selection survives
       paging, and `selectionMode="checkbox"` makes a click open the row and the checkbox select. Published
       as ng-bootstrap **22.21.0**, web-components **2.18.0** (publish run 37136442215, success).
-- [ ] Bump `@mintplayer/ng-bootstrap` to 22.21.0 (and `@mintplayer/web-components` to 2.18.0 if pinned)
+- [x] (`d212723a`) Bump `@mintplayer/ng-bootstrap` to 22.21.0 (and `@mintplayer/web-components` to 2.18.0 if pinned)
       **from the repo root** (`npm install` at the root only). Adjust for #423's breaking changes:
       `compareWith` removed (identity is `rowKey`); `selectedRows` event typed `(T | undefined)[]`; Enter
       opens, Space selects; a `[settings]` page is kept together with `perPage`.
 
 ### M1 — Translation composition (D2, D3, D23)
-- [ ] `HostTranslationsAggregatorGenerator.ApplyAssembly`/`MergeTranslations` (`:136-198`): merge per
+- [x] `HostTranslationsAggregatorGenerator.ApplyAssembly`/`MergeTranslations` (`:136-198`): merge per
       (key, language). **Append new languages after existing ones** (`TranslatedString.GetValue` falls back
       to the first language). An app's `""` counts as not defined (D23). Merging is compile-time only (S9).
-- [ ] `SPARK_TRANS_005`: library-vs-library only, same (key, language), different value; reword it.
+- [x] `SPARK_TRANS_005`: library-vs-library only, same (key, language), different value; reword it.
       Update the pinned snapshot `HostTranslationsAggregatorGenerator_aggregates_chunks_and_host_overrides_a_key`.
-- [ ] Tests (run in M9): the app adds `es` and keeps `en/fr/nl`; the app overrides only `nl`; `""` does not
+- [x] Tests (`HostTranslationsCompositionTests`, run in M9): the app adds `es` and keeps `en/fr/nl`; the app overrides only `nl`; `""` does not
       blank a value; two libraries clash and warn; the app over a library raises no diagnostic.
 
 ### M2 — All localized text out of `App_Data` JSON (D1, D4, D5, D6)

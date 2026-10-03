@@ -45,6 +45,7 @@ public partial class TranslationsAggregateInfo
 public partial class TranslationsConflict
 {
     public string Key { get; set; } = string.Empty;
+    public string Language { get; set; } = string.Empty;
     public string WinnerAssembly { get; set; } = string.Empty;
     public string LoserAssembly { get; set; } = string.Empty;
 }
