@@ -300,9 +300,9 @@
         }
       ],
       "renderMode": "Pagination",
-      "selectionMode": "none",
       "entityType": "Car",
-      "isStreamingQuery": false
+      "isStreamingQuery": false,
+      "selectionMode": "none"
     },
     {
       "id": "a20e8400-e29b-41d4-a716-446655440012",
